@@ -15,7 +15,10 @@ function actionFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = `${directory}/${entry.name}`;
     if (entry.isDirectory()) return actionFiles(path);
-    return entry.name === 'actions.ts' ? [path] : [];
+    // Suffix-Match wie im Authz-Guard: seit der Aufteilung der grossen
+    // Action-Dateien heissen sie auch owner-actions.ts, norm-actions.ts, … —
+    // ein Exakt-Match liesse deren formData-Parses aus der Inventur fallen.
+    return entry.name.endsWith('actions.ts') ? [path] : [];
   });
 }
 
@@ -87,6 +90,14 @@ describe('parseFormData-Migrationsrest', () => {
 
     expect(exact).toEqual(
       [
+        // Die vier *-actions.ts-Eintraege sind KEINE neuen Faelle: sie lagen
+        // schon immer so vor, fielen aber aus dem frueheren Exakt-Match
+        // ('actions.ts') der Inventur. Mit dem Suffix-Match sind sie jetzt
+        // sichtbar und hier bewusst klassifiziert.
+        'portal/(protected)/profile-actions.ts::SwitchProfileSchema',
+        'staff/(protected)/admin/settings/branding-actions.ts::LetterheadSchema',
+        'staff/(protected)/admin/settings/mail-actions.ts::MailDispatchSchema',
+        'staff/(protected)/admin/settings/modules-actions.ts::AccessPolicySchema',
         'staff/(protected)/clients/[id]/edit/actions.ts::GwgSchema',
         'staff/(protected)/clients/[id]/notices/actions.ts::Schema',
         'staff/(protected)/clients/onboarding/[id]/actions.ts::GwgSchema',
@@ -97,8 +108,11 @@ describe('parseFormData-Migrationsrest', () => {
   it('misst den verbleibenden transformierten Rest und die gemeinsame Nutzung', () => {
     const { direct, shared } = inventory();
 
-    expect(direct).toHaveLength(38);
-    expect(direct.filter((call) => !call.exact)).toHaveLength(35);
+    // 38→55 bzw. 35→48 beim Wechsel auf den Suffix-Match: die Differenz sind
+    // die schon immer vorhandenen Parses in *-actions.ts-Dateien (bulk-,
+    // folder-, invite-, n8n-, …), die der Exakt-Match nie erfasst hatte.
+    expect(direct).toHaveLength(55);
+    expect(direct.filter((call) => !call.exact)).toHaveLength(48);
     expect(shared).toBe(30);
   });
 });

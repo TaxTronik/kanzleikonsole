@@ -2,7 +2,8 @@
 
 import { useActionState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { addBeneficialOwnerAction, type ActionResult } from './actions';
+import { addBeneficialOwnerAction } from './owner-actions';
+import { type ActionResult } from './actions';
 import { useGwgEditState } from './edit-state-context';
 
 export function AddBeneficialOwnerForm({

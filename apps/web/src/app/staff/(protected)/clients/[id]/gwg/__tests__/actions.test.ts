@@ -52,18 +52,22 @@ vi.mock('@/server/actions/staff-action', async () => {
 
 import {
   addBeneficialOwnerAction,
+  removeBeneficialOwnerAction,
+  updateBeneficialOwnerAction,
+} from '../owner-actions';
+import {
   addIdDocumentAction,
   extendIdentityDocumentSetAction,
+  searchUnlinkedGwgDocumentsAction,
+  updateIdDocumentsAction,
+} from '../id-document-actions';
+import {
   openCheckAction,
   saveLegalEntityDetailsAction,
   saveRiskAnswersAction,
-  searchUnlinkedGwgDocumentsAction,
   rejectCheckAction,
-  removeBeneficialOwnerAction,
   startNewCheckCycleAction,
   submitCheckForReviewAction,
-  updateBeneficialOwnerAction,
-  updateIdDocumentsAction,
   verifyCheckAction,
 } from '../actions';
 import {

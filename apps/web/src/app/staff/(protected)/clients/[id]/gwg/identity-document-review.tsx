@@ -4,11 +4,8 @@ import { useActionState, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Download, FileCheck, FileSearch, Loader2, X } from 'lucide-react';
-import {
-  extendIdentityDocumentSetAction,
-  updateIdDocumentsAction,
-  type ActionResult,
-} from './actions';
+import { extendIdentityDocumentSetAction, updateIdDocumentsAction } from './id-document-actions';
+import { type ActionResult } from './actions';
 import {
   identitySubjectRoleLabel,
   selectableIdentitySubjectOptions,

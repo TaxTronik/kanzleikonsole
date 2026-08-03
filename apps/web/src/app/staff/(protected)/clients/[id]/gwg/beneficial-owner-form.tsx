@@ -2,9 +2,8 @@
 
 import { useActionState, useEffect, useState } from 'react';
 import { Trash2 } from 'lucide-react';
+import { removeBeneficialOwnerAction, updateBeneficialOwnerAction } from './owner-actions';
 import {
-  removeBeneficialOwnerAction,
-  updateBeneficialOwnerAction,
   type ActionResult,
   type InvalidatedIdentitySet,
   type SavedBeneficialOwner,

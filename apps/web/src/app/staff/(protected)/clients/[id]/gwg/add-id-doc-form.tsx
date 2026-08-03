@@ -4,7 +4,8 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { FileSearch, Loader2, X } from 'lucide-react';
-import { addIdDocumentAction, type ActionResult } from './actions';
+import { addIdDocumentAction } from './id-document-actions';
+import { type ActionResult } from './actions';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
 import {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { searchUnlinkedGwgDocumentsAction } from './actions';
+import { searchUnlinkedGwgDocumentsAction } from './id-document-actions';
 
 export interface SelectableGwgDocument {
   id: string;
