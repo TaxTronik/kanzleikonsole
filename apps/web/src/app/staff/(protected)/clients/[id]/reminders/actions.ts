@@ -5,8 +5,12 @@ import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx, isStaffAdmin } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import {
+  scheduleReminderDoneNotification,
+  cancelReminderDoneNotification,
+} from '@/server/jobs/reminder-done-queue';
 
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
@@ -67,6 +71,18 @@ export async function createReminderAction(
   );
 }
 
+/**
+ * Erledigt eine Wiedervorlage.
+ *
+ * Die Rueckmeldung an die delegierende Person geht bewusst NICHT sofort raus,
+ * sondern als verzoegerter Job (~10 s): Die Checkbox erledigt mit einem Klick,
+ * und ein Fehlgriff soll folgenlos zuruecknehmbar sein. Eine bereits
+ * zugestellte Benachrichtigung liesse sich nicht mehr einfangen.
+ *
+ * Scheitert das Einplanen (Redis weg), wird sofort benachrichtigt — die
+ * Rueckmeldung still zu verlieren waere schlimmer als eine, die das
+ * Ruecknahme-Fenster verpasst.
+ */
 export async function markReminderDoneAction(input: { id: string }): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -74,10 +90,11 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
-      select: { clientId: true },
+      select: { clientId: true, subject: true, createdByStaff: true, doneAt: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertClientAccessTx(tx, session, rem.clientId);
+    if (rem.doneAt) return { clientId: rem.clientId, notify: null };
     await tx.clientReminder.update({
       where: { id: parsed.data.id },
       data: { doneAt: new Date(), doneByStaff: staffId },
@@ -90,11 +107,149 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
     });
+
+    // Nur bei echter Delegation — wer seine eigene Notiz abhakt, schickt sich
+    // selbst keine Rueckmeldung.
+    if (rem.createdByStaff === staffId) return { clientId: rem.clientId, notify: null };
+    const me = await tx.staffUser.findUnique({
+      where: { id: staffId },
+      select: { fullName: true },
+    });
+    return {
+      clientId: rem.clientId,
+      notify: {
+        tenantId,
+        reminderId: parsed.data.id,
+        staffId: rem.createdByStaff,
+        clientId: rem.clientId,
+        subject: rem.subject,
+        doneByName: me?.fullName ?? 'Ein Mitarbeiter',
+      },
+    };
+  });
+
+  const geplant = r.ok ? r.notify : null;
+  if (geplant) {
+    const eingeplant = await scheduleReminderDoneNotification(geplant);
+    if (!eingeplant) {
+      // Fail-safe: sofort zustellen statt die Rueckmeldung zu verlieren.
+      await withStaff(async (tx) => {
+        await notify(tx, {
+          tenantId: geplant.tenantId,
+          staffId: geplant.staffId,
+          kind: 'CLIENT_REMINDER_DONE',
+          title: `Wiedervorlage erledigt: ${geplant.subject}`,
+          body: `${geplant.doneByName} hat die von dir delegierte Wiedervorlage abgeschlossen.`,
+          href: `/staff/clients/${geplant.clientId}`,
+          resourceType: 'client_reminder',
+          resourceId: geplant.reminderId,
+        });
+      });
+    }
+  }
+  if (r.ok && r.clientId) {
+    revalidatePath(`/staff/clients/${r.clientId}`);
+    revalidatePath('/staff/dashboard');
+    revalidatePath('/staff/reminders');
+  }
+  return r;
+}
+
+/**
+ * Holt eine erledigte Wiedervorlage zurueck.
+ *
+ * Bisher war die Checkbox eine Einbahnstrasse: ein Klick, und die Aufgabe war
+ * aus der offenen Liste verschwunden — ohne Weg zurueck. Das Zurueckholen
+ * entfernt zugleich die eingeplante Rueckmeldung: passiert es im
+ * Ruecknahme-Fenster, erfaehrt die delegierende Person gar nichts davon.
+ */
+export async function reopenReminderAction(input: { id: string }): Promise<ActionResult> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+    const rem = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id },
+      select: { clientId: true, doneAt: true },
+    });
+    if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
+    await assertClientAccessTx(tx, session, rem.clientId);
+    if (!rem.doneAt) return { clientId: rem.clientId };
+    await tx.clientReminder.update({
+      where: { id: parsed.data.id },
+      data: { doneAt: null, doneByStaff: null },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'client_reminder.reopen',
+      resourceType: 'client_reminder',
+      resourceId: parsed.data.id,
+      before: { doneAt: rem.doneAt },
+      after: { doneAt: null },
+    });
+    return { clientId: rem.clientId };
+  });
+
+  if (r.ok) await cancelReminderDoneNotification(parsed.data.id);
+  if (r.ok && r.clientId) {
+    revalidatePath(`/staff/clients/${r.clientId}`);
+    revalidatePath('/staff/dashboard');
+    revalidatePath('/staff/reminders');
+  }
+  return r;
+}
+
+/**
+ * Priorität anheben oder senken.
+ *
+ * Erlaubt fuer die delegierende Person (sie kennt die Dringlichkeit) sowie
+ * Admin/Partner. Die zugewiesene Person soll sich ihre Aufgaben NICHT selbst
+ * herunterstufen koennen — deshalb kein Recht allein aus der Zuweisung.
+ */
+export async function setReminderPriorityAction(input: {
+  id: string;
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+}): Promise<ActionResult> {
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+    const rem = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id },
+      select: { clientId: true, createdByStaff: true, priority: true },
+    });
+    if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
+    await assertClientAccessTx(tx, session, rem.clientId);
+    if (rem.createdByStaff !== staffId && !isStaffAdmin(session)) {
+      throw new ActionError('Nur die delegierende Person oder Admin/Partner darf umpriorisieren.');
+    }
+    if (rem.priority === parsed.data.priority) return { clientId: rem.clientId };
+    await tx.clientReminder.update({
+      where: { id: parsed.data.id },
+      data: { priority: parsed.data.priority },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'client_reminder.priority',
+      resourceType: 'client_reminder',
+      resourceId: parsed.data.id,
+      before: { priority: rem.priority },
+      after: { priority: parsed.data.priority },
+    });
     return { clientId: rem.clientId };
   });
   if (r.ok && r.clientId) {
     revalidatePath(`/staff/clients/${r.clientId}`);
-    revalidatePath('/staff/dashboard');
+    revalidatePath('/staff/reminders');
   }
   return r;
 }

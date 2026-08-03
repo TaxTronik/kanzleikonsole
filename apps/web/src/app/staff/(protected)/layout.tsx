@@ -27,6 +27,7 @@ type ModuleKey =
   | 'workflows'
   | 'forms'
   | 'poa'
+  | 'reminders'
   | 'invoices';
 
 type NavConfig = NavItem & { moduleKey?: ModuleKey };
@@ -48,6 +49,12 @@ const allNavItems: NavConfig[] = [
     icon: 'CalendarDays',
     moduleKey: 'taxNotices',
     altPaths: ['/staff/tax-deadlines'],
+  },
+  {
+    href: '/staff/reminders',
+    label: 'Wiedervorlagen',
+    icon: 'CalendarClock',
+    moduleKey: 'reminders',
   },
   { href: '/staff/fristen', label: 'Fristen', icon: 'AlarmClock' },
   { href: '/staff/invoices', label: 'Rechnungen', icon: 'Receipt', moduleKey: 'invoices' },

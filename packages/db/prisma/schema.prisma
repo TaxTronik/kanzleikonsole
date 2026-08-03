@@ -1121,6 +1121,10 @@ model ClientReminder {
   dueDate         DateTime      @map("due_date") @db.Date
   subject         String
   notes           String?
+  // Dringlichkeit — die delegierende Person kann sie nachtraeglich anheben
+  // ("bumpen"), ohne die Wiedervorlage neu anzulegen. Gleiche Skala wie bei
+  // Anforderungen, damit die Uebersichten dieselben Labels/Farben nutzen.
+  priority        RequestPriority @default(NORMAL)
   createdByStaff  String        @map("created_by_staff") @db.Uuid
   assigneeStaffId String?       @map("assignee_staff_id") @db.Uuid
   doneAt          DateTime?     @map("done_at") @db.Timestamptz(6)
@@ -1132,6 +1136,9 @@ model ClientReminder {
   riskMarkings    RiskMarking[]
 
   @@index([assigneeStaffId, doneAt], map: "client_reminder_assignee_idx")
+  // Meine Wiedervorlagen (/staff/reminders): die "von mir delegiert"-Sicht
+  // filtert auf createdByStaff — dafuer gab es bisher keinen Index.
+  @@index([createdByStaff, doneAt], map: "client_reminder_creator_idx")
   @@index([tenantId, dueDate, doneAt], map: "client_reminder_due_idx")
   // iter72: deckt die Mandanten-Detailseite (where clientId, order doneAt,dueDate)
   // — bisher kein clientId-führender Index → Scan aller Tenant-Wiedervorlagen.
@@ -2722,6 +2729,7 @@ enum NotificationKind {
   APPOINTMENT_REQUESTED
   APPOINTMENT_DECIDED
   RISK_MARKING_ASSIGNED
+  CLIENT_REMINDER_DONE
 
   @@map("notification_kind")
 }

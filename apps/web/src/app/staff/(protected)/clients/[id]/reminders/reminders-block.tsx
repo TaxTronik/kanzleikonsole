@@ -1,14 +1,33 @@
 ﻿'use client';
 
-import { useActionState, useState, useTransition } from 'react';
+import { useActionState, useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CalendarClock, Check, Plus, Trash2, Send, UserCheck, Quote } from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  Plus,
+  Trash2,
+  Send,
+  UserCheck,
+  Quote,
+  Undo2,
+  ChevronUp,
+} from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
 import { parseDelegationNotes } from '@/server/risk/delegate-notes';
+import { onNotificationsGrew } from '@/lib/live-events';
+import {
+  PRIORITY_BADGE,
+  PRIORITY_LABEL,
+  REMINDER_PRIORITIES,
+  type ReminderPriority,
+} from '@/lib/reminder-priority';
 import {
   createReminderAction,
   markReminderDoneAction,
+  reopenReminderAction,
+  setReminderPriorityAction,
   deleteReminderAction,
   submitResearchResultAction,
 } from './actions';
@@ -29,6 +48,7 @@ interface Reminder {
   createdByStaff: string;
   createdByName: string | null;
   assigneeStaffId: string | null;
+  priority: ReminderPriority;
 }
 
 interface StaffOption {
@@ -57,10 +77,49 @@ export function RemindersBlock({
   const [submitFor, setSubmitFor] = useState<string | null>(null);
   const [resultBody, setResultBody] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Serverdaten (initial) plus per Live-Nachladen aktualisierte Fassung.
+  const [live, setLive] = useState<Reminder[] | null>(null);
+  // Gerade erledigt — Rücknahme-Balken für das Fenster, in dem die Rückmeldung
+  // an die delegierende Person noch nicht raus ist.
+  const [undoBar, setUndoBar] = useState<{ id: string; subject: string } | null>(null);
 
-  function markDone(id: string) {
+  // Die Mandantenseite ist vom Bell-getriebenen Voll-Refresh ausgenommen (zu
+  // teuer). Damit eine frisch delegierte Wiedervorlage trotzdem ohne manuellen
+  // Reload erscheint, laedt NUR dieser Block seine Daten nach.
+  const reload = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/staff/clients/${clientId}/reminders`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as { items: Reminder[] };
+      setLive(data.items);
+    } catch {
+      /* still — beim naechsten Ereignis erneut */
+    }
+  }, [clientId]);
+
+  useEffect(() => onNotificationsGrew(() => void reload()), [reload]);
+  // Neue Server-Props (revalidatePath/refresh) gewinnen wieder.
+  useEffect(() => setLive(null), [initial]);
+
+  function markDone(id: string, subject: string) {
     startMut(async () => {
-      await markReminderDoneAction({ id });
+      const res = await markReminderDoneAction({ id });
+      if (!res.ok) return;
+      setUndoBar({ id, subject });
+      window.setTimeout(() => setUndoBar((c) => (c?.id === id ? null : c)), UNDO_WINDOW_MS);
+      router.refresh();
+    });
+  }
+  function reopen(id: string) {
+    startMut(async () => {
+      await reopenReminderAction({ id });
+      setUndoBar((c) => (c?.id === id ? null : c));
+      router.refresh();
+    });
+  }
+  function bump(id: string, priority: ReminderPriority) {
+    startMut(async () => {
+      await setReminderPriorityAction({ id, priority });
       router.refresh();
     });
   }
@@ -83,8 +142,9 @@ export function RemindersBlock({
     });
   }
 
-  const open_items = initial.filter((r) => !r.doneAt);
-  const done_items = initial.filter((r) => r.doneAt);
+  const rows = live ?? initial;
+  const open_items = rows.filter((r) => !r.doneAt);
+  const done_items = rows.filter((r) => r.doneAt);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -164,6 +224,23 @@ export function RemindersBlock({
         </form>
       )}
 
+      {undoBar && (
+        <div className="mx-6 mt-3 flex items-center gap-3 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/25 px-3 py-2 text-xs text-emerald-900 dark:text-emerald-100">
+          <Check className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1 min-w-0 truncate">
+            Erledigt: <strong>{undoBar.subject}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => reopen(undoBar.id)}
+            disabled={isMutating}
+            className="btn-secondary text-xs shrink-0"
+          >
+            <Undo2 className="h-3 w-3" /> Rückgängig
+          </button>
+        </div>
+      )}
+
       {open_items.length === 0 ? (
         <p className="px-6 py-6 text-sm text-disabled text-center">Keine offenen Wiedervorlagen.</p>
       ) : (
@@ -189,7 +266,7 @@ export function RemindersBlock({
               >
                 <button
                   type="button"
-                  onClick={() => markDone(r.id)}
+                  onClick={() => markDone(r.id, r.subject)}
                   disabled={isMutating}
                   className="mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-emerald-600 hover:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/20 shrink-0"
                   title="Als erledigt markieren"
@@ -206,6 +283,22 @@ export function RemindersBlock({
                     )}
                     {vonMir && r.assigneeName && (
                       <span className="badge-gray text-[11px]">delegiert an {r.assigneeName}</span>
+                    )}
+                    {PRIORITY_BADGE[r.priority] && (
+                      <span className={`${PRIORITY_BADGE[r.priority]} text-[11px]`}>
+                        {PRIORITY_LABEL[r.priority]}
+                      </span>
+                    )}
+                    {r.createdByStaff === currentStaffId && naechsteStufe(r.priority) && (
+                      <button
+                        type="button"
+                        onClick={() => bump(r.id, naechsteStufe(r.priority)!)}
+                        disabled={isMutating}
+                        title={`Priorität auf „${PRIORITY_LABEL[naechsteStufe(r.priority)!]}" anheben`}
+                        className="text-disabled hover:text-red-600 disabled:opacity-40"
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
                     )}
                   </div>
                   <p
@@ -339,8 +432,19 @@ export function RemindersBlock({
           </summary>
           <ul className="divide-y divide-border-subtle">
             {done_items.map((r) => (
-              <li key={r.id} className="px-6 py-2 text-sm text-muted line-through">
-                {r.subject} · {fmtDateShort(new Date(r.dueDate))}
+              <li key={r.id} className="px-6 py-2 flex items-center gap-3">
+                <span className="flex-1 min-w-0 truncate text-sm text-muted line-through">
+                  {r.subject} · {fmtDateShort(new Date(r.dueDate))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => reopen(r.id)}
+                  disabled={isMutating}
+                  title="Wiedervorlage zurückholen"
+                  className="text-disabled hover:text-brand-600 disabled:opacity-40 shrink-0"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                </button>
               </li>
             ))}
           </ul>
@@ -348,4 +452,12 @@ export function RemindersBlock({
       )}
     </div>
   );
+}
+
+/** Muss zu REMINDER_DONE_NOTIFY_DELAY_MS im Queue-Modul passen. */
+const UNDO_WINDOW_MS = 10_000;
+
+/** Naechsthoehere Stufe oder null (bereits „Dringend"). */
+function naechsteStufe(p: ReminderPriority): ReminderPriority | null {
+  return REMINDER_PRIORITIES[REMINDER_PRIORITIES.indexOf(p) + 1] ?? null;
 }

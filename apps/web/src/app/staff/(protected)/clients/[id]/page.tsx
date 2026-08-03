@@ -584,6 +584,7 @@ export default async function ClientDetailPage({
                 createdByStaff: r.createdByStaff,
                 createdByName: staffNameById.get(r.createdByStaff) ?? null,
                 assigneeStaffId: r.assigneeStaffId,
+                priority: r.priority,
               }))}
             />
           ),

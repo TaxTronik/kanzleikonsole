@@ -50,6 +50,16 @@ export type N8nDeliverJob =
   | { deliveryId: string; outboxId?: never }
   | { outboxId: string; deliveryId?: never };
 
+/** Verzögerte „Wiedervorlage erledigt"-Rückmeldung an die delegierende Person. */
+export interface ReminderDoneNotifyJob {
+  tenantId: string;
+  reminderId: string;
+  staffId: string;
+  clientId: string;
+  subject: string;
+  doneByName: string;
+}
+
 export interface RiskAnalyseLlmJob {
   tenantId: string;
   analysisId: string;

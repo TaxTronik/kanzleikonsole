@@ -10,7 +10,6 @@ import { prismaBytes } from '@/server/db/prisma-bytes';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { headers } from 'next/headers';
 import {} from '@/server/actions/staff-action';
-import type { StaffSession } from '@/server/auth/staff';
 import {} from '@/server/documents/resumable-upload';
 import { notify } from '@/server/notifications/service';
 import {

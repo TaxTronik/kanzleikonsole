@@ -248,6 +248,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'document.unacknowledge': 'Empfangsbestätigung zurückgenommen',
   'client_reminder.create': 'Wiedervorlage angelegt',
   'client_reminder.done': 'Wiedervorlage erledigt',
+  'client_reminder.reopen': 'Wiedervorlage zurückgeholt',
+  'client_reminder.priority': 'Priorität der Wiedervorlage geändert',
   'client_reminder.delete': 'Wiedervorlage gelöscht',
   'pending_binder.create': 'Pendelordner angelegt',
   'pending_binder.status_change': 'Pendelordner-Status geändert',

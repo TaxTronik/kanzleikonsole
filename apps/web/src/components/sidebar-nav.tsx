@@ -25,6 +25,7 @@ import {
   IdCard,
   Mail,
   AlarmClock,
+  CalendarClock,
   Dices,
 } from 'lucide-react';
 
@@ -53,6 +54,7 @@ const ICONS = {
   IdCard,
   Mail,
   AlarmClock,
+  CalendarClock,
   Dices,
 } as const;
 

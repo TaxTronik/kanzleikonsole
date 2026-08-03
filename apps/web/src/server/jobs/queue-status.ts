@@ -52,6 +52,7 @@ const QUEUES: Array<{ name: string; expectedEveryHours: number | null }> = [
   { name: 'n8n-outbox-reconcile', expectedEveryHours: null },
   { name: 'n8n-retention', expectedEveryHours: 24 },
   { name: 'risk-analyse-llm', expectedEveryHours: null },
+  { name: 'reminder-done-notify', expectedEveryHours: null },
 ];
 
 declare global {

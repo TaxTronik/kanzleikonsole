@@ -15,6 +15,7 @@ import {
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
 import { isAutomaticRefreshEnabled, isUserTyping } from './auto-refresh';
+import { emitNotificationsGrew } from '@/lib/live-events';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -71,6 +72,10 @@ export function NotificationsBell({ initialUnread }: Props) {
   // und nicht während der Nutzer tippt.
   const onUnreadGrew = useCallback(() => {
     playNotificationSound();
+    // Immer melden — auch auf Seiten ohne Voll-Refresh (Mandanten-Cockpit).
+    // Einzelne guenstige Bloecke laden daraufhin gezielt ihre eigenen Daten
+    // nach, statt dass die ganze Seite neu rendert.
+    emitNotificationsGrew();
     if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
       router.refresh();
     }

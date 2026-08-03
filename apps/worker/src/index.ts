@@ -20,6 +20,7 @@ import { magicLinkCleanupWorker } from './jobs/magic-link-cleanup';
 import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
 import { poaExpiryWorker } from './jobs/poa-expiry-check';
 import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
+import { reminderDoneNotifyWorker } from './jobs/reminder-done-notify';
 import { backupDrillWorker } from './jobs/backup-drill';
 import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
@@ -48,6 +49,7 @@ const ALL_WORKERS = [
   dsgvoRetentionWorker,
   poaExpiryWorker,
   riskAnalyseLlmWorker,
+  reminderDoneNotifyWorker,
   backupDrillWorker,
   backupRunWorker,
   healthAlertWorker,
