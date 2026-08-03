@@ -145,7 +145,9 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
         prismaOwner.clientReminder.findMany({
           where: {
             tenantId,
-            client: { mandateEndedAt: null },
+            // Interne Aufgaben haben keinen Mandanten — der Mandats-Filter
+            // darf sie nicht mit aussortieren.
+            OR: [{ clientId: null }, { client: { mandateEndedAt: null } }],
             doneAt: null,
             dueDate: { lte: today },
           },
@@ -153,7 +155,7 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
             id: true,
             dueDate: true,
             subject: true,
-            assigneeStaffId: true,
+            assignees: { select: { staffId: true } },
             createdByStaff: true,
             client: { select: { id: true, name: true } },
           },
@@ -193,15 +195,25 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
         });
       }
 
-      const reminderNotifications: DailyNotification[] = reminders.map((reminder) => ({
-        staffId: reminder.assigneeStaffId ?? reminder.createdByStaff,
-        kind: 'CLIENT_REMINDER_DUE',
-        resourceType: 'client_reminder',
-        resourceId: reminder.id,
-        title: `Wiedervorlage fällig: ${reminder.subject}`,
-        body: `Mandant ${reminder.client.name} · ${reminder.dueDate.toISOString().slice(0, 10)}`,
-        href: `/staff/clients/${reminder.client.id}`,
-      }));
+      // Bei mehreren Zustaendigen bekommt JEDE Person die Faelligkeit — die
+      // Aufgabe bleibt dieselbe, aber erinnert werden muessen alle. Ohne
+      // Zuweisung erinnert sich die anlegende Person selbst.
+      const reminderNotifications: DailyNotification[] = reminders.flatMap((reminder) => {
+        const empfaenger =
+          reminder.assignees.length > 0
+            ? reminder.assignees.map((a) => a.staffId)
+            : [reminder.createdByStaff];
+        const wo = reminder.client ? `Mandant ${reminder.client.name}` : 'Intern';
+        return empfaenger.map((staffId) => ({
+          staffId,
+          kind: 'CLIENT_REMINDER_DUE' as const,
+          resourceType: 'client_reminder',
+          resourceId: reminder.id,
+          title: `Wiedervorlage fällig: ${reminder.subject}`,
+          body: `${wo} · ${reminder.dueDate.toISOString().slice(0, 10)}`,
+          href: reminder.client ? `/staff/clients/${reminder.client.id}` : '/staff/reminders',
+        }));
+      });
 
       const binderNotifications: DailyNotification[] = [];
       for (const binder of binders) {

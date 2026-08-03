@@ -30,7 +30,8 @@ export interface ReminderDoneNotifyJob {
   reminderId: string;
   /** Empfänger = die delegierende Person. */
   staffId: string;
-  clientId: string;
+  /** null = interne Aufgabe ohne Mandantenbezug. */
+  clientId: string | null;
   subject: string;
   /** Wer erledigt hat — für den Benachrichtigungstext. */
   doneByName: string;

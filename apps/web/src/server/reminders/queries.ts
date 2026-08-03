@@ -22,14 +22,19 @@ export type ReminderScope = 'mir' | 'vonmir';
 
 export interface ReminderRow {
   id: string;
-  clientId: string;
+  /** null = interne Aufgabe ohne Mandantenbezug. */
+  clientId: string | null;
   clientName: string;
   dueDate: string;
   subject: string;
   priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   doneAt: string | null;
-  assigneeStaffId: string | null;
-  assigneeName: string | null;
+  assigneeStaffIds: string[];
+  assigneeNames: string[];
+  predecessorId: string | null;
+  noteCount: number;
+  attachmentCount: number;
+  successorCount: number;
   createdByStaff: string;
   createdByName: string | null;
   /** Markierung + Analyse, falls Risiko-Recherche-Delegation (→ Deeplink). */
@@ -61,9 +66,9 @@ export async function loadReminderOverview(
 
     const wer =
       scope === 'mir'
-        ? { assigneeStaffId: staffId }
+        ? { assignees: { some: { staffId } } }
         : // „von mir delegiert": nur echte Delegationen, nicht die eigenen Notizen.
-          { createdByStaff: staffId, NOT: { assigneeStaffId: staffId } };
+          { createdByStaff: staffId, NOT: { assignees: { some: { staffId } } } };
 
     const rows = await tx.clientReminder.findMany({
       where: {
@@ -80,18 +85,23 @@ export async function loadReminderOverview(
         notes: true,
         priority: true,
         doneAt: true,
-        assigneeStaffId: true,
         createdByStaff: true,
+        predecessorId: true,
+        assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
         client: { select: { name: true } },
         riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
+        _count: { select: { discussion: true, attachments: true, successors: true } },
       },
     });
 
     // Namen in EINER Abfrage nachladen (statt Relation pro Zeile — StaffUser
     // hängt nicht als FK an createdByStaff).
     const staffIds = [
-      ...new Set(rows.flatMap((r) => [r.createdByStaff, r.assigneeStaffId].filter(Boolean))),
-    ] as string[];
+      ...new Set([
+        ...rows.map((r) => r.createdByStaff),
+        ...rows.flatMap((r) => r.assignees.map((a) => a.staffId)),
+      ]),
+    ];
     const namen = new Map(
       (
         await tx.staffUser.findMany({
@@ -107,13 +117,19 @@ export async function loadReminderOverview(
       return {
         id: r.id,
         clientId: r.clientId,
-        clientName: r.client.name,
+        clientName: r.client?.name ?? 'Intern (ohne Mandant)',
         dueDate: r.dueDate.toISOString(),
         subject: r.subject,
         priority: r.priority,
         doneAt: r.doneAt ? r.doneAt.toISOString() : null,
-        assigneeStaffId: r.assigneeStaffId,
-        assigneeName: r.assigneeStaffId ? (namen.get(r.assigneeStaffId) ?? null) : null,
+        assigneeStaffIds: r.assignees.map((a) => a.staffId),
+        assigneeNames: r.assignees
+          .map((a) => namen.get(a.staffId))
+          .filter((n): n is string => Boolean(n)),
+        predecessorId: r.predecessorId,
+        noteCount: r._count.discussion,
+        attachmentCount: r._count.attachments,
+        successorCount: r._count.successors,
         createdByStaff: r.createdByStaff,
         createdByName: namen.get(r.createdByStaff) ?? null,
         researchMarkingId: marking?.id ?? null,

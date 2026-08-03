@@ -77,7 +77,7 @@ export async function delegateMarking(
         subject: `Risiko-Recherche: ${marking.begriff}`,
         notes: buildDelegationNotes(marking, input.notes),
         createdByStaff: input.createdByStaffId,
-        assigneeStaffId: input.assigneeStaffId,
+        assignees: { create: { staffId: input.assigneeStaffId } },
       },
       select: { id: true },
     });

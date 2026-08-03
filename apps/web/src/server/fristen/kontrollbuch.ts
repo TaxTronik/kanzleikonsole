@@ -138,8 +138,8 @@ export async function loadKontrollbuch(
   const reminderStaff: Prisma.ClientReminderWhereInput | undefined = opts.nurStaffId
     ? {
         OR: [
-          { assigneeStaffId: opts.nurStaffId },
-          { assigneeStaffId: null, client: responsibleClient },
+          { assignees: { some: { staffId: opts.nurStaffId } } },
+          { assignees: { none: {} }, client: responsibleClient },
         ],
       }
     : undefined;
@@ -231,14 +231,25 @@ export async function loadKontrollbuch(
     tx.clientReminder.findMany({
       where: {
         ...notDenied,
-        AND: [reminderWindow, ...(reminderStaff ? [reminderStaff] : [])],
+        AND: [
+          // Das Fristenbuch fuehrt MANDANTEN-Fristen. Interne Aufgaben ohne
+          // Mandantenbezug haben darin nichts zu suchen (und keinen Platz: der
+          // Eintrag verlangt Mandant + Name).
+          //
+          // Bewusst im AND und NICHT als eigener `clientId`-Schluessel: der
+          // wuerde per Objekt-Spread den `notIn`-Filter aus `notDenied`
+          // ueberschreiben — gesperrte Mandanten waeren wieder sichtbar.
+          { NOT: { clientId: null } },
+          reminderWindow,
+          ...(reminderStaff ? [reminderStaff] : []),
+        ],
       },
       select: {
         id: true,
         clientId: true,
         subject: true,
         dueDate: true,
-        assigneeStaffId: true,
+        assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
         doneAt: true,
         doneByStaff: true,
         client: { select: { name: true } },
@@ -250,7 +261,7 @@ export async function loadKontrollbuch(
   // mit eigener Zuweisung überschreiben das. Namen in einer zweiten Query.
   const clientIds = new Set<string>();
   for (const r of [...deadlines, ...notices, ...klagen, ...requests, ...reminders])
-    clientIds.add(r.clientId);
+    if (r.clientId) clientIds.add(r.clientId);
   const responsibilities = clientIds.size
     ? await tx.clientResponsibility.findMany({
         where: {
@@ -272,7 +283,7 @@ export async function loadKontrollbuch(
   for (const k of klagen) if (k.klageFiledBy) staffIds.add(k.klageFiledBy);
   for (const k of klagen) if (k.legalFinalBy) staffIds.add(k.legalFinalBy);
   for (const r of reminders) {
-    if (r.assigneeStaffId) staffIds.add(r.assigneeStaffId);
+    for (const a of r.assignees) staffIds.add(a.staffId);
     if (r.doneByStaff) staffIds.add(r.doneByStaff);
   }
   const staff = staffIds.size
@@ -373,20 +384,24 @@ export async function loadKontrollbuch(
   }
 
   for (const w of reminders) {
-    const verantwortlichId = w.assigneeStaffId ?? hauptbearbeiter.get(w.clientId) ?? null;
+    // Bei mehreren Zustaendigen fuehrt die erste Zuweisung — das Fristenbuch
+    // kennt genau eine verantwortliche Person je Eintrag.
+    const clientId = w.clientId!;
+    const verantwortlichId =
+      w.assignees[0]?.staffId ?? hauptbearbeiter.get(clientId) ?? null;
     eintraege.push({
       quelle: 'WIEDERVORLAGE',
       id: w.id,
       titel: w.subject,
-      clientId: w.clientId,
-      clientName: w.client.name,
+      clientId,
+      clientName: w.client!.name,
       faelligAm: w.dueDate,
       erledigt: w.doneAt !== null,
       erledigtAm: w.doneAt,
       erledigtVon: w.doneByStaff ? (staffName.get(w.doneByStaff) ?? null) : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
-      href: `/staff/clients/${w.clientId}`,
+      href: `/staff/clients/${clientId}`,
     });
   }
 

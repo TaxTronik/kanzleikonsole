@@ -42,7 +42,7 @@ export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
         kind: 'CLIENT_REMINDER_DONE',
         title: `Wiedervorlage erledigt: ${subject}`,
         body: `${doneByName} hat die von dir delegierte Wiedervorlage abgeschlossen.`,
-        href: `/staff/clients/${clientId}`,
+        href: clientId ? `/staff/clients/${clientId}` : '/staff/reminders',
         resourceType: 'client_reminder',
         resourceId: reminderId,
       });

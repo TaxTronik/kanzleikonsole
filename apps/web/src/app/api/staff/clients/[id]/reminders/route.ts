@@ -57,14 +57,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         priority: true,
         doneAt: true,
         createdByStaff: true,
-        assigneeStaffId: true,
+        assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
         riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
       },
     });
 
     const staffIds = [
-      ...new Set(rows.flatMap((r) => [r.createdByStaff, r.assigneeStaffId].filter(Boolean))),
-    ] as string[];
+      ...new Set([
+        ...rows.map((r) => r.createdByStaff),
+        ...rows.flatMap((r) => r.assignees.map((a) => a.staffId)),
+      ]),
+    ];
     const namen = new Map(
       (
         await tx.staffUser.findMany({
@@ -81,12 +84,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       notes: r.notes,
       priority: r.priority,
       doneAt: r.doneAt ? r.doneAt.toISOString() : null,
-      assigneeName: r.assigneeStaffId ? (namen.get(r.assigneeStaffId) ?? null) : null,
+      assigneeNames: r.assignees
+        .map((a) => namen.get(a.staffId))
+        .filter((n): n is string => Boolean(n)),
       researchMarkingId: r.riskMarkings[0]?.id ?? null,
       researchAnalysisId: r.riskMarkings[0]?.analysisId ?? null,
       createdByStaff: r.createdByStaff,
       createdByName: namen.get(r.createdByStaff) ?? null,
-      assigneeStaffId: r.assigneeStaffId,
+      assigneeStaffIds: r.assignees.map((a) => a.staffId),
     }));
   });
 

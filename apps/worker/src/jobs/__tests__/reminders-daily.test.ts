@@ -108,7 +108,8 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
         id: 'reminder-1',
         dueDate: new Date('2026-07-16T00:00:00.000Z'),
         subject: '<script>',
-        assigneeStaffId: null,
+        // Ohne Zuweisung erinnert sich die anlegende Person selbst.
+        assignees: [],
         createdByStaff: 'staff-2',
         client: { id: 'client-1', name: 'Muster GmbH' },
       },

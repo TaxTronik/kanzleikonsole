@@ -39,7 +39,7 @@ interface Reminder {
   subject: string;
   notes: string | null;
   doneAt: string | null;
-  assigneeName: string | null;
+  assigneeNames: string[];
   /** Markierungs-ID, falls diese Wiedervorlage eine Risiko-Recherche-Delegation
    *  ist (→ „Ergebnis einreichen"-Affordance). Sonst null. */
   researchMarkingId: string | null;
@@ -47,7 +47,7 @@ interface Reminder {
   researchAnalysisId: string | null;
   createdByStaff: string;
   createdByName: string | null;
-  assigneeStaffId: string | null;
+  assigneeStaffIds: string[];
   priority: ReminderPriority;
 }
 
@@ -263,7 +263,7 @@ export function RemindersBlock({
             // hervorgehoben, „von mir an X" nur benannt — sonst sieht jede
             // Wiedervorlage gleich aus und der Auftrag geht in der Liste unter.
             const delegiert = r.researchMarkingId != null;
-            const anMich = delegiert && r.assigneeStaffId === currentStaffId;
+            const anMich = delegiert && r.assigneeStaffIds.includes(currentStaffId);
             const vonMir = delegiert && r.createdByStaff === currentStaffId && !anMich;
             const ctx = delegiert ? parseDelegationNotes(r.notes) : null;
             return (
@@ -292,8 +292,10 @@ export function RemindersBlock({
                         <UserCheck className="h-3 w-3" /> an mich delegiert
                       </span>
                     )}
-                    {vonMir && r.assigneeName && (
-                      <span className="badge-gray text-[11px]">delegiert an {r.assigneeName}</span>
+                    {vonMir && r.assigneeNames.length > 0 && (
+                      <span className="badge-gray text-[11px]">
+                        delegiert an {r.assigneeNames.join(', ')}
+                      </span>
                     )}
                     {PRIORITY_BADGE[r.priority] && (
                       <span className={`${PRIORITY_BADGE[r.priority]} text-[11px]`}>
@@ -317,8 +319,8 @@ export function RemindersBlock({
                   >
                     fällig {fmtDateShort(due)}
                     {overdue && ' · überfällig'}
-                    {r.assigneeName && !vonMir && (
-                      <span className="ml-2 text-disabled">· {r.assigneeName}</span>
+                    {r.assigneeNames.length > 0 && !vonMir && (
+                      <span className="ml-2 text-disabled">· {r.assigneeNames.join(', ')}</span>
                     )}
                     {anMich && r.createdByName && (
                       <span className="ml-2 text-disabled">· von {r.createdByName}</span>

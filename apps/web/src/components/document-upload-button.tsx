@@ -11,6 +11,8 @@ interface Props {
   folderId?: string;
   /** Optionaler Sachverhalts-Bezug — der Upload setzt analysis_id (Aktenregal-Tab). */
   analysisId?: string;
+  /** Optionaler Wiedervorlage-Bezug — der Upload setzt reminder_id (Anhang). */
+  reminderId?: string;
   defaultClassification?: string;
   buttonLabel?: string;
   buttonClassName?: string;
@@ -40,6 +42,7 @@ export function DocumentUploadButton({
   clientId,
   folderId,
   analysisId,
+  reminderId,
   defaultClassification = 'GENERAL',
   buttonLabel = 'Hochladen',
   buttonClassName = 'btn-primary text-xs py-1.5',
@@ -139,6 +142,7 @@ export function DocumentUploadButton({
         if (clientId) fd.set('clientId', clientId);
         if (folderId) fd.set('folderId', folderId);
         if (analysisId) fd.set('analysisId', analysisId);
+        if (reminderId) fd.set('reminderId', reminderId);
 
         setProgress('commit');
         const response = await commitDocument(fd);

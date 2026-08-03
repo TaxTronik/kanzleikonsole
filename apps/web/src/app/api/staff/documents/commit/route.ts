@@ -64,6 +64,7 @@ const FieldsSchema = z
     clientId: z.string().uuid().optional(),
     folderId: z.string().uuid().optional(),
     workflowItemId: z.string().uuid().optional(),
+    reminderId: z.string().uuid().optional(),
     analysisId: z.string().uuid().optional(),
   })
   .refine((d) => d.classification || d.documentTypeId, {
@@ -114,6 +115,7 @@ export async function POST(req: NextRequest) {
     clientId: form.get('clientId') ?? undefined,
     folderId: form.get('folderId') ?? undefined,
     workflowItemId: form.get('workflowItemId') ?? undefined,
+    reminderId: form.get('reminderId') ?? undefined,
     analysisId: form.get('analysisId') ?? undefined,
   });
   if (!parsed.success) {
@@ -121,7 +123,8 @@ export async function POST(req: NextRequest) {
   }
 
   const { tenantId, staffId } = session.user;
-  const { title, mimeType, clientId, folderId, workflowItemId, analysisId } = parsed.data;
+  const { title, mimeType, clientId, folderId, workflowItemId, analysisId, reminderId } =
+    parsed.data;
 
   // Typ → Schutzstufe + Carrier-Klassifikation + finale documentTypeId
   // auflösen (vor dem Storage-Commit, weil die Stufe Bucket/Lock bestimmt).
@@ -213,6 +216,26 @@ export async function POST(req: NextRequest) {
           if ((wi.instance.clientId ?? null) !== (clientId ?? null)) {
             throw new Error(
               'WORKFLOW_ITEM_CLIENT_MISMATCH: Workflow-Schritt gehört zu einem anderen Mandanten.',
+            );
+          }
+        }
+        // Tenant- und Mandanten-Sanity für reminderId (analog workflowItemId).
+        // Der FK prüft nur Existenz; unter RLS sieht findFirst nur Aufgaben
+        // DIESES Tenants. Der Mandanten-Abgleich verhindert, dass ein Beleg
+        // über eine bekannte UUID an eine Aufgabe eines anderen Mandanten
+        // gehängt wird — eine interne Aufgabe (clientId null) nimmt
+        // entsprechend nur kanzlei-interne Dateien auf.
+        if (reminderId) {
+          const rem = await tx.clientReminder.findFirst({
+            where: { id: reminderId },
+            select: { clientId: true },
+          });
+          if (!rem) {
+            throw new Error('REMINDER_NOT_FOUND: reminderId nicht in diesem Tenant.');
+          }
+          if ((rem.clientId ?? null) !== (clientId ?? null)) {
+            throw new Error(
+              'REMINDER_CLIENT_MISMATCH: Wiedervorlage gehört zu einem anderen Mandanten.',
             );
           }
         }
@@ -309,6 +332,15 @@ export async function POST(req: NextRequest) {
             throw referenceChanged('workflowItemId nicht mehr gueltig oder Mandant geaendert.');
           }
         }
+        if (reminderId) {
+          const rem = await tx.clientReminder.findFirst({
+            where: { id: reminderId },
+            select: { clientId: true },
+          });
+          if (!rem || (rem.clientId ?? null) !== (clientId ?? null)) {
+            throw referenceChanged('reminderId nicht mehr gueltig oder Mandant geaendert.');
+          }
+        }
         if (effectiveFolderId) {
           const f = await tx.documentFolder.findFirst({
             where: { id: effectiveFolderId, tenantId },
@@ -333,6 +365,7 @@ export async function POST(req: NextRequest) {
             retentionUntil: commit.retentionUntil,
             workflowItemId: workflowItemId ?? null,
             analysisId: analysisId ?? null,
+            reminderId: reminderId ?? null,
             folderId: finalFolderId,
           },
           commit,

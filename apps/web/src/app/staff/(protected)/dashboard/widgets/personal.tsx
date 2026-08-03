@@ -337,7 +337,10 @@ export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): 
     where: {
       doneAt: null,
       ...notDeniedClient(deniedClientIds),
-      OR: [{ assigneeStaffId: staffId }, { assigneeStaffId: null, createdByStaff: staffId }],
+      OR: [
+        { assignees: { some: { staffId } } },
+        { assignees: { none: {} }, createdByStaff: staffId },
+      ],
     },
     orderBy: { dueDate: 'asc' },
     take: 20,
@@ -358,17 +361,20 @@ export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): 
           id: string;
           dueDate: Date;
           subject: string;
-          client: { id: string; name: string };
+          // null = interne Aufgabe ohne Mandantenbezug.
+          client: { id: string; name: string } | null;
         }) => {
           const overdue = r.dueDate.getTime() < today.getTime();
           return (
             <li key={r.id} className="px-5 py-2.5">
               <Link
-                href={`/staff/clients/${r.client.id}`}
+                href={r.client ? `/staff/clients/${r.client.id}` : '/staff/reminders'}
                 className="block hover:bg-gray-50 -mx-5 px-5"
               >
                 <p className="item-title">{r.subject}</p>
-                <p className="text-xs text-muted truncate">{r.client.name}</p>
+                <p className="text-xs text-muted truncate">
+                  {r.client?.name ?? 'Intern (ohne Mandant)'}
+                </p>
                 <p
                   className={
                     overdue ? 'text-[11px] text-red-700 font-medium' : 'text-[11px] text-muted'

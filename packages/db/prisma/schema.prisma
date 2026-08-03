@@ -95,6 +95,7 @@ model Tenant {
   workflowTemplates          WorkflowTemplate[]
 
   @@map("tenant")
+  clientReminderNotes ClientReminderNote[]
 }
 
 model TenantSetting {
@@ -152,6 +153,7 @@ model StaffUser {
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("staff_user")
+  reminderAssignments ClientReminderAssignee[]
 }
 
 model VacationRequest {
@@ -1114,10 +1116,15 @@ model Client {
 /// Wiedervorlage: am Mandanten ein Datum + Stichwort hinterlegen. Erscheint
 /// am fälligen Tag als Reminder im Dashboard. Klassiker des Steuerberater-
 /// Tagesgeschäfts.
+/// Interne Aufgabe/Wiedervorlage. `clientId` ist optional: eine Aufgabe muss
+/// keinen Mandantenbezug haben (Kanzlei-Interna). Zuständige liegen in
+/// `assignees` (mehrere möglich — EINE Aufgabe, wer abhakt, erledigt sie für
+/// alle); `predecessor` verkettet Nachfragen zur vorigen Wiedervorlage.
 model ClientReminder {
   id              String        @id(map: "client_reminder_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String        @map("tenant_id") @db.Uuid
-  clientId        String        @map("client_id") @db.Uuid
+  /// null = interne Aufgabe ohne Mandantenbezug.
+  clientId        String?       @map("client_id") @db.Uuid
   dueDate         DateTime      @map("due_date") @db.Date
   subject         String
   notes           String?
@@ -1125,17 +1132,23 @@ model ClientReminder {
   // ("bumpen"), ohne die Wiedervorlage neu anzulegen. Gleiche Skala wie bei
   // Anforderungen, damit die Uebersichten dieselben Labels/Farben nutzen.
   priority        RequestPriority @default(NORMAL)
+  /// Vorgänger in der Kette (Nachfrage/Folgeauftrag). SET NULL, damit das
+  /// Löschen einer alten Stufe die Folgestufe nicht mitreisst.
+  predecessorId   String?       @map("predecessor_id") @db.Uuid
   createdByStaff  String        @map("created_by_staff") @db.Uuid
-  assigneeStaffId String?       @map("assignee_staff_id") @db.Uuid
   doneAt          DateTime?     @map("done_at") @db.Timestamptz(6)
   doneByStaff     String?       @map("done_by_staff") @db.Uuid
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
+  client          Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
   tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
+  predecessor     ClientReminder?  @relation("ReminderChain", fields: [predecessorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_predecessor_fk")
+  successors      ClientReminder[] @relation("ReminderChain")
+  assignees       ClientReminderAssignee[]
+  discussion      ClientReminderNote[]
+  attachments     Document[]    @relation("ReminderAttachments")
   riskMarkings    RiskMarking[]
 
-  @@index([assigneeStaffId, doneAt], map: "client_reminder_assignee_idx")
   // Meine Wiedervorlagen (/staff/reminders): die "von mir delegiert"-Sicht
   // filtert auf createdByStaff — dafuer gab es bisher keinen Index.
   @@index([createdByStaff, doneAt], map: "client_reminder_creator_idx")
@@ -1143,7 +1156,40 @@ model ClientReminder {
   // iter72: deckt die Mandanten-Detailseite (where clientId, order doneAt,dueDate)
   // — bisher kein clientId-führender Index → Scan aller Tenant-Wiedervorlagen.
   @@index([clientId, doneAt, dueDate], map: "client_reminder_client_idx")
+  @@index([predecessorId], map: "client_reminder_predecessor_idx")
   @@map("client_reminder")
+}
+
+/// Zuständige einer Wiedervorlage. Mehrere möglich; die Aufgabe bleibt EINE —
+/// wer abhakt, erledigt sie für alle. Ersetzt die frühere Einzelspalte
+/// `assignee_staff_id` (eine Quelle statt zweier).
+model ClientReminderAssignee {
+  reminderId String         @map("reminder_id") @db.Uuid
+  staffId    String         @map("staff_id") @db.Uuid
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  reminder   ClientReminder @relation(fields: [reminderId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_assignee_reminder_fk")
+  staff      StaffUser      @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_assignee_staff_fk")
+
+  @@id([reminderId, staffId], map: "client_reminder_assignee_pk")
+  // "Was liegt bei mir": Einstieg über die Person, offene zuerst.
+  @@index([staffId], map: "client_reminder_assignee_staff_idx")
+  @@map("client_reminder_assignee")
+}
+
+/// Wortmeldung an einer Wiedervorlage — kurze Rückfragen ohne neue Frist.
+/// Für einen echten Folgeauftrag gibt es stattdessen die Kette (predecessorId).
+model ClientReminderNote {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String         @map("tenant_id") @db.Uuid
+  reminderId String         @map("reminder_id") @db.Uuid
+  staffId    String         @map("staff_id") @db.Uuid
+  body       String
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  reminder   ClientReminder @relation(fields: [reminderId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_note_reminder_fk")
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_note_tenant_fk")
+
+  @@index([reminderId, createdAt], map: "client_reminder_note_reminder_idx")
+  @@map("client_reminder_note")
 }
 
 /// Pendelordner-Tracker: physische Ordner mit Belegen, die zwischen Kanzlei
@@ -1266,6 +1312,9 @@ model Document {
   /// Explizite Herkunft von über das anonyme GwG-Onboarding hochgeladenen
   /// Belegen. Ersetzt für Retention-Zwecke die bisherige lose JSON-ID-Liste.
   gwgOnboardingInviteId     String?                @map("gwg_onboarding_invite_id") @db.Uuid
+  /// Anhang einer Wiedervorlage. Analog workflowItemId/analysisId; SET NULL,
+  /// damit das Löschen der Aufgabe die Datei in der Akte belässt.
+  reminderId                String?                @map("reminder_id") @db.Uuid
   // Mandanten-Freigabe (Opt-in): NULL = privat (nur Kanzlei sieht es),
   // gesetzt = im Mandantenportal sichtbar. Vom Mandanten selbst hochgeladene
   // Dokumente (Portal-Upload, Anforderungs-Antwort) werden bei Anlage
@@ -1292,6 +1341,7 @@ model Document {
   tenant                    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   workflowItem              WorkflowItem?          @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "document_workflow_item_fk")
   analysis                  RiskAnalysis?          @relation("AnalysisAttachedDocs", fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_analysis_fk")
+  reminder                  ClientReminder?        @relation("ReminderAttachments", fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_reminder_fk")
   gwgOnboardingInvite       GwgOnboardingInvite?   @relation(fields: [gwgOnboardingInviteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_gwg_invite_fk")
   versions                  DocumentVersion[]
   gwgIdDocuments            GwgIdDocument[]
@@ -1312,6 +1362,7 @@ model Document {
   @@index([clientId, deletedAt, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workflowItemId], map: "document_workflow_item_idx")
   @@index([tenantId, analysisId])
+  @@index([tenantId, reminderId], map: "document_reminder_idx")
   @@index([gwgOnboardingInviteId], map: "document_gwg_invite_idx")
   // iter71: pg_trgm-GIN für die globale Suche (Dokument-Titel)
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "document_title_trgm_idx")

@@ -3,7 +3,17 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, Undo2, ChevronUp, ChevronDown, Quote } from 'lucide-react';
+import {
+  Check,
+  Undo2,
+  ChevronUp,
+  ChevronDown,
+  Quote,
+  Copy,
+  MessageSquare,
+  Paperclip,
+  CornerDownRight,
+} from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
 import {
   PRIORITY_BADGE,
@@ -16,6 +26,7 @@ import {
   markReminderDoneAction,
   reopenReminderAction,
   setReminderPriorityAction,
+  cloneReminderAction,
 } from '../clients/[id]/reminders/actions';
 import type { ReminderRow, ReminderScope } from '@/server/reminders/queries';
 
@@ -77,6 +88,21 @@ export function RemindersOverview({
       }
       setUndoBar((cur) => (cur?.id === id ? null : cur));
       router.refresh();
+    });
+  }
+
+  function klonen(id: string) {
+    setError(null);
+    const in14 = new Date();
+    in14.setDate(in14.getDate() + 14);
+    start(async () => {
+      const res = await cloneReminderAction({
+        id,
+        alsNachfrage: false,
+        dueDate: in14.toISOString().slice(0, 10),
+      });
+      if (!res.ok) setError(res.error ?? 'Klonen fehlgeschlagen.');
+      else router.refresh();
     });
   }
 
@@ -144,13 +170,37 @@ export function RemindersOverview({
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
-                        href={`/staff/clients/${r.clientId}`}
+                        href={`/staff/reminders/${r.id}`}
                         className="text-sm text-primary hover:underline"
                       >
                         {r.subject}
                       </Link>
                       {badge && (
                         <span className={`${badge} text-[11px]`}>{PRIORITY_LABEL[r.priority]}</span>
+                      )}
+                      {r.predecessorId && (
+                        <span
+                          className="text-disabled inline-flex items-center"
+                          title="Folgestufe einer früheren Wiedervorlage"
+                        >
+                          <CornerDownRight className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                      {r.noteCount > 0 && (
+                        <span
+                          className="text-[11px] text-disabled inline-flex items-center gap-0.5"
+                          title={`${r.noteCount} Rückfrage(n)`}
+                        >
+                          <MessageSquare className="h-3 w-3" /> {r.noteCount}
+                        </span>
+                      )}
+                      {r.attachmentCount > 0 && (
+                        <span
+                          className="text-[11px] text-disabled inline-flex items-center gap-0.5"
+                          title={`${r.attachmentCount} Anhang/Anhänge`}
+                        >
+                          <Paperclip className="h-3 w-3" /> {r.attachmentCount}
+                        </span>
                       )}
                     </div>
 
@@ -164,8 +214,10 @@ export function RemindersOverview({
                       {scope === 'mir' && r.createdByName && (
                         <span className="ml-2 text-disabled">· von {r.createdByName}</span>
                       )}
-                      {scope === 'vonmir' && r.assigneeName && (
-                        <span className="ml-2 text-disabled">· bei {r.assigneeName}</span>
+                      {scope === 'vonmir' && r.assigneeNames.length > 0 && (
+                        <span className="ml-2 text-disabled">
+                          · bei {r.assigneeNames.join(', ')}
+                        </span>
                       )}
                     </p>
 
@@ -223,14 +275,25 @@ export function RemindersOverview({
                     {r.clientName} · erledigt {r.doneAt ? fmtDateShort(new Date(r.doneAt)) : ''}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => zurueckholen(r.id)}
-                  disabled={pending}
-                  className="btn-secondary text-xs shrink-0"
-                >
-                  <Undo2 className="h-3.5 w-3.5" /> Zurückholen
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => klonen(r.id)}
+                    disabled={pending}
+                    title="Dieselbe Aufgabe erneut aufsetzen"
+                    className="btn-secondary text-xs"
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Klonen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => zurueckholen(r.id)}
+                    disabled={pending}
+                    className="btn-secondary text-xs"
+                  >
+                    <Undo2 className="h-3.5 w-3.5" /> Zurückholen
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

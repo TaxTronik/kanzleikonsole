@@ -55,7 +55,7 @@ export interface ReminderDoneNotifyJob {
   tenantId: string;
   reminderId: string;
   staffId: string;
-  clientId: string;
+  clientId: string | null;
   subject: string;
   doneByName: string;
 }

@@ -576,14 +576,14 @@ export default async function ClientDetailPage({
                 subject: r.subject,
                 notes: r.notes,
                 doneAt: r.doneAt ? r.doneAt.toISOString() : null,
-                assigneeName: r.assigneeStaffId
-                  ? (staffNameById.get(r.assigneeStaffId) ?? null)
-                  : null,
+                assigneeNames: r.assignees
+                  .map((a) => staffNameById.get(a.staffId))
+                  .filter((n): n is string => Boolean(n)),
                 researchMarkingId: r.riskMarkings[0]?.id ?? null,
                 researchAnalysisId: r.riskMarkings[0]?.analysisId ?? null,
                 createdByStaff: r.createdByStaff,
                 createdByName: staffNameById.get(r.createdByStaff) ?? null,
-                assigneeStaffId: r.assigneeStaffId,
+                assigneeStaffIds: r.assignees.map((a) => a.staffId),
                 priority: r.priority,
               }))}
             />

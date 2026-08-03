@@ -14,8 +14,11 @@ import Link from 'next/link';
 import { CalendarClock } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
+import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { loadReminderOverview, type ReminderScope } from '@/server/reminders/queries';
 import { RemindersOverview } from './reminders-overview';
+import { NewReminderForm } from './new-reminder-form';
 
 interface Search {
   scope?: string;
@@ -33,11 +36,24 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const scope: ReminderScope = sp.scope === 'vonmir' ? 'vonmir' : 'mir';
 
-  const overview = await loadReminderOverview(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    session,
-    scope,
-  );
+  const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
+  const overview = await loadReminderOverview(ctx, session, scope);
+
+  // Auswahllisten fuers Anlegen: nur zugaengliche Mandate, nur aktive
+  // Mitarbeitende. Die Action prueft beides erneut — das hier ist Komfort.
+  const { clients, staffOptions } = await withTenantContext(ctx, async (tx) => ({
+    clients: await tx.client.findMany({
+      where: await accessibleClientsWhereFor(tx, session),
+      orderBy: { name: 'asc' },
+      take: 500,
+      select: { id: true, name: true },
+    }),
+    staffOptions: await tx.staffUser.findMany({
+      where: { active: true },
+      orderBy: { fullName: 'asc' },
+      select: { id: true, fullName: true },
+    }),
+  }));
 
   return (
     <div className="p-8">
@@ -49,6 +65,10 @@ export default async function RemindersPage({ searchParams }: { searchParams: Pr
         <p className="text-muted text-sm mt-1">
           Alle Aufgaben über Mandanten hinweg — deine eigenen und die, die du delegiert hast.
         </p>
+      </div>
+
+      <div className="mb-4">
+        <NewReminderForm clients={clients} staffOptions={staffOptions} />
       </div>
 
       <div className="flex items-center gap-2 mb-4">

@@ -140,11 +140,14 @@ describe('loadKontrollbuch query bounds', () => {
       where: {
         clientId: { notIn: ['denied-client'] },
         AND: [
+          // Interne Aufgaben (ohne Mandant) gehoeren nicht ins Fristenbuch —
+          // als AND-Zweig, damit der notIn-Filter oben erhalten bleibt.
+          { NOT: { clientId: null } },
           { doneAt: null, dueDate: { lte: horizont } },
           {
             OR: [
-              { assigneeStaffId: 'staff-1' },
-              { assigneeStaffId: null, client: responsibleClient },
+              { assignees: { some: { staffId: 'staff-1' } } },
+              { assignees: { none: {} }, client: responsibleClient },
             ],
           },
         ],
@@ -154,7 +157,7 @@ describe('loadKontrollbuch query bounds', () => {
         clientId: true,
         subject: true,
         dueDate: true,
-        assigneeStaffId: true,
+        assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
         doneAt: true,
         doneByStaff: true,
         client: { select: { name: true } },
@@ -178,9 +181,11 @@ describe('loadKontrollbuch query bounds', () => {
     });
 
     const reminderWhere = tx.clientReminder.findMany.mock.calls[0]![0].where;
-    expect(reminderWhere.AND).toHaveLength(1);
-    expect(reminderWhere.AND[0].OR).toHaveLength(2);
-    expect(reminderWhere.AND[0].OR[1]).toMatchObject({
+    // [0] schliesst interne Aufgaben aus, [1] ist das Zeitfenster.
+    expect(reminderWhere.AND).toHaveLength(2);
+    expect(reminderWhere.AND[0]).toEqual({ NOT: { clientId: null } });
+    expect(reminderWhere.AND[1].OR).toHaveLength(2);
+    expect(reminderWhere.AND[1].OR[1]).toMatchObject({
       doneAt: { not: null },
       dueDate: { gte: new Date('2026-06-16T00:00:00.000Z') },
     });

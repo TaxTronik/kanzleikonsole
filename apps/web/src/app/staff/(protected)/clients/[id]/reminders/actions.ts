@@ -4,8 +4,20 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
-import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx, isStaffAdmin } from '@/server/auth/rbac';
+import { assertClientInTenant } from '@/server/db/assert-tenant';
+import { assertClientAccessTx } from '@/server/auth/rbac';
+import {
+  assertReminderAccessTx,
+  darfSteuern,
+  REMINDER_ACCESS_SELECT,
+} from '@/server/reminders/access';
+import {
+  createReminderTx,
+  cloneReminderTx,
+  addReminderNoteTx,
+  setReminderAssigneesTx,
+} from '@/server/reminders/service';
+import { REMINDER_PRIORITIES } from '@/lib/reminder-priority';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 import {
   scheduleReminderDoneNotification,
@@ -13,45 +25,55 @@ import {
 } from '@/server/jobs/reminder-done-queue';
 
 const CreateSchema = z.object({
-  clientId: z.string().uuid(),
+  // null/leer = interne Aufgabe ohne Mandantenbezug.
+  clientId: z.string().uuid().nullable(),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum YYYY-MM-DD'),
   subject: z.string().min(1).max(200),
   notes: z.string().max(2000).optional().or(z.literal('')),
-  assigneeStaffId: z.string().uuid().nullable().optional(),
+  assigneeStaffIds: z.array(z.string().uuid()).max(20),
+  priority: z.enum(REMINDER_PRIORITIES).default('NORMAL'),
+  /** Gesetzt, wenn dies eine Nachfrage zu einer bestehenden Aufgabe ist. */
+  predecessorId: z.string().uuid().nullable().optional(),
 });
 
 export async function createReminderAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
+  const rohClient = String(formData.get('clientId') ?? '').trim();
   const parsed = CreateSchema.safeParse({
-    clientId: formData.get('clientId'),
+    clientId: rohClient === '' || rohClient === 'intern' ? null : rohClient,
     dueDate: formData.get('dueDate'),
     subject: formData.get('subject'),
     notes: formData.get('notes') ?? '',
-    assigneeStaffId: formData.get('assigneeStaffId') || null,
+    // Mehrfachauswahl: getAll statt get — sonst kaeme nur die erste Person an.
+    assigneeStaffIds: formData.getAll('assigneeStaffIds').map(String).filter(Boolean),
+    priority: String(formData.get('priority') ?? 'NORMAL'),
+    predecessorId: String(formData.get('predecessorId') ?? '') || null,
   });
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
+  const clientId = parsed.data.clientId;
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
-      await assertClientAccessTx(tx, session, parsed.data.clientId);
-      // R-2: Tenant-Sanity für clientId und assigneeStaffId
-      await assertClientInTenant(tx, parsed.data.clientId);
-      if (parsed.data.assigneeStaffId) {
-        await assertStaffInTenant(tx, parsed.data.assigneeStaffId);
+      // Mit Mandant: die Mandanten-Policy entscheidet. Ohne Mandant ist es eine
+      // interne Aufgabe — die darf jede:r fuer sich und Kolleg:innen anlegen.
+      if (clientId) {
+        await assertClientAccessTx(tx, session, clientId);
+        await assertClientInTenant(tx, clientId);
       }
-      const r = await tx.clientReminder.create({
-        data: {
-          tenantId,
-          clientId: parsed.data.clientId,
-          dueDate: new Date(parsed.data.dueDate),
-          subject: parsed.data.subject.trim(),
-          notes: parsed.data.notes?.trim() || null,
-          createdByStaff: staffId,
-          assigneeStaffId: parsed.data.assigneeStaffId ?? staffId,
-        },
+
+      const r = await createReminderTx(tx, {
+        tenantId,
+        createdByStaff: staffId,
+        clientId,
+        dueDate: new Date(parsed.data.dueDate),
+        subject: parsed.data.subject.trim(),
+        notes: parsed.data.notes?.trim() || null,
+        priority: parsed.data.priority,
+        assigneeStaffIds: parsed.data.assigneeStaffIds,
+        predecessorId: parsed.data.predecessorId ?? null,
       });
       await evidenceService.record(tx, {
         tenantId,
@@ -61,28 +83,170 @@ export async function createReminderAction(
         resourceType: 'client_reminder',
         resourceId: r.id,
         after: {
-          clientId: parsed.data.clientId,
+          clientId,
           dueDate: parsed.data.dueDate,
           subject: parsed.data.subject,
+          assignees: parsed.data.assigneeStaffIds,
+          predecessorId: parsed.data.predecessorId ?? null,
         },
       });
     },
-    { revalidate: [`/staff/clients/${parsed.data.clientId}`, '/staff/dashboard'] },
+    {
+      revalidate: clientId
+        ? [`/staff/clients/${clientId}`, '/staff/dashboard', '/staff/reminders']
+        : ['/staff/dashboard', '/staff/reminders'],
+    },
   );
 }
 
 /**
- * Erledigt eine Wiedervorlage.
+ * Klont eine Wiedervorlage — wahlweise als verkettete Nachfrage.
  *
- * Die Rueckmeldung an die delegierende Person geht bewusst NICHT sofort raus,
- * sondern als verzoegerter Job (~10 s): Die Checkbox erledigt mit einem Klick,
- * und ein Fehlgriff soll folgenlos zuruecknehmbar sein. Eine bereits
- * zugestellte Benachrichtigung liesse sich nicht mehr einfangen.
- *
- * Scheitert das Einplanen (Redis weg), wird sofort benachrichtigt — die
- * Rueckmeldung still zu verlieren waere schlimmer als eine, die das
- * Ruecknahme-Fenster verpasst.
+ * Deckt zwei Wuensche mit einem Mechanismus ab: eine erledigte Aufgabe erneut
+ * aufsetzen (Klon ohne Verweis) und die Rueckfrage zu einem gelieferten
+ * Ergebnis (Folgestufe mit Verweis auf die vorige).
  */
+export async function cloneReminderAction(input: {
+  id: string;
+  alsNachfrage: boolean;
+  dueDate: string;
+  subject?: string;
+  notes?: string | null;
+  assigneeStaffIds?: string[];
+}): Promise<ActionResult & { id?: string }> {
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      alsNachfrage: z.boolean(),
+      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum YYYY-MM-DD'),
+      subject: z.string().max(200).optional(),
+      notes: z.string().max(2000).nullable().optional(),
+      assigneeStaffIds: z.array(z.string().uuid()).max(20).optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+    const quelle = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id },
+      select: REMINDER_ACCESS_SELECT,
+    });
+    if (!quelle) throw new ActionError('Wiedervorlage nicht gefunden.');
+    await assertReminderAccessTx(tx, session, quelle);
+
+    const neu = await cloneReminderTx(
+      tx,
+      parsed.data.id,
+      { tenantId, staffId },
+      {
+        alsNachfrage: parsed.data.alsNachfrage,
+        dueDate: new Date(parsed.data.dueDate),
+        ...(parsed.data.subject !== undefined ? { subject: parsed.data.subject } : {}),
+        ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+        ...(parsed.data.assigneeStaffIds !== undefined
+          ? { assigneeStaffIds: parsed.data.assigneeStaffIds }
+          : {}),
+      },
+    );
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: parsed.data.alsNachfrage ? 'client_reminder.followup' : 'client_reminder.clone',
+      resourceType: 'client_reminder',
+      resourceId: neu.id,
+      after: { quelle: parsed.data.id, clientId: quelle.clientId },
+    });
+    return { id: neu.id, clientId: quelle.clientId };
+  });
+
+  if (r.ok) {
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
+    revalidatePath('/staff/reminders');
+  }
+  return r;
+}
+
+/** Wortmeldung an einer Wiedervorlage (kurze Rueckfrage ohne neue Frist). */
+export async function addReminderNoteAction(input: {
+  id: string;
+  body: string;
+}): Promise<ActionResult> {
+  const parsed = z
+    .object({ id: z.string().uuid(), body: z.string().min(1).max(5000) })
+    .safeParse(input);
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+    const rem = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id },
+      select: REMINDER_ACCESS_SELECT,
+    });
+    if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
+    await assertReminderAccessTx(tx, session, rem);
+    await addReminderNoteTx(tx, {
+      tenantId,
+      reminderId: parsed.data.id,
+      staffId,
+      body: parsed.data.body,
+    });
+    return { clientId: rem.clientId };
+  });
+  if (r.ok) {
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
+    revalidatePath('/staff/reminders');
+  }
+  return r;
+}
+
+/** Zustaendige neu setzen (mehrere moeglich). Nur anlegende Person/Admin. */
+export async function setReminderAssigneesAction(input: {
+  id: string;
+  staffIds: string[];
+}): Promise<ActionResult> {
+  const parsed = z
+    .object({ id: z.string().uuid(), staffIds: z.array(z.string().uuid()).min(1).max(20) })
+    .safeParse(input);
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+
+  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+    const rem = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id },
+      select: REMINDER_ACCESS_SELECT,
+    });
+    if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
+    await assertReminderAccessTx(tx, session, rem);
+    if (!darfSteuern(session, rem)) {
+      throw new ActionError('Nur die delegierende Person oder Admin/Partner darf umverteilen.');
+    }
+    const vorher = rem.assignees.map((a) => a.staffId);
+    await setReminderAssigneesTx(tx, {
+      tenantId,
+      reminderId: parsed.data.id,
+      staffIds: parsed.data.staffIds,
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'client_reminder.assignees',
+      resourceType: 'client_reminder',
+      resourceId: parsed.data.id,
+      before: { assignees: vorher },
+      after: { assignees: parsed.data.staffIds },
+    });
+    return { clientId: rem.clientId };
+  });
+  if (r.ok) {
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
+    revalidatePath('/staff/reminders');
+  }
+  return r;
+}
+
 export async function markReminderDoneAction(input: { id: string }): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -90,10 +254,10 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
-      select: { clientId: true, subject: true, createdByStaff: true, doneAt: true },
+      select: { ...REMINDER_ACCESS_SELECT, subject: true, doneAt: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
-    await assertClientAccessTx(tx, session, rem.clientId);
+    await assertReminderAccessTx(tx, session, rem);
     if (rem.doneAt) return { clientId: rem.clientId, notify: null };
     await tx.clientReminder.update({
       where: { id: parsed.data.id },
@@ -140,15 +304,15 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
           kind: 'CLIENT_REMINDER_DONE',
           title: `Wiedervorlage erledigt: ${geplant.subject}`,
           body: `${geplant.doneByName} hat die von dir delegierte Wiedervorlage abgeschlossen.`,
-          href: `/staff/clients/${geplant.clientId}`,
+          href: geplant.clientId ? `/staff/clients/${geplant.clientId}` : '/staff/reminders',
           resourceType: 'client_reminder',
           resourceId: geplant.reminderId,
         });
       });
     }
   }
-  if (r.ok && r.clientId) {
-    revalidatePath(`/staff/clients/${r.clientId}`);
+  if (r.ok) {
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/staff/dashboard');
     revalidatePath('/staff/reminders');
   }
@@ -170,10 +334,10 @@ export async function reopenReminderAction(input: { id: string }): Promise<Actio
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
-      select: { clientId: true, doneAt: true },
+      select: { ...REMINDER_ACCESS_SELECT, doneAt: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
-    await assertClientAccessTx(tx, session, rem.clientId);
+    await assertReminderAccessTx(tx, session, rem);
     if (!rem.doneAt) return { clientId: rem.clientId };
     await tx.clientReminder.update({
       where: { id: parsed.data.id },
@@ -193,8 +357,8 @@ export async function reopenReminderAction(input: { id: string }): Promise<Actio
   });
 
   if (r.ok) await cancelReminderDoneNotification(parsed.data.id);
-  if (r.ok && r.clientId) {
-    revalidatePath(`/staff/clients/${r.clientId}`);
+  if (r.ok) {
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/staff/dashboard');
     revalidatePath('/staff/reminders');
   }
@@ -223,11 +387,11 @@ export async function setReminderPriorityAction(input: {
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
-      select: { clientId: true, createdByStaff: true, priority: true },
+      select: { ...REMINDER_ACCESS_SELECT, priority: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
-    await assertClientAccessTx(tx, session, rem.clientId);
-    if (rem.createdByStaff !== staffId && !isStaffAdmin(session)) {
+    await assertReminderAccessTx(tx, session, rem);
+    if (!darfSteuern(session, rem)) {
       throw new ActionError('Nur die delegierende Person oder Admin/Partner darf umpriorisieren.');
     }
     if (rem.priority === parsed.data.priority) return { clientId: rem.clientId };
@@ -247,8 +411,8 @@ export async function setReminderPriorityAction(input: {
     });
     return { clientId: rem.clientId };
   });
-  if (r.ok && r.clientId) {
-    revalidatePath(`/staff/clients/${r.clientId}`);
+  if (r.ok) {
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/staff/reminders');
   }
   return r;
@@ -351,10 +515,10 @@ export async function deleteReminderAction(input: { id: string }): Promise<Actio
   const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
-      select: { subject: true, clientId: true },
+      select: { ...REMINDER_ACCESS_SELECT, subject: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
-    await assertClientAccessTx(tx, session, rem.clientId);
+    await assertReminderAccessTx(tx, session, rem);
     await tx.clientReminder.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
       tenantId,
@@ -367,8 +531,8 @@ export async function deleteReminderAction(input: { id: string }): Promise<Actio
     });
     return { clientId: rem.clientId };
   });
-  if (r.ok && r.clientId) {
-    revalidatePath(`/staff/clients/${r.clientId}`);
+  if (r.ok) {
+    if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/staff/dashboard');
   }
   return r;
