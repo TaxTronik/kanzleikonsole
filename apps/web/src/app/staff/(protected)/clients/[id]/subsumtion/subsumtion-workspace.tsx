@@ -96,12 +96,22 @@ interface Props {
   aktenregal?: ReactNode;
   engineConfigured: boolean;
   initial: AnalysisDTO | null;
+  /**
+   * Volle Bearbeitungsrechte. Ohne sie sieht der Space lesend aus; recherchiert
+   * werden darf nur an zugewiesenen Markierungen. Reine Anzeige-Logik — die
+   * Durchsetzung liegt in den Server Actions.
+   */
+  canWrite?: boolean;
+  /** Eigene Staff-ID — entscheidet, ob eine Markierung „mir zugewiesen" ist. */
+  currentStaffId?: string;
 }
 
 const EMPTY_MARKINGS: MarkingDTO[] = [];
 
 export function SubsumtionWorkspace({
   clientId,
+  canWrite = true,
+  currentStaffId,
   staffOptions,
   clientDocuments,
   researchResults = [],
@@ -304,6 +314,25 @@ export function SubsumtionWorkspace({
   // Texteingabe im Editor). Ref hält die frische Closure → Listener bindet einmal.
   const stepRef = useRef(stepMarking);
   stepRef.current = stepMarking;
+
+  // Deeplink `?marking=<id>` aus der Zuweisungs-Benachrichtigung: die
+  // betroffene Markierung auswählen und im Sachverhalt anspringen. Ohne das
+  // landet die zugewiesene Person auf der Analyse und muss ihren Begriff
+  // zwischen allen anderen suchen.
+  const deeplinkRef = useRef(false);
+  useEffect(() => {
+    if (deeplinkRef.current) return;
+    const wanted = new URLSearchParams(window.location.search).get('marking');
+    if (!wanted || !markingsById[wanted]) return;
+    deeplinkRef.current = true;
+    selectAndReveal(wanted);
+    // Parameter entfernen, damit ein Reload nicht erneut springt.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('marking');
+    window.history.replaceState(null, '', url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- einmalig, sobald die Markierungen geladen sind
+  }, [markingsById]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey) return;
@@ -683,6 +712,13 @@ export function SubsumtionWorkspace({
               <Lock className="h-3.5 w-3.5" /> Archiviert{' '}
               {fmtDateShort(new Date(initial.archivedAt))}
             </span>
+          ) : !canWrite ? (
+            <span
+              className="badge-gray text-xs inline-flex items-center gap-1 ml-auto"
+              title="Bearbeitung nur durch Admin/Partner oder zuständige Berufsträger"
+            >
+              <Lock className="h-3.5 w-3.5" /> Leseansicht
+            </span>
           ) : (
             <>
               <button
@@ -810,7 +846,7 @@ export function SubsumtionWorkspace({
           <SubsumtionDocument
             ref={editorRef}
             analyzed
-            canEdit={!initial.archivedAt}
+            canEdit={!initial.archivedAt && canWrite}
             initialDoc={initial.sourceDoc ?? null}
             initialText={initial.sourceText}
             sourceText={initial.sourceText}
@@ -840,7 +876,7 @@ export function SubsumtionWorkspace({
               onPrev={() => stepMarking(-1)}
               onNext={() => stepMarking(1)}
             />
-            {manualSel ? (
+            {manualSel && canWrite ? (
               <NewMarkingPanel
                 clientId={clientId}
                 analysisId={initial.id}
@@ -863,6 +899,8 @@ export function SubsumtionWorkspace({
                 // nach dem Refresh neu mountet und den Server-Stand übernimmt (sonst
                 // würde ein späteres „Speichern" die Zuweisung überschreiben).
                 key={`${selected.id}:${selected.status}:${selected.verantwortlichId ?? ''}`}
+                canWrite={canWrite}
+                isAssignee={selected.verantwortlichId === currentStaffId}
                 clientId={clientId}
                 analysisId={initial.id}
                 marking={selected}

@@ -6,7 +6,7 @@
 
 import { redirect } from 'next/navigation';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { canAccessClient, canOtherStaffAccessClientTx } from '@/server/auth/rbac';
+import { canAccessClient, canOtherStaffAccessClientTx, canWriteClientTx } from '@/server/auth/rbac';
 import { readModules } from '@/server/settings/modules';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
@@ -17,6 +17,14 @@ export interface SubsumtionPageContext {
   fullName: string;
   staffOptions: Array<{ id: string; fullName: string }>;
   engineConfigured: boolean;
+  /**
+   * Volle Bearbeitungsrechte: Admin/Partner oder zugeordnete:r Berufstraeger/
+   * Hauptbearbeiter:in. Wer nur eine Markierung zugewiesen bekam, sieht den
+   * Space lesend und darf ausschliesslich dort recherchieren. Die Durchsetzung
+   * sitzt in den Server Actions — dieses Flag blendet nur aus, was ohnehin
+   * abgelehnt wuerde.
+   */
+  canWrite: boolean;
 }
 
 export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionPageContext> {
@@ -49,5 +57,14 @@ export async function guardSubsumtionPage(clientId: string): Promise<SubsumtionP
     return staffCandidates.filter((_, i) => zulaessig[i]);
   });
 
-  return { ctx, staffId, fullName, staffOptions, engineConfigured: isRiskLayerConfigured() };
+  const canWrite = await withTenantContext(ctx, (tx) => canWriteClientTx(tx, session, clientId));
+
+  return {
+    ctx,
+    staffId,
+    fullName,
+    staffOptions,
+    engineConfigured: isRiskLayerConfigured(),
+    canWrite,
+  };
 }

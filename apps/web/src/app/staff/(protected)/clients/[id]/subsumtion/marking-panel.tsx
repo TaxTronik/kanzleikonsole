@@ -68,10 +68,16 @@ export function MarkingPanel(props: {
   onChanged: () => void;
   onClose: () => void;
   flash: Flash;
+  /** Volle Bearbeitungsrechte (Admin/Partner oder zustaendige:r Berufstraeger:in). */
+  canWrite?: boolean;
+  /** Diese Markierung ist mir zur Recherche zugewiesen. */
+  isAssignee?: boolean;
 }) {
   const {
     clientId,
     analysisId,
+    canWrite = true,
+    isAssignee = false,
     marking: m,
     staffOptions,
     engineConfigured,
@@ -212,131 +218,156 @@ export function MarkingPanel(props: {
         </details>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <Select
-          label="Governance"
-          value={gov}
-          onChange={setGov}
-          options={[
-            ['', '—'],
-            ['FP', GOV_LABEL.FP],
-            ['FF', GOV_LABEL.FF],
-            ['IN', GOV_LABEL.IN],
-          ]}
-        />
-        <Select
-          label="Prüf-Status"
-          value={status}
-          onChange={(v) => setStatus(v as MarkingDTO['status'])}
-          options={(['OFFEN', 'IN_PRUEFUNG', 'KONTROLLIERT', 'AKZEPTIERT'] as const).map((s) => [
-            s,
-            STATUS_LABEL[s],
-          ])}
-        />
-        <Select
-          label="Schadensintensität"
-          value={intens}
-          onChange={setIntens}
-          options={[
-            ['', '—'],
-            ['NIEDRIG', 'Niedrig'],
-            ['MITTEL', 'Mittel'],
-            ['HOCH', 'Hoch'],
-          ]}
-        />
-        <Select
-          label="Wahrscheinlichkeit"
-          value={wk}
-          onChange={setWk}
-          options={[
-            ['', '—'],
-            ['SELTEN', 'Selten'],
-            ['MOEGLICH', 'Möglich'],
-            ['WAHRSCHEINLICH', 'Wahrscheinlich'],
-            ['HAEUFIG', 'Häufig'],
-          ]}
-        />
-        <label className="text-xs">
-          <span className="text-muted">Kaskadenreichweite</span>
+      {/* Ohne Schreibrecht sind die Bewertungsfelder inaktiv. `fieldset disabled`
+          deckt alle enthaltenen Eingaben ab — der Schutz sitzt ohnehin in den
+          Server Actions, das hier verhindert nur die vergebliche Eingabe. */}
+      <fieldset disabled={!canWrite} className="contents">
+        <div className="grid grid-cols-2 gap-2">
+          <Select
+            label="Governance"
+            value={gov}
+            onChange={setGov}
+            options={[
+              ['', '—'],
+              ['FP', GOV_LABEL.FP],
+              ['FF', GOV_LABEL.FF],
+              ['IN', GOV_LABEL.IN],
+            ]}
+          />
+          <Select
+            label="Prüf-Status"
+            value={status}
+            onChange={(v) => setStatus(v as MarkingDTO['status'])}
+            options={(['OFFEN', 'IN_PRUEFUNG', 'KONTROLLIERT', 'AKZEPTIERT'] as const).map((s) => [
+              s,
+              STATUS_LABEL[s],
+            ])}
+          />
+          <Select
+            label="Schadensintensität"
+            value={intens}
+            onChange={setIntens}
+            options={[
+              ['', '—'],
+              ['NIEDRIG', 'Niedrig'],
+              ['MITTEL', 'Mittel'],
+              ['HOCH', 'Hoch'],
+            ]}
+          />
+          <Select
+            label="Wahrscheinlichkeit"
+            value={wk}
+            onChange={setWk}
+            options={[
+              ['', '—'],
+              ['SELTEN', 'Selten'],
+              ['MOEGLICH', 'Möglich'],
+              ['WAHRSCHEINLICH', 'Wahrscheinlich'],
+              ['HAEUFIG', 'Häufig'],
+            ]}
+          />
+          <label className="text-xs">
+            <span className="text-muted">Kaskadenreichweite</span>
+            <input
+              type="number"
+              min={0}
+              max={99}
+              value={kask}
+              onChange={(e) => setKask(e.target.value)}
+              className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
+            />
+          </label>
+          <Select
+            label="Verantwortlich"
+            value={verantw}
+            onChange={setVerantw}
+            options={[
+              ['', '—'],
+              ...staffOptions.map((s) => [s.id, s.fullName] as [string, string]),
+            ]}
+          />
+        </div>
+
+        <label className="block text-xs">
+          <span className="text-muted">Label / Kategorie</span>
           <input
-            type="number"
-            min={0}
-            max={99}
-            value={kask}
-            onChange={(e) => setKask(e.target.value)}
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="z. B. kritisch, offen, Mandantenfrage"
             className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
           />
         </label>
-        <Select
-          label="Verantwortlich"
-          value={verantw}
-          onChange={setVerantw}
-          options={[['', '—'], ...staffOptions.map((s) => [s.id, s.fullName] as [string, string])]}
-        />
-      </div>
-
-      <label className="block text-xs">
-        <span className="text-muted">Label / Kategorie</span>
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="z. B. kritisch, offen, Mandantenfrage"
-          className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
-        />
-      </label>
-      <label className="block text-xs">
-        <span className="text-muted">Kontrolle / Maßnahme</span>
-        <textarea
-          value={kontrolle}
-          onChange={(e) => setKontrolle(e.target.value)}
-          rows={2}
-          className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
-        />
-      </label>
-      <label className="block text-xs">
-        <span className="text-muted">Notiz</span>
-        <textarea
-          value={notiz}
-          onChange={(e) => setNotiz(e.target.value)}
-          rows={2}
-          className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
-        />
-      </label>
+        <label className="block text-xs">
+          <span className="text-muted">Kontrolle / Maßnahme</span>
+          <textarea
+            value={kontrolle}
+            onChange={(e) => setKontrolle(e.target.value)}
+            rows={2}
+            className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
+          />
+        </label>
+        <label className="block text-xs">
+          <span className="text-muted">Notiz</span>
+          <textarea
+            value={notiz}
+            onChange={(e) => setNotiz(e.target.value)}
+            rows={2}
+            className="mt-0.5 w-full rounded border border-default bg-surface px-2 py-1"
+          />
+        </label>
+      </fieldset>
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={save} disabled={pending} className="btn-primary text-xs">
-          <Save className="h-3.5 w-3.5" /> Speichern
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowDelegate((v) => !v)}
-          className="btn-secondary text-xs"
-        >
-          <Send className="h-3.5 w-3.5" /> Zuweisen
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowResearch((v) => !v)}
-          className="btn-secondary text-xs"
-        >
-          <Webhook className="h-3.5 w-3.5" /> An n8n
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowDefine((v) => !v)}
-          disabled={!engineConfigured}
-          className="btn-secondary text-xs"
-        >
-          <BookPlus className="h-3.5 w-3.5" /> Definieren
-        </button>
-        <button
-          type="button"
-          onClick={remove}
-          disabled={pending}
-          className="text-red-700 hover:text-red-800 text-xs inline-flex items-center gap-1"
-        >
-          <Trash2 className="h-3.5 w-3.5" /> Löschen
-        </button>
+        {canWrite && (
+          <>
+            <button type="button" onClick={save} disabled={pending} className="btn-primary text-xs">
+              <Save className="h-3.5 w-3.5" /> Speichern
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDelegate((v) => !v)}
+              className="btn-secondary text-xs"
+            >
+              <Send className="h-3.5 w-3.5" /> Zuweisen
+            </button>
+          </>
+        )}
+        {/* Recherche ist die Aufgabe der zugewiesenen Person — der einzige
+            schreibende Weg, der ihr offensteht. */}
+        {(canWrite || isAssignee) && (
+          <button
+            type="button"
+            onClick={() => setShowResearch((v) => !v)}
+            className="btn-secondary text-xs"
+          >
+            <Webhook className="h-3.5 w-3.5" /> An n8n
+          </button>
+        )}
+        {canWrite && (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowDefine((v) => !v)}
+              disabled={!engineConfigured}
+              className="btn-secondary text-xs"
+            >
+              <BookPlus className="h-3.5 w-3.5" /> Definieren
+            </button>
+            <button
+              type="button"
+              onClick={remove}
+              disabled={pending}
+              className="text-red-700 hover:text-red-800 text-xs inline-flex items-center gap-1"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Löschen
+            </button>
+          </>
+        )}
+        {!canWrite && !isAssignee && (
+          <span className="text-xs text-muted">
+            Leseansicht — Bearbeitung durch zuständige Berufsträger.
+          </span>
+        )}
       </div>
 
       {showDelegate && (

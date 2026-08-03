@@ -31,7 +31,7 @@ export default async function AnalysisPage({
   params: Promise<{ id: string; analysisId: string }>;
 }) {
   const { id, analysisId } = await params;
-  const { ctx, staffOptions, engineConfigured } = await guardSubsumtionPage(id);
+  const { ctx, staffId, staffOptions, engineConfigured, canWrite } = await guardSubsumtionPage(id);
 
   const analysis = await loadAnalysis(ctx, analysisId);
   if (!analysis || analysis.clientId !== id) notFound();
@@ -207,6 +207,8 @@ export default async function AnalysisPage({
         aufgaben={aufgaben}
         aktenregal={aktenregal}
         engineConfigured={engineConfigured}
+        canWrite={canWrite}
+        currentStaffId={staffId}
         initial={dto}
       />
     </div>
