@@ -93,6 +93,86 @@ const files = walkActionFiles(APP_DIR).filter((f) =>
   readFileSync(f, 'utf8').includes("'use server'"),
 );
 
+// ---------------------------------------------------------------------------
+// Import-Aufloesung fuer geteilte Guards: Beim Aufteilen grosser Action-Dateien
+// wandern auth-tragende Helfer (guard*, claimCheckMutation, …) in ein
+// gemeinsames Modul OHNE 'use server'. Der Praesenz-Check muss solche Helfer
+// weiter erkennen — sonst waere jede aufgeteilte Datei faelschlich rot und die
+// Aufteilung wuerde bestraft. Aufgeloest werden NUR relative Importe (./ ../),
+// rekursiv mit Zyklus-Schutz; Aliase (@/server/…) bleiben bewusst aussen vor:
+// zentrale Module sind schon ueber PRIMITIVE abgedeckt.
+// ---------------------------------------------------------------------------
+
+/** Auth-tragende Top-Level-Funktionen einer Datei (transitiv innerhalb der
+ *  Datei UND ueber deren relative Importe). Gecacht + zyklusfest. */
+const authFnCache = new Map<string, Set<string>>();
+
+function resolveRelative(fromFile: string, spec: string): string | null {
+  if (!spec.startsWith('.')) return null;
+  const base = join(dirname(fromFile), spec);
+  for (const cand of [base + '.ts', base + '.tsx', join(base, 'index.ts')]) {
+    try {
+      if (statSync(cand).isFile()) return cand;
+    } catch {
+      /* nicht vorhanden */
+    }
+  }
+  return null;
+}
+
+function importedFnsBySource(src: ts.SourceFile): Map<string, string[]> {
+  const bySpec = new Map<string, string[]>();
+  src.forEachChild((node) => {
+    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return;
+    const clause = node.importClause;
+    if (!clause || clause.isTypeOnly) return;
+    const names: string[] = [];
+    if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+      for (const el of clause.namedBindings.elements) {
+        if (!el.isTypeOnly) names.push(el.name.text);
+      }
+    }
+    if (names.length > 0) bySpec.set(node.moduleSpecifier.text, names);
+  });
+  return bySpec;
+}
+
+function authCarryingFns(file: string, seen: Set<string> = new Set()): Set<string> {
+  const cached = authFnCache.get(file);
+  if (cached) return cached;
+  if (seen.has(file)) return new Set(); // Zyklus → keine neuen Erkenntnisse
+  seen.add(file);
+
+  let src: ts.SourceFile;
+  try {
+    src = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+  } catch {
+    return new Set();
+  }
+  const fns = topLevelFns(src);
+
+  // Basis: direkte Primitive + auth-tragende Importe aus relativen Modulen.
+  const auth = new Set<string>(fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name));
+  for (const [spec, names] of importedFnsBySource(src)) {
+    const target = resolveRelative(file, spec);
+    if (!target) continue;
+    const targetAuth = authCarryingFns(target, seen);
+    for (const n of names) if (targetAuth.has(n)) auth.add(n);
+  }
+
+  // Fixpunkt: Helfer, die auth-tragende Helfer aufrufen, tragen selbst.
+  for (let davor = -1; davor !== auth.size; ) {
+    davor = auth.size;
+    for (const f of fns) {
+      if (auth.has(f.name)) continue;
+      if ([...auth].some((h) => new RegExp(`\\b${h}\\b`).test(f.body))) auth.add(f.name);
+    }
+  }
+
+  authFnCache.set(file, auth);
+  return auth;
+}
+
 // Erster Pass: Surface sammeln (alle Top-Level-Funktionen je Datei) + Menge
 // der exportierten Action-Namen — das Delegations-Ziel muss darin liegen.
 const parsedFiles = files.map((file) => {
@@ -130,17 +210,10 @@ describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
     // trägt die Autorisierung ebenfalls (z. B. `guardAnalysisWrite` → ruft
     // `guardAnalysis` → enthält `requireSubsumtionAccess`). Ohne diese Auflösung
     // erzwingt der Guard flache Helfer und bestraft genau die Schichtung, die
-    // Schreib- von Leserechten trennt.
-    const authHelpers: string[] = fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name);
-    for (let davor = -1; davor !== authHelpers.length; ) {
-      davor = authHelpers.length;
-      for (const f of fns) {
-        if (authHelpers.includes(f.name)) continue;
-        if (authHelpers.some((h) => new RegExp(`\\b${h}\\b`).test(f.body))) {
-          authHelpers.push(f.name);
-        }
-      }
-    }
+    // Schreib- von Leserechten trennt. Seit der Aufteilung der grossen
+    // Action-Dateien loest `authCarryingFns` zusaetzlich ueber relative
+    // Importe auf (geteilte Guard-Module ohne 'use server').
+    const authHelpers = [...authCarryingFns(file)];
     const authorized = (fn: Fn) =>
       PRIMITIVE.test(fn.body) ||
       delegatesToKnownAction(fn.body, fn.name) ||
