@@ -387,8 +387,7 @@ export async function loadKontrollbuch(
     // Bei mehreren Zustaendigen fuehrt die erste Zuweisung — das Fristenbuch
     // kennt genau eine verantwortliche Person je Eintrag.
     const clientId = w.clientId!;
-    const verantwortlichId =
-      w.assignees[0]?.staffId ?? hauptbearbeiter.get(clientId) ?? null;
+    const verantwortlichId = w.assignees[0]?.staffId ?? hauptbearbeiter.get(clientId) ?? null;
     eintraege.push({
       quelle: 'WIEDERVORLAGE',
       id: w.id,
