@@ -34,11 +34,27 @@ describe('extractMentions', () => {
     expect(extractMentions('Maria Mitarbeiterin ist zuständig', STAFF)).toEqual([]);
   });
 
-  it('trifft auch den längeren Namen, wenn ein kürzerer sein Präfix ist', () => {
-    // „@Max Mustermann" enthält „@Max Muster" — die Extraktion liefert beide
-    // Kandidaten; die Anzeige (splitByMentions) entscheidet auf den längeren.
-    const ids = extractMentions('@Max Mustermann bitte übernehmen', STAFF);
-    expect(ids).toContain('maxm');
+  it('trifft NUR den längeren Namen, wenn ein kürzerer sein Präfix ist', () => {
+    // „@Max Mustermann" enthält „@Max Muster" — benachrichtigt wird genau der,
+    // der auch in der Anzeige leuchtet: der längere.
+    expect(extractMentions('@Max Mustermann bitte übernehmen', STAFF)).toEqual(['maxm']);
+  });
+
+  it('reicht der eindeutige Vorname', () => {
+    expect(extractMentions('@Maria kannst du übernehmen?', STAFF)).toEqual(['maria']);
+    expect(extractMentions('bitte @otto fragen', STAFF)).toEqual(['otto']);
+  });
+
+  it('lässt mehrdeutige Vornamen bewusst leer', () => {
+    // Zwei Personen namens Max — „@Max" allein wäre Raterei, das löst das
+    // Autocomplete-Dropdown auf.
+    expect(extractMentions('@Max bitte melden', STAFF)).toEqual([]);
+  });
+
+  it('respektiert Wortgrenzen', () => {
+    // „@Mariam" ist nicht „@Maria", „@Maria Mitarbeiterinnen" nicht Maria M.
+    expect(extractMentions('@Mariam bitte melden', STAFF)).toEqual([]);
+    expect(extractMentions('@Maria Mitarbeiterinnen gesucht', STAFF)).toEqual(['maria']);
   });
 });
 
