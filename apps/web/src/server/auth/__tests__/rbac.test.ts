@@ -36,6 +36,8 @@ import {
   UnauthorizedError,
   ForbiddenError,
   canAccessClientTx,
+  canOtherStaffAccessClientTx,
+  filterStaffAccessClientTx,
   accessibleClientsWhereFor,
   inaccessibleClientIdsFor,
   hasStaffPermission,
@@ -303,5 +305,102 @@ describe('accessibleClientsWhereFor', () => {
         },
       },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterStaffAccessClientTx: Batch-Entscheidung fuer die Zuweisungs-Liste.
+// Eigener Stub, weil hier staffUser.findMany + clientResponsibility.findMany
+// gebraucht werden (die Einzel-Helfer oben beruehren andere Tx-Flaechen).
+// ---------------------------------------------------------------------------
+
+interface BatchTxConfig {
+  mode?: 'OPEN' | 'RESTRICTED';
+  client?: { vertraulich: boolean } | null;
+  /** id → Rollen des (aktiven) Mitarbeiters; fehlende IDs gelten als inaktiv/fremd. */
+  staff?: Record<string, string[]>;
+  /** IDs mit BERUFSTRAEGER/HAUPTBEARBEITER-Zuordnung am Mandanten. */
+  responsibleIds?: string[];
+}
+
+function makeBatchTx(cfg: BatchTxConfig) {
+  const staffFindMany = vi.fn(async (args: { where: { id: { in: string[] } } }) =>
+    args.where.id.in
+      .filter((id) => cfg.staff?.[id])
+      .map((id) => ({ id, roles: cfg.staff![id]!.map((role) => ({ role })) })),
+  );
+  const responsibilityFindMany = vi.fn(async () =>
+    (cfg.responsibleIds ?? []).map((staffId) => ({ staffId })),
+  );
+  const tx = {
+    tenantSetting: {
+      findUnique: vi.fn(async () => (cfg.mode ? { value: { clientAccessMode: cfg.mode } } : null)),
+    },
+    client: { findUnique: vi.fn(async () => cfg.client ?? null) },
+    staffUser: { findMany: staffFindMany },
+    clientResponsibility: { findMany: responsibilityFindMany },
+  };
+  return { tx: tx as never, staffFindMany, responsibilityFindMany };
+}
+
+describe('filterStaffAccessClientTx', () => {
+  it('OPEN + nicht vertraulich: alle aktiven durch, ohne Responsibility-Query', async () => {
+    const { tx, responsibilityFindMany } = makeBatchTx({
+      mode: 'OPEN',
+      client: { vertraulich: false },
+      staff: { a: ['STAFF'], b: ['STAFF'] },
+    });
+    const erlaubt = await filterStaffAccessClientTx(tx, 't1', ['a', 'b'], 'c1');
+    expect([...erlaubt].sort()).toEqual(['a', 'b']);
+    expect(responsibilityFindMany).not.toHaveBeenCalled();
+  });
+
+  it('vertraulicher Mandant: Admin/Partner und Zugeordnete, sonst niemand', async () => {
+    const { tx } = makeBatchTx({
+      mode: 'OPEN',
+      client: { vertraulich: true },
+      staff: { admin: ['ADMIN'], zust: ['STAFF'], fremd: ['STAFF'] },
+      responsibleIds: ['zust'],
+    });
+    const erlaubt = await filterStaffAccessClientTx(tx, 't1', ['admin', 'zust', 'fremd'], 'c1');
+    expect([...erlaubt].sort()).toEqual(['admin', 'zust']);
+  });
+
+  it('inaktive/fremde IDs und fehlender Mandant fallen heraus', async () => {
+    const inaktiv = makeBatchTx({
+      mode: 'OPEN',
+      client: { vertraulich: false },
+      staff: { a: ['STAFF'] },
+    });
+    const nurA = await filterStaffAccessClientTx(inaktiv.tx, 't1', ['a', 'weg'], 'c1');
+    expect([...nurA]).toEqual(['a']);
+
+    const ohneMandant = makeBatchTx({ mode: 'OPEN', client: null, staff: { a: ['STAFF'] } });
+    await expect(filterStaffAccessClientTx(ohneMandant.tx, 't1', ['a'], 'c1')).resolves.toEqual(
+      new Set(),
+    );
+  });
+
+  it('leere Eingabe: gar keine Query', async () => {
+    const { tx, staffFindMany } = makeBatchTx({});
+    await expect(filterStaffAccessClientTx(tx, 't1', [], 'c1')).resolves.toEqual(new Set());
+    expect(staffFindMany).not.toHaveBeenCalled();
+  });
+
+  it('Einzel-Helfer entscheidet identisch (delegiert an den Batch)', async () => {
+    const granted = makeBatchTx({
+      mode: 'RESTRICTED',
+      client: { vertraulich: false },
+      staff: { zust: ['STAFF'] },
+      responsibleIds: ['zust'],
+    });
+    await expect(canOtherStaffAccessClientTx(granted.tx, 't1', 'zust', 'c1')).resolves.toBe(true);
+
+    const denied = makeBatchTx({
+      mode: 'RESTRICTED',
+      client: { vertraulich: false },
+      staff: { fremd: ['STAFF'] },
+    });
+    await expect(canOtherStaffAccessClientTx(denied.tx, 't1', 'fremd', 'c1')).resolves.toBe(false);
   });
 });

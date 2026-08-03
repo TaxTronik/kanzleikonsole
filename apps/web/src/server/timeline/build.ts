@@ -14,6 +14,7 @@ import type { Prisma } from '@prisma/client';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtEUR } from '@/lib/fmt';
+import { canStaffWriteClientTx } from '@/server/auth/rbac';
 import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
 type TxClient = Prisma.TransactionClient;
@@ -200,12 +201,39 @@ export async function buildClientTimeline(
           title: true,
           textHash: true,
           katalogVersion: true,
+          vertraulich: true,
           createdAt: true,
           archivedAt: true,
           _count: { select: { markings: true } },
         },
       }),
     ]);
+
+    // Vertrauliche Subsumtionen: Der Titel ist Inhalt („Selbstanzeige GF" in
+    // der Chronik wuerde die Kuerzung der Detailseite unterlaufen). Die
+    // Ereignisse bleiben — eine Chronik, die still Eintraege verschweigt, waere
+    // irrefuehrend — aber Unbeteiligte sehen einen neutralen Titel.
+    const vertrauliche = riskAnalyses.filter((a) => a.vertraulich).map((a) => a.id);
+    let titelSichtbar = (_analysisId: string): boolean => true;
+    if (vertrauliche.length > 0) {
+      const voll = ctx.actorId
+        ? await canStaffWriteClientTx(tx, ctx.tenantId, ctx.actorId, clientId)
+        : false;
+      const beteiligt = new Set<string>(
+        voll
+          ? vertrauliche
+          : ctx.actorId
+            ? (
+                await tx.riskMarking.findMany({
+                  where: { analysisId: { in: vertrauliche }, verantwortlichId: ctx.actorId },
+                  select: { analysisId: true },
+                })
+              ).map((m) => m.analysisId)
+            : [],
+      );
+      const offen = new Set(riskAnalyses.filter((a) => !a.vertraulich).map((a) => a.id));
+      titelSichtbar = (analysisId) => offen.has(analysisId) || beteiligt.has(analysisId);
+    }
 
     const events: TimelineEvent[] = [];
 
@@ -408,7 +436,9 @@ export async function buildClientTimeline(
         id: `ra:${a.id}`,
         occurredAt: a.createdAt,
         kind: 'risk_analysis_created',
-        title: `Subsumtion analysiert: ${a.title ?? 'Ohne Titel'}`,
+        title: titelSichtbar(a.id)
+          ? `Subsumtion analysiert: ${a.title ?? 'Ohne Titel'}`
+          : 'Subsumtion analysiert (vertraulich)',
         // Voller Evidenz-Hash (sha256 des Sachverhalts) — rekonstruierbar +
         // in der Hash-Chain (audit_log) verankert.
         detail: `${a._count.markings} Markierungen · Katalog ${a.katalogVersion} · Hash ${a.textHash}`,
@@ -419,7 +449,9 @@ export async function buildClientTimeline(
           id: `ra-arch:${a.id}`,
           occurredAt: a.archivedAt,
           kind: 'risk_analysis_archived',
-          title: `Subsumtion revisionssicher archiviert: ${a.title ?? 'Ohne Titel'}`,
+          title: titelSichtbar(a.id)
+            ? `Subsumtion revisionssicher archiviert: ${a.title ?? 'Ohne Titel'}`
+            : 'Subsumtion revisionssicher archiviert (vertraulich)',
           detail: `GoBD-Snapshot (Object-Lock) · Hash ${a.textHash}`,
           href: `/staff/clients/${clientId}/subsumtion/${a.id}`,
         });

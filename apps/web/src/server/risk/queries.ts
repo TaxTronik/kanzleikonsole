@@ -17,6 +17,7 @@ export async function listAnalyses(ctx: TenantContext, clientId: string) {
         textHash: true,
         katalogVersion: true,
         engineVersion: true,
+        vertraulich: true,
         llmEnrichedAt: true,
         createdAt: true,
         createdById: true,

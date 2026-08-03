@@ -164,36 +164,71 @@ export async function canOtherStaffAccessClientTx(
   staffId: string,
   clientId: string,
 ): Promise<boolean> {
-  const staff = await tx.staffUser.findFirst({
-    where: { id: staffId, tenantId, active: true },
+  const erlaubt = await filterStaffAccessClientTx(tx, tenantId, [staffId], clientId);
+  return erlaubt.has(staffId);
+}
+
+/**
+ * Batch-Variante von `canOtherStaffAccessClientTx`: entscheidet fuer VIELE
+ * Mitarbeiter-IDs auf einmal, wer den Mandanten sehen darf.
+ *
+ * Der Subsumtions-Guard filtert damit die Zuweisungs-Liste — vorher lief das
+ * als eine Einzelpruefung PRO Person, also bis zu 4·N Queries pro Seitenaufruf,
+ * wobei Policy und Mandant N-fach identisch geladen wurden. Hier sind es
+ * hoechstens vier Queries insgesamt, unabhaengig von der Teamgroesse.
+ *
+ * Bewusst sequentiell (kein Promise.all): die Aufrufe laufen auf einem
+ * interaktiven Prisma-Tx, und der serialisiert ohnehin.
+ */
+export async function filterStaffAccessClientTx(
+  tx: TxClient,
+  tenantId: string,
+  staffIds: readonly string[],
+  clientId: string,
+): Promise<Set<string>> {
+  if (staffIds.length === 0) return new Set();
+
+  const staff = await tx.staffUser.findMany({
+    where: { id: { in: [...staffIds] }, tenantId, active: true },
     select: { id: true, roles: { select: { role: true } } },
   });
-  if (!staff) return false;
-
-  const isAdmin = staff.roles.some((r) => r.role === 'ADMIN' || r.role === 'PARTNER');
-  if (isAdmin) return true;
+  if (staff.length === 0) return new Set();
 
   const policy = await readAccessPolicyTx(tx, tenantId);
   const client = await tx.client.findUnique({
     where: { id: clientId },
     select: { vertraulich: true },
   });
-  if (!client) return false;
+  if (!client) return new Set();
 
   const needResponsibility = policy.clientAccessMode === 'RESTRICTED' || client.vertraulich;
-  const isResponsible = needResponsibility
-    ? (await tx.clientResponsibility.findFirst({
-        where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-        select: { id: true },
-      })) !== null
-    : false;
+  const responsible = new Set<string>(
+    needResponsibility
+      ? (
+          await tx.clientResponsibility.findMany({
+            where: {
+              clientId,
+              staffId: { in: staff.map((s) => s.id) },
+              role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] },
+            },
+            select: { staffId: true },
+          })
+        ).map((r) => r.staffId)
+      : [],
+  );
 
-  return decideClientAccess({
-    isAdmin: false,
-    mode: policy.clientAccessMode,
-    vertraulich: client.vertraulich,
-    isResponsible,
-  });
+  const erlaubt = new Set<string>();
+  for (const s of staff) {
+    const isAdmin = s.roles.some((r) => r.role === 'ADMIN' || r.role === 'PARTNER');
+    const ok = decideClientAccess({
+      isAdmin,
+      mode: policy.clientAccessMode,
+      vertraulich: client.vertraulich,
+      isResponsible: responsible.has(s.id),
+    });
+    if (ok) erlaubt.add(s.id);
+  }
+  return erlaubt;
 }
 
 /**
@@ -309,6 +344,32 @@ export async function canWriteClientTx(
 ): Promise<boolean> {
   if (isStaffAdmin(session)) return true;
   const { staffId } = session.user;
+  return (
+    (await tx.clientResponsibility.findFirst({
+      where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+      select: { id: true },
+    })) !== null
+  );
+}
+
+/**
+ * Wie `canWriteClientTx`, aber ohne Session — fuer Aufrufer, die nur eine
+ * Staff-ID haben (z. B. die Timeline mit `ctx.actorId`). Dieselbe Regel:
+ * Admin/Partner oder BERUFSTRAEGER/HAUPTBEARBEITER-Zuordnung; Rollen werden
+ * dafuer nachgeladen.
+ */
+export async function canStaffWriteClientTx(
+  tx: TxClient,
+  tenantId: string,
+  staffId: string,
+  clientId: string,
+): Promise<boolean> {
+  const staff = await tx.staffUser.findFirst({
+    where: { id: staffId, tenantId, active: true },
+    select: { roles: { select: { role: true } } },
+  });
+  if (!staff) return false;
+  if (staff.roles.some((r) => r.role === 'ADMIN' || r.role === 'PARTNER')) return true;
   return (
     (await tx.clientResponsibility.findFirst({
       where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },

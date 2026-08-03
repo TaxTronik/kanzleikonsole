@@ -6,7 +6,7 @@
 
 import { redirect } from 'next/navigation';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { canAccessClient, canOtherStaffAccessClientTx } from '@/server/auth/rbac';
+import { canAccessClient, filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { loadSubsumtionRights, type SubsumtionRights } from '@/server/risk/rights';
 import { readModules } from '@/server/settings/modules';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
@@ -61,10 +61,13 @@ export async function guardSubsumtionPage(
   // liess sich damit an Unbefugte zuweisen. Die Server-Actions prüfen das
   // ebenfalls; diese Filterung ist der Komfort davor, nicht der Schutz.
   const staffOptions = await withTenantContext(ctx, async (tx) => {
-    const zulaessig = await Promise.all(
-      staffCandidates.map((s) => canOtherStaffAccessClientTx(tx, tenantId, s.id, clientId)),
+    const zulaessig = await filterStaffAccessClientTx(
+      tx,
+      tenantId,
+      staffCandidates.map((s) => s.id),
+      clientId,
     );
-    return staffCandidates.filter((_, i) => zulaessig[i]);
+    return staffCandidates.filter((s) => zulaessig.has(s.id));
   });
 
   const rights = await withTenantContext(ctx, (tx) =>

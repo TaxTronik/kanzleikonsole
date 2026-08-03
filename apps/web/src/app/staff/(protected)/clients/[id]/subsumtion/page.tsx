@@ -1,13 +1,35 @@
 import Link from 'next/link';
-import { ArrowLeft, Plus, FileSearch, Sparkles } from 'lucide-react';
+import { ArrowLeft, Plus, FileSearch, Sparkles, EyeOff } from 'lucide-react';
+import { withTenantContext } from '@taxtronik/db';
 import { guardSubsumtionPage } from './_guard';
 import { listAnalyses } from '@/server/risk';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 export default async function SubsumtionListPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { ctx, engineConfigured } = await guardSubsumtionPage(id);
-  const analyses = await listAnalyses(ctx, id);
+  const { ctx, staffId, engineConfigured, canWrite } = await guardSubsumtionPage(id);
+  const alle = await listAnalyses(ctx, id);
+
+  // Vertrauliche Analysen erscheinen nur fuer Beteiligte: volle Stufe oder in
+  // DIESER Analyse zugewiesen. Der Titel ist selbst Inhalt — „Selbstanzeige
+  // GF" in der Liste wuerde die Vertraulichkeit unterlaufen, bevor die
+  // Detailseite ueberhaupt kuerzen kann. Zugewiesene brauchen den Eintrag als
+  // Einstieg (neben dem Deeplink aus der Benachrichtigung).
+  const vertrauliche = alle.filter((a) => a.vertraulich).map((a) => a.id);
+  const beteiligt =
+    canWrite || vertrauliche.length === 0
+      ? new Set<string>(vertrauliche)
+      : new Set(
+          (
+            await withTenantContext(ctx, (tx) =>
+              tx.riskMarking.findMany({
+                where: { analysisId: { in: vertrauliche }, verantwortlichId: staffId },
+                select: { analysisId: true },
+              }),
+            )
+          ).map((m) => m.analysisId),
+        );
+  const analyses = alle.filter((a) => !a.vertraulich || beteiligt.has(a.id));
 
   return (
     <div className="p-8">
@@ -55,6 +77,11 @@ export default async function SubsumtionListPage({ params }: { params: Promise<{
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-primary truncate inline-flex items-center gap-2">
                         {a.title || 'Subsumtion'}
+                        {a.vertraulich && (
+                          <span className="badge-gray text-[10px] inline-flex items-center gap-1">
+                            <EyeOff className="h-3 w-3" /> vertraulich
+                          </span>
+                        )}
                         {a.llmEnrichedAt && (
                           <span className="badge-purple text-[10px]">KI-vertieft</span>
                         )}
