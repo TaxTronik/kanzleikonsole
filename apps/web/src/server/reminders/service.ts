@@ -280,8 +280,14 @@ export async function addReminderNoteTx(
           title: `Rückfrage zu: ${rem.subject}`,
           body: `${vonName}: ${auszug}`,
           href: `/staff/reminders/${input.reminderId}`,
-          resourceType: 'client_reminder',
-          resourceId: input.reminderId,
+          resourceType: 'client_reminder_note',
+          // Die NOTE-ID, nicht die Wiedervorlage: der Dedupe-Upsert kollabiert
+          // gleiche (kind, resource, staffId) in EINE ungelesene Meldung. Mit
+          // der Wiedervorlage als resource war nur die erste Nachricht
+          // hoerbar — jede weitere aktualisierte still die bestehende, der
+          // Zaehler stieg nicht, und die Glocke (und damit auch die
+          // Live-Aktualisierung) blieb stumm.
+          resourceId: note.id,
         });
       }
     }
@@ -343,5 +349,54 @@ export async function setReminderAssigneesTx(
         an: neu,
       });
     }
+  }
+}
+
+/**
+ * Benachrichtigt die Beteiligten über einen Dateianhang.
+ *
+ * Aufgerufen aus der Dokument-Commit-Route, in derselben Transaktion wie der
+ * Dokument-Insert. Empfänger: delegierende Person + Zuständige, ausser der
+ * hochladenden Person. `resourceId` ist das DOKUMENT — jeder Upload ist eine
+ * eigene Meldung (siehe Kommentar bei der Wortmeldung: der Dedupe-Upsert
+ * würde sonst Folge-Uploads stumm schalten).
+ */
+export async function notifyReminderAttachmentTx(
+  tx: TxClient,
+  input: {
+    tenantId: string;
+    reminderId: string;
+    documentId: string;
+    documentTitle: string;
+    uploadedBy: string;
+  },
+): Promise<void> {
+  const rem = await tx.clientReminder.findUnique({
+    where: { id: input.reminderId },
+    select: {
+      subject: true,
+      createdByStaff: true,
+      assignees: { select: { staffId: true } },
+    },
+  });
+  if (!rem) return;
+
+  const beteiligte = [
+    ...new Set([rem.createdByStaff, ...rem.assignees.map((a) => a.staffId)]),
+  ].filter((id) => id !== input.uploadedBy);
+  if (beteiligte.length === 0) return;
+
+  const vonName = await staffName(tx, input.uploadedBy);
+  for (const staffId of beteiligte) {
+    await notify(tx, {
+      tenantId: input.tenantId,
+      staffId,
+      kind: 'CLIENT_REMINDER_ATTACHMENT',
+      title: `Neue Datei an: ${rem.subject}`,
+      body: `${vonName} hat „${input.documentTitle}" angehängt.`,
+      href: `/staff/reminders/${input.reminderId}`,
+      resourceType: 'document',
+      resourceId: input.documentId,
+    });
   }
 }

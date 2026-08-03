@@ -32,6 +32,7 @@ import {
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
+import { notifyReminderAttachmentTx } from '@/server/reminders/service';
 import {
   parseMultipartUpload,
   storageCommitErrorResponse,
@@ -371,6 +372,17 @@ export async function POST(req: NextRequest) {
           commit,
           createdById: staffId,
         });
+        // Anhang einer Wiedervorlage: Beteiligte informieren (in derselben
+        // Transaktion wie der Insert — kein Anhang ohne Meldung und umgekehrt).
+        if (reminderId) {
+          await notifyReminderAttachmentTx(tx, {
+            tenantId,
+            reminderId,
+            documentId: document.id,
+            documentTitle: title,
+            uploadedBy: staffId,
+          });
+        }
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',

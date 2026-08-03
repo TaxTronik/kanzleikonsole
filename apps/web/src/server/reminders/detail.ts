@@ -32,6 +32,7 @@ export interface ReminderAttachmentView {
   title: string;
   mimeType: string;
   createdAt: string;
+  uploadedByName: string;
 }
 
 export interface ReminderDetail {
@@ -90,7 +91,7 @@ export async function loadReminderDetail(
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
           take: 50,
-          select: { id: true, title: true, mimeType: true, createdAt: true },
+          select: { id: true, title: true, mimeType: true, createdAt: true, ownerStaffId: true },
         },
         successors: {
           orderBy: { createdAt: 'asc' },
@@ -130,6 +131,7 @@ export async function loadReminderDetail(
         ...(r.doneByStaff ? [r.doneByStaff] : []),
         ...r.assignees.map((a) => a.staffId),
         ...r.discussion.map((n) => n.staffId),
+        ...r.attachments.map((d) => d.ownerStaffId).filter((id): id is string => Boolean(id)),
       ]),
     ];
     const namen = new Map(
@@ -184,6 +186,7 @@ export async function loadReminderDetail(
         title: d.title,
         mimeType: d.mimeType,
         createdAt: d.createdAt.toISOString(),
+        uploadedByName: d.ownerStaffId ? (namen.get(d.ownerStaffId) ?? 'Unbekannt') : 'Unbekannt',
       })),
     };
   });

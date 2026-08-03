@@ -263,7 +263,7 @@ export function ReminderDetailView({
                 <Paperclip className="h-3.5 w-3.5 text-disabled shrink-0" />
                 <span className="flex-1 min-w-0 truncate text-primary">{d.title}</span>
                 <span className="text-[11px] text-disabled shrink-0">
-                  {fmtDateShort(new Date(d.createdAt))}
+                  {d.uploadedByName} · {fmtDateShort(new Date(d.createdAt))}
                 </span>
               </li>
             ))}
@@ -271,24 +271,13 @@ export function ReminderDetailView({
         )}
       </div>
 
-      {/* ------------------------------------------------------- Wortmeldungen */}
+      {/* --------------------------------------------------- Vereinter Verlauf */}
       <div className="card p-4 space-y-3">
         <h2 className="text-sm font-medium text-primary inline-flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-disabled" /> Verlauf der Rückfragen (
-          {detail.discussion.length})
+          <MessageSquare className="h-4 w-4 text-disabled" /> Verlauf (
+          {detail.discussion.length + detail.attachments.length})
         </h2>
-        {detail.discussion.length > 0 && (
-          <ul className="space-y-2">
-            {detail.discussion.map((n) => (
-              <li key={n.id} className="rounded bg-surface-raised px-3 py-2">
-                <p className="text-[11px] text-muted">
-                  {n.staffName} · {fmtDateTimeShort(new Date(n.createdAt))}
-                </p>
-                <p className="text-sm text-secondary whitespace-pre-wrap mt-0.5">{n.body}</p>
-              </li>
-            ))}
-          </ul>
-        )}
+        <VerlaufFeed discussion={detail.discussion} attachments={detail.attachments} />
         <div className="flex items-start gap-2">
           <textarea
             value={note}
@@ -471,5 +460,59 @@ export function StaffPicker({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Vereinter Verlauf: Wortmeldungen und Datei-Uploads, chronologisch gemischt.
+ * Vorher standen Rückfragen und Anhänge in getrennten Karten — wer wissen
+ * wollte, was zuletzt passiert ist, musste beide vergleichen.
+ */
+function VerlaufFeed({
+  discussion,
+  attachments,
+}: {
+  discussion: ReminderDetail['discussion'];
+  attachments: ReminderDetail['attachments'];
+}) {
+  const eintraege = [
+    ...discussion.map((n) => ({
+      key: `note-${n.id}`,
+      createdAt: n.createdAt,
+      wer: n.staffName,
+      art: 'note' as const,
+      text: n.body,
+    })),
+    ...attachments.map((d) => ({
+      key: `file-${d.id}`,
+      createdAt: d.createdAt,
+      wer: d.uploadedByName,
+      art: 'upload' as const,
+      text: d.title,
+    })),
+  ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  if (eintraege.length === 0) {
+    return <p className="text-xs text-disabled">Noch keine Rückfragen oder Dateien.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {eintraege.map((e) => (
+        <li key={e.key} className="rounded bg-surface-raised px-3 py-2">
+          <p className="text-[11px] text-muted inline-flex items-center gap-1">
+            {e.art === 'upload' && <Paperclip className="h-3 w-3" />}
+            {e.wer} · {fmtDateTimeShort(new Date(e.createdAt))}
+          </p>
+          {e.art === 'note' ? (
+            <p className="text-sm text-secondary whitespace-pre-wrap mt-0.5">{e.text}</p>
+          ) : (
+            <p className="text-sm text-secondary mt-0.5">
+              Datei angehängt: <span className="text-primary">{e.text}</span>
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

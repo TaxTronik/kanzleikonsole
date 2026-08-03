@@ -18,6 +18,7 @@ import {
   cloneReminderTx,
   createReminderTx,
   nachfrageTitel,
+  notifyReminderAttachmentTx,
   setReminderAssigneesTx,
 } from '../service';
 
@@ -306,12 +307,41 @@ describe('Rückkanal: Wortmeldung und Nachfassen', () => {
     });
 
     const meldungen = notifyMock.mock.calls.map(
-      (c) => c[1] as { staffId: string; kind: string; href: string },
+      (c) => c[1] as { staffId: string; kind: string; href: string; resourceId: string },
     );
     // Beteiligte der Aufgabe: ICH (angelegt), A + B (zugewiesen). A schreibt.
     expect(meldungen.map((m) => m.staffId).sort()).toEqual([B, ICH].sort());
     expect(meldungen[0]!.kind).toBe('CLIENT_REMINDER_NOTE');
     expect(meldungen[0]!.href).toBe('/staff/reminders/r1');
+    // Die NOTE-ID als resource: mit der Wiedervorlage als resource kollabierte
+    // der Dedupe-Upsert jede weitere Nachricht in die bestehende ungelesene
+    // Meldung — nur die erste war hoerbar.
+    expect(meldungen[0]!.resourceId).toBe('note-1');
+  });
+
+  it('Upload informiert die Beteiligten ausser der hochladenden Person', async () => {
+    const tx = makeTx();
+    tx.clientReminder.findUnique = vi.fn(async () => ({
+      subject: 'Belege 2025',
+      createdByStaff: ICH,
+      assignees: [{ staffId: A }, { staffId: B }],
+    })) as never;
+
+    await notifyReminderAttachmentTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      documentId: 'doc-1',
+      documentTitle: 'Kontoauszug_Q3.pdf',
+      uploadedBy: A,
+    });
+
+    const meldungen = notifyMock.mock.calls.map(
+      (c) => c[1] as { staffId: string; kind: string; resourceId: string },
+    );
+    expect(meldungen.map((m) => m.staffId).sort()).toEqual([B, ICH].sort());
+    expect(meldungen[0]!.kind).toBe('CLIENT_REMINDER_ATTACHMENT');
+    // Jeder Upload ist eine eigene Meldung (Dokument-ID als resource).
+    expect(meldungen[0]!.resourceId).toBe('doc-1');
   });
 
   it('Nachfassen informiert die Beteiligten der Ursprungsstufe — ohne Doppelmeldung', async () => {
