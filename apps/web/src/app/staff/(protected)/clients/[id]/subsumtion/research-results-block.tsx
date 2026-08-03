@@ -121,6 +121,10 @@ export function ResearchResultsBlock(props: {
                 <span className="flex items-center gap-1.5">
                   {res.status === 'ZUGEORDNET' && assignedTo ? (
                     <span className="badge-green text-[10px]">→ {assignedTo.begriff}</span>
+                  ) : res.status === 'VERWORFEN' ? (
+                    // Seit die Prüfentscheidung existiert, kommt der Status auch
+                    // hier an — vorher bog die Seite ihn beim Laden auf NEU zurück.
+                    <span className="badge-gray text-[10px]">verworfen</span>
                   ) : (
                     <span className="badge-yellow text-[10px]">neu</span>
                   )}

@@ -12,6 +12,7 @@ import type { SubsumtionRights } from '@/lib/subsumtion-rights';
 
 export {
   decideSubsumtionAction,
+  decideResultReview,
   type SubsumtionRights,
   type SubsumtionActionKind,
 } from '@/lib/subsumtion-rights';

@@ -59,11 +59,25 @@ describe('parseDelegationNotes', () => {
     expect(JSON.stringify(p)).not.toContain('doc-9');
   });
 
-  it('behandelt eine Fundstelle mit Anführungszeichen und Umbruch im Zitat', () => {
+  it('behandelt eine Fundstelle mit Anführungszeichen im Zitat', () => {
     const p = parseDelegationNotes(
       buildDelegationNotes({ ...marking, matchedText: 'Er nannte es "bar"' }),
     );
     expect(p.fundstelle).toBe('Er nannte es "bar"');
+  });
+
+  it('hält ein mehrzeiliges Zitat einzeilig — auch mit Leerzeile', () => {
+    // Ohne Normalisierung zerrisse der Umbruch die Fundstelle-Zeile, und die
+    // Leerzeile im Zitat liesse den Rest als Freitext-Auftrag erscheinen.
+    const notes = buildDelegationNotes({
+      ...marking,
+      matchedText: 'Erster Absatz.\n\nZweiter Absatz.',
+    });
+    const p = parseDelegationNotes(notes);
+    expect(p.fundstelle).toBe('Erster Absatz. Zweiter Absatz.');
+    expect(p.span).toEqual({ start: 10, end: 24 });
+    expect(p.auftrag).toBeNull();
+    expect(p.rest).toEqual([]);
   });
 
   it('lässt eine handgeschriebene Notiz unverändert stehen', () => {

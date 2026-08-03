@@ -60,6 +60,7 @@ import { enqueueRiskAnalyseLlm, getRiskAnalyseJobState } from '@/server/jobs/ris
 import {
   loadSubsumtionRights,
   decideSubsumtionAction,
+  decideResultReview,
   type SubsumtionRights,
   type SubsumtionActionKind,
 } from '@/server/risk/rights';
@@ -139,12 +140,17 @@ async function guardMarking(markingId: string): Promise<GuardResult & { analysis
 }
 
 // Ausgehend von einem Rechercheergebnis (über Request bzw. Markierung → Analyse).
-async function guardResult(resultId: string): Promise<GuardResult & { analysisId: string | null }> {
+// `resultMarkingId` ist die Markierung, an der das Ergebnis HÄNGT (null =
+// unzugeordnet) — die Prüf-Actions binden ihre Entscheidung daran.
+async function guardResult(
+  resultId: string,
+): Promise<GuardResult & { analysisId: string | null; resultMarkingId: string | null }> {
   const { ctx, staffId } = await sessionCtx();
   const result = await withTenantContext(ctx, (tx) =>
     tx.riskResearchResult.findUnique({
       where: { id: resultId },
       select: {
+        markingId: true,
         request: { select: { analysis: { select: { id: true, clientId: true } } } },
         marking: { select: { analysis: { select: { id: true, clientId: true } } } },
       },
@@ -154,7 +160,13 @@ async function guardResult(resultId: string): Promise<GuardResult & { analysisId
   if (!analysis?.clientId)
     throw new ForbiddenError('Ergebnis nicht gefunden oder ohne Mandantenbezug.');
   await requireSubsumtionAccess(analysis.clientId);
-  return { ctx, staffId, clientId: analysis.clientId, analysisId: analysis.id };
+  return {
+    ctx,
+    staffId,
+    clientId: analysis.clientId,
+    analysisId: analysis.id,
+    resultMarkingId: result?.markingId ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -820,8 +832,14 @@ export async function setResultVerworfenAction(input: {
   markingId: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
-    await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
+    const { ctx, clientId, analysisId, resultMarkingId } = await guardResult(input.resultId);
+    const rights = await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
+    // Entscheidung ans ERGEBNIS binden, nicht nur an die mitgeschickte
+    // markingId: sonst liesse sich mit der eigenen Markierung als Feigenblatt
+    // das Ergebnis einer fremden Markierung derselben Analyse verwerfen.
+    if (!decideResultReview(rights, 'verwerfen', resultMarkingId, input.markingId)) {
+      throw new ForbiddenError('Das Ergebnis gehört nicht zu deiner Markierung.');
+    }
     const target = await withTenantContext(ctx, (tx) =>
       tx.riskMarking.findUnique({
         where: { id: input.markingId },
@@ -846,10 +864,15 @@ export async function assignResultAction(input: {
   markingId: string;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId } = await guardResult(input.resultId);
+    const { ctx, clientId, analysisId, resultMarkingId } = await guardResult(input.resultId);
     // Ergebnis der eigenen zugewiesenen Markierung zuordnen darf auch die
     // recherchierende Person; fremde Markierungen nur die volle Stufe.
-    await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
+    const rights = await assertMay(ctx, clientId, analysisId, 'recherche', input.markingId);
+    // …und nur das EIGENE oder ein unzugeordnetes Ergebnis: ohne diese Bindung
+    // liesse sich das Ergebnis einer fremden Markierung auf die eigene umhaengen.
+    if (!decideResultReview(rights, 'uebernehmen', resultMarkingId, input.markingId)) {
+      throw new ForbiddenError('Das Ergebnis gehört nicht zu deiner Markierung.');
+    }
     // Ziel-Markierung muss zur SELBEN Analyse gehören — sonst ließe sich ein
     // Ergebnis quer auf eine fremde Markierung verlinken.
     const target = await withTenantContext(ctx, (tx) =>

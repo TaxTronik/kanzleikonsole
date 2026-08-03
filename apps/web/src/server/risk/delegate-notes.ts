@@ -19,7 +19,11 @@ export interface DelegationMarkingContext {
 export function buildDelegationNotes(marking: DelegationMarkingContext, extra?: string): string {
   const lines: string[] = [`Begriff: ${marking.begriff}`];
   if (marking.normAnker.length > 0) lines.push(`Normanker: ${marking.normAnker.join(', ')}`);
-  lines.push(`Fundstelle: Zeichen ${marking.start}–${marking.end} ("${marking.matchedText}")`);
+  // matchedText einzeilig halten: das Notiz-Format ist zeilenbasiert — ein
+  // Umbruch im markierten Text wuerde die Fundstelle-Zeile zerreissen (und eine
+  // Leerzeile im Zitat liesse den Rest als Freitext-Auftrag erscheinen).
+  const zitat = marking.matchedText.replace(/\s*\n\s*/g, ' ');
+  lines.push(`Fundstelle: Zeichen ${marking.start}–${marking.end} ("${zitat}")`);
   lines.push(`Analyse: ${marking.analysisId}`);
   lines.push(`Markierung: ${marking.id}`);
   if (marking.analysis.documentId) lines.push(`Dokument: ${marking.analysis.documentId}`);

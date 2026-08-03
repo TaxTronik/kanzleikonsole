@@ -47,3 +47,29 @@ export function decideSubsumtionAction(
   if (!markingId) return false;
   return rights.assignedMarkingIds.includes(markingId);
 }
+
+/**
+ * Darf der Aufrufer DIESES Ergebnis pruefen (uebernehmen/verwerfen)?
+ *
+ * `decideSubsumtionAction(…, 'recherche', markingId)` prueft nur, ob die
+ * Markierung dem Aufrufer zugewiesen ist — nicht, ob das Ergebnis zu ihr
+ * gehoert. Ohne diese Bindung liesse sich mit der eigenen markingId als
+ * Feigenblatt das Ergebnis einer FREMDEN Markierung derselben Analyse
+ * verwerfen oder auf die eigene umhaengen.
+ *
+ * Ohne Schreibrecht gilt darum: nur Ergebnisse der eigenen Markierung —
+ * beim Uebernehmen zusaetzlich noch unzugeordnete (`resultMarkingId null`,
+ * z. B. unkorrelierter n8n-Inbound), denn genau deren Zuordnung ist die
+ * Aufgabe der recherchierenden Person.
+ */
+export function decideResultReview(
+  rights: SubsumtionRights,
+  kind: 'uebernehmen' | 'verwerfen',
+  resultMarkingId: string | null,
+  markingId: string,
+): boolean {
+  if (rights.canWrite) return true;
+  if (!rights.assignedMarkingIds.includes(markingId)) return false;
+  if (resultMarkingId === markingId) return true;
+  return kind === 'uebernehmen' && resultMarkingId === null;
+}

@@ -67,7 +67,7 @@ export async function GET(
   );
   if (!a?.clientId || a.clientId !== id)
     return NextResponse.json({ error: 'not found' }, { status: 404 });
-  let accessSession;
+  let accessSession: Awaited<ReturnType<typeof requireSubsumtionAccess>>;
   try {
     accessSession = await requireSubsumtionAccess(a.clientId);
   } catch (e) {
