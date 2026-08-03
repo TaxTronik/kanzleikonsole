@@ -2,12 +2,8 @@
 
 import { useState } from 'react';
 import { X, Save, Send, BookPlus, Trash2, AlertTriangle, Webhook } from 'lucide-react';
-import {
-  updateMarkingAction,
-  deleteMarkingAction,
-  delegateAction,
-  pushDefinitionAction,
-} from './actions';
+import { updateMarkingAction, deleteMarkingAction, delegateAction } from './actions';
+import { pushDefinitionAction } from './norm-actions';
 import { NormRefList, KatalogReviewControl } from './norm-ref-editor';
 import { ResearchComposer } from './research-composer';
 import { ResearchReviewSection } from './research-review';

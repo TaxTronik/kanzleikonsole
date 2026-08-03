@@ -16,7 +16,7 @@ import {
   listPromptTemplatesAction,
   createPromptTemplateAction,
   deletePromptTemplateAction,
-} from './actions';
+} from './research-actions';
 import type { PromptTemplateDTO } from '@/server/risk';
 import { useDialogA11y } from '@/components/ui/modal';
 

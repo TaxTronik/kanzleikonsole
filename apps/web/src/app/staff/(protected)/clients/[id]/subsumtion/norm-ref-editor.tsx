@@ -32,7 +32,7 @@ import {
   kuratiereKatalogNormAction,
   katalogKuratierungAction,
   reviewKatalogBegriffAction,
-} from './actions';
+} from './norm-actions';
 import {
   type NormRefDTO,
   type KatalogOverlay,

@@ -1,7 +1,11 @@
 'use client';
 
 import { ResearchResultDetails } from './research-results-block';
-import { assignResultAction, setResultVerworfenAction, saveResultToShelfAction } from './actions';
+import {
+  assignResultAction,
+  setResultVerworfenAction,
+  saveResultToShelfAction,
+} from './research-actions';
 import type { ResearchResultDTO, Flash } from './_ui';
 
 /**

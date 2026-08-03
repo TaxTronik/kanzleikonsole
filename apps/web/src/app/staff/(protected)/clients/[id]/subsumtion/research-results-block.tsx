@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Archive, Check, FolderCheck, FolderOpen, Inbox, Sparkles, Trash2 } from 'lucide-react';
-import { assignResultAction, saveResultToShelfAction } from './actions';
+import { assignResultAction, saveResultToShelfAction } from './research-actions';
 import { renderMarkdown } from '@/lib/markdown';
 import type { ResearchResultDTO, MarkingDTO } from './_ui';
 
