@@ -39,13 +39,22 @@ export const NOTICE_STATUS_LABELS: Readonly<Record<string, string>> = {
   RECHTSKRAEFTIG: 'Rechtskräftig',
 };
 
+// Vollständig über alle NotificationKind-Werte — abgesichert durch den
+// Completeness-Test in __tests__/domain-labels.test.ts. Fehlende Einträge
+// fielen in der UI sonst auf den rohen Enum-Namen zurück.
 export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
   REQUEST_RESPONDED: 'Anforderung beantwortet',
   POA_SIGNED: 'Vollmacht unterschrieben',
   POA_EXPIRY_SOON: 'Vollmacht läuft bald aus',
   POA_EXPIRED: 'Vollmacht abgelaufen',
   GWG_EXPIRY_SOON: 'GwG läuft bald aus',
+  GWG_EXPIRY_90D: 'GwG-Prüfung läuft in 90 Tagen ab',
+  GWG_EXPIRY_30D: 'GwG-Prüfung läuft in 30 Tagen ab',
+  GWG_EXPIRED: 'GwG-Prüfung abgelaufen',
+  GWG_ID_EXPIRY_SOON: 'Ausweisdokument läuft bald ab',
+  GWG_ID_EXPIRED: 'Ausweisdokument abgelaufen',
   GWG_ONBOARDING_SUBMITTED: 'GwG-Onboarding eingereicht',
+  GWG_DELETION_DUE: 'GwG-Löschprüfung fällig',
   SYSTEM_MAIL_FAILED: 'Mailversand fehlgeschlagen',
   INVOICE_OVERDUE: 'Rechnung überfällig',
   PHONE_NOTE_FORWARDED: 'Telefonzettel weitergeleitet',
@@ -55,7 +64,18 @@ export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
   ABSENCE_REPORTED: 'Abwesenheitsmeldung',
   CLIENT_MASTER_CHANGE_REQUEST: 'Mandanten-Stammdaten-Änderung',
   TAX_NEWS_NEW: 'Neue BMF/BFH-News',
+  TAX_NOTICE_APPEAL_REMINDER: 'Einspruchsfrist-Erinnerung',
   TAX_DEADLINE_REQUEST_PENDING: 'Auto-Anforderung angekündigt',
+  CLIENT_REMINDER_DUE: 'Wiedervorlage fällig',
+  CLIENT_REMINDER_DONE: 'Wiedervorlage erledigt',
+  CLIENT_REMINDER_ASSIGNED: 'Wiedervorlage zugewiesen',
+  CLIENT_REMINDER_NOTE: 'Wortmeldung zur Wiedervorlage',
+  CLIENT_REMINDER_FOLLOWUP: 'Nachfrage zur Wiedervorlage',
+  CLIENT_REMINDER_ATTACHMENT: 'Anhang zur Wiedervorlage',
+  CLIENT_REMINDER_MENTION: 'Erwähnung in Wiedervorlage',
+  PENDING_BINDER_OVERDUE: 'Pendelordner überfällig',
+  APPOINTMENT_REQUESTED: 'Neue Terminanfrage',
+  APPOINTMENT_DECIDED: 'Terminanfrage entschieden',
   SYSTEM_BACKUP_FAILED: 'Backup fehlgeschlagen',
   SYSTEM_AUDIT_BREAK: 'Audit-Chain-Bruch',
   SYSTEM_AUDIT_OK: 'Audit-Chain intakt',

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { NotificationKind } from '@prisma/client';
 import {
   DOCUMENT_CLASSIFICATION_LABELS,
   FORM_SUBMISSION_STATUS_LABELS,
@@ -7,6 +8,7 @@ import {
   INVOICE_STATUS_LABELS,
   NOTICE_KIND_LABELS,
   NOTICE_STATUS_LABELS,
+  NOTIFICATION_KIND_LABELS,
   RISK_ENGINE_STATUS_LABELS,
   RISK_GOVERNANCE_LABELS,
   RISK_HERKUNFT_LABELS,
@@ -17,6 +19,15 @@ import {
 } from '../domain-labels';
 
 describe('domain labels', () => {
+  it('hat für JEDEN NotificationKind ein deutsches Label (kein Roh-Enum in der UI)', () => {
+    // Die Benachrichtigungs-Seite und das Dashboard fallen sonst auf den
+    // technischen Enum-Namen zurück (z. B. „CLIENT_REMINDER_MENTION").
+    const missing = Object.values(NotificationKind).filter(
+      (kind) => !NOTIFICATION_KIND_LABELS[kind],
+    );
+    expect(missing).toEqual([]);
+  });
+
   it('uses one canonical spelling for drift-prone labels', () => {
     expect(DOCUMENT_CLASSIFICATION_LABELS.GWG_EVIDENCE).toBe('GwG-Nachweis');
     expect(NOTICE_KIND_LABELS.GEWST_MESSBESCHEID).toBe('GewSt-Messbescheid');
