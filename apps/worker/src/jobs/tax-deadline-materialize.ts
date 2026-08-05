@@ -19,6 +19,7 @@ import { upsertNotificationTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { materializeTenantTaxDeadlines } from '@taxtronik/tax';
+import { notifyRequestOpened } from '../mail';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 
@@ -38,6 +39,8 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
     let totalCreated = 0;
     let totalRequests = 0;
     let totalOverdue = 0;
+    let totalWarned = 0;
+    let totalMailRecipients = 0;
 
     for (const tenantId of tenantIds) {
       // System-Staff für createdByStaff der Auto-Anforderungen — wir nehmen
@@ -68,13 +71,51 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
       totalCreated += stats.deadlinesCreated;
       totalRequests += stats.requestsCreated;
       totalOverdue += stats.markedOverdue;
+      totalWarned += stats.staffWarned;
+
+      // Mandanten-Mail (request-opened, Parität zum manuellen Anlegen) + n8n-
+      // Event NACH dem Commit der Request-Anlage. Fehler failen den Job NICHT:
+      // der Termin ist bereits REMINDED — ein BullMQ-Retry würde keine Mails
+      // nachholen, aber die restlichen Tenants blockieren. (Gleiche Semantik
+      // wie fireAndForget im manuellen Web-Pfad.)
+      for (const r of stats.createdRequests) {
+        try {
+          const res = await notifyRequestOpened({
+            tenantId: r.tenantId,
+            clientId: r.clientId,
+            requestId: r.requestId,
+            title: r.title,
+            description: r.description,
+            priority: r.priority,
+            dueAtIso: r.dueDate.toISOString(),
+          });
+          totalMailRecipients += res.recipients;
+        } catch (e) {
+          log.error(
+            { tenantId, requestId: r.requestId, err: (e as Error).message },
+            'tax-deadline: request-opened-Versand fehlgeschlagen',
+          );
+        }
+      }
     }
 
     log.info(
-      { created: totalCreated, requests: totalRequests, overdue: totalOverdue },
+      {
+        created: totalCreated,
+        requests: totalRequests,
+        overdue: totalOverdue,
+        warned: totalWarned,
+        mailRecipients: totalMailRecipients,
+      },
       'tax-deadline-materialize: done',
     );
-    return { created: totalCreated, requests: totalRequests, overdue: totalOverdue };
+    return {
+      created: totalCreated,
+      requests: totalRequests,
+      overdue: totalOverdue,
+      warned: totalWarned,
+      mailRecipients: totalMailRecipients,
+    };
   },
   { connection, concurrency: 1 },
 );

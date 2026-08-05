@@ -23,7 +23,17 @@ const h = vi.hoisted(() => {
   );
   const record = vi.fn();
   const materialize = vi.fn();
-  return { prismaOwner, tx, withWorkerTenantContext, record, materialize };
+  const notifyRequestOpened = vi.fn();
+  const upsertNotificationTx = vi.fn();
+  return {
+    prismaOwner,
+    tx,
+    withWorkerTenantContext,
+    record,
+    materialize,
+    notifyRequestOpened,
+    upsertNotificationTx,
+  };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -33,6 +43,8 @@ vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+vi.mock('../../mail', () => ({ notifyRequestOpened: h.notifyRequestOpened }));
+vi.mock('@taxtronik/db/notification', () => ({ upsertNotificationTx: h.upsertNotificationTx }));
 vi.mock('@taxtronik/tax', () => ({ materializeTenantTaxDeadlines: h.materialize }));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {
@@ -50,13 +62,34 @@ interface MaterializeResult {
   created: number;
   requests: number;
   overdue: number;
+  warned: number;
+  mailRecipients: number;
 }
 
 function run(data: { tenantId?: string } = { tenantId: TENANT }): Promise<MaterializeResult> {
   return processors.get('tax-deadline-materialize')!({ data }) as Promise<MaterializeResult>;
 }
 
-const STATS = { deadlinesCreated: 2, requestsCreated: 1, markedOverdue: 3 };
+const CREATED_REQUEST = {
+  tenantId: TENANT,
+  clientId: 'client-1',
+  deadlineId: 'dl-1',
+  requestId: 'req-1',
+  kind: 'USTA_MONATLICH',
+  period: '2026-05',
+  dueDate: new Date(Date.UTC(2026, 5, 20)),
+  title: 'USt-Voranmeldung (monatlich) 2026-05 bis 20.6.2026',
+  description: 'Bitte stellen Sie die Unterlagen bereit.',
+  priority: 'NORMAL' as const,
+};
+
+const STATS = {
+  deadlinesCreated: 2,
+  requestsCreated: 1,
+  markedOverdue: 3,
+  staffWarned: 1,
+  createdRequests: [CREATED_REQUEST],
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -66,6 +99,7 @@ beforeEach(() => {
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.staffUser.findFirst.mockResolvedValue({ id: 'staff-1' });
   h.materialize.mockResolvedValue(STATS);
+  h.notifyRequestOpened.mockResolvedValue({ ok: true, recipients: 2 });
   h.record.mockResolvedValue({});
 });
 
@@ -81,7 +115,18 @@ describe('Verdrahtung des DI-Kerns', () => {
     const [deps, params] = h.materialize.mock.calls[0]!;
     expect(deps.db).toBe(h.prismaOwner);
     expect(params).toEqual({ tenantId: TENANT, systemStaffId: 'staff-1', horizonDays: 90 });
-    expect(result).toEqual({ created: 2, requests: 1, overdue: 3 });
+    expect(result).toEqual({ created: 2, requests: 1, overdue: 3, warned: 1, mailRecipients: 2 });
+  });
+
+  it('upsertStaffNotification delegiert an upsertNotificationTx mit demselben Tx', async () => {
+    await run();
+
+    const [deps] = h.materialize.mock.calls[0]!;
+    const input = { kind: 'TAX_DEADLINE_REQUEST_PENDING' };
+    await deps.upsertStaffNotification(h.tx, input);
+    expect(h.upsertNotificationTx).toHaveBeenCalledTimes(1);
+    expect(h.upsertNotificationTx.mock.calls[0]![0]).toBe(h.tx);
+    expect(h.upsertNotificationTx.mock.calls[0]![1]).toBe(input);
   });
 
   it('runAtomic delegiert an withWorkerTenantContext mit der Tenant-Id', async () => {
@@ -128,7 +173,32 @@ describe('System-Staff-Auswahl', () => {
     const result = await run();
 
     expect(h.materialize).not.toHaveBeenCalled();
-    expect(result).toEqual({ created: 0, requests: 0, overdue: 0 });
+    expect(result).toEqual({ created: 0, requests: 0, overdue: 0, warned: 0, mailRecipients: 0 });
+  });
+});
+
+describe('Mandanten-Mail nach Commit', () => {
+  it('versendet pro createdRequest genau eine request-opened-Benachrichtigung', async () => {
+    await run();
+
+    expect(h.notifyRequestOpened).toHaveBeenCalledTimes(1);
+    expect(h.notifyRequestOpened).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      clientId: 'client-1',
+      requestId: 'req-1',
+      title: 'USt-Voranmeldung (monatlich) 2026-05 bis 20.6.2026',
+      description: 'Bitte stellen Sie die Unterlagen bereit.',
+      priority: 'NORMAL',
+      dueAtIso: '2026-06-20T00:00:00.000Z',
+    });
+  });
+
+  it('ein Mail-Fehler failt den Job NICHT (Termin ist bereits REMINDED)', async () => {
+    h.notifyRequestOpened.mockRejectedValue(new Error('SMTP down'));
+
+    const result = await run();
+
+    expect(result).toEqual({ created: 2, requests: 1, overdue: 3, warned: 1, mailRecipients: 0 });
   });
 });
 
@@ -136,12 +206,24 @@ describe('Multi-Tenant', () => {
   it('summiert die Stats über alle Tenants', async () => {
     h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: 'tenant-a' }, { id: 'tenant-b' }]);
     h.materialize
-      .mockResolvedValueOnce({ deadlinesCreated: 2, requestsCreated: 1, markedOverdue: 0 })
-      .mockResolvedValueOnce({ deadlinesCreated: 3, requestsCreated: 0, markedOverdue: 4 });
+      .mockResolvedValueOnce({
+        deadlinesCreated: 2,
+        requestsCreated: 1,
+        markedOverdue: 0,
+        staffWarned: 2,
+        createdRequests: [CREATED_REQUEST],
+      })
+      .mockResolvedValueOnce({
+        deadlinesCreated: 3,
+        requestsCreated: 0,
+        markedOverdue: 4,
+        staffWarned: 0,
+        createdRequests: [],
+      });
 
     const result = await run({});
 
     expect(h.materialize).toHaveBeenCalledTimes(2);
-    expect(result).toEqual({ created: 5, requests: 1, overdue: 4 });
+    expect(result).toEqual({ created: 5, requests: 1, overdue: 4, warned: 2, mailRecipients: 2 });
   });
 });
