@@ -296,8 +296,17 @@ Modul `appointments`.
 - **Tagesgenaue Überfälligkeit (§ 108 (1) AO)**: ein heute fälliger Termin
   ist noch nicht überfällig — OVERDUE wird erst nach Ende des
   Fälligkeitstags gesetzt
-- Auto-Anforderung an Mandanten N Tage vor Fälligkeit (konfigurierbar),
-  auditiert als `tax_deadline.auto_request`
+- **Zweistufige Auto-Anforderung an Mandanten** (pro Mandant × Terminart
+  konfigurierbar: An/Aus, Versand N Tage vor Fälligkeit, Vorwarnung M Tage
+  davor): Stufe 1 warnt die HAUPTBEARBEITER des Mandanten intern vor
+  (`TAX_DEADLINE_REQUEST_PENDING`, Fallback ADMIN/PARTNER) — Opt-out-Modell,
+  auf der Gruppen-Seite lässt sich der Versand einzeln oder als Bulk stoppen
+  (aufhebbar; z. B. Unterlagen bereits in Papierform geliefert). Stufe 2
+  versendet frühestens einen Tageslauf nach der Vorwarnung die Anforderung
+  samt `request-opened`-Mail an alle aktiven Ansprechpartner + n8n-Event
+  (Parität zum manuellen Anlegen), auditiert als `tax_deadline.auto_request`
+  bzw. `tax_deadline.request_suppressed`/`_unsuppressed`. Nach Ende des
+  Fälligkeitstags wird nie mehr automatisch angefordert
 - **Gemeinsamer Materialisierer-Kern** in `@taxtronik/tax`
   (`materializeTenantTaxDeadlines`): Web-App und Worker nutzen exakt
   dieselbe Logik (per Dependency-Injection, transaktional) — keine
@@ -903,7 +912,9 @@ Kanzlei nicht.
   **Client-Reminder-Due** (Wiedervorlage fällig),
   **Pending-Binder-Overdue** (Pendelordner überfällig),
   **Appointment-Requested** (neue Mandanten-Terminanfrage),
-  **Appointment-Decided** (Anfrage angenommen/abgelehnt)
+  **Appointment-Decided** (Anfrage angenommen/abgelehnt),
+  **Tax-Deadline-Request-Pending** (Vorwarnung vor dem automatischen
+  Versand einer Steuertermin-Anforderung, mit Absprung zur Stopp-Aktion)
 
 ## DSGVO
 
@@ -1197,7 +1208,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - BullMQ-Worker für Hintergrund-Jobs (17 Worker):
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
-  `tax-deadline-materialize`, `audit-rotate`, `tax-news-fetch`
+  `tax-deadline-materialize` (07:30 Berlin, materialisiert Termine, fährt
+  die zweistufige Auto-Anforderung inkl. Mandanten-Mail nach Commit),
+  `audit-rotate`, `tax-news-fetch`
   (05:30 UTC, holt alle aktiven RSS-Feeds aus `rss_feed`),
   `reminders-daily` (06:45 UTC, schickt Notifications für
   Einspruchsfristen, fällige Wiedervorlagen, überfällige Pendelordner),

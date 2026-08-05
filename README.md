@@ -389,7 +389,8 @@ packages/
   db/          Prisma-Schema, Migrationen, RLS/Tenant-Kontext
   evidence/    Audit-Hash-Chain, Archive, Verify-CLI
   http-utils/  Safe Fetch, SSRF-Guards, Netzwerk-Utilities
-  n8n-shared/  Eventkatalog und HMAC-Signatur für App/Worker -> n8n
+  mail/        Template-Mail-Versand (SMTP, Dispatch, Safe-Markdown) für Web + Worker
+  n8n-shared/  Eventkatalog, HMAC-Signatur und Outbox-Enqueue-Kern für App/Worker -> n8n
   risk-layer/  Zustandsloser §4-Engine-Client (Risk Analysis)
   rss/         RSS-Fetching und Parser
   storage/     S3/SeaweedFS-Client, Retention, Scan-Pipeline

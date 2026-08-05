@@ -217,7 +217,10 @@ sind in Schema-Version 1 insbesondere diese `payload`-Schlüssel vorgesehen:
 - `client.created`: `tenantId`, `clientId`
 - `client.handover.ready`: `tenantId`, `clientId`, `handoverId`, `label`
 - `document.uploaded`: `tenantId`, `documentId`, `clientId`, `classification`, `isGobd`
-- `request.opened`: `tenantId`, `requestId`, `clientId`, `priority`
+- `request.opened`: `tenantId`, `requestId`, `clientId`, `priority` —
+  wird auch bei automatisch erzeugten Anforderungen aus Steuerterminen
+  emittiert (täglicher `tax-deadline-materialize`-Lauf), nicht nur beim
+  manuellen Anlegen
 - `request.responded`: `tenantId`, `requestId`, `by`
 - `request.closed`: `tenantId`, `requestId`
 - `phone_note.created`: `tenantId`, `noteId`, `forwardToStaff`, `subject`

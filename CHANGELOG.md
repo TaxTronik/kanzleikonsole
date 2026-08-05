@@ -18,6 +18,23 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- Steuertermine: Die Auto-Anforderung an Mandanten läuft jetzt zweistufig.
+  Zuständige (HAUPTBEARBEITER, Fallback ADMIN/PARTNER) werden konfigurierbar
+  viele Tage vor dem Versand intern vorgewarnt und können den Versand pro
+  Termin oder als Bulk stoppen (aufhebbar) — etwa wenn der Mandant bereits in
+  Papierform geliefert hat; sonst geht die Anforderung automatisch raus.
+  Beim Versand erhält der Mandant nun wie beim manuellen Anlegen die
+  `request-opened`-E-Mail an alle aktiven Ansprechpartner samt n8n-Event —
+  vorher entstand die Auto-Anforderung still im Portal. Die Konfiguration pro
+  Mandant trennt An/Aus (vormals implizit „0 Tage") von den Versand- und
+  Vorwarn-Tagen; nach Ende des Fälligkeitstags wird nie mehr automatisch
+  angefordert (vorher theoretisch möglich). Hinweise fürs Deploy: Bestands-
+  Configs mit 0 Tagen werden auf „Aus" migriert; für offene Termine, deren
+  Versandfenster bereits läuft, geht nach dem Deploy einmalig eine
+  Vorwarnungs-Welle an die Zuständigen raus. Technisch dafür extrahiert:
+  Mail-Stack als `@taxtronik/mail` und n8n-Outbox-Enqueue-Kern in
+  `@taxtronik/n8n-shared`, damit auch der Worker mandantengerichtete Mails
+  und Events versendet (Web-Pfade als Re-Exports unverändert).
 - **[Scope]** Audit-Protokollierung: Ein fehlgeschlagener Lauf des
   Verifikations-Jobs setzte den Monotonie-Anker (`lastAuditId`) auf `null`
   zurück. Die Erkennung gelöschter Ketten-Spitzen (Tail-Truncation) blieb
