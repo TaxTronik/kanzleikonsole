@@ -19,6 +19,7 @@
     "@taxtronik/db": "workspace:*",
     "@taxtronik/evidence": "workspace:*",
     "@taxtronik/http-utils": "workspace:*",
+    "@taxtronik/mail": "workspace:*",
     "@taxtronik/n8n-shared": "workspace:*",
     "@taxtronik/risk-layer": "workspace:*",
     "@taxtronik/rss": "workspace:*",

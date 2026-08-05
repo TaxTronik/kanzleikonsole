@@ -105,10 +105,10 @@ importers:
         version: link:../../packages/http-utils
       '@taxtronik/mail':
         specifier: workspace:*
-        version: file:packages/mail(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: file:packages/mail(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
       '@taxtronik/n8n-shared':
         specifier: workspace:*
-        version: link:../../packages/n8n-shared
+        version: file:packages/n8n-shared(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
       '@taxtronik/risk-layer':
         specifier: workspace:*
         version: link:../../packages/risk-layer
@@ -284,6 +284,9 @@ importers:
       '@taxtronik/http-utils':
         specifier: workspace:*
         version: link:../../packages/http-utils
+      '@taxtronik/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
       '@taxtronik/n8n-shared':
         specifier: workspace:*
         version: link:../../packages/n8n-shared
@@ -513,6 +516,13 @@ importers:
         version: 4.1.7(@types/node@24.13.2)(vite@8.0.16(@types/node@24.13.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/n8n-shared:
+    dependencies:
+      '@prisma/client':
+        specifier: ^7.8.0
+        version: 7.8.0(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+      '@taxtronik/config':
+        specifier: workspace:*
+        version: link:../config
     devDependencies:
       '@types/node':
         specifier: 24.13.2
@@ -5210,19 +5220,25 @@ snapshots:
     dependencies:
       undici: 8.5.0
 
-  '@taxtronik/mail@file:packages/mail(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
+  '@taxtronik/mail@file:packages/mail(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@taxtronik/config': file:packages/config
       '@taxtronik/crypto': file:packages/crypto
       '@taxtronik/db': file:packages/db(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/n8n-shared': file:packages/n8n-shared
+      '@taxtronik/n8n-shared': file:packages/n8n-shared(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
       nodemailer: 9.0.1
     transitivePeerDependencies:
       - pg-native
       - prisma
       - typescript
 
-  '@taxtronik/n8n-shared@file:packages/n8n-shared': {}
+  '@taxtronik/n8n-shared@file:packages/n8n-shared(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
+    dependencies:
+      '@prisma/client': 7.8.0(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+      '@taxtronik/config': file:packages/config
+    transitivePeerDependencies:
+      - prisma
+      - typescript
 
   '@taxtronik/storage@file:packages/storage(prisma@7.8.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
