@@ -18,6 +18,9 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- Benachrichtigungen: Das Öffnen über das Dashboard-Widget oder die
+  Benachrichtigungsseite markiert den Eintrag nun wie der Navbar-Klick als
+  gelesen und synchronisiert den Navbar-Zähler sofort.
 - Dashboard: „Mein Tag“ bündelt jetzt zugewiesene Workflow-Schritte,
   Wiedervorlagen, anstehende Kalendertermine und weitergeleitete Telefonzettel.
   Mitarbeiter können außerdem ihre eigenen aktiven RSS-Feeds manuell

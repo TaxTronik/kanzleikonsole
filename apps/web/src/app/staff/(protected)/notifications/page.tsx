@@ -1,10 +1,10 @@
-﻿import Link from 'next/link';
-import { Bell, Check } from 'lucide-react';
+﻿import { Bell, Check } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { markNotificationReadAction, markAllNotificationsReadAction } from './actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { NOTIFICATION_KIND_LABELS } from '@/lib/domain-labels';
+import { NotificationOpenLink } from '@/components/notification-open-link';
 
 export default async function NotificationsPage() {
   const session = await requireStaffPage();
@@ -73,9 +73,14 @@ export default async function NotificationsPage() {
                       {n.href && (
                         <>
                           {' · '}
-                          <Link href={n.href} className="text-brand-700 hover:underline">
+                          <NotificationOpenLink
+                            id={n.id}
+                            href={n.href}
+                            unread={!n.readAt}
+                            className="text-brand-700 hover:underline"
+                          >
                             öffnen →
-                          </Link>
+                          </NotificationOpenLink>
                         </>
                       )}
                     </p>

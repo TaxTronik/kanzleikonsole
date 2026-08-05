@@ -22,6 +22,7 @@ import { berlinTodayUtcMidnight, fmtDateShort, fmtDateTimeShort, fmtTimeShort } 
 import { NOTIFICATION_KIND_LABELS } from '@/lib/domain-labels';
 import { resourceLabel } from '@/server/audit/labels';
 import { loadMyDayEntries, type MyDayEntry } from '@/server/dashboard/my-day';
+import { NotificationOpenLink } from '@/components/notification-open-link';
 import { BookmarkRemoveButton } from '../bookmark-remove-button';
 import { MyDayToggle } from '../my-day-toggle';
 import { NotesEditor } from '../notes-editor';
@@ -120,8 +121,10 @@ export async function LatestNotifications({ tx, staffId }: RenderCtx): Promise<R
           />
           <div className="flex-1 min-w-0">
             {n.href ? (
-              <Link
+              <NotificationOpenLink
+                id={n.id}
                 href={n.href}
+                unread={!n.readAt}
                 className="block hover:bg-gray-50 -ml-5 pl-5 -mr-2 pr-2 py-0.5 rounded"
               >
                 <p
@@ -136,7 +139,7 @@ export async function LatestNotifications({ tx, staffId }: RenderCtx): Promise<R
                 <p className="text-[10px] text-disabled mt-0.5">
                   {NOTIFICATION_KIND_LABELS[n.kind] ?? n.kind} · {fmtDateTimeShort(n.createdAt)}
                 </p>
-              </Link>
+              </NotificationOpenLink>
             ) : (
               <div>
                 <p

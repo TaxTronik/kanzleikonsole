@@ -15,6 +15,7 @@
 // =============================================================================
 
 export const NOTIFICATIONS_GREW_EVENT = 'taxtronik:notifications-grew';
+export const NOTIFICATIONS_CHANGED_EVENT = 'taxtronik:notifications-changed';
 
 export interface NotificationSignal {
   /** Mandanten, die von den neuen Benachrichtigungen betroffen sind. */
@@ -60,6 +61,19 @@ export function buildNotificationSignal(
 export function emitNotificationsGrew(signal: NotificationSignal): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(NOTIFICATIONS_GREW_EVENT, { detail: signal }));
+}
+
+/** Meldet eine lokale Gelesen-Änderung, damit die Navbar sofort neu zählt. */
+export function emitNotificationsChanged(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED_EVENT));
+}
+
+/** Abonniert lokale Änderungen am Gelesen-Status. */
+export function onNotificationsChanged(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, handler);
 }
 
 /**

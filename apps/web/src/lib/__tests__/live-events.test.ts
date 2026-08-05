@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildNotificationSignal,
   clientIdFromHref,
+  emitNotificationsChanged,
   emitNotificationsGrew,
+  onNotificationsChanged,
   onNotificationsGrew,
 } from '../live-events';
 
@@ -139,5 +141,19 @@ describe('onNotificationsGrew', () => {
     onNotificationsGrew(h, { clientId: A.toUpperCase() });
     emitNotificationsGrew({ clientIds: [A], kinds: [] });
     expect(h).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('onNotificationsChanged', () => {
+  it('meldet lokale Gelesen-Änderungen und lässt sich abbestellen', () => {
+    const handler = vi.fn();
+    const unsubscribe = onNotificationsChanged(handler);
+
+    emitNotificationsChanged();
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    emitNotificationsChanged();
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

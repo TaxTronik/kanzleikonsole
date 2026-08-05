@@ -15,7 +15,11 @@ import {
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
 import { isAutomaticRefreshEnabled, isUserTyping } from './auto-refresh';
-import { buildNotificationSignal, emitNotificationsGrew } from '@/lib/live-events';
+import {
+  buildNotificationSignal,
+  emitNotificationsGrew,
+  onNotificationsChanged,
+} from '@/lib/live-events';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -100,6 +104,13 @@ export function NotificationsBell({ initialUnread }: Props) {
     setSoundOn(isNotificationSoundEnabled());
   }, []);
 
+  // Server-Refreshes (z. B. Formular auf /staff/notifications) liefern einen
+  // neuen Initialwert. Der Client-State darf dann nicht am Mount-Wert kleben.
+  useEffect(() => {
+    lastUnreadRef.current = initialUnread;
+    setUnread(initialUnread);
+  }, [initialUnread]);
+
   function toggleSound() {
     const next = !soundOn;
     setSoundOn(next);
@@ -143,6 +154,8 @@ export function NotificationsBell({ initialUnread }: Props) {
       }
     })();
   }, [onUnreadGrew]);
+
+  useEffect(() => onNotificationsChanged(refreshRecent), [refreshRecent]);
 
   useEffect(() => {
     function onVisibility() {
