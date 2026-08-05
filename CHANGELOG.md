@@ -18,6 +18,10 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- Toolchain: pnpm ist auf 11.20.0 und Prisma ORM samt Client und PostgreSQL-
+  Adapter auf 7.9.1 aktualisiert. Der neue Prisma-Tooling-Graph entfernt dabei
+  den verwundbaren transitiven Hono-Pfad; `fast-uri` ist im verbleibenden
+  Prisma-Pfad auf den gepatchten Stand 3.1.5 angehoben.
 - Steuertermine: Die Auto-Anforderung an Mandanten läuft jetzt zweistufig.
   Zuständige (HAUPTBEARBEITER, Fallback ADMIN/PARTNER) werden konfigurierbar
   viele Tage vor dem Versand intern vorgewarnt und können den Versand pro

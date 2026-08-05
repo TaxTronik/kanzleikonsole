@@ -12,7 +12,7 @@
 FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 
 # Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
 COPY . .

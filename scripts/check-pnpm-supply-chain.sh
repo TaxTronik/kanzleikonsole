@@ -29,8 +29,8 @@ require_line() {
   fi
 }
 
-require_line package.json '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@11\.8\.0"' \
-  "Root packageManager muss auf pnpm@11.8.0 gepinnt sein."
+require_line package.json '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@11\.20\.0"' \
+  "Root packageManager muss auf pnpm@11.20.0 gepinnt sein."
 
 require_line pnpm-workspace.yaml '^minimumReleaseAge:[[:space:]]*10080([[:space:]]*#.*)?$' \
   "minimumReleaseAge muss auf 10080 Minuten (7 Tage) stehen."
@@ -70,6 +70,7 @@ awk '
 
 cat > "$TMP_DIR/min-age-exclude-expected" <<'EOF'
 brace-expansion@1.1.17
+fast-uri@3.1.5
 nodemailer@9.0.1
 undici@8.5.0
 EOF
