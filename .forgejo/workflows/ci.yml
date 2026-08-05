@@ -1216,10 +1216,22 @@ jobs:
     timeout-minutes: 15
     env:
       # Nur für die Compose-Interpolation der Basis-Datei (postgres/n8n werden
-      # NICHT gestartet — Dummies genügen). S3_ENDPOINT/CLAMAV_* kommen aus dem
-      # globalen env-Block (localhost:8333 bzw. Config-Default localhost:3310).
+      # NICHT gestartet — Dummies genügen).
       POSTGRES_PASSWORD: ci-postgres-pw
       TAXTRONIK_APP_PASSWORD: ci-app-pw
+      # Eigene Host-Ports: der Storage-Integrationsjob desselben Laufs bindet
+      # 8333/9333 (docker run) und 3310 (Service-Container) auf demselben
+      # Runner-Host — mit den Default-Ports kollidierte das je nach Job-Timing
+      # („bind: address already in use"). Die Compose-Interpolation verlegt nur
+      # die HOST-Seite; im Container-Netz bleibt alles auf den Prod-Ports.
+      SEAWEED_S3_PORT: '18333'
+      SEAWEED_MASTER_PORT: '19333'
+      SEAWEED_FILER_PORT: '18888'
+      CLAMAV_HOST_PORT: '13310'
+      # Der Readiness-Check läuft auf dem Host und muss dieselben Ports treffen
+      # (Job-env überschreibt den globalen S3_ENDPOINT-Block).
+      S3_ENDPOINT: http://localhost:18333
+      CLAMAV_PORT: '13310'
       # CI-Override backt clamd.conf/s3.json/init-storage.sh in kurzlebige Images
       # (der Runner-Daemon sieht das Job-Workspace nicht → Einzeldatei-Binds von
       # dort scheitern). Siehe Kopf von docker-compose.ci.yml.

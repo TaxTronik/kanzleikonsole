@@ -18,6 +18,11 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- CI und Dependency-Audit: Die n8n-Outbox-Routing-Tests sind unabhängig vom
+  globalen Delivery-Modus und von Legacy-ENV-Werten. Gepatchte Pins für
+  `undici`, `postcss` und beide benötigten `brace-expansion`-Zweige schließen
+  die neu gemeldeten Advisories. Der Deploy-Readiness-Job verwendet eigene
+  Host-Ports für SeaweedFS und ClamAV, damit parallele Jobs nicht kollidieren.
 - Toolchain: pnpm ist auf 11.20.0 und Prisma ORM samt Client und PostgreSQL-
   Adapter auf 7.9.1 aktualisiert. Der neue Prisma-Tooling-Graph entfernt dabei
   den verwundbaren transitiven Hono-Pfad; `fast-uri` ist im verbleibenden

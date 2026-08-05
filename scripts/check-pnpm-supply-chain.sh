@@ -69,10 +69,11 @@ awk '
 ' pnpm-workspace.yaml | sort > "$TMP_DIR/min-age-exclude-actual"
 
 cat > "$TMP_DIR/min-age-exclude-expected" <<'EOF'
-brace-expansion@1.1.17
+brace-expansion@1.1.18 || 5.0.9
 fast-uri@3.1.5
 nodemailer@9.0.1
-undici@8.5.0
+postcss@8.5.23
+undici@8.9.0
 EOF
 sort -o "$TMP_DIR/min-age-exclude-expected" "$TMP_DIR/min-age-exclude-expected"
 

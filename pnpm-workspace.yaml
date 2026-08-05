@@ -15,12 +15,12 @@ minimumReleaseAge: 10080 # 7 days
 minimumReleaseAgeExclude:
   # Version-scoped security hotfix exceptions; keep this list short.
   - nodemailer@9.0.1
-  - undici@8.5.0
+  - undici@8.9.0
   - fast-uri@3.1.5
-  # brace-expansion 1.1.17 ist der erste Backport im 1.x-Zweig fuer
-  # GHSA-mh99-v99m-4gvg (OOM-DoS) und noch keine 7 Tage alt. Nur ueber eslint
-  # erreichbar (dev), aber der Zweig hatte davor gar keinen Fix.
-  - brace-expansion@1.1.17
+  - postcss@8.5.23
+  # Beide von ESLint benoetigten Zweige muessen in EINER Regel stehen: pnpm
+  # wertet pro Paketname nur die erste passende Ausnahme aus.
+  - 'brace-expansion@1.1.18 || 5.0.9'
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
 trustLockfile: false
@@ -65,9 +65,9 @@ overrides:
   # ebenfalls nur ueber @prisma/dev.
   valibot: '^1.4.2'
   ioredis: '^5.11.0'
-  # postcss <=8.5.17 ist verwundbar (GHSA-r28c-9q8g-f849, Path Traversal beim
-  # Auto-Laden von sourceMappingURL).
-  postcss: '^8.5.20'
+  # postcss <=8.5.22 ist verwundbar; der exakte Pin verhindert, dass die
+  # Hotfix-Ausnahme unbemerkt auf spätere frische Releases ausgedehnt wird.
+  postcss: '8.5.23'
   # esbuild 0.28.0 is vulnerable (GHSA-gv7w-rqvm-qjhr); force the patched release.
   esbuild: '0.28.1'
   # vite <=8.0.15 is vulnerable (GHSA-fx2h-pf6j-xcff, GHSA-v6wh-96g9-6wx3).
@@ -84,11 +84,10 @@ overrides:
   fast-uri: '3.1.5'
   # sharp <0.35.0 erbt libvips-CVEs (GHSA-f88m-g3jw-g9cj); next fordert ^0.34.5.
   sharp: '^0.35.3'
-  # brace-expansion 1.x haengt nur noch an minimatch@3 unter eslint (dev).
-  # Zweig-genau pinnen: ein pauschaler 5.x-Force bricht minimatch 3/5, die
-  # `require('brace-expansion')` als Callable erwarten — 5.x exportiert ein
-  # Objekt. GHSA-3jxr-9vmj-r5cp ist damit geschlossen.
-  brace-expansion@1: '1.1.17'
+  # brace-expansion zweig-genau pinnen: minimatch@3 braucht die Callable-API
+  # aus 1.x, minimatch@10 die 5.x-API. Ein pauschaler 5.x-Force bricht ESLint.
+  brace-expansion@1: '1.1.18'
+  brace-expansion@5: '5.0.9'
 
 # pnpm 11: Workspace-Pakete in dependents per echtes Link-Hardlink statt
 # Symlink injizieren. Der Wert steht im Lockfile; muss hier gespiegelt werden,

@@ -70,7 +70,7 @@ describe('enqueueN8nEvent routing', () => {
           id: 'endpoint-b',
           name: 'CRM',
           productionUrl: 'https://n8n.example/webhook/b',
-          testUrl: null,
+          testUrl: 'https://n8n.example/webhook-test/b',
         },
       },
     ]);
@@ -233,10 +233,14 @@ describe('enqueueN8nEvent routing', () => {
     expect(h.queueAdd).not.toHaveBeenCalled();
   });
 
-  it('verwendet ohne normalisierte Connection den Legacy-Base-URL-Pfad', async () => {
+  it('verwendet ohne normalisierte Connection die persistierte Legacy-Base-URL', async () => {
     h.tx.n8nConnection.findUnique.mockResolvedValue(null);
-    h.env.N8N_WEBHOOK_BASE_URL = 'https://n8n.example/webhook';
-    h.env.N8N_HMAC_SECRET = 'legacy-secret';
+    h.tx.tenantSetting.findUnique.mockResolvedValue({
+      value: {
+        webhookBaseUrl: 'https://n8n.example/hooks',
+        hmacSecret: 'legacy-secret',
+      },
+    });
 
     await enqueueN8nEvent('request.opened', { requestId: 'request-1' }, { tenantId: 'tenant-1' });
 
@@ -246,7 +250,7 @@ describe('enqueueN8nEvent routing', () => {
         outboxId: 'outbox-1',
         connectionIdSnapshot: null,
         endpointNameSnapshot: 'Legacy: request.opened',
-        targetUrl: 'https://n8n.example/webhook/request.opened',
+        targetUrl: 'https://n8n.example/hooks/request.opened',
       },
       select: { id: true },
     });

@@ -230,7 +230,9 @@ services:
       - SETGID
       - DAC_OVERRIDE
     ports:
-      - '127.0.0.1:3310:3310'
+      # Host-Port überschreibbar (CI: Deploy-Readiness-Job weicht Kollisionen
+      # mit parallel laufenden Jobs aus); die App spricht clamav:3310 intern.
+      - '127.0.0.1:${CLAMAV_HOST_PORT:-3310}:3310'
     volumes:
       - clamav_data:/var/lib/clamav
       # RF-14: Stock-Conf des Images limitiert INSTREAM auf 25 MB — die App
