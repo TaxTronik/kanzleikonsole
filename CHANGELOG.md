@@ -18,6 +18,11 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- Dashboard: „Mein Tag“ bündelt jetzt zugewiesene Workflow-Schritte,
+  Wiedervorlagen, anstehende Kalendertermine und weitergeleitete Telefonzettel.
+  Mitarbeiter können außerdem ihre eigenen aktiven RSS-Feeds manuell
+  aktualisieren; der Abruf bleibt auf den aktuellen Mandanten und Mitarbeiter
+  begrenzt.
 - CI und Dependency-Audit: Die n8n-Outbox-Routing-Tests sind unabhängig vom
   globalen Delivery-Modus und von Legacy-ENV-Werten. Gepatchte Pins für
   `undici`, `postcss` und beide benötigten `brace-expansion`-Zweige schließen

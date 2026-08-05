@@ -130,7 +130,7 @@ export const WIDGETS: WidgetDef[] = [
   {
     type: 'my_workflow_items',
     label: 'Mein Tag',
-    description: 'Offene Workflow-Schritte, die mir zugewiesen sind',
+    description: 'Meine offenen Aufgaben, Wiedervorlagen, Termine und Telefonzettel',
     size: 'half',
   },
   {

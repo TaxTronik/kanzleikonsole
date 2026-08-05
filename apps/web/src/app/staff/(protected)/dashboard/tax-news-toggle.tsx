@@ -4,13 +4,7 @@ import { useState, useTransition } from 'react';
 import { Bell, BellOff, RefreshCw } from 'lucide-react';
 import { toggleTaxNewsNotifyAction, triggerTaxNewsFetchAction } from './tax-news-actions';
 
-export function TaxNewsToggle({
-  enabled,
-  canTriggerFetch,
-}: {
-  enabled: boolean;
-  canTriggerFetch: boolean;
-}) {
+export function TaxNewsToggle({ enabled }: { enabled: boolean }) {
   const [on, setOn] = useState(enabled);
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -65,17 +59,16 @@ export function TaxNewsToggle({
           {error || info}
         </span>
       )}
-      {canTriggerFetch && (
-        <button
-          type="button"
-          onClick={refetch}
-          disabled={isPending}
-          className="text-disabled hover:text-primary p-1"
-          title="Feeds jetzt aktualisieren (bis zu 20 s)"
-        >
-          <RefreshCw className={'h-3.5 w-3.5 ' + (isPending ? 'animate-spin' : '')} />
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={refetch}
+        disabled={isPending}
+        className="text-disabled hover:text-primary p-1"
+        title="Meine Feeds jetzt aktualisieren (bis zu 20 s)"
+        aria-label="Meine RSS-Feeds jetzt aktualisieren"
+      >
+        <RefreshCw className={'h-3.5 w-3.5 ' + (isPending ? 'animate-spin' : '')} />
+      </button>
       <button
         type="button"
         onClick={toggle}

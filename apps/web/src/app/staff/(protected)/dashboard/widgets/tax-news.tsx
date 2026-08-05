@@ -32,8 +32,8 @@ function feedBadgeClass(color: string | null): string {
   }
 }
 
-export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<ReactNode> {
-  const [feeds, staff, bookmarks, lastFetchSetting] = await Promise.all([
+export async function TaxNews({ tx, staffId }: RenderCtx): Promise<ReactNode> {
+  const [feeds, staff, bookmarks, lastFetchSettings] = await Promise.all([
     tx.rssFeed.findMany({
       where: { staffId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -47,18 +47,24 @@ export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<Reac
       where: { staffId, resourceType: 'tax_news_item' },
       select: { resourceId: true },
     }),
-    // Vom Fetch-Lauf (Worker + Admin-Trigger) geschriebener Marker; RLS
-    // begrenzt auf den eigenen Tenant.
-    tx.tenantSetting.findFirst({
-      where: { key: 'tax-news.last-fetch-at' },
+    // Globaler Worker-Marker plus persönlicher manueller Refresh. RLS begrenzt
+    // beide auf den eigenen Tenant; der neuere gültige Zeitstempel gewinnt.
+    tx.tenantSetting.findMany({
+      where: {
+        key: { in: ['tax-news.last-fetch-at', `tax-news.last-fetch-at.${staffId}`] },
+      },
       select: { value: true },
     }),
   ]);
 
-  const lastFetchAt =
-    typeof lastFetchSetting?.value === 'string' && !Number.isNaN(Date.parse(lastFetchSetting.value))
-      ? new Date(lastFetchSetting.value)
-      : null;
+  const lastFetchAt = lastFetchSettings
+    .map((setting: { value: unknown }) =>
+      typeof setting.value === 'string' && !Number.isNaN(Date.parse(setting.value))
+        ? new Date(setting.value)
+        : null,
+    )
+    .filter((value: Date | null): value is Date => value !== null)
+    .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0];
 
   const activeUrls = feeds
     .filter((f: { active: boolean }) => f.active)
@@ -109,10 +115,7 @@ export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<Reac
               active: f.active,
             }))}
           />
-          <TaxNewsToggle
-            enabled={Boolean(staff?.taxNewsNotify)}
-            canTriggerFetch={Boolean(isAdmin)}
-          />
+          <TaxNewsToggle enabled={Boolean(staff?.taxNewsNotify)} />
         </div>
       </div>
       {activeUrls.length === 0 ? (
@@ -122,8 +125,8 @@ export async function TaxNews({ tx, staffId, isAdmin }: RenderCtx): Promise<Reac
         </div>
       ) : items.length === 0 ? (
         <div className="px-5 py-8 text-sm text-disabled text-center flex-1">
-          Noch keine Einträge. Der Worker zieht die Feeds täglich morgens; Admins können über das
-          Glocken-Icon manuell aktualisieren.
+          Noch keine Einträge. Der Worker zieht die Feeds regelmäßig; über das Aktualisieren-Symbol
+          können Sie Ihre Feeds sofort neu laden.
         </div>
       ) : (
         <ul className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0">

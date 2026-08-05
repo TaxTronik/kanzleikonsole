@@ -1,6 +1,7 @@
 // =============================================================================
-// RSS-Fetcher (Admin-Trigger) — zieht alle aktiven Feeds aus rss_feed,
-// dedupliziert pro URL und persistiert neue Einträge in tax_news_item.
+// RSS-Fetcher (manueller Dashboard-Trigger) — zieht die aktiven Feeds im
+// angeforderten Scope, dedupliziert pro URL und persistiert neue Einträge in
+// tax_news_item. Der globale automatische Lauf lebt separat im Worker.
 //
 // Konsolidierung Round 12: Parser + Body-Cap leben in @taxtronik/rss.
 // Diese Datei ist nur noch der DB-Orchestrator.
@@ -11,7 +12,12 @@ import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
 
 export type FetchedItem = FetchedRssItem;
 
-export async function fetchAndPersistTaxNews(): Promise<{
+export interface TaxNewsFetchScope {
+  tenantId: string;
+  staffId: string;
+}
+
+export async function fetchAndPersistTaxNews(scope: TaxNewsFetchScope): Promise<{
   feeds: number;
   fetched: number;
   inserted: number;
@@ -25,7 +31,11 @@ export async function fetchAndPersistTaxNews(): Promise<{
   errors: string[];
 }> {
   const activeFeeds = await prismaOwner.rssFeed.findMany({
-    where: { active: true },
+    where: {
+      active: true,
+      tenantId: scope.tenantId,
+      staffId: scope.staffId,
+    },
     select: { url: true },
     distinct: ['url'],
   });
@@ -74,19 +84,19 @@ export async function fetchAndPersistTaxNews(): Promise<{
     }
   }
 
-  // Lauf-Marker pro Tenant mit aktiven Feeds — das RSS-Widget zeigt daraus
-  // "aktualisiert am" (gleiches Muster wie der Worker-Job tax-news-fetch).
-  const feedTenants = await prismaOwner.rssFeed.findMany({
-    where: { active: true },
-    select: { tenantId: true },
-    distinct: ['tenantId'],
-  });
+  // Der Worker schreibt den globalen Tenant-Marker. Ein manueller Abruf lädt
+  // dagegen nur die Feeds EINER Person und bekommt deshalb einen eigenen
+  // Marker — sonst sähen Kollegen ihre abweichenden Feeds fälschlich als
+  // frisch aktualisiert.
+  const markerTargets = [
+    { tenantId: scope.tenantId, key: `tax-news.last-fetch-at.${scope.staffId}` },
+  ];
   const lastFetchAt = new Date().toISOString();
-  for (const { tenantId } of feedTenants) {
+  for (const { tenantId, key } of markerTargets) {
     await prismaOwner.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId, key: 'tax-news.last-fetch-at' } },
+      where: { tenantId_key: { tenantId, key } },
       update: { value: lastFetchAt },
-      create: { tenantId, key: 'tax-news.last-fetch-at', value: lastFetchAt },
+      create: { tenantId, key, value: lastFetchAt },
     });
   }
 

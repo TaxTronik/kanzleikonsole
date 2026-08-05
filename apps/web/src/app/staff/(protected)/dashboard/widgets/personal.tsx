@@ -3,15 +3,25 @@ import type { ReactNode } from 'react';
 // Personal-Widgets — pro-Mitarbeiter, persönlich gebunden.
 //
 // Bookmarks (gemerkte Items), PersonalNotes (Memo-Pad),
-// MyDay (offene Workflow-Schritte mir zugewiesen), MyWorkflows (laufende
-// Instanzen die ich verfolge), MyReminders (offene Wiedervorlagen).
+// MyDay (persönliche Aufgaben und Termine), MyWorkflows (laufende Instanzen
+// die ich verfolge), MyReminders (offene Wiedervorlagen).
 // =============================================================================
 
 import Link from 'next/link';
-import { Bell, BookmarkCheck, CalendarClock, ListChecks, StickyNote, Workflow } from 'lucide-react';
-import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import {
+  Bell,
+  BookmarkCheck,
+  CalendarClock,
+  CalendarDays,
+  ListChecks,
+  Phone,
+  StickyNote,
+  Workflow,
+} from 'lucide-react';
+import { berlinTodayUtcMidnight, fmtDateShort, fmtDateTimeShort, fmtTimeShort } from '@/lib/fmt';
 import { NOTIFICATION_KIND_LABELS } from '@/lib/domain-labels';
 import { resourceLabel } from '@/server/audit/labels';
+import { loadMyDayEntries, type MyDayEntry } from '@/server/dashboard/my-day';
 import { BookmarkRemoveButton } from '../bookmark-remove-button';
 import { MyDayToggle } from '../my-day-toggle';
 import { NotesEditor } from '../notes-editor';
@@ -175,68 +185,85 @@ export async function PersonalNotes({ tx, staffId }: RenderCtx): Promise<ReactNo
   );
 }
 
-// --- MyDay (offene Workflow-Schritte) ----------------------------------------
+// --- MyDay (persönliche Aufgaben und Termine) --------------------------------
 
 export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promise<ReactNode> {
-  const items = await tx.workflowItem.findMany({
-    where: {
-      assigneeStaffId: staffId,
-      doneAt: null,
-      instance: { status: 'ACTIVE', ...notDeniedClient(deniedClientIds) },
-    },
-    orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
-    take: 20,
-    select: {
-      id: true,
-      title: true,
-      dueDate: true,
-      instance: {
-        select: { id: true, clientId: true, name: true, client: { select: { name: true } } },
-      },
-    },
-  });
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const items = await loadMyDayEntries(tx, staffId, deniedClientIds);
+  const today = berlinTodayUtcMidnight();
+
+  function leading(entry: MyDayEntry): ReactNode {
+    if (entry.kind === 'workflow') return <MyDayToggle id={entry.id} />;
+    const Icon =
+      entry.kind === 'reminder'
+        ? CalendarClock
+        : entry.kind === 'appointment'
+          ? CalendarDays
+          : Phone;
+    return (
+      <span className="mt-0.5 w-5 h-5 rounded border border-default flex items-center justify-center shrink-0">
+        <Icon className="h-3 w-3 text-muted" />
+      </span>
+    );
+  }
+
+  function timing(entry: MyDayEntry): ReactNode {
+    if (entry.kind === 'appointment') {
+      return (
+        <p className="text-xs text-muted">
+          {fmtDateShort(entry.startsAt)} · {fmtTimeShort(entry.startsAt)}–
+          {fmtTimeShort(entry.endsAt)}
+        </p>
+      );
+    }
+    if (entry.kind === 'phone-note') {
+      return <p className="text-xs text-muted">eingegangen {fmtDateTimeShort(entry.receivedAt)}</p>;
+    }
+    if (!entry.dueAt) return <p className="text-xs text-muted">ohne Fälligkeit</p>;
+    const overdue = entry.dueAt.getTime() < today.getTime();
+    return (
+      <p className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}>
+        fällig {fmtDateShort(entry.dueAt)}
+        {overdue && ' · überfällig'}
+      </p>
+    );
+  }
+
+  function kindLabel(kind: MyDayEntry['kind']): string {
+    switch (kind) {
+      case 'workflow':
+        return 'Workflow';
+      case 'reminder':
+        return 'Wiedervorlage';
+      case 'appointment':
+        return 'Termin';
+      case 'phone-note':
+        return 'Telefonzettel';
+    }
+  }
 
   return (
     <ListShell
       icon={ListChecks}
       title="Mein Tag"
       isEmpty={items.length === 0}
-      emptyText="Keine offenen Workflow-Schritte für Sie."
+      emptyText="Keine offenen Aufgaben oder anstehenden Termine für Sie."
     >
-      {items.map(
-        (it: {
-          id: string;
-          title: string;
-          dueDate: Date | null;
-          instance: { id: string; clientId: string; name: string; client: { name: string } };
-        }) => {
-          const overdue = it.dueDate && it.dueDate.getTime() < today.getTime();
-          return (
-            <li key={it.id} className="px-5 py-2.5 flex items-start gap-3">
-              <MyDayToggle id={it.id} />
-              <Link
-                href={`/staff/clients/${it.instance.clientId}/workflows`}
-                className="flex-1 min-w-0 block hover:bg-gray-50 -my-1 py-1 -mr-2 pr-2 rounded"
-              >
-                <p className="item-title">{it.title}</p>
-                <p className="text-xs text-muted truncate">
-                  {it.instance.client.name} · {it.instance.name}
-                </p>
-                {it.dueDate && (
-                  <p
-                    className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}
-                  >
-                    fällig {fmtDateShort(it.dueDate)}
-                    {overdue && ' · überfällig'}
-                  </p>
-                )}
-              </Link>
-            </li>
-          );
-        },
-      )}
+      {items.map((item) => (
+        <li key={`${item.kind}-${item.id}`} className="px-5 py-2.5 flex items-start gap-3">
+          {leading(item)}
+          <Link
+            href={item.href}
+            className="flex-1 min-w-0 block hover:bg-gray-50 -my-1 py-1 -mr-2 pr-2 rounded"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="item-title">{item.title}</p>
+              <span className="text-[10px] text-disabled shrink-0">{kindLabel(item.kind)}</span>
+            </div>
+            {item.context && <p className="text-xs text-muted truncate">{item.context}</p>}
+            {timing(item)}
+          </Link>
+        </li>
+      ))}
     </ListShell>
   );
 }
@@ -346,8 +373,7 @@ export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): 
     take: 20,
     include: { client: { select: { id: true, name: true } } },
   });
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = berlinTodayUtcMidnight();
 
   return (
     <ListShell

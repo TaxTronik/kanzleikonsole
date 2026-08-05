@@ -38,18 +38,18 @@ export async function toggleTaxNewsNotifyAction(input: {
   );
 }
 
-/**
- * Admin/Partner-only: zieht JETZT die RSS-Feeds (für manuelles Testen).
- * Im Produktivbetrieb läuft das täglich automatisch via Worker.
- */
+/** Zieht die eigenen aktiven RSS-Feeds des angemeldeten Mitarbeiters. */
 export async function triggerTaxNewsFetchAction(): Promise<
   ActionResult & { inserted?: number; fetched?: number; errors?: string[] }
 > {
-  const g = await staffActionGuard({ requireAdmin: true });
+  const g = await staffActionGuard();
   if (!g.ok) return g;
   try {
     const mod = await import('@/server/tax-news/fetcher');
-    const result = await mod.fetchAndPersistTaxNews();
+    const result = await mod.fetchAndPersistTaxNews({
+      tenantId: g.tenantId,
+      staffId: g.staffId,
+    });
     revalidatePath('/staff/dashboard');
     return {
       ok: true,
