@@ -126,6 +126,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'tax_schedule.update': 'Steuertermin-Konfig geändert (Fristen)',
   'tax_schedule.deactivate': 'Steuertermin-Konfig deaktiviert',
   'tax_deadline.auto_request': 'Auto-Anforderung erzeugt',
+  'tax_deadline.request_suppressed': 'Auto-Anforderung gestoppt',
+  'tax_deadline.request_unsuppressed': 'Auto-Anforderungs-Stopp aufgehoben',
   'tax_deadline.complete': 'Steuertermin erledigt',
   'tax_notice.create': 'Bescheid erfasst',
   'elster.kontoabfrage': 'ELSTER-Kontoabfrage durchgeführt',

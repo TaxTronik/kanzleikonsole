@@ -70,7 +70,7 @@ export const INVOICE_STATUS_LABELS: Readonly<Record<string, string>> = {
 
 export const TAX_DEADLINE_STATUS_LABELS: Readonly<Record<string, string>> = {
   PLANNED: 'Geplant',
-  REMINDED: 'Erinnerung versendet',
+  REMINDED: 'Anforderung versendet',
   IN_PROGRESS: 'In Bearbeitung',
   SUBMITTED: 'Übermittelt',
   DONE: 'Erledigt',
