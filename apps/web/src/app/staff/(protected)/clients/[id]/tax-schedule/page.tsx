@@ -48,7 +48,7 @@ export default async function ClientTaxSchedulePage({
   }));
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-8 max-w-6xl">
       <Link href={`/staff/clients/${clientId}`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>

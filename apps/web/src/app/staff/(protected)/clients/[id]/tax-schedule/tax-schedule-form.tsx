@@ -62,35 +62,35 @@ export function TaxScheduleForm({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-raised border-b border-default">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
                 Aktiv
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
                 Termin
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
                 Dauerfrist
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
+                className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="Beratene Erklärungsfrist § 149 Abs. 3 AO — Ende Februar des zweiten Folgejahres"
               >
                 Beraten (§ 149 (3))
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
+                className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="Automatische Unterlagen-Anforderung an den Mandanten (per Portal + E-Mail)"
               >
                 Auto-Anforderung
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
+                className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="So viele Tage vor der Fälligkeit wird die Anforderung an den Mandanten versendet."
               >
                 Versand (Tage)
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
+                className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="So viele Tage vor dem Versand werden die Zuständigen intern vorgewarnt und können stoppen. 0 = ohne Vorwarnung sofort am Versandtag."
               >
                 Vorwarnung (Tage)
@@ -148,7 +148,7 @@ function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfig
 
   return (
     <tr>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <input
           type="checkbox"
           name={`active.${kind}`}
@@ -156,10 +156,10 @@ function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfig
           className="rounded border-strong text-brand-600"
         />
       </td>
-      <td className="px-4 py-3 font-medium text-primary whitespace-nowrap">
+      <td className="px-3 py-3 font-medium text-primary whitespace-nowrap">
         {SCHEDULE_LABELS[kind]}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         {usesDauerfrist ? (
           <input
             type="checkbox"
@@ -171,7 +171,7 @@ function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfig
           <span className="text-disabled">—</span>
         )}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         {ADVISED_KINDS.has(kind) ? (
           <input
             type="checkbox"
@@ -183,7 +183,7 @@ function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfig
           <span className="text-disabled">—</span>
         )}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <input
           type="checkbox"
           name={`autoRequest.${kind}`}
@@ -192,7 +192,7 @@ function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfig
           className="rounded border-strong text-brand-600"
         />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <input
           type="number"
           name={`reminder.${kind}`}
@@ -203,7 +203,7 @@ function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfig
           className="input w-20 text-center disabled:opacity-40"
         />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <input
           type="number"
           name={`lead.${kind}`}
