@@ -56,42 +56,44 @@ export function TaxScheduleForm({
   return (
     <form action={formAction} className="space-y-3">
       <input type="hidden" name="clientId" value={clientId} />
-      <div className="card overflow-hidden">
+      {/* overflow-x-auto statt -hidden: die 7 Spalten sollen auf schmalen
+          Viewports scrollen, nicht abgeschnitten werden. */}
+      <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-raised border-b border-default">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
                 Aktiv
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
                 Termin
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap">
                 Dauerfrist
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="Beratene Erklärungsfrist § 149 Abs. 3 AO — Ende Februar des zweiten Folgejahres"
               >
                 Beraten (§ 149 (3))
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="Automatische Unterlagen-Anforderung an den Mandanten (per Portal + E-Mail)"
               >
                 Auto-Anforderung
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="So viele Tage vor der Fälligkeit wird die Anforderung an den Mandanten versendet."
               >
-                Versand (Tage vor Fälligkeit)
+                Versand (Tage)
               </th>
               <th
-                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
                 title="So viele Tage vor dem Versand werden die Zuständigen intern vorgewarnt und können stoppen. 0 = ohne Vorwarnung sofort am Versandtag."
               >
-                Vorwarnung (Tage davor)
+                Vorwarnung (Tage)
               </th>
             </tr>
           </thead>
@@ -154,7 +156,9 @@ function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfig
           className="rounded border-strong text-brand-600"
         />
       </td>
-      <td className="px-4 py-3 font-medium text-primary">{SCHEDULE_LABELS[kind]}</td>
+      <td className="px-4 py-3 font-medium text-primary whitespace-nowrap">
+        {SCHEDULE_LABELS[kind]}
+      </td>
       <td className="px-4 py-3">
         {usesDauerfrist ? (
           <input
