@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
-import { notifyClientContacts } from '@/server/mail/dispatch';
+import { notifyClientContacts, notifyRequestOpened } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { berlinWallClockToUtc } from '@/lib/fmt';
@@ -303,36 +303,19 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
   }
 
   if (createdFresh) {
-    const portalUrl = `${portalBaseUrl}/portal/requests/${createdId}`;
     // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
+    // Mail/Portal-URL/n8n-Payload zentral in notifyRequestOpened — identisch
+    // zum Auto-Anforderungs-Pfad des Workers (Steuertermine).
     fireAndForget(
       'notifyClientContacts (request-opened)',
-      notifyClientContacts({
+      notifyRequestOpened({
         tenantId,
         clientId: data.clientId,
-        slug: 'request-opened',
-        vars: {
-          request: {
-            id: createdId,
-            title: data.title,
-            description: data.description,
-            priority: data.priority,
-          },
-          portalUrl,
-        },
-        n8nEvent: 'request.opened',
-        n8nPayload: {
-          tenantId,
-          requestId: createdId,
-          clientId: data.clientId,
-          priority: data.priority,
-          dueAt: data.dueAt ? (berlinWallClockToUtc(data.dueAt)?.toISOString() ?? null) : null,
-        },
-        fallback: {
-          subject: 'Neue Anforderung von Ihrer Kanzlei: {{request.title}}',
-          bodyMd:
-            'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt eine neue Anforderung für Sie bereit:\n\n**{{request.title}}**\n\n{{request.description}}\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
-        },
+        requestId: createdId,
+        title: data.title,
+        description: data.description,
+        priority: data.priority,
+        dueAtIso: data.dueAt ? (berlinWallClockToUtc(data.dueAt)?.toISOString() ?? null) : null,
       }),
     );
   }

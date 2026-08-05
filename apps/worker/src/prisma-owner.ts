@@ -1,17 +1,9 @@
 // =============================================================================
-// Owner-PrismaClient als Worker-globaler Singleton (M6)
+// Re-Export aus @taxtronik/db (Muster M-7, secret-box.ts).
 //
-// Vorher: jeder Job hatte sein eigenes `new PrismaClient(...)`. Mit 11 Jobs
-// = 11 Connection-Pools im Worker-Prozess. Verschwendet RAM + Postgres-Slots.
-//
-// Pendant zu apps/web/src/server/db/prisma-owner.ts. Im Worker brauchen wir
-// kein HMR-Caching — der Worker-Prozess hat keine Hot-Reload-Semantik wie
-// Next.js dev.
+// Vorher: eigener Owner-Client hier — seit @taxtronik/mail den Paket-Client
+// aus @taxtronik/db nutzt, hätte der Worker-Prozess sonst ZWEI Owner-
+// Connection-Pools. Jetzt eine Quelle für alle Jobs und den Mail-Versand.
 // =============================================================================
 
-import { PrismaClient } from '@taxtronik/db/prisma-client';
-import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-adapter';
-
-export const prismaOwner = new PrismaClient({
-  adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
-});
+export { prismaOwner } from '@taxtronik/db';

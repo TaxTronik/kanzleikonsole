@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   accessibleClientsWhereFor: vi.fn(),
   evidenceRecord: vi.fn(),
   notifyClientContacts: vi.fn(),
+  notifyRequestOpened: vi.fn(),
   fireAndForget: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
@@ -18,7 +19,10 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }))
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: vi.fn() }));
-vi.mock('@/server/mail/dispatch', () => ({ notifyClientContacts: mocks.notifyClientContacts }));
+vi.mock('@/server/mail/dispatch', () => ({
+  notifyClientContacts: mocks.notifyClientContacts,
+  notifyRequestOpened: mocks.notifyRequestOpened,
+}));
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: mocks.fireAndForget }));
 vi.mock('@/server/auth/rbac', () => ({
   assertClientAccessTx: mocks.assertClientAccessTx,
@@ -83,6 +87,7 @@ beforeEach(() => {
   });
   mocks.evidenceRecord.mockResolvedValue({});
   mocks.notifyClientContacts.mockResolvedValue(undefined);
+  mocks.notifyRequestOpened.mockResolvedValue(undefined);
   mocks.accessibleClientsWhereFor.mockResolvedValue({});
 });
 
@@ -191,11 +196,14 @@ describe('Quick-Anforderung', () => {
       tx,
       expect.objectContaining({ action: 'request.create', resourceId: REQUEST_ID }),
     );
-    expect(mocks.notifyClientContacts).toHaveBeenCalledWith(
+    expect(mocks.notifyRequestOpened).toHaveBeenCalledWith(
       expect.objectContaining({
         clientId: CLIENT_ID,
-        n8nEvent: 'request.opened',
-        n8nPayload: expect.objectContaining({ requestId: REQUEST_ID }),
+        requestId: REQUEST_ID,
+        title: 'Belege Juli',
+        priority: 'HIGH',
+        // 10:00 Berlin-Sommerzeit = 08:00 UTC (berlinWallClockToUtc)
+        dueAtIso: '2026-07-31T08:00:00.000Z',
       }),
     );
     expect(mocks.fireAndForget).toHaveBeenCalledOnce();
@@ -228,7 +236,7 @@ describe('Quick-Anforderung', () => {
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(tx.formSubmission.create).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
-    expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+    expect(mocks.notifyRequestOpened).not.toHaveBeenCalled();
   });
 
   it('weist eine Wiederholung derselben ID mit abweichender Payload als Konflikt ab', async () => {
@@ -261,7 +269,7 @@ describe('Quick-Anforderung', () => {
     });
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
-    expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+    expect(mocks.notifyRequestOpened).not.toHaveBeenCalled();
   });
 
   it('weist ein inzwischen deaktiviertes Formular klar und ohne Teilanlage ab', async () => {
@@ -319,7 +327,7 @@ describe('Quick-Anforderung', () => {
       ok: false,
       error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).',
     });
-    expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+    expect(mocks.notifyRequestOpened).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 

@@ -4,10 +4,11 @@
 // Vorher: eigenständige Kopie der Verschlüsselungs-Funktionen in web + worker.
 // Jetzt: zentrale Quelle in @taxtronik/crypto. Diese Datei bleibt als
 // Re-Export erhalten, damit bestehende Imports `from '@/server/crypto/secret-box'`
-// nicht angefasst werden müssen.
+// nicht angefasst werden müssen. readEncryptedSetting lebt ebenfalls dort
+// (auch @taxtronik/mail nutzt es) — hier nur noch die Web-Logger-Bindung.
 // =============================================================================
 
-import { decryptSecret, looksEncrypted } from '@taxtronik/crypto';
+import { readEncryptedSetting as readEncryptedSettingCore } from '@taxtronik/crypto';
 import { log } from '@/server/logger';
 
 export { encryptSecret, decryptSecret, looksEncrypted } from '@taxtronik/crypto';
@@ -24,17 +25,10 @@ export function readEncryptedSetting(
   legacyPlain: string | undefined | null,
   fieldName: string,
 ): string {
-  if (encrypted && looksEncrypted(encrypted)) {
-    try {
-      return decryptSecret(encrypted);
-    } catch (e) {
-      log.warn(
-        { component: 'secret-box', field: fieldName, err: (e as Error).message },
-        'readEncryptedSetting: Entschlüsselung fehlgeschlagen (Key-Rotation ohne Re-Wrap?)',
-      );
-      return '';
-    }
-  }
-  if (typeof legacyPlain === 'string') return legacyPlain;
-  return '';
+  return readEncryptedSettingCore(encrypted, legacyPlain, fieldName, (field, e) =>
+    log.warn(
+      { component: 'secret-box', field, err: e.message },
+      'readEncryptedSetting: Entschlüsselung fehlgeschlagen (Key-Rotation ohne Re-Wrap?)',
+    ),
+  );
 }

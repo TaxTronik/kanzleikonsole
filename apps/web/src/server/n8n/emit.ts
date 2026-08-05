@@ -18,20 +18,12 @@ import { enqueueN8nEvent } from './outbox';
 import type { N8nEnqueueResult } from './outbox';
 
 // Bekannte System-Events. EINZIGE Quelle ist STATIC_EVENT_NAMES in
-// @taxtronik/n8n-shared — daraus werden Runtime-Whitelist UND dieser Typ
+// @taxtronik/n8n-shared — daraus werden Runtime-Whitelist UND die Typen
 // abgeleitet, sodass ein typisiertes Emit nie an der Whitelist scheitern kann.
-// Workflow-Step-Events (`workflow.step.<suffix>`) sind separat typisiert.
-export type { StaticN8nEventName } from '@taxtronik/n8n-shared';
-import type { StaticN8nEventName } from '@taxtronik/n8n-shared';
-
-/**
- * Dynamische Workflow-Step-Events. Suffix wird beim Speichern der
- * Template-Schritte hart validiert (regex `^[a-z][a-z0-9._-]{0,40}$`,
- * siehe saveTemplateAction). Damit ist die URL-Path-Komponente sicher.
- */
-export type WorkflowStepN8nEvent = `workflow.step.${string}`;
-
-export type N8nEventName = StaticN8nEventName | WorkflowStepN8nEvent;
+// Die Typen (inkl. `workflow.step.<suffix>`) leben jetzt ebenfalls dort,
+// damit @taxtronik/mail und der Worker sie ohne Web-Import kennen.
+export type { StaticN8nEventName, WorkflowStepN8nEvent, N8nEventName } from '@taxtronik/n8n-shared';
+import type { N8nEventName } from '@taxtronik/n8n-shared';
 
 export interface EmitOptions {
   /**

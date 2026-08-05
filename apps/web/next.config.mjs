@@ -42,6 +42,7 @@ const nextConfig = {
     '@taxtronik/db',
     '@taxtronik/evidence',
     '@taxtronik/http-utils',
+    '@taxtronik/mail',
     '@taxtronik/n8n-shared',
     '@taxtronik/risk-layer',
     '@taxtronik/rss',

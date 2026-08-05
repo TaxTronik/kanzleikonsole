@@ -49,6 +49,16 @@ export const STATIC_EVENT_NAMES = [
 
 export type StaticN8nEventName = (typeof STATIC_EVENT_NAMES)[number];
 
+/**
+ * Dynamische Workflow-Step-Events. Suffix wird beim Speichern der
+ * Template-Schritte hart validiert (WORKFLOW_STEP_RE, siehe unten).
+ * Vormals in apps/web/src/server/n8n/emit.ts definiert; hier, damit auch
+ * @taxtronik/mail und der Worker den Event-Typ ohne Web-Import kennen.
+ */
+export type WorkflowStepN8nEvent = `workflow.step.${string}`;
+
+export type N8nEventName = StaticN8nEventName | WorkflowStepN8nEvent;
+
 /** Fachliche Gruppierung für Anzeige, Filter und Dokumentation. */
 export type N8nEventCategory =
   | 'CLIENTS'

@@ -3,14 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 // dispatch.ts zieht transitiv die ENV-Validierung (config) — für die reinen
 // Render-Helfer werden die Modul-Seiteneffekte weggemockt (wie im
 // Nachbar-Test dispatch-profile-context.test.ts).
-vi.mock('@/server/mail/send', () => ({ sendMail: vi.fn() }));
-vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: vi.fn() }));
-vi.mock('@/server/settings/mail-dispatch', () => ({ readMailDispatch: vi.fn() }));
-vi.mock('@/server/db/prisma-owner', () => ({ prismaOwner: {} }));
-vi.mock('@/server/logger', () => ({ log: { error: vi.fn() } }));
+vi.mock('../send', () => ({ sendMail: vi.fn() }));
+vi.mock('../n8n-emitter', () => ({ emitViaConfiguredN8n: vi.fn() }));
+vi.mock('../dispatch-settings', () => ({ readMailDispatch: vi.fn() }));
+vi.mock('@taxtronik/db', () => ({ prismaOwner: {} }));
 
 import { plainTextBody, renderTemplate } from '../dispatch';
-import { renderSafeMarkdown } from '@/server/markdown';
+import { renderSafeMarkdown } from '../markdown';
 
 const SENTINEL_RANGE = /[-]/;
 

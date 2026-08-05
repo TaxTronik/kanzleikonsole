@@ -10,17 +10,17 @@ const m = vi.hoisted(() => ({
   log: { error: vi.fn() },
 }));
 
-vi.mock('@/server/mail/send', () => ({ sendMail: m.sendMail }));
-vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
-vi.mock('@/server/settings/mail-dispatch', () => ({ readMailDispatch: m.readMailDispatch }));
-vi.mock('@/server/db/prisma-owner', () => ({
+vi.mock('../send', () => ({ sendMail: m.sendMail }));
+vi.mock('../n8n-emitter', () => ({ emitViaConfiguredN8n: m.emitN8nEvent }));
+vi.mock('../dispatch-settings', () => ({ readMailDispatch: m.readMailDispatch }));
+vi.mock('@taxtronik/db', () => ({
   prismaOwner: {
     emailTemplate: { findFirst: m.emailTemplateFindFirst },
     clientContact: { findMany: m.clientContactFindMany },
     client: { findFirst: m.clientFindFirst },
   },
 }));
-vi.mock('@/server/logger', () => ({ log: m.log }));
+vi.mock('../logger', () => ({ mailLog: () => m.log }));
 
 import { notifyClientContacts, sendTemplateMail } from '../dispatch';
 

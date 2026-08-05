@@ -147,3 +147,30 @@ export function looksEncrypted(value: string | null | undefined): boolean {
   if (parts.length !== 4) return false;
   return parts[0] === 'v1' || parts[0] === 'v2';
 }
+
+/**
+ * Liest ein optional verschlüsseltes Setting-Feld: entschlüsselt den
+ * `encrypted`-Wert, fällt auf `legacyPlain` (unverschlüsselte Altdaten) zurück,
+ * sonst leer. Ein Entschlüsselungsfehler (z. B. nach AUTH_SECRET-/SECRET_BOX_KEY-
+ * Rotation ohne Re-Wrap) wird NICHT still zu '' verschluckt, sondern an den
+ * optionalen `onDecryptError`-Callback gemeldet — sonst scheitert etwa der
+ * SMTP-/n8n-Auth kommentarlos. Vormals Kopie in apps/web (secret-box.ts);
+ * jetzt hier, damit auch @taxtronik/mail sie ohne Web-Import nutzen kann.
+ */
+export function readEncryptedSetting(
+  encrypted: string | undefined | null,
+  legacyPlain: string | undefined | null,
+  fieldName: string,
+  onDecryptError?: (fieldName: string, err: Error) => void,
+): string {
+  if (encrypted && looksEncrypted(encrypted)) {
+    try {
+      return decryptSecret(encrypted);
+    } catch (e) {
+      onDecryptError?.(fieldName, e as Error);
+      return '';
+    }
+  }
+  if (typeof legacyPlain === 'string') return legacyPlain;
+  return '';
+}

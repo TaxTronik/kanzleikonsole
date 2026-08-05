@@ -76,9 +76,6 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Test-DB, damit auch direkte SQL-Umgehungsversuche geprüft werden.
   'packages/db/src/__tests__/gwg-identity-assignment.test.ts',
   'packages/db/src/__tests__/tax-notice-evidence.test.ts',
-  // Owner-Singleton für System-/Worker-Jobs (laufen via withSystemContext).
-  'apps/web/src/server/db/prisma-owner.ts',
-  'apps/worker/src/prisma-owner.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill
@@ -184,7 +181,6 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/server/demo/retention-fixtures.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/gwg-onboarding/service.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/license/state.ts <- @/server/db/prisma-owner',
-  'apps/web/src/server/mail/dispatch.ts <- @/server/db/prisma-owner',
   // Externe n8n-Callbacks haben vor der Credential-Pruefung noch keinen
   // vertrauenswuerdigen Tenant-Kontext. Der Owner-Lookup bindet Key-ID an
   // Connection/Tenant; Operations und Crash-Recovery scopen danach jeden

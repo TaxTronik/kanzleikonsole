@@ -1,0 +1,32 @@
+{
+  "name": "@taxtronik/mail",
+  "version": "0.0.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./markdown": "./src/markdown.ts",
+    "./markdown-safety": "./src/markdown-safety.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@taxtronik/config": "workspace:*",
+    "@taxtronik/crypto": "workspace:*",
+    "@taxtronik/db": "workspace:*",
+    "@taxtronik/n8n-shared": "workspace:*",
+    "nodemailer": "9.0.1"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
+  }
+}

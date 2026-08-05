@@ -1,39 +1,13 @@
 // =============================================================================
-// Owner-PrismaClient als modul-globaler Singleton (Q2)
+// Re-Export aus @taxtronik/db (Muster M-7, secret-box.ts).
 //
-// Vorher: 8+ Dateien haben jeweils `new PrismaClient(...)` instanziiert. In
-// Next.js mit Hot-Reload führt das zu Connection-Pool-Leaks und vielen
-// parallelen Pools, weil die Dev-Server-Boundary das Modul neu lädt aber
-// die alten Connections nicht schließt.
-//
-// Lösung: ein einziger Owner-Client pro Modul-Scope, in dev über
-// `globalThis` zwischen HMR-Loads geteilt.
+// Vorher: eigener Owner-Client hier plus ein zweiter in @taxtronik/db
+// (owner-client.ts) — seit @taxtronik/mail den Paket-Client nutzt, hätte der
+// Web-Prozess sonst ZWEI Owner-Connection-Pools. Jetzt eine Quelle; der
+// Paket-Client cached in Dev ebenfalls über globalThis (HMR-fest).
 //
 // `Owner` heißt: BYPASSRLS — direkter DB-Zugriff ohne Tenant-Kontext.
-// Für mandantenbezogene Reads/Writes immer `withTenantContext` aus
-// @taxtronik/db verwenden.
+// Für mandantenbezogene Reads/Writes immer `withTenantContext` verwenden.
 // =============================================================================
 
-import {
-  PrismaClient as PrismaClientCtor,
-  type PrismaClientInstance,
-} from '@taxtronik/db/prisma-client';
-import { createPostgresAdapter, requireDatabaseUrl } from '@taxtronik/db/prisma-adapter';
-
-type PrismaClient = PrismaClientInstance;
-
-declare global {
-  // `var` is intentional for ambient globalThis augmentation.
-  // noinspection ES6ConvertVarToLetConst
-  var __taxtronik_prisma_owner: PrismaClient | undefined;
-}
-
-export const prismaOwner: PrismaClient =
-  globalThis.__taxtronik_prisma_owner ??
-  new PrismaClientCtor({
-    adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
-  });
-
-if (process.env['NODE_ENV'] !== 'production') {
-  globalThis.__taxtronik_prisma_owner = prismaOwner;
-}
+export { prismaOwner } from '@taxtronik/db';
