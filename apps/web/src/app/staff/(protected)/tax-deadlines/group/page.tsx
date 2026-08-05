@@ -8,19 +8,26 @@
 
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CalendarDays, CheckCheck } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCheck, OctagonPause } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
-import { SCHEDULE_LABELS } from '@taxtronik/tax';
-import { markDeadlineDoneAction, markDeadlinesDoneAction } from '../actions';
+import { SCHEDULE_LABELS, berlinCalendarDate } from '@taxtronik/tax';
+import {
+  markDeadlineDoneAction,
+  markDeadlinesDoneAction,
+  suppressAutoRequestAction,
+  suppressDeadlinesAction,
+  unsuppressAutoRequestAction,
+} from '../actions';
 import { fmtDateShort } from '@/lib/fmt';
 import { TAX_DEADLINE_STATUS_LABELS } from '@/lib/domain-labels';
+import { deriveAutoRequestPipeline, type AutoRequestPipeline } from '@/lib/tax-deadline-pipeline';
 
 const GROUP_STATUS_LABELS: Readonly<Record<string, string>> = {
   ...TAX_DEADLINE_STATUS_LABELS,
-  REMINDED: 'Erinnerung',
+  REMINDED: 'Angefordert',
 };
 
 const VALID_KINDS: TaxScheduleKind[] = [
@@ -82,18 +89,43 @@ export default async function TaxDeadlineGroupPage({
       return tx.taxDeadline.findMany({
         where,
         orderBy: [{ status: 'asc' }, { client: { name: 'asc' } }],
-        include: { client: { select: { id: true, name: true } } },
+        include: {
+          client: { select: { id: true, name: true } },
+          config: {
+            select: {
+              active: true,
+              autoRequest: true,
+              reminderDaysBefore: true,
+              staffLeadDays: true,
+            },
+          },
+        },
       });
     },
   );
 
+  // Abgeleiteter Auto-Anforderungs-Zustand pro Termin (kein eigener Status).
+  const today = berlinCalendarDate(new Date());
+  const rows = deadlines.map((d) => ({
+    ...d,
+    pipeline: deriveAutoRequestPipeline({
+      status: d.status,
+      requestId: d.requestId,
+      staffNotifiedAt: d.staffNotifiedAt,
+      autoRequestSuppressedAt: d.autoRequestSuppressedAt,
+      dueDate: d.dueDate,
+      config: d.config,
+      today,
+    }),
+  }));
+
   // Aufteilen
-  const groups: Record<string, typeof deadlines> = {
+  const groups: Record<string, typeof rows> = {
     OVERDUE: [],
     OPEN: [],
     DONE: [],
   };
-  for (const d of deadlines) {
+  for (const d of rows) {
     if (d.status === 'OVERDUE') groups['OVERDUE']!.push(d);
     else if (d.status === 'DONE' || d.status === 'SKIPPED') groups['DONE']!.push(d);
     else groups['OPEN']!.push(d);
@@ -156,7 +188,16 @@ export default async function TaxDeadlineGroupPage({
 
       <form action={markDeadlinesDoneAction}>
         {groups['OVERDUE']!.length + groups['OPEN']!.length > 0 && (
-          <div className="flex items-center justify-end mb-3">
+          <div className="flex items-center justify-end gap-2 mb-3">
+            <button
+              type="submit"
+              formAction={suppressDeadlinesAction}
+              className="btn-secondary text-xs"
+              title="Stoppt die automatische Anforderung der ausgewählten Termine (nur solange sie noch nicht versendet ist)."
+            >
+              <OctagonPause className="h-4 w-4" />
+              Auto-Anforderung stoppen
+            </button>
             <button type="submit" className="btn-secondary text-xs">
               <CheckCheck className="h-4 w-4" />
               Ausgewählte als erledigt markieren
@@ -188,6 +229,7 @@ function Section({
     requestId: string | null;
     completedAt: Date | null;
     client: { id: string; name: string };
+    pipeline: AutoRequestPipeline;
   }>;
   accent?: 'red' | 'emerald';
   selectable?: boolean;
@@ -261,6 +303,27 @@ function Section({
                 <td className="px-6 py-3 text-xs text-muted">
                   {d.completedAt ? `am ${fmtDateShort(d.completedAt)}` : ''}
                 </td>
+                <td className="px-6 py-3 text-xs">
+                  {/* Auto-Anforderungs-Pipeline: abgeleitet, kein eigener Status. */}
+                  {d.pipeline.state === 'SCHEDULED' && (
+                    <span className="text-muted">
+                      Versand am {fmtDateShort(d.pipeline.sendDate)}
+                    </span>
+                  )}
+                  {d.pipeline.state === 'WARNED' && (
+                    <span className="text-amber-700 dark:text-amber-300">
+                      Vorwarnung läuft — Versand am {fmtDateShort(d.pipeline.sendDate)}
+                    </span>
+                  )}
+                  {d.pipeline.state === 'SUPPRESSED' && (
+                    <span
+                      className="badge-gray"
+                      title="Auto-Anforderung gestoppt — Termin läuft normal weiter."
+                    >
+                      Gestoppt
+                    </span>
+                  )}
+                </td>
                 <td className="px-6 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
                     {d.requestId && (
@@ -270,6 +333,36 @@ function Section({
                       >
                         Anforderung
                       </Link>
+                    )}
+                    {/* Zeilen liegen im äußeren Bulk-Formular — verschachtelte
+                        Formulare sind invalide, deshalb formAction + name/value
+                        am Button (React 19 Multi-Action-Form). */}
+                    {selectable && d.pipeline.state !== 'NONE' && d.pipeline.state !== 'SENT' && (
+                      <>
+                        {d.pipeline.state === 'SUPPRESSED' ? (
+                          <button
+                            type="submit"
+                            formAction={unsuppressAutoRequestAction}
+                            name="id"
+                            value={d.id}
+                            className="text-xs text-muted hover:text-brand-700"
+                            title="Stopp aufheben — der nächste Tageslauf versendet die Anforderung wieder wie konfiguriert."
+                          >
+                            Stopp aufheben
+                          </button>
+                        ) : (
+                          <button
+                            type="submit"
+                            formAction={suppressAutoRequestAction}
+                            name="id"
+                            value={d.id}
+                            className="text-xs text-muted hover:text-red-700"
+                            title="Auto-Anforderung stoppen — z. B. weil die Unterlagen bereits vorliegen."
+                          >
+                            Stoppen
+                          </button>
+                        )}
+                      </>
                     )}
                     {!selectable && d.status !== 'DONE' && d.status !== 'SKIPPED' && (
                       <form action={markDeadlineDoneAction} className="inline">

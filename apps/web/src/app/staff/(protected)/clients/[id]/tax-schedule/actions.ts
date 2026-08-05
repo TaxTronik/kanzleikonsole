@@ -6,6 +6,8 @@ import { withTenantContext } from '@taxtronik/db';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
+import { notifyRequestOpened } from '@/server/mail/dispatch';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard } from '@/server/actions/staff-action';
@@ -58,12 +60,17 @@ export async function saveScheduleConfigAction(
 
   // Pro Kind die Felder einsammeln. Dauerfrist/advised werden serverseitig
   // auf die fachlich zulässigen Arten begrenzt (Whitelists oben).
+  // reminder/lead: bei abgeschalteter Auto-Anforderung sind die Zahlenfelder
+  // im Formular disabled (nicht submitted) — dann bleiben unten die
+  // gespeicherten Werte erhalten statt auf die Defaults zurückzufallen.
   const updates = ALL_KINDS.map((kind) => ({
     kind,
     active: formData.get(`active.${kind}`) === 'on',
     hasDauerfrist: DAUERFRIST_KINDS.has(kind) && formData.get(`dauerfrist.${kind}`) === 'on',
     advised: ADVISED_KINDS.has(kind) && formData.get(`advised.${kind}`) === 'on',
-    reminderDaysBefore: clampInt(formData.get(`reminder.${kind}`), 0, 90, 10),
+    autoRequest: formData.get(`autoRequest.${kind}`) === 'on',
+    reminderDaysBefore: clampInt(formData.get(`reminder.${kind}`), 1, 90, 10),
+    staffLeadDays: clampInt(formData.get(`lead.${kind}`), 0, 30, 3),
   }));
 
   await withTenantContext(ctx, async (tx) => {
@@ -119,16 +126,27 @@ export async function saveScheduleConfigAction(
           // stehen bleibt. Sie kommen korrekt neu materialisiert zurück.
           removedCount = await removeReschedulableDeadlines(tx, clientId, u.kind, now, true);
         }
+        // Bei abgeschalteter Auto-Anforderung sind die Tage-Felder im Formular
+        // disabled (nicht submitted) — gespeicherte Werte NICHT überschreiben,
+        // damit ein Wiedereinschalten die alte Konfiguration vorfindet.
+        const reminderDaysBefore = u.autoRequest ? u.reminderDaysBefore : old.reminderDaysBefore;
+        const staffLeadDays = u.autoRequest ? u.staffLeadDays : old.staffLeadDays;
+        const pipelineChanged =
+          old.autoRequest !== u.autoRequest ||
+          old.reminderDaysBefore !== reminderDaysBefore ||
+          old.staffLeadDays !== staffLeadDays;
         await tx.taxScheduleConfig.update({
           where: { id: old.id },
           data: {
             active: true,
             hasDauerfrist: u.hasDauerfrist,
             advised: u.advised,
-            reminderDaysBefore: u.reminderDaysBefore,
+            autoRequest: u.autoRequest,
+            reminderDaysBefore,
+            staffLeadDays,
           },
         });
-        if (datesChanged) {
+        if (datesChanged || pipelineChanged) {
           await evidenceService.record(tx, {
             tenantId,
             actorType: 'STAFF',
@@ -136,10 +154,19 @@ export async function saveScheduleConfigAction(
             action: 'tax_schedule.update',
             resourceType: 'tax_schedule_config',
             resourceId: old.id,
-            before: { hasDauerfrist: old.hasDauerfrist, advised: old.advised },
+            before: {
+              hasDauerfrist: old.hasDauerfrist,
+              advised: old.advised,
+              autoRequest: old.autoRequest,
+              reminderDaysBefore: old.reminderDaysBefore,
+              staffLeadDays: old.staffLeadDays,
+            },
             after: {
               hasDauerfrist: u.hasDauerfrist,
               advised: u.advised,
+              autoRequest: u.autoRequest,
+              reminderDaysBefore,
+              staffLeadDays,
               rematerializedDeadlines: removedCount,
             },
           });
@@ -153,7 +180,9 @@ export async function saveScheduleConfigAction(
             active: true,
             hasDauerfrist: u.hasDauerfrist,
             advised: u.advised,
+            autoRequest: u.autoRequest,
             reminderDaysBefore: u.reminderDaysBefore,
+            staffLeadDays: u.staffLeadDays,
             createdByStaff: staffId,
           },
         });
@@ -168,7 +197,9 @@ export async function saveScheduleConfigAction(
             kind: u.kind,
             hasDauerfrist: u.hasDauerfrist,
             advised: u.advised,
+            autoRequest: u.autoRequest,
             reminderDaysBefore: u.reminderDaysBefore,
+            staffLeadDays: u.staffLeadDays,
           },
         });
       }
@@ -176,7 +207,29 @@ export async function saveScheduleConfigAction(
   });
 
   // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind
-  await materializeTaxDeadlines(ctx, { systemStaffId: staffId });
+  const stats = await materializeTaxDeadlines(ctx, { systemStaffId: staffId });
+
+  // Mandanten-Mail + n8n-Event NACH dem Commit (gleiche Semantik wie
+  // createRequestCore). Trifft hier nur Configs mit staffLeadDays = 0, deren
+  // Versandfenster bereits offen ist — sonst kommt der Versand vom Tageslauf.
+  if (stats.createdRequests.length > 0) {
+    fireAndForget(
+      'notifyRequestOpened (tax-schedule save)',
+      Promise.all(
+        stats.createdRequests.map((r) =>
+          notifyRequestOpened({
+            tenantId: r.tenantId,
+            clientId: r.clientId,
+            requestId: r.requestId,
+            title: r.title,
+            description: r.description,
+            priority: r.priority,
+            dueAtIso: r.dueDate.toISOString(),
+          }),
+        ),
+      ).then(() => undefined),
+    );
+  }
 
   revalidatePath(`/staff/clients/${clientId}/tax-schedule`);
   revalidatePath('/staff/tax-deadlines');

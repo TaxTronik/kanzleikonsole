@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import type { TaxScheduleKind } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { saveScheduleConfigAction, type ActionResult } from './actions';
@@ -25,7 +25,9 @@ export interface ScheduleConfigDto {
   active: boolean;
   hasDauerfrist: boolean;
   advised: boolean;
+  autoRequest: boolean;
   reminderDaysBefore: number;
+  staffLeadDays: number;
 }
 
 // Beratene Erklärungsfrist § 149 (3) AO (letzter Februartag des ZWEITEN
@@ -73,70 +75,42 @@ export function TaxScheduleForm({
               >
                 Beraten (§ 149 (3))
               </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
-                Reminder (Tage)
+              <th
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                title="Automatische Unterlagen-Anforderung an den Mandanten (per Portal + E-Mail)"
+              >
+                Auto-Anforderung
+              </th>
+              <th
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                title="So viele Tage vor der Fälligkeit wird die Anforderung an den Mandanten versendet."
+              >
+                Versand (Tage vor Fälligkeit)
+              </th>
+              <th
+                className="text-left px-4 py-3 text-xs font-medium text-muted uppercase"
+                title="So viele Tage vor dem Versand werden die Zuständigen intern vorgewarnt und können stoppen. 0 = ohne Vorwarnung sofort am Versandtag."
+              >
+                Vorwarnung (Tage davor)
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
-            {ALL_KINDS.map((kind) => {
-              const cfg = byKind.get(kind);
-              // Dauerfristverlaengerung gibt es NUR fuer USt-VORANMELDUNGEN
-              // (§ 18 Abs. 6 UStG, §§ 46-48 UStDV) — nicht fuer die
-              // Lohnsteuer-Anmeldung (§ 41a EStG) und nicht fuer die
-              // USt-Jahreserklaerung (§ 149 AO).
-              const usesDauerfrist = kind === 'USTA_MONATLICH' || kind === 'USTA_QUARTAL';
-              return (
-                <tr key={kind}>
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      name={`active.${kind}`}
-                      defaultChecked={cfg?.active ?? false}
-                      className="rounded border-strong text-brand-600"
-                    />
-                  </td>
-                  <td className="px-4 py-3 font-medium text-primary">{SCHEDULE_LABELS[kind]}</td>
-                  <td className="px-4 py-3">
-                    {usesDauerfrist ? (
-                      <input
-                        type="checkbox"
-                        name={`dauerfrist.${kind}`}
-                        defaultChecked={cfg?.hasDauerfrist ?? false}
-                        className="rounded border-strong text-brand-600"
-                      />
-                    ) : (
-                      <span className="text-disabled">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {ADVISED_KINDS.has(kind) ? (
-                      <input
-                        type="checkbox"
-                        name={`advised.${kind}`}
-                        defaultChecked={cfg?.advised ?? false}
-                        className="rounded border-strong text-brand-600"
-                      />
-                    ) : (
-                      <span className="text-disabled">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      name={`reminder.${kind}`}
-                      defaultValue={cfg?.reminderDaysBefore ?? 10}
-                      min={0}
-                      max={90}
-                      className="input w-20 text-center"
-                    />
-                  </td>
-                </tr>
-              );
-            })}
+            {ALL_KINDS.map((kind) => (
+              <ScheduleRow key={kind} kind={kind} cfg={byKind.get(kind)} />
+            ))}
           </tbody>
         </table>
       </div>
+
+      <p className="text-xs text-muted">
+        Ablauf der Auto-Anforderung: Die Zuständigen werden zuerst intern vorgewarnt
+        (Benachrichtigung) und können den Versand stoppen — etwa wenn der Mandant schon in
+        Papierform geliefert hat. Sonst geht die Anforderung automatisch per Portal + E-Mail an alle
+        aktiven Ansprechpartner raus. Deaktivieren einer Termin-Art oder eine
+        Dauerfrist-/Beraten-Änderung setzt laufende Vorwarnungen und Stopps der offenen Termine
+        zurück.
+      </p>
 
       {state?.error && (
         <div className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
@@ -155,5 +129,88 @@ export function TaxScheduleForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function ScheduleRow({ kind, cfg }: { kind: TaxScheduleKind; cfg: ScheduleConfigDto | undefined }) {
+  // Dauerfristverlaengerung gibt es NUR fuer USt-VORANMELDUNGEN
+  // (§ 18 Abs. 6 UStG, §§ 46-48 UStDV) — nicht fuer die
+  // Lohnsteuer-Anmeldung (§ 41a EStG) und nicht fuer die
+  // USt-Jahreserklaerung (§ 149 AO).
+  const usesDauerfrist = kind === 'USTA_MONATLICH' || kind === 'USTA_QUARTAL';
+  // Zahlenfelder nur bedienbar, wenn die Auto-Anforderung an ist — der Server
+  // ignoriert sie sonst ohnehin (disabled-Inputs werden nicht submitted, die
+  // Action fällt auf die Defaults zurück; die gespeicherten Werte bleiben
+  // erhalten, weil autoRequest=false den Upsert der Tage nicht anfasst).
+  const [autoRequest, setAutoRequest] = useState(cfg?.autoRequest ?? true);
+
+  return (
+    <tr>
+      <td className="px-4 py-3">
+        <input
+          type="checkbox"
+          name={`active.${kind}`}
+          defaultChecked={cfg?.active ?? false}
+          className="rounded border-strong text-brand-600"
+        />
+      </td>
+      <td className="px-4 py-3 font-medium text-primary">{SCHEDULE_LABELS[kind]}</td>
+      <td className="px-4 py-3">
+        {usesDauerfrist ? (
+          <input
+            type="checkbox"
+            name={`dauerfrist.${kind}`}
+            defaultChecked={cfg?.hasDauerfrist ?? false}
+            className="rounded border-strong text-brand-600"
+          />
+        ) : (
+          <span className="text-disabled">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {ADVISED_KINDS.has(kind) ? (
+          <input
+            type="checkbox"
+            name={`advised.${kind}`}
+            defaultChecked={cfg?.advised ?? false}
+            className="rounded border-strong text-brand-600"
+          />
+        ) : (
+          <span className="text-disabled">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <input
+          type="checkbox"
+          name={`autoRequest.${kind}`}
+          checked={autoRequest}
+          onChange={(e) => setAutoRequest(e.target.checked)}
+          className="rounded border-strong text-brand-600"
+        />
+      </td>
+      <td className="px-4 py-3">
+        <input
+          type="number"
+          name={`reminder.${kind}`}
+          defaultValue={cfg?.reminderDaysBefore ?? 10}
+          min={1}
+          max={90}
+          disabled={!autoRequest}
+          className="input w-20 text-center disabled:opacity-40"
+        />
+      </td>
+      <td className="px-4 py-3">
+        <input
+          type="number"
+          name={`lead.${kind}`}
+          defaultValue={cfg?.staffLeadDays ?? 3}
+          min={0}
+          max={30}
+          disabled={!autoRequest}
+          title="0 = ohne Vorwarnung sofort am Versandtag"
+          className="input w-20 text-center disabled:opacity-40"
+        />
+      </td>
+    </tr>
   );
 }

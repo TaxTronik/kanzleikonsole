@@ -55,6 +55,7 @@ export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
   ABSENCE_REPORTED: 'Abwesenheitsmeldung',
   CLIENT_MASTER_CHANGE_REQUEST: 'Mandanten-Stammdaten-Änderung',
   TAX_NEWS_NEW: 'Neue BMF/BFH-News',
+  TAX_DEADLINE_REQUEST_PENDING: 'Auto-Anforderung angekündigt',
   SYSTEM_BACKUP_FAILED: 'Backup fehlgeschlagen',
   SYSTEM_AUDIT_BREAK: 'Audit-Chain-Bruch',
   SYSTEM_AUDIT_OK: 'Audit-Chain intakt',

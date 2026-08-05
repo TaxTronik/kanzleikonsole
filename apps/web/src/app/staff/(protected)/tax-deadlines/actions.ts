@@ -79,6 +79,94 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
   );
 }
 
+// Auto-Anforderung stoppen — nur solange sie noch NICHT versendet ist
+// (requestId null) und der Termin noch offen (PLANNED). Ein gestoppter
+// Termin läuft regulär weiter (OVERDUE/DONE), nur der automatische Versand
+// unterbleibt; der Stopp ist über unsuppressAutoRequestAction aufhebbar.
+async function suppressDeadlines(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await withStaff(
+    async (tx, { tenantId, staffId, session }) => {
+      const toSuppress = await tx.taxDeadline.findMany({
+        where: {
+          id: { in: ids },
+          status: 'PLANNED',
+          requestId: null,
+          autoRequestSuppressedAt: null,
+        },
+        select: { id: true, clientId: true, kind: true, period: true },
+      });
+      if (toSuppress.length === 0) return;
+      // Vertraulich-/RESTRICTED-Ventil pro betroffenem Mandanten.
+      for (const clientId of new Set(toSuppress.map((t) => t.clientId))) {
+        await assertClientAccessTx(tx, session, clientId);
+      }
+      // Guard im updateMany erneut anwenden (Race gegen den Materialize-Lauf:
+      // dessen Tx-Re-Check respektiert einen gesetzten Stopp, umgekehrt darf
+      // ein inzwischen versendeter Termin nicht nachträglich gestoppt werden).
+      await tx.taxDeadline.updateMany({
+        where: {
+          id: { in: toSuppress.map((t) => t.id) },
+          status: 'PLANNED',
+          requestId: null,
+          autoRequestSuppressedAt: null,
+        },
+        data: { autoRequestSuppressedAt: new Date(), autoRequestSuppressedByStaff: staffId },
+      });
+      for (const t of toSuppress) {
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'tax_deadline.request_suppressed',
+          resourceType: 'tax_deadline',
+          resourceId: t.id,
+          after: { kind: t.kind, period: t.period },
+        });
+      }
+    },
+    { revalidate: '/staff/tax-deadlines' },
+  );
+}
+
+export async function suppressAutoRequestAction(formData: FormData): Promise<void> {
+  const id = z.string().uuid().parse(formData.get('id'));
+  await suppressDeadlines([id]);
+}
+
+export async function suppressDeadlinesAction(formData: FormData): Promise<void> {
+  const ids = z.array(z.string().uuid()).parse(formData.getAll('ids').map((v) => String(v)));
+  await suppressDeadlines(ids);
+}
+
+export async function unsuppressAutoRequestAction(formData: FormData): Promise<void> {
+  const id = z.string().uuid().parse(formData.get('id'));
+  await withStaff(
+    async (tx, { tenantId, staffId, session }) => {
+      const before = await tx.taxDeadline.findUnique({
+        where: { id },
+        select: { clientId: true, kind: true, period: true, autoRequestSuppressedAt: true },
+      });
+      if (!before || before.autoRequestSuppressedAt === null) return;
+      await assertClientAccessTx(tx, session, before.clientId);
+      await tx.taxDeadline.updateMany({
+        where: { id, autoRequestSuppressedAt: { not: null } },
+        data: { autoRequestSuppressedAt: null, autoRequestSuppressedByStaff: null },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'tax_deadline.request_unsuppressed',
+        resourceType: 'tax_deadline',
+        resourceId: id,
+        after: { kind: before.kind, period: before.period },
+      });
+    },
+    { revalidate: '/staff/tax-deadlines' },
+  );
+}
+
 export async function rematerializeAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard();
   if (!g.ok) return;

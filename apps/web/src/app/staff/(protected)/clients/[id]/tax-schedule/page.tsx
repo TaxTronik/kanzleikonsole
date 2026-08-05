@@ -42,7 +42,9 @@ export default async function ClientTaxSchedulePage({
     active: c.active,
     hasDauerfrist: c.hasDauerfrist,
     advised: c.advised,
+    autoRequest: c.autoRequest,
     reminderDaysBefore: c.reminderDaysBefore,
+    staffLeadDays: c.staffLeadDays,
   }));
 
   return (
