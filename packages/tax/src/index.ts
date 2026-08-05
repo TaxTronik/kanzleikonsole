@@ -35,4 +35,6 @@ export {
   type MaterializeParams,
   type MaterializeStats,
   type AutoRequestEvidence,
+  type StaffNotificationInput,
+  type CreatedAutoRequest,
 } from './materialize';

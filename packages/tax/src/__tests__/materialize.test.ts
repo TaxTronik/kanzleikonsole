@@ -8,8 +8,10 @@
 //   - Upsert: EIN createMany(skipDuplicates) über den Unique-Key (P-4 —
 //     vorher findUnique+create pro Kandidat), Duplikate zählen nicht
 //   - Mandant ohne allowActive (GwG) wird übersprungen
-//   - Reminder-Pfad: Request + REMINDED + Evidence atomar, Re-Check-Race,
-//     SQL-Vorfilter dueDate ≤ now + max(reminderDaysBefore)
+//   - Zweistufige Auto-Anforderung: (3a) Vorwarnung genau einmal an
+//     HAUPTBEARBEITER (Fallback ADMIN/PARTNER), (3b) Versand erst nach
+//     mindestens einem vollen Tageslauf Stopp-Fenster; Stopp blockt
+//     (SQL-Filter + Tx-Re-Check); kein Versand nach Fälligkeit (gte heute)
 //   - Reminder-Fenster (reminderDaysBefore) noch nicht erreicht → kein Request
 //   - OVERDUE erst NACH Ende des Fälligkeitstags (§ 108 (1) AO)
 // =============================================================================
@@ -23,12 +25,15 @@ const TENANT = 'tenant-1';
 const STAFF = 'staff-system-1';
 // Dienstag, kein Feiertag — Folgetag (10.06.2026, Mittwoch) ebenfalls Werktag.
 const NOW = new Date('2026-06-09T10:00:00.000Z');
+const TODAY = new Date(Date.UTC(2026, 5, 9));
 
 interface HarnessOptions {
   configs?: unknown[];
   upcoming?: unknown[];
   createdCount?: number;
   overdueCount?: number;
+  hauptbearbeiter?: Array<{ clientId: string; staffId: string }>;
+  adminPartners?: Array<{ id: string }>;
 }
 
 function makeHarness(opts: HarnessOptions = {}) {
@@ -40,24 +45,35 @@ function makeHarness(opts: HarnessOptions = {}) {
       findMany: vi.fn().mockResolvedValue(opts.upcoming ?? []),
       updateMany: vi.fn().mockResolvedValue({ count: opts.overdueCount ?? 0 }),
     },
+    clientResponsibility: { findMany: vi.fn().mockResolvedValue(opts.hauptbearbeiter ?? []) },
+    staffUser: {
+      findMany: vi.fn().mockResolvedValue(opts.adminPartners ?? [{ id: 'admin-1' }]),
+    },
   };
   // Separater Tx-Fake: so ist nachweisbar, dass der atomare Block NICHT auf
   // dem äußeren db-Client läuft, sondern auf dem von runAtomic gereichten Tx.
   const tx = {
     taxDeadline: {
-      findUnique: vi.fn().mockResolvedValue({ status: 'PLANNED', requestId: null }),
+      findUnique: vi.fn().mockResolvedValue({
+        status: 'PLANNED',
+        requestId: null,
+        staffNotifiedAt: null,
+        autoRequestSuppressedAt: null,
+      }),
       update: vi.fn().mockResolvedValue({}),
     },
     request: { create: vi.fn().mockResolvedValue({ id: 'req-1' }) },
   };
   const recordEvidence = vi.fn().mockResolvedValue(undefined);
+  const upsertStaffNotification = vi.fn().mockResolvedValue(undefined);
   const runAtomic = vi.fn(async (fn: (t: Db) => Promise<unknown>) => fn(tx as unknown as Db));
   const deps: MaterializeDeps = {
     db: db as unknown as Db,
     runAtomic: runAtomic as MaterializeDeps['runAtomic'],
     recordEvidence,
+    upsertStaffNotification,
   };
-  return { db, tx, deps, recordEvidence, runAtomic };
+  return { db, tx, deps, recordEvidence, runAtomic, upsertStaffNotification };
 }
 
 function ustaMonthlyConfig(overrides: Record<string, unknown> = {}) {
@@ -67,11 +83,28 @@ function ustaMonthlyConfig(overrides: Record<string, unknown> = {}) {
     kind: 'USTA_MONATLICH',
     hasDauerfrist: false,
     advised: false,
+    autoRequest: true,
     reminderDaysBefore: 10,
+    staffLeadDays: 3,
     client: { id: 'client-1', allowActive: true },
     ...overrides,
   };
 }
+
+const upcomingDeadline = (
+  reminderDaysBefore: number,
+  opts: { staffLeadDays?: number; staffNotifiedAt?: Date | null } = {},
+) => ({
+  id: 'dl-1',
+  clientId: 'client-1',
+  dueDate: new Date(Date.UTC(2026, 5, 20)),
+  kind: 'USTA_MONATLICH',
+  period: '2026-05',
+  staffNotifiedAt: opts.staffNotifiedAt ?? null,
+  autoRequestSuppressedAt: null,
+  config: { reminderDaysBefore, staffLeadDays: opts.staffLeadDays ?? 0 },
+  client: { name: 'Muster GmbH' },
+});
 
 describe('Upsert — Termine aus aktiven Configs', () => {
   it('legt einen neuen Termin im Horizont an (USt-VA Mai → fällig 10.06.)', async () => {
@@ -141,19 +174,10 @@ describe('Upsert — Termine aus aktiven Configs', () => {
   });
 });
 
-describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
-  const upcomingDeadline = (reminderDaysBefore: number) => ({
-    id: 'dl-1',
-    clientId: 'client-1',
-    dueDate: new Date(Date.UTC(2026, 5, 20)),
-    kind: 'USTA_MONATLICH',
-    period: '2026-05',
-    config: { reminderDaysBefore },
-  });
-
+describe('Auto-Anforderung (3b) — Versand atomar', () => {
   it('erzeugt Request + REMINDED + Audit-Eintrag in EINER runAtomic-Transaktion', async () => {
     const { db, tx, deps, recordEvidence, runAtomic } = makeHarness({
-      upcoming: [upcomingDeadline(14)], // remindFrom = 06.06. ≤ now (09.06.)
+      upcoming: [upcomingDeadline(14)], // sendFrom = 06.06. ≤ heute (09.06.), lead 0
     });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
@@ -162,19 +186,24 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
       now: NOW,
     });
 
-    // Kandidaten-Query: nur PLANNED ohne Request, Reminder konfiguriert.
-    // P-4: SQL-Vorfilter dueDate ≤ now + max(reminderDaysBefore) — ohne
-    // geladene Configs ist das Fenster 0 Tage (lte = now).
+    // Kandidaten-Query: nur PLANNED ohne Request, Auto-Anforderung an, nicht
+    // gestoppt. P-4: SQL-Vorfilter dueDate ∈ [heute, heute + max(Versand- +
+    // Vorwarn-Tage)] — ohne geladene Configs ist das Fenster 0 Tage. Die
+    // gte-Untergrenze härtet: nach Fälligkeit wird nie mehr versendet.
     expect(db.taxDeadline.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: TENANT,
         status: 'PLANNED',
         requestId: null,
-        config: { active: true, reminderDaysBefore: { gt: 0 } },
+        autoRequestSuppressedAt: null,
+        config: { active: true, autoRequest: true },
         client: { allowActive: true },
-        dueDate: { lte: new Date(Date.UTC(2026, 5, 9)) },
+        dueDate: { gte: TODAY, lte: TODAY },
       },
-      include: { config: { select: { reminderDaysBefore: true } } },
+      include: {
+        config: { select: { reminderDaysBefore: true, staffLeadDays: true } },
+        client: { select: { name: true } },
+      },
     });
 
     expect(runAtomic).toHaveBeenCalledTimes(1);
@@ -205,13 +234,30 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
       after: { requestId: 'req-1', kind: 'USTA_MONATLICH', period: '2026-05' },
     });
     expect(stats.requestsCreated).toBe(1);
+    // Mail/n8n macht der Adapter nach Commit — der Kern liefert die Daten.
+    expect(stats.createdRequests).toEqual([
+      {
+        tenantId: TENANT,
+        clientId: 'client-1',
+        deadlineId: 'dl-1',
+        requestId: 'req-1',
+        kind: 'USTA_MONATLICH',
+        period: '2026-05',
+        dueDate: new Date(Date.UTC(2026, 5, 20)),
+        title: 'USt-Voranmeldung (monatlich) 2026-05 bis 20.6.2026',
+        description:
+          'Bitte stellen Sie die Unterlagen für USt-Voranmeldung (monatlich) 2026-05 bereit. Fälligkeit: 20.6.2026.',
+        priority: 'NORMAL',
+      },
+    ]);
   });
 
-  it('SQL-Vorfilter: Fenster = now + max(reminderDaysBefore) aus den geladenen Configs', async () => {
-    // Config trägt zum Reminder-Fenster bei, auch wenn der Mandant (GwG)
-    // keine neuen Kandidaten bekommt.
+  it('SQL-Vorfilter: Fenster = heute + max(reminderDaysBefore + staffLeadDays)', async () => {
+    // Config trägt zum Fenster bei, auch wenn der Mandant (GwG) keine neuen
+    // Kandidaten bekommt. 14 + 3 = 17 Tage → lte 26.06.
     const cfg = ustaMonthlyConfig({
       reminderDaysBefore: 14,
+      staffLeadDays: 3,
       client: { id: 'client-1', allowActive: false },
     });
     const { db, deps } = makeHarness({ configs: [cfg] });
@@ -223,13 +269,31 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
     });
 
     const arg = db.taxDeadline.findMany.mock.calls[0]![0] as {
-      where: { dueDate: { lte: Date } };
+      where: { dueDate: { gte: Date; lte: Date } };
     };
-    expect(arg.where.dueDate.lte).toEqual(new Date(Date.UTC(2026, 5, 23)));
+    expect(arg.where.dueDate.gte).toEqual(TODAY);
+    expect(arg.where.dueDate.lte).toEqual(new Date(Date.UTC(2026, 5, 26)));
   });
 
-  it('Reminder-Fenster noch nicht erreicht → kein Request', async () => {
-    // remindFrom = 15.06. > now (09.06.)
+  it('Configs mit autoRequest = false vergrößern das Fenster nicht', async () => {
+    const cfg = ustaMonthlyConfig({ autoRequest: false, reminderDaysBefore: 50 });
+    const { db, deps } = makeHarness({ configs: [cfg] });
+
+    await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      horizonDays: 10,
+      now: NOW,
+    });
+
+    const arg = db.taxDeadline.findMany.mock.calls[0]![0] as {
+      where: { dueDate: { lte: Date } };
+    };
+    expect(arg.where.dueDate.lte).toEqual(TODAY);
+  });
+
+  it('Versand-Fenster noch nicht erreicht → kein Request', async () => {
+    // sendFrom = 15.06. > heute (09.06.)
     const { tx, deps, runAtomic } = makeHarness({ upcoming: [upcomingDeadline(5)] });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
@@ -245,7 +309,12 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
 
   it('Re-Check-Race: paralleler Lauf hat den Termin bereits versorgt → No-Op', async () => {
     const { tx, deps, recordEvidence } = makeHarness({ upcoming: [upcomingDeadline(14)] });
-    tx.taxDeadline.findUnique.mockResolvedValue({ status: 'REMINDED', requestId: 'req-fremd' });
+    tx.taxDeadline.findUnique.mockResolvedValue({
+      status: 'REMINDED',
+      requestId: 'req-fremd',
+      staffNotifiedAt: null,
+      autoRequestSuppressedAt: null,
+    });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
@@ -256,6 +325,25 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(tx.taxDeadline.update).not.toHaveBeenCalled();
     expect(recordEvidence).not.toHaveBeenCalled();
+    expect(stats.requestsCreated).toBe(0);
+  });
+
+  it('Re-Check: Mitarbeiter hat inzwischen gestoppt → No-Op (Race Stopp vs. Lauf)', async () => {
+    const { tx, deps } = makeHarness({ upcoming: [upcomingDeadline(14)] });
+    tx.taxDeadline.findUnique.mockResolvedValue({
+      status: 'PLANNED',
+      requestId: null,
+      staffNotifiedAt: null,
+      autoRequestSuppressedAt: new Date('2026-06-09T09:59:00.000Z'),
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(tx.request.create).not.toHaveBeenCalled();
     expect(stats.requestsCreated).toBe(0);
   });
 
@@ -271,6 +359,161 @@ describe('Reminder-Pfad — Auto-Anforderung atomar', () => {
 
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(stats.requestsCreated).toBe(0);
+  });
+});
+
+describe('Vorwarnung (3a) — interne Benachrichtigung vor dem Versand', () => {
+  it('warnt genau einmal, setzt staffNotifiedAt und versendet NICHT im selben Lauf', async () => {
+    // sendFrom = 10.06. (> heute), warnFrom = 07.06. (≤ heute) → nur warnen.
+    const { tx, deps, runAtomic, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(10, { staffLeadDays: 3 })],
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(runAtomic).toHaveBeenCalledTimes(1);
+    expect(tx.taxDeadline.update).toHaveBeenCalledWith({
+      where: { id: 'dl-1' },
+      data: { staffNotifiedAt: NOW },
+    });
+    // Fallback-Empfänger (kein HAUPTBEARBEITER hinterlegt) — auf dem Tx.
+    expect(upsertStaffNotification).toHaveBeenCalledTimes(1);
+    expect(upsertStaffNotification.mock.calls[0]![0]).toBe(tx);
+    expect(upsertStaffNotification.mock.calls[0]![1]).toEqual({
+      tenantId: TENANT,
+      staffId: 'admin-1',
+      kind: 'TAX_DEADLINE_REQUEST_PENDING',
+      title: 'Auto-Anforderung an Muster GmbH geht am 10.6.2026 raus',
+      body: 'USt-Voranmeldung (monatlich) 2026-05, fällig 20.6.2026. Stoppen, falls die Unterlagen bereits vorliegen.',
+      href: '/staff/tax-deadlines/group?kind=USTA_MONATLICH&period=2026-05&q=Muster%20GmbH',
+      resourceType: 'tax_deadline',
+      resourceId: 'dl-1',
+    });
+    expect(tx.request.create).not.toHaveBeenCalled();
+    expect(stats.staffWarned).toBe(1);
+    expect(stats.requestsCreated).toBe(0);
+  });
+
+  it('adressiert HAUPTBEARBEITER statt des ADMIN/PARTNER-Fallbacks', async () => {
+    const { deps, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(10, { staffLeadDays: 3 })],
+      hauptbearbeiter: [
+        { clientId: 'client-1', staffId: 'hb-1' },
+        { clientId: 'client-1', staffId: 'hb-2' },
+      ],
+    });
+
+    await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    const staffIds = upsertStaffNotification.mock.calls.map(
+      (c) => (c[1] as { staffId: string }).staffId,
+    );
+    expect(staffIds).toEqual(['hb-1', 'hb-2']);
+  });
+
+  it('keine Vorwarnung bei staffLeadDays = 0 — Versand direkt im Fenster', async () => {
+    const { tx, deps, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(14, { staffLeadDays: 0 })],
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(upsertStaffNotification).not.toHaveBeenCalled();
+    expect(tx.request.create).toHaveBeenCalledTimes(1);
+    expect(stats.staffWarned).toBe(0);
+    expect(stats.requestsCreated).toBe(1);
+  });
+
+  it('spät angelegte Config im Versandfenster: erst warnen, Versand frühestens am Folgelauf', async () => {
+    // sendFrom = 06.06. UND warnFrom = 03.06. liegen beide vor heute — der
+    // Lauf darf trotzdem nur warnen (Stopp-Fenster von einem Tageslauf).
+    const { tx, deps, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(14, { staffLeadDays: 3 })],
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(upsertStaffNotification).toHaveBeenCalledTimes(1);
+    // Angekündigt wird der frühestmögliche Versand: morgen (10.06.).
+    expect((upsertStaffNotification.mock.calls[0]![1] as { title: string }).title).toContain(
+      '10.6.2026',
+    );
+    expect(tx.request.create).not.toHaveBeenCalled();
+    expect(stats.staffWarned).toBe(1);
+    expect(stats.requestsCreated).toBe(0);
+  });
+
+  it('Versand-Gate: Vorwarnung von HEUTE reicht nicht — erst der Folgelauf versendet', async () => {
+    const warnedToday = upcomingDeadline(14, {
+      staffLeadDays: 3,
+      staffNotifiedAt: new Date('2026-06-09T07:35:00.000Z'),
+    });
+    const { tx, deps, runAtomic } = makeHarness({ upcoming: [warnedToday] });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(runAtomic).not.toHaveBeenCalled();
+    expect(tx.request.create).not.toHaveBeenCalled();
+    expect(stats.requestsCreated).toBe(0);
+  });
+
+  it('Versand-Gate: Vorwarnung von GESTERN → Versand läuft', async () => {
+    const warnedYesterday = upcomingDeadline(14, {
+      staffLeadDays: 3,
+      staffNotifiedAt: new Date('2026-06-08T07:35:00.000Z'),
+    });
+    const { tx, deps } = makeHarness({ upcoming: [warnedYesterday] });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(tx.request.create).toHaveBeenCalledTimes(1);
+    expect(stats.requestsCreated).toBe(1);
+    expect(stats.staffWarned).toBe(0);
+  });
+
+  it('Tx-Re-Check der Vorwarnung: parallel bereits gewarnt → keine Doppel-Notification', async () => {
+    const { tx, deps, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(10, { staffLeadDays: 3 })],
+    });
+    tx.taxDeadline.findUnique.mockResolvedValue({
+      status: 'PLANNED',
+      requestId: null,
+      staffNotifiedAt: new Date('2026-06-09T07:35:00.000Z'),
+      autoRequestSuppressedAt: null,
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(upsertStaffNotification).not.toHaveBeenCalled();
+    expect(stats.staffWarned).toBe(0);
   });
 });
 

@@ -23,7 +23,7 @@ describe('domain labels', () => {
     expect(NOTICE_STATUS_LABELS.ABGEHOLFEN).toBe('Einspruch abgeholfen');
     expect(NOTICE_STATUS_LABELS.KLAGE).toBe('Klage beim Finanzgericht');
     expect(INVOICE_STATUS_LABELS.SENT).toBe('Versendet');
-    expect(TAX_DEADLINE_STATUS_LABELS.REMINDED).toBe('Erinnerung versendet');
+    expect(TAX_DEADLINE_STATUS_LABELS.REMINDED).toBe('Anforderung versendet');
     expect(GWG_CHECK_STATUS_LABELS.IN_REVIEW).toBe('In Prüfung');
     expect(GWG_INVITE_STATUS_LABELS.SUBMITTED).toBe('Übermittelt');
     expect(FORM_SUBMISSION_STATUS_LABELS.REVIEWED).toBe('Geprüft');

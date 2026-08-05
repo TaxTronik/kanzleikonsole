@@ -18,6 +18,7 @@
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { notify } from '@/server/notifications/service';
 import { materializeTenantTaxDeadlines, type MaterializeStats } from '@taxtronik/tax';
 
 export type { MaterializeStats } from '@taxtronik/tax';
@@ -43,6 +44,8 @@ export async function materializeTaxDeadlines(
         // läuft einfach im selben Tx weiter.
         runAtomic: (fn) => fn(tx),
         recordEvidence: (etx, event) => evidenceService.record(etx, event),
+        // Vorwarnungs-Notifications entstehen in DERSELBEN äußeren Tx.
+        upsertStaffNotification: (ntx, input) => notify(ntx, input),
       },
       {
         tenantId: ctx.tenantId,
