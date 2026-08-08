@@ -6,6 +6,8 @@
 // =============================================================================
 
 import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { evidenceSealWorker } from './jobs/evidence-seal';
 import { gwgExpiryWorker } from './jobs/gwg-expiry-check';
 import { invoiceOverdueWorker } from './jobs/invoice-overdue-check';
@@ -55,12 +57,12 @@ const ALL_WORKERS = [
   healthAlertWorker,
 ] as const;
 
-// Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s einen
-// Touch nach /tmp/worker-alive; das Dockerfile prüft per stat-mtime, dass die
-// Datei nicht älter als 90 s ist. Erkennt Deadlock / Redis-Disconnect, ohne
-// einen HTTP-Port zu öffnen (kleinere Angriffsfläche). /tmp ist im Worker-
-// Container ein tmpfs (siehe docker-compose.app.yml + read_only: true).
-const HEARTBEAT_PATH = '/tmp/worker-alive';
+// Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s ins
+// plattformgerechte Temp-Verzeichnis; im Container bleibt das /tmp, lokal unter
+// Windows dagegen %TEMP%. Erkennt Deadlock / Redis-Disconnect, ohne einen
+// HTTP-Port zu öffnen (kleinere Angriffsfläche). /tmp ist im Worker-Container
+// ein tmpfs (siehe docker-compose.app.yml + read_only: true).
+const HEARTBEAT_PATH = join(tmpdir(), 'worker-alive');
 const HEARTBEAT_INTERVAL_MS = 30_000;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 

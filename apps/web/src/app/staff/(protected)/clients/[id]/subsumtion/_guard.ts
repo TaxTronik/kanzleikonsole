@@ -13,7 +13,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClientTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { loadSubsumtionRights, type SubsumtionRights } from '@/server/risk/rights';
 import { readModules } from '@/server/settings/modules';
-import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
+import { isRiskLayerAvailable } from '@/server/risk/availability';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 
 export interface SubsumtionPageContext {
@@ -52,6 +52,7 @@ export async function guardSubsumtionPage(
 
   const modules = await readModules(ctx);
   if (!modules.risk) redirect(`/staff/clients/${clientId}`);
+  if (!(await isRiskLayerAvailable())) redirect(`/staff/clients/${clientId}`);
 
   const wantStaffOptions = options?.staffOptions !== false;
 
@@ -89,7 +90,7 @@ export async function guardSubsumtionPage(
     staffId,
     fullName,
     staffOptions: geladen.staffOptions,
-    engineConfigured: isRiskLayerConfigured(),
+    engineConfigured: true,
     canWrite: geladen.rights.canWrite,
     rights: geladen.rights,
   };

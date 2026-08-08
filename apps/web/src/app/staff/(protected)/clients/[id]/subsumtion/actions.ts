@@ -25,6 +25,7 @@ import {
 } from '@/server/risk';
 import { enqueueRiskAnalyseLlm, getRiskAnalyseJobState } from '@/server/jobs/risk-analyse-queue';
 import { jsonDocToText } from './doc-text';
+import { canStartLlm, llmCapabilityError } from '@/lib/risk-llm';
 import {
   guard,
   guardWrite,
@@ -268,25 +269,37 @@ export async function llmStatusAction(input: { clientId: string; analysisId?: st
 export async function reanalyzeAction(input: {
   clientId: string;
   analysisId: string;
-}): Promise<OkActionResult<{ added: number; total: number }>> {
+}): Promise<OkActionResult<{ added: number; total: number; llmQueued: boolean }>> {
   try {
     const { ctx, clientId } = await guardAnalysisWrite(input.analysisId);
     requireEngine();
     const res = await reanalyzeAnalysis(ctx, input.analysisId);
     // KI-Phase ebenfalls anstoßen (async). sourceText aus der gespeicherten
     // Analyse (NICHT vom Client) — Offsets müssen passen.
-    const analysis = await withTenantContext(ctx, (tx) =>
-      tx.riskAnalysis.findUnique({ where: { id: input.analysisId }, select: { sourceText: true } }),
-    );
-    if (analysis) {
-      await enqueueRiskAnalyseLlm({
-        tenantId: ctx.tenantId,
-        analysisId: input.analysisId,
-        sourceText: analysis.sourceText,
-      });
+    let llmQueued = false;
+    try {
+      const status = await getLlmStatus();
+      if (canStartLlm(status)) {
+        const analysis = await withTenantContext(ctx, (tx) =>
+          tx.riskAnalysis.findUnique({
+            where: { id: input.analysisId },
+            select: { sourceText: true },
+          }),
+        );
+        if (analysis) {
+          await enqueueRiskAnalyseLlm({
+            tenantId: ctx.tenantId,
+            analysisId: input.analysisId,
+            sourceText: analysis.sourceText,
+          });
+          llmQueued = true;
+        }
+      }
+    } catch {
+      // Die deterministische Neuanalyse bleibt erfolgreich, wenn Schicht 2 fehlt.
     }
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
-    return { ok: true, added: res.added, total: res.total };
+    return { ok: true, added: res.added, total: res.total, llmQueued };
   } catch (e) {
     return toActionError(e);
   }
@@ -299,6 +312,8 @@ export async function requestLlmAction(input: {
   try {
     const { ctx } = await guardAnalysisWrite(input.analysisId);
     requireEngine();
+    const status = await getLlmStatus();
+    if (!canStartLlm(status)) return { ok: false, error: llmCapabilityError(status) };
     // sourceText NICHT vom Client übernehmen — aus der gespeicherten Analyse
     // laden (Offsets der LLM-Markierungen müssen zum gespeicherten Text passen;
     // Determinismus/Audit; keine Manipulation des analysierten Texts).

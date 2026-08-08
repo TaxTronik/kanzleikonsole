@@ -55,6 +55,7 @@ import { ExportPanel } from './export-panel';
 import { MarkingList } from './marking-list';
 import { ResearchView } from './research-view';
 import { fmtDateShort } from '@/lib/fmt';
+import { canStartLlm, llmCapabilityError } from '@/lib/risk-llm';
 import {
   type AnalysisDTO,
   type ResearchResultDTO,
@@ -441,14 +442,20 @@ export function SubsumtionWorkspace({
   // --- Review-Aktionen ---
   function requestLlm() {
     if (!initial) return;
+    if (!canStartLlm(llm)) {
+      setError(llmCapabilityError(llm));
+      setInfo(null);
+      return;
+    }
     setError(null);
-    beginLlmRun(); // Status engmaschig pollen + Fertig-Erkennung scharf stellen
     start(async () => {
       const r = await requestLlmAction({ clientId, analysisId: initial.id });
-      flash(
-        r,
-        'KI-Vertiefung gestartet — der Server fährt bei Bedarf hoch; die neuen Markierungen erscheinen hier automatisch, sobald der Lauf fertig ist.',
-      );
+      if (!r.ok) {
+        flash(r);
+        return;
+      }
+      beginLlmRun(); // Erst nach erfolgreichem Enqueue als „läuft" anzeigen.
+      flash(r, 'KI-Vertiefung gestartet — die neuen Markierungen erscheinen hier automatisch.');
     });
   }
   function toggleFilter(k: FilterKey) {
@@ -472,7 +479,6 @@ export function SubsumtionWorkspace({
     if (!initial) return;
     setError(null);
     setInfo(null);
-    beginLlmRun(); // KI-Phase wird serverseitig mit angestoßen → Skeleton/Polling an
     start(async () => {
       const r = await reanalyzeAction({ clientId, analysisId: initial.id });
       if (!r.ok) {
@@ -480,11 +486,13 @@ export function SubsumtionWorkspace({
         setPollLlm(false);
         return;
       }
+      if (r.llmQueued) beginLlmRun();
       setInfo(
         (r.added > 0
           ? `Neu analysiert — ${r.added} neue Markierung(en) ergänzt`
           : 'Neu analysiert — keine neuen deterministischen Markierungen') +
-          '; KI-Vertiefung läuft … (Bewertungen bleiben).',
+          (r.llmQueued ? '; KI-Vertiefung läuft …' : '') +
+          ' (Bewertungen bleiben).',
       );
       refresh(); // deterministische Ergänzungen sofort zeigen; KI folgt automatisch
     });

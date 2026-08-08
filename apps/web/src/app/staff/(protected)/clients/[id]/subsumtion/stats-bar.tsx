@@ -3,6 +3,7 @@
 import { Wand2, Loader2 } from 'lucide-react';
 import type { MarkingDTO } from './_ui';
 import type { LlmStatusDTO } from '@/server/risk/llm';
+import { canStartLlm } from '@/lib/risk-llm';
 
 function queueText(q: LlmStatusDTO['queue']): string | null {
   if (!q) return null;
@@ -32,9 +33,19 @@ function LlmIndicator({ s, starting }: { s: LlmStatusDTO; starting: boolean }) {
     return (
       <span
         className="text-xs text-muted inline-flex items-center gap-1"
-        title="In der Engine ist kein LLM-Binary konfiguriert"
+        title="In der Engine ist kein llama-server konfiguriert"
       >
-        <span className="h-2 w-2 rounded-full bg-gray-400" /> KI nicht installiert
+        <span className="h-2 w-2 rounded-full bg-gray-400" /> KI-Engine nicht installiert
+      </span>
+    );
+  }
+  if (s.modellGeladen === false) {
+    return (
+      <span
+        className="text-xs text-muted inline-flex items-center gap-1"
+        title="In der Engine ist kein lokales LLM-Modell konfiguriert"
+      >
+        <span className="h-2 w-2 rounded-full bg-gray-400" /> KI-Modell nicht installiert
       </span>
     );
   }
@@ -98,6 +109,7 @@ export function StatsBar({
   const unknown = count((m) => m.engineStatus === 'unknown_risiko');
   const beraterDef = count((m) => m.herkunft === 'BERATER');
   const gov = (t: 'FP' | 'FF' | 'IN') => count((m) => m.governanceTyp === t);
+  const llmStartbar = engineConfigured && canStartLlm(llmStatus);
 
   return (
     <div className="card p-4 flex items-center gap-6 flex-wrap">
@@ -110,22 +122,26 @@ export function StatsBar({
         <span className="badge-purple text-xs">KI-vertieft</span>
       ) : (
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={onRequestLlm}
-            disabled={pending || !engineConfigured || llmStarting}
-            className="btn-secondary text-xs"
-            title="LLM-Schicht asynchron dazuschalten (startet den Server bei Bedarf selbst)"
-          >
-            {pending || llmStarting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Wand2 className="h-3.5 w-3.5" />
-            )}
-            {llmStarting ? 'Vertiefung läuft …' : 'LLM dazuschalten +'}
-          </button>
+          {llmStartbar ? (
+            <button
+              type="button"
+              onClick={onRequestLlm}
+              disabled={pending || llmStarting}
+              className="btn-secondary text-xs"
+              title="LLM-Schicht asynchron dazuschalten (startet den Server bei Bedarf selbst)"
+            >
+              {pending || llmStarting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5" />
+              )}
+              {llmStarting ? 'Vertiefung läuft …' : 'LLM dazuschalten +'}
+            </button>
+          ) : null}
           {engineConfigured && llmStatus ? (
             <LlmIndicator s={llmStatus} starting={!!llmStarting} />
+          ) : engineConfigured ? (
+            <span className="text-xs text-muted">KI-Status wird geprüft …</span>
           ) : null}
         </div>
       )}

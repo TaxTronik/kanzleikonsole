@@ -36,8 +36,10 @@ async function ensureLlmReady(
 ): Promise<LlmReady> {
   const status = await client.llmStatus();
   if (status.verfuegbar) return 'ready';
-  // Kein Binary in der Engine → nicht startbar; sinnloser Retry vermieden.
-  if (status.binary_vorhanden === false) return 'no-capability';
+  // Ohne Binary oder Modell ist die Engine nicht startbar.
+  if (status.binary_vorhanden === false || status.modell_geladen === false) {
+    return 'no-capability';
+  }
 
   await client.llmStart(); // idempotent, non-blocking
   log.info(meta, 'risk-analyse-llm: llama-server gestartet, warte auf Bereitschaft');
@@ -66,9 +68,11 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
     if (ready === 'no-capability') {
       log.warn(
         { analysisId, tenantId },
-        'risk-analyse-llm: kein LLM-Binary in der Engine — Anreicherung übersprungen',
+        'risk-analyse-llm: LLM-Binary oder Modell fehlt — Anreicherung abgebrochen',
       );
-      return; // Job sauber abschließen (kein sinnvoller Retry).
+      throw new UnrecoverableError(
+        'KI-Vertiefung nicht verfügbar: llama-server oder lokales Modell fehlt.',
+      );
     }
     if (ready === 'timeout') {
       // Warmlauf zu langsam → werfen, BullMQ-Retry pollt beim nächsten Versuch erneut.

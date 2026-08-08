@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ArrowLeft, Inbox, CalendarDays, Wand2 } from 'lucide-react';
 import { computeOnboardingStatus, resumeStep } from '@/server/onboarding/status';
 import { readModules } from '@/server/settings/modules';
+import { isRiskLayerAvailable } from '@/server/risk/availability';
 import { readClientLayout, type ClientBlockKey } from '@/server/settings/client-layout';
 import { CockpitGrid } from './cockpit-grid';
 import {
@@ -84,9 +85,10 @@ export default async function ClientDetailPage({
   const { tenantId, staffId } = session.user;
   const settingsCtx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
-  const [modules, clientLayout] = await Promise.all([
+  const [modules, clientLayout, riskLayerAvailable] = await Promise.all([
     readModules(settingsCtx),
     readClientLayout(settingsCtx),
+    isRiskLayerAvailable(),
   ]);
 
   const dashboard = await loadClientDashboard(settingsCtx, session, id);
@@ -275,7 +277,7 @@ export default async function ClientDetailPage({
             )}
           </Link>
         )}
-        {modules.risk && canSubsumtion && (
+        {modules.risk && riskLayerAvailable && canSubsumtion && (
           <Link
             href={`/staff/clients/${client.id}/subsumtion`}
             className="btn-secondary text-xs py-1"
