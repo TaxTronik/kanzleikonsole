@@ -1035,8 +1035,25 @@ generate_prisma_client_for_host_tools() {
 }
 
 run_backup() {
+  local backup_dir="${1:-}"
   require_cmd pnpm
   info "Backup starten"
+  # Der Runner laeuft hier als Host-Prozess, nicht im App-Container. Daher ist
+  # dessen Produktionspfad /app/backups ungeeignet. Normale CLI-/Update-Laeufe
+  # verwenden den zum Compose-Bind-Mount gehoerenden Host-Pfad; Full-Backups
+  # koennen weiterhin ein isoliertes Staging-Verzeichnis explizit uebergeben.
+  if [[ -z "$backup_dir" ]]; then
+    backup_dir="$(resolve_backup_host_dir)" || return $?
+  fi
+  mkdir -p "$backup_dir" || {
+    warn "Backup-Verzeichnis konnte nicht angelegt werden: $backup_dir"
+    return 1
+  }
+  backup_dir="$(cd "$backup_dir" && pwd -P)" || return $?
+  [[ -w "$backup_dir" ]] || {
+    warn "Backup-Verzeichnis ist fuer den Operator nicht beschreibbar: $backup_dir"
+    return 1
+  }
   # .prisma/client fuer den Host-tsx-Runner erzeugen. pnpm 11 + Monorepo führt
   # den @prisma/client-Postinstall nicht zuverlässig aus (Schema liegt in
   # packages/db) — sonst "Cannot find module '.prisma/client/default'".
@@ -1050,7 +1067,7 @@ run_backup() {
     info "pg_dump fehlt auf dem Host -> nutze pg_dump aus dem Postgres-Container (PG_DUMP_PATH)."
   fi
   ensure_s3_ready_for_backup || return $?
-  ( cd "$ROOT" && pnpm --filter @taxtronik/web backup:run )
+  ( cd "$ROOT" && BACKUP_LOCAL_DIR="$backup_dir" pnpm --filter @taxtronik/web backup:run )
 }
 
 # P2-21: n8n-Datenbank sichern (Credentials/Ausführungshistorie). Die App-DB
@@ -2737,7 +2754,7 @@ cmd_backup_full() {
   info "Schreibdienste fuer konsistenten Full-Backup-Wiederanlaufpunkt quieszieren"
   _FULL_BACKUP_SERVICES_QUIESCED=1
   compose stop app worker n8n || die "Schreibdienste konnten nicht vollstaendig gestoppt werden."
-  if ! BACKUP_LOCAL_DIR="$staging/database" run_backup; then
+  if ! run_backup "$staging/database"; then
     die "TaxTronik-DB-Dump im Full-Backup fehlgeschlagen."
   fi
   if ! run_backup_n8n "$staging/database"; then

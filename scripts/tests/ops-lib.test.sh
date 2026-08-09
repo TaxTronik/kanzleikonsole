@@ -652,6 +652,48 @@ test_host_tool_deps_refresh_stale_checkout() {
   pass "host tools refresh stale injected workspace dependencies"
 }
 
+test_run_backup_uses_resolved_host_path() {
+  local root="$TMP_DIR/run-backup-host-root"
+  local captured="$TMP_DIR/run-backup-host-path"
+  mkdir -p "$root/infra/compose"
+
+  (
+    ROOT="$root"
+    BACKUP_HOST_DIR="../../operator-backups"
+    BACKUP_LOCAL_DIR="/app/backups"
+    require_cmd() { :; }
+    generate_prisma_client_for_host_tools() { :; }
+    pg_dump() { :; }
+    ensure_s3_ready_for_backup() { :; }
+    pnpm() { printf '%s\n' "$BACKUP_LOCAL_DIR" >"$captured"; }
+    run_backup
+  ) >/dev/null
+
+  assert_file_equals "$captured" "$root/operator-backups"
+  pass "host backup maps the compose backup directory instead of using the container path"
+}
+
+test_run_backup_respects_explicit_staging_path() {
+  local root="$TMP_DIR/run-backup-staging-root"
+  local staging="$TMP_DIR/run-backup-staging"
+  local captured="$TMP_DIR/run-backup-staging-path"
+  mkdir -p "$root" "$staging"
+
+  (
+    ROOT="$root"
+    BACKUP_LOCAL_DIR="/app/backups"
+    require_cmd() { :; }
+    generate_prisma_client_for_host_tools() { :; }
+    pg_dump() { :; }
+    ensure_s3_ready_for_backup() { :; }
+    pnpm() { printf '%s\n' "$BACKUP_LOCAL_DIR" >"$captured"; }
+    run_backup "$staging"
+  ) >/dev/null
+
+  assert_file_equals "$captured" "$staging"
+  pass "full backup can override the host backup target with its staging directory"
+}
+
 run_mock_update() (
   ROOT="$TMP_DIR/mock-update-root"
   mkdir -p "$ROOT"
@@ -1812,6 +1854,8 @@ test_deploy_readiness_rejects_gwg_schema_drift
 test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start
 test_backup_manifest_detects_tampering
 test_host_tool_deps_refresh_stale_checkout
+test_run_backup_uses_resolved_host_path
+test_run_backup_respects_explicit_staging_path
 test_update_backs_up_old_checkout_before_fetch
 test_update_backup_failure_leaves_checkout_untouched
 test_release_contract_is_not_persisted_before_health
