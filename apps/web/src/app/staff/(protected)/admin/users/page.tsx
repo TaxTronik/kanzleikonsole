@@ -70,34 +70,41 @@ export default async function UsersAdminPage() {
         </div>
       </details>
 
-      <div className="card overflow-x-auto">
-        <table className="w-full text-sm min-w-[64rem]">
-          <thead>
+      <div className="card overflow-hidden">
+        <table className="block w-full text-sm xl:table xl:table-fixed">
+          <colgroup className="hidden xl:table-column-group">
+            <col className="w-[19%]" />
+            <col className="w-[17%]" />
+            <col className="w-[20%]" />
+            <col className="w-[15%]" />
+            <col className="w-[9%]" />
+            <col className="w-[9%]" />
+            <col className="w-[11%]" />
+          </colgroup>
+          <thead className="hidden xl:table-header-group">
             <tr className="bg-gray-50 border-b border-default">
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">Name</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
-                E-Mail
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
+                Benutzer
               </th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
                 Rollen
               </th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
                 Berechtigungen
               </th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
                 Tätigkeiten
               </th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">2FA</th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">2FA</th>
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
                 Letzter Login
               </th>
-              <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
                 Status
               </th>
-              <th className="text-right px-6 py-3"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border-subtle">
+          <tbody className="grid gap-3 p-3 sm:p-4 xl:table-row-group xl:p-0">
             {users.map((u) => {
               const roleNames = u.roles.map((r) => r.role);
               const skillIds = u.skillAssignments.map((a) => a.skillId);
@@ -108,16 +115,32 @@ export default async function UsersAdminPage() {
               }));
               const isSelf = u.id === staffId;
               return (
-                <tr key={u.id} className={u.active ? 'hover:bg-gray-50' : 'opacity-60'}>
-                  <td className="px-6 py-3 font-medium text-primary">
-                    {u.fullName}
-                    {isSelf && <span className="ml-2 text-xs text-disabled">(Sie)</span>}
+                <tr
+                  key={u.id}
+                  className={`grid min-w-0 gap-x-6 gap-y-4 rounded-lg border border-default p-4 sm:grid-cols-2 xl:table-row xl:rounded-none xl:border-0 xl:border-b xl:p-0 xl:last:border-b-0 ${
+                    u.active ? 'xl:hover:bg-gray-50' : 'opacity-60'
+                  }`}
+                >
+                  <td className="min-w-0 align-top xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      Benutzer
+                    </span>
+                    <div className="font-medium text-primary">
+                      {u.fullName}
+                      {isSelf && <span className="ml-2 text-xs text-disabled">(Sie)</span>}
+                    </div>
+                    <div className="mt-0.5 break-all text-xs text-secondary">{u.email}</div>
                   </td>
-                  <td className="px-6 py-3 text-secondary">{u.email}</td>
-                  <td className="px-6 py-3">
+                  <td className="min-w-0 align-top xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      Rollen
+                    </span>
                     <SetRolesForm userId={u.id} currentRoles={roleNames} disabled={isSelf} />
                   </td>
-                  <td className="px-6 py-3">
+                  <td className="min-w-0 align-top xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      Berechtigungen
+                    </span>
                     {/* iter87: ADMIN/PARTNER haben implizit alles — Chips nur
                         für EMPLOYEE-only-Benutzer (und nicht für sich selbst). */}
                     {roleNames.includes('ADMIN') || roleNames.includes('PARTNER') ? (
@@ -136,9 +159,12 @@ export default async function UsersAdminPage() {
                       />
                     )}
                   </td>
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-wrap gap-1">
+                  <td className="min-w-0 align-top xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      Tätigkeiten
+                    </span>
+                    <div className="flex min-w-0 items-start gap-1">
+                      <div className="flex min-w-0 flex-1 flex-wrap gap-1">
                         {skillsForDisplay.length === 0 ? (
                           <span className="text-xs text-disabled">—</span>
                         ) : (
@@ -158,7 +184,10 @@ export default async function UsersAdminPage() {
                       />
                     </div>
                   </td>
-                  <td className="px-6 py-3">
+                  <td className="min-w-0 align-top xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      2FA
+                    </span>
                     {u.totpEnrolledAt ? (
                       <span className="inline-flex items-center gap-1 text-emerald-700 text-xs">
                         <ShieldCheck className="h-3.5 w-3.5" />
@@ -168,18 +197,24 @@ export default async function UsersAdminPage() {
                       <span className="text-xs text-disabled">nicht eingerichtet</span>
                     )}
                   </td>
-                  <td className="px-6 py-3 text-xs text-muted">
+                  <td className="min-w-0 align-top text-xs text-muted xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      Letzter Login
+                    </span>
                     {u.lastLoginAt ? fmtDateNumeric(u.lastLoginAt) : '—'}
                   </td>
-                  <td className="px-6 py-3">
-                    {u.active ? (
-                      <span className="badge-green">Aktiv</span>
-                    ) : (
-                      <span className="badge-gray">Deaktiviert</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-right">
-                    {!isSelf && <ToggleActiveForm userId={u.id} active={u.active} />}
+                  <td className="min-w-0 align-top sm:col-span-2 xl:table-cell xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      Status
+                    </span>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {u.active ? (
+                        <span className="badge-green">Aktiv</span>
+                      ) : (
+                        <span className="badge-gray">Deaktiviert</span>
+                      )}
+                      {!isSelf && <ToggleActiveForm userId={u.id} active={u.active} />}
+                    </div>
                   </td>
                 </tr>
               );

@@ -532,8 +532,8 @@ export default async function AuditLogPage({
                       <span className="text-disabled">:{e.resourceId.slice(0, 8)}</span>
                     )}
                   </td>
-                  <td className="px-6 py-2 text-disabled font-mono">
-                    {Buffer.from(e.thisHash).toString('hex').slice(0, 12)}…
+                  <td className="px-6 py-2 text-disabled font-mono break-all">
+                    {Buffer.from(e.thisHash).toString('hex')}
                   </td>
                 </tr>
               ))}

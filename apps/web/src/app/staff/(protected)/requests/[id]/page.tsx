@@ -73,6 +73,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             an {reqRow.client.name}
             {reqRow.dueAt ? ` · fällig ${fmtDateShort(reqRow.dueAt)}` : ''}
           </p>
+          <p className="mt-1 text-xs text-disabled">
+            Erstellt am {fmtDateTimeShort(reqRow.createdAt)}
+          </p>
         </div>
       </div>
 

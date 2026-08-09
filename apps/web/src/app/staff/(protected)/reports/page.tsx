@@ -9,143 +9,20 @@ import type { ComponentType } from 'react';
 import Link from 'next/link';
 import { Inbox, Clock, Receipt, TrendingUp, AlertCircle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import type { Prisma } from '@prisma/client';
 
 import { fmtEURRound } from '@/lib/fmt';
 import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
-async function loadReports(tx: Prisma.TransactionClient) {
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-
-  // Anforderungs-KPIs
-  const [
-    requestStatusCounts,
-    overdueRequests,
-    requestsLast30,
-    avgResponseTime,
-    timeEntriesMonth,
-    invoiceStatusSums,
-    invoicesYTD,
-    paidInvoicesAvgPaymentDays,
-    topClientsByHours,
-    topClientsByRevenue,
-  ] = await Promise.all([
-    // Status-Verteilung Requests
-    tx.request.groupBy({
-      by: ['status'],
-      _count: { _all: true },
-    }),
-    // Überfällige offene Requests
-    tx.request.count({
-      where: {
-        status: { in: ['OPEN', 'IN_PROGRESS'] },
-        dueAt: { not: null, lt: now },
-      },
-    }),
-    tx.request.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
-    // Avg-Response-Time: für RESPONDED + CLOSED requests, Zeit zwischen createdAt
-    // und der ersten CLIENT_CONTACT-Antwort.
-    tx.$queryRaw<Array<{ avg_seconds: number | null }>>`
-      SELECT AVG(EXTRACT(EPOCH FROM (first_response.created_at - r.created_at)))::float AS avg_seconds
-      FROM request r
-      JOIN LATERAL (
-        SELECT created_at FROM request_response
-        WHERE request_id = r.id AND author_type = 'CLIENT_CONTACT'
-        ORDER BY created_at ASC LIMIT 1
-      ) AS first_response ON true
-      WHERE r.tenant_id = app.current_tenant_id()
-        AND r.created_at >= ${ninetyDaysAgo}
-    `,
-
-    tx.timeEntry.aggregate({
-      where: { startedAt: { gte: startOfMonth } },
-      _count: { _all: true },
-    }),
-
-    // Rechnungs-KPIs
-    tx.invoice.groupBy({
-      by: ['status'],
-      _sum: { totalAmount: true },
-      _count: { _all: true },
-    }),
-    tx.invoice.aggregate({
-      // Storno-Belege (negierte Beträge, stornoOfId gesetzt) NICHT mitzählen:
-      // das stornierte Original ist über status=CANCELLED bereits ausgeschlossen;
-      // der negative Storno würde den Umsatz sonst ein zweites Mal mindern
-      // (Netto-1000-Rechnung → −1000 statt 0). Gutschriften sind kein Umsatz.
-      where: { issueDate: { gte: startOfYear }, status: { not: 'CANCELLED' }, stornoOfId: null },
-      _sum: { totalAmount: true, netAmount: true },
-      _count: { _all: true },
-    }),
-    // Avg-Payment-Days
-    tx.$queryRaw<Array<{ avg_days: number | null }>>`
-      SELECT AVG(EXTRACT(EPOCH FROM (paid_at - issue_date::timestamp)) / 86400)::float AS avg_days
-      FROM invoice
-      WHERE tenant_id = app.current_tenant_id()
-        AND status = 'PAID'
-        AND paid_at IS NOT NULL
-        AND issue_date >= ${ninetyDaysAgo}
-    `,
-
-    // Top-Mandanten nach Stunden (90 Tage)
-    tx.$queryRaw<Array<{ client_id: string; name: string; minutes: number }>>`
-      SELECT
-        c.id::text AS client_id,
-        c.name,
-        COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(t.ended_at, NOW()) - t.started_at))/60), 0)::int AS minutes
-      FROM client c
-      JOIN time_entry t ON t.client_id = c.id
-      WHERE c.tenant_id = app.current_tenant_id()
-        AND t.started_at >= ${ninetyDaysAgo}
-        AND t.billable
-      GROUP BY c.id, c.name
-      ORDER BY minutes DESC
-      LIMIT 5
-    `,
-
-    // Top-Mandanten nach Umsatz (YTD)
-    tx.$queryRaw<Array<{ client_id: string; name: string; revenue: number }>>`
-      SELECT
-        c.id::text AS client_id,
-        c.name,
-        SUM(i.net_amount)::float AS revenue
-      FROM client c
-      JOIN invoice i ON i.client_id = c.id
-      WHERE c.tenant_id = app.current_tenant_id()
-        AND i.issue_date >= ${startOfYear}
-        AND i.status <> 'CANCELLED'
-        AND i.storno_of_id IS NULL
-      GROUP BY c.id, c.name
-      ORDER BY revenue DESC
-      LIMIT 5
-    `,
-  ]);
-
-  return {
-    requestStatusCounts,
-    overdueRequests,
-    requestsLast30,
-    avgResponseTime: avgResponseTime[0]?.avg_seconds ?? null,
-    timeEntriesMonth: timeEntriesMonth._count._all,
-    invoiceStatusSums,
-    invoicesYTD,
-    paidInvoicesAvgPaymentDays: paidInvoicesAvgPaymentDays[0]?.avg_days ?? null,
-    topClientsByHours,
-    topClientsByRevenue,
-  };
-}
+import { loadReports } from './data';
 
 export default async function ReportsPage() {
   const session = await requireStaffPage();
+  const canViewBilling = isStaffAdmin(session);
 
   const { tenantId, staffId } = session.user;
-  const data = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    loadReports,
+  const data = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+    loadReports(tx, canViewBilling),
   );
 
   const fmtMin = (m: number) => {
@@ -167,22 +44,27 @@ export default async function ReportsPage() {
     (requestStatusMap.get('RESPONDED') ?? 0) + (requestStatusMap.get('CLOSED') ?? 0);
   const responseRate = totalRequests > 0 ? (responded / totalRequests) * 100 : 0;
 
-  const invoiceMap = new Map(data.invoiceStatusSums.map((i) => [i.status, i]));
+  const billing = data.billing;
+  const invoiceMap = new Map(billing?.invoiceStatusSums.map((i) => [i.status, i]) ?? []);
   const openInvoiceTotal = Number(invoiceMap.get('SENT')?._sum.totalAmount ?? 0);
-  const overdueInvoices = data.invoiceStatusSums.find((i) => i.status === 'OVERDUE');
-  const ytdNet = Number(data.invoicesYTD._sum.netAmount ?? 0);
+  const overdueInvoices = billing?.invoiceStatusSums.find((i) => i.status === 'OVERDUE');
+  const ytdNet = Number(billing?.invoicesYTD._sum.netAmount ?? 0);
 
   return (
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Auswertungen</h1>
         <p className="text-muted text-sm">
-          Kanzlei-KPIs aus Anforderungen, Zeiterfassung und Rechnungswesen.
+          {billing
+            ? 'Kanzlei-KPIs aus Anforderungen, Zeiterfassung und Rechnungswesen.'
+            : 'Kanzlei-KPIs aus Anforderungen und Zeiterfassung.'}
         </p>
       </div>
 
       {/* Top-KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div
+        className={`grid grid-cols-2 gap-4 mb-8 ${billing ? 'lg:grid-cols-4' : 'lg:grid-cols-2 lg:max-w-3xl'}`}
+      >
         <Kpi
           icon={Inbox}
           label="Antwortrate (90 Tage)"
@@ -196,25 +78,31 @@ export default async function ReportsPage() {
           value={fmtDuration(data.avgResponseTime)}
           subtitle="Mandant antwortet"
         />
-        <Kpi
-          icon={Receipt}
-          label="Umsatz lfd. Jahr (netto)"
-          value={fmtEURRound(ytdNet)}
-          subtitle={`${data.invoicesYTD._count._all} Rechnungen`}
-        />
-        <Kpi
-          icon={TrendingUp}
-          label="Avg. Zahlungsdauer"
-          value={fmtDuration(
-            data.paidInvoicesAvgPaymentDays === null
-              ? null
-              : data.paidInvoicesAvgPaymentDays * 86400,
-          )}
-          subtitle="Bezahlt-Rechnungen 90 Tage"
-        />
+        {billing && (
+          <>
+            <Kpi
+              icon={Receipt}
+              label="Umsatz lfd. Jahr (netto)"
+              value={fmtEURRound(ytdNet)}
+              subtitle={`${billing.invoicesYTD._count._all} Rechnungen`}
+            />
+            <Kpi
+              icon={TrendingUp}
+              label="Avg. Zahlungsdauer"
+              value={fmtDuration(
+                billing.paidInvoicesAvgPaymentDays === null
+                  ? null
+                  : billing.paidInvoicesAvgPaymentDays * 86400,
+              )}
+              subtitle="Bezahlt-Rechnungen 90 Tage"
+            />
+          </>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <div
+        className={`grid grid-cols-1 gap-6 mb-8 ${billing ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}
+      >
         {/* Anforderungs-Status */}
         <div className="card p-6">
           <h2 className="text-sm font-medium text-primary mb-4">Anforderungs-Status</h2>
@@ -285,65 +173,69 @@ export default async function ReportsPage() {
         </div>
 
         {/* Top Mandanten nach Umsatz */}
-        <div className="card p-6">
-          <h2 className="text-sm font-medium text-primary mb-4">
-            Top-Mandanten — Umsatz im lfd. Jahr
-          </h2>
-          {data.topClientsByRevenue.length === 0 ? (
-            <p className="text-sm text-disabled">Keine Daten.</p>
-          ) : (
-            <ul className="space-y-2">
-              {data.topClientsByRevenue.map((c) => (
-                <li key={c.client_id} className="flex justify-between text-sm">
-                  <Link
-                    href={`/staff/clients/${c.client_id}`}
-                    className="text-secondary hover:underline truncate"
-                  >
-                    {c.name}
-                  </Link>
-                  <span className="font-mono text-primary">{fmtEURRound(c.revenue)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        {billing && (
+          <div className="card p-6">
+            <h2 className="text-sm font-medium text-primary mb-4">
+              Top-Mandanten — Umsatz im lfd. Jahr
+            </h2>
+            {billing.topClientsByRevenue.length === 0 ? (
+              <p className="text-sm text-disabled">Keine Daten.</p>
+            ) : (
+              <ul className="space-y-2">
+                {billing.topClientsByRevenue.map((c) => (
+                  <li key={c.client_id} className="flex justify-between text-sm">
+                    <Link
+                      href={`/staff/clients/${c.client_id}`}
+                      className="text-secondary hover:underline truncate"
+                    >
+                      {c.name}
+                    </Link>
+                    <span className="font-mono text-primary">{fmtEURRound(c.revenue)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Rechnungs-Übersicht */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card p-6 lg:col-span-2">
-          <h2 className="text-sm font-medium text-primary mb-4">Rechnungen — Status</h2>
-          <table className="w-full text-sm">
-            <tbody className="divide-y divide-border-subtle">
-              {(['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'] as const).map((s) => {
-                const i = invoiceMap.get(s);
-                const count = i?._count._all ?? 0;
-                const sum = Number(i?._sum.totalAmount ?? 0);
-                return (
-                  <tr key={s}>
-                    <td className="py-2 text-secondary">{INVOICE_STATUS_LABELS[s]}</td>
-                    <td className="py-2 text-right text-muted w-20">{count}</td>
-                    <td className="py-2 text-right font-mono w-32">{fmtEURRound(sum)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      {billing && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="card p-6 lg:col-span-2">
+            <h2 className="text-sm font-medium text-primary mb-4">Rechnungen — Status</h2>
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-border-subtle">
+                {(['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'] as const).map((s) => {
+                  const i = invoiceMap.get(s);
+                  const count = i?._count._all ?? 0;
+                  const sum = Number(i?._sum.totalAmount ?? 0);
+                  return (
+                    <tr key={s}>
+                      <td className="py-2 text-secondary">{INVOICE_STATUS_LABELS[s]}</td>
+                      <td className="py-2 text-right text-muted w-20">{count}</td>
+                      <td className="py-2 text-right font-mono w-32">{fmtEURRound(sum)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-        <div className="card p-6">
-          <h2 className="text-sm font-medium text-primary mb-4">Forderungen</h2>
-          <p className="text-xs text-muted mb-1">Offene Beträge (versendet)</p>
-          <p className="text-2xl font-bold text-primary mb-3">{fmtEURRound(openInvoiceTotal)}</p>
-          {overdueInvoices && (overdueInvoices._count._all ?? 0) > 0 && (
-            <p className="text-sm text-red-700 flex items-center gap-2 mt-3">
-              <AlertCircle className="h-4 w-4" />
-              {overdueInvoices._count._all} überfällig:{' '}
-              {fmtEURRound(Number(overdueInvoices._sum.totalAmount ?? 0))}
-            </p>
-          )}
+          <div className="card p-6">
+            <h2 className="text-sm font-medium text-primary mb-4">Forderungen</h2>
+            <p className="text-xs text-muted mb-1">Offene Beträge (versendet)</p>
+            <p className="text-2xl font-bold text-primary mb-3">{fmtEURRound(openInvoiceTotal)}</p>
+            {overdueInvoices && (overdueInvoices._count._all ?? 0) > 0 && (
+              <p className="text-sm text-red-700 flex items-center gap-2 mt-3">
+                <AlertCircle className="h-4 w-4" />
+                {overdueInvoices._count._all} überfällig:{' '}
+                {fmtEURRound(Number(overdueInvoices._sum.totalAmount ?? 0))}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -42,7 +42,7 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
     async (tx) => {
       const entry = await tx.auditLog.findFirst({ where: { id: entryId } });
       if (!entry) return null;
-      const [prev, next] = await Promise.all([
+      const [prev, next, staffActor] = await Promise.all([
         tx.auditLog.findFirst({
           where: { id: { lt: entry.id } },
           orderBy: { id: 'desc' },
@@ -53,13 +53,19 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
           orderBy: { id: 'asc' },
           select: { id: true },
         }),
+        entry.actorType === 'STAFF' && entry.actorId
+          ? tx.staffUser.findFirst({
+              where: { id: entry.actorId, tenantId },
+              select: { fullName: true },
+            })
+          : Promise.resolve(null),
       ]);
-      return { entry, prev, next };
+      return { entry, prev, next, staffActor };
     },
   );
 
   if (!data) notFound();
-  const { entry, prev, next } = data;
+  const { entry, prev, next, staffActor } = data;
 
   // Lokale Verifikation: Hash neu berechnen
   const canonical = {
@@ -142,11 +148,16 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
           </div>
           <div>
             <dt className="text-xs text-muted uppercase tracking-wide">Akteur</dt>
-            <dd className="text-primary">
-              {actorTypeLabels[entry.actorType] ?? entry.actorType}
+            <dd className="min-w-0 text-primary">
+              <div>
+                {actorTypeLabels[entry.actorType] ?? entry.actorType}
+                {staffActor?.fullName && (
+                  <span className="ml-2 font-medium">{staffActor.fullName}</span>
+                )}
+              </div>
               {entry.actorId && (
-                <span className="text-muted font-mono ml-2 text-xs">
-                  {entry.actorId.slice(0, 12)}…
+                <span className="mt-1 block break-all font-mono text-xs text-muted">
+                  {entry.actorId}
                 </span>
               )}
             </dd>

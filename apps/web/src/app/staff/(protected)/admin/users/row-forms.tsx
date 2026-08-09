@@ -61,8 +61,8 @@ export function SetRolesForm({
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex gap-1">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap gap-1">
         {ROLE_OPTIONS.map((r) => {
           const has = roles.has(r);
           return (
@@ -143,8 +143,8 @@ export function SetPermissionsForm({
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex gap-1">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap gap-1">
         {STAFF_PERMISSIONS.map((p) => {
           const has = perms.has(p.key);
           return (
