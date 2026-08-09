@@ -1435,17 +1435,17 @@ ALTER TABLE public.tax_notice ADD CONSTRAINT tax_notice_legal_final_evidence_che
 -- never rewritten here and is rejected by verify-migration-ledger.mjs.
 WITH known_legacy(migration_name, legacy_checksum, canonical_checksum) AS (
   VALUES
-    ('20260801003400_gwg_fail_closed_and_destruction', '20e0ac5a2c1d6d47c7c606cd3915b6297418c25ece1695e345152ebc20296152', '522bdf1be8bedcf4ccb14cc3b8ea8902f6c99f08acbc0271e5c8e8c427f71fb5'),
-    ('20260801003500_tax_notice_event_dates', 'aca1080fb6a838263c178ffc9ee6966168df08338a82d5c8c2f2cf5133404d05', 'f41ab83c711f257c6613f84ebfb1e98d75290a9def54c534e10ebbe3152c07c5'),
-    ('20260801003510_dsgvo_request_evidence', '85f37286af75f978f46e80f026768f1bfa36243f8717f6152ac3118574501966', 'b066ce8e1843dea2b18e781fdf7bbba9755b54badd47e9f658c2d5fb2d95c9f3'),
+    ('20260801003400_gwg_fail_closed_and_destruction', '20e0ac5a2c1d6d47c7c606cd3915b6297418c25ece1695e345152ebc20296152', '0a14d7d3651dfef0e0cffe71c38075c3e8f08cbcc4ea54aa8da6e429bebcea6b'),
+    ('20260801003500_tax_notice_event_dates', 'aca1080fb6a838263c178ffc9ee6966168df08338a82d5c8c2f2cf5133404d05', 'fc4f82dd6dc4ba389cd668a41a308feba3ea56965bde3913afb0cd2c35d2478f'),
+    ('20260801003510_dsgvo_request_evidence', '85f37286af75f978f46e80f026768f1bfa36243f8717f6152ac3118574501966', '0c6e0ae08723053157c1e58f25576d04a2ceac3c4aaea31a861234af50532ffd'),
     ('20260801003600_poa_signing_snapshot', '6a180f40b3d7e57f3bee1623b1e05d8759ae773a90b2ae3e882e1b847c43bab6', '225753c9c03bd05c717f7e0f151a7ac2ed1db87c75f86b3de4e3e6a13e3b1dfa'),
     ('20260801003700_n8n_workflow_routes', 'a7ab046abe92205f430202af01e0a0f955ad074eeb696a08842864102bf83387', 'fca7f51d9eb02387fb20ee8c3319564ec3f0dc06bf9487a32f187cd4d51d0394'),
     ('20260801003800_n8n_callback_receipts', '9ea34ff62642812abd7141b85b3f48df5973b25db0f1e69d390b85f50a2a611a', 'ab8a651682b04d771320c8a628047bee8e24721d84f483afc857600edd53c303'),
     ('20260801003900_n8n_delivery_ops_index', 'f7af0aef8e6d3a15344651c13869e7eebf8ea7a40e36b12e27257a29fdbf79d1', '6ac5ada54eadc5d9e19a2777b77ec5aa7354eefdf04fe012a31cda99c9bb2f94'),
     ('20260801004000_poa_created_at_db_clock', '5b7441b7eb0d3148a6e4418fbdc61df8a7730cf856fa5f2cf27e3276228a89d1', '169c5c5afd6dcc18d08cf9122a00e6553bce268005f462a01e9a43fe9557e605'),
-    ('20260801004200_gwg_destruction_lifecycle_lock', '90efb4b93035dbb4b685b8b2f36395badaabe3cb0e36389031a21155e90479ed', '22bb09784eb9ac0c442c988324f9b362dad1987270186450b528c3449851f28d'),
-    ('20260801004300_gwg_identity_subjects_and_document_sets', 'a7c91cb2cefdff27708b8f725a2c5bcee24578fdce8899f09b25bf8c124154d1', 'dbf3d368cbe85a249bdf06b1947163d69b879bd8017c5c30a800220c9c774d3b'),
-    ('20260801004400_legacy_gwg_guard_recovery', 'b84f3eff33972398cfde95521cc44671639fc0f34bbfb0f872afbc2e19951b6f', 'bda88a84cf016044148b08a63ca677957176c16b464efd9bbad71ca15a22a8e3')
+    ('20260801004200_gwg_destruction_lifecycle_lock', '90efb4b93035dbb4b685b8b2f36395badaabe3cb0e36389031a21155e90479ed', 'a011462a9453eaae29d0e3b5065d325970ba81803b92e97fc4e4a25c361d688b'),
+    ('20260801004300_gwg_identity_subjects_and_document_sets', 'a7c91cb2cefdff27708b8f725a2c5bcee24578fdce8899f09b25bf8c124154d1', '861f2fe53dd2e900d5697b80b9632d086f027bc3df65199232194c96e66d639e'),
+    ('20260801004400_legacy_gwg_guard_recovery', 'b84f3eff33972398cfde95521cc44671639fc0f34bbfb0f872afbc2e19951b6f', '4390e25b53febbb93ec0dc7c0b29793e7f5e7827bea1d8b23ff361b4faf2dd1c')
 )
 UPDATE public._prisma_migrations AS ledger
    SET checksum = known.canonical_checksum
@@ -1461,17 +1461,17 @@ DECLARE
 BEGIN
   WITH canonical(migration_name, checksum) AS (
     VALUES
-      ('20260801003400_gwg_fail_closed_and_destruction', '522bdf1be8bedcf4ccb14cc3b8ea8902f6c99f08acbc0271e5c8e8c427f71fb5'),
-      ('20260801003500_tax_notice_event_dates', 'f41ab83c711f257c6613f84ebfb1e98d75290a9def54c534e10ebbe3152c07c5'),
-      ('20260801003510_dsgvo_request_evidence', 'b066ce8e1843dea2b18e781fdf7bbba9755b54badd47e9f658c2d5fb2d95c9f3'),
+      ('20260801003400_gwg_fail_closed_and_destruction', '0a14d7d3651dfef0e0cffe71c38075c3e8f08cbcc4ea54aa8da6e429bebcea6b'),
+      ('20260801003500_tax_notice_event_dates', 'fc4f82dd6dc4ba389cd668a41a308feba3ea56965bde3913afb0cd2c35d2478f'),
+      ('20260801003510_dsgvo_request_evidence', '0c6e0ae08723053157c1e58f25576d04a2ceac3c4aaea31a861234af50532ffd'),
       ('20260801003600_poa_signing_snapshot', '225753c9c03bd05c717f7e0f151a7ac2ed1db87c75f86b3de4e3e6a13e3b1dfa'),
       ('20260801003700_n8n_workflow_routes', 'fca7f51d9eb02387fb20ee8c3319564ec3f0dc06bf9487a32f187cd4d51d0394'),
       ('20260801003800_n8n_callback_receipts', 'ab8a651682b04d771320c8a628047bee8e24721d84f483afc857600edd53c303'),
       ('20260801003900_n8n_delivery_ops_index', '6ac5ada54eadc5d9e19a2777b77ec5aa7354eefdf04fe012a31cda99c9bb2f94'),
       ('20260801004000_poa_created_at_db_clock', '169c5c5afd6dcc18d08cf9122a00e6553bce268005f462a01e9a43fe9557e605'),
-      ('20260801004200_gwg_destruction_lifecycle_lock', '22bb09784eb9ac0c442c988324f9b362dad1987270186450b528c3449851f28d'),
-      ('20260801004300_gwg_identity_subjects_and_document_sets', 'dbf3d368cbe85a249bdf06b1947163d69b879bd8017c5c30a800220c9c774d3b'),
-      ('20260801004400_legacy_gwg_guard_recovery', 'bda88a84cf016044148b08a63ca677957176c16b464efd9bbad71ca15a22a8e3')
+      ('20260801004200_gwg_destruction_lifecycle_lock', 'a011462a9453eaae29d0e3b5065d325970ba81803b92e97fc4e4a25c361d688b'),
+      ('20260801004300_gwg_identity_subjects_and_document_sets', '861f2fe53dd2e900d5697b80b9632d086f027bc3df65199232194c96e66d639e'),
+      ('20260801004400_legacy_gwg_guard_recovery', '4390e25b53febbb93ec0dc7c0b29793e7f5e7827bea1d8b23ff361b4faf2dd1c')
   )
   SELECT string_agg(canonical.migration_name, ', ' ORDER BY canonical.migration_name)
     INTO invalid_rows
