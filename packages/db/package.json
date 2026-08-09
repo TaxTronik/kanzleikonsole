@@ -28,6 +28,8 @@
     "seed": "tsx --env-file-if-exists=../../.env seeds/dev.ts",
     "provision": "tsx --env-file-if-exists=../../.env seeds/provision.ts",
     "reset-admin-password": "tsx --env-file-if-exists=../../.env seeds/reset-admin-password.ts",
+    "verify:migration-ledger": "node --env-file-if-exists=../../.env scripts/verify-migration-ledger.mjs --after-deploy",
+    "test:migration-ledger": "node --test scripts/migration-ledger.node-test.mjs",
     "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts",
     "verify:rls": "tsx --env-file-if-exists=../../.env scripts/verify-rls.ts"
   },

@@ -19,6 +19,27 @@ afterEach(() => {
 });
 
 describe('proxy session cookie gate', () => {
+  it('uses a fresh nonce instead of unsafe-inline for production scripts', async () => {
+    const { proxy } = await loadProxy({
+      NODE_ENV: 'production',
+      NEXTAUTH_URL: 'https://staff.example.test',
+      PORTAL_PUBLIC_URL: undefined,
+    });
+
+    const first = proxy(request('https://staff.example.test/', ''));
+    const second = proxy(request('https://staff.example.test/', ''));
+    const firstCsp = first.headers.get('content-security-policy') ?? '';
+    const secondCsp = second.headers.get('content-security-policy') ?? '';
+    const firstScriptSrc = firstCsp.match(/(?:^|; )script-src ([^;]+)/)?.[1] ?? '';
+    const secondScriptSrc = secondCsp.match(/(?:^|; )script-src ([^;]+)/)?.[1] ?? '';
+
+    expect(firstScriptSrc).toContain("'strict-dynamic'");
+    expect(firstScriptSrc).toMatch(/'nonce-[A-Za-z0-9+/]+=*'/);
+    expect(firstScriptSrc).not.toContain("'unsafe-inline'");
+    expect(firstScriptSrc).not.toContain("'unsafe-eval'");
+    expect(secondScriptSrc).not.toBe(firstScriptSrc);
+  });
+
   it('accepts the local HTTP staff cookie variant during localhost E2E', async () => {
     const { proxy } = await loadProxy({
       NODE_ENV: 'production',

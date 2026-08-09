@@ -12,6 +12,8 @@ set -eu
 PRISMA_CLI="${1:-}"
 NODE_BIN="${NODE_BIN:-node}"
 MIGRATION="20260801003400_gwg_fail_closed_and_destruction"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+LEDGER_CHECK="$SCRIPT_DIR/verify-migration-ledger.mjs"
 
 if [ -z "$PRISMA_CLI" ]; then
   echo "FATAL: Pfad zur Prisma-CLI fehlt." >&2
@@ -23,6 +25,10 @@ if [ -z "${DATABASE_URL:-}" ]; then
 fi
 if ! command -v psql >/dev/null 2>&1; then
   echo "FATAL: psql fehlt; sichere Migrations-Recovery ist nicht moeglich." >&2
+  exit 1
+fi
+if [ ! -r "$LEDGER_CHECK" ]; then
+  echo "FATAL: Migration-Ledger-Check fehlt oder ist nicht lesbar: $LEDGER_CHECK" >&2
   exit 1
 fi
 
@@ -77,4 +83,10 @@ if [ "$has_journal" = "t" ]; then
   fi
 fi
 
-exec "$NODE_BIN" "$PRISMA_CLI" migrate deploy
+# Vor dem Deploy sind nur exakt attestierte Pre-Release-Hashes erlaubt. Nach
+# dem Deploy muss jede Repository-Migration exakt und vollstaendig im Ledger
+# stehen. Damit kann `migrate deploy` geaenderte Altdateien nicht mehr still
+# als bereits angewandt akzeptieren.
+"$NODE_BIN" "$LEDGER_CHECK" --before-deploy
+"$NODE_BIN" "$PRISMA_CLI" migrate deploy
+"$NODE_BIN" "$LEDGER_CHECK" --after-deploy

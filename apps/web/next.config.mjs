@@ -25,13 +25,24 @@ const nextConfig = {
   // nichts mehr aus node_modules separat kopieren.
   outputFileTracingRoot: path.join(__dirname, '../../'),
 
-  // Der Backup-Runner arbeitet ausschließlich mit Operator-/ENV-bestimmten
-  // Laufzeitpfaden. Turbopack deutet diese als Projekt-Glob und würde dadurch
-  // den gesamten Web-Quellbaum in genau dieses Route-Artefakt aufnehmen. Die
-  // Route läuft aus den kompilierten Chunks; TypeScript-Quellen werden zur
-  // Laufzeit nicht gelesen. Eng auf den manuellen Backup-Endpunkt begrenzen.
+  // pg_dump is an external operator binary (PATH/PG_DUMP_PATH), not an app
+  // asset. Its deliberately configurable process path makes static tracing
+  // conservative. Limit that exception to the sole web route that launches
+  // pg_dump, and explicitly exclude source/config/backup data that the
+  // compiled route never reads at runtime. A post-build verifier guards this
+  // contract against future broadening.
   outputFileTracingExcludes: {
-    '/api/staff/admin/backups/run': ['src/**/*'],
+    '/api/staff/admin/backups/run': [
+      'src/**/*',
+      'next.config.mjs',
+      'postcss.config.mjs',
+      'tailwind.config.ts',
+      'tsconfig*.json',
+      'tsconfig.tsbuildinfo',
+      'turbo.json',
+      'vitest.config.ts',
+      '../../backups/**/*',
+    ],
   },
 
   // Workspace-Pakete transpilieren. WICHTIG für `output: 'standalone'`:
@@ -59,52 +70,10 @@ const nextConfig = {
 
   // Sicherheits-Header (Defense in Depth).
   async headers() {
-    // H3: Content-Security-Policy.
-    //
-    // Trade-offs:
-    //  - `'unsafe-inline'` für script-/style-src ist nötig für Next.js' RSC
-    //    Bootstrap-Scripts + Tailwind-CSS. Voll-strict CSP würde Nonces in
-    //    Middleware erfordern (Next 16 Pattern), aufwändig.
-    //    Die `'unsafe-inline'`-Variante ist gegen reflected/stored XSS
-    //    schwächer, aber blockiert immer noch:
-    //    - Cross-Origin-Script-Loads (kein CDN-Smuggling)
-    //    - `<object>`/`<embed>` (Flash, Java)
-    //    - `<base>`-Injection (Base-URL-Hijack)
-    //    - Form-Action-Hijack (Daten an Fremd-Origin)
-    //    - Frame-Ancestors (Clickjacking, ergänzt X-Frame-Options)
-    //    - Connect-Src zu Fremd-Origin (Exfiltration)
-    //  - `img-src data:` für Branding-Logos (in tenant_setting als base64).
-    //  - `img-src blob:` für lokale Image-Vorschauen (z. B. Avatar-Upload).
-    //  - `'unsafe-eval'` AUSSCHLIESSLICH im Dev-Mode: React/Turbopack
-    //    rekonstruieren in Development Callstacks via eval(). In Production
-    //    nutzt React kein eval — die CSP bleibt dort hart.
-    //  - `connect-src ws:` AUSSCHLIESSLICH im Dev-Mode: Turbopack-HMR-WebSocket.
+    // Die request-spezifische CSP wird im Proxy erzeugt, damit Next.js einen
+    // frischen Nonce auf Framework-, RSC- und eigene Inline-Skripte setzen
+    // kann. Hier bleiben ausschließlich statische Defense-in-Depth-Header.
     const isDev = process.env.NODE_ENV !== 'production';
-
-    const loopbackDevOrigins = isDev ? ' http://localhost:* http://127.0.0.1:*' : '';
-
-    // Object-Store ist NIE ein eigener Browser-Origin: Up-/Downloads laufen
-    // ausschließlich same-origin durch die Next.js-App (Variante B). Darum
-    // bleibt `connect-src`/`form-action` hart auf `'self'` — keine S3-Origin-
-    // Aufweichung. Im Dev-Modus erlauben wir zusätzlich Loopback-Hosts, weil
-    // E2E/Browser zwischen localhost und 127.0.0.1 wechseln können; Production
-    // bleibt exakt same-origin.
-    const csp = [
-      `default-src 'self'`,
-      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
-      `style-src 'self' 'unsafe-inline'`,
-      `img-src 'self' data: blob:`,
-      `font-src 'self' data:`,
-      `connect-src 'self'${loopbackDevOrigins}${isDev ? ' ws: wss:' : ''}`,
-      // 'self' statt 'none': der Dokument-Viewer bettet Preview-Streams
-      // (PDF/Bild) per <iframe> ein — same-origin. 'none' hätte das blockiert.
-      // Cross-Origin-Framing (echter Clickjacking-Vektor) bleibt verboten.
-      `frame-ancestors 'self'`,
-      `form-action 'self'${loopbackDevOrigins}`,
-      `base-uri 'self'`,
-      `object-src 'none'`,
-      `worker-src 'self' blob:`,
-    ].join('; ');
 
     return [
       {
@@ -130,7 +99,6 @@ const nextConfig = {
                   value: 'max-age=63072000; includeSubDomains; preload',
                 },
               ]),
-          { key: 'Content-Security-Policy', value: csp },
         ],
       },
       // H-3: Magic-Link-/PoA-/GwG-/Audit-Verify-URLs tragen Capability-Tokens

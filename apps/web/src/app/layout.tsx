@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { THEME_BOOTSTRAP_JS } from '@/lib/theme';
 import { ThemeSync } from '@/components/theme-sync';
 import './globals.css';
@@ -36,11 +37,13 @@ export const dynamic = 'force-dynamic';
 // beim initialen Laden korrekt, bei Client-Navigationen ist das Theme bereits
 // gesetzt.
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="de" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_JS }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_JS }} />
       </head>
       <body>
         <ThemeSync />

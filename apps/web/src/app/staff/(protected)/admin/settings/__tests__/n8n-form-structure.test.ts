@@ -7,6 +7,18 @@ const deliveryOperations = readFileSync(
   new URL('../delivery-operations-section.tsx', import.meta.url),
   'utf8',
 );
+const connectionSection = readFileSync(
+  new URL('../n8n-connection-section.tsx', import.meta.url),
+  'utf8',
+);
+const callbackSection = readFileSync(
+  new URL('../n8n-callback-credentials-section.tsx', import.meta.url),
+  'utf8',
+);
+const workflowsSection = readFileSync(
+  new URL('../n8n-workflows-section.tsx', import.meta.url),
+  'utf8',
+);
 const confirmedAction = readFileSync(
   new URL('../use-confirmed-action.ts', import.meta.url),
   'utf8',
@@ -35,6 +47,19 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     );
     expect(deliveryOperations).toContain('onRetryDelivery(delivery.id, delivery.targetUrl)');
     expect(deliveryOperations).toContain('onAcknowledgeDelivery(delivery.id)');
+  });
+
+  it('delegiert auch Verbindung, Callback-Credentials und Workflow-Import', () => {
+    expect(form).toContain('<N8nConnectionSection');
+    expect(form).toContain('<N8nCallbackCredentialsSection');
+    expect(form).toContain('<N8nWorkflowsSection');
+    expect(form).not.toContain('id="n8n-connection-heading"');
+    expect(form).not.toContain('id="n8n-credentials-heading"');
+    expect(form).not.toContain('id="n8n-workflows-heading"');
+
+    expect(connectionSection).toContain('id="n8n-connection-heading"');
+    expect(callbackSection).toContain('id="n8n-credentials-heading"');
+    expect(workflowsSection).toContain('id="n8n-workflows-heading"');
   });
 
   it('verwendet genau eine globale Transition und den gemeinsamen Bestätigungsablauf', () => {

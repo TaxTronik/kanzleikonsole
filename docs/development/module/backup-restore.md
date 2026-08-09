@@ -11,7 +11,8 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 
 - **Manueller Runner** (`apps/web/src/server/backup/runner.ts`): `pg_dump`
   (custom-Format, komprimiert; Passwort via PGPASSWORD, nie in Prozess-Args)
-  → lokale Operator-Kopie unter `BACKUP_LOCAL_DIR` (Default `backups/`) →
+  → lokale Operator-Kopie unter `BACKUP_LOCAL_DIR` (in Produktion Pflicht;
+  Development-Default `backups/`) →
   Streaming-Upload in den `backups`-Bucket; SHA-256/Größe stammen aus
   demselben Dump. `BackupRecord` je Tenant (RUNNING→SUCCESS/FAILED, Hash, Key)
   - Audit `backup.run` in derselben Tx.

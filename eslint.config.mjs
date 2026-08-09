@@ -74,15 +74,14 @@ export default [
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...nextPlugin.configs.recommended.rules,
-      // eslint-plugin-react-hooks v7 bringt React-Compiler-Regeln (purity,
-      // set-state-in-effect, refs, immutability) mit. Diese sind für eine
-      // schrittweise Migration gedacht — aktuell zu viele Bestands-Treffer.
-      'react-hooks/purity': 'off',
-      'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/refs': 'off',
-      'react-hooks/immutability': 'off',
-      'react-hooks/preserve-manual-memoization': 'off',
-      'react-hooks/static-components': 'off',
+      // React-Compiler-Regeln bleiben als Warnungen sichtbar. Das separate
+      // Baseline-Gate deckelt jeden Regeltyp und verhindert neue Treffer.
+      'react-hooks/purity': 'warn',
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/immutability': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'react-hooks/static-components': 'warn',
     },
   },
   {

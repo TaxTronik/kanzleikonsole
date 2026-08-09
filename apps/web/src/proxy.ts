@@ -61,9 +61,39 @@ const PUBLIC_PATHS = new Set<string>([
 // dahinter noch den globalen HMAC-Auth-Handler.
 const N8N_PATH_PREFIX = '/api/n8n';
 
+interface RequestSecurityContext {
+  nonce: string;
+  contentSecurityPolicy: string;
+}
+
+function createRequestSecurityContext(): RequestSecurityContext {
+  // btoa keeps the nonce inside CSP's base64-value grammar. randomUUID gives
+  // every document request an unpredictable, one-time value.
+  const nonce = btoa(crypto.randomUUID());
+  const isDev = process.env.NODE_ENV !== 'production';
+  const loopbackDevOrigins = isDev ? ' http://localhost:* http://127.0.0.1:*' : '';
+
+  const contentSecurityPolicy = [
+    `default-src 'self'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
+    `style-src 'self' 'unsafe-inline'`,
+    `img-src 'self' data: blob:`,
+    `font-src 'self' data:`,
+    `connect-src 'self'${loopbackDevOrigins}${isDev ? ' ws: wss:' : ''}`,
+    `frame-ancestors 'self'`,
+    `form-action 'self'${loopbackDevOrigins}`,
+    `base-uri 'self'`,
+    `object-src 'none'`,
+    `worker-src 'self' blob:`,
+  ].join('; ');
+
+  return { nonce, contentSecurityPolicy };
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const requestId = crypto.randomUUID();
+  const security = createRequestSecurityContext();
 
   // 1. Globale Legacy-Callbacks sind default-off und werden bereits vor dem
   // Route-Handler für jede HTTP-Methode als 404 verborgen. Der Handler-Gate
@@ -71,12 +101,15 @@ export function proxy(request: NextRequest): NextResponse {
   // den alten HMAC-Auth-Pfad erreichen.
   if (pathname === N8N_PATH_PREFIX || pathname.startsWith(`${N8N_PATH_PREFIX}/`)) {
     if (process.env['N8N_LEGACY_CALLBACKS_ENABLED'] !== 'true') {
-      return new NextResponse(null, {
-        status: 404,
-        headers: { 'cache-control': 'no-store' },
-      });
+      return secureResponse(
+        new NextResponse(null, {
+          status: 404,
+          headers: { 'cache-control': 'no-store' },
+        }),
+        security,
+      );
     }
-    return forwardWithHeaders(request, { requestId });
+    return forwardWithHeaders(request, { requestId }, security);
   }
 
   // 2. Statische Assets und _next-Pfade durchlassen.
@@ -85,7 +118,7 @@ export function proxy(request: NextRequest): NextResponse {
     pathname.startsWith('/favicon') ||
     pathname.startsWith('/static')
   ) {
-    return forwardWithHeaders(request, { requestId });
+    return forwardWithHeaders(request, { requestId }, security);
   }
 
   // 2b. Host-basiertes Surface-Routing (nur wenn getrennte Domains
@@ -98,26 +131,26 @@ export function proxy(request: NextRequest): NextResponse {
       const u = request.nextUrl.clone();
       u.pathname = PORTAL_LOGIN_PATH;
       u.search = '';
-      return NextResponse.redirect(u);
+      return secureResponse(NextResponse.redirect(u), security);
     }
     if (reqHost === STAFF_HOST && pathname.startsWith(PORTAL_PATH_PREFIX)) {
       const u = request.nextUrl.clone();
       u.pathname = STAFF_LOGIN_PATH;
       u.search = '';
-      return NextResponse.redirect(u);
+      return secureResponse(NextResponse.redirect(u), security);
     }
   }
 
   // 3. Public-Pfade durchlassen.
   if (isPublicPath(pathname)) {
-    return forwardWithHeaders(request, { requestId });
+    return forwardWithHeaders(request, { requestId }, security);
   }
 
   // 4. Surface bestimmen.
   const surface = detectSurface(pathname);
   if (!surface) {
     // Unbekannter Pfad — durchlassen, Next.js liefert 404.
-    return forwardWithHeaders(request, { requestId });
+    return forwardWithHeaders(request, { requestId }, security);
   }
 
   // 5. Session-Cookie prüfen.
@@ -127,7 +160,7 @@ export function proxy(request: NextRequest): NextResponse {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = surface === 'staff' ? STAFF_LOGIN_PATH : PORTAL_LOGIN_PATH;
     loginUrl.searchParams.set('returnTo', pathname);
-    return NextResponse.redirect(loginUrl);
+    return secureResponse(NextResponse.redirect(loginUrl), security);
   }
 
   // 6. Tenant-Resolution. Strategie:
@@ -138,11 +171,15 @@ export function proxy(request: NextRequest): NextResponse {
   //    Lookup), hier wird nur der Slug ermittelt und als Header durchgereicht.
   const tenantSlug = extractTenantSlug(request);
 
-  return forwardWithHeaders(request, {
-    requestId,
-    surface,
-    tenantSlug,
-  });
+  return forwardWithHeaders(
+    request,
+    {
+      requestId,
+      surface,
+      tenantSlug,
+    },
+    security,
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -255,7 +292,16 @@ interface DecorationContext {
  * Browser/in Log-Aggregation sichtbar bleibt; Tenant-Slug + Surface bleiben
  * strikt interne Information.
  */
-function forwardWithHeaders(request: NextRequest, ctx: DecorationContext): NextResponse {
+function secureResponse(response: NextResponse, security: RequestSecurityContext): NextResponse {
+  response.headers.set('Content-Security-Policy', security.contentSecurityPolicy);
+  return response;
+}
+
+function forwardWithHeaders(
+  request: NextRequest,
+  ctx: DecorationContext,
+  security: RequestSecurityContext,
+): NextResponse {
   const reqHeaders = new Headers(request.headers);
   // N4: Client-supplied Werte für unsere Reservierten Header IMMER strippen,
   // bevor wir ggf. einen eigenen setzen. Sonst können Client-Header auf
@@ -265,15 +311,20 @@ function forwardWithHeaders(request: NextRequest, ctx: DecorationContext): NextR
   reqHeaders.delete('x-request-id');
   reqHeaders.delete('x-taxtronik-surface');
   reqHeaders.delete('x-taxtronik-tenant-slug');
+  reqHeaders.delete('x-nonce');
 
   reqHeaders.set('x-request-id', ctx.requestId);
   if (ctx.surface) reqHeaders.set('x-taxtronik-surface', ctx.surface);
   if (ctx.tenantSlug) reqHeaders.set('x-taxtronik-tenant-slug', ctx.tenantSlug);
+  // Next.js parses the request CSP and applies this nonce to its framework
+  // and RSC bootstrap scripts during dynamic rendering.
+  reqHeaders.set('x-nonce', security.nonce);
+  reqHeaders.set('Content-Security-Policy', security.contentSecurityPolicy);
 
   const response = NextResponse.next({ request: { headers: reqHeaders } });
   // Nur Request-ID auf die Response — für Browser/Log-Korrelation.
   response.headers.set('x-request-id', ctx.requestId);
-  return response;
+  return secureResponse(response, security);
 }
 
 // -----------------------------------------------------------------------------

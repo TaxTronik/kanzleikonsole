@@ -103,6 +103,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: React compiler warning baseline
+        run: pnpm lint:react-compiler-baseline
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -195,6 +198,9 @@ jobs:
       - name: Apply migrations
         run: pnpm --filter @taxtronik/db exec prisma migrate deploy
 
+      - name: Migration ledger checksum gate
+        run: pnpm verify:migration-ledger
+
       - name: RLS tests
         run: |
           set -o pipefail
@@ -216,6 +222,13 @@ jobs:
 
       - name: Evidence chain CLI
         run: pnpm verify:chain
+
+      - name: Known pre-release ledger drift upgrade
+        env:
+          LEGACY_DB_NAME: taxtronik_known_legacy_drift
+          LEGACY_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_known_legacy_drift?schema=public
+          LEGACY_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik_known_legacy_drift?schema=public
+        run: sh packages/db/scripts/tests/known-legacy-drift-upgrade.sh
 
       # Der Dev-Seed ist ein eigener Integrationspfad und wird von den DB-Tests
       # nicht ausgefuehrt. Eine separate Datenbank verhindert, dass Demo-Daten

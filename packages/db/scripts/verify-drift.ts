@@ -25,6 +25,7 @@ import { dirname, join, resolve } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, '..');
 const schemaFile = join(pkgRoot, 'prisma', 'schema.prisma');
+const ledgerCheck = join(pkgRoot, 'scripts', 'verify-migration-ledger.mjs');
 
 console.log('[verify:schema-drift] Prüfe schema.prisma gegen Migrationen ...');
 
@@ -59,6 +60,17 @@ function run(cmd: string, args: string[], extraEnv: Record<string, string> = {})
     env: { ...process.env, ...extraEnv },
   });
   return result.status === 0;
+}
+
+// Ein frischer Shadow-Aufbau beweist nicht, dass eine bestehende Datenbank
+// dieselben historischen Migrationsdateien angewandt hat. Deshalb wird zuerst
+// das echte Ledger gegen die Repository-Hashes geprueft. Dieser Schritt ist
+// absichtlich strict: Nach einem normalen Deploy darf weder eine Migration
+// fehlen noch ein bekannter Legacy-Hash uebrig sein.
+console.log('[verify:schema-drift] Pruefe Migrations-Ledger der Ziel-DB ...');
+if (!run(process.execPath, [ledgerCheck, '--after-deploy'])) {
+  console.error('[verify:schema-drift] Migrations-Ledger ist nicht attestierbar.');
+  process.exit(1);
 }
 
 console.log('[verify:schema-drift] Resette Shadow-DB + applye Migrationen ...');

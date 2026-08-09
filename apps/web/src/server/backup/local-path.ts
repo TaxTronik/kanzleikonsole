@@ -1,32 +1,23 @@
-import { existsSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
-const DEFAULT_BACKUP_DIR = 'backups';
-const WORKSPACE_MARKER = 'pnpm-workspace.yaml';
+const DEVELOPMENT_BACKUP_DIR = '../../backups';
 
 /**
- * Löst das lokale Backup-Verzeichnis auf. Ohne ENV-Override
- * (`BACKUP_LOCAL_DIR`) wird das Backup-Dir am Monorepo-Root abgelegt — nicht
- * in apps/web/backups —, damit CLI- (`./taxtronik backup`) und Browser-Trigger
- * (Admin-Button) denselben Ort nutzen. In Docker ist BACKUP_LOCAL_DIR gesetzt
- * (/app/backups) und dieser Lookup entfällt.
+ * Produktion verlangt einen expliziten Operator-Pfad. In der Entwicklung ist
+ * der statische Workspace-Pfad erlaubt, damit CLI (`./taxtronik backup`) und
+ * Browser-Trigger denselben Ort verwenden. Eine Dateisystemsuche nach dem
+ * Monorepo-Root gibt es bewusst nicht: sie ließ Next den Quellbaum tracen.
  */
-function resolveBackupRoot(): string {
-  let dir = resolve(process.cwd());
-  for (;;) {
-    if (existsSync(join(dir, WORKSPACE_MARKER))) {
-      return join(dir, DEFAULT_BACKUP_DIR);
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return join(process.cwd(), DEFAULT_BACKUP_DIR);
-}
-
 export function backupLocalDir(): string {
-  return resolve(process.env['BACKUP_LOCAL_DIR'] ?? resolveBackupRoot());
+  const configured = process.env['BACKUP_LOCAL_DIR']?.trim();
+  if (configured) return resolve(configured);
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('BACKUP_LOCAL_DIR muss in Produktion explizit gesetzt sein.');
+  }
+
+  return resolve(process.cwd(), DEVELOPMENT_BACKUP_DIR);
 }
 
 export function backupLocalPathForKey(key: string): string {

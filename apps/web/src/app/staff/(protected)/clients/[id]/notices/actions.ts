@@ -9,15 +9,13 @@ import {
   appealDeadlineForPostAbroad,
   appealDeadlineFromNotification,
   berlinCalendarDate,
-  klageDeadline,
-  startOfUtcDay,
   type GermanRegion,
 } from '@taxtronik/tax';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
-import { NOTICE_STATUS_TRANSITIONS } from './transitions';
+import { planNoticeTransition } from './notice-transition';
 
 const YMD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const YmdSchema = z
@@ -347,253 +345,36 @@ export async function updateNoticeStatusAction(input: {
       clientId = before.clientId;
       await assertClientAccessTx(tx, session, before.clientId);
 
-      const allowed = NOTICE_STATUS_TRANSITIONS[before.status] ?? [];
-      if (!allowed.includes(status)) {
-        return {
-          ok: false,
-          error: `Statuswechsel ${before.status} → ${status} ist nicht zulässig.`,
-        };
-      }
-
-      const now = new Date();
-      const isAppealChainStatus = [
-        'EINSPRUCH',
-        'ABGEHOLFEN',
-        'TEILABHILFE',
-        'ZURUECKGEWIESEN',
-        'KLAGE',
-      ].includes(before.status);
-      const requiresDecisionEvidence = ['TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE'].includes(
-        before.status,
-      );
-      const requiresKlageEvidence = before.status === 'KLAGE';
-      const requiresAbhilfeEvidence = before.status === 'ABGEHOLFEN';
-
-      if (
-        (legacyAppealFiledAt && !isAppealChainStatus) ||
-        (legacyAppealResolvedAt && !requiresAbhilfeEvidence) ||
-        (legacyDecisionReceivedAt && !requiresDecisionEvidence) ||
-        (legacyKlageFiledAt && !requiresKlageEvidence)
-      ) {
-        return {
-          ok: false,
-          error: 'Der übermittelte Altbestandsnachweis passt nicht zum aktuellen Verfahren.',
-        };
-      }
-
-      if (
-        before.appealFiledAt &&
-        legacyAppealFiledAt &&
-        startOfUtcDay(before.appealFiledAt).getTime() !== legacyAppealFiledAt.getTime()
-      ) {
-        return { ok: false, error: 'Der bestätigte Einspruchstag weicht vom Bestandsdatum ab.' };
-      }
-      if (
-        before.appealDecisionReceivedAt &&
-        legacyDecisionReceivedAt &&
-        before.appealDecisionReceivedAt.getTime() !== legacyDecisionReceivedAt.getTime()
-      ) {
-        return {
-          ok: false,
-          error: 'Der bestätigte Bekanntgabetag weicht vom Bestandsdatum ab.',
-        };
-      }
-      if (
-        before.klageFiledAt &&
-        legacyKlageFiledAt &&
-        startOfUtcDay(before.klageFiledAt).getTime() !== legacyKlageFiledAt.getTime()
-      ) {
-        return {
-          ok: false,
-          error: 'Der bestätigte Klageeinreichungstag weicht vom Bestandsdatum ab.',
-        };
-      }
-
-      const effectiveAppealFiledAt =
-        before.appealFiledAt ?? (status === 'EINSPRUCH' ? eventDate : legacyAppealFiledAt);
-      const effectiveAppealFiledBy =
-        before.appealFiledBy ?? (status === 'EINSPRUCH' || legacyAppealFiledAt ? staffId : null);
-      const effectiveDecisionReceivedAt =
-        before.appealDecisionReceivedAt ??
-        (isDecisionStatus ? eventDate : legacyDecisionReceivedAt);
-      const effectiveDecisionInstruction =
-        before.appealDecisionLegalRemedyInstructionValid ?? decisionLegalRemedyInstructionValid;
-      const effectiveAppealResolvedAt =
-        legacyAppealResolvedAt ??
-        (legacyDecisionReceivedAt && requiresDecisionEvidence
-          ? legacyDecisionReceivedAt
-          : (before.appealResolvedAt ??
-            (status === 'ABGEHOLFEN' || isDecisionStatus
-              ? eventDate
-              : effectiveDecisionReceivedAt)));
-      const effectiveKlageFiledAt =
-        before.klageFiledAt ?? (status === 'KLAGE' ? eventDate : legacyKlageFiledAt);
-      const effectiveKlageFiledBy =
-        before.klageFiledBy ?? (status === 'KLAGE' || legacyKlageFiledAt ? staffId : null);
-
-      if (isAppealChainStatus && (!effectiveAppealFiledAt || !effectiveAppealFiledBy)) {
-        return {
-          ok: false,
-          error: 'Der Nachweis der tatsächlichen Einspruchseinlegung muss zuerst bestätigt werden.',
-        };
-      }
-      if (requiresAbhilfeEvidence && !effectiveAppealResolvedAt) {
-        return {
-          ok: false,
-          error: 'Der tatsächliche Bekanntgabetag der Abhilfe muss zuerst bestätigt werden.',
-        };
-      }
-      if (
-        requiresDecisionEvidence &&
-        (!effectiveDecisionReceivedAt || effectiveDecisionInstruction === null)
-      ) {
-        return {
-          ok: false,
-          error:
-            'Bekanntgabetag und Rechtsbehelfsbelehrung der Einspruchsentscheidung müssen zuerst bestätigt werden.',
-        };
-      }
-      if (requiresKlageEvidence && (!effectiveKlageFiledAt || !effectiveKlageFiledBy)) {
-        return {
-          ok: false,
-          error: 'Der Nachweis der tatsächlichen Klageeinreichung muss zuerst bestätigt werden.',
-        };
-      }
-
-      if (effectiveAppealFiledAt && startOfUtcDay(effectiveAppealFiledAt) < before.noticeDate) {
-        return {
-          ok: false,
-          error: 'Die Einspruchseinlegung darf nicht vor dem Bescheiddatum liegen.',
-        };
-      }
-      if (
-        effectiveAppealResolvedAt &&
-        effectiveAppealFiledAt &&
-        startOfUtcDay(effectiveAppealResolvedAt) < startOfUtcDay(effectiveAppealFiledAt)
-      ) {
-        return {
-          ok: false,
-          error:
-            'Die Bekanntgabe der Einspruchsentscheidung darf nicht vor der Einspruchseinlegung liegen.',
-        };
-      }
-      if (
-        effectiveDecisionReceivedAt &&
-        effectiveAppealFiledAt &&
-        effectiveDecisionReceivedAt < startOfUtcDay(effectiveAppealFiledAt)
-      ) {
-        return {
-          ok: false,
-          error:
-            'Die Bekanntgabe der Einspruchsentscheidung darf nicht vor der Einspruchseinlegung liegen.',
-        };
-      }
-      if (
-        effectiveKlageFiledAt &&
-        (!effectiveDecisionReceivedAt ||
-          startOfUtcDay(effectiveKlageFiledAt) < effectiveDecisionReceivedAt)
-      ) {
-        return {
-          ok: false,
-          error: effectiveDecisionReceivedAt
-            ? 'Die Klageeinreichung darf nicht vor der Bekanntgabe der Einspruchsentscheidung liegen.'
-            : 'Der tatsächliche Bekanntgabetag der Einspruchsentscheidung fehlt.',
-        };
-      }
-      if (status === 'RECHTSKRAEFTIG' && eventDate) {
-        const latestPriorEvent = [
-          before.noticeDate,
-          effectiveAppealFiledAt ? startOfUtcDay(effectiveAppealFiledAt) : null,
-          effectiveAppealResolvedAt ? startOfUtcDay(effectiveAppealResolvedAt) : null,
-          effectiveDecisionReceivedAt,
-          effectiveKlageFiledAt ? startOfUtcDay(effectiveKlageFiledAt) : null,
-        ]
-          .filter((date): date is Date => date !== null)
-          .reduce((latest, date) => (date > latest ? date : latest), before.noticeDate);
-        if (eventDate < latestPriorEvent) {
-          return {
-            ok: false,
-            error:
-              'Der Eintritt der Rechtskraft darf nicht vor einem dokumentierten Verfahrensereignis liegen.',
-          };
-        }
-      }
-
-      // Klagefrist (§ 47 Abs. 1 FGO): ausschließlich aus dem erfassten
-      // tatsächlichen Bekanntgabetag der Einspruchsentscheidung, niemals aus dem
-      // internen Statuswechsel. Landesfeiertage richten sich nach der Kanzlei.
-      const needsKlageDeadline =
-        Boolean(effectiveDecisionReceivedAt) &&
-        (isDecisionStatus || Boolean(legacyDecisionReceivedAt) || !before.klageDeadline);
-      const regionRow = needsKlageDeadline
-        ? await tx.tenantSetting.findUnique({
-            where: { tenantId_key: { tenantId, key: 'tax_region' } },
-            select: { value: true },
-          })
-        : null;
+      const regionRow = await tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId, key: 'tax_region' } },
+        select: { value: true },
+      });
       const regionValue = regionRow?.value as { region?: string } | null | undefined;
-      const region = (regionValue?.region ?? null) as GermanRegion | null;
-      const klageFrist =
-        effectiveDecisionReceivedAt && effectiveDecisionInstruction !== null
-          ? (before.klageDeadline ??
-            klageDeadline(effectiveDecisionReceivedAt, region, effectiveDecisionInstruction))
-          : null;
+      const plan = planNoticeTransition({
+        before,
+        request: {
+          status,
+          eventDateInput,
+          eventDate,
+          decisionLegalRemedyInstructionValid,
+          legacyEvidence,
+          legacyAppealFiledAt,
+          legacyAppealResolvedAt,
+          legacyDecisionReceivedAt,
+          legacyKlageFiledAt,
+        },
+        staffId,
+        now: new Date(),
+        region: (regionValue?.region ?? null) as GermanRegion | null,
+      });
+      if (!plan.ok) return plan;
+
       // TOCTOU-Schutz: nur aus dem gelesenen Ausgangsstatus heraus wechseln.
       // Zwei parallele, einzeln gültige Übergänge aus demselben Status würden
       // sonst appealFiledAt/reviewedAt überschreiben (§ 122 (2)-Nachweis).
       const claim = await tx.taxNotice.updateMany({
         where: { id: noticeId, status: before.status },
-        data: {
-          status,
-          ...(status === 'GEPRUEFT' ? { reviewedAt: now, reviewedBy: staffId } : {}),
-          ...(status === 'NEU' ? { reviewedAt: null, reviewedBy: null } : {}),
-          ...(status === 'EINSPRUCH'
-            ? {
-                appealFiledAt: effectiveAppealFiledAt,
-                appealFiledBy: effectiveAppealFiledBy,
-                // Direkt-Einspruch aus NEU impliziert die Prüfung.
-                ...(before.reviewedAt ? {} : { reviewedAt: now, reviewedBy: staffId }),
-              }
-            : {}),
-          ...(legacyAppealFiledAt
-            ? {
-                appealFiledAt: effectiveAppealFiledAt,
-                appealFiledBy: effectiveAppealFiledBy,
-              }
-            : {}),
-          ...(status === 'ABGEHOLFEN' || status === 'TEILABHILFE' || status === 'ZURUECKGEWIESEN'
-            ? { appealResolvedAt: eventDate }
-            : {}),
-          ...(legacyAppealResolvedAt || legacyDecisionReceivedAt
-            ? { appealResolvedAt: effectiveAppealResolvedAt }
-            : {}),
-          // Klagefrist und ihr tatsächlicher Beginn werden dauerhaft festgehalten.
-          ...(status === 'ZURUECKGEWIESEN' || status === 'TEILABHILFE'
-            ? {
-                appealDecisionReceivedAt: eventDate,
-                appealDecisionLegalRemedyInstructionValid: decisionLegalRemedyInstructionValid,
-                klageDeadline: klageFrist,
-              }
-            : {}),
-          ...(legacyDecisionReceivedAt
-            ? {
-                appealDecisionReceivedAt: effectiveDecisionReceivedAt,
-                appealDecisionLegalRemedyInstructionValid: effectiveDecisionInstruction,
-                klageDeadline: klageFrist,
-              }
-            : {}),
-          // Ein gesetzter Fristnachweis wird bei Rechtskraft NICHT gelöscht.
-          ...(status === 'RECHTSKRAEFTIG'
-            ? { legalFinalAt: eventDate, legalFinalBy: staffId }
-            : {}),
-          // #11: tatsächliche Klageeinreichung für den Kontrollbuch-Nachweis
-          // festhalten (wer/wann), statt später Prüf-/Entscheidungsdaten oder den
-          // internen Zeitpunkt des Statuswechsels zu verwenden.
-          ...(status === 'KLAGE' ? { klageFiledAt: eventDate, klageFiledBy: staffId } : {}),
-          ...(legacyKlageFiledAt
-            ? { klageFiledAt: effectiveKlageFiledAt, klageFiledBy: effectiveKlageFiledBy }
-            : {}),
-        },
+        data: plan.data,
       });
       if (claim.count === 0) {
         return {
@@ -609,13 +390,7 @@ export async function updateNoticeStatusAction(input: {
         resourceType: 'tax_notice',
         resourceId: noticeId,
         before: { status: before.status },
-        after: {
-          status,
-          eventDate: eventDateInput ?? null,
-          klageDeadline: klageFrist?.toISOString().slice(0, 10) ?? null,
-          decisionLegalRemedyInstructionValid,
-          legacyEvidenceConfirmed: legacyEvidence ?? null,
-        },
+        after: plan.auditAfter,
       });
       return { ok: true };
     });
