@@ -24,10 +24,7 @@ function source(status: TaxNoticeStatus): NoticeTransitionSource {
   };
 }
 
-function request(
-  status: TaxNoticeStatus,
-  eventDateInput?: string,
-): NoticeTransitionRequest {
+function request(status: TaxNoticeStatus, eventDateInput?: string): NoticeTransitionRequest {
   return {
     status,
     eventDateInput,
