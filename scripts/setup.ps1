@@ -183,7 +183,7 @@ Write-Done "Pakete installiert."
 
 # -------------------------------------------------------------------- Prisma
 Write-Step "Datenbank-Migrationen anwenden"
-& pnpm --filter '@taxtronik/db' prisma migrate deploy
+& pnpm db:migrate:deploy
 if ($LASTEXITCODE -ne 0) { Write-Host "Migration fehlgeschlagen." -ForegroundColor Red; exit 1 }
 Write-Done "Schema aktuell."
 

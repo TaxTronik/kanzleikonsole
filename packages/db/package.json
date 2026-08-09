@@ -22,7 +22,7 @@
     "test": "vitest run",
     "prisma": "prisma",
     "generate": "prisma generate",
-    "migrate:deploy": "prisma migrate deploy",
+    "migrate:deploy": "bash scripts/migrate-deploy.sh",
     "migrate:dev": "prisma migrate dev",
     "studio": "prisma studio",
     "seed": "tsx --env-file-if-exists=../../.env seeds/dev.ts",
@@ -30,6 +30,7 @@
     "reset-admin-password": "tsx --env-file-if-exists=../../.env seeds/reset-admin-password.ts",
     "verify:migration-ledger": "node --env-file-if-exists=../../.env scripts/verify-migration-ledger.mjs --after-deploy",
     "test:migration-ledger": "node --test scripts/migration-ledger.node-test.mjs",
+    "verify:migration-line-endings": "node scripts/check-migration-line-endings.mjs",
     "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts",
     "verify:rls": "tsx --env-file-if-exists=../../.env scripts/verify-rls.ts"
   },

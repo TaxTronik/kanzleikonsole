@@ -37,6 +37,9 @@ export default [
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+      // Bestehende komplexe Funktionen bleiben sichtbar; das separate
+      // Baseline-Gate verhindert jeden neuen Treffer und muss bei Abbau sinken.
+      complexity: ['warn', 20],
       'no-restricted-syntax': [
         'error',
         {

@@ -178,7 +178,7 @@ done_ "Prisma Client generiert."
 
 # -------------------------------------------------------------------- Prisma
 step "Datenbank-Migrationen anwenden"
-pnpm --filter '@taxtronik/db' prisma migrate deploy
+pnpm db:migrate:deploy
 done_ "Schema aktuell."
 
 if [[ $SKIP_SEED -eq 0 ]]; then

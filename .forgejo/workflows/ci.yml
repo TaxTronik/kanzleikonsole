@@ -87,6 +87,9 @@ jobs:
       - name: Guard pinned CI actions
         run: sh scripts/check-ci-actions-pinned.sh
 
+      - name: Guard migration line endings
+        run: pnpm verify:migration-line-endings
+
       - name: Operator CLI tests
         run: |
           set -o pipefail
@@ -105,6 +108,9 @@ jobs:
 
       - name: React compiler warning baseline
         run: pnpm lint:react-compiler-baseline
+
+      - name: Complexity warning baseline
+        run: pnpm lint:complexity-baseline
 
       - name: Typecheck
         run: pnpm typecheck
@@ -196,7 +202,7 @@ jobs:
             -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
 
       - name: Apply migrations
-        run: pnpm --filter @taxtronik/db exec prisma migrate deploy
+        run: pnpm db:migrate:deploy
 
       - name: Migration ledger checksum gate
         run: pnpm verify:migration-ledger

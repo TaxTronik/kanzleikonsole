@@ -259,7 +259,7 @@ und gestoppten Writern:
 ```bash
 pnpm --filter @taxtronik/db exec prisma migrate resolve \
   --rolled-back 20260801003400_gwg_fail_closed_and_destruction
-pnpm --filter @taxtronik/db exec prisma migrate deploy
+pnpm db:migrate:deploy
 pnpm --filter @taxtronik/db exec prisma migrate status
 ```
 

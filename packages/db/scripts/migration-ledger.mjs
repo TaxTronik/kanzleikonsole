@@ -2,8 +2,117 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const REPAIR_MIGRATION =
-  '20260809000000_repair_known_legacy_migration_drift';
+export const REPAIR_MIGRATION = '20260809000000_repair_known_legacy_migration_drift';
+export const FORWARD_REPAIR_MIGRATION = '20260809000100_reconcile_repair_migration_history';
+export const CANONICAL_REPAIR_CHECKSUM =
+  '028fdbe47d7fd9901bc3b042e3dce078ac2283247b48b742f35e89db8e559d74';
+
+// Exact ledger states produced by the two historical variants of 090000.
+// The forward repair accepts them only before 090001 is applied and rewrites
+// every entry to the LF checksum committed in the repository.
+export const KNOWN_REPAIR_STATES = new Map([
+  [
+    '9f04a8abdd6a5b3e35e007855942a654bd19ea6122046415a50e07f50e7ecab6',
+    new Map([
+      [
+        '20260801003600_poa_signing_snapshot',
+        '225753c9c03bd05c717f7e0f151a7ac2ed1db87c75f86b3de4e3e6a13e3b1dfa',
+      ],
+      [
+        '20260801003700_n8n_workflow_routes',
+        'fca7f51d9eb02387fb20ee8c3319564ec3f0dc06bf9487a32f187cd4d51d0394',
+      ],
+      [
+        '20260801003800_n8n_callback_receipts',
+        'ab8a651682b04d771320c8a628047bee8e24721d84f483afc857600edd53c303',
+      ],
+      [
+        '20260801003900_n8n_delivery_ops_index',
+        '6ac5ada54eadc5d9e19a2777b77ec5aa7354eefdf04fe012a31cda99c9bb2f94',
+      ],
+      [
+        '20260801004000_poa_created_at_db_clock',
+        '169c5c5afd6dcc18d08cf9122a00e6553bce268005f462a01e9a43fe9557e605',
+      ],
+    ]),
+  ],
+  [
+    '8806a22b6f2c423a37384812952aa69a92e8bf85acbf575f6d7a552763b33102',
+    new Map([
+      [
+        '20260801003400_gwg_fail_closed_and_destruction',
+        '0a14d7d3651dfef0e0cffe71c38075c3e8f08cbcc4ea54aa8da6e429bebcea6b',
+      ],
+      [
+        '20260801003500_tax_notice_event_dates',
+        'fc4f82dd6dc4ba389cd668a41a308feba3ea56965bde3913afb0cd2c35d2478f',
+      ],
+      [
+        '20260801003510_dsgvo_request_evidence',
+        '0c6e0ae08723053157c1e58f25576d04a2ceac3c4aaea31a861234af50532ffd',
+      ],
+      [
+        '20260801003600_poa_signing_snapshot',
+        '225753c9c03bd05c717f7e0f151a7ac2ed1db87c75f86b3de4e3e6a13e3b1dfa',
+      ],
+      [
+        '20260801003700_n8n_workflow_routes',
+        'fca7f51d9eb02387fb20ee8c3319564ec3f0dc06bf9487a32f187cd4d51d0394',
+      ],
+      [
+        '20260801003800_n8n_callback_receipts',
+        'ab8a651682b04d771320c8a628047bee8e24721d84f483afc857600edd53c303',
+      ],
+      [
+        '20260801003900_n8n_delivery_ops_index',
+        '6ac5ada54eadc5d9e19a2777b77ec5aa7354eefdf04fe012a31cda99c9bb2f94',
+      ],
+      [
+        '20260801004000_poa_created_at_db_clock',
+        '169c5c5afd6dcc18d08cf9122a00e6553bce268005f462a01e9a43fe9557e605',
+      ],
+      [
+        '20260801004200_gwg_destruction_lifecycle_lock',
+        'a011462a9453eaae29d0e3b5065d325970ba81803b92e97fc4e4a25c361d688b',
+      ],
+      [
+        '20260801004300_gwg_identity_subjects_and_document_sets',
+        '861f2fe53dd2e900d5697b80b9632d086f027bc3df65199232194c96e66d639e',
+      ],
+      [
+        '20260801004400_legacy_gwg_guard_recovery',
+        '4390e25b53febbb93ec0dc7c0b29793e7f5e7827bea1d8b23ff361b4faf2dd1c',
+      ],
+    ]),
+  ],
+  [CANONICAL_REPAIR_CHECKSUM, new Map()],
+]);
+
+// These five CRLF hashes were emitted by a Windows checkout before SQL files
+// were pinned to LF. Treat only the exact byte variants as their canonical LF
+// counterpart so the pre-gate can attest and converge affected ledgers.
+export const KNOWN_EOL_VARIANTS = new Map([
+  [
+    '20260801003600_poa_signing_snapshot',
+    '225753c9c03bd05c717f7e0f151a7ac2ed1db87c75f86b3de4e3e6a13e3b1dfa',
+  ],
+  [
+    '20260801003700_n8n_workflow_routes',
+    'fca7f51d9eb02387fb20ee8c3319564ec3f0dc06bf9487a32f187cd4d51d0394',
+  ],
+  [
+    '20260801003800_n8n_callback_receipts',
+    'ab8a651682b04d771320c8a628047bee8e24721d84f483afc857600edd53c303',
+  ],
+  [
+    '20260801003900_n8n_delivery_ops_index',
+    '6ac5ada54eadc5d9e19a2777b77ec5aa7354eefdf04fe012a31cda99c9bb2f94',
+  ],
+  [
+    '20260801004000_poa_created_at_db_clock',
+    '169c5c5afd6dcc18d08cf9122a00e6553bce268005f462a01e9a43fe9557e605',
+  ],
+]);
 
 // Exact hashes observed on the affected pre-release database. They are only
 // accepted by the pre-deploy gate while the forward repair is still pending.
@@ -57,8 +166,8 @@ export const KNOWN_LEGACY_CHECKSUMS = new Map([
 export function collectRepositoryMigrations(migrationsRoot) {
   const migrations = new Map();
 
-  const entries = readdirSync(migrationsRoot, { withFileTypes: true }).sort(
-    (left, right) => left.name.localeCompare(right.name),
+  const entries = readdirSync(migrationsRoot, { withFileTypes: true }).sort((left, right) =>
+    left.name.localeCompare(right.name),
   );
 
   for (const entry of entries) {
@@ -73,20 +182,20 @@ export function collectRepositoryMigrations(migrationsRoot) {
       throw error;
     }
 
-    migrations.set(
-      migrationName,
-      createHash('sha256').update(contents).digest('hex'),
-    );
+    const checksum = createHash('sha256').update(contents).digest('hex');
+    const knownCrlfChecksum = KNOWN_EOL_VARIANTS.get(migrationName);
+    const canonicalContents =
+      knownCrlfChecksum === checksum
+        ? contents.toString('utf8').replaceAll('\r\n', '\n')
+        : contents;
+
+    migrations.set(migrationName, createHash('sha256').update(canonicalContents).digest('hex'));
   }
 
   return migrations;
 }
 
-export function analyzeMigrationLedger({
-  repository,
-  ledgerRows,
-  phase = 'after-deploy',
-}) {
+export function analyzeMigrationLedger({ repository, ledgerRows, phase = 'after-deploy' }) {
   if (phase !== 'before-deploy' && phase !== 'after-deploy') {
     throw new Error(`Unsupported ledger verification phase: ${phase}`);
   }
@@ -108,7 +217,10 @@ export function analyzeMigrationLedger({
     applied.set(row.migration_name, row.checksum);
   }
 
-  const repairApplied = applied.has(REPAIR_MIGRATION);
+  const repairChecksum = applied.get(REPAIR_MIGRATION);
+  const repairApplied = repairChecksum !== undefined;
+  const repairState = KNOWN_REPAIR_STATES.get(repairChecksum);
+  const forwardRepairPending = !applied.has(FORWARD_REPAIR_MIGRATION);
 
   for (const [migrationName, databaseChecksum] of applied) {
     const repositoryChecksum = repository.get(migrationName);
@@ -119,10 +231,13 @@ export function analyzeMigrationLedger({
     if (databaseChecksum === repositoryChecksum) continue;
 
     const knownLegacy = KNOWN_LEGACY_CHECKSUMS.get(migrationName);
+    const knownRepairStateChecksum = repairState?.get(migrationName);
     if (
       phase === 'before-deploy' &&
-      !repairApplied &&
-      knownLegacy === databaseChecksum
+      forwardRepairPending &&
+      ((migrationName === REPAIR_MIGRATION && repairState !== undefined) ||
+        (!repairApplied && knownLegacy === databaseChecksum) ||
+        (repairApplied && knownRepairStateChecksum === databaseChecksum))
     ) {
       legacyMismatches.push(migrationName);
       continue;
