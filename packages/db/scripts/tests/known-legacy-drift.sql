@@ -34,7 +34,7 @@ BEGIN
 END;
 $fixture$;
 
-CREATE OR REPLACE FUNCTION app.gwg_check_has_confirmed_identity(UUID)
+CREATE OR REPLACE FUNCTION app.gwg_check_has_confirmed_identity(p_check_id UUID)
 RETURNS BOOLEAN LANGUAGE sql STABLE AS $fixture$
   SELECT TRUE;
 $fixture$;

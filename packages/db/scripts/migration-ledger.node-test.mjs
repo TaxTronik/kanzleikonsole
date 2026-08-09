@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import {
   analyzeMigrationLedger,
+  collectRepositoryMigrations,
   KNOWN_LEGACY_CHECKSUMS,
   REPAIR_MIGRATION,
 } from './migration-ledger.mjs';
@@ -14,6 +18,21 @@ function applied(migration_name, checksum) {
     rolled_back_at: null,
   };
 }
+
+test('collects migration directories and ignores migration metadata files', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'migration-ledger-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  writeFileSync(join(root, 'migration_lock.toml'), 'provider = "postgresql"\n');
+  const migration = join(root, '001_init');
+  mkdirSync(migration);
+  writeFileSync(join(migration, 'migration.sql'), 'SELECT 1;\n');
+
+  const repository = collectRepositoryMigrations(root);
+
+  assert.deepEqual([...repository.keys()], ['001_init']);
+  assert.match(repository.get('001_init'), /^[0-9a-f]{64}$/);
+});
 
 test('rejects an unknown historical checksum before deploy', () => {
   const repository = new Map([['001_init', 'repo']]);

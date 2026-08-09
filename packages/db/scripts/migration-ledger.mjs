@@ -57,7 +57,13 @@ export const KNOWN_LEGACY_CHECKSUMS = new Map([
 export function collectRepositoryMigrations(migrationsRoot) {
   const migrations = new Map();
 
-  for (const migrationName of readdirSync(migrationsRoot).sort()) {
+  const entries = readdirSync(migrationsRoot, { withFileTypes: true }).sort(
+    (left, right) => left.name.localeCompare(right.name),
+  );
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const migrationName = entry.name;
     const migrationFile = join(migrationsRoot, migrationName, 'migration.sql');
     let contents;
     try {
