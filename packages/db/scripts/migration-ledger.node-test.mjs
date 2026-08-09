@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +8,7 @@ import {
   analyzeMigrationLedger,
   CANONICAL_REPAIR_CHECKSUM,
   collectRepositoryMigrations,
+  EOL_REPAIR_MIGRATION,
   FORWARD_REPAIR_MIGRATION,
   KNOWN_EOL_VARIANTS,
   KNOWN_LEGACY_CHECKSUMS,
@@ -41,31 +43,78 @@ test('collects migration directories and ignores migration metadata files', (t) 
 test('canonicalizes the exact attested CRLF migration variants', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'migration-ledger-crlf-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const migrationName = '20260801003600_poa_signing_snapshot';
-  const sourceFile = join(
-    import.meta.dirname,
-    '..',
-    'prisma',
-    'migrations',
-    migrationName,
-    'migration.sql',
-  );
-  const crlfContents = readFileSync(sourceFile, 'utf8')
-    .replaceAll('\r\n', '\n')
-    .replaceAll('\n', '\r\n');
-  const migration = join(root, migrationName);
-  mkdirSync(migration);
-  writeFileSync(join(migration, 'migration.sql'), crlfContents);
+  for (const [migrationName, variant] of KNOWN_EOL_VARIANTS) {
+    const sourceFile = join(
+      import.meta.dirname,
+      '..',
+      'prisma',
+      'migrations',
+      migrationName,
+      'migration.sql',
+    );
+    const crlfContents = readFileSync(sourceFile, 'utf8')
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\n', '\r\n');
+    const migration = join(root, migrationName);
+    mkdirSync(migration);
+    writeFileSync(join(migration, 'migration.sql'), crlfContents);
+    assert.equal(createHash('sha256').update(crlfContents).digest('hex'), variant.crlf);
+  }
 
   const repository = collectRepositoryMigrations(root);
-  assert.equal(
-    KNOWN_EOL_VARIANTS.get(migrationName),
-    '225753c9c03bd05c717f7e0f151a7ac2ed1db87c75f86b3de4e3e6a13e3b1dfa',
+  for (const [migrationName, variant] of KNOWN_EOL_VARIANTS) {
+    assert.equal(repository.get(migrationName), variant.canonical);
+  }
+});
+
+test('converges every attested CRLF variant in the forward SQL migration', () => {
+  const repairSql = readFileSync(
+    join(import.meta.dirname, '..', 'prisma', 'migrations', EOL_REPAIR_MIGRATION, 'migration.sql'),
+    'utf8',
   );
-  assert.equal(
-    repository.get(migrationName),
-    '94d412607abcca7ef88748dd75629821398369f01acbcc6e2f13c92518923d1d',
-  );
+
+  for (const [migrationName, variant] of KNOWN_EOL_VARIANTS) {
+    assert.ok(
+      repairSql.includes(`('${migrationName}', '${variant.crlf}', '${variant.canonical}')`),
+      `${migrationName} fehlt in ${EOL_REPAIR_MIGRATION}`,
+    );
+  }
+});
+
+test('allows every attested CRLF checksum until 090002 converges it', () => {
+  const repository = new Map([
+    [EOL_REPAIR_MIGRATION, 'eol-repair'],
+    ...[...KNOWN_EOL_VARIANTS].map(([migrationName, variant]) => [
+      migrationName,
+      variant.canonical,
+    ]),
+  ]);
+  const result = analyzeMigrationLedger({
+    repository,
+    ledgerRows: [...KNOWN_EOL_VARIANTS].map(([migrationName, variant]) =>
+      applied(migrationName, variant.crlf),
+    ),
+    phase: 'before-deploy',
+  });
+
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.legacyMismatches.length, KNOWN_EOL_VARIANTS.size);
+});
+
+test('rejects an attested CRLF checksum after 090002 was applied', () => {
+  const [migrationName, variant] = KNOWN_EOL_VARIANTS.entries().next().value;
+  const repository = new Map([
+    [migrationName, variant.canonical],
+    [EOL_REPAIR_MIGRATION, 'eol-repair'],
+  ]);
+  const result = analyzeMigrationLedger({
+    repository,
+    ledgerRows: [applied(migrationName, variant.crlf), applied(EOL_REPAIR_MIGRATION, 'eol-repair')],
+    phase: 'before-deploy',
+  });
+
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /Checksum-Abweichung/);
 });
 
 test('rejects an unknown historical checksum before deploy', () => {

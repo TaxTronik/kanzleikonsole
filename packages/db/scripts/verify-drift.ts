@@ -19,6 +19,7 @@
 // =============================================================================
 
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -26,6 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, '..');
 const schemaFile = join(pkgRoot, 'prisma', 'schema.prisma');
 const ledgerCheck = join(pkgRoot, 'scripts', 'verify-migration-ledger.mjs');
+const prismaCli = createRequire(import.meta.url).resolve('prisma/build/index.js');
 
 console.log('[verify:schema-drift] Prüfe schema.prisma gegen Migrationen ...');
 
@@ -56,7 +58,6 @@ function run(cmd: string, args: string[], extraEnv: Record<string, string> = {})
   const result = spawnSync(cmd, args, {
     cwd: pkgRoot,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
     env: { ...process.env, ...extraEnv },
   });
   return result.status === 0;
@@ -75,7 +76,7 @@ if (!run(process.execPath, [ledgerCheck, '--after-deploy'])) {
 
 console.log('[verify:schema-drift] Resette Shadow-DB + applye Migrationen ...');
 if (
-  !run('npx', ['prisma', 'migrate', 'reset', '--force'], {
+  !run(process.execPath, [prismaCli, 'migrate', 'reset', '--force'], {
     DATABASE_URL: shadowUrl,
     PRISMA_DRIFT_CHECK: '1',
   })
@@ -91,9 +92,9 @@ if (
 // --to-schema-datamodel wurde zu --to-schema.
 console.log('[verify:schema-drift] Berechne Diff Shadow-DB → schema.prisma ...');
 const diffResult = spawnSync(
-  'npx',
+  process.execPath,
   [
-    'prisma',
+    prismaCli,
     'migrate',
     'diff',
     '--from-config-datasource',
@@ -104,7 +105,6 @@ const diffResult = spawnSync(
   {
     cwd: pkgRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
-    shell: process.platform === 'win32',
     encoding: 'utf-8',
     env: { ...process.env, DATABASE_URL: shadowUrl, PRISMA_DRIFT_CHECK: '1' },
   },

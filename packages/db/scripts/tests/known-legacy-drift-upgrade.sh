@@ -5,6 +5,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../../../.." && pwd)"
 DB_PACKAGE="$ROOT/packages/db"
 REPAIR='20260809000000_repair_known_legacy_migration_drift'
 FORWARD_REPAIR='20260809000100_reconcile_repair_migration_history'
+EOL_REPAIR='20260809000200_reconcile_windows_migration_line_endings'
 LEGACY_DB_NAME="${LEGACY_DB_NAME:-taxtronik_known_legacy_drift}"
 OWNER_URL="${LEGACY_DATABASE_URL:?LEGACY_DATABASE_URL fehlt}"
 APP_URL="${LEGACY_DATABASE_APP_URL:?LEGACY_DATABASE_APP_URL fehlt}"
@@ -49,7 +50,7 @@ for migration in "$DB_PACKAGE"/prisma/migrations/20*; do
   [ -d "$migration" ] || continue
   name="${migration##*/}"
   case "$name" in
-    "$REPAIR"|"$FORWARD_REPAIR") continue ;;
+    "$REPAIR"|"$FORWARD_REPAIR"|"$EOL_REPAIR") continue ;;
   esac
   cp -a "$migration" "$PRE_REPAIR_MIGRATIONS/"
 done

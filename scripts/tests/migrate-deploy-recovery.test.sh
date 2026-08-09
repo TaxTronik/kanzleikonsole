@@ -10,59 +10,17 @@ mkdir -p "$TMP/bin"
 cat >"$TMP/bin/node" <<'MOCK'
 #!/bin/sh
 printf 'node %s\n' "$*" >>"$CALLS"
-case "$*" in
-  *inspect-migration-recovery.mjs*)
-    case "$SCENARIO" in
-      no-journal) echo no-journal ;;
-      recoverable) echo recoverable ;;
-      *) echo not-recoverable ;;
-    esac
-    ;;
-esac
 MOCK
 chmod +x "$TMP/bin/node"
 
-cat >"$TMP/bin/prisma" <<'MOCK'
-#!/bin/sh
-printf 'prisma %s\n' "$*" >>"$CALLS"
-MOCK
-chmod +x "$TMP/bin/prisma"
+calls="$TMP/explicit.calls"
+: >"$calls"
+CALLS="$calls" NODE_BIN="$TMP/bin/node" sh "$SCRIPT" /fake/prisma
+grep -q 'migrate-deploy.mjs --prisma-cli /fake/prisma$' "$calls"
 
-run_case() {
-  local scenario="$1" calls="$TMP/$1.calls"
-  : >"$calls"
-  PATH="$TMP/bin:$PATH" \
-    CALLS="$calls" \
-    SCENARIO="$scenario" \
-    NODE_BIN="$TMP/bin/node" \
-    DATABASE_URL='postgresql://owner:secret@postgres:5432/taxtronik?schema=public' \
-    sh "$SCRIPT" /fake/prisma >/dev/null
-  printf '%s' "$calls"
-}
+calls="$TMP/default.calls"
+: >"$calls"
+CALLS="$calls" NODE_BIN="$TMP/bin/node" sh "$SCRIPT"
+grep -q 'migrate-deploy.mjs$' "$calls"
 
-calls="$(run_case no-journal)"
-grep -q '^node /fake/prisma migrate deploy$' "$calls"
-! grep -q 'migrate resolve' "$calls"
-[[ "$(grep -c 'inspect-migration-recovery.mjs' "$calls")" -eq 1 ]]
-
-calls="$(run_case recoverable)"
-grep -q '^node /fake/prisma migrate resolve --rolled-back 20260801003400_gwg_fail_closed_and_destruction$' "$calls"
-grep -q '^node /fake/prisma migrate deploy$' "$calls"
-[[ "$(grep -c 'inspect-migration-recovery.mjs' "$calls")" -eq 1 ]]
-
-calls="$(run_case other-failure)"
-grep -q '^node /fake/prisma migrate deploy$' "$calls"
-! grep -q 'migrate resolve' "$calls"
-[[ "$(grep -c 'inspect-migration-recovery.mjs' "$calls")" -eq 1 ]]
-
-public_calls="$TMP/public.calls"
-: >"$public_calls"
-PATH="$TMP/bin:$PATH" \
-  CALLS="$public_calls" \
-  SCENARIO=no-journal \
-  NODE_BIN="$TMP/bin/node" \
-  DATABASE_URL='postgresql://owner:secret@postgres:5432/taxtronik?schema=public' \
-  sh "$SCRIPT" >/dev/null
-grep -q '^prisma migrate deploy$' "$public_calls"
-
-echo "4 migrate-deploy recovery tests passed."
+echo "2 migrate-deploy compatibility wrapper tests passed."

@@ -97,11 +97,13 @@ jobs:
           docker run --rm --entrypoint sh taxtronik/worker:ci -eu -c '
             test "$(id -u)" = "1000"
             test -r /app/packages/db/scripts/migrate-deploy.sh
+            test -r /app/packages/db/scripts/migrate-deploy.mjs
             test -r /app/packages/db/scripts/check-migration-line-endings.mjs
             test -r /app/packages/db/scripts/inspect-migration-recovery.mjs
             test -r /app/packages/db/scripts/verify-migration-ledger.mjs
             test -r /app/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql
             test ! -w /app/packages/db/scripts/migrate-deploy.sh
+            test ! -w /app/packages/db/scripts/migrate-deploy.mjs
             test ! -w /app/packages/db/scripts/check-migration-line-endings.mjs
             test ! -w /app/packages/db/scripts/inspect-migration-recovery.mjs
             test ! -w /app/packages/db/scripts/verify-migration-ledger.mjs
