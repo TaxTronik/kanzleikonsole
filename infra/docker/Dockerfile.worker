@@ -74,6 +74,23 @@ COPY --from=builder /repo/package.json ./
 USER node
 WORKDIR /app/apps/worker
 
+# Laufzeit-Invarianten bereits im Build unter dem echten Runtime-User pruefen.
+# Dadurch braucht die Build-only-CI keinen fehleranfaelligen lokalen Image-Export.
+RUN test "$(id -u)" = "1000" && \
+    test -r /app/packages/db/scripts/migrate-deploy.sh && \
+    test -r /app/packages/db/scripts/migrate-deploy.mjs && \
+    test -r /app/packages/db/scripts/check-migration-line-endings.mjs && \
+    test -r /app/packages/db/scripts/inspect-migration-recovery.mjs && \
+    test -r /app/packages/db/scripts/verify-migration-ledger.mjs && \
+    test -r /app/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql && \
+    test ! -w /app/packages/db/scripts/migrate-deploy.sh && \
+    test ! -w /app/packages/db/scripts/migrate-deploy.mjs && \
+    test ! -w /app/packages/db/scripts/check-migration-line-endings.mjs && \
+    test ! -w /app/packages/db/scripts/inspect-migration-recovery.mjs && \
+    test ! -w /app/packages/db/scripts/verify-migration-ledger.mjs && \
+    test ! -w /app/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql && \
+    sh -n /app/packages/db/scripts/migrate-deploy.sh
+
 # Q-9: HEALTHCHECK auf den Heartbeat-File-Touch (siehe apps/worker/src/index.ts).
 # Worker schreibt alle 30 s nach /tmp/worker-alive; HEALTHCHECK schlägt fehl,
 # wenn die Datei älter als 90 s ist → Docker restartet den Container.
