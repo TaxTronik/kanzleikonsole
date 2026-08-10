@@ -46,8 +46,8 @@ permissions:
   contents: read
 
 jobs:
-  # Der selbst gehostete Runner beendet Tasks nach knapp fuenf Minuten. Die
-  # beiden mehrminuetigen Builds muessen deshalb in getrennten Jobs bleiben.
+  # Web und Worker bleiben getrennt, damit Build-Status und Logs eindeutig
+  # dem jeweiligen Image zugeordnet sind.
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -76,7 +76,7 @@ jobs:
           push: false
           tags: taxtronik/web:ci
 
-  build:
+  worker:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -92,8 +92,6 @@ jobs:
       - name: Guard pinned Docker base images
         run: node scripts/check-docker-bases-pinned.mjs
 
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
-
       - name: Restriktiven Operator-Checkout simulieren
         run: |
           chmod 0700 \
@@ -107,14 +105,13 @@ jobs:
           test "$(stat -c '%a' packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql)" = '600'
 
       - name: worker — bauen (kein Push)
-        # build-push-action liefert auf diesem Forgejo/act-Runner nach einem
-        # erfolgreichen Docker-Export mit `load: true` faelschlich Exit 1.
-        # Der direkte Aufruf ist exakt derselbe Buildx-Pfad ohne Action-Output.
+        # Direkt im Docker-Daemon bauen: So steht das Image fuer den folgenden
+        # Laufzeittest bereit, ohne den auf diesem Runner fehlerhaften
+        # Buildx-Docker-Export (`--load`) zu verwenden.
         run: >-
-          docker buildx build
+          docker build
           --file infra/docker/Dockerfile.worker
           --tag taxtronik/worker:ci
-          --load
           .
 
       - name: Migrationen im non-root Worker-Image lesen
