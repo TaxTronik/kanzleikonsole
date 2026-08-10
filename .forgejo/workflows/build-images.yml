@@ -107,13 +107,15 @@ jobs:
           test "$(stat -c '%a' packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql)" = '600'
 
       - name: worker — bauen (kein Push)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
-        with:
-          context: .
-          file: infra/docker/Dockerfile.worker
-          push: false
-          load: true
-          tags: taxtronik/worker:ci
+        # build-push-action liefert auf diesem Forgejo/act-Runner nach einem
+        # erfolgreichen Docker-Export mit `load: true` faelschlich Exit 1.
+        # Der direkte Aufruf ist exakt derselbe Buildx-Pfad ohne Action-Output.
+        run: >-
+          docker buildx build
+          --file infra/docker/Dockerfile.worker
+          --tag taxtronik/worker:ci
+          --load
+          .
 
       - name: Migrationen im non-root Worker-Image lesen
         run: |
