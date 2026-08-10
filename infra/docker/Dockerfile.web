@@ -38,9 +38,10 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
 # Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
 COPY . .
 # Die Operator-CLI schuetzt Secrets mit umask 077. Falls ein Git-Update dadurch
-# getrackte Quellen als 0600/Verzeichnisse als 0700 anlegt, darf COPY diese
-# Host-Modi nicht bis in den spaeteren non-root-Runner tragen.
-RUN chmod -R a+rX /repo
+# getrackte Quellen als 0600/Verzeichnisse als 0700 anlegt oder der Checkout
+# Schreibrechte fuer Gruppe/Welt mitbringt, darf COPY diese Host-Modi nicht bis
+# in den spaeteren non-root-Runner tragen.
+RUN chmod -R u=rwX,go=rX /repo
 
 # pnpm 11 blockt Build-Scripts (interaktive Approval) → --ignore-scripts; die
 # nötigen postinstall-Hooks (Prisma-Engine, sharp libvips, esbuild) holt rebuild

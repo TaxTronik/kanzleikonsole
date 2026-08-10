@@ -64,13 +64,20 @@ const normalizedBuilder = [
   'FROM node:24 AS builder',
   'WORKDIR /repo',
   'COPY . .',
-  'RUN chmod -R a+rX /repo',
+  'RUN chmod -R u=rwX,go=rX /repo',
   'FROM node:24 AS runner',
 ].join('\n');
 assert.equal(checkBuilderSourcePermissions(normalizedBuilder), true);
 assert.throws(
-  () => checkBuilderSourcePermissions(normalizedBuilder.replace('RUN chmod -R a+rX /repo\n', '')),
-  /chmod -R a\+rX/,
+  () =>
+    checkBuilderSourcePermissions(
+      normalizedBuilder.replace('RUN chmod -R u=rwX,go=rX /repo\n', ''),
+    ),
+  /chmod -R u=rwX,go=rX/,
+);
+assert.throws(
+  () => checkBuilderSourcePermissions(normalizedBuilder.replace('u=rwX,go=rX', 'a+rX')),
+  /nicht gruppen-\/welt-schreibbar/,
 );
 
 const guardedComposeSecrets = [

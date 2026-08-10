@@ -138,9 +138,9 @@ export function checkBuilderSourcePermissions(source, fileName = '<Dockerfile>')
     afterCopy,
     nextStageOffset < 0 ? source.length : afterCopy + nextStageOffset,
   );
-  if (!/^RUN\s+chmod\s+-R\s+a\+rX\s+\/repo\s*$/m.test(builderTail)) {
+  if (!/^RUN\s+chmod\s+-R\s+u=rwX,go=rX\s+\/repo\s*$/m.test(builderTail)) {
     throw new Error(
-      `${fileName}: Builder muss Host-Modi nach COPY . . per chmod -R a+rX /repo fuer non-root Runtime-COPYs normalisieren.`,
+      `${fileName}: Builder muss Host-Modi nach COPY . . per chmod -R u=rwX,go=rX /repo lesbar und nicht gruppen-/welt-schreibbar normalisieren.`,
     );
   }
   return true;

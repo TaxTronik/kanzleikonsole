@@ -16,9 +16,9 @@ RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 
 # Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
 COPY . .
-# Defense-in-depth gegen restriktive Host-Modi nach einem Operator-Update:
-# Runtime-COPYs muessen fuer den non-root-User `node` les- und traversierbar sein.
-RUN chmod -R a+rX /repo
+# Defense-in-depth gegen abweichende Host-Modi nach einem Operator-Update:
+# Runtime-COPYs muessen fuer `node` lesbar, aber nie gruppen-/welt-schreibbar sein.
+RUN chmod -R u=rwX,go=rX /repo
 
 # --ignore-scripts (pnpm 11 blockt Build-Scripts) → postinstall-Hooks holt rebuild
 # nach. `--filter @taxtronik/db`, damit dessen devDep prisma (+ transitiv dotenv)
@@ -76,7 +76,8 @@ WORKDIR /app/apps/worker
 
 # Laufzeit-Invarianten bereits im Build unter dem echten Runtime-User pruefen.
 # Dadurch braucht die Build-only-CI keinen fehleranfaelligen lokalen Image-Export.
-RUN test "$(id -u)" = "1000" && \
+RUN set -eux; \
+    test "$(id -u)" = "1000"; \
     test -r /app/packages/db/scripts/migrate-deploy.sh && \
     test -r /app/packages/db/scripts/migrate-deploy.mjs && \
     test -r /app/packages/db/scripts/check-migration-line-endings.mjs && \
