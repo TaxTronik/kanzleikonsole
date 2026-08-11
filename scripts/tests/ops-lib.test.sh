@@ -27,7 +27,7 @@ test_fail() {
 
 assert_contains() {
   local file="$1" needle="$2"
-  grep -Fq "$needle" "$file" || {
+  grep -Fq -- "$needle" "$file" || {
     printf '%s\n' "--- $file ---" >&2
     sed -n '1,220p' "$file" >&2
     test_fail "expected output to contain: $needle"
@@ -45,7 +45,7 @@ assert_not_exists_or_empty() {
 
 assert_not_contains() {
   local file="$1" needle="$2"
-  if [[ -f "$file" ]] && grep -Fq "$needle" "$file"; then
+  if [[ -f "$file" ]] && grep -Fq -- "$needle" "$file"; then
     printf '%s\n' "--- $file ---" >&2
     cat "$file" >&2
     test_fail "expected output not to contain: $needle"
@@ -126,7 +126,7 @@ run_doctor_with_env() {
     unset AUTH_SECRET SECRET_BOX_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_VERSION NEXTAUTH_URL
-    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED RISK_LAYER_URL RISK_LAYER_TOKEN SMTP_HOST SMTP_PORT
+    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR SMTP_HOST SMTP_PORT
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
     ENVFILE="$env_file"
     # Unit-Test darf nicht vom zufällig vorhandenen lokalen Docker-Volume
@@ -189,9 +189,11 @@ test_doctor_accepts_internal_risk_layer_without_fetch_allowlist() {
   {
     printf 'RISK_LAYER_URL=http://10.10.0.42:8000\n'
     printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
   } >>"$env_file"
   run_doctor_with_env "$env_file" "$out" || test_fail "doctor rejected trusted internal Risk-Layer URL"
   assert_contains "$out" "OK       RISK_LAYER"
+  assert_contains "$out" "OK       RISK_LAYER_OPERATOR_TOKEN"
   pass "doctor accepts internal Risk-Layer URL without INTERNAL_FETCH_HOSTS"
 }
 
@@ -204,6 +206,160 @@ test_doctor_rejects_incomplete_risk_layer_pair() {
   fi
   assert_contains "$out" "RISK_LAYER_TOKEN"
   pass "doctor rejects incomplete Risk-Layer config"
+}
+
+test_doctor_warns_for_missing_risk_layer_operator_token_without_failing() {
+  local env_file="$TMP_DIR/risk-missing-operator.env" out="$TMP_DIR/doctor-risk-operator.out"
+  local release_dir="$TMP_DIR/signal-release-read-only"
+  mkdir -p "$release_dir/catalog" "$release_dir/corpus"
+  : >"$release_dir/catalog/begriffe.yaml"
+  : >"$release_dir/corpus/graph.sqlite"
+  write_prod_env "$env_file"
+  {
+    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
+    printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_FESTWISSEN_DIR=%s\n' "$release_dir"
+  } >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || test_fail "doctor hard-failed a legacy Risk-Layer config"
+  assert_contains "$out" "RISK_LAYER_OPERATOR_TOKEN"
+  assert_contains "$out" "Embedding-Steuerung bleibt read-only"
+  pass "doctor warns for a missing Risk-Layer operator token without hard failure"
+}
+
+test_doctor_rejects_incomplete_local_signal_release() {
+  local env_file="$TMP_DIR/risk-local-incomplete.env" out="$TMP_DIR/doctor-risk-local-incomplete.out"
+  local release_dir="$TMP_DIR/signal-release-incomplete"
+  mkdir -p "$release_dir/catalog" "$release_dir/corpus"
+  : >"$release_dir/catalog/begriffe.yaml"
+  : >"$release_dir/corpus/graph.sqlite"
+  write_prod_env "$env_file"
+  {
+    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
+    printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_FESTWISSEN_DIR=%s\n' "$release_dir"
+  } >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted a local Signal release without the offline model"
+  fi
+  assert_contains "$out" "Embedding-Steuerung braucht models/bge-m3/model-manifest.json"
+  pass "doctor rejects an incomplete local Signal embedding release"
+}
+
+test_doctor_accepts_complete_local_signal_release() {
+  local env_file="$TMP_DIR/risk-local-complete.env" out="$TMP_DIR/doctor-risk-local-complete.out"
+  local release_dir="$TMP_DIR/signal-release-complete"
+  mkdir -p "$release_dir/catalog" "$release_dir/corpus" "$release_dir/models/bge-m3"
+  : >"$release_dir/catalog/begriffe.yaml"
+  : >"$release_dir/corpus/graph.sqlite"
+  printf '{}\n' >"$release_dir/models/bge-m3/model-manifest.json"
+  write_prod_env "$env_file"
+  {
+    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
+    printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_FESTWISSEN_DIR=%s\n' "$release_dir"
+  } >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || test_fail "doctor rejected a complete local Signal release"
+  assert_contains "$out" "OK       RISK_LAYER_FESTWISSEN_DIR"
+  pass "doctor accepts a complete local Signal embedding release"
+}
+
+test_doctor_rejects_short_risk_layer_operator_token() {
+  local env_file="$TMP_DIR/risk-short-operator.env" out="$TMP_DIR/doctor-risk-short-operator.out"
+  write_prod_env "$env_file"
+  {
+    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
+    printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_OPERATOR_TOKEN=too-short\n'
+  } >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted a configured but invalid short operator token"
+  fi
+  assert_contains "$out" "RISK_LAYER_OPERATOR_TOKEN"
+  assert_contains "$out" "(< 32)"
+  pass "doctor rejects a short configured Risk-Layer operator token"
+}
+
+test_doctor_rejects_identical_risk_layer_tokens() {
+  local env_file="$TMP_DIR/risk-identical-operator.env" out="$TMP_DIR/doctor-risk-identical-operator.out"
+  local shared="shared-risk-layer-token-with-at-least-thirty-two-chars"
+  write_prod_env "$env_file"
+  {
+    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
+    printf 'RISK_LAYER_TOKEN=%s\n' "$shared"
+    printf 'RISK_LAYER_OPERATOR_TOKEN=%s\n' "$shared"
+  } >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted identical Risk-Layer trust-boundary tokens"
+  fi
+  assert_contains "$out" "muss sich vom Bearer-Token unterscheiden"
+  pass "doctor rejects identical Risk-Layer tokens"
+}
+
+test_doctor_rejects_operator_token_without_risk_layer_base_config() {
+  local env_file="$TMP_DIR/risk-operator-only.env" out="$TMP_DIR/doctor-risk-operator-only.out"
+  write_prod_env "$env_file"
+  printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n' >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted an operator token without Risk-Layer base config"
+  fi
+  assert_contains "$out" "Operator-Token ohne Basiskonfiguration"
+  pass "doctor rejects an operator token without Risk-Layer base config"
+}
+
+test_configure_risk_layer_generates_operator_token() {
+  local env_file="$TMP_DIR/risk-setup.env"
+  : >"$env_file"
+  (
+    ENVFILE="$env_file"
+    RISK_LAYER_URL="http://risk-layer:8000"
+    RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
+    RISK_LAYER_OPERATOR_TOKEN=""
+    rand_b64() { printf 'generated-operator-token-with-at-least-32-chars'; }
+    configure_risk_layer_interactive
+  )
+  assert_key_equals "$env_file" RISK_LAYER_OPERATOR_TOKEN "generated-operator-token-with-at-least-32-chars"
+  assert_key_equals "$env_file" RISK_LAYER_FESTWISSEN_DIR "/opt/kanzleikonsole/signal/current"
+  pass "Risk-Layer setup generates a secure operator-token default"
+}
+
+test_configure_external_risk_layer_stays_read_only_without_coordinated_token() {
+  local env_file="$TMP_DIR/risk-external-setup.env"
+  : >"$env_file"
+  (
+    ENVFILE="$env_file"
+    RISK_LAYER_URL="http://10.10.0.42:8000"
+    RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
+    RISK_LAYER_OPERATOR_TOKEN=""
+    rand_b64() { test_fail "external Risk-Layer must not get a local-only operator secret"; }
+    configure_risk_layer_interactive
+  )
+  assert_key_equals "$env_file" RISK_LAYER_OPERATOR_TOKEN ""
+  assert_key_equals "$env_file" RISK_LAYER_FESTWISSEN_DIR ""
+  pass "external Risk-Layer remains read-only without a coordinated operator token"
+}
+
+test_signal_embedding_compose_contract_is_release_bound_and_offline() {
+  local service="$TMP_DIR/risk-layer-compose-service.yml"
+  sed -n '/^  risk-layer:/,/^  eric-bridge:/p' \
+    "$REPO_ROOT/infra/compose/docker-compose.app.yml" >"$service"
+  assert_contains "$service" "working_dir: /release"
+  assert_contains "$service" "source: \${RISK_LAYER_FESTWISSEN_DIR:-/opt/kanzleikonsole/signal/current}"
+  assert_contains "$service" "target: /release"
+  assert_contains "$service" "create_host_path: false"
+  assert_contains "$service" "RISK_LAYER_EMBEDDING_MODEL: /release/models/bge-m3"
+  assert_contains "$service" "RISK_LAYER_EMBEDDING_OFFLINE: '1'"
+  assert_contains "$service" "HF_HUB_OFFLINE: '1'"
+  assert_contains "$service" "TRANSFORMERS_OFFLINE: '1'"
+  assert_contains "$service" "- /release/catalog/begriffe.yaml"
+  assert_contains "$service" "- /release/corpus/graph.sqlite"
+  assert_contains "$service" "- risk_layer_definitionen:/app/definitionen"
+  assert_contains "$service" "- risk_layer_embedding_state:/state/embedding"
+  assert_contains "$service" "- risk_layer_embedding_cache:/cache"
+  assert_not_contains "$service" "/data/katalog"
+  assert_not_contains "$service" "/data/corpus"
+  pass "Signal Compose contract stays release-bound, persistent and offline"
 }
 
 set_env_file_value() {
@@ -1833,6 +1989,15 @@ test_doctor_rejects_loopback_mailhog_port
 test_doctor_rejects_disabled_auth_host_trust
 test_doctor_accepts_internal_risk_layer_without_fetch_allowlist
 test_doctor_rejects_incomplete_risk_layer_pair
+test_doctor_warns_for_missing_risk_layer_operator_token_without_failing
+test_doctor_rejects_incomplete_local_signal_release
+test_doctor_accepts_complete_local_signal_release
+test_doctor_rejects_short_risk_layer_operator_token
+test_doctor_rejects_identical_risk_layer_tokens
+test_doctor_rejects_operator_token_without_risk_layer_base_config
+test_configure_risk_layer_generates_operator_token
+test_configure_external_risk_layer_stays_read_only_without_coordinated_token
+test_signal_embedding_compose_contract_is_release_bound_and_offline
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled
 test_prune_build_cache_failure_is_non_blocking

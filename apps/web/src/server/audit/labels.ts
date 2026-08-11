@@ -375,6 +375,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.research.saved_to_shelf': 'Rechercheergebnis im Aktenregal abgelegt',
   'risk.los.beantragt': 'Quantenlos beantragt (QPU-Queue)',
   'risk.los.gezogen': 'Quantenlos-Stichprobe gezogen',
+  'risk.embedding.refresh.triggered': 'Signal-Embedding-Aktualisierung gestartet',
+  'risk.embedding.schedule.updated': 'Signal-Embedding-Zeitplan geändert',
   'tenant.settings.quantenlos_ibm.update': 'IBM-Quantum-Zugang (Quantenlos) hinterlegt',
   'tenant.settings.quantenlos_ibm.reset': 'IBM-Quantum-Zugang (Quantenlos) entfernt',
 };
@@ -432,6 +434,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   risk_research_request: 'Rechercheauftrag',
   risk_research_result: 'Rechercheergebnis',
   quantenlos: 'Quantenlos-Ziehung',
+  signal_embedding: 'Signal-Embedding',
 };
 
 export function actionLabel(action: string): string {

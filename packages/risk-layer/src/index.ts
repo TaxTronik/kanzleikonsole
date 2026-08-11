@@ -14,6 +14,7 @@ export {
   isRiskLayerConfigured,
   requireRiskLayerConfig,
   RiskLayerNotConfiguredError,
+  RiskLayerOperatorNotConfiguredError,
 } from './config';
 export type { RiskLayerConfig } from './config';
 
@@ -30,6 +31,13 @@ export type {
 
 export type {
   AnalyseResponse,
+  EmbeddingIndexStatus,
+  EmbeddingJobState,
+  EmbeddingJobStatus,
+  EmbeddingRefreshResponse,
+  EmbeddingScheduleResponse,
+  EmbeddingScheduleStatus,
+  EmbeddingStatusResponse,
   Karte,
   Risiko,
   HealthResponse,
@@ -48,6 +56,13 @@ export type {
   OpaqueObject,
 } from './schema';
 export {
+  EmbeddingIndexStatusSchema,
+  EmbeddingJobStateSchema,
+  EmbeddingJobStatusSchema,
+  EmbeddingRefreshResponseSchema,
+  EmbeddingScheduleResponseSchema,
+  EmbeddingScheduleStatusSchema,
+  EmbeddingStatusResponseSchema,
   LosBackendSchema,
   LosNachweisSchema,
   LosErgebnisSchema,

@@ -110,6 +110,8 @@ services:
       # und Compose-Profil `risk-layer`.
       RISK_LAYER_URL: ${RISK_LAYER_URL:-}
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
+      # Getrenntes Secret für Embedding-Refresh/-Zeitplan (kein Analyse-Token).
+      RISK_LAYER_OPERATOR_TOKEN: ${RISK_LAYER_OPERATOR_TOKEN:-}
       # ELSTER / eric-bridge — opt-in (Muster Risk-Layer). Leer => Modul
       # unsichtbar. Aktivieren nur mit ELSTER_BRIDGE_URL, ELSTER_BRIDGE_TOKEN
       # und Compose-Profil `elster`.
@@ -283,7 +285,7 @@ services:
 
   n8n:
     <<: [*hardening, *logging]
-    image: n8nio/n8n:2.25.7@sha256:761374d4eb841b0a22771d6bd68f0e8d827b4979ae4e490045517b13fc1259dd
+    image: n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30
     container_name: taxtronik-n8n
     restart: unless-stopped
     mem_limit: ${N8N_MEM_LIMIT:-1g}
@@ -368,7 +370,7 @@ services:
   #   devices:
   #     - /dev/dri:/dev/dri
   #     - /dev/kfd:/dev/kfd          # ROCm
-  #   und RISK_LAYER_DEVICE=gpu setzen.
+  #   und RISK_LAYER_EMB_DEVICE=cuda (bzw. cuda:0) setzen.
   # ===========================================================================
   risk-layer:
     <<: [*hardening, *logging]
@@ -376,8 +378,30 @@ services:
     container_name: taxtronik-risk-layer
     restart: unless-stopped
     profiles: ['risk-layer']
-    # LLM-Layer — Limit an das geladene Modell anpassen.
-    mem_limit: ${RISK_LAYER_MEM_LIMIT:-4g}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+    init: true
+    # Graph, Katalog und das manifestierte Offline-Modell stammen gemeinsam aus
+    # einem verifizierten Signal-Festwissen-Release. Relative Defaults im Image
+    # würden sonst auf /app zeigen und den read-only Release-Mount verfehlen.
+    working_dir: /release
+    command:
+      - python
+      - -m
+      - risk_layer.web
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8000'
+      - --katalog
+      - /release/catalog/begriffe.yaml
+      - --berater
+      - /app/definitionen
+      - --graph
+      - /release/corpus/graph.sqlite
+    # Embedding-Aufbau/LLM — Limit an das geladene Modell anpassen.
+    mem_limit: ${RISK_LAYER_MEM_LIMIT:-12g}
     environment:
       # Shared Secret — identisch zu RISK_LAYER_TOKEN der App (Bearer-Auth).
       # Bewusst ${...:-} statt :? : Compose interpoliert Variablen ALLER Services
@@ -386,20 +410,39 @@ services:
       # genutzt wird. Die Token-Pflicht (min 32) greift erst, wenn das Profil
       # aktiviert wird (App validiert RISK_LAYER_TOKEN beim Boot).
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
-      RISK_LAYER_DEVICE: ${RISK_LAYER_DEVICE:-cpu}
+      # Muss für Operator-Aufrufe mit dem Wert im App-Service übereinstimmen.
+      RISK_LAYER_OPERATOR_TOKEN: ${RISK_LAYER_OPERATOR_TOKEN:-}
+      # Signal erwartet den präzisen EMB-Variablennamen. Der generierte Index
+      # und der globale Wochenplan liegen getrennt von den read-only Inputs.
+      RISK_LAYER_EMB_DEVICE: ${RISK_LAYER_EMB_DEVICE:-cpu}
+      RISK_LAYER_EMBEDDING_DIR: /state/embedding
+      # Produktion löst niemals Modellcode/-gewichte aus dem Netz auf. Das
+      # Signal-Release muss den manifestierten Pfad read-only bereitstellen;
+      # fehlt er, bleibt die Operatorfunktion fail-closed unavailable.
+      RISK_LAYER_EMBEDDING_MODEL: /release/models/bge-m3
+      RISK_LAYER_EMBEDDING_OFFLINE: '1'
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
     volumes:
-      # Katalog + Corpus (Graph/Embedding) sind regenerierbar und enthalten
-      # KEINE Mandantendaten. Named Volumes: überleben Neustarts, jederzeit
-      # neu aufbaubar.
-      - risk_layer_katalog:/data/katalog
-      - risk_layer_corpus:/data/corpus
+      # Atomar installiertes, geprüftes Festwissen (Graph, Katalog und lokales
+      # BGE-M3-Modell). Docker darf bei einem Tippfehler kein leeres Verzeichnis
+      # anlegen: ein fehlender Release-Pfad muss den Start sichtbar abbrechen.
+      - type: bind
+        source: ${RISK_LAYER_FESTWISSEN_DIR:-/opt/kanzleikonsole/signal/current}
+        target: /release
+        read_only: true
+        bind:
+          create_host_path: false
+      - risk_layer_definitionen:/app/definitionen
+      - risk_layer_embedding_state:/state/embedding
+      - risk_layer_embedding_cache:/cache
     healthcheck:
       # Python-Image → urllib statt curl/wget (nicht garantiert vorhanden).
       test:
         - 'CMD'
         - 'python'
         - '-c'
-        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5).status==200 else 1)"
+        - "import json,os,urllib.request,sys; t=os.environ.get('RISK_LAYER_TOKEN',''); h={'Authorization':'Bearer '+t} if t else {}; base='http://127.0.0.1:8000'; live=urllib.request.urlopen(urllib.request.Request(base+'/v1/health',headers=h),timeout=5).status==200; operator=bool(os.environ.get('RISK_LAYER_OPERATOR_TOKEN','')); ready=(json.load(urllib.request.urlopen(urllib.request.Request(base+'/v1/embedding/status',headers=h),timeout=5)).get('refresh_available') is True) if operator else True; sys.exit(0 if live and ready else 1)"
       interval: 15s
       timeout: 8s
       retries: 5
@@ -473,6 +516,7 @@ services:
 
 volumes:
   n8n_data:
-  risk_layer_katalog:
-  risk_layer_corpus:
+  risk_layer_definitionen:
+  risk_layer_embedding_state:
+  risk_layer_embedding_cache:
   eric_logs:

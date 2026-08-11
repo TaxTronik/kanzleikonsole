@@ -484,6 +484,37 @@ Pflichtpaar:
 - `RISK_LAYER_URL`
 - `RISK_LAYER_TOKEN`
 
+Für die Embedding-Betriebsfunktionen unter Administration → Einstellungen →
+Integrationen kommt ein getrenntes Secret hinzu:
+
+- `RISK_LAYER_OPERATOR_TOKEN` (mindestens 32 zufällige Zeichen, nicht mit dem
+  Bearer-Token identisch)
+
+Ohne Operator-Token bleiben Engine-Status und Analysen lesbar; manueller
+Neuaufbau und Planänderungen sind absichtlich gesperrt. Mit dem Compose-Profil
+persistiert Signal Generationen, Jobstatus und den globalen Prüfplan im Volume
+`risk_layer_embedding_state`. Standardmäßig prüft Signal alle sieben Tage und
+baut nur bei abweichendem Graph-, Katalog- oder Modellstand neu. Der manuelle
+Button erzwingt dagegen einen vollständigen Neuaufbau.
+
+Der Signal-Index und sein Plan gelten für das gesamte Deployment. Die
+Bedienung durch einen Kanzlei-Admin ist deshalb nur im verbindlichen
+TaxTronik-Betriebsmodell „eine On-Prem-Installation pro Kanzlei“ freigegeben.
+Ein abweichendes Mehrmandanten-Hosting muss eine eigene deploymentweite
+Operatorrolle und ein zentrales Audit vor diese Aktionen setzen.
+
+Für echte BGE-M3-Builds muss das Signal-Image mit Embedding-Runtime gebaut sein.
+Das Compose-Profil bindet `RISK_LAYER_FESTWISSEN_DIR` read-only nach `/release`
+ein. Die verifizierte Release-Wurzel muss gemeinsam
+`catalog/begriffe.yaml`, `corpus/graph.sqlite` und `models/bge-m3/` enthalten;
+das Signal-Festwissen-Release deshalb ausdrücklich mit `--mit-embedding` bauen.
+Docker legt einen fehlenden Quellpfad absichtlich nicht automatisch an. Im
+gebündelten Produktionsprofil sind Modellpfad und alle Offline-Schalter bewusst
+fest verdrahtet; ein `.env`-Wert kann keinen Netz-Fallback aktivieren.
+`RISK_LAYER_EMB_DEVICE` wählt `cpu` oder ein freigegebenes CUDA-Device wie
+`cuda` beziehungsweise `cuda:0`. Eine separat betriebene Signal-Engine muss
+denselben Festwissen-/Offline-Vertrag in ihrem eigenen Service-Manager erfüllen.
+
 Bei Fehlern:
 
 1. `./taxtronik doctor` prüfen.

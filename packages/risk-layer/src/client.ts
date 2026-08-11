@@ -12,10 +12,17 @@
 // URLs (RSS, TSA, n8n, Update-Manifest) zuständig.
 // =============================================================================
 
-import { requireRiskLayerConfig, type RiskLayerConfig } from './config';
+import {
+  requireRiskLayerConfig,
+  RiskLayerOperatorNotConfiguredError,
+  type RiskLayerConfig,
+} from './config';
 import { mapAnalyse, type RiskAnalysisResult } from './mapping';
 import {
   HealthResponseSchema,
+  EmbeddingRefreshResponseSchema,
+  EmbeddingScheduleResponseSchema,
+  EmbeddingStatusResponseSchema,
   KatalogDefiniereResponseSchema,
   KatalogKuratiereResponseSchema,
   KatalogKuratierungBegriffSchema,
@@ -29,6 +36,9 @@ import {
   OpaqueObjectSchema,
   RiskLayerErrorBodySchema,
   type HealthResponse,
+  type EmbeddingRefreshResponse,
+  type EmbeddingScheduleResponse,
+  type EmbeddingStatusResponse,
   type KatalogDefiniereResponse,
   type KatalogKuratiereResponse,
   type KatalogKuratierungBegriff,
@@ -152,6 +162,7 @@ export interface RiskLayerClientOptions {
 export class RiskLayerClient {
   private readonly url: string;
   private readonly token: string;
+  private readonly operatorToken: string | undefined;
   private readonly fetchImpl: (url: string, init?: RequestInit) => Promise<Response>;
   private readonly breaker: CircuitBreaker;
 
@@ -159,6 +170,7 @@ export class RiskLayerClient {
     const cfg = opts.config ?? requireRiskLayerConfig();
     this.url = cfg.url.replace(/\/$/, '');
     this.token = cfg.token;
+    this.operatorToken = cfg.operatorToken;
     this.fetchImpl = opts.fetchImpl ?? trustedRiskLayerFetch;
     this.breaker = opts.breaker ?? new CircuitBreaker(BREAKER_DEFAULTS);
   }
@@ -312,6 +324,35 @@ export class RiskLayerClient {
     return OpaqueObjectSchema.parse(raw);
   }
 
+  /** `GET /v1/embedding/status` — Index-, Job- und Zeitplanstatus. */
+  async embeddingStatus(): Promise<EmbeddingStatusResponse> {
+    const raw = await this.request('GET', '/v1/embedding/status', { retry: FAST_RETRY });
+    return EmbeddingStatusResponseSchema.parse(raw);
+  }
+
+  /** `POST /v1/embedding/refresh` — startet einen Single-Flight-Neuaufbau. */
+  async embeddingRefresh(input: { force: boolean }): Promise<EmbeddingRefreshResponse> {
+    const raw = await this.request('POST', '/v1/embedding/refresh', {
+      body: { force: input.force },
+      retry: NO_RETRY,
+      operator: true,
+    });
+    return EmbeddingRefreshResponseSchema.parse(raw);
+  }
+
+  /** `POST /v1/embedding/schedule` — konfiguriert die automatische Prüfung. */
+  async embeddingSchedule(input: {
+    enabled: boolean;
+    intervalDays: number;
+  }): Promise<EmbeddingScheduleResponse> {
+    const raw = await this.request('POST', '/v1/embedding/schedule', {
+      body: { enabled: input.enabled, interval_days: input.intervalDays },
+      retry: NO_RETRY,
+      operator: true,
+    });
+    return EmbeddingScheduleResponseSchema.parse(raw);
+  }
+
   // --- Quantenlos (blinde Compliance-Stichprobe, Engine 1.3.0) ---------------
 
   /**
@@ -420,6 +461,7 @@ export class RiskLayerClient {
       query?: Record<string, string>;
       timeoutMs?: number;
       retry: RetryOptions;
+      operator?: boolean;
     },
   ): Promise<unknown> {
     const qs = opts.query ? '?' + new URLSearchParams(opts.query).toString() : '';
@@ -428,6 +470,10 @@ export class RiskLayerClient {
       authorization: `Bearer ${this.token}`,
       accept: 'application/json',
     };
+    if (opts.operator) {
+      if (!this.operatorToken) throw new RiskLayerOperatorNotConfiguredError();
+      headers['x-risk-layer-operator-token'] = this.operatorToken;
+    }
     const init: RequestInit = { method, headers };
     if (opts.body !== undefined) {
       headers['content-type'] = 'application/json';

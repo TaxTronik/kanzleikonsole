@@ -85,6 +85,46 @@ describe('ENV production hardening', () => {
     ).toThrow(/RISK_LAYER_URL/);
   });
 
+  it('akzeptiert ein separates Risk-Layer-Operator-Secret mit mindestens 32 Zeichen', () => {
+    expect(() =>
+      parseEnvFrom({
+        ...PROD_BASE,
+        RISK_LAYER_URL: 'https://risk-layer.internal',
+        RISK_LAYER_TOKEN: 'risk-layer-token-with-at-least-thirty-two-chars',
+        RISK_LAYER_OPERATOR_TOKEN: 'operator-token-with-at-least-thirty-two-chars',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      parseEnvFrom({
+        ...PROD_BASE,
+        RISK_LAYER_URL: 'https://risk-layer.internal',
+        RISK_LAYER_TOKEN: 'risk-layer-token-with-at-least-thirty-two-chars',
+        RISK_LAYER_OPERATOR_TOKEN: 'too-short',
+      }),
+    ).toThrow(/ENV-Validierung/);
+  });
+
+  it('verwirft ein Operator-Secret ohne vollständige Risk-Layer-Basiskonfiguration', () => {
+    expect(() =>
+      parseEnvFrom({
+        ...VALID_BASE,
+        RISK_LAYER_OPERATOR_TOKEN: 'operator-token-with-at-least-thirty-two-chars',
+      }),
+    ).toThrow(/RISK_LAYER_OPERATOR_TOKEN.*Basiskonfiguration/);
+  });
+
+  it('verwirft denselben Wert für Bearer- und Operator-Secret', () => {
+    const shared = 'shared-risk-layer-token-with-at-least-thirty-two-chars';
+    expect(() =>
+      parseEnvFrom({
+        ...VALID_BASE,
+        RISK_LAYER_URL: 'http://risk-layer:8000',
+        RISK_LAYER_TOKEN: shared,
+        RISK_LAYER_OPERATOR_TOKEN: shared,
+      }),
+    ).toThrow(/muss sich von RISK_LAYER_TOKEN unterscheiden/);
+  });
+
   it('blockt Parent-Domain-Cookie-Scope', () => {
     expect(() => parseEnvFrom({ ...PROD_BASE, STAFF_COOKIE_DOMAIN: '.example.de' })).toThrow(
       /Parent-Domain/,

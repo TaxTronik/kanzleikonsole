@@ -13,6 +13,7 @@
 import Link from 'next/link';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { env, riskLayerConfig } from '@taxtronik/config';
+import { RiskLayerClient, type EmbeddingStatusResponse } from '@taxtronik/risk-layer';
 import { getSmtpStatus } from '@/server/settings/smtp';
 import {
   checkPostgres,
@@ -27,6 +28,7 @@ import {
 import { readModules } from '@/server/settings/modules';
 import { SectionCard } from '../section-card';
 import { presentN8nHealth, type AttentionStatus, type IntegrationRowStatus } from './presentation';
+import { SignalEmbeddingCard } from './signal-embedding-card';
 
 interface Row {
   icon: typeof Database;
@@ -79,6 +81,22 @@ export default async function IntegrationsSettingsPage() {
   })();
 
   const n8nPresentation = presentN8nHealth(n8n);
+  let embeddingStatus: EmbeddingStatusResponse | null = null;
+  let embeddingStatusUnavailable = false;
+
+  if (modules.signalEngine) {
+    if (!riskLayerConfig || signalEngine?.ok !== true) {
+      embeddingStatusUnavailable = true;
+    } else {
+      try {
+        embeddingStatus = await new RiskLayerClient().embeddingStatus();
+      } catch {
+        // Defensiv: Die Integrationsseite bleibt auch bei einer gestörten oder
+        // älteren Signal-Engine erreichbar und gibt keine Transportdetails aus.
+        embeddingStatusUnavailable = true;
+      }
+    }
+  }
 
   const rows: Row[] = [
     {
@@ -238,6 +256,14 @@ export default async function IntegrationsSettingsPage() {
           })}
         </ul>
       </SectionCard>
+
+      {modules.signalEngine && (
+        <SignalEmbeddingCard
+          status={embeddingStatus}
+          statusUnavailable={embeddingStatusUnavailable}
+          operatorConfigured={Boolean(riskLayerConfig?.operatorToken)}
+        />
+      )}
 
       <SectionCard
         title="Authentifizierung & Lizenz"

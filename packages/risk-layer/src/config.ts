@@ -1,5 +1,5 @@
 // =============================================================================
-// Risk-Layer-Konfiguration — URL + Bearer-Token der §4-Engine.
+// Risk-Layer-Konfiguration — URL, Bearer- und Operator-Token der §4-Engine.
 //
 // Single Source: `riskLayerConfig` aus @taxtronik/config (null, wenn die Engine
 // nicht deployt ist — sie ist opt-in). Dieser Helper macht das `null` zu einem
@@ -7,14 +7,9 @@
 // Konfiguration bewusst behandeln (try/catch oder vorher `isRiskLayerConfigured`).
 // =============================================================================
 
-import { riskLayerConfig } from '@taxtronik/config';
+import { riskLayerConfig, type RiskLayerConfig } from '@taxtronik/config';
 
-export interface RiskLayerConfig {
-  /** Basis-URL der Engine, ohne Trailing-Slash (z. B. `http://risk-layer:8000`). */
-  url: string;
-  /** Shared Secret für `Authorization: Bearer`. */
-  token: string;
-}
+export type { RiskLayerConfig } from '@taxtronik/config';
 
 /**
  * Wird geworfen, wenn ein Engine-Call versucht wird, obwohl RISK_LAYER_URL /
@@ -29,6 +24,20 @@ export class RiskLayerNotConfiguredError extends Error {
         'RISK_LAYER_TOKEN müssen gesetzt sein.',
     );
     this.name = 'RiskLayerNotConfiguredError';
+  }
+}
+
+/**
+ * Wird nur bei Operator-Calls geworfen, wenn das getrennte Operator-Secret
+ * fehlt. Read-only-Engine-Calls bleiben mit der normalen Basisconfig nutzbar.
+ */
+export class RiskLayerOperatorNotConfiguredError extends Error {
+  constructor() {
+    super(
+      'Risk-Layer-Operatorzugriff ist nicht konfiguriert — ' +
+        'RISK_LAYER_OPERATOR_TOKEN muss gesetzt sein.',
+    );
+    this.name = 'RiskLayerOperatorNotConfiguredError';
   }
 }
 

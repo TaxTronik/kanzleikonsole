@@ -655,18 +655,50 @@ doctor() {
     _dr_row "FEHLT" "TRUST_PROXY_REQUIRED" "explizit true/false setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else _dr_row "OK" "TRUST_PROXY_REQUIRED" "$TRUST_PROXY_REQUIRED"; fi
 
-  # Risk-Layer (optional): URL und Token MUSS als Paar gesetzt werden (beide
-  # oder keines), sonst wirft die ENV-Validierung. Token min 32 (Secret32).
+  # Risk-Layer (optional): URL und Basis-Token MÜSSEN als Paar gesetzt werden.
+  # Das getrennte Operator-Token aktiviert schreibende Betriebsfunktionen. Bei
+  # bestehenden Installationen bleibt ein fehlendes Operator-Token eine
+  # Warnung; ein gesetzter, aber ungueltiger Wert muss den Start blockieren.
   local rl_url="${RISK_LAYER_URL:-}" rl_tok="${RISK_LAYER_TOKEN:-}"
+  local rl_operator_tok="${RISK_LAYER_OPERATOR_TOKEN:-}"
+  local rl_festwissen="${RISK_LAYER_FESTWISSEN_DIR:-}"
   if [[ -n "$rl_url" && -z "$rl_tok" ]]; then
     _dr_row "FEHLT" "RISK_LAYER_TOKEN" "URL gesetzt, Token fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   elif [[ -z "$rl_url" && -n "$rl_tok" ]]; then
     _dr_row "FEHLT" "RISK_LAYER_URL" "Token gesetzt, URL fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ -n "$rl_url" && ${#rl_tok} -lt 32 ]]; then
-    _dr_row "SCHWACH" "RISK_LAYER_TOKEN" "nur ${#rl_tok} Zeichen (< 32)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   elif [[ -n "$rl_url" ]]; then
-    _dr_row "OK" "RISK_LAYER" "konfiguriert (URL + Token)"
-  else _dr_row "OK" "RISK_LAYER" "inaktiv (ok)"; fi
+    if [[ ${#rl_tok} -lt 32 ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_TOKEN" "nur ${#rl_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "RISK_LAYER" "konfiguriert (URL + Token)"
+    fi
+    if [[ -z "$rl_operator_tok" ]]; then
+      _dr_row "WARN" "RISK_LAYER_OPERATOR_TOKEN" "fehlt; Embedding-Steuerung bleibt read-only"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+    elif [[ ${#rl_operator_tok} -lt 32 ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "nur ${#rl_operator_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    elif [[ "$rl_operator_tok" == "$rl_tok" ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "muss sich vom Bearer-Token unterscheiden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "RISK_LAYER_OPERATOR_TOKEN" "konfiguriert"
+    fi
+    if [[ "${rl_url%/}" == "http://risk-layer:8000" ]]; then
+      if [[ -z "$rl_festwissen" ]]; then
+        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "lokaler Compose-Dienst braucht einen verifizierten Release-Pfad"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      elif [[ "$rl_festwissen" != /* ]]; then
+        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "muss ein absoluter Host-Pfad sein"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      elif [[ ! -r "$rl_festwissen/catalog/begriffe.yaml" || ! -r "$rl_festwissen/corpus/graph.sqlite" ]]; then
+        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "Katalog oder Normgraph fehlt im Release"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      elif [[ -n "$rl_operator_tok" && ! -r "$rl_festwissen/models/bge-m3/model-manifest.json" ]]; then
+        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "Embedding-Steuerung braucht models/bge-m3/model-manifest.json im Offline-Release"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      else
+        _dr_row "OK" "RISK_LAYER_FESTWISSEN_DIR" "$rl_festwissen"
+      fi
+    fi
+  elif [[ -n "$rl_operator_tok" ]]; then
+    _dr_row "FEHLT" "RISK_LAYER_URL/TOKEN" "Operator-Token ohne Basiskonfiguration"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "RISK_LAYER" "inaktiv (ok)"
+  fi
 
   if [[ -z "${SMTP_HOST:-}" ]]; then
     _dr_row "FEHLT" "SMTP_HOST" "Prod braucht ein echtes SMTP-Relay (Mailhog nur Dev)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
@@ -1588,6 +1620,59 @@ prompt() {
   [[ -t 0 ]] || return 0
   read -rp "$label [$def]: " input || true
   printf -v "$var" '%s' "${input:-$def}"
+}
+
+configure_risk_layer_interactive() {
+  RISK_LAYER_URL="${RISK_LAYER_URL:-}"
+  RISK_LAYER_TOKEN="${RISK_LAYER_TOKEN:-}"
+  RISK_LAYER_OPERATOR_TOKEN="${RISK_LAYER_OPERATOR_TOKEN:-}"
+  RISK_LAYER_FESTWISSEN_DIR="${RISK_LAYER_FESTWISSEN_DIR:-}"
+  prompt "Risk-Layer-URL (leer = Risk-Layer inaktiv)" RISK_LAYER_URL ""
+  if [[ -n "${RISK_LAYER_URL:-}" ]]; then
+    prompt "Risk-Layer Bearer-Token (min 32 Zeichen)" RISK_LAYER_TOKEN ""
+    if [[ ${#RISK_LAYER_TOKEN} -lt 32 ]]; then
+      warn "RISK_LAYER_TOKEN zu kurz (< 32) — Risk-Layer bleibt inaktiv."
+      RISK_LAYER_URL=""; RISK_LAYER_TOKEN=""; RISK_LAYER_OPERATOR_TOKEN=""
+    else
+      if [[ -z "$RISK_LAYER_OPERATOR_TOKEN" && -t 0 ]]; then
+        local operator_input=""
+        read -rsp "Risk-Layer Operator-Token (Enter = sicher generieren): " operator_input || true
+        printf '\n'
+        RISK_LAYER_OPERATOR_TOKEN="$operator_input"
+      fi
+      if [[ -n "${RISK_LAYER_OPERATOR_TOKEN:-}" && ( ${#RISK_LAYER_OPERATOR_TOKEN} -lt 32 || "$RISK_LAYER_OPERATOR_TOKEN" == "$RISK_LAYER_TOKEN" ) ]]; then
+        warn "RISK_LAYER_OPERATOR_TOKEN ist zu kurz oder mit dem Bearer-Token identisch."
+        RISK_LAYER_OPERATOR_TOKEN=""
+      fi
+      if [[ -z "${RISK_LAYER_OPERATOR_TOKEN:-}" && "${RISK_LAYER_URL%/}" == "http://risk-layer:8000" ]]; then
+        RISK_LAYER_OPERATOR_TOKEN="$(rand_b64 32)"
+        info "RISK_LAYER_OPERATOR_TOKEN generiert."
+      elif [[ -z "${RISK_LAYER_OPERATOR_TOKEN:-}" ]]; then
+        warn "Externe Risk-Layer-Engine bleibt read-only; Operator-Token muss dort und hier koordiniert gesetzt werden."
+      fi
+      if [[ "${RISK_LAYER_URL%/}" == "http://risk-layer:8000" ]]; then
+        prompt "Signal-Festwissen-Release (absoluter Host-Pfad)" RISK_LAYER_FESTWISSEN_DIR "/opt/kanzleikonsole/signal/current"
+        RISK_LAYER_FESTWISSEN_DIR="${RISK_LAYER_FESTWISSEN_DIR:-/opt/kanzleikonsole/signal/current}"
+      else
+        RISK_LAYER_FESTWISSEN_DIR=""
+      fi
+    fi
+  else
+    # Operator- und Basis-Token dürfen nicht ohne URL stehen bleiben.
+    RISK_LAYER_TOKEN=""; RISK_LAYER_OPERATOR_TOKEN=""; RISK_LAYER_FESTWISSEN_DIR=""
+  fi
+
+  if [[ -n "${RISK_LAYER_URL:-}" && -n "${RISK_LAYER_TOKEN:-}" ]]; then
+    set_env RISK_LAYER_URL "$RISK_LAYER_URL"
+    set_env RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
+    set_env RISK_LAYER_OPERATOR_TOKEN "$RISK_LAYER_OPERATOR_TOKEN"
+    set_env RISK_LAYER_FESTWISSEN_DIR "$RISK_LAYER_FESTWISSEN_DIR"
+  else
+    set_env RISK_LAYER_URL ""
+    set_env RISK_LAYER_TOKEN ""
+    set_env RISK_LAYER_OPERATOR_TOKEN ""
+    set_env RISK_LAYER_FESTWISSEN_DIR ""
+  fi
 }
 
 configure_smtp_interactive() {
@@ -2543,24 +2628,7 @@ prepare_env_interactive() {
   # prompt() fragt nur bei TTY und nur, wenn der Wert noch ungesetzt ist.
   configure_surface_domains_interactive
 
-  prompt "Risk-Layer-URL (leer = Risk-Layer inaktiv)" RISK_LAYER_URL ""
-  if [[ -n "${RISK_LAYER_URL:-}" ]]; then
-    prompt "Risk-Layer Bearer-Token (min 32 Zeichen)" RISK_LAYER_TOKEN ""
-    if [[ ${#RISK_LAYER_TOKEN} -lt 32 ]]; then
-      warn "RISK_LAYER_TOKEN zu kurz (< 32) — Risk-Layer bleibt inaktiv."
-      RISK_LAYER_URL=""; RISK_LAYER_TOKEN=""
-    fi
-  else
-    # URL leer -> Token darf nicht allein stehen (sonst Cross-Field-Fehler).
-    RISK_LAYER_TOKEN=""
-  fi
-  if [[ -n "${RISK_LAYER_URL:-}" && -n "${RISK_LAYER_TOKEN:-}" ]]; then
-    set_env RISK_LAYER_URL "$RISK_LAYER_URL"
-    set_env RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
-  else
-    set_env RISK_LAYER_URL ""
-    set_env RISK_LAYER_TOKEN ""
-  fi
+  configure_risk_layer_interactive
 
   reconcile_n8n_encryption_key_from_volume
 

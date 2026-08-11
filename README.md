@@ -241,6 +241,10 @@ RISK_LAYER_URL=http://risk-layer:8000
 # oder interne IP:
 # RISK_LAYER_URL=http://10.10.0.42:8000
 RISK_LAYER_TOKEN=...
+# Eigenes Secret für Statusverwaltung, Wochenplan und manuellen Neuaufbau:
+RISK_LAYER_OPERATOR_TOKEN=...
+# Verifiziertes Signal-Festwissen mit catalog/, corpus/ und models/bge-m3/:
+RISK_LAYER_FESTWISSEN_DIR=/opt/kanzleikonsole/signal/current
 
 SMTP_HOST=mail.example.de
 SMTP_PORT=587

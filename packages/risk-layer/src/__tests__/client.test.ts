@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { RiskLayerClient, RiskLayerHttpError } from '../index';
+import {
+  EmbeddingStatusResponseSchema,
+  RiskLayerClient,
+  RiskLayerHttpError,
+  RiskLayerOperatorNotConfiguredError,
+} from '../index';
 
 const config = { url: 'http://risk-layer:8000', token: 'x'.repeat(32) };
 const analysePayload = {
@@ -8,6 +13,35 @@ const analysePayload = {
   engineVersion: 'e',
   karten: [],
   risiken: [],
+};
+const embeddingStatusPayload = {
+  ok: true,
+  engineVersion: '1.4.0',
+  index: {
+    active: true,
+    current: false,
+    fingerprint: 'sha256:abc',
+    input_fingerprint: 'a'.repeat(64),
+    encoder: 'encoder-v1',
+    revision: 'catalogue-42',
+  },
+  job: {
+    state: 'idle',
+    id: null,
+    requested: null,
+    started: null,
+    completed: null,
+    last_success: '2026-08-10T09:00:00Z',
+    error: null,
+  },
+  schedule: {
+    enabled: true,
+    interval_days: 7,
+    last_check_at: '2026-08-10T09:00:00+00:00',
+    next_run_at: '2026-08-17T09:00:00+00:00',
+  },
+  refresh_available: true,
+  unavailable_reason: null,
 };
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -206,5 +240,141 @@ describe('RiskLayerClient', () => {
     expect(url).toBe('http://risk-layer:8000/v1/llm/start');
     expect(init!.method).toBe('POST');
     expect(init!.body).toBeUndefined(); // kein Request-Input (kein Injection-Vektor)
+  });
+
+  it('embeddingStatus parst nur den sicheren Kern und setzt keinen Operator-Header', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({
+        ...embeddingStatusPayload,
+        future_top_level: true,
+        index: { ...embeddingStatusPayload.index, future_index_field: 'kept' },
+      }),
+    );
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    const status = await client.embeddingStatus();
+
+    expect(status.index).toMatchObject({ active: true, current: false });
+    expect(status.index).not.toHaveProperty('future_index_field');
+    expect(status).not.toHaveProperty('future_top_level');
+    expect(status.refresh_available).toBe(true);
+    expect(
+      EmbeddingStatusResponseSchema.parse({
+        ...embeddingStatusPayload,
+        index: { ...embeddingStatusPayload.index, current: null },
+      }).index.current,
+    ).toBeNull();
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://risk-layer:8000/v1/embedding/status');
+    expect(init!.method).toBe('GET');
+    expect(init!.headers).not.toHaveProperty('x-risk-layer-operator-token');
+  });
+
+  it('embeddingStatus verlangt alle Kernfelder und ISO-Zeitstempel', () => {
+    expect(() =>
+      EmbeddingStatusResponseSchema.parse({
+        ...embeddingStatusPayload,
+        index: { ...embeddingStatusPayload.index, revision: undefined },
+      }),
+    ).toThrow();
+    expect(() =>
+      EmbeddingStatusResponseSchema.parse({
+        ...embeddingStatusPayload,
+        job: { ...embeddingStatusPayload.job, requested: 'gestern' },
+      }),
+    ).toThrow();
+    expect(() =>
+      EmbeddingStatusResponseSchema.parse({
+        ...embeddingStatusPayload,
+        index: { ...embeddingStatusPayload.index, fingerprint: 'x'.repeat(513) },
+      }),
+    ).toThrow();
+    expect(() =>
+      EmbeddingStatusResponseSchema.parse({
+        ...embeddingStatusPayload,
+        index: { ...embeddingStatusPayload.index, input_fingerprint: 'not-a-sha256' },
+      }),
+    ).toThrow();
+    expect(() =>
+      EmbeddingStatusResponseSchema.parse({
+        ...embeddingStatusPayload,
+        refresh_available: undefined,
+      }),
+    ).toThrow();
+  });
+
+  it('embeddingRefresh sendet force und das Operator-Secret ausschließlich als Header', async () => {
+    const operatorToken = 'operator-token-with-at-least-thirty-two-characters';
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({
+        ok: true,
+        engineVersion: '1.4.0',
+        job_id: 'embedding-123',
+        state: 'queued',
+      }),
+    );
+    const client = new RiskLayerClient({ config: { ...config, operatorToken }, fetchImpl });
+
+    await expect(client.embeddingRefresh({ force: true })).resolves.toMatchObject({
+      job_id: 'embedding-123',
+      state: 'queued',
+    });
+
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://risk-layer:8000/v1/embedding/refresh');
+    expect((init!.headers as Record<string, string>)['x-risk-layer-operator-token']).toBe(
+      operatorToken,
+    );
+    expect(JSON.parse(init!.body as string)).toEqual({ force: true });
+    expect(init!.body).not.toContain(operatorToken);
+  });
+
+  it('embeddingSchedule mappt intervalDays auf interval_days', async () => {
+    const operatorToken = 'operator-token-with-at-least-thirty-two-characters';
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({
+        ok: true,
+        engineVersion: '1.4.0',
+        schedule: embeddingStatusPayload.schedule,
+      }),
+    );
+    const client = new RiskLayerClient({ config: { ...config, operatorToken }, fetchImpl });
+
+    const result = await client.embeddingSchedule({ enabled: true, intervalDays: 7 });
+
+    expect(result.schedule.interval_days).toBe(7);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://risk-layer:8000/v1/embedding/schedule');
+    expect(JSON.parse(init!.body as string)).toEqual({ enabled: true, interval_days: 7 });
+    expect((init!.headers as Record<string, string>)['x-risk-layer-operator-token']).toBe(
+      operatorToken,
+    );
+  });
+
+  it.each([
+    ['refresh', (client: RiskLayerClient) => client.embeddingRefresh({ force: false })],
+    [
+      'schedule',
+      (client: RiskLayerClient) => client.embeddingSchedule({ enabled: true, intervalDays: 7 }),
+    ],
+  ])('embedding-%s wird bei 503 nicht wiederholt', async (_name, call) => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}, 503));
+    const client = new RiskLayerClient({
+      config: { ...config, operatorToken: 'o'.repeat(32) },
+      fetchImpl,
+    });
+
+    await expect(call(client)).rejects.toBeInstanceOf(RiskLayerHttpError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('Operator-Calls scheitern ohne Operator-Secret sicher vor dem Fetch', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    await expect(client.embeddingRefresh({ force: false })).rejects.toBeInstanceOf(
+      RiskLayerOperatorNotConfiguredError,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

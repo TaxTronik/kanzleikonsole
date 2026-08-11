@@ -32,7 +32,7 @@ services:
 
   n8n:
     <<: *hardening
-    image: n8nio/n8n:2.25.7@sha256:761374d4eb841b0a22771d6bd68f0e8d827b4979ae4e490045517b13fc1259dd
+    image: n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30
     container_name: taxtronik-n8n
     restart: unless-stopped
     # n8n läuft als node-User; braucht CHOWN für /home/node/.n8n.

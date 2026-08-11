@@ -18,6 +18,12 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+- Signal-Integration: Die Integrations-Einstellungen zeigen Zustand, Aktualität
+  und letzten protokollierten Lauf des Embedding-Index. Kanzlei-Admins können
+  den globalen Wochencheck ein- oder ausschalten und einen Neuaufbau manuell
+  anstoßen. Getrennte Operator-Authentisierung, Audit, Offline-Festwissen,
+  persistente Generationen und fail-closed Deploy-/Doctor-Prüfungen sichern
+  den Betrieb ab.
 - Benachrichtigungen: Das Öffnen über das Dashboard-Widget oder die
   Benachrichtigungsseite markiert den Eintrag nun wie der Navbar-Klick als
   gelesen und synchronisiert den Navbar-Zähler sofort.
@@ -107,7 +113,7 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
   und brechen vorab ab, wenn RAM plus Systemreserve fehlen. Damit kann ein
   ausufernder Next/Turbopack-Build den Produktivhost nicht mehr bis zur
   Unerreichbarkeit ins Swapping treiben.
-- n8n auf den verifizierten Stable-Release 2.25.7 aktualisiert; globale
+- n8n auf den verifizierten Stable-Release 2.33.7 aktualisiert; globale
   Legacy-Callbacks sind nun standardmäßig deaktiviert und Production-n8n
   sendet keine Telemetrie oder automatischen Katalog-/Versionsabrufe.
 - Update-/Migrationspfad gegen restriktive Checkout-Dateirechte gehärtet:

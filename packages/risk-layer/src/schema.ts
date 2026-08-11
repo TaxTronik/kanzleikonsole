@@ -209,8 +209,85 @@ export const KatalogResponseSchema = z.object({
 });
 export type KatalogResponse = z.infer<typeof KatalogResponseSchema>;
 
+// -----------------------------------------------------------------------------
+// Embedding-Betrieb (Operator-API).
+// -----------------------------------------------------------------------------
+
+const EmbeddingTimestampSchema = z.string().max(64).datetime({ offset: true }).nullable();
+
+export const EmbeddingJobStateSchema = z.enum([
+  'idle',
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+  'skipped',
+]);
+export type EmbeddingJobState = z.infer<typeof EmbeddingJobStateSchema>;
+
+export const EmbeddingIndexStatusSchema = z.object({
+  active: z.boolean(),
+  current: z.boolean().nullable(),
+  fingerprint: z.string().max(512).nullable(),
+  input_fingerprint: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable(),
+  encoder: z.string().max(512).nullable(),
+  revision: z.string().max(512).nullable(),
+});
+export type EmbeddingIndexStatus = z.infer<typeof EmbeddingIndexStatusSchema>;
+
+export const EmbeddingJobStatusSchema = z.object({
+  state: EmbeddingJobStateSchema,
+  id: z.string().max(200).nullable(),
+  requested: EmbeddingTimestampSchema,
+  started: EmbeddingTimestampSchema,
+  completed: EmbeddingTimestampSchema,
+  last_success: EmbeddingTimestampSchema,
+  error: z.string().max(2000).nullable(),
+});
+export type EmbeddingJobStatus = z.infer<typeof EmbeddingJobStatusSchema>;
+
+export const EmbeddingScheduleStatusSchema = z.object({
+  enabled: z.boolean(),
+  interval_days: z.number().int().min(1).max(365),
+  last_check_at: EmbeddingTimestampSchema,
+  next_run_at: EmbeddingTimestampSchema,
+});
+export type EmbeddingScheduleStatus = z.infer<typeof EmbeddingScheduleStatusSchema>;
+
+/** `GET /v1/embedding/status` — aktueller Index-, Job- und Zeitplanstatus. */
+export const EmbeddingStatusResponseSchema = z.object({
+  ok: z.literal(true),
+  engineVersion: z.string().min(1).max(200),
+  index: EmbeddingIndexStatusSchema,
+  job: EmbeddingJobStatusSchema,
+  schedule: EmbeddingScheduleStatusSchema,
+  refresh_available: z.boolean(),
+  unavailable_reason: z.string().max(500).nullable(),
+});
+export type EmbeddingStatusResponse = z.infer<typeof EmbeddingStatusResponseSchema>;
+
+/** `POST /v1/embedding/refresh` — angenommener Single-Flight-Refresh. */
+export const EmbeddingRefreshResponseSchema = z.object({
+  ok: z.literal(true),
+  engineVersion: z.string().min(1).max(200),
+  job_id: z.string().min(1).max(200),
+  state: z.enum(['queued', 'running']),
+});
+export type EmbeddingRefreshResponse = z.infer<typeof EmbeddingRefreshResponseSchema>;
+
+/** `POST /v1/embedding/schedule` — persistierter Prüfzeitplan. */
+export const EmbeddingScheduleResponseSchema = z.object({
+  ok: z.literal(true),
+  engineVersion: z.string().min(1).max(200),
+  schedule: EmbeddingScheduleStatusSchema,
+});
+export type EmbeddingScheduleResponse = z.infer<typeof EmbeddingScheduleResponseSchema>;
+
 /**
- * Normgraph-/Embedding-Responses: Form offen → als Record durchgereicht.
+ * Normgraph-/Embedding-Suchantworten: Form offen → als Record durchgereicht.
  */
 export const OpaqueObjectSchema = z.object({}).catchall(z.unknown());
 export type OpaqueObject = z.infer<typeof OpaqueObjectSchema>;

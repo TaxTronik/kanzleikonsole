@@ -155,6 +155,8 @@ const envSchema = z.object({
   // dafür nicht nötig (bleibt aber für n8n/RSS/TSA-safeFetch-Pfade relevant).
   RISK_LAYER_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   RISK_LAYER_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
+  // Getrennte Berechtigung für Refresh/Schedule; ohne sie bleibt Status lesbar.
+  RISK_LAYER_OPERATOR_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
 
   // --- ELSTER-Bridge (eric-bridge, privater Dienst) ---------------------------
   // Netzinterner HTTP-Dienst, der die native ERiC-Bibliothek kapselt (eigener
@@ -213,6 +215,22 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+function assertRiskLayerOperatorConfig(config: Env): void {
+  if (config.RISK_LAYER_OPERATOR_TOKEN && (!config.RISK_LAYER_URL || !config.RISK_LAYER_TOKEN)) {
+    throw new Error(
+      '[config] RISK_LAYER_OPERATOR_TOKEN gesetzt, aber die Risk-Layer-Basiskonfiguration aus RISK_LAYER_URL und RISK_LAYER_TOKEN fehlt.',
+    );
+  }
+  if (
+    config.RISK_LAYER_OPERATOR_TOKEN &&
+    config.RISK_LAYER_OPERATOR_TOKEN === config.RISK_LAYER_TOKEN
+  ) {
+    throw new Error(
+      '[config] RISK_LAYER_OPERATOR_TOKEN muss sich von RISK_LAYER_TOKEN unterscheiden.',
+    );
+  }
+}
+
 /**
  * Exportiert für Unit-Tests (Audit Round 15): die Dev-Default-Denylist und
  * Cross-Field-Validierung dürfen nicht ungetestet bleiben. Test-Code ruft
@@ -240,6 +258,8 @@ function parseEnv(): Env {
     console.error(`[config] ENV-Validierung fehlgeschlagen:\n${issues}`);
     throw new Error('ENV-Validierung fehlgeschlagen — siehe Konsole.');
   }
+
+  assertRiskLayerOperatorConfig(parsed.data);
 
   // Cross-Field-Konsistenz
   if (parsed.data.NODE_ENV === 'production') {
@@ -395,9 +415,22 @@ export const portalBaseUrl: string = (env.PORTAL_PUBLIC_URL ?? env.NEXTAUTH_URL)
  * stillschweigend gegen eine undefinierte URL zu fetchen. Trailing-Slash der
  * URL wird entfernt (der Client hängt `/v1/...`-Pfade an).
  */
-export const riskLayerConfig: { url: string; token: string } | null =
+export interface RiskLayerConfig {
+  /** Basis-URL der Engine ohne Trailing-Slash. */
+  url: string;
+  /** Shared Secret für normale Bearer-authentisierte Engine-Aufrufe. */
+  token: string;
+  /** Separates Secret für schreibende Operator-Aufrufe. */
+  operatorToken?: string;
+}
+
+export const riskLayerConfig: RiskLayerConfig | null =
   env.RISK_LAYER_URL && env.RISK_LAYER_TOKEN
-    ? { url: env.RISK_LAYER_URL.replace(/\/$/, ''), token: env.RISK_LAYER_TOKEN }
+    ? {
+        url: env.RISK_LAYER_URL.replace(/\/$/, ''),
+        token: env.RISK_LAYER_TOKEN,
+        ...(env.RISK_LAYER_OPERATOR_TOKEN ? { operatorToken: env.RISK_LAYER_OPERATOR_TOKEN } : {}),
+      }
     : null;
 
 /**
