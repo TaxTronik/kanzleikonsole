@@ -50,7 +50,7 @@
   "apps/web/src/app/staff/(protected)/clients/[id]/workflows/[instanceId]/page.tsx::Arrow function#1": 21,
   "apps/web/src/app/staff/(protected)/clients/[id]/workflows/item-row.tsx::Function 'WorkflowItemRow'#1": 40,
   "apps/web/src/app/staff/(protected)/clients/onboarding/[id]/page.tsx::Async function 'OnboardingStepPage'#1": 43,
-  "apps/web/src/app/staff/(protected)/clients/page.tsx::Async function 'ClientsPage'#1": 39,
+  "apps/web/src/app/staff/(protected)/clients/page.tsx::Async function 'ClientsPage'#1": 37,
   "apps/web/src/app/staff/(protected)/dashboard/widgets.tsx::Async function 'renderWidget'#1": 21,
   "apps/web/src/app/staff/(protected)/documents/actions.ts::Async function 'retagDocumentAction'#1": 22,
   "apps/web/src/app/staff/(protected)/documents/page.tsx::Async function 'DocumentsPage'#1": 32,

@@ -13,55 +13,29 @@ import { RecentClients } from '@/components/recent-clients';
 import { SavedViews } from '@/components/saved-views';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
+import {
+  CLIENT_KIND_LABELS,
+  CLIENT_KIND_OPTIONS,
+  clientOrderBy,
+  parseClientKind,
+  parseClientSort,
+  type ClientListSearchParams,
+} from './list-query';
 
 const PAGE_SIZE = 50;
-
-type SortKey = 'name' | 'datev' | 'addison' | 'created';
-type SortDir = 'asc' | 'desc';
-
-interface SearchParams {
-  q?: string;
-  status?: 'active' | 'pending';
-  onboarding?: 'open' | 'in_progress' | 'complete';
-  sort?: SortKey;
-  dir?: SortDir;
-  mine?: '1';
-  page?: string;
-  denied?: string;
-}
-
-function parseSort(sp: SearchParams): { sort: SortKey; dir: SortDir } {
-  const sort: SortKey =
-    sp.sort === 'datev' || sp.sort === 'addison' || sp.sort === 'created' ? sp.sort : 'name';
-  const dir: SortDir = sp.dir === 'desc' ? 'desc' : 'asc';
-  return { sort, dir };
-}
-
-function orderByFor(sort: SortKey, dir: SortDir): Prisma.ClientOrderByWithRelationInput[] {
-  switch (sort) {
-    case 'datev':
-      return [{ datevNo: { sort: dir, nulls: 'last' } }, { name: 'asc' }];
-    case 'addison':
-      return [{ addisonNo: { sort: dir, nulls: 'last' } }, { name: 'asc' }];
-    case 'created':
-      return [{ createdAt: dir }];
-    case 'name':
-    default:
-      return [{ name: dir }];
-  }
-}
 
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<SearchParams>;
+  searchParams: Promise<ClientListSearchParams>;
 }) {
   const session = await requireStaffPage();
   const darfAnlegen = hasStaffPermission(session, 'CLIENT_CREATE');
 
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
-  const { sort, dir } = parseSort(sp);
+  const { sort, dir } = parseClientSort(sp);
+  const kind = parseClientKind(sp.kind);
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
   const mine = sp.mine === '1';
 
@@ -76,6 +50,7 @@ export default async function ClientsPage({
   }
   if (sp.status === 'active') where.allowActive = true;
   if (sp.status === 'pending') where.allowActive = false;
+  if (kind) where.kind = kind;
   if (mine) {
     where.responsibilities = { some: { staffId } };
   }
@@ -117,7 +92,7 @@ export default async function ClientsPage({
       return Promise.all([
         tx.client.findMany({
           where,
-          orderBy: orderByFor(sort, dir),
+          orderBy: clientOrderBy(sort, dir),
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
           select: {
@@ -154,15 +129,13 @@ export default async function ClientsPage({
   if (sp.q) baseQs.set('q', sp.q);
   if (sp.status) baseQs.set('status', sp.status);
   if (sp.onboarding) baseQs.set('onboarding', sp.onboarding);
+  if (kind) baseQs.set('kind', kind);
   if (sort !== 'name') baseQs.set('sort', sort);
   if (dir !== 'asc') baseQs.set('dir', dir);
   if (mine) baseQs.set('mine', '1');
 
-  const kindLabels: Record<string, string> = {
-    NATPERS: 'Natürliche Person',
-    JURPERS: 'Juristische Person',
-    PERSGES: 'Personengesellschaft',
-  };
+  const hasResultFilters = Boolean(sp.q || sp.status || sp.onboarding || kind || mine);
+  const hasQueryChanges = hasResultFilters || sort !== 'name' || dir !== 'asc';
 
   return (
     <div className="p-8">
@@ -231,6 +204,19 @@ export default async function ClientsPage({
             <option value="active">Nur aktive</option>
             <option value="pending">Nur GwG-ausstehend</option>
           </select>
+          <select
+            name="kind"
+            aria-label="Mandantentyp"
+            className="input w-52"
+            defaultValue={kind ?? ''}
+          >
+            <option value="">Mandantentyp: alle</option>
+            {CLIENT_KIND_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <select name="onboarding" className="input w-52" defaultValue={sp.onboarding ?? ''}>
             <option value="">Onboarding: alle</option>
             <option value="open">Onboarding: offen</option>
@@ -239,6 +225,7 @@ export default async function ClientsPage({
           </select>
           <select name="sort" className="input w-44" defaultValue={sort}>
             <option value="name">Sortierung: Name</option>
+            <option value="kind">Sortierung: Typ</option>
             <option value="datev">Sortierung: DATEV-Nr.</option>
             <option value="addison">Sortierung: Addison-Nr.</option>
             <option value="created">Sortierung: Angelegt</option>
@@ -260,7 +247,7 @@ export default async function ClientsPage({
             Nur meine Mandanten
           </label>
           <div className="flex gap-2">
-            {(sp.q || sp.status || sp.onboarding || sort !== 'name' || dir !== 'asc' || mine) && (
+            {hasQueryChanges && (
               <Link href="/staff/clients" className="btn-secondary">
                 Reset
               </Link>
@@ -276,14 +263,14 @@ export default async function ClientsPage({
         <div className="card p-12 text-center">
           <User className="h-12 w-12 text-disabled mx-auto mb-4" />
           <h3 className="text-sm font-medium text-primary mb-1">
-            {sp.q || sp.status || mine ? 'Keine Treffer' : 'Noch keine Mandanten'}
+            {hasResultFilters ? 'Keine Treffer' : 'Noch keine Mandanten'}
           </h3>
           <p className="text-sm text-muted mb-4">
-            {sp.q || sp.status || mine
+            {hasResultFilters
               ? 'Filter anpassen oder zurücksetzen.'
               : 'Lege den ersten Mandanten an, um zu beginnen.'}
           </p>
-          {!sp.q && !sp.status && !mine && darfAnlegen && (
+          {!hasResultFilters && darfAnlegen && (
             <Link href="/staff/clients/onboarding/new" className="btn-primary">
               Onboarding starten
             </Link>
@@ -329,7 +316,7 @@ export default async function ClientsPage({
                     </Link>
                   </td>
                   <td className="px-6 py-3 text-secondary">
-                    {kindLabels[client.kind] ?? client.kind}
+                    {CLIENT_KIND_LABELS[client.kind] ?? client.kind}
                   </td>
                   <td className="px-6 py-3 text-secondary font-mono text-xs">
                     {client.datevNo ?? '—'}
