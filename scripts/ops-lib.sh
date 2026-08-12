@@ -1527,7 +1527,7 @@ provide_traefik_for_deploy() {
 }
 
 build_signal_from_source() {
-  local url ref dir parent origin status sha target memory_limit memory_reserve cpus
+  local url ref dir parent origin status sha target memory_limit memory_reserve cpus newly_cloned=0
   url="${SIGNAL_GIT_URL:-$SIGNAL_GIT_URL_DEFAULT}"
   ref="${SIGNAL_GIT_REF:-$SIGNAL_GIT_REF_DEFAULT}"
   dir="$(signal_source_dir)"
@@ -1548,14 +1548,25 @@ build_signal_from_source() {
     info "Signal-Quellstand klonen: $url -> $dir"
     (umask 022; git clone --no-checkout "$url" "$dir") || \
       die "Signal-Git-Repository konnte nicht geklont werden."
+    newly_cloned=1
   fi
   [[ -d "$dir/.git" ]] || die "SIGNAL_GIT_DIR ist kein von TaxTronik nutzbarer Git-Checkout: $dir"
   origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
   [[ "$origin" == "$url" ]] || \
     die "Signal-Checkout hat einen anderen origin ($origin). Erwartet: $url"
-  status="$(git -C "$dir" status --porcelain --untracked-files=normal 2>/dev/null || true)"
-  [[ -z "$status" ]] || \
-    die "Signal-Checkout enthaelt lokale Aenderungen. TaxTronik ueberschreibt sie nicht; bereinigen oder SIGNAL_GIT_DIR wechseln."
+  # Ein aelterer TaxTronik-Lauf kann nach `clone --no-checkout` genau mit
+  # einem leeren Arbeitsbaum und dem vollstaendigen .git-Verzeichnis beendet
+  # worden sein. Solange wirklich kein einziges Arbeitsbaumobjekt existiert,
+  # kann der kontrollierte Initial-Checkout gefahrlos nachgeholt werden.
+  if (( newly_cloned == 0 )) && \
+     [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 ! -name .git -print -quit 2>/dev/null)" ]]; then
+    newly_cloned=1
+  fi
+  if (( newly_cloned == 0 )); then
+    status="$(git -C "$dir" status --porcelain --untracked-files=normal 2>/dev/null || true)"
+    [[ -z "$status" ]] || \
+      die "Signal-Checkout enthaelt lokale Aenderungen. TaxTronik ueberschreibt sie nicht; bereinigen oder SIGNAL_GIT_DIR wechseln."
+  fi
 
   info "Signal-Git-Ref beziehen: $ref"
   (umask 022; git -C "$dir" fetch --prune origin "$ref") || \
@@ -1564,6 +1575,9 @@ build_signal_from_source() {
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "Signal-Git-Ref wurde nicht zu einem eindeutigen Commit aufgeloest."
   (umask 022; git -C "$dir" checkout --detach "$sha") || \
     die "Signal-Checkout konnte nicht auf $sha gesetzt werden."
+  status="$(git -C "$dir" status --porcelain --untracked-files=normal 2>/dev/null || true)"
+  [[ -z "$status" ]] || \
+    die "Signal-Checkout ist nach dem kontrollierten Checkout nicht sauber; Build wird verweigert."
   [[ -f "$dir/scripts/build-managed-image.sh" ]] || \
     die "Signal-Quellstand unterstuetzt den verwalteten Source-Build noch nicht (scripts/build-managed-image.sh fehlt)."
 

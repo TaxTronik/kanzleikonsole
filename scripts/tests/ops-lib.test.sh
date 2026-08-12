@@ -961,6 +961,64 @@ test_managed_signal_source_build_skips_registry_pull() {
   pass "managed Signal source channel builds locally and never pulls a registry image"
 }
 
+test_managed_signal_source_build_accepts_fresh_no_checkout_clone() {
+  local origin="$TMP_DIR/signal-source-origin" checkout="$TMP_DIR/signal-source-checkout"
+  local interrupted_checkout="$TMP_DIR/signal-source-interrupted-checkout"
+  local build_root="$TMP_DIR/signal-source-build-root" out="$TMP_DIR/signal-source-dirty.out"
+  mkdir -p "$origin/scripts" "$build_root"
+  git -C "$origin" init -q -b main
+  git -C "$origin" config user.name TaxTronik-Test
+  git -C "$origin" config user.email test@taxtronik.invalid
+  printf 'signal source\n' >"$origin/README.md"
+  printf '#!/bin/sh\nexit 0\n' >"$origin/scripts/build-managed-image.sh"
+  git -C "$origin" add README.md scripts/build-managed-image.sh
+  git -C "$origin" commit -qm initial
+
+  (
+    ROOT="$build_root"
+    SIGNAL_GIT_URL="$origin"
+    SIGNAL_GIT_REF=main
+    SIGNAL_GIT_DIR="$checkout"
+    SIGNAL_BUILD_MEMORY_LIMIT=3g
+    SIGNAL_BUILD_MEMORY_RESERVE=1g
+    SIGNAL_BUILD_CPUS=2
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    build_signal_from_source
+    [[ "$SIGNAL_IMAGE" == taxtronik/risk-layer-engine:source-* ]] || \
+      test_fail "fresh Signal source clone did not produce a commit-derived image"
+  ) >/dev/null
+  [[ -f "$checkout/README.md" ]] || test_fail "fresh Signal clone was not checked out"
+
+  git clone -q --no-checkout "$origin" "$interrupted_checkout"
+  (
+    ROOT="$build_root"
+    SIGNAL_GIT_URL="$origin"
+    SIGNAL_GIT_REF=main
+    SIGNAL_GIT_DIR="$interrupted_checkout"
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    build_signal_from_source
+  ) >/dev/null
+  [[ -f "$interrupted_checkout/README.md" ]] || \
+    test_fail "interrupted no-checkout Signal clone was not recovered"
+
+  printf 'operator-owned file\n' >"$checkout/local-note.txt"
+  if (
+    ROOT="$build_root"
+    SIGNAL_GIT_URL="$origin"
+    SIGNAL_GIT_REF=main
+    SIGNAL_GIT_DIR="$checkout"
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    build_signal_from_source
+  ) >"$out" 2>&1; then
+    test_fail "managed Signal source build accepted an existing dirty checkout"
+  fi
+  assert_contains "$out" "Signal-Checkout enthaelt lokale Aenderungen"
+  pass "managed Signal source build checks out fresh clones but preserves existing local work"
+}
+
 test_signal_embedding_compose_contract_is_self_contained_and_offline() {
   local service="$TMP_DIR/risk-layer-compose-service.yml"
   sed -n '/^  risk-layer:/,/^  eric-bridge:/p' \
@@ -2652,6 +2710,7 @@ test_external_signal_lifecycle_never_touches_docker
 test_legacy_native_signal_is_inferred_as_external
 test_managed_signal_lifecycle_uses_pinned_release
 test_managed_signal_source_build_skips_registry_pull
+test_managed_signal_source_build_accepts_fresh_no_checkout_clone
 test_signal_embedding_compose_contract_is_self_contained_and_offline
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled
