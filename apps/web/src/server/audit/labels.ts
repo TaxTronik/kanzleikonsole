@@ -230,6 +230,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'tenant.settings.n8n.reset': 'n8n-Verbindung zurückgesetzt',
   'tenant.settings.n8n.delete': 'n8n-Verbindung deaktiviert und bereinigt',
   'tenant.settings.n8n.callback_token.rotate': 'n8n-Callback-Token rotiert',
+  'tenant.settings.n8n.callback_scope.update': 'n8n-Callback-Berechtigungen aktualisiert',
   'tenant.settings.n8n.endpoint.upsert': 'n8n-Workflow-Route geändert',
   'tenant.settings.n8n.endpoint.delete': 'n8n-Workflow-Route entfernt',
   'tenant.settings.n8n.delivery.retry': 'n8n-Zustellung erneut eingeplant',
