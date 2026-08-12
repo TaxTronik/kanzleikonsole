@@ -491,11 +491,11 @@ render_traefik_dynamic_config() {
   staff_host="${staff_host,,}"; portal_host="${portal_host,,}"
 
   valid_public_fqdn "$staff_host" || \
-    die "Traefik braucht einen gueltigen Staff-FQDN in NEXTAUTH_URL."
+    die "Traefik braucht eine gueltige Kanzlei-/Mitarbeiterportal-Domain in NEXTAUTH_URL."
   valid_public_fqdn "$portal_host" || \
-    die "Traefik braucht einen gueltigen Portal-FQDN in PORTAL_PUBLIC_URL."
+    die "Traefik braucht eine gueltige Mandantenportal-Domain in PORTAL_PUBLIC_URL."
   [[ "$staff_host" != "$portal_host" ]] || \
-    die "Traefik-Setup verlangt getrennte Staff- und Portal-FQDNs."
+    die "Kanzlei-/Mitarbeiterportal und Mandantenportal brauchen getrennte Domains."
   valid_setup_email "$acme_email" || \
     die "TRAEFIK_ACME_EMAIL fehlt oder ist ungueltig."
 
@@ -1541,7 +1541,7 @@ smoke_public_frontend() {
   for _ in {1..36}; do
     if curl -fsS --max-time 10 -o /dev/null "$staff_url" 2>/dev/null && \
        curl -fsS --max-time 10 -o /dev/null "$portal_url" 2>/dev/null; then
-      info "Oeffentliche Staff- und Portal-URL sind per HTTPS bereit."
+      info "Kanzlei-/Mitarbeiterportal und Mandantenportal sind per HTTPS bereit."
       return 0
     fi
     sleep 5
@@ -2336,7 +2336,7 @@ configure_initial_deployment_interactive() {
   [[ ! -e "$STATE" ]] || \
     die ".env fehlt, aber Installations-State ist vorhanden. Nicht als Erstinstallation ueberschreiben; .env aus dem Backup wiederherstellen."
 
-  local choice="" input="" base_domain="" phrase=""
+  local choice="" input="" phrase=""
   _SETUP_METHOD="standard"
   _SETUP_DEPLOY_CHANNEL="source"
   _SETUP_IMAGE_PREFIX="taxtronik"
@@ -2402,27 +2402,20 @@ configure_initial_deployment_interactive() {
   esac
 
   while :; do
-    read -rp 'Basisdomain (z. B. kanzlei.example.de): ' base_domain || true
-    base_domain="${base_domain,,}"
-    valid_public_fqdn "$base_domain" && break
-    warn "Bitte eine oeffentliche ASCII-FQDN ohne Schema oder Pfad eingeben."
-  done
-  while :; do
-    read -rp "Staff-FQDN [staff.${base_domain}]: " input || true
-    _SETUP_STAFF_HOST="${input:-staff.${base_domain}}"; _SETUP_STAFF_HOST="${_SETUP_STAFF_HOST,,}"
+    read -rp 'Kanzlei-/Mitarbeiterportal (vollstaendige Domain, z. B. portal.taxtronik.de): ' _SETUP_STAFF_HOST || true
+    _SETUP_STAFF_HOST="${_SETUP_STAFF_HOST,,}"
     valid_public_fqdn "$_SETUP_STAFF_HOST" && break
-    warn "Staff-FQDN ist ungueltig."
+    warn "Domain des Kanzlei-/Mitarbeiterportals ist ungueltig."
   done
   while :; do
-    read -rp "Portal-FQDN [portal.${base_domain}]: " input || true
-    _SETUP_PORTAL_HOST="${input:-portal.${base_domain}}"; _SETUP_PORTAL_HOST="${_SETUP_PORTAL_HOST,,}"
+    read -rp 'Mandantenportal (vollstaendige Domain, z. B. mandanten.taxtronik.de): ' _SETUP_PORTAL_HOST || true
+    _SETUP_PORTAL_HOST="${_SETUP_PORTAL_HOST,,}"
     if valid_public_fqdn "$_SETUP_PORTAL_HOST" && [[ "$_SETUP_PORTAL_HOST" != "$_SETUP_STAFF_HOST" ]]; then break; fi
-    warn "Portal-FQDN muss gueltig und vom Staff-FQDN verschieden sein."
+    warn "Mandantenportal-Domain muss gueltig und vom Kanzleiportal verschieden sein."
   done
 
   while :; do
-    read -rp "Admin-E-Mail [admin@${base_domain}]: " input || true
-    _SETUP_ADMIN_EMAIL="${input:-admin@${base_domain}}"
+    read -rp 'Admin-E-Mail: ' _SETUP_ADMIN_EMAIL || true
     valid_setup_email "$_SETUP_ADMIN_EMAIL" && break
     warn "Admin-E-Mail ist ungueltig."
   done
@@ -2452,14 +2445,20 @@ configure_initial_deployment_interactive() {
     fi
   fi
 
-  read -rp "SMTP-Host [smtp.${base_domain}]: " input || true
-  _SETUP_SMTP_HOST="${input:-smtp.${base_domain}}"
+  while :; do
+    read -rp 'SMTP-Host (z. B. smtp.example.de): ' _SETUP_SMTP_HOST || true
+    [[ -n "${_SETUP_SMTP_HOST//[[:space:]]/}" ]] && break
+    warn "SMTP-Host darf nicht leer sein."
+  done
   read -rp 'SMTP-Port [587]: ' input || true
   _SETUP_SMTP_PORT="${input:-587}"
   [[ "$_SETUP_SMTP_PORT" =~ ^[0-9]+$ ]] && (( 10#$_SETUP_SMTP_PORT >= 1 && 10#$_SETUP_SMTP_PORT <= 65535 )) || \
     die "SMTP-Port muss zwischen 1 und 65535 liegen."
-  read -rp "SMTP-Absender [TaxTronik <noreply@${base_domain}>]: " input || true
-  _SETUP_SMTP_FROM="${input:-TaxTronik <noreply@${base_domain}>}"
+  while :; do
+    read -rp 'SMTP-Absender (z. B. TaxTronik <noreply@example.de>): ' _SETUP_SMTP_FROM || true
+    [[ -n "${_SETUP_SMTP_FROM//[[:space:]]/}" ]] && break
+    warn "SMTP-Absender darf nicht leer sein."
+  done
   read -rp 'SMTP-Benutzer (optional): ' _SETUP_SMTP_USER || true
   if [[ -n "$_SETUP_SMTP_USER" ]]; then
     read -rsp 'SMTP-Passwort: ' _SETUP_SMTP_PASSWORD || true
@@ -2500,12 +2499,12 @@ configure_initial_deployment_interactive() {
   else
     printf 'Quelle     : Veroeffentlichtes Release v%s (Registry)\n' "$_SETUP_RELEASE_VERSION"
   fi
-  printf 'Staff      : https://%s\n' "$_SETUP_STAFF_HOST"
-  printf 'Portal     : https://%s\n' "$_SETUP_PORTAL_HOST"
+  printf 'Kanzlei-Web: https://%s\n' "$_SETUP_STAFF_HOST"
+  printf 'Mandanten  : https://%s\n' "$_SETUP_PORTAL_HOST"
   [[ "$_SETUP_METHOD" == "traefik" ]] && printf 'TLS/DNS    : Let\x27s Encrypt, Ziel %s\n' "$_SETUP_EXPECTED_IP"
   printf 'SMTP       : %s:%s, Zugang %s\n' "$_SETUP_SMTP_HOST" "$_SETUP_SMTP_PORT" "$([[ -n "$_SETUP_SMTP_USER" ]] && printf 'gesetzt' || printf 'ohne Login')"
   printf 'Signal     : %s\n' "$_SETUP_SIGNAL_MODE"
-  printf 'Kanzlei    : %s\n' "$_SETUP_TENANT_NAME"
+  printf 'Kanzleiname: %s\n' "$_SETUP_TENANT_NAME"
   printf 'Admin      : %s\n' "$_SETUP_ADMIN_EMAIL"
   if [[ "$_SETUP_METHOD" == "standard" ]]; then
     printf 'Hinweis     : TLS/Proxy-Konfiguration bleibt unveraendert beim Betreiber.\n'

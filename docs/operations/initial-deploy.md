@@ -38,7 +38,7 @@ Linux-/Docker-Maschine** bestimmt. Der Assistent verweigert diesen Weg, wenn
 - TaxTronik-, Migrations- oder Restore-State erkannt wird.
 
 Traefik erhält keinen Docker-Socket. Zwei statisch gerenderte TLS-Routen leiten
-Staff- und Portal-FQDN intern an die App weiter; das n8n-UI bleibt weiterhin nur
+Kanzlei-/Mitarbeiterportal und Mandantenportal intern an die App weiter; das n8n-UI bleibt weiterhin nur
 auf Loopback erreichbar. Der Proxy läuft mit schreibgeschütztem Root-Dateisystem,
 reduzierten Linux-Capabilities, begrenzten Logs und einem persistenten
 ACME-Volume. Dieses Volume wird im verschlüsselten `backup-full` mitgesichert.
@@ -71,7 +71,9 @@ und provisionieren ihre Host-Werkzeuge selbst.
 Der Assistent validiert und fasst vor der Anwendung zusammen:
 
 - Bezugsweg: aktueller Git-Stand oder veröffentlichtes Release,
-- Basisdomain sowie getrennte Staff- und Portal-FQDNs,
+- die zwei tatsächlich verwendeten vollständigen Domains: Kanzlei-/Mitarbeiterportal
+  (zum Beispiel `portal.taxtronik.de`) und Mandantenportal
+  (zum Beispiel `mandanten.taxtronik.de`),
 - Kanzleiname und Admin-E-Mail,
 - SMTP-Ziel und optionale Zugangsdaten,
 - Signal als verwalteter Docker-Dienst, externe/native API oder deaktiviert,

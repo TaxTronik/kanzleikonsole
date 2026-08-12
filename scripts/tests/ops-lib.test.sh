@@ -379,6 +379,10 @@ test_cli_presents_deploy_as_primary_path() {
   assert_contains "$help" "./taxtronik config"
   assert_contains "$source" "Aktueller Git-Stand"
   assert_not_contains "$source" "Freigegebene TaxTronik-Version"
+  assert_not_contains "$source" "Basisdomain"
+  assert_not_contains "$source" "Domain-Stamm"
+  assert_contains "$source" "Kanzlei-/Mitarbeiterportal (vollstaendige Domain"
+  assert_contains "$source" "Mandantenportal (vollstaendige Domain"
   pass "CLI leads with deploy and limits the SemVer prompt to an explicit release choice"
 }
 
