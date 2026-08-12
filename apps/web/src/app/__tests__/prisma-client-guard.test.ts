@@ -52,6 +52,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Production-Provisionierung (Tenant + Admin, keine Demodaten) — läuft als
   // Operator-CLI VOR dem ersten Login, Owner-Verbindung ist hier der Zweck.
   'packages/db/seeds/provision.ts',
+  // Idempotente n8n-ACP-Provisionierung im Deploy — läuft als Operator-CLI
+  // außerhalb jedes App-Requests und benötigt die systemweite Verbindung.
+  'packages/db/seeds/provision-n8n.ts',
   // Production-Recovery-CLI: setzt ein bestehendes Admin-Passwort außerhalb
   // des App-Request-Pfads zurück; Owner-Verbindung ist hier bewusst nötig.
   'packages/db/seeds/reset-admin-password.ts',
