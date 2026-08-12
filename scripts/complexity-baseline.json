@@ -14,7 +14,7 @@
   "apps/web/src/app/staff/(protected)/admin/audit/page.tsx::Async function 'AuditLogPage'#1": 81,
   "apps/web/src/app/staff/(protected)/admin/dsgvo/[id]/page.tsx::Async function 'DsgvoDetailPage'#1": 32,
   "apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts::Async arrow function#1": 38,
-  "apps/web/src/app/staff/(protected)/admin/page.tsx::Async function 'AdminPage'#1": 50,
+  "apps/web/src/app/staff/(protected)/admin/page.tsx::Async function 'AdminPage'#1": 49,
   "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts::Function 'toQuantenlosActionError'#1": 24,
   "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx::Function 'QuantenlosPanel'#1": 25,
   "apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts::Async function 'saveSellerInfoAction'#1": 25,

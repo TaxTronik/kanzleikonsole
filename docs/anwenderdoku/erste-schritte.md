@@ -6,7 +6,10 @@ Dashboard und unter **Administration → Übersicht** erscheint die Checkliste
 **„Erste Schritte zur Inbetriebnahme"** — jeder Punkt prüft den echten
 Systemzustand, verlinkt direkt an die richtige Stelle und hakt sich von
 selbst ab, sobald er erledigt ist. Ist alles eingerichtet, verschwindet die
-Liste.
+Liste. Wer TaxTronik bereits anderweitig vollständig eingerichtet hat, kann
+die Einführung unter **Administration → Übersicht** überspringen und dort
+später über die Quick-Links wieder einblenden. Das Ausblenden verändert keine
+fachliche Konfiguration.
 
 > Voraussetzung: Die Installation wurde vom Betreiber provisioniert
 > (Kanzlei-Tenant + Admin-Konto, ohne Demodaten — siehe
@@ -32,12 +35,15 @@ direkt verlinkt:
 1. **Erscheinungsbild** — Logo und Anzeigename der Kanzlei (erscheinen in
    beiden Oberflächen und in E-Mails).
 2. **Bundesland** — steuert die Werktagsverschiebung der Steuertermine.
-3. **Kanzlei-Stammdaten** — Name, Anschrift, USt-ID, **E-Mail und
-   Telefon**. Die letzten beiden sind Pflichtangaben der E-Rechnung
-   (XRechnung); ohne sie verweigert die Rechnungserzeugung mit klarer
-   Meldung.
+3. **Kanzlei-Stammdaten** — Name, Anschrift, **USt-ID oder Steuernummer**,
+   **E-Mail und Telefon**. Eine der beiden steuerlichen Kennungen genügt. Die
+   Kontaktdaten sind Pflichtangaben der E-Rechnung (XRechnung); ohne sie
+   verweigert die Rechnungserzeugung mit klarer Meldung.
 4. **E-Mail-Versand (SMTP)** — ohne ihn kein Mandanten-Login (Magic-Link)
-   und keine Benachrichtigungs-Mails. Mit der Testfunktion prüfen.
+   und keine Benachrichtigungs-Mails. Eine vom Betreiber aktive
+   `SMTP_*`-Konfiguration aus der `.env` wird automatisch erkannt; eine
+   zusätzliche Tenant-Konfiguration ist dann optional. Mit der Testfunktion
+   prüfen.
 5. **Module & Rechnungsmodus** — einmal bewusst speichern, auch wenn die
    Voreinstellung passt. Wichtigste Entscheidung: Rechnungen **In-App**
    (Positionen + E-Rechnung in TaxTronik), **Extern** (PDF-Ablage aus der

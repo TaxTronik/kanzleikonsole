@@ -90,7 +90,7 @@ export function SellerForm({ initial }: { initial: SellerInfo }) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor="vatId">
-            USt-ID
+            USt-ID (alternativ zur Steuernummer)
           </label>
           <input
             id="vatId"
@@ -104,7 +104,7 @@ export function SellerForm({ initial }: { initial: SellerInfo }) {
         </div>
         <div>
           <label className="label" htmlFor="taxNumber">
-            Steuernummer
+            Steuernummer (optional bei vorhandener USt-ID)
           </label>
           <input
             id="taxNumber"
@@ -116,6 +116,9 @@ export function SellerForm({ initial }: { initial: SellerInfo }) {
           />
         </div>
       </div>
+      <p className="text-xs text-muted">
+        Für E-Rechnungen genügt eine der beiden steuerlichen Kennungen: USt-ID oder Steuernummer.
+      </p>
 
       <div className="grid grid-cols-2 gap-3">
         <div>

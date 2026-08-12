@@ -24,12 +24,13 @@ import {
 } from '@taxtronik/evidence';
 import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
-import { getSetupStatus } from '@/server/setup/status';
+import { getSetupStatus, type SetupStatus } from '@/server/setup/status';
 import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
 import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
 import { LicenseCard } from './license-card';
 import { BackupRunButton } from './backup-run-button';
 import { fmtBytes, fmtDateTimeShort } from '@/lib/fmt';
+import { dismissSetupChecklistAction, restoreSetupChecklistAction } from './setup-actions';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
 
@@ -119,58 +120,7 @@ export default async function AdminPage() {
         </div>
       )}
 
-      {/* Setup-Checkliste — bleibt sichtbar bis komplett erledigt */}
-      {!setup.allDone && (
-        <div className="card p-5 mb-6 border-l-4 border-l-yellow-500 dark:border-l-yellow-400">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-primary">
-              Erste Schritte zur Inbetriebnahme
-            </h2>
-            <span className="text-xs text-muted">
-              {setup.doneCount} / {setup.totalCount} erledigt
-            </span>
-          </div>
-          <div className="mb-3 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-            <div
-              className="h-full bg-yellow-500 dark:bg-yellow-400 transition-all"
-              style={{ width: `${(setup.doneCount / setup.totalCount) * 100}%` }}
-            />
-          </div>
-          <ul className="space-y-1.5">
-            {setup.items.map((item) => (
-              <li key={item.key}>
-                <Link
-                  href={item.href}
-                  className="flex items-start gap-2 px-2 py-1.5 -mx-2 rounded hover:bg-gray-50 group"
-                >
-                  {item.done ? (
-                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
-                  ) : (
-                    <Circle className="h-4 w-4 mt-0.5 text-disabled dark:text-secondary shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={
-                          item.done
-                            ? 'text-sm text-muted line-through'
-                            : 'text-sm font-medium text-primary'
-                        }
-                      >
-                        {item.label}
-                      </span>
-                      {!item.done && (
-                        <ArrowRight className="h-3.5 w-3.5 text-disabled group-hover:text-muted" />
-                      )}
-                    </div>
-                    {!item.done && item.hint && <p className="text-xs text-muted">{item.hint}</p>}
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <SetupChecklist setup={setup} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Audit-Chain */}
@@ -381,7 +331,7 @@ export default async function AdminPage() {
       </div>
 
       <div className="card p-6">
-        <h2 className="text-sm font-medium text-primary mb-3">Quick-Links</h2>
+        <QuickLinksHeader setup={setup} />
         <ul className="space-y-2 text-sm">
           <li>
             <Link href="/staff/admin/settings" className="text-brand-700 hover:underline">
@@ -461,6 +411,81 @@ export default async function AdminPage() {
           </li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+function SetupChecklist({ setup }: { setup: SetupStatus }) {
+  if (setup.allDone || setup.dismissed) return null;
+  return (
+    <div className="card p-5 mb-6 border-l-4 border-l-yellow-500 dark:border-l-yellow-400">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-primary">Erste Schritte zur Inbetriebnahme</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted">
+            {setup.doneCount} / {setup.totalCount} erledigt
+          </span>
+          <form action={dismissSetupChecklistAction}>
+            <button type="submit" className="text-xs text-muted hover:text-primary underline">
+              Einführung überspringen
+            </button>
+          </form>
+        </div>
+      </div>
+      <div className="mb-3 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className="h-full bg-yellow-500 dark:bg-yellow-400 transition-all"
+          style={{ width: `${(setup.doneCount / setup.totalCount) * 100}%` }}
+        />
+      </div>
+      <ul className="space-y-1.5">
+        {setup.items.map((item) => (
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              className="flex items-start gap-2 px-2 py-1.5 -mx-2 rounded hover:bg-gray-50 group"
+            >
+              {item.done ? (
+                <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600 shrink-0" />
+              ) : (
+                <Circle className="h-4 w-4 mt-0.5 text-disabled dark:text-secondary shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={
+                      item.done
+                        ? 'text-sm text-muted line-through'
+                        : 'text-sm font-medium text-primary'
+                    }
+                  >
+                    {item.label}
+                  </span>
+                  {!item.done && (
+                    <ArrowRight className="h-3.5 w-3.5 text-disabled group-hover:text-muted" />
+                  )}
+                </div>
+                {!item.done && item.hint && <p className="text-xs text-muted">{item.hint}</p>}
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function QuickLinksHeader({ setup }: { setup: SetupStatus }) {
+  return (
+    <div className="flex items-center justify-between gap-3 mb-3">
+      <h2 className="text-sm font-medium text-primary">Quick-Links</h2>
+      {setup.dismissed && !setup.allDone && (
+        <form action={restoreSetupChecklistAction}>
+          <button type="submit" className="text-xs text-brand-700 hover:underline">
+            Einführung wieder anzeigen
+          </button>
+        </form>
+      )}
     </div>
   );
 }

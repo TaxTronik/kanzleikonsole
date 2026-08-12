@@ -5,9 +5,9 @@
 //
 // Die reine Entscheidungsfunktion liegt importfrei in checklist.ts
 // (Wahrheitstabellen-Test); hier wird nur der IST-Zustand geladen. Alle
-// Punkte erledigen sich durch echte Konfiguration von selbst — es gibt
-// bewusst keinen „Ausblenden"-Schalter und keinen gespeicherten
-// Tutorial-Fortschritt, der lügen könnte.
+// Punkte erledigen sich durch echte Konfiguration von selbst. Ein Admin kann
+// die Einführung zusätzlich bewusst ausblenden; dieser Zustand verändert
+// niemals die fachlichen Done-Bits der Checkliste.
 // =============================================================================
 
 import { withTenantContext } from '@taxtronik/db';
@@ -18,7 +18,8 @@ import { readTaxRegion } from '@/server/settings/tax-region';
 import { getSmtpStatus } from '@/server/settings/smtp';
 import { readLegal } from '@/server/settings/legal';
 import { isPrivacyConfigComplete, readPrivacyConfig } from '@/server/privacy/notice';
-import { buildSetupItems, type SetupItem } from './checklist';
+import { buildSetupItems, isSellerSetupComplete, type SetupItem } from './checklist';
+import { SETUP_DISMISSED_SETTING_KEY } from './constants';
 
 export type { SetupItem } from './checklist';
 
@@ -27,6 +28,7 @@ export interface SetupStatus {
   doneCount: number;
   totalCount: number;
   allDone: boolean;
+  dismissed: boolean;
 }
 
 export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
@@ -38,7 +40,7 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
     readPrivacyConfig(ctx),
     readLegal(ctx),
     withTenantContext(ctx, async (tx) => {
-      const [contactCount, activeClientCount, modulesRow] = await Promise.all([
+      const [contactCount, activeClientCount, modulesRow, dismissedRow] = await Promise.all([
         tx.clientContact.count({ where: { active: true } }),
         tx.client.count({ where: { allowActive: true } }),
         // readModules liefert Defaults, wenn nie gespeichert wurde — für die
@@ -47,8 +49,20 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
           where: { tenantId_key: { tenantId: ctx.tenantId, key: 'modules' } },
           select: { tenantId: true },
         }),
+        tx.tenantSetting.findUnique({
+          where: {
+            tenantId_key: { tenantId: ctx.tenantId, key: SETUP_DISMISSED_SETTING_KEY },
+          },
+          select: { value: true },
+        }),
       ]);
-      return { contactCount, activeClientCount, modulesConfigured: modulesRow !== null };
+      const dismissedValue = dismissedRow?.value as { dismissed?: unknown } | null | undefined;
+      return {
+        contactCount,
+        activeClientCount,
+        modulesConfigured: modulesRow !== null,
+        dismissed: dismissedValue?.dismissed === true,
+      };
     }),
   ]);
 
@@ -59,15 +73,7 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
     // bei Standardsatz (BR-S-02) — identisch zum Laufzeit-Check
     // (seller_incomplete, fail-closed), damit die Checkliste nicht „erledigt"
     // meldet, während die E-Rechnungs-Erzeugung noch verweigert.
-    sellerComplete: Boolean(
-      seller.name &&
-      seller.street &&
-      seller.postalCode &&
-      seller.city &&
-      (seller.vatId || seller.taxNumber) &&
-      seller.email &&
-      seller.phone,
-    ),
+    sellerComplete: isSellerSetupComplete(seller),
     smtpConfigured: smtp.configured,
     modulesConfigured: counts.modulesConfigured,
     privacyComplete: isPrivacyConfigComplete(privacyConfig) && legal.privacyUrl !== '',
@@ -81,5 +87,6 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
     doneCount,
     totalCount: items.length,
     allDone: doneCount === items.length,
+    dismissed: counts.dismissed,
   };
 }

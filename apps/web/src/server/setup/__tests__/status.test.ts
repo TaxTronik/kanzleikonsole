@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSetupItems, type SetupState } from '../checklist';
+import { buildSetupItems, isSellerSetupComplete, type SetupState } from '../checklist';
 
 // Wahrheitstabelle der Inbetriebnahme-Checkliste: jeder Punkt hängt an genau
 // einem Zustands-Bit; Reihenfolge ist die empfohlene Einrichtungs-Reihenfolge
@@ -65,5 +65,21 @@ describe('buildSetupItems', () => {
       const open = items.filter((i) => !i.done).map((i) => i.key);
       expect(open, JSON.stringify(override)).toEqual([expectedOpen]);
     }
+  });
+
+  it('akzeptiert für E-Rechnungen USt-ID oder Steuernummer als Alternative', () => {
+    const seller = {
+      name: 'Kanzlei Beispiel',
+      street: 'Musterstraße 1',
+      postalCode: '10115',
+      city: 'Berlin',
+      email: 'kanzlei@example.test',
+      phone: '+49 30 123456',
+      vatId: 'DE123456789',
+      taxNumber: null,
+    };
+    expect(isSellerSetupComplete(seller)).toBe(true);
+    expect(isSellerSetupComplete({ ...seller, vatId: null, taxNumber: '12/345/67890' })).toBe(true);
+    expect(isSellerSetupComplete({ ...seller, vatId: null, taxNumber: null })).toBe(false);
   });
 });

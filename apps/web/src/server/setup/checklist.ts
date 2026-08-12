@@ -22,6 +22,30 @@ export interface SetupState {
   contactCount: number;
 }
 
+export interface SellerSetupState {
+  name: string | null;
+  street: string | null;
+  postalCode: string | null;
+  city: string | null;
+  vatId: string | null;
+  taxNumber: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+/** Identisch zur XRechnungs-Laufzeitprüfung: USt-ID ODER Steuernummer genügt. */
+export function isSellerSetupComplete(seller: SellerSetupState): boolean {
+  return Boolean(
+    seller.name &&
+    seller.street &&
+    seller.postalCode &&
+    seller.city &&
+    (seller.vatId || seller.taxNumber) &&
+    seller.email &&
+    seller.phone,
+  );
+}
+
 /** Reihenfolge entspricht der empfohlenen Inbetriebnahme (Anwenderdoku „Erste Schritte"). */
 export function buildSetupItems(state: SetupState): SetupItem[] {
   return [
@@ -44,7 +68,7 @@ export function buildSetupItems(state: SetupState): SetupItem[] {
       label: 'Kanzlei-Stammdaten vollständig (für E-Rechnung)',
       done: state.sellerComplete,
       href: '/staff/admin/settings/seller',
-      hint: 'Name, Anschrift, USt-ID sowie E-Mail und Telefon — Letztere sind Pflichtangaben der XRechnung.',
+      hint: 'Name, Anschrift, E-Mail und Telefon sowie wahlweise USt-ID oder Steuernummer.',
     },
     {
       key: 'smtp',

@@ -11,7 +11,7 @@ export default async function SellerSettingsPage() {
   return (
     <SectionCard
       title="Kanzlei-Stammdaten"
-      description="Name, Anschrift, USt-ID und Bankverbindung der Kanzlei. Werden für XRechnung / ZUGFeRD und alle Rechnungs-Exports benötigt."
+      description="Name, Anschrift, USt-ID oder Steuernummer und Bankverbindung der Kanzlei. Werden für XRechnung / ZUGFeRD und alle Rechnungs-Exports benötigt."
     >
       <SellerForm initial={seller} />
     </SectionCard>

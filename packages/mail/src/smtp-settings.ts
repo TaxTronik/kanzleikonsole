@@ -14,6 +14,7 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
+import { env } from '@taxtronik/config';
 import { encryptSecret, readEncryptedSetting } from '@taxtronik/crypto';
 import { mailLog } from './logger';
 
@@ -131,8 +132,12 @@ export async function getSmtpStatus(ctx: TenantContext): Promise<SmtpStatus> {
       select: { value: true },
     }),
   );
-  if (!row) return { configured: false, fromDb: false };
-  const stored = row.value as Partial<SmtpStored>;
-  const configured = Boolean(stored.host && stored.from);
-  return { configured, fromDb: true };
+  const stored = row?.value as Partial<SmtpStored> | undefined;
+  if (stored?.host && stored.from) return { configured: true, fromDb: true };
+
+  // Exakt wie sendMail(): Fehlt eine vollständige Tenant-Konfiguration, ist
+  // die produktive ENV-Konfiguration die wirksame Quelle. Die Setup-Checkliste
+  // darf einen bereits aktiven Mailversand daher nicht erneut verlangen.
+  const configured = Boolean(env.SMTP_HOST.trim() && env.SMTP_FROM.trim());
+  return { configured, fromDb: false };
 }

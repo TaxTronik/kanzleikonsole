@@ -19,6 +19,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'client.belege.export': 'DATEV-Belege exportiert',
   'subsumtion.report.export': 'Subsumtions-Report exportiert',
   'client.onboarding.complete': 'Onboarding abgeschlossen',
+  'tenant.setup.dismiss': 'Einführung übersprungen',
+  'tenant.setup.restore': 'Einführung wieder eingeblendet',
 
   // Dokumente
   'document.upload': 'Dokument hochgeladen',

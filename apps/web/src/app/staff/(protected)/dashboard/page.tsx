@@ -69,7 +69,7 @@ export default async function DashboardPage() {
 
   // Onboarding: solange die Inbetriebnahme-Checkliste offen ist, sehen Admins
   // sie direkt nach dem Login — nicht erst beim Besuch der Administration.
-  // Erledigt sich von selbst (kein gespeicherter Tutorial-Zustand).
+  // Erledigt sich von selbst oder kann vom Admin bewusst ausgeblendet werden.
   const setup: SetupStatus | null = isAdmin ? await getSetupStatus(ctx) : null;
 
   return (
@@ -79,7 +79,7 @@ export default async function DashboardPage() {
         <p className="text-muted mt-1">Willkommen, {session.user.fullName}</p>
       </div>
 
-      {setup && !setup.allDone && (
+      {setup && !setup.allDone && !setup.dismissed && (
         <Link
           href="/staff/admin"
           className="card p-4 mb-4 flex items-center gap-3 border-l-4 border-l-yellow-500 dark:border-l-yellow-400 hover:bg-gray-50 group"
