@@ -40,6 +40,10 @@ ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c
 # `SIGNAL_IMAGE=auto` folgt genau diesem Pin; ein externer/nativer Dienst wird
 # dagegen niemals ueber diesen Pfad angefasst.
 SIGNAL_MANAGED_IMAGE_DEFAULT="git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0"
+HOST_NODE_VERSION="24.19.0"
+HOST_NODE_LINUX_X64_SHA256="14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647"
+HOST_NODE_LINUX_ARM64_SHA256="01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc"
+HOST_PNPM_VERSION="11.20.0"
 
 # Interne Autorisierungen gelten nur im dynamischen Scope der unten definierten
 # Aktivierungs-Wrapper. Geerbte Shell-Variablen duerfen einen Operator-Aufruf
@@ -56,6 +60,208 @@ info() { printf '\n[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*"; }
 warn() { printf '[%s] !! %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*"; }
 die()  { echo "FEHLER: $*" >&2; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || die "Command '$1' nicht gefunden."; }
+
+node_version_supported() {
+  command -v node >/dev/null 2>&1 || return 1
+  local version major minor patch
+  version="$(node --version 2>/dev/null)"; version="${version#v}"
+  IFS=. read -r major minor patch <<<"$version"
+  [[ "$major" == "24" && "$minor" =~ ^[0-9]+$ && "$patch" =~ ^[0-9]+$ ]] || return 1
+  (( 10#$minor > 11 || (10#$minor == 11 && 10#$patch >= 0) ))
+}
+
+docker_cli_available() { command -v docker >/dev/null 2>&1; }
+
+require_root_for_one_click() {
+  [[ "$(id -u)" == "0" ]] || \
+    die "Der bestaetigte 1-Klick-Pfad muss als root laufen, um Host-Pakete sicher zu installieren."
+}
+
+install_one_click_base_packages() {
+  local missing=() cmd
+  for cmd in curl git tar xz sha256sum getent ss openssl flock; do
+    command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+  done
+  (( ${#missing[@]} > 0 )) || return 0
+  command -v apt-get >/dev/null 2>&1 || \
+    die "1-Klick kann fehlende Basispakete nur auf Debian/Ubuntu per apt installieren (fehlt: ${missing[*]})."
+  info "Fehlende Host-Basispakete installieren: ${missing[*]}"
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    ca-certificates curl git tar xz-utils coreutils libc-bin iproute2 openssl util-linux
+}
+
+configure_official_docker_apt_repository() {
+  [[ -r /etc/os-release ]] || die "1-Klick kann das Betriebssystem nicht erkennen."
+  local os_id="" codename="" arch="" key_tmp="" sources_tmp=""
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  os_id="${ID:-}"; codename="${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"
+  [[ "$os_id" == "ubuntu" || "$os_id" == "debian" ]] || \
+    die "Automatische Docker-Installation ist nur fuer Debian/Ubuntu freigegeben (erkannt: ${os_id:-unbekannt})."
+  [[ "$codename" =~ ^[a-z0-9._-]+$ ]] || die "Ungueltiger Debian/Ubuntu-Codename: $codename"
+  arch="$(dpkg --print-architecture)"
+  [[ "$arch" =~ ^[a-z0-9]+$ ]] || die "Ungueltige dpkg-Architektur: $arch"
+
+  install -d -m 0755 /etc/apt/keyrings
+  key_tmp="$(mktemp /etc/apt/keyrings/docker.asc.tmp.XXXXXX)"
+  curl --proto '=https' --tlsv1.2 --retry 3 --fail --silent --show-error \
+    "https://download.docker.com/linux/${os_id}/gpg" --output "$key_tmp" || {
+      rm -f -- "$key_tmp"
+      die "Offizieller Docker-Repository-Key konnte nicht geladen werden."
+    }
+  chmod 0644 "$key_tmp"
+  mv -f -- "$key_tmp" /etc/apt/keyrings/docker.asc
+
+  sources_tmp="$(mktemp /etc/apt/sources.list.d/docker.sources.tmp.XXXXXX)"
+  {
+    printf 'Types: deb\n'
+    printf 'URIs: https://download.docker.com/linux/%s\n' "$os_id"
+    printf 'Suites: %s\n' "$codename"
+    printf 'Components: stable\n'
+    printf 'Architectures: %s\n' "$arch"
+    printf 'Signed-By: /etc/apt/keyrings/docker.asc\n'
+  } >"$sources_tmp"
+  chmod 0644 "$sources_tmp"
+  mv -f -- "$sources_tmp" /etc/apt/sources.list.d/docker.sources
+}
+
+start_docker_daemon() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable --now docker
+  elif command -v service >/dev/null 2>&1; then
+    service docker start
+  else
+    die "Docker wurde installiert, aber weder systemctl noch service ist verfuegbar."
+  fi
+}
+
+docker_one_click_toolchain_ready() {
+  docker_cli_available && \
+    docker info >/dev/null 2>&1 && \
+    docker compose version >/dev/null 2>&1 && \
+    docker buildx version >/dev/null 2>&1 && \
+    docker buildx build --help 2>/dev/null | grep -Fq -- '--resource'
+}
+
+remove_conflicting_docker_packages_on_blank_host() {
+  local installed=() package status
+  for package in docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc; do
+    status="$(dpkg-query -W -f='${db:Status-Abbrev}' "$package" 2>/dev/null || true)"
+    [[ "$status" == "ii " ]] && installed+=("$package")
+  done
+  (( ${#installed[@]} == 0 )) || {
+    info "Unvollstaendige Distribution-Docker-Pakete auf leerem Host ersetzen: ${installed[*]}"
+    DEBIAN_FRONTEND=noninteractive apt-get remove -y "${installed[@]}"
+  }
+}
+
+install_one_click_docker() {
+  docker_one_click_toolchain_ready && return 0
+  info "Docker Engine + Buildx + Compose aus dem offiziellen Docker-Repository installieren"
+  configure_official_docker_apt_repository
+  apt-get update
+  remove_conflicting_docker_packages_on_blank_host
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  start_docker_daemon
+  docker_one_click_toolchain_ready || \
+    die "Docker ist installiert, aber Daemon, Compose v2, Buildx oder sicherer --resource-Buildvertrag fehlt."
+}
+
+managed_node_install_path() { printf '/opt/taxtronik/runtime/node-v%s' "$HOST_NODE_VERSION"; }
+
+install_one_click_node() {
+  if node_version_supported && command -v corepack >/dev/null 2>&1; then
+    return 0
+  fi
+  local arch="" platform="" checksum="" archive="" staging="" destination=""
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64)
+      platform="x64"; checksum="$HOST_NODE_LINUX_X64_SHA256" ;;
+    aarch64|arm64)
+      platform="arm64"; checksum="$HOST_NODE_LINUX_ARM64_SHA256" ;;
+    *) die "Node-$HOST_NODE_VERSION-Autoinstall unterstuetzt diese Architektur nicht: $arch" ;;
+  esac
+  archive="$(mktemp "/tmp/node-v${HOST_NODE_VERSION}.XXXXXX.tar.xz")"
+  staging="$(mktemp -d "/tmp/node-v${HOST_NODE_VERSION}.XXXXXX")"
+  destination="$(managed_node_install_path)"
+  info "Offizielles Node.js v$HOST_NODE_VERSION fuer linux-$platform laden und SHA-256 pruefen"
+  if ! curl --proto '=https' --tlsv1.2 --retry 3 --fail --silent --show-error \
+      "https://nodejs.org/download/release/v${HOST_NODE_VERSION}/node-v${HOST_NODE_VERSION}-linux-${platform}.tar.xz" \
+      --output "$archive"; then
+    rm -f -- "$archive"; rmdir "$staging" 2>/dev/null || true
+    die "Node.js-Archiv konnte nicht geladen werden."
+  fi
+  if ! printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status; then
+    rm -f -- "$archive"; rmdir "$staging" 2>/dev/null || true
+    die "SHA-256-Pruefung des Node.js-Archivs ist fehlgeschlagen."
+  fi
+  tar -xJf "$archive" --strip-components=1 -C "$staging" || {
+    rm -f -- "$archive"
+    die "Node.js-Archiv konnte nicht entpackt werden."
+  }
+  rm -f -- "$archive"
+  "$staging/bin/node" --version | grep -Fxq "v$HOST_NODE_VERSION" || \
+    die "Entpackte Node.js-Laufzeit hat nicht die erwartete Version."
+  install -d -m 0755 /opt/taxtronik/runtime /usr/local/bin
+  if [[ -e "$destination" ]]; then
+    [[ -x "$destination/bin/node" && "$("$destination/bin/node" --version)" == "v$HOST_NODE_VERSION" ]] || \
+      die "Vorhandenes verwaltetes Node-Ziel ist ungueltig: $destination"
+    rm -rf -- "$staging"
+  else
+    mv -- "$staging" "$destination"
+  fi
+  local executable link
+  for executable in node npm npx corepack; do
+    link="/usr/local/bin/$executable"
+    [[ ! -e "$link" || -L "$link" ]] || \
+      die "$link ist eine fremd verwaltete Datei; automatische Ueberschreibung wird verweigert."
+    ln -sfn -- "$destination/bin/$executable" "$link"
+  done
+  export PATH="/usr/local/bin:$PATH"
+  hash -r
+  node_version_supported || die "Node.js v$HOST_NODE_VERSION ist nach Installation nicht aktiv."
+}
+
+install_one_click_pnpm() {
+  export PATH="/usr/local/bin:$PATH"
+  require_cmd corepack
+  if command -v pnpm >/dev/null 2>&1 && [[ "$(pnpm --version 2>/dev/null)" == "$HOST_PNPM_VERSION" ]]; then
+    return 0
+  fi
+  info "Corepack/pnpm $HOST_PNPM_VERSION aktivieren"
+  corepack install --global "pnpm@$HOST_PNPM_VERSION"
+  corepack enable pnpm --install-directory /usr/local/bin
+  hash -r
+  [[ "$(pnpm --version)" == "$HOST_PNPM_VERSION" ]] || \
+    die "pnpm $HOST_PNPM_VERSION ist nach Corepack-Aktivierung nicht verfuegbar."
+}
+
+install_one_click_host_requirements() {
+  require_root_for_one_click
+  install_one_click_base_packages
+  install_one_click_docker
+  install_one_click_node
+  install_one_click_pnpm
+  require_cmd git; require_cmd curl
+}
+
+ensure_bootstrap_host_requirements() {
+  local method
+  method="$(deployment_method)" || die "DEPLOYMENT_METHOD muss standard oder traefik sein."
+  if [[ "$method" == "traefik" ]]; then
+    assert_blank_host_for_traefik
+    install_one_click_host_requirements
+  else
+    require_cmd docker; require_cmd node; require_cmd git; require_cmd curl; require_cmd pnpm
+    node_version_supported || \
+      die "Standard-Setup braucht Node.js >=24.11.0 <25; Host-Pakete bleiben in diesem Modus Betreiberaufgabe."
+    docker info >/dev/null 2>&1 || die "Docker-Daemon ist nicht erreichbar."
+    docker compose version >/dev/null 2>&1 || die "Docker Compose v2 fehlt."
+  fi
+}
 
 # ---------------------------------------------------------------------------
 # .env laden / schreiben
@@ -1966,18 +2172,24 @@ valid_http_url() {
 assert_blank_host_for_traefik() {
   [[ "$(uname -s 2>/dev/null || true)" == "Linux" ]] || \
     die "Der 1-Klick-Traefik-Pfad ist nur fuer einen frischen Linux-Host freigegeben."
-  require_cmd ss
-  require_cmd getent
   [[ ! -e "$STATE" && ! -e "$MIGRATION_PENDING" && ! -e "$DB_RESTORE_AUTHORIZATION" ]] || \
     die "1-Klick verweigert: Auf diesem Checkout existiert bereits Installations-/Recovery-State. Standardmethode verwenden."
-  local containers
-  if ! containers="$(docker ps -aq 2>/dev/null)"; then
-    die "1-Klick verweigert: Docker-Daemon ist nicht erreichbar; Maschinenleerheit kann nicht sicher geprueft werden."
+  local containers="" docker_data_root="${TAXTRONIK_DOCKER_DATA_ROOT:-/var/lib/docker}"
+  if docker_cli_available; then
+    if ! containers="$(docker ps -aq 2>/dev/null)"; then
+      die "1-Klick verweigert: Docker ist installiert, aber der Daemon nicht erreichbar; Maschinenleerheit kann nicht sicher geprueft werden."
+    fi
+    [[ -z "$containers" ]] || \
+      die "1-Klick verweigert: Docker enthaelt bereits Container. Dieser Pfad ist nur fuer eine komplett leere Maschine; Standardmethode verwenden."
+  elif [[ -d "$docker_data_root" && -n "$(find "$docker_data_root" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+    die "1-Klick verweigert: $docker_data_root enthaelt bereits Docker-Daten, obwohl die Docker-CLI fehlt."
   fi
-  [[ -z "$containers" ]] || \
-    die "1-Klick verweigert: Docker enthaelt bereits Container. Dieser Pfad ist nur fuer eine komplett leere Maschine; Standardmethode verwenden."
-  if ss -H -ltn 'sport = :80' 2>/dev/null | grep -q . || \
-     ss -H -ltn 'sport = :443' 2>/dev/null | grep -q .; then
+  if { command -v ss >/dev/null 2>&1 && \
+       { ss -H -ltn 'sport = :80' 2>/dev/null | grep -q . || \
+         ss -H -ltn 'sport = :443' 2>/dev/null | grep -q .; }; } || \
+     { ! command -v ss >/dev/null 2>&1 && \
+       awk '$4 == "0A" && ($2 ~ /:0050$/ || $2 ~ /:01BB$/) { found=1 } END { exit !found }' \
+         /proc/net/tcp /proc/net/tcp6 2>/dev/null; }; then
     die "1-Klick verweigert: Port 80 oder 443 ist bereits belegt. Standardmethode mit vorhandenem Reverse-Proxy verwenden."
   fi
 }
@@ -2130,10 +2342,14 @@ configure_initial_deployment_interactive() {
       valid_ip_address "$_SETUP_EXPECTED_IP" && break
       warn "Bitte eine gueltige IPv4- oder IPv6-Adresse eingeben."
     done
-    assert_dns_points_to_ip "$_SETUP_STAFF_HOST" "$_SETUP_EXPECTED_IP" || \
-      die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
-    assert_dns_points_to_ip "$_SETUP_PORTAL_HOST" "$_SETUP_EXPECTED_IP" || \
-      die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
+    if command -v getent >/dev/null 2>&1; then
+      assert_dns_points_to_ip "$_SETUP_STAFF_HOST" "$_SETUP_EXPECTED_IP" || \
+        die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
+      assert_dns_points_to_ip "$_SETUP_PORTAL_HOST" "$_SETUP_EXPECTED_IP" || \
+        die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
+    else
+      warn "getent fehlt noch; DNS-Abgleich erfolgt nach der bestaetigten Basispaket-Installation."
+    fi
   fi
 
   read -rp "SMTP-Host [smtp.${base_domain}]: " input || true
@@ -2192,12 +2408,27 @@ configure_initial_deployment_interactive() {
     phrase="KONFIGURATION UEBERNEHMEN"
   else
     printf 'WARNUNG     : Nur fuer komplett leere Maschine; Ports 80/443 werden exklusiv.\n'
+    printf 'Host-Setup  : Fehlende Basispakete, Docker/Compose, Node %s und pnpm %s werden installiert.\n' \
+      "$HOST_NODE_VERSION" "$HOST_PNPM_VERSION"
     phrase="LEERE MASCHINE INSTALLIEREN"
   fi
   printf '=========================================================\n'
   confirm_initial_setup_plan "$phrase" || die "Initialsetup ohne Aenderungen abgebrochen."
   apply_initial_setup_plan
   info "Bestaetigte Initialkonfiguration wurde nach .env uebernommen."
+}
+
+verify_one_click_dns_after_host_setup() {
+  [[ "$(deployment_method)" == "traefik" ]] || return 0
+  local staff_host portal_host expected
+  staff_host="$(url_hostname "$(get_env NEXTAUTH_URL)")"
+  portal_host="$(url_hostname "$(get_env PORTAL_PUBLIC_URL)")"
+  expected="$(get_env TRAEFIK_EXPECTED_IP)"
+  require_cmd getent
+  assert_dns_points_to_ip "$staff_host" "$expected" || \
+    die "DNS fuer $staff_host zeigt nicht auf $expected. Deployment wurde noch nicht gestartet."
+  assert_dns_points_to_ip "$portal_host" "$expected" || \
+    die "DNS fuer $portal_host zeigt nicht auf $expected. Deployment wurde noch nicht gestartet."
 }
 
 # Expliziter Besitzvertrag fuer Signal. Der Funktionsname bleibt wegen der
@@ -3810,8 +4041,9 @@ cmd_rollback() {
 # Prod-Erstinstall in einem Kommando. Funktionell ein Deploy (das seinerseits
 # Erstinstall-Erkennung + Provisionierung enthaelt), plus Willkommens-Banner.
 cmd_bootstrap() {
-  require_cmd docker; require_cmd node; require_cmd git; require_cmd curl
   configure_initial_deployment_interactive
+  ensure_bootstrap_host_requirements
+  verify_one_click_dns_after_host_setup
   prepare_env_interactive
   _deploy_core
   info "Bootstrap fertig. Version: $(image_tag)"

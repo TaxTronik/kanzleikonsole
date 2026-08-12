@@ -41,18 +41,26 @@ ACME-Volume. Dieses Volume wird im verschlüsselten `backup-full` mitgesichert.
 
 ## Voraussetzungen
 
-Beide Wege setzen einen ausgecheckten, freigegebenen TaxTronik-Release sowie
-Docker Engine mit Compose-Plugin, Git, Node.js und `curl` voraus. Der 1-Klick-
-Weg braucht zusätzlich:
+Die Standardmethode setzt Docker Engine mit Compose-v2-Plugin, Git, Node.js
+`>=24.11.0 <25`, pnpm 11 und `curl` als bewusst betreiberverwaltete
+Host-Werkzeuge voraus.
+
+Beim 1-Klick-Weg reicht ein ausgecheckter, freigegebener TaxTronik-Release auf
+einem unterstützten Debian-/Ubuntu-Host. Erst nach der wörtlichen Bestätigung
+installiert der Assistent fehlende Basispakete, Docker Engine samt Buildx und
+Compose aus dem offiziellen Docker-Repository sowie ein SHA-256-verifiziertes,
+fest versioniertes Node.js 24 mit dem im Repository gepinnten pnpm. Zusätzlich
+braucht dieser Weg:
 
 - einen Linux-Host mit leerem Docker-Daemon,
 - freie, aus dem Internet erreichbare TCP-Ports 80 und 443,
 - direkte A- oder AAAA-Records für Staff und Portal auf die Server-IP sowie
 - eine beim Provider geöffnete Host-/Netzwerk-Firewall.
 
-Der Assistent installiert Docker nicht und verändert weder die Host- noch die
-Provider-Firewall. Vorgeschaltete CDN-/Proxy-DNS-Modi müssen für die initiale
-DNS- und ACME-Prüfung deaktiviert sein.
+Der Assistent verändert weder die Host- noch die Provider-Firewall.
+Vorgeschaltete CDN-/Proxy-DNS-Modi müssen für die initiale DNS- und ACME-Prüfung
+deaktiviert sein. Andere Linux-Distributionen verwenden die Standardmethode
+und provisionieren ihre Host-Werkzeuge selbst.
 
 ## Abgefragte Konfiguration
 

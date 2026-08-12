@@ -144,8 +144,10 @@ Der Assistent bietet eine gesunde Standardmethode für bestehende Server mit
 vorhandenem Reverse-Proxy und einen bewusst streng gesperrten 1-Klick-Weg mit
 Traefik/Let's Encrypt für **komplett leere** Linux-/Docker-Maschinen. Er fragt
 Version, Domains, Admin/Kanzlei, SMTP und Signal ab, zeigt vor jeder Änderung
-eine Zusammenfassung und verlangt eine wörtliche Bestätigung. Details und
-Voraussetzungen: [Erstinstallation](docs/operations/initial-deploy.md).
+eine Zusammenfassung und verlangt eine wörtliche Bestätigung. Auf Debian/Ubuntu
+installiert der bestätigte 1-Klick-Weg fehlende Basispakete, Docker/Compose und
+die gepinnte Node-/pnpm-Laufzeit selbst. Details und Voraussetzungen:
+[Erstinstallation](docs/operations/initial-deploy.md).
 
 Im Normalfall danach:
 

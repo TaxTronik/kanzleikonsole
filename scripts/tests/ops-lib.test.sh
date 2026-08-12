@@ -300,7 +300,7 @@ test_one_click_blank_host_guard_rejects_unreachable_docker() {
   ) >"$out" 2>&1; then
     test_fail "one-click blank-host guard accepted an unreachable Docker daemon"
   fi
-  assert_contains "$out" "Docker-Daemon ist nicht erreichbar"
+  assert_contains "$out" "Daemon nicht erreichbar"
   pass "one-click path fails closed when Docker emptiness cannot be proven"
 }
 
@@ -311,6 +311,90 @@ test_one_click_ip_validation_accepts_only_real_ip_addresses() {
     test_fail "invalid public IP syntax was accepted"
   fi
   pass "one-click validates IPv4 and IPv6 with the runtime parser"
+}
+
+test_one_click_blank_host_allows_missing_docker_for_deferred_install() {
+  local docker_root="$TMP_DIR/empty-docker-root"
+  mkdir -p "$docker_root"
+  (
+    STATE="$TMP_DIR/no-state"
+    MIGRATION_PENDING="$TMP_DIR/no-migration"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/no-restore"
+    TAXTRONIK_DOCKER_DATA_ROOT="$docker_root"
+    uname() { printf 'Linux\n'; }
+    docker_cli_available() { return 1; }
+    ss() { :; }
+    assert_blank_host_for_traefik
+  ) || test_fail "blank one-click host without Docker was rejected before confirmed installation"
+  pass "one-click defers missing Docker installation until after confirmation"
+}
+
+test_bootstrap_installs_one_click_requirements_after_configuration() {
+  local steps="$TMP_DIR/bootstrap-host-requirements.steps"
+  : >"$steps"
+  (
+    deployment_method() { printf 'traefik'; }
+    assert_blank_host_for_traefik() { printf 'blank-check\n' >>"$steps"; }
+    install_one_click_host_requirements() { printf 'host-install\n' >>"$steps"; }
+    ensure_bootstrap_host_requirements
+  )
+  assert_file_equals "$steps" $'blank-check\nhost-install'
+
+  : >"$steps"
+  (
+    configure_initial_deployment_interactive() { printf 'configure\n' >>"$steps"; }
+    ensure_bootstrap_host_requirements() { printf 'host-requirements\n' >>"$steps"; }
+    verify_one_click_dns_after_host_setup() { printf 'dns\n' >>"$steps"; }
+    prepare_env_interactive() { printf 'env\n' >>"$steps"; }
+    _deploy_core() { printf 'deploy\n' >>"$steps"; }
+    image_tag() { printf '1.2.3'; }
+    cmd_bootstrap
+  ) >/dev/null
+  assert_before "$steps" "configure" "host-requirements"
+  assert_before "$steps" "host-requirements" "env"
+  assert_before "$steps" "env" "deploy"
+  pass "bootstrap installs host prerequisites only after the confirmed configuration"
+}
+
+test_one_click_runtime_install_contract_is_pinned_and_official() {
+  local source="$REPO_ROOT/scripts/ops-lib.sh"
+  [[ "$HOST_NODE_VERSION" =~ ^24\.[0-9]+\.[0-9]+$ ]] || test_fail "managed Node version is not pinned to Node 24"
+  [[ "$HOST_NODE_LINUX_X64_SHA256" =~ ^[0-9a-f]{64}$ ]] || test_fail "Node x64 SHA-256 is not pinned"
+  [[ "$HOST_NODE_LINUX_ARM64_SHA256" =~ ^[0-9a-f]{64}$ ]] || test_fail "Node arm64 SHA-256 is not pinned"
+  [[ "$HOST_PNPM_VERSION" == "11.20.0" ]] || test_fail "pnpm host version drifted from packageManager"
+  assert_contains "$source" 'https://download.docker.com/linux/${os_id}/gpg'
+  assert_contains "$source" 'https://nodejs.org/download/release/v${HOST_NODE_VERSION}/node-v${HOST_NODE_VERSION}-linux-${platform}.tar.xz'
+  assert_not_contains "$source" 'curl | sh'
+  pass "one-click installs only pinned Node/pnpm and the official Docker repository"
+}
+
+test_one_click_replaces_incomplete_docker_only_after_blank_host_gate() {
+  local steps="$TMP_DIR/docker-toolchain.steps"
+  : >"$steps"
+  (
+    deployment_method() { printf 'traefik'; }
+    assert_blank_host_for_traefik() { printf 'blank-check\n' >>"$steps"; }
+    install_one_click_base_packages() { printf 'base-packages\n' >>"$steps"; }
+    install_one_click_node() { printf 'node\n' >>"$steps"; }
+    install_one_click_pnpm() { printf 'pnpm\n' >>"$steps"; }
+    require_root_for_one_click() { :; }
+    require_cmd() { :; }
+    configure_official_docker_apt_repository() { printf 'docker-repository\n' >>"$steps"; }
+    remove_conflicting_docker_packages_on_blank_host() { printf 'replace-incomplete-docker\n' >>"$steps"; }
+    start_docker_daemon() { printf 'start-docker\n' >>"$steps"; }
+    apt-get() { printf 'apt %s\n' "$*" >>"$steps"; }
+    local ready_calls=0
+    docker_one_click_toolchain_ready() {
+      ready_calls=$((ready_calls + 1))
+      (( ready_calls >= 2 ))
+    }
+    ensure_bootstrap_host_requirements
+  )
+  assert_before "$steps" "blank-check" "docker-repository"
+  assert_before "$steps" "docker-repository" "replace-incomplete-docker"
+  assert_before "$steps" "replace-incomplete-docker" "start-docker"
+  assert_contains "$steps" "apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+  pass "one-click replaces incomplete Docker only behind the blank-host confirmation gate"
 }
 
 test_traefik_dynamic_route_and_compose_contract_are_socketless() {
@@ -2264,6 +2348,10 @@ test_initial_setup_confirmation_and_atomic_plan_application
 test_one_click_blank_host_guard_rejects_existing_containers
 test_one_click_blank_host_guard_rejects_unreachable_docker
 test_one_click_ip_validation_accepts_only_real_ip_addresses
+test_one_click_blank_host_allows_missing_docker_for_deferred_install
+test_bootstrap_installs_one_click_requirements_after_configuration
+test_one_click_runtime_install_contract_is_pinned_and_official
+test_one_click_replaces_incomplete_docker_only_after_blank_host_gate
 test_traefik_dynamic_route_and_compose_contract_are_socketless
 test_traefik_lifecycle_is_part_of_activation
 test_full_backup_snapshots_managed_traefik_acme_volume
