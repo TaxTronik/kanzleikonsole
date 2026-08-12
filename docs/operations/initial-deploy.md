@@ -79,13 +79,20 @@ Der Assistent validiert und fasst vor der Anwendung zusammen:
   (zum Beispiel `n8n.taxtronik.de`),
 - Kanzleiname und Admin-E-Mail,
 - SMTP-Ziel und optionale Zugangsdaten,
-- Signal als verwalteter Docker-Dienst, externe/native API oder deaktiviert,
+- Signal als verwalteter Docker-Dienst, externe/native API oder deaktiviert;
+  beim verwalteten Dienst zusätzlich Git-Quellstand oder Registry-Image,
 - beim 1-Klick-Weg die ACME-E-Mail.
 
 Secrets werden nicht in der Zusammenfassung ausgegeben. Für die Standardmethode
 muss exakt `KONFIGURATION UEBERNEHMEN`, für den 1-Klick-Weg bewusst
 `LEERE MASCHINE INSTALLIEREN` bestätigt werden. Erst danach entsteht die auf
 `0600` gesetzte `.env`; fehlende Secrets werden getrennt generiert.
+
+Beim Signal-Git-Weg wird der gewählte Ref erst nach dieser Bestätigung in einen
+eigenen Checkout geladen. Der erste Build lädt die gelockte CPU-Runtime und das
+manifestierte lokale BGE-M3-Modell und kann deshalb länger dauern. Er ist auf
+zwei CPUs und 3 GiB RAM begrenzt und berechnet ausdrücklich noch keinen
+Embedding-Index.
 
 Beim empfohlenen Git-/Source-Weg leitet die CLI die Identität automatisch als
 `source-<12-stelliger Commit>` aus dem ausgecheckten Stand ab. Es wird keine

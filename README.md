@@ -107,10 +107,11 @@ Bei einer separat auf dem Host laufenden Engine eine interne Adresse nutzen,
 die aus dem `taxtronik-app`-Container erreichbar ist.
 
 Im Produktions-Deploy entscheidet `SIGNAL_DEPLOYMENT` über die Verantwortung:
-`managed` lässt TaxTronik ein versioniertes CPU-Komplett-Image installieren und
-aktualisieren; `external` bindet eine native/GPU- oder anderweitig betriebene
-Signal-Instanz ausschließlich per API an. Im externen Modus führt TaxTronik
-garantiert keinen Pull, Start, Stop oder Update für Signal aus.
+`managed` lässt TaxTronik ein CPU-Komplett-Image entweder aus dem gewählten
+Signal-Git-Stand lokal bauen oder versioniert aus einer Registry beziehen;
+`external` bindet eine native/GPU- oder anderweitig betriebene Signal-Instanz
+ausschließlich per API an. Im externen Modus führt TaxTronik garantiert keinen
+Pull, Start, Stop oder Update für Signal aus.
 
 Reset:
 
@@ -255,10 +256,16 @@ N8N_BIND=127.0.0.1
 # Workflow in Administration → Einstellungen → n8n-Automatisierung gepflegt:
 # N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
 
-# Optional: Signal / TCMS. Der interaktive Deploy fragt den Modus ab.
-# managed: TaxTronik zieht/aktualisiert ein getestetes, self-contained CPU-Image.
+# Optional: Signal / TCMS. Der interaktive Deploy fragt Modus und Bezugsweg ab.
+# managed + source: TaxTronik aktualisiert den Signal-Checkout und baut lokal.
 SIGNAL_DEPLOYMENT=managed
-SIGNAL_IMAGE=auto
+SIGNAL_DEPLOY_CHANNEL=source
+SIGNAL_GIT_URL=https://git.hirschmann-koxha.de/TaxTronik/signal.git
+SIGNAL_GIT_REF=main
+SIGNAL_GIT_DIR=/opt/signal
+# Alternativ ein bereits veröffentlichtes Image beziehen:
+# SIGNAL_DEPLOY_CHANNEL=image
+# SIGNAL_IMAGE=git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v1.4.0
 RISK_LAYER_URL=http://risk-layer:8000
 # Bearer- und Operator-Token werden im managed-Modus getrennt generiert.
 RISK_LAYER_TOKEN=...

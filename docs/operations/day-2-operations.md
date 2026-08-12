@@ -475,9 +475,10 @@ Die fachliche Einrichtung und der vollständige Eventkatalog stehen in
 `SIGNAL_DEPLOYMENT` legt nicht nur die Topologie, sondern ausdrücklich die
 Update-Verantwortung fest:
 
-- `managed`: TaxTronik zieht beim Deploy/Update das zu diesem TaxTronik-Stand
-  getestete, versionierte Signal-Image, prüft dessen Graph, Katalog,
-  Embedding-Runtime und lokales BGE-M3-Modell und startet es im Compose-Profil.
+- `managed`: TaxTronik baut beim Deploy/Update entweder den konfigurierten
+  Signal-Git-Stand lokal oder zieht ein versioniertes Signal-Image. Anschließend
+  prüft es Graph, Katalog, Embedding-Runtime und lokales BGE-M3-Modell und
+  startet den Stand im Compose-Profil.
 - `external`: Signal läuft nativ, mit ROCm/CUDA oder in einem getrennt
   verwalteten Container. TaxTronik spricht ausschließlich die HTTP-API an und
   installiert, stoppt oder aktualisiert diese Instanz niemals.
@@ -485,10 +486,20 @@ Update-Verantwortung fest:
 
 Bei einer neuen interaktiven Installation fragt `./taxtronik deploy` den Modus
 ab. Im empfohlenen `managed`-Modus werden URL sowie zwei getrennte Secrets
-automatisch in `.env` provisioniert. `SIGNAL_IMAGE=auto` folgt dem von der
-jeweiligen TaxTronik-Version getesteten SemVer-Pin; `latest` ist unzulässig.
-Zugang zu einer privaten Registry muss auf dem Host bereits mit `docker login`
-bestehen.
+automatisch in `.env` provisioniert. Danach wird der Bezugsweg ausdrücklich
+gewählt:
+
+- `SIGNAL_DEPLOY_CHANNEL=source` aktualisiert `SIGNAL_GIT_DIR` aus
+  `SIGNAL_GIT_URL` auf `SIGNAL_GIT_REF` und baut ein lokales CPU-Image. Der
+  Checkout ist damit von TaxTronik verwaltet; lokale Änderungen blockieren das
+  Update und werden niemals überschrieben. Der Source-Build installiert
+  Runtime, Graph und das manifestierte lokale Modell, berechnet aber bewusst
+  **keinen Embedding-Index**. Dessen Aufbau bleibt hinter der Bestätigung in den
+  Integrations-Einstellungen.
+- `SIGNAL_DEPLOY_CHANNEL=image` verwendet `SIGNAL_IMAGE`. `auto` folgt dem von
+  TaxTronik getesteten SemVer-Pin; `latest` ist unzulässig. Das Image muss
+  tatsächlich veröffentlicht sein und eine private Registry zuvor per
+  `docker login` freigeschaltet werden.
 
 `RISK_LAYER_URL` ist ein explizites Operator-Backend-Ziel. Interne IPs,
 Loopback und Docker-Service-DNS sind erlaubt, ohne `INTERNAL_FETCH_HOSTS` zu

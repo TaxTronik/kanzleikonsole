@@ -132,7 +132,8 @@ run_doctor_with_env() {
     unset AUTH_SECRET SECRET_BOX_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX TAXTRONIK_VERSION NEXTAUTH_URL
-    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED SIGNAL_DEPLOYMENT SIGNAL_IMAGE
+    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED SIGNAL_DEPLOYMENT SIGNAL_DEPLOY_CHANNEL SIGNAL_IMAGE
+    unset SIGNAL_GIT_URL SIGNAL_GIT_REF SIGNAL_GIT_DIR SIGNAL_BUILD_MEMORY_LIMIT SIGNAL_BUILD_MEMORY_RESERVE SIGNAL_BUILD_CPUS
     unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL N8N_HOST N8N_WEBHOOK_URL N8N_PROXY_HOPS
     unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE SMTP_HOST SMTP_PORT
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
@@ -275,6 +276,11 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
     _SETUP_SMTP_USER="smtp-user"
     _SETUP_SMTP_PASSWORD='pa\ss&word|safe'
     _SETUP_SIGNAL_MODE="disabled"
+    _SETUP_SIGNAL_CHANNEL=""
+    _SETUP_SIGNAL_IMAGE=""
+    _SETUP_SIGNAL_GIT_URL=""
+    _SETUP_SIGNAL_GIT_REF=""
+    _SETUP_SIGNAL_GIT_DIR=""
     _SETUP_SIGNAL_URL=""
     _SETUP_SIGNAL_TOKEN=""
     _SETUP_SIGNAL_OPERATOR_TOKEN=""
@@ -291,6 +297,7 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
   assert_key_equals "$env_file" N8N_HOST n8n.example.de
   assert_key_equals "$env_file" N8N_WEBHOOK_URL https://n8n.example.de/
   assert_key_equals "$env_file" N8N_PROXY_HOPS 1
+  assert_key_equals "$env_file" SIGNAL_DEPLOY_CHANNEL ""
   assert_key_equals "$env_file" TRUST_PROXY_REQUIRED true
   assert_key_equals "$env_file" SMTP_PASSWORD 'pa\ss&word|safe'
   assert_key_equals "$env_file" TENANT_NAME Testkanzlei
@@ -628,6 +635,7 @@ test_doctor_accepts_self_contained_managed_signal() {
   write_prod_env "$env_file"
   {
     printf 'SIGNAL_DEPLOYMENT=managed\n'
+    printf 'SIGNAL_DEPLOY_CHANNEL=image\n'
     printf 'SIGNAL_IMAGE=registry.example/taxtronik/signal:v1.2.3\n'
     printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
     printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
@@ -644,6 +652,7 @@ test_doctor_rejects_managed_signal_latest_image() {
   write_prod_env "$env_file"
   {
     printf 'SIGNAL_DEPLOYMENT=managed\n'
+    printf 'SIGNAL_DEPLOY_CHANNEL=image\n'
     printf 'SIGNAL_IMAGE=registry.example/taxtronik/signal:latest\n'
     printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
     printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
@@ -655,6 +664,44 @@ test_doctor_rejects_managed_signal_latest_image() {
   assert_contains "$out" "SIGNAL_IMAGE"
   assert_contains "$out" "versionierten vX.Y.Z-Tag oder sha256-Digest"
   pass "doctor rejects mutable latest for managed Signal"
+}
+
+test_doctor_accepts_managed_signal_source_checkout() {
+  local env_file="$TMP_DIR/risk-source.env" out="$TMP_DIR/doctor-risk-source.out"
+  write_prod_env "$env_file"
+  {
+    printf 'SIGNAL_DEPLOYMENT=managed\n'
+    printf 'SIGNAL_DEPLOY_CHANNEL=source\n'
+    printf 'SIGNAL_IMAGE=\n'
+    printf 'SIGNAL_GIT_URL=https://git.example/taxtronik/signal.git\n'
+    printf 'SIGNAL_GIT_REF=main\n'
+    printf 'SIGNAL_GIT_DIR=/opt/signal\n'
+    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
+    printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
+    printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
+  } >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor rejected managed Signal source checkout"
+  }
+  assert_contains "$out" "OK       SIGNAL_SOURCE"
+  assert_not_contains "$out" "FEHLT    SIGNAL_IMAGE"
+  pass "doctor accepts managed Signal from a controlled Git checkout"
+}
+
+test_signal_source_identifiers_are_shell_safe_and_secret_free() {
+  valid_signal_git_url "https://git.example/taxtronik/signal.git" || test_fail "valid HTTPS Git URL rejected"
+  valid_signal_git_url "git@git.example:taxtronik/signal.git" || test_fail "valid SSH Git URL rejected"
+  if valid_signal_git_url "https://user:secret@git.example/signal.git" || \
+     valid_signal_git_url "https://git.example/signal.git?token=secret"; then
+    test_fail "Git URL with embedded credentials was accepted"
+  fi
+  valid_signal_git_ref "main" || test_fail "valid Signal branch rejected"
+  valid_signal_git_ref "refs/tags/v1.2.3" || test_fail "valid Signal tag ref rejected"
+  if valid_signal_git_ref "--upload-pack=evil" || valid_signal_git_ref "main@{1}" || valid_signal_git_ref "../main"; then
+    test_fail "unsafe Signal Git ref was accepted"
+  fi
+  pass "Signal source identifiers reject credentials and unsafe refs"
 }
 
 test_doctor_rejects_short_risk_layer_operator_token() {
@@ -706,6 +753,7 @@ test_configure_risk_layer_generates_operator_token() {
   (
     ENVFILE="$env_file"
     SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_DEPLOY_CHANNEL="image"
     SIGNAL_IMAGE="auto"
     RISK_LAYER_URL=""
     RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
@@ -714,6 +762,7 @@ test_configure_risk_layer_generates_operator_token() {
     configure_risk_layer_interactive
   )
   assert_key_equals "$env_file" SIGNAL_DEPLOYMENT managed
+  assert_key_equals "$env_file" SIGNAL_DEPLOY_CHANNEL image
   assert_key_equals "$env_file" SIGNAL_IMAGE auto
   assert_key_equals "$env_file" RISK_LAYER_URL "http://risk-layer:8000"
   assert_key_equals "$env_file" RISK_LAYER_OPERATOR_TOKEN "generated-operator-token-with-at-least-32-chars"
@@ -727,6 +776,7 @@ test_configure_external_risk_layer_stays_read_only_without_coordinated_token() {
   (
     ENVFILE="$env_file"
     SIGNAL_DEPLOYMENT="external"
+    SIGNAL_DEPLOY_CHANNEL=""
     SIGNAL_IMAGE="auto"
     RISK_LAYER_URL="http://10.10.0.42:8000"
     RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
@@ -747,6 +797,7 @@ test_managed_signal_requires_distinct_generated_tokens() {
   if (
     ENVFILE="$env_file"
     SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_DEPLOY_CHANNEL="image"
     SIGNAL_IMAGE="auto"
     RISK_LAYER_URL=""
     RISK_LAYER_TOKEN="same-generated-secret-with-at-least-thirty-two-chars"
@@ -762,6 +813,7 @@ test_managed_signal_requires_distinct_generated_tokens() {
 test_external_signal_lifecycle_never_touches_docker() {
   (
     SIGNAL_DEPLOYMENT="external"
+    SIGNAL_DEPLOY_CHANNEL=""
     RISK_LAYER_URL="http://10.10.0.42:8000"
     compose() { test_fail "external Signal must never invoke compose: $*"; }
     docker() { test_fail "external Signal must never invoke docker: $*"; }
@@ -787,6 +839,7 @@ test_managed_signal_lifecycle_uses_pinned_release() {
   : >"$calls"
   (
     SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_DEPLOY_CHANNEL="image"
     SIGNAL_IMAGE="auto"
     RISK_LAYER_URL="http://risk-layer:8000"
     RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
@@ -804,6 +857,38 @@ test_managed_signal_lifecycle_uses_pinned_release() {
   assert_contains "$calls" "docker run --rm --entrypoint python $SIGNAL_MANAGED_IMAGE_DEFAULT"
   assert_contains "$calls" "compose --profile risk-layer up -d --force-recreate --no-deps --wait --wait-timeout 300 risk-layer"
   pass "managed Signal pulls, validates and starts the pinned self-contained release"
+}
+
+test_managed_signal_source_build_skips_registry_pull() {
+  local env_file="$TMP_DIR/managed-signal-source.env" calls="$TMP_DIR/managed-signal-source.calls"
+  : >"$env_file"; : >"$calls"
+  (
+    ENVFILE="$env_file"
+    SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_DEPLOY_CHANNEL="source"
+    SIGNAL_IMAGE=""
+    RISK_LAYER_URL="http://risk-layer:8000"
+    build_signal_from_source() {
+      printf 'source-build\n' >>"$calls"
+      export SIGNAL_IMAGE="taxtronik/risk-layer-engine:source-1234567890ab"
+    }
+    verify_signal_managed_image() { printf 'verify %s %s\n' "$1" "$2" >>"$calls"; }
+    compose() {
+      [[ "$*" != *" pull "* && "$*" != *" pull" ]] || test_fail "source Signal invoked registry pull"
+      printf 'compose %s\n' "$*" >>"$calls"
+    }
+    docker() {
+      [[ "${1:-}" == "inspect" ]] && return 0
+      printf 'docker %s\n' "$*" >>"$calls"
+    }
+    provide_signal_for_deploy
+    start_signal_for_deploy
+  ) >/dev/null
+  assert_contains "$calls" "source-build"
+  assert_contains "$calls" "verify taxtronik/risk-layer-engine:source-1234567890ab source"
+  assert_contains "$calls" "compose --profile risk-layer up -d --force-recreate --no-deps --wait --wait-timeout 300 risk-layer"
+  assert_key_equals "$env_file" SIGNAL_IMAGE taxtronik/risk-layer-engine:source-1234567890ab
+  pass "managed Signal source channel builds locally and never pulls a registry image"
 }
 
 test_signal_embedding_compose_contract_is_self_contained_and_offline() {
@@ -2483,6 +2568,8 @@ test_doctor_rejects_incomplete_risk_layer_pair
 test_doctor_warns_for_missing_risk_layer_operator_token_without_failing
 test_doctor_accepts_self_contained_managed_signal
 test_doctor_rejects_managed_signal_latest_image
+test_doctor_accepts_managed_signal_source_checkout
+test_signal_source_identifiers_are_shell_safe_and_secret_free
 test_doctor_rejects_short_risk_layer_operator_token
 test_doctor_rejects_identical_risk_layer_tokens
 test_doctor_rejects_signal_values_when_disabled
@@ -2492,6 +2579,7 @@ test_managed_signal_requires_distinct_generated_tokens
 test_external_signal_lifecycle_never_touches_docker
 test_legacy_native_signal_is_inferred_as_external
 test_managed_signal_lifecycle_uses_pinned_release
+test_managed_signal_source_build_skips_registry_pull
 test_signal_embedding_compose_contract_is_self_contained_and_offline
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled

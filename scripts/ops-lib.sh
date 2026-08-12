@@ -41,6 +41,8 @@ ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c
 # `SIGNAL_IMAGE=auto` folgt genau diesem Pin; ein externer/nativer Dienst wird
 # dagegen niemals ueber diesen Pfad angefasst.
 SIGNAL_MANAGED_IMAGE_DEFAULT="git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0"
+SIGNAL_GIT_URL_DEFAULT="https://git.hirschmann-koxha.de/TaxTronik/signal.git"
+SIGNAL_GIT_REF_DEFAULT="main"
 TAXTRONIK_RELEASE_IMAGE_PREFIX_DEFAULT="git.hirschmann-koxha.de/taxtronik"
 HOST_NODE_VERSION="24.19.0"
 HOST_NODE_LINUX_X64_SHA256="14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647"
@@ -377,6 +379,44 @@ signal_managed_image() {
     || printf '%s' "$SIGNAL_MANAGED_IMAGE_DEFAULT"
 }
 
+signal_deploy_channel() {
+  local configured="${SIGNAL_DEPLOY_CHANNEL:-$(get_env SIGNAL_DEPLOY_CHANNEL)}"
+  case "${configured:-image}" in
+    source|image) printf '%s' "${configured:-image}" ;;
+    *) return 1 ;;
+  esac
+}
+
+valid_signal_git_url() {
+  local value="${1:-}"
+  if [[ "$value" =~ ^https://[^[:space:]]+$ ]]; then
+    [[ "${value#https://}" != *@* && "$value" != *\?* && "$value" != *#* ]]
+  else
+    [[ "$value" =~ ^ssh://[^[:space:]@]+@[^[:space:]]+$ || \
+       "$value" =~ ^git@[^[:space:]:]+:[^[:space:]]+$ ]]
+  fi
+}
+
+valid_signal_git_ref() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ && \
+     "$value" != *..* && "$value" != *//* && "$value" != *@\{* && \
+     "$value" != */ && "$value" != *\.lock ]]
+}
+
+signal_source_dir() {
+  local configured="${SIGNAL_GIT_DIR:-$(get_env SIGNAL_GIT_DIR)}"
+  if [[ -n "$configured" ]]; then
+    printf '%s' "$configured"
+  else
+    printf '%s/signal' "$(dirname "$ROOT")"
+  fi
+}
+
+validate_signal_source_image() {
+  [[ "${1:-}" =~ ^taxtronik/risk-layer-engine:source-[0-9a-f]{12}$ ]]
+}
+
 validate_signal_managed_image() {
   local image="$1"
   [[ "$image" =~ ^[a-zA-Z0-9._-]+(:[0-9]+)?/[a-zA-Z0-9._/-]+(@sha256:[0-9a-f]{64}|:v[0-9]+\.[0-9]+\.[0-9]+)$ ]] || \
@@ -386,7 +426,16 @@ validate_signal_managed_image() {
 
 prepare_signal_managed_environment() {
   [[ "$(signal_deployment_mode)" == "managed" ]] || return 0
-  local resolved
+  local channel resolved
+  channel="$(signal_deploy_channel)" || \
+    die "SIGNAL_DEPLOY_CHANNEL muss source oder image sein."
+  if [[ "$channel" == "source" ]]; then
+    resolved="${SIGNAL_IMAGE:-$(get_env SIGNAL_IMAGE)}"
+    validate_signal_source_image "$resolved" || \
+      die "Signal-Source-Image wurde noch nicht gebaut. deploy/update verwenden."
+    export SIGNAL_IMAGE="$resolved"
+    return 0
+  fi
   resolved="$(signal_managed_image)"
   validate_signal_managed_image "$resolved" || \
     die "SIGNAL_IMAGE muss ein versionierter vX.Y.Z-Tag oder sha256-Digest sein (aktuell: $resolved)."
@@ -1137,6 +1186,7 @@ doctor() {
   local rl_festwissen="${RISK_LAYER_FESTWISSEN_DIR:-}"
   local signal_mode=""
   local resolved_signal_image=""
+  local signal_channel="" signal_git_url="" signal_git_ref="" signal_git_dir=""
   signal_mode="$(signal_deployment_mode 2>/dev/null || true)"
   if [[ -z "$signal_mode" ]]; then
     _dr_row "FEHLT" "SIGNAL_DEPLOYMENT" "nur managed, external oder disabled erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
@@ -1166,11 +1216,30 @@ doctor() {
     else
       _dr_row "OK" "RISK_LAYER_OPERATOR_TOKEN" "konfiguriert"
     fi
-    resolved_signal_image="$(signal_managed_image)"
-    if validate_signal_managed_image "$resolved_signal_image"; then
-      _dr_row "OK" "SIGNAL_IMAGE" "$resolved_signal_image"
+    signal_channel="$(signal_deploy_channel 2>/dev/null || true)"
+    if [[ "$signal_channel" == "source" ]]; then
+      signal_git_url="${SIGNAL_GIT_URL:-$SIGNAL_GIT_URL_DEFAULT}"
+      signal_git_ref="${SIGNAL_GIT_REF:-$SIGNAL_GIT_REF_DEFAULT}"
+      signal_git_dir="$(signal_source_dir)"
+      if ! valid_signal_git_url "$signal_git_url"; then
+        _dr_row "FEHLT" "SIGNAL_GIT_URL" "nur HTTPS- oder SSH-Git-URL erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      elif ! valid_signal_git_ref "$signal_git_ref"; then
+        _dr_row "FEHLT" "SIGNAL_GIT_REF" "ungueltiger Branch, Tag oder Commit"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      elif [[ "$signal_git_dir" != /* || "$signal_git_dir" == "/" || \
+              "$signal_git_dir" == "$ROOT" || "$signal_git_dir" == "$ROOT/"* ]]; then
+        _dr_row "FEHLT" "SIGNAL_GIT_DIR" "absoluter eigener Checkout-Pfad erforderlich"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      else
+        _dr_row "OK" "SIGNAL_SOURCE" "$signal_git_url @ $signal_git_ref"
+      fi
+    elif [[ "$signal_channel" == "image" ]]; then
+      resolved_signal_image="$(signal_managed_image)"
+      if validate_signal_managed_image "$resolved_signal_image"; then
+        _dr_row "OK" "SIGNAL_IMAGE" "$resolved_signal_image"
+      else
+        _dr_row "FEHLT" "SIGNAL_IMAGE" "versionierten vX.Y.Z-Tag oder sha256-Digest setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      fi
     else
-      _dr_row "FEHLT" "SIGNAL_IMAGE" "versionierten vX.Y.Z-Tag oder sha256-Digest setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      _dr_row "FEHLT" "SIGNAL_DEPLOY_CHANNEL" "nur source oder image erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     fi
     if [[ "${RISK_LAYER_EMB_DEVICE:-cpu}" != "cpu" ]]; then
       _dr_row "FEHLT" "RISK_LAYER_EMB_DEVICE" "verwaltetes Release ist CPU; GPU-Signal als external anbinden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
@@ -1380,8 +1449,72 @@ provide_traefik_for_deploy() {
   compose pull traefik || die "Traefik-Image konnte nicht bezogen werden."
 }
 
+build_signal_from_source() {
+  local url ref dir parent origin status sha target memory_limit memory_reserve cpus
+  url="${SIGNAL_GIT_URL:-$SIGNAL_GIT_URL_DEFAULT}"
+  ref="${SIGNAL_GIT_REF:-$SIGNAL_GIT_REF_DEFAULT}"
+  dir="$(signal_source_dir)"
+  memory_limit="${SIGNAL_BUILD_MEMORY_LIMIT:-3g}"
+  memory_reserve="${SIGNAL_BUILD_MEMORY_RESERVE:-1g}"
+  cpus="${SIGNAL_BUILD_CPUS:-2}"
+
+  valid_signal_git_url "$url" || die "SIGNAL_GIT_URL muss eine HTTPS- oder SSH-Git-URL ohne eingebettete Zugangsdaten sein."
+  valid_signal_git_ref "$ref" || die "SIGNAL_GIT_REF ist ungueltig. Branch, Tag oder Commit ohne Shell-Sonderzeichen angeben."
+  [[ "$dir" == /* && "$dir" != "/" && "$dir" != "$ROOT" && "$dir" != "$ROOT/"* ]] || \
+    die "SIGNAL_GIT_DIR muss ein absoluter eigener Checkout-Pfad ausserhalb des TaxTronik-Repos sein."
+  [[ "$cpus" =~ ^[1-9][0-9]?$ ]] || die "SIGNAL_BUILD_CPUS muss eine ganze Zahl zwischen 1 und 99 sein."
+  require_safe_build_resources "$memory_limit" "$memory_reserve"
+
+  if [[ ! -e "$dir" ]]; then
+    parent="$(dirname "$dir")"
+    mkdir -p "$parent" || die "Signal-Checkout-Elternpfad konnte nicht angelegt werden: $parent"
+    info "Signal-Quellstand klonen: $url -> $dir"
+    (umask 022; git clone --no-checkout "$url" "$dir") || \
+      die "Signal-Git-Repository konnte nicht geklont werden."
+  fi
+  [[ -d "$dir/.git" ]] || die "SIGNAL_GIT_DIR ist kein von TaxTronik nutzbarer Git-Checkout: $dir"
+  origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
+  [[ "$origin" == "$url" ]] || \
+    die "Signal-Checkout hat einen anderen origin ($origin). Erwartet: $url"
+  status="$(git -C "$dir" status --porcelain --untracked-files=normal 2>/dev/null || true)"
+  [[ -z "$status" ]] || \
+    die "Signal-Checkout enthaelt lokale Aenderungen. TaxTronik ueberschreibt sie nicht; bereinigen oder SIGNAL_GIT_DIR wechseln."
+
+  info "Signal-Git-Ref beziehen: $ref"
+  (umask 022; git -C "$dir" fetch --prune origin "$ref") || \
+    die "Signal-Git-Ref konnte nicht bezogen werden: $ref"
+  sha="$(git -C "$dir" rev-parse --verify FETCH_HEAD 2>/dev/null || true)"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "Signal-Git-Ref wurde nicht zu einem eindeutigen Commit aufgeloest."
+  (umask 022; git -C "$dir" checkout --detach "$sha") || \
+    die "Signal-Checkout konnte nicht auf $sha gesetzt werden."
+  [[ -f "$dir/scripts/build-managed-image.sh" ]] || \
+    die "Signal-Quellstand unterstuetzt den verwalteten Source-Build noch nicht (scripts/build-managed-image.sh fehlt)."
+
+  target="taxtronik/risk-layer-engine:source-${sha:0:12}"
+  if command -v flock >/dev/null 2>&1; then
+    exec 7>"$ROOT/.taxtronik.signal-build.lock"
+    if ! flock -n 7; then
+      info "Ein anderer Signal-Build laeuft bereits - warte auf dessen Ende ..."
+      flock 7
+    fi
+  fi
+  info "Signal aus Git-Commit ${sha:0:12} lokal bauen (kein automatischer Embedding-Index)"
+  SIGNAL_BUILD_MEMORY_LIMIT="$memory_limit" SIGNAL_BUILD_CPUS="$cpus" \
+    sh "$dir/scripts/build-managed-image.sh" "$target" || \
+    die "Signal-Source-Build fehlgeschlagen; laufender Container bleibt unveraendert."
+  if command -v flock >/dev/null 2>&1; then flock -u 7 || true; fi
+  export SIGNAL_IMAGE="$target"
+}
+
+verify_signal_managed_image() {
+  local image="$1" channel="$2" check
+  check="import importlib.util,pathlib,sys; required=['/release/catalog/begriffe.yaml','/release/corpus/graph.sqlite','/release/models/bge-m3/model-manifest.json']; index=['/release/corpus/embedding/meta.json','/release/corpus/embedding/vectors.npy']; core=all(pathlib.Path(p).is_file() for p in required) and importlib.util.find_spec('sentence_transformers') is not None; complete_index=all(pathlib.Path(p).is_file() for p in index); sys.exit(0 if core and ('$channel' == 'source' or complete_index) else 1)"
+  docker run --rm --entrypoint python "$image" -c "$check" || \
+    die "Signal-Image ist kein vollstaendiger Managed-Stand (Graph, Offline-Modell oder Embedding-Runtime fehlt)."
+}
+
 provide_signal_for_deploy() {
-  local mode image
+  local mode image channel
   mode="$(signal_deployment_mode)"
   case "$mode" in
     disabled)
@@ -1396,18 +1529,22 @@ provide_signal_for_deploy() {
     *) die "Unbekannter Signal-Betriebsmodus: $mode" ;;
   esac
 
-  prepare_signal_managed_environment
-  image="$SIGNAL_IMAGE"
-  info "Verwaltetes Signal-Release beziehen: $image"
-  if ! compose --profile risk-layer pull risk-layer; then
-    die "Signal-Image konnte nicht bezogen werden. Registry-Zugang pruefen; externes/natives Signal mit SIGNAL_DEPLOYMENT=external anbinden."
+  channel="$(signal_deploy_channel)" || die "SIGNAL_DEPLOY_CHANNEL muss source oder image sein."
+  if [[ "$channel" == "source" ]]; then
+    build_signal_from_source
+    image="$SIGNAL_IMAGE"
+  else
+    prepare_signal_managed_environment
+    image="$SIGNAL_IMAGE"
+    info "Verwaltetes Signal-Image beziehen: $image"
+    if ! compose --profile risk-layer pull risk-layer; then
+      die "Signal-Image konnte nicht bezogen werden. Registry-Zugang pruefen oder SIGNAL_DEPLOY_CHANNEL=source waehlen."
+    fi
   fi
   # Das verwaltete Release muss vollstaendig self-contained sein. Dadurch wird
   # ein altes Runtime-only-Image vor dem Austausch des laufenden Dienstes
   # erkannt und der bisherige Container bleibt unangetastet.
-  docker run --rm --entrypoint python "$image" -c \
-    "import importlib.util,pathlib,sys; required=['/release/catalog/begriffe.yaml','/release/corpus/graph.sqlite','/release/corpus/embedding/meta.json','/release/corpus/embedding/vectors.npy','/release/models/bge-m3/model-manifest.json']; ok=all(pathlib.Path(p).is_file() for p in required) and importlib.util.find_spec('sentence_transformers') is not None; sys.exit(0 if ok else 1)" \
-    || die "Signal-Image ist kein vollstaendiges Managed-Release (Graph, Offline-Modell oder Embedding-Runtime fehlt)."
+  verify_signal_managed_image "$image" "$channel"
 }
 
 start_signal_for_deploy() {
@@ -1418,6 +1555,9 @@ start_signal_for_deploy() {
   info "Verwaltetes Signal starten und API-/Embedding-Readiness pruefen"
   if compose --profile risk-layer up -d --force-recreate --no-deps \
       --wait --wait-timeout 300 risk-layer; then
+    if [[ "$(signal_deploy_channel)" == "source" ]]; then
+      set_env SIGNAL_IMAGE "$SIGNAL_IMAGE"
+    fi
     return 0
   fi
 
@@ -2304,6 +2444,11 @@ apply_initial_setup_plan() {
   set_env SMTP_USER "$_SETUP_SMTP_USER"
   set_env SMTP_PASSWORD "$_SETUP_SMTP_PASSWORD"
   set_env SIGNAL_DEPLOYMENT "$_SETUP_SIGNAL_MODE"
+  set_env SIGNAL_DEPLOY_CHANNEL "$_SETUP_SIGNAL_CHANNEL"
+  set_env SIGNAL_IMAGE "$_SETUP_SIGNAL_IMAGE"
+  set_env SIGNAL_GIT_URL "$_SETUP_SIGNAL_GIT_URL"
+  set_env SIGNAL_GIT_REF "$_SETUP_SIGNAL_GIT_REF"
+  set_env SIGNAL_GIT_DIR "$_SETUP_SIGNAL_GIT_DIR"
   set_env RISK_LAYER_URL "$_SETUP_SIGNAL_URL"
   set_env RISK_LAYER_TOKEN "$_SETUP_SIGNAL_TOKEN"
   set_env RISK_LAYER_OPERATOR_TOKEN "$_SETUP_SIGNAL_OPERATOR_TOKEN"
@@ -2334,6 +2479,11 @@ configure_initial_deployment_interactive() {
   _SETUP_SMTP_USER=""
   _SETUP_SMTP_PASSWORD=""
   _SETUP_SIGNAL_MODE="managed"
+  _SETUP_SIGNAL_CHANNEL="source"
+  _SETUP_SIGNAL_IMAGE=""
+  _SETUP_SIGNAL_GIT_URL="$SIGNAL_GIT_URL_DEFAULT"
+  _SETUP_SIGNAL_GIT_REF="$SIGNAL_GIT_REF_DEFAULT"
+  _SETUP_SIGNAL_GIT_DIR="$(dirname "$ROOT")/signal"
   _SETUP_SIGNAL_URL=""
   _SETUP_SIGNAL_TOKEN=""
   _SETUP_SIGNAL_OPERATOR_TOKEN=""
@@ -2449,9 +2599,50 @@ configure_initial_deployment_interactive() {
   printf '  3) Signal deaktivieren\n'
   read -rp 'Auswahl [1]: ' choice || true
   case "${choice:-1}" in
-    1|managed) _SETUP_SIGNAL_MODE="managed" ;;
+    1|managed)
+      _SETUP_SIGNAL_MODE="managed"
+      printf '\nWie soll das von TaxTronik verwaltete Signal bereitgestellt werden?\n'
+      printf '  1) Aktuellen Git-Stand lokal bauen (derzeit empfohlen)\n'
+      printf '     Klont/aktualisiert Signal und baut ein CPU-Image ohne automatischen Indexaufbau.\n'
+      printf '  2) Veroeffentlichtes Container-Image aus einer Registry\n'
+      printf '     Nur waehlen, wenn das versionierte Image tatsaechlich veroeffentlicht ist.\n'
+      read -rp 'Auswahl [1]: ' choice || true
+      case "${choice:-1}" in
+        1|source)
+          _SETUP_SIGNAL_CHANNEL="source"
+          read -rp "Signal-Git-Repository [$_SETUP_SIGNAL_GIT_URL]: " input || true
+          _SETUP_SIGNAL_GIT_URL="${input:-$_SETUP_SIGNAL_GIT_URL}"
+          valid_signal_git_url "$_SETUP_SIGNAL_GIT_URL" || die "Signal-Git-URL ist ungueltig oder enthaelt Zugangsdaten."
+          read -rp "Signal-Git-Ref (Branch, Tag oder Commit) [$_SETUP_SIGNAL_GIT_REF]: " input || true
+          _SETUP_SIGNAL_GIT_REF="${input:-$_SETUP_SIGNAL_GIT_REF}"
+          valid_signal_git_ref "$_SETUP_SIGNAL_GIT_REF" || die "Signal-Git-Ref ist ungueltig."
+          read -rp "Lokaler Signal-Checkout [$_SETUP_SIGNAL_GIT_DIR]: " input || true
+          _SETUP_SIGNAL_GIT_DIR="${input:-$_SETUP_SIGNAL_GIT_DIR}"
+          [[ "$_SETUP_SIGNAL_GIT_DIR" == /* && "$_SETUP_SIGNAL_GIT_DIR" != "/" && \
+             "$_SETUP_SIGNAL_GIT_DIR" != "$ROOT" && "$_SETUP_SIGNAL_GIT_DIR" != "$ROOT/"* ]] || \
+            die "Signal-Checkout braucht einen absoluten eigenen Pfad ausserhalb des TaxTronik-Repos."
+          _SETUP_SIGNAL_IMAGE=""
+          ;;
+        2|image)
+          _SETUP_SIGNAL_CHANNEL="image"
+          read -rp "Versioniertes Signal-Image [$SIGNAL_MANAGED_IMAGE_DEFAULT]: " input || true
+          _SETUP_SIGNAL_IMAGE="${input:-$SIGNAL_MANAGED_IMAGE_DEFAULT}"
+          validate_signal_managed_image "$_SETUP_SIGNAL_IMAGE" || \
+            die "Signal-Image braucht einen versionierten vX.Y.Z-Tag oder sha256-Digest; latest ist unzulaessig."
+          _SETUP_SIGNAL_GIT_URL=""
+          _SETUP_SIGNAL_GIT_REF=""
+          _SETUP_SIGNAL_GIT_DIR=""
+          ;;
+        *) die "Ungueltige Signal-Bezugsweg-Auswahl: $choice" ;;
+      esac
+      ;;
     2|external)
       _SETUP_SIGNAL_MODE="external"
+      _SETUP_SIGNAL_CHANNEL=""
+      _SETUP_SIGNAL_IMAGE=""
+      _SETUP_SIGNAL_GIT_URL=""
+      _SETUP_SIGNAL_GIT_REF=""
+      _SETUP_SIGNAL_GIT_DIR=""
       while :; do
         read -rp 'Signal-URL (aus TaxTronik-Containern erreichbar): ' _SETUP_SIGNAL_URL || true
         valid_http_url "$_SETUP_SIGNAL_URL" && break
@@ -2465,7 +2656,14 @@ configure_initial_deployment_interactive() {
       [[ -z "$_SETUP_SIGNAL_OPERATOR_TOKEN" || "$_SETUP_SIGNAL_OPERATOR_TOKEN" != "$_SETUP_SIGNAL_TOKEN" ]] || \
         die "Signal Operator- und Bearer-Token muessen verschieden sein."
       ;;
-    3|disabled) _SETUP_SIGNAL_MODE="disabled" ;;
+    3|disabled)
+      _SETUP_SIGNAL_MODE="disabled"
+      _SETUP_SIGNAL_CHANNEL=""
+      _SETUP_SIGNAL_IMAGE=""
+      _SETUP_SIGNAL_GIT_URL=""
+      _SETUP_SIGNAL_GIT_REF=""
+      _SETUP_SIGNAL_GIT_DIR=""
+      ;;
     *) die "Ungueltige Signal-Auswahl: $choice" ;;
   esac
 
@@ -2481,7 +2679,15 @@ configure_initial_deployment_interactive() {
   printf 'n8n        : https://%s\n' "$_SETUP_N8N_HOST"
   [[ "$_SETUP_METHOD" == "traefik" ]] && printf 'TLS        : Let\x27s Encrypt fuer alle drei Domains\n'
   printf 'SMTP       : %s:%s, Zugang %s\n' "$_SETUP_SMTP_HOST" "$_SETUP_SMTP_PORT" "$([[ -n "$_SETUP_SMTP_USER" ]] && printf 'gesetzt' || printf 'ohne Login')"
-  printf 'Signal     : %s\n' "$_SETUP_SIGNAL_MODE"
+  if [[ "$_SETUP_SIGNAL_MODE" == "managed" && "$_SETUP_SIGNAL_CHANNEL" == "source" ]]; then
+    printf 'Signal     : verwaltet, Git %s @ %s -> %s\n' \
+      "$_SETUP_SIGNAL_GIT_URL" "$_SETUP_SIGNAL_GIT_REF" "$_SETUP_SIGNAL_GIT_DIR"
+    printf '             Kein automatischer Embedding-Indexaufbau\n'
+  elif [[ "$_SETUP_SIGNAL_MODE" == "managed" ]]; then
+    printf 'Signal     : verwaltet, Registry-Image %s\n' "$_SETUP_SIGNAL_IMAGE"
+  else
+    printf 'Signal     : %s\n' "$_SETUP_SIGNAL_MODE"
+  fi
   printf 'Kanzleiname: %s\n' "$_SETUP_TENANT_NAME"
   printf 'Admin      : %s\n' "$_SETUP_ADMIN_EMAIL"
   if [[ "$_SETUP_METHOD" == "standard" ]]; then
@@ -2502,11 +2708,14 @@ configure_initial_deployment_interactive() {
 # Expliziter Besitzvertrag fuer Signal. Der Funktionsname bleibt wegen der
 # historischen RISK_LAYER_* API- und Env-Namen bestandskompatibel.
 configure_risk_layer_interactive() {
-  local mode="${SIGNAL_DEPLOYMENT:-}" choice=""
+  local mode="${SIGNAL_DEPLOYMENT:-}" choice="" channel="${SIGNAL_DEPLOY_CHANNEL:-}"
   RISK_LAYER_URL="${RISK_LAYER_URL:-}"
   RISK_LAYER_TOKEN="${RISK_LAYER_TOKEN:-}"
   RISK_LAYER_OPERATOR_TOKEN="${RISK_LAYER_OPERATOR_TOKEN:-}"
   SIGNAL_IMAGE="${SIGNAL_IMAGE:-auto}"
+  SIGNAL_GIT_URL="${SIGNAL_GIT_URL:-$SIGNAL_GIT_URL_DEFAULT}"
+  SIGNAL_GIT_REF="${SIGNAL_GIT_REF:-$SIGNAL_GIT_REF_DEFAULT}"
+  SIGNAL_GIT_DIR="${SIGNAL_GIT_DIR:-$(dirname "$ROOT")/signal}"
   RISK_LAYER_EMB_DEVICE="${RISK_LAYER_EMB_DEVICE:-cpu}"
 
   if [[ -z "$mode" ]]; then
@@ -2531,6 +2740,41 @@ configure_risk_layer_interactive() {
 
   case "$mode" in
     managed)
+      if [[ -z "$channel" ]]; then
+        if [[ -t 0 ]]; then
+          printf '\nBezugsweg fuer das verwaltete Signal festlegen:\n'
+          printf '  1) Git-Quellstand lokal bauen (derzeit empfohlen)\n'
+          printf '  2) Veroeffentlichtes Registry-Image beziehen\n'
+          read -rp 'Auswahl [1]: ' choice || true
+          case "${choice:-1}" in
+            1|source) channel="source" ;;
+            2|image) channel="image" ;;
+            *) die "Ungueltige Signal-Bezugsweg-Auswahl: $choice" ;;
+          esac
+        else
+          channel="image"
+          warn "SIGNAL_DEPLOY_CHANNEL fehlt; bestandskompatibel wird image verwendet. Fuer Git-Build source setzen."
+        fi
+      fi
+      [[ "$channel" == "source" || "$channel" == "image" ]] || \
+        die "SIGNAL_DEPLOY_CHANNEL muss source oder image sein."
+      if [[ "$channel" == "source" ]]; then
+        prompt "Signal-Git-Repository" SIGNAL_GIT_URL "$SIGNAL_GIT_URL_DEFAULT"
+        prompt "Signal-Git-Ref (Branch, Tag oder Commit)" SIGNAL_GIT_REF "$SIGNAL_GIT_REF_DEFAULT"
+        prompt "Lokaler Signal-Checkout" SIGNAL_GIT_DIR "$(dirname "$ROOT")/signal"
+        valid_signal_git_url "$SIGNAL_GIT_URL" || \
+          die "Signal-Git-URL ist ungueltig oder enthaelt eingebettete Zugangsdaten."
+        valid_signal_git_ref "$SIGNAL_GIT_REF" || die "Signal-Git-Ref ist ungueltig."
+        [[ "$SIGNAL_GIT_DIR" == /* && "$SIGNAL_GIT_DIR" != "/" && \
+           "$SIGNAL_GIT_DIR" != "$ROOT" && "$SIGNAL_GIT_DIR" != "$ROOT/"* ]] || \
+          die "Signal-Checkout braucht einen absoluten eigenen Pfad ausserhalb des TaxTronik-Repos."
+        SIGNAL_IMAGE=""
+      else
+        SIGNAL_GIT_URL=""
+        SIGNAL_GIT_REF=""
+        SIGNAL_GIT_DIR=""
+        SIGNAL_IMAGE="${SIGNAL_IMAGE:-auto}"
+      fi
       RISK_LAYER_URL="http://risk-layer:8000"
       [[ ${#RISK_LAYER_TOKEN} -ge 32 ]] || RISK_LAYER_TOKEN="$(rand_b64 32)"
       if [[ ${#RISK_LAYER_OPERATOR_TOKEN} -lt 32 || "$RISK_LAYER_OPERATOR_TOKEN" == "$RISK_LAYER_TOKEN" ]]; then
@@ -2543,10 +2787,13 @@ configure_risk_layer_interactive() {
         [[ ${#RISK_LAYER_OPERATOR_TOKEN} -ge 32 && "$RISK_LAYER_OPERATOR_TOKEN" != "$RISK_LAYER_TOKEN" ]] || \
           die "Getrenntes Signal-Operator-Token konnte nicht sicher generiert werden."
       fi
-      SIGNAL_IMAGE="${SIGNAL_IMAGE:-auto}"
-      [[ "$SIGNAL_IMAGE" != "" ]] || SIGNAL_IMAGE="auto"
+      if [[ "$channel" == "image" ]]; then
+        SIGNAL_IMAGE="${SIGNAL_IMAGE:-auto}"
+      else
+        SIGNAL_IMAGE=""
+      fi
       RISK_LAYER_EMB_DEVICE="cpu"
-      info "Signal wird durch TaxTronik verwaltet; URL und getrennte Secrets wurden automatisch provisioniert."
+      info "Signal wird durch TaxTronik verwaltet ($channel); URL und getrennte Secrets wurden automatisch provisioniert."
       ;;
     external)
       prompt "Signal-URL (aus den TaxTronik-Containern erreichbar)" RISK_LAYER_URL "$RISK_LAYER_URL"
@@ -2556,6 +2803,10 @@ configure_risk_layer_interactive() {
         printf '\n'
       fi
       SIGNAL_IMAGE=""
+      channel=""
+      SIGNAL_GIT_URL=""
+      SIGNAL_GIT_REF=""
+      SIGNAL_GIT_DIR=""
       info "Signal ist extern verwaltet; TaxTronik wird weder Installation noch Updates anfassen."
       ;;
     disabled)
@@ -2563,12 +2814,20 @@ configure_risk_layer_interactive() {
       RISK_LAYER_TOKEN=""
       RISK_LAYER_OPERATOR_TOKEN=""
       SIGNAL_IMAGE=""
+      channel=""
+      SIGNAL_GIT_URL=""
+      SIGNAL_GIT_REF=""
+      SIGNAL_GIT_DIR=""
       ;;
     *) die "SIGNAL_DEPLOYMENT muss managed, external oder disabled sein (aktuell: $mode)." ;;
   esac
 
   set_env SIGNAL_DEPLOYMENT "$mode"
+  set_env SIGNAL_DEPLOY_CHANNEL "$channel"
   set_env SIGNAL_IMAGE "$SIGNAL_IMAGE"
+  set_env SIGNAL_GIT_URL "$SIGNAL_GIT_URL"
+  set_env SIGNAL_GIT_REF "$SIGNAL_GIT_REF"
+  set_env SIGNAL_GIT_DIR "$SIGNAL_GIT_DIR"
   set_env RISK_LAYER_URL "$RISK_LAYER_URL"
   set_env RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
   set_env RISK_LAYER_OPERATOR_TOKEN "$RISK_LAYER_OPERATOR_TOKEN"
