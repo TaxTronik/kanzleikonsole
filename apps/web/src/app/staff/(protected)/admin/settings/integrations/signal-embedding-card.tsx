@@ -2,11 +2,21 @@
 
 import { useEffect, useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle2, Clock3, DatabaseZap, Loader2, RefreshCw } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock3,
+  DatabaseZap,
+  Loader2,
+  RefreshCw,
+  Square,
+} from 'lucide-react';
 import type { EmbeddingStatusResponse } from '@taxtronik/risk-layer';
 import { fmtDateTimeShort } from '@/lib/fmt';
+import { ConfirmModal } from '@/components/ui/modal';
 import { SectionCard } from '../section-card';
 import {
+  cancelSignalEmbeddingAction,
   triggerSignalEmbeddingAction,
   updateSignalEmbeddingScheduleAction,
   type SignalEmbeddingActionResult,
@@ -241,7 +251,8 @@ function ScheduleControls({
         Automatische Aktualisierung
       </label>
       <p className="text-xs text-muted">
-        Signal prüft den globalen Index im gewählten Intervall und aktualisiert ihn bei Bedarf.
+        Bleibt nach Setup und Deploy aus. Bei Aktivierung prüft Signal den globalen Index im
+        gewählten Intervall und aktualisiert ihn bei Bedarf.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <select
@@ -280,8 +291,9 @@ function RefreshControls({
   disabled: boolean;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<SignalEmbeddingActionResult | null>(null);
+  const [confirmStartOpen, setConfirmStartOpen] = useState(false);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const remoteJobActive = job ? isActiveEmbeddingJob(job.state) : false;
   const polling = !disabled && remoteJobActive;
 
@@ -291,22 +303,21 @@ function RefreshControls({
     return () => window.clearInterval(timer);
   }, [polling, router]);
 
-  function trigger(): void {
-    if (
-      !window.confirm(
-        'Embedding jetzt vollständig aktualisieren? Der Aufbau kann einige Minuten dauern.',
-      )
-    )
-      return;
-
+  async function trigger(): Promise<{ ok: boolean; error?: string }> {
     setResult(null);
-    startTransition(async () => {
-      const actionResult = await triggerSignalEmbeddingAction();
-      setResult(actionResult);
-      if (actionResult.ok) {
-        router.refresh();
-      }
-    });
+    const actionResult = await triggerSignalEmbeddingAction({ confirmed: true });
+    setResult(actionResult);
+    if (actionResult.ok) router.refresh();
+    return actionResult;
+  }
+
+  async function cancel(): Promise<{ ok: boolean; error?: string }> {
+    if (!job?.id) return { ok: false, error: 'Der aktive Job hat keine gültige Job-ID.' };
+    setResult(null);
+    const actionResult = await cancelSignalEmbeddingAction({ jobId: job.id });
+    setResult(actionResult);
+    if (actionResult.ok) router.refresh();
+    return actionResult;
   }
 
   return (
@@ -314,26 +325,66 @@ function RefreshControls({
       data-settings-no-track
       onSubmit={(event) => {
         event.preventDefault();
-        trigger();
+        setConfirmStartOpen(true);
       }}
     >
       <p className="label">Manuelle Aktualisierung</p>
       <p className="mb-2 text-xs text-muted">
         Erzwingt einen vollständigen Neuaufbau unabhängig vom aktuellen Fingerprint.
       </p>
-      <button
-        type="submit"
-        className="btn-primary inline-flex items-center gap-1.5"
-        disabled={disabled || pending || polling}
-      >
-        {pending || polling ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <RefreshCw className="h-4 w-4" />
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          className="btn-primary inline-flex items-center gap-1.5"
+          disabled={disabled || polling}
+        >
+          {polling ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {polling ? 'Embedding wird aktualisiert…' : 'Embedding jetzt aktualisieren'}
+        </button>
+        {remoteJobActive && (
+          <button
+            type="button"
+            className="btn-secondary inline-flex items-center gap-1.5"
+            disabled={disabled || job?.state === 'cancelling'}
+            onClick={() => setConfirmCancelOpen(true)}
+          >
+            {job?.state === 'cancelling' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Square className="h-4 w-4" />
+            )}
+            {job?.state === 'cancelling' ? 'Abbruch läuft…' : 'Aktualisierung stoppen'}
+          </button>
         )}
-        {polling ? 'Embedding wird aktualisiert…' : 'Embedding jetzt aktualisieren'}
-      </button>
+      </div>
       <ActionFeedback result={result} />
+      {confirmStartOpen && (
+        <ConfirmModal
+          title="Embedding vollständig neu aufbauen?"
+          message={
+            'Der Neuaufbau kann CPU und Arbeitsspeicher mehrere Minuten stark auslasten. Auf kleinen VPS können andere Dienste in dieser Zeit deutlich langsamer reagieren.\n\nStarten Sie ihn nur, wenn die zusätzliche Last jetzt vertretbar ist.'
+          }
+          confirmLabel="Neuaufbau starten"
+          busyLabel="Wird gestartet…"
+          danger
+          onConfirm={trigger}
+          onClose={() => setConfirmStartOpen(false)}
+        />
+      )}
+      {confirmCancelOpen && (
+        <ConfirmModal
+          title="Embedding-Aktualisierung stoppen?"
+          message="Signal bricht den noch nicht veröffentlichten Neuaufbau am nächsten sicheren Modell-Batch ab. Der bisherige aktive Index bleibt erhalten."
+          confirmLabel="Abbruch anfordern"
+          busyLabel="Abbruch wird angefordert…"
+          onConfirm={cancel}
+          onClose={() => setConfirmCancelOpen(false)}
+        />
+      )}
     </form>
   );
 }

@@ -1,8 +1,8 @@
 # Day-2 Operations
 
 Dieses Runbook beschreibt den laufenden Betrieb nach der Erstinstallation.
-Erstinstallation und Release-Wechsel stehen in
-[`release.md`](release.md), Restore in
+Erstinstallation steht in [`initial-deploy.md`](initial-deploy.md),
+Release-Wechsel in [`release.md`](release.md), Restore in
 [`disaster-recovery.md`](disaster-recovery.md).
 
 ## Zielbild
@@ -10,7 +10,7 @@ Erstinstallation und Release-Wechsel stehen in
 - Betreiber kann jederzeit erkennen, welcher Stand läuft.
 - Backups sind nicht nur vorhanden, sondern regelmäßig wiederhergestellt.
 - Speicherverbrauch wächst kontrolliert.
-- SMTP, n8n, Risk-Layer und Reverse Proxy sind als Betriebsschnittstellen klar
+- SMTP, n8n, Signal und Reverse Proxy sind als Betriebsschnittstellen klar
   überwacht.
 - Störungen führen zu einem konkreten Handgriff, nicht zu Rätselraten.
 
@@ -65,7 +65,9 @@ Keine Volumes löschen, solange kein Restore-/Migrationsplan vorliegt.
 4. n8n-Ziele prüfen: Workflows veröffentlicht, letzter synthetischer Test
    erfolgreich, keine unerklärten `FAILED`, `PARTIAL` oder `UNROUTED`-Events;
    API-Key-Ablauf und Credential-Berechtigungen kontrollieren.
-5. Reverse-Proxy-Zertifikate und Ablaufdaten prüfen.
+5. Reverse-Proxy-Zertifikate und Ablaufdaten prüfen. Beim verwalteten
+   Traefik-Weg zusätzlich `./taxtronik logs traefik --tail 80` auf ACME-Fehler
+   kontrollieren.
 6. Freien Plattenplatz, Docker-Volumes und Backup-Bucket-Retention prüfen.
 
 ## Updates
@@ -468,14 +470,32 @@ Test- und Production-URLs sowie Publish-Semantik beschreibt die
 Die fachliche Einrichtung und der vollständige Eventkatalog stehen in
 [n8n-Automatisierungen](../anwenderdoku/n8n-automatisierungen.md).
 
-## Risk-Layer
+## Signal (Risk-Layer-API)
+
+`SIGNAL_DEPLOYMENT` legt nicht nur die Topologie, sondern ausdrücklich die
+Update-Verantwortung fest:
+
+- `managed`: TaxTronik zieht beim Deploy/Update das zu diesem TaxTronik-Stand
+  getestete, versionierte Signal-Image, prüft dessen Graph, Katalog,
+  Embedding-Runtime und lokales BGE-M3-Modell und startet es im Compose-Profil.
+- `external`: Signal läuft nativ, mit ROCm/CUDA oder in einem getrennt
+  verwalteten Container. TaxTronik spricht ausschließlich die HTTP-API an und
+  installiert, stoppt oder aktualisiert diese Instanz niemals.
+- `disabled`: Signal ist vollständig deaktiviert.
+
+Bei einer neuen interaktiven Installation fragt `./taxtronik deploy` den Modus
+ab. Im empfohlenen `managed`-Modus werden URL sowie zwei getrennte Secrets
+automatisch in `.env` provisioniert. `SIGNAL_IMAGE=auto` folgt dem von der
+jeweiligen TaxTronik-Version getesteten SemVer-Pin; `latest` ist unzulässig.
+Zugang zu einer privaten Registry muss auf dem Host bereits mit `docker login`
+bestehen.
 
 `RISK_LAYER_URL` ist ein explizites Operator-Backend-Ziel. Interne IPs,
 Loopback und Docker-Service-DNS sind erlaubt, ohne `INTERNAL_FETCH_HOSTS` zu
 erweitern.
 
 Bei Docker gilt: `127.0.0.1`/`localhost` zeigt aus Sicht von `taxtronik-app`
-auf den App-Container selbst. Fuer den Compose-Risk-Layer daher
+auf den App-Container selbst. Für das verwaltete Compose-Signal daher
 `http://risk-layer:8000` verwenden; bei separat laufender Engine eine aus dem
 App-Container erreichbare interne Host-IP oder DNS-Adresse setzen.
 
@@ -493,9 +513,18 @@ Integrationen kommt ein getrenntes Secret hinzu:
 Ohne Operator-Token bleiben Engine-Status und Analysen lesbar; manueller
 Neuaufbau und Planänderungen sind absichtlich gesperrt. Mit dem Compose-Profil
 persistiert Signal Generationen, Jobstatus und den globalen Prüfplan im Volume
-`risk_layer_embedding_state`. Standardmäßig prüft Signal alle sieben Tage und
-baut nur bei abweichendem Graph-, Katalog- oder Modellstand neu. Der manuelle
-Button erzwingt dagegen einen vollständigen Neuaufbau.
+`risk_layer_embedding_state`. **Installation, Deploy und Update starten keinen
+Embedding-Neuaufbau und aktivieren keinen Zeitplan.** Der Plan steht auf `Aus`,
+bis ein Administrator ihn in den Integrations-Einstellungen ausdrücklich auf
+`Wöchentlich` setzt. Dann prüft Signal alle sieben Tage und baut nur bei
+abweichendem Graph-, Katalog- oder Modellstand neu.
+
+Der manuelle Button erzwingt einen vollständigen Neuaufbau und zeigt deshalb
+vorher eine deutliche CPU-/RAM-Warnung mit Bestätigungsdialog. Ein aktiver Job
+kann dort über `Aktualisierung stoppen` kooperativ abgebrochen werden. Signal
+beendet dabei den aktuellen Modell-Batch am nächsten sicheren Abbruchpunkt und
+veröffentlicht keine unvollständige Generation; der bisherige Index bleibt
+aktiv. Deshalb kann die Last nach dem Klick noch kurz sichtbar sein.
 
 Der Signal-Index und sein Plan gelten für das gesamte Deployment. Die
 Bedienung durch einen Kanzlei-Admin ist deshalb nur im verbindlichen
@@ -503,24 +532,26 @@ TaxTronik-Betriebsmodell „eine On-Prem-Installation pro Kanzlei“ freigegeben
 Ein abweichendes Mehrmandanten-Hosting muss eine eigene deploymentweite
 Operatorrolle und ein zentrales Audit vor diese Aktionen setzen.
 
-Für echte BGE-M3-Builds muss das Signal-Image mit Embedding-Runtime gebaut sein.
-Das Compose-Profil bindet `RISK_LAYER_FESTWISSEN_DIR` read-only nach `/release`
-ein. Die verifizierte Release-Wurzel muss gemeinsam
-`catalog/begriffe.yaml`, `corpus/graph.sqlite` und `models/bge-m3/` enthalten;
-das Signal-Festwissen-Release deshalb ausdrücklich mit `--mit-embedding` bauen.
-Docker legt einen fehlenden Quellpfad absichtlich nicht automatisch an. Im
-gebündelten Produktionsprofil sind Modellpfad und alle Offline-Schalter bewusst
-fest verdrahtet; ein `.env`-Wert kann keinen Netz-Fallback aktivieren.
-`RISK_LAYER_EMB_DEVICE` wählt `cpu` oder ein freigegebenes CUDA-Device wie
-`cuda` beziehungsweise `cuda:0`. Eine separat betriebene Signal-Engine muss
-denselben Festwissen-/Offline-Vertrag in ihrem eigenen Service-Manager erfüllen.
+Das verwaltete OCI-Release enthält Embedding-Runtime,
+`catalog/begriffe.yaml`, `corpus/graph.sqlite` und das manifestierte lokale
+`models/bge-m3/` gemeinsam und read-only unter `/release`. Nur Operatorstatus,
+erzeugte Indexgenerationen, Definitionen und Cache liegen in persistenten
+Volumes. Alle Offline-Schalter sind fest verdrahtet; ein `.env`-Wert kann keinen
+Netz-Fallback aktivieren. Der verwaltete Pfad ist bewusst portabel und nutzt
+`RISK_LAYER_EMB_DEVICE=cpu`.
+
+GPU- oder ROCm-Betrieb bleibt Aufgabe einer nativen/externen Signal-Installation
+mit `SIGNAL_DEPLOYMENT=external`. Dort werden Runtime, Festwissen, Modell,
+Service-Manager und Updates nach dem Signal-Runbook betrieben; TaxTronik
+übernimmt lediglich URL, Bearer-Token und – falls gewünscht – den koordinierten
+Operator-Token.
 
 Bei Fehlern:
 
 1. `./taxtronik doctor` prüfen.
 2. Erreichbarkeit vom App-Container aus prüfen.
 3. Tokenlänge und Bearer-Konfiguration prüfen.
-4. Risk-Layer-Logs getrennt vom TaxTronik-Stack auswerten, wenn er separat
+4. Signal-Logs getrennt vom TaxTronik-Stack auswerten, wenn es extern/nativ
    betrieben wird.
 
 ## Incident-Kurzpfad

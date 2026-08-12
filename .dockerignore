@@ -42,6 +42,7 @@ out
 .taxtronik.database-restored
 licensing-private-*.pem
 infra/scripts/seaweedfs-s3.generated.json
+.taxtronik.traefik-dynamic.yml
 
 # Logs
 logs

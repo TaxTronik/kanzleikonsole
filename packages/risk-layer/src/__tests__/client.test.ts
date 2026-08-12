@@ -286,6 +286,12 @@ describe('RiskLayerClient', () => {
     expect(() =>
       EmbeddingStatusResponseSchema.parse({
         ...embeddingStatusPayload,
+        job: { ...embeddingStatusPayload.job, id: 'fremde-job-id' },
+      }),
+    ).toThrow();
+    expect(() =>
+      EmbeddingStatusResponseSchema.parse({
+        ...embeddingStatusPayload,
         index: { ...embeddingStatusPayload.index, fingerprint: 'x'.repeat(513) },
       }),
     ).toThrow();
@@ -305,18 +311,19 @@ describe('RiskLayerClient', () => {
 
   it('embeddingRefresh sendet force und das Operator-Secret ausschließlich als Header', async () => {
     const operatorToken = 'operator-token-with-at-least-thirty-two-characters';
+    const jobId = 'b'.repeat(32);
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
       jsonResponse({
         ok: true,
         engineVersion: '1.4.0',
-        job_id: 'embedding-123',
+        job_id: jobId,
         state: 'queued',
       }),
     );
     const client = new RiskLayerClient({ config: { ...config, operatorToken }, fetchImpl });
 
     await expect(client.embeddingRefresh({ force: true })).resolves.toMatchObject({
-      job_id: 'embedding-123',
+      job_id: jobId,
       state: 'queued',
     });
 
@@ -351,8 +358,36 @@ describe('RiskLayerClient', () => {
     );
   });
 
+  it('embeddingCancel sendet nur die exakte Job-ID und wird nicht wiederholt', async () => {
+    const operatorToken = 'operator-token-with-at-least-thirty-two-characters';
+    const jobId = 'c'.repeat(32);
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse({
+        ok: true,
+        engineVersion: '1.4.0',
+        job_id: jobId,
+        state: 'cancelling',
+      }),
+    );
+    const client = new RiskLayerClient({ config: { ...config, operatorToken }, fetchImpl });
+
+    await expect(client.embeddingCancel({ jobId })).resolves.toMatchObject({
+      job_id: jobId,
+      state: 'cancelling',
+    });
+
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('http://risk-layer:8000/v1/embedding/cancel');
+    expect(JSON.parse(init!.body as string)).toEqual({ job_id: jobId });
+    expect((init!.headers as Record<string, string>)['x-risk-layer-operator-token']).toBe(
+      operatorToken,
+    );
+    expect(init!.body).not.toContain(operatorToken);
+  });
+
   it.each([
     ['refresh', (client: RiskLayerClient) => client.embeddingRefresh({ force: false })],
+    ['cancel', (client: RiskLayerClient) => client.embeddingCancel({ jobId: 'c'.repeat(32) })],
     [
       'schedule',
       (client: RiskLayerClient) => client.embeddingSchedule({ enabled: true, intervalDays: 7 }),
@@ -368,13 +403,17 @@ describe('RiskLayerClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('Operator-Calls scheitern ohne Operator-Secret sicher vor dem Fetch', async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
-    const client = new RiskLayerClient({ config, fetchImpl });
+  it.each([
+    ['refresh', (client: RiskLayerClient) => client.embeddingRefresh({ force: false })],
+    ['cancel', (client: RiskLayerClient) => client.embeddingCancel({ jobId: 'c'.repeat(32) })],
+  ])(
+    'Operator-Call %s scheitert ohne Operator-Secret sicher vor dem Fetch',
+    async (_name, call) => {
+      const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({}));
+      const client = new RiskLayerClient({ config, fetchImpl });
 
-    await expect(client.embeddingRefresh({ force: false })).rejects.toBeInstanceOf(
-      RiskLayerOperatorNotConfiguredError,
-    );
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
+      await expect(call(client)).rejects.toBeInstanceOf(RiskLayerOperatorNotConfiguredError);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
 });

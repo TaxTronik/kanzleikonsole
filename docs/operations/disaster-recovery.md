@@ -189,9 +189,10 @@ Bei Bruch zeigt die CLI die genaue Audit-ID und den Grund.
 `./taxtronik backup-full` erzeugt einen gemeinsamen Recovery Point: Während
 App, Worker und n8n gestoppt sind, werden beide Postgres-Datenbanken und die
 sichtbaren Bucket-Bytes gesichert; danach folgen Cold-Snapshots von
-`seaweed_data`, `redis_data` und `n8n_data`. Die gesamte Nutzlast einschließlich
-`.env` wird als `full-backup.tar.age` verschlüsselt. Daneben liegen nur das
-Ed25519-signierte SHA-256-Manifest und seine Signatur.
+`seaweed_data`, `redis_data` und `n8n_data`. Beim verwalteten Traefik-Weg kommt
+das kurz gestoppte ACME-Volume hinzu. Die gesamte Nutzlast einschließlich `.env`
+wird als `full-backup.tar.age` verschlüsselt. Daneben liegen nur das Ed25519-
+signierte SHA-256-Manifest und seine Signatur.
 
 Auf einem frischen, isolierten Restore-System (Produktiv-`.env` ist noch nicht
 nötig):
@@ -203,7 +204,8 @@ nötig):
 ```
 
 `backup-decrypt` verweigert nicht-leere Ziele, prüft vorab Signatur und alle
-Hashes und testet anschließend die drei Volume-TARs strukturell. Danach enthält
+Hashes und testet anschließend die Pflicht-Volume-TARs sowie ein vorhandenes
+Traefik-ACME-TAR strukturell. Danach enthält
 `/restore/<id>` unter anderem:
 
 ```text
@@ -214,6 +216,7 @@ volumes/
   seaweedfs-data.tar.gz         # inkl. Versionen/Delete Marker/Lock-Metadaten
   redis-data.tar.gz
   n8n-data.tar.gz
+  traefik-acme.tar.gz             # nur bei DEPLOYMENT_METHOD=traefik
 ```
 
 Die Named Volumes ausschließlich in einer **leeren isolierten Installation**
@@ -229,7 +232,8 @@ docker run --rm \
   sh -ec 'test -z "$(ls -A /target)"; tar -xzf /backup/seaweedfs-data.tar.gz -C /target'
 ```
 
-Für `redis-data.tar.gz` und `n8n-data.tar.gz` analog. Anschließend
+Für `redis-data.tar.gz`, `n8n-data.tar.gz` und – falls vorhanden –
+`traefik-acme.tar.gz` analog. Anschließend
 Postgres-Infrastruktur mit der wiederhergestellten `.env` starten, den
 TaxTronik-Dump über `./taxtronik restore --file … --target-url …` und den
 n8n-Dump per `pg_restore --single-transaction --exit-on-error` einspielen.
@@ -499,6 +503,7 @@ N−1-Code.
 | `seaweed_data`       | GoBD-/GwG-Objekte inkl. Store-Metadaten        | Cold-Volume-Snapshot im `backup-full`; Byte-Export zusätzlich |
 | `n8n_data`           | n8n-Config inkl. `encryptionKey`               | Cold-Volume-Snapshot im gleichen `backup-full`                |
 | `redis_data`         | BullMQ-Queues (AOF)                            | Cold-Volume-Snapshot im gleichen `backup-full`                |
+| `traefik_acme`       | ACME-Konto und TLS-Zertifikate                 | bei verwaltetem Traefik im gleichen `backup-full`             |
 | `clamav_data`        | Virensignaturen                                | bewusst NICHT gesichert (Auto-Download)                       |
 | `eric_logs`          | ERiC-Protokolle (Lizenzpflicht)                | Volume-Snapshot beim Betreiber                                |
 

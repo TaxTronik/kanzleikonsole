@@ -27,7 +27,7 @@ Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 | Storage     | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit                 |
 | Jobs        | BullMQ Worker, Redis                                                  |
 | Workflows   | n8n für Reminder, Kommunikation und Cron-Automation                   |
-| Risk / TCMS | optionale on-prem Risk-Layer-Engine (`/v1/*`)                         |
+| Risk / TCMS | optionales on-prem Signal (`/v1/*`, historische `RISK_LAYER_*`-Namen) |
 | Deploy      | Docker Compose, On-Premise, Reverse Proxy davor                       |
 
 ## Entwicklung
@@ -85,10 +85,11 @@ Nützliche lokale Dienste:
 | SeaweedFS Master | <http://localhost:9333> |
 | SeaweedFS Filer  | <http://localhost:8888> |
 
-Optionaler Risk-Layer lokal:
+Optionales Signal lokal/nativ:
 
 ```bash
 # App laeuft direkt auf demselben Host:
+SIGNAL_DEPLOYMENT=external
 RISK_LAYER_URL=http://127.0.0.1:8000
 RISK_LAYER_TOKEN=<mindestens-32-zeichen>
 ```
@@ -104,6 +105,12 @@ als App-Container selbst interpretiert, nicht als Host. Im Compose-Stack mit
 Risk-Layer-Profil deshalb `RISK_LAYER_URL=http://risk-layer:8000` verwenden.
 Bei einer separat auf dem Host laufenden Engine eine interne Adresse nutzen,
 die aus dem `taxtronik-app`-Container erreichbar ist.
+
+Im Produktions-Deploy entscheidet `SIGNAL_DEPLOYMENT` über die Verantwortung:
+`managed` lässt TaxTronik ein versioniertes CPU-Komplett-Image installieren und
+aktualisieren; `external` bindet eine native/GPU- oder anderweitig betriebene
+Signal-Instanz ausschließlich per API an. Im externen Modus führt TaxTronik
+garantiert keinen Pull, Start, Stop oder Update für Signal aus.
 
 Reset:
 
@@ -130,8 +137,15 @@ hostseitige Klartext-Konfigurationskopie mehr.
 Erstinstall (eine Kanzlei, ein Server, ein Kommando bis zur laufenden App):
 
 ```bash
-./taxtronik bootstrap   # Prod-.env + Secrets, Infra, Images, Migration, Tenant + Admin
+./taxtronik bootstrap   # Betriebsweg wählen, bestätigen, dann vollständig installieren
 ```
+
+Der Assistent bietet eine gesunde Standardmethode für bestehende Server mit
+vorhandenem Reverse-Proxy und einen bewusst streng gesperrten 1-Klick-Weg mit
+Traefik/Let's Encrypt für **komplett leere** Linux-/Docker-Maschinen. Er fragt
+Version, Domains, Admin/Kanzlei, SMTP und Signal ab, zeigt vor jeder Änderung
+eine Zusammenfassung und verlangt eine wörtliche Bestätigung. Details und
+Voraussetzungen: [Erstinstallation](docs/operations/initial-deploy.md).
 
 Im Normalfall danach:
 
@@ -233,18 +247,20 @@ N8N_BIND=127.0.0.1
 # Workflow in Administration → Einstellungen → n8n-Automatisierung gepflegt:
 # N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
 
-# Optional: Risk-Layer / TCMS
+# Optional: Signal / TCMS. Der interaktive Deploy fragt den Modus ab.
+# managed: TaxTronik zieht/aktualisiert ein getestetes, self-contained CPU-Image.
+SIGNAL_DEPLOYMENT=managed
+SIGNAL_IMAGE=auto
 RISK_LAYER_URL=http://risk-layer:8000
-# Alternativ, wenn die App nicht im Container laeuft oder der Host aus dem
-# App-Container ueber diese Adresse erreichbar ist:
-# RISK_LAYER_URL=http://127.0.0.1:8000
-# oder interne IP:
-# RISK_LAYER_URL=http://10.10.0.42:8000
+# Bearer- und Operator-Token werden im managed-Modus getrennt generiert.
 RISK_LAYER_TOKEN=...
-# Eigenes Secret für Statusverwaltung, Wochenplan und manuellen Neuaufbau:
 RISK_LAYER_OPERATOR_TOKEN=...
-# Verifiziertes Signal-Festwissen mit catalog/, corpus/ und models/bge-m3/:
-RISK_LAYER_FESTWISSEN_DIR=/opt/kanzleikonsole/signal/current
+
+# Alternativ: native/GPU-Installation oder anderweitig betriebenes Signal.
+# TaxTronik nutzt dann nur die API und führt niemals Signal-Updates aus:
+# SIGNAL_DEPLOYMENT=external
+# SIGNAL_IMAGE=
+# RISK_LAYER_URL=http://10.10.0.42:8000
 
 SMTP_HOST=mail.example.de
 SMTP_PORT=587

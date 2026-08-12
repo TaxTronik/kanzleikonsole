@@ -67,11 +67,14 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
    Ein Mandant kann und muss zunächst inaktiv angelegt werden; die Freigabe
    folgt aus einem verifizierten `gwg_check`.
 
-7. **Risk-Layer als internes Backend** — die TCMS-/Subsumtions-Engine ist opt-in,
-   zustandslos und wird über `RISK_LAYER_URL` + Bearer-Token angesprochen. Diese
-   URL ist Operator-Konfiguration und darf Docker-Service-DNS, Loopback oder eine
-   interne IP sein; nutzerkonfigurierbare externe Fetches bleiben weiterhin beim
-   zentralen SSRF-Guard.
+7. **Signal als internes Backend** — die TCMS-/Subsumtions-Engine ist opt-in und
+   wird über die historisch stabilen Variablen `RISK_LAYER_URL` + Bearer-Token
+   angesprochen. `SIGNAL_DEPLOYMENT` trennt den von TaxTronik verwalteten,
+   self-contained CPU-Container strikt von extern/nativ betriebenen GPU-/ROCm-
+   Instanzen, deren Lifecycle TaxTronik niemals verändert. Die URL darf
+   Docker-Service-DNS, Loopback oder eine interne IP sein;
+   nutzerkonfigurierbare externe Fetches bleiben weiterhin beim zentralen
+   SSRF-Guard.
 
 8. **Drei Stufen im Subsumtions-Space** — der Zugriff auf eine Analyse ist
    abgestuft, durchgesetzt serverseitig in jeder Server Action (nicht durch

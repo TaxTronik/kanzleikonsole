@@ -50,6 +50,9 @@ infra/compose/.volumes/
 
 # Setup-gerenderte Config-Dateien (enthalten Secrets aus .env)
 infra/scripts/seaweedfs-s3.generated.json
+# Aus der bestätigten Initialkonfiguration erzeugte Traefik-Routen (keine
+# Secrets, aber installationsspezifische Hostnamen).
+/.taxtronik.traefik-dynamic.yml
 
 # S-4: Lizenz-Private-Keys (siehe scripts/license-keygen.ts).
 licensing-private-*.pem

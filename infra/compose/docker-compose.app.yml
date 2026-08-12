@@ -110,7 +110,7 @@ services:
       # und Compose-Profil `risk-layer`.
       RISK_LAYER_URL: ${RISK_LAYER_URL:-}
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
-      # Getrenntes Secret für Embedding-Refresh/-Zeitplan (kein Analyse-Token).
+      # Getrenntes Secret für Embedding-Refresh/-Abbruch/-Zeitplan (kein Analyse-Token).
       RISK_LAYER_OPERATOR_TOKEN: ${RISK_LAYER_OPERATOR_TOKEN:-}
       # ELSTER / eric-bridge — opt-in (Muster Risk-Layer). Leer => Modul
       # unsichtbar. Aktivieren nur mit ELSTER_BRIDGE_URL, ELSTER_BRIDGE_TOKEN
@@ -365,16 +365,15 @@ services:
   # Stack MIT Engine:
   #   docker compose --profile risk-layer -f docker-compose.yml -f docker-compose.app.yml up -d
   #
-  # GPU (optional, Embedding-Schicht): das Image baut sonst auf CPU. Für ROCm/
-  # Vulkan-Passthrough zusätzlich (Host-abhängig) freischalten:
-  #   devices:
-  #     - /dev/dri:/dev/dri
-  #     - /dev/kfd:/dev/kfd          # ROCm
-  #   und RISK_LAYER_EMB_DEVICE=cuda (bzw. cuda:0) setzen.
+  # Das verwaltete Release ist bewusst der portable CPU-Pfad. GPU-spezifische
+  # native/extern verwaltete Signal-Instanzen bleiben über RISK_LAYER_URL
+  # vollständig unterstützt, ohne dass TaxTronik deren Updates übernimmt.
   # ===========================================================================
   risk-layer:
     <<: [*hardening, *logging]
-    image: ${RISK_LAYER_IMAGE:-taxtronik/risk-layer:latest}
+    # Versionierter, self-contained Signal-Release. Runtime, Graph, Katalog und
+    # manifestiertes Offline-Modell sind gemeinsam gebunden; kein `latest`.
+    image: ${SIGNAL_IMAGE:-git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0}
     container_name: taxtronik-risk-layer
     restart: unless-stopped
     profiles: ['risk-layer']
@@ -382,9 +381,8 @@ services:
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=512m,mode=1777
     init: true
-    # Graph, Katalog und das manifestierte Offline-Modell stammen gemeinsam aus
-    # einem verifizierten Signal-Festwissen-Release. Relative Defaults im Image
-    # würden sonst auf /app zeigen und den read-only Release-Mount verfehlen.
+    # Graph, Katalog und das manifestierte Offline-Modell liegen gemeinsam im
+    # read-only /release-Layer des geprüften Images.
     working_dir: /release
     command:
       - python
@@ -424,15 +422,7 @@ services:
       HF_HUB_OFFLINE: '1'
       TRANSFORMERS_OFFLINE: '1'
     volumes:
-      # Atomar installiertes, geprüftes Festwissen (Graph, Katalog und lokales
-      # BGE-M3-Modell). Docker darf bei einem Tippfehler kein leeres Verzeichnis
-      # anlegen: ein fehlender Release-Pfad muss den Start sichtbar abbrechen.
-      - type: bind
-        source: ${RISK_LAYER_FESTWISSEN_DIR:-/opt/kanzleikonsole/signal/current}
-        target: /release
-        read_only: true
-        bind:
-          create_host_path: false
+      # Nur veränderlicher Operatorstate bleibt außerhalb des Release-Images.
       - risk_layer_definitionen:/app/definitionen
       - risk_layer_embedding_state:/state/embedding
       - risk_layer_embedding_cache:/cache

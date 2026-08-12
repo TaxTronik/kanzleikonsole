@@ -31,6 +31,7 @@ export type {
 
 export type {
   AnalyseResponse,
+  EmbeddingCancelResponse,
   EmbeddingIndexStatus,
   EmbeddingJobState,
   EmbeddingJobStatus,
@@ -56,6 +57,7 @@ export type {
   OpaqueObject,
 } from './schema';
 export {
+  EmbeddingCancelResponseSchema,
   EmbeddingIndexStatusSchema,
   EmbeddingJobStateSchema,
   EmbeddingJobStatusSchema,

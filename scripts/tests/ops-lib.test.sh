@@ -126,7 +126,9 @@ run_doctor_with_env() {
     unset AUTH_SECRET SECRET_BOX_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_VERSION NEXTAUTH_URL
-    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR SMTP_HOST SMTP_PORT
+    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED SIGNAL_DEPLOYMENT SIGNAL_IMAGE
+    unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL TRAEFIK_EXPECTED_IP
+    unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE SMTP_HOST SMTP_PORT
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
     ENVFILE="$env_file"
     # Unit-Test darf nicht vom zufällig vorhandenen lokalen Docker-Volume
@@ -183,10 +185,211 @@ test_doctor_rejects_disabled_auth_host_trust() {
   pass "doctor rejects disabled Auth.js host trust in production"
 }
 
+test_doctor_accepts_complete_traefik_contract() {
+  local env_file="$TMP_DIR/traefik-doctor.env" out="$TMP_DIR/traefik-doctor.out"
+  write_prod_env "$env_file"
+  {
+    printf 'DEPLOYMENT_METHOD=traefik\n'
+    printf 'PORTAL_PUBLIC_URL=https://portal.example.de\n'
+    printf 'STAFF_COOKIE_DOMAIN=kanzlei.example.de\n'
+    printf 'PORTAL_COOKIE_DOMAIN=portal.example.de\n'
+    printf 'TRAEFIK_ACME_EMAIL=admin@example.de\n'
+    printf 'TRAEFIK_EXPECTED_IP=203.0.113.10\n'
+  } >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor rejected a complete Traefik contract"
+  }
+  assert_contains "$out" "traefik (verwaltetes HTTPS)"
+  assert_contains "$out" "OK       TRAEFIK_ACME_EMAIL"
+  assert_contains "$out" "OK       TRAEFIK_EXPECTED_IP"
+  pass "doctor accepts complete managed Traefik contract"
+}
+
+test_doctor_rejects_unsafe_traefik_proxy_trust() {
+  local env_file="$TMP_DIR/traefik-trust.env" out="$TMP_DIR/traefik-trust.out"
+  write_prod_env "$env_file"
+  {
+    printf 'DEPLOYMENT_METHOD=traefik\n'
+    printf 'PORTAL_PUBLIC_URL=https://portal.example.de\n'
+    printf 'STAFF_COOKIE_DOMAIN=kanzlei.example.de\n'
+    printf 'PORTAL_COOKIE_DOMAIN=portal.example.de\n'
+    printf 'TRAEFIK_ACME_EMAIL=admin@example.de\n'
+    printf 'TRAEFIK_EXPECTED_IP=203.0.113.10\n'
+  } >>"$env_file"
+  set_env_file_value "$env_file" TRUST_PROXY_REQUIRED false
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted Traefik without required proxy trust contract"
+  fi
+  assert_contains "$out" "Traefik-Pfad braucht exakt true"
+  pass "doctor rejects Traefik without explicit proxy trust"
+}
+
+test_initial_setup_confirmation_and_atomic_plan_application() {
+  local plan_root="$TMP_DIR/setup-plan" env_file="$TMP_DIR/setup-plan.env"
+  mkdir -p "$plan_root"
+  : >"$plan_root/.env.example"
+
+  if confirm_initial_setup_plan "LEERE MASCHINE INSTALLIEREN" <<<"ja" >/dev/null; then
+    test_fail "weak one-click confirmation was accepted"
+  fi
+  confirm_initial_setup_plan "LEERE MASCHINE INSTALLIEREN" \
+    <<<"LEERE MASCHINE INSTALLIEREN" >/dev/null || test_fail "exact setup confirmation was rejected"
+  [[ ! -e "$env_file" ]] || test_fail "confirmation unexpectedly wrote configuration"
+
+  (
+    ROOT="$plan_root"
+    ENVFILE="$env_file"
+    _SETUP_METHOD="traefik"
+    _SETUP_RELEASE_VERSION="1.2.3"
+    _SETUP_STAFF_HOST="staff.example.de"
+    _SETUP_PORTAL_HOST="portal.example.de"
+    _SETUP_ACME_EMAIL="admin@example.de"
+    _SETUP_EXPECTED_IP="203.0.113.10"
+    _SETUP_SMTP_HOST="smtp.example.de"
+    _SETUP_SMTP_PORT="587"
+    _SETUP_SMTP_FROM="TaxTronik <noreply@example.de>"
+    _SETUP_SMTP_USER="smtp-user"
+    _SETUP_SMTP_PASSWORD='pa\ss&word|safe'
+    _SETUP_SIGNAL_MODE="disabled"
+    _SETUP_SIGNAL_URL=""
+    _SETUP_SIGNAL_TOKEN=""
+    _SETUP_SIGNAL_OPERATOR_TOKEN=""
+    _SETUP_TENANT_NAME="Testkanzlei"
+    _SETUP_ADMIN_EMAIL="admin@example.de"
+    apply_initial_setup_plan
+  )
+  assert_key_equals "$env_file" DEPLOYMENT_METHOD traefik
+  assert_key_equals "$env_file" NEXTAUTH_URL https://staff.example.de
+  assert_key_equals "$env_file" PORTAL_PUBLIC_URL https://portal.example.de
+  assert_key_equals "$env_file" TRUST_PROXY_REQUIRED true
+  assert_key_equals "$env_file" SMTP_PASSWORD 'pa\ss&word|safe'
+  [[ "$(file_mode "$env_file")" == "600" ]] || test_fail "planned .env mode is not 0600"
+  pass "initial setup applies nothing before exact confirmation and preserves values safely"
+}
+
+test_one_click_blank_host_guard_rejects_existing_containers() {
+  local out="$TMP_DIR/blank-host-guard.out"
+  if (
+    STATE="$TMP_DIR/no-state"
+    MIGRATION_PENDING="$TMP_DIR/no-migration"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/no-restore"
+    uname() { printf 'Linux\n'; }
+    ss() { :; }
+    getent() { :; }
+    docker() { printf 'existing-container-id\n'; }
+    assert_blank_host_for_traefik
+  ) >"$out" 2>&1; then
+    test_fail "one-click blank-host guard accepted existing Docker containers"
+  fi
+  assert_contains "$out" "komplett leere Maschine"
+  pass "one-click path refuses non-empty Docker hosts"
+}
+
+test_one_click_blank_host_guard_rejects_unreachable_docker() {
+  local out="$TMP_DIR/blank-host-docker.out"
+  if (
+    STATE="$TMP_DIR/no-state"
+    MIGRATION_PENDING="$TMP_DIR/no-migration"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/no-restore"
+    uname() { printf 'Linux\n'; }
+    ss() { :; }
+    getent() { :; }
+    docker() { return 1; }
+    assert_blank_host_for_traefik
+  ) >"$out" 2>&1; then
+    test_fail "one-click blank-host guard accepted an unreachable Docker daemon"
+  fi
+  assert_contains "$out" "Docker-Daemon ist nicht erreichbar"
+  pass "one-click path fails closed when Docker emptiness cannot be proven"
+}
+
+test_one_click_ip_validation_accepts_only_real_ip_addresses() {
+  valid_ip_address 203.0.113.42 || test_fail "valid IPv4 address was rejected"
+  valid_ip_address 2001:db8::42 || test_fail "valid IPv6 address was rejected"
+  if valid_ip_address 999.0.0.1 || valid_ip_address '::::'; then
+    test_fail "invalid public IP syntax was accepted"
+  fi
+  pass "one-click validates IPv4 and IPv6 with the runtime parser"
+}
+
+test_traefik_dynamic_route_and_compose_contract_are_socketless() {
+  local env_file="$TMP_DIR/traefik-render.env" dynamic="$TMP_DIR/traefik-dynamic.yml"
+  {
+    printf 'DEPLOYMENT_METHOD=traefik\n'
+    printf 'NEXTAUTH_URL=https://staff.example.de\n'
+    printf 'PORTAL_PUBLIC_URL=https://portal.example.de\n'
+    printf 'TRAEFIK_ACME_EMAIL=admin@example.de\n'
+  } >"$env_file"
+  (
+    ENVFILE="$env_file"
+    TRAEFIK_DYNAMIC="$dynamic"
+    unset DEPLOYMENT_METHOD NEXTAUTH_URL PORTAL_PUBLIC_URL TRAEFIK_ACME_EMAIL
+    render_traefik_dynamic_config
+  )
+  assert_contains "$dynamic" 'rule: "Host(`staff.example.de`)"'
+  assert_contains "$dynamic" 'rule: "Host(`portal.example.de`)"'
+  assert_contains "$dynamic" 'url: "http://app:3000"'
+  [[ "$(file_mode "$dynamic")" == "600" ]] || test_fail "Traefik dynamic config mode is not 0600"
+
+  local overlay="$REPO_ROOT/infra/compose/docker-compose.traefik.yml"
+  assert_contains "$overlay" "traefik:v3.7.9@sha256:"
+  assert_contains "$overlay" "--providers.file.filename=/etc/traefik/dynamic.yml"
+  assert_contains "$overlay" "--providers.file.watch=true"
+  assert_contains "$overlay" "'80:80'"
+  assert_contains "$overlay" "'443:443'"
+  assert_contains "$overlay" "max-size: '10m'"
+  assert_contains "$overlay" "max-file: '5'"
+  assert_not_contains "$overlay" "docker.sock"
+  assert_not_contains "$overlay" "providers.docker"
+  pass "managed Traefik uses pinned socketless file-provider contract"
+}
+
+test_traefik_lifecycle_is_part_of_activation() {
+  local calls="$TMP_DIR/traefik-lifecycle.calls"
+  : >"$calls"
+  (
+    deployment_method() { printf 'traefik'; }
+    assert_writer_start_authorized() { :; }
+    run_backup_dir_init() { :; }
+    compose() { printf 'compose %s\n' "$*" >>"$calls"; }
+    start_apps
+    provide_traefik_for_deploy
+  ) >/dev/null
+  assert_contains "$calls" "compose up -d --force-recreate --no-deps app worker n8n traefik"
+  assert_contains "$calls" "compose pull traefik"
+  pass "managed Traefik is pulled and activated with the application"
+}
+
+test_full_backup_snapshots_managed_traefik_acme_volume() {
+  local calls="$TMP_DIR/traefik-backup.calls"
+  : >"$calls"
+  (
+    deployment_method() { printf 'traefik'; }
+    container_named_volume() {
+      case "$2" in
+        /data) [[ "$1" == "taxtronik-seaweedfs" ]] && printf 'seaweed-volume' || printf 'redis-volume' ;;
+        /home/node/.n8n) printf 'n8n-volume' ;;
+        /letsencrypt) printf 'traefik-acme-volume' ;;
+      esac
+    }
+    compose() { printf 'compose %s\n' "$*" >>"$calls"; }
+    snapshot_named_volume() { printf 'snapshot %s %s\n' "$1" "$3" >>"$calls"; }
+    restart_backup_infra() { printf 'restart infra\n' >>"$calls"; }
+    run_cold_volume_snapshots "$TMP_DIR/traefik-backup"
+  )
+  assert_contains "$calls" "compose --infra stop seaweedfs redis"
+  assert_contains "$calls" "compose stop traefik"
+  assert_contains "$calls" "snapshot traefik-acme-volume traefik-acme.tar.gz"
+  assert_contains "$calls" "restart infra"
+  pass "full backup includes managed Traefik ACME state"
+}
+
 test_doctor_accepts_internal_risk_layer_without_fetch_allowlist() {
   local env_file="$TMP_DIR/risk.env" out="$TMP_DIR/doctor-risk.out"
   write_prod_env "$env_file"
   {
+    printf 'SIGNAL_DEPLOYMENT=external\n'
     printf 'RISK_LAYER_URL=http://10.10.0.42:8000\n'
     printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
     printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
@@ -226,43 +429,38 @@ test_doctor_warns_for_missing_risk_layer_operator_token_without_failing() {
   pass "doctor warns for a missing Risk-Layer operator token without hard failure"
 }
 
-test_doctor_rejects_incomplete_local_signal_release() {
-  local env_file="$TMP_DIR/risk-local-incomplete.env" out="$TMP_DIR/doctor-risk-local-incomplete.out"
-  local release_dir="$TMP_DIR/signal-release-incomplete"
-  mkdir -p "$release_dir/catalog" "$release_dir/corpus"
-  : >"$release_dir/catalog/begriffe.yaml"
-  : >"$release_dir/corpus/graph.sqlite"
+test_doctor_accepts_self_contained_managed_signal() {
+  local env_file="$TMP_DIR/signal-managed.env" out="$TMP_DIR/doctor-signal-managed.out"
   write_prod_env "$env_file"
   {
+    printf 'SIGNAL_DEPLOYMENT=managed\n'
+    printf 'SIGNAL_IMAGE=registry.example/taxtronik/signal:v1.2.3\n'
     printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
     printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
     printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
-    printf 'RISK_LAYER_FESTWISSEN_DIR=%s\n' "$release_dir"
   } >>"$env_file"
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted a local Signal release without the offline model"
-  fi
-  assert_contains "$out" "Embedding-Steuerung braucht models/bge-m3/model-manifest.json"
-  pass "doctor rejects an incomplete local Signal embedding release"
+  run_doctor_with_env "$env_file" "$out" || test_fail "doctor rejected a self-contained managed Signal release"
+  assert_contains "$out" "OK       SIGNAL_IMAGE"
+  assert_not_contains "$out" "RISK_LAYER_FESTWISSEN_DIR"
+  pass "doctor accepts managed Signal without a host release mount"
 }
 
-test_doctor_accepts_complete_local_signal_release() {
-  local env_file="$TMP_DIR/risk-local-complete.env" out="$TMP_DIR/doctor-risk-local-complete.out"
-  local release_dir="$TMP_DIR/signal-release-complete"
-  mkdir -p "$release_dir/catalog" "$release_dir/corpus" "$release_dir/models/bge-m3"
-  : >"$release_dir/catalog/begriffe.yaml"
-  : >"$release_dir/corpus/graph.sqlite"
-  printf '{}\n' >"$release_dir/models/bge-m3/model-manifest.json"
+test_doctor_rejects_managed_signal_latest_image() {
+  local env_file="$TMP_DIR/signal-latest.env" out="$TMP_DIR/doctor-signal-latest.out"
   write_prod_env "$env_file"
   {
+    printf 'SIGNAL_DEPLOYMENT=managed\n'
+    printf 'SIGNAL_IMAGE=registry.example/taxtronik/signal:latest\n'
     printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
     printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
     printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
-    printf 'RISK_LAYER_FESTWISSEN_DIR=%s\n' "$release_dir"
   } >>"$env_file"
-  run_doctor_with_env "$env_file" "$out" || test_fail "doctor rejected a complete local Signal release"
-  assert_contains "$out" "OK       RISK_LAYER_FESTWISSEN_DIR"
-  pass "doctor accepts a complete local Signal embedding release"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted a mutable latest Signal image"
+  fi
+  assert_contains "$out" "SIGNAL_IMAGE"
+  assert_contains "$out" "versionierten vX.Y.Z-Tag oder sha256-Digest"
+  pass "doctor rejects mutable latest for managed Signal"
 }
 
 test_doctor_rejects_short_risk_layer_operator_token() {
@@ -297,15 +495,15 @@ test_doctor_rejects_identical_risk_layer_tokens() {
   pass "doctor rejects identical Risk-Layer tokens"
 }
 
-test_doctor_rejects_operator_token_without_risk_layer_base_config() {
+test_doctor_rejects_signal_values_when_disabled() {
   local env_file="$TMP_DIR/risk-operator-only.env" out="$TMP_DIR/doctor-risk-operator-only.out"
   write_prod_env "$env_file"
   printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n' >>"$env_file"
   if run_doctor_with_env "$env_file" "$out"; then
     test_fail "doctor accepted an operator token without Risk-Layer base config"
   fi
-  assert_contains "$out" "Operator-Token ohne Basiskonfiguration"
-  pass "doctor rejects an operator token without Risk-Layer base config"
+  assert_contains "$out" "bei disabled muessen Signal-Werte leer sein"
+  pass "doctor rejects Signal credentials while Signal is disabled"
 }
 
 test_configure_risk_layer_generates_operator_token() {
@@ -313,15 +511,20 @@ test_configure_risk_layer_generates_operator_token() {
   : >"$env_file"
   (
     ENVFILE="$env_file"
-    RISK_LAYER_URL="http://risk-layer:8000"
+    SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_IMAGE="auto"
+    RISK_LAYER_URL=""
     RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
     RISK_LAYER_OPERATOR_TOKEN=""
     rand_b64() { printf 'generated-operator-token-with-at-least-32-chars'; }
     configure_risk_layer_interactive
   )
+  assert_key_equals "$env_file" SIGNAL_DEPLOYMENT managed
+  assert_key_equals "$env_file" SIGNAL_IMAGE auto
+  assert_key_equals "$env_file" RISK_LAYER_URL "http://risk-layer:8000"
   assert_key_equals "$env_file" RISK_LAYER_OPERATOR_TOKEN "generated-operator-token-with-at-least-32-chars"
-  assert_key_equals "$env_file" RISK_LAYER_FESTWISSEN_DIR "/opt/kanzleikonsole/signal/current"
-  pass "Risk-Layer setup generates a secure operator-token default"
+  assert_key_equals "$env_file" RISK_LAYER_FESTWISSEN_DIR ""
+  pass "managed Signal setup generates URL and separate secrets"
 }
 
 test_configure_external_risk_layer_stays_read_only_without_coordinated_token() {
@@ -329,6 +532,8 @@ test_configure_external_risk_layer_stays_read_only_without_coordinated_token() {
   : >"$env_file"
   (
     ENVFILE="$env_file"
+    SIGNAL_DEPLOYMENT="external"
+    SIGNAL_IMAGE="auto"
     RISK_LAYER_URL="http://10.10.0.42:8000"
     RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
     RISK_LAYER_OPERATOR_TOKEN=""
@@ -336,18 +541,84 @@ test_configure_external_risk_layer_stays_read_only_without_coordinated_token() {
     configure_risk_layer_interactive
   )
   assert_key_equals "$env_file" RISK_LAYER_OPERATOR_TOKEN ""
+  assert_key_equals "$env_file" SIGNAL_DEPLOYMENT external
+  assert_key_equals "$env_file" SIGNAL_IMAGE ""
   assert_key_equals "$env_file" RISK_LAYER_FESTWISSEN_DIR ""
   pass "external Risk-Layer remains read-only without a coordinated operator token"
 }
 
-test_signal_embedding_compose_contract_is_release_bound_and_offline() {
+test_managed_signal_requires_distinct_generated_tokens() {
+  local env_file="$TMP_DIR/risk-colliding-generated-secrets.env"
+  : >"$env_file"
+  if (
+    ENVFILE="$env_file"
+    SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_IMAGE="auto"
+    RISK_LAYER_URL=""
+    RISK_LAYER_TOKEN="same-generated-secret-with-at-least-thirty-two-chars"
+    RISK_LAYER_OPERATOR_TOKEN=""
+    rand_b64() { printf 'same-generated-secret-with-at-least-thirty-two-chars'; }
+    configure_risk_layer_interactive
+  ) >/dev/null 2>&1; then
+    test_fail "managed Signal accepted identical generated trust-boundary tokens"
+  fi
+  pass "managed Signal fails closed when separate secrets cannot be generated"
+}
+
+test_external_signal_lifecycle_never_touches_docker() {
+  (
+    SIGNAL_DEPLOYMENT="external"
+    RISK_LAYER_URL="http://10.10.0.42:8000"
+    compose() { test_fail "external Signal must never invoke compose: $*"; }
+    docker() { test_fail "external Signal must never invoke docker: $*"; }
+    provide_signal_for_deploy
+    start_signal_for_deploy
+  ) >/dev/null
+  pass "external Signal is never installed, pulled or restarted by TaxTronik"
+}
+
+test_legacy_native_signal_is_inferred_as_external() {
+  local mode
+  mode="$({
+    SIGNAL_DEPLOYMENT=""
+    RISK_LAYER_URL="http://10.10.0.42:8000"
+    signal_deployment_mode
+  })"
+  [[ "$mode" == "external" ]] || test_fail "legacy native Signal was inferred as $mode"
+  pass "an existing native Signal URL never grants TaxTronik lifecycle ownership"
+}
+
+test_managed_signal_lifecycle_uses_pinned_release() {
+  local calls="$TMP_DIR/managed-signal-lifecycle.calls"
+  : >"$calls"
+  (
+    SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_IMAGE="auto"
+    RISK_LAYER_URL="http://risk-layer:8000"
+    RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
+    RISK_LAYER_OPERATOR_TOKEN="operator-token-with-at-least-thirty-two-chars"
+    compose() { printf 'compose %s\n' "$*" >>"$calls"; }
+    docker() {
+      printf 'docker %s\n' "$*" >>"$calls"
+      [[ "${1:-}" == "inspect" ]] && printf '%s\n' "$SIGNAL_MANAGED_IMAGE_DEFAULT"
+      return 0
+    }
+    provide_signal_for_deploy
+    start_signal_for_deploy
+  ) >/dev/null
+  assert_contains "$calls" "compose --profile risk-layer pull risk-layer"
+  assert_contains "$calls" "docker run --rm --entrypoint python $SIGNAL_MANAGED_IMAGE_DEFAULT"
+  assert_contains "$calls" "compose --profile risk-layer up -d --force-recreate --no-deps --wait --wait-timeout 300 risk-layer"
+  pass "managed Signal pulls, validates and starts the pinned self-contained release"
+}
+
+test_signal_embedding_compose_contract_is_self_contained_and_offline() {
   local service="$TMP_DIR/risk-layer-compose-service.yml"
   sed -n '/^  risk-layer:/,/^  eric-bridge:/p' \
     "$REPO_ROOT/infra/compose/docker-compose.app.yml" >"$service"
   assert_contains "$service" "working_dir: /release"
-  assert_contains "$service" "source: \${RISK_LAYER_FESTWISSEN_DIR:-/opt/kanzleikonsole/signal/current}"
-  assert_contains "$service" "target: /release"
-  assert_contains "$service" "create_host_path: false"
+  assert_contains "$service" 'image: ${SIGNAL_IMAGE:-git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0}'
+  assert_not_contains "$service" "RISK_LAYER_FESTWISSEN_DIR"
   assert_contains "$service" "RISK_LAYER_EMBEDDING_MODEL: /release/models/bge-m3"
   assert_contains "$service" "RISK_LAYER_EMBEDDING_OFFLINE: '1'"
   assert_contains "$service" "HF_HUB_OFFLINE: '1'"
@@ -359,7 +630,7 @@ test_signal_embedding_compose_contract_is_release_bound_and_offline() {
   assert_contains "$service" "- risk_layer_embedding_cache:/cache"
   assert_not_contains "$service" "/data/katalog"
   assert_not_contains "$service" "/data/corpus"
-  pass "Signal Compose contract stays release-bound, persistent and offline"
+  pass "Signal Compose contract stays self-contained, persistent and offline"
 }
 
 set_env_file_value() {
@@ -1987,17 +2258,30 @@ test_doctor_accepts_prod_smtp
 test_doctor_rejects_mailhog
 test_doctor_rejects_loopback_mailhog_port
 test_doctor_rejects_disabled_auth_host_trust
+test_doctor_accepts_complete_traefik_contract
+test_doctor_rejects_unsafe_traefik_proxy_trust
+test_initial_setup_confirmation_and_atomic_plan_application
+test_one_click_blank_host_guard_rejects_existing_containers
+test_one_click_blank_host_guard_rejects_unreachable_docker
+test_one_click_ip_validation_accepts_only_real_ip_addresses
+test_traefik_dynamic_route_and_compose_contract_are_socketless
+test_traefik_lifecycle_is_part_of_activation
+test_full_backup_snapshots_managed_traefik_acme_volume
 test_doctor_accepts_internal_risk_layer_without_fetch_allowlist
 test_doctor_rejects_incomplete_risk_layer_pair
 test_doctor_warns_for_missing_risk_layer_operator_token_without_failing
-test_doctor_rejects_incomplete_local_signal_release
-test_doctor_accepts_complete_local_signal_release
+test_doctor_accepts_self_contained_managed_signal
+test_doctor_rejects_managed_signal_latest_image
 test_doctor_rejects_short_risk_layer_operator_token
 test_doctor_rejects_identical_risk_layer_tokens
-test_doctor_rejects_operator_token_without_risk_layer_base_config
+test_doctor_rejects_signal_values_when_disabled
 test_configure_risk_layer_generates_operator_token
 test_configure_external_risk_layer_stays_read_only_without_coordinated_token
-test_signal_embedding_compose_contract_is_release_bound_and_offline
+test_managed_signal_requires_distinct_generated_tokens
+test_external_signal_lifecycle_never_touches_docker
+test_legacy_native_signal_is_inferred_as_external
+test_managed_signal_lifecycle_uses_pinned_release
+test_signal_embedding_compose_contract_is_self_contained_and_offline
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled
 test_prune_build_cache_failure_is_non_blocking

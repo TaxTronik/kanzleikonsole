@@ -20,6 +20,8 @@ const ScheduleInputSchema = z.discriminatedUnion('enabled', [
   z.object({ enabled: z.literal(false) }),
   z.object({ enabled: z.literal(true), intervalDays: z.literal(7) }),
 ]);
+const TriggerInputSchema = z.object({ confirmed: z.literal(true) });
+const CancelInputSchema = z.object({ jobId: z.string().regex(/^[0-9a-f]{32}$/) });
 
 type EmbeddingGuard = Extract<Awaited<ReturnType<typeof staffActionGuard>>, { ok: true }>;
 type EmbeddingGuardFailure = { ok: false; error: string };
@@ -63,10 +65,18 @@ function revalidateIntegrations(): void {
   revalidatePath('/staff/admin/settings/integrations');
 }
 
-export async function triggerSignalEmbeddingAction(): Promise<SignalEmbeddingActionResult> {
+export async function triggerSignalEmbeddingAction(
+  input: unknown,
+): Promise<SignalEmbeddingActionResult> {
   try {
     const guard = await embeddingGuard();
     if (!guard.ok) return guard;
+    if (!TriggerInputSchema.safeParse(input).success) {
+      return {
+        ok: false,
+        error: 'Bestätigen Sie den ressourcenintensiven Neuaufbau ausdrücklich.',
+      };
+    }
     const accepted = await new RiskLayerClient().embeddingRefresh({ force: true });
     await withTenantContext(guard.ctx, async (tx) => {
       await evidenceService.record(tx, {
@@ -83,6 +93,42 @@ export async function triggerSignalEmbeddingAction(): Promise<SignalEmbeddingAct
     return {
       ok: true,
       message: 'Die Embedding-Aktualisierung wurde eingeplant.',
+      jobId: accepted.job_id,
+      state: accepted.state,
+    };
+  } catch (error) {
+    return embeddingFailure(error);
+  }
+}
+
+export async function cancelSignalEmbeddingAction(
+  input: unknown,
+): Promise<SignalEmbeddingActionResult> {
+  try {
+    const guard = await embeddingGuard();
+    if (!guard.ok) return guard;
+    const parsed = CancelInputSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: 'Ungültiger Embedding-Job.' };
+
+    const accepted = await new RiskLayerClient().embeddingCancel(parsed.data);
+    await withTenantContext(guard.ctx, async (tx) => {
+      await evidenceService.record(tx, {
+        tenantId: guard.tenantId,
+        actorType: 'STAFF',
+        actorId: guard.staffId,
+        action: 'risk.embedding.refresh.cancel.requested',
+        resourceType: 'signal_embedding',
+        resourceId: accepted.job_id,
+        after: { jobId: accepted.job_id, state: accepted.state },
+      });
+    });
+    revalidateIntegrations();
+    return {
+      ok: true,
+      message:
+        accepted.state === 'cancelling'
+          ? 'Der Abbruch wurde angefordert. Der aktuelle Modell-Batch kann noch kurz weiterlaufen.'
+          : 'Der Embedding-Job ist bereits beendet.',
       jobId: accepted.job_id,
       state: accepted.state,
     };

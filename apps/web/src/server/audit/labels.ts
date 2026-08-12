@@ -376,6 +376,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.los.beantragt': 'Quantenlos beantragt (QPU-Queue)',
   'risk.los.gezogen': 'Quantenlos-Stichprobe gezogen',
   'risk.embedding.refresh.triggered': 'Signal-Embedding-Aktualisierung gestartet',
+  'risk.embedding.refresh.cancel.requested':
+    'Abbruch der Signal-Embedding-Aktualisierung angefordert',
   'risk.embedding.schedule.updated': 'Signal-Embedding-Zeitplan geändert',
   'tenant.settings.quantenlos_ibm.update': 'IBM-Quantum-Zugang (Quantenlos) hinterlegt',
   'tenant.settings.quantenlos_ibm.reset': 'IBM-Quantum-Zugang (Quantenlos) entfernt',

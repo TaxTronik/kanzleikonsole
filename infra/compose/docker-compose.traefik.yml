@@ -1,0 +1,61 @@
+# =============================================================================
+# Optionaler 1-Klick-HTTPS-Einstieg für eine leere Maschine.
+#
+# Wird ausschließlich bei DEPLOYMENT_METHOD=traefik zusätzlich geladen. Die
+# dynamische Route wird nach strikter Hostnamenvalidierung von ./taxtronik nach
+# .taxtronik.traefik-dynamic.yml geschrieben. Bewusst KEIN Docker-Socket:
+# ein öffentlich erreichbarer Proxy erhält keinerlei Docker-API-Berechtigung.
+# =============================================================================
+
+services:
+  traefik:
+    image: traefik:v3.7.9@sha256:652929a140a32d7cafafb13c6cdfab5376cfeff800f51397b87b524501ed02a8
+    container_name: taxtronik-traefik
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 256m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    command:
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+      - --api.dashboard=false
+      - --ping=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.watch=true
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:?TRAEFIK_ACME_EMAIL fehlt}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --log.level=INFO
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ${TRAEFIK_DYNAMIC_CONFIG_PATH:?TRAEFIK_DYNAMIC_CONFIG_PATH fehlt}:/etc/traefik/dynamic.yml:ro
+      - traefik_acme:/letsencrypt
+    healthcheck:
+      test: ['CMD', 'traefik', 'healthcheck', '--ping']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+volumes:
+  traefik_acme:

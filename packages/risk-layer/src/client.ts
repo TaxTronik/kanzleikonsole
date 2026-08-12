@@ -20,6 +20,7 @@ import {
 import { mapAnalyse, type RiskAnalysisResult } from './mapping';
 import {
   HealthResponseSchema,
+  EmbeddingCancelResponseSchema,
   EmbeddingRefreshResponseSchema,
   EmbeddingScheduleResponseSchema,
   EmbeddingStatusResponseSchema,
@@ -36,6 +37,7 @@ import {
   OpaqueObjectSchema,
   RiskLayerErrorBodySchema,
   type HealthResponse,
+  type EmbeddingCancelResponse,
   type EmbeddingRefreshResponse,
   type EmbeddingScheduleResponse,
   type EmbeddingStatusResponse,
@@ -338,6 +340,16 @@ export class RiskLayerClient {
       operator: true,
     });
     return EmbeddingRefreshResponseSchema.parse(raw);
+  }
+
+  /** `POST /v1/embedding/cancel` — bricht genau den beobachteten Job ab. */
+  async embeddingCancel(input: { jobId: string }): Promise<EmbeddingCancelResponse> {
+    const raw = await this.request('POST', '/v1/embedding/cancel', {
+      body: { job_id: input.jobId },
+      retry: NO_RETRY,
+      operator: true,
+    });
+    return EmbeddingCancelResponseSchema.parse(raw);
   }
 
   /** `POST /v1/embedding/schedule` — konfiguriert die automatische Prüfung. */

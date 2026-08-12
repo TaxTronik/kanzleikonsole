@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
   readModules: vi.fn(),
+  embeddingCancel: vi.fn(),
   embeddingRefresh: vi.fn(),
   embeddingSchedule: vi.fn(),
   withTenantContext: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@taxtronik/config', () => ({ riskLayerConfig: m.riskLayerConfig }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@taxtronik/risk-layer', () => ({
   RiskLayerClient: class {
+    embeddingCancel = m.embeddingCancel;
     embeddingRefresh = m.embeddingRefresh;
     embeddingSchedule = m.embeddingSchedule;
   },
@@ -31,9 +33,12 @@ vi.mock('@/server/logger', () => ({ log: { error: m.logError } }));
 vi.mock('@/server/settings/modules', () => ({ readModules: m.readModules }));
 
 import {
+  cancelSignalEmbeddingAction,
   triggerSignalEmbeddingAction,
   updateSignalEmbeddingScheduleAction,
 } from '../signal-embedding-actions';
+
+const JOB_ID = 'c'.repeat(32);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -51,8 +56,14 @@ beforeEach(() => {
   m.embeddingRefresh.mockResolvedValue({
     ok: true,
     engineVersion: '1.4.0',
-    job_id: 'embedding-job-1',
+    job_id: JOB_ID,
     state: 'queued',
+  });
+  m.embeddingCancel.mockResolvedValue({
+    ok: true,
+    engineVersion: '1.4.0',
+    job_id: JOB_ID,
+    state: 'cancelling',
   });
   m.embeddingSchedule.mockResolvedValue({
     ok: true,
@@ -68,7 +79,7 @@ beforeEach(() => {
 
 describe('triggerSignalEmbeddingAction', () => {
   it('erzwingt den Refresh und auditiert erst nach Annahme durch Signal', async () => {
-    const result = await triggerSignalEmbeddingAction();
+    const result = await triggerSignalEmbeddingAction({ confirmed: true });
 
     expect(m.staffActionGuard).toHaveBeenCalledWith({ requireAdmin: true });
     expect(m.embeddingRefresh).toHaveBeenCalledWith({ force: true });
@@ -77,8 +88,8 @@ describe('triggerSignalEmbeddingAction', () => {
       expect.objectContaining({
         action: 'risk.embedding.refresh.triggered',
         resourceType: 'signal_embedding',
-        resourceId: 'embedding-job-1',
-        after: { force: true, jobId: 'embedding-job-1', state: 'queued' },
+        resourceId: JOB_ID,
+        after: { force: true, jobId: JOB_ID, state: 'queued' },
       }),
     );
     expect(m.embeddingRefresh.mock.invocationCallOrder[0]).toBeLessThan(
@@ -87,15 +98,24 @@ describe('triggerSignalEmbeddingAction', () => {
     expect(result).toEqual({
       ok: true,
       message: 'Die Embedding-Aktualisierung wurde eingeplant.',
-      jobId: 'embedding-job-1',
+      jobId: JOB_ID,
       state: 'queued',
     });
+  });
+
+  it('startet ohne ausdrückliche Bestätigung keinen Build', async () => {
+    expect(await triggerSignalEmbeddingAction({ confirmed: false })).toEqual({
+      ok: false,
+      error: 'Bestätigen Sie den ressourcenintensiven Neuaufbau ausdrücklich.',
+    });
+    expect(m.embeddingRefresh).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('gibt Engine-Fehler ohne technische Details zurück und auditiert sie nicht', async () => {
     m.embeddingRefresh.mockRejectedValue(new Error('connect ECONNREFUSED 10.1.2.3:8000'));
 
-    const result = await triggerSignalEmbeddingAction();
+    const result = await triggerSignalEmbeddingAction({ confirmed: true });
 
     expect(result).toEqual({
       ok: false,
@@ -104,6 +124,38 @@ describe('triggerSignalEmbeddingAction', () => {
     expect(JSON.stringify(result)).not.toContain('10.1.2.3');
     expect(m.evidenceRecord).not.toHaveBeenCalled();
     expect(m.logError).toHaveBeenCalledOnce();
+  });
+});
+
+describe('cancelSignalEmbeddingAction', () => {
+  it('fordert den kooperativen Abbruch für genau den aktiven Job an und auditiert ihn', async () => {
+    const result = await cancelSignalEmbeddingAction({ jobId: JOB_ID });
+
+    expect(m.embeddingCancel).toHaveBeenCalledWith({ jobId: JOB_ID });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      { marker: 'tx' },
+      expect.objectContaining({
+        action: 'risk.embedding.refresh.cancel.requested',
+        resourceId: JOB_ID,
+        after: { jobId: JOB_ID, state: 'cancelling' },
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      message:
+        'Der Abbruch wurde angefordert. Der aktuelle Modell-Batch kann noch kurz weiterlaufen.',
+      jobId: JOB_ID,
+      state: 'cancelling',
+    });
+  });
+
+  it('weist fremde oder veraltete Job-IDs vor dem Operator-Aufruf zurück', async () => {
+    expect(await cancelSignalEmbeddingAction({ jobId: 'falsch' })).toEqual({
+      ok: false,
+      error: 'Ungültiger Embedding-Job.',
+    });
+    expect(m.embeddingCancel).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 });
 

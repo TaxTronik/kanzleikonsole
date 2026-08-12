@@ -214,11 +214,14 @@ export type KatalogResponse = z.infer<typeof KatalogResponseSchema>;
 // -----------------------------------------------------------------------------
 
 const EmbeddingTimestampSchema = z.string().max(64).datetime({ offset: true }).nullable();
+const EmbeddingJobIdSchema = z.string().regex(/^[0-9a-f]{32}$/);
 
 export const EmbeddingJobStateSchema = z.enum([
   'idle',
   'queued',
   'running',
+  'cancelling',
+  'cancelled',
   'succeeded',
   'failed',
   'skipped',
@@ -240,7 +243,7 @@ export type EmbeddingIndexStatus = z.infer<typeof EmbeddingIndexStatusSchema>;
 
 export const EmbeddingJobStatusSchema = z.object({
   state: EmbeddingJobStateSchema,
-  id: z.string().max(200).nullable(),
+  id: EmbeddingJobIdSchema.nullable(),
   requested: EmbeddingTimestampSchema,
   started: EmbeddingTimestampSchema,
   completed: EmbeddingTimestampSchema,
@@ -273,10 +276,19 @@ export type EmbeddingStatusResponse = z.infer<typeof EmbeddingStatusResponseSche
 export const EmbeddingRefreshResponseSchema = z.object({
   ok: z.literal(true),
   engineVersion: z.string().min(1).max(200),
-  job_id: z.string().min(1).max(200),
-  state: z.enum(['queued', 'running']),
+  job_id: EmbeddingJobIdSchema,
+  state: z.enum(['queued', 'running', 'cancelling']),
 });
 export type EmbeddingRefreshResponse = z.infer<typeof EmbeddingRefreshResponseSchema>;
+
+/** `POST /v1/embedding/cancel` — kooperativer Abbruch eines exakten Jobs. */
+export const EmbeddingCancelResponseSchema = z.object({
+  ok: z.literal(true),
+  engineVersion: z.string().min(1).max(200),
+  job_id: EmbeddingJobIdSchema,
+  state: z.enum(['cancelling', 'cancelled', 'succeeded', 'failed', 'skipped']),
+});
+export type EmbeddingCancelResponse = z.infer<typeof EmbeddingCancelResponseSchema>;
 
 /** `POST /v1/embedding/schedule` — persistierter Prüfzeitplan. */
 export const EmbeddingScheduleResponseSchema = z.object({

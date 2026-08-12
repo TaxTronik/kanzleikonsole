@@ -28,12 +28,18 @@ ENVFILE="$ROOT/.env"
 BASE="$ROOT/infra/compose/docker-compose.yml"
 APP="$ROOT/infra/compose/docker-compose.app.yml"
 DEV="$ROOT/infra/compose/docker-compose.dev.yml"
+TRAEFIK="$ROOT/infra/compose/docker-compose.traefik.yml"
+TRAEFIK_DYNAMIC="$ROOT/.taxtronik.traefik-dynamic.yml"
 S3_GENERATED="$ROOT/infra/scripts/seaweedfs-s3.generated.json"
 STATE="$ROOT/.taxtronik.state"
 MIGRATION_PENDING="$ROOT/.taxtronik.migration-pending"
 DB_RESTORE_AUTHORIZATION="$ROOT/.taxtronik.database-restored"
 AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
 ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+# Der Wert wird zusammen mit einem TaxTronik-Release getestet und angehoben.
+# `SIGNAL_IMAGE=auto` folgt genau diesem Pin; ein externer/nativer Dienst wird
+# dagegen niemals ueber diesen Pfad angefasst.
+SIGNAL_MANAGED_IMAGE_DEFAULT="git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0"
 
 # Interne Autorisierungen gelten nur im dynamischen Scope der unten definierten
 # Aktivierungs-Wrapper. Geerbte Shell-Variablen duerfen einen Operator-Aufruf
@@ -108,7 +114,7 @@ set_env() {
   # Delimiter (s|...|...|), daher MUSS `|` mit escaped werden — sonst brechen
   # Werte mit Pipe-Zeichen (z. B. Tokens) das .env-Schreiben (set -e-Abbruch).
   # `&` ist im Replacement special, `/` unschädlich mitzunehmen.
-  local esc; esc="$(printf '%s\n' "$value" | sed -e 's/[\/&|]/\\&/g')"
+  local esc; esc="$(printf '%s\n' "$value" | sed -e 's/[\\\/&|]/\\&/g')"
   if grep -qE "^${key}=" "$ENVFILE"; then
     if sed --version >/dev/null 2>&1; then
       sed -i -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
@@ -127,6 +133,161 @@ ensure_secret() {
     set_env "$key" "$(rand_b64 "$bytes")"
     info "$key generiert."
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Signal-Besitzvertrag
+# ---------------------------------------------------------------------------
+signal_deployment_mode() {
+  local configured="${SIGNAL_DEPLOYMENT:-$(get_env SIGNAL_DEPLOYMENT)}"
+  case "$configured" in
+    managed|external|disabled) printf '%s' "$configured"; return 0 ;;
+    "") ;;
+    *) return 1 ;;
+  esac
+
+  # Bestandskompatibilitaet: nur der exakte Compose-DNS-Name bedeutet, dass
+  # TaxTronik den Dienst bislang selbst betrieben hat. Jede andere URL bleibt
+  # fremdverwaltet; aus einer URL wird niemals still Eigentum abgeleitet.
+  local url="${RISK_LAYER_URL:-$(get_env RISK_LAYER_URL)}"
+  if [[ -z "$url" ]]; then printf 'disabled'
+  elif [[ "${url%/}" == "http://risk-layer:8000" ]]; then printf 'managed'
+  else printf 'external'; fi
+}
+
+signal_managed_image() {
+  local configured="${SIGNAL_IMAGE:-$(get_env SIGNAL_IMAGE)}"
+  [[ -n "$configured" && "$configured" != "auto" ]] \
+    && printf '%s' "$configured" \
+    || printf '%s' "$SIGNAL_MANAGED_IMAGE_DEFAULT"
+}
+
+validate_signal_managed_image() {
+  local image="$1"
+  [[ "$image" =~ ^[a-zA-Z0-9._-]+(:[0-9]+)?/[a-zA-Z0-9._/-]+(@sha256:[0-9a-f]{64}|:v[0-9]+\.[0-9]+\.[0-9]+)$ ]] || \
+    return 1
+  [[ "$image" != *:latest ]]
+}
+
+prepare_signal_managed_environment() {
+  [[ "$(signal_deployment_mode)" == "managed" ]] || return 0
+  local resolved
+  resolved="$(signal_managed_image)"
+  validate_signal_managed_image "$resolved" || \
+    die "SIGNAL_IMAGE muss ein versionierter vX.Y.Z-Tag oder sha256-Digest sein (aktuell: $resolved)."
+  # Prozess-Override hat Vorrang vor .env. `auto` bleibt persistent und kann so
+  # mit einem spaeteren TaxTronik-Release auf dessen getesteten Pin weiterziehen.
+  export SIGNAL_IMAGE="$resolved"
+}
+
+# ---------------------------------------------------------------------------
+# Deployment-Oberflaeche (vorhandener Proxy oder verwaltetes Traefik)
+# ---------------------------------------------------------------------------
+deployment_method() {
+  local configured="${DEPLOYMENT_METHOD:-$(get_env DEPLOYMENT_METHOD)}"
+  case "${configured:-standard}" in
+    standard|traefik) printf '%s' "${configured:-standard}" ;;
+    *) return 1 ;;
+  esac
+}
+
+valid_public_fqdn() {
+  local host="${1,,}"
+  (( ${#host} <= 253 )) &&
+    [[ "$host" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]
+}
+
+valid_setup_email() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
+}
+
+valid_ip_address() {
+  local value="${1:-}" part left right
+  local parts=()
+  if [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    IFS=. read -r -a parts <<<"$value"
+    for part in "${parts[@]}"; do
+      [[ "$part" =~ ^[0-9]+$ ]] && (( 10#$part <= 255 )) || return 1
+    done
+    return 0
+  fi
+
+  # Vollstaendige und ::-komprimierte Hex-IPv6-Adressen. IPv4-Mapped-Notation
+  # wird bewusst nicht benoetigt: Der Assistent akzeptiert dafuer die IPv4-
+  # Schreibweise. So bleibt die Validierung ohne externe Laufzeit portabel.
+  [[ "$value" =~ ^[0-9a-fA-F:]+$ && "$value" == *:* && "$value" != *:::* ]] || return 1
+  if [[ "$value" == *::* ]]; then
+    right="${value#*::}"
+    [[ "$right" != *::* ]] || return 1
+    left="${value%%::*}"
+    parts=()
+    [[ -z "$left" ]] || IFS=: read -r -a parts <<<"$left"
+    local left_count=${#parts[@]}
+    for part in "${parts[@]}"; do [[ "$part" =~ ^[0-9a-fA-F]{1,4}$ ]] || return 1; done
+    parts=()
+    [[ -z "$right" ]] || IFS=: read -r -a parts <<<"$right"
+    local right_count=${#parts[@]}
+    for part in "${parts[@]}"; do [[ "$part" =~ ^[0-9a-fA-F]{1,4}$ ]] || return 1; done
+    (( left_count + right_count < 8 ))
+    return
+  fi
+  [[ "$value" != :* && "$value" != *: ]] || return 1
+  IFS=: read -r -a parts <<<"$value"
+  (( ${#parts[@]} == 8 )) || return 1
+  for part in "${parts[@]}"; do [[ "$part" =~ ^[0-9a-fA-F]{1,4}$ ]] || return 1; done
+}
+
+render_traefik_dynamic_config() {
+  [[ "$(deployment_method)" == "traefik" ]] || return 0
+  local staff_url portal_url staff_host portal_host acme_email tmp
+  staff_url="${NEXTAUTH_URL:-$(get_env NEXTAUTH_URL)}"
+  portal_url="${PORTAL_PUBLIC_URL:-$(get_env PORTAL_PUBLIC_URL)}"
+  acme_email="${TRAEFIK_ACME_EMAIL:-$(get_env TRAEFIK_ACME_EMAIL)}"
+  staff_host="$(url_hostname "$staff_url")"
+  portal_host="$(url_hostname "$portal_url")"
+  staff_host="${staff_host,,}"; portal_host="${portal_host,,}"
+
+  valid_public_fqdn "$staff_host" || \
+    die "Traefik braucht einen gueltigen Staff-FQDN in NEXTAUTH_URL."
+  valid_public_fqdn "$portal_host" || \
+    die "Traefik braucht einen gueltigen Portal-FQDN in PORTAL_PUBLIC_URL."
+  [[ "$staff_host" != "$portal_host" ]] || \
+    die "Traefik-Setup verlangt getrennte Staff- und Portal-FQDNs."
+  valid_setup_email "$acme_email" || \
+    die "TRAEFIK_ACME_EMAIL fehlt oder ist ungueltig."
+
+  tmp="$(mktemp "${TRAEFIK_DYNAMIC}.tmp.XXXXXX")" || \
+    die "Temp-Datei fuer Traefik-Routen konnte nicht erzeugt werden."
+  {
+    printf 'http:\n'
+    printf '  routers:\n'
+    printf '    taxtronik-staff:\n'
+    printf '      rule: "Host(`%s`)"\n' "$staff_host"
+    printf '      entryPoints: [websecure]\n'
+    printf '      service: taxtronik-app\n'
+    printf '      tls:\n'
+    printf '        certResolver: letsencrypt\n'
+    printf '    taxtronik-portal:\n'
+    printf '      rule: "Host(`%s`)"\n' "$portal_host"
+    printf '      entryPoints: [websecure]\n'
+    printf '      service: taxtronik-app\n'
+    printf '      tls:\n'
+    printf '        certResolver: letsencrypt\n'
+    printf '  services:\n'
+    printf '    taxtronik-app:\n'
+    printf '      loadBalancer:\n'
+    printf '        servers:\n'
+    printf '          - url: "http://app:3000"\n'
+    printf 'tls:\n'
+    printf '  options:\n'
+    printf '    default:\n'
+    printf '      minVersion: VersionTLS12\n'
+  } >"$tmp"
+  chmod 0600 "$tmp" || { rm -f -- "$tmp"; die "Traefik-Routen konnten nicht gehaertet werden."; }
+  mv -f -- "$tmp" "$TRAEFIK_DYNAMIC"
+  chmod 0600 "$TRAEFIK_DYNAMIC" || die "Traefik-Routen konnten nicht auf 0600 gehaertet werden."
+  export TRAEFIK_DYNAMIC_CONFIG_PATH="$TRAEFIK_DYNAMIC"
 }
 
 # ---------------------------------------------------------------------------
@@ -181,15 +342,21 @@ compose() {
     render_s3_config
     docker compose -f "$BASE" --env-file "$ENVFILE" "$@"
   else
+    local compose_files=(-f "$BASE" -f "$APP") method
     case "${1:-}" in
       up|start|restart) assert_writer_start_authorized ;;
     esac
     render_s3_config
     ensure_compose_image_pinning
+    method="$(deployment_method)" || die "DEPLOYMENT_METHOD muss standard oder traefik sein."
+    if [[ "$method" == "traefik" ]]; then
+      render_traefik_dynamic_config
+      compose_files+=(-f "$TRAEFIK")
+    fi
     if [[ "${1:-}" == "up" ]]; then
       reconcile_n8n_encryption_key_from_volume
     fi
-    docker compose -f "$BASE" -f "$APP" --env-file "$ENVFILE" "$@"
+    docker compose "${compose_files[@]}" --env-file "$ENVFILE" "$@"
   fi
 }
 
@@ -639,6 +806,34 @@ doctor() {
     _dr_row "WARN" "TAXTRONIK_VERSION" "='$TAXTRONIK_VERSION' (auf Release pinnen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else _dr_row "OK" "TAXTRONIK_VERSION" "$TAXTRONIK_VERSION"; fi
 
+  local deploy_method="" traefik_staff_host="" traefik_portal_host=""
+  deploy_method="$(deployment_method 2>/dev/null || true)"
+  if [[ "$deploy_method" == "standard" ]]; then
+    _dr_row "OK" "DEPLOYMENT_METHOD" "standard (vorhandener/externer Reverse-Proxy)"
+  elif [[ "$deploy_method" == "traefik" ]]; then
+    traefik_staff_host="$(url_hostname "${NEXTAUTH_URL:-}")"
+    traefik_portal_host="$(url_hostname "${PORTAL_PUBLIC_URL:-}")"
+    if [[ "${NEXTAUTH_URL:-}" != https://* || "${PORTAL_PUBLIC_URL:-}" != https://* || \
+          -z "$traefik_staff_host" || -z "$traefik_portal_host" || \
+          "$traefik_staff_host" == "$traefik_portal_host" ]]; then
+      _dr_row "FEHLT" "TRAEFIK_SURFACES" "getrennte HTTPS-URLs fuer Staff und Portal erforderlich"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "DEPLOYMENT_METHOD" "traefik (verwaltetes HTTPS)"
+    fi
+    if ! valid_setup_email "${TRAEFIK_ACME_EMAIL:-}"; then
+      _dr_row "FEHLT" "TRAEFIK_ACME_EMAIL" "ungueltig/leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "TRAEFIK_ACME_EMAIL" "$TRAEFIK_ACME_EMAIL"
+    fi
+    if ! valid_ip_address "${TRAEFIK_EXPECTED_IP:-}"; then
+      _dr_row "FEHLT" "TRAEFIK_EXPECTED_IP" "ungueltig/leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "TRAEFIK_EXPECTED_IP" "$TRAEFIK_EXPECTED_IP"
+    fi
+  else
+    _dr_row "FEHLT" "DEPLOYMENT_METHOD" "nur standard oder traefik erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  fi
+
   if [[ -z "${NEXTAUTH_URL:-}" ]]; then
     _dr_row "WARN" "NEXTAUTH_URL" "leer"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   elif [[ "$NEXTAUTH_URL" == *localhost* || "$NEXTAUTH_URL" == *127.0.0.1* ]]; then
@@ -651,7 +846,9 @@ doctor() {
     _dr_row "FEHLT" "NEXTAUTH_TRUST_HOST" "in Prod exakt true; Proxy muss Host pinnen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else _dr_row "OK" "NEXTAUTH_TRUST_HOST" "${NEXTAUTH_TRUST_HOST:-true}"; fi
 
-  if [[ "${TRUST_PROXY_REQUIRED:-}" != "true" && "${TRUST_PROXY_REQUIRED:-}" != "false" ]]; then
+  if [[ "$deploy_method" == "traefik" && "${TRUST_PROXY_REQUIRED:-}" != "true" ]]; then
+    _dr_row "FEHLT" "TRUST_PROXY_REQUIRED" "Traefik-Pfad braucht exakt true"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "${TRUST_PROXY_REQUIRED:-}" != "true" && "${TRUST_PROXY_REQUIRED:-}" != "false" ]]; then
     _dr_row "FEHLT" "TRUST_PROXY_REQUIRED" "explizit true/false setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else _dr_row "OK" "TRUST_PROXY_REQUIRED" "$TRUST_PROXY_REQUIRED"; fi
 
@@ -662,11 +859,61 @@ doctor() {
   local rl_url="${RISK_LAYER_URL:-}" rl_tok="${RISK_LAYER_TOKEN:-}"
   local rl_operator_tok="${RISK_LAYER_OPERATOR_TOKEN:-}"
   local rl_festwissen="${RISK_LAYER_FESTWISSEN_DIR:-}"
-  if [[ -n "$rl_url" && -z "$rl_tok" ]]; then
+  local signal_mode=""
+  local resolved_signal_image=""
+  signal_mode="$(signal_deployment_mode 2>/dev/null || true)"
+  if [[ -z "$signal_mode" ]]; then
+    _dr_row "FEHLT" "SIGNAL_DEPLOYMENT" "nur managed, external oder disabled erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "$signal_mode" == "disabled" ]]; then
+    _dr_row "OK" "SIGNAL_DEPLOYMENT" "disabled"
+    if [[ -n "$rl_url$rl_tok$rl_operator_tok" ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_URL/TOKEN" "bei disabled muessen Signal-Werte leer sein"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "SIGNAL" "deaktiviert"
+    fi
+  elif [[ "$signal_mode" == "managed" ]]; then
+    _dr_row "OK" "SIGNAL_DEPLOYMENT" "managed"
+    [[ "${rl_url%/}" == "http://risk-layer:8000" ]] || {
+      _dr_row "FEHLT" "RISK_LAYER_URL" "verwaltetes Signal muss http://risk-layer:8000 verwenden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    }
+    if (( ${#rl_tok} < 32 )); then
+      _dr_row "FEHLT" "RISK_LAYER_TOKEN" "nur ${#rl_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "SIGNAL" "verwaltet (URL + Bearer-Token)"
+    fi
+    if [[ -z "$rl_operator_tok" ]]; then
+      _dr_row "WARN" "RISK_LAYER_OPERATOR_TOKEN" "fehlt; Embedding-Steuerung bleibt read-only"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+    elif (( ${#rl_operator_tok} < 32 )); then
+      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "nur ${#rl_operator_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    elif [[ "$rl_operator_tok" == "$rl_tok" ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "muss sich vom Bearer-Token unterscheiden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "RISK_LAYER_OPERATOR_TOKEN" "konfiguriert"
+    fi
+    resolved_signal_image="$(signal_managed_image)"
+    if validate_signal_managed_image "$resolved_signal_image"; then
+      _dr_row "OK" "SIGNAL_IMAGE" "$resolved_signal_image"
+    else
+      _dr_row "FEHLT" "SIGNAL_IMAGE" "versionierten vX.Y.Z-Tag oder sha256-Digest setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    fi
+    if [[ "${RISK_LAYER_EMB_DEVICE:-cpu}" != "cpu" ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_EMB_DEVICE" "verwaltetes Release ist CPU; GPU-Signal als external anbinden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "RISK_LAYER_EMB_DEVICE" "cpu"
+    fi
+    if [[ -n "$rl_festwissen" ]]; then
+      _dr_row "WARN" "RISK_LAYER_FESTWISSEN_DIR" "wird im verwalteten Self-contained-Image nicht mehr verwendet"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+    fi
+  elif [[ "$signal_mode" == "external" && -z "$rl_url" ]]; then
+    _dr_row "OK" "SIGNAL_DEPLOYMENT" "external"
+    _dr_row "FEHLT" "RISK_LAYER_URL" "externes Signal braucht eine erreichbare URL"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ -n "$rl_url" && -z "$rl_tok" ]]; then
+    _dr_row "OK" "SIGNAL_DEPLOYMENT" "external"
     _dr_row "FEHLT" "RISK_LAYER_TOKEN" "URL gesetzt, Token fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   elif [[ -z "$rl_url" && -n "$rl_tok" ]]; then
     _dr_row "FEHLT" "RISK_LAYER_URL" "Token gesetzt, URL fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   elif [[ -n "$rl_url" ]]; then
+    _dr_row "OK" "SIGNAL_DEPLOYMENT" "external"
     if [[ ${#rl_tok} -lt 32 ]]; then
       _dr_row "FEHLT" "RISK_LAYER_TOKEN" "nur ${#rl_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     else
@@ -682,18 +929,9 @@ doctor() {
       _dr_row "OK" "RISK_LAYER_OPERATOR_TOKEN" "konfiguriert"
     fi
     if [[ "${rl_url%/}" == "http://risk-layer:8000" ]]; then
-      if [[ -z "$rl_festwissen" ]]; then
-        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "lokaler Compose-Dienst braucht einen verifizierten Release-Pfad"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-      elif [[ "$rl_festwissen" != /* ]]; then
-        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "muss ein absoluter Host-Pfad sein"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-      elif [[ ! -r "$rl_festwissen/catalog/begriffe.yaml" || ! -r "$rl_festwissen/corpus/graph.sqlite" ]]; then
-        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "Katalog oder Normgraph fehlt im Release"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-      elif [[ -n "$rl_operator_tok" && ! -r "$rl_festwissen/models/bge-m3/model-manifest.json" ]]; then
-        _dr_row "FEHLT" "RISK_LAYER_FESTWISSEN_DIR" "Embedding-Steuerung braucht models/bge-m3/model-manifest.json im Offline-Release"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-      else
-        _dr_row "OK" "RISK_LAYER_FESTWISSEN_DIR" "$rl_festwissen"
-      fi
+      _dr_row "FEHLT" "RISK_LAYER_URL" "Compose-DNS gehoert zum verwalteten Modus"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     fi
+    _dr_row "OK" "SIGNAL_UPDATE" "extern verwaltet; TaxTronik aktualisiert Signal nicht"
   elif [[ -n "$rl_operator_tok" ]]; then
     _dr_row "FEHLT" "RISK_LAYER_URL/TOKEN" "Operator-Token ohne Basiskonfiguration"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else
@@ -860,6 +1098,63 @@ verify_release_image_labels() {
 # Downtime beim Update reduziert sich auf den reinen Container-Neustart.
 provide_images() { if images_from_registry; then pull_images; else build_images; fi; }
 
+provide_traefik_for_deploy() {
+  [[ "$(deployment_method)" == "traefik" ]] || return 0
+  info "Digest-gepinntes Traefik-Image beziehen"
+  compose pull traefik || die "Traefik-Image konnte nicht bezogen werden."
+}
+
+provide_signal_for_deploy() {
+  local mode image
+  mode="$(signal_deployment_mode)"
+  case "$mode" in
+    disabled)
+      info "Signal deaktiviert - kein Image-Pull"
+      return 0
+      ;;
+    external)
+      info "Signal extern verwaltet - TaxTronik ueberspringt Installation und Update"
+      return 0
+      ;;
+    managed) ;;
+    *) die "Unbekannter Signal-Betriebsmodus: $mode" ;;
+  esac
+
+  prepare_signal_managed_environment
+  image="$SIGNAL_IMAGE"
+  info "Verwaltetes Signal-Release beziehen: $image"
+  if ! compose --profile risk-layer pull risk-layer; then
+    die "Signal-Image konnte nicht bezogen werden. Registry-Zugang pruefen; externes/natives Signal mit SIGNAL_DEPLOYMENT=external anbinden."
+  fi
+  # Das verwaltete Release muss vollstaendig self-contained sein. Dadurch wird
+  # ein altes Runtime-only-Image vor dem Austausch des laufenden Dienstes
+  # erkannt und der bisherige Container bleibt unangetastet.
+  docker run --rm --entrypoint python "$image" -c \
+    "import importlib.util,pathlib,sys; required=['/release/catalog/begriffe.yaml','/release/corpus/graph.sqlite','/release/corpus/embedding/meta.json','/release/corpus/embedding/vectors.npy','/release/models/bge-m3/model-manifest.json']; ok=all(pathlib.Path(p).is_file() for p in required) and importlib.util.find_spec('sentence_transformers') is not None; sys.exit(0 if ok else 1)" \
+    || die "Signal-Image ist kein vollstaendiges Managed-Release (Graph, Offline-Modell oder Embedding-Runtime fehlt)."
+}
+
+start_signal_for_deploy() {
+  [[ "$(signal_deployment_mode)" == "managed" ]] || return 0
+  prepare_signal_managed_environment
+  local previous_image=""
+  previous_image="$(docker inspect --format '{{.Config.Image}}' taxtronik-risk-layer 2>/dev/null || true)"
+  info "Verwaltetes Signal starten und API-/Embedding-Readiness pruefen"
+  if compose --profile risk-layer up -d --force-recreate --no-deps \
+      --wait --wait-timeout 300 risk-layer; then
+    return 0
+  fi
+
+  warn "Neues Signal-Release wurde nicht bereit; versuche den vorherigen Containerstand wiederherzustellen."
+  if [[ -n "$previous_image" && "$previous_image" != "$SIGNAL_IMAGE" ]]; then
+    export SIGNAL_IMAGE="$previous_image"
+    compose --profile risk-layer up -d --force-recreate --no-deps \
+      --wait --wait-timeout 300 risk-layer \
+      || warn "Auch der vorherige Signal-Container konnte nicht wiederhergestellt werden."
+  fi
+  return 1
+}
+
 resolve_backup_host_dir() {
   local dir="${BACKUP_HOST_DIR:-../../backups}"
   if [[ "$dir" == /* ]]; then
@@ -914,9 +1209,15 @@ backup_before_migrations() {
 start_infra() { info "Infra starten"; compose --infra up -d; }
 start_apps()  {
   assert_writer_start_authorized
-  info "App, Worker und n8n starten/neu erzeugen"
+  local services=(app worker n8n)
+  if [[ "$(deployment_method)" == "traefik" ]]; then
+    services+=(traefik)
+    info "App, Worker, n8n und verwaltetes Traefik starten/neu erzeugen"
+  else
+    info "App, Worker und n8n starten/neu erzeugen"
+  fi
   run_backup_dir_init
-  compose up -d --force-recreate --no-deps app worker n8n
+  compose up -d --force-recreate --no-deps "${services[@]}"
 }
 
 # Bash-`local` ist dynamisch sichtbar: start_apps und der darin aufgerufene
@@ -946,6 +1247,24 @@ smoke_health() {
   compose ps
   compose logs app --tail 80 || true
   warn "Health-Smoke fehlgeschlagen (nur status=ok gilt als bereit)."
+  return 1
+}
+
+smoke_public_frontend() {
+  [[ "$(deployment_method)" == "traefik" ]] || return 0
+  local staff_url="${NEXTAUTH_URL%/}/api/health"
+  local portal_url="${PORTAL_PUBLIC_URL%/}/api/health"
+  info "Oeffentlichen Traefik-/TLS-Einstieg pruefen"
+  for _ in {1..36}; do
+    if curl -fsS --max-time 10 -o /dev/null "$staff_url" 2>/dev/null && \
+       curl -fsS --max-time 10 -o /dev/null "$portal_url" 2>/dev/null; then
+      info "Oeffentliche Staff- und Portal-URL sind per HTTPS bereit."
+      return 0
+    fi
+    sleep 5
+  done
+  compose logs traefik --tail 100 || true
+  warn "Oeffentlicher HTTPS-Smoke fehlgeschlagen. DNS, Provider-Firewall sowie Ports 80/443 pruefen."
   return 1
 }
 
@@ -1191,12 +1510,22 @@ snapshot_named_volume() {
 # Metadaten und Redis-AOF zusammen mit dem n8n-Volume auf einem definierten
 # Zeitpunkt. Die DB-Dumps entstehen separat transaktionskonsistent via pg_dump.
 run_cold_volume_snapshots() {
-  local dest="$1" seaweed_volume redis_volume n8n_volume snapshot_rc=0 restart_rc=0
+  local dest="$1" seaweed_volume redis_volume n8n_volume traefik_volume=""
+  local snapshot_rc=0 restart_rc=0 method
   seaweed_volume="$(container_named_volume taxtronik-seaweedfs /data)"
   redis_volume="$(container_named_volume taxtronik-redis /data)"
   n8n_volume="$(container_named_volume taxtronik-n8n /home/node/.n8n)"
+  method="$(deployment_method)" || return 1
+  if [[ "$method" == "traefik" ]]; then
+    traefik_volume="$(container_named_volume taxtronik-traefik /letsencrypt)"
+  fi
   if [[ -z "$seaweed_volume" || -z "$redis_volume" || -z "$n8n_volume" ]]; then
     warn "Full-Backup kann benoetigte Volumes nicht aufloesen (SeaweedFS/Redis/n8n)."
+    restart_backup_infra || true
+    return 1
+  fi
+  if [[ "$method" == "traefik" && -z "$traefik_volume" ]]; then
+    warn "Full-Backup kann das Traefik-ACME-Volume nicht aufloesen."
     restart_backup_infra || true
     return 1
   fi
@@ -1206,10 +1535,17 @@ run_cold_volume_snapshots() {
     restart_backup_infra || true
     return 1
   fi
+  if [[ "$method" == "traefik" ]]; then
+    info "Traefik fuer konsistenten ACME-Snapshot stoppen"
+    compose stop traefik || return 1
+  fi
 
   snapshot_named_volume "$seaweed_volume" "$dest" seaweedfs-data.tar.gz || snapshot_rc=$?
   snapshot_named_volume "$redis_volume" "$dest" redis-data.tar.gz || snapshot_rc=$?
   snapshot_named_volume "$n8n_volume" "$dest" n8n-data.tar.gz || snapshot_rc=$?
+  if [[ "$method" == "traefik" ]]; then
+    snapshot_named_volume "$traefik_volume" "$dest" traefik-acme.tar.gz || snapshot_rc=$?
+  fi
 
   restart_backup_infra || restart_rc=$?
   if [[ $restart_rc -ne 0 ]]; then
@@ -1622,57 +1958,326 @@ prompt() {
   printf -v "$var" '%s' "${input:-$def}"
 }
 
+valid_http_url() {
+  local value="${1:-}"
+  [[ "$value" =~ ^https?://[^[:space:]/]+(:[0-9]+)?(/[^[:space:]]*)?$ ]]
+}
+
+assert_blank_host_for_traefik() {
+  [[ "$(uname -s 2>/dev/null || true)" == "Linux" ]] || \
+    die "Der 1-Klick-Traefik-Pfad ist nur fuer einen frischen Linux-Host freigegeben."
+  require_cmd ss
+  require_cmd getent
+  [[ ! -e "$STATE" && ! -e "$MIGRATION_PENDING" && ! -e "$DB_RESTORE_AUTHORIZATION" ]] || \
+    die "1-Klick verweigert: Auf diesem Checkout existiert bereits Installations-/Recovery-State. Standardmethode verwenden."
+  local containers
+  if ! containers="$(docker ps -aq 2>/dev/null)"; then
+    die "1-Klick verweigert: Docker-Daemon ist nicht erreichbar; Maschinenleerheit kann nicht sicher geprueft werden."
+  fi
+  [[ -z "$containers" ]] || \
+    die "1-Klick verweigert: Docker enthaelt bereits Container. Dieser Pfad ist nur fuer eine komplett leere Maschine; Standardmethode verwenden."
+  if ss -H -ltn 'sport = :80' 2>/dev/null | grep -q . || \
+     ss -H -ltn 'sport = :443' 2>/dev/null | grep -q .; then
+    die "1-Klick verweigert: Port 80 oder 443 ist bereits belegt. Standardmethode mit vorhandenem Reverse-Proxy verwenden."
+  fi
+}
+
+assert_dns_points_to_ip() {
+  local host="$1" expected="$2" resolved expected_forms database="ahostsv4"
+  [[ "$expected" == *:* ]] && database="ahostsv6"
+  resolved="$(getent "$database" "$host" 2>/dev/null | awk '{print tolower($1)}' | sort -u || true)"
+  expected_forms="$(getent "$database" "$expected" 2>/dev/null | awk '{print tolower($1)}' | sort -u || true)"
+  [[ -n "$expected_forms" ]] && grep -Fxf <(printf '%s\n' "$expected_forms") \
+    <(printf '%s\n' "$resolved") >/dev/null || {
+    warn "DNS fuer $host zeigt nicht auf die bestaetigte Server-IP $expected."
+    [[ -n "$resolved" ]] && warn "Aktuell aufgeloest: $(printf '%s' "$resolved" | tr '\n' ' ')"
+    return 1
+  }
+}
+
+confirm_initial_setup_plan() {
+  local phrase="$1" input=""
+  read -rp "Zum Anwenden exakt '$phrase' eingeben: " input || true
+  [[ "$input" == "$phrase" ]]
+}
+
+apply_initial_setup_plan() {
+  [[ ! -e "$ENVFILE" ]] || die "Initialplan darf eine vorhandene .env nicht ueberschreiben."
+  [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."
+  cp "$ROOT/.env.example" "$ENVFILE"
+  chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
+  _TAXTRONIK_ENV_CREATED_THIS_RUN=1
+
+  set_env DEPLOYMENT_METHOD "$_SETUP_METHOD"
+  set_env TAXTRONIK_VERSION "$_SETUP_RELEASE_VERSION"
+  set_env NEXTAUTH_URL "https://${_SETUP_STAFF_HOST}"
+  set_env PORTAL_PUBLIC_URL "https://${_SETUP_PORTAL_HOST}"
+  set_env STAFF_COOKIE_DOMAIN "$_SETUP_STAFF_HOST"
+  set_env PORTAL_COOKIE_DOMAIN "$_SETUP_PORTAL_HOST"
+  set_env NEXTAUTH_TRUST_HOST true
+  if [[ "$_SETUP_METHOD" == "traefik" ]]; then
+    set_env TRUST_PROXY_REQUIRED true
+    set_env TRAEFIK_ACME_EMAIL "$_SETUP_ACME_EMAIL"
+    set_env TRAEFIK_EXPECTED_IP "$_SETUP_EXPECTED_IP"
+  else
+    set_env TRUST_PROXY_REQUIRED false
+    set_env TRAEFIK_ACME_EMAIL ""
+    set_env TRAEFIK_EXPECTED_IP ""
+  fi
+  set_env SMTP_HOST "$_SETUP_SMTP_HOST"
+  set_env SMTP_PORT "$_SETUP_SMTP_PORT"
+  set_env SMTP_FROM "$_SETUP_SMTP_FROM"
+  set_env SMTP_USER "$_SETUP_SMTP_USER"
+  set_env SMTP_PASSWORD "$_SETUP_SMTP_PASSWORD"
+  set_env SIGNAL_DEPLOYMENT "$_SETUP_SIGNAL_MODE"
+  set_env RISK_LAYER_URL "$_SETUP_SIGNAL_URL"
+  set_env RISK_LAYER_TOKEN "$_SETUP_SIGNAL_TOKEN"
+  set_env RISK_LAYER_OPERATOR_TOKEN "$_SETUP_SIGNAL_OPERATOR_TOKEN"
+
+  export TENANT_NAME="$_SETUP_TENANT_NAME"
+  export ADMIN_EMAIL="$_SETUP_ADMIN_EMAIL"
+}
+
+configure_initial_deployment_interactive() {
+  [[ ! -f "$ENVFILE" && -t 0 ]] || return 0
+  [[ ! -e "$STATE" ]] || \
+    die ".env fehlt, aber Installations-State ist vorhanden. Nicht als Erstinstallation ueberschreiben; .env aus dem Backup wiederherstellen."
+
+  local choice="" input="" base_domain="" default_release="" phrase=""
+  _SETUP_METHOD="standard"
+  _SETUP_RELEASE_VERSION=""
+  _SETUP_STAFF_HOST=""
+  _SETUP_PORTAL_HOST=""
+  _SETUP_ACME_EMAIL=""
+  _SETUP_EXPECTED_IP=""
+  _SETUP_SMTP_HOST=""
+  _SETUP_SMTP_PORT="587"
+  _SETUP_SMTP_FROM=""
+  _SETUP_SMTP_USER=""
+  _SETUP_SMTP_PASSWORD=""
+  _SETUP_SIGNAL_MODE="managed"
+  _SETUP_SIGNAL_URL=""
+  _SETUP_SIGNAL_TOKEN=""
+  _SETUP_SIGNAL_OPERATOR_TOKEN=""
+  _SETUP_TENANT_NAME="Kanzlei"
+  _SETUP_ADMIN_EMAIL=""
+
+  printf '\nInitialsetup: Wie soll TaxTronik veroeffentlicht werden?\n'
+  printf '  1) Standard (empfohlen fuer bestehende/verwaltete Server)\n'
+  printf '     App nur auf 127.0.0.1; vorhandenen nginx/Caddy/Traefik selbst anbinden.\n'
+  printf '  2) 1-Klick mit verwaltetem Traefik + Let\x27s Encrypt\n'
+  printf '     NUR fuer eine komplett leere Linux-/Docker-Maschine.\n'
+  read -rp 'Auswahl [1]: ' choice || true
+  case "${choice:-1}" in
+    1|standard) _SETUP_METHOD="standard" ;;
+    2|traefik)
+      _SETUP_METHOD="traefik"
+      printf '\nACHTUNG: Der 1-Klick-Pfad beansprucht exklusiv Ports 80/443 und startet\n'
+      printf 'einen eigenen Traefik. Er ist NICHT fuer Maschinen mit vorhandenen\n'
+      printf 'Containern, Webservern, Reverse-Proxys oder TaxTronik-Daten gedacht.\n'
+      printf 'Host-/Provider-Firewall und DNS bleiben Verantwortung des Betreibers.\n\n'
+      assert_blank_host_for_traefik
+      ;;
+    *) die "Ungueltige Deployment-Auswahl: $choice" ;;
+  esac
+
+  default_release="$(git -C "$ROOT" describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)"
+  while :; do
+    read -rp "Freigegebene TaxTronik-Version (SemVer) [${default_release}]: " input || true
+    _SETUP_RELEASE_VERSION="${input:-$default_release}"
+    [[ "$_SETUP_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && break
+    warn "Bitte eine feste SemVer-Version X.Y.Z eingeben."
+  done
+
+  while :; do
+    read -rp 'Basisdomain (z. B. kanzlei.example.de): ' base_domain || true
+    base_domain="${base_domain,,}"
+    valid_public_fqdn "$base_domain" && break
+    warn "Bitte eine oeffentliche ASCII-FQDN ohne Schema oder Pfad eingeben."
+  done
+  while :; do
+    read -rp "Staff-FQDN [staff.${base_domain}]: " input || true
+    _SETUP_STAFF_HOST="${input:-staff.${base_domain}}"; _SETUP_STAFF_HOST="${_SETUP_STAFF_HOST,,}"
+    valid_public_fqdn "$_SETUP_STAFF_HOST" && break
+    warn "Staff-FQDN ist ungueltig."
+  done
+  while :; do
+    read -rp "Portal-FQDN [portal.${base_domain}]: " input || true
+    _SETUP_PORTAL_HOST="${input:-portal.${base_domain}}"; _SETUP_PORTAL_HOST="${_SETUP_PORTAL_HOST,,}"
+    if valid_public_fqdn "$_SETUP_PORTAL_HOST" && [[ "$_SETUP_PORTAL_HOST" != "$_SETUP_STAFF_HOST" ]]; then break; fi
+    warn "Portal-FQDN muss gueltig und vom Staff-FQDN verschieden sein."
+  done
+
+  while :; do
+    read -rp "Admin-E-Mail [admin@${base_domain}]: " input || true
+    _SETUP_ADMIN_EMAIL="${input:-admin@${base_domain}}"
+    valid_setup_email "$_SETUP_ADMIN_EMAIL" && break
+    warn "Admin-E-Mail ist ungueltig."
+  done
+  read -rp 'Kanzlei-Name [Kanzlei]: ' input || true
+  _SETUP_TENANT_NAME="${input:-Kanzlei}"
+  [[ -n "${_SETUP_TENANT_NAME//[[:space:]]/}" ]] || die "Kanzlei-Name darf nicht leer sein."
+
+  if [[ "$_SETUP_METHOD" == "traefik" ]]; then
+    while :; do
+      read -rp "Let's-Encrypt-E-Mail [${_SETUP_ADMIN_EMAIL}]: " input || true
+      _SETUP_ACME_EMAIL="${input:-$_SETUP_ADMIN_EMAIL}"
+      valid_setup_email "$_SETUP_ACME_EMAIL" && break
+      warn "ACME-E-Mail ist ungueltig."
+    done
+    while :; do
+      read -rp 'Oeffentliche Server-IP (A/AAAA-Ziel beider FQDNs): ' _SETUP_EXPECTED_IP || true
+      valid_ip_address "$_SETUP_EXPECTED_IP" && break
+      warn "Bitte eine gueltige IPv4- oder IPv6-Adresse eingeben."
+    done
+    assert_dns_points_to_ip "$_SETUP_STAFF_HOST" "$_SETUP_EXPECTED_IP" || \
+      die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
+    assert_dns_points_to_ip "$_SETUP_PORTAL_HOST" "$_SETUP_EXPECTED_IP" || \
+      die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
+  fi
+
+  read -rp "SMTP-Host [smtp.${base_domain}]: " input || true
+  _SETUP_SMTP_HOST="${input:-smtp.${base_domain}}"
+  read -rp 'SMTP-Port [587]: ' input || true
+  _SETUP_SMTP_PORT="${input:-587}"
+  [[ "$_SETUP_SMTP_PORT" =~ ^[0-9]+$ ]] && (( 10#$_SETUP_SMTP_PORT >= 1 && 10#$_SETUP_SMTP_PORT <= 65535 )) || \
+    die "SMTP-Port muss zwischen 1 und 65535 liegen."
+  read -rp "SMTP-Absender [TaxTronik <noreply@${base_domain}>]: " input || true
+  _SETUP_SMTP_FROM="${input:-TaxTronik <noreply@${base_domain}>}"
+  read -rp 'SMTP-Benutzer (optional): ' _SETUP_SMTP_USER || true
+  if [[ -n "$_SETUP_SMTP_USER" ]]; then
+    read -rsp 'SMTP-Passwort: ' _SETUP_SMTP_PASSWORD || true
+    printf '\n'
+    [[ -n "$_SETUP_SMTP_PASSWORD" ]] || die "SMTP-Passwort fehlt trotz gesetztem Benutzer."
+  fi
+
+  printf '\nSignal einrichten?\n'
+  printf '  1) Mit TaxTronik verwalten - Docker (empfohlen)\n'
+  printf '  2) Extern/nativ vorhandenes Signal anbinden\n'
+  printf '  3) Signal deaktivieren\n'
+  read -rp 'Auswahl [1]: ' choice || true
+  case "${choice:-1}" in
+    1|managed) _SETUP_SIGNAL_MODE="managed" ;;
+    2|external)
+      _SETUP_SIGNAL_MODE="external"
+      while :; do
+        read -rp 'Signal-URL (aus TaxTronik-Containern erreichbar): ' _SETUP_SIGNAL_URL || true
+        valid_http_url "$_SETUP_SIGNAL_URL" && break
+        warn "Signal-URL ist ungueltig."
+      done
+      read -rsp 'Signal Bearer-Token (mindestens 32 Zeichen): ' _SETUP_SIGNAL_TOKEN || true; printf '\n'
+      (( ${#_SETUP_SIGNAL_TOKEN} >= 32 )) || die "Signal Bearer-Token ist zu kurz."
+      read -rsp 'Signal Operator-Token (optional, Enter = read-only): ' _SETUP_SIGNAL_OPERATOR_TOKEN || true; printf '\n'
+      [[ -z "$_SETUP_SIGNAL_OPERATOR_TOKEN" || ${#_SETUP_SIGNAL_OPERATOR_TOKEN} -ge 32 ]] || \
+        die "Signal Operator-Token ist zu kurz."
+      [[ -z "$_SETUP_SIGNAL_OPERATOR_TOKEN" || "$_SETUP_SIGNAL_OPERATOR_TOKEN" != "$_SETUP_SIGNAL_TOKEN" ]] || \
+        die "Signal Operator- und Bearer-Token muessen verschieden sein."
+      ;;
+    3|disabled) _SETUP_SIGNAL_MODE="disabled" ;;
+    *) die "Ungueltige Signal-Auswahl: $choice" ;;
+  esac
+
+  printf '\n================ Setup-Zusammenfassung ================\n'
+  printf 'Deployment : %s\n' "$([[ "$_SETUP_METHOD" == "traefik" ]] && printf '1-Klick Traefik (leerer Host)' || printf 'Standard / vorhandener Reverse-Proxy')"
+  printf 'Version    : %s\n' "$_SETUP_RELEASE_VERSION"
+  printf 'Staff      : https://%s\n' "$_SETUP_STAFF_HOST"
+  printf 'Portal     : https://%s\n' "$_SETUP_PORTAL_HOST"
+  [[ "$_SETUP_METHOD" == "traefik" ]] && printf 'TLS/DNS    : Let\x27s Encrypt, Ziel %s\n' "$_SETUP_EXPECTED_IP"
+  printf 'SMTP       : %s:%s, Zugang %s\n' "$_SETUP_SMTP_HOST" "$_SETUP_SMTP_PORT" "$([[ -n "$_SETUP_SMTP_USER" ]] && printf 'gesetzt' || printf 'ohne Login')"
+  printf 'Signal     : %s\n' "$_SETUP_SIGNAL_MODE"
+  printf 'Kanzlei    : %s\n' "$_SETUP_TENANT_NAME"
+  printf 'Admin      : %s\n' "$_SETUP_ADMIN_EMAIL"
+  if [[ "$_SETUP_METHOD" == "standard" ]]; then
+    printf 'Hinweis     : TLS/Proxy-Konfiguration bleibt unveraendert beim Betreiber.\n'
+    phrase="KONFIGURATION UEBERNEHMEN"
+  else
+    printf 'WARNUNG     : Nur fuer komplett leere Maschine; Ports 80/443 werden exklusiv.\n'
+    phrase="LEERE MASCHINE INSTALLIEREN"
+  fi
+  printf '=========================================================\n'
+  confirm_initial_setup_plan "$phrase" || die "Initialsetup ohne Aenderungen abgebrochen."
+  apply_initial_setup_plan
+  info "Bestaetigte Initialkonfiguration wurde nach .env uebernommen."
+}
+
+# Expliziter Besitzvertrag fuer Signal. Der Funktionsname bleibt wegen der
+# historischen RISK_LAYER_* API- und Env-Namen bestandskompatibel.
 configure_risk_layer_interactive() {
+  local mode="${SIGNAL_DEPLOYMENT:-}" choice=""
   RISK_LAYER_URL="${RISK_LAYER_URL:-}"
   RISK_LAYER_TOKEN="${RISK_LAYER_TOKEN:-}"
   RISK_LAYER_OPERATOR_TOKEN="${RISK_LAYER_OPERATOR_TOKEN:-}"
-  RISK_LAYER_FESTWISSEN_DIR="${RISK_LAYER_FESTWISSEN_DIR:-}"
-  prompt "Risk-Layer-URL (leer = Risk-Layer inaktiv)" RISK_LAYER_URL ""
-  if [[ -n "${RISK_LAYER_URL:-}" ]]; then
-    prompt "Risk-Layer Bearer-Token (min 32 Zeichen)" RISK_LAYER_TOKEN ""
-    if [[ ${#RISK_LAYER_TOKEN} -lt 32 ]]; then
-      warn "RISK_LAYER_TOKEN zu kurz (< 32) — Risk-Layer bleibt inaktiv."
-      RISK_LAYER_URL=""; RISK_LAYER_TOKEN=""; RISK_LAYER_OPERATOR_TOKEN=""
-    else
-      if [[ -z "$RISK_LAYER_OPERATOR_TOKEN" && -t 0 ]]; then
-        local operator_input=""
-        read -rsp "Risk-Layer Operator-Token (Enter = sicher generieren): " operator_input || true
-        printf '\n'
-        RISK_LAYER_OPERATOR_TOKEN="$operator_input"
-      fi
-      if [[ -n "${RISK_LAYER_OPERATOR_TOKEN:-}" && ( ${#RISK_LAYER_OPERATOR_TOKEN} -lt 32 || "$RISK_LAYER_OPERATOR_TOKEN" == "$RISK_LAYER_TOKEN" ) ]]; then
-        warn "RISK_LAYER_OPERATOR_TOKEN ist zu kurz oder mit dem Bearer-Token identisch."
-        RISK_LAYER_OPERATOR_TOKEN=""
-      fi
-      if [[ -z "${RISK_LAYER_OPERATOR_TOKEN:-}" && "${RISK_LAYER_URL%/}" == "http://risk-layer:8000" ]]; then
-        RISK_LAYER_OPERATOR_TOKEN="$(rand_b64 32)"
-        info "RISK_LAYER_OPERATOR_TOKEN generiert."
-      elif [[ -z "${RISK_LAYER_OPERATOR_TOKEN:-}" ]]; then
-        warn "Externe Risk-Layer-Engine bleibt read-only; Operator-Token muss dort und hier koordiniert gesetzt werden."
-      fi
-      if [[ "${RISK_LAYER_URL%/}" == "http://risk-layer:8000" ]]; then
-        prompt "Signal-Festwissen-Release (absoluter Host-Pfad)" RISK_LAYER_FESTWISSEN_DIR "/opt/kanzleikonsole/signal/current"
-        RISK_LAYER_FESTWISSEN_DIR="${RISK_LAYER_FESTWISSEN_DIR:-/opt/kanzleikonsole/signal/current}"
-      else
-        RISK_LAYER_FESTWISSEN_DIR=""
-      fi
+  SIGNAL_IMAGE="${SIGNAL_IMAGE:-auto}"
+  RISK_LAYER_EMB_DEVICE="${RISK_LAYER_EMB_DEVICE:-cpu}"
+
+  if [[ -z "$mode" ]]; then
+    mode="$(signal_deployment_mode)"
+    # Eine komplett leere Erstinstallation soll bewusst entscheiden. Bei
+    # Bestandswerten wird lediglich der sichere, deterministische Modus
+    # persistiert; dadurch fragt ein normales Update nicht erneut.
+    if [[ -z "$RISK_LAYER_URL" && -t 0 ]]; then
+      printf '\nSignal einrichten?\n'
+      printf '  1) Mit TaxTronik verwalten - Docker (empfohlen)\n'
+      printf '  2) Extern/nativ vorhandenes Signal anbinden\n'
+      printf '  3) Signal deaktivieren\n'
+      read -rp 'Auswahl [1]: ' choice || true
+      case "${choice:-1}" in
+        1|managed) mode="managed" ;;
+        2|external) mode="external" ;;
+        3|disabled) mode="disabled" ;;
+        *) die "Ungueltige Signal-Auswahl: $choice" ;;
+      esac
     fi
-  else
-    # Operator- und Basis-Token dürfen nicht ohne URL stehen bleiben.
-    RISK_LAYER_TOKEN=""; RISK_LAYER_OPERATOR_TOKEN=""; RISK_LAYER_FESTWISSEN_DIR=""
   fi
 
-  if [[ -n "${RISK_LAYER_URL:-}" && -n "${RISK_LAYER_TOKEN:-}" ]]; then
-    set_env RISK_LAYER_URL "$RISK_LAYER_URL"
-    set_env RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
-    set_env RISK_LAYER_OPERATOR_TOKEN "$RISK_LAYER_OPERATOR_TOKEN"
-    set_env RISK_LAYER_FESTWISSEN_DIR "$RISK_LAYER_FESTWISSEN_DIR"
-  else
-    set_env RISK_LAYER_URL ""
-    set_env RISK_LAYER_TOKEN ""
-    set_env RISK_LAYER_OPERATOR_TOKEN ""
-    set_env RISK_LAYER_FESTWISSEN_DIR ""
-  fi
+  case "$mode" in
+    managed)
+      RISK_LAYER_URL="http://risk-layer:8000"
+      [[ ${#RISK_LAYER_TOKEN} -ge 32 ]] || RISK_LAYER_TOKEN="$(rand_b64 32)"
+      if [[ ${#RISK_LAYER_OPERATOR_TOKEN} -lt 32 || "$RISK_LAYER_OPERATOR_TOKEN" == "$RISK_LAYER_TOKEN" ]]; then
+        local token_attempt
+        RISK_LAYER_OPERATOR_TOKEN=""
+        for token_attempt in 1 2 3; do
+          RISK_LAYER_OPERATOR_TOKEN="$(rand_b64 32)"
+          [[ ${#RISK_LAYER_OPERATOR_TOKEN} -ge 32 && "$RISK_LAYER_OPERATOR_TOKEN" != "$RISK_LAYER_TOKEN" ]] && break
+        done
+        [[ ${#RISK_LAYER_OPERATOR_TOKEN} -ge 32 && "$RISK_LAYER_OPERATOR_TOKEN" != "$RISK_LAYER_TOKEN" ]] || \
+          die "Getrenntes Signal-Operator-Token konnte nicht sicher generiert werden."
+      fi
+      SIGNAL_IMAGE="${SIGNAL_IMAGE:-auto}"
+      [[ "$SIGNAL_IMAGE" != "" ]] || SIGNAL_IMAGE="auto"
+      RISK_LAYER_EMB_DEVICE="cpu"
+      info "Signal wird durch TaxTronik verwaltet; URL und getrennte Secrets wurden automatisch provisioniert."
+      ;;
+    external)
+      prompt "Signal-URL (aus den TaxTronik-Containern erreichbar)" RISK_LAYER_URL "$RISK_LAYER_URL"
+      prompt "Signal Bearer-Token (min 32 Zeichen)" RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
+      if [[ -z "$RISK_LAYER_OPERATOR_TOKEN" && -t 0 ]]; then
+        read -rsp "Signal Operator-Token (optional, Enter = read-only): " RISK_LAYER_OPERATOR_TOKEN || true
+        printf '\n'
+      fi
+      SIGNAL_IMAGE=""
+      info "Signal ist extern verwaltet; TaxTronik wird weder Installation noch Updates anfassen."
+      ;;
+    disabled)
+      RISK_LAYER_URL=""
+      RISK_LAYER_TOKEN=""
+      RISK_LAYER_OPERATOR_TOKEN=""
+      SIGNAL_IMAGE=""
+      ;;
+    *) die "SIGNAL_DEPLOYMENT muss managed, external oder disabled sein (aktuell: $mode)." ;;
+  esac
+
+  set_env SIGNAL_DEPLOYMENT "$mode"
+  set_env SIGNAL_IMAGE "$SIGNAL_IMAGE"
+  set_env RISK_LAYER_URL "$RISK_LAYER_URL"
+  set_env RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
+  set_env RISK_LAYER_OPERATOR_TOKEN "$RISK_LAYER_OPERATOR_TOKEN"
+  set_env RISK_LAYER_EMB_DEVICE "$RISK_LAYER_EMB_DEVICE"
+  # Bestandswert wird nur aus der Env entfernt; Host-Daten werden niemals
+  # geloescht. Verwaltete Images tragen ihr Festwissen selbst, externe Dienste
+  # besitzen ihre Daten ohnehin ausserhalb von TaxTronik.
+  set_env RISK_LAYER_FESTWISSEN_DIR ""
 }
 
 configure_smtp_interactive() {
@@ -1705,9 +2310,17 @@ configure_smtp_interactive() {
 }
 
 url_hostname() {
-  local url="${1:-}"
-  [[ -z "$url" ]] && return 0
-  node -e "try { process.stdout.write(new URL(process.argv[1]).hostname) } catch {}" "$url" 2>/dev/null || true
+  local url="${1:-}" authority
+  [[ "$url" == *://* ]] || return 0
+  authority="${url#*://}"
+  authority="${authority%%/*}"
+  authority="${authority##*@}"
+  if [[ "$authority" == \[*\]* ]]; then
+    authority="${authority#\[}"; authority="${authority%%\]*}"
+  else
+    authority="${authority%%:*}"
+  fi
+  printf '%s' "$authority"
 }
 
 validate_cookie_domains_or_die() {
@@ -2579,7 +3192,7 @@ bake_db_urls_into_env() {
 
 # Interaktive .env-Vorbereitung fuer deploy/update/bootstrap.
 prepare_env_interactive() {
-  local env_created=0
+  local env_created="${_TAXTRONIK_ENV_CREATED_THIS_RUN:-0}"
   if [[ ! -f "$ENVFILE" ]]; then
     info ".env fehlt — aus Vorlage anlegen"
     [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."
@@ -2685,11 +3298,15 @@ _deploy_core() {
   wait_postgres_healthy
   sync_postgres_roles_from_env
   provide_images
+  provide_traefik_for_deploy
+  provide_signal_for_deploy
   backup_before_migrations
   run_migrations
   ensure_provisioned_interactive
+  start_signal_for_deploy || die "Deploy abgebrochen: verwaltetes Signal ist nicht bereit."
   start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Deploy abgebrochen: Anwendung ist nicht vollstaendig healthy."
+  smoke_public_frontend || die "Deploy abgebrochen: verwaltetes Traefik/TLS ist nicht oeffentlich bereit."
   deploy_readiness || die "Deploy abgebrochen: Produktivkonfiguration ist nicht bereit."
   finalize_release_contract
 }
@@ -2699,6 +3316,7 @@ _deploy_core() {
 # ---------------------------------------------------------------------------
 cmd_deploy() {
   require_cmd docker; require_cmd node; require_cmd curl
+  configure_initial_deployment_interactive
   prepare_env_interactive
   _deploy_core
   info "Deploy fertig. Version: $(image_tag)"
@@ -2763,9 +3381,13 @@ cmd_update() {
   wait_postgres_healthy
   sync_postgres_roles_from_env
   provide_images
+  provide_traefik_for_deploy
+  provide_signal_for_deploy
   run_migrations
+  start_signal_for_deploy || die "Update abgebrochen: verwaltetes Signal ist nicht bereit."
   start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Update fehlgeschlagen: Anwendung ist nicht vollstaendig healthy; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
+  smoke_public_frontend || die "Update fehlgeschlagen: verwaltetes Traefik/TLS ist nicht oeffentlich bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
   deploy_readiness || die "Update fehlgeschlagen: Produktivkonfiguration ist nicht bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
   finalize_release_contract
   info "Update fertig. Version: $(image_tag)"
@@ -2890,6 +3512,9 @@ cmd_backup_decrypt() {
   tar -tzf "$target/volumes/seaweedfs-data.tar.gz" >/dev/null
   tar -tzf "$target/volumes/redis-data.tar.gz" >/dev/null
   tar -tzf "$target/volumes/n8n-data.tar.gz" >/dev/null
+  if [[ -f "$target/volumes/traefik-acme.tar.gz" ]]; then
+    tar -tzf "$target/volumes/traefik-acme.tar.gz" >/dev/null
+  fi
   info "Entschluesselung + Archiv-Strukturpruefung erfolgreich. Restore ausschliesslich nach DR-Runbook auf isoliertem Ziel fortsetzen."
 }
 
@@ -3169,6 +3794,7 @@ cmd_rollback() {
   warn "Rollback auf $target — DB-Kompatibilitaet wurde fail-closed aus dem Release-State bestaetigt."
   start_apps_for_activation rollback "$target"
   smoke_health || die "Rollback-Container sind gestartet, aber nicht healthy."
+  smoke_public_frontend || die "Rollback-Container laufen, aber verwaltetes Traefik/TLS ist nicht oeffentlich bereit."
   deploy_readiness || die "Rollback-Container sind gestartet, aber die Produktivkonfiguration ist nicht bereit."
 
   # Die Aktivierung ist fachlich erfolgreich. Ab hier keinen automatischen
@@ -3185,6 +3811,7 @@ cmd_rollback() {
 # Erstinstall-Erkennung + Provisionierung enthaelt), plus Willkommens-Banner.
 cmd_bootstrap() {
   require_cmd docker; require_cmd node; require_cmd git; require_cmd curl
+  configure_initial_deployment_interactive
   prepare_env_interactive
   _deploy_core
   info "Bootstrap fertig. Version: $(image_tag)"

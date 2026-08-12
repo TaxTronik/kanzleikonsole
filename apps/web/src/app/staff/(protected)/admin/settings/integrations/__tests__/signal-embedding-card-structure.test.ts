@@ -12,13 +12,16 @@ describe('Signal-Embedding-Card', () => {
     expect(card).toContain("choice === 'weekly' ? { enabled: true, intervalDays: 7 }");
   });
 
-  it('bestätigt den Force-Refresh, sperrt aktive Jobs und pollt den Serverstatus', () => {
-    expect(card).toContain('window.confirm(');
-    expect(card).toContain('triggerSignalEmbeddingAction()');
-    expect(card).toContain('disabled={disabled || pending || polling}');
+  it('bestätigt die Lastwarnung, bietet einen Abbruch und pollt aktive Jobs', () => {
+    expect(card).toContain('<ConfirmModal');
+    expect(card).toContain('CPU und Arbeitsspeicher mehrere Minuten stark auslasten');
+    expect(card).toContain('triggerSignalEmbeddingAction({ confirmed: true })');
+    expect(card).toContain('cancelSignalEmbeddingAction({ jobId: job.id })');
+    expect(card).toContain('Aktualisierung stoppen');
     expect(card).toContain('window.setInterval(() => router.refresh(), 2_500)');
     expect(card).toContain('const polling = !disabled && remoteJobActive');
     expect(card).not.toContain('acceptedJobId');
+    expect(card).not.toContain('window.confirm(');
   });
 
   it('lädt und zeigt den Status nur bei aktivem Modul und erreichbarer Engine', () => {

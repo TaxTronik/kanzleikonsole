@@ -6,6 +6,8 @@ const JOB_LABELS: Record<EmbeddingJobState, string> = {
   idle: 'Bereit',
   queued: 'Eingeplant',
   running: 'Wird aktualisiert',
+  cancelling: 'Abbruch angefordert',
+  cancelled: 'Abgebrochen',
   succeeded: 'Erfolgreich',
   failed: 'Fehlgeschlagen',
   skipped: 'Nicht erforderlich',
@@ -16,7 +18,7 @@ export function embeddingJobLabel(state: EmbeddingJobState): string {
 }
 
 export function isActiveEmbeddingJob(state: EmbeddingJobState): boolean {
-  return state === 'queued' || state === 'running';
+  return state === 'queued' || state === 'running' || state === 'cancelling';
 }
 
 export function presentEmbeddingCurrent(current: boolean | null): {

@@ -2,7 +2,7 @@
 # =============================================================================
 # taxtronik — Operator-CLI (ein Einstieg fuer das ganze produktive Deployment).
 #
-#   ./taxtronik bootstrap            Prod-Erstinstall (1 Kommando bis laufende App)
+#   ./taxtronik bootstrap            interaktiver Prod-Erstinstall inkl. Betriebsweg
 #   ./taxtronik deploy               bauen/pullen + migrieren + starten + Smoke
 #   ./taxtronik update               Backup + git pull + bauen/pullen + migrieren + starten
 #   ./taxtronik backup               Postgres -> lokale Kopie + S3-Backup-Bucket
@@ -32,7 +32,7 @@ usage() {
 taxtronik — Operator-CLI
 
 Nutze:
-  ./taxtronik bootstrap             Prod-Erstinstall (Infra, Images, Migration, Admin)
+  ./taxtronik bootstrap             Erstinstall: Standard oder 1-Klick-Traefik wählen
   ./taxtronik deploy                bauen/pullen + migrieren + starten + Health-Smoke
   ./taxtronik update                Backup + git pull + bauen/pullen + migrieren + starten
   ./taxtronik backup                Postgres-Backup nach backups/ + S3-Backup-Bucket

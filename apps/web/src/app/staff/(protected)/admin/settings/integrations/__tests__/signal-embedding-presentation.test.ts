@@ -7,9 +7,11 @@ import {
 } from '../signal-embedding-presentation';
 
 describe('Signal-Embedding-Darstellung', () => {
-  it('pollt ausschließlich wartende und laufende Jobs', () => {
+  it('pollt wartende, laufende und im Abbruch befindliche Jobs', () => {
     expect(isActiveEmbeddingJob('queued')).toBe(true);
     expect(isActiveEmbeddingJob('running')).toBe(true);
+    expect(isActiveEmbeddingJob('cancelling')).toBe(true);
+    expect(isActiveEmbeddingJob('cancelled')).toBe(false);
     expect(isActiveEmbeddingJob('idle')).toBe(false);
     expect(isActiveEmbeddingJob('succeeded')).toBe(false);
     expect(isActiveEmbeddingJob('failed')).toBe(false);
@@ -19,6 +21,8 @@ describe('Signal-Embedding-Darstellung', () => {
   it('liefert verständliche deutsche Jobstatus', () => {
     expect(embeddingJobLabel('queued')).toBe('Eingeplant');
     expect(embeddingJobLabel('running')).toBe('Wird aktualisiert');
+    expect(embeddingJobLabel('cancelling')).toBe('Abbruch angefordert');
+    expect(embeddingJobLabel('cancelled')).toBe('Abgebrochen');
     expect(embeddingJobLabel('failed')).toBe('Fehlgeschlagen');
   });
 
