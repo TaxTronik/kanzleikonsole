@@ -11,6 +11,7 @@ const connectionSection = readFileSync(
   new URL('../n8n-connection-section.tsx', import.meta.url),
   'utf8',
 );
+const actions = readFileSync(new URL('../n8n-actions.ts', import.meta.url), 'utf8');
 const callbackSection = readFileSync(
   new URL('../n8n-callback-credentials-section.tsx', import.meta.url),
   'utf8',
@@ -114,5 +115,16 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     // 11: inkl. toggleRoute (Ein-Klick-Aktivierung an der Routen-Karte).
     expect(form.match(/router\.refresh\(\);/g) ?? []).toHaveLength(11);
     expect(form.match(/window\.location\.reload\(\)/g) ?? []).toHaveLength(1);
+  });
+
+  it('importiert Callback-Vorlagen geführt statt an optionalen Werten abzubrechen', () => {
+    expect(actions).toContain('prepareN8nCallbackImport(');
+    expect(actions).toContain('DEFAULT_GWG_OFFICER_EMAIL');
+    expect(actions).toContain('bindN8nHeaderCredential(materialized, callbackSetup.binding)');
+    expect(actions).not.toContain("throw new Error('Callback-Token fehlt')");
+    expect(actions).not.toContain(
+      "throw new Error('E-Mail der GwG-verantwortlichen Person fehlt')",
+    );
+    expect(form).toContain('if (result.credential) setCallbackResult(result)');
   });
 });

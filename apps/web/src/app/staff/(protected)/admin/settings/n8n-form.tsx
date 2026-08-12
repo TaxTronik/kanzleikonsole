@@ -233,6 +233,8 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         gwgOfficerEmail,
       });
       setImportResult(result);
+      if (result.callbackConfigured) setCallbackConfigured(true);
+      if (result.credential) setCallbackResult(result);
       const list = await listWorkflowsAction();
       if (list.ok) setWorkflows(list.workflows ?? []);
       router.refresh();

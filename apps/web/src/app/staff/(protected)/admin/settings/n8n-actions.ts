@@ -17,10 +17,13 @@ import { evidenceService } from '@/server/container';
 import { assertPublicHost } from '@/server/http/ssrf-guard';
 import {
   BUNDLED_N8N_WORKFLOWS,
+  bindN8nHeaderCredential,
+  DEFAULT_GWG_OFFICER_EMAIL,
   materializeBundledN8nWorkflow,
   unresolvedBundledN8nPlaceholders,
 } from '@/server/n8n/bundled-workflows';
 import { N8nApiClient } from '@/server/n8n/client';
+import { prepareN8nCallbackImport } from '@/server/n8n/callback-import-setup';
 import { getN8nDeliverQueue } from '@/server/n8n/queue';
 import {
   defaultN8nCallbackBase,
@@ -1363,6 +1366,56 @@ const WorkflowImportSchema = z.object({
   gwgOfficerEmail: z.union([z.literal(''), z.string().email().max(320)]).default(''),
 });
 
+function bundledWorkflowName(template: (typeof BUNDLED_N8N_WORKFLOWS)[number]): string {
+  return typeof template.workflow['name'] === 'string' ? template.workflow['name'] : template.name;
+}
+
+async function prepareWorkflowImportSetup(params: {
+  client: N8nApiClient;
+  ctx: ReturnType<typeof context>;
+  cfg: N8nConfig;
+  templateIds: string[];
+  existingNames: Set<string>;
+  gwgOfficerEmail: string;
+}) {
+  const selected = BUNDLED_N8N_WORKFLOWS.filter((candidate) =>
+    params.templateIds.includes(candidate.templateId),
+  );
+  const missing = selected.filter(
+    (template) => !params.existingNames.has(bundledWorkflowName(template)),
+  );
+  const requiredScopes = [...new Set(missing.flatMap((template) => template.callbackScopes))];
+  const warnings: string[] = [];
+  let callback: Awaited<ReturnType<typeof prepareN8nCallbackImport>> = {
+    binding: null,
+    configured: params.cfg.callbackConfigured,
+  };
+  if (requiredScopes.length) {
+    try {
+      callback = await prepareN8nCallbackImport(
+        params.ctx,
+        params.cfg,
+        params.client,
+        requiredScopes,
+      );
+      if (callback.warning) warnings.push(callback.warning);
+    } catch {
+      warnings.push(
+        'Der Rückkanal konnte nicht automatisch vorbereitet werden. Die inaktiven Vorlagen wurden trotzdem importiert und müssen vor Veröffentlichung in Abschnitt 2 verbunden werden.',
+      );
+    }
+  }
+  const usesGwgPlaceholder =
+    !params.gwgOfficerEmail &&
+    missing.some((template) => template.templateId === 'taxtronik.gwg-expiry-check');
+  if (usesGwgPlaceholder) {
+    warnings.push(
+      `Die GwG-Vorlage enthält vorerst ${DEFAULT_GWG_OFFICER_EMAIL}. Empfänger vor der Veröffentlichung in n8n ersetzen.`,
+    );
+  }
+  return { selected, callback, warnings };
+}
+
 export async function listWorkflowsAction(): Promise<
   ActionResult & { workflows?: N8nWorkflowRow[] }
 > {
@@ -1387,14 +1440,18 @@ export async function listWorkflowsAction(): Promise<
   }
 }
 
-/** Importiert nur fehlende Vorlagen. Aktivierung und Credentials bleiben in n8n. */
+export interface WorkflowImportActionResult extends CallbackCredentialResult {
+  callbackConfigured?: boolean;
+}
+
+/** Importiert nur fehlende Vorlagen. Kein Workflow wird automatisch aktiviert. */
 export async function importWorkflowsAction(
   input: {
     templateIds: string[];
     smtpFrom?: string;
     gwgOfficerEmail?: string;
   } = { templateIds: BUNDLED_N8N_WORKFLOWS.map((template) => template.templateId) },
-): Promise<ActionResult> {
+): Promise<WorkflowImportActionResult> {
   const auth = await requireAdmin();
   if (!auth.ok) return { ok: false, error: auth.error };
   const ctx = context(auth);
@@ -1417,23 +1474,29 @@ export async function importWorkflowsAction(
     const client = new N8nApiClient(cfg.apiBaseUrl, cfg.apiKey);
     const existing = await client.listWorkflows();
     const existingNames = new Set(existing.map((item) => item.name));
+    const setup = await prepareWorkflowImportSetup({
+      client,
+      ctx,
+      cfg,
+      templateIds: parsed.data.templateIds,
+      existingNames,
+      gwgOfficerEmail: parsed.data.gwgOfficerEmail,
+    });
+    const { selected, callback: callbackSetup, warnings } = setup;
     const smtp = await readSmtpConfig(ctx);
     const smtpFrom = parsed.data.smtpFrom || smtp?.from || env.SMTP_FROM || '';
     const importValues = {
       taxtronikApiUrl: cfg.callbackBaseUrl || defaultN8nCallbackBase(cfg.kind),
       callbackKeyId: cfg.callbackKeyId,
       smtpFrom,
-      gwgOfficerEmail: parsed.data.gwgOfficerEmail,
+      gwgOfficerEmail: parsed.data.gwgOfficerEmail || DEFAULT_GWG_OFFICER_EMAIL,
     };
     const imported: string[] = [];
     const skipped: string[] = [];
     const errors: string[] = [];
 
-    for (const template of BUNDLED_N8N_WORKFLOWS.filter((candidate) =>
-      parsed.data.templateIds.includes(candidate.templateId),
-    )) {
-      const workflowName =
-        typeof template.workflow['name'] === 'string' ? template.workflow['name'] : template.name;
+    for (const template of selected) {
+      const workflowName = bundledWorkflowName(template);
       if (existingNames.has(workflowName)) {
         skipped.push(workflowName);
         continue;
@@ -1447,24 +1510,12 @@ export async function importWorkflowsAction(
         ) {
           throw new Error('Mail-Absender für n8n fehlt');
         }
-        if (template.templateId === 'taxtronik.gwg-expiry-check' && !parsed.data.gwgOfficerEmail) {
-          throw new Error('E-Mail der GwG-verantwortlichen Person fehlt');
-        }
-        const missingScopes = template.callbackScopes.filter(
-          (scope) => !cfg.callbackScopes.includes(scope),
-        );
-        if (template.callbackScopes.length && !cfg.callbackConfigured) {
-          throw new Error('Callback-Token fehlt');
-        }
-        if (missingScopes.length) {
-          throw new Error(`Callback-Berechtigung fehlt: ${missingScopes.join(', ')}`);
-        }
         const materialized = materializeBundledN8nWorkflow(template.workflow, importValues);
         const unresolved = unresolvedBundledN8nPlaceholders(materialized);
         if (unresolved.length) {
           throw new Error(`Einrichtungswert fehlt: ${unresolved.join(', ')}`);
         }
-        await client.createWorkflow(materialized);
+        await client.createWorkflow(bindN8nHeaderCredential(materialized, callbackSetup.binding));
         imported.push(workflowName);
         existingNames.add(workflowName);
       } catch (error) {
@@ -1477,6 +1528,8 @@ export async function importWorkflowsAction(
       imported,
       skipped,
       errors,
+      warnings,
+      callbackCredentialProvisioned: Boolean(callbackSetup.binding),
       autoActivated: false,
     });
     revalidateN8n();
@@ -1484,13 +1537,16 @@ export async function importWorkflowsAction(
       imported.length ? `${imported.length} importiert` : '',
       skipped.length ? `${skipped.length} vorhanden` : '',
       errors.length ? `${errors.length} Fehler` : '',
+      warnings.length ? `${warnings.length} Hinweis(e)` : '',
     ]
       .filter(Boolean)
       .join(' · ');
     return {
       ok: errors.length === 0,
-      message: `${summary || 'Nichts zu tun.'} Workflows wurden nicht automatisch aktiviert.`,
+      message: `${summary || 'Nichts zu tun.'} Workflows wurden nicht automatisch aktiviert.${warnings.length ? ` ${warnings.join(' ')}` : ''}`,
       error: errors.length ? errors.join('\n') : undefined,
+      callbackConfigured: callbackSetup.configured,
+      credential: callbackSetup.credential,
     };
   } catch (error) {
     return { ok: false, error: (error as Error).message };

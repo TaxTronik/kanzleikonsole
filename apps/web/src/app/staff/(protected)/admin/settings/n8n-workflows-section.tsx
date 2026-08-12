@@ -60,8 +60,9 @@ export function N8nWorkflowsSection({
           <Workflow className="h-4 w-4" /> 3. Workflows einrichten
         </h3>
         <p className="mt-1 text-xs text-muted">
-          Vorlagen werden nur importiert. TaxTronik aktiviert oder überschreibt keinen Workflow;
-          Credentials und fachliche Wirkung müssen Sie in n8n prüfen.
+          Vorlagen werden nur importiert. Mit <code>credential:create</code> richtet TaxTronik den
+          Rückkanal automatisch ein; andernfalls erscheint das Token einmalig zur manuellen
+          Übergabe. Kein Workflow wird automatisch aktiviert oder überschrieben.
         </p>
       </div>
       <div className="rounded-lg border border-default p-4 space-y-4">
@@ -152,11 +153,17 @@ export function N8nWorkflowsSection({
                   onChange={(event) => setGwgOfficerEmail(event.target.value)}
                   placeholder="gwg@example.de"
                 />
+                <span className="mt-1 block text-xs text-muted">
+                  Optional beim Import. Leer erzeugt einen deutlich sichtbaren{' '}
+                  <code>example.invalid</code>-Platzhalter, der vor Veröffentlichung ersetzt werden
+                  muss.
+                </span>
               </label>
             )}
             <p className="text-xs text-muted md:col-span-2">
-              Diese nicht geheimen Werte werden beim Import direkt in die Vorlage eingesetzt. API-
-              und HMAC-Secrets bleiben ausschließlich n8n-Credentials.
+              Diese nicht geheimen Werte werden beim Import direkt in die Vorlage eingesetzt.
+              Secrets bleiben ausschließlich verschlüsselte n8n-Credentials bzw. werden bei
+              fehlendem API-Recht nur einmalig angezeigt.
             </p>
           </div>
         )}

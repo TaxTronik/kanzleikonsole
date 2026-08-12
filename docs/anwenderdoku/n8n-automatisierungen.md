@@ -50,8 +50,10 @@ nach n8n. TaxTronik erzeugt keine Owner-Zugangsdaten und schleust keine Secrets
    Ziele einrichten.
 2. **Instanz verbinden:** Instanz-UI und optional API-URL plus API-Key
    hinterlegen. Der API-Zugang wird nur für Auflisten, Prüfen und Importieren
-   verwalteter Workflows benötigt; Veröffentlichung und Credentials bleiben
-   bewusste Schritte in n8n. Die Event-Zustellung funktioniert ohne API-Key.
+   verwalteter Workflows benötigt. Mit den Credential-Rechten richtet der
+   Import den tenantgebundenen Rückkanal vollständig ein; Veröffentlichung,
+   SMTP- und Outbound-HMAC-Credentials bleiben bewusste Schritte in n8n. Die
+   Event-Zustellung funktioniert ohne API-Key.
 3. **Workflow-Ziele als Entwurf speichern:** pro Workflow die
    **exakte Production-URL** speichern und die gewünschten Events abonnieren.
    Neue Ziele und Ziele mit geänderter URL oder Eventauswahl bleiben
@@ -82,11 +84,15 @@ vorhandenen Wert; Rotation erfolgt nach dem
 
 Wenn der Assistent Workflows verwalten soll, erzeugen Sie in n8n unter
 **Settings → n8n API** einen eigenen, ablaufenden API-Key. Unterstützt Ihre
-n8n-Edition Schlüssel mit Scopes, genügen typischerweise
-`workflow:list`, `workflow:read` und
-`workflow:create`. TaxTronik aktiviert oder veröffentlicht
+n8n-Edition Schlüssel mit Scopes, genügen typischerweise `workflow:list`,
+`workflow:read`, `workflow:create`, `credential:list` und `credential:create`.
+Die beiden Credential-Rechte dienen ausschließlich dazu, ein
+`httpHeaderAuth`-Credential für den TaxTronik-Rückkanal verschlüsselt in n8n
+anzulegen und beim Import direkt an die passenden Nodes zu binden. Fehlen sie,
+bricht der Workflow-Import nicht ab: Das Token erscheint einmalig zur manuellen
+Anlage. TaxTronik aktiviert oder veröffentlicht
 importierte Vorlagen absichtlich nicht; deshalb weder `workflow:update`
-noch `workflow:activate`, Benutzer-, Credential- oder
+noch `workflow:activate` sowie keine Benutzer-, Credential-Update-/Delete- oder
 Execution-Schreibrechte vergeben. Editionen ohne API-Key-Scopes geben einem
 Schlüssel weitreichenden Zugriff: dann einen dedizierten Service-Account
 beziehungsweise ein eigenes n8n-Projekt verwenden, den Key besonders schützen
@@ -112,7 +118,10 @@ Import ersetzt TaxTronik die nicht geheimen Platzhalter:
 - `__SMTP_FROM__` aus **Mail-Absender in n8n**; bleibt das Feld leer,
   wird der TaxTronik-SMTP-Absender aus der Betreiberkonfiguration übernommen,
 - und für Vorlage `02` `__GWG_OFFICER_EMAIL__` aus
-  **E-Mail GwG-Verantwortliche**.
+  **E-Mail GwG-Verantwortliche**. Bleibt das optionale Feld leer, importiert
+  TaxTronik den unzustellbaren, deutlich erkennbaren Platzhalter
+  `gwg-verantwortlich-vor-aktivierung@example.invalid`. Er muss vor der
+  Veröffentlichung in n8n ersetzt werden.
 
 Prüfen Sie diese Werte in der Importvorschau; besonders
 `localhost` ist aus dem n8n-Container fast immer falsch. Die
@@ -123,9 +132,10 @@ Anschließend ordnen Sie in n8n die Secrets als Credentials zu:
 - Den Webhook-Workflows `00`, `03` und `04` ein
   **Crypto-Credential** mit demselben HMAC-Secret zu, das TaxTronik für
   Outbound-Events gespeichert hat.
-- Den Callback-Workflows `01`, `02` und `04`
-  ein **Generic Header Auth**-Credential mit
-  `Authorization: Bearer <einmal angezeigtes Callback-Token>`.
+- Den Callback-Workflows `01`, `02` und `04` wird bei ausreichenden API-Rechten
+  automatisch ein **Generic Header Auth**-Credential zugeordnet. Ohne diese
+  Rechte legen Sie es mit dem einmal angezeigten Wert
+  `Authorization: Bearer <Key-ID>.<Callback-Token>` manuell an.
 - Den Mail-Nodes das passende SMTP-Credential.
 
 TaxTronik blockiert im mitgelieferten n8n-Container den Zugriff von Nodes auf

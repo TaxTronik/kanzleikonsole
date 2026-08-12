@@ -202,10 +202,11 @@ und Statusabfrage, aber nicht die Zustellung an bereits gespeicherte
 Production-Webhooks. Rotation möglichst ohne Unterbrechung:
 
 1. In n8n einen neuen, ablaufenden Key anlegen. Wenn unterstützt, nur
-   `workflow:list`, `workflow:read` und
-   `workflow:create` erlauben. TaxTronik veröffentlicht Vorlagen
-   nicht selbst; `workflow:update` und `workflow:activate`
-   sind nicht erforderlich.
+   `workflow:list`, `workflow:read`, `workflow:create`, `credential:list` und
+   `credential:create` erlauben. Die Credential-Rechte werden nur für das
+   verschlüsselte Header-Auth-Credential des TaxTronik-Rückkanals verwendet.
+   TaxTronik veröffentlicht Vorlagen nicht selbst; `workflow:update`,
+   `workflow:activate` sowie Credential-Update/-Delete sind nicht erforderlich.
 2. Neuen Key in TaxTronik speichern und Workflow-Liste sowie einen
    synthetischen Test abrufen. Webhook-HMAC separat kontrollieren.
 3. Alten Key in n8n widerrufen und den Wechsel protokollieren.

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUNDLED_N8N_WORKFLOWS,
+  bindN8nHeaderCredential,
+  DEFAULT_GWG_OFFICER_EMAIL,
   materializeBundledN8nWorkflow,
   unresolvedBundledN8nPlaceholders,
 } from '../bundled-workflows';
@@ -45,5 +47,41 @@ describe('gebündelte n8n-Workflows', () => {
 
     expect(JSON.stringify(template.workflow)).toBe(before);
     expect(before).toContain('__GWG_OFFICER_EMAIL__');
+  });
+
+  it('materialisiert einen sicheren GwG-Platzhalter und bindet nur Header-Auth-Nodes', () => {
+    const template = BUNDLED_N8N_WORKFLOWS.find(
+      (entry) => entry.templateId === 'taxtronik.gwg-expiry-check',
+    )!;
+    const materialized = materializeBundledN8nWorkflow(template.workflow, {
+      ...VALUES,
+      gwgOfficerEmail: DEFAULT_GWG_OFFICER_EMAIL,
+    });
+    const bound = bindN8nHeaderCredential(materialized, {
+      id: 'credential-1',
+      name: 'TaxTronik Rückkanal',
+      type: 'httpHeaderAuth',
+    });
+    const serialized = JSON.stringify(bound);
+
+    expect(serialized).toContain(DEFAULT_GWG_OFFICER_EMAIL);
+    expect(serialized).toContain(
+      '"httpHeaderAuth":{"id":"credential-1","name":"TaxTronik Rückkanal"}',
+    );
+    expect(JSON.stringify(template.workflow)).not.toContain('credential-1');
+  });
+
+  it('lässt Workflows ohne Header-Auth-Nodes beim Binden unverändert', () => {
+    const template = BUNDLED_N8N_WORKFLOWS.find(
+      (entry) => entry.templateId === 'taxtronik.connection-test',
+    )!;
+    const materialized = materializeBundledN8nWorkflow(template.workflow, VALUES);
+    expect(
+      bindN8nHeaderCredential(materialized, {
+        id: 'credential-1',
+        name: 'TaxTronik Rückkanal',
+        type: 'httpHeaderAuth',
+      }),
+    ).toEqual(materialized);
   });
 });

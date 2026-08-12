@@ -15,7 +15,7 @@ vi.mock('@/server/container', () => ({
   evidenceService: { record: evidenceRecordMock },
 }));
 
-import { rotateN8nCallbackCredential } from '../callback-credentials';
+import { grantN8nCallbackScopes, rotateN8nCallbackCredential } from '../callback-credentials';
 
 const TENANT_ID = randomUUID();
 const ACTOR_ID = randomUUID();
@@ -102,5 +102,25 @@ describe('rotateN8nCallbackCredential', () => {
       'connection update failed',
     );
     expect(evidenceRecordMock).not.toHaveBeenCalled();
+  });
+
+  it('erweitert Scopes ohne Tokenrotation und auditiert die Änderung', async () => {
+    await grantN8nCallbackScopes(context, ['gwg:read', 'requests:read']);
+
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { tenantId: TENANT_ID },
+      data: { callbackScopes: ['gwg:read', 'requests:read'] },
+      select: { id: true, callbackKeyId: true },
+    });
+    expect(evidenceRecordMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'tenant.settings.n8n.callback_scope.update',
+        after: {
+          callbackKeyId: KEY_ID,
+          scopes: ['gwg:read', 'requests:read'],
+        },
+      }),
+    );
   });
 });

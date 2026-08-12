@@ -56,6 +56,18 @@ export interface N8nDiscoveredWebhook {
   httpMethod: string;
 }
 
+export interface N8nCredentialSummary {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface N8nCredentialBinding {
+  id: string;
+  name: string;
+  type: string;
+}
+
 export class N8nApiClient {
   constructor(
     private readonly baseUrl: string,
@@ -176,6 +188,47 @@ export class N8nApiClient {
   async createWorkflow(workflow: Record<string, unknown>): Promise<N8nWorkflowSummary> {
     const cleaned = sanitizeWorkflowForImport(workflow);
     return this.request<N8nWorkflowSummary>('POST', '/workflows', cleaned);
+  }
+
+  /** Listet nur Credential-Metadaten; n8n gibt über diesen Pfad keine Secrets aus. */
+  async listCredentials(): Promise<N8nCredentialSummary[]> {
+    const credentials: N8nCredentialSummary[] = [];
+    let cursor: string | undefined;
+    const seenCursors = new Set<string>();
+    do {
+      const query = new URLSearchParams({ limit: '250' });
+      if (cursor) query.set('cursor', cursor);
+      const page = await this.request<{
+        data: N8nCredentialSummary[];
+        nextCursor?: string | null;
+      }>('GET', `/credentials?${query.toString()}`);
+      credentials.push(...(page.data ?? []));
+      cursor = page.nextCursor ?? undefined;
+      if (cursor && seenCursors.has(cursor)) {
+        throw new Error('n8n-API lieferte einen wiederholten Credential-Cursor.');
+      }
+      if (cursor) seenCursors.add(cursor);
+      if (seenCursors.size > 100) {
+        throw new Error('n8n-Credential-Liste überschreitet das sichere Seitenlimit.');
+      }
+    } while (cursor);
+    return credentials;
+  }
+
+  /**
+   * Legt ein n8n-Credential über die dokumentierte Public API an. Der Secret-
+   * Klartext wird ausschließlich in diesem Request an n8n übertragen.
+   */
+  async createCredential(input: {
+    name: string;
+    type: string;
+    data: Record<string, string>;
+  }): Promise<N8nCredentialBinding> {
+    const created = await this.request<N8nCredentialSummary>('POST', '/credentials', input);
+    if (!created.id || !created.name || created.type !== input.type) {
+      throw new Error('n8n-API lieferte keine gültige Credential-Referenz.');
+    }
+    return { id: created.id, name: created.name, type: created.type };
   }
 
   /**

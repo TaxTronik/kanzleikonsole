@@ -6,6 +6,7 @@ import requestReminder from '../../../../../infra/n8n/workflows/01-request-remin
 import gwgExpiryCheck from '../../../../../infra/n8n/workflows/02-gwg-expiry-check.json';
 import requestOpened from '../../../../../infra/n8n/workflows/03-request-opened.json';
 import riskResearch from '../../../../../infra/n8n/workflows/04-risk-research.json';
+import type { N8nCredentialBinding } from './client';
 
 /**
  * Strukturierte Credential-Anforderung einer Vorlage. Wird im ACP pro
@@ -69,6 +70,8 @@ export const BUNDLED_N8N_PLACEHOLDERS = {
   smtpFrom: '__SMTP_FROM__',
   gwgOfficerEmail: '__GWG_OFFICER_EMAIL__',
 } as const;
+
+export const DEFAULT_GWG_OFFICER_EMAIL = 'gwg-verantwortlich-vor-aktivierung@example.invalid';
 
 function workflow(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
@@ -179,4 +182,45 @@ export function materializeBundledN8nWorkflow(
     [BUNDLED_N8N_PLACEHOLDERS.smtpFrom]: values.smtpFrom,
     [BUNDLED_N8N_PLACEHOLDERS.gwgOfficerEmail]: values.gwgOfficerEmail,
   }) as Record<string, unknown>;
+}
+
+/**
+ * Bindet das automatisch angelegte Header-Auth-Credential ausschließlich an
+ * passende HTTP-Request-Nodes. Andere Credentials (SMTP, HMAC, Anbieter) sind
+ * fachlich getrennt und bleiben bewusst unberührt.
+ */
+export function bindN8nHeaderCredential(
+  workflow: Record<string, unknown>,
+  credential: N8nCredentialBinding | null,
+): Record<string, unknown> {
+  if (!credential) return workflow;
+  const rawNodes = workflow['nodes'];
+  if (!Array.isArray(rawNodes)) return workflow;
+  return {
+    ...workflow,
+    nodes: rawNodes.map((rawNode) => {
+      if (!rawNode || typeof rawNode !== 'object' || Array.isArray(rawNode)) return rawNode;
+      const node = rawNode as Record<string, unknown>;
+      const parameters = node['parameters'];
+      if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) return node;
+      const params = parameters as Record<string, unknown>;
+      if (
+        params['authentication'] !== 'genericCredentialType' ||
+        params['genericAuthType'] !== 'httpHeaderAuth'
+      ) {
+        return node;
+      }
+      const existing =
+        node['credentials'] && typeof node['credentials'] === 'object'
+          ? (node['credentials'] as Record<string, unknown>)
+          : {};
+      return {
+        ...node,
+        credentials: {
+          ...existing,
+          httpHeaderAuth: { id: credential.id, name: credential.name },
+        },
+      };
+    }),
+  };
 }

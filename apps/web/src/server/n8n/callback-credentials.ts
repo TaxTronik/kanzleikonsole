@@ -54,3 +54,26 @@ export async function rotateN8nCallbackCredential(
     return { token, connection };
   });
 }
+
+/** Erweitert Berechtigungen eines bestehenden Tokens, ohne es zu rotieren. */
+export async function grantN8nCallbackScopes(
+  ctx: TenantContext,
+  callbackScopes: string[],
+): Promise<void> {
+  await withTenantContext(ctx, async (tx) => {
+    const connection = await tx.n8nConnection.update({
+      where: { tenantId: ctx.tenantId },
+      data: { callbackScopes },
+      select: { id: true, callbackKeyId: true },
+    });
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      action: 'tenant.settings.n8n.callback_scope.update',
+      resourceType: 'n8n_connection',
+      resourceId: connection.id,
+      after: { callbackKeyId: connection.callbackKeyId, scopes: callbackScopes },
+    });
+  });
+}

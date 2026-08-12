@@ -331,6 +331,12 @@ export function N8nConnectionSection({
                 label="Gespeicherten API-Key beibehalten"
               />
             )}
+            <span className="mt-1 block text-xs text-muted">
+              Für den vollständigen Ein-Schritt-Import benötigt der Key <code>workflow:list</code>,{' '}
+              <code>workflow:create</code>, <code>credential:list</code> und{' '}
+              <code>credential:create</code>. Fehlen die Credential-Rechte, bleibt der Import
+              möglich und TaxTronik zeigt das Rückkanal-Token einmalig zur manuellen Anlage.
+            </span>
             {apiInstanceChanged && !apiKey && (
               <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
                 Die Public-API-Adresse zeigt auf eine andere n8n-Instanz — bitte den API-Key dieser
