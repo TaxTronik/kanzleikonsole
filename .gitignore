@@ -47,6 +47,9 @@ infra/compose/.volumes/
 /.taxtronik.migration-pending
 # Einmalige Autorisierung nach explizitem Produktions-DB-Restore.
 /.taxtronik.database-restored
+# Marker eines bestätigten, aber noch nicht erfolgreich abgeschlossenen
+# 1-Klick-Deployments. Wird nach bestandenem Readiness-Gate entfernt.
+/.taxtronik.install-pending
 
 # Setup-gerenderte Config-Dateien (enthalten Secrets aus .env)
 infra/scripts/seaweedfs-s3.generated.json

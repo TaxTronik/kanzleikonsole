@@ -262,6 +262,7 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
   (
     ROOT="$plan_root"
     ENVFILE="$env_file"
+    INSTALL_PENDING="$plan_root/install.pending"
     _SETUP_METHOD="traefik"
     _SETUP_DEPLOY_CHANNEL="release"
     _SETUP_IMAGE_PREFIX="registry.example/taxtronik"
@@ -302,6 +303,8 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
   assert_key_equals "$env_file" SMTP_PASSWORD 'pa\ss&word|safe'
   assert_key_equals "$env_file" TENANT_NAME Testkanzlei
   assert_key_equals "$env_file" ADMIN_EMAIL admin@example.de
+  [[ -f "$plan_root/install.pending" ]] || test_fail "confirmed one-click setup did not persist its resume marker"
+  assert_key_equals "$plan_root/install.pending" method traefik
   [[ "$(file_mode "$env_file")" == "600" ]] || test_fail "planned .env mode is not 0600"
   pass "initial setup applies nothing before exact confirmation and preserves values safely"
 }
@@ -455,6 +458,73 @@ test_existing_one_click_deploy_does_not_reapply_blank_host_gate() {
     ensure_bootstrap_host_requirements
   ) || test_fail "existing one-click deployment was treated as a blank-host installation"
   pass "existing one-click deployments reuse verified prerequisites without rerunning the blank-host installer"
+}
+
+test_interrupted_one_click_deploy_resumes_only_owned_containers() {
+  local env_file="$TMP_DIR/interrupted-one-click.env" marker="$TMP_DIR/interrupted-one-click.pending"
+  local steps="$TMP_DIR/interrupted-one-click.steps"
+  printf 'DEPLOYMENT_METHOD=traefik\n' >"$env_file"
+  : >"$steps"
+  (
+    ENVFILE="$env_file"
+    INSTALL_PENDING="$marker"
+    STATE="$TMP_DIR/no-completed-state"
+    MIGRATION_PENDING="$TMP_DIR/no-migration-state"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/no-restore-state"
+    deployment_method() { printf 'traefik'; }
+    docker_cli_available() { return 0; }
+    _compose_project_name() { printf 'compose'; }
+    one_click_public_ports_in_use() { return 1; }
+    docker() {
+      if [[ "$1 ${2:-}" == "ps -aq" ]]; then
+        printf 'postgres-id\nredis-id\n'
+      elif [[ "$*" == *'{{.Name}}'* && "${!#}" == "postgres-id" ]]; then
+        printf '/taxtronik-postgres\n'
+      elif [[ "$*" == *'{{.Name}}'* && "${!#}" == "redis-id" ]]; then
+        printf '/taxtronik-redis\n'
+      elif [[ "$*" == *'com.docker.compose.project'* ]]; then
+        printf 'compose\n'
+      else
+        return 1
+      fi
+    }
+    assert_blank_host_for_traefik() { test_fail "resume path reran the blank-host guard"; }
+    install_one_click_host_requirements() { printf 'host-ready\n' >>"$steps"; }
+    ensure_bootstrap_host_requirements
+    printf 'source_version=source-old\ntarget_version=source-new\n' >"$MIGRATION_PENDING"
+    ensure_bootstrap_host_requirements
+  )
+  assert_file_equals "$steps" $'host-ready\nhost-ready'
+  assert_key_equals "$marker" method traefik
+  pass "interrupted one-click deploy resumes owned containers before and during migration recovery"
+}
+
+test_interrupted_one_click_deploy_still_rejects_foreign_containers() {
+  local env_file="$TMP_DIR/interrupted-foreign.env" out="$TMP_DIR/interrupted-foreign.out"
+  printf 'DEPLOYMENT_METHOD=traefik\n' >"$env_file"
+  if (
+    ENVFILE="$env_file"
+    INSTALL_PENDING="$TMP_DIR/interrupted-foreign.pending"
+    STATE="$TMP_DIR/interrupted-foreign.no-completed-state"
+    MIGRATION_PENDING="$TMP_DIR/interrupted-foreign.no-migration-state"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/interrupted-foreign.no-restore-state"
+    deployment_method() { printf 'traefik'; }
+    docker_cli_available() { return 0; }
+    one_click_public_ports_in_use() { return 1; }
+    _compose_project_name() { printf 'compose'; }
+    docker() {
+      if [[ "$1 ${2:-}" == "ps -aq" ]]; then printf 'foreign-id\n'
+      elif [[ "$*" == *'{{.Name}}'* ]]; then printf '/customer-container\n'
+      else return 1
+      fi
+    }
+    install_one_click_host_requirements() { test_fail "foreign-container path changed the host"; }
+    ensure_bootstrap_host_requirements
+  ) >"$out" 2>&1; then
+    test_fail "interrupted one-click path accepted a foreign container"
+  fi
+  assert_contains "$out" "Docker enthaelt bereits Container"
+  pass "interrupted one-click deploy keeps foreign containers fail-closed"
 }
 
 test_one_click_runtime_install_contract_is_pinned_and_official() {
@@ -2558,6 +2628,8 @@ test_deployment_channel_is_explicit_with_legacy_prefix_fallback
 test_cli_presents_deploy_as_primary_path
 test_bootstrap_installs_one_click_requirements_after_configuration
 test_existing_one_click_deploy_does_not_reapply_blank_host_gate
+test_interrupted_one_click_deploy_resumes_only_owned_containers
+test_interrupted_one_click_deploy_still_rejects_foreign_containers
 test_one_click_runtime_install_contract_is_pinned_and_official
 test_one_click_replaces_incomplete_docker_only_after_blank_host_gate
 test_traefik_dynamic_route_and_compose_contract_are_socketless

@@ -68,6 +68,14 @@ Vorgeschaltete CDN-/Proxy-DNS-Modi müssen für die initiale ACME-Ausstellung
 deaktiviert sein. Andere Linux-Distributionen verwenden die Standardmethode
 und provisionieren ihre Host-Werkzeuge selbst.
 
+Nach der ausdrücklichen Leerhost-Bestätigung merkt sich der Installer das noch
+nicht abgeschlossene 1-Klick-Deployment. Bricht ein Build, Download oder Dienst
+ab, kann derselbe Befehl `./taxtronik deploy` sicher fortgesetzt werden. Dabei
+werden nur Container mit den fest erwarteten TaxTronik-Namen und dem passenden
+Compose-Eigentumslabel akzeptiert; ein fremder Container oder eine fremde
+Belegung von Port 80/443 stoppt den Wiederanlauf weiterhin. Der Marker wird erst
+nach erfolgreicher Migration und bestandenem Readiness-Gate entfernt.
+
 ## Abgefragte Konfiguration
 
 Der Assistent validiert und fasst vor der Anwendung zusammen:

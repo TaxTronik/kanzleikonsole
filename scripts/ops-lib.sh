@@ -35,6 +35,7 @@ S3_GENERATED="$ROOT/infra/scripts/seaweedfs-s3.generated.json"
 STATE="$ROOT/.taxtronik.state"
 MIGRATION_PENDING="$ROOT/.taxtronik.migration-pending"
 DB_RESTORE_AUTHORIZATION="$ROOT/.taxtronik.database-restored"
+INSTALL_PENDING="$ROOT/.taxtronik.install-pending"
 AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
 ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 # Der Wert wird zusammen mit einem TaxTronik-Release getestet und angehoben.
@@ -252,6 +253,76 @@ install_one_click_host_requirements() {
   require_cmd git; require_cmd curl
 }
 
+one_click_public_ports_in_use() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn 'sport = :80' 2>/dev/null | grep -q . || \
+      ss -H -ltn 'sport = :443' 2>/dev/null | grep -q .
+  else
+    awk '$4 == "0A" && ($2 ~ /:0050$/ || $2 ~ /:01BB$/) { found=1 } END { exit !found }' \
+      /proc/net/tcp /proc/net/tcp6 2>/dev/null
+  fi
+}
+
+one_click_traefik_owns_public_ports() {
+  [[ "$(docker inspect --format '{{.State.Running}}' taxtronik-traefik 2>/dev/null || true)" == "true" ]] || return 1
+  docker port taxtronik-traefik 80/tcp 2>/dev/null | grep -Eq '(^|:)80$' && \
+    docker port taxtronik-traefik 443/tcp 2>/dev/null | grep -Eq '(^|:)443$'
+}
+
+one_click_has_only_owned_containers() {
+  local containers="$1" expected_project id name project
+  [[ -n "$containers" ]] || return 1
+  expected_project="$(_compose_project_name)"
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    name="$(docker inspect --format '{{.Name}}' "$id" 2>/dev/null || true)"
+    name="${name#/}"
+    case "$name" in
+      taxtronik-postgres|taxtronik-redis|taxtronik-seaweedfs|taxtronik-seaweedfs-init|taxtronik-clamav|\
+      taxtronik-app|taxtronik-backup-dir-init|taxtronik-worker|taxtronik-migrate|taxtronik-n8n|\
+      taxtronik-risk-layer|taxtronik-eric-bridge|taxtronik-traefik) ;;
+      *) return 1 ;;
+    esac
+    project="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$id" 2>/dev/null || true)"
+    [[ "$project" == "$expected_project" ]] || return 1
+  done <<<"$containers"
+}
+
+initial_install_pending_is_valid() {
+  [[ -f "$INSTALL_PENDING" ]] && grep -Fxq 'method=traefik' "$INSTALL_PENDING" 2>/dev/null
+}
+
+one_click_partial_install_can_resume() {
+  [[ -f "$ENVFILE" && ! -e "$STATE" ]] || return 1
+  # Neue Installationen tragen ab der ausdruecklichen Leerhost-Bestaetigung
+  # einen Marker. Damit duerfen auch spaetere, von den eigentlichen
+  # Recovery-Gates geschuetzte Deploy-Phasen fortgesetzt werden. Fuer einen
+  # Legacy-Abbruch ohne Marker bleibt der Nachweis absichtlich enger.
+  if ! initial_install_pending_is_valid; then
+    [[ ! -e "$MIGRATION_PENDING" && ! -e "$DB_RESTORE_AUTHORIZATION" ]] || return 1
+  fi
+  docker_cli_available || return 1
+  local containers
+  containers="$(docker ps -aq 2>/dev/null)" || return 1
+  one_click_has_only_owned_containers "$containers" || return 1
+  if one_click_public_ports_in_use; then
+    one_click_traefik_owns_public_ports || return 1
+  fi
+}
+
+mark_initial_install_pending() {
+  [[ "$(deployment_method)" == "traefik" ]] || return 0
+  initial_install_pending_is_valid && return 0
+  local tmp
+  tmp="$(mktemp "${INSTALL_PENDING}.tmp.XXXXXX")" || die "Installationsmarker konnte nicht angelegt werden."
+  {
+    printf 'method=traefik\n'
+    printf 'created_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  } >"$tmp"
+  chmod 0600 "$tmp" || { rm -f -- "$tmp"; die "Installationsmarker konnte nicht gehaertet werden."; }
+  mv -f -- "$tmp" "$INSTALL_PENDING"
+}
+
 ensure_bootstrap_host_requirements() {
   local method
   method="$(deployment_method)" || die "DEPLOYMENT_METHOD muss standard oder traefik sein."
@@ -261,6 +332,12 @@ ensure_bootstrap_host_requirements() {
       node_version_supported || die "Bestehender 1-Klick-Host braucht Node.js >=24.11.0 <25."
       docker info >/dev/null 2>&1 || die "Docker-Daemon ist nicht erreichbar."
       docker compose version >/dev/null 2>&1 || die "Docker Compose v2 fehlt."
+      return 0
+    fi
+    if one_click_partial_install_can_resume; then
+      info "Unterbrochenes eigenes 1-Klick-Deployment erkannt - vorhandene TaxTronik-Container werden sicher weiterverwendet."
+      mark_initial_install_pending
+      install_one_click_host_requirements
       return 0
     fi
     assert_blank_host_for_traefik
@@ -2396,12 +2473,7 @@ assert_blank_host_for_traefik() {
   elif [[ -d "$docker_data_root" && -n "$(find "$docker_data_root" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
     die "1-Klick verweigert: $docker_data_root enthaelt bereits Docker-Daten, obwohl die Docker-CLI fehlt."
   fi
-  if { command -v ss >/dev/null 2>&1 && \
-       { ss -H -ltn 'sport = :80' 2>/dev/null | grep -q . || \
-         ss -H -ltn 'sport = :443' 2>/dev/null | grep -q .; }; } || \
-     { ! command -v ss >/dev/null 2>&1 && \
-       awk '$4 == "0A" && ($2 ~ /:0050$/ || $2 ~ /:01BB$/) { found=1 } END { exit !found }' \
-         /proc/net/tcp /proc/net/tcp6 2>/dev/null; }; then
+  if one_click_public_ports_in_use; then
     die "1-Klick verweigert: Port 80 oder 443 ist bereits belegt. Standardmethode mit vorhandenem Reverse-Proxy verwenden."
   fi
 }
@@ -2454,6 +2526,8 @@ apply_initial_setup_plan() {
   set_env RISK_LAYER_OPERATOR_TOKEN "$_SETUP_SIGNAL_OPERATOR_TOKEN"
   set_env TENANT_NAME "$_SETUP_TENANT_NAME"
   set_env ADMIN_EMAIL "$_SETUP_ADMIN_EMAIL"
+
+  mark_initial_install_pending
 
   export TENANT_NAME="$_SETUP_TENANT_NAME"
   export ADMIN_EMAIL="$_SETUP_ADMIN_EMAIL"
@@ -3756,6 +3830,7 @@ finalize_release_contract() {
   commit_release_contract
   clear_migration_transition
   clear_database_restore_authorization
+  rm -f -- "$INSTALL_PENDING"
 }
 
 # ---------------------------------------------------------------------------
