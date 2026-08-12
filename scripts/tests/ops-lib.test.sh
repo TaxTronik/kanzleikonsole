@@ -114,6 +114,10 @@ N8N_DB_PASSWORD=n8n-db-password-24chars
 DATABASE_URL=postgresql://taxtronik:owner@localhost:5432/taxtronik?schema=public
 DATABASE_APP_URL=postgresql://taxtronik_app:app@localhost:5432/taxtronik?schema=public
 NEXTAUTH_URL=https://kanzlei.example.de
+PORTAL_PUBLIC_URL=https://mandanten.example.de
+N8N_HOST=n8n.example.de
+N8N_WEBHOOK_URL=https://n8n.example.de/
+N8N_PROXY_HOPS=1
 NEXTAUTH_TRUST_HOST=true
 TRUST_PROXY_REQUIRED=true
 SMTP_HOST=smtp.example.de
@@ -129,7 +133,7 @@ run_doctor_with_env() {
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX TAXTRONIK_VERSION NEXTAUTH_URL
     unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED SIGNAL_DEPLOYMENT SIGNAL_IMAGE
-    unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL TRAEFIK_EXPECTED_IP
+    unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL N8N_HOST N8N_WEBHOOK_URL N8N_PROXY_HOPS
     unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE SMTP_HOST SMTP_PORT
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
     ENVFILE="$env_file"
@@ -196,7 +200,9 @@ test_doctor_accepts_complete_traefik_contract() {
     printf 'STAFF_COOKIE_DOMAIN=kanzlei.example.de\n'
     printf 'PORTAL_COOKIE_DOMAIN=portal.example.de\n'
     printf 'TRAEFIK_ACME_EMAIL=admin@example.de\n'
-    printf 'TRAEFIK_EXPECTED_IP=203.0.113.10\n'
+    printf 'N8N_HOST=n8n.example.de\n'
+    printf 'N8N_WEBHOOK_URL=https://n8n.example.de/\n'
+    printf 'N8N_PROXY_HOPS=1\n'
   } >>"$env_file"
   run_doctor_with_env "$env_file" "$out" || {
     cat "$out" >&2
@@ -204,7 +210,6 @@ test_doctor_accepts_complete_traefik_contract() {
   }
   assert_contains "$out" "traefik (verwaltetes HTTPS)"
   assert_contains "$out" "OK       TRAEFIK_ACME_EMAIL"
-  assert_contains "$out" "OK       TRAEFIK_EXPECTED_IP"
   pass "doctor accepts complete managed Traefik contract"
 }
 
@@ -217,7 +222,9 @@ test_doctor_rejects_unsafe_traefik_proxy_trust() {
     printf 'STAFF_COOKIE_DOMAIN=kanzlei.example.de\n'
     printf 'PORTAL_COOKIE_DOMAIN=portal.example.de\n'
     printf 'TRAEFIK_ACME_EMAIL=admin@example.de\n'
-    printf 'TRAEFIK_EXPECTED_IP=203.0.113.10\n'
+    printf 'N8N_HOST=n8n.example.de\n'
+    printf 'N8N_WEBHOOK_URL=https://n8n.example.de/\n'
+    printf 'N8N_PROXY_HOPS=1\n'
   } >>"$env_file"
   set_env_file_value "$env_file" TRUST_PROXY_REQUIRED false
   if run_doctor_with_env "$env_file" "$out"; then
@@ -225,6 +232,18 @@ test_doctor_rejects_unsafe_traefik_proxy_trust() {
   fi
   assert_contains "$out" "Traefik-Pfad braucht exakt true"
   pass "doctor rejects Traefik without explicit proxy trust"
+}
+
+test_doctor_rejects_n8n_on_an_application_domain() {
+  local env_file="$TMP_DIR/n8n-domain.env" out="$TMP_DIR/n8n-domain.out"
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" N8N_HOST kanzlei.example.de
+  set_env_file_value "$env_file" N8N_WEBHOOK_URL https://kanzlei.example.de/
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted n8n on the Kanzlei application domain"
+  fi
+  assert_contains "$out" "eigene HTTPS-Domain"
+  pass "doctor requires a dedicated public n8n domain"
 }
 
 test_initial_setup_confirmation_and_atomic_plan_application() {
@@ -248,8 +267,8 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
     _SETUP_RELEASE_VERSION="1.2.3"
     _SETUP_STAFF_HOST="staff.example.de"
     _SETUP_PORTAL_HOST="portal.example.de"
+    _SETUP_N8N_HOST="n8n.example.de"
     _SETUP_ACME_EMAIL="admin@example.de"
-    _SETUP_EXPECTED_IP="203.0.113.10"
     _SETUP_SMTP_HOST="smtp.example.de"
     _SETUP_SMTP_PORT="587"
     _SETUP_SMTP_FROM="TaxTronik <noreply@example.de>"
@@ -269,6 +288,9 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
   assert_key_equals "$env_file" TAXTRONIK_VERSION 1.2.3
   assert_key_equals "$env_file" NEXTAUTH_URL https://staff.example.de
   assert_key_equals "$env_file" PORTAL_PUBLIC_URL https://portal.example.de
+  assert_key_equals "$env_file" N8N_HOST n8n.example.de
+  assert_key_equals "$env_file" N8N_WEBHOOK_URL https://n8n.example.de/
+  assert_key_equals "$env_file" N8N_PROXY_HOPS 1
   assert_key_equals "$env_file" TRUST_PROXY_REQUIRED true
   assert_key_equals "$env_file" SMTP_PASSWORD 'pa\ss&word|safe'
   assert_key_equals "$env_file" TENANT_NAME Testkanzlei
@@ -311,15 +333,6 @@ test_one_click_blank_host_guard_rejects_unreachable_docker() {
   fi
   assert_contains "$out" "Daemon nicht erreichbar"
   pass "one-click path fails closed when Docker emptiness cannot be proven"
-}
-
-test_one_click_ip_validation_accepts_only_real_ip_addresses() {
-  valid_ip_address 203.0.113.42 || test_fail "valid IPv4 address was rejected"
-  valid_ip_address 2001:db8::42 || test_fail "valid IPv6 address was rejected"
-  if valid_ip_address 999.0.0.1 || valid_ip_address '::::'; then
-    test_fail "invalid public IP syntax was accepted"
-  fi
-  pass "one-click validates IPv4 and IPv6 with the runtime parser"
 }
 
 test_one_click_blank_host_allows_missing_docker_for_deferred_install() {
@@ -381,8 +394,10 @@ test_cli_presents_deploy_as_primary_path() {
   assert_not_contains "$source" "Freigegebene TaxTronik-Version"
   assert_not_contains "$source" "Basisdomain"
   assert_not_contains "$source" "Domain-Stamm"
+  assert_not_contains "$source" "Oeffentliche Server-IP"
   assert_contains "$source" "Kanzlei-/Mitarbeiterportal (vollstaendige Domain"
   assert_contains "$source" "Mandantenportal (vollstaendige Domain"
+  assert_contains "$source" "n8n-Administration (vollstaendige Domain"
   pass "CLI leads with deploy and limits the SemVer prompt to an explicit release choice"
 }
 
@@ -401,7 +416,6 @@ test_bootstrap_installs_one_click_requirements_after_configuration() {
   (
     configure_initial_deployment_interactive() { printf 'configure\n' >>"$steps"; }
     ensure_bootstrap_host_requirements() { printf 'host-requirements\n' >>"$steps"; }
-    verify_one_click_dns_after_host_setup() { printf 'dns\n' >>"$steps"; }
     prepare_env_interactive() { printf 'env\n' >>"$steps"; }
     _deploy_core() { printf 'deploy\n' >>"$steps"; }
     image_tag() { printf '1.2.3'; }
@@ -483,18 +497,34 @@ test_traefik_dynamic_route_and_compose_contract_are_socketless() {
     printf 'DEPLOYMENT_METHOD=traefik\n'
     printf 'NEXTAUTH_URL=https://staff.example.de\n'
     printf 'PORTAL_PUBLIC_URL=https://portal.example.de\n'
+    printf 'N8N_HOST=n8n.example.de\n'
     printf 'TRAEFIK_ACME_EMAIL=admin@example.de\n'
   } >"$env_file"
   (
     ENVFILE="$env_file"
     TRAEFIK_DYNAMIC="$dynamic"
-    unset DEPLOYMENT_METHOD NEXTAUTH_URL PORTAL_PUBLIC_URL TRAEFIK_ACME_EMAIL
+    unset DEPLOYMENT_METHOD NEXTAUTH_URL PORTAL_PUBLIC_URL N8N_HOST TRAEFIK_ACME_EMAIL
     render_traefik_dynamic_config
   )
   assert_contains "$dynamic" 'rule: "Host(`staff.example.de`)"'
   assert_contains "$dynamic" 'rule: "Host(`portal.example.de`)"'
+  assert_contains "$dynamic" 'rule: "Host(`n8n.example.de`)"'
   assert_contains "$dynamic" 'url: "http://app:3000"'
+  assert_contains "$dynamic" 'url: "http://n8n:5678"'
   [[ "$(file_mode "$dynamic")" == "600" ]] || test_fail "Traefik dynamic config mode is not 0600"
+
+  local bad_env="$TMP_DIR/traefik-shared-n8n.env" bad_out="$TMP_DIR/traefik-shared-n8n.out"
+  cp "$env_file" "$bad_env"
+  set_env_file_value "$bad_env" N8N_HOST portal.example.de
+  if (
+    ENVFILE="$bad_env"
+    TRAEFIK_DYNAMIC="$TMP_DIR/traefik-shared-n8n.yml"
+    unset DEPLOYMENT_METHOD NEXTAUTH_URL PORTAL_PUBLIC_URL N8N_HOST TRAEFIK_ACME_EMAIL
+    render_traefik_dynamic_config
+  ) >"$bad_out" 2>&1; then
+    test_fail "Traefik accepted n8n on an application domain"
+  fi
+  assert_contains "$bad_out" "drei getrennte Domains"
 
   local overlay="$REPO_ROOT/infra/compose/docker-compose.traefik.yml"
   assert_contains "$overlay" "traefik:v3.7.9@sha256:"
@@ -2433,10 +2463,10 @@ test_doctor_rejects_loopback_mailhog_port
 test_doctor_rejects_disabled_auth_host_trust
 test_doctor_accepts_complete_traefik_contract
 test_doctor_rejects_unsafe_traefik_proxy_trust
+test_doctor_rejects_n8n_on_an_application_domain
 test_initial_setup_confirmation_and_atomic_plan_application
 test_one_click_blank_host_guard_rejects_existing_containers
 test_one_click_blank_host_guard_rejects_unreachable_docker
-test_one_click_ip_validation_accepts_only_real_ip_addresses
 test_one_click_blank_host_allows_missing_docker_for_deferred_install
 test_source_channel_derives_version_from_checkout_without_semver
 test_deployment_channel_is_explicit_with_legacy_prefix_fallback

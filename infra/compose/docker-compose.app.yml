@@ -336,8 +336,8 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      # P-4: n8n-UI hinter Reverse-Proxy. Direkt-Exposition nur über
-      # ${N8N_BIND} explizit anschalten.
+      # P-4: n8n-UI hinter eigenem Reverse-Proxy-VHost. Verwaltetes Traefik
+      # erreicht den Service intern; der Host-Port bleibt auf Loopback.
       - '${N8N_BIND:-127.0.0.1}:5678:5678'
     # P3-6: einziger Dauer-Service, der bisher keinen Healthcheck hatte —
     # `./taxtronik ps`/doctor konnten einen n8n-Hänger nicht von „läuft"

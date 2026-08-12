@@ -246,9 +246,10 @@ S3_SECRET_KEY=...
 N8N_LEGACY_CALLBACKS_ENABLED=false
 # N8N_HMAC_SECRET=... # bei Callback-Flag oder Outbound-Legacy-URL Pflicht, >= 32 Zeichen
 
-# Optional: n8n-UI/API hinter eigenem Reverse-Proxy
+# Produktion: n8n-UI/API immer unter einer eigenen Domain
 N8N_HOST=n8n.example.de
 N8N_WEBHOOK_URL=https://n8n.example.de/
+N8N_PROXY_HOPS=1
 N8N_BIND=127.0.0.1
 # Nur für Migration bestehender Installationen; neue Routen werden pro
 # Workflow in Administration → Einstellungen → n8n-Automatisierung gepflegt:
@@ -328,7 +329,7 @@ Betrieb und Fehlerdiagnose:
 Reverse Proxy und TLS liegen vor der App. Die Compose-Ports sind auf localhost
 gebunden; der Object-Store bleibt intern. Das nginx-Beispiel enthält den
 Single-Host-Default, Hinweise für `/api/integrations/n8n/v1/*` und
-Legacy-`/api/n8n/*`, ein optionales n8n-UI-VHost und
+Legacy-`/api/n8n/*`, den eigenen n8n-UI-VHost und
 ein Staff-/Portal-Split-Setup:
 [infra/nginx/taxtronik.conf.example](infra/nginx/taxtronik.conf.example)
 

@@ -37,9 +37,10 @@ Linux-/Docker-Maschine** bestimmt. Der Assistent verweigert diesen Weg, wenn
 - Port 80 oder 443 belegt ist oder
 - TaxTronik-, Migrations- oder Restore-State erkannt wird.
 
-Traefik erhält keinen Docker-Socket. Zwei statisch gerenderte TLS-Routen leiten
-Kanzlei-/Mitarbeiterportal und Mandantenportal intern an die App weiter; das n8n-UI bleibt weiterhin nur
-auf Loopback erreichbar. Der Proxy läuft mit schreibgeschütztem Root-Dateisystem,
+Traefik erhält keinen Docker-Socket. Drei statisch gerenderte TLS-Routen leiten
+Kanzlei-/Mitarbeiterportal und Mandantenportal intern an die App sowie die eigene
+n8n-Domain direkt an den n8n-Service weiter. Der Host-Port von n8n bleibt dabei
+auf Loopback beschränkt. Der Proxy läuft mit schreibgeschütztem Root-Dateisystem,
 reduzierten Linux-Capabilities, begrenzten Logs und einem persistenten
 ACME-Volume. Dieses Volume wird im verschlüsselten `backup-full` mitgesichert.
 
@@ -58,11 +59,12 @@ braucht dieser Weg:
 
 - einen Linux-Host mit leerem Docker-Daemon,
 - freie, aus dem Internet erreichbare TCP-Ports 80 und 443,
-- direkte A- oder AAAA-Records für Staff und Portal auf die Server-IP sowie
+- direkte A- oder AAAA-Records für Kanzleiportal, Mandantenportal und n8n auf
+  den Server sowie
 - eine beim Provider geöffnete Host-/Netzwerk-Firewall.
 
 Der Assistent verändert weder die Host- noch die Provider-Firewall.
-Vorgeschaltete CDN-/Proxy-DNS-Modi müssen für die initiale DNS- und ACME-Prüfung
+Vorgeschaltete CDN-/Proxy-DNS-Modi müssen für die initiale ACME-Ausstellung
 deaktiviert sein. Andere Linux-Distributionen verwenden die Standardmethode
 und provisionieren ihre Host-Werkzeuge selbst.
 
@@ -71,13 +73,14 @@ und provisionieren ihre Host-Werkzeuge selbst.
 Der Assistent validiert und fasst vor der Anwendung zusammen:
 
 - Bezugsweg: aktueller Git-Stand oder veröffentlichtes Release,
-- die zwei tatsächlich verwendeten vollständigen Domains: Kanzlei-/Mitarbeiterportal
-  (zum Beispiel `portal.taxtronik.de`) und Mandantenportal
-  (zum Beispiel `mandanten.taxtronik.de`),
+- die drei tatsächlich verwendeten vollständigen Domains: Kanzlei-/Mitarbeiterportal
+  (zum Beispiel `portal.taxtronik.de`), Mandantenportal
+  (zum Beispiel `mandanten.taxtronik.de`) und n8n-Administration
+  (zum Beispiel `n8n.taxtronik.de`),
 - Kanzleiname und Admin-E-Mail,
 - SMTP-Ziel und optionale Zugangsdaten,
 - Signal als verwalteter Docker-Dienst, externe/native API oder deaktiviert,
-- beim 1-Klick-Weg ACME-E-Mail und erwartete öffentliche Server-IP.
+- beim 1-Klick-Weg die ACME-E-Mail.
 
 Secrets werden nicht in der Zusammenfassung ausgegeben. Für die Standardmethode
 muss exakt `KONFIGURATION UEBERNEHMEN`, für den 1-Klick-Weg bewusst

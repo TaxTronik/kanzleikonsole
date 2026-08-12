@@ -444,58 +444,26 @@ valid_setup_email() {
   [[ "$value" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
 }
 
-valid_ip_address() {
-  local value="${1:-}" part left right
-  local parts=()
-  if [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    IFS=. read -r -a parts <<<"$value"
-    for part in "${parts[@]}"; do
-      [[ "$part" =~ ^[0-9]+$ ]] && (( 10#$part <= 255 )) || return 1
-    done
-    return 0
-  fi
-
-  # Vollstaendige und ::-komprimierte Hex-IPv6-Adressen. IPv4-Mapped-Notation
-  # wird bewusst nicht benoetigt: Der Assistent akzeptiert dafuer die IPv4-
-  # Schreibweise. So bleibt die Validierung ohne externe Laufzeit portabel.
-  [[ "$value" =~ ^[0-9a-fA-F:]+$ && "$value" == *:* && "$value" != *:::* ]] || return 1
-  if [[ "$value" == *::* ]]; then
-    right="${value#*::}"
-    [[ "$right" != *::* ]] || return 1
-    left="${value%%::*}"
-    parts=()
-    [[ -z "$left" ]] || IFS=: read -r -a parts <<<"$left"
-    local left_count=${#parts[@]}
-    for part in "${parts[@]}"; do [[ "$part" =~ ^[0-9a-fA-F]{1,4}$ ]] || return 1; done
-    parts=()
-    [[ -z "$right" ]] || IFS=: read -r -a parts <<<"$right"
-    local right_count=${#parts[@]}
-    for part in "${parts[@]}"; do [[ "$part" =~ ^[0-9a-fA-F]{1,4}$ ]] || return 1; done
-    (( left_count + right_count < 8 ))
-    return
-  fi
-  [[ "$value" != :* && "$value" != *: ]] || return 1
-  IFS=: read -r -a parts <<<"$value"
-  (( ${#parts[@]} == 8 )) || return 1
-  for part in "${parts[@]}"; do [[ "$part" =~ ^[0-9a-fA-F]{1,4}$ ]] || return 1; done
-}
-
 render_traefik_dynamic_config() {
   [[ "$(deployment_method)" == "traefik" ]] || return 0
-  local staff_url portal_url staff_host portal_host acme_email tmp
+  local staff_url portal_url staff_host portal_host n8n_host acme_email tmp
   staff_url="${NEXTAUTH_URL:-$(get_env NEXTAUTH_URL)}"
   portal_url="${PORTAL_PUBLIC_URL:-$(get_env PORTAL_PUBLIC_URL)}"
   acme_email="${TRAEFIK_ACME_EMAIL:-$(get_env TRAEFIK_ACME_EMAIL)}"
   staff_host="$(url_hostname "$staff_url")"
   portal_host="$(url_hostname "$portal_url")"
+  n8n_host="${N8N_HOST:-$(get_env N8N_HOST)}"
   staff_host="${staff_host,,}"; portal_host="${portal_host,,}"
+  n8n_host="${n8n_host,,}"
 
   valid_public_fqdn "$staff_host" || \
     die "Traefik braucht eine gueltige Kanzlei-/Mitarbeiterportal-Domain in NEXTAUTH_URL."
   valid_public_fqdn "$portal_host" || \
     die "Traefik braucht eine gueltige Mandantenportal-Domain in PORTAL_PUBLIC_URL."
-  [[ "$staff_host" != "$portal_host" ]] || \
-    die "Kanzlei-/Mitarbeiterportal und Mandantenportal brauchen getrennte Domains."
+  valid_public_fqdn "$n8n_host" || \
+    die "Traefik braucht eine gueltige n8n-Domain in N8N_HOST."
+  [[ "$staff_host" != "$portal_host" && "$staff_host" != "$n8n_host" && "$portal_host" != "$n8n_host" ]] || \
+    die "Kanzleiportal, Mandantenportal und n8n brauchen drei getrennte Domains."
   valid_setup_email "$acme_email" || \
     die "TRAEFIK_ACME_EMAIL fehlt oder ist ungueltig."
 
@@ -516,11 +484,21 @@ render_traefik_dynamic_config() {
     printf '      service: taxtronik-app\n'
     printf '      tls:\n'
     printf '        certResolver: letsencrypt\n'
+    printf '    taxtronik-n8n:\n'
+    printf '      rule: "Host(`%s`)"\n' "$n8n_host"
+    printf '      entryPoints: [websecure]\n'
+    printf '      service: taxtronik-n8n\n'
+    printf '      tls:\n'
+    printf '        certResolver: letsencrypt\n'
     printf '  services:\n'
     printf '    taxtronik-app:\n'
     printf '      loadBalancer:\n'
     printf '        servers:\n'
     printf '          - url: "http://app:3000"\n'
+    printf '    taxtronik-n8n:\n'
+    printf '      loadBalancer:\n'
+    printf '        servers:\n'
+    printf '          - url: "http://n8n:5678"\n'
     printf 'tls:\n'
     printf '  options:\n'
     printf '    default:\n'
@@ -1089,17 +1067,22 @@ doctor() {
     _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   fi
 
-  local deploy_method="" traefik_staff_host="" traefik_portal_host=""
+  local deploy_method="" traefik_staff_host="" traefik_portal_host="" traefik_n8n_host=""
   deploy_method="$(deployment_method 2>/dev/null || true)"
   if [[ "$deploy_method" == "standard" ]]; then
     _dr_row "OK" "DEPLOYMENT_METHOD" "standard (vorhandener/externer Reverse-Proxy)"
   elif [[ "$deploy_method" == "traefik" ]]; then
     traefik_staff_host="$(url_hostname "${NEXTAUTH_URL:-}")"
     traefik_portal_host="$(url_hostname "${PORTAL_PUBLIC_URL:-}")"
+    traefik_n8n_host="${N8N_HOST:-}"
     if [[ "${NEXTAUTH_URL:-}" != https://* || "${PORTAL_PUBLIC_URL:-}" != https://* || \
+          "${N8N_WEBHOOK_URL:-}" != "https://${traefik_n8n_host}/" || "${N8N_PROXY_HOPS:-}" != "1" || \
           -z "$traefik_staff_host" || -z "$traefik_portal_host" || \
-          "$traefik_staff_host" == "$traefik_portal_host" ]]; then
-      _dr_row "FEHLT" "TRAEFIK_SURFACES" "getrennte HTTPS-URLs fuer Staff und Portal erforderlich"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+          ! "$traefik_n8n_host" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ || \
+          "$traefik_staff_host" == "$traefik_portal_host" || \
+          "$traefik_staff_host" == "$traefik_n8n_host" || \
+          "$traefik_portal_host" == "$traefik_n8n_host" ]]; then
+      _dr_row "FEHLT" "TRAEFIK_SURFACES" "getrennte HTTPS-Domains fuer Kanzlei, Mandanten und n8n erforderlich"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     else
       _dr_row "OK" "DEPLOYMENT_METHOD" "traefik (verwaltetes HTTPS)"
     fi
@@ -1107,11 +1090,6 @@ doctor() {
       _dr_row "FEHLT" "TRAEFIK_ACME_EMAIL" "ungueltig/leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     else
       _dr_row "OK" "TRAEFIK_ACME_EMAIL" "$TRAEFIK_ACME_EMAIL"
-    fi
-    if ! valid_ip_address "${TRAEFIK_EXPECTED_IP:-}"; then
-      _dr_row "FEHLT" "TRAEFIK_EXPECTED_IP" "ungueltig/leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-    else
-      _dr_row "OK" "TRAEFIK_EXPECTED_IP" "$TRAEFIK_EXPECTED_IP"
     fi
   else
     _dr_row "FEHLT" "DEPLOYMENT_METHOD" "nur standard oder traefik erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
@@ -1122,6 +1100,21 @@ doctor() {
   elif [[ "$NEXTAUTH_URL" == *localhost* || "$NEXTAUTH_URL" == *127.0.0.1* ]]; then
     _dr_row "WARN" "NEXTAUTH_URL" "=$NEXTAUTH_URL (oeffentliche URL setzen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else _dr_row "OK" "NEXTAUTH_URL" "$NEXTAUTH_URL"; fi
+
+  local public_n8n_host="${N8N_HOST:-}" public_staff_host public_portal_host
+  public_staff_host="$(url_hostname "${NEXTAUTH_URL:-}")"
+  public_portal_host="$(url_hostname "${PORTAL_PUBLIC_URL:-}")"
+  public_n8n_host="${public_n8n_host,,}"
+  if ! valid_public_fqdn "$public_n8n_host" || \
+     [[ "${N8N_WEBHOOK_URL:-}" != "https://${public_n8n_host}/" || \
+        ! "${N8N_PROXY_HOPS:-}" =~ ^[1-9][0-9]*$ || \
+        "$public_n8n_host" == "${public_staff_host,,}" || \
+        "$public_n8n_host" == "${public_portal_host,,}" ]]; then
+    _dr_row "FEHLT" "N8N_PUBLIC_URL" "eigene HTTPS-Domain + N8N_PROXY_HOPS erforderlich"
+    _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "N8N_PUBLIC_URL" "$N8N_WEBHOOK_URL"
+  fi
 
   # Auth.js v5 blockiert bei false jede Anfrage. Production braucht true und
   # einen Reverse-Proxy, der Host/X-Forwarded-Host kanonisch setzt.
@@ -1537,11 +1530,13 @@ smoke_public_frontend() {
   [[ "$(deployment_method)" == "traefik" ]] || return 0
   local staff_url="${NEXTAUTH_URL%/}/api/health"
   local portal_url="${PORTAL_PUBLIC_URL%/}/api/health"
+  local n8n_url="https://${N8N_HOST}/healthz"
   info "Oeffentlichen Traefik-/TLS-Einstieg pruefen"
   for _ in {1..36}; do
     if curl -fsS --max-time 10 -o /dev/null "$staff_url" 2>/dev/null && \
-       curl -fsS --max-time 10 -o /dev/null "$portal_url" 2>/dev/null; then
-      info "Kanzlei-/Mitarbeiterportal und Mandantenportal sind per HTTPS bereit."
+       curl -fsS --max-time 10 -o /dev/null "$portal_url" 2>/dev/null && \
+       curl -fsS --max-time 10 -o /dev/null "$n8n_url" 2>/dev/null; then
+      info "Kanzleiportal, Mandantenportal und n8n sind per HTTPS bereit."
       return 0
     fi
     sleep 5
@@ -2271,19 +2266,6 @@ assert_blank_host_for_traefik() {
   fi
 }
 
-assert_dns_points_to_ip() {
-  local host="$1" expected="$2" resolved expected_forms database="ahostsv4"
-  [[ "$expected" == *:* ]] && database="ahostsv6"
-  resolved="$(getent "$database" "$host" 2>/dev/null | awk '{print tolower($1)}' | sort -u || true)"
-  expected_forms="$(getent "$database" "$expected" 2>/dev/null | awk '{print tolower($1)}' | sort -u || true)"
-  [[ -n "$expected_forms" ]] && grep -Fxf <(printf '%s\n' "$expected_forms") \
-    <(printf '%s\n' "$resolved") >/dev/null || {
-    warn "DNS fuer $host zeigt nicht auf die bestaetigte Server-IP $expected."
-    [[ -n "$resolved" ]] && warn "Aktuell aufgeloest: $(printf '%s' "$resolved" | tr '\n' ' ')"
-    return 1
-  }
-}
-
 confirm_initial_setup_plan() {
   local phrase="$1" input=""
   read -rp "Zum Anwenden exakt '$phrase' eingeben: " input || true
@@ -2303,17 +2285,18 @@ apply_initial_setup_plan() {
   set_env TAXTRONIK_VERSION "$_SETUP_RELEASE_VERSION"
   set_env NEXTAUTH_URL "https://${_SETUP_STAFF_HOST}"
   set_env PORTAL_PUBLIC_URL "https://${_SETUP_PORTAL_HOST}"
+  set_env N8N_HOST "$_SETUP_N8N_HOST"
+  set_env N8N_WEBHOOK_URL "https://${_SETUP_N8N_HOST}/"
+  set_env N8N_PROXY_HOPS 1
   set_env STAFF_COOKIE_DOMAIN "$_SETUP_STAFF_HOST"
   set_env PORTAL_COOKIE_DOMAIN "$_SETUP_PORTAL_HOST"
   set_env NEXTAUTH_TRUST_HOST true
   if [[ "$_SETUP_METHOD" == "traefik" ]]; then
     set_env TRUST_PROXY_REQUIRED true
     set_env TRAEFIK_ACME_EMAIL "$_SETUP_ACME_EMAIL"
-    set_env TRAEFIK_EXPECTED_IP "$_SETUP_EXPECTED_IP"
   else
     set_env TRUST_PROXY_REQUIRED false
     set_env TRAEFIK_ACME_EMAIL ""
-    set_env TRAEFIK_EXPECTED_IP ""
   fi
   set_env SMTP_HOST "$_SETUP_SMTP_HOST"
   set_env SMTP_PORT "$_SETUP_SMTP_PORT"
@@ -2343,8 +2326,8 @@ configure_initial_deployment_interactive() {
   _SETUP_RELEASE_VERSION=""
   _SETUP_STAFF_HOST=""
   _SETUP_PORTAL_HOST=""
+  _SETUP_N8N_HOST=""
   _SETUP_ACME_EMAIL=""
-  _SETUP_EXPECTED_IP=""
   _SETUP_SMTP_HOST=""
   _SETUP_SMTP_PORT="587"
   _SETUP_SMTP_FROM=""
@@ -2413,6 +2396,13 @@ configure_initial_deployment_interactive() {
     if valid_public_fqdn "$_SETUP_PORTAL_HOST" && [[ "$_SETUP_PORTAL_HOST" != "$_SETUP_STAFF_HOST" ]]; then break; fi
     warn "Mandantenportal-Domain muss gueltig und vom Kanzleiportal verschieden sein."
   done
+  while :; do
+    read -rp 'n8n-Administration (vollstaendige Domain, z. B. n8n.taxtronik.de): ' _SETUP_N8N_HOST || true
+    _SETUP_N8N_HOST="${_SETUP_N8N_HOST,,}"
+    if valid_public_fqdn "$_SETUP_N8N_HOST" && \
+       [[ "$_SETUP_N8N_HOST" != "$_SETUP_STAFF_HOST" && "$_SETUP_N8N_HOST" != "$_SETUP_PORTAL_HOST" ]]; then break; fi
+    warn "n8n-Domain muss gueltig und von beiden Portalen verschieden sein."
+  done
 
   while :; do
     read -rp 'Admin-E-Mail: ' _SETUP_ADMIN_EMAIL || true
@@ -2430,19 +2420,6 @@ configure_initial_deployment_interactive() {
       valid_setup_email "$_SETUP_ACME_EMAIL" && break
       warn "ACME-E-Mail ist ungueltig."
     done
-    while :; do
-      read -rp 'Oeffentliche Server-IP (A/AAAA-Ziel beider FQDNs): ' _SETUP_EXPECTED_IP || true
-      valid_ip_address "$_SETUP_EXPECTED_IP" && break
-      warn "Bitte eine gueltige IPv4- oder IPv6-Adresse eingeben."
-    done
-    if command -v getent >/dev/null 2>&1; then
-      assert_dns_points_to_ip "$_SETUP_STAFF_HOST" "$_SETUP_EXPECTED_IP" || \
-        die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
-      assert_dns_points_to_ip "$_SETUP_PORTAL_HOST" "$_SETUP_EXPECTED_IP" || \
-        die "DNS-Vorpruefung fehlgeschlagen. Records zuerst direkt (ohne CDN-Proxy) auf den leeren Host setzen."
-    else
-      warn "getent fehlt noch; DNS-Abgleich erfolgt nach der bestaetigten Basispaket-Installation."
-    fi
   fi
 
   while :; do
@@ -2501,7 +2478,8 @@ configure_initial_deployment_interactive() {
   fi
   printf 'Kanzlei-Web: https://%s\n' "$_SETUP_STAFF_HOST"
   printf 'Mandanten  : https://%s\n' "$_SETUP_PORTAL_HOST"
-  [[ "$_SETUP_METHOD" == "traefik" ]] && printf 'TLS/DNS    : Let\x27s Encrypt, Ziel %s\n' "$_SETUP_EXPECTED_IP"
+  printf 'n8n        : https://%s\n' "$_SETUP_N8N_HOST"
+  [[ "$_SETUP_METHOD" == "traefik" ]] && printf 'TLS        : Let\x27s Encrypt fuer alle drei Domains\n'
   printf 'SMTP       : %s:%s, Zugang %s\n' "$_SETUP_SMTP_HOST" "$_SETUP_SMTP_PORT" "$([[ -n "$_SETUP_SMTP_USER" ]] && printf 'gesetzt' || printf 'ohne Login')"
   printf 'Signal     : %s\n' "$_SETUP_SIGNAL_MODE"
   printf 'Kanzleiname: %s\n' "$_SETUP_TENANT_NAME"
@@ -2519,19 +2497,6 @@ configure_initial_deployment_interactive() {
   confirm_initial_setup_plan "$phrase" || die "Initialsetup ohne Aenderungen abgebrochen."
   apply_initial_setup_plan
   info "Bestaetigte Initialkonfiguration wurde nach .env uebernommen."
-}
-
-verify_one_click_dns_after_host_setup() {
-  [[ "$(deployment_method)" == "traefik" ]] || return 0
-  local staff_host portal_host expected
-  staff_host="$(url_hostname "$(get_env NEXTAUTH_URL)")"
-  portal_host="$(url_hostname "$(get_env PORTAL_PUBLIC_URL)")"
-  expected="$(get_env TRAEFIK_EXPECTED_IP)"
-  require_cmd getent
-  assert_dns_points_to_ip "$staff_host" "$expected" || \
-    die "DNS fuer $staff_host zeigt nicht auf $expected. Deployment wurde noch nicht gestartet."
-  assert_dns_points_to_ip "$portal_host" "$expected" || \
-    die "DNS fuer $portal_host zeigt nicht auf $expected. Deployment wurde noch nicht gestartet."
 }
 
 # Expliziter Besitzvertrag fuer Signal. Der Funktionsname bleibt wegen der
@@ -2682,7 +2647,7 @@ configure_surface_domains_interactive() {
   portal_url="${PORTAL_PUBLIC_URL:-}"
 
   if [[ -t 0 && -z "$portal_url" ]]; then
-    read -rp "Oeffentliche Portal-URL (PORTAL_PUBLIC_URL, leer = Single-Host) []: " input || true
+    read -rp "Oeffentliche Mandantenportal-URL (PORTAL_PUBLIC_URL, leer = Single-Host) []: " input || true
     if [[ -n "$input" ]]; then
       set_env PORTAL_PUBLIC_URL "$input"
       portal_url="$input"
@@ -2700,11 +2665,11 @@ configure_surface_domains_interactive() {
     fi
 
     if [[ -z "$staff_dom" ]]; then
-      read -rp "Staff-Cookie-Domain (STAFF_COOKIE_DOMAIN, nur Hostname) [$staff_host]: " input || true
+      read -rp "Kanzlei-Cookie-Domain (STAFF_COOKIE_DOMAIN, nur Hostname) [$staff_host]: " input || true
       set_env STAFF_COOKIE_DOMAIN "${input:-$staff_host}"
     fi
     if [[ -z "$portal_dom" ]]; then
-      read -rp "Portal-Cookie-Domain (PORTAL_COOKIE_DOMAIN, nur Hostname) [$portal_host]: " input || true
+      read -rp "Mandanten-Cookie-Domain (PORTAL_COOKIE_DOMAIN, nur Hostname) [$portal_host]: " input || true
       set_env PORTAL_COOKIE_DOMAIN "${input:-$portal_host}"
     fi
   else
@@ -2717,6 +2682,34 @@ configure_surface_domains_interactive() {
   if [[ -t 0 && -z "$(get_env STAFF_COOKIE_DOMAIN)" && -z "$(get_env PORTAL_COOKIE_DOMAIN)" ]]; then
     warn "Single-Host-Deploy gewaehlt: STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN bleiben leer."
   fi
+}
+
+configure_n8n_domain_interactive() {
+  load_env
+  local host="${N8N_HOST:-}" input="" staff_host portal_host
+  staff_host="$(url_hostname "${NEXTAUTH_URL:-}")"
+  portal_host="$(url_hostname "${PORTAL_PUBLIC_URL:-}")"
+  staff_host="${staff_host,,}"; portal_host="${portal_host,,}"
+
+  if valid_public_fqdn "${host,,}" && [[ "${host,,}" != "$staff_host" && "${host,,}" != "$portal_host" ]]; then
+    [[ "$host" == "${host,,}" ]] || set_env N8N_HOST "${host,,}"
+    [[ "${N8N_WEBHOOK_URL:-}" == "https://${host,,}/" ]] || set_env N8N_WEBHOOK_URL "https://${host,,}/"
+    [[ "${N8N_PROXY_HOPS:-}" =~ ^[1-9][0-9]*$ ]] || set_env N8N_PROXY_HOPS 1
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    warn "N8N_HOST fehlt/ist ungueltig; eigene n8n-Domain in .env setzen."
+    return 0
+  fi
+  while :; do
+    read -rp 'n8n-Administration (vollstaendige eigene Domain, z. B. n8n.taxtronik.de): ' input || true
+    input="${input,,}"
+    if valid_public_fqdn "$input" && [[ "$input" != "$staff_host" && "$input" != "$portal_host" ]]; then break; fi
+    warn "n8n-Domain muss gueltig und von Kanzlei- und Mandantenportal verschieden sein."
+  done
+  set_env N8N_HOST "$input"
+  set_env N8N_WEBHOOK_URL "https://${input}/"
+  set_env N8N_PROXY_HOPS 1
 }
 
 state_value() {
@@ -3592,6 +3585,8 @@ prepare_env_interactive() {
   # prompt() fragt nur bei TTY und nur, wenn der Wert noch ungesetzt ist.
   configure_surface_domains_interactive
 
+  configure_n8n_domain_interactive
+
   configure_risk_layer_interactive
 
   reconcile_n8n_encryption_key_from_volume
@@ -3681,7 +3676,6 @@ cmd_config() {
 cmd_deploy() {
   configure_initial_deployment_interactive
   ensure_bootstrap_host_requirements
-  verify_one_click_dns_after_host_setup
   prepare_env_interactive
   _deploy_core
   info "Deploy fertig. Version: $(image_tag)"

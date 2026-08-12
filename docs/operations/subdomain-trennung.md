@@ -111,8 +111,9 @@ fällt nur im Single-Host-Setup auf `NEXTAUTH_URL` zurück.
 
 ### 4.1 n8n
 
-n8n kann als lokaler Compose-Service laufen oder hinter einem eigenen VHost
-stehen. Dabei vier Adressen getrennt behandeln:
+n8n kann als lokaler Compose-Service laufen oder separat betrieben werden. In
+Produktion erhält die UI/API immer einen eigenen VHost. Dabei vier Adressen
+getrennt behandeln:
 
 | Adresse             | Beispiel                                     | Sichtbarkeit                                     |
 | ------------------- | -------------------------------------------- | ------------------------------------------------ |
