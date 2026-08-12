@@ -45,14 +45,14 @@ geprüft:
 
 Der Schnitt in einen Versionsabschnitt erfolgt erst beim echten Release-Tag.
 
-## Schritt 3: Bootstrap auf leerem System
+## Schritt 3: Deploy auf leerem System
 
 Auf dem Rehearsal-Server:
 
 ```bash
 git clone <repo-url> taxtronik
 cd taxtronik
-./taxtronik bootstrap
+./taxtronik deploy
 ```
 
 Erwartung:

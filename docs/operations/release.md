@@ -77,6 +77,7 @@ In der `.env` des Servers einmalig den Registry-Modus aktivieren und pro
 Update die Version pinnen:
 
 ```ini
+TAXTRONIK_DEPLOY_CHANNEL=release
 TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
 TAXTRONIK_VERSION=1.4.0
 ```
@@ -105,8 +106,9 @@ Container stoppen — die Downtime ist der reine Container-Neustart.
 Private Registry: einmalig `docker login git.hirschmann-koxha.de` auf dem
 Server (Token mit `read:package` genügt).
 
-Ohne Registry-Zugriff (`TAXTRONIK_IMAGE_PREFIX` ohne Slash bzw. ungesetzt)
-baut `./taxtronik deploy`/`update` lokal aus dem Checkout — dann braucht
+Im expliziten Source-Kanal (`TAXTRONIK_DEPLOY_CHANNEL=source`) baut
+`./taxtronik deploy`/`update` lokal aus dem Checkout und setzt
+`TAXTRONIK_VERSION=source-<Git-Commit>` automatisch — dann braucht
 der Server weiterhin die Build-Toolchain, und es läuft nicht das in CI
 getestete Artefakt. Nach erfolgreichen lokalen Builds löscht die Operator-CLI
 ungenutzten Docker-BuildKit-Cache älter als 7 Tage (`until=168h`), damit der

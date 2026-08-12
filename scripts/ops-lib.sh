@@ -6,11 +6,12 @@
 #   - .env-Laden + Secret-Generierung (ensure_secret)
 #   - docker-compose-Wrapper (compose) — ehemals ./dc, jetzt eingebettet
 #   - doctor: vorab .env-Validierung statt telemetrischem Mid-Deploy-Abbruch
-#   - bootstrap: Prod-Erstinstall in einem Kommando
-#   - deploy/update/backup/rollback: die Operator-Abläufe
+#   - deploy: Erstkonfiguration + Build + Migration + Start + Smoke
+#   - bootstrap: veralteter Kompatibilitätsalias für deploy
+#   - update/backup/rollback: weitere Operator-Abläufe
 #
 # Dev/Prod-Trennung: auf dem Server läuft NUR Prod. .env auf dem Server ist
-# immer eine Prod-.env (erzeugt via ./taxtronik bootstrap). Das Dev-setup
+# immer eine Prod-.env (erzeugt via ./taxtronik deploy). Das Dev-setup
 # (scripts/setup.sh) ist ausschließlich für Entwickler-Maschinen und erzeugt
 # bewusst eine DEV-.env — genau das war früher die Quelle der "deploy meckert"-
 # Kollision, weil beide in dieselbe .env schrieben.
@@ -40,6 +41,7 @@ ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c
 # `SIGNAL_IMAGE=auto` folgt genau diesem Pin; ein externer/nativer Dienst wird
 # dagegen niemals ueber diesen Pfad angefasst.
 SIGNAL_MANAGED_IMAGE_DEFAULT="git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0"
+TAXTRONIK_RELEASE_IMAGE_PREFIX_DEFAULT="git.hirschmann-koxha.de/taxtronik"
 HOST_NODE_VERSION="24.19.0"
 HOST_NODE_LINUX_X64_SHA256="14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647"
 HOST_NODE_LINUX_ARM64_SHA256="01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc"
@@ -252,6 +254,13 @@ ensure_bootstrap_host_requirements() {
   local method
   method="$(deployment_method)" || die "DEPLOYMENT_METHOD muss standard oder traefik sein."
   if [[ "$method" == "traefik" ]]; then
+    if [[ -f "$STATE" ]]; then
+      require_cmd docker; require_cmd node; require_cmd git; require_cmd curl; require_cmd pnpm
+      node_version_supported || die "Bestehender 1-Klick-Host braucht Node.js >=24.11.0 <25."
+      docker info >/dev/null 2>&1 || die "Docker-Daemon ist nicht erreichbar."
+      docker compose version >/dev/null 2>&1 || die "Docker Compose v2 fehlt."
+      return 0
+    fi
     assert_blank_host_for_traefik
     install_one_click_host_requirements
   else
@@ -267,7 +276,7 @@ ensure_bootstrap_host_requirements() {
 # .env laden / schreiben
 # ---------------------------------------------------------------------------
 load_env() {
-  [[ -f "$ENVFILE" ]] || die "$ENVFILE nicht gefunden. Prod: ./taxtronik bootstrap. Dev: ./scripts/setup.sh"
+  [[ -f "$ENVFILE" ]] || die "$ENVFILE nicht gefunden. Prod: ./taxtronik deploy. Dev: ./scripts/setup.sh"
   chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
   local line key value
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -397,6 +406,33 @@ deployment_method() {
   esac
 }
 
+deployment_channel() {
+  local configured="${TAXTRONIK_DEPLOY_CHANNEL:-$(get_env TAXTRONIK_DEPLOY_CHANNEL)}"
+  case "$configured" in
+    source|release) printf '%s' "$configured" ;;
+    "")
+      local prefix="${TAXTRONIK_IMAGE_PREFIX:-$(get_env TAXTRONIK_IMAGE_PREFIX)}"
+      [[ "$prefix" == */* ]] && printf 'release' || printf 'source'
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+source_version_for_checkout() {
+  local commit
+  commit="$(git -C "$ROOT" rev-parse --verify HEAD 2>/dev/null || true)"
+  [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || \
+    die "Source-Deployment braucht einen gueltigen Git-Checkout mit HEAD-Commit."
+  printf 'source-%s' "${commit:0:12}"
+}
+
+prepare_source_version_for_checkout() {
+  [[ "$(deployment_channel)" == "source" ]] || return 0
+  export TAXTRONIK_DEPLOY_CHANNEL=source
+  export TAXTRONIK_IMAGE_PREFIX=taxtronik
+  export TAXTRONIK_VERSION="$(source_version_for_checkout)"
+}
+
 valid_public_fqdn() {
   local host="${1,,}"
   (( ${#host} <= 253 )) &&
@@ -519,7 +555,8 @@ ensure_compose_image_pinning() {
   local prefix version web_suffix worker_suffix commit
   prefix="${TAXTRONIK_IMAGE_PREFIX:-$(get_env TAXTRONIK_IMAGE_PREFIX)}"
   [[ -z "$prefix" ]] && prefix="taxtronik"
-  [[ "$prefix" == */* ]] || return 0
+  images_from_registry || return 0
+  [[ "$prefix" == */* ]] || die "Release-Kanal braucht einen Registry-Prefix mit Slash."
   version="${TAXTRONIK_VERSION:-$(get_env TAXTRONIK_VERSION)}"
   web_suffix="${TAXTRONIK_WEB_DIGEST_SUFFIX:-$(get_env TAXTRONIK_WEB_DIGEST_SUFFIX)}"
   worker_suffix="${TAXTRONIK_WORKER_DIGEST_SUFFIX:-$(get_env TAXTRONIK_WORKER_DIGEST_SUFFIX)}"
@@ -572,9 +609,10 @@ compose() {
 app_port() { printf '%s' "${APP_BIND_PORT:-3000}"; }
 image_tag() { printf '%s' "${TAXTRONIK_VERSION:-latest}"; }
 
-# Registry-Pull-Modus: TAXTRONIK_IMAGE_PREFIX mit '/' => fertige Release-Images
-# aus der Registry (CI-gebaut). Ohne '/' (Default `taxtronik`) => Lokalbuild.
-images_from_registry() { [[ "${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" == */* ]]; }
+# Der explizite Bezugsweg ist die Wahrheit. Fuer bestehende Installationen ohne
+# TAXTRONIK_DEPLOY_CHANNEL bleibt deployment_channel() bestandskompatibel und
+# leitet den Modus einmalig aus dem bisherigen Image-Prefix ab.
+images_from_registry() { [[ "$(deployment_channel)" == "release" ]]; }
 
 semver_ge() {
   local left="$1" right="$2" l1 l2 l3 r1 r2 r3
@@ -694,6 +732,8 @@ stage_release_contract() {
 # save_state wird davor atomar geschrieben; scheitert ein einzelnes .env-Update,
 # blockiert ensure_compose_image_pinning jeden spaeteren Mischbetrieb fail-closed.
 commit_release_contract() {
+  set_env TAXTRONIK_DEPLOY_CHANNEL "$(deployment_channel)"
+  set_env TAXTRONIK_IMAGE_PREFIX "${TAXTRONIK_IMAGE_PREFIX:-taxtronik}"
   set_env TAXTRONIK_VERSION "${TAXTRONIK_VERSION:-}"
   set_env TAXTRONIK_WEB_DIGEST_SUFFIX "${TAXTRONIK_WEB_DIGEST_SUFFIX:-}"
   set_env TAXTRONIK_WORKER_DIGEST_SUFFIX "${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}"
@@ -778,16 +818,21 @@ prune_build_cache() {
 
 require_release_version() {
   [[ -n "${TAXTRONIK_VERSION:-}" ]] || \
-    die "TAXTRONIK_VERSION fehlt in .env. Auf ein Release pinnen (z. B. TAXTRONIK_VERSION=1.4.0) — oder './taxtronik bootstrap' bzw. 'doctor --fix' fuer ein Erstdeploy."
+    die "TAXTRONIK_VERSION fehlt. './taxtronik deploy' setzt sie passend zum gewaehlten Bezugsweg."
   if images_from_registry; then
+    [[ "${TAXTRONIK_IMAGE_PREFIX:-}" == */* ]] || \
+      die "Release-Kanal braucht TAXTRONIK_IMAGE_PREFIX=<registry>/<projekt>."
     [[ "$TAXTRONIK_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
-      die "Registry-Modus akzeptiert nur striktes SemVer X.Y.Z (aktuell: $TAXTRONIK_VERSION)."
+      die "Release-Kanal akzeptiert nur eine veroeffentlichte SemVer X.Y.Z (aktuell: $TAXTRONIK_VERSION)."
+  else
+    [[ "$TAXTRONIK_VERSION" =~ ^source-[0-9a-f]{12}$ ]] || \
+      die "Source-Kanal braucht die automatisch erzeugte Kennung source-<Git-Commit> (aktuell: $TAXTRONIK_VERSION)."
   fi
 }
 
 assert_production_env() {
   [[ "${NODE_ENV:-production}" == "production" ]] || \
-    die "NODE_ENV muss fuer Operator-Skripte 'production' sein (aktuell: ${NODE_ENV:-unset}). Server nutzt ./taxtronik bootstrap, nicht scripts/setup.sh."
+    die "NODE_ENV muss fuer Operator-Skripte 'production' sein (aktuell: ${NODE_ENV:-unset}). Server nutzt ./taxtronik deploy, nicht scripts/setup.sh."
   [[ "${DATABASE_URL:-}" != "${DATABASE_APP_URL:-}" ]] || \
     die "DATABASE_URL und DATABASE_APP_URL duerfen nicht identisch sein (RLS-Backstop)."
 }
@@ -954,13 +999,21 @@ _doctor_n8n_volume_key() {
 }
 
 doctor() {
-  local fix=0
+  local fix=0 deploy_channel=""
   [[ "${1:-}" == "--fix" ]] && fix=1
 
-  [[ -f "$ENVFILE" ]] || { echo "FEHLER: $ENVFILE fehlt. Prod: ./taxtronik bootstrap" >&2; return 1; }
+  [[ -f "$ENVFILE" ]] || { echo "FEHLER: $ENVFILE fehlt. Prod: ./taxtronik deploy" >&2; return 1; }
 
   if [[ $fix -eq 1 ]]; then
     info "doctor --fix: Secrets + Prod-Defaults ergaenzen"
+    deploy_channel="$(deployment_channel 2>/dev/null || true)"
+    if [[ "$deploy_channel" == "source" ]]; then
+      set_env TAXTRONIK_DEPLOY_CHANNEL source
+      set_env TAXTRONIK_IMAGE_PREFIX taxtronik
+      set_env TAXTRONIK_VERSION "$(source_version_for_checkout)"
+    elif [[ "$deploy_channel" == "release" ]]; then
+      set_env TAXTRONIK_DEPLOY_CHANNEL release
+    fi
     [[ "$(get_env NODE_ENV)" != "production" ]] && { set_env NODE_ENV production; info "NODE_ENV=production gesetzt."; }
     [[ -z "$(get_env TIMESTAMP_AUTHORITY_URL)" ]] && { set_env TIMESTAMP_AUTHORITY_URL "http://timestamp.globalsign.com/tsa/r6advanced1"; info "TIMESTAMP_AUTHORITY_URL=GlobalSign gesetzt."; }
     # Host-/Proxy-Trust nie erraten. Der sichere Default ignoriert Forwarded-
@@ -1006,11 +1059,35 @@ doctor() {
     _dr_row "FEHLT" "DATABASE_URL" "== DATABASE_APP_URL (RLS-Backstop!)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else _dr_row "OK" "DATABASE_URL/APP_URL" "unterschiedlich (ok)"; fi
 
-  if [[ -z "${TAXTRONIK_VERSION:-}" ]]; then
-    _dr_row "FEHLT" "TAXTRONIK_VERSION" "Release pinnen (z. B. 1.4.0)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ "$TAXTRONIK_VERSION" == "latest" || "$TAXTRONIK_VERSION" == "dev" ]]; then
-    _dr_row "WARN" "TAXTRONIK_VERSION" "='$TAXTRONIK_VERSION' (auf Release pinnen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-  else _dr_row "OK" "TAXTRONIK_VERSION" "$TAXTRONIK_VERSION"; fi
+  deploy_channel="$(deployment_channel 2>/dev/null || true)"
+  if [[ "$deploy_channel" == "source" ]]; then
+    _dr_row "OK" "TAXTRONIK_DEPLOY_CHANNEL" "source (aktueller Git-Stand, lokaler Build)"
+    if [[ "${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" == */* ]]; then
+      _dr_row "FEHLT" "TAXTRONIK_IMAGE_PREFIX" "Source-Kanal darf keinen Registry-Prefix verwenden"
+      _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    fi
+    if [[ "${TAXTRONIK_VERSION:-}" =~ ^source-[0-9a-f]{12}$ ]]; then
+      _dr_row "OK" "TAXTRONIK_VERSION" "$TAXTRONIK_VERSION"
+    else
+      _dr_row "FEHLT" "TAXTRONIK_VERSION" "Source-Kennung fehlt; ./taxtronik deploy setzt sie automatisch"
+      _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    fi
+  elif [[ "$deploy_channel" == "release" ]]; then
+    _dr_row "OK" "TAXTRONIK_DEPLOY_CHANNEL" "release (signierte Registry-Artefakte)"
+    if [[ "${TAXTRONIK_IMAGE_PREFIX:-}" != */* ]]; then
+      _dr_row "FEHLT" "TAXTRONIK_IMAGE_PREFIX" "Release-Kanal braucht <registry>/<projekt>"
+      _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    fi
+    if [[ "${TAXTRONIK_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      _dr_row "OK" "TAXTRONIK_VERSION" "$TAXTRONIK_VERSION"
+    else
+      _dr_row "FEHLT" "TAXTRONIK_VERSION" "exakter Tag eines veroeffentlichten Releases X.Y.Z fehlt"
+      _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    fi
+  else
+    _dr_row "FEHLT" "TAXTRONIK_DEPLOY_CHANNEL" "muss source oder release sein"
+    _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  fi
 
   local deploy_method="" traefik_staff_host="" traefik_portal_host=""
   deploy_method="$(deployment_method 2>/dev/null || true)"
@@ -2053,7 +2130,7 @@ run_restore() {
 }
 
 # ---------------------------------------------------------------------------
-# Hilfs-Ablaeufe fuer bootstrap / rollback
+# Hilfs-Ablaeufe fuer Initial-Deploy / rollback
 # ---------------------------------------------------------------------------
 wait_postgres_healthy() {
   info "Warten bis Postgres healthy ist"
@@ -2221,6 +2298,8 @@ apply_initial_setup_plan() {
   _TAXTRONIK_ENV_CREATED_THIS_RUN=1
 
   set_env DEPLOYMENT_METHOD "$_SETUP_METHOD"
+  set_env TAXTRONIK_DEPLOY_CHANNEL "$_SETUP_DEPLOY_CHANNEL"
+  set_env TAXTRONIK_IMAGE_PREFIX "$_SETUP_IMAGE_PREFIX"
   set_env TAXTRONIK_VERSION "$_SETUP_RELEASE_VERSION"
   set_env NEXTAUTH_URL "https://${_SETUP_STAFF_HOST}"
   set_env PORTAL_PUBLIC_URL "https://${_SETUP_PORTAL_HOST}"
@@ -2245,6 +2324,8 @@ apply_initial_setup_plan() {
   set_env RISK_LAYER_URL "$_SETUP_SIGNAL_URL"
   set_env RISK_LAYER_TOKEN "$_SETUP_SIGNAL_TOKEN"
   set_env RISK_LAYER_OPERATOR_TOKEN "$_SETUP_SIGNAL_OPERATOR_TOKEN"
+  set_env TENANT_NAME "$_SETUP_TENANT_NAME"
+  set_env ADMIN_EMAIL "$_SETUP_ADMIN_EMAIL"
 
   export TENANT_NAME="$_SETUP_TENANT_NAME"
   export ADMIN_EMAIL="$_SETUP_ADMIN_EMAIL"
@@ -2255,8 +2336,10 @@ configure_initial_deployment_interactive() {
   [[ ! -e "$STATE" ]] || \
     die ".env fehlt, aber Installations-State ist vorhanden. Nicht als Erstinstallation ueberschreiben; .env aus dem Backup wiederherstellen."
 
-  local choice="" input="" base_domain="" default_release="" phrase=""
+  local choice="" input="" base_domain="" phrase=""
   _SETUP_METHOD="standard"
+  _SETUP_DEPLOY_CHANNEL="source"
+  _SETUP_IMAGE_PREFIX="taxtronik"
   _SETUP_RELEASE_VERSION=""
   _SETUP_STAFF_HOST=""
   _SETUP_PORTAL_HOST=""
@@ -2293,13 +2376,30 @@ configure_initial_deployment_interactive() {
     *) die "Ungueltige Deployment-Auswahl: $choice" ;;
   esac
 
-  default_release="$(git -C "$ROOT" describe --tags --exact-match --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)"
-  while :; do
-    read -rp "Freigegebene TaxTronik-Version (SemVer) [${default_release}]: " input || true
-    _SETUP_RELEASE_VERSION="${input:-$default_release}"
-    [[ "$_SETUP_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && break
-    warn "Bitte eine feste SemVer-Version X.Y.Z eingeben."
-  done
+  printf '\nWelcher TaxTronik-Stand soll installiert werden?\n'
+  printf '  1) Aktueller Git-Stand (empfohlen fuer Entwicklung/Vorabstaende)\n'
+  printf '     Baut den ausgecheckten Commit lokal; keine Versionsangabe noetig.\n'
+  printf '  2) Veroeffentlichtes Release\n'
+  printf '     Zieht signierte Registry-Images; nur waehlen, wenn ein Release vorliegt.\n'
+  read -rp 'Auswahl [1]: ' choice || true
+  case "${choice:-1}" in
+    1|source)
+      _SETUP_DEPLOY_CHANNEL="source"
+      _SETUP_IMAGE_PREFIX="taxtronik"
+      _SETUP_RELEASE_VERSION="$(source_version_for_checkout)"
+      ;;
+    2|release)
+      _SETUP_DEPLOY_CHANNEL="release"
+      _SETUP_IMAGE_PREFIX="$TAXTRONIK_RELEASE_IMAGE_PREFIX_DEFAULT"
+      while :; do
+        read -rp 'Veroeffentlichte Release-Version (SemVer X.Y.Z): ' input || true
+        _SETUP_RELEASE_VERSION="$input"
+        [[ "$_SETUP_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && break
+        warn "Bitte den exakten Tag eines veroeffentlichten Releases eingeben, z. B. 1.4.0."
+      done
+      ;;
+    *) die "Ungueltige Bezugsweg-Auswahl: $choice" ;;
+  esac
 
   while :; do
     read -rp 'Basisdomain (z. B. kanzlei.example.de): ' base_domain || true
@@ -2395,7 +2495,11 @@ configure_initial_deployment_interactive() {
 
   printf '\n================ Setup-Zusammenfassung ================\n'
   printf 'Deployment : %s\n' "$([[ "$_SETUP_METHOD" == "traefik" ]] && printf '1-Klick Traefik (leerer Host)' || printf 'Standard / vorhandener Reverse-Proxy')"
-  printf 'Version    : %s\n' "$_SETUP_RELEASE_VERSION"
+  if [[ "$_SETUP_DEPLOY_CHANNEL" == "source" ]]; then
+    printf 'Quelle     : Git-Stand %s (lokaler Build)\n' "${_SETUP_RELEASE_VERSION#source-}"
+  else
+    printf 'Quelle     : Veroeffentlichtes Release v%s (Registry)\n' "$_SETUP_RELEASE_VERSION"
+  fi
   printf 'Staff      : https://%s\n' "$_SETUP_STAFF_HOST"
   printf 'Portal     : https://%s\n' "$_SETUP_PORTAL_HOST"
   [[ "$_SETUP_METHOD" == "traefik" ]] && printf 'TLS/DNS    : Let\x27s Encrypt, Ziel %s\n' "$_SETUP_EXPECTED_IP"
@@ -3186,14 +3290,19 @@ can_retarget_recoverable_gwg_034_transition() {
   [[ "$existing_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
      "$target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
   [[ -n "$existing_target" && -n "$target_version" ]] || return 1
-  # Lokal gebaute Deployments duerfen bewusst Nicht-SemVer-Tags verwenden
-  # (z. B. 2026-06-16). Ein Fix-Commit unter demselben Tag ist sicher, weil
-  # die Commit-Ancestry direkt darunter weiterhin eine Rueckwaertsbewegung
-  # ausschliesst. Nur ein Tag-Wechsel muss als SemVer vergleichbar sein.
+  # Source-Kennungen wechseln absichtlich mit jedem Git-Commit; ihre Ordnung
+  # beweist die Commit-Ancestry direkt darunter. Andere Tag-Wechsel muessen als
+  # SemVer vergleichbar sein. Historische Nicht-SemVer-Tags bleiben nur bei
+  # identischem Wert bestandskompatibel.
   if [[ "$existing_target" != "$target_version" ]]; then
-    [[ "$existing_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
-       "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
-    semver_ge "$target_version" "$existing_target" || return 1
+    if [[ "$existing_target" =~ ^source-[0-9a-f]{12}$ && \
+          "$target_version" =~ ^source-[0-9a-f]{12}$ ]]; then
+      : # Commit-Ancestry ist unten das vollstaendige Ordnungs-Gate.
+    else
+      [[ "$existing_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
+         "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+      semver_ge "$target_version" "$existing_target" || return 1
+    fi
   fi
   git -C "$ROOT" merge-base --is-ancestor "$existing_target_commit" "$target_commit" \
     >/dev/null 2>&1 || return 1
@@ -3399,7 +3508,7 @@ finalize_release_contract() {
 }
 
 # ---------------------------------------------------------------------------
-# .env-Vorbereitung (deploy/update/bootstrap). Stellt sicher, dass der Server
+# .env-Vorbereitung (deploy/update). Stellt sicher, dass der Server
 # eine vollstaendige PROD-.env hat, OHNE dass der Operator vorher von Hand
 # editieren muss: generiert fehlende Secrets, fragt interaktiv die oeffentliche
 # URL ab und backt die generierten DB-Passwoerter in die DATABASE-URLs.
@@ -3421,9 +3530,9 @@ bake_db_urls_into_env() {
   return 0
 }
 
-# Interaktive .env-Vorbereitung fuer deploy/update/bootstrap.
+# Interaktive .env-Vorbereitung fuer deploy/update.
 prepare_env_interactive() {
-  local env_created="${_TAXTRONIK_ENV_CREATED_THIS_RUN:-0}"
+  local env_created="${_TAXTRONIK_ENV_CREATED_THIS_RUN:-0}" deploy_channel=""
   if [[ ! -f "$ENVFILE" ]]; then
     info ".env fehlt — aus Vorlage anlegen"
     [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."
@@ -3431,6 +3540,14 @@ prepare_env_interactive() {
     env_created=1
   fi
   chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
+  deploy_channel="$(deployment_channel 2>/dev/null || true)"
+  [[ "$deploy_channel" == "source" || "$deploy_channel" == "release" ]] || \
+    die "TAXTRONIK_DEPLOY_CHANNEL muss source oder release sein."
+  set_env TAXTRONIK_DEPLOY_CHANNEL "$deploy_channel"
+  if [[ "$deploy_channel" == "source" ]]; then
+    set_env TAXTRONIK_IMAGE_PREFIX taxtronik
+    set_env TAXTRONIK_VERSION "$(source_version_for_checkout)"
+  fi
   # Prod-Default (NODE_ENV, TAXTRONIK_VERSION) + fehlende Secrets generieren.
   doctor --fix >/dev/null || true
   # Nur bei einer soeben neu angelegten Installation automatisch trennen.
@@ -3439,13 +3556,17 @@ prepare_env_interactive() {
   [[ $env_created -eq 1 ]] && ensure_secret SECRET_BOX_KEY 32
   bake_db_urls_into_env
 
-  # Eine Release-Version ist Identität, kein generierbarer Default. Frühere
-  # Datumswerte scheiterten später zu Recht am SemVer-Gate.
-  if [[ -z "$(get_env TAXTRONIK_VERSION)" ]]; then
+  # Nur veröffentlichte Releases brauchen eine manuell gewählte SemVer. Source
+  # ist bereits oben automatisch an den exakten Git-Commit gebunden.
+  if [[ "$deploy_channel" == "release" && -z "$(get_env TAXTRONIK_VERSION)" ]]; then
     if [[ -t 0 ]]; then
       local release_version=""
-      read -rp "Freigegebene Release-Version (SemVer, z. B. 0.2.0): " release_version || true
-      [[ -n "$release_version" ]] && set_env TAXTRONIK_VERSION "$release_version"
+      while :; do
+        read -rp "Veroeffentlichte Release-Version (SemVer X.Y.Z): " release_version || true
+        [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && break
+        warn "Bitte den exakten Tag eines veroeffentlichten Releases eingeben."
+      done
+      set_env TAXTRONIK_VERSION "$release_version"
     else
       warn "TAXTRONIK_VERSION fehlt (kein TTY) — explizit auf einen Release setzen."
     fi
@@ -3518,10 +3639,12 @@ cmd_reset_admin_password() {
   info "Admin-Passwort neu gesetzt. Credentials: $ROOT/.admin-credentials.txt"
 }
 
-# Gemeinsame Deploy-Sequenz (deploy + bootstrap). Enthaelt die Erstinstall-
-# Erkennung, sodass deploy eine frische Installation komplett abdeckt.
+# Gemeinsame Deploy-Sequenz. Enthaelt die Erstinstall-Erkennung, sodass deploy
+# eine frische Installation komplett abdeckt.
 _deploy_core() {
-  load_env; preflight_common; assert_production_env; require_release_version
+  load_env
+  prepare_source_version_for_checkout
+  preflight_common; assert_production_env; require_release_version
   assert_no_database_restore_pending
   ensure_host_tool_deps
   prepare_release_contract
@@ -3545,12 +3668,38 @@ _deploy_core() {
 # ---------------------------------------------------------------------------
 # Operator-Kommandos (aufgerufen vom Dispatcher ./taxtronik)
 # ---------------------------------------------------------------------------
-cmd_deploy() {
-  require_cmd docker; require_cmd node; require_cmd curl
+cmd_config() {
+  if [[ -f "$ENVFILE" ]]; then
+    info "Konfiguration ist bereits vorhanden: $ENVFILE"
+    info "Validierung/Auffuellen: ./taxtronik doctor --fix"
+    return 0
+  fi
+  [[ -t 0 ]] || die "Initialkonfiguration braucht ein interaktives Terminal."
   configure_initial_deployment_interactive
+  info "Konfiguration gespeichert. Mit './taxtronik deploy' wird sie angewendet."
+}
+
+cmd_deploy() {
+  configure_initial_deployment_interactive
+  ensure_bootstrap_host_requirements
+  verify_one_click_dns_after_host_setup
   prepare_env_interactive
   _deploy_core
   info "Deploy fertig. Version: $(image_tag)"
+  cat <<EOF
+
+=================================================================
+  Deployment abgeschlossen. Version: $(image_tag)
+=================================================================
+  Staff-Login : (NEXTAUTH_URL aus .env)/staff/login
+  Admin-Zugang: siehe $ROOT/.admin-credentials.txt (falls neu angelegt)
+                Nach erstem Login + TOTP-Setup die Datei sicher loeschen.
+
+  Naechste Schritte:
+    ./taxtronik doctor     # Konfiguration pruefen
+    ./taxtronik logs app   # Logs ansehen
+    ./taxtronik update     # Updates einspielen
+EOF
 }
 
 cmd_update() {
@@ -3570,7 +3719,9 @@ cmd_update() {
   # Backup autorisiert daher ueberhaupt fetch/merge und damit eine Aenderung des
   # Arbeitsbaums.
   prepare_env_interactive
-  load_env; preflight_common; assert_production_env; require_release_version
+  load_env
+  prepare_source_version_for_checkout
+  preflight_common; assert_production_env; require_release_version
   assert_no_database_restore_pending
   if images_from_registry; then resolve_release_contract; fi
   start_infra
@@ -3600,7 +3751,9 @@ cmd_update() {
   # .env ggfs. aus dem aktualisierten Stand neu vervollstaendigen (Prod-Defaults,
   # fehlende Secrets, NEXTAUTH_URL) — wie bei deploy ohne Hand-Editiererei.
   prepare_env_interactive
-  load_env; preflight_common; assert_production_env; require_release_version
+  load_env
+  prepare_source_version_for_checkout
+  preflight_common; assert_production_env; require_release_version
   if images_from_registry; then
     verify_release_checkout
     stage_release_contract
@@ -4038,27 +4191,9 @@ cmd_rollback() {
   info "Rollback fertig. Version: $target"
 }
 
-# Prod-Erstinstall in einem Kommando. Funktionell ein Deploy (das seinerseits
-# Erstinstall-Erkennung + Provisionierung enthaelt), plus Willkommens-Banner.
+# Historischer Alias. Neue Installationen und bestehende Systeme verwenden
+# denselben vollstaendigen Hauptweg `deploy`.
 cmd_bootstrap() {
-  configure_initial_deployment_interactive
-  ensure_bootstrap_host_requirements
-  verify_one_click_dns_after_host_setup
-  prepare_env_interactive
-  _deploy_core
-  info "Bootstrap fertig. Version: $(image_tag)"
-  cat <<EOF
-
-=================================================================
-  Setup abgeschlossen. Version: $(image_tag)
-=================================================================
-  Staff-Login : (NEXTAUTH_URL aus .env)/staff/login
-  Admin-Zugang: siehe $ROOT/.admin-credentials.txt (falls neu angelegt)
-                Nach erstem Login + TOTP-Setup die Datei sicher loeschen.
-
-  Naechste Schritte:
-    ./taxtronik doctor     # Env-Check (SMTP/Portal-URL/Lizenz bei Bedarf)
-    ./taxtronik logs app   # Logs ansehen
-    ./taxtronik update     # Updates einspielen
-EOF
+  warn "'./taxtronik bootstrap' ist nur noch ein Kompatibilitaetsalias. Bitte kuenftig './taxtronik deploy' verwenden."
+  cmd_deploy "$@"
 }

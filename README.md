@@ -134,21 +134,24 @@ sie vorab (`doctor`) statt mitten im Deploy abzubrechen. Die SeaweedFS-S3-
 Konfiguration entsteht erst im Container flüchtig unter `/run`; es gibt keine
 hostseitige Klartext-Konfigurationskopie mehr.
 
-Erstinstall (eine Kanzlei, ein Server, ein Kommando bis zur laufenden App):
+`deploy` ist der einzige Hauptweg — sowohl für die Erstinstallation als auch
+für spätere Deployments:
 
 ```bash
-./taxtronik bootstrap   # Betriebsweg wählen, bestätigen, dann vollständig installieren
+./taxtronik deploy      # bei Bedarf konfigurieren, bestätigen und vollständig installieren
+# optional getrennt: ./taxtronik config && ./taxtronik deploy
 ```
 
 Der Assistent bietet eine gesunde Standardmethode für bestehende Server mit
 vorhandenem Reverse-Proxy und einen bewusst streng gesperrten 1-Klick-Weg mit
 Traefik/Let's Encrypt für **komplett leere** Linux-/Docker-Maschinen. Er fragt
-Version, Domains, Admin/Kanzlei, SMTP und Signal ab, zeigt vor jeder Änderung
+Bezugsweg, Domains, Admin/Kanzlei, SMTP und Signal ab, zeigt vor jeder Änderung
 eine Zusammenfassung und verlangt eine wörtliche Bestätigung. Auf Debian/Ubuntu
 installiert der bestätigte 1-Klick-Weg fehlende Basispakete, Docker/Compose und
 die gepinnte Node-/pnpm-Laufzeit selbst. Details und Voraussetzungen:
 [Erstinstallation](docs/operations/initial-deploy.md).
 
+`bootstrap` bleibt nur als veralteter Kompatibilitätsalias für `deploy` erhalten.
 Im Normalfall danach:
 
 ```bash
@@ -177,6 +180,7 @@ Forgejo-Workflow führt für exakt den Tag-Commit im selben Release-DAG die
 vollständige CI- und Security-Suite aus; erst danach baut/scant/pusht er Web und
 Worker und veröffentlicht verpflichtend das Ed25519-signierte Manifest v2 mit
 Commit- sowie beiden Image-Digests. Auf dem Server zeigt
+`TAXTRONIK_DEPLOY_CHANNEL=release` zusammen mit
 `TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik` auf die Registry,
 `TAXTRONIK_VERSION` auf das Release. Die Operator-CLI verifiziert Manifest,
 Tag und Checkout und deployt getrennte
@@ -185,8 +189,9 @@ Revision muss stimmen. Mutable Tags werden nicht als Release-Vertrag
 akzeptiert. Details und Rollback-Pfad:
 [docs/operations/release.md](docs/operations/release.md)
 
-Bei lokalen Image-Builds (`TAXTRONIK_IMAGE_PREFIX` ohne Registry-Slash) räumt
-die Operator-CLI nach erfolgreichem Build ungenutzten Docker-BuildKit-Cache auf
+Im Source-Kanal (`TAXTRONIK_DEPLOY_CHANNEL=source`) wird die Version automatisch
+als `source-<Git-Commit>` geführt; eine SemVer-Eingabe gibt es dort nicht. Nach
+erfolgreichen lokalen Builds räumt die Operator-CLI ungenutzten Docker-BuildKit-Cache auf
 (`until=168h`). Das lässt sich mit `TAXTRONIK_BUILD_CACHE_PRUNE=off` abschalten
 oder per `TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL=336h` anpassen. Registry-Deploys
 pullen fertige Images und führen keinen Build-Cache-Prune aus.

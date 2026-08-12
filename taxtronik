@@ -2,8 +2,9 @@
 # =============================================================================
 # taxtronik — Operator-CLI (ein Einstieg fuer das ganze produktive Deployment).
 #
-#   ./taxtronik bootstrap            interaktiver Prod-Erstinstall inkl. Betriebsweg
-#   ./taxtronik deploy               bauen/pullen + migrieren + starten + Smoke
+#   ./taxtronik deploy               Hauptweg: konfigurieren + bauen/pullen + starten
+#   ./taxtronik config               Initialkonfiguration getrennt vorbereiten
+#   ./taxtronik bootstrap            veralteter Alias fuer deploy
 #   ./taxtronik update               Backup + git pull + bauen/pullen + migrieren + starten
 #   ./taxtronik backup               Postgres -> lokale Kopie + S3-Backup-Bucket
 #   ./taxtronik backup-files         Kanzleidateien aus SeaweedFS -> backups/object-store
@@ -32,8 +33,10 @@ usage() {
 taxtronik — Operator-CLI
 
 Nutze:
-  ./taxtronik bootstrap             Erstinstall: Standard oder 1-Klick-Traefik wählen
-  ./taxtronik deploy                bauen/pullen + migrieren + starten + Health-Smoke
+  ./taxtronik deploy                Hauptweg fuer Erstinstall und Folge-Deploys
+                                    Fragt bei Bedarf Standard/1-Klick und Git/Release ab
+  ./taxtronik config                Initialkonfiguration vorbereiten, noch nichts starten
+  ./taxtronik bootstrap             Kompatibilitaetsalias fuer deploy (veraltet)
   ./taxtronik update                Backup + git pull + bauen/pullen + migrieren + starten
   ./taxtronik backup                Postgres-Backup nach backups/ + S3-Backup-Bucket
   ./taxtronik backup-files          Kanzleidateien aus SeaweedFS nach backups/object-store
@@ -53,7 +56,8 @@ Nutze:
   ./taxtronik rollback [<version>]  zurueck; nach Prod-Restore ist <version> Pflicht
   ./taxtronik reset-admin-password  Admin-Passwort neu setzen (Recovery)
   ./taxtronik doctor [--fix]        .env-Validierung; --fix generiert fehlende Secrets
-  ./taxtronik up|down|ps|logs|exec|pull ...   Compose-Passthrough (Writer-Start mit Recovery-Guard)
+  ./taxtronik compose <cmd>          expliziter Docker-Compose-Passthrough
+  ./taxtronik up|down|ps|logs|exec|pull ...   Kurzform fuer Compose
   ./taxtronik --infra <cmd>                    nur Infra-Services
   ./taxtronik help                 diese Hilfe
 EOF
@@ -69,7 +73,8 @@ fi
 cmd="${1:-help}"
 case "$cmd" in
   bootstrap) shift || true; cmd_bootstrap "$@" ;;
-  deploy)    cmd_deploy ;;
+  deploy)    shift || true; cmd_deploy "$@" ;;
+  config)    shift || true; cmd_config "$@" ;;
   update)    cmd_update ;;
   backup)    cmd_backup ;;
   backup-files) cmd_backup_files ;;
@@ -85,7 +90,12 @@ case "$cmd" in
     ;;
   reset-admin-password) cmd_reset_admin_password ;;
   doctor)    shift || true; doctor "$@" ;;
-  up|down|stop|restart|ps|logs|exec|pull|top|config|port|images|stats)
+  compose)
+    shift || true
+    [[ $# -gt 0 ]] || die "Nutzung: ./taxtronik compose <docker-compose-subcommand> [...]"
+    compose "$@"
+    ;;
+  up|down|stop|restart|ps|logs|exec|pull|top|port|images|stats)
     shift || true; compose "$cmd" "$@" ;;
   help|-h|--help) usage ;;
   *) echo "Unbekanntes Kommando: $cmd" >&2; echo >&2; usage >&2; exit 1 ;;

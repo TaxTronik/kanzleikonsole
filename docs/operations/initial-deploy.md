@@ -3,8 +3,12 @@
 Die produktive Erstinstallation beginnt immer mit:
 
 ```bash
-./taxtronik bootstrap
+./taxtronik deploy
 ```
+
+Wer Konfiguration und Aktivierung bewusst trennen möchte, verwendet zuerst
+`./taxtronik config` und danach `./taxtronik deploy`. Der historische Befehl
+`bootstrap` ist nur noch ein Kompatibilitätsalias für `deploy`.
 
 Solange noch keine `.env` existiert, fragt der Assistent zuerst nach dem
 Betriebsweg. Er schreibt bis zur abschließenden, wörtlichen Bestätigung keine
@@ -66,7 +70,7 @@ und provisionieren ihre Host-Werkzeuge selbst.
 
 Der Assistent validiert und fasst vor der Anwendung zusammen:
 
-- feste TaxTronik-SemVer-Version,
+- Bezugsweg: aktueller Git-Stand oder veröffentlichtes Release,
 - Basisdomain sowie getrennte Staff- und Portal-FQDNs,
 - Kanzleiname und Admin-E-Mail,
 - SMTP-Ziel und optionale Zugangsdaten,
@@ -77,6 +81,12 @@ Secrets werden nicht in der Zusammenfassung ausgegeben. Für die Standardmethode
 muss exakt `KONFIGURATION UEBERNEHMEN`, für den 1-Klick-Weg bewusst
 `LEERE MASCHINE INSTALLIEREN` bestätigt werden. Erst danach entsteht die auf
 `0600` gesetzte `.env`; fehlende Secrets werden getrennt generiert.
+
+Beim empfohlenen Git-/Source-Weg leitet die CLI die Identität automatisch als
+`source-<12-stelliger Commit>` aus dem ausgecheckten Stand ab. Es wird keine
+SemVer abgefragt. Nur wenn ausdrücklich „Veröffentlichtes Release“ gewählt
+wird, muss der exakte bereits publizierte Tag `X.Y.Z` angegeben werden; dann
+werden signierte Registry-Artefakte statt lokaler Builds verwendet.
 
 ## Signal und Embeddings
 

@@ -99,7 +99,9 @@ write_prod_env() {
   local file="$1"
   cat >"$file" <<'EOF'
 NODE_ENV=production
-TAXTRONIK_VERSION=2026.06.17-test
+TAXTRONIK_DEPLOY_CHANNEL=source
+TAXTRONIK_IMAGE_PREFIX=taxtronik
+TAXTRONIK_VERSION=source-deadbeef1234
 AUTH_SECRET=auth-secret-with-at-least-thirty-two-chars
 SECRET_BOX_KEY=secret-box-key-with-at-least-thirty-two-chars
 N8N_HMAC_SECRET=n8n-hmac-secret-with-at-least-thirty-two-chars
@@ -125,7 +127,7 @@ run_doctor_with_env() {
   (
     unset AUTH_SECRET SECRET_BOX_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
-    unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_VERSION NEXTAUTH_URL
+    unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX TAXTRONIK_VERSION NEXTAUTH_URL
     unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED SIGNAL_DEPLOYMENT SIGNAL_IMAGE
     unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL TRAEFIK_EXPECTED_IP
     unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE SMTP_HOST SMTP_PORT
@@ -241,6 +243,8 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
     ROOT="$plan_root"
     ENVFILE="$env_file"
     _SETUP_METHOD="traefik"
+    _SETUP_DEPLOY_CHANNEL="release"
+    _SETUP_IMAGE_PREFIX="registry.example/taxtronik"
     _SETUP_RELEASE_VERSION="1.2.3"
     _SETUP_STAFF_HOST="staff.example.de"
     _SETUP_PORTAL_HOST="portal.example.de"
@@ -260,10 +264,15 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
     apply_initial_setup_plan
   )
   assert_key_equals "$env_file" DEPLOYMENT_METHOD traefik
+  assert_key_equals "$env_file" TAXTRONIK_DEPLOY_CHANNEL release
+  assert_key_equals "$env_file" TAXTRONIK_IMAGE_PREFIX registry.example/taxtronik
+  assert_key_equals "$env_file" TAXTRONIK_VERSION 1.2.3
   assert_key_equals "$env_file" NEXTAUTH_URL https://staff.example.de
   assert_key_equals "$env_file" PORTAL_PUBLIC_URL https://portal.example.de
   assert_key_equals "$env_file" TRUST_PROXY_REQUIRED true
   assert_key_equals "$env_file" SMTP_PASSWORD 'pa\ss&word|safe'
+  assert_key_equals "$env_file" TENANT_NAME Testkanzlei
+  assert_key_equals "$env_file" ADMIN_EMAIL admin@example.de
   [[ "$(file_mode "$env_file")" == "600" ]] || test_fail "planned .env mode is not 0600"
   pass "initial setup applies nothing before exact confirmation and preserves values safely"
 }
@@ -329,6 +338,50 @@ test_one_click_blank_host_allows_missing_docker_for_deferred_install() {
   pass "one-click defers missing Docker installation until after confirmation"
 }
 
+test_source_channel_derives_version_from_checkout_without_semver() {
+  local expected actual
+  expected="source-$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD)"
+  actual="$({
+    ROOT="$REPO_ROOT"
+    source_version_for_checkout
+  })"
+  [[ "$actual" == "$expected" ]] || test_fail "source version was not derived from HEAD"
+
+  (
+    ROOT="$REPO_ROOT"
+    TAXTRONIK_DEPLOY_CHANNEL=source
+    TAXTRONIK_IMAGE_PREFIX=taxtronik
+    prepare_source_version_for_checkout
+    require_release_version
+    [[ "$TAXTRONIK_VERSION" == "$expected" ]]
+  ) || test_fail "source channel unexpectedly required a SemVer"
+  pass "source channel uses an automatic commit identity instead of asking for SemVer"
+}
+
+test_deployment_channel_is_explicit_with_legacy_prefix_fallback() {
+  (
+    TAXTRONIK_DEPLOY_CHANNEL=source
+    TAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik
+    ! images_from_registry
+  ) || test_fail "explicit source channel was overridden by the image prefix"
+  (
+    TAXTRONIK_DEPLOY_CHANNEL=release
+    TAXTRONIK_IMAGE_PREFIX=taxtronik
+    images_from_registry
+  ) || test_fail "explicit release channel was overridden by the image prefix"
+  pass "deployment channel is explicit instead of being hidden in an image-prefix heuristic"
+}
+
+test_cli_presents_deploy_as_primary_path() {
+  local cli="$REPO_ROOT/taxtronik" source="$REPO_ROOT/scripts/ops-lib.sh" help="$TMP_DIR/cli-help.out"
+  bash "$cli" >"$help"
+  assert_before "$help" "./taxtronik deploy" "./taxtronik bootstrap"
+  assert_contains "$help" "./taxtronik config"
+  assert_contains "$source" "Aktueller Git-Stand"
+  assert_not_contains "$source" "Freigegebene TaxTronik-Version"
+  pass "CLI leads with deploy and limits the SemVer prompt to an explicit release choice"
+}
+
 test_bootstrap_installs_one_click_requirements_after_configuration() {
   local steps="$TMP_DIR/bootstrap-host-requirements.steps"
   : >"$steps"
@@ -348,12 +401,35 @@ test_bootstrap_installs_one_click_requirements_after_configuration() {
     prepare_env_interactive() { printf 'env\n' >>"$steps"; }
     _deploy_core() { printf 'deploy\n' >>"$steps"; }
     image_tag() { printf '1.2.3'; }
-    cmd_bootstrap
+    cmd_deploy
   ) >/dev/null
   assert_before "$steps" "configure" "host-requirements"
   assert_before "$steps" "host-requirements" "env"
   assert_before "$steps" "env" "deploy"
-  pass "bootstrap installs host prerequisites only after the confirmed configuration"
+  local alias_out="$TMP_DIR/bootstrap-alias.out"
+  (
+    cmd_deploy() { printf 'delegated\n'; }
+    cmd_bootstrap
+  ) >"$alias_out" 2>&1
+  assert_contains "$alias_out" "Kompatibilitaetsalias"
+  assert_contains "$alias_out" "delegated"
+  pass "deploy is the complete primary path and bootstrap only delegates as a legacy alias"
+}
+
+test_existing_one_click_deploy_does_not_reapply_blank_host_gate() {
+  local state_file="$TMP_DIR/existing-one-click.state"
+  : >"$state_file"
+  (
+    STATE="$state_file"
+    deployment_method() { printf 'traefik'; }
+    require_cmd() { :; }
+    node_version_supported() { return 0; }
+    docker() { return 0; }
+    assert_blank_host_for_traefik() { return 91; }
+    install_one_click_host_requirements() { return 92; }
+    ensure_bootstrap_host_requirements
+  ) || test_fail "existing one-click deployment was treated as a blank-host installation"
+  pass "existing one-click deployments reuse verified prerequisites without rerunning the blank-host installer"
 }
 
 test_one_click_runtime_install_contract_is_pinned_and_official() {
@@ -1978,6 +2054,15 @@ test_gwg_034_retarget_requires_exact_forward_state() {
     gwg_034_migration_is_fixed() { return 0; }
     database_has_recoverable_gwg_034_failure() { return 0; }
     can_retarget_recoverable_gwg_034_transition \
+      source-bbbbbbbbbbbb "$source_commit" source-cccccccccccc "$old_target_commit" \
+      source-bbbbbbbbbbbb "$source_commit" source-dddddddddddd "$new_target_commit"
+  ) || test_fail "automatic source commit identities blocked a forward recovery"
+
+  (
+    git() { return 0; }
+    gwg_034_migration_is_fixed() { return 0; }
+    database_has_recoverable_gwg_034_failure() { return 0; }
+    can_retarget_recoverable_gwg_034_transition \
       2026-06-16 "" 2026-06-16 "$old_target_commit" \
       2026-06-16 "" 2026-06-16 "$new_target_commit" true
   ) || test_fail "recoverable legacy transition without source commit was rejected"
@@ -2349,7 +2434,11 @@ test_one_click_blank_host_guard_rejects_existing_containers
 test_one_click_blank_host_guard_rejects_unreachable_docker
 test_one_click_ip_validation_accepts_only_real_ip_addresses
 test_one_click_blank_host_allows_missing_docker_for_deferred_install
+test_source_channel_derives_version_from_checkout_without_semver
+test_deployment_channel_is_explicit_with_legacy_prefix_fallback
+test_cli_presents_deploy_as_primary_path
 test_bootstrap_installs_one_click_requirements_after_configuration
+test_existing_one_click_deploy_does_not_reapply_blank_host_gate
 test_one_click_runtime_install_contract_is_pinned_and_official
 test_one_click_replaces_incomplete_docker_only_after_blank_host_gate
 test_traefik_dynamic_route_and_compose_contract_are_socketless
