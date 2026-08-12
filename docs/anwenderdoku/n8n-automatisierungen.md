@@ -36,6 +36,15 @@ App und n8n nicht im selben vertrauenswürdigen Netz erreichbar sind.
 Öffnen Sie **Administration → Einstellungen → n8n-Automatisierung**. Der Assistent
 führt durch folgende Schritte:
 
+Bei einer vom TaxTronik-Deploy verwalteten n8n-Instanz ist Schritt 1 bereits
+tenantgebunden provisioniert: Domain, interne Compose-Adressen, Rückweg und
+Betriebsart erscheinen im ACP. Melden Sie sich einmal über die verlinkte
+n8n-Oberfläche als Instanz-Owner an, erzeugen Sie unter **Settings → n8n API**
+einen API-Key und tragen Sie ihn im ACP ein. Das Outbound-HMAC-Secret erzeugen
+Sie anschließend im ACP und kopieren es bei der einmaligen Workflow-Einrichtung
+nach n8n. TaxTronik erzeugt keine Owner-Zugangsdaten und schleust keine Secrets
+über undokumentierte n8n-Interna ein.
+
 1. **Betriebsart wählen:** n8n deaktivieren, eine vorhandene
    Legacy-Konfiguration vorübergehend weiterverwenden oder workflow-spezifische
    Ziele einrichten.

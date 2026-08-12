@@ -309,6 +309,30 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
   pass "initial setup applies nothing before exact confirmation and preserves values safely"
 }
 
+test_deploy_provisions_managed_n8n_in_acp() {
+  local out="$TMP_DIR/n8n-acp-provision.out"
+  (
+    ROOT="$TMP_DIR"
+    N8N_HOST=n8n.example.de
+    generate_prisma_client_for_host_tools() { printf 'prisma-generated\n'; }
+    pnpm() { printf 'pnpm %s\n' "$*"; }
+    ensure_managed_n8n_connection
+  ) >"$out"
+  assert_contains "$out" "prisma-generated"
+  assert_contains "$out" "pnpm --filter @taxtronik/db provision:n8n"
+
+  : >"$out"
+  (
+    ROOT="$TMP_DIR"
+    N8N_HOST=""
+    generate_prisma_client_for_host_tools() { test_fail "Prisma generation ran without n8n"; }
+    pnpm() { test_fail "n8n provisioning ran without n8n"; }
+    ensure_managed_n8n_connection
+  ) >"$out"
+  [[ ! -s "$out" ]] || test_fail "disabled n8n provisioning produced unexpected output"
+  pass "deploy provisions managed n8n ACP defaults only when n8n is configured"
+}
+
 test_one_click_blank_host_guard_rejects_existing_containers() {
   local out="$TMP_DIR/blank-host-guard.out"
   if (
@@ -1651,6 +1675,7 @@ test_release_contract_is_not_persisted_before_health() {
     backup_before_migrations() { :; }
     run_migrations() { :; }
     ensure_provisioned_interactive() { :; }
+    ensure_managed_n8n_connection() { :; }
     start_apps() { :; }
     smoke_health() { return 1; }
     deploy_readiness() { test_fail "readiness must not run after failed health"; }
@@ -2678,6 +2703,7 @@ test_doctor_accepts_complete_traefik_contract
 test_doctor_rejects_unsafe_traefik_proxy_trust
 test_doctor_rejects_n8n_on_an_application_domain
 test_initial_setup_confirmation_and_atomic_plan_application
+test_deploy_provisions_managed_n8n_in_acp
 test_one_click_blank_host_guard_rejects_existing_containers
 test_one_click_blank_host_guard_rejects_unreachable_docker
 test_one_click_blank_host_allows_missing_docker_for_deferred_install

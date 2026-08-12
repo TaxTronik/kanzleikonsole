@@ -96,6 +96,14 @@ muss exakt `KONFIGURATION UEBERNEHMEN`, für den 1-Klick-Weg bewusst
 `LEERE MASCHINE INSTALLIEREN` bestätigt werden. Erst danach entsteht die auf
 `0600` gesetzte `.env`; fehlende Secrets werden getrennt generiert.
 
+Der Deploy legt die verwaltete n8n-Instanz außerdem create-only im ACP des
+provisionierten Tenants an: öffentliche Oberfläche, interne API-/Webhook-URL,
+Rückweg und Betriebsart sind damit bereits vorbelegt. Eine vorhandene ACP- oder
+Legacy-Konfiguration wird nie überschrieben. n8n-Owner-Anmeldung, Public-API-Key
+und die einmalige Übergabe eines im ACP erzeugten Workflow-HMAC-Secrets bleiben
+bewusste Schritte, weil TaxTronik weder Owner-Zugangsdaten noch Workflow-Secrets
+über undokumentierte n8n-Interna einschleust.
+
 Beim Signal-Git-Weg wird der gewählte Ref erst nach dieser Bestätigung in einen
 eigenen Checkout geladen. Der erste Build lädt die gelockte CPU-Runtime und das
 manifestierte lokale BGE-M3-Modell und kann deshalb länger dauern. Er ist auf

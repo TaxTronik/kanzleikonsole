@@ -32,6 +32,26 @@ function urlOrigin(value: string): string {
   }
 }
 
+function canTestN8nApi(apiBaseUrl: string, apiKey: string, keepApiKey: boolean): boolean {
+  return Boolean(apiBaseUrl && (apiKey || keepApiKey));
+}
+
+function ManagedN8nProvisionNotice({ initial }: { initial: N8nBrowserConfig }) {
+  if (initial.kind !== 'BUNDLED' || !initial.connectionId || initial.hasApiKey) return null;
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+      <p className="font-medium">Die verwaltete n8n-Instanz ist bereits verbunden.</p>
+      <p className="mt-1 text-xs">
+        Melden Sie sich einmal als Instanz-Owner in n8n an und erzeugen Sie dort unter{' '}
+        <span className="font-medium">Einstellungen → n8n API</span> einen API-Key. Tragen Sie ihn
+        unten ein. Für signierte Event-Workflows erzeugen Sie anschließend das
+        Outbound-Signatur-Secret, kopieren es einmal in den n8n-Workflow und speichern die
+        Verbindung. Domain und interne Compose-Adressen hat der Deploy bereits vorbelegt.
+      </p>
+    </div>
+  );
+}
+
 export function N8nConnectionSection({
   initial,
   connection,
@@ -88,6 +108,8 @@ export function N8nConnectionSection({
           </a>
         )}
       </div>
+
+      <ManagedN8nProvisionNotice initial={initial} />
 
       <form action={saveAction} className="rounded-lg border border-default p-4 space-y-4">
         {/* Text-/URL-/Secret-Felder tragen ihr name-Attribut DIREKT am
@@ -388,7 +410,7 @@ export function N8nConnectionSection({
             type="button"
             className="btn-secondary inline-flex items-center gap-1.5"
             onClick={testApi}
-            disabled={busy || saving || !apiBaseUrl}
+            disabled={busy || saving || !canTestN8nApi(apiBaseUrl, apiKey, keepApiKey)}
           >
             <Link2 className="h-4 w-4" /> API testen
           </button>

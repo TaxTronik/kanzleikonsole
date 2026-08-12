@@ -202,6 +202,10 @@ function sameUrlOrigin(left: string, right: string): boolean {
   }
 }
 
+function n8nApiConfigurationError(apiBaseUrl: string, apiKey: string): string | null {
+  return apiKey && !apiBaseUrl ? 'Zum n8n-API-Key fehlt die Public-API-Adresse.' : null;
+}
+
 export async function saveN8nAction(
   _previous: ActionResult | null,
   formData: FormData,
@@ -222,9 +226,12 @@ export async function saveN8nAction(
   if (hmacSecret && hmacSecret.length < 32) {
     return { ok: false, error: 'Das Signatur-Secret muss mindestens 32 Zeichen lang sein.' };
   }
-  if (Boolean(data.apiBaseUrl) !== Boolean(apiKey)) {
-    return { ok: false, error: 'n8n-API-URL und API-Key müssen gemeinsam gesetzt werden.' };
-  }
+  // Eine verwaltete Compose-Instanz wird schon beim Deploy mit ihrer internen
+  // API-URL provisioniert. Den Key kann n8n erst nach der Owner-Anmeldung
+  // ausgeben; deshalb darf die Adresse zunächst ohne Key gespeichert bleiben.
+  // Umgekehrt wäre ein Key ohne Zieladresse unbrauchbar und bleibt verboten.
+  const apiConfigurationError = n8nApiConfigurationError(data.apiBaseUrl, apiKey);
+  if (apiConfigurationError) return { ok: false, error: apiConfigurationError };
   // Instanzwechsel-Guard nur bei tatsächlich gespeicherter Vorgänger-URL:
   // sameUrlOrigin('') ist false, eine leere/genullte Alt-URL blockierte sonst
   // jede Neueingabe dauerhaft ("Bei Wechsel ... neu eingegeben werden").

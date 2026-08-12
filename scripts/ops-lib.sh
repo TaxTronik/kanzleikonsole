@@ -3969,6 +3969,17 @@ ensure_provisioned_interactive() {
     || warn "Provisionierung fehlgeschlagen — siehe Ausgabe."
 }
 
+# Das integrierte Setup darf nicht nur den n8n-Container und seine öffentliche
+# Domain starten: Es muss die verwaltete Instanz auch tenantgebunden im ACP
+# hinterlegen. Der DB-Schritt ist create-only und lässt jede bestehende bzw.
+# migrierte Betreiber-Konfiguration unangetastet.
+ensure_managed_n8n_connection() {
+  [[ -n "${N8N_HOST:-}" ]] || return 0
+  generate_prisma_client_for_host_tools
+  ( cd "$ROOT" && pnpm --filter @taxtronik/db provision:n8n ) \
+    || die "Verwaltete n8n-Verbindung konnte nicht im ACP provisioniert werden."
+}
+
 cmd_reset_admin_password() {
   require_cmd pnpm
   require_cmd node
@@ -3999,6 +4010,7 @@ _deploy_core() {
   backup_before_migrations
   run_migrations
   ensure_provisioned_interactive
+  ensure_managed_n8n_connection
   start_signal_for_deploy || die "Deploy abgebrochen: verwaltetes Signal ist nicht bereit."
   start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Deploy abgebrochen: Anwendung ist nicht vollstaendig healthy."
@@ -4033,6 +4045,8 @@ cmd_deploy() {
   Deployment abgeschlossen. Version: $(image_tag)
 =================================================================
   Staff-Login : (NEXTAUTH_URL aus .env)/staff/login
+  n8n-Setup   : https://${N8N_HOST:-nicht-konfiguriert}/ (Owner anlegen, API-Key erzeugen)
+                Danach den Key im ACP unter Einstellungen -> n8n eintragen.
   Admin-Zugang: siehe $ROOT/.admin-credentials.txt (falls neu angelegt)
                 Nach erstem Login + TOTP-Setup die Datei sicher loeschen.
 

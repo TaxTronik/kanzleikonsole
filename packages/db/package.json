@@ -27,6 +27,7 @@
     "studio": "prisma studio",
     "seed": "tsx --env-file-if-exists=../../.env seeds/dev.ts",
     "provision": "tsx --env-file-if-exists=../../.env seeds/provision.ts",
+    "provision:n8n": "tsx --env-file-if-exists=../../.env seeds/provision-n8n.ts",
     "reset-admin-password": "tsx --env-file-if-exists=../../.env seeds/reset-admin-password.ts",
     "verify:migration-ledger": "node --env-file-if-exists=../../.env scripts/verify-migration-ledger.mjs --after-deploy",
     "test:migration-ledger": "node --test scripts/migration-ledger.node-test.mjs",
