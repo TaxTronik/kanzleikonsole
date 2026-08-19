@@ -107,8 +107,9 @@ Bei einer separat auf dem Host laufenden Engine eine interne Adresse nutzen,
 die aus dem `taxtronik-app`-Container erreichbar ist.
 
 Im Produktions-Deploy entscheidet `SIGNAL_DEPLOYMENT` über die Verantwortung:
-`managed` lässt TaxTronik ein CPU-Komplett-Image entweder aus dem gewählten
-Signal-Git-Stand lokal bauen oder versioniert aus einer Registry beziehen;
+`managed` lässt TaxTronik ein CPU-Komplett-Image einschließlich der
+hash-gepinnten Quantenlos-Runtime entweder aus dem gewählten Signal-Git-Stand
+lokal bauen oder versioniert aus einer Registry beziehen;
 `external` bindet eine native/GPU- oder anderweitig betriebene Signal-Instanz
 ausschließlich per API an. Im externen Modus führt TaxTronik garantiert keinen
 Pull, Start, Stop oder Update für Signal aus.

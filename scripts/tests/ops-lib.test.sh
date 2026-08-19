@@ -949,8 +949,11 @@ test_managed_signal_lifecycle_uses_pinned_release() {
   ) >/dev/null
   assert_contains "$calls" "compose --profile risk-layer pull risk-layer"
   assert_contains "$calls" "docker run --rm --entrypoint python $SIGNAL_MANAGED_IMAGE_DEFAULT"
+  assert_contains "$calls" "qiskit"
+  assert_contains "$calls" "qiskit_aer"
+  assert_contains "$calls" "qiskit_ibm_runtime"
   assert_contains "$calls" "compose --profile risk-layer up -d --force-recreate --no-deps --wait --wait-timeout 300 risk-layer"
-  pass "managed Signal pulls, validates and starts the pinned self-contained release"
+  pass "managed Signal validates quantum-capable self-contained releases before start"
 }
 
 test_managed_signal_source_build_skips_registry_pull() {

@@ -1589,7 +1589,7 @@ build_signal_from_source() {
       flock 7
     fi
   fi
-  info "Signal aus Git-Commit ${sha:0:12} lokal bauen (kein automatischer Embedding-Index)"
+  info "Signal aus Git-Commit ${sha:0:12} lokal bauen (mit Quanten-Extras, kein automatischer Embedding-Index)"
   SIGNAL_BUILD_MEMORY_LIMIT="$memory_limit" SIGNAL_BUILD_CPUS="$cpus" \
     sh "$dir/scripts/build-managed-image.sh" "$target" || \
     die "Signal-Source-Build fehlgeschlagen; laufender Container bleibt unveraendert."
@@ -1599,9 +1599,9 @@ build_signal_from_source() {
 
 verify_signal_managed_image() {
   local image="$1" channel="$2" check
-  check="import importlib.util,pathlib,sys; required=['/release/catalog/begriffe.yaml','/release/corpus/graph.sqlite','/release/models/bge-m3/model-manifest.json']; index=['/release/corpus/embedding/meta.json','/release/corpus/embedding/vectors.npy']; core=all(pathlib.Path(p).is_file() for p in required) and importlib.util.find_spec('sentence_transformers') is not None; complete_index=all(pathlib.Path(p).is_file() for p in index); sys.exit(0 if core and ('$channel' == 'source' or complete_index) else 1)"
+  check="import importlib.util,pathlib,sys; required=['/release/catalog/begriffe.yaml','/release/corpus/graph.sqlite','/release/models/bge-m3/model-manifest.json']; index=['/release/corpus/embedding/meta.json','/release/corpus/embedding/vectors.npy']; modules=['sentence_transformers','qiskit','qiskit_aer','qiskit_ibm_runtime']; core=all(pathlib.Path(p).is_file() for p in required) and all(importlib.util.find_spec(m) is not None for m in modules); complete_index=all(pathlib.Path(p).is_file() for p in index); sys.exit(0 if core and ('$channel' == 'source' or complete_index) else 1)"
   docker run --rm --entrypoint python "$image" -c "$check" || \
-    die "Signal-Image ist kein vollstaendiger Managed-Stand (Graph, Offline-Modell oder Embedding-Runtime fehlt)."
+    die "Signal-Image ist kein vollstaendiger Managed-Stand (Graph, Offline-Modell, Embedding- oder Quanten-Runtime fehlt)."
 }
 
 provide_signal_for_deploy() {

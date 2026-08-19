@@ -477,8 +477,9 @@ Update-Verantwortung fest:
 
 - `managed`: TaxTronik baut beim Deploy/Update entweder den konfigurierten
   Signal-Git-Stand lokal oder zieht ein versioniertes Signal-Image. Anschließend
-  prüft es Graph, Katalog, Embedding-Runtime und lokales BGE-M3-Modell und
-  startet den Stand im Compose-Profil.
+  prüft es Graph, Katalog, Embedding-Runtime, die hash-gepinnte
+  Quantenlos-Runtime und das lokale BGE-M3-Modell und startet den Stand im
+  Compose-Profil.
 - `external`: Signal läuft nativ, mit ROCm/CUDA oder in einem getrennt
   verwalteten Container. TaxTronik spricht ausschließlich die HTTP-API an und
   installiert, stoppt oder aktualisiert diese Instanz niemals.
@@ -493,8 +494,9 @@ gewählt:
   `SIGNAL_GIT_URL` auf `SIGNAL_GIT_REF` und baut ein lokales CPU-Image. Der
   Checkout ist damit von TaxTronik verwaltet; lokale Änderungen blockieren das
   Update und werden niemals überschrieben. Der Source-Build installiert
-  Runtime, Graph und das manifestierte lokale Modell, berechnet aber bewusst
-  **keinen Embedding-Index**. Dessen Aufbau bleibt hinter der Bestätigung in den
+  Runtime einschließlich der Linux/Python-3.12-hashgepinnten Quantenlos-Extras,
+  Graph und das manifestierte lokale Modell, berechnet aber bewusst **keinen
+  Embedding-Index**. Dessen Aufbau bleibt hinter der Bestätigung in den
   Integrations-Einstellungen.
 - `SIGNAL_DEPLOY_CHANNEL=image` verwendet `SIGNAL_IMAGE`. `auto` folgt dem von
   TaxTronik getesteten SemVer-Pin; `latest` ist unzulässig. Das Image muss
