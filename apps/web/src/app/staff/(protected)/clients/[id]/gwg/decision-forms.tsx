@@ -4,6 +4,7 @@ import { useActionState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
+import { emitNotificationsChanged } from '@/lib/live-events';
 import {
   submitCheckForReviewAction,
   verifyCheckAction,
@@ -68,11 +69,13 @@ export function GwgDecisionForms({
   useEffect(() => {
     if (!verifyState?.ok) return;
     markVerified();
+    emitNotificationsChanged();
     router.refresh();
   }, [markVerified, router, verifyState]);
   useEffect(() => {
     if (!rejectState?.ok) return;
     markRejected();
+    emitNotificationsChanged();
     router.refresh();
   }, [markRejected, rejectState, router]);
 

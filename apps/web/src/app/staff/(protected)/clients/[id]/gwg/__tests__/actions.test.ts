@@ -202,6 +202,13 @@ function makeTx(check: ReturnType<typeof completeCheck>) {
     client: {
       findUnique: vi.fn().mockResolvedValue({ kind: 'JURPERS' }),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    clientContact: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    notification: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
 }
@@ -1973,6 +1980,16 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
       where: { id: CLIENT_ID },
       data: { allowActive: true },
     });
+    expect(tx.notification.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        kind: 'GWG_ONBOARDING_SUBMITTED',
+        resourceType: 'gwg_check',
+        resourceId: CHECK_ID,
+        readAt: null,
+      },
+      data: { readAt: expect.any(Date) },
+    });
     expect(tx.clientResponsibility.findFirst).toHaveBeenCalledWith({
       where: {
         clientId: CLIENT_ID,
@@ -2038,6 +2055,29 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
 });
 
 describe('rejectCheckAction – aktueller Snapshot', () => {
+  it('schließt die Freigabe-Notification nach einer Ablehnung ebenfalls', async () => {
+    const tx = makeTx(completeCheck());
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+    const data = formData();
+    data.set('reason', 'Unterlagen unzureichend');
+
+    const result = await rejectCheckAction(null, data);
+
+    expect(result).toEqual({ ok: true });
+    expect(tx.notification.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        kind: 'GWG_ONBOARDING_SUBMITTED',
+        resourceType: 'gwg_check',
+        resourceId: CHECK_ID,
+        readAt: null,
+      },
+      data: { readAt: expect.any(Date) },
+    });
+  });
+
   it('lehnt den stale Review A nach einem neuen Invite-Snapshot B nicht mehr ab', async () => {
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(0),
@@ -2050,6 +2090,7 @@ describe('rejectCheckAction – aktueller Snapshot', () => {
       },
       client: { updateMany: vi.fn() },
       clientContact: { findMany: vi.fn() },
+      notification: { updateMany: vi.fn() },
     };
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
       fn(tx),
@@ -2063,6 +2104,7 @@ describe('rejectCheckAction – aktueller Snapshot', () => {
     expect(result.error).toContain('neuere GwG-Prüfung');
     expect(tx.gwgCheck.updateMany).not.toHaveBeenCalled();
     expect(tx.client.updateMany).not.toHaveBeenCalled();
+    expect(tx.notification.updateMany).not.toHaveBeenCalled();
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.gwgCheck.findFirst.mock.invocationCallOrder[0]!,
     );

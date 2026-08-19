@@ -62,4 +62,13 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
     expect(decisionForms).toContain("status === 'IN_REVIEW' && reviewSnapshotHash");
     expect(decisionForms).toContain('Die gebundene Prüfansicht wird aktualisiert');
   });
+
+  it('aktualisiert die Notification-Glocke nach einer GwG-Entscheidung sofort', () => {
+    const decisionForms = read('decision-forms.tsx');
+
+    expect(decisionForms).toContain(
+      "import { emitNotificationsChanged } from '@/lib/live-events';",
+    );
+    expect(decisionForms.match(/emitNotificationsChanged\(\);/g)).toHaveLength(2);
+  });
 });

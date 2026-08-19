@@ -59,6 +59,22 @@ async function assertLatestCheckForDecision(
   }
 }
 
+async function markGwgReviewNotificationsReadTx(
+  tx: TxClient,
+  input: { tenantId: string; checkId: string },
+): Promise<void> {
+  await tx.notification.updateMany({
+    where: {
+      tenantId: input.tenantId,
+      kind: 'GWG_ONBOARDING_SUBMITTED',
+      resourceType: 'gwg_check',
+      resourceId: input.checkId,
+      readAt: null,
+    },
+    data: { readAt: new Date() },
+  });
+}
+
 const OpenSchema = z.object({
   clientId: z.string().uuid(),
   expectedLatestCheckId: z.union([z.literal(''), z.string().uuid()]).default(''),
@@ -858,6 +874,10 @@ export async function verifyCheckAction(
       if (claim.count === 0) {
         throw new ActionError('GwG-Check ist nicht mehr im Prüfstatus — bitte Seite neu laden.');
       }
+      // Die Freigabeanforderung ist mit der Entscheidung für alle zuständigen
+      // Berufsträger erledigt. Im selben Commit schließen, damit Badge und
+      // Dropdown keinen bereits verifizierten Check weiter als offen zeigen.
+      await markGwgReviewNotificationsReadTx(tx, { tenantId, checkId });
       verifiedValidUntil = validUntil.toISOString();
       await cancelOpenGwgInvitesTx(tx, {
         tenantId,
@@ -974,6 +994,7 @@ export async function rejectCheckAction(
       if (claim.count === 0) {
         throw new ActionError('GwG-Check ist nicht mehr zur Entscheidung eingereicht.');
       }
+      await markGwgReviewNotificationsReadTx(tx, { tenantId, checkId });
       await cancelOpenGwgInvitesTx(tx, {
         tenantId,
         clientId,
