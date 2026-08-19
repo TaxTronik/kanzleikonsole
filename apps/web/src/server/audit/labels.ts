@@ -288,6 +288,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'gwg.onboarding.cancel': 'GwG-Onboarding abgebrochen',
   'gwg.onboarding.upload.id': 'GwG-Onboarding: Ausweis hochgeladen',
   'gwg.onboarding.upload.extra': 'GwG-Onboarding: Zusatzdokument hochgeladen',
+  'gwg.onboarding.upload.discard': 'GwG-Onboarding: versehentlichen Upload verworfen',
   'gwg.onboarding.submit': 'GwG-Onboarding eingereicht',
 
   // Stammdaten-Änderungsanträge (Mandanten-Self-Service)

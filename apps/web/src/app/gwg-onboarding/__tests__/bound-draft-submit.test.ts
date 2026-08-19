@@ -10,6 +10,8 @@ const m = vi.hoisted(() => ({
   resolveConsent: vi.fn(),
   evidenceRecord: vi.fn(),
   notifyMany: vi.fn(),
+  ensureGwgRootFolder: vi.fn(),
+  ensureGwgPersonFolder: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
@@ -62,6 +64,10 @@ vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
 vi.mock('@/server/gwg-onboarding/bound-review', () => ({
   canStartUnboundGwgInviteTx: vi.fn(),
   resolveBoundGwgInviteDraftTx: m.resolveBound,
+}));
+vi.mock('@/server/gwg-onboarding/document-folders', () => ({
+  ensureGwgRootFolderTx: m.ensureGwgRootFolder,
+  ensureGwgPersonFolderTx: m.ensureGwgPersonFolder,
 }));
 
 import { submitOnboardingAction } from '../actions';
@@ -123,6 +129,8 @@ describe('gebundener GwG-DRAFT Submit', () => {
     m.resolveConsent.mockImplementation(async (_tx, _tenant, value) => value);
     m.evidenceRecord.mockResolvedValue({});
     m.notifyMany.mockResolvedValue(undefined);
+    m.ensureGwgRootFolder.mockResolvedValue('gwg-root');
+    m.ensureGwgPersonFolder.mockResolvedValue('gwg-person');
   });
 
   it('erhält bei unverändertem Submit zwei Owner-/Vertreter-IDs und Dokument-FKs', async () => {
@@ -181,6 +189,7 @@ describe('gebundener GwG-DRAFT Submit', () => {
         deleteMany: vi.fn(),
       },
       gwgOnboardingInvite: { update: vi.fn() },
+      document: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       clientResponsibility: { findMany: vi.fn().mockResolvedValue([]) },
     };
     m.withSystemContext.mockImplementation(async (_tenantId, callback) => callback(tx));
@@ -275,6 +284,12 @@ describe('gebundener GwG-DRAFT Submit', () => {
     expect(tx.gwgIdDocument.createMany).not.toHaveBeenCalled();
     expect(tx.gwgIdDocument.create).not.toHaveBeenCalled();
     expect(tx.gwgIdDocument.deleteMany).not.toHaveBeenCalled();
+    expect(m.ensureGwgRootFolder).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tenantId: 'tenant-1', clientId: 'client-1' }),
+    );
+    expect(m.ensureGwgPersonFolder).toHaveBeenCalledTimes(3);
+    expect(tx.document.updateMany).toHaveBeenCalledTimes(DOCUMENT_IDS.length);
     expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ representativeSubjectId: REP_ONE }),

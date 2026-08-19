@@ -24,6 +24,7 @@ describe('GwG onboarding submission transaction structure', () => {
       'resolveSubmissionReviewTx(tx,',
       'persistClientMasterPhaseTx(tx,',
       'replaceSubmittedPeopleTx(tx,',
+      'organizeSubmittedDocumentsTx(tx,',
       'persistSubmittedIdentitySetsTx(tx,',
       'persistSubmittedEntityEvidenceTx(tx,',
       'linkClaimedInviteToReviewTx(tx,',

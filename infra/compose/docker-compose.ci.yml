@@ -25,7 +25,7 @@ services:
     build:
       context: ../scripts
       dockerfile_inline: |
-        FROM chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2
+        FROM chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d
         COPY seaweedfs-s3.template.json /etc/seaweedfs/s3.template.json
         COPY seaweedfs-entrypoint.sh /usr/local/bin/taxtronik-seaweedfs-entrypoint.sh
         RUN chmod 0555 /usr/local/bin/taxtronik-seaweedfs-entrypoint.sh

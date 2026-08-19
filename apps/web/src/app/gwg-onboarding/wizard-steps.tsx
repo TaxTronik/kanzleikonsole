@@ -178,14 +178,21 @@ interface OwnersStepProps {
   owners: BeneficialOwner[];
   representatives: Representative[];
   idUploadErrors: Record<string, string | null>;
+  discardingDocumentIds: ReadonlySet<string>;
   onPatchOwner: (index: number, patch: Partial<BeneficialOwner>) => void;
   onRemoveOwner: (index: number) => void;
   onAddOwner: () => void;
   onOwnerUpload: (ownerId: string, side: IdentitySide, file: File) => void;
+  onOwnerUploadRemove: (ownerId: string, side: IdentitySide, documentId: string) => void;
   onPatchRepresentative: (index: number, patch: Partial<Representative>) => void;
   onRemoveRepresentative: (index: number) => void;
   onAddRepresentative: () => void;
   onRepresentativeUpload: (representativeId: string, side: IdentitySide, file: File) => void;
+  onRepresentativeUploadRemove: (
+    representativeId: string,
+    side: IdentitySide,
+    documentId: string,
+  ) => void;
 }
 
 export function OwnersStep({
@@ -193,14 +200,17 @@ export function OwnersStep({
   owners,
   representatives,
   idUploadErrors,
+  discardingDocumentIds,
   onPatchOwner,
   onRemoveOwner,
   onAddOwner,
   onOwnerUpload,
+  onOwnerUploadRemove,
   onPatchRepresentative,
   onRemoveRepresentative,
   onAddRepresentative,
   onRepresentativeUpload,
+  onRepresentativeUploadRemove,
 }: OwnersStepProps) {
   return (
     <div className="space-y-4">
@@ -220,6 +230,8 @@ export function OwnersStep({
           onPatch={(patch) => onPatchOwner(index, patch)}
           onRemove={owners.length > 1 ? () => onRemoveOwner(index) : null}
           onUpload={(side, file) => onOwnerUpload(owner.id, side, file)}
+          onUploadRemove={(side, documentId) => onOwnerUploadRemove(owner.id, side, documentId)}
+          discardingDocumentIds={discardingDocumentIds}
           frontError={idUploadErrors[`${owner.id}:front`] ?? null}
           backError={idUploadErrors[`${owner.id}:back`] ?? null}
         />
@@ -246,6 +258,10 @@ export function OwnersStep({
               onPatch={(patch) => onPatchRepresentative(index, patch)}
               onRemove={representatives.length > 1 ? () => onRemoveRepresentative(index) : null}
               onUpload={(side, file) => onRepresentativeUpload(representative.id, side, file)}
+              onUploadRemove={(side, documentId) =>
+                onRepresentativeUploadRemove(representative.id, side, documentId)
+              }
+              discardingDocumentIds={discardingDocumentIds}
               frontError={idUploadErrors[`${representative.id}:front`] ?? null}
               backError={idUploadErrors[`${representative.id}:back`] ?? null}
             />
@@ -265,6 +281,7 @@ interface DocumentsStepProps {
   extraType: EntityEvidenceType;
   extraDocs: EntityEvidenceDocument[];
   extraUploadError: string | null;
+  discardingDocumentIds: ReadonlySet<string>;
   onRegisterStatusChange: (withoutRegister: boolean) => void;
   onExtraTypeChange: (type: EntityEvidenceType) => void;
   onUpload: (file: File, type: EntityEvidenceType) => void;
@@ -277,6 +294,7 @@ export function DocumentsStep({
   extraType,
   extraDocs,
   extraUploadError,
+  discardingDocumentIds,
   onRegisterStatusChange,
   onExtraTypeChange,
   onUpload,
@@ -374,8 +392,14 @@ export function DocumentsStep({
                 type="button"
                 className="text-xs text-red-700 inline-flex items-center gap-1"
                 onClick={() => onRemove(document.documentId)}
+                disabled={discardingDocumentIds.has(document.documentId)}
               >
-                <Trash2 className="h-3 w-3" /> entfernen
+                {discardingDocumentIds.has(document.documentId) ? (
+                  <Loader className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3 w-3" />
+                )}{' '}
+                entfernen
               </button>
             </li>
           ))}
@@ -626,6 +650,8 @@ function OwnerCard({
   onPatch,
   onRemove,
   onUpload,
+  onUploadRemove,
+  discardingDocumentIds,
   frontError,
   backError,
 }: {
@@ -634,6 +660,8 @@ function OwnerCard({
   onPatch: (patch: Partial<BeneficialOwner>) => void;
   onRemove: (() => void) | null;
   onUpload: (side: IdentitySide, file: File) => void;
+  onUploadRemove: (side: IdentitySide, documentId: string) => void;
+  discardingDocumentIds: ReadonlySet<string>;
   frontError: string | null;
   backError: string | null;
 }) {
@@ -783,12 +811,16 @@ function OwnerCard({
           label="Personalausweis Vorderseite"
           file={owner.idFront}
           onUpload={(file) => onUpload('front', file)}
+          onRemove={() => onUploadRemove('front', owner.idFront!.documentId)}
+          deleting={Boolean(owner.idFront && discardingDocumentIds.has(owner.idFront.documentId))}
           error={frontError}
         />
         <IdUploadField
           label="Personalausweis Rückseite"
           file={owner.idBack}
           onUpload={(file) => onUpload('back', file)}
+          onRemove={() => onUploadRemove('back', owner.idBack!.documentId)}
+          deleting={Boolean(owner.idBack && discardingDocumentIds.has(owner.idBack.documentId))}
           error={backError}
         />
       </div>
@@ -803,6 +835,8 @@ function RepresentativeCard({
   onPatch,
   onRemove,
   onUpload,
+  onUploadRemove,
+  discardingDocumentIds,
   frontError,
   backError,
 }: {
@@ -812,6 +846,8 @@ function RepresentativeCard({
   onPatch: (patch: Partial<Representative>) => void;
   onRemove: (() => void) | null;
   onUpload: (side: IdentitySide, file: File) => void;
+  onUploadRemove: (side: IdentitySide, documentId: string) => void;
+  discardingDocumentIds: ReadonlySet<string>;
   frontError: string | null;
   backError: string | null;
 }) {
@@ -924,12 +960,22 @@ function RepresentativeCard({
               label="Personalausweis Vorderseite"
               file={representative.idFront}
               onUpload={(file) => onUpload('front', file)}
+              onRemove={() => onUploadRemove('front', representative.idFront!.documentId)}
+              deleting={Boolean(
+                representative.idFront &&
+                discardingDocumentIds.has(representative.idFront.documentId),
+              )}
               error={frontError}
             />
             <IdUploadField
               label="Personalausweis Rückseite"
               file={representative.idBack}
               onUpload={(file) => onUpload('back', file)}
+              onRemove={() => onUploadRemove('back', representative.idBack!.documentId)}
+              deleting={Boolean(
+                representative.idBack &&
+                discardingDocumentIds.has(representative.idBack.documentId),
+              )}
               error={backError}
             />
           </div>
@@ -943,11 +989,15 @@ function IdUploadField({
   label,
   file,
   onUpload,
+  onRemove,
+  deleting,
   error,
 }: {
   label: string;
   file: { documentId: string; fileName: string } | null;
   onUpload: (file: File) => void;
+  onRemove: () => void;
+  deleting: boolean;
   error: string | null;
 }) {
   return (
@@ -959,6 +1009,19 @@ function IdUploadField({
         <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 inline-flex items-center gap-2">
           <Check className="h-4 w-4" />
           <span className="truncate max-w-[180px]">{file.fileName}</span>
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={deleting}
+            className="ml-1 text-red-700 hover:text-red-900 disabled:opacity-50"
+            aria-label={`${label} entfernen`}
+          >
+            {deleting ? (
+              <Loader className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+          </button>
         </div>
       ) : (
         <label className="block">

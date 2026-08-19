@@ -16,6 +16,9 @@ const m = vi.hoisted(() => ({
   findVersion: vi.fn(),
   deleteDocument: vi.fn(),
   evidenceRecord: vi.fn(),
+  ensureGwgRootFolder: vi.fn(),
+  queryRaw: vi.fn(),
+  findInviteById: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: m.headers }));
@@ -37,6 +40,9 @@ vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
   revalidateOpenGwgInviteRevisionTx: m.revalidateInvite,
   claimCurrentGwgInviteSubmitTx: vi.fn(),
 }));
+vi.mock('@/server/gwg-onboarding/document-folders', () => ({
+  ensureGwgRootFolderTx: m.ensureGwgRootFolder,
+}));
 vi.mock('@/server/auth/rbac', () => ({
   toActionError: vi.fn(() => ({ ok: false, error: 'Interner Fehler.' })),
 }));
@@ -56,7 +62,7 @@ vi.mock('@/server/rate-limit', () => ({
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: vi.fn() }));
 
-import { uploadIdImageAction } from '../actions';
+import { discardOnboardingUploadAction, uploadIdImageAction } from '../actions';
 import { GENERIC_TOKEN_ERROR } from '@/server/gwg-onboarding/service';
 
 describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
@@ -69,10 +75,13 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       async (_tenantId: string, fn: (tx: Record<string, unknown>) => unknown) =>
         fn({
           $executeRaw: vi.fn(),
+          $queryRaw: m.queryRaw,
           document: { deleteMany: m.deleteDocument },
           documentVersion: { findUnique: m.findVersion },
+          gwgOnboardingInvite: { findUnique: m.findInviteById },
         }),
     );
+    m.ensureGwgRootFolder.mockResolvedValue('gwg-folder-1');
     m.deleteObjectVersion.mockResolvedValue(undefined);
     m.prepareBytesCommitWithTier.mockResolvedValue({
       tier: 'GWG',
@@ -330,5 +339,48 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     expect(m.findVersion).not.toHaveBeenCalled();
     expect(m.deleteObjectVersion).not.toHaveBeenCalled();
     expect(m.deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('verwirft einen noch ungebundenen Invite-Upload physisch und aus der Datenbank', async () => {
+    const documentId = '00000000-0000-4000-8000-000000000001';
+    m.findFirst.mockResolvedValueOnce({
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'STARTED',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      uploadedDocumentIds: [documentId],
+      client: { id: 'client-1', kind: 'JURPERS' },
+    });
+    m.revalidateInvite.mockResolvedValue(true);
+    m.queryRaw
+      .mockResolvedValueOnce([
+        {
+          title: 'ausweis.pdf',
+          storageBucket: 'taxtronik-gwg',
+          storageKey: 'tenant-1/evidence.bin',
+          storageVersionId: 'version-discard',
+        },
+      ])
+      .mockResolvedValueOnce([{ discarded: 1 }]);
+
+    await expect(
+      discardOnboardingUploadAction({ token: 'valid-looking-raw-token', documentId }),
+    ).resolves.toEqual({ ok: true });
+    expect(m.deleteObjectVersion).toHaveBeenCalledWith(
+      'taxtronik-gwg',
+      'tenant-1/evidence.bin',
+      'version-discard',
+      { bypassGovernanceRetention: true },
+    );
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'gwg.onboarding.upload.discard',
+        resourceId: documentId,
+      }),
+    );
   });
 });

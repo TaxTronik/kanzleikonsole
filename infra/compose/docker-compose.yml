@@ -136,7 +136,7 @@ services:
   # für die Kanzlei-Größe (10–500 Mitarbeiter) reicht der Single-Node-Setup.
   seaweedfs:
     <<: [*hardening, *logging]
-    image: chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2
+    image: chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d
     container_name: taxtronik-seaweedfs
     restart: unless-stopped
     mem_limit: ${SEAWEED_MEM_LIMIT:-1g}

@@ -1,7 +1,11 @@
 ﻿'use client';
 
 import { useState, useTransition, type Dispatch, type SetStateAction } from 'react';
-import { uploadIdImageAction, submitOnboardingAction } from './actions';
+import {
+  discardOnboardingUploadAction,
+  uploadIdImageAction,
+  submitOnboardingAction,
+} from './actions';
 import {
   consentForNewDeclaration,
   missingRequiredConsentOptions,
@@ -88,6 +92,23 @@ async function uploadOnboardingFile(
   }
 }
 
+async function discardOnboardingFile(
+  token: string,
+  documentId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const result = await discardOnboardingUploadAction({ token, documentId });
+    return result.ok
+      ? { ok: true }
+      : { ok: false, error: result.error ?? 'Datei konnte nicht entfernt werden.' };
+  } catch {
+    return {
+      ok: false,
+      error: 'Datei konnte nicht entfernt werden — bitte Verbindung prüfen.',
+    };
+  }
+}
+
 type IdentityUploadSubject = Pick<BeneficialOwner, 'id' | 'idFront' | 'idBack'>;
 
 interface ClientShape {
@@ -162,6 +183,9 @@ export function OnboardingWizard({
     initialDraft?.noRegisterEntry ?? null,
   );
   const [extraUploadError, setExtraUploadError] = useState<string | null>(null);
+  const [discardingDocumentIds, setDiscardingDocumentIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   // Ausweis-Upload-Fehler je Owner+Seite (Key: `${ownerId}:${side}`).
   const [idUploadErrors, setIdUploadErrors] = useState<Record<string, string | null>>({});
@@ -181,20 +205,59 @@ export function OnboardingWizard({
   function addOwner() {
     setOwners((s) => [...s, emptyOwner('')]);
   }
-  function removeOwner(i: number) {
-    setOwners((current) => {
-      const removedId = current[i]?.id;
-      if (removedId) {
-        setRepresentatives((entries) =>
-          entries.map((entry) =>
-            entry.linkedOwnerId === removedId ? { ...entry, linkedOwnerId: undefined } : entry,
-          ),
-        );
-      }
-      return current.filter((_, idx) => idx !== i);
-    });
+
+  async function discardDocuments(documentIds: Array<string | undefined>): Promise<string | null> {
+    for (const documentId of new Set(documentIds.filter((id): id is string => Boolean(id)))) {
+      setDiscardingDocumentIds((current) => new Set(current).add(documentId));
+      const result = await discardOnboardingFile(token, documentId);
+      setDiscardingDocumentIds((current) => {
+        const next = new Set(current);
+        next.delete(documentId);
+        return next;
+      });
+      if (!result.ok) return result.error;
+    }
+    return null;
   }
-  function patchRepresentative(i: number, patch: Partial<Representative>) {
+
+  async function removeOwner(i: number) {
+    const owner = owners[i];
+    if (!owner) return;
+    setStepError(null);
+    const discardError = await discardDocuments([
+      owner.idFront?.documentId,
+      owner.idBack?.documentId,
+    ]);
+    if (discardError) {
+      setStepError(discardError);
+      return;
+    }
+    setOwners((current) => current.filter((entry) => entry.id !== owner.id));
+    setRepresentatives((entries) =>
+      entries.map((entry) =>
+        entry.linkedOwnerId === owner.id ? { ...entry, linkedOwnerId: undefined } : entry,
+      ),
+    );
+  }
+
+  async function patchRepresentative(i: number, patch: Partial<Representative>) {
+    const representative = representatives[i];
+    if (!representative) return;
+    if (
+      typeof patch.linkedOwnerId === 'string' &&
+      (representative.idFront || representative.idBack)
+    ) {
+      setStepError(null);
+      const discardError = await discardDocuments([
+        representative.idFront?.documentId,
+        representative.idBack?.documentId,
+      ]);
+      if (discardError) {
+        setStepError(discardError);
+        return;
+      }
+      patch = { ...patch, idFront: null, idBack: null };
+    }
     setRepresentatives((current) =>
       current.map((representative, index) =>
         index === i ? { ...representative, ...patch } : representative,
@@ -204,8 +267,19 @@ export function OnboardingWizard({
   function addRepresentative() {
     setRepresentatives((current) => [...current, emptyRepresentative('')]);
   }
-  function removeRepresentative(i: number) {
-    setRepresentatives((current) => current.filter((_, index) => index !== i));
+  async function removeRepresentative(i: number) {
+    const representative = representatives[i];
+    if (!representative) return;
+    setStepError(null);
+    const discardError = await discardDocuments([
+      representative.idFront?.documentId,
+      representative.idBack?.documentId,
+    ]);
+    if (discardError) {
+      setStepError(discardError);
+      return;
+    }
+    setRepresentatives((current) => current.filter((entry) => entry.id !== representative.id));
   }
 
   async function handleIdentityUpload<T extends IdentityUploadSubject>(
@@ -235,6 +309,27 @@ export function OnboardingWizard({
     );
   }
 
+  async function handleIdentityRemove<T extends IdentityUploadSubject>(
+    subjectId: string,
+    side: 'front' | 'back',
+    documentId: string,
+    setSubjects: Dispatch<SetStateAction<T[]>>,
+  ) {
+    setIdError(subjectId, side, null);
+    const discardError = await discardDocuments([documentId]);
+    if (discardError) {
+      setIdError(subjectId, side, discardError);
+      return;
+    }
+    setSubjects((current) =>
+      current.map((subject) =>
+        subject.id === subjectId
+          ? ({ ...subject, [side === 'front' ? 'idFront' : 'idBack']: null } as T)
+          : subject,
+      ),
+    );
+  }
+
   async function handleExtraUpload(file: File, type: EntityEvidenceType) {
     setExtraUploadError(null);
     const result = await uploadOnboardingFile(token, file, 'EXTRA');
@@ -246,6 +341,16 @@ export function OnboardingWizard({
       ...documents,
       { documentId: result.documentId, fileName: file.name, type },
     ]);
+  }
+
+  async function handleExtraRemove(documentId: string) {
+    setExtraUploadError(null);
+    const discardError = await discardDocuments([documentId]);
+    if (discardError) {
+      setExtraUploadError(discardError);
+      return;
+    }
+    setExtraDocs((documents) => documents.filter((document) => document.documentId !== documentId));
   }
 
   function validateStep(): string | null {
@@ -395,17 +500,24 @@ export function OnboardingWizard({
           owners={owners}
           representatives={representatives}
           idUploadErrors={idUploadErrors}
+          discardingDocumentIds={discardingDocumentIds}
           onPatchOwner={patchOwner}
           onRemoveOwner={removeOwner}
           onAddOwner={addOwner}
           onOwnerUpload={(ownerId, side, file) => {
             void handleIdentityUpload(ownerId, side, file, setOwners);
           }}
+          onOwnerUploadRemove={(ownerId, side, documentId) => {
+            void handleIdentityRemove(ownerId, side, documentId, setOwners);
+          }}
           onPatchRepresentative={patchRepresentative}
           onRemoveRepresentative={removeRepresentative}
           onAddRepresentative={addRepresentative}
           onRepresentativeUpload={(representativeId, side, file) => {
             void handleIdentityUpload(representativeId, side, file, setRepresentatives);
+          }}
+          onRepresentativeUploadRemove={(representativeId, side, documentId) => {
+            void handleIdentityRemove(representativeId, side, documentId, setRepresentatives);
           }}
         />
       )}
@@ -417,16 +529,13 @@ export function OnboardingWizard({
           extraType={extraType}
           extraDocs={extraDocs}
           extraUploadError={extraUploadError}
+          discardingDocumentIds={discardingDocumentIds}
           onRegisterStatusChange={setNoRegisterEntry}
           onExtraTypeChange={setExtraType}
           onUpload={(file, type) => {
             void handleExtraUpload(file, type);
           }}
-          onRemove={(documentId) =>
-            setExtraDocs((documents) =>
-              documents.filter((document) => document.documentId !== documentId),
-            )
-          }
+          onRemove={(documentId) => void handleExtraRemove(documentId)}
         />
       )}
 

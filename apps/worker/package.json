@@ -25,8 +25,8 @@
     "@taxtronik/rss": "workspace:*",
     "@taxtronik/storage": "workspace:*",
     "@taxtronik/tax": "workspace:*",
-    "bullmq": "^5.77.4",
-    "ioredis": "^5.11.0",
+    "bullmq": "^5.81.3",
+    "ioredis": "^5.11.1",
     "nodemailer": "9.0.1",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3"

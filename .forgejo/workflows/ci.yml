@@ -985,7 +985,7 @@ jobs:
           # `start`en. Topologie-unabhaengig (DinD/Socket/act-runner).
           docker create --name seaweedfs-ci \
             -p 8333:8333 -p 9333:9333 \
-            chrislusf/seaweedfs:latest@sha256:e14ad400e28c811fe8426dc08abf248ec722b9f017713290a9b84a54557f45c2 \
+            chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d \
             server -dir=/data -master.volumeSizeLimitMB=2048 \
             -volume.max=0 -s3 -s3.config=/etc/seaweedfs/s3.json \
             -s3.port=8333 -master.port=9333 -filer

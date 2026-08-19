@@ -11,7 +11,7 @@ import {
   type PreparedBytesCommit,
 } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
-import { withSystemContext } from '@taxtronik/db';
+import { withSystemContext, type TxClient } from '@taxtronik/db';
 import {
   createPendingDocumentWithVersion,
   finalizePendingDocumentVersion,
@@ -44,6 +44,7 @@ import {
   BoundInviteDraftChangedError,
   runOnboardingSubmissionTransactionTx,
 } from '@/server/gwg-onboarding/submission-transaction';
+import { ensureGwgRootFolderTx } from '@/server/gwg-onboarding/document-folders';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (25 MiB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -62,6 +63,7 @@ export interface ActionResult {
 
 class InviteUploadStateChangedError extends Error {}
 class InviteSupersededError extends Error {}
+class OnboardingDocumentDiscardError extends Error {}
 
 // ----------------------------------------------------------------------------
 // Befund 6: Fehler-Mapping für diesen anonymen (Token-)Endpoint. Rohe Prisma-/
@@ -102,6 +104,12 @@ function toAnonymousActionError(e: unknown): ActionResult {
       ok: false,
       error:
         'Die Einladung wurde zwischenzeitlich abgeschlossen oder ist abgelaufen. Die Datei wurde nicht zugeordnet.',
+    };
+  }
+  if (e instanceof OnboardingDocumentDiscardError) {
+    return {
+      ok: false,
+      error: 'Die Datei konnte nicht entfernt werden. Bitte versuchen Sie es erneut.',
     };
   }
   if (e instanceof InviteSupersededError) {
@@ -272,6 +280,11 @@ export async function uploadIdImageAction(input: {
         now: new Date(),
       });
       if (!inviteStillOpen) throw new InviteUploadStateChangedError();
+      const gwgFolderId = await ensureGwgRootFolderTx(tx, {
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
+        createdByStaff: invite.createdByStaff,
+      });
       return createPendingDocumentWithVersion(tx, {
         documentData: {
           tenantId: invite.tenantId,
@@ -279,6 +292,7 @@ export async function uploadIdImageAction(input: {
           title: fileName,
           classification,
           gwgOnboardingInviteId: invite.id,
+          folderId: gwgFolderId,
           mimeType: prepared!.detectedMime ?? mimeType,
         },
         prepared: prepared!,
@@ -471,6 +485,193 @@ export async function uploadIdImageAction(input: {
 }
 
 // ----------------------------------------------------------------------------
+// Verwerfen eines versehentlichen Uploads (nur offener Invite, noch ungebunden)
+// ----------------------------------------------------------------------------
+
+const DiscardUploadSchema = z.object({
+  token: z.string().min(10),
+  documentId: z.string().uuid(),
+});
+
+interface DiscardableDocumentVersion {
+  title: string;
+  storageBucket: string;
+  storageKey: string;
+  storageVersionId: string;
+}
+
+async function discardOpenInviteDocumentTx(
+  tx: TxClient,
+  input: {
+    invite: Awaited<ReturnType<typeof loadInviteForWrite>>;
+    tokenHash: string;
+    documentId: string;
+    deleteStoredObject: boolean;
+    onStoredObjectDeleted?: () => void;
+  },
+): Promise<'DISCARDED' | 'ALREADY_DISCARDED'> {
+  const { invite, tokenHash, documentId } = input;
+  const inviteStillOpen = await revalidateOpenGwgInviteRevisionTx(tx, {
+    inviteId: invite.id,
+    tenantId: invite.tenantId,
+    clientId: invite.clientId,
+    tokenHash,
+    now: new Date(),
+  });
+  if (!inviteStillOpen) throw new InviteUploadStateChangedError();
+
+  const versions = await tx.$queryRaw<DiscardableDocumentVersion[]>`
+    SELECT d.title,
+           dv.storage_bucket AS "storageBucket",
+           dv.storage_key AS "storageKey",
+           dv.storage_version_id AS "storageVersionId"
+      FROM document d
+      JOIN document_version dv ON dv.document_id = d.id
+     WHERE d.id = ${documentId}::uuid
+       AND d.tenant_id = ${invite.tenantId}::uuid
+       AND d.client_id = ${invite.clientId}::uuid
+       AND d.gwg_onboarding_invite_id = ${invite.id}::uuid
+       AND d.classification = 'GWG_EVIDENCE'
+       AND d.deleted_at IS NULL
+       AND d.gwg_destruction_requested_at IS NULL
+       AND d.gwg_destroyed_at IS NULL
+       AND dv.immutable = TRUE
+       AND dv.scan_status = 'CLEAN'
+       AND dv.storage_version_id IS NOT NULL
+       AND btrim(dv.storage_version_id) <> ''
+       AND NOT EXISTS (
+         SELECT 1 FROM gwg_id_document gid WHERE gid.document_id = d.id
+       )
+     ORDER BY dv.version_no
+     FOR UPDATE OF d, dv
+  `;
+
+  if (versions.length === 0) {
+    const current = await tx.gwgOnboardingInvite.findUnique({
+      where: { id: invite.id },
+      select: { uploadedDocumentIds: true },
+    });
+    const stillListed =
+      Array.isArray(current?.uploadedDocumentIds) &&
+      current.uploadedDocumentIds.includes(documentId);
+    if (!stillListed) return 'ALREADY_DISCARDED';
+    throw new OnboardingDocumentDiscardError();
+  }
+  if (versions.length !== 1) throw new OnboardingDocumentDiscardError();
+
+  const version = versions[0];
+  if (!version) throw new OnboardingDocumentDiscardError();
+  if (input.deleteStoredObject) {
+    await deleteObjectVersion(version.storageBucket, version.storageKey, version.storageVersionId, {
+      bypassGovernanceRetention: true,
+    });
+    input.onStoredObjectDeleted?.();
+  }
+
+  const discarded = await tx.$queryRaw<Array<{ discarded: number }>>`
+    SELECT app.discard_open_gwg_onboarding_document(
+      ${invite.id}::uuid,
+      ${documentId}::uuid
+    ) AS discarded
+  `;
+  if (discarded[0]?.discarded !== 1) throw new OnboardingDocumentDiscardError();
+
+  await evidenceService.record(tx, {
+    tenantId: invite.tenantId,
+    actorType: 'CLIENT_CONTACT',
+    actorId: null,
+    action: 'gwg.onboarding.upload.discard',
+    resourceType: 'document',
+    resourceId: documentId,
+    before: { title: version.title, inviteId: invite.id },
+    after: { discarded: true },
+  });
+  return 'DISCARDED';
+}
+
+export async function discardOnboardingUploadAction(input: {
+  token: string;
+  documentId: string;
+}): Promise<ActionResult> {
+  const parsed = DiscardUploadSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const { token, documentId } = parsed.data;
+
+  const tokenRl = await checkRateLimit(`gwg-discard-token:${hashInviteToken(token).slice(0, 16)}`, {
+    max: 40,
+    windowSec: 600,
+  });
+  if (!tokenRl.ok) {
+    return { ok: false, error: 'Zu viele Löschversuche. Bitte kurz warten.' };
+  }
+
+  let invite: Awaited<ReturnType<typeof loadInviteForWrite>>;
+  try {
+    invite = await loadInviteForWrite(token);
+  } catch {
+    return { ok: false, error: GENERIC_TOKEN_ERROR };
+  }
+  const tokenHash = hashInviteToken(token);
+  let storedObjectDeleted = false;
+  try {
+    const result = await withSystemContext(invite.tenantId, async (tx) => {
+      const outcome = await discardOpenInviteDocumentTx(tx, {
+        invite,
+        tokenHash,
+        documentId,
+        deleteStoredObject: true,
+        onStoredObjectDeleted: () => {
+          storedObjectDeleted = true;
+        },
+      });
+      return outcome;
+    });
+    void result;
+    return { ok: true };
+  } catch (error) {
+    // Nach einem erfolgreichen Object-Store-Delete kann die DB-Antwort
+    // mehrdeutig sein. Ein zweiter, idempotenter Lauf ohne erneutes S3-Delete
+    // bringt Invite-Liste, Audit und DB-Zeilen wieder in einen konsistenten
+    // Zustand, oder erkennt einen bereits vollständig committeden Erstlauf.
+    if (storedObjectDeleted) {
+      try {
+        await withSystemContext(invite.tenantId, (tx) =>
+          discardOpenInviteDocumentTx(tx, {
+            invite,
+            tokenHash,
+            documentId,
+            deleteStoredObject: false,
+          }),
+        );
+        return { ok: true };
+      } catch (recoveryError) {
+        log.error(
+          {
+            component: 'gwg-onboarding-discard',
+            inviteId: invite.id,
+            tenantId: invite.tenantId,
+            documentId,
+            recoveryErr: (recoveryError as Error).message,
+          },
+          'GwG onboarding discard reconciliation failed',
+        );
+      }
+    }
+    log.error(
+      {
+        component: 'gwg-onboarding-discard',
+        inviteId: invite.id,
+        tenantId: invite.tenantId,
+        documentId,
+        err: (error as Error).message,
+      },
+      'GwG onboarding discard failed',
+    );
+    return toAnonymousActionError(error);
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Submit (alle Stammdaten + Owner + Dokumente in GwG-Tabellen schreiben)
 // ----------------------------------------------------------------------------
 
@@ -566,6 +767,7 @@ export async function submitOnboardingAction(
           clientId: invite.clientId,
           gwgCheckId: invite.gwgCheckId,
           clientKind: invite.client.kind,
+          createdByStaff: invite.createdByStaff,
         },
         tokenHash: hashInviteToken(token),
         submittedIp: ip,

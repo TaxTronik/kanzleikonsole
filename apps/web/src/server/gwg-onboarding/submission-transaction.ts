@@ -14,6 +14,7 @@ import { renderNoticeForTenantTx } from '@/server/privacy/service';
 
 import { canStartUnboundGwgInviteTx, resolveBoundGwgInviteDraftTx } from './bound-review';
 import {
+  OnboardingIdentitySetConflictError,
   persistOnboardingIdentitySetTx,
   type ExistingOnboardingDocument,
 } from './identity-persistence';
@@ -31,6 +32,7 @@ import {
   type OnboardingMasterDataInput,
 } from './submission-master-data';
 import type { OnboardingExtraDocument, OnboardingSubmissionOwner } from './submission-validation';
+import { ensureGwgPersonFolderTx, ensureGwgRootFolderTx } from './document-folders';
 
 export class BoundInviteDraftChangedError extends Error {}
 
@@ -40,6 +42,7 @@ export interface OnboardingSubmissionInviteContext {
   clientId: string;
   gwgCheckId: string | null;
   clientKind: ClientKind;
+  createdByStaff: string;
 }
 
 export interface OnboardingSubmissionConsentInput {
@@ -357,6 +360,75 @@ async function persistSubmittedIdentitySetsTx(
   }
 }
 
+async function organizeSubmittedDocumentsTx(
+  tx: TxClient,
+  input: {
+    invite: OnboardingSubmissionInviteContext;
+    owners: OnboardingSubmissionOwner[];
+    representatives: GwgOnboardingRepresentativeInput[];
+    extraDocuments: OnboardingExtraDocument[];
+  },
+): Promise<void> {
+  const rootFolderId = await ensureGwgRootFolderTx(tx, {
+    tenantId: input.invite.tenantId,
+    clientId: input.invite.clientId,
+    createdByStaff: input.invite.createdByStaff,
+  });
+  const folderByDocumentId = new Map<string, string>();
+  const assignFolder = (documentId: string, folderId: string) => {
+    const existing = folderByDocumentId.get(documentId);
+    if (existing && existing !== folderId) {
+      throw new OnboardingIdentitySetConflictError();
+    }
+    folderByDocumentId.set(documentId, folderId);
+  };
+
+  for (const owner of input.owners) {
+    const folderId = await ensureGwgPersonFolderTx(tx, {
+      tenantId: input.invite.tenantId,
+      clientId: input.invite.clientId,
+      rootFolderId,
+      personName: owner.fullName,
+      role: 'OWNER',
+      createdByStaff: input.invite.createdByStaff,
+    });
+    assignFolder(owner.idFrontDocumentId, folderId);
+    assignFolder(owner.idBackDocumentId, folderId);
+  }
+
+  for (const representative of input.representatives) {
+    if (representative.linkedOwnerLocalId) continue;
+    const folderId = await ensureGwgPersonFolderTx(tx, {
+      tenantId: input.invite.tenantId,
+      clientId: input.invite.clientId,
+      rootFolderId,
+      personName: representative.fullName,
+      role: 'REPRESENTATIVE',
+      createdByStaff: input.invite.createdByStaff,
+    });
+    assignFolder(representative.idFrontDocumentId!, folderId);
+    assignFolder(representative.idBackDocumentId!, folderId);
+  }
+
+  for (const evidence of input.extraDocuments) {
+    assignFolder(evidence.documentId, rootFolderId);
+  }
+
+  for (const [documentId, folderId] of folderByDocumentId) {
+    const updated = await tx.document.updateMany({
+      where: {
+        id: documentId,
+        tenantId: input.invite.tenantId,
+        clientId: input.invite.clientId,
+        classification: 'GWG_EVIDENCE',
+        deletedAt: null,
+      },
+      data: { folderId },
+    });
+    if (updated.count !== 1) throw new OnboardingIdentitySetConflictError();
+  }
+}
+
 async function persistSubmittedEntityEvidenceTx(
   tx: TxClient,
   input: {
@@ -597,6 +669,12 @@ export async function runOnboardingSubmissionTransactionTx(
     reuseBoundDraft: Boolean(submission.invite.gwgCheckId),
     owners: submission.owners,
     representatives: submission.representatives,
+  });
+  await organizeSubmittedDocumentsTx(tx, {
+    invite: submission.invite,
+    owners: submission.owners,
+    representatives: submission.representatives,
+    extraDocuments: submission.extraDocuments,
   });
   await persistSubmittedIdentitySetsTx(tx, {
     checkId: review.checkId,

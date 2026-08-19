@@ -8,7 +8,7 @@ settings:
 overrides:
   '@types/node': 24.13.2
   valibot: ^1.4.2
-  ioredis: ^5.11.0
+  ioredis: ^5.11.1
   postcss: 8.5.23
   esbuild: 0.28.1
   vite: 8.0.16
@@ -136,8 +136,8 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       bullmq:
-        specifier: ^5.77.4
-        version: 5.77.4
+        specifier: ^5.81.3
+        version: 5.81.3
       date-fns:
         specifier: ^4.3.0
         version: 4.4.0
@@ -148,8 +148,8 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       ioredis:
-        specifier: ^5.11.0
-        version: 5.11.0
+        specifier: ^5.11.1
+        version: 5.11.1
       jose:
         specifier: ^6.2.3
         version: 6.2.3
@@ -305,11 +305,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/tax
       bullmq:
-        specifier: ^5.77.4
-        version: 5.77.4
+        specifier: ^5.81.3
+        version: 5.81.3
       ioredis:
-        specifier: ^5.11.0
-        version: 5.11.0
+        specifier: ^5.11.1
+        version: 5.11.1
       nodemailer:
         specifier: 9.0.1
         version: 9.0.1
@@ -2377,8 +2377,8 @@ packages:
   buffer@5.6.0:
     resolution: {integrity: sha512-/gDYp/UtU0eA1ys8bOs9J6a+E/KWIY+DZ+Q2WESNUA0jFRsJOc0SNUO6xJ5SGA1xueg3NL65W6s+NY5l9cunuw==}
 
-  bullmq@5.77.4:
-    resolution: {integrity: sha512-V8TuuUUzVPnpFqI7AUTjkaudKQWND7acdPsrZ5MuVOgcZg8zDwFIEeo7m7oo6o8XcEUn6u2X/+E1VfQphiBrkw==}
+  bullmq@5.81.3:
+    resolution: {integrity: sha512-Q7uEH2G92rVjX3Yl2qw3+6VEO15uxehC6DfeTHQBQTehddcRDSDuquD9zuvDjxiCffXsPUaBwrRlvlbVcgKs7g==}
     engines: {node: '>=12.22.0'}
     peerDependencies:
       redis: '>=5.0.0'
@@ -2894,8 +2894,8 @@ packages:
     resolution: {integrity: sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==}
     engines: {node: '>=12'}
 
-  ioredis@5.11.0:
-    resolution: {integrity: sha512-EZBErytyVovD8f6pDfG3Kb37N6Y3lmDA9NNj+4+IP13CzzHGeX+OyeRM2Um13khRzoBSzzL+5lVnCX8V2RLeMg==}
+  ioredis@5.11.1:
+    resolution: {integrity: sha512-ehuGcf94bQXhfagULNXrJdfnWO38v070jxSx/qE87Kjzmu2fU7ro5EFAb+OPituLqgfyuQaym5DlrNydW2sJ9A==}
     engines: {node: '>=12.22.0'}
 
   is-extglob@2.1.1:
@@ -3132,8 +3132,8 @@ packages:
     resolution: {integrity: sha512-4kmO/MdyUIkLIvTPr8VHLil4AtoKIoniWPIEk5+CDy0xnWC84azhSFmuJ7PxZdsYtiP5kEeQsORAVIeMgxT+Hw==}
     hasBin: true
 
-  msgpackr@2.0.1:
-    resolution: {integrity: sha512-9J+tqTEsbHqY8YohazYgty7LgerFIWxvMLpUjqETSmjHojtJm2WnX2kK/2a1fLI7CO7ERP1YSEUXMucz4j+yBA==}
+  msgpackr@2.0.5:
+    resolution: {integrity: sha512-cef05H/dSYpLpqp3sj/qyZh5vhUYCalnaLO7j1yOmpsR0y/XwLVtK7r5gn+U/F7CTEfMowcGhlUQJDLcLf7jcA==}
 
   mysql2@3.15.3:
     resolution: {integrity: sha512-FBrGau0IXmuqg4haEZRBfHNWB5mUARw6hNwPDXXGg0XzVJ50mr/9hb267lvpVMnhZ1FON3qNd4Xfcez1rbFwSg==}
@@ -3694,11 +3694,6 @@ packages:
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
-    hasBin: true
-
-  semver@7.8.0:
-    resolution: {integrity: sha512-AcM7dV/5ul4EekoQ29Agm5vri8JNqRyj39o0qpX6vDF2GZrtutZl5RwgD1XnZjiTAfncsJhMI48QQH3sN87YNA==}
-    engines: {node: '>=10'}
     hasBin: true
 
   semver@7.8.1:
@@ -5969,13 +5964,13 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bullmq@5.77.4:
+  bullmq@5.81.3:
     dependencies:
       cron-parser: 4.9.0
-      ioredis: 5.11.0
-      msgpackr: 2.0.1
+      ioredis: 5.11.1
+      msgpackr: 2.0.5
       node-abort-controller: 3.1.1
-      semver: 7.8.0
+      semver: 7.8.5
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
@@ -6482,7 +6477,7 @@ snapshots:
 
   internmap@2.0.3: {}
 
-  ioredis@5.11.0:
+  ioredis@5.11.1:
     dependencies:
       '@ioredis/commands': 1.10.0
       cluster-key-slot: 1.1.1
@@ -6696,7 +6691,7 @@ snapshots:
       '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.4
     optional: true
 
-  msgpackr@2.0.1:
+  msgpackr@2.0.5:
     optionalDependencies:
       msgpackr-extract: 3.0.4
 
@@ -7298,12 +7293,9 @@ snapshots:
 
   semver@6.3.1: {}
 
-  semver@7.8.0: {}
-
   semver@7.8.1: {}
 
-  semver@7.8.5:
-    optional: true
+  semver@7.8.5: {}
 
   seq-queue@0.0.5: {}
 
