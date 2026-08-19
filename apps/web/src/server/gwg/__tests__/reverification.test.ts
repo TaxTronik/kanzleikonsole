@@ -120,6 +120,7 @@ describe('GwG-Wiederholungsprüfung', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 2 }),
       },
       client: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      notification: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     } as unknown as TxClient;
 
     const result = await requireGwgReverificationTx(tx, {
@@ -187,6 +188,7 @@ describe('GwG-Wiederholungsprüfung', () => {
       },
       gwgIdDocument: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       client: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      notification: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     } as unknown as TxClient;
 
     const result = await requireGwgReverificationTx(tx, {
@@ -208,6 +210,18 @@ describe('GwG-Wiederholungsprüfung', () => {
       select: { id: true },
     });
     expect(tx.gwgCheck.create).not.toHaveBeenCalled();
+    expect(tx.notification.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        readAt: null,
+        OR: [
+          { resourceType: 'gwg_check', resourceId: 'open-review' },
+          { href: '/staff/clients/client-1/gwg' },
+        ],
+        kind: { in: ['GWG_ONBOARDING_SUBMITTED'] },
+      },
+      data: { readAt: expect.any(Date) },
+    });
     expect(result).toEqual({
       invalidatedChecks: 0,
       invalidatedIdentityDocuments: 1,

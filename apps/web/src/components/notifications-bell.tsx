@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, X } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import {
   playNotificationSound,
@@ -20,6 +20,7 @@ import {
   emitNotificationsGrew,
   onNotificationsChanged,
 } from '@/lib/live-events';
+import { hasNewUnreadNotification, notificationTimestamp } from '@/lib/notification-feed';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -36,10 +37,12 @@ interface NotificationItem {
 interface RecentResponse {
   items: NotificationItem[];
   unread: number;
+  latestUnreadAt: string | null;
 }
 
 interface Props {
   initialUnread: number;
+  initialLatestUnreadAt: string | null;
 }
 
 function relativeTime(iso: string, now: number): string {
@@ -55,9 +58,10 @@ function relativeTime(iso: string, now: number): string {
   return fmtDateTimeShort(new Date(t));
 }
 
-export function NotificationsBell({ initialUnread }: Props) {
+export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Props) {
   const [unread, setUnread] = useState(initialUnread);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
+  const [alertItem, setAlertItem] = useState<NotificationItem | null>(null);
   const [open, setOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -65,9 +69,20 @@ export function NotificationsBell({ initialUnread }: Props) {
   // Zuletzt bekannter unread-Stand (race-arm gegenüber parallelen Polls) — Quelle
   // der Wahrheit für die "es kam etwas Neues"-Erkennung (Ton + Live-Refresh).
   const lastUnreadRef = useRef(initialUnread);
+  // Eine reine Anzahl reicht nicht: Wird eine alte Aufgabe geschlossen und
+  // gleichzeitig eine neue erzeugt, bleibt sie gleich. Der jüngste Zeitpunkt
+  // ist deshalb die monotone zweite Signalkomponente.
+  const latestUnreadAtRef = useRef(notificationTimestamp(initialLatestUnreadAt));
+  const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const now = Date.now();
+
+  const showNotificationAlert = useCallback((item: NotificationItem) => {
+    setAlertItem(item);
+    if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+    alertTimerRef.current = setTimeout(() => setAlertItem(null), 8000);
+  }, []);
 
   // Bei echtem Zuwachs an ungelesenen Benachrichtigungen (serverseitig ist etwas
   // passiert, z. B. Chain-Verify-Ergebnis) die aktuelle Seite ereignisgetrieben
@@ -93,23 +108,44 @@ export function NotificationsBell({ initialUnread }: Props) {
         if (!res.ok) return;
         const data = (await res.json()) as RecentResponse;
         setItems(data.items);
+        const newestUnread = data.items.find((item) => item.readAt === null);
+        if (newestUnread) showNotificationAlert(newestUnread);
         emitNotificationsGrew(buildNotificationSignal(data.items));
       } catch {
         // still — beim naechsten Zuwachs erneut
       }
     })();
-  }, [pathname, router]);
+  }, [pathname, router, showNotificationAlert]);
+
+  useEffect(
+    () => () => {
+      if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     setSoundOn(isNotificationSoundEnabled());
   }, []);
 
   // Server-Refreshes (z. B. Formular auf /staff/notifications) liefern einen
-  // neuen Initialwert. Der Client-State darf dann nicht am Mount-Wert kleben.
+  // neuen Initialwert. Auch dieser Pfad muss einen Alert auslösen können: Eine
+  // eigene Server-Action refresht die Route oft schneller als der Poller.
   useEffect(() => {
+    const grew = hasNewUnreadNotification({
+      previousUnread: lastUnreadRef.current,
+      previousLatestUnreadAt: latestUnreadAtRef.current,
+      nextUnread: initialUnread,
+      nextLatestUnreadAt: initialLatestUnreadAt,
+    });
     lastUnreadRef.current = initialUnread;
+    latestUnreadAtRef.current = Math.max(
+      latestUnreadAtRef.current,
+      notificationTimestamp(initialLatestUnreadAt),
+    );
     setUnread(initialUnread);
-  }, [initialUnread]);
+    if (grew) onUnreadGrew();
+  }, [initialUnread, initialLatestUnreadAt, onUnreadGrew]);
 
   function toggleSound() {
     const next = !soundOn;
@@ -125,11 +161,21 @@ export function NotificationsBell({ initialUnread }: Props) {
       try {
         const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
         if (!res.ok) return;
-        const data = (await res.json()) as { unread: number };
-        // Delta gegen den zuletzt bekannten Stand (Ref = immer aktuell, robust
-        // gegen parallele Polls). Nur bei echtem Zuwachs: Ton + Live-Refresh.
-        const grew = data.unread > lastUnreadRef.current;
+        const data = (await res.json()) as {
+          unread: number;
+          latestUnreadAt: string | null;
+        };
+        const latestUnreadAt = notificationTimestamp(data.latestUnreadAt);
+        // Ein höherer Zeitstempel erkennt auch einen Austausch 1 offen → 1
+        // offen. Genau dieser Fall ging beim reinen Unread-Zähler verloren.
+        const grew = hasNewUnreadNotification({
+          previousUnread: lastUnreadRef.current,
+          previousLatestUnreadAt: latestUnreadAtRef.current,
+          nextUnread: data.unread,
+          nextLatestUnreadAt: data.latestUnreadAt,
+        });
         lastUnreadRef.current = data.unread;
+        latestUnreadAtRef.current = Math.max(latestUnreadAtRef.current, latestUnreadAt);
         setUnread(data.unread);
         if (grew) onUnreadGrew();
       } catch {
@@ -145,8 +191,15 @@ export function NotificationsBell({ initialUnread }: Props) {
         if (!res.ok) return;
         const data = (await res.json()) as RecentResponse;
         setItems(data.items);
-        const grew = data.unread > lastUnreadRef.current;
+        const latestUnreadAt = notificationTimestamp(data.latestUnreadAt);
+        const grew = hasNewUnreadNotification({
+          previousUnread: lastUnreadRef.current,
+          previousLatestUnreadAt: latestUnreadAtRef.current,
+          nextUnread: data.unread,
+          nextLatestUnreadAt: data.latestUnreadAt,
+        });
         lastUnreadRef.current = data.unread;
+        latestUnreadAtRef.current = Math.max(latestUnreadAtRef.current, latestUnreadAt);
         setUnread(data.unread);
         if (grew) onUnreadGrew();
       } catch {
@@ -246,6 +299,42 @@ export function NotificationsBell({ initialUnread }: Props) {
           </span>
         )}
       </button>
+
+      {alertItem && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed right-4 top-16 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-brand-200 bg-surface p-4 shadow-xl dark:border-brand-800"
+        >
+          <div className="flex items-start gap-3">
+            <Bell className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-primary">Neue Benachrichtigung</p>
+              <p className="mt-0.5 truncate text-sm text-secondary">{alertItem.title}</p>
+              {alertItem.href && (
+                <Link
+                  href={alertItem.href}
+                  onClick={() => {
+                    setAlertItem(null);
+                    void handleItemClick(alertItem);
+                  }}
+                  className="mt-2 inline-block text-xs text-brand-700 hover:underline dark:text-brand-500"
+                >
+                  Öffnen →
+                </Link>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAlertItem(null)}
+              className="rounded p-1 text-muted hover:bg-gray-100 hover:text-primary"
+              aria-label="Hinweis schließen"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div

@@ -9,14 +9,21 @@ export async function GET() {
   }
   const { tenantId, staffId } = session.user;
 
-  const unread = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
-    tx.notification.count({
-      where: { OR: [{ staffId }, { staffId: null }], readAt: null },
-    }),
+  const unreadSummary = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    (tx) =>
+      tx.notification.aggregate({
+        where: { OR: [{ staffId }, { staffId: null }], readAt: null },
+        _count: { _all: true },
+        _max: { createdAt: true },
+      }),
   );
 
   return NextResponse.json(
-    { unread },
+    {
+      unread: unreadSummary._count._all,
+      latestUnreadAt: unreadSummary._max.createdAt?.toISOString() ?? null,
+    },
     {
       headers: {
         'Cache-Control': 'no-store',

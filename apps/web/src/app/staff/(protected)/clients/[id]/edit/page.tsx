@@ -92,7 +92,9 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           <div>
             <label className="label-sm">
               Steuernummer{' '}
-              <span className="text-disabled font-normal">(13-stellig, ELSTER-Bundesformat)</span>
+              <span className="text-disabled font-normal">
+                (13-stellig, ELSTER-Bundesformat · keine neue GwG-Prüfung)
+              </span>
             </label>
             <input
               name="steuernummer"

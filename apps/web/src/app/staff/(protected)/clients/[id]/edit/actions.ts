@@ -104,7 +104,12 @@ export async function saveAdminFieldsAction(
         resourceType: 'client',
         resourceId: clientId,
         before,
-        after,
+        after: {
+          ...after,
+          // Steuerliche/organisatorische Verwaltungswerte sind ausdrücklich
+          // kein Anlass für eine erneute Identifizierung nach GwG.
+          _gwgReverificationTriggered: false,
+        },
       });
     });
   } catch (e) {

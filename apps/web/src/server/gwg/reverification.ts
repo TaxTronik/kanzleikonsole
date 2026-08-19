@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { TxClient } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { Prisma } from '@prisma/client';
 
 // Derselbe transaktionsgebundene Lifecycle-Lock wird aus mehreren
@@ -451,6 +452,16 @@ export async function requireGwgReverificationTx(
         riskBreakdown: Prisma.DbNull,
       },
       select: { id: true },
+    });
+    // Eine frühere Freigabeanforderung ist mit dem Rücksprung nach DRAFT nicht
+    // mehr handlungsfähig. Sie jetzt zu schließen ist auch für den nächsten
+    // Submit wichtig: Dann steigt der Unread-Zähler wieder, statt eine alte
+    // offene Notification nur in-place auf denselben Check zu aktualisieren.
+    await resolveNotificationsTx(tx, {
+      tenantId: input.tenantId,
+      resources: [{ resourceType: 'gwg_check', resourceId: existing.id }],
+      hrefs: [`/staff/clients/${input.clientId}/gwg`],
+      kinds: ['GWG_ONBOARDING_SUBMITTED'],
     });
   } else {
     review = await createFreshGwgDraftTx(tx, {

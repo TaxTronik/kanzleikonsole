@@ -63,6 +63,7 @@ describe('GET /api/staff/notifications/recent', () => {
         },
       ],
       unread: 3,
+      latestUnreadAt: '2026-07-16T08:00:00.000Z',
     });
   });
 

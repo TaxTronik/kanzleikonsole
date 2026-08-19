@@ -43,6 +43,7 @@ export async function GET() {
         readAt: i.readAt?.toISOString() ?? null,
       })),
       unread: unreadCount,
+      latestUnreadAt: items.find((item) => item.readAt === null)?.createdAt.toISOString() ?? null,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   );

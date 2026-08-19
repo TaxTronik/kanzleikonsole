@@ -124,4 +124,23 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
       'tx.gwgOnboardingInvite.updateMany(',
     );
   });
+
+  it('hält die Steuernummer vollständig aus dem GwG-Reverifikationspfad heraus', () => {
+    const editActions = source('../../../app/staff/(protected)/clients/[id]/edit/actions.ts');
+    const administrativeSection = section(
+      editActions,
+      'export async function saveAdminFieldsAction',
+      'const GWG_KINDS',
+    );
+    const gwgSection = section(
+      editActions,
+      'export async function saveGwgFieldsAction',
+      'const RespSchema',
+    );
+
+    expect(administrativeSection).toContain('steuernummer:');
+    expect(administrativeSection).toContain('_gwgReverificationTriggered: false');
+    expect(administrativeSection).not.toContain('requireGwgReverificationTx(');
+    expect(gwgSection).not.toContain('steuernummer');
+  });
 });
