@@ -27,6 +27,7 @@ function mockTx() {
       update: vi.fn(),
       delete: vi.fn(),
     },
+    notification: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
   mocks.withTenantContext.mockImplementation(
     (_context: TenantContext, callback: (transaction: TxClient) => Promise<unknown>) =>

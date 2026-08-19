@@ -38,11 +38,20 @@ const h = vi.hoisted(() => {
   );
   const record = vi.fn();
   const upsertNotification = vi.fn();
+  const resolveNotificationsTx = vi.fn();
   // Portal-Session-Revocation: der Worker schreibt `revoke:portal:<contactId>`
   // direkt über die BullMQ-Redis-Verbindung (Key-Schema aus
   // apps/web/src/server/auth/revocation.ts).
   const redisSet = vi.fn();
-  return { prismaOwner, tx, withWorkerTenantContext, record, upsertNotification, redisSet };
+  return {
+    prismaOwner,
+    tx,
+    withWorkerTenantContext,
+    record,
+    upsertNotification,
+    resolveNotificationsTx,
+    redisSet,
+  };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -53,6 +62,9 @@ vi.mock('../../logger', () => ({
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
 vi.mock('../../notify', () => ({ upsertNotification: h.upsertNotification }));
+vi.mock('@taxtronik/db/notification', () => ({
+  resolveNotificationsTx: h.resolveNotificationsTx,
+}));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {
     record = h.record;
@@ -174,7 +186,14 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
     const result = await run();
 
     expect(h.upsertNotification).not.toHaveBeenCalled();
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
+    expect(h.resolveNotificationsTx).toHaveBeenCalledWith(
+      h.tx,
+      expect.objectContaining({
+        tenantId: TENANT,
+        kinds: ['GWG_DELETION_DUE'],
+      }),
+    );
     expect(result).toMatchObject({ stage1: 0, stage2: 0, stage3: 0 });
   });
 
@@ -235,7 +254,9 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
+    // Ablauf und Notification-Auflösung laufen gemeinsam; die zweite
+    // Tenant-Transaktion räumt einen eventuell alten Löschhinweis auf.
+    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(2);
     expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
 
     // Statuswechsel guarded (nur aus VERIFIED) — Race-sicher

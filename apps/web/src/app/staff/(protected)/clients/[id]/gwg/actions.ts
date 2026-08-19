@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { computeRiskScore, riskValidForDays, DEFAULT_FACTORS } from '@/server/gwg/risk-score';
@@ -59,19 +60,23 @@ async function assertLatestCheckForDecision(
   }
 }
 
-async function markGwgReviewNotificationsReadTx(
+async function resolveGwgCheckNotificationsTx(
   tx: TxClient,
   input: { tenantId: string; checkId: string },
 ): Promise<void> {
-  await tx.notification.updateMany({
-    where: {
-      tenantId: input.tenantId,
-      kind: 'GWG_ONBOARDING_SUBMITTED',
-      resourceType: 'gwg_check',
-      resourceId: input.checkId,
-      readAt: null,
-    },
-    data: { readAt: new Date() },
+  const invites = await tx.gwgOnboardingInvite.findMany({
+    where: { tenantId: input.tenantId, gwgCheckId: input.checkId },
+    select: { id: true },
+  });
+  await resolveNotificationsTx(tx, {
+    tenantId: input.tenantId,
+    resources: [
+      { resourceType: 'gwg_check', resourceId: input.checkId },
+      ...invites.map((invite) => ({
+        resourceType: 'gwg_onboarding_invite',
+        resourceId: invite.id,
+      })),
+    ],
   });
 }
 
@@ -132,6 +137,12 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult & { che
         changeScope: latest ? changeScope : 'INITIAL',
       });
       const checkId = review.reviewCheckId;
+      if (latest) {
+        await resolveGwgCheckNotificationsTx(tx, {
+          tenantId,
+          checkId: latest.id,
+        });
+      }
       await cancelOpenGwgInvitesTx(tx, {
         tenantId,
         clientId,
@@ -707,6 +718,10 @@ export async function submitCheckForReviewAction(
       if (claim.count === 0) {
         throw new ActionError('Der Prüfstatus hat sich geändert — bitte Seite neu laden.');
       }
+      await resolveGwgCheckNotificationsTx(tx, {
+        tenantId,
+        checkId,
+      });
       await cancelOpenGwgInvitesTx(tx, {
         tenantId,
         clientId,
@@ -877,7 +892,10 @@ export async function verifyCheckAction(
       // Die Freigabeanforderung ist mit der Entscheidung für alle zuständigen
       // Berufsträger erledigt. Im selben Commit schließen, damit Badge und
       // Dropdown keinen bereits verifizierten Check weiter als offen zeigen.
-      await markGwgReviewNotificationsReadTx(tx, { tenantId, checkId });
+      await resolveGwgCheckNotificationsTx(tx, {
+        tenantId,
+        checkId,
+      });
       verifiedValidUntil = validUntil.toISOString();
       await cancelOpenGwgInvitesTx(tx, {
         tenantId,
@@ -994,7 +1012,10 @@ export async function rejectCheckAction(
       if (claim.count === 0) {
         throw new ActionError('GwG-Check ist nicht mehr zur Entscheidung eingereicht.');
       }
-      await markGwgReviewNotificationsReadTx(tx, { tenantId, checkId });
+      await resolveGwgCheckNotificationsTx(tx, {
+        tenantId,
+        checkId,
+      });
       await cancelOpenGwgInvitesTx(tx, {
         tenantId,
         clientId,

@@ -1,4 +1,5 @@
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { ActionError } from '@/server/actions/action-error';
 import { evidenceService } from '@/server/container';
 
@@ -22,6 +23,12 @@ export async function setResearchResultArchived(
       where: { id: resultId },
       data: { archivedAt },
     });
+    if (archived) {
+      await resolveNotificationsTx(tx, {
+        tenantId: ctx.tenantId,
+        resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
+      });
+    }
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,
       actorType: 'STAFF',
@@ -60,6 +67,10 @@ export async function setResearchResultVerworfen(
       where: { id: resultId },
       data: { status: 'VERWORFEN' },
     });
+    await resolveNotificationsTx(tx, {
+      tenantId: ctx.tenantId,
+      resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
+    });
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,
       actorType: 'STAFF',
@@ -88,6 +99,10 @@ export async function deleteResearchResult(ctx: TenantContext, resultId: string)
       },
     });
     if (!result) throw new ActionError('Rechercheergebnis nicht gefunden.');
+    await resolveNotificationsTx(tx, {
+      tenantId: ctx.tenantId,
+      resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
+    });
 
     await tx.riskResearchResult.delete({ where: { id: resultId } });
     await evidenceService.record(tx, {

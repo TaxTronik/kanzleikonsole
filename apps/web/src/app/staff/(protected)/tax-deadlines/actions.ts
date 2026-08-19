@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { assertClientAccessTx } from '@/server/auth/rbac';
@@ -25,6 +26,10 @@ export async function markDeadlineDoneAction(formData: FormData): Promise<void> 
         data: { status: 'DONE', completedAt: new Date(), completedByStaff: staffId },
       });
       if (res.count === 0) return;
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'tax_deadline', resourceId: id }],
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -61,6 +66,13 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
       await tx.taxDeadline.updateMany({
         where: { id: { in: toClose.map((t) => t.id) }, status: { notIn: ['DONE', 'SKIPPED'] } },
         data: { status: 'DONE', completedAt: new Date(), completedByStaff: staffId },
+      });
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: toClose.map((deadline) => ({
+          resourceType: 'tax_deadline',
+          resourceId: deadline.id,
+        })),
       });
       for (const t of toClose) {
         await evidenceService.record(tx, {
@@ -112,6 +124,13 @@ async function suppressDeadlines(ids: string[]): Promise<void> {
           autoRequestSuppressedAt: null,
         },
         data: { autoRequestSuppressedAt: new Date(), autoRequestSuppressedByStaff: staffId },
+      });
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: toSuppress.map((deadline) => ({
+          resourceType: 'tax_deadline',
+          resourceId: deadline.id,
+        })),
       });
       for (const t of toSuppress) {
         await evidenceService.record(tx, {

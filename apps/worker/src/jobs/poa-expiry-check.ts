@@ -13,6 +13,7 @@
 import { Worker } from 'bullmq';
 import type { NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
@@ -97,6 +98,11 @@ export const poaExpiryWorker = new Worker<ChecksJob>(
               data: { status: 'EXPIRED' },
             });
             if (res.count > 0) {
+              await resolveNotificationsTx(tx, {
+                tenantId,
+                resources: [{ resourceType: 'power_of_attorney', resourceId: poa.id }],
+                kinds: ['POA_EXPIRY_SOON'],
+              });
               await evidence.record(tx, {
                 tenantId,
                 actorType: 'SYSTEM',

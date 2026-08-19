@@ -263,6 +263,7 @@ describe('confirmGwgCheckDeletionAction', () => {
       gwgCheck: {
         findFirst: vi.fn().mockResolvedValue({ clientId: 'client-1' }),
       },
+      notification: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       $executeRaw: vi.fn().mockResolvedValue(0),
       $queryRaw: vi.fn().mockResolvedValue([
         {

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { staffActionGuard } from '@/server/actions/staff-action';
@@ -51,6 +52,13 @@ export async function bulkCloseRequestsAction(input: { ids: string[] }): Promise
         await tx.request.updateMany({
           where: { id: { in: before.map((b) => b.id) } },
           data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
+        });
+        await resolveNotificationsTx(tx, {
+          tenantId,
+          resources: before.map((request) => ({
+            resourceType: 'request',
+            resourceId: request.id,
+          })),
         });
 
         // Pro Eintrag ein Audit-Log

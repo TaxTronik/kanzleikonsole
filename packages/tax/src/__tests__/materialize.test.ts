@@ -66,14 +66,24 @@ function makeHarness(opts: HarnessOptions = {}) {
   };
   const recordEvidence = vi.fn().mockResolvedValue(undefined);
   const upsertStaffNotification = vi.fn().mockResolvedValue(undefined);
+  const resolveStaffNotifications = vi.fn().mockResolvedValue(undefined);
   const runAtomic = vi.fn(async (fn: (t: Db) => Promise<unknown>) => fn(tx as unknown as Db));
   const deps: MaterializeDeps = {
     db: db as unknown as Db,
     runAtomic: runAtomic as MaterializeDeps['runAtomic'],
     recordEvidence,
     upsertStaffNotification,
+    resolveStaffNotifications,
   };
-  return { db, tx, deps, recordEvidence, runAtomic, upsertStaffNotification };
+  return {
+    db,
+    tx,
+    deps,
+    recordEvidence,
+    runAtomic,
+    upsertStaffNotification,
+    resolveStaffNotifications,
+  };
 }
 
 function ustaMonthlyConfig(overrides: Record<string, unknown> = {}) {
@@ -176,7 +186,7 @@ describe('Upsert — Termine aus aktiven Configs', () => {
 
 describe('Auto-Anforderung (3b) — Versand atomar', () => {
   it('erzeugt Request + REMINDED + Audit-Eintrag in EINER runAtomic-Transaktion', async () => {
-    const { db, tx, deps, recordEvidence, runAtomic } = makeHarness({
+    const { db, tx, deps, recordEvidence, runAtomic, resolveStaffNotifications } = makeHarness({
       upcoming: [upcomingDeadline(14)], // sendFrom = 06.06. ≤ heute (09.06.), lead 0
     });
 
@@ -220,6 +230,11 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
     expect(tx.taxDeadline.update).toHaveBeenCalledWith({
       where: { id: 'dl-1' },
       data: { requestId: 'req-1', status: 'REMINDED' },
+    });
+    expect(resolveStaffNotifications).toHaveBeenCalledWith(tx, {
+      tenantId: TENANT,
+      resourceType: 'tax_deadline',
+      resourceId: 'dl-1',
     });
     expect(recordEvidence).toHaveBeenCalledTimes(1);
     // Audit-Eintrag läuft auf DEMSELBEN Tx wie Request + Update

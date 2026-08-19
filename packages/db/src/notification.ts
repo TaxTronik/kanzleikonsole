@@ -13,6 +13,26 @@ export interface NotificationUpsertInput {
   resourceId?: string | null;
 }
 
+export interface NotificationResourceRef {
+  resourceType: string;
+  resourceId: string;
+}
+
+export interface NotificationResolutionInput {
+  tenantId: string;
+  /** Fachliche Ressourcen, deren offener Hinweis erledigt ist. */
+  resources?: readonly NotificationResourceRef[];
+  /** Alt-/Nebenressourcen mit demselben Ziel werden darüber mit aufgelöst. */
+  hrefs?: readonly string[];
+  /** Optional auf bestimmte Ereignisarten begrenzen. */
+  kinds?: readonly NotificationKind[];
+  /** Optional nur Benachrichtigungen bestimmter Empfänger schließen. */
+  staffIds?: readonly string[];
+  /** Bewusste tenant-weite Recovery; nur zusammen mit `kinds` zulässig. */
+  tenantWide?: boolean;
+  resolvedAt?: Date;
+}
+
 /**
  * Normalizes notification copy before it is persisted. Notifications are
  * rendered as text today, but keeping the stored value harmless protects
@@ -76,4 +96,39 @@ export async function upsertNotificationTx(
       resourceId: input.resourceId ?? null,
     },
   });
+}
+
+/**
+ * Schließt ungelesene Benachrichtigungen, sobald der zugrunde liegende
+ * fachliche Vorgang erledigt wurde. Die Auflösung gehört in dieselbe
+ * Transaktion wie der Statuswechsel, damit Aufgabe und Glocke nie auseinander
+ * laufen.
+ */
+export async function resolveNotificationsTx(
+  tx: TxClient,
+  input: NotificationResolutionInput,
+): Promise<number> {
+  const resources = input.resources ?? [];
+  const hrefs = [...new Set(input.hrefs ?? [])];
+  const matches = [
+    ...resources.map((resource) => ({
+      resourceType: resource.resourceType,
+      resourceId: resource.resourceId,
+    })),
+    ...hrefs.map((href) => ({ href })),
+  ];
+  const tenantWide = input.tenantWide === true && Boolean(input.kinds?.length);
+  if (matches.length === 0 && !tenantWide) return 0;
+
+  const result = await tx.notification.updateMany({
+    where: {
+      tenantId: input.tenantId,
+      readAt: null,
+      ...(matches.length ? { OR: matches } : {}),
+      ...(input.kinds?.length ? { kind: { in: [...input.kinds] } } : {}),
+      ...(input.staffIds?.length ? { staffId: { in: [...input.staffIds] } } : {}),
+    },
+    data: { readAt: input.resolvedAt ?? new Date() },
+  });
+  return result.count;
 }

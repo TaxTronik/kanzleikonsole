@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { ActionError } from '@/server/actions/staff-action';
 import type { ReminderPriority } from '@/lib/reminder-priority';
 import { notify } from '@/server/notifications/service';
@@ -375,6 +376,15 @@ export async function setReminderAssigneesTx(
       })
     ).map((a) => a.staffId),
   );
+  const entfernt = [...vorher].filter((id) => !ziel.includes(id));
+  if (entfernt.length > 0) {
+    await resolveNotificationsTx(tx, {
+      tenantId: input.tenantId,
+      resources: [{ resourceType: 'client_reminder', resourceId: input.reminderId }],
+      hrefs: [`/staff/reminders/${input.reminderId}`],
+      staffIds: entfernt,
+    });
+  }
 
   await tx.clientReminderAssignee.deleteMany({
     where: { reminderId: input.reminderId, staffId: { notIn: ziel } },

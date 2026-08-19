@@ -24,6 +24,7 @@
 import { Worker } from 'bullmq';
 import { type NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
@@ -45,6 +46,36 @@ const NOTIFICATION_KIND_FOR_STAGE: Record<Stage, NotificationKind> = {
   STAGE2: 'GWG_EXPIRY_30D',
   STAGE3: 'GWG_EXPIRED',
 };
+
+async function resolveObsoleteStageNotifications(
+  tenantId: string,
+  checkId: string,
+  stage: Stage,
+): Promise<void> {
+  if (stage !== 'STAGE2') return;
+  await withWorkerTenantContext(tenantId, (tx) =>
+    resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'gwg_check', resourceId: checkId }],
+      kinds: ['GWG_EXPIRY_SOON', 'GWG_EXPIRY_90D'],
+    }),
+  );
+}
+
+async function resolveIdDocumentWarning(
+  tenantId: string,
+  documentId: string,
+  expired: boolean,
+): Promise<void> {
+  if (!expired) return;
+  await withWorkerTenantContext(tenantId, (tx) =>
+    resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'gwg_id_document', resourceId: documentId }],
+      kinds: ['GWG_ID_EXPIRY_SOON'],
+    }),
+  );
+}
 
 export const gwgExpiryWorker = new Worker<ChecksJob>(
   'gwg-expiry-check',
@@ -156,6 +187,10 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
             });
             if (stillValid) {
               supersededByValid = true;
+              await resolveNotificationsTx(tx, {
+                tenantId,
+                resources: [{ resourceType: 'gwg_check', resourceId: check.id }],
+              });
               return;
             }
             const clientRes = await tx.client.updateMany({
@@ -183,11 +218,18 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
                 },
               });
             }
+            await resolveNotificationsTx(tx, {
+              tenantId,
+              resources: [{ resourceType: 'gwg_check', resourceId: check.id }],
+              kinds: ['GWG_EXPIRY_SOON', 'GWG_EXPIRY_90D', 'GWG_EXPIRY_30D'],
+            });
           });
           // Durch einen gültigen neueren Check abgelöst: nur Housekeeping
           // (Alt-Check EXPIRED), keine Deaktivierung und keine Eskalations-
           // Notification — es besteht kein Handlungsbedarf.
-          if (supersededByValid) continue;
+          if (supersededByValid) {
+            continue;
+          }
           // GwG-Schranke (§ 11 GwG): bestehende Portal-Sessions aller Kontakte
           // sofort beenden — sonst bliebe ein eingeloggter Kontakt bis zum
           // JWT-Ablauf (24 h) handlungsfähig. Nach dem Commit (Redis ist nicht
@@ -201,6 +243,8 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
             await revokePortalSessions(contacts.map((c) => c.id));
           }
         }
+
+        await resolveObsoleteStageNotifications(tenantId, check.id, stage);
 
         const title = titleForStage(stage, daysLeft, check.client.name);
         const body = bodyForStage(stage, check.riskLevel ?? null);
@@ -278,6 +322,7 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
         const titleSuffix = isExpired
           ? `seit ${-daysLeft} Tagen abgelaufen`
           : `läuft in ${daysLeft} Tagen ab`;
+        await resolveIdDocumentWarning(tenantId, doc.id, isExpired);
         for (const staffId of recipients) {
           await upsertNotification(tenantId, staffId, {
             kind: (isExpired ? 'GWG_ID_EXPIRED' : 'GWG_ID_EXPIRY_SOON') as NotificationKind,
@@ -403,6 +448,14 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
           });
         }
         deletionDueNotices += adminPartners.length;
+      } else {
+        await withWorkerTenantContext(tenantId, (tx) =>
+          resolveNotificationsTx(tx, {
+            tenantId,
+            resources: [{ resourceType: 'tenant', resourceId: tenantId }],
+            kinds: ['GWG_DELETION_DUE'],
+          }),
+        );
       }
     }
 

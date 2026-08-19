@@ -646,6 +646,7 @@ describe('revokePoaAction — Rollen-Gate', () => {
         findUnique: vi.fn().mockResolvedValue({ clientId: 'client-1', status: 'SENT' }),
         update,
       },
+      notification: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     };
     m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
       fn(tx, {

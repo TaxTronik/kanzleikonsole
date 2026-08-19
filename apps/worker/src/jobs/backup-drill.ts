@@ -32,6 +32,7 @@ import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
 import { env } from '@taxtronik/config';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
@@ -189,6 +190,13 @@ async function persistTenantResult(tenantId: string, result: PersistedDrillResul
       resourceId: result.backupKey,
       after: { ...result },
     });
+    if (result.ok) {
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        tenantWide: true,
+        kinds: ['SYSTEM_BACKUP_FAILED'],
+      });
+    }
   });
 
   if (!result.ok) {

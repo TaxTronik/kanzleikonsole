@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
@@ -349,6 +350,11 @@ export async function confirmGwgCheckDeletionAction(input: {
       throw new Error('GwG-Vernichtungsfunktion lieferte einen abweichenden Mandantenbezug.');
     }
     clientId = scopedCheck.clientId;
+
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'gwg_check', resourceId: checkId }],
+    });
 
     await evidenceService.record(tx, {
       tenantId,

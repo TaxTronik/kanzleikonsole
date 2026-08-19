@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notifyClientContacts, notifyRequestOpened } from '@/server/mail/dispatch';
@@ -369,6 +370,10 @@ export async function closeRequestAction(formData: FormData): Promise<void> {
       where: { id: requestId },
       data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
     });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'request', resourceId: requestId }],
+    });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -412,6 +417,10 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
         data: { requestId, authorType: 'STAFF', authorId: staffId, message },
       });
       await tx.request.update({ where: { id: requestId }, data: { status: 'IN_PROGRESS' } });
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'request', resourceId: requestId }],
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

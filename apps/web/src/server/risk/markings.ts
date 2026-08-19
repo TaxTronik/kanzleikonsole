@@ -11,6 +11,7 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import type { GovernanceTyp, RiskStufe, RiskWk } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
 import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
@@ -87,13 +88,25 @@ export async function updateMarking(
     }
     await tx.riskMarking.update({ where: { id: markingId }, data: fields });
 
+    const terminal = fields.status === 'KONTROLLIERT' || fields.status === 'AKZEPTIERT';
+    const reassigned =
+      fields.verantwortlichId !== undefined && fields.verantwortlichId !== before.verantwortlichId;
+    if (terminal || reassigned) {
+      await resolveNotificationsTx(tx, {
+        tenantId: ctx.tenantId,
+        resources: [{ resourceType: 'risk_marking', resourceId: markingId }],
+        ...(terminal || !before.verantwortlichId ? {} : { staffIds: [before.verantwortlichId] }),
+      });
+    }
+
     // Zuweisung über das Feld „Verantwortlich" löste bisher NICHTS aus: keine
     // Wiedervorlage, keine Benachrichtigung. Der Empfänger erfuhr davon nur,
     // wenn er die Analyse zufällig selbst öffnete.
     const wechsel =
       fields.verantwortlichId &&
       fields.verantwortlichId !== before.verantwortlichId &&
-      fields.verantwortlichId !== ctx.actorId;
+      fields.verantwortlichId !== ctx.actorId &&
+      !terminal;
     if (wechsel && analysis?.clientId) {
       await notify(tx, {
         tenantId: ctx.tenantId,
@@ -208,6 +221,10 @@ export async function deleteMarking(ctx: TenantContext, markingId: string): Prom
       select: { analysisId: true, herkunft: true, begriff: true, start: true, end: true },
     });
     if (!before) throw new Error('Markierung nicht gefunden.');
+    await resolveNotificationsTx(tx, {
+      tenantId: ctx.tenantId,
+      resources: [{ resourceType: 'risk_marking', resourceId: markingId }],
+    });
     await tx.riskMarking.delete({ where: { id: markingId } });
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,

@@ -25,6 +25,7 @@ const h = vi.hoisted(() => {
   const materialize = vi.fn();
   const notifyRequestOpened = vi.fn();
   const upsertNotificationTx = vi.fn();
+  const resolveNotificationsTx = vi.fn();
   return {
     prismaOwner,
     tx,
@@ -33,6 +34,7 @@ const h = vi.hoisted(() => {
     materialize,
     notifyRequestOpened,
     upsertNotificationTx,
+    resolveNotificationsTx,
   };
 });
 
@@ -44,7 +46,10 @@ vi.mock('../../logger', () => ({
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
 vi.mock('../../mail', () => ({ notifyRequestOpened: h.notifyRequestOpened }));
-vi.mock('@taxtronik/db/notification', () => ({ upsertNotificationTx: h.upsertNotificationTx }));
+vi.mock('@taxtronik/db/notification', () => ({
+  upsertNotificationTx: h.upsertNotificationTx,
+  resolveNotificationsTx: h.resolveNotificationsTx,
+}));
 vi.mock('@taxtronik/tax', () => ({ materializeTenantTaxDeadlines: h.materialize }));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {
@@ -127,6 +132,18 @@ describe('Verdrahtung des DI-Kerns', () => {
     expect(h.upsertNotificationTx).toHaveBeenCalledTimes(1);
     expect(h.upsertNotificationTx.mock.calls[0]![0]).toBe(h.tx);
     expect(h.upsertNotificationTx.mock.calls[0]![1]).toBe(input);
+  });
+
+  it('resolveStaffNotifications schließt die Termin-Notification im selben Tx', async () => {
+    await run();
+
+    const [deps] = h.materialize.mock.calls[0]!;
+    const input = { tenantId: TENANT, resourceType: 'tax_deadline', resourceId: 'dl-1' };
+    await deps.resolveStaffNotifications(h.tx, input);
+    expect(h.resolveNotificationsTx).toHaveBeenCalledWith(h.tx, {
+      tenantId: TENANT,
+      resources: [{ resourceType: 'tax_deadline', resourceId: 'dl-1' }],
+    });
   });
 
   it('runAtomic delegiert an withWorkerTenantContext mit der Tenant-Id', async () => {

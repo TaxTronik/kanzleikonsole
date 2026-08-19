@@ -27,7 +27,15 @@ const h = vi.hoisted(() => {
   );
   const record = vi.fn();
   const upsertNotification = vi.fn();
-  return { prismaOwner, tx, withWorkerTenantContext, record, upsertNotification };
+  const resolveNotificationsTx = vi.fn();
+  return {
+    prismaOwner,
+    tx,
+    withWorkerTenantContext,
+    record,
+    upsertNotification,
+    resolveNotificationsTx,
+  };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -38,6 +46,9 @@ vi.mock('../../logger', () => ({
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
 vi.mock('../../notify', () => ({ upsertNotification: h.upsertNotification }));
+vi.mock('@taxtronik/db/notification', () => ({
+  resolveNotificationsTx: h.resolveNotificationsTx,
+}));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {
     record = h.record;

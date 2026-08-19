@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
@@ -325,6 +326,10 @@ async function cancelOriginalAfterDeliveredStornoTx(
       'Originalrechnung wurde zwischenzeitlich geändert — bitte erneut prüfen.',
     );
   }
+  await resolveNotificationsTx(tx, {
+    tenantId: opts.tenantId,
+    resources: [{ resourceType: 'invoice', resourceId: original.id }],
+  });
 
   // Eine bereits bezahlte Leistung bleibt verbucht; andernfalls darf sie erst
   // JETZT — nach wirksamer Korrektur — wieder in den Abrechnungspool.
@@ -583,6 +588,10 @@ export async function markPaidAction(formData: FormData): Promise<void> {
       const updated = await tx.invoice.update({
         where: { id: parsed.data.invoiceId },
         data: { status: 'PAID', paidAt: new Date() },
+      });
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'invoice', resourceId: parsed.data.invoiceId }],
       });
       await evidenceService.record(tx, {
         tenantId,

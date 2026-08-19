@@ -25,6 +25,7 @@ function mockTx(status: string) {
         .mockResolvedValue({ id: 'r1', title: 'Ergebnis', status, markingId: 'm1' }),
       update: vi.fn(),
     },
+    notification: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
   mocks.withTenantContext.mockImplementation(
     (_c: TenantContext, cb: (t: TxClient) => Promise<unknown>) => cb(tx as unknown as TxClient),

@@ -17,6 +17,7 @@ import {
   type TenantContext,
   type TxClient,
 } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent, type N8nEnqueueResult } from '@/server/n8n/outbox';
 import {
@@ -497,6 +498,10 @@ export async function assignResultToMarking(
     await tx.riskResearchResult.update({
       where: { id: resultId },
       data: { markingId, status: 'ZUGEORDNET' },
+    });
+    await resolveNotificationsTx(tx, {
+      tenantId: ctx.tenantId,
+      resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
     });
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,

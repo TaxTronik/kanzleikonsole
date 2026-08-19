@@ -2,6 +2,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
@@ -729,6 +730,10 @@ export async function revokePoaAction(formData: FormData): Promise<void> {
       if (!updated) {
         throw new ActionError('Vollmacht konnte nicht widerrufen werden. Bitte laden Sie neu.');
       }
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'power_of_attorney', resourceId: updated.id }],
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

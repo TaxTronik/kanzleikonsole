@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
@@ -183,6 +184,12 @@ export async function updateAppointmentAction(
           notes: parsed.data.notes?.trim() || null,
         },
       });
+      if (parsed.data.status === 'DONE' || parsed.data.status === 'CANCELLED') {
+        await resolveNotificationsTx(tx, {
+          tenantId,
+          resources: [{ resourceType: 'appointment', resourceId: parsed.data.id }],
+        });
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -214,6 +221,10 @@ export async function deleteAppointmentAction(input: { id: string }): Promise<Ac
         select: { title: true, clientId: true },
       });
       if (before?.clientId) await assertClientAccessTx(tx, session, before.clientId);
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'appointment', resourceId: parsed.data.id }],
+      });
       await tx.appointment.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {
         tenantId,
@@ -301,6 +312,10 @@ export async function acceptAppointmentRequestAction(input: {
         },
       });
       if (claim.count === 0) throw new ActionError('Anfrage bereits entschieden.');
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'appointment_request', resourceId: req.id }],
+      });
 
       const appt = await tx.appointment.create({
         data: {
@@ -445,6 +460,10 @@ export async function rejectAppointmentRequestAction(input: {
         },
       });
       if (claim.count === 0) throw new ActionError('Anfrage bereits entschieden.');
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'appointment_request', resourceId: req.id }],
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

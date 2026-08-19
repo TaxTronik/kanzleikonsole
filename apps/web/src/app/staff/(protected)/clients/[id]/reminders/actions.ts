@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
@@ -264,6 +265,11 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
       where: { id: parsed.data.id },
       data: { doneAt: new Date(), doneByStaff: staffId },
     });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'client_reminder', resourceId: parsed.data.id }],
+      hrefs: [`/staff/reminders/${parsed.data.id}`],
+    });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -343,6 +349,12 @@ export async function reopenReminderAction(input: { id: string }): Promise<Actio
     await tx.clientReminder.update({
       where: { id: parsed.data.id },
       data: { doneAt: null, doneByStaff: null },
+    });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'client_reminder', resourceId: parsed.data.id }],
+      hrefs: [`/staff/reminders/${parsed.data.id}`],
+      kinds: ['CLIENT_REMINDER_DONE'],
     });
     await evidenceService.record(tx, {
       tenantId,
@@ -477,6 +489,16 @@ export async function submitResearchResultAction(input: {
       where: { id: reminder.id },
       data: { doneAt: new Date(), doneByStaff: staffId },
     });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'client_reminder', resourceId: reminder.id }],
+      hrefs: [`/staff/reminders/${reminder.id}`],
+    });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'risk_marking', resourceId: markingId }],
+      staffIds: [staffId],
+    });
 
     await evidenceService.record(tx, {
       tenantId,
@@ -520,6 +542,11 @@ export async function deleteReminderAction(input: { id: string }): Promise<Actio
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'client_reminder', resourceId: parsed.data.id }],
+      hrefs: [`/staff/reminders/${parsed.data.id}`],
+    });
     await tx.clientReminder.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
       tenantId,

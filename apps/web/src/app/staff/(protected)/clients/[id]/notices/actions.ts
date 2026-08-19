@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import {
   appealDeadline,
   appealDeadlineForPostAbroad,
@@ -382,6 +383,10 @@ export async function updateNoticeStatusAction(input: {
           error: 'Status wurde zwischenzeitlich geändert — bitte Seite neu laden.',
         };
       }
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'tax_notice', resourceId: noticeId }],
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

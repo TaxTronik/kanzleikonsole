@@ -207,6 +207,9 @@ function makeTx(check: ReturnType<typeof completeCheck>) {
     clientContact: {
       findMany: vi.fn().mockResolvedValue([]),
     },
+    gwgOnboardingInvite: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     notification: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
@@ -242,8 +245,18 @@ function makeStartCycleTx(
 }
 
 function runWithStaffOn(tx: unknown) {
-  const mutableTx = tx as { $executeRaw?: ReturnType<typeof vi.fn> };
+  const mutableTx = tx as {
+    $executeRaw?: ReturnType<typeof vi.fn>;
+    gwgOnboardingInvite?: { findMany: ReturnType<typeof vi.fn> };
+    notification?: { updateMany: ReturnType<typeof vi.fn> };
+  };
   mutableTx.$executeRaw ??= vi.fn().mockResolvedValue(0);
+  mutableTx.gwgOnboardingInvite ??= {
+    findMany: vi.fn().mockResolvedValue([]),
+  };
+  mutableTx.notification ??= {
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+  };
   m.withStaff.mockImplementation(async (fn: (tx: unknown, ctx: unknown) => Promise<unknown>) => {
     try {
       const payload = await fn(tx, {
@@ -1958,6 +1971,7 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
   it('verifiziert vollständigen Snapshot und aktiviert erst nach atomarem Claim', async () => {
     const check = completeCheck();
     const tx = makeTx(check);
+    tx.gwgOnboardingInvite.findMany.mockResolvedValue([{ id: 'invite-1' }]);
     m.isStaffAdmin.mockReturnValue(false);
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
       fn(tx),
@@ -1983,10 +1997,11 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
     expect(tx.notification.updateMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tenant-1',
-        kind: 'GWG_ONBOARDING_SUBMITTED',
-        resourceType: 'gwg_check',
-        resourceId: CHECK_ID,
         readAt: null,
+        OR: [
+          { resourceType: 'gwg_check', resourceId: CHECK_ID },
+          { resourceType: 'gwg_onboarding_invite', resourceId: 'invite-1' },
+        ],
       },
       data: { readAt: expect.any(Date) },
     });
@@ -2069,10 +2084,8 @@ describe('rejectCheckAction – aktueller Snapshot', () => {
     expect(tx.notification.updateMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tenant-1',
-        kind: 'GWG_ONBOARDING_SUBMITTED',
-        resourceType: 'gwg_check',
-        resourceId: CHECK_ID,
         readAt: null,
+        OR: [{ resourceType: 'gwg_check', resourceId: CHECK_ID }],
       },
       data: { readAt: expect.any(Date) },
     });

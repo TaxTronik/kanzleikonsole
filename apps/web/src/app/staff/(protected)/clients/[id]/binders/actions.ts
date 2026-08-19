@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
@@ -87,6 +88,12 @@ export async function updateBinderStatusAction(input: {
     if (parsed.data.status === 'COMPLETED') data.completedAt = now;
 
     await tx.pendingBinder.update({ where: { id: parsed.data.id }, data });
+    if (parsed.data.status !== 'WITH_CLIENT') {
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'pending_binder', resourceId: parsed.data.id }],
+      });
+    }
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -114,6 +121,10 @@ export async function deleteBinderAction(input: { id: string }): Promise<ActionR
     });
     if (!b) throw new ActionError('Pendelordner nicht gefunden.');
     await assertClientAccessTx(tx, session, b.clientId);
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'pending_binder', resourceId: parsed.data.id }],
+    });
     await tx.pendingBinder.delete({ where: { id: parsed.data.id } });
     await evidenceService.record(tx, {
       tenantId,

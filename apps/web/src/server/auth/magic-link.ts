@@ -5,6 +5,7 @@ import { prismaOwner } from '@/server/db/prisma-owner';
 import { evidenceService } from '@/server/container';
 import { withTenantContext } from '@taxtronik/db';
 import { notify } from '@/server/notifications/service';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { log } from '@/server/logger';
 import { checkRateLimit } from '@/server/rate-limit';
 import { findEligiblePortalProfilesByEmail, type PortalProfileOption } from './portal-profiles';
@@ -94,6 +95,22 @@ async function sendMagicLink(input: {
     });
     if (!mailResult.ok) {
       throw new Error('template mail returned ok=false');
+    }
+    try {
+      await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+        resolveNotificationsTx(tx, {
+          tenantId,
+          resources: [{ resourceType: 'client_contact', resourceId: recipient.contactId }],
+          kinds: ['SYSTEM_MAIL_FAILED'],
+        }),
+      );
+    } catch (resolveErr) {
+      // Der Login-Link wurde erfolgreich versendet; ein reines Glocken-
+      // Housekeeping darf den gültigen Token nicht nachträglich invalidieren.
+      log.warn(
+        { err: (resolveErr as Error).message, contactId: recipient.contactId },
+        'magic-link: alte Mailfehler-Notification konnte nicht geschlossen werden',
+      );
     }
   } catch (e) {
     log[env.NODE_ENV === 'production' ? 'error' : 'warn'](

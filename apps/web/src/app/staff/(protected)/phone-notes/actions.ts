@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
@@ -160,12 +161,17 @@ export async function markPhoneNoteReadById(id: string): Promise<ActionResult> {
 
 // Interner Helfer (kein UI-Action): erhält bereits autorisierten Kontext.
 async function markPhoneNoteRead(id: string, tenantId: string, staffId: string): Promise<void> {
-  await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
-    tx.phoneNote.updateMany({
+  await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+    await tx.phoneNote.updateMany({
       where: { id, readAt: null },
       data: { readAt: new Date() },
-    }),
-  );
+    });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'phone_note', resourceId: id }],
+      staffIds: [staffId],
+    });
+  });
 }
 
 // -------------------------------------------------------------------------
@@ -182,6 +188,10 @@ export async function markPhoneNoteDoneAction(input: { id: string }): Promise<Ac
       where: { id: parsed.data.id },
       data: { doneAt: new Date(), doneByStaff: staffId, readAt: new Date() },
       select: { clientId: true },
+    });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'phone_note', resourceId: parsed.data.id }],
     });
     await evidenceService.record(tx, {
       tenantId,
@@ -258,6 +268,11 @@ export async function forwardPhoneNoteAction(input: {
     // P-7 (Befund 5): toStaffId Tenant-Sanity — Create-Pfad oben prüft
     // forwardToStaff, der Forward-Pfad fehlte.
     await assertStaffInTenant(tx, parsed.data.toStaffId);
+
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'phone_note', resourceId: parsed.data.id }],
+    });
 
     await tx.phoneNote.update({
       where: { id: parsed.data.id },
@@ -349,6 +364,10 @@ export async function phoneNoteToReminderAction(input: {
     await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { doneAt: new Date(), doneByStaff: staffId, readAt: new Date() },
+    });
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: [{ resourceType: 'phone_note', resourceId: parsed.data.id }],
     });
 
     await evidenceService.record(tx, {

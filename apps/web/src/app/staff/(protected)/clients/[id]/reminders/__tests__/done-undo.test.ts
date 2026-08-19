@@ -60,6 +60,7 @@ function stubWithStaff(reminder: Record<string, unknown> | null) {
       findUnique: vi.fn().mockResolvedValue(reminder),
       update: vi.fn().mockResolvedValue({}),
     },
+    notification: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     staffUser: { findUnique: vi.fn().mockResolvedValue({ fullName: 'Maria Mitarbeiterin' }) },
   };
   m.withStaff.mockImplementation(async (fn: (t: unknown, c: unknown) => Promise<unknown>) => {

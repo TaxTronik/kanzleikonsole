@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
@@ -56,6 +57,10 @@ export async function decideChangeRequestAction(
         },
       });
       if (decisionClaim.count === 0) throw new ActionError('Anfrage wurde bereits entschieden.');
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'client_master_change_request', resourceId: requestId }],
+      });
 
       const fields = (req.fields ?? {}) as Record<string, unknown>;
       const applicable: Partial<Record<ClientField, string | null>> = {};

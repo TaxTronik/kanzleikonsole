@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import type { TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify, notifyMany } from '@/server/notifications/service';
@@ -177,6 +178,10 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
         before: { status: before.status },
         after: { status: updated.status },
       });
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'vacation_request', resourceId: updated.id }],
+      });
       // iter87: Ergebnis an die antragstellende Person (Kind existierte seit
       // jeher im Enum, wurde aber nie gesendet).
       await notify(tx, {
@@ -224,6 +229,10 @@ export async function cancelVacationAction(formData: FormData): Promise<void> {
         resourceId: updated.id,
         before: { status: before.status },
         after: { status: 'CANCELLED' },
+      });
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'vacation_request', resourceId: updated.id }],
       });
     },
     { revalidate: '/staff/absences' },
@@ -314,6 +323,10 @@ export async function endAbsenceAction(formData: FormData): Promise<void> {
       const today = new Date();
       const endDate = today < before.startDate ? before.startDate : today;
       await tx.absence.update({ where: { id: parsed.data.id }, data: { endDate } });
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'absence', resourceId: parsed.data.id }],
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -339,6 +352,10 @@ export async function deleteAbsenceAction(formData: FormData): Promise<void> {
         where: { id: parsed.data.id, tenantId, staffId },
       });
       if (!before) return;
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'absence', resourceId: parsed.data.id }],
+      });
       await tx.absence.delete({ where: { id: parsed.data.id } });
       await evidenceService.record(tx, {
         tenantId,

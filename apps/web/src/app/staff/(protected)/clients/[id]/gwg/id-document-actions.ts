@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
@@ -768,6 +769,13 @@ export async function updateIdDocumentsAction(
         'Der Ausweissatz wurde parallel geändert. Bitte Seite neu laden und erneut prüfen.',
       );
     }
+    await resolveNotificationsTx(tx, {
+      tenantId,
+      resources: check.idDocuments.map((document) => ({
+        resourceType: 'gwg_id_document',
+        resourceId: document.id,
+      })),
+    });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',

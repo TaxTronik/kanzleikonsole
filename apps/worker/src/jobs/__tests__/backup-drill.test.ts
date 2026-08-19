@@ -30,6 +30,7 @@ vi.mock('@taxtronik/evidence', () => ({
   Rfc3161HttpAdapter: class {},
   BACKUP_DRILL_RESULT_SETTING_KEY: 'backup_drill_result',
 }));
+vi.mock('@taxtronik/db/notification', () => ({ resolveNotificationsTx: vi.fn() }));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: {} }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: vi.fn() }));

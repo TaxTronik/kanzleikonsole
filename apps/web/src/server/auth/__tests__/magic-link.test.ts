@@ -24,6 +24,7 @@ const m = vi.hoisted(() => ({
   sendTemplateMail: vi.fn(),
   checkRateLimit: vi.fn(),
   notify: vi.fn(),
+  resolveNotificationsTx: vi.fn(),
   withTenantContext: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   // RF-12: Audit-Record beim Magic-Link-Consume (auth.magic_link.consume)
@@ -44,6 +45,9 @@ vi.mock('@taxtronik/config', () => ({
 vi.mock('@/server/db/prisma-owner', () => ({ prismaOwner: m.prismaOwner }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
+vi.mock('@taxtronik/db/notification', () => ({
+  resolveNotificationsTx: m.resolveNotificationsTx,
+}));
 vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
 vi.mock('@/server/rate-limit', () => ({ checkRateLimit: m.checkRateLimit }));

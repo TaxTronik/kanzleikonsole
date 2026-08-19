@@ -15,7 +15,7 @@
 
 import { Worker } from 'bullmq';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
-import { upsertNotificationTx } from '@taxtronik/db/notification';
+import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { materializeTenantTaxDeadlines } from '@taxtronik/tax';
@@ -65,6 +65,11 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
           recordEvidence: (tx, event) => evidence.record(tx, event),
           // Läuft in derselben withWorkerTenantContext-Tx wie staffNotifiedAt.
           upsertStaffNotification: (tx, input) => upsertNotificationTx(tx, input),
+          resolveStaffNotifications: (tx, input) =>
+            resolveNotificationsTx(tx, {
+              tenantId: input.tenantId,
+              resources: [{ resourceType: input.resourceType, resourceId: input.resourceId }],
+            }),
         },
         { tenantId, systemStaffId: systemStaff.id, horizonDays: HORIZON_DAYS },
       );

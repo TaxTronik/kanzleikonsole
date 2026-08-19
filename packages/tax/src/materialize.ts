@@ -98,6 +98,11 @@ export interface MaterializeDeps {
   recordEvidence: (tx: MaterializeDb, event: AutoRequestEvidence) => Promise<unknown>;
   /** Vorwarnungs-Notification — läuft in derselben runAtomic-Transaktion. */
   upsertStaffNotification: (tx: MaterializeDb, input: StaffNotificationInput) => Promise<unknown>;
+  /** Schließt die Vorwarnung, sobald die Auto-Anforderung tatsächlich angelegt ist. */
+  resolveStaffNotifications: (
+    tx: MaterializeDb,
+    input: { tenantId: string; resourceType: 'tax_deadline'; resourceId: string },
+  ) => Promise<unknown>;
 }
 
 export interface MaterializeParams {
@@ -367,6 +372,11 @@ export async function materializeTenantTaxDeadlines(
       await tx.taxDeadline.update({
         where: { id: dl.id },
         data: { requestId: req.id, status: 'REMINDED' },
+      });
+      await deps.resolveStaffNotifications(tx, {
+        tenantId,
+        resourceType: 'tax_deadline',
+        resourceId: dl.id,
       });
       await deps.recordEvidence(tx, {
         tenantId,
