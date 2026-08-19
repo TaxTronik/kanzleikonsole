@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
   deleteDocument: vi.fn(),
   evidenceRecord: vi.fn(),
   ensureGwgRootFolder: vi.fn(),
+  ensureGwgPersonFolder: vi.fn(),
   queryRaw: vi.fn(),
   findInviteById: vi.fn(),
 }));
@@ -42,6 +43,7 @@ vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
 }));
 vi.mock('@/server/gwg-onboarding/document-folders', () => ({
   ensureGwgRootFolderTx: m.ensureGwgRootFolder,
+  ensureGwgPersonFolderTx: m.ensureGwgPersonFolder,
 }));
 vi.mock('@/server/auth/rbac', () => ({
   toActionError: vi.fn(() => ({ ok: false, error: 'Interner Fehler.' })),
@@ -82,6 +84,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         }),
     );
     m.ensureGwgRootFolder.mockResolvedValue('gwg-folder-1');
+    m.ensureGwgPersonFolder.mockResolvedValue('gwg-person-folder-1');
     m.deleteObjectVersion.mockResolvedValue(undefined);
     m.prepareBytesCommitWithTier.mockResolvedValue({
       tier: 'GWG',
@@ -160,6 +163,55 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         kind: 'ID_DOCUMENT',
       }),
     ).resolves.toEqual({ ok: false, error: GENERIC_TOKEN_ERROR });
+  });
+
+  it('legt einen benannten Ausweis direkt im Personen-Unterordner an', async () => {
+    m.findFirst.mockResolvedValueOnce({
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    });
+    m.revalidateInvite.mockResolvedValue(true);
+    m.commitPreparedBytes.mockResolvedValue({
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-123',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'application/pdf',
+    });
+
+    await expect(
+      uploadIdImageAction({
+        token: 'valid-looking-raw-token',
+        fileName: 'ausweis.pdf',
+        mimeType: 'application/pdf',
+        base64: 'YQ==',
+        kind: 'ID_DOCUMENT',
+        personName: 'Erika Muster',
+      }),
+    ).resolves.toEqual({ ok: true, documentId: 'document-pending' });
+
+    expect(m.ensureGwgPersonFolder).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        rootFolderId: 'gwg-folder-1',
+        personName: 'Erika Muster',
+      }),
+    );
+    expect(m.createPendingDocumentWithVersion).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        documentData: expect.objectContaining({ folderId: 'gwg-person-folder-1' }),
+      }),
+    );
   });
 
   it('löscht bei einem stale Link exakt die geschützte Objektversion mit Governance-Bypass', async () => {

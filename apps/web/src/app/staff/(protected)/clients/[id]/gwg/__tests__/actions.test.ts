@@ -14,6 +14,7 @@ const m = vi.hoisted(() => ({
   cancelOpenGwgInvites: vi.fn(),
   findCleanGwgDocuments: vi.fn(),
   lockCleanGwgDocuments: vi.fn(),
+  organizeGwgDocuments: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
@@ -39,6 +40,9 @@ vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: m.fireAndForget
 vi.mock('@/server/gwg/evidence-documents', () => ({
   findCleanGwgEvidenceDocumentsTx: m.findCleanGwgDocuments,
   lockCleanGwgEvidenceDocumentsTx: m.lockCleanGwgDocuments,
+}));
+vi.mock('@/server/gwg-onboarding/document-folders', () => ({
+  organizeGwgDocumentsTx: m.organizeGwgDocuments,
 }));
 vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
@@ -286,6 +290,7 @@ beforeEach(() => {
   m.notifyMany.mockResolvedValue(undefined);
   m.findCleanGwgDocuments.mockResolvedValue([]);
   m.lockCleanGwgDocuments.mockResolvedValue(true);
+  m.organizeGwgDocuments.mockResolvedValue(undefined);
 });
 
 describe('atomare GwG-Bearbeitung', () => {
@@ -842,6 +847,17 @@ describe('atomare GwG-Bearbeitung', () => {
         documentId: '55555555-5555-4555-8555-555555555555',
         verifiedAt: expect.any(Date),
       }),
+    });
+    expect(m.organizeGwgDocuments).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: 'tenant-1',
+      clientId: CLIENT_ID,
+      createdByStaff: 'staff-1',
+      documents: [
+        {
+          documentId: '55555555-5555-4555-8555-555555555555',
+          personName: 'Rey Koxha',
+        },
+      ],
     });
   });
 
@@ -2015,6 +2031,19 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
       select: { id: true },
     });
     expect(m.isStaffAdmin).not.toHaveBeenCalled();
+    expect(m.organizeGwgDocuments).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        documents: expect.arrayContaining([
+          expect.objectContaining({
+            documentId: 'doc-PERSONALAUSWEIS',
+            personName: 'Erika Muster',
+          }),
+        ]),
+      }),
+    );
     expect(m.emitN8nEvent).toHaveBeenCalledOnce();
     expect(m.emitN8nEvent).toHaveBeenCalledWith(
       'gwg.verified',

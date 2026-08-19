@@ -44,7 +44,10 @@ import {
   BoundInviteDraftChangedError,
   runOnboardingSubmissionTransactionTx,
 } from '@/server/gwg-onboarding/submission-transaction';
-import { ensureGwgRootFolderTx } from '@/server/gwg-onboarding/document-folders';
+import {
+  ensureGwgPersonFolderTx,
+  ensureGwgRootFolderTx,
+} from '@/server/gwg-onboarding/document-folders';
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (25 MiB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
@@ -177,6 +180,7 @@ const UploadSchema = z.object({
   mimeType: z.string().min(1).max(100),
   base64: z.string().min(1).max(GWG_BASE64_MAX_CHARS),
   kind: z.enum(['ID_DOCUMENT', 'EXTRA']),
+  personName: z.string().max(200).optional(),
 });
 
 export async function uploadIdImageAction(input: {
@@ -185,10 +189,11 @@ export async function uploadIdImageAction(input: {
   mimeType: string;
   base64: string;
   kind: 'ID_DOCUMENT' | 'EXTRA';
+  personName?: string;
 }): Promise<ActionResult> {
   const parsed = UploadSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { token, fileName, mimeType, base64, kind } = parsed.data;
+  const { token, fileName, mimeType, base64, kind, personName } = parsed.data;
 
   // H2: Rate-Limit gegen Sättigung von Storage + ClamAV-Backend. Pro IP
   // und pro Token getrennt — ein böser Token-Inhaber soll andere Mandanten
@@ -285,6 +290,16 @@ export async function uploadIdImageAction(input: {
         clientId: invite.clientId,
         createdByStaff: invite.createdByStaff,
       });
+      const targetFolderId =
+        kind === 'ID_DOCUMENT' && personName?.trim()
+          ? await ensureGwgPersonFolderTx(tx, {
+              tenantId: invite.tenantId,
+              clientId: invite.clientId,
+              rootFolderId: gwgFolderId,
+              personName,
+              createdByStaff: invite.createdByStaff,
+            })
+          : gwgFolderId;
       return createPendingDocumentWithVersion(tx, {
         documentData: {
           tenantId: invite.tenantId,
@@ -292,7 +307,7 @@ export async function uploadIdImageAction(input: {
           title: fileName,
           classification,
           gwgOnboardingInviteId: invite.id,
-          folderId: gwgFolderId,
+          folderId: targetFolderId,
           mimeType: prepared!.detectedMime ?? mimeType,
         },
         prepared: prepared!,

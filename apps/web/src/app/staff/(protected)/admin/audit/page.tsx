@@ -217,12 +217,12 @@ export default async function AuditLogPage({
       <div
         className={
           chainStatus === 'none'
-            ? 'rounded-md border border-default bg-gray-50 p-4 mb-6'
+            ? 'rounded-md border border-default bg-gray-50 p-4 mb-6 dark:bg-gray-900/60'
             : chainStatus === 'ok'
-              ? 'rounded-md border border-green-200 bg-green-50 p-4 mb-6'
+              ? 'rounded-md border border-green-200 bg-green-50 p-4 mb-6 dark:border-green-800 dark:bg-green-950/50'
               : chainStatus === 'amber'
-                ? 'rounded-md border border-yellow-200 bg-yellow-50 p-4 mb-6'
-                : 'rounded-md border border-red-200 bg-red-50 p-4 mb-6'
+                ? 'rounded-md border border-yellow-200 bg-yellow-50 p-4 mb-6 dark:border-yellow-800 dark:bg-yellow-950/50'
+                : 'rounded-md border border-red-200 bg-red-50 p-4 mb-6 dark:border-red-800 dark:bg-red-950/50'
         }
       >
         <div className="flex items-start gap-3">
@@ -247,16 +247,16 @@ export default async function AuditLogPage({
               </p>
             ) : verifyResult.ok ? (
               <>
-                <p className="text-sm font-medium text-green-900">
+                <p className="text-sm font-medium text-green-900 dark:text-green-100">
                   Hash-Chain intakt — {verifyResult.checked.toLocaleString('de-DE')} Einträge
                   geprüft
                 </p>
-                <p className="text-xs text-green-700 mt-1">
+                <p className="text-xs text-green-700 mt-1 dark:text-green-200">
                   {verifyResult.sealsChecked} Tagesversiegelungen geprüft
                   {' · '}zuletzt geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
                 {verifyResult.tsaMode === 'local' && (
-                  <p className="text-xs text-amber-700 mt-1">
+                  <p className="text-xs text-amber-700 mt-1 dark:text-amber-200">
                     ⚠ Zeitstempel-Modus: lokal — keine externe TSA. Der Seal-Check ist
                     gegenstandslos; nur die SHA-256-Kette trägt. Für revisionssichere externe
                     Verankerung eine RFC-3161-TSA konfigurieren.
@@ -268,8 +268,8 @@ export default async function AuditLogPage({
                       'text-xs mt-1 ' +
                       (verifyResult.sealsChecked > 0 &&
                       (verifyResult.sealsTrustAnchored ?? 0) < verifyResult.sealsChecked
-                        ? 'text-amber-700'
-                        : 'text-green-700')
+                        ? 'text-amber-700 dark:text-amber-200'
+                        : 'text-green-700 dark:text-green-200')
                     }
                   >
                     Zeitstempel-Modus: externe TSA (RFC 3161).
@@ -291,59 +291,63 @@ export default async function AuditLogPage({
               </>
             ) : recoveryIntact ? (
               <>
-                <p className="text-sm font-medium text-yellow-900">
+                <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
                   Historischer Chain-Befund — ab Recovery-Checkpoint fortlaufend geprüft
                 </p>
                 {verifyResult.firstBreak && (
-                  <p className="text-xs text-yellow-800 mt-1 font-mono">
+                  <p className="text-xs text-yellow-800 mt-1 font-mono dark:text-yellow-100">
                     Befund bei Audit-ID {verifyResult.firstBreak.auditId} (
                     {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))}) —
                     historisch, durch Checkpoint abgegrenzt.
                   </p>
                 )}
                 {checkpoint && (
-                  <p className="text-xs text-yellow-800 mt-1">
+                  <p className="text-xs text-yellow-800 mt-1 dark:text-yellow-100">
                     Recovery-Checkpoint ab Audit-ID {checkpoint.auditId} gesetzt — der historische
                     Bruch bleibt abgegrenzt.
                   </p>
                 )}
-                <p className="text-xs text-yellow-700 mt-1">
+                <p className="text-xs text-yellow-700 mt-1 dark:text-yellow-200">
                   Zuletzt geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm font-medium text-red-900">
+                <p className="text-sm font-medium text-red-900 dark:text-red-100">
                   {verifyResult.error ? 'Verifikation fehlgeschlagen.' : '⚠ Hash-Chain gebrochen!'}
                 </p>
                 {verifyResult.firstBreak && (
-                  <p className="text-xs text-red-700 mt-1 font-mono">
+                  <p className="text-xs text-red-700 mt-1 font-mono dark:text-red-200">
                     Erster Bruch bei Audit-ID {verifyResult.firstBreak.auditId} (
                     {fmtDateTimeSeconds(new Date(verifyResult.firstBreak.occurredAt))})
                   </p>
                 )}
                 {verifyResult.sealBreaks > 0 && (
-                  <p className="text-xs text-red-700 mt-1">
+                  <p className="text-xs text-red-700 mt-1 dark:text-red-200">
                     {verifyResult.sealBreaks} Tagesversiegelung(en) mit TSA-Problem
                   </p>
                 )}
                 {(verifyResult.policyBreaks ?? []).map((b) => (
-                  <p key={b} className="text-xs text-red-700 mt-1">
+                  <p key={b} className="text-xs text-red-700 mt-1 dark:text-red-200">
                     {b}
                   </p>
                 ))}
                 {verifyResult.error && (
-                  <p className="text-xs text-red-700 mt-1">Fehler: {verifyResult.error}</p>
+                  <p className="text-xs text-red-700 mt-1 dark:text-red-200">
+                    Fehler: {verifyResult.error}
+                  </p>
                 )}
-                <p className="text-xs text-red-700 mt-1">
+                <p className="text-xs text-red-700 mt-1 dark:text-red-200">
                   Geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
                 <form
                   action={createAuditRecoveryCheckpointAction}
-                  className="mt-3 rounded-md border border-red-300 bg-white/70 p-3"
+                  className="mt-3 rounded-md border border-red-300 bg-white/70 p-3 dark:border-red-800 dark:bg-red-950/60"
                 >
-                  <p className="text-xs font-medium text-red-900">Wiederaufnahme markieren</p>
-                  <p className="text-xs text-red-700 mt-1">
+                  <p className="text-xs font-medium text-red-900 dark:text-red-100">
+                    Wiederaufnahme markieren
+                  </p>
+                  <p className="text-xs text-red-700 mt-1 dark:text-red-200">
                     Legt einen Recovery-Checkpoint an: das historische Rot wird damit bernstein
                     abgegrenzt und die Break-Benachrichtigung verstummt.
                   </p>
@@ -364,8 +368,8 @@ export default async function AuditLogPage({
                 </form>
               </>
             )}
-            {pendingVerify && (
-              <p className="text-xs text-secondary mt-2">
+            {pollVerify && (
+              <p className="text-xs text-primary mt-2">
                 Prüfung angestoßen — das Ergebnis erscheint hier, sobald der Hintergrund-Job
                 abgeschlossen ist.
               </p>

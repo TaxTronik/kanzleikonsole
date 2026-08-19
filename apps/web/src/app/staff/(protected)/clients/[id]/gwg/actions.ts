@@ -26,6 +26,7 @@ import { gwgLegalEntityRevision, gwgRiskRevision } from '@/server/gwg/revisions'
 import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
 import { syncGwgRepresentativesTx } from '@/server/gwg/representatives';
 import { cancelOpenGwgInvitesTx } from '@/server/gwg-onboarding/invite-lifecycle';
+import { organizeGwgDocumentsTx } from '@/server/gwg-onboarding/document-folders';
 import {
   staffActionGuard,
   withStaff,
@@ -868,6 +869,28 @@ export async function verifyCheckAction(
       );
       if (decisionErrors.length > 0) throw new ActionError(decisionErrors.join(' '));
       if (check.riskLevel === null) throw new ActionError('Risikobewertung fehlt.');
+
+      // Repariert zugleich ältere bzw. noch im GwG-Wurzelordner liegende
+      // Nachweise. Personenbezogene Ausweise werden vor der Freigabe immer in
+      // GwG/[Name der Person] einsortiert; Rechtsträgernachweise bleiben in GwG.
+      await organizeGwgDocumentsTx(tx, {
+        tenantId,
+        clientId,
+        createdByStaff: staffId,
+        documents: check.idDocuments.flatMap((idDocument) =>
+          idDocument.document?.id
+            ? [
+                {
+                  documentId: idDocument.document.id,
+                  personName:
+                    idDocument.type === 'PERSONALAUSWEIS' || idDocument.type === 'REISEPASS'
+                      ? idDocument.ownerName
+                      : null,
+                },
+              ]
+            : [],
+        ),
+      });
 
       const validForDays = riskValidForDays(check.riskLevel);
       const validUntil = new Date(Date.now() + validForDays * 24 * 60 * 60 * 1000);

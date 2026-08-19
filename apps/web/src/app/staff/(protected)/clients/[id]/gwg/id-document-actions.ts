@@ -16,6 +16,7 @@ import {
   lockCleanGwgEvidenceDocumentsTx,
 } from '@/server/gwg/evidence-documents';
 import { gwgIdentityDocumentSetRevision } from '@/server/gwg/revisions';
+import { organizeGwgDocumentsTx } from '@/server/gwg-onboarding/document-folders';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 
 import {
@@ -284,6 +285,15 @@ export async function addIdDocumentAction(
           data: data.documentIds.map((documentId) => ({ ...sharedData, documentId })),
         });
       }
+      await organizeGwgDocumentsTx(tx, {
+        tenantId,
+        clientId: data.clientId,
+        createdByStaff: staffId,
+        documents: data.documentIds.map((documentId) => ({
+          documentId,
+          personName: subject?.name ?? null,
+        })),
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -536,6 +546,15 @@ export async function extendIdentityDocumentSetAction(
           })),
         });
       }
+      await organizeGwgDocumentsTx(tx, {
+        tenantId,
+        clientId: data.clientId,
+        createdByStaff: staffId,
+        documents: uniqueDocumentIds.map((documentId) => ({
+          documentId,
+          personName: first.ownerName,
+        })),
+      });
 
       await evidenceService.record(tx, {
         tenantId,
@@ -769,6 +788,15 @@ export async function updateIdDocumentsAction(
         'Der Ausweissatz wurde parallel geändert. Bitte Seite neu laden und erneut prüfen.',
       );
     }
+    await organizeGwgDocumentsTx(tx, {
+      tenantId,
+      clientId: data.clientId,
+      createdByStaff: staffId,
+      documents: check.idDocuments.map((document) => ({
+        documentId: document.document!.id,
+        personName: subject.name,
+      })),
+    });
     await resolveNotificationsTx(tx, {
       tenantId,
       resources: check.idDocuments.map((document) => ({

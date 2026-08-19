@@ -40,7 +40,9 @@ export function AuditVerifyAutoRefresh({
         if (res.ok) {
           const data = (await res.json()) as { done?: boolean };
           if (data.done) {
-            router.refresh();
+            // Entfernt den Queue-Marker aus der URL und erzwingt damit eine
+            // neue Server-Navigation mit dem soeben persistierten Ergebnis.
+            router.replace('/staff/admin/audit', { scroll: false });
             return;
           }
         }
@@ -62,7 +64,7 @@ export function AuditVerifyAutoRefresh({
 
   if (!timedOut) return null;
   return (
-    <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 mb-4 text-xs text-yellow-800">
+    <div className="mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/50 dark:text-yellow-100">
       Es liegt noch kein neues Prüfergebnis vor. Läuft der Hintergrund-Dienst (Worker)? Lade die
       Seite später neu, um den aktuellen Stand zu sehen.
     </div>

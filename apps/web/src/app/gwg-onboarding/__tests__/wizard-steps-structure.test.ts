@@ -29,10 +29,11 @@ describe('GwG-Onboarding – Step-Komponentenstruktur', () => {
     expect(wizard).toContain(
       'async function handleIdentityUpload<T extends IdentityUploadSubject>',
     );
-    expect(wizard).toContain('handleIdentityUpload(ownerId, side, file, setOwners)');
+    expect(wizard).toContain('handleIdentityUpload(ownerId, side, file, personName, setOwners)');
     expect(wizard).toContain(
-      'handleIdentityUpload(representativeId, side, file, setRepresentatives)',
+      'handleIdentityUpload(representativeId, side, file, personName, setRepresentatives)',
     );
+    expect(wizard).toContain("uploadOnboardingFile(token, file, 'ID_DOCUMENT', personName)");
     expect(steps).toContain(
       'onOwnerUpload: (ownerId: string, side: IdentitySide, file: File) => void',
     );

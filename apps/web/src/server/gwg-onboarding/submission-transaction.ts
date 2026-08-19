@@ -389,7 +389,6 @@ async function organizeSubmittedDocumentsTx(
       clientId: input.invite.clientId,
       rootFolderId,
       personName: owner.fullName,
-      role: 'OWNER',
       createdByStaff: input.invite.createdByStaff,
     });
     assignFolder(owner.idFrontDocumentId, folderId);
@@ -403,7 +402,6 @@ async function organizeSubmittedDocumentsTx(
       clientId: input.invite.clientId,
       rootFolderId,
       personName: representative.fullName,
-      role: 'REPRESENTATIVE',
       createdByStaff: input.invite.createdByStaff,
     });
     assignFolder(representative.idFrontDocumentId!, folderId);

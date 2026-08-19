@@ -67,6 +67,7 @@ async function uploadOnboardingFile(
   token: string,
   file: File,
   kind: 'ID_DOCUMENT' | 'EXTRA',
+  personName?: string,
 ): Promise<OnboardingUploadResult> {
   if (file.size > MAX_UPLOAD_BYTES) {
     return { ok: false, error: `Datei zu groß (max. ${MAX_UPLOAD_LABEL}).` };
@@ -79,6 +80,7 @@ async function uploadOnboardingFile(
       mimeType: file.type || 'application/octet-stream',
       base64,
       kind,
+      personName,
     });
     if (!result.ok || !result.documentId) {
       return { ok: false, error: result.error ?? 'Upload fehlgeschlagen.' };
@@ -109,7 +111,7 @@ async function discardOnboardingFile(
   }
 }
 
-type IdentityUploadSubject = Pick<BeneficialOwner, 'id' | 'idFront' | 'idBack'>;
+type IdentityUploadSubject = Pick<BeneficialOwner, 'id' | 'fullName' | 'idFront' | 'idBack'>;
 
 interface ClientShape {
   id: string;
@@ -286,10 +288,11 @@ export function OnboardingWizard({
     subjectId: string,
     side: 'front' | 'back',
     file: File,
+    personName: string,
     setSubjects: Dispatch<SetStateAction<T[]>>,
   ) {
     setIdError(subjectId, side, null);
-    const result = await uploadOnboardingFile(token, file, 'ID_DOCUMENT');
+    const result = await uploadOnboardingFile(token, file, 'ID_DOCUMENT', personName);
     if (!result.ok) {
       setIdError(subjectId, side, result.error);
       return;
@@ -505,7 +508,8 @@ export function OnboardingWizard({
           onRemoveOwner={removeOwner}
           onAddOwner={addOwner}
           onOwnerUpload={(ownerId, side, file) => {
-            void handleIdentityUpload(ownerId, side, file, setOwners);
+            const personName = owners.find((owner) => owner.id === ownerId)?.fullName ?? '';
+            void handleIdentityUpload(ownerId, side, file, personName, setOwners);
           }}
           onOwnerUploadRemove={(ownerId, side, documentId) => {
             void handleIdentityRemove(ownerId, side, documentId, setOwners);
@@ -514,7 +518,11 @@ export function OnboardingWizard({
           onRemoveRepresentative={removeRepresentative}
           onAddRepresentative={addRepresentative}
           onRepresentativeUpload={(representativeId, side, file) => {
-            void handleIdentityUpload(representativeId, side, file, setRepresentatives);
+            const representative = representatives.find((entry) => entry.id === representativeId);
+            const personName = representative?.linkedOwnerId
+              ? (owners.find((owner) => owner.id === representative.linkedOwnerId)?.fullName ?? '')
+              : (representative?.fullName ?? '');
+            void handleIdentityUpload(representativeId, side, file, personName, setRepresentatives);
           }}
           onRepresentativeUploadRemove={(representativeId, side, documentId) => {
             void handleIdentityRemove(representativeId, side, documentId, setRepresentatives);

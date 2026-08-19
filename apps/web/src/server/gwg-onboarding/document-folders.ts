@@ -59,17 +59,83 @@ export function ensureGwgPersonFolderTx(
     clientId: string;
     rootFolderId: string;
     personName: string;
-    role: 'OWNER' | 'REPRESENTATIVE';
     createdByStaff: string | null;
   },
 ): Promise<string> {
   const personName = normalizeFolderName(input.personName, 'Unbenannte Person');
-  const roleLabel = input.role === 'OWNER' ? 'wirtschaftlich berechtigt' : 'Vertretung';
   return ensureFolderTx(tx, {
     tenantId: input.tenantId,
     clientId: input.clientId,
     parentId: input.rootFolderId,
-    name: normalizeFolderName(`${personName} – ${roleLabel}`, roleLabel),
+    name: personName,
     createdByStaff: input.createdByStaff,
   });
+}
+
+export async function organizeGwgDocumentsTx(
+  tx: TxClient,
+  input: {
+    tenantId: string;
+    clientId: string;
+    createdByStaff: string | null;
+    documents: readonly {
+      documentId: string;
+      personName?: string | null;
+    }[];
+  },
+): Promise<void> {
+  if (input.documents.length === 0) return;
+
+  const rootFolderId = await ensureGwgRootFolderTx(tx, input);
+  const personFolderByName = new Map<string, string>();
+  const folderByDocumentId = new Map<string, string>();
+
+  for (const document of input.documents) {
+    const personName = document.personName?.trim();
+    let folderId = rootFolderId;
+    if (personName) {
+      const normalizedName = normalizeFolderName(personName, 'Unbenannte Person');
+      const personKey = normalizedName.toLocaleLowerCase('de-DE');
+      folderId = personFolderByName.get(personKey) ?? '';
+      if (!folderId) {
+        folderId = await ensureGwgPersonFolderTx(tx, {
+          tenantId: input.tenantId,
+          clientId: input.clientId,
+          rootFolderId,
+          personName: normalizedName,
+          createdByStaff: input.createdByStaff,
+        });
+        personFolderByName.set(personKey, folderId);
+      }
+    }
+
+    const assignedFolderId = folderByDocumentId.get(document.documentId);
+    if (assignedFolderId && assignedFolderId !== folderId) {
+      throw new Error('GWG_DOCUMENT_FOLDER_CONFLICT');
+    }
+    folderByDocumentId.set(document.documentId, folderId);
+  }
+
+  const documentIdsByFolder = new Map<string, string[]>();
+  for (const [documentId, folderId] of folderByDocumentId) {
+    const documentIds = documentIdsByFolder.get(folderId) ?? [];
+    documentIds.push(documentId);
+    documentIdsByFolder.set(folderId, documentIds);
+  }
+
+  for (const [folderId, documentIds] of documentIdsByFolder) {
+    const updated = await tx.document.updateMany({
+      where: {
+        id: { in: documentIds },
+        tenantId: input.tenantId,
+        clientId: input.clientId,
+        classification: 'GWG_EVIDENCE',
+        deletedAt: null,
+      },
+      data: { folderId },
+    });
+    if (updated.count !== documentIds.length) {
+      throw new Error('GWG_DOCUMENT_FOLDER_ASSIGN_FAILED');
+    }
+  }
 }
