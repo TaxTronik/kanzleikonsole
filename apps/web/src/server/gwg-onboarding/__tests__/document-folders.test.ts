@@ -81,6 +81,18 @@ describe('GwG document folders', () => {
     });
 
     expect(createMany).toHaveBeenCalledTimes(2);
+    expect(createMany).toHaveBeenNthCalledWith(1, {
+      data: [
+        {
+          tenantId: 'tenant-1',
+          clientId: 'client-1',
+          createdByStaff: 'staff-1',
+          parentId: null,
+          name: 'GwG',
+        },
+      ],
+      skipDuplicates: true,
+    });
     expect(updateMany).toHaveBeenCalledWith({
       where: {
         id: { in: ['front-1', 'back-1'] },

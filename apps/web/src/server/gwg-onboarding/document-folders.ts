@@ -46,7 +46,9 @@ export function ensureGwgRootFolderTx(
   },
 ): Promise<string> {
   return ensureFolderTx(tx, {
-    ...input,
+    tenantId: input.tenantId,
+    clientId: input.clientId,
+    createdByStaff: input.createdByStaff,
     parentId: null,
     name: GWG_ROOT_FOLDER_NAME,
   });
