@@ -3,6 +3,7 @@
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { AuthError } from 'next-auth';
 import QRCode from 'qrcode';
 import {
@@ -387,6 +388,13 @@ export interface LoginResult {
   error?: string;
 }
 
+function safeStaffReturnTo(raw: FormDataEntryValue | null): string {
+  if (typeof raw !== 'string') return '/staff/dashboard';
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/staff/dashboard';
+  if (!raw.startsWith('/staff/') || raw.includes('\\')) return '/staff/dashboard';
+  return raw;
+}
+
 export async function loginAction(formData: FormData): Promise<LoginResult> {
   // Rate-Limit pro IP — 5 TOTP-Versuche / 5 Minuten. TOTP-Brute-Force ist
   // teuer (Replay-Schutz + Per-Token-One-Time-Use), bei null-IP weiter
@@ -407,6 +415,8 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
     }
   }
 
+  const returnTo = safeStaffReturnTo(formData.get('returnTo'));
+
   try {
     await staffSignIn('credentials', {
       email: formData.get('email') as string,
@@ -415,17 +425,19 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
       tenantSlug: (formData.get('tenantSlug') as string) || 'default',
       redirect: false,
     });
-    // Cookie wurde durch staffSignIn in der Response gesetzt.
-    // Client macht jetzt window.location.href = '/staff/dashboard'
-    // (Hard-Reload, damit Browser den Cookie zuverlässig im nächsten Request mitsendet).
     if (!DEV_SKIP_TOTP) {
       await resetRateLimit(ip ? `staff-totp:${ip}` : 'staff-totp:global');
     }
-    return { ok: true };
   } catch (error) {
     if (error instanceof AuthError) {
       return { ok: false, error: 'Ungültige Anmeldedaten oder Code.' };
     }
     throw error;
   }
+
+  // Cookie und Navigation in derselben Server-Action-Antwort abschließen.
+  // Ein nachgelagertes window.location.href ließ Next zuvor nach der Cookie-
+  // Mutation kurz den aktuellen RSC-Baum aktualisieren; dabei konnte die
+  // globale Error-Boundary sichtbar werden, bevor der Hard-Reload begann.
+  redirect(returnTo);
 }

@@ -43,7 +43,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="de" suppressHydrationWarning>
       <head>
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_JS }} />
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_JS }}
+        />
       </head>
       <body>
         <ThemeSync />

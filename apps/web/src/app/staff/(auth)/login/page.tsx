@@ -57,9 +57,9 @@ export default function StaffLoginPage() {
         fd.set('email', email);
         fd.set('password', password);
         fd.set('tenantSlug', tenantSlug);
+        fd.set('returnTo', returnTo);
         const login = await loginAction(fd);
         if (login.error) setError(login.error);
-        else if (login.ok) window.location.href = returnTo;
         return;
       }
       if (result.totpRequired) {
@@ -187,11 +187,6 @@ export default function StaffLoginPage() {
                 const result = await loginAction(fd);
                 if (result.error) {
                   setError(result.error);
-                } else if (result.ok) {
-                  // V-4: zurück zum ursprünglich angefragten Pfad (Deep-Link
-                  // nach Session-Expire). Falls keiner / invalid →
-                  // /staff/dashboard.
-                  window.location.href = returnTo;
                 }
               });
             }}
@@ -200,6 +195,7 @@ export default function StaffLoginPage() {
             <input type="hidden" name="email" value={email} />
             <input type="hidden" name="password" value={password} />
             <input type="hidden" name="tenantSlug" value={tenantSlug} />
+            <input type="hidden" name="returnTo" value={returnTo} />
             <p className="text-sm text-secondary text-center mb-4">
               Gib den 6-stelligen Code aus deiner Authenticator-App ein.
             </p>

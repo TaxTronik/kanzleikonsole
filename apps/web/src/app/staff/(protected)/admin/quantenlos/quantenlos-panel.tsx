@@ -295,15 +295,27 @@ export function QuantenlosPanel({
             <span className="badge badge-gray">Kein Token hinterlegt</span>
           )}
         </div>
-        <div className="flex items-end gap-2 mt-3">
+        <form
+          autoComplete="off"
+          className="flex items-end gap-2 mt-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            tokenSpeichern();
+          }}
+        >
           <div className="flex-1 max-w-md">
             <label className="label dark:!text-white" htmlFor="ibm-token">
               {ibmToken.hinterlegt ? 'Token ersetzen' : 'Token hinterlegen'}
             </label>
             <input
               id="ibm-token"
+              name="ibm-quantum-api-token"
               type="password"
-              autoComplete="off"
+              autoComplete="new-password"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-1p-ignore
+              data-lpignore="true"
               className="input text-xs font-mono"
               placeholder="IBM-Quantum-API-Token"
               value={tokenEingabe}
@@ -311,13 +323,13 @@ export function QuantenlosPanel({
             />
           </div>
           <button
-            onClick={tokenSpeichern}
+            type="submit"
             disabled={tokenBusy || tokenEingabe.trim().length < 8}
             className="btn-primary text-xs"
           >
             {tokenBusy ? 'Speichert …' : 'Speichern'}
           </button>
-        </div>
+        </form>
         {tokenFehler && (
           <p className="text-xs text-red-600 dark:text-red-300 mt-2">{tokenFehler}</p>
         )}

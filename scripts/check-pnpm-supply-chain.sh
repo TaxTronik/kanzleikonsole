@@ -70,8 +70,9 @@ awk '
 
 cat > "$TMP_DIR/min-age-exclude-expected" <<'EOF'
 brace-expansion@1.1.18 || 5.0.9
+deepmerge-ts@8.0.0
 fast-uri@3.1.5
-nanoid@3.3.17
+nanoid@3.3.18
 nodemailer@9.0.1
 postcss@8.5.23
 undici@8.9.0

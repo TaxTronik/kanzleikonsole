@@ -18,7 +18,8 @@ minimumReleaseAgeExclude:
   - undici@8.9.0
   - fast-uri@3.1.5
   - postcss@8.5.23
-  - nanoid@3.3.17
+  - nanoid@3.3.18
+  - deepmerge-ts@8.0.0
   # Beide von ESLint benoetigten Zweige muessen in EINER Regel stehen: pnpm
   # wertet pro Paketname nur die erste passende Ausnahme aus.
   - 'brace-expansion@1.1.18 || 5.0.9'
@@ -80,8 +81,13 @@ overrides:
   js-yaml: '4.3.1'
   # Beide von PostCSS bzw. docx benoetigten nanoid-Zweige separat auf die
   # kleinsten Releases mit den jeweiligen Security-Fixes pinnen.
-  nanoid@3: '3.3.17'
+  nanoid@3: '3.3.18'
   nanoid@5: '5.1.16'
+  # @prisma/config 7.9.1 pinnt noch den verwundbaren 7.x-Zweig exakt. 8.0.0
+  # behebt die Stack-Erschöpfung bei rekursiven Objektgraphen; Prisma-Config-
+  # Laden und -Generierung werden nach dem Override als Kompatibilitätsgate
+  # ausgeführt.
+  deepmerge-ts: '8.0.0'
   uuid: '^11.1.1'
   # fast-uri <3.1.5 ist verwundbar (mehrere Host-Confusion-Advisories);
   # transitiv via Prisma -> @prisma/streams-local -> ajv. 3.x-Zweig halten,

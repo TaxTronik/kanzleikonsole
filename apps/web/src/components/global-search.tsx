@@ -8,7 +8,7 @@ import {
   type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Search,
   Loader2,
@@ -38,6 +38,14 @@ const ICON: Record<SearchResult['type'], ComponentType<{ className?: string }>> 
 };
 
 export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; href: string }[] }) {
+  const pathname = usePathname();
+  // Das persistente Staff-Layout behält sonst Query und auch browserseitig
+  // autofillte DOM-Werte über Seitenwechsel hinweg. Ein Pfadwechsel montiert
+  // deshalb bewusst eine frische Suche.
+  return <GlobalSearchForPath key={pathname} navItems={navItems} />;
+}
+
+function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: string }[] }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -177,6 +185,9 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
         <input
           ref={inputRef}
           type="search"
+          name="taxtronik-global-search"
+          autoComplete="off"
+          aria-label="Globale Suche"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
