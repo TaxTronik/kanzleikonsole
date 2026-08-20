@@ -52,6 +52,11 @@ export interface MarkingDTO {
   status: RiskStatus;
   notiz: string | null;
   verantwortlichId: string | null;
+  delegation: {
+    reminderId: string;
+    dueDate: string;
+    doneAt: string | null;
+  } | null;
   farbe: string | null;
   label: string | null;
 }

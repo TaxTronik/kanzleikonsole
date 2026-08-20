@@ -13,6 +13,7 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
 import { prepareGwgInviteBindingTx } from '@/server/gwg-onboarding/invite-binding';
+import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
@@ -149,6 +150,7 @@ const GwgSchema = z.object({
   clientId: z.string().uuid(),
   inviteName: z.string().min(2).max(200),
   inviteEmail: z.string().email().max(255),
+  expectedLatestInviteId: z.string().uuid().optional().or(z.literal('')).nullable(),
 });
 
 export async function onboardingSendGwgAction(formData: FormData) {
@@ -160,6 +162,7 @@ export async function onboardingSendGwgAction(formData: FormData) {
     clientId: formData.get('clientId'),
     inviteName: formData.get('inviteName'),
     inviteEmail: formData.get('inviteEmail'),
+    expectedLatestInviteId: formData.get('expectedLatestInviteId'),
   });
   if (!parsed.success) {
     throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
@@ -170,6 +173,17 @@ export async function onboardingSendGwgAction(formData: FormData) {
 
   const issuedInvite = await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, g.session, parsed.data.clientId);
+    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: parsed.data.clientId });
+    const latestInvite = await tx.gwgOnboardingInvite.findFirst({
+      where: { tenantId, clientId: parsed.data.clientId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    if ((latestInvite?.id ?? '') !== (parsed.data.expectedLatestInviteId || '')) {
+      throw new ActionError(
+        'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie den Schritt neu.',
+      );
+    }
     const binding = await prepareGwgInviteBindingTx(tx, {
       tenantId,
       clientId: parsed.data.clientId,

@@ -159,8 +159,12 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
       // Urlaubsantrag nicht selbst entscheiden — auch in kleinen Kanzleien
       // muss die Genehmigung von einer anderen Person kommen.
       if (before.staffId === staffId) return;
-      const updated = await tx.vacationRequest.update({
-        where: { id: parsed.data.requestId },
+      // Eine Entscheidung ist genau einmal aus PENDING heraus zulässig. Die
+      // separate Rücknahme-Action bleibt davon unberührt und darf einen Antrag
+      // auch nach einer Genehmigung auf Wunsch des Mitarbeiters stornieren.
+      if (before.status !== 'PENDING') return;
+      const decision = await tx.vacationRequest.updateMany({
+        where: { id: parsed.data.requestId, status: 'PENDING' },
         data: {
           status,
           decidedBy: staffId,
@@ -168,19 +172,20 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
           decisionNote: parsed.data.note || null,
         },
       });
+      if (decision.count === 0) return;
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
         actorId: staffId,
         action: status === 'APPROVED' ? 'vacation.approve' : 'vacation.reject',
         resourceType: 'vacation_request',
-        resourceId: updated.id,
+        resourceId: before.id,
         before: { status: before.status },
-        after: { status: updated.status },
+        after: { status },
       });
       await resolveNotificationsTx(tx, {
         tenantId,
-        resources: [{ resourceType: 'vacation_request', resourceId: updated.id }],
+        resources: [{ resourceType: 'vacation_request', resourceId: before.id }],
       });
       // iter87: Ergebnis an die antragstellende Person (Kind existierte seit
       // jeher im Enum, wurde aber nie gesendet).
@@ -192,7 +197,7 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
         body: parsed.data.note || null,
         href: '/staff/absences',
         resourceType: 'vacation_request',
-        resourceId: updated.id,
+        resourceId: before.id,
       });
     },
     { requirePermission: 'ABSENCE_DECIDE', revalidate: '/staff/absences' },
@@ -216,23 +221,25 @@ export async function cancelVacationAction(formData: FormData): Promise<void> {
       });
       if (!before) return;
       if (before.staffId !== staffId && !isStaffAdmin(session)) return;
-      const updated = await tx.vacationRequest.update({
-        where: { id },
+      if (before.status === 'CANCELLED') return;
+      const cancelled = await tx.vacationRequest.updateMany({
+        where: { id, status: before.status },
         data: { status: 'CANCELLED' },
       });
+      if (cancelled.count === 0) return;
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
         actorId: staffId,
         action: 'vacation.cancel',
         resourceType: 'vacation_request',
-        resourceId: updated.id,
+        resourceId: before.id,
         before: { status: before.status },
         after: { status: 'CANCELLED' },
       });
       await resolveNotificationsTx(tx, {
         tenantId,
-        resources: [{ resourceType: 'vacation_request', resourceId: updated.id }],
+        resources: [{ resourceType: 'vacation_request', resourceId: before.id }],
       });
     },
     { revalidate: '/staff/absences' },

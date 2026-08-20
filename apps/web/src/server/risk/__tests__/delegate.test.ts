@@ -42,6 +42,7 @@ const MARKING = {
 
 function mockTx() {
   const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(0),
     riskMarking: { findUnique: vi.fn().mockResolvedValue(MARKING), update: vi.fn() },
     staffUser: { findFirst: vi.fn().mockResolvedValue({ id: 'assignee' }) },
     clientReminder: { create: vi.fn().mockResolvedValue({ id: 'reminder-1' }) },
@@ -102,6 +103,20 @@ describe('delegateMarking', () => {
     mockTx();
     await delegateMarking(ctx, { ...input, assigneeStaffId: ACTOR });
 
+    expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
+  it('legt keine zweite Wiedervorlage an, solange die Delegation offen ist', async () => {
+    const tx = mockTx();
+    tx.riskMarking.findUnique.mockResolvedValue({
+      ...MARKING,
+      reminder: { id: 'reminder-open', doneAt: null },
+    });
+
+    await expect(delegateMarking(ctx, input)).rejects.toThrow(/bereits eine Delegation offen/);
+
+    expect(tx.clientReminder.create).not.toHaveBeenCalled();
+    expect(tx.riskMarking.update).not.toHaveBeenCalled();
     expect(mocks.notify).not.toHaveBeenCalled();
   });
 });

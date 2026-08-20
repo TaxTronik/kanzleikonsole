@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
@@ -90,7 +91,13 @@ export async function saveScheduleConfigAction(
         // alle noch nicht erledigten Termine wegputzen, damit der Kalender
         // sauber ist. Erledigte Termine bleiben (Audit-relevant).
         if (old && old.active) {
-          const removedCount = await removeReschedulableDeadlines(tx, clientId, u.kind, now);
+          const removedCount = await removeReschedulableDeadlines(
+            tx,
+            tenantId,
+            clientId,
+            u.kind,
+            now,
+          );
           await tx.taxScheduleConfig.update({
             where: { id: old.id },
             data: { active: false },
@@ -124,7 +131,14 @@ export async function saveScheduleConfigAction(
           // Fristverschiebende Änderung → auch laufende (IN_PROGRESS) Zukunfts-
           // termine neu datieren, damit keiner mit veraltetem Fälligkeitsdatum
           // stehen bleibt. Sie kommen korrekt neu materialisiert zurück.
-          removedCount = await removeReschedulableDeadlines(tx, clientId, u.kind, now, true);
+          removedCount = await removeReschedulableDeadlines(
+            tx,
+            tenantId,
+            clientId,
+            u.kind,
+            now,
+            true,
+          );
         }
         // Bei abgeschalteter Auto-Anforderung sind die Tage-Felder im Formular
         // disabled (nicht submitted) — gespeicherte Werte NICHT überschreiben,
@@ -255,6 +269,7 @@ export async function saveScheduleConfigAction(
 // materialize.ts, das vergangene Termine nie neu erzeugt.
 async function removeReschedulableDeadlines(
   tx: Prisma.TransactionClient,
+  tenantId: string,
   clientId: string,
   kind: TaxScheduleKind,
   now: Date,
@@ -282,6 +297,16 @@ async function removeReschedulableDeadlines(
       data: { status: 'CANCELLED' },
     });
   }
+  await resolveNotificationsTx(tx, {
+    tenantId,
+    resources: [
+      ...toRemove.map((deadline) => ({
+        resourceType: 'tax_deadline',
+        resourceId: deadline.id,
+      })),
+      ...requestIds.map((requestId) => ({ resourceType: 'request', resourceId: requestId })),
+    ],
+  });
   await tx.taxDeadline.deleteMany({ where: { id: { in: toRemove.map((d) => d.id) } } });
   return toRemove.length;
 }

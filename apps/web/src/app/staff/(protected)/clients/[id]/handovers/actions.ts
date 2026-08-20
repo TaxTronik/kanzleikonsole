@@ -93,6 +93,7 @@ export async function updateHandoverStatusAction(input: {
           status: true,
           clientId: true,
           label: true,
+          notifiedContactEmail: true,
           client: {
             select: {
               name: true,
@@ -119,7 +120,7 @@ export async function updateHandoverStatusAction(input: {
 
       // Wenn READY: ersten aktiven Kontakt als Empfänger merken
       const primary = before.client.contacts[0];
-      if (parsed.data.status === 'READY' && primary) {
+      if (parsed.data.status === 'READY' && primary && !before.notifiedContactEmail) {
         data.notifiedContactEmail = primary.email;
         notifyPayload = {
           clientId: before.clientId,
@@ -129,7 +130,13 @@ export async function updateHandoverStatusAction(input: {
         };
       }
 
-      await tx.clientHandover.update({ where: { id: parsed.data.id }, data });
+      const changed = await tx.clientHandover.updateMany({
+        where: { id: parsed.data.id, status: before.status },
+        data,
+      });
+      if (changed.count === 0) {
+        throw new ActionError('Status wurde parallel geändert. Bitte Seite neu laden.');
+      }
 
       const auditAction =
         parsed.data.status === 'IN_PROGRESS'

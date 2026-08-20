@@ -133,7 +133,12 @@ export async function loadAnalysis(ctx: TenantContext, analysisId: string) {
     tx.riskAnalysis.findUnique({
       where: { id: analysisId },
       include: {
-        markings: { orderBy: { start: 'asc' } },
+        markings: {
+          orderBy: { start: 'asc' },
+          include: {
+            reminder: { select: { id: true, dueDate: true, doneAt: true } },
+          },
+        },
       },
     }),
   );

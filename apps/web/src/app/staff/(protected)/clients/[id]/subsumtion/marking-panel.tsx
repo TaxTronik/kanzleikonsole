@@ -1,12 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Save, Send, BookPlus, Trash2, AlertTriangle, Webhook } from 'lucide-react';
+import Link from 'next/link';
+import {
+  X,
+  Save,
+  Send,
+  BookPlus,
+  Trash2,
+  AlertTriangle,
+  Webhook,
+  CalendarClock,
+  ArrowRight,
+} from 'lucide-react';
 import { updateMarkingAction, deleteMarkingAction, delegateAction } from './actions';
 import { pushDefinitionAction } from './norm-actions';
 import { NormRefList, KatalogReviewControl } from './norm-ref-editor';
 import { ResearchComposer } from './research-composer';
 import { ResearchReviewSection } from './research-review';
+import { fmtDateShort } from '@/lib/fmt';
 import {
   type MarkingDTO,
   type ResearchResultDTO,
@@ -152,6 +164,13 @@ export function MarkingPanel(props: {
           <AlertTriangle className="h-3.5 w-3.5" /> Fachlich umstrittene Stelle (Streit).
         </p>
       )}
+      <DelegationStatus
+        delegation={m.delegation}
+        verantwortlichId={m.verantwortlichId}
+        staffOptions={staffOptions}
+        canDefine={canWrite && engineConfigured}
+        onDefine={() => setShowDefine(true)}
+      />
       <NormRefList
         clientId={clientId}
         markingId={m.id}
@@ -302,13 +321,10 @@ export function MarkingPanel(props: {
             <button type="button" onClick={save} disabled={pending} className="btn-primary text-xs">
               <Save className="h-3.5 w-3.5" /> Speichern
             </button>
-            <button
-              type="button"
+            <DelegateToggleButton
+              delegation={m.delegation}
               onClick={() => setShowDelegate((v) => !v)}
-              className="btn-secondary text-xs"
-            >
-              <Send className="h-3.5 w-3.5" /> Zuweisen
-            </button>
+            />
           </>
         )}
         {/* Recherche ist die Aufgabe der zugewiesenen Person — der einzige
@@ -349,23 +365,23 @@ export function MarkingPanel(props: {
         )}
       </div>
 
-      {showDelegate && (
-        <DelegateForm
-          clientId={clientId}
-          analysisId={analysisId}
-          markingId={m.id}
-          staffOptions={staffOptions}
-          pending={pending}
-          start={start}
-          onDone={(r) => {
-            flash(r, 'An Mitarbeiter zugewiesen — Wiedervorlage angelegt.');
-            if (r.ok) {
-              setShowDelegate(false);
-              onChanged();
-            }
-          }}
-        />
-      )}
+      <DelegateFormSlot
+        show={showDelegate}
+        delegation={m.delegation}
+        clientId={clientId}
+        analysisId={analysisId}
+        markingId={m.id}
+        staffOptions={staffOptions}
+        pending={pending}
+        start={start}
+        onDone={(r) => {
+          flash(r, 'An Mitarbeiter zugewiesen — Wiedervorlage angelegt.');
+          if (r.ok) {
+            setShowDelegate(false);
+            onChanged();
+          }
+        }}
+      />
       {showResearch && (
         <ResearchComposer
           clientId={clientId}
@@ -400,6 +416,82 @@ export function MarkingPanel(props: {
       )}
     </div>
   );
+}
+
+function delegationIsOpen(delegation: MarkingDTO['delegation']): boolean {
+  return delegation != null && delegation.doneAt == null;
+}
+
+function DelegationStatus(props: {
+  delegation: MarkingDTO['delegation'];
+  verantwortlichId: string | null;
+  staffOptions: Array<{ id: string; fullName: string }>;
+  canDefine: boolean;
+  onDefine: () => void;
+}) {
+  if (!props.delegation) return null;
+  const open = delegationIsOpen(props.delegation);
+  const responsibleName = props.staffOptions.find(
+    (staff) => staff.id === props.verantwortlichId,
+  )?.fullName;
+  return (
+    <div
+      className={
+        open
+          ? 'rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/25 p-3 text-xs text-amber-950 dark:text-amber-100'
+          : 'rounded-md border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/25 p-3 text-xs text-emerald-950 dark:text-emerald-100'
+      }
+    >
+      <p className="font-medium inline-flex items-center gap-1.5">
+        <CalendarClock className="h-3.5 w-3.5" />
+        {open ? 'Recherche delegiert — Antwort ausstehend' : 'Delegation erledigt'}
+      </p>
+      <p className="mt-1 opacity-90">
+        {responsibleName ? `Zuständig: ${responsibleName} · ` : ''}
+        Fällig am {fmtDateShort(new Date(props.delegation.dueDate))}.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Link
+          href={`/staff/reminders/${props.delegation.reminderId}`}
+          className="font-medium underline underline-offset-2 inline-flex items-center gap-1"
+        >
+          Wiedervorlage öffnen <ArrowRight className="h-3 w-3" />
+        </Link>
+        {props.canDefine && (
+          <button
+            type="button"
+            onClick={props.onDefine}
+            className="font-medium underline underline-offset-2"
+          >
+            Definition direkt anlegen
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DelegateToggleButton(props: {
+  delegation: MarkingDTO['delegation'];
+  onClick: () => void;
+}) {
+  if (delegationIsOpen(props.delegation)) return null;
+  return (
+    <button type="button" onClick={props.onClick} className="btn-secondary text-xs">
+      <Send className="h-3.5 w-3.5" /> Zuweisen
+    </button>
+  );
+}
+
+function DelegateFormSlot(
+  props: Parameters<typeof DelegateForm>[0] & {
+    show: boolean;
+    delegation: MarkingDTO['delegation'];
+  },
+) {
+  if (!props.show || delegationIsOpen(props.delegation)) return null;
+  const { show: _show, delegation: _delegation, ...delegateProps } = props;
+  return <DelegateForm {...delegateProps} />;
 }
 
 export function Select({

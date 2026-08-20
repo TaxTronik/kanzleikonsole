@@ -31,6 +31,7 @@ function mk(
     status: 'OFFEN',
     notiz: null,
     verantwortlichId: null,
+    delegation: null,
     farbe: null,
     label: null,
   };

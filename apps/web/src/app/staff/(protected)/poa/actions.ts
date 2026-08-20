@@ -529,7 +529,10 @@ export async function createPoaAction(
   );
 }
 
-const SendSchema = z.object({ poaId: z.string().uuid() });
+const SendSchema = z.object({
+  poaId: z.string().uuid(),
+  expectedUpdatedAt: z.string().datetime(),
+});
 
 export async function sendForSignatureAction(formData: FormData): Promise<ActionResult> {
   const g = await staffActionGuard();
@@ -547,6 +550,7 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
   if (!parsed.ok) return { ok: false, error: 'Ungültig.' };
 
   const { poaId } = parsed.data;
+  const expectedUpdatedAt = new Date(parsed.data.expectedUpdatedAt);
 
   // Token im Klartext, Hash in DB
   const rawToken = randomBytes(32).toString('base64url');
@@ -613,7 +617,11 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
       // werden (sonst frischer Signing-Token für eine bereits signierte
       // Vollmacht → Beweisspur beschädigt).
       const claim = await tx.powerOfAttorney.updateMany({
-        where: { id: poaId, status: { in: ['DRAFT', 'SENT'] } },
+        where: {
+          id: poaId,
+          status: { in: ['DRAFT', 'SENT'] },
+          updatedAt: expectedUpdatedAt,
+        },
         data: {
           status: 'SENT',
           signingTokenHash: tokenHash,
@@ -657,7 +665,7 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
   }
 
   const link = `${portalBaseUrl}/poa/sign?token=${encodeURIComponent(rawToken)}`;
-  await sendTemplateMail({
+  const delivery = await sendTemplateMail({
     tenantId,
     clientId: sent.poa.clientId,
     slug: 'poa-sign',
@@ -675,6 +683,13 @@ export async function sendForSignatureAction(formData: FormData): Promise<Action
         'Sehr geehrte/r {{contact.fullName}},\n\nbitte signieren Sie die anliegende Vollmacht über folgenden Link:\n\n{{link}}\n\nDer Link ist {{expiresHours}} Stunden gültig.',
     },
   });
+  if (!delivery.ok) {
+    return {
+      ok: false,
+      error:
+        'Die Vollmacht wurde vorbereitet, die E-Mail konnte aber nicht zugestellt werden. Bitte Seite neu laden und erneut senden.',
+    };
+  }
 
   revalidatePath('/staff/poa');
   revalidatePath(`/staff/poa/${poaId}`);

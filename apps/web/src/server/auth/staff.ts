@@ -29,7 +29,6 @@ import {
   resetRateLimit,
   staffPasswordAccountRateLimitKey,
 } from '@/server/rate-limit';
-import { fireAndForget } from '@/server/util/fire-and-forget';
 
 // DEV-/E2E-only: TOTP-Bypass fuer lokale Entwicklung und den lokalen CI-E2E-
 // Lauf. In echter Produktion bleibt der Bypass aus; der CI-Sonderfall braucht
@@ -199,9 +198,6 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
   return session;
 }
 
-// Fire-and-forget DB-Updates (Q6): Helfer liegt jetzt zentral in
-// @/server/util/fire-and-forget (wird auch von Mail-Side-Effects genutzt).
-
 const staffConfig: NextAuthConfig = {
   basePath: '/api/auth/staff',
   // Auth.js v5 verlangt trustHost=true. Der vorgeschaltete Proxy pinnt den
@@ -281,16 +277,13 @@ const staffConfig: NextAuthConfig = {
           // Account-gebundener Lockout (S2): IP-RL allein hilft nicht gegen
           // verteilte Brute-Force. Fehler werden geloggt, nicht geschluckt.
           // RF-12: zählt UND schreibt auth.login.failure(/.lockout) in die Chain.
-          fireAndForget(
-            'recordFailedLogin',
-            recordFailedLoginAudited({
-              tenantId: tenant.id,
-              staffUserId: staffUser.id,
-              email: staffUser.email,
-              ip,
-              reason: 'password',
-            }),
-          );
+          await recordFailedLoginAudited({
+            tenantId: tenant.id,
+            staffUserId: staffUser.id,
+            email: staffUser.email,
+            ip,
+            reason: 'password',
+          });
           return null;
         }
 
@@ -303,7 +296,7 @@ const staffConfig: NextAuthConfig = {
           );
           await resetRateLimit(ip ? `staff-authorize:${ip}` : 'staff-authorize:global');
           await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
-          fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
+          await resetFailedLogin(prismaOwner, staffUser.id);
           // RF-12: auch der Dev-Login landet in der Chain (method markiert ihn).
           await prismaOwner.$transaction((tx) =>
             evidenceService.record(tx, {
@@ -360,16 +353,13 @@ const staffConfig: NextAuthConfig = {
         }
 
         if (!totpValid && usedBackupIndex < 0) {
-          fireAndForget(
-            'recordFailedLogin (TOTP)',
-            recordFailedLoginAudited({
-              tenantId: tenant.id,
-              staffUserId: staffUser.id,
-              email: staffUser.email,
-              ip,
-              reason: 'totp',
-            }),
-          );
+          await recordFailedLoginAudited({
+            tenantId: tenant.id,
+            staffUserId: staffUser.id,
+            email: staffUser.email,
+            ip,
+            reason: 'totp',
+          });
           return null;
         }
 
@@ -386,16 +376,13 @@ const staffConfig: NextAuthConfig = {
             return null;
           }
           if (!fresh) {
-            fireAndForget(
-              'recordFailedLogin (TOTP replay)',
-              recordFailedLoginAudited({
-                tenantId: tenant.id,
-                staffUserId: staffUser.id,
-                email: staffUser.email,
-                ip,
-                reason: 'totp_replay',
-              }),
-            );
+            await recordFailedLoginAudited({
+              tenantId: tenant.id,
+              staffUserId: staffUser.id,
+              email: staffUser.email,
+              ip,
+              reason: 'totp_replay',
+            });
             return null;
           }
         } else {
@@ -452,16 +439,13 @@ const staffConfig: NextAuthConfig = {
               { staffId: staffUser.id },
               'staff-auth: TOTP-Backup-Code Race verloren — Login abgewiesen',
             );
-            fireAndForget(
-              'recordFailedLogin (backup race)',
-              recordFailedLoginAudited({
-                tenantId: tenant.id,
-                staffUserId: staffUser.id,
-                email: staffUser.email,
-                ip,
-                reason: 'backup_code_race',
-              }),
-            );
+            await recordFailedLoginAudited({
+              tenantId: tenant.id,
+              staffUserId: staffUser.id,
+              email: staffUser.email,
+              ip,
+              reason: 'backup_code_race',
+            });
             return null;
           }
           log.warn(
@@ -470,11 +454,13 @@ const staffConfig: NextAuthConfig = {
           );
         }
 
-        // Erfolg → Counter resetten (fire-and-forget mit Log) + Last-Login
-        // schreiben. RF-12: der Login-Erfolg gehört in die Audit-Hash-Chain
+        // Erfolg → Counter vollständig zurücksetzen, bevor der Login als
+        // erfolgreich zurückgegeben wird. Sonst kann ein noch laufender
+        // Fehlversuch-Write den erfolgreichen Reset zeitlich überholen.
+        // RF-12: der Login-Erfolg gehört in die Audit-Hash-Chain
         // (auth.login.success) — in DERSELBEN Tx wie der lastLoginAt-Write
         // (Record-Muster wie überall) und deshalb awaited statt fire-and-forget.
-        fireAndForget('resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
+        await resetFailedLogin(prismaOwner, staffUser.id);
         await resetRateLimit(ip ? `staff-authorize:${ip}` : 'staff-authorize:global');
         await prismaOwner.$transaction(async (tx) => {
           await tx.staffUser.update({

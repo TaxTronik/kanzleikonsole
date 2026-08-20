@@ -151,7 +151,11 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
 
       <div className="flex flex-wrap gap-2">
         {canManagePoa && !expiredByDate && (poa.status === 'DRAFT' || poa.status === 'SENT') && (
-          <SendPoaForm poaId={poa.id} isResend={poa.status === 'SENT'} />
+          <SendPoaForm
+            poaId={poa.id}
+            isResend={poa.status === 'SENT'}
+            expectedUpdatedAt={poa.updatedAt.toISOString()}
+          />
         )}
         {canManagePoa && poa.status !== 'REVOKED' && poa.status !== 'EXPIRED' && (
           <RevokePoaForm poaId={poa.id} subject={poa.subject} />

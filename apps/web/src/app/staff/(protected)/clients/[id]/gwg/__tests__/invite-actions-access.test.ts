@@ -126,6 +126,34 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
     expect(tx.gwgOnboardingInvite.updateMany).not.toHaveBeenCalled();
   });
 
+  it('stellt mit einem veralteten Seitenstand keinen zweiten Token aus', async () => {
+    const tx = {
+      gwgOnboardingInvite: {
+        findFirst: vi.fn().mockResolvedValue({ id: INVITE_ID }),
+        create: vi.fn(),
+      },
+    };
+    m.withTenantContext.mockImplementation(
+      async (_ctx: unknown, callback: (transaction: typeof tx) => unknown) => callback(tx),
+    );
+
+    const result = await sendInviteAction({
+      clientId: CLIENT_ID,
+      inviteName: 'Rey Koxha',
+      inviteEmail: 'rey@example.test',
+      expectedLatestInviteId: null,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie die Seite neu.',
+    });
+    expect(m.lockLifecycle).toHaveBeenCalledOnce();
+    expect(m.prepareBinding).not.toHaveBeenCalled();
+    expect(m.prepareIssue).not.toHaveBeenCalled();
+    expect(tx.gwgOnboardingInvite.create).not.toHaveBeenCalled();
+  });
+
   it('wartet den Outbox-Write ab und koppelt ihn nicht an den best-effort Mailversand', async () => {
     let resolveOutbox!: (value: {
       eventId: string;

@@ -39,11 +39,22 @@ export async function delegateMarking(
   input: DelegateMarkingInput,
 ): Promise<DelegateMarkingResult> {
   return withTenantContext(ctx, async (tx) => {
+    // Ein Marking darf höchstens eine offene Delegation besitzen. Der
+    // transaktionsgebundene Lock schließt auch parallele Doppelklicks, bevor
+    // beide Aufrufe jeweils eine Wiedervorlage anlegen könnten.
+    const delegationLock = `risk-marking-delegation:${ctx.tenantId}:${input.markingId}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${delegationLock}, 0))`;
     const marking = await tx.riskMarking.findUnique({
       where: { id: input.markingId },
-      include: { analysis: { select: { id: true, clientId: true, documentId: true } } },
+      include: {
+        analysis: { select: { id: true, clientId: true, documentId: true } },
+        reminder: { select: { id: true, doneAt: true } },
+      },
     });
     if (!marking) throw new Error('Markierung nicht gefunden.');
+    if (marking.reminder && !marking.reminder.doneAt) {
+      throw new Error('Für diese Markierung ist bereits eine Delegation offen.');
+    }
 
     const clientId = marking.analysis.clientId;
     if (!clientId) {

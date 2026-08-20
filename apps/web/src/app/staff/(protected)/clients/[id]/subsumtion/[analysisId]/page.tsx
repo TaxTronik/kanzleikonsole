@@ -201,6 +201,13 @@ export default async function AnalysisPage({
         status: m.status,
         notiz: m.notiz,
         verantwortlichId: m.verantwortlichId,
+        delegation: m.reminder
+          ? {
+              reminderId: m.reminder.id,
+              dueDate: m.reminder.dueDate.toISOString(),
+              doneAt: m.reminder.doneAt?.toISOString() ?? null,
+            }
+          : null,
         farbe: m.farbe,
         label: m.label,
       }),

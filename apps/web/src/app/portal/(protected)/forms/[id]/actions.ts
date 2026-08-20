@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
@@ -18,29 +18,19 @@ const Schema = z.object({
   answers: z.record(z.string(), z.unknown()),
 });
 
-async function loadSubmissionAndCheck(
-  submissionId: string,
-  tenantId: string,
-  contactId: string,
-  clientId: string,
-) {
-  return withTenantContext(
-    { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-    async (tx) => {
-      const sub = await tx.formSubmission.findUnique({
-        where: { id: submissionId },
-        include: {
-          template: { include: { fields: { orderBy: { position: 'asc' } } } },
-        },
-      });
-      if (!sub) throw new ActionError('Formular nicht gefunden.');
-      if (sub.clientId !== clientId) throw new ActionError('Kein Zugriff.');
-      if (sub.status === 'SUBMITTED' || sub.status === 'REVIEWED') {
-        throw new ActionError('Formular wurde bereits übermittelt.');
-      }
-      return sub;
+async function loadSubmissionAndCheckTx(tx: TxClient, submissionId: string, clientId: string) {
+  const sub = await tx.formSubmission.findUnique({
+    where: { id: submissionId },
+    include: {
+      template: { include: { fields: { orderBy: { position: 'asc' } } } },
     },
-  );
+  });
+  if (!sub) throw new ActionError('Formular nicht gefunden.');
+  if (sub.clientId !== clientId) throw new ActionError('Kein Zugriff.');
+  if (sub.status === 'SUBMITTED' || sub.status === 'REVIEWED') {
+    throw new ActionError('Formular wurde bereits übermittelt.');
+  }
+  return sub;
 }
 
 export async function saveSubmissionDraftAction(
@@ -48,7 +38,7 @@ export async function saveSubmissionDraftAction(
 ): Promise<ActionResult> {
   const g = await portalActionGuard();
   if (!g.ok) return g;
-  const { tenantId, contactId, clientId, ctx } = g;
+  const { contactId, clientId, ctx } = g;
 
   // S4: globaler Portal-Schreib-Backstop. Drafts können jede Sekunde aktualisiert
   // werden — Spam-Schutz gegen exzessive Schreiblast.
@@ -63,16 +53,23 @@ export async function saveSubmissionDraftAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   try {
-    await loadSubmissionAndCheck(parsed.data.submissionId, tenantId, contactId, clientId);
-    await withTenantContext(ctx, (tx) =>
-      tx.formSubmission.update({
-        where: { id: parsed.data.submissionId },
+    await withTenantContext(ctx, async (tx) => {
+      await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
+      const saved = await tx.formSubmission.updateMany({
+        where: {
+          id: parsed.data.submissionId,
+          clientId,
+          status: { in: ['PENDING', 'DRAFT'] },
+        },
         data: {
           answers: parsed.data.answers as Prisma.InputJsonValue,
           status: 'DRAFT',
         },
-      }),
-    );
+      });
+      if (saved.count === 0) {
+        throw new ActionError('Formular wurde bereits übermittelt.');
+      }
+    });
   } catch (e) {
     return toActionError(e);
   }
@@ -89,25 +86,27 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   try {
-    const sub = await loadSubmissionAndCheck(
-      parsed.data.submissionId,
-      tenantId,
-      contactId,
-      clientId,
-    );
-
-    // Server-seitige Validierung der Pflichtfelder
-    for (const f of sub.template.fields) {
-      if (!f.required || f.type === 'INFO_TEXT') continue;
-      const v = parsed.data.answers[f.key];
-      if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) {
-        return { ok: false, error: `Pflichtfeld nicht ausgefüllt: ${f.label}` };
-      }
-    }
-
     await withTenantContext(ctx, async (tx) => {
-      await tx.formSubmission.update({
-        where: { id: parsed.data.submissionId },
+      const sub = await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
+
+      // Server-seitige Validierung der Pflichtfelder innerhalb derselben
+      // Transaktion wie der atomare Statuswechsel. So kann weder ein paralleles
+      // Autosave eine Abgabe wieder auf DRAFT setzen noch ein zweiter Submit
+      // denselben fachlichen Abschluss erneut auslösen.
+      for (const f of sub.template.fields) {
+        if (!f.required || f.type === 'INFO_TEXT') continue;
+        const v = parsed.data.answers[f.key];
+        if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) {
+          throw new ActionError(`Pflichtfeld nicht ausgefüllt: ${f.label}`);
+        }
+      }
+
+      const submitted = await tx.formSubmission.updateMany({
+        where: {
+          id: parsed.data.submissionId,
+          clientId,
+          status: { in: ['PENDING', 'DRAFT'] },
+        },
         data: {
           answers: parsed.data.answers as Prisma.InputJsonValue,
           status: 'SUBMITTED',
@@ -115,6 +114,9 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
           submittedByContact: contactId,
         },
       });
+      if (submitted.count === 0) {
+        throw new ActionError('Formular wurde bereits übermittelt.');
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'CLIENT_CONTACT',
@@ -204,11 +206,8 @@ export async function uploadFormFileAction(input: {
 
   let documentId: string;
   try {
-    const sub = await loadSubmissionAndCheck(
-      parsed.data.submissionId,
-      tenantId,
-      contactId,
-      clientId,
+    const sub = await withTenantContext(ctx, (tx) =>
+      loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId),
     );
     // Prüfen, dass das Feld existiert und vom Typ FILE ist
     const field = sub.template.fields.find((f) => f.key === parsed.data.fieldKey);

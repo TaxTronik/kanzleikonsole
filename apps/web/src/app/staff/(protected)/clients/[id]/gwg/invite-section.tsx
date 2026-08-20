@@ -62,6 +62,7 @@ export function InviteSection({
         inviteName: name.trim(),
         inviteEmail: email.trim(),
         gwgCheckId,
+        expectedLatestInviteId: invites[0]?.id ?? null,
       });
       if (!r.ok) {
         setError(r.error ?? 'Fehler.');

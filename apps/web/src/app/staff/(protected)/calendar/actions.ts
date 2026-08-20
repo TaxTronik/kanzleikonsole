@@ -160,7 +160,14 @@ export async function updateAppointmentAction(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
-        select: { title: true, startsAt: true, endsAt: true, status: true, clientId: true },
+        select: {
+          title: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          clientId: true,
+          ownerStaffId: true,
+        },
       });
       if (!before) throw new ActionError('Termin nicht gefunden.');
       // P-7 (Befund 5): ownerStaffId/clientId Tenant-Sanity — das Create-
@@ -189,6 +196,27 @@ export async function updateAppointmentAction(
           tenantId,
           resources: [{ resourceType: 'appointment', resourceId: parsed.data.id }],
         });
+      } else if (before.ownerStaffId !== parsed.data.ownerStaffId) {
+        // Zuständigkeitswechsel: der alte Hinweis darf nicht bei der vorherigen
+        // Person liegen bleiben. Die neue Person erhält denselben direkten
+        // Einstieg wie beim Annehmen einer Terminanfrage.
+        await resolveNotificationsTx(tx, {
+          tenantId,
+          resources: [{ resourceType: 'appointment', resourceId: parsed.data.id }],
+          staffIds: [before.ownerStaffId],
+        });
+        if (parsed.data.ownerStaffId !== staffId) {
+          await notify(tx, {
+            tenantId,
+            staffId: parsed.data.ownerStaffId,
+            kind: 'APPOINTMENT_REQUESTED',
+            title: `Termin übernommen: ${parsed.data.title.trim()}`,
+            body: fmtDateTimeShort(startsAt),
+            href: '/staff/calendar',
+            resourceType: 'appointment',
+            resourceId: parsed.data.id,
+          });
+        }
       }
       await evidenceService.record(tx, {
         tenantId,
@@ -197,10 +225,18 @@ export async function updateAppointmentAction(
         action: 'appointment.update',
         resourceType: 'appointment',
         resourceId: parsed.data.id,
-        before,
+        before: {
+          title: before.title,
+          status: before.status,
+          ownerStaffId: before.ownerStaffId,
+          clientId: before.clientId,
+          startsAt: before.startsAt.toISOString(),
+          endsAt: before.endsAt.toISOString(),
+        },
         after: {
           title: parsed.data.title,
           status: parsed.data.status,
+          ownerStaffId: parsed.data.ownerStaffId,
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
         },

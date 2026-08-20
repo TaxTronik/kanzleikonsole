@@ -20,12 +20,21 @@ async function sendPoa(_previous: ActionResult | null, formData: FormData): Prom
   }
 }
 
-export function SendPoaForm({ poaId, isResend }: { poaId: string; isResend: boolean }) {
+export function SendPoaForm({
+  poaId,
+  isResend,
+  expectedUpdatedAt,
+}: {
+  poaId: string;
+  isResend: boolean;
+  expectedUpdatedAt: string;
+}) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(sendPoa, null);
 
   return (
     <form action={formAction}>
       <input type="hidden" name="poaId" value={poaId} />
+      <input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} />
       <button type="submit" className="btn-primary" disabled={pending}>
         <Send className="h-4 w-4" />
         {pending ? 'Versende…' : isResend ? 'Erneut senden' : 'Zur Unterschrift senden'}

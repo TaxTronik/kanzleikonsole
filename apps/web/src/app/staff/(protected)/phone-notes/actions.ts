@@ -264,19 +264,29 @@ export async function forwardPhoneNoteAction(input: {
     });
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
     if (note.doneAt) throw new ActionError('Erledigte Zettel können nicht übertragen werden.');
+    if (note.forwardToStaff === parsed.data.toStaffId) {
+      return { clientId: note.clientId };
+    }
 
     // P-7 (Befund 5): toStaffId Tenant-Sanity — Create-Pfad oben prüft
     // forwardToStaff, der Forward-Pfad fehlte.
     await assertStaffInTenant(tx, parsed.data.toStaffId);
 
+    const forwarded = await tx.phoneNote.updateMany({
+      where: {
+        id: parsed.data.id,
+        doneAt: null,
+        forwardToStaff: note.forwardToStaff,
+      },
+      data: { forwardToStaff: parsed.data.toStaffId, readAt: null },
+    });
+    if (forwarded.count === 0) {
+      throw new ActionError('Telefonzettel wurde parallel geändert. Bitte Seite neu laden.');
+    }
+
     await resolveNotificationsTx(tx, {
       tenantId,
       resources: [{ resourceType: 'phone_note', resourceId: parsed.data.id }],
-    });
-
-    await tx.phoneNote.update({
-      where: { id: parsed.data.id },
-      data: { forwardToStaff: parsed.data.toStaffId, readAt: null },
     });
     await evidenceService.record(tx, {
       tenantId,

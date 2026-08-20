@@ -201,6 +201,7 @@ function poaRecord(overrides: Partial<Record<string, unknown>> = {}) {
     signingOtpAttempts: 0,
     signingOtpAttemptsTotal: 0,
     createdByStaff: 'staff-1',
+    updatedAt: new Date('2026-08-20T10:00:00.000Z'),
     ...snapshotFields(),
     ...overrides,
   };
@@ -219,7 +220,7 @@ beforeEach(() => {
   });
   m.prismaOwner.powerOfAttorney.updateMany.mockResolvedValue({ count: 1 });
   m.prismaOwner.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', name: 'Kanzlei X' });
-  m.sendTemplateMail.mockResolvedValue(undefined);
+  m.sendTemplateMail.mockResolvedValue({ ok: true, sentViaTemplate: true });
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn(m.prismaOwner),
   );
@@ -448,13 +449,18 @@ describe('sendForSignatureAction', () => {
 
     const fd = new FormData();
     fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('expectedUpdatedAt', '2026-08-20T10:00:00.000Z');
     const res = await sendForSignatureAction(fd);
     expect(res).toEqual({ ok: true });
 
     // Atomarer Claim nur aus DRAFT/SENT heraus.
     expect(tx.powerOfAttorney.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f', status: { in: ['DRAFT', 'SENT'] } },
+        where: {
+          id: '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f',
+          status: { in: ['DRAFT', 'SENT'] },
+          updatedAt: new Date('2026-08-20T10:00:00.000Z'),
+        },
       }),
     );
     const { data } = tx.powerOfAttorney.updateMany.mock.calls[0]![0] as {
@@ -479,6 +485,7 @@ describe('sendForSignatureAction', () => {
     m.isStaffAdmin.mockReturnValue(false);
     const fd = new FormData();
     fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('expectedUpdatedAt', '2026-08-20T10:00:00.000Z');
     const res = await sendForSignatureAction(fd);
     expect(res.ok).toBe(false);
     expect(m.withTenantContext).not.toHaveBeenCalled();
@@ -507,6 +514,7 @@ describe('sendForSignatureAction', () => {
     );
     const fd = new FormData();
     fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('expectedUpdatedAt', '2026-08-20T10:00:00.000Z');
 
     const res = await sendForSignatureAction(fd);
 
@@ -517,6 +525,36 @@ describe('sendForSignatureAction', () => {
       Buffer.from(before.signingContentSha256 as Uint8Array),
     );
     expect(data.signingDocumentVersionId).toBe(before.signingDocumentVersionId);
+  });
+
+  it('verwirft einen zweiten Versand mit demselben Seitenstand', async () => {
+    m.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: {},
+    });
+    const tx = {
+      powerOfAttorney: {
+        findUnique: vi.fn().mockResolvedValue(poaRecord({ status: 'SENT' })),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      documentVersion: { findFirst: vi.fn() },
+      tenant: { findUnique: vi.fn().mockResolvedValue({ id: 'tenant-1', name: 'Kanzlei X' }) },
+    };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    const fd = new FormData();
+    fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('expectedUpdatedAt', '2026-08-20T10:00:00.000Z');
+
+    const result = await sendForSignatureAction(fd);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('zwischenzeitlich geändert');
+    expect(m.sendTemplateMail).not.toHaveBeenCalled();
   });
 
   it('bindet beim PDF-Versand die exakte Dokumentversion und deren Hash', async () => {
@@ -553,6 +591,7 @@ describe('sendForSignatureAction', () => {
     );
     const fd = new FormData();
     fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('expectedUpdatedAt', '2026-08-20T10:00:00.000Z');
 
     const res = await sendForSignatureAction(fd);
 
@@ -597,6 +636,7 @@ describe('sendForSignatureAction', () => {
     );
     const fd = new FormData();
     fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('expectedUpdatedAt', '2026-08-20T10:00:00.000Z');
 
     const res = await sendForSignatureAction(fd);
 

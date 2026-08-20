@@ -495,6 +495,7 @@ function GwgStep({
       {!professionallyReviewed && !hasVerifiedStatus && (
         <form id={sendFormId} action={onboardingSendGwgAction} className="space-y-4">
           <input type="hidden" name="clientId" value={clientId} />
+          <input type="hidden" name="expectedLatestInviteId" value={existingInvite?.id ?? ''} />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label" htmlFor="inviteName">

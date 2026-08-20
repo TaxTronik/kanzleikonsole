@@ -27,6 +27,7 @@ const SendSchema = z.object({
   inviteName: z.string().min(2).max(200),
   inviteEmail: z.string().email().max(255),
   gwgCheckId: z.string().uuid().optional(),
+  expectedLatestInviteId: z.string().uuid().nullable().optional(),
 });
 
 export async function sendInviteAction(input: {
@@ -34,13 +35,14 @@ export async function sendInviteAction(input: {
   inviteName: string;
   inviteEmail: string;
   gwgCheckId?: string;
+  expectedLatestInviteId?: string | null;
 }): Promise<InviteResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
   const parsed = SendSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, inviteName, inviteEmail, gwgCheckId } = parsed.data;
+  const { clientId, inviteName, inviteEmail, gwgCheckId, expectedLatestInviteId } = parsed.data;
 
   const { raw, hash } = generateInviteToken();
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -52,6 +54,19 @@ export async function sendInviteAction(input: {
       // R-2 / S-6-Sammelfund.
       await assertClientAccessTx(tx, session, clientId);
       await assertClientInTenant(tx, clientId);
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
+      if (expectedLatestInviteId !== undefined) {
+        const latestInvite = await tx.gwgOnboardingInvite.findFirst({
+          where: { tenantId, clientId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { id: true },
+        });
+        if ((latestInvite?.id ?? null) !== expectedLatestInviteId) {
+          throw new ActionError(
+            'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie die Seite neu.',
+          );
+        }
+      }
       const binding = await prepareGwgInviteBindingTx(tx, {
         tenantId,
         clientId,
