@@ -69,6 +69,18 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(workflowsSection).toContain('id="n8n-workflows-heading"');
   });
 
+  it('macht erkannte Webhook-Routen direkt an ihrer Fundstelle speicherbar', () => {
+    expect(form).toContain('function discoveredRouteDraft(');
+    expect(form).toContain('new Set([...(managedWorkflow?.events ?? []), item.path])');
+    expect(form).toContain('saveSelectedDiscovered={persistRouteDraft}');
+    expect(workflowsSection).toContain(
+      'selectedDiscoveredKey === `${item.workflowId}:${item.nodeId}`',
+    );
+    expect(workflowsSection).toContain('onClick={saveSelectedDiscovered}');
+    expect(workflowsSection).toContain('Route speichern');
+    expect(workflowsSection).toContain('Das zum Workflow gehörende Event ist vorausgewählt.');
+  });
+
   it('verwendet genau eine globale Transition und den gemeinsamen Bestätigungsablauf', () => {
     expect(form.match(/useConfirmedAction\(\{/g) ?? []).toHaveLength(7);
     expect(form.match(/useTransition\(\)/g) ?? []).toHaveLength(1);

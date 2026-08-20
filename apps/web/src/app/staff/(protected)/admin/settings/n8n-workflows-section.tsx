@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, Loader2, RefreshCw, Route, Workflow } from 'lucide-react';
+import { Download, Loader2, RefreshCw, Route, Save, Workflow } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import type { ActionResult, N8nDiscoveredWebhookView, N8nWorkflowRow } from './n8n-actions';
@@ -25,6 +25,10 @@ interface Props {
   loadWorkflows: () => void;
   discoverWebhooks: () => void;
   selectDiscovered: (item: N8nDiscoveredWebhookView) => void;
+  selectedDiscoveredKey: string | null;
+  selectedDiscoveredCanSave: boolean;
+  saveSelectedDiscovered: () => void;
+  routeResult: ActionResult | null;
   busy: boolean;
   saving: boolean;
 }
@@ -47,6 +51,10 @@ export function N8nWorkflowsSection({
   loadWorkflows,
   discoverWebhooks,
   selectDiscovered,
+  selectedDiscoveredKey,
+  selectedDiscoveredCanSave,
+  saveSelectedDiscovered,
+  routeResult,
   busy,
   saving,
 }: Props) {
@@ -235,29 +243,67 @@ export function N8nWorkflowsSection({
             {discovered.length === 0 ? (
               <p className="text-xs text-muted">Keine POST-Webhook-Knoten gefunden.</p>
             ) : (
-              discovered.map((item) => (
-                <div
-                  key={`${item.workflowId}:${item.nodeName}:${item.path}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded border border-default px-3 py-2 text-xs"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-primary">
-                      {item.workflowName} · {item.nodeName}
-                    </p>
-                    <p className="truncate font-mono text-[10px] text-muted">
-                      {item.productionUrl || `Pfad: ${item.path} — Webhook-Präfix fehlt`}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-secondary text-xs"
-                    onClick={() => selectDiscovered(item)}
+              discovered.map((item) => {
+                const selected = selectedDiscoveredKey === `${item.workflowId}:${item.nodeId}`;
+                return (
+                  <div
+                    key={`${item.workflowId}:${item.nodeId}:${item.path}`}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded border border-default px-3 py-2 text-xs"
                   >
-                    Als Route übernehmen
-                  </button>
-                </div>
-              ))
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-primary">
+                        {item.workflowName} · {item.nodeName}
+                      </p>
+                      <p className="truncate font-mono text-[10px] text-muted">
+                        {item.productionUrl || `Pfad: ${item.path} — Webhook-Präfix fehlt`}
+                      </p>
+                      {selected && (
+                        <p className="mt-1 text-[11px] text-blue-800 dark:text-blue-300">
+                          {selectedDiscoveredCanSave
+                            ? 'Route übernommen. Das zum Workflow gehörende Event ist vorausgewählt.'
+                            : 'Route übernommen. Bitte unter „Details bearbeiten“ mindestens ein Event auswählen.'}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {selected ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-primary inline-flex items-center gap-1.5 text-xs"
+                            onClick={saveSelectedDiscovered}
+                            disabled={busy || saving || !selectedDiscoveredCanSave}
+                          >
+                            <Save className="h-3.5 w-3.5" /> Route speichern
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs"
+                            onClick={() =>
+                              document
+                                .getElementById('n8n-route-editor')
+                                ?.scrollIntoView({ behavior: 'smooth' })
+                            }
+                          >
+                            Details bearbeiten
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          onClick={() => selectDiscovered(item)}
+                          disabled={!item.productionUrl}
+                        >
+                          Als Route übernehmen
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
+            <N8nActionResult result={routeResult} />
           </div>
         )}
       </div>

@@ -84,6 +84,48 @@ function isExplicitConnectionActive(
   return connection.enabled && connection.routingMode === 'EXPLICIT';
 }
 
+function discoveredRouteDraft(
+  item: N8nDiscoveredWebhookView,
+  bundledWorkflows: BundledWorkflowSummary[],
+  events: readonly N8nEventCatalogEntry[],
+): RouteDraft {
+  const managedWorkflow = bundledWorkflows.find((workflow) => workflow.name === item.workflowName);
+  const allowedEvents = new Set<string>(events.map((event) => event.name));
+  const inferredEvents = [...new Set([...(managedWorkflow?.events ?? []), item.path])].filter(
+    (eventName) => allowedEvents.has(eventName),
+  );
+  return {
+    id: '',
+    name: `${item.workflowName} — ${item.nodeName}`.slice(0, 120),
+    productionUrl: item.productionUrl,
+    testUrl: item.testUrl,
+    workflowId: item.workflowId,
+    workflowName: item.workflowName,
+    workflowNodeId: item.nodeId,
+    source: managedWorkflow ? 'MANAGED' : 'DISCOVERED',
+    enabled: item.workflowActive,
+    testMode: false,
+    events: inferredEvents,
+  };
+}
+
+function focusRouteEditorForManualEventSelection(draft: RouteDraft): void {
+  if (draft.events.length > 0) return;
+  window.requestAnimationFrame(() =>
+    document.getElementById('n8n-route-editor')?.scrollIntoView({ behavior: 'smooth' }),
+  );
+}
+
+function selectedDiscoveredRouteKey(draft: RouteDraft): string | null {
+  return !draft.id && draft.workflowId && draft.workflowNodeId
+    ? `${draft.workflowId}:${draft.workflowNodeId}`
+    : null;
+}
+
+function discoveredRouteCanBeSaved(draft: RouteDraft): boolean {
+  return Boolean(draft.name && draft.productionUrl && draft.events.length > 0);
+}
+
 export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   const router = useRouter();
   const [connection, dispatchConnection] = useReducer(
@@ -299,28 +341,17 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   }
 
   function selectDiscovered(item: N8nDiscoveredWebhookView) {
-    const matchingEvent = events.find((event) => event.name === item.path)?.name;
-    const managed = bundledWorkflows.some((workflow) => workflow.name === item.workflowName);
-    setRouteDraft({
-      id: '',
-      name: `${item.workflowName} — ${item.nodeName}`.slice(0, 120),
-      productionUrl: item.productionUrl,
-      testUrl: item.testUrl,
-      workflowId: item.workflowId,
-      workflowName: item.workflowName,
-      workflowNodeId: item.nodeId,
-      source: managed ? 'MANAGED' : 'DISCOVERED',
-      enabled: item.workflowActive,
-      testMode: false,
-      events: matchingEvent ? [matchingEvent] : [],
-    });
+    const draft = discoveredRouteDraft(item, bundledWorkflows, events);
+    setRouteDraft(draft);
     setCustomEvent('');
     setRouteResult(null);
-    document.getElementById('n8n-route-editor')?.scrollIntoView({ behavior: 'smooth' });
+    // Bekannte Vorlagen/Events lassen sich direkt an der Fundstelle speichern.
+    // Nur unbekannte Webhooks brauchen zuerst die manuelle Event-Auswahl im
+    // ausführlichen Editor.
+    focusRouteEditorForManualEventSelection(draft);
   }
 
-  function saveRoute(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function persistRouteDraft() {
     setRouteResult(null);
     startTransition(async () => {
       const data = new FormData();
@@ -341,6 +372,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         router.refresh();
       }
     });
+  }
+
+  function saveRoute(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    persistRouteDraft();
   }
 
   // Ein-Klick-Aktivierung/Deaktivierung direkt an der Routen-Karte: der
@@ -540,6 +576,10 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         loadWorkflows={loadWorkflows}
         discoverWebhooks={discoverWebhooks}
         selectDiscovered={selectDiscovered}
+        selectedDiscoveredKey={selectedDiscoveredRouteKey(routeDraft)}
+        selectedDiscoveredCanSave={discoveredRouteCanBeSaved(routeDraft)}
+        saveSelectedDiscovered={persistRouteDraft}
+        routeResult={routeResult}
         busy={busy}
         saving={saving}
       />

@@ -56,11 +56,13 @@ nach n8n. TaxTronik erzeugt keine Owner-Zugangsdaten und schleust keine Secrets
    Import den tenantgebundenen Rückkanal vollständig ein; Veröffentlichung,
    SMTP- und Outbound-HMAC-Credentials bleiben bewusste Schritte in n8n. Die
    Event-Zustellung funktioniert ohne API-Key.
-3. **Workflow-Ziele als Entwurf speichern:** pro Workflow die
-   **exakte Production-URL** speichern und die gewünschten Events abonnieren.
-   Neue Ziele und Ziele mit geänderter URL oder Eventauswahl bleiben
-   serverseitig deaktiviert, auch wenn im Formular bereits **Aktiv** gewählt
-   wurde.
+3. **Workflow-Ziele als Entwurf speichern:** Mit **Webhook-Knoten erkennen**
+   die veröffentlichte n8n-Route laden, **Als Route übernehmen** wählen und
+   direkt an derselben Fundstelle **Route speichern**. Bei mitgelieferten
+   Workflows ist das zugehörige Event bereits vorausgewählt. Für eigene
+   Workflows erfolgt die Eventauswahl unter **Details bearbeiten**. Neue Ziele
+   und Ziele mit geänderter URL oder Eventauswahl bleiben serverseitig
+   deaktiviert, auch wenn im Formular bereits **Aktiv** gewählt wurde.
 4. **Mit synthetischen Daten testen:** Auch ein deaktivierter, gespeicherter
    Entwurf kann getestet werden. Der Verbindungstest verwendet
    `taxtronik.ping` und darf nach Veröffentlichung auch die
@@ -68,10 +70,10 @@ nach n8n. TaxTronik erzeugt keine Owner-Zugangsdaten und schleust keine Secrets
    `synthetic: true` ausschließlich an die getrennte Test-URL — nie
    an Produktion, wo sie echte Seiteneffekte auslösen könnten. Keine echten
    Mandanten- oder Mitarbeiterdaten zum Testen verwenden.
-5. **Unverändert aktivieren:** Nach einem erfolgreichen Test das Ziel erneut
-   bearbeiten, **Aktiv** wählen und ohne Änderung an Production-URL, Test-URL
-   oder Eventauswahl speichern. Jede spätere Änderung an diesen Feldern setzt
-   den Nachweis zurück und macht das Ziel wieder zum deaktivierten Entwurf.
+5. **Unverändert aktivieren:** Nach einem erfolgreichen Test an der Routenkarte
+   **Aktivieren** wählen. Jede spätere Änderung an Production-URL, Test-URL oder
+   Eventauswahl setzt den Nachweis zurück und macht das Ziel wieder zum
+   deaktivierten Entwurf.
 6. **Status prüfen und Entscheidung abschließen:** Alle benötigten Ziele müssen
    veröffentlicht, erreichbar, zuletzt erfolgreich getestet und anschließend
    aktiviert sein. Wer n8n nicht nutzt, wählt ausdrücklich **Deaktiviert**,

@@ -152,7 +152,8 @@ describe('enqueueN8nEvent routing', () => {
       where: { id: 'outbox-1' },
       data: {
         status: 'SKIPPED',
-        lastError: "Event 'request.closed' ist für n8n nicht abonniert",
+        lastError:
+          "Event 'request.closed' ist für n8n nicht abonniert; Webhook-Route speichern, testen und aktivieren",
       },
     });
     expect(h.queueAdd).not.toHaveBeenCalled();
@@ -160,7 +161,8 @@ describe('enqueueN8nEvent routing', () => {
       eventId: 'outbox-1',
       status: 'SKIPPED',
       deliveryCount: 0,
-      error: "Event 'request.closed' ist für n8n nicht abonniert",
+      error:
+        "Event 'request.closed' ist für n8n nicht abonniert; Webhook-Route speichern, testen und aktivieren",
     });
   });
 
