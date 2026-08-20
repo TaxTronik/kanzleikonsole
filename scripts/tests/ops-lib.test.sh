@@ -1687,10 +1687,12 @@ test_run_backup_respects_explicit_staging_path() {
 }
 
 run_mock_update() (
-  ROOT="$TMP_DIR/mock-update-root"
+  ROOT="${OPS_MOCK_ROOT:-$TMP_DIR/mock-update-root}"
   ENVFILE="$ROOT/.env"
+  STATE="$ROOT/.state"
   MIGRATION_PENDING="$ROOT/.migration-pending"
   DB_RESTORE_AUTHORIZATION="$ROOT/.database-restored"
+  UPDATE_HANDOFF="$ROOT/.update-handoff"
   mkdir -p "$ROOT"
 
   record_step() { printf '%s\n' "$*" >>"$OPS_SEQUENCE"; }
@@ -1710,6 +1712,15 @@ run_mock_update() (
   git() {
     record_step "git $*"
     record_step "git-umask $(umask) $*"
+    if [[ "$*" == "-C $ROOT rev-parse HEAD" ]]; then
+      if [[ -f "$ROOT/.mock-checkout-advanced" ]]; then printf 'dddddddddddddddddddddddddddddddddddddddd\n'
+      else printf 'cccccccccccccccccccccccccccccccccccccccc\n'; fi
+      return 0
+    fi
+    if [[ "$*" == "merge --ff-only "* && "${OPS_CHECKOUT_CHANGES:-0}" == "1" ]]; then
+      : >"$ROOT/.mock-checkout-advanced"
+    fi
+    if [[ "$*" == "-C $ROOT merge-base --is-ancestor "* ]]; then return 0; fi
   }
   deployment_git_remote() { printf 'origin'; }
   ensure_host_tool_deps() { record_step ensure-host-deps; }
@@ -1724,6 +1735,7 @@ run_mock_update() (
   smoke_public_frontend() { record_step smoke-public-frontend; }
   deploy_readiness() { record_step deploy-readiness; }
   finalize_release_contract() { record_step finalize-release-contract; }
+  reexec_updated_operator() { record_step reexec-updated-operator; }
   image_tag() { printf 'test-version'; }
 
   cmd_update
@@ -1731,8 +1743,9 @@ run_mock_update() (
 
 test_update_backs_up_old_checkout_before_fetch() {
   local sequence="$TMP_DIR/update-order.log" out="$TMP_DIR/update-order.out"
+  local root="$TMP_DIR/mock-update-order-root"
   : >"$sequence"
-  OPS_SEQUENCE="$sequence" run_mock_update >"$out" 2>&1 || test_fail "mock update failed"
+  OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" run_mock_update >"$out" 2>&1 || test_fail "mock update failed"
   assert_before "$sequence" "backup-old-checkout" "git fetch origin"
   assert_before "$sequence" "backup-old-checkout" "git merge --ff-only origin/main"
   assert_before "$sequence" "git merge --ff-only origin/main" "ensure-host-deps"
@@ -1744,8 +1757,9 @@ test_update_backs_up_old_checkout_before_fetch() {
 
 test_update_backup_failure_leaves_checkout_untouched() {
   local sequence="$TMP_DIR/update-backup-fail.log" out="$TMP_DIR/update-backup-fail.out"
+  local root="$TMP_DIR/mock-update-backup-fail-root"
   : >"$sequence"
-  if OPS_SEQUENCE="$sequence" OPS_BACKUP_STATUS=23 run_mock_update >"$out" 2>&1; then
+  if OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" OPS_BACKUP_STATUS=23 run_mock_update >"$out" 2>&1; then
     test_fail "update continued despite failed mandatory backup"
   fi
   assert_contains "$sequence" "backup-old-checkout"
@@ -1754,6 +1768,54 @@ test_update_backup_failure_leaves_checkout_untouched() {
   assert_not_contains "$sequence" "provide-images"
   assert_contains "$out" "Code und Arbeitsbaum bleiben unveraendert"
   pass "failed mandatory backup prevents every checkout change"
+}
+
+test_changed_update_reloads_operator_and_resumes_same_run() {
+  local root="$TMP_DIR/mock-update-handoff-root"
+  local marker="$root/.update-handoff" sequence="$TMP_DIR/update-handoff.log"
+  local first_out="$TMP_DIR/update-handoff-first.out" second_out="$TMP_DIR/update-handoff-second.out"
+  : >"$sequence"
+
+  OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" OPS_CHECKOUT_CHANGES=1 \
+    run_mock_update >"$first_out" 2>&1 || test_fail "changed mock update failed before operator handoff"
+  [[ -f "$marker" ]] || test_fail "changed checkout did not persist an update handoff"
+  [[ "$(file_mode "$marker")" == "600" ]] || test_fail "update handoff mode is not 0600"
+  assert_key_equals "$marker" checkout_source_commit cccccccccccccccccccccccccccccccccccccccc
+  assert_key_equals "$marker" checkout_target_commit dddddddddddddddddddddddddddddddddddddddd
+  assert_contains "$sequence" "reexec-updated-operator"
+  assert_not_contains "$sequence" "ensure-host-deps"
+
+  OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" OPS_CHECKOUT_CHANGES=1 \
+    run_mock_update >"$second_out" 2>&1 || test_fail "new operator did not resume the handed-off update"
+  [[ ! -e "$marker" ]] || test_fail "resumed update did not consume its handoff"
+  [[ "$(grep -Fc 'backup-old-checkout' "$sequence")" == "1" ]] || \
+    test_fail "operator handoff repeated or skipped the mandatory backup"
+  [[ "$(grep -Fc 'git fetch origin' "$sequence")" == "1" ]] || \
+    test_fail "operator handoff repeated the checkout update"
+  assert_before "$sequence" "backup-old-checkout" "reexec-updated-operator"
+  assert_before "$sequence" "reexec-updated-operator" "ensure-host-deps"
+  assert_contains "$second_out" "Sicheren Update-Handoff uebernommen"
+  pass "changed checkout reloads the new operator and resumes one update invocation safely"
+}
+
+test_invalid_update_handoff_restarts_with_backup() {
+  local root="$TMP_DIR/mock-update-invalid-handoff-root"
+  local marker="$root/.update-handoff" sequence="$TMP_DIR/update-invalid-handoff.log"
+  local first_out="$TMP_DIR/update-invalid-handoff-first.out" second_out="$TMP_DIR/update-invalid-handoff-second.out"
+  : >"$sequence"
+
+  OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" OPS_CHECKOUT_CHANGES=1 \
+    run_mock_update >"$first_out" 2>&1 || test_fail "changed mock update failed before invalid-handoff test"
+  [[ -f "$marker" ]] || test_fail "invalid-handoff test did not create its handoff"
+  chmod 0644 "$marker"
+
+  OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" OPS_CHECKOUT_CHANGES=1 \
+    run_mock_update >"$second_out" 2>&1 || test_fail "invalid handoff did not fall back to a fresh update"
+  [[ ! -e "$marker" ]] || test_fail "invalid handoff was not discarded"
+  [[ "$(grep -Fc 'backup-old-checkout' "$sequence")" == "2" ]] || \
+    test_fail "invalid handoff skipped the new mandatory backup"
+  assert_contains "$second_out" "ungueltigen Update-Handoff verworfen"
+  pass "invalid update handoff is discarded and can never skip a fresh backup"
 }
 
 write_release_env() {
@@ -2120,7 +2182,7 @@ test_verified_non_migration_retarget_requires_exact_forward_state() {
       source-dddddddddddd "$new_target_commit" false
   ) || test_fail "verified migrations-free descendant was rejected"
 
-  if (
+  (
     git() { return 0; }
     database_is_fully_migrated_for_commit() { return 0; }
     can_retarget_verified_non_migration_transition \
@@ -2128,8 +2190,20 @@ test_verified_non_migration_retarget_requires_exact_forward_state() {
       source-cccccccccccc "$old_target_commit" \
       source-bbbbbbbbbbbb "$source_commit" \
       source-dddddddddddd "$new_target_commit" unknown
+  ) || test_fail "migration-free Git tree could not resolve an unknown historical probe"
+
+  if (
+    git() {
+      [[ "$*" != *"diff --quiet $source_commit $old_target_commit"* ]]
+    }
+    database_is_fully_migrated_for_commit() { return 0; }
+    can_retarget_verified_non_migration_transition \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-cccccccccccc "$old_target_commit" \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-dddddddddddd "$new_target_commit" unknown
   ); then
-    test_fail "unknown migration requirement was retargeted"
+    test_fail "unknown migration requirement with changed migration tree was retargeted"
   fi
 
   if (
@@ -2156,7 +2230,7 @@ test_verified_non_migration_retarget_requires_exact_forward_state() {
     test_fail "source version not bound to its commit was retargeted"
   fi
 
-  pass "migrations-free pending retarget requires exact source, ancestry, version and database state"
+  pass "migrations-free pending retarget requires exact Git, ancestry, version and database state"
 }
 
 test_migration_transition_retargets_verified_non_migration_descendant() {
@@ -3008,6 +3082,8 @@ test_run_backup_uses_resolved_host_path
 test_run_backup_respects_explicit_staging_path
 test_update_backs_up_old_checkout_before_fetch
 test_update_backup_failure_leaves_checkout_untouched
+test_changed_update_reloads_operator_and_resumes_same_run
+test_invalid_update_handoff_restarts_with_backup
 test_release_contract_is_not_persisted_before_health
 test_failed_update_recovers_state_current
 test_normal_rollback_uses_state_previous

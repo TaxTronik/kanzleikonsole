@@ -244,16 +244,25 @@ abgeschlossen ist. Zusätzliche Migrationen eines nachweislichen
 Vorwärts-Commits dürfen danach unter derselben, niemals abgeschwächten
 DB-Restore-Pflicht angewendet werden.
 
-Die Operator-CLI lädt ihre Funktionen beim Prozessstart. Stammt der aktuell
-laufende Update-Prozess noch aus dem fehlerhaften Checkout, kann er den gerade
-erst geholten Recovery-Code nicht nachladen. In diesem einmaligen Übergang
-`./taxtronik update` daher zweimal als getrennte Prozesse ausführen: Der erste
-Lauf erstellt das Pflichtbackup, holt den für den jeweiligen Betriebsmodus
-verifizierten Checkout und kann danach noch am alten Pending-Guard stoppen. Der
-zweite Lauf lädt den neuen Recovery-Code und übernimmt Marker- und DB-Recovery
-automatisch. Den Pending-Marker nicht löschen oder von Hand editieren. Dieses
-Zwei-Lauf-Verfahren gilt auch für Registry-/Tag-Deployments; kein manuelles
-`git pull` anstelle der signierten Release-Auswahl verwenden.
+Die Operator-CLI lädt ihre Funktionen beim Prozessstart. Sobald ein Update den
+Checkout per Fast-forward verändert hat, schreibt sie deshalb nach dem
+erfolgreichen Pflichtbackup einen atomaren, auf Checkout, Installations-State
+und Migrationsmarker gebundenen Handoff und startet sich einmal aus dem neuen
+Checkout neu. Der neue Prozess setzt denselben `./taxtronik update`-Lauf ohne
+zweiten Operator-Aufruf fort und kann dadurch auch gerade erst ausgelieferte
+Marker-/DB-Recovery automatisch anwenden. Nur ein höchstens 15 Minuten alter,
+vom selben Betriebssystembenutzer gehaltener `0600`-Handoff ist gültig.
+Ungültige oder veraltete Handoffs werden verworfen und führen sicher zu einem
+neuen Pflichtbackup. Den
+Migrations-Pending-Marker weiterhin niemals löschen oder von Hand editieren;
+bei Registry-/Tag-Deployments auch kein manuelles `git pull` anstelle der
+signierten Release-Auswahl verwenden.
+
+War die ursprüngliche Datenbankprobe nur vorübergehend `unknown`, darf die
+automatische Fortsetzung den Übergang zusätzlich anhand eines unveränderten
+Prisma-Migrationsbaums zwischen Quell- und altem Zielcommit sowie eines
+vollständig abgeschlossenen Migrationsjournals als migrationsfrei attestieren.
+Ohne beide Nachweise bleibt der Marker unverändert fail-closed.
 
 Wer Prisma außerhalb des Operator-Deployments ausführt, verwendet nach Backup
 und gestoppten Writern:

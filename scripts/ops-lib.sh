@@ -36,6 +36,7 @@ STATE="$ROOT/.taxtronik.state"
 MIGRATION_PENDING="$ROOT/.taxtronik.migration-pending"
 DB_RESTORE_AUTHORIZATION="$ROOT/.taxtronik.database-restored"
 INSTALL_PENDING="$ROOT/.taxtronik.install-pending"
+UPDATE_HANDOFF="$ROOT/.taxtronik.update-handoff"
 AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
 ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 # Der Wert wird zusammen mit einem TaxTronik-Release getestet und angehoben.
@@ -3246,6 +3247,122 @@ pending_migration_value() {
   grep -E "^${key}=" "$MIGRATION_PENDING" | head -n1 | cut -d= -f2- || true
 }
 
+operator_file_fingerprint() {
+  local file="$1" digest
+  if [[ ! -e "$file" ]]; then
+    printf 'absent'
+    return 0
+  fi
+  [[ -f "$file" && ! -L "$file" ]] || return 1
+  digest="$(sha256sum -- "$file" 2>/dev/null | awk '{print $1}')" || return 1
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s' "$digest"
+}
+
+update_handoff_value() {
+  local key="$1"
+  [[ -f "$UPDATE_HANDOFF" && ! -L "$UPDATE_HANDOFF" ]] || return 0
+  grep -E "^${key}=" "$UPDATE_HANDOFF" | head -n1 | cut -d= -f2- || true
+}
+
+update_handoff_has_single_key() {
+  local key="$1"
+  [[ "$(grep -Ec "^${key}=" "$UPDATE_HANDOFF" 2>/dev/null || true)" == "1" ]]
+}
+
+write_update_handoff() {
+  local checkout_source_commit="$1" checkout_target_commit="$2"
+  local transition_source_commit="$3" state_fingerprint pending_fingerprint tmp
+  [[ "$checkout_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+     "$checkout_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+     "$checkout_source_commit" != "$checkout_target_commit" ]] || \
+    die "Update-Handoff braucht zwei verschiedene gueltige Checkout-Commits."
+  [[ -z "$transition_source_commit" || \
+     "$transition_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+    die "Update-Handoff enthaelt einen ungueltigen Migrations-Quellcommit."
+  git -C "$ROOT" merge-base --is-ancestor "$checkout_source_commit" "$checkout_target_commit" \
+    >/dev/null 2>&1 || die "Update-Handoff verweigert: neuer Checkout ist kein Fast-forward-Nachfolger."
+  state_fingerprint="$(operator_file_fingerprint "$STATE")" || \
+    die "Installations-State kann nicht sicher an den Update-Handoff gebunden werden."
+  pending_fingerprint="$(operator_file_fingerprint "$MIGRATION_PENDING")" || \
+    die "Migrationsmarker kann nicht sicher an den Update-Handoff gebunden werden."
+  if [[ "$pending_fingerprint" == "absent" ]]; then
+    [[ "$transition_source_commit" == "$checkout_source_commit" ]] || \
+      die "Update-Handoff hat keinen passenden Legacy-Migrations-Quellcommit."
+  else
+    [[ -z "$transition_source_commit" ]] || \
+      die "Update-Handoff darf einen bestehenden Migrationsvertrag nicht durch einen Checkout-Commit ersetzen."
+  fi
+
+  tmp="$(mktemp "${UPDATE_HANDOFF}.tmp.XXXXXX")" || \
+    die "Update-Handoff konnte nicht angelegt werden."
+  {
+    printf 'format=1\n'
+    printf 'checkout_source_commit=%s\n' "$checkout_source_commit"
+    printf 'checkout_target_commit=%s\n' "$checkout_target_commit"
+    printf 'transition_source_commit=%s\n' "$transition_source_commit"
+    printf 'state_sha256=%s\n' "$state_fingerprint"
+    printf 'migration_pending_sha256=%s\n' "$pending_fingerprint"
+    printf 'created_at_epoch=%s\n' "$(date -u +'%s')"
+    printf 'created_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  } >"$tmp"
+  chmod 0600 "$tmp" || { rm -f -- "$tmp"; die "Update-Handoff konnte nicht gehaertet werden."; }
+  mv -f -- "$tmp" "$UPDATE_HANDOFF"
+  chmod 0600 "$UPDATE_HANDOFF" || die "Update-Handoff konnte nicht gehaertet werden."
+}
+
+update_handoff_is_valid() {
+  local format checkout_source_commit checkout_target_commit transition_source_commit
+  local expected_state expected_pending current_state current_pending checkout key mode owner
+  local created_at_epoch now_epoch
+  _TAXTRONIK_INTERNAL_VALIDATED_UPDATE_SOURCE_COMMIT=""
+  [[ -f "$UPDATE_HANDOFF" && ! -L "$UPDATE_HANDOFF" ]] || return 1
+  mode="$(stat -c '%a' "$UPDATE_HANDOFF" 2>/dev/null || true)"
+  owner="$(stat -c '%u' "$UPDATE_HANDOFF" 2>/dev/null || true)"
+  [[ "$mode" == "600" && "$owner" == "$(id -u)" ]] || return 1
+  for key in format checkout_source_commit checkout_target_commit transition_source_commit \
+    state_sha256 migration_pending_sha256 created_at_epoch created_at; do
+    update_handoff_has_single_key "$key" || return 1
+  done
+  format="$(update_handoff_value format)"
+  checkout_source_commit="$(update_handoff_value checkout_source_commit)"
+  checkout_target_commit="$(update_handoff_value checkout_target_commit)"
+  transition_source_commit="$(update_handoff_value transition_source_commit)"
+  expected_state="$(update_handoff_value state_sha256)"
+  expected_pending="$(update_handoff_value migration_pending_sha256)"
+  created_at_epoch="$(update_handoff_value created_at_epoch)"
+  [[ "$format" == "1" ]] || return 1
+  [[ "$checkout_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+     "$checkout_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+     "$checkout_source_commit" != "$checkout_target_commit" ]] || return 1
+  [[ -z "$transition_source_commit" || \
+     "$transition_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
+  [[ "$expected_state" == "absent" || "$expected_state" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ "$expected_pending" == "absent" || "$expected_pending" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ "$created_at_epoch" =~ ^[0-9]{10}$ ]] || return 1
+  now_epoch="$(date -u +'%s')"
+  [[ "$now_epoch" =~ ^[0-9]{10}$ ]] || return 1
+  (( 10#$now_epoch >= 10#$created_at_epoch && \
+     10#$now_epoch - 10#$created_at_epoch <= 900 )) || return 1
+  if [[ "$expected_pending" == "absent" ]]; then
+    [[ "$transition_source_commit" == "$checkout_source_commit" ]] || return 1
+  else
+    [[ -z "$transition_source_commit" ]] || return 1
+  fi
+  checkout="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$checkout" == "$checkout_target_commit" ]] || return 1
+  git -C "$ROOT" merge-base --is-ancestor "$checkout_source_commit" "$checkout_target_commit" \
+    >/dev/null 2>&1 || return 1
+  current_state="$(operator_file_fingerprint "$STATE")" || return 1
+  current_pending="$(operator_file_fingerprint "$MIGRATION_PENDING")" || return 1
+  [[ "$current_state" == "$expected_state" && "$current_pending" == "$expected_pending" ]] || return 1
+  _TAXTRONIK_INTERNAL_VALIDATED_UPDATE_SOURCE_COMMIT="$transition_source_commit"
+}
+
+clear_update_handoff() {
+  [[ ! -e "$UPDATE_HANDOFF" ]] || rm -f -- "$UPDATE_HANDOFF"
+}
+
 # Ermittelt am echten DB-Migrationsjournal, ob `migrate deploy` mindestens eine
 # Migration anwenden wird. Jeder Probe-Fehler wird als unknown behandelt; ein
 # Rollback darf dann später nicht optimistisch alten Code starten.
@@ -3790,15 +3907,22 @@ can_retarget_verified_non_migration_transition() {
   local existing_requirement="${9:-unknown}"
 
   # Dieser allgemeine Vorwaertspfad ist nur fuer einen nachweislich
-  # migrationsfreien alten Vertrag zulaessig. true/unknown bleiben weiterhin
-  # am exakten Ziel gebunden und brauchen ihren jeweiligen Recovery-Pfad.
-  [[ "$existing_requirement" == "false" ]] || return 1
+  # migrationsfreien alten Vertrag zulaessig. Ein persistiertes `false` ist der
+  # Primaerbeweis. War die damalige DB-Probe nur `unknown`, darf Git denselben
+  # Beweis nachtraeglich liefern: Zwischen Quelle und altem Ziel existiert dann
+  # exakt keine Aenderung am Prisma-Migrationsbaum. `true` bleibt dagegen an
+  # seinem expliziten Recovery-Pfad gebunden.
+  [[ "$existing_requirement" == "false" || "$existing_requirement" == "unknown" ]] || return 1
   [[ -n "$existing_source" && "$existing_source" == "$source_version" ]] || return 1
   [[ "$existing_source_commit" == "$source_commit" && \
      "$existing_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
   [[ "$existing_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
      "$target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
   [[ -n "$existing_target" && -n "$target_version" ]] || return 1
+  if [[ "$existing_requirement" == "unknown" ]]; then
+    git -C "$ROOT" diff --quiet "$existing_source_commit" "$existing_target_commit" -- \
+      packages/db/prisma/migrations >/dev/null 2>&1 || return 1
+  fi
 
   if [[ "$existing_target" =~ ^source-([0-9a-f]{12})$ && \
         "$target_version" =~ ^source-([0-9a-f]{12})$ ]]; then
@@ -4279,15 +4403,77 @@ cmd_deploy() {
 EOF
 }
 
+continue_update_after_checkout() {
+  # package.json/Workspace-Exports des neuen Checkouts muessen vor jedem
+  # weiteren Host-pnpm-Kommando in node_modules gespiegelt sein. Andernfalls
+  # blockiert `verifyDepsBeforeRun: error` erst spaet im Readiness-Gate.
+  ensure_host_tool_deps
+  # .env ggfs. aus dem aktualisierten Stand neu vervollstaendigen (Prod-Defaults,
+  # fehlende Secrets, NEXTAUTH_URL) — wie bei deploy ohne Hand-Editiererei.
+  prepare_env_interactive
+  load_env
+  prepare_source_version_for_checkout
+  preflight_common; assert_production_env; require_release_version
+  # Ein Registry-Vertrag wird nach dem Prozess-Handoff erneut signiert
+  # verifiziert. Seine nur im alten Prozess gesetzten Digest-/Commit-Variablen
+  # duerfen niemals ungeprueft ueber Prozessgrenzen weitergereicht werden.
+  prepare_release_contract
+  # Der neue Checkout kann auch die Infra-Definition erweitert haben.
+  start_infra
+  wait_postgres_healthy
+  sync_postgres_roles_from_env
+  provide_images
+  provide_traefik_for_deploy
+  provide_signal_for_deploy update
+  run_migrations
+  start_signal_for_deploy || die "Update abgebrochen: verwaltetes Signal ist nicht bereit."
+  start_apps_for_activation deploy "$(image_tag)"
+  smoke_health || die "Update fehlgeschlagen: Anwendung ist nicht vollstaendig healthy; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
+  smoke_public_frontend || die "Update fehlgeschlagen: verwaltetes Traefik/TLS ist nicht oeffentlich bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
+  deploy_readiness || die "Update fehlgeschlagen: Produktivkonfiguration ist nicht bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
+  finalize_release_contract
+  info "Update fertig. Version: $(image_tag)"
+}
+
+reexec_updated_operator() {
+  info "Aktualisierten Operator laden und Update automatisch fortsetzen"
+  exec "$ROOT/taxtronik" update
+  die "Aktualisierter Operator konnte nicht gestartet werden."
+}
+
 cmd_update() {
   require_cmd docker; require_cmd node; require_cmd curl; require_cmd git
+  require_cmd sha256sum; require_cmd stat
   local _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT=""
+  local checkout_source_commit checkout_target_commit
+
+  # Der alte Prozess hat Backup und Fast-forward bereits sicher abgeschlossen.
+  # Nur ein exakt an Checkout, State und Migrationsmarker gebundener 0600-Marker
+  # darf die Wiederholung des Pflichtbackups ueberspringen. Der Marker wird vor
+  # allen weiteren Seiteneffekten verbraucht; ein spaeterer Retry startet daher
+  # wieder mit einem frischen Backup.
+  if [[ -e "$UPDATE_HANDOFF" ]]; then
+    if update_handoff_is_valid; then
+      _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT="${_TAXTRONIK_INTERNAL_VALIDATED_UPDATE_SOURCE_COMMIT:-}"
+      unset _TAXTRONIK_INTERNAL_VALIDATED_UPDATE_SOURCE_COMMIT
+      clear_update_handoff
+      info "Sicheren Update-Handoff uebernommen; neuer Operator setzt denselben Lauf fort"
+      continue_update_after_checkout
+      return 0
+    fi
+    warn "Veralteten oder ungueltigen Update-Handoff verworfen; Update beginnt sicher mit neuem Pflichtbackup."
+    clear_update_handoff
+  fi
+
+  checkout_source_commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$checkout_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+    die "Aktueller Checkout-Commit kann vor dem Update nicht bestimmt werden."
 
   # Vor dem ersten Forward-Versuch kann ein Legacy-State noch keinen Commit
   # enthalten. Den aktuellen Checkout nur ohne bestehenden Pending-Vertrag als
   # Quellbeweis erfassen; bei Retries bleibt der persistierte Marker massgeblich.
   if [[ ! -e "$MIGRATION_PENDING" ]]; then
-    _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+    _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT="$checkout_source_commit"
   fi
 
   # Das Pflichtbackup muss vollstaendig mit dem bisher installierten Checkout
@@ -4321,37 +4507,16 @@ cmd_update() {
     target_ref="${TAXTRONIK_UPDATE_REF:-$remote/main}"
     (umask 022; git merge --ff-only "$target_ref")
   fi
-  # package.json/Workspace-Exports des neuen Checkouts muessen vor jedem
-  # weiteren Host-pnpm-Kommando in node_modules gespiegelt sein. Andernfalls
-  # blockiert `verifyDepsBeforeRun: error` erst spaet im Readiness-Gate.
-  ensure_host_tool_deps
-  # .env ggfs. aus dem aktualisierten Stand neu vervollstaendigen (Prod-Defaults,
-  # fehlende Secrets, NEXTAUTH_URL) — wie bei deploy ohne Hand-Editiererei.
-  prepare_env_interactive
-  load_env
-  prepare_source_version_for_checkout
-  preflight_common; assert_production_env; require_release_version
-  if images_from_registry; then
-    verify_release_checkout
-    stage_release_contract
-  else
-    prepare_release_contract
+  checkout_target_commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$checkout_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+    die "Aktualisierter Checkout-Commit kann nicht bestimmt werden."
+  if [[ "$checkout_target_commit" != "$checkout_source_commit" ]]; then
+    write_update_handoff "$checkout_source_commit" "$checkout_target_commit" \
+      "$_TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT"
+    reexec_updated_operator
+    return 0
   fi
-  # Der neue Checkout kann auch die Infra-Definition erweitert haben.
-  start_infra
-  wait_postgres_healthy
-  sync_postgres_roles_from_env
-  provide_images
-  provide_traefik_for_deploy
-  provide_signal_for_deploy update
-  run_migrations
-  start_signal_for_deploy || die "Update abgebrochen: verwaltetes Signal ist nicht bereit."
-  start_apps_for_activation deploy "$(image_tag)"
-  smoke_health || die "Update fehlgeschlagen: Anwendung ist nicht vollstaendig healthy; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
-  smoke_public_frontend || die "Update fehlgeschlagen: verwaltetes Traefik/TLS ist nicht oeffentlich bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
-  deploy_readiness || die "Update fehlgeschlagen: Produktivkonfiguration ist nicht bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
-  finalize_release_contract
-  info "Update fertig. Version: $(image_tag)"
+  continue_update_after_checkout
 }
 
 cmd_backup() {

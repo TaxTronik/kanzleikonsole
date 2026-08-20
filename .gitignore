@@ -52,6 +52,8 @@ infra/compose/.volumes/
 # Marker eines bestätigten, aber noch nicht erfolgreich abgeschlossenen
 # 1-Klick-Deployments. Wird nach bestandenem Readiness-Gate entfernt.
 /.taxtronik.install-pending
+# Kurzlebiger, an Checkout und Recovery-State gebundener Update-Prozess-Handoff.
+/.taxtronik.update-handoff
 # Regenerierbare, sehr große lokale Signal-LLM-Artefakte (GGUF + llama.cpp).
 /.taxtronik/signal-llm/
 
