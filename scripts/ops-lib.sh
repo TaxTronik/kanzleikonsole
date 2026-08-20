@@ -1780,7 +1780,7 @@ start_signal_for_deploy() {
   prepare_signal_managed_environment
   local previous_image=""
   previous_image="$(docker inspect --format '{{.Config.Image}}' taxtronik-risk-layer 2>/dev/null || true)"
-  info "Verwaltetes Signal starten und API-/Embedding-/LLM-Readiness pruefen"
+  info "Verwaltetes Signal starten und API-Liveness pruefen"
   if compose --profile risk-layer up -d --force-recreate --no-deps \
       --wait --wait-timeout 300 risk-layer; then
     if [[ "$(signal_deploy_channel)" == "source" ]]; then
@@ -1789,6 +1789,12 @@ start_signal_for_deploy() {
     return 0
   fi
 
+  warn "Signal-Startdiagnose (keine Secrets): Containerstatus und letzte Engine-Logs folgen."
+  compose --profile risk-layer ps risk-layer >&2 || true
+  docker inspect --format \
+    '{{range .State.Health.Log}}{{.End}} exit={{.ExitCode}} {{printf "%q" .Output}}{{println}}{{end}}' \
+    taxtronik-risk-layer >&2 2>/dev/null || true
+  compose --profile risk-layer logs --no-color --tail 120 risk-layer >&2 || true
   warn "Neues Signal-Release wurde nicht bereit; versuche den vorherigen Containerstand wiederherzustellen."
   if [[ -n "$previous_image" && "$previous_image" != "$SIGNAL_IMAGE" ]]; then
     export SIGNAL_IMAGE="$previous_image"

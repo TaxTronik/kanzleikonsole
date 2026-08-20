@@ -445,12 +445,16 @@ services:
       # Image-Updates erhalten und ist zur Laufzeit ausschließlich lesbar.
       - ${SIGNAL_LLM_DIR:-../../.taxtronik/signal-llm}:/managed-llm:ro
     healthcheck:
-      # Python-Image → urllib statt curl/wget (nicht garantiert vorhanden).
+      # Container-Health ist absichtlich reine API-Liveness. Embedding-Operator
+      # und LLM sind getrennte, degradierbare Fähigkeiten; würden sie hier den
+      # Docker-Status bestimmen, wäre eine erreichbare deterministische Engine
+      # `unhealthy` und auch der Rollback würde am neuen Healthcheck scheitern.
+      # Die Artefakte werden bereits VOR dem Containerwechsel hash-verifiziert.
       test:
         - 'CMD'
         - 'python'
         - '-c'
-        - "import json,os,urllib.request,sys; t=os.environ.get('RISK_LAYER_TOKEN',''); h={'Authorization':'Bearer '+t} if t else {}; base='http://127.0.0.1:8000'; live=urllib.request.urlopen(urllib.request.Request(base+'/v1/health',headers=h),timeout=5).status==200; operator=bool(os.environ.get('RISK_LAYER_OPERATOR_TOKEN','')); ready=(json.load(urllib.request.urlopen(urllib.request.Request(base+'/v1/embedding/status',headers=h),timeout=5)).get('refresh_available') is True) if operator else True; llm=json.load(urllib.request.urlopen(urllib.request.Request(base+'/v1/llm/status',headers=h),timeout=5)); llm_ready=llm.get('binary_vorhanden') is True and llm.get('modell_geladen') is True; sys.exit(0 if live and ready and llm_ready else 1)"
+        - "import json,os,urllib.request,sys; t=os.environ.get('RISK_LAYER_TOKEN',''); h={'Authorization':'Bearer '+t} if t else {}; r=urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/v1/health',headers=h),timeout=5); body=json.load(r); sys.exit(0 if r.status==200 and body.get('ok') is True else 1)"
       interval: 15s
       timeout: 8s
       retries: 5

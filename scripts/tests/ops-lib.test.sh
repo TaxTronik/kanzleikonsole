@@ -1175,10 +1175,26 @@ test_signal_embedding_compose_contract_is_self_contained_and_offline() {
   assert_contains "$service" "- /managed-llm/granite-4.1-8b-Q5_K_M.gguf"
   assert_contains "$service" "- /managed-llm/runtime/llama-server"
   assert_contains "$service" "- \${SIGNAL_LLM_DIR:-../../.taxtronik/signal-llm}:/managed-llm:ro"
-  assert_contains "$service" "llm_ready=llm.get('binary_vorhanden') is True and llm.get('modell_geladen') is True"
+  assert_contains "$service" "body.get('ok') is True"
+  assert_not_contains "$service" "llm_ready="
+  assert_not_contains "$service" "refresh_available') is True"
   assert_not_contains "$service" "/data/katalog"
   assert_not_contains "$service" "/data/corpus"
   pass "Signal Compose contract stays self-contained, persistent and offline"
+}
+
+test_windows_signal_dev_start_provisions_embedding_operator() {
+  local script="$REPO_ROOT/scripts/win/Start-SignalDev.ps1"
+  [[ -f "$script" ]] || test_fail "Windows Signal dev starter is missing"
+  assert_contains "$script" "requirements-embedding-windows-cpu-py312-lock.txt"
+  assert_contains "$script" "RISK_LAYER_OPERATOR_TOKEN"
+  assert_contains "$script" "RISK_LAYER_EMBEDDING_DIR"
+  assert_contains "$script" "RISK_LAYER_EMB_DEVICE"
+  assert_contains "$script" "risk_layer.web"
+  assert_contains "$script" "--llm-autostart"
+  assert_not_contains "$script" 'Write-Host $operatorToken'
+  assert_not_contains "$script" 'Write-Output $operatorToken'
+  pass "Windows Signal dev starter provisions the CPU embedding operator without leaking secrets"
 }
 
 set_env_file_value() {
@@ -2857,6 +2873,7 @@ test_managed_signal_source_build_accepts_fresh_no_checkout_clone
 test_managed_signal_source_update_skips_unchanged_image_unless_requested
 test_managed_signal_source_update_honors_interactive_rebuild_choice
 test_signal_embedding_compose_contract_is_self_contained_and_offline
+test_windows_signal_dev_start_provisions_embedding_operator
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled
 test_prune_build_cache_failure_is_non_blocking

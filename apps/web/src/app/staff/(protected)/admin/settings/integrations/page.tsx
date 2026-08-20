@@ -166,7 +166,7 @@ export default async function IntegrationsSettingsPage() {
         reason:
           'Modul aktiv, aber keine Engine konfiguriert — RISK_LAYER_URL/-TOKEN in der Server-.env setzen.',
       },
-      hint: 'Netzinterne Engine für externe Signale (Rechtsänderungen, Fristen, Anomalien). Bearer-Liveness-Ping auf /v1/health — nutzt dieselbe Engine wie der Subsumtions-Layer (RISK_LAYER_*).',
+      hint: 'API-Liveness der deterministischen Signal-Engine. Embedding- und LLM-Bereitschaft sind getrennte Fähigkeiten und werden in den jeweiligen Statusfeldern ausgewiesen.',
     });
   }
 

@@ -74,9 +74,12 @@ Quantenextras **sowie** die generative KI-Vertiefung. Der Deploy lädt das auf
 eine unveränderliche Repository-Revision und SHA-256 gepinnte Granite-4.1-8B-
 GGUF (etwa 6,25 GB) und die hash-gepinnte CPU-Ausgabe von `llama-server` einmal
 nach `.taxtronik/signal-llm`. Beide werden read-only in Signal eingebunden und
-bei unveränderten Updates wiederverwendet. Das Readiness-Gate verlangt Binary
-und Modell; ein nur teilweise eingerichtetes One-Click-Signal gilt nicht als
-erfolgreich installiert.
+bei unveränderten Updates wiederverwendet. Binary und Modell werden bereits vor
+dem Containerwechsel vollständig verifiziert. Der Docker-Healthcheck prüft
+danach ausschließlich die API-Liveness: Embedding und LLM bleiben getrennt
+beobachtbare Fähigkeiten, damit eine degradierte Zusatzschicht weder den
+deterministischen Kern noch die Wiederherstellung des vorherigen Images als
+`unhealthy` blockiert.
 
 Damit ist die Funktion auch auf einem Server ohne GPU vollständig vorhanden.
 CPU-Inferenz bleibt jedoch ein deutlicher **Performance-Bottleneck**: Der erste

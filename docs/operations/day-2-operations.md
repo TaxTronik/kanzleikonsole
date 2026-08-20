@@ -563,7 +563,10 @@ revisions-/SHA-256-gepinnte Granite-4.1-8B-GGUF und die gepinnte CPU-Engine unte
 `SIGNAL_LLM_DIR` (Default `.taxtronik/signal-llm`) und bindet den Pfad read-only
 ein. Das große Modell liegt bewusst nicht in jedem OCI-Layer: Ein unveränderter
 Stand wird beim Update vollständig verifiziert, aber weder erneut geladen noch
-mit jedem Image dupliziert. Der Signal-Healthcheck verlangt Modell und Binary.
+mit jedem Image dupliziert. Diese Prüfung geschieht vor dem Containerwechsel.
+Der Docker-Healthcheck bildet nur die API-Liveness ab; der getrennte Embedding-
+und LLM-Status macht degradierte Zusatzfähigkeiten sichtbar, ohne eine
+erreichbare deterministische Engine oder deren Rollback abzuschießen.
 
 Keine GPU ist erforderlich. Der CPU-Pfad ist jedoch der klare
 **Performance-Bottleneck**: Modell-Warmlauf und Analyse können mehrere Minuten

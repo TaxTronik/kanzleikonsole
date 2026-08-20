@@ -87,11 +87,24 @@ Nützliche lokale Dienste:
 
 Optionales Signal lokal/nativ:
 
-```bash
-# App laeuft direkt auf demselben Host:
-SIGNAL_DEPLOYMENT=external
-RISK_LAYER_URL=http://127.0.0.1:8000
-RISK_LAYER_TOKEN=<mindestens-32-zeichen>
+```powershell
+.\scripts\win\Start-SignalDev.ps1
+```
+
+Der Dev-Starter erwartet den Signal-Checkout standardmäßig als
+Nachbarverzeichnis `..\signal`, ergänzt die lokale `.env` um getrennte Bearer-
+und Operator-Tokens und startet Engine sowie LLM. Beim ersten Lauf installiert
+er außerdem den hash-gepinnten Python-3.12-CPU-Stack für Embeddings. Danach ist
+unter **Administration → Integrationen → Signal-Embedding** der Index-Build
+verfügbar; BGE-M3 lädt beim ersten Build etwa 2,3 GB. Reine CPU-Ausführung ist
+voll funktionsfähig, aber bei Embedding-Build und LLM-Inferenz ein deutlicher
+Performance-Bottleneck. Hat der Starter Tokens ergänzt, müssen bereits laufende
+Web- und Worker-Prozesse einmal neu gestartet werden.
+
+Ein anderer Checkout kann explizit angegeben werden:
+
+```powershell
+.\scripts\win\Start-SignalDev.ps1 -SignalRoot C:\src\signal
 ```
 
 `RISK_LAYER_URL` ist ein Operator-Backend-Ziel und darf Docker-Service-DNS
