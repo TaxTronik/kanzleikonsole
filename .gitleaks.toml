@@ -64,6 +64,13 @@ regexes = [
 ]
 
 [[rules.allowlists]]
+description = "synthetische MODEL_KEY-Gegenbeispiele im Gitleaks-Regressionstest"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(^|/)scripts/tests/gitleaks-config\.test\.sh$''']
+regexes = ['''MODEL_KEY = "[A-Za-z0-9._-]{8,64}"''']
+
+[[rules.allowlists]]
 description = "quelltextgenauer synthetischer n8n-Key des Release-Image-Smokes"
 condition = "AND"
 regexTarget = "line"
