@@ -154,8 +154,15 @@ erfolgreiche Probe auf `false` abschwächen; unterschiedliche Quell-/Zielverträ
 werden ebenfalls nicht überschrieben. Solange der Marker existiert, blockiert
 die CLI jeden manuellen Writer-Start über `up`, `restart`, `start_apps` und
 `backup-full`. Zulässig sind nur die interne Fortsetzung von `deploy`/`update`
-mit exakt passender Zielversion und passendem Commit oder — ausschließlich bei
-`requires_db_restore=false` — der exakte Quell-Rollback.
+mit exakt passender Zielversion und passendem Commit oder ein verifizierter
+Nachfolge-Commit desselben Quellstands, wenn der alte Marker
+`requires_db_restore=false` ausweist, dessen Ziel-Commit ein echter Vorfahr ist
+und die Datenbank diesen Zielstand vollständig erreicht hat. Dadurch kann ein
+erst nach den Migrationen gescheiterter, migrationsfreier Updateversuch mit
+einem Fehlerbehebungs-Commit fortgesetzt werden. Marker mit `true`, `unknown`,
+fremder Commit-Historie oder unvollständigem DB-Stand bleiben blockiert.
+Außerdem ist ausschließlich bei `requires_db_restore=false` der exakte
+Quell-Rollback zulässig.
 Pfad zurück: Vor-Migrations-Backup mit `--production-target` und der dazu
 passenden `--release-version` einspielen (siehe
 [disaster-recovery.md](disaster-recovery.md)), dann im Registry-Modus

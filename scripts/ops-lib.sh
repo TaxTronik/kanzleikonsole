@@ -3783,6 +3783,47 @@ database_is_fully_migrated_for_commit() {
   (( requires_gwg_044 == 0 )) || database_has_gwg_044_invariants || return 1
 }
 
+can_retarget_verified_non_migration_transition() {
+  local existing_source="$1" existing_source_commit="$2"
+  local existing_target="$3" existing_target_commit="$4"
+  local source_version="$5" source_commit="$6" target_version="$7" target_commit="$8"
+  local existing_requirement="${9:-unknown}"
+
+  # Dieser allgemeine Vorwaertspfad ist nur fuer einen nachweislich
+  # migrationsfreien alten Vertrag zulaessig. true/unknown bleiben weiterhin
+  # am exakten Ziel gebunden und brauchen ihren jeweiligen Recovery-Pfad.
+  [[ "$existing_requirement" == "false" ]] || return 1
+  [[ -n "$existing_source" && "$existing_source" == "$source_version" ]] || return 1
+  [[ "$existing_source_commit" == "$source_commit" && \
+     "$existing_source_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
+  [[ "$existing_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && \
+     "$target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
+  [[ -n "$existing_target" && -n "$target_version" ]] || return 1
+
+  if [[ "$existing_target" =~ ^source-([0-9a-f]{12})$ && \
+        "$target_version" =~ ^source-([0-9a-f]{12})$ ]]; then
+    # Source-Versionen muessen nicht nur geordnet sein, sondern exakt auf die
+    # beiden gebundenen Commits zeigen. So kann kein frei erfundener Alias den
+    # Ancestry-Beweis passieren.
+    [[ "$existing_target" == "source-${existing_target_commit:0:12}" && \
+       "$target_version" == "source-${target_commit:0:12}" ]] || return 1
+  else
+    # Veroeffentlichte Releases sind unveraenderlich. Ein gleicher SemVer-Name
+    # mit anderem Commit darf deshalb nie als Vorwaerts-Fortsetzung gelten.
+    [[ "$existing_target" != "$target_version" && \
+       "$existing_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
+       "$target_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    semver_ge "$target_version" "$existing_target" || return 1
+  fi
+
+  git -C "$ROOT" merge-base --is-ancestor "$existing_target_commit" "$target_commit" \
+    >/dev/null 2>&1 || return 1
+  # Den alten `false`-Marker nicht nur glauben: Journal, offene Migrationen und
+  # die fuer diesen Ziel-Commit geltenden GwG-Invarianten werden erneut gegen
+  # die echte Produktionsdatenbank belegt.
+  database_is_fully_migrated_for_commit "$existing_target_commit"
+}
+
 can_retarget_recoverable_gwg_034_transition() {
   local existing_source="$1" existing_source_commit="$2"
   local existing_target="$3" existing_target_commit="$4"
@@ -3860,14 +3901,20 @@ begin_migration_transition() {
           "$existing_source_commit" != "$source_commit" || \
           "$existing_target" != "$target_version" || \
           "$existing_target_commit" != "$target_commit" ]]; then
-      if can_retarget_recoverable_gwg_034_transition \
+      if can_retarget_verified_non_migration_transition \
+        "$existing_source" "$existing_source_commit" \
+        "$existing_target" "$existing_target_commit" \
+        "$source_version" "$source_commit" "$target_version" "$target_commit" \
+        "$existing_requirement"; then
+        warn "Verifizierten migrationsfreien Fehlerzustand erkannt; Pending-Vertrag wird auf den sicheren Vorwaerts-Commit fortgeschrieben."
+      elif can_retarget_recoverable_gwg_034_transition \
         "$existing_source" "$existing_source_commit" \
         "$existing_target" "$existing_target_commit" \
         "$source_version" "$source_commit" "$target_version" "$target_commit" \
         "$existing_requirement"; then
         warn "Verifizierten GwG-Migrationsuebergang 03400 erkannt; Pending-Vertrag wird auf den sicheren Vorwaerts-Commit fortgeschrieben."
       else
-        die "Migrations-Pending-Marker gehoert zu einem anderen Release-Uebergang (${existing_source:-Erstinstallation} -> ${existing_target:-unbekannt}) und wird nicht ueberschrieben. Erst bestehenden Fehlerzustand sicher aufloesen."
+        die "Migrations-Pending-Marker gehoert zu einem anderen Release-Uebergang (${existing_source:-Erstinstallation} -> ${existing_target:-unbekannt}, Restore-Status: ${existing_requirement:-ungueltig}) und wird nicht ueberschrieben. Erst bestehenden Fehlerzustand sicher aufloesen."
       fi
     fi
     requirement="$(merge_migration_restore_requirement "$existing_requirement" "$requirement")"

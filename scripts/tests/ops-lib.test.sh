@@ -926,6 +926,7 @@ test_external_signal_lifecycle_never_touches_docker() {
 test_legacy_native_signal_is_inferred_as_external() {
   local mode
   mode="$({
+    ENVFILE="$TMP_DIR/legacy-native-signal.no-env"
     SIGNAL_DEPLOYMENT=""
     RISK_LAYER_URL="http://10.10.0.42:8000"
     signal_deployment_mode
@@ -1687,15 +1688,21 @@ test_run_backup_respects_explicit_staging_path() {
 
 run_mock_update() (
   ROOT="$TMP_DIR/mock-update-root"
+  ENVFILE="$ROOT/.env"
+  MIGRATION_PENDING="$ROOT/.migration-pending"
+  DB_RESTORE_AUTHORIZATION="$ROOT/.database-restored"
   mkdir -p "$ROOT"
 
   record_step() { printf '%s\n' "$*" >>"$OPS_SEQUENCE"; }
   require_cmd() { :; }
   prepare_env_interactive() { record_step prepare-env; }
   load_env() { record_step load-env; }
+  prepare_source_version_for_checkout() { record_step prepare-source-version; }
   preflight_common() { record_step preflight; }
   assert_production_env() { record_step assert-production; }
   require_release_version() { record_step require-version; }
+  assert_no_database_restore_pending() { :; }
+  images_from_registry() { return 1; }
   start_infra() { record_step start-infra; }
   wait_postgres_healthy() { record_step wait-postgres; }
   sync_postgres_roles_from_env() { record_step sync-roles; }
@@ -1708,12 +1715,15 @@ run_mock_update() (
   ensure_host_tool_deps() { record_step ensure-host-deps; }
   prepare_release_contract() { record_step prepare-release-contract; }
   provide_images() { record_step provide-images; }
+  provide_traefik_for_deploy() { record_step provide-traefik; }
+  provide_signal_for_deploy() { record_step provide-signal; }
   run_migrations() { record_step migrate; }
-  start_apps() { record_step start-apps; }
+  start_signal_for_deploy() { record_step start-signal; }
+  start_apps_for_activation() { record_step "start-apps $*"; }
   smoke_health() { record_step smoke-health; }
+  smoke_public_frontend() { record_step smoke-public-frontend; }
   deploy_readiness() { record_step deploy-readiness; }
-  save_state() { record_step save-state; }
-  commit_release_contract() { record_step commit-release-contract; }
+  finalize_release_contract() { record_step finalize-release-contract; }
   image_tag() { printf 'test-version'; }
 
   cmd_update
@@ -2092,6 +2102,105 @@ EOF
   cmp -s "$marker" "$before" || test_fail "conflicting transition modified the original marker"
   assert_contains "$out" "anderen Release-Uebergang"
   pass "migration retry refuses to replace a different pending contract"
+}
+
+test_verified_non_migration_retarget_requires_exact_forward_state() {
+  local source_commit old_target_commit new_target_commit
+  source_commit="$(printf 'b%.0s' {1..40})"
+  old_target_commit="$(printf 'c%.0s' {1..40})"
+  new_target_commit="$(printf 'd%.0s' {1..40})"
+
+  (
+    git() { [[ "$*" == *"merge-base --is-ancestor $old_target_commit $new_target_commit"* ]]; }
+    database_is_fully_migrated_for_commit() { [[ "$1" == "$old_target_commit" ]]; }
+    can_retarget_verified_non_migration_transition \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-cccccccccccc "$old_target_commit" \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-dddddddddddd "$new_target_commit" false
+  ) || test_fail "verified migrations-free descendant was rejected"
+
+  if (
+    git() { return 0; }
+    database_is_fully_migrated_for_commit() { return 0; }
+    can_retarget_verified_non_migration_transition \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-cccccccccccc "$old_target_commit" \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-dddddddddddd "$new_target_commit" unknown
+  ); then
+    test_fail "unknown migration requirement was retargeted"
+  fi
+
+  if (
+    git() { return 0; }
+    database_is_fully_migrated_for_commit() { return 1; }
+    can_retarget_verified_non_migration_transition \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-cccccccccccc "$old_target_commit" \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-dddddddddddd "$new_target_commit" false
+  ); then
+    test_fail "incompletely migrated old target was retargeted"
+  fi
+
+  if (
+    git() { return 0; }
+    database_is_fully_migrated_for_commit() { return 0; }
+    can_retarget_verified_non_migration_transition \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-cccccccccccc "$old_target_commit" \
+      source-bbbbbbbbbbbb "$source_commit" \
+      source-eeeeeeeeeeee "$new_target_commit" false
+  ); then
+    test_fail "source version not bound to its commit was retargeted"
+  fi
+
+  pass "migrations-free pending retarget requires exact source, ancestry, version and database state"
+}
+
+test_migration_transition_retargets_verified_non_migration_descendant() {
+  local state_file="$TMP_DIR/transition-non-migration.state"
+  local marker="$TMP_DIR/transition-non-migration.pending"
+  local out="$TMP_DIR/transition-non-migration.out"
+  local source_commit old_target_commit new_target_commit
+  source_commit="$(printf 'b%.0s' {1..40})"
+  old_target_commit="$(printf 'c%.0s' {1..40})"
+  new_target_commit="$(printf 'd%.0s' {1..40})"
+  cat >"$state_file" <<EOF
+current=source-bbbbbbbbbbbb
+current_commit=$source_commit
+current_rollback_requires_db_restore=false
+EOF
+  cat >"$marker" <<EOF
+source_version=source-bbbbbbbbbbbb
+source_commit=$source_commit
+target_version=source-cccccccccccc
+target_commit=$old_target_commit
+requires_db_restore=false
+EOF
+
+  (
+    STATE="$state_file"
+    MIGRATION_PENDING="$marker"
+    DB_RESTORE_AUTHORIZATION="$TMP_DIR/transition-non-migration.no-restore"
+    TAXTRONIK_VERSION=source-dddddddddddd
+    TAXTRONIK_RELEASE_COMMIT="$new_target_commit"
+    pending_database_migration_requirement() { printf 'true'; }
+    can_retarget_verified_non_migration_transition() { return 0; }
+    can_retarget_recoverable_gwg_034_transition() {
+      test_fail "GwG special recovery was used for a migrations-free transition"
+    }
+    begin_migration_transition
+  ) >"$out" 2>&1
+
+  assert_key_equals "$marker" source_version source-bbbbbbbbbbbb
+  assert_key_equals "$marker" source_commit "$source_commit"
+  assert_key_equals "$marker" target_version source-dddddddddddd
+  assert_key_equals "$marker" target_commit "$new_target_commit"
+  assert_key_equals "$marker" requires_db_restore true
+  assert_contains "$out" "migrationsfreien Fehlerzustand"
+  pass "verified migrations-free activation failure advances to a descendant without weakening restore"
 }
 
 test_migration_transition_retargets_only_verified_gwg_034_recovery() {
@@ -2910,6 +3019,8 @@ test_restored_rollback_blocks_unmigrated_reverse_path
 test_database_restore_authorizes_only_declared_release
 test_migration_transition_preserves_strongest_requirement
 test_migration_transition_never_replaces_another_contract
+test_verified_non_migration_retarget_requires_exact_forward_state
+test_migration_transition_retargets_verified_non_migration_descendant
 test_migration_transition_retargets_only_verified_gwg_034_recovery
 test_migration_transition_retargets_manually_recovered_legacy_target_before_new_migration
 test_migration_transition_captures_legacy_update_source_commit
