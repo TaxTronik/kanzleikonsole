@@ -10,6 +10,8 @@ export interface N8nConnectionState {
   apiKey: string;
   keepApiKey: boolean;
   hmacSecret: string;
+  /** Persistierter Status; der Secret-Inhalt bleibt ausschließlich serverseitig. */
+  hasSigningSecret: boolean;
   keepHmac: boolean;
 }
 
@@ -44,6 +46,7 @@ export function createN8nConnectionState(initial: N8nConnectionInitialConfig): N
     apiKey: '',
     keepApiKey: initial.hasApiKey,
     hmacSecret: '',
+    hasSigningSecret: initial.hasSigningSecret,
     keepHmac: initial.hasSigningSecret,
   };
 }
@@ -57,13 +60,18 @@ export function n8nConnectionReducer(
       return { ...state, ...action.value };
     case 'generated-signing-secret':
       return { ...state, hmacSecret: action.secret, keepHmac: false };
-    case 'saved':
+    case 'saved': {
+      const hasSigningSecret = Boolean(
+        state.hmacSecret || (state.hasSigningSecret && state.keepHmac),
+      );
       return {
         ...state,
         apiKey: '',
         hmacSecret: '',
         keepApiKey: true,
-        keepHmac: true,
+        hasSigningSecret,
+        keepHmac: hasSigningSecret,
       };
+    }
   }
 }

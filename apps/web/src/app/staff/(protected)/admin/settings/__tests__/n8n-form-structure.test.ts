@@ -62,6 +62,9 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(connectionSection).toContain('Die verwaltete n8n-Instanz ist bereits verbunden.');
     expect(connectionSection).toContain("initial.kind !== 'BUNDLED'");
     expect(connectionSection).toContain('canTestN8nApi(apiBaseUrl, apiKey, keepApiKey)');
+    expect(connectionSection).toContain('Ein aktuelles HMAC-Signatur-Secret ist gespeichert.');
+    expect(connectionSection).toContain('Neues HMAC-Secret erzeugt, noch nicht gespeichert.');
+    expect(routeEditor).toContain("'Integration aktivieren'");
     expect(callbackSection).toContain('id="n8n-credentials-heading"');
     expect(workflowsSection).toContain('id="n8n-workflows-heading"');
   });

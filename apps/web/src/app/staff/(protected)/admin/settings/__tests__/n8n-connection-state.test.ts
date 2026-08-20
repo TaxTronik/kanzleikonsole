@@ -32,6 +32,7 @@ describe('n8n-Verbindungsformular – Reducer-State', () => {
       apiKey: '',
       keepApiKey: true,
       hmacSecret: '',
+      hasSigningSecret: false,
       keepHmac: false,
     });
   });
@@ -55,7 +56,7 @@ describe('n8n-Verbindungsformular – Reducer-State', () => {
     expect(replacementKey.name).toBe(initialConfig.name);
   });
 
-  it('behandelt generierte und nach dem Speichern verborgene Secrets wie bisher', () => {
+  it('behält nach dem Speichern den sichtbaren HMAC-Konfigurationsstatus', () => {
     const generated = n8nConnectionReducer(state(), {
       type: 'generated-signing-secret',
       secret: 'generated-secret',
@@ -69,9 +70,19 @@ describe('n8n-Verbindungsformular – Reducer-State', () => {
     expect(saved).toMatchObject({
       apiKey: '',
       hmacSecret: '',
+      hasSigningSecret: true,
       keepApiKey: true,
       keepHmac: true,
     });
     expect(saved.name).toBe(initialConfig.name);
+  });
+
+  it('behauptet ohne vorhandenes oder neues Secret keinen gespeicherten HMAC-Status', () => {
+    const saved = n8nConnectionReducer(state(), { type: 'saved' });
+    expect(saved).toMatchObject({
+      hmacSecret: '',
+      hasSigningSecret: false,
+      keepHmac: false,
+    });
   });
 });

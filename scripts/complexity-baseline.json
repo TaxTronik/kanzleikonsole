@@ -22,7 +22,6 @@
   "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async function 'importWorkflowsAction'#1": 32,
   "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async function 'saveN8nAction'#1": 28,
   "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async function 'testN8nEndpointAction'#1": 27,
-  "apps/web/src/app/staff/(protected)/admin/settings/n8n-connection-section.tsx::Function 'N8nConnectionSection'#1": 25,
   "apps/web/src/app/staff/(protected)/admin/settings/smtp-form.tsx::Function 'SmtpForm'#1": 32,
   "apps/web/src/app/staff/(protected)/admin/settings/tsa-form.tsx::Function 'TsaForm'#1": 29,
   "apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts::Async function 'kontoabfrageAction'#1": 28,

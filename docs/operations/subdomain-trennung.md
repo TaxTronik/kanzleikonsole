@@ -115,12 +115,12 @@ n8n kann als lokaler Compose-Service laufen oder separat betrieben werden. In
 Produktion erhält die UI/API immer einen eigenen VHost. Dabei vier Adressen
 getrennt behandeln:
 
-| Adresse             | Beispiel                                     | Sichtbarkeit                                     |
-| ------------------- | -------------------------------------------- | ------------------------------------------------ |
-| Instanz-UI          | `https://n8n.kanzlei.example.de`             | Browserzugriff für berechtigte Workflow-Admins   |
-| Management-API      | `http://n8n:5678/api/v1`                     | App → n8n; bevorzugt nur intern                  |
-| Webhook-Präfix      | `http://n8n:5678/webhook`                    | nur technischer Präfix/Legacy                    |
-| Exakte Workflow-URL | `http://n8n:5678/webhook/taxtronik-anfragen` | App/Worker → genau ein veröffentlichter Workflow |
+| Adresse             | Beispiel                                                    | Sichtbarkeit                                     |
+| ------------------- | ----------------------------------------------------------- | ------------------------------------------------ |
+| Instanz-UI          | `https://n8n.kanzlei.example.de`                            | Browserzugriff für berechtigte Workflow-Admins   |
+| Management-API      | `https://n8n.kanzlei.example.de/api/v1`                     | App → n8n über den bekannten öffentlichen VHost  |
+| Webhook-Präfix      | `https://n8n.kanzlei.example.de/webhook`                    | öffentlicher technischer Präfix/Legacy           |
+| Exakte Workflow-URL | `https://n8n.kanzlei.example.de/webhook/taxtronik-anfragen` | App/Worker → genau ein veröffentlichter Workflow |
 
 Für neue Konfigurationen werden die exakten Production-URLs in TaxTronik pro
 Workflow gespeichert. Der globale Wert ist nur ein Legacy-Fallback und bleibt
@@ -128,7 +128,7 @@ bei neuen Installationen leer:
 
 ```env
 # Nur befristet für Outbound-Bestandsmigrationen:
-N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
+N8N_WEBHOOK_BASE_URL=https://n8n.kanzlei.example.de/webhook
 # Globaler Callback-Migrationspfad bleibt standardmäßig unsichtbar:
 N8N_LEGACY_CALLBACKS_ENABLED=false
 # Pflicht, sobald die Legacy-URL oder das Callback-Flag aktiv ist (mind. 32 Zeichen):
@@ -171,11 +171,11 @@ vertrauenswürdigen Proxy-Hops und `X-Forwarded-For`,
 konfigurieren. Anleitung:
 [n8n Webhook URL hinter Reverse Proxy](https://docs.n8n.io/hosting/configuration/configuration-examples/webhook-url/).
 
-Wenn App und n8n dasselbe Compose-Netz nutzen, dürfen die in TaxTronik
-gespeicherten Ziele die interne URL `http://n8n:5678/webhook/...`
-verwenden, auch wenn n8n in der UI eine öffentliche Production-URL anzeigt.
-Pfad und Workflow müssen identisch sein. Außerhalb eines isolierten internen
-Netzes ist HTTPS Pflicht; HMAC verschlüsselt den Payload nicht.
+Auch wenn App und n8n dasselbe Compose-Netz nutzen, speichert TaxTronik die von
+n8n angezeigte öffentliche Production-URL. `http://n8n:5678` bleibt der interne
+Upstream des Reverse-Proxys und wird nicht als Public API, Webhook-Präfix oder
+Workflow-Ziel in das ACP übernommen. Pfad und Workflow müssen identisch sein;
+HMAC verschlüsselt den Payload nicht.
 
 Der optionale n8n-API-Key dient nur der Workflow-Verwaltung. Er ist weder das
 Outbound-`N8N_HMAC_SECRET` noch das tenantgebundene Callback-Token.

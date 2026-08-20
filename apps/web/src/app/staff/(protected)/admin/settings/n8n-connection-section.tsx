@@ -46,8 +46,91 @@ function ManagedN8nProvisionNotice({ initial }: { initial: N8nBrowserConfig }) {
         <span className="font-medium">Einstellungen → n8n API</span> einen API-Key. Tragen Sie ihn
         unten ein. Für signierte Event-Workflows erzeugen Sie anschließend das
         Outbound-Signatur-Secret, kopieren es einmal in den n8n-Workflow und speichern die
-        Verbindung. Domain und interne Compose-Adressen hat der Deploy bereits vorbelegt.
+        Verbindung. Die öffentliche Domain samt API- und Webhook-Pfad hat der Deploy bereits
+        vorbelegt.
       </p>
+    </div>
+  );
+}
+
+function HmacSecretEditor({
+  hmacSecret,
+  hasSigningSecret,
+  keepHmac,
+  busy,
+  saving,
+  copied,
+  dispatchConnection,
+  generateSecret,
+  copy,
+}: Pick<N8nConnectionState, 'hmacSecret' | 'hasSigningSecret' | 'keepHmac'> &
+  Pick<Props, 'busy' | 'saving' | 'copied' | 'dispatchConnection' | 'generateSecret' | 'copy'>) {
+  return (
+    <div className="rounded-md border border-default bg-surface-raised p-3">
+      <div className="flex items-end gap-2">
+        <label className="block flex-1">
+          <span className="label">Outbound-Signatur-Secret (TaxTronik → n8n, HMAC)</span>
+          <input
+            className="input"
+            type="password"
+            name="hmacSecret"
+            value={hmacSecret}
+            onChange={(event) => {
+              const next = event.target.value;
+              dispatchConnection({
+                type: 'patch',
+                value: next ? { hmacSecret: next, keepHmac: false } : { hmacSecret: next },
+              });
+            }}
+            placeholder={
+              hasSigningSecret && keepHmac
+                ? '•••••••• gespeichert'
+                : 'mindestens 32 zufällige Zeichen'
+            }
+            autoComplete="new-password"
+          />
+        </label>
+        <button
+          type="button"
+          className="btn-secondary mb-px text-xs"
+          onClick={generateSecret}
+          disabled={busy || saving}
+        >
+          Generieren
+        </button>
+      </div>
+      {hasSigningSecret && (
+        <SecretKeep
+          checked={keepHmac}
+          onChange={(value) =>
+            dispatchConnection({
+              type: 'patch',
+              value: value ? { keepHmac: true, hmacSecret: '' } : { keepHmac: false },
+            })
+          }
+          label="Gespeichertes Signatur-Secret beibehalten"
+        />
+      )}
+      {hmacSecret && !keepHmac && (
+        <div className="mt-2 flex items-center justify-between gap-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <span>
+            Neues HMAC-Secret erzeugt, noch nicht gespeichert. Jetzt in n8n als HMAC-Credential
+            hinterlegen; nach dem Speichern zeigt TaxTronik nur noch den sicheren Status an.
+          </span>
+          <CopyButton label="HMAC" value={hmacSecret} copied={copied} onCopy={copy} />
+        </div>
+      )}
+      {!hmacSecret && hasSigningSecret && keepHmac && (
+        <p className="mt-2 rounded bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+          Ein aktuelles HMAC-Signatur-Secret ist gespeichert. Der geheime Wert wird nicht erneut
+          angezeigt.
+        </p>
+      )}
+      {!hmacSecret && hasSigningSecret && !keepHmac && (
+        <p className="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          Das aktuell gespeicherte HMAC-Secret wird beim nächsten Speichern entfernt.
+        </p>
+      )}
     </div>
   );
 }
@@ -79,6 +162,7 @@ export function N8nConnectionSection({
     apiKey,
     keepApiKey,
     hmacSecret,
+    hasSigningSecret,
     keepHmac,
   } = connection;
 
@@ -256,21 +340,13 @@ export function N8nConnectionSection({
                   value: { webhookBaseUrl: event.target.value },
                 })
               }
-              placeholder={
-                kind === 'BUNDLED' ? 'http://n8n:5678/webhook' : 'https://n8n.example.de/webhook'
-              }
+              placeholder={'https://n8n.example.de/webhook'}
             />
             <span className="mt-1 block text-xs text-muted">
               Nur zur Erkennung bzw. im Legacy-Modus. Zugestellt wird bei explizitem Routing an die
-              unten gespeicherten vollständigen URLs.
-              {kind === 'BUNDLED' && (
-                <>
-                  {' '}
-                  Im Compose-Betrieb erreicht die App n8n direkt als{' '}
-                  <code>http://n8n:5678/webhook</code> — localhost funktioniert aus dem
-                  App-Container nicht.
-                </>
-              )}
+              unten gespeicherten vollständigen URLs. Für verwaltete Installationen wird die
+              öffentliche n8n-Domain automatisch vorbelegt. Der interne Compose-Service ist nur ein
+              Reverse-Proxy-Upstream.
             </span>
           </label>
           <label className="block">
@@ -347,61 +423,17 @@ export function N8nConnectionSection({
           </label>
         </div>
 
-        <div className="rounded-md border border-default bg-surface-raised p-3">
-          <div className="flex items-end gap-2">
-            <label className="block flex-1">
-              <span className="label">Outbound-Signatur-Secret (TaxTronik → n8n, HMAC)</span>
-              <input
-                className="input"
-                type="password"
-                name="hmacSecret"
-                value={hmacSecret}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  dispatchConnection({
-                    type: 'patch',
-                    value: next ? { hmacSecret: next, keepHmac: false } : { hmacSecret: next },
-                  });
-                }}
-                placeholder={
-                  initial.hasSigningSecret && keepHmac
-                    ? '•••••••• gespeichert'
-                    : 'mindestens 32 zufällige Zeichen'
-                }
-                autoComplete="new-password"
-              />
-            </label>
-            <button
-              type="button"
-              className="btn-secondary mb-px text-xs"
-              onClick={generateSecret}
-              disabled={busy || saving}
-            >
-              Generieren
-            </button>
-          </div>
-          {initial.hasSigningSecret && (
-            <SecretKeep
-              checked={keepHmac}
-              onChange={(value) =>
-                dispatchConnection({
-                  type: 'patch',
-                  value: value ? { keepHmac: true, hmacSecret: '' } : { keepHmac: false },
-                })
-              }
-              label="Gespeichertes Signatur-Secret beibehalten"
-            />
-          )}
-          {hmacSecret && !keepHmac && (
-            <div className="mt-2 flex items-center justify-between gap-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              <span>
-                Jetzt in n8n als HMAC-Credential hinterlegen; nach dem Speichern zeigt TaxTronik es
-                nicht erneut.
-              </span>
-              <CopyButton label="HMAC" value={hmacSecret} copied={copied} onCopy={copy} />
-            </div>
-          )}
-        </div>
+        <HmacSecretEditor
+          hmacSecret={hmacSecret}
+          hasSigningSecret={hasSigningSecret}
+          keepHmac={keepHmac}
+          busy={busy}
+          saving={saving}
+          copied={copied}
+          dispatchConnection={dispatchConnection}
+          generateSecret={generateSecret}
+          copy={copy}
+        />
 
         <div className="flex flex-wrap items-center gap-3">
           <button

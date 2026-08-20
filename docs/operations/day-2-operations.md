@@ -311,9 +311,11 @@ Produktionsdienst. Die Integration besitzt zwei getrennte Ebenen:
    aktivierten Event-Abonnements. Ein Event kann an mehrere Ziele gehen.
 
 Instanz-UI (`https://n8n.example`), API-URL
-(`http://n8n:5678/api/v1`), Webhook-Präfix
-(`http://n8n:5678/webhook`) und exakte Production-URL
-(`http://n8n:5678/webhook/<workflow-route>`) nicht verwechseln.
+(`https://n8n.example/api/v1`), Webhook-Präfix
+(`https://n8n.example/webhook`) und exakte Production-URL
+(`https://n8n.example/webhook/<workflow-route>`) nicht verwechseln. Der interne
+Compose-Dienst `http://n8n:5678` bleibt ausschließlich ein Reverse-Proxy-Upstream
+und wird nicht als fachliche n8n-Adresse im ACP gespeichert.
 `N8N_WEBHOOK_BASE_URL` ist nur noch der Legacy-Pfad
 `<Präfix>/<event>`; neue Installationen und eigene Workflows nutzen
 workflow-spezifische Ziele im Routing-Modus `EXPLICIT`. Production-Compose

@@ -1,7 +1,14 @@
 'use client';
 
 import { ExternalLink, Trash2 } from 'lucide-react';
-import { useActionState, useEffect, useReducer, useState, useTransition } from 'react';
+import {
+  useActionState,
+  useEffect,
+  useReducer,
+  useState,
+  useTransition,
+  type Dispatch,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import type { N8nEventCatalogEntry } from '@taxtronik/n8n-shared';
 import type { N8nEndpointView, N8nSetupStatus } from '@/server/n8n/status';
@@ -28,7 +35,12 @@ import {
   type N8nDiscoveredWebhookView,
   type N8nWorkflowRow,
 } from './n8n-actions';
-import { createN8nConnectionState, n8nConnectionReducer } from './n8n-connection-state';
+import {
+  createN8nConnectionState,
+  n8nConnectionReducer,
+  type N8nConnectionAction,
+  type N8nConnectionState,
+} from './n8n-connection-state';
 import { DeliveryOperationsSection } from './delivery-operations-section';
 import { EMPTY_ROUTE, RouteEditorSection, type RouteDraft } from './route-editor-section';
 import { useConfirmedAction } from './use-confirmed-action';
@@ -53,6 +65,23 @@ function urlOrigin(value: string): string {
   } catch {
     return '';
   }
+}
+
+function syncConnectionActivation(
+  dispatch: Dispatch<N8nConnectionAction>,
+  result: ActionResult,
+): void {
+  if (!result.connectionActivated) return;
+  dispatch({
+    type: 'patch',
+    value: { enabled: true, routingMode: 'EXPLICIT' },
+  });
+}
+
+function isExplicitConnectionActive(
+  connection: Pick<N8nConnectionState, 'enabled' | 'routingMode'>,
+): boolean {
+  return connection.enabled && connection.routingMode === 'EXPLICIT';
 }
 
 export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
@@ -306,6 +335,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
       const result = await saveN8nEndpointAction(null, data);
       setRouteResult(result);
       if (result.ok) {
+        syncConnectionActivation(dispatchConnection, result);
         setRouteDraft(EMPTY_ROUTE);
         setCustomEvent('');
         router.refresh();
@@ -337,7 +367,10 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
       for (const eventName of endpoint.events) data.append('events', eventName);
       const result = await saveN8nEndpointAction(null, data);
       setTestResult((current) => ({ ...current, [`${endpoint.id}:toggle`]: result }));
-      if (result.ok) router.refresh();
+      if (result.ok) {
+        syncConnectionActivation(dispatchConnection, result);
+        router.refresh();
+      }
     });
   }
 
@@ -513,6 +546,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
 
       <RouteEditorSection
         endpoints={status.endpoints}
+        connectionActive={isExplicitConnectionActive(connection)}
         events={events}
         routeDraft={routeDraft}
         setRouteDraft={setRouteDraft}

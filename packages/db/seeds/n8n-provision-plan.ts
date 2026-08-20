@@ -12,6 +12,29 @@ export interface ManagedN8nProvisionPlan {
   callbackBaseUrl: string;
 }
 
+export interface ManagedN8nProvisionedConnection {
+  kind: 'BUNDLED' | 'SELF_HOSTED' | 'CLOUD';
+  apiBaseUrl: string | null;
+  webhookBaseUrl: string | null;
+}
+
+export interface ManagedN8nProvisionedEndpoint {
+  source: 'MANAGED' | 'DISCOVERED' | 'CUSTOM' | 'LEGACY';
+  productionUrl: string;
+  testUrl: string | null;
+}
+
+export type ManagedN8nProvisionRepair = Partial<
+  Pick<ManagedN8nProvisionPlan, 'apiBaseUrl' | 'webhookBaseUrl'>
+>;
+
+export type ManagedN8nEndpointRepair = Partial<
+  Pick<ManagedN8nProvisionedEndpoint, 'productionUrl' | 'testUrl'>
+>;
+
+const LEGACY_COMPOSE_API_BASE_URL = 'http://n8n:5678/api/v1';
+const LEGACY_COMPOSE_WEBHOOK_BASE_URL = 'http://n8n:5678/webhook';
+
 /**
  * Erstellt die sicheren ACP-Defaults für die von TaxTronik betriebene
  * Compose-Instanz. Kein N8N_HOST bedeutet bewusst: keine verwaltete Instanz,
@@ -34,11 +57,66 @@ export function buildManagedN8nProvisionPlan(
   return {
     tenantSlug: env.TENANT_SLUG?.trim().toLowerCase() || 'default',
     uiBaseUrl: publicUrl.origin,
-    // App und n8n teilen im verwalteten Setup dasselbe Compose-Netz. Die
-    // interne Route umgeht unnötige DNS-/TLS-Hairpins und bleibt per SSRF-
-    // Allowlist ausdrücklich auf den Service-Namen `n8n` begrenzt.
-    apiBaseUrl: 'http://n8n:5678/api/v1',
-    webhookBaseUrl: 'http://n8n:5678/webhook',
+    // Das ACP zeigt und speichert dieselben öffentlichen Adressen, die n8n
+    // selbst hinter dem Reverse-Proxy veröffentlicht. Der Compose-Service
+    // `n8n:5678` ist ausschließlich ein Infrastruktur-Upstream und darf nicht
+    // als Public API oder als Basis erkannter Workflow-Routen erscheinen.
+    apiBaseUrl: new URL('/api/v1', publicUrl).toString().replace(/\/$/, ''),
+    webhookBaseUrl: new URL('/webhook', publicUrl).toString().replace(/\/$/, ''),
     callbackBaseUrl: 'http://app:3000',
   };
+}
+
+/**
+ * Repariert ausschließlich die beiden früher automatisch gesetzten internen
+ * Compose-Adressen. Manuell gepflegte und externe Verbindungen bleiben bei
+ * Updates unangetastet.
+ */
+export function buildManagedN8nProvisionRepair(
+  plan: ManagedN8nProvisionPlan,
+  connection: ManagedN8nProvisionedConnection,
+): ManagedN8nProvisionRepair | null {
+  if (connection.kind !== 'BUNDLED') return null;
+
+  const repair: ManagedN8nProvisionRepair = {};
+  if (connection.apiBaseUrl === LEGACY_COMPOSE_API_BASE_URL) {
+    repair.apiBaseUrl = plan.apiBaseUrl;
+  }
+  if (connection.webhookBaseUrl === LEGACY_COMPOSE_WEBHOOK_BASE_URL) {
+    repair.webhookBaseUrl = plan.webhookBaseUrl;
+  }
+  return Object.keys(repair).length > 0 ? repair : null;
+}
+
+function publicUrlForLegacyComposeTarget(
+  plan: ManagedN8nProvisionPlan,
+  value: string | null,
+): string | null {
+  if (!value) return value;
+  try {
+    const parsed = new URL(value);
+    if (parsed.origin !== 'http://n8n:5678') return value;
+    if (!/^\/webhook(?:-test)?(?:\/|$)/i.test(parsed.pathname)) return value;
+    const publicOrigin = new URL(plan.uiBaseUrl).origin;
+    return `${publicOrigin}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return value;
+  }
+}
+
+/** Repariert auch bereits aus dem alten internen Präfix erkannte Routen. */
+export function buildManagedN8nEndpointRepair(
+  plan: ManagedN8nProvisionPlan,
+  endpoint: ManagedN8nProvisionedEndpoint,
+): ManagedN8nEndpointRepair | null {
+  if (endpoint.source !== 'MANAGED' && endpoint.source !== 'DISCOVERED') return null;
+
+  const productionUrl = publicUrlForLegacyComposeTarget(plan, endpoint.productionUrl);
+  const testUrl = publicUrlForLegacyComposeTarget(plan, endpoint.testUrl);
+  const repair: ManagedN8nEndpointRepair = {};
+  if (productionUrl !== endpoint.productionUrl && productionUrl) {
+    repair.productionUrl = productionUrl;
+  }
+  if (testUrl !== endpoint.testUrl) repair.testUrl = testUrl;
+  return Object.keys(repair).length > 0 ? repair : null;
 }

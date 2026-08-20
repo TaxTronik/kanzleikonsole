@@ -16,20 +16,22 @@ Event-Zuordnungen.
 
 Fünf ähnlich aussehende URLs haben unterschiedliche Aufgaben:
 
-| Begriff                           | Beispiel                                     | Wofür wird er verwendet?                                                             |
-| --------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Instanz-UI**                    | `https://n8n.kanzlei.example`                | Anmeldung, Workflow-Editor und manuelle Kontrolle im Browser                         |
-| **API-URL**                       | `http://n8n:5678/api/v1`                     | Optionale Verwaltung von Workflows durch TaxTronik; aus dem App-Container erreichbar |
-| **Webhook-Präfix**                | `http://n8n:5678/webhook`                    | Technischer Präfix und Legacy-Kompatibilität; noch kein Workflow-Ziel                |
-| **Exakte Production-Webhook-URL** | `http://n8n:5678/webhook/taxtronik-anfragen` | Das Ziel genau eines veröffentlichten Webhook-Workflows                              |
-| **TaxTronik-Adresse aus n8n**     | `http://app:3000`                            | Rückweg und Importwert; aus der n8n-Laufzeit erreichbare TaxTronik-App               |
+| Begriff                           | Beispiel                                                 | Wofür wird er verwendet?                                                                 |
+| --------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Instanz-UI**                    | `https://n8n.kanzlei.example`                            | Anmeldung, Workflow-Editor und manuelle Kontrolle im Browser                             |
+| **API-URL**                       | `https://n8n.kanzlei.example/api/v1`                     | Optionale Verwaltung von Workflows durch TaxTronik über die bekannte öffentliche Instanz |
+| **Webhook-Präfix**                | `https://n8n.kanzlei.example/webhook`                    | Öffentlicher Präfix und Legacy-Kompatibilität; noch kein Workflow-Ziel                   |
+| **Exakte Production-Webhook-URL** | `https://n8n.kanzlei.example/webhook/taxtronik-anfragen` | Das Ziel genau eines veröffentlichten Webhook-Workflows                                  |
+| **TaxTronik-Adresse aus n8n**     | `http://app:3000`                                        | Rückweg und Importwert; aus der n8n-Laufzeit erreichbare TaxTronik-App                   |
 
 `localhost` bezeichnet in einem Container immer den Container selbst. Beim
-mitgelieferten Produktions-Stack nutzt TaxTronik für App → n8n deshalb
-`n8n:5678` und n8n für n8n → TaxTronik `app:3000`. Im lokalen Dev-Stack läuft
-die App auf dem Host; dort lautet der vorausgefüllte Rückweg
-`http://host.docker.internal:3000`. Eine öffentliche URL ist nur nötig, wenn
-App und n8n nicht im selben vertrauenswürdigen Netz erreichbar sind.
+mitgelieferten Produktions-Stack ruft TaxTronik n8n über dessen öffentlichen
+VHost auf; nur der Reverse-Proxy verwendet intern `n8n:5678`. Der Rückweg von
+n8n zu TaxTronik nutzt `app:3000`. Im lokalen Dev-Stack läuft die App auf dem
+Host; dort lautet der vorausgefüllte Rückweg
+`http://host.docker.internal:3000`. Für den TaxTronik-Rückweg ist eine
+öffentliche URL nur nötig, wenn App und n8n nicht im selben vertrauenswürdigen
+Netz erreichbar sind.
 
 ## 2. Geführtes Setup in TaxTronik
 
@@ -37,7 +39,7 @@ App und n8n nicht im selben vertrauenswürdigen Netz erreichbar sind.
 führt durch folgende Schritte:
 
 Bei einer vom TaxTronik-Deploy verwalteten n8n-Instanz ist Schritt 1 bereits
-tenantgebunden provisioniert: Domain, interne Compose-Adressen, Rückweg und
+tenantgebunden provisioniert: öffentliche UI-/API-/Webhook-Adressen, Rückweg und
 Betriebsart erscheinen im ACP. Melden Sie sich einmal über die verlinkte
 n8n-Oberfläche als Instanz-Owner an, erzeugen Sie unter **Settings → n8n API**
 einen API-Key und tragen Sie ihn im ACP ein. Das Outbound-HMAC-Secret erzeugen

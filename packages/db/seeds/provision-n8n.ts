@@ -2,14 +2,21 @@
 // Idempotente ACP-Provisionierung für die von TaxTronik betriebene n8n-Instanz.
 //
 // Der Deploy ruft diesen Schritt nach der Tenant-Provisionierung bei JEDEM Lauf
-// auf. Bestehende normalisierte oder Legacy-Konfigurationen werden niemals
-// überschrieben. Der n8n-Public-API-Key bleibt bewusst leer: n8n gibt ihn erst
-// nach Anmeldung des Instanz-Owners aus; er wird anschließend im ACP hinterlegt.
+// auf. Bestehende manuelle oder Legacy-Konfigurationen werden niemals
+// überschrieben; lediglich die früher automatisch provisionierten internen
+// Compose-Adressen einschließlich daraus erkannter verwalteter Routen werden
+// auf die bekannte öffentliche Domain migriert. Der n8n-Public-API-Key bleibt
+// bewusst leer: n8n gibt ihn erst nach Anmeldung des Instanz-Owners aus; er
+// wird anschließend im ACP hinterlegt.
 // =============================================================================
 
 import { PrismaClient } from '../src/prisma-client';
 import { createPostgresAdapter, requireDatabaseUrl } from '../src/prisma-adapter';
-import { buildManagedN8nProvisionPlan } from './n8n-provision-plan';
+import {
+  buildManagedN8nEndpointRepair,
+  buildManagedN8nProvisionPlan,
+  buildManagedN8nProvisionRepair,
+} from './n8n-provision-plan';
 
 const prisma = new PrismaClient({
   adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
@@ -37,9 +44,33 @@ async function main() {
 
   const existing = await prisma.n8nConnection.findUnique({
     where: { tenantId: tenant.id },
-    select: { id: true },
+    select: { id: true, kind: true, apiBaseUrl: true, webhookBaseUrl: true },
   });
   if (existing) {
+    const repair = buildManagedN8nProvisionRepair(plan, existing);
+    const endpoints =
+      existing.kind === 'BUNDLED'
+        ? await prisma.n8nWebhookEndpoint.findMany({
+            where: { tenantId: tenant.id, connectionId: existing.id },
+            select: { id: true, source: true, productionUrl: true, testUrl: true },
+          })
+        : [];
+    const endpointRepairs = endpoints.flatMap((endpoint) => {
+      const data = buildManagedN8nEndpointRepair(plan, endpoint);
+      return data ? [{ id: endpoint.id, data }] : [];
+    });
+    if (repair || endpointRepairs.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        if (repair) await tx.n8nConnection.update({ where: { id: existing.id }, data: repair });
+        for (const endpoint of endpointRepairs) {
+          await tx.n8nWebhookEndpoint.update({ where: { id: endpoint.id }, data: endpoint.data });
+        }
+      });
+      console.log(
+        `[provision-n8n] Veraltete interne ACP-Adressen auf die öffentliche n8n-Domain umgestellt (${endpointRepairs.length} Workflow-Route(n)).`,
+      );
+      return;
+    }
     console.log('[provision-n8n] ACP-Verbindung ist bereits vorhanden — unverändert beibehalten.');
     return;
   }

@@ -41,11 +41,13 @@ import {
 } from '@/server/n8n/deliveries';
 import { rotateN8nCallbackCredential } from '@/server/n8n/callback-credentials';
 import { toN8nRecentDeliveryView, type N8nRecentDeliveryView } from '@/server/n8n/status';
+import { connectionPatchForSavedRoute } from '@/server/n8n/route-activation';
 
 export interface ActionResult {
   ok: boolean;
   error?: string;
   message?: string;
+  connectionActivated?: boolean;
 }
 
 export interface N8nFailedDeliveryPageResult extends ActionResult {
@@ -263,7 +265,7 @@ export async function saveN8nAction(
   } catch (error) {
     return {
       ok: false,
-      error: `Nicht gespeichert — Produktions-Webhook-Präfix: ${(error as Error).message} Tipp: Im Compose-Betrieb http://n8n:5678/webhook verwenden, sonst die öffentliche Proxy-Adresse — nie localhost.`,
+      error: `Nicht gespeichert — Produktions-Webhook-Präfix: ${(error as Error).message} Tipp: Verwenden Sie die öffentliche n8n-Adresse hinter dem Reverse-Proxy — nie localhost oder den internen Compose-Service.`,
     };
   }
   try {
@@ -667,15 +669,18 @@ export async function saveN8nEndpointAction(
           enabled: true,
         })),
       });
+      const connectionPatch = connectionPatchForSavedRoute({
+        connection,
+        routeEnabledRequested: data.enabled,
+        activationBlocked,
+      });
+      const connectionActivated = Boolean(
+        connectionPatch.enabled &&
+        (!connection.enabled || connection.routingMode !== connectionPatch.routingMode),
+      );
       await tx.n8nConnection.update({
         where: { id: connection.id },
-        // Eine Route darf eine bewusst deaktivierte Connection nicht nebenbei
-        // reaktivieren. Nur eine bereits aktive Legacy-Connection wechselt beim
-        // ersten expliziten Mapping in den neuen Routingmodus.
-        data:
-          connection.enabled && connection.routingMode !== 'DISABLED'
-            ? { routingMode: 'EXPLICIT' }
-            : {},
+        data: connectionPatch,
       });
       await evidenceService.record(tx, {
         tenantId: ctx.tenantId,
@@ -692,17 +697,26 @@ export async function saveN8nEndpointAction(
           enabled: data.enabled && !activationBlocked,
           testMode: data.testMode,
           events: data.events,
+          connectionActivated,
           cancelledPendingDeliveries,
         },
       });
-      return { id: endpointId, connectionId: connection.id, activationBlocked };
+      return {
+        id: endpointId,
+        connectionId: connection.id,
+        activationBlocked,
+        connectionActivated,
+      };
     });
     revalidateN8n();
     return {
       ok: true,
+      connectionActivated: endpoint.connectionActivated,
       message: endpoint.activationBlocked
         ? 'Route als Entwurf gespeichert. Bitte zuerst testen und danach aktivieren.'
-        : 'Workflow-Route gespeichert.',
+        : endpoint.connectionActivated
+          ? 'Workflow-Route gespeichert; n8n ist jetzt für explizite Routen aktiviert.'
+          : 'Workflow-Route gespeichert.',
     };
   } catch (error) {
     const message = (error as Error).message;

@@ -37,6 +37,7 @@ export const EMPTY_ROUTE: RouteDraft = {
 
 interface RouteEditorSectionProps {
   endpoints: N8nEndpointView[];
+  connectionActive: boolean;
   events: readonly N8nEventCatalogEntry[];
   routeDraft: RouteDraft;
   setRouteDraft: Dispatch<SetStateAction<RouteDraft>>;
@@ -58,6 +59,7 @@ interface RouteEditorSectionProps {
 
 export function RouteEditorSection({
   endpoints,
+  connectionActive,
   events,
   routeDraft,
   setRouteDraft,
@@ -136,7 +138,7 @@ export function RouteEditorSection({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium text-primary">{endpoint.name}</p>
-                  <RouteState endpoint={endpoint} />
+                  <RouteState endpoint={endpoint} connectionActive={connectionActive} />
                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-muted dark:bg-gray-800">
                     {endpoint.source.toLowerCase()}
                   </span>
@@ -170,17 +172,18 @@ export function RouteEditorSection({
                 {/* Server speichert neue/geänderte Routen bewusst deaktiviert
                     ("erst testen, dann aktivieren") — nach erfolgreichem Test
                     ist DIES der Aktivierungs-Schalter. */}
-                {endpoint.verificationOk === true && !endpoint.enabled && (
+                {endpoint.verificationOk === true && (!endpoint.enabled || !connectionActive) && (
                   <button
                     type="button"
                     className="btn-primary inline-flex items-center gap-1 text-xs"
                     onClick={() => onToggleRoute(endpoint, { enabled: true })}
                     disabled={busy || saving}
                   >
-                    <CheckCircle2 className="h-3 w-3" /> Aktivieren
+                    <CheckCircle2 className="h-3 w-3" />{' '}
+                    {endpoint.enabled ? 'Integration aktivieren' : 'Aktivieren'}
                   </button>
                 )}
-                {endpoint.enabled && (
+                {endpoint.enabled && connectionActive && (
                   <button
                     type="button"
                     className="btn-secondary text-xs"
@@ -477,7 +480,13 @@ export function RouteEditorSection({
   );
 }
 
-function RouteState({ endpoint }: { endpoint: N8nEndpointView }) {
+function RouteState({
+  endpoint,
+  connectionActive,
+}: {
+  endpoint: N8nEndpointView;
+  connectionActive: boolean;
+}) {
   if (endpoint.verificationOk === false)
     return (
       <span
@@ -497,6 +506,12 @@ function RouteState({ endpoint }: { endpoint: N8nEndpointView }) {
     return (
       <span className="inline-flex items-center gap-1 text-[10px] text-muted">
         <XCircle className="h-3 w-3" /> deaktiviert
+      </span>
+    );
+  if (!connectionActive)
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+        <AlertCircle className="h-3 w-3" /> Route aktiv, Integration gesperrt
       </span>
     );
   if (endpoint.verificationOk === true)

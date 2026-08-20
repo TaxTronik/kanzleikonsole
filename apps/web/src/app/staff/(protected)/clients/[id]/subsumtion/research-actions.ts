@@ -140,7 +140,7 @@ export async function sendResearchAction(
         res.delivery.status === 'UNROUTED'
           ? 'Kein aktiver n8n-Workflow ist dem Recherche-Event zugeordnet. Bitte das n8n-Setup prüfen.'
           : res.delivery.status === 'SKIPPED'
-            ? 'Die n8n-Integration ist deaktiviert oder unvollständig konfiguriert.'
+            ? `Die n8n-Zustellung ist nicht möglich: ${res.delivery.error ?? 'Integration deaktiviert oder unvollständig konfiguriert.'}`
             : 'Der Rechercheauftrag wurde gespeichert, konnte aber nicht zur n8n-Zustellung eingeplant werden.';
       throw new ActionError(message);
     }
