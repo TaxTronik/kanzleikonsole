@@ -69,3 +69,10 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(^|/)scripts/release/smoke-release-images\.sh$''']
 regexes = ['''N8N_ENCRYPTION_KEY=smoke-n8n-encryption-key-32-chars''']
+
+[[rules.allowlists]]
+description = "oeffentliche, unveraenderliche Granite-Modellkennung"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(^|/)scripts/provision-signal-llm\.py$''']
+regexes = ['''^MODEL_KEY = "granite-4\.1-8b"$''']

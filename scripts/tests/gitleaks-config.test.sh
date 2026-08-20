@@ -45,4 +45,38 @@ set -e
 }
 grep -q '"RuleID": "generic-api-key"' "$TMP/non-empty.json"
 
-echo "2 gitleaks allowlist regression tests passed."
+# Die öffentliche Modellkennung sieht für die generische Entropie-Regel wie
+# ein API-Key aus. Nur exakt dieser bekannte Wert in exakt der
+# Provisionierungsdatei darf ausgenommen werden.
+MODEL_REPO="$TMP/model-repo"
+mkdir -p "$MODEL_REPO/scripts"
+git -C "$MODEL_REPO" init -q
+git -C "$MODEL_REPO" config user.email test@example.invalid
+git -C "$MODEL_REPO" config user.name "Gitleaks Config Test"
+printf '%s\n' 'MODEL_KEY = "granite-4.1-8b"' > \
+  "$MODEL_REPO/scripts/provision-signal-llm.py"
+git -C "$MODEL_REPO" add scripts/provision-signal-llm.py
+git -C "$MODEL_REPO" commit -qm "public model identifier fixture"
+"$GITLEAKS" git --config "$ROOT/.gitleaks.toml" --redact --no-banner "$MODEL_REPO" \
+  --report-format json --report-path "$TMP/model-public.json" >/dev/null 2>&1
+grep -qx '\[\]' "$TMP/model-public.json"
+
+# Gegenbeweis: Die Ausnahme darf keinen anderen hochentropischen MODEL_KEY in
+# derselben Datei maskieren.
+printf '%s\n' 'MODEL_KEY = "Q7vN4mZ8pL2xR6cT9wK3dF5h"' > \
+  "$MODEL_REPO/scripts/provision-signal-llm.py"
+git -C "$MODEL_REPO" add scripts/provision-signal-llm.py
+git -C "$MODEL_REPO" commit -qm "synthetic model key secret fixture"
+set +e
+"$GITLEAKS" git --config "$ROOT/.gitleaks.toml" --redact --no-banner "$MODEL_REPO" \
+  --report-format json --report-path "$TMP/model-secret.json" >/dev/null 2>&1
+model_rc=$?
+set -e
+[[ $model_rc -eq 1 ]] || {
+  echo "Abweichender MODEL_KEY wurde nicht mit Leak-Exit 1 blockiert (Exit $model_rc)." >&2
+  exit 1
+}
+grep -q '"RuleID": "generic-api-key"' "$TMP/model-secret.json"
+grep -q '"File": "scripts/provision-signal-llm.py"' "$TMP/model-secret.json"
+
+echo "4 gitleaks allowlist regression tests passed."
