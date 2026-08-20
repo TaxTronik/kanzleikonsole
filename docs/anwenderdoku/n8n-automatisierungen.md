@@ -383,7 +383,10 @@ auch entfallen). Die Key-ID ist dabei im Token eingebettet; ein separater
 `x-taxtronik-key-id`-Header ist dann nicht nötig. Senden Workflows den
 Key-ID-Header zusätzlich (wie die mitgelieferten Vorlagen), muss er zur
 eingebetteten Key-ID passen — eine abweichende Header-Key-ID gewinnt und
-führt zu `401`.
+führt zu `401`. **Die Key-ID allein ist weder ein Bearer-Token noch ein
+Header-Auth-Credential.** Ist der nur einmal angezeigte Callback-Token nicht
+mehr verfügbar, muss er im ACP rotiert und der vollständige Authorization-Wert
+anschließend in allen betroffenen n8n-Credentials aktualisiert werden.
 
 Die Basis-URL selbst dient als Verbindungstest: Ein `GET` darauf antwortet
 mit gültigem Credential (Ein-Header-Wert oder Bearer-Token + Key-ID, ohne

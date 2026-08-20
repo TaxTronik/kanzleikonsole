@@ -48,7 +48,7 @@ const CALLBACK_CREDENTIAL: BundledN8nCredential = {
   name: 'Rückkanal-Token (n8n → TaxTronik)',
   n8nType: 'Header-Auth-Credential (Authorization: Bearer …)',
   source:
-    'ACP Abschnitt 2 „Callback-Token erzeugen“ — einmalige Anzeige, Key-ID wird beim Import automatisch eingesetzt.',
+    'ACP Abschnitt 2 „Callback-Token erzeugen“ — vollständiger Wert „Bearer <Key-ID>.<Callback-Token>“; die Key-ID allein ist kein Credential.',
 };
 
 const SMTP_CREDENTIAL: BundledN8nCredential = {

@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Vorlage — nicht ungeprüft aktivieren\n\n1. Crypto- und TaxTronik-Callback-Credential zuordnen.\n2. Dem Node „KI-Recherche (Beispiel)“ ein geprüftes LLM-Credential geben und den Prompt fachlich/datenschutzrechtlich freigeben — TaxTronik sendet nur den anonymisierten Auftrag (`anonymizedText` + `auftrag`).\n3. Den STOPP-Node löschen und „Event und Signatur validieren“ direkt mit „Event bestätigen“ verbinden. Die Bestätigung muss vor der langen Recherche bleiben, damit TaxTronik nicht in einen Timeout läuft.\n\nSeiteneffekte dauerhaft nach `body.deliveryId` idempotent machen; Remove Duplicates allein genügt nicht.",
+        "content": "## Vorlage — nicht ungeprüft aktivieren\n\n1. Crypto- und TaxTronik-Callback-Credential zuordnen. Das Header-Auth-Credential heißt `Authorization` und enthält `Bearer <Key-ID>.<Callback-Token>` — die Key-ID allein autorisiert nicht.\n2. Dem Node „KI-Recherche (Beispiel)“ ein geprüftes LLM-Credential geben und den Prompt fachlich/datenschutzrechtlich freigeben — TaxTronik sendet nur den anonymisierten Auftrag (`anonymizedText` + `auftrag`).\n3. Den STOPP-Node löschen und „Event und Signatur validieren“ direkt mit „Event bestätigen“ verbinden. Die Bestätigung muss vor der langen Recherche bleiben, damit TaxTronik nicht in einen Timeout läuft.\n\nSeiteneffekte dauerhaft nach `body.deliveryId` idempotent machen; Remove Duplicates allein genügt nicht.",
         "height": 300,
         "width": 520,
         "color": 5

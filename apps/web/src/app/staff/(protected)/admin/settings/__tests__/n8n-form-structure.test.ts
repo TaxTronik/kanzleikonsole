@@ -70,6 +70,8 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(connectionSection).toContain('Neues HMAC-Secret erzeugt, noch nicht gespeichert.');
     expect(routeEditor).toContain("'Integration aktivieren'");
     expect(callbackSection).toContain('id="n8n-credentials-heading"');
+    expect(callbackSection).toContain('Die Key-ID allein ist kein Credential.');
+    expect(callbackSection).toContain('Bearer &lt;Key-ID&gt;.&lt;Callback-Token&gt;');
     expect(workflowsSection).toContain('id="n8n-workflows-heading"');
   });
 

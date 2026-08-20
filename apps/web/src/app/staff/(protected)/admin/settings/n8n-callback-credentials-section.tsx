@@ -71,10 +71,17 @@ export function N8nCallbackCredentialsSection({
             </span>
           </div>
           <ReadOnlyValue
-            label="Key-ID"
+            label="Key-ID (nur Identifikator)"
             value={initial.callbackKeyId || 'Wird beim Speichern erzeugt'}
           />
         </div>
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          <strong>Die Key-ID allein ist kein Credential.</strong> In n8n muss „Header Auth“ den
+          Header <code>Authorization</code> mit dem vollständigen Wert{' '}
+          <code>Bearer &lt;Key-ID&gt;.&lt;Callback-Token&gt;</code> senden. Ist der nur einmal
+          angezeigte Token nicht mehr vorhanden, unten rotieren und anschließend das n8n-Credential
+          aktualisieren.
+        </p>
         <fieldset>
           <legend className="label">Berechtigungen des neuen Tokens</legend>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -135,7 +142,8 @@ export function N8nCallbackCredentialsSection({
               onCopy={copy}
             />
             <p className="font-semibold">
-              Für n8n „Header Auth“ (ein Header genügt): Name <code>Authorization</code>, Wert:
+              Für n8n „Header Auth“ (ein Header genügt): Name <code>Authorization</code>, niemals
+              die Key-ID als Headername oder alleinigen Wert verwenden. Vollständiger Wert:
             </p>
             <CredentialRow
               label="Authorization (komplett)"

@@ -189,6 +189,9 @@ describe('ausgelieferte n8n-Workflow-Vertraege', () => {
     expect(workflow.nodes.some((candidate) => candidate.type === 'n8n-nodes-base.stickyNote')).toBe(
       true,
     );
+    expect(String(node(workflow, 'template-warning').parameters?.['content'])).toContain(
+      'die Key-ID allein autorisiert nicht',
+    );
     expect(String(node(workflow, 'research-template').parameters?.['jsCode'])).toContain(
       'VORLAGE INAKTIV',
     );
