@@ -169,10 +169,7 @@ export function RouteEditorSection({
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {/* Server speichert neue/geänderte Routen bewusst deaktiviert
-                    ("erst testen, dann aktivieren") — nach erfolgreichem Test
-                    ist DIES der Aktivierungs-Schalter. */}
-                {endpoint.verificationOk === true && (!endpoint.enabled || !connectionActive) && (
+                {(!endpoint.enabled || !connectionActive) && (
                   <button
                     type="button"
                     className="btn-primary inline-flex items-center gap-1 text-xs"
@@ -260,33 +257,21 @@ export function RouteEditorSection({
         ))}
       </div>
 
+      {/* Der globale Settings-Flyover kann diesen kontrollierten React-State
+          nicht serialisieren. Eigene Aktionen bleiben deshalb sichtbar. */}
       <form
         id="n8n-route-editor"
+        data-settings-no-track
         onSubmit={onSaveRoute}
         className="rounded-lg border border-default bg-surface-raised p-4 space-y-4"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
-            <Plus className="h-4 w-4" /> {editorTitle}
-          </p>
-          <div className="flex items-center gap-2">
-            {draftPrefilled && (
-              <button type="button" className="btn-secondary text-xs" onClick={resetDraft}>
-                Neue leere Route
-              </button>
-            )}
-            {/* Zweiter Speichern-Button oben: der untere liegt unter dem
-                langen Event-Raster außerhalb des Sichtfelds und wurde als
-                "es gibt keinen Speichern-Button" wahrgenommen. */}
-            <button
-              type="submit"
-              className="btn-primary inline-flex items-center gap-1.5 text-xs"
-              disabled={busy || saving}
-            >
-              <Save className="h-3.5 w-3.5" /> Route speichern
-            </button>
-          </div>
-        </div>
+        <RouteEditorHeader
+          editorTitle={editorTitle}
+          draftPrefilled={draftPrefilled}
+          busy={busy}
+          saving={saving}
+          resetDraft={resetDraft}
+        />
         {routeDraft.workflowId && !routeDraft.id && (
           <p className="rounded bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
             Aus der Webhook-Erkennung übernommen: <strong>{routeDraft.workflowName}</strong>. Unten
@@ -462,21 +447,92 @@ export function RouteEditorSection({
             n8n-Workflow nur erforderliche Daten verarbeiten und Ausführungsdaten begrenzen.
           </p>
         )}
-        {/* Sticky: das Event-Raster ist lang — die Speichern-Leiste bleibt
-            beim Scrollen am unteren Rand sichtbar, damit der Button nie
-            "fehlt". */}
-        <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-wrap items-center gap-3 rounded-b-lg border-t border-default bg-surface-raised px-4 py-3">
-          <button
-            type="submit"
-            className="btn-primary inline-flex items-center gap-1.5"
-            disabled={busy || saving}
-          >
-            <Save className="h-4 w-4" /> Route speichern
-          </button>
-          <N8nActionResult result={routeResult} />
-        </div>
+        <RouteEditorFooter
+          draftPrefilled={draftPrefilled}
+          busy={busy}
+          saving={saving}
+          resetDraft={resetDraft}
+          routeResult={routeResult}
+        />
       </form>
     </section>
+  );
+}
+
+function RouteEditorHeader({
+  editorTitle,
+  draftPrefilled,
+  busy,
+  saving,
+  resetDraft,
+}: {
+  editorTitle: string;
+  draftPrefilled: boolean;
+  busy: boolean;
+  saving: boolean;
+  resetDraft: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+        <Plus className="h-4 w-4" /> {editorTitle}
+      </p>
+      <div className="flex items-center gap-2">
+        {draftPrefilled && (
+          <button type="button" className="btn-secondary text-xs" onClick={resetDraft}>
+            Neue leere Route
+          </button>
+        )}
+        <button
+          type="submit"
+          className="btn-primary inline-flex items-center gap-1.5 text-xs"
+          disabled={busy || saving}
+        >
+          <Save className="h-3.5 w-3.5" /> Route speichern
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RouteEditorFooter({
+  draftPrefilled,
+  busy,
+  saving,
+  resetDraft,
+  routeResult,
+}: {
+  draftPrefilled: boolean;
+  busy: boolean;
+  saving: boolean;
+  resetDraft: () => void;
+  routeResult: ActionResult | null;
+}) {
+  return (
+    <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-3 rounded-b-lg border-t border-default bg-surface-raised px-4 py-3 shadow-[0_-8px_18px_-16px_rgba(15,23,42,0.65)]">
+      <div className="min-w-0 flex-1">
+        <N8nActionResult result={routeResult} />
+      </div>
+      <div className="ml-auto flex items-center justify-end gap-2">
+        {draftPrefilled && (
+          <button
+            type="button"
+            className="btn-secondary inline-flex items-center gap-1.5"
+            onClick={resetDraft}
+            disabled={busy || saving}
+          >
+            <XCircle className="h-4 w-4" /> Verwerfen
+          </button>
+        )}
+        <button
+          type="submit"
+          className="btn-primary inline-flex items-center gap-1.5"
+          disabled={busy || saving}
+        >
+          <Save className="h-4 w-4" /> Speichern
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -210,7 +210,7 @@ export async function enqueueN8nEventCore(
           if (configuredSubscriptions === 0) {
             return markWithoutDelivery(
               'SKIPPED',
-              `Event '${event}' ist für n8n nicht abonniert; Webhook-Route speichern, testen und aktivieren`,
+              `Event '${event}' ist für n8n nicht abonniert; Webhook-Route speichern und aktivieren`,
             );
           }
           return markWithoutDelivery(

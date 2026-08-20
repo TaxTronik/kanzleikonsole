@@ -69,8 +69,8 @@ export function N8nSetupOverview({
       {!initial.enabled && status.activeEndpointCount > 0 && (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
           Es gibt aktive Routen, die Integration ist jedoch noch global gesperrt. Aktivieren Sie bei
-          einer verifizierten Route einmal „Integration aktivieren“; dadurch wird explizites Routing
-          konsistent freigegeben.
+          einer Route einmal „Integration aktivieren“; dadurch wird explizites Routing konsistent
+          freigegeben.
         </p>
       )}
     </>

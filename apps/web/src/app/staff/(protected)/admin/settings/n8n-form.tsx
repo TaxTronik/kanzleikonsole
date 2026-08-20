@@ -379,10 +379,8 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     persistRouteDraft();
   }
 
-  // Ein-Klick-Aktivierung/Deaktivierung direkt an der Routen-Karte: der
-  // Server speichert neue Routen bewusst deaktiviert ("erst testen, dann
-  // aktivieren") — ohne diesen Button ging Aktivieren nur über den Umweg
-  // Bearbeiten → Häkchen → Speichern.
+  // Ein-Klick-Aktivierung/Deaktivierung direkt an der Routen-Karte. Dieselbe
+  // Änderung ist auch über Bearbeiten → Route aktiv → Speichern möglich.
   function toggleRoute(
     endpoint: N8nEndpointView,
     patch: { enabled?: boolean; testMode?: boolean },

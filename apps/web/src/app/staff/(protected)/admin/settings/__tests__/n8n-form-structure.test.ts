@@ -36,8 +36,12 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(form).not.toContain('function Result');
 
     expect(routeEditor).toContain('id="n8n-route-editor"');
+    expect(routeEditor).toContain('data-settings-no-track');
     expect(routeEditor).toContain('4. Event-Routen');
     expect(routeEditor).toContain('enabled: false');
+    expect(routeEditor).toContain('<XCircle className="h-4 w-4" /> Verwerfen');
+    expect(routeEditor).toContain('<Save className="h-4 w-4" /> Speichern');
+    expect(routeEditor).toContain('items-center justify-end gap-2');
     expect(routeEditor).toContain("onTestRoute(endpoint.id, false, 'taxtronik.ping')");
     expect(routeEditor).toContain('onDeleteRoute(endpoint.id)');
 
@@ -79,6 +83,8 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(workflowsSection).toContain('onClick={saveSelectedDiscovered}');
     expect(workflowsSection).toContain('Route speichern');
     expect(workflowsSection).toContain('Das zum Workflow gehörende Event ist vorausgewählt.');
+    expect(actions).toContain('enabled: data.enabled,');
+    expect(actions).not.toContain('activationBlocked');
   });
 
   it('verwendet genau eine globale Transition und den gemeinsamen Bestätigungsablauf', () => {

@@ -18,7 +18,7 @@
   "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts::Function 'toQuantenlosActionError'#1": 24,
   "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx::Function 'QuantenlosPanel'#1": 25,
   "apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts::Async function 'saveSellerInfoAction'#1": 25,
-  "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async arrow function#1": 30,
+  "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async arrow function#1": 26,
   "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async function 'importWorkflowsAction'#1": 32,
   "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async function 'saveN8nAction'#1": 28,
   "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts::Async function 'testN8nEndpointAction'#1": 27,

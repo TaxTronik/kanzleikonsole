@@ -568,7 +568,6 @@ export async function saveN8nEndpointAction(
       if (!connection) throw new Error('Bitte zuerst die n8n-Verbindung speichern.');
 
       let endpointId = data.id;
-      let activationBlocked: boolean;
       let cancelledPendingDeliveries = 0;
       if (endpointId) {
         const exists = await tx.n8nWebhookEndpoint.findFirst({
@@ -580,7 +579,6 @@ export async function saveN8nEndpointAction(
             enabled: true,
             testMode: true,
             updatedAt: true,
-            verificationOk: true,
             subscriptions: { select: { event: true } },
           },
         });
@@ -594,8 +592,6 @@ export async function saveN8nEndpointAction(
           exists.productionUrl !== data.productionUrl ||
           (exists.testUrl ?? '') !== data.testUrl ||
           previousEvents !== nextEvents;
-        const mayActivate = !routeChanged && exists.verificationOk === true;
-        activationBlocked = data.enabled && !mayActivate;
         // Test-Modus-Wechsel ändert das Zustellziel bereits geplanter
         // Deliveries — sie werden storniert (Outbox plant neu), setzt aber
         // NICHT die Verifikation zurück (URLs sind unverändert).
@@ -621,7 +617,7 @@ export async function saveN8nEndpointAction(
             workflowId: data.workflowId || null,
             workflowName: data.workflowName || null,
             workflowNodeId: data.workflowNodeId || null,
-            enabled: data.enabled && mayActivate,
+            enabled: data.enabled,
             testMode: data.testMode,
             ...(routeChanged
               ? {
@@ -638,7 +634,6 @@ export async function saveN8nEndpointAction(
           );
         }
       } else {
-        activationBlocked = data.enabled;
         const created = await tx.n8nWebhookEndpoint.create({
           data: {
             tenantId: ctx.tenantId,
@@ -650,7 +645,7 @@ export async function saveN8nEndpointAction(
             workflowName: data.workflowName || null,
             workflowNodeId: data.workflowNodeId || null,
             source: data.source,
-            enabled: false,
+            enabled: data.enabled,
             testMode: data.testMode,
           },
           select: { id: true },
@@ -672,7 +667,6 @@ export async function saveN8nEndpointAction(
       const connectionPatch = connectionPatchForSavedRoute({
         connection,
         routeEnabledRequested: data.enabled,
-        activationBlocked,
       });
       const connectionActivated = Boolean(
         connectionPatch.enabled &&
@@ -694,7 +688,7 @@ export async function saveN8nEndpointAction(
           productionUrl: data.productionUrl,
           testUrl: data.testUrl || null,
           enabledRequested: data.enabled,
-          enabled: data.enabled && !activationBlocked,
+          enabled: data.enabled,
           testMode: data.testMode,
           events: data.events,
           connectionActivated,
@@ -704,7 +698,6 @@ export async function saveN8nEndpointAction(
       return {
         id: endpointId,
         connectionId: connection.id,
-        activationBlocked,
         connectionActivated,
       };
     });
@@ -712,11 +705,9 @@ export async function saveN8nEndpointAction(
     return {
       ok: true,
       connectionActivated: endpoint.connectionActivated,
-      message: endpoint.activationBlocked
-        ? 'Route als Entwurf gespeichert. Bitte zuerst testen und danach aktivieren.'
-        : endpoint.connectionActivated
-          ? 'Workflow-Route gespeichert; n8n ist jetzt für explizite Routen aktiviert.'
-          : 'Workflow-Route gespeichert.',
+      message: endpoint.connectionActivated
+        ? 'Workflow-Route gespeichert; n8n ist jetzt für explizite Routen aktiviert.'
+        : 'Workflow-Route gespeichert.',
     };
   } catch (error) {
     const message = (error as Error).message;

@@ -56,28 +56,31 @@ nach n8n. TaxTronik erzeugt keine Owner-Zugangsdaten und schleust keine Secrets
    Import den tenantgebundenen Rückkanal vollständig ein; Veröffentlichung,
    SMTP- und Outbound-HMAC-Credentials bleiben bewusste Schritte in n8n. Die
    Event-Zustellung funktioniert ohne API-Key.
-3. **Workflow-Ziele als Entwurf speichern:** Mit **Webhook-Knoten erkennen**
+3. **Workflow-Ziele speichern:** Mit **Webhook-Knoten erkennen**
    die veröffentlichte n8n-Route laden, **Als Route übernehmen** wählen und
    direkt an derselben Fundstelle **Route speichern**. Bei mitgelieferten
    Workflows ist das zugehörige Event bereits vorausgewählt. Für eigene
-   Workflows erfolgt die Eventauswahl unter **Details bearbeiten**. Neue Ziele
-   und Ziele mit geänderter URL oder Eventauswahl bleiben serverseitig
-   deaktiviert, auch wenn im Formular bereits **Aktiv** gewählt wurde.
-4. **Mit synthetischen Daten testen:** Auch ein deaktivierter, gespeicherter
-   Entwurf kann getestet werden. Der Verbindungstest verwendet
+   Workflows erfolgt die Eventauswahl unter **Details bearbeiten**. Die Auswahl
+   **Route aktiv** wird beim Speichern unverändert übernommen; ein in n8n
+   aktiver, erkannter Workflow wird entsprechend als aktive TaxTronik-Route
+   gespeichert.
+4. **Mit synthetischen Daten testen:** Auch eine deaktiviert gespeicherte Route
+   kann getestet werden. Der Verbindungstest verwendet
    `taxtronik.ping` und darf nach Veröffentlichung auch die
    Production-URL prüfen. Fachliche Events sendet TaxTronik mit
    `synthetic: true` ausschließlich an die getrennte Test-URL — nie
    an Produktion, wo sie echte Seiteneffekte auslösen könnten. Keine echten
    Mandanten- oder Mitarbeiterdaten zum Testen verwenden.
-5. **Unverändert aktivieren:** Nach einem erfolgreichen Test an der Routenkarte
-   **Aktivieren** wählen. Jede spätere Änderung an Production-URL, Test-URL oder
-   Eventauswahl setzt den Nachweis zurück und macht das Ziel wieder zum
-   deaktivierten Entwurf.
+5. **Bei Bedarf aktivieren:** Wurde die Route zunächst deaktiviert gespeichert,
+   an der Routenkarte **Aktivieren** wählen oder unter **Bearbeiten** die Option
+   **Route aktiv** setzen und unten rechts **Speichern**. Änderungen an
+   Production-URL, Test-URL oder Eventauswahl setzen einen vorhandenen
+   Testnachweis zurück, ändern aber nicht den bewusst gewählten Aktivstatus.
 6. **Status prüfen und Entscheidung abschließen:** Alle benötigten Ziele müssen
-   veröffentlicht, erreichbar, zuletzt erfolgreich getestet und anschließend
-   aktiviert sein. Wer n8n nicht nutzt, wählt ausdrücklich **Deaktiviert**,
-   damit die Inbetriebnahme-Checkliste nicht dauerhaft offen bleibt.
+   veröffentlicht, erreichbar und aktiviert sein; ein letzter erfolgreicher
+   Test wird für den Betrieb empfohlen. Wer n8n nicht nutzt, wählt ausdrücklich
+   **Deaktiviert**, damit die Inbetriebnahme-Checkliste nicht dauerhaft offen
+   bleibt.
 
 Das HMAC-Secret wird verschlüsselt gespeichert und nach dem Speichern nicht
 mehr im Klartext angezeigt. Ein leer gelassenes Secret-Feld behält den
