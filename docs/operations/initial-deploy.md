@@ -68,6 +68,13 @@ Vorgeschaltete CDN-/Proxy-DNS-Modi müssen für die initiale ACME-Ausstellung
 deaktiviert sein. Andere Linux-Distributionen verwenden die Standardmethode
 und provisionieren ihre Host-Werkzeuge selbst.
 
+Der empfohlene verwaltete Signal-Pfad funktioniert ohne GPU: Er installiert den
+deterministischen Signal-Kern, die CPU-fähige BGE-M3-Embedding-Runtime und die
+Quantenextras. Die zusätzliche generative KI-Vertiefung über `llama-server` und
+ein GGUF-Modell ist ein separater optionaler Betriebsbaustein und wird vom
+portablen 1-Klick-Pfad nicht vorausgesetzt. Fehlt dieser Zusatz, bleibt Signal
+voll nutzbar; lediglich die Schaltfläche zur generativen Vertiefung entfällt.
+
 Nach der ausdrücklichen Leerhost-Bestätigung merkt sich der Installer das noch
 nicht abgeschlossene 1-Klick-Deployment. Bricht ein Build, Download oder Dienst
 ab, kann derselbe Befehl `./taxtronik deploy` sicher fortgesetzt werden. Dabei

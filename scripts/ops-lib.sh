@@ -2748,6 +2748,7 @@ configure_initial_deployment_interactive() {
       printf '\nWie soll das von TaxTronik verwaltete Signal bereitgestellt werden?\n'
       printf '  1) Aktuellen Git-Stand lokal bauen (derzeit empfohlen)\n'
       printf '     Klont/aktualisiert Signal und baut ein CPU-Image ohne automatischen Indexaufbau.\n'
+      printf '     Enthalten: Signal-Kern, Embeddings und Quantenextras; lokale LLM-Vertiefung ist optional.\n'
       printf '  2) Veroeffentlichtes Container-Image aus einer Registry\n'
       printf '     Nur waehlen, wenn das versionierte Image tatsaechlich veroeffentlicht ist.\n'
       read -rp 'Auswahl [1]: ' choice || true

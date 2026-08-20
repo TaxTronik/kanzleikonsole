@@ -557,6 +557,12 @@ Volumes. Alle Offline-Schalter sind fest verdrahtet; ein `.env`-Wert kann keinen
 Netz-Fallback aktivieren. Der verwaltete Pfad ist bewusst portabel und nutzt
 `RISK_LAYER_EMB_DEVICE=cpu`.
 
+Das ist die vollständige portable Signal-Basis und benötigt keine GPU. Die
+generative Vertiefung (Schicht 2) über einen separaten `llama-server` samt
+GGUF-Modell ist dagegen optional und nicht Bestandteil der garantierten
+Managed-/1-Klick-Basis. Ihr Fehlen bedeutet nicht, dass Signal fehlt oder die
+deterministische beziehungsweise embeddinggestützte Analyse außer Betrieb ist.
+
 GPU- oder ROCm-Betrieb bleibt Aufgabe einer nativen/externen Signal-Installation
 mit `SIGNAL_DEPLOYMENT=external`. Dort werden Runtime, Festwissen, Modell,
 Service-Manager und Updates nach dem Signal-Runbook betrieben; TaxTronik

@@ -3,7 +3,7 @@
 import { Wand2, Loader2 } from 'lucide-react';
 import type { MarkingDTO } from './_ui';
 import type { LlmStatusDTO } from '@/server/risk/llm';
-import { canStartLlm } from '@/lib/risk-llm';
+import { canStartLlm, llmOptionalSetupNotice } from '@/lib/risk-llm';
 
 function queueText(q: LlmStatusDTO['queue']): string | null {
   if (!q) return null;
@@ -29,23 +29,15 @@ function LlmIndicator({ s, starting }: { s: LlmStatusDTO; starting: boolean }) {
       </span>
     );
   }
-  if (s.binaryVorhanden === false) {
+  const setupNotice = llmOptionalSetupNotice(s);
+  if (setupNotice) {
     return (
       <span
-        className="text-xs text-muted inline-flex items-center gap-1"
-        title="In der Engine ist kein llama-server konfiguriert"
+        className="text-xs text-secondary inline-flex items-center gap-1"
+        title={setupNotice.title}
       >
-        <span className="h-2 w-2 rounded-full bg-gray-400" /> KI-Engine nicht installiert
-      </span>
-    );
-  }
-  if (s.modellGeladen === false) {
-    return (
-      <span
-        className="text-xs text-muted inline-flex items-center gap-1"
-        title="In der Engine ist kein lokales LLM-Modell konfiguriert"
-      >
-        <span className="h-2 w-2 rounded-full bg-gray-400" /> KI-Modell nicht installiert
+        <span className="h-2 w-2 rounded-full bg-emerald-500" /> Signal aktiv
+        <span className="text-muted">· {setupNotice.detail}</span>
       </span>
     );
   }
