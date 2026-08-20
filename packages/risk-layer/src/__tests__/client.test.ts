@@ -190,6 +190,8 @@ describe('RiskLayerClient', () => {
         modell_geladen: true,
         binary_vorhanden: true,
         von_uns_gestartet: true,
+        backend: 'cpu',
+        performance_bottleneck: true,
         engineVersion: '1.0.0',
         queue: {
           quelle: 'slots',
@@ -204,6 +206,8 @@ describe('RiskLayerClient', () => {
 
     const s = await client.llmStatus();
     expect(s.verfuegbar).toBe(true);
+    expect(s.backend).toBe('cpu');
+    expect(s.performance_bottleneck).toBe(true);
     expect(s.queue).toMatchObject({ quelle: 'slots', slots_gesamt: 4, aktiv: 1, frei: 3 });
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe('http://risk-layer:8000/v1/llm/status');

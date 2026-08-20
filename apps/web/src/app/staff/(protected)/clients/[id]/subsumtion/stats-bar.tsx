@@ -3,7 +3,7 @@
 import { Wand2, Loader2 } from 'lucide-react';
 import type { MarkingDTO } from './_ui';
 import type { LlmStatusDTO } from '@/server/risk/llm';
-import { canStartLlm, llmOptionalSetupNotice } from '@/lib/risk-llm';
+import { canStartLlm, llmOptionalSetupNotice, llmPerformanceNotice } from '@/lib/risk-llm';
 
 function queueText(q: LlmStatusDTO['queue']): string | null {
   if (!q) return null;
@@ -18,13 +18,17 @@ function queueText(q: LlmStatusDTO['queue']): string | null {
  *  bloß bereit, aber aus ist (dann „KI aus"). */
 function LlmIndicator({ s, starting }: { s: LlmStatusDTO; starting: boolean }) {
   const q = queueText(s.queue);
+  const performanceNotice = llmPerformanceNotice(s);
   if (s.verfuegbar) {
     return (
       <span
         className="text-xs text-emerald-600 inline-flex items-center gap-1"
-        title="LLM-Server bereit"
+        title={performanceNotice ?? 'LLM-Server bereit'}
       >
         <span className="h-2 w-2 rounded-full bg-emerald-500" /> KI verfügbar
+        {performanceNotice ? (
+          <span className="text-amber-700 dark:text-amber-400"> · CPU-Bottleneck</span>
+        ) : null}
         {q ? <span className="text-muted"> · {q}</span> : null}
       </span>
     );
@@ -45,9 +49,12 @@ function LlmIndicator({ s, starting }: { s: LlmStatusDTO; starting: boolean }) {
     return (
       <span
         className="text-xs text-amber-600 inline-flex items-center gap-1"
-        title="LLM-Server startet / lädt das Modell"
+        title={performanceNotice ?? 'LLM-Server startet / lädt das Modell'}
       >
         <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" /> KI lädt …
+        {performanceNotice ? (
+          <span className="text-amber-700 dark:text-amber-400"> · CPU-Bottleneck</span>
+        ) : null}
         {q ? <span className="text-muted"> · {q}</span> : null}
       </span>
     );
@@ -56,9 +63,13 @@ function LlmIndicator({ s, starting }: { s: LlmStatusDTO; starting: boolean }) {
   return (
     <span
       className="text-xs text-muted inline-flex items-center gap-1"
-      title="Der LLM-Server läuft nicht — „LLM dazuschalten“ startet ihn bei Bedarf."
+      title={
+        performanceNotice ??
+        'Der LLM-Server läuft nicht — „LLM dazuschalten“ startet ihn bei Bedarf.'
+      }
     >
-      <span className="h-2 w-2 rounded-full bg-gray-400" /> KI aus
+      <span className="h-2 w-2 rounded-full bg-gray-400" />
+      {performanceNotice ? 'KI bereit · CPU-Bottleneck' : 'KI aus'}
     </span>
   );
 }
@@ -102,6 +113,7 @@ export function StatsBar({
   const beraterDef = count((m) => m.herkunft === 'BERATER');
   const gov = (t: 'FP' | 'FF' | 'IN') => count((m) => m.governanceTyp === t);
   const llmStartbar = engineConfigured && canStartLlm(llmStatus);
+  const llmPerformance = llmPerformanceNotice(llmStatus);
 
   return (
     <div className="card p-4 flex items-center gap-6 flex-wrap">
@@ -120,14 +132,21 @@ export function StatsBar({
               onClick={onRequestLlm}
               disabled={pending || llmStarting}
               className="btn-secondary text-xs"
-              title="LLM-Schicht asynchron dazuschalten (startet den Server bei Bedarf selbst)"
+              title={
+                llmPerformance ??
+                'LLM-Schicht asynchron dazuschalten (startet den Server bei Bedarf selbst)'
+              }
             >
               {pending || llmStarting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Wand2 className="h-3.5 w-3.5" />
               )}
-              {llmStarting ? 'Vertiefung läuft …' : 'LLM dazuschalten +'}
+              {llmStarting
+                ? 'Vertiefung läuft …'
+                : llmPerformance
+                  ? 'KI vertiefen (CPU) +'
+                  : 'LLM dazuschalten +'}
             </button>
           ) : null}
           {engineConfigured && llmStatus ? (

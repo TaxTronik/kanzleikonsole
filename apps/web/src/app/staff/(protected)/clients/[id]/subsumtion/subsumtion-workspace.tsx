@@ -206,7 +206,9 @@ export function SubsumtionWorkspace({
 
   const beginLlmRun = useCallback(() => {
     llmBaselineRef.current = enriched;
-    pollDeadlineRef.current = Date.now() + 10 * 60_000;
+    // CPU-only ist voll unterstützt, aber bewusst als Bottleneck ausgewiesen.
+    // Modell-Warmlauf + Inferenz können zusammen deutlich über zehn Minuten liegen.
+    pollDeadlineRef.current = Date.now() + 30 * 60_000;
     setLlmFailed(null);
     setPollLlm(true);
   }, [enriched]);
@@ -242,7 +244,7 @@ export function SubsumtionWorkspace({
           router.refresh(); // weich: Editor/Selektion/Scroll bleiben erhalten
         } else if (pollLlm && r.jobFailed) {
           // Job endgültig gescheitert → „lädt" beenden, Retry anbieten (nicht bis zum
-          // 10-Min-Deadline weiterpollen).
+          // 30-Min-Deadline weiterpollen).
           setPollLlm(false);
           setLlmFailed(r.jobError || 'Die KI-Vertiefung ist fehlgeschlagen.');
         }

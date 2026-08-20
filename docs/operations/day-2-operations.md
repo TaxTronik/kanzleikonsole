@@ -557,11 +557,20 @@ Volumes. Alle Offline-Schalter sind fest verdrahtet; ein `.env`-Wert kann keinen
 Netz-Fallback aktivieren. Der verwaltete Pfad ist bewusst portabel und nutzt
 `RISK_LAYER_EMB_DEVICE=cpu`.
 
-Das ist die vollständige portable Signal-Basis und benötigt keine GPU. Die
-generative Vertiefung (Schicht 2) über einen separaten `llama-server` samt
-GGUF-Modell ist dagegen optional und nicht Bestandteil der garantierten
-Managed-/1-Klick-Basis. Ihr Fehlen bedeutet nicht, dass Signal fehlt oder die
-deterministische beziehungsweise embeddinggestützte Analyse außer Betrieb ist.
+Zur garantierten Managed-/1-Klick-Basis gehört zusätzlich die generative
+Vertiefung (Schicht 2). `./taxtronik deploy` provisioniert dafür das
+revisions-/SHA-256-gepinnte Granite-4.1-8B-GGUF und die gepinnte CPU-Engine unter
+`SIGNAL_LLM_DIR` (Default `.taxtronik/signal-llm`) und bindet den Pfad read-only
+ein. Das große Modell liegt bewusst nicht in jedem OCI-Layer: Ein unveränderter
+Stand wird beim Update vollständig verifiziert, aber weder erneut geladen noch
+mit jedem Image dupliziert. Der Signal-Healthcheck verlangt Modell und Binary.
+
+Keine GPU ist erforderlich. Der CPU-Pfad ist jedoch der klare
+**Performance-Bottleneck**: Modell-Warmlauf und Analyse können mehrere Minuten
+dauern; `RISK_LAYER_LLM_TIMEOUT` steht im verwalteten Betrieb deshalb auf 900
+Sekunden. Weniger als 16 GiB RAM oder vier logische CPUs erzeugen beim Deploy
+eine deutliche Warnung. Dieser Hinweis beschreibt Geschwindigkeit, nicht eine
+fehlende oder eingeschränkte Installation.
 
 GPU- oder ROCm-Betrieb bleibt Aufgabe einer nativen/externen Signal-Installation
 mit `SIGNAL_DEPLOYMENT=external`. Dort werden Runtime, Festwissen, Modell,

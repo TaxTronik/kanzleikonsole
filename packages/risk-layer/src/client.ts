@@ -66,7 +66,10 @@ import {
 // Worker (kein synchroner Warter) → großzügig: ein großes Modell (z. B. 14B) kann
 // auf einem langen Sachverhalt mehrere Minuten brauchen. 45 s war zu knapp.
 const FAST_TIMEOUT_MS = 10_000;
-const LLM_TIMEOUT_MS = 300_000;
+// Managed One-Click läuft garantiert auch ohne GPU. CPU-Inferenz ist der
+// erwartete Bottleneck und darf deshalb im asynchronen Worker bis 15 Minuten
+// benötigen; teure LLM-Requests werden weiterhin niemals automatisch retried.
+const LLM_TIMEOUT_MS = 15 * 60_000;
 // Los-Pfad: die QPU-Submission (IBM-Roundtrip) bzw. die Online-Attestierung beim
 // Prüfen brauchen länger als der FAST-Pfad — bleiben aber deutlich unter LLM.
 const LOS_TIMEOUT_MS = 60_000;

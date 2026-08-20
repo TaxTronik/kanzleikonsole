@@ -17,6 +17,10 @@ export interface LlmStatusDTO {
   modellGeladen: boolean | null;
   binaryVorhanden: boolean | null;
   vonUnsGestartet: boolean | null;
+  /** Ausführungsweg der generativen Schicht; managed/One-Click setzt `cpu`. */
+  backend: string | null;
+  /** Signal meldet damit einen funktionalen, aber erwartbar langsamen Pfad. */
+  performanceBottleneck: boolean;
   /** Queue-Auslastung des llama-server oder null (nicht gelaufen / nicht exponiert). */
   queue: {
     quelle: string | null;
@@ -34,11 +38,19 @@ export async function getLlmStatus(client?: LlmStatusClient): Promise<LlmStatusD
   const c = client ?? new RiskLayerClient();
   const s = await c.llmStatus();
   const q = s.queue ?? null;
+  const backend =
+    typeof s.backend === 'string'
+      ? s.backend
+      : typeof process.env.RISK_LAYER_LLM_BACKEND === 'string'
+        ? process.env.RISK_LAYER_LLM_BACKEND
+        : null;
   return {
     verfuegbar: s.verfuegbar,
     modellGeladen: bool(s.modell_geladen),
     binaryVorhanden: bool(s.binary_vorhanden),
     vonUnsGestartet: bool(s.von_uns_gestartet),
+    backend,
+    performanceBottleneck: bool(s.performance_bottleneck) ?? backend?.toLowerCase() === 'cpu',
     queue: q
       ? {
           quelle: typeof q.quelle === 'string' ? q.quelle : null,

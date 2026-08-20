@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { canStartLlm, llmCapabilityError, llmOptionalSetupNotice } from '../risk-llm';
+import {
+  canStartLlm,
+  llmCapabilityError,
+  llmOptionalSetupNotice,
+  llmPerformanceNotice,
+} from '../risk-llm';
 
 describe('Risk-Layer LLM capability', () => {
   it('schaltet Schicht 2 nur mit Binary und Modell frei', () => {
@@ -25,5 +30,12 @@ describe('Risk-Layer LLM capability', () => {
     expect(binary?.title).toMatch(/Signal ist installiert und nutzbar/);
     expect(model).toMatchObject({ detail: expect.stringContaining('optional') });
     expect(llmOptionalSetupNotice({ binaryVorhanden: true, modellGeladen: true })).toBeNull();
+  });
+
+  it('weist einen funktionsfähigen CPU-Pfad ehrlich als Bottleneck aus', () => {
+    expect(llmPerformanceNotice({ backend: 'cpu', performanceBottleneck: true })).toMatch(
+      /CPU-Bottleneck.*mehrere Minuten/,
+    );
+    expect(llmPerformanceNotice({ backend: 'gpu', performanceBottleneck: false })).toBeNull();
   });
 });

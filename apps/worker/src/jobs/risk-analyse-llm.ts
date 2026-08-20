@@ -24,7 +24,10 @@ const markingKey = (m: { start: number; end: number; herkunft: string; begriff: 
 // Warmlauf von Schicht 2: der llama-server wird bei Bedarf gestartet (idempotent)
 // und bis zur Bereitschaft gepollt. Der Job blockiert solange (Worker-Concurrency 1
 // → das Modell lädt einmal, Folgeläufe finden es bereit).
-const LLM_WARMUP_MAX_MS = 180_000;
+// Ein CPU-only One-Click-Host kann das 8B-Modell deutlich langsamer laden als
+// eine GPU-Instanz. Der Status-Poll blockiert keine Webanfrage und endet sofort,
+// sobald llama-server bereit ist.
+const LLM_WARMUP_MAX_MS = 10 * 60_000;
 const LLM_POLL_MS = 4_000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 

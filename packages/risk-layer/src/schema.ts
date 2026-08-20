@@ -334,6 +334,8 @@ export const LlmStatusResponseSchema = z
     modell_geladen: z.boolean().nullish(),
     binary_vorhanden: z.boolean().nullish(),
     von_uns_gestartet: z.boolean().nullish(),
+    backend: z.string().nullish(),
+    performance_bottleneck: z.boolean().nullish(),
     engineVersion: z.string().nullish(),
   })
   .catchall(z.unknown());

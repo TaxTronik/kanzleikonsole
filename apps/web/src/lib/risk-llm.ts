@@ -8,6 +8,18 @@ export interface LlmOptionalSetupNotice {
   title: string;
 }
 
+export interface LlmPerformanceStatus {
+  backend?: string | null;
+  performanceBottleneck?: boolean;
+}
+
+export function llmPerformanceNotice(
+  status: LlmPerformanceStatus | null | undefined,
+): string | null {
+  if (!status?.performanceBottleneck && status?.backend?.toLowerCase() !== 'cpu') return null;
+  return 'CPU-Bottleneck: Die KI-Vertiefung ist vollständig verfügbar, Modellstart und Analyse können aber mehrere Minuten dauern.';
+}
+
 /**
  * Schicht 2 kann nur gestartet werden, wenn sowohl llama-server als auch ein
  * lokales Modell vorhanden sind. `null` bedeutet bei alten/unerreichbaren

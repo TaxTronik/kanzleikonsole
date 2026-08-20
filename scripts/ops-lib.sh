@@ -44,6 +44,10 @@ ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c
 SIGNAL_MANAGED_IMAGE_DEFAULT="git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0"
 SIGNAL_GIT_URL_DEFAULT="https://git.hirschmann-koxha.de/TaxTronik/signal.git"
 SIGNAL_GIT_REF_DEFAULT="main"
+SIGNAL_MANAGED_LLM_MODEL="granite-4.1-8b"
+SIGNAL_MANAGED_LLM_FILE="granite-4.1-8b-Q5_K_M.gguf"
+SIGNAL_MANAGED_LLM_SIZE_BYTES=6253884064
+SIGNAL_MANAGED_LLM_TIMEOUT_DEFAULT=900
 TAXTRONIK_RELEASE_IMAGE_PREFIX_DEFAULT="git.hirschmann-koxha.de/taxtronik"
 HOST_NODE_VERSION="24.19.0"
 HOST_NODE_LINUX_X64_SHA256="14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647"
@@ -490,6 +494,16 @@ signal_source_dir() {
   fi
 }
 
+signal_llm_dir() {
+  local configured="${SIGNAL_LLM_DIR:-$(get_env SIGNAL_LLM_DIR)}"
+  printf '%s' "${configured:-$ROOT/.taxtronik/signal-llm}"
+}
+
+validate_signal_llm_dir() {
+  local dir="${1:-}"
+  [[ "$dir" == /* && "$dir" != "/" && "$dir" != "$ROOT" && ! -L "$dir" ]]
+}
+
 validate_signal_source_image() {
   [[ "${1:-}" =~ ^taxtronik/risk-layer-engine:source-[0-9a-f]{12}$ ]]
 }
@@ -503,7 +517,13 @@ validate_signal_managed_image() {
 
 prepare_signal_managed_environment() {
   [[ "$(signal_deployment_mode)" == "managed" ]] || return 0
-  local channel resolved
+  local channel resolved llm_dir
+  llm_dir="$(signal_llm_dir)"
+  validate_signal_llm_dir "$llm_dir" || \
+    die "SIGNAL_LLM_DIR muss ein absolutes, nicht verlinktes Verzeichnis sein (nicht / oder Repository-Wurzel)."
+  export SIGNAL_LLM_DIR="$llm_dir"
+  export RISK_LAYER_LLM_BACKEND="${RISK_LAYER_LLM_BACKEND:-cpu}"
+  export RISK_LAYER_LLM_TIMEOUT="${RISK_LAYER_LLM_TIMEOUT:-$SIGNAL_MANAGED_LLM_TIMEOUT_DEFAULT}"
   channel="$(signal_deploy_channel)" || \
     die "SIGNAL_DEPLOY_CHANNEL muss source oder image sein."
   if [[ "$channel" == "source" ]]; then
@@ -1264,6 +1284,7 @@ doctor() {
   local signal_mode=""
   local resolved_signal_image=""
   local signal_channel="" signal_git_url="" signal_git_ref="" signal_git_dir=""
+  local signal_llm_dir="" signal_llm_backend="" signal_llm_timeout=""
   signal_mode="$(signal_deployment_mode 2>/dev/null || true)"
   if [[ -z "$signal_mode" ]]; then
     _dr_row "FEHLT" "SIGNAL_DEPLOYMENT" "nur managed, external oder disabled erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
@@ -1322,6 +1343,28 @@ doctor() {
       _dr_row "FEHLT" "RISK_LAYER_EMB_DEVICE" "verwaltetes Release ist CPU; GPU-Signal als external anbinden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     else
       _dr_row "OK" "RISK_LAYER_EMB_DEVICE" "cpu"
+    fi
+    signal_llm_dir="$(signal_llm_dir)"
+    signal_llm_backend="${RISK_LAYER_LLM_BACKEND:-cpu}"
+    signal_llm_timeout="${RISK_LAYER_LLM_TIMEOUT:-$SIGNAL_MANAGED_LLM_TIMEOUT_DEFAULT}"
+    if ! validate_signal_llm_dir "$signal_llm_dir"; then
+      _dr_row "FEHLT" "SIGNAL_LLM_DIR" "absoluter, nicht verlinkter Pfad erforderlich"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    elif [[ -f "$signal_llm_dir/$SIGNAL_MANAGED_LLM_FILE" && \
+            -x "$signal_llm_dir/runtime/llama-server" && \
+            -f "$signal_llm_dir/managed-llm.json" ]]; then
+      _dr_row "OK" "SIGNAL_LLM" "$SIGNAL_MANAGED_LLM_MODEL bereit (CPU-Bottleneck)"
+    else
+      _dr_row "WARN" "SIGNAL_LLM" "wird beim Deploy hash-gepinnt provisioniert (~6,25 GB; CPU-Bottleneck)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+    fi
+    if [[ "$signal_llm_backend" != "cpu" ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_LLM_BACKEND" "verwaltetes One-Click-Signal muss cpu verwenden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "RISK_LAYER_LLM_BACKEND" "cpu (langsam, aber ohne GPU funktionsfaehig)"
+    fi
+    if [[ ! "$signal_llm_timeout" =~ ^[0-9]+$ ]] || (( 10#$signal_llm_timeout < 300 )); then
+      _dr_row "FEHLT" "RISK_LAYER_LLM_TIMEOUT" "fuer CPU mindestens 300 Sekunden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "RISK_LAYER_LLM_TIMEOUT" "${signal_llm_timeout}s"
     fi
     if [[ -n "$rl_festwissen" ]]; then
       _dr_row "WARN" "RISK_LAYER_FESTWISSEN_DIR" "wird im verwalteten Self-contained-Image nicht mehr verwendet"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
@@ -1660,6 +1703,44 @@ verify_signal_managed_image() {
     die "Signal-Image ist kein vollstaendiger Managed-Stand (Graph, Offline-Modell, Embedding- oder Quanten-Runtime fehlt)."
 }
 
+provision_signal_managed_llm() {
+  local image="$1" dir cpu_count="" mem_total_kib="" memory_limit="1g" size_gib=""
+  dir="$(signal_llm_dir)"
+  validate_signal_llm_dir "$dir" || \
+    die "SIGNAL_LLM_DIR muss ein absolutes, nicht verlinktes Verzeichnis sein (nicht / oder Repository-Wurzel)."
+  [[ -f "$ROOT/scripts/provision-signal-llm.py" ]] || \
+    die "scripts/provision-signal-llm.py fehlt; verwaltetes Signal darf ohne gepinntes CPU-LLM nicht starten."
+  install -d -m 0755 "$dir" || die "Signal-LLM-Verzeichnis konnte nicht angelegt werden: $dir"
+
+  if [[ -r /proc/meminfo ]]; then
+    mem_total_kib="$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo)"
+    if [[ "$mem_total_kib" =~ ^[0-9]+$ ]] && (( mem_total_kib < 16 * 1024 * 1024 )); then
+      warn "CPU-LLM-Bottleneck: weniger als 16 GiB Host-RAM erkannt. Das Modell ist funktionsfaehig, kann unter Parallelbetrieb aber stark ausbremsen oder an Speichergrenzen stossen."
+    fi
+  fi
+  cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+  if [[ "$cpu_count" =~ ^[0-9]+$ ]] && (( cpu_count < 4 )); then
+    warn "CPU-LLM-Bottleneck: nur $cpu_count logische CPUs erkannt; Vertiefungen koennen deutlich mehrere Minuten dauern."
+  fi
+
+  size_gib="$(awk -v bytes="$SIGNAL_MANAGED_LLM_SIZE_BYTES" 'BEGIN { printf "%.1f", bytes / 1024 / 1024 / 1024 }')"
+  info "Lokale KI-Vertiefung provisionieren: $SIGNAL_MANAGED_LLM_MODEL (CPU, ${size_gib} GiB)"
+  info "Performance-Hinweis: Ohne GPU ist die generative Vertiefung der erwartete Bottleneck; Signal-Kern und Embeddings bleiben davon unabhängig nutzbar."
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --memory "$memory_limit" --memory-swap "$memory_limit" \
+    -e LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/torch/lib \
+    -v "$dir:/managed-llm" \
+    -v "$ROOT/scripts/provision-signal-llm.py:/opt/taxtronik/provision-signal-llm.py:ro" \
+    --entrypoint python \
+    "$image" /opt/taxtronik/provision-signal-llm.py --output /managed-llm || \
+    die "Signal CPU-LLM konnte nicht vollständig und integer provisioniert werden; laufender Dienst bleibt unverändert."
+
+  export SIGNAL_LLM_DIR="$dir"
+  export RISK_LAYER_LLM_BACKEND="cpu"
+  export RISK_LAYER_LLM_TIMEOUT="$SIGNAL_MANAGED_LLM_TIMEOUT_DEFAULT"
+}
+
 provide_signal_for_deploy() {
   local operation="${1:-deploy}" mode image channel
   mode="$(signal_deployment_mode)"
@@ -1688,10 +1769,10 @@ provide_signal_for_deploy() {
       die "Signal-Image konnte nicht bezogen werden. Registry-Zugang pruefen oder SIGNAL_DEPLOY_CHANNEL=source waehlen."
     fi
   fi
-  # Das verwaltete Release muss vollstaendig self-contained sein. Dadurch wird
-  # ein altes Runtime-only-Image vor dem Austausch des laufenden Dienstes
-  # erkannt und der bisherige Container bleibt unangetastet.
+  # Erst den Signal-Kern, dann die getrennt update-stabilen LLM-Artefakte
+  # prüfen. Beides geschieht vor dem Austausch des laufenden Dienstes.
   verify_signal_managed_image "$image" "$channel"
+  provision_signal_managed_llm "$image"
 }
 
 start_signal_for_deploy() {
@@ -1699,7 +1780,7 @@ start_signal_for_deploy() {
   prepare_signal_managed_environment
   local previous_image=""
   previous_image="$(docker inspect --format '{{.Config.Image}}' taxtronik-risk-layer 2>/dev/null || true)"
-  info "Verwaltetes Signal starten und API-/Embedding-Readiness pruefen"
+  info "Verwaltetes Signal starten und API-/Embedding-/LLM-Readiness pruefen"
   if compose --profile risk-layer up -d --force-recreate --no-deps \
       --wait --wait-timeout 300 risk-layer; then
     if [[ "$(signal_deploy_channel)" == "source" ]]; then
@@ -2594,6 +2675,15 @@ apply_initial_setup_plan() {
   set_env RISK_LAYER_URL "$_SETUP_SIGNAL_URL"
   set_env RISK_LAYER_TOKEN "$_SETUP_SIGNAL_TOKEN"
   set_env RISK_LAYER_OPERATOR_TOKEN "$_SETUP_SIGNAL_OPERATOR_TOKEN"
+  if [[ "$_SETUP_SIGNAL_MODE" == "managed" ]]; then
+    set_env SIGNAL_LLM_DIR "$ROOT/.taxtronik/signal-llm"
+    set_env RISK_LAYER_LLM_BACKEND cpu
+    set_env RISK_LAYER_LLM_TIMEOUT "$SIGNAL_MANAGED_LLM_TIMEOUT_DEFAULT"
+  else
+    set_env SIGNAL_LLM_DIR ""
+    set_env RISK_LAYER_LLM_BACKEND auto
+    set_env RISK_LAYER_LLM_TIMEOUT ""
+  fi
   set_env TENANT_NAME "$_SETUP_TENANT_NAME"
   set_env ADMIN_EMAIL "$_SETUP_ADMIN_EMAIL"
 
@@ -2748,7 +2838,8 @@ configure_initial_deployment_interactive() {
       printf '\nWie soll das von TaxTronik verwaltete Signal bereitgestellt werden?\n'
       printf '  1) Aktuellen Git-Stand lokal bauen (derzeit empfohlen)\n'
       printf '     Klont/aktualisiert Signal und baut ein CPU-Image ohne automatischen Indexaufbau.\n'
-      printf '     Enthalten: Signal-Kern, Embeddings und Quantenextras; lokale LLM-Vertiefung ist optional.\n'
+      printf '     Enthalten: Signal-Kern, Embeddings, Quantenextras und lokale LLM-Vertiefung.\n'
+      printf '     CPU-Hinweis: Das gepinnte 8B-Modell (~6,25 GB) ist ein deutlicher Performance-Bottleneck.\n'
       printf '  2) Veroeffentlichtes Container-Image aus einer Registry\n'
       printf '     Nur waehlen, wenn das versionierte Image tatsaechlich veroeffentlicht ist.\n'
       read -rp 'Auswahl [1]: ' choice || true
@@ -2828,8 +2919,12 @@ configure_initial_deployment_interactive() {
     printf 'Signal     : verwaltet, Git %s @ %s -> %s\n' \
       "$_SETUP_SIGNAL_GIT_URL" "$_SETUP_SIGNAL_GIT_REF" "$_SETUP_SIGNAL_GIT_DIR"
     printf '             Kein automatischer Embedding-Indexaufbau\n'
+    printf 'LLM        : %s, CPU-only (funktionsfaehig; deutlicher Performance-Bottleneck)\n' \
+      "$SIGNAL_MANAGED_LLM_MODEL"
   elif [[ "$_SETUP_SIGNAL_MODE" == "managed" ]]; then
     printf 'Signal     : verwaltet, Registry-Image %s\n' "$_SETUP_SIGNAL_IMAGE"
+    printf 'LLM        : %s, CPU-only (funktionsfaehig; deutlicher Performance-Bottleneck)\n' \
+      "$SIGNAL_MANAGED_LLM_MODEL"
   else
     printf 'Signal     : %s\n' "$_SETUP_SIGNAL_MODE"
   fi
@@ -2861,7 +2956,10 @@ configure_risk_layer_interactive() {
   SIGNAL_GIT_URL="${SIGNAL_GIT_URL:-$SIGNAL_GIT_URL_DEFAULT}"
   SIGNAL_GIT_REF="${SIGNAL_GIT_REF:-$SIGNAL_GIT_REF_DEFAULT}"
   SIGNAL_GIT_DIR="${SIGNAL_GIT_DIR:-$(dirname "$ROOT")/signal}"
+  SIGNAL_LLM_DIR="${SIGNAL_LLM_DIR:-$ROOT/.taxtronik/signal-llm}"
   RISK_LAYER_EMB_DEVICE="${RISK_LAYER_EMB_DEVICE:-cpu}"
+  RISK_LAYER_LLM_BACKEND="${RISK_LAYER_LLM_BACKEND:-auto}"
+  RISK_LAYER_LLM_TIMEOUT="${RISK_LAYER_LLM_TIMEOUT:-}"
 
   if [[ -z "$mode" ]]; then
     mode="$(signal_deployment_mode)"
@@ -2938,7 +3036,12 @@ configure_risk_layer_interactive() {
         SIGNAL_IMAGE=""
       fi
       RISK_LAYER_EMB_DEVICE="cpu"
-      info "Signal wird durch TaxTronik verwaltet ($channel); URL und getrennte Secrets wurden automatisch provisioniert."
+      validate_signal_llm_dir "$SIGNAL_LLM_DIR" || \
+        die "SIGNAL_LLM_DIR muss ein absolutes, nicht verlinktes Verzeichnis sein."
+      RISK_LAYER_LLM_BACKEND="cpu"
+      RISK_LAYER_LLM_TIMEOUT="$SIGNAL_MANAGED_LLM_TIMEOUT_DEFAULT"
+      info "Signal wird durch TaxTronik verwaltet ($channel); Kern, CPU-LLM und getrennte Secrets werden automatisch provisioniert."
+      warn "CPU-LLM ist funktionsfaehig, aber der erwartete Performance-Bottleneck; Vertiefungen koennen mehrere Minuten dauern."
       ;;
     external)
       prompt "Signal-URL (aus den TaxTronik-Containern erreichbar)" RISK_LAYER_URL "$RISK_LAYER_URL"
@@ -2952,6 +3055,9 @@ configure_risk_layer_interactive() {
       SIGNAL_GIT_URL=""
       SIGNAL_GIT_REF=""
       SIGNAL_GIT_DIR=""
+      SIGNAL_LLM_DIR=""
+      RISK_LAYER_LLM_BACKEND="auto"
+      RISK_LAYER_LLM_TIMEOUT=""
       info "Signal ist extern verwaltet; TaxTronik wird weder Installation noch Updates anfassen."
       ;;
     disabled)
@@ -2963,6 +3069,9 @@ configure_risk_layer_interactive() {
       SIGNAL_GIT_URL=""
       SIGNAL_GIT_REF=""
       SIGNAL_GIT_DIR=""
+      SIGNAL_LLM_DIR=""
+      RISK_LAYER_LLM_BACKEND="auto"
+      RISK_LAYER_LLM_TIMEOUT=""
       ;;
     *) die "SIGNAL_DEPLOYMENT muss managed, external oder disabled sein (aktuell: $mode)." ;;
   esac
@@ -2977,6 +3086,9 @@ configure_risk_layer_interactive() {
   set_env RISK_LAYER_TOKEN "$RISK_LAYER_TOKEN"
   set_env RISK_LAYER_OPERATOR_TOKEN "$RISK_LAYER_OPERATOR_TOKEN"
   set_env RISK_LAYER_EMB_DEVICE "$RISK_LAYER_EMB_DEVICE"
+  set_env SIGNAL_LLM_DIR "$SIGNAL_LLM_DIR"
+  set_env RISK_LAYER_LLM_BACKEND "$RISK_LAYER_LLM_BACKEND"
+  set_env RISK_LAYER_LLM_TIMEOUT "$RISK_LAYER_LLM_TIMEOUT"
   # Bestandswert wird nur aus der Env entfernt; Host-Daten werden niemals
   # geloescht. Verwaltete Images tragen ihr Festwissen selbst, externe Dienste
   # besitzen ihre Daten ohnehin ausserhalb von TaxTronik.

@@ -157,6 +157,11 @@ const envSchema = z.object({
   RISK_LAYER_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
   // Getrennte Berechtigung für Refresh/Schedule; ohne sie bleibt Status lesbar.
   RISK_LAYER_OPERATOR_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
+  // Reines Laufzeitmetadatum für den sichtbaren CPU-Bottleneck-Hinweis.
+  RISK_LAYER_LLM_BACKEND: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['auto', 'cpu', 'gpu']).optional(),
+  ),
 
   // --- ELSTER-Bridge (eric-bridge, privater Dienst) ---------------------------
   // Netzinterner HTTP-Dienst, der die native ERiC-Bibliothek kapselt (eigener

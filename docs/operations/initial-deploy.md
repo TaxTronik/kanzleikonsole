@@ -70,10 +70,20 @@ und provisionieren ihre Host-Werkzeuge selbst.
 
 Der empfohlene verwaltete Signal-Pfad funktioniert ohne GPU: Er installiert den
 deterministischen Signal-Kern, die CPU-fähige BGE-M3-Embedding-Runtime und die
-Quantenextras. Die zusätzliche generative KI-Vertiefung über `llama-server` und
-ein GGUF-Modell ist ein separater optionaler Betriebsbaustein und wird vom
-portablen 1-Klick-Pfad nicht vorausgesetzt. Fehlt dieser Zusatz, bleibt Signal
-voll nutzbar; lediglich die Schaltfläche zur generativen Vertiefung entfällt.
+Quantenextras **sowie** die generative KI-Vertiefung. Der Deploy lädt das auf
+eine unveränderliche Repository-Revision und SHA-256 gepinnte Granite-4.1-8B-
+GGUF (etwa 6,25 GB) und die hash-gepinnte CPU-Ausgabe von `llama-server` einmal
+nach `.taxtronik/signal-llm`. Beide werden read-only in Signal eingebunden und
+bei unveränderten Updates wiederverwendet. Das Readiness-Gate verlangt Binary
+und Modell; ein nur teilweise eingerichtetes One-Click-Signal gilt nicht als
+erfolgreich installiert.
+
+Damit ist die Funktion auch auf einem Server ohne GPU vollständig vorhanden.
+CPU-Inferenz bleibt jedoch ein deutlicher **Performance-Bottleneck**: Der erste
+Start lädt das Modell, und eine Vertiefung kann je nach CPU und Text mehrere
+Minuten dauern. Unter 16 GiB Host-RAM beziehungsweise unter vier logischen CPUs
+warnt der Installer ausdrücklich. GPU-Beschleunigung erfordert weiterhin eine
+separat betriebene Signal-Instanz.
 
 Nach der ausdrücklichen Leerhost-Bestätigung merkt sich der Installer das noch
 nicht abgeschlossene 1-Klick-Deployment. Bricht ein Build, Download oder Dienst
@@ -113,9 +123,10 @@ bewusste Schritte, weil TaxTronik weder Owner-Zugangsdaten noch Workflow-Secrets
 
 Beim Signal-Git-Weg wird der gewählte Ref erst nach dieser Bestätigung in einen
 eigenen Checkout geladen. Der erste Build lädt die gelockte CPU-Runtime und das
-manifestierte lokale BGE-M3-Modell und kann deshalb länger dauern. Er ist auf
-zwei CPUs und 3 GiB RAM begrenzt und berechnet ausdrücklich noch keinen
-Embedding-Index.
+manifestierte lokale BGE-M3-Modell und kann deshalb länger dauern. Anschließend
+folgt einmalig das etwa 6,25 GB große LLM-Artefakt. Der Image-Build ist auf zwei
+CPUs und 3 GiB RAM begrenzt und berechnet ausdrücklich noch keinen
+Embedding-Index; das LLM wird ebenfalls noch nicht in den RAM geladen.
 
 Beim empfohlenen Git-/Source-Weg leitet die CLI die Identität automatisch als
 `source-<12-stelliger Commit>` aus dem ausgecheckten Stand ab. Es wird keine
@@ -126,7 +137,8 @@ werden signierte Registry-Artefakte statt lokaler Builds verwendet.
 ## Signal und Embeddings
 
 `managed` lässt TaxTronik ein mit dem Release getestetes, self-contained
-CPU-Image von Signal installieren und bei TaxTronik-Updates mitziehen.
+CPU-Image von Signal sowie das gepinnte CPU-LLM installieren und bei
+TaxTronik-Updates mitziehen beziehungsweise unverändert wiederverwenden.
 `external` bindet eine native, ROCm-/CUDA- oder separat betriebene Installation
 nur per API an; TaxTronik startet, stoppt oder aktualisiert sie niemals.
 

@@ -109,7 +109,12 @@ die aus dem `taxtronik-app`-Container erreichbar ist.
 Im Produktions-Deploy entscheidet `SIGNAL_DEPLOYMENT` über die Verantwortung:
 `managed` lässt TaxTronik ein CPU-Komplett-Image einschließlich der
 hash-gepinnten Quantenlos-Runtime entweder aus dem gewählten Signal-Git-Stand
-lokal bauen oder versioniert aus einer Registry beziehen;
+lokal bauen oder versioniert aus einer Registry beziehen. Zusätzlich werden
+das revisions-/SHA-256-gepinnte Granite-4.1-8B-GGUF und eine gepinnte
+`llama-server`-CPU-Engine einmalig provisioniert und read-only eingebunden.
+Damit ist die KI-Vertiefung auch ohne GPU vollständig verfügbar; CPU-Inferenz
+bleibt allerdings ein klar ausgewiesener Performance-Bottleneck und kann
+mehrere Minuten dauern;
 `external` bindet eine native/GPU- oder anderweitig betriebene Signal-Instanz
 ausschließlich per API an. Im externen Modus führt TaxTronik garantiert keinen
 Pull, Start, Stop oder Update für Signal aus.

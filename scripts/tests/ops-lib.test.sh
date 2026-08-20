@@ -133,9 +133,9 @@ run_doctor_with_env() {
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX TAXTRONIK_VERSION NEXTAUTH_URL
     unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED SIGNAL_DEPLOYMENT SIGNAL_DEPLOY_CHANNEL SIGNAL_IMAGE
-    unset SIGNAL_GIT_URL SIGNAL_GIT_REF SIGNAL_GIT_DIR SIGNAL_BUILD_MEMORY_LIMIT SIGNAL_BUILD_MEMORY_RESERVE SIGNAL_BUILD_CPUS
+    unset SIGNAL_GIT_URL SIGNAL_GIT_REF SIGNAL_GIT_DIR SIGNAL_BUILD_MEMORY_LIMIT SIGNAL_BUILD_MEMORY_RESERVE SIGNAL_BUILD_CPUS SIGNAL_LLM_DIR
     unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL N8N_HOST N8N_WEBHOOK_URL N8N_PROXY_HOPS
-    unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE SMTP_HOST SMTP_PORT
+    unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE RISK_LAYER_LLM_BACKEND RISK_LAYER_LLM_TIMEOUT SMTP_HOST SMTP_PORT
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
     ENVFILE="$env_file"
     # Unit-Test darf nicht vom zufällig vorhandenen lokalen Docker-Volume
@@ -849,6 +849,7 @@ test_configure_risk_layer_generates_operator_token() {
     SIGNAL_DEPLOYMENT="managed"
     SIGNAL_DEPLOY_CHANNEL="image"
     SIGNAL_IMAGE="auto"
+    SIGNAL_LLM_DIR="$TMP_DIR/managed-lifecycle-signal-llm"
     RISK_LAYER_URL=""
     RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
     RISK_LAYER_OPERATOR_TOKEN=""
@@ -860,6 +861,8 @@ test_configure_risk_layer_generates_operator_token() {
   assert_key_equals "$env_file" SIGNAL_IMAGE auto
   assert_key_equals "$env_file" RISK_LAYER_URL "http://risk-layer:8000"
   assert_key_equals "$env_file" RISK_LAYER_OPERATOR_TOKEN "generated-operator-token-with-at-least-32-chars"
+  assert_key_equals "$env_file" RISK_LAYER_LLM_BACKEND cpu
+  assert_key_equals "$env_file" RISK_LAYER_LLM_TIMEOUT 900
   assert_key_equals "$env_file" RISK_LAYER_FESTWISSEN_DIR ""
   pass "managed Signal setup generates URL and separate secrets"
 }
@@ -881,6 +884,8 @@ test_configure_external_risk_layer_stays_read_only_without_coordinated_token() {
   assert_key_equals "$env_file" RISK_LAYER_OPERATOR_TOKEN ""
   assert_key_equals "$env_file" SIGNAL_DEPLOYMENT external
   assert_key_equals "$env_file" SIGNAL_IMAGE ""
+  assert_key_equals "$env_file" SIGNAL_LLM_DIR ""
+  assert_key_equals "$env_file" RISK_LAYER_LLM_BACKEND auto
   assert_key_equals "$env_file" RISK_LAYER_FESTWISSEN_DIR ""
   pass "external Risk-Layer remains read-only without a coordinated operator token"
 }
@@ -893,6 +898,7 @@ test_managed_signal_requires_distinct_generated_tokens() {
     SIGNAL_DEPLOYMENT="managed"
     SIGNAL_DEPLOY_CHANNEL="image"
     SIGNAL_IMAGE="auto"
+    SIGNAL_LLM_DIR="$TMP_DIR/managed-signal-llm"
     RISK_LAYER_URL=""
     RISK_LAYER_TOKEN="same-generated-secret-with-at-least-thirty-two-chars"
     RISK_LAYER_OPERATOR_TOKEN=""
@@ -935,6 +941,7 @@ test_managed_signal_lifecycle_uses_pinned_release() {
     SIGNAL_DEPLOYMENT="managed"
     SIGNAL_DEPLOY_CHANNEL="image"
     SIGNAL_IMAGE="auto"
+    SIGNAL_LLM_DIR="$TMP_DIR/managed-lifecycle-signal-llm"
     RISK_LAYER_URL="http://risk-layer:8000"
     RISK_LAYER_TOKEN="risk-layer-token-with-at-least-thirty-two-chars"
     RISK_LAYER_OPERATOR_TOKEN="operator-token-with-at-least-thirty-two-chars"
@@ -952,6 +959,9 @@ test_managed_signal_lifecycle_uses_pinned_release() {
   assert_contains "$calls" "qiskit"
   assert_contains "$calls" "qiskit_aer"
   assert_contains "$calls" "qiskit_ibm_runtime"
+  assert_contains "$calls" "provision-signal-llm.py --output /managed-llm"
+  assert_contains "$calls" "LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/torch/lib"
+  assert_contains "$calls" "$TMP_DIR/managed-lifecycle-signal-llm:/managed-llm"
   assert_contains "$calls" "compose --profile risk-layer up -d --force-recreate --no-deps --wait --wait-timeout 300 risk-layer"
   pass "managed Signal validates quantum-capable self-contained releases before start"
 }
@@ -964,6 +974,7 @@ test_managed_signal_source_build_skips_registry_pull() {
     SIGNAL_DEPLOYMENT="managed"
     SIGNAL_DEPLOY_CHANNEL="source"
     SIGNAL_IMAGE=""
+    SIGNAL_LLM_DIR="$TMP_DIR/managed-source-signal-llm"
     RISK_LAYER_URL="http://risk-layer:8000"
     build_signal_from_source() {
       printf 'source-build\n' >>"$calls"
@@ -1151,6 +1162,9 @@ test_signal_embedding_compose_contract_is_self_contained_and_offline() {
   assert_not_contains "$service" "RISK_LAYER_FESTWISSEN_DIR"
   assert_contains "$service" "RISK_LAYER_EMBEDDING_MODEL: /release/models/bge-m3"
   assert_contains "$service" "RISK_LAYER_EMBEDDING_OFFLINE: '1'"
+  assert_contains "$service" "RISK_LAYER_LLM_BACKEND: \${RISK_LAYER_LLM_BACKEND:-cpu}"
+  assert_contains "$service" "RISK_LAYER_LLM_TIMEOUT: \${RISK_LAYER_LLM_TIMEOUT:-900}"
+  assert_contains "$service" "LD_LIBRARY_PATH: /usr/local/lib/python3.12/site-packages/torch/lib"
   assert_contains "$service" "HF_HUB_OFFLINE: '1'"
   assert_contains "$service" "TRANSFORMERS_OFFLINE: '1'"
   assert_contains "$service" "- /release/catalog/begriffe.yaml"
@@ -1158,6 +1172,10 @@ test_signal_embedding_compose_contract_is_self_contained_and_offline() {
   assert_contains "$service" "- risk_layer_definitionen:/app/definitionen"
   assert_contains "$service" "- risk_layer_embedding_state:/state/embedding"
   assert_contains "$service" "- risk_layer_embedding_cache:/cache"
+  assert_contains "$service" "- /managed-llm/granite-4.1-8b-Q5_K_M.gguf"
+  assert_contains "$service" "- /managed-llm/runtime/llama-server"
+  assert_contains "$service" "- \${SIGNAL_LLM_DIR:-../../.taxtronik/signal-llm}:/managed-llm:ro"
+  assert_contains "$service" "llm_ready=llm.get('binary_vorhanden') is True and llm.get('modell_geladen') is True"
   assert_not_contains "$service" "/data/katalog"
   assert_not_contains "$service" "/data/corpus"
   pass "Signal Compose contract stays self-contained, persistent and offline"

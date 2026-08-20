@@ -112,6 +112,8 @@ services:
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
       # Getrenntes Secret für Embedding-Refresh/-Abbruch/-Zeitplan (kein Analyse-Token).
       RISK_LAYER_OPERATOR_TOKEN: ${RISK_LAYER_OPERATOR_TOKEN:-}
+      # UI-Metadatum für den ehrlichen Hinweis auf den CPU-Bottleneck.
+      RISK_LAYER_LLM_BACKEND: ${RISK_LAYER_LLM_BACKEND:-auto}
       # ELSTER / eric-bridge — opt-in (Muster Risk-Layer). Leer => Modul
       # unsichtbar. Aktivieren nur mit ELSTER_BRIDGE_URL, ELSTER_BRIDGE_TOKEN
       # und Compose-Profil `elster`.
@@ -178,8 +180,8 @@ services:
     container_name: taxtronik-worker
     restart: unless-stopped
     mem_limit: ${WORKER_MEM_LIMIT:-2g}
-    # Lange Jobs (backup-drill/pg_restore, evidence-seal, risk-analyse-llm bis
-    # 180 s, Verify-Walk) beim Update sauber zu Ende laufen lassen, bevor
+    # Lange Jobs (backup-drill/pg_restore, evidence-seal, CPU-risk-analyse-llm,
+    # Verify-Walk) beim Update sauber zu Ende laufen lassen, bevor
     # SIGKILL greift. Der Shutdown-Handler wartet bereits auf worker.close().
     stop_grace_period: 180s
     read_only: true
@@ -251,6 +253,7 @@ services:
       # llmEnrichedAt wird nie gesetzt (app hat sie, worker fehlte sie).
       RISK_LAYER_URL: ${RISK_LAYER_URL:-}
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
+      RISK_LAYER_LLM_BACKEND: ${RISK_LAYER_LLM_BACKEND:-auto}
       # ELSTER / eric-bridge — opt-in, siehe app-Service.
       ELSTER_BRIDGE_URL: ${ELSTER_BRIDGE_URL:-}
       ELSTER_BRIDGE_TOKEN: ${ELSTER_BRIDGE_TOKEN:-}
@@ -398,6 +401,10 @@ services:
       - /app/definitionen
       - --graph
       - /release/corpus/graph.sqlite
+      - --llm-model
+      - /managed-llm/granite-4.1-8b-Q5_K_M.gguf
+      - --llm-bin
+      - /managed-llm/runtime/llama-server
     # Embedding-Aufbau/LLM — Limit an das geladene Modell anpassen.
     mem_limit: ${RISK_LAYER_MEM_LIMIT:-12g}
     environment:
@@ -419,6 +426,14 @@ services:
       # fehlt er, bleibt die Operatorfunktion fail-closed unavailable.
       RISK_LAYER_EMBEDDING_MODEL: /release/models/bge-m3
       RISK_LAYER_EMBEDDING_OFFLINE: '1'
+      # Managed/One-Click garantiert die lokale generative Schicht auch ohne
+      # GPU. 900 s sind bewusst großzügig: CPU-Inferenz ist der Bottleneck.
+      RISK_LAYER_LLM_BACKEND: ${RISK_LAYER_LLM_BACKEND:-cpu}
+      RISK_LAYER_LLM_TIMEOUT: ${RISK_LAYER_LLM_TIMEOUT:-900}
+      # Der gepinnte portable llama.cpp-Server benötigt libgomp. Das
+      # verwaltete Signal-Image enthält sie bereits im hash-gepinnten
+      # CPU-Torch-Runtime-Layer; dieser Suchpfad unterstützt auch v0.1.0.
+      LD_LIBRARY_PATH: /usr/local/lib/python3.12/site-packages/torch/lib
       HF_HUB_OFFLINE: '1'
       TRANSFORMERS_OFFLINE: '1'
     volumes:
@@ -426,13 +441,16 @@ services:
       - risk_layer_definitionen:/app/definitionen
       - risk_layer_embedding_state:/state/embedding
       - risk_layer_embedding_cache:/cache
+      # Vom Deploy revisions- und SHA-256-gepinnt provisioniert; bleibt über
+      # Image-Updates erhalten und ist zur Laufzeit ausschließlich lesbar.
+      - ${SIGNAL_LLM_DIR:-../../.taxtronik/signal-llm}:/managed-llm:ro
     healthcheck:
       # Python-Image → urllib statt curl/wget (nicht garantiert vorhanden).
       test:
         - 'CMD'
         - 'python'
         - '-c'
-        - "import json,os,urllib.request,sys; t=os.environ.get('RISK_LAYER_TOKEN',''); h={'Authorization':'Bearer '+t} if t else {}; base='http://127.0.0.1:8000'; live=urllib.request.urlopen(urllib.request.Request(base+'/v1/health',headers=h),timeout=5).status==200; operator=bool(os.environ.get('RISK_LAYER_OPERATOR_TOKEN','')); ready=(json.load(urllib.request.urlopen(urllib.request.Request(base+'/v1/embedding/status',headers=h),timeout=5)).get('refresh_available') is True) if operator else True; sys.exit(0 if live and ready else 1)"
+        - "import json,os,urllib.request,sys; t=os.environ.get('RISK_LAYER_TOKEN',''); h={'Authorization':'Bearer '+t} if t else {}; base='http://127.0.0.1:8000'; live=urllib.request.urlopen(urllib.request.Request(base+'/v1/health',headers=h),timeout=5).status==200; operator=bool(os.environ.get('RISK_LAYER_OPERATOR_TOKEN','')); ready=(json.load(urllib.request.urlopen(urllib.request.Request(base+'/v1/embedding/status',headers=h),timeout=5)).get('refresh_available') is True) if operator else True; llm=json.load(urllib.request.urlopen(urllib.request.Request(base+'/v1/llm/status',headers=h),timeout=5)); llm_ready=llm.get('binary_vorhanden') is True and llm.get('modell_geladen') is True; sys.exit(0 if live and ready and llm_ready else 1)"
       interval: 15s
       timeout: 8s
       retries: 5
