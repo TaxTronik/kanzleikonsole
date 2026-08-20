@@ -12,6 +12,7 @@ import {
 } from '@/lib/notification-sound';
 import {
   markNotificationReadAction,
+  markNotificationReadByIdAction,
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
 import { isAutomaticRefreshEnabled, isUserTyping } from './auto-refresh';
@@ -20,7 +21,11 @@ import {
   emitNotificationsGrew,
   onNotificationsChanged,
 } from '@/lib/live-events';
-import { hasNewUnreadNotification, notificationTimestamp } from '@/lib/notification-feed';
+import {
+  hasNewUnreadNotification,
+  notificationTimestamp,
+  shouldAcknowledgeCompletionOnCurrentPage,
+} from '@/lib/notification-feed';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -90,10 +95,6 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
   // manuellen Reload stehen. Guards wie AutoRefresh: nicht bei verstecktem Tab
   // und nicht während der Nutzer tippt.
   const onUnreadGrew = useCallback(() => {
-    playNotificationSound();
-    if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
-      router.refresh();
-    }
     // Zusaetzlich melden — auch auf Seiten ohne Voll-Refresh (Mandanten-Cockpit).
     // Dafuer wird EINMAL die Kurzliste geladen, um zu erfahren, WEN der Zuwachs
     // betrifft: nur die betroffenen Bloecke laden dann nach. Ohne diese Angabe
@@ -105,14 +106,49 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
     void (async () => {
       try {
         const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
-        if (!res.ok) return;
+        if (!res.ok) throw new Error('NOTIFICATION_RECENT_FETCH_FAILED');
         const data = (await res.json()) as RecentResponse;
-        setItems(data.items);
         const newestUnread = data.items.find((item) => item.readAt === null);
+        if (
+          newestUnread &&
+          !document.hidden &&
+          !isUserTyping() &&
+          shouldAcknowledgeCompletionOnCurrentPage({
+            kind: newestUnread.kind,
+            href: newestUnread.href,
+            pathname,
+          })
+        ) {
+          const acknowledged = await markNotificationReadByIdAction({ id: newestUnread.id });
+          if (acknowledged.ok) {
+            const readAt = new Date().toISOString();
+            const acknowledgedItems = data.items.map((item) =>
+              item.id === newestUnread.id ? { ...item, readAt } : item,
+            );
+            const nextUnread = Math.max(0, data.unread - 1);
+            lastUnreadRef.current = nextUnread;
+            setUnread(nextUnread);
+            setItems(acknowledgedItems);
+            emitNotificationsGrew(buildNotificationSignal(acknowledgedItems));
+            router.refresh();
+            return;
+          }
+        }
+
+        setItems(data.items);
+        playNotificationSound();
+        if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
+          router.refresh();
+        }
         if (newestUnread) showNotificationAlert(newestUnread);
         emitNotificationsGrew(buildNotificationSignal(data.items));
       } catch {
-        // still — beim naechsten Zuwachs erneut
+        // Der Detailabruf ist nur Zusatzkomfort. Ton + ggf. Refresh bleiben
+        // erhalten, damit die Notification nicht still verloren geht.
+        playNotificationSound();
+        if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
+          router.refresh();
+        }
       }
     })();
   }, [pathname, router, showNotificationAlert]);

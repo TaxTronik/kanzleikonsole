@@ -2,15 +2,35 @@
 
 import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import {
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   type PersistedRecoveryCheckpoint,
   type PersistedVerifyResult,
 } from '@taxtronik/evidence';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 import { evidenceService } from '@/server/container';
 import { enqueueAuditVerify } from '@/server/jobs/audit-verify-queue';
+
+/**
+ * Die grüne Audit-Karte ist selbst die Bestätigung des manuellen Tests. Ist
+ * sie sichtbar, wird eine parallele Erfolgsmeldung für diese Person gelesen;
+ * Bruch-Notifications bleiben selbstverständlich offen.
+ */
+export async function acknowledgeAuditOkNotificationAction() {
+  return withStaff(
+    async (tx, { tenantId, staffId }) => ({
+      resolved: await resolveNotificationsTx(tx, {
+        tenantId,
+        hrefs: ['/staff/admin/audit'],
+        kinds: ['SYSTEM_AUDIT_OK'],
+        staffIds: [staffId],
+      }),
+    }),
+    { requireAdmin: true },
+  );
+}
 
 /**
  * „Jetzt prüfen" — stößt die Chain-Verifikation als Hintergrund-Job an

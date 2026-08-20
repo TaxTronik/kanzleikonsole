@@ -6,6 +6,11 @@ const autoRefresh = readFileSync(
   'utf8',
 );
 const page = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
+const actions = readFileSync(new URL('../actions.ts', import.meta.url), 'utf8');
+const acknowledger = readFileSync(
+  new URL('../audit-notification-acknowledger.tsx', import.meta.url),
+  'utf8',
+);
 
 describe('Audit-Chain-Verifikation', () => {
   it('navigiert nach dem Worker-Ergebnis aus dem Queue-Zustand heraus', () => {
@@ -19,5 +24,14 @@ describe('Audit-Chain-Verifikation', () => {
     expect(page).toContain('dark:bg-green-950/50');
     expect(page).toContain('dark:text-green-100');
     expect(autoRefresh).toContain('dark:bg-yellow-950/50');
+  });
+
+  it('schließt eine bereits auf der grünen Audit-Karte sichtbare Erfolgsmeldung', () => {
+    expect(page).toContain('<AuditNotificationAcknowledger');
+    expect(page).toContain('resultKey={auditOkResultKey(verifyResult)}');
+    expect(actions).toContain("kinds: ['SYSTEM_AUDIT_OK']");
+    expect(actions).toContain("hrefs: ['/staff/admin/audit']");
+    expect(actions).toContain('staffIds: [staffId]');
+    expect(acknowledger).toContain('emitNotificationsChanged();');
   });
 });

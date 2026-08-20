@@ -20,6 +20,7 @@ import {
 import { env } from '@taxtronik/config';
 import { createAuditRecoveryCheckpointAction, triggerAuditVerifyAction } from './actions';
 import { AuditVerifyAutoRefresh } from './audit-verify-auto-refresh';
+import { AuditNotificationAcknowledger } from './audit-notification-acknowledger';
 import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
 import { CopyField } from '@/components/copy-field';
 import type { Prisma } from '@prisma/client';
@@ -44,6 +45,11 @@ interface SearchParams {
   requestId?: string;
   queuedAt?: string;
   checkpoint?: string;
+}
+
+function auditOkResultKey(result: PersistedVerifyResult | null): string | null {
+  if (!result?.ok) return null;
+  return `${result.checkedAt}:${result.requestId ?? ''}`;
 }
 
 export default async function AuditLogPage({
@@ -178,6 +184,7 @@ export default async function AuditLogPage({
 
   return (
     <div className="p-8">
+      <AuditNotificationAcknowledger resultKey={auditOkResultKey(verifyResult)} />
       {pollVerify && <AuditVerifyAutoRefresh requestId={sp.requestId} queuedAt={sp.queuedAt} />}
       <div className="flex items-end justify-between mb-6">
         <div>

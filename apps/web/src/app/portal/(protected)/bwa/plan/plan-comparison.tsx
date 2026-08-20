@@ -112,7 +112,7 @@ export function PlanListWithCompare({
   return (
     <div className="space-y-4">
       <div className="card overflow-hidden">
-        <div className="px-5 py-2 border-b border-default bg-gray-50 text-xs text-muted flex items-center justify-between">
+        <div className="px-5 py-2 border-b border-default bg-surface-raised text-xs font-medium text-secondary flex items-center justify-between">
           <span>
             {plans.length} Planung{plans.length === 1 ? '' : 'en'}
             {selectedIds.length > 0 && ` · ${selectedIds.length} zum Vergleichen ausgewählt`}
@@ -121,7 +121,7 @@ export function PlanListWithCompare({
             <button
               type="button"
               onClick={() => setSelectedIds([])}
-              className="text-brand-700 hover:underline"
+              className="text-brand-700 hover:underline dark:text-brand-300"
             >
               Auswahl löschen
             </button>
@@ -144,10 +144,10 @@ export function PlanListWithCompare({
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-primary flex items-center gap-2 flex-wrap">
                     <span>{p.name}</span>
-                    <span className="text-xs text-muted font-normal">· {p.year}</span>
+                    <span className="text-xs text-secondary font-normal">· {p.year}</span>
                     <ActorBadge createdByType={p.createdByType} updatedByType={p.updatedByType} />
                   </p>
-                  <p className="text-xs text-muted">
+                  <p className="text-xs text-secondary">
                     Erg. nach Steuern: {fmtEURRound(totals(p).resultAfterTax)} · zuletzt geändert{' '}
                     {fmtDateTimeShort(p.updatedAt)}
                   </p>
