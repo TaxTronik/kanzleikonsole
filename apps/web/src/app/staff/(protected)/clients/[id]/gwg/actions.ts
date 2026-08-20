@@ -781,6 +781,7 @@ export async function verifyCheckAction(
   }
   const { checkId, clientId, reviewSnapshotHash } = parsed.data;
   let verifiedValidUntil: string | null = null;
+  let sendActivationWelcome = false;
 
   try {
     await withTenantContext(ctx, async (tx) => {
@@ -870,6 +871,20 @@ export async function verifyCheckAction(
       if (decisionErrors.length > 0) throw new ActionError(decisionErrors.join(' '));
       if (check.riskLevel === null) throw new ActionError('Risikobewertung fehlt.');
 
+      // Die Begrüßung gehört ausschließlich zur ersten erfolgreichen
+      // GwG-Freigabe. Bei einer Wiederholungsprüfung bleibt am Vorgänger der
+      // historische verifiedAt-Nachweis erhalten, auch wenn dessen Status
+      // inzwischen EXPIRED ist.
+      const previousVerificationCount = await tx.gwgCheck.count({
+        where: {
+          tenantId,
+          clientId,
+          id: { not: checkId },
+          verifiedAt: { not: null },
+        },
+      });
+      sendActivationWelcome = previousVerificationCount === 0;
+
       // Repariert zugleich ältere bzw. noch im GwG-Wurzelordner liegende
       // Nachweise. Personenbezogene Ausweise werden vor der Freigabe immer in
       // GwG/[Name der Person] einsortiert; Rechtsträgernachweise bleiben in GwG.
@@ -954,24 +969,7 @@ export async function verifyCheckAction(
     return toActionError(e);
   }
 
-  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in (nach Commit).
-  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-  fireAndForget(
-    'notifyClientContacts (gwg-activated)',
-    notifyClientContacts({
-      tenantId,
-      clientId,
-      slug: 'gwg-activated',
-      vars: {
-        portalUrl: `${portalBaseUrl}/portal/dashboard`,
-      },
-      fallback: {
-        subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
-        bodyMd:
-          'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
-      },
-    }),
-  );
+  scheduleActivationWelcomeEmail({ tenantId, clientId, enabled: sendActivationWelcome });
   if (verifiedValidUntil) {
     // Awaited (Guardrail: Outbox-Write muss dauerhaft sein, bevor die Action
     // zurückkehrt). Der früher unbegrenzt hängende Redis-Queue-Handoff ist in
@@ -986,6 +984,33 @@ export async function verifyCheckAction(
   // refresht der Client nach ok außerhalb der Form-Transition (siehe oben).
   revalidatePath(`/staff/clients/${clientId}`);
   return { ok: true };
+}
+
+function scheduleActivationWelcomeEmail(input: {
+  tenantId: string;
+  clientId: string;
+  enabled: boolean;
+}) {
+  if (!input.enabled) return;
+
+  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in (nach Commit).
+  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
+  fireAndForget(
+    'notifyClientContacts (gwg-activated)',
+    notifyClientContacts({
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      slug: 'gwg-activated',
+      vars: {
+        portalUrl: `${portalBaseUrl}/portal/dashboard`,
+      },
+      fallback: {
+        subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
+      },
+    }),
+  );
 }
 
 const RejectSchema = z.object({

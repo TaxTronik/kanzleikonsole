@@ -201,6 +201,7 @@ function makeTx(check: ReturnType<typeof completeCheck>) {
     },
     gwgCheck: {
       findFirst: vi.fn().mockResolvedValue(check),
+      count: vi.fn().mockResolvedValue(0),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     client: {
@@ -2057,8 +2058,41 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
     expect(m.notifyClientContacts).toHaveBeenCalledWith(
       expect.not.objectContaining({ n8nEvent: expect.anything() }),
     );
+    expect(tx.gwgCheck.count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        id: { not: CHECK_ID },
+        verifiedAt: { not: null },
+      },
+    });
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.gwgCheck.findFirst.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('versendet bei einer erneuten GwG-Freigabe keine zweite Willkommensmail', async () => {
+    const check = completeCheck();
+    const tx = makeTx(check);
+    tx.gwgCheck.count.mockResolvedValue(1);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const result = await verifyCheckAction(null, verificationFormData(check));
+
+    expect(result).toEqual({ ok: true });
+    expect(tx.gwgCheck.updateMany).toHaveBeenCalledOnce();
+    expect(tx.client.update).toHaveBeenCalledWith({
+      where: { id: CLIENT_ID },
+      data: { allowActive: true },
+    });
+    expect(m.notifyClientContacts).not.toHaveBeenCalled();
+    expect(m.fireAndForget).not.toHaveBeenCalled();
+    expect(m.emitN8nEvent).toHaveBeenCalledWith(
+      'gwg.verified',
+      expect.objectContaining({ gwgCheckId: CHECK_ID }),
+      { tenantId: 'tenant-1' },
     );
   });
 
