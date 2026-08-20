@@ -1526,8 +1526,40 @@ provide_traefik_for_deploy() {
   compose pull traefik || die "Traefik-Image konnte nicht bezogen werden."
 }
 
+signal_rebuild_prompt_available() {
+  [[ -t 0 && -t 1 ]]
+}
+
+signal_rebuild_unchanged_requested() {
+  local operation="$1" sha="$2" answer="" force="${SIGNAL_FORCE_REBUILD:-}"
+  case "${force,,}" in
+    1|true|yes|ja)
+      info "SIGNAL_FORCE_REBUILD ist aktiv - Signal wird trotz identischem Commit neu gebaut."
+      return 0
+      ;;
+    0|false|no|nein)
+      return 1
+      ;;
+    '') ;;
+    *) die "SIGNAL_FORCE_REBUILD muss 1/true/yes/ja oder 0/false/no/nein sein." ;;
+  esac
+
+  [[ "$operation" == "update" ]] || return 1
+  if signal_rebuild_prompt_available; then
+    read -rp "Signal ist bereits auf Commit ${sha:0:12}. Trotzdem neu bauen? [j/N]: " answer || true
+    case "${answer,,}" in
+      j|ja|y|yes) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+
+  info "Signal unveraendert - Neuaufbau wird im unbeaufsichtigten Update uebersprungen (SIGNAL_FORCE_REBUILD=1 erzwingt ihn)."
+  return 1
+}
+
 build_signal_from_source() {
-  local url ref dir parent origin status sha target memory_limit memory_reserve cpus newly_cloned=0
+  local operation="${1:-deploy}"
+  local url ref dir parent origin status sha target configured_image memory_limit memory_reserve cpus newly_cloned=0
   url="${SIGNAL_GIT_URL:-$SIGNAL_GIT_URL_DEFAULT}"
   ref="${SIGNAL_GIT_REF:-$SIGNAL_GIT_REF_DEFAULT}"
   dir="$(signal_source_dir)"
@@ -1582,6 +1614,31 @@ build_signal_from_source() {
     die "Signal-Quellstand unterstuetzt den verwalteten Source-Build noch nicht (scripts/build-managed-image.sh fehlt)."
 
   target="taxtronik/risk-layer-engine:source-${sha:0:12}"
+  configured_image="${SIGNAL_IMAGE:-$(get_env SIGNAL_IMAGE)}"
+  export SIGNAL_IMAGE="$target"
+
+  # Der Commit ist bereits Teil des unveraenderlichen lokalen Image-Tags. Ein
+  # vorhandenes Ziel-Image beweist daher, dass genau dieser Signal-Stand schon
+  # erfolgreich gebaut wurde. Bei einem echten Quell-Update wird ein eventuell
+  # bereits vorbereitetes Image wiederverwendet; nur beim identischen, bereits
+  # aktiven Stand bieten wir einen bewussten Rebuild an.
+  if docker image inspect "$target" >/dev/null 2>&1; then
+    if [[ "$configured_image" == "$target" ]]; then
+      info "Signal-Quellstand unveraendert: Commit ${sha:0:12}, lokales Image vorhanden."
+      if ! signal_rebuild_unchanged_requested "$operation" "$sha"; then
+        info "Signal-Build uebersprungen; vorhandenes Image wird weiterverwendet."
+        return 0
+      fi
+    else
+      info "Signal-Image fuer neuen Quellstand ${sha:0:12} ist bereits lokal vorhanden; Build wird uebersprungen."
+      return 0
+    fi
+  elif [[ "$configured_image" == "$target" ]]; then
+    warn "Signal-Commit ist unveraendert, aber das zugehoerige lokale Image fehlt - Neuaufbau erforderlich."
+  else
+    info "Neuer Signal-Quellstand erkannt: ${sha:0:12} - Image wird gebaut."
+  fi
+
   if command -v flock >/dev/null 2>&1; then
     exec 7>"$ROOT/.taxtronik.signal-build.lock"
     if ! flock -n 7; then
@@ -1594,7 +1651,6 @@ build_signal_from_source() {
     sh "$dir/scripts/build-managed-image.sh" "$target" || \
     die "Signal-Source-Build fehlgeschlagen; laufender Container bleibt unveraendert."
   if command -v flock >/dev/null 2>&1; then flock -u 7 || true; fi
-  export SIGNAL_IMAGE="$target"
 }
 
 verify_signal_managed_image() {
@@ -1605,7 +1661,7 @@ verify_signal_managed_image() {
 }
 
 provide_signal_for_deploy() {
-  local mode image channel
+  local operation="${1:-deploy}" mode image channel
   mode="$(signal_deployment_mode)"
   case "$mode" in
     disabled)
@@ -1622,7 +1678,7 @@ provide_signal_for_deploy() {
 
   channel="$(signal_deploy_channel)" || die "SIGNAL_DEPLOY_CHANNEL muss source oder image sein."
   if [[ "$channel" == "source" ]]; then
-    build_signal_from_source
+    build_signal_from_source "$operation"
     image="$SIGNAL_IMAGE"
   else
     prepare_signal_managed_environment
@@ -4006,7 +4062,7 @@ _deploy_core() {
   sync_postgres_roles_from_env
   provide_images
   provide_traefik_for_deploy
-  provide_signal_for_deploy
+  provide_signal_for_deploy deploy
   backup_before_migrations
   run_migrations
   ensure_provisioned_interactive
@@ -4121,7 +4177,7 @@ cmd_update() {
   sync_postgres_roles_from_env
   provide_images
   provide_traefik_for_deploy
-  provide_signal_for_deploy
+  provide_signal_for_deploy update
   run_migrations
   start_signal_for_deploy || die "Update abgebrochen: verwaltetes Signal ist nicht bereit."
   start_apps_for_activation deploy "$(image_tag)"

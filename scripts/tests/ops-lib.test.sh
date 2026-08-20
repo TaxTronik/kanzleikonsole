@@ -1046,6 +1046,102 @@ test_managed_signal_source_build_accepts_fresh_no_checkout_clone() {
   pass "managed Signal source build checks out fresh clones but preserves existing local work"
 }
 
+test_managed_signal_source_update_skips_unchanged_image_unless_requested() {
+  local origin="$TMP_DIR/signal-cache-origin" checkout="$TMP_DIR/signal-cache-checkout"
+  local build_root="$TMP_DIR/signal-cache-build-root" build_log="$TMP_DIR/signal-cache-build.log"
+  local out="$TMP_DIR/signal-cache.out" origin_url sha target
+  mkdir -p "$origin/scripts" "$build_root"
+  git -C "$origin" init -q -b main
+  git -C "$origin" config user.name TaxTronik-Test
+  git -C "$origin" config user.email test@taxtronik.invalid
+  printf 'signal source\n' >"$origin/README.md"
+  cat >"$origin/scripts/build-managed-image.sh" <<EOF
+#!/bin/sh
+printf 'build %s\\n' "\$1" >>'$build_log'
+EOF
+  git -C "$origin" add README.md scripts/build-managed-image.sh
+  git -C "$origin" commit -qm initial
+  origin_url="$(git -C "$origin" rev-parse --show-toplevel)"
+  sha="$(git -C "$origin" rev-parse HEAD)"
+  target="taxtronik/risk-layer-engine:source-${sha:0:12}"
+
+  if ! (
+    ROOT="$build_root"
+    SIGNAL_GIT_URL="$origin_url"
+    SIGNAL_GIT_REF=main
+    SIGNAL_GIT_DIR="$checkout"
+    SIGNAL_IMAGE="$target"
+    SIGNAL_FORCE_REBUILD=""
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    signal_rebuild_prompt_available() { return 1; }
+    docker() { [[ "$1" == image && "$2" == inspect && "$3" == "$target" ]]; }
+    build_signal_from_source update
+  ) >"$out" 2>&1; then
+    cat "$out" >&2
+    test_fail "unchanged Signal source update failed"
+  fi
+  assert_not_exists_or_empty "$build_log"
+  assert_contains "$out" "Signal-Quellstand unveraendert"
+  assert_contains "$out" "Signal-Build uebersprungen"
+
+  if ! (
+    ROOT="$build_root"
+    SIGNAL_GIT_URL="$origin_url"
+    SIGNAL_GIT_REF=main
+    SIGNAL_GIT_DIR="$checkout"
+    SIGNAL_IMAGE="$target"
+    SIGNAL_FORCE_REBUILD=1
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    docker() { [[ "$1" == image && "$2" == inspect && "$3" == "$target" ]]; }
+    build_signal_from_source update
+  ) >>"$out" 2>&1; then
+    cat "$out" >&2
+    test_fail "forced unchanged Signal rebuild failed"
+  fi
+  assert_contains "$build_log" "build $target"
+  assert_contains "$out" "SIGNAL_FORCE_REBUILD ist aktiv"
+
+  printf 'changed source\n' >>"$origin/README.md"
+  git -C "$origin" add README.md
+  git -C "$origin" commit -qm changed
+  sha="$(git -C "$origin" rev-parse HEAD)"
+  local changed_target="taxtronik/risk-layer-engine:source-${sha:0:12}"
+  if ! (
+    ROOT="$build_root"
+    SIGNAL_GIT_URL="$origin_url"
+    SIGNAL_GIT_REF=main
+    SIGNAL_GIT_DIR="$checkout"
+    SIGNAL_IMAGE="$target"
+    SIGNAL_FORCE_REBUILD=""
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    docker() { return 1; }
+    build_signal_from_source update
+  ) >>"$out" 2>&1; then
+    cat "$out" >&2
+    test_fail "changed Signal source update failed"
+  fi
+  assert_contains "$build_log" "build $changed_target"
+  assert_contains "$out" "Neuer Signal-Quellstand erkannt"
+  pass "unchanged managed Signal source updates reuse the image unless rebuild is requested"
+}
+
+test_managed_signal_source_update_honors_interactive_rebuild_choice() {
+  (
+    signal_rebuild_prompt_available() { return 0; }
+    SIGNAL_FORCE_REBUILD="" signal_rebuild_unchanged_requested update "$(printf 'a%.0s' {1..40})"
+  ) <<<"ja" >/dev/null || test_fail "interactive Signal rebuild confirmation was ignored"
+  if (
+    signal_rebuild_prompt_available() { return 0; }
+    SIGNAL_FORCE_REBUILD="" signal_rebuild_unchanged_requested update "$(printf 'a%.0s' {1..40})"
+  ) <<<"nein" >/dev/null; then
+    test_fail "interactive Signal rebuild rejection was ignored"
+  fi
+  pass "unchanged Signal rebuild prompt honors the explicit operator choice"
+}
+
 test_signal_embedding_compose_contract_is_self_contained_and_offline() {
   local service="$TMP_DIR/risk-layer-compose-service.yml"
   sed -n '/^  risk-layer:/,/^  eric-bridge:/p' \
@@ -2740,6 +2836,8 @@ test_legacy_native_signal_is_inferred_as_external
 test_managed_signal_lifecycle_uses_pinned_release
 test_managed_signal_source_build_skips_registry_pull
 test_managed_signal_source_build_accepts_fresh_no_checkout_clone
+test_managed_signal_source_update_skips_unchanged_image_unless_requested
+test_managed_signal_source_update_honors_interactive_rebuild_choice
 test_signal_embedding_compose_contract_is_self_contained_and_offline
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled

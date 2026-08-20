@@ -492,7 +492,11 @@ gewählt:
 
 - `SIGNAL_DEPLOY_CHANNEL=source` aktualisiert `SIGNAL_GIT_DIR` aus
   `SIGNAL_GIT_URL` auf `SIGNAL_GIT_REF` und baut ein lokales CPU-Image. Der
-  Checkout ist damit von TaxTronik verwaltet; lokale Änderungen blockieren das
+  Commit steckt im Image-Tag. `./taxtronik update` baut deshalb nur bei einem
+  neuen Commit oder fehlenden Image automatisch neu. Ist der Stand identisch,
+  kann der Neuaufbau interaktiv bestaetigt werden; unbeaufsichtigt wird er
+  uebersprungen. `SIGNAL_FORCE_REBUILD=1 ./taxtronik update` erzwingt ihn.
+  Der Checkout ist damit von TaxTronik verwaltet; lokale Änderungen blockieren das
   Update und werden niemals überschrieben. Der Source-Build installiert
   Runtime einschließlich der Linux/Python-3.12-hashgepinnten Quantenlos-Extras,
   Graph und das manifestierte lokale Modell, berechnet aber bewusst **keinen
