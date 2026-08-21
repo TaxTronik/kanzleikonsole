@@ -27,12 +27,20 @@ Noch keine Änderungen.
 - **[Scope]** Jeder Audit-Eintrag besitzt einen eigenen, von der App-/Hostuhr
   erzeugten UTC-Ereigniszeitpunkt (`occurredAt`, PostgreSQL `timestamptz(6)`).
   Er ist im Eintrags-Hash gebunden, aber für sich allein keine extern
-  vertrauenswürdige Zeitangabe. Erst die tägliche RFC-3161-Versiegelung der
-  Kettenspitze beweist mit der TSA-`genTime`, dass alle bis dahin verketteten
-  Daten spätestens zu diesem Zeitpunkt existierten. Bis zu dieser
-  Versiegelung bleibt für einen privilegierten Angreifer ein Änderungsfenster;
-  der exakte Zeitpunkt eines einzelnen Events ist nicht durch die TSA
-  attestiert.
+  vertrauenswürdige Zeitangabe.
+- **[Scope]** Die Audit-Protokollierung arbeitet jetzt mit zwei gekoppelten
+  Ketten: Die vollständige lokale Hash-Kette nimmt Fachereignisse sofort und
+  transaktional auf; eine zweite, dünne Anchor-Kette zieht ihre Spitzenstände
+  asynchron per RFC 3161 nach. Jeder externe Anchor bindet lokalen ID-Bereich,
+  rekonstruierten Spitzen-Hash und den Hash des vorherigen TSA-Tokens. Der
+  2-Sekunden-Worker hält dabei weder Fachtransaktionen noch den lokalen
+  Audit-Lock, verarbeitet Rechnungs-/GwG-Ereignisse bevorzugt und verwirft
+  Parallel-Loser ohne Anchor-Zweig. Admin-Status, automatischer Refresh,
+  Backoff und Ops-Alarm machen Rückstände sichtbar. Die TSA-`genTime` belegt
+  weiterhin nur: Die bis zum Anchor verketteten Daten existierten spätestens
+  zu diesem Zeitpunkt; sie attestiert nicht den exakten lokalen
+  Ereigniszeitpunkt. Die Tagesversiegelung bleibt als zusätzlicher
+  Defense-in-Depth-Nachweis bestehen.
 - Managed Signal ist Bestandteil der geführten Ein-Klick-Installation:
   Quanten-Extras werden hash-gepinnt installiert, Engine-Liveness,
   Embedding- und LLM-Bereitschaft werden getrennt ausgewiesen und Granite kann

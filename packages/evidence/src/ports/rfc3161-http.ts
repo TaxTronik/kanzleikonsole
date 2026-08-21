@@ -4,11 +4,10 @@
 // Codiert eine TimeStampReq mit SHA-256-Hash, sendet sie mit Content-Type
 // `application/timestamp-query` zur TSA und speichert die rohe TimeStampResp.
 //
-// MVP-Verifikation: prüft nur PKIStatus == 0 (granted) am Anfang der Response.
-// Eine vollständige kryptografische Verifikation (CMS-SignedData / TSTInfo /
-// Zertifikatskette) wird in einer späteren Iteration ergänzt; die Roh-Response
-// wird unverändert in `audit_seal.tsa_response_blob` archiviert und ist damit
-// jederzeit auch extern (z. B. mit OpenSSL `ts -verify`) prüfbar.
+// Die Response wird beim Persistieren und beim Chain-Verify vollständig gegen
+// Payload/messageImprint, CMS-Signatur, Timestamping-EKU, ESS-Bindung und die
+// konfigurierten Trust-Roots geprüft. Das rohe DER-Blob bleibt zusätzlich für
+// eine unabhängige Prüfung (z. B. mit OpenSSL `ts -verify`) erhalten.
 //
 // ASN.1-DER-Encoding der TimeStampReq:
 //   TimeStampReq ::= SEQUENCE {
@@ -180,14 +179,18 @@ export class Rfc3161HttpAdapter implements TimestampPort {
       const label = PKI_STATUS_LABELS[status] ?? String(status);
       throw new Error(`TSA PKIStatus ${status} (${label}) @ ${this.tsaUrl}`);
     }
-    // A3: echte TSA-Zeit (genTime) + Seriennummer aus dem TSTInfo lesen; Fallback
-    // auf die App-Uhr nur, falls das Token (unerwartet) nicht parsebar ist.
+    // A3: echte TSA-Zeit (genTime) + Seriennummer aus dem TSTInfo lesen. Kein
+    // Fallback auf die App-Uhr: Ein externes Token mit lokal erfundener Anzeige-
+    // Zeit würde genau die Trust-Grenze verwischen, die RFC 3161 herstellen soll.
     const meta = extractTsaMeta(tsp);
+    if (!meta) {
+      throw new Error(`TSA-Antwort enthält keine auswertbare RFC-3161-genTime @ ${this.tsaUrl}`);
+    }
     return {
-      timestampedAt: (meta?.genTime ?? new Date()).toISOString(),
+      timestampedAt: meta.genTime.toISOString(),
       tsaRequestBlob: tsr,
       tsaResponseBlob: tsp,
-      tsaSerial: meta?.serialHex ?? null,
+      tsaSerial: meta.serialHex,
     };
   }
 

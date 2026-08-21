@@ -12,6 +12,7 @@ out/
 
 .VSCodeCounter/
 coverage/
+.pytest_cache/
 playwright-report/
 **/playwright-report/
 test-results/

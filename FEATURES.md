@@ -957,12 +957,26 @@ Kanzlei nicht.
   Ereigniszeitpunkt (`occurredAt`, PostgreSQL `timestamptz(6)`) aus der
   App-/Hostuhr. Der ISO-Zeitpunkt ist Bestandteil der kanonischen Eventdaten
   und damit im Eintrags-Hash gebunden; Trigger blocken UPDATE/DELETE auf
-  `audit_log` und `audit_seal`
-- Tagesversiegelung mit RFC-3161-Zeitstempel (TSA-Adapter): Gestempelt wird die
-  Kettenspitze. Die externe TSA-`genTime` beweist, dass die verketteten Daten
-  spätestens dann existierten; sie attestiert weder den lokalen
-  `occurredAt`-Wert eines einzelnen Eintrags noch schützt sie die aktuelle
-  Tageskette schon vor der Versiegelung
+  `audit_log`, `audit_anchor` und `audit_seal`
+- **Dual Stamping / zwei gekoppelte Ketten**:
+  - Die vollständige lokale Audit-Kette wird synchron in derselben Transaktion
+    wie die Fachänderung fortgeschrieben.
+  - `audit-anchor` verankert den neuesten committeten Ketten-Präfix alle zwei
+    Sekunden asynchron über RFC 3161. Die Fachtransaktion wartet weder auf die
+    TSA noch auf einen Anchor-Lock; weitere Audit-Einträge können während der
+    Anfrage ohne Pause entstehen.
+  - Die dünne externe Anchor-Kette bindet je Checkpoint lokalen ID-Bereich,
+    rekonstruierten Spitzen-Hash und den SHA-256-Hash des vorherigen TSA-Tokens.
+    Parallel laufende Worker können deshalb keinen persistierten Zweig bilden.
+  - Rechnungs- und GwG-Ereignisse werden bei Rückstand bevorzugt. Exponentieller
+    Retry, Admin-Status mit Auto-Refresh und Ops-Alarm ab anhaltendem Rückstand
+    machen die verbleibende Verzögerung transparent.
+  - Die TSA-`genTime` beweist, dass der verankerte lokale Präfix spätestens zu
+    diesem Zeitpunkt existierte. Sie attestiert nicht den exakten
+    `occurredAt`-Wert eines einzelnen Eintrags; zwischen lokalem Commit und
+    externer Antwort bleibt prinzipbedingt ein kleines, sichtbares Fenster.
+- Tagesversiegelung mit RFC-3161-Zeitstempel (TSA-Adapter) bleibt als
+  zusätzlicher, unabhängiger Defense-in-Depth-Nachweis der Tageskettenspitze
 - Verifikations-CLI: `pnpm verify:chain`
 - **Persistiertes Chain-Verify-Ergebnis**: der tägliche
   `audit-verify-check`-Worker legt das Ergebnis als `TenantSetting`
@@ -1242,7 +1256,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Pro Request: Prisma-Middleware setzt `app.current_tenant_id` /
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
-- BullMQ-Worker für Hintergrund-Jobs (19 Worker):
+- BullMQ-Worker für Hintergrund-Jobs (20 Worker):
+  `audit-anchor` (alle 2 Sekunden; nicht blockierende RFC-3161-Checkpoints),
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
   `tax-deadline-materialize` (07:30 Berlin, materialisiert Termine, fährt
@@ -1313,10 +1328,13 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - **Manipulationsevidenter Audit-Log zur GoBD-Nachvollziehbarkeit**:
   Hash-Chain pro Tenant; jeder Eintrag hat einen eigenen, im kanonischen Hash
   gebundenen UTC-Zeitpunkt aus der App-/Hostuhr (`occurredAt`,
-  `timestamptz(6)`). Der tägliche RFC-3161-TSA-Stempel der Kettenspitze
-  (`evidence-seal`
-  02:30 UTC; Default-TSA **GlobalSign** kostenlos/EU,
-  pro Tenant umstellbar, D-Trust für eIDAS-qualifiziert), tägliche Verifikation
+  `timestamptz(6)`). Eine zweite, append-only Anchor-Kette verankert committete
+  Spitzenstände im Regelfall binnen Sekunden per RFC 3161 und bindet dabei
+  jeweils den vorherigen TSA-Token; Fachtransaktionen werden nicht blockiert.
+  Der tägliche RFC-3161-TSA-Stempel der Kettenspitze (`evidence-seal` 02:30
+  UTC) bleibt zusätzlich bestehen. Die Default-TSA ist **GlobalSign**
+  (kostenlos/EU), pro Tenant umstellbar; D-Trust steht für qualifizierte
+  eIDAS-Zeitstempel zur Verfügung. Die tägliche Verifikation
   (`audit-verify-check` 02:45 UTC) mit `SYSTEM_AUDIT_BREAK`-Notification an
   ADMIN/PARTNER bei Bruch, wöchentliche NDJSON-Auslagerung mit Object-Lock-
   Versiegelung; `pnpm verify:chain` rehasht jeden Eintrag, rekonstruiert die
@@ -1326,9 +1344,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   bis zum eingebetteten GlobalSign-Root R6 _as-of_ genTime, kritische EKU
   timeStamping + ESS-SigningCertificate-Bindung; Adapter-Modus wird im Report
   ausgewiesen, Self-Timestamp im Produktivmodus = harter Fail. Das Siegel
-  belegt extern nur den spätesten Existenzzeitpunkt der versiegelten Kette;
-  individuelle Ereigniszeiten und der noch offene Tag besitzen derzeit keinen
-  eigenen RFC-3161-Nachweis
+  belegt extern nur den spätesten Existenzzeitpunkt des jeweiligen verankerten
+  Präfixes; individuelle lokale Ereigniszeiten werden nicht als exakte
+  TSA-Zeiten ausgegeben. Bis zur asynchronen Antwort bleibt ein kleines,
+  im Admin-Status sichtbares Verzögerungsfenster
 - **Aufbewahrungs-Buckets nach Recht getrennt**: `gobd` (je Datei-Typ 6/8/10 J.
   nach § 147 AO bzw. § 14b UStG, Object-Lock COMPLIANCE), `gwg` (grundsätzlich
   5 J. nach § 8 Abs. 4 GwG; andere Gesetze können länger verpflichten,

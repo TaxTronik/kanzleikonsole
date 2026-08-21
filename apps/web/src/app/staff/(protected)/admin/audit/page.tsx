@@ -13,13 +13,16 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import {
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
+  AUDIT_ANCHOR_STATUS_SETTING_KEY,
   AUDIT_VERIFY_RESULT_SETTING_KEY,
+  type PersistedAnchorStatus,
   type PersistedRecoveryCheckpoint,
   type PersistedVerifyResult,
 } from '@taxtronik/evidence';
 import { env } from '@taxtronik/config';
 import { createAuditRecoveryCheckpointAction, triggerAuditVerifyAction } from './actions';
 import { AuditVerifyAutoRefresh } from './audit-verify-auto-refresh';
+import { AuditAnchorAutoRefresh } from './audit-anchor-auto-refresh';
 import { AuditNotificationAcknowledger } from './audit-notification-acknowledger';
 import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
 import { CopyField } from '@/components/copy-field';
@@ -45,6 +48,52 @@ interface SearchParams {
   requestId?: string;
   queuedAt?: string;
   checkpoint?: string;
+}
+
+interface AnchorSummary {
+  last_anchored_audit_id: bigint | null;
+  tsa_gen_time: Date | null;
+  trust_anchored: boolean | null;
+  pending_count: bigint;
+  oldest_pending_at: Date | null;
+}
+
+function normalizeAnchorSummary(rows: AnchorSummary[]): AnchorSummary {
+  return (
+    rows[0] ?? {
+      last_anchored_audit_id: null,
+      tsa_gen_time: null,
+      trust_anchored: null,
+      pending_count: BigInt(0),
+      oldest_pending_at: null,
+    }
+  );
+}
+
+function persistedAnchorStatus(row: { value: Prisma.JsonValue } | null) {
+  return (row?.value ?? null) as PersistedAnchorStatus | null;
+}
+
+function verifiedRollingAnchorCount(result: PersistedVerifyResult): number {
+  return result.anchorsChecked ?? 0;
+}
+
+function brokenRollingAnchorCount(result: PersistedVerifyResult): number {
+  return result.anchorBreaks ?? 0;
+}
+
+function RollingAnchorBreakSummary({ result }: { result: PersistedVerifyResult }) {
+  const broken = brokenRollingAnchorCount(result);
+  if (broken === 0) return null;
+  return (
+    <p className="text-xs text-red-700 mt-1 dark:text-red-200">
+      {broken} externe Rolling-Verankerung(en) mit Integritätsproblem
+    </p>
+  );
+}
+
+function hasPendingAnchors(count: number): boolean {
+  return count > 0;
 }
 
 function auditOkResultKey(result: PersistedVerifyResult | null): string | null {
@@ -89,47 +138,77 @@ export default async function AuditLogPage({
   // Filter wäre das ein Scan über den GANZEN Log → reltuples-Schätzung.
   const hasFilter = Boolean(sp.action || sp.actorType || sp.resourceType || sp.from || sp.to);
 
-  const [entries, verifyRow, checkpointRow, resourceTypeRows, totalCount] = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
-        tx.auditLog.findMany({
-          where,
-          orderBy: { id: 'desc' },
-          take: PAGE_SIZE + 1,
-        }),
-        // P-1: Chain-Verifikation läuft NICHT mehr im Render-Pfad (SHA-256 über
-        // den kompletten Log; Sekunden bei 200k, P2028 ab ~500k). Hier nur das
-        // vom täglichen Worker-Job (audit-verify-check) persistierte Ergebnis.
-        tx.tenantSetting.findUnique({
-          where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-        }),
-        tx.tenantSetting.findUnique({
-          where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
-        }),
-        // P-1: groupBy statt distinct — Prisma dedupliziert `distinct` ohne
-        // nativeDistinct IN-MEMORY und überträgt dafür JEDE Zeile.
-        tx.auditLog.groupBy({
-          by: ['resourceType'],
-          orderBy: { resourceType: 'asc' },
-        }),
-        hasFilter
-          ? tx.auditLog.count({ where })
-          : // pg_class-reltuples-Schätzung statt COUNT(*) über den ganzen Log.
-            tx.$queryRaw<{ estimate: bigint }[]>`
+  const [
+    entries,
+    verifyRow,
+    checkpointRow,
+    anchorStatusRow,
+    anchorSummaryRows,
+    resourceTypeRows,
+    totalCount,
+  ] = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) =>
+    Promise.all([
+      tx.auditLog.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        take: PAGE_SIZE + 1,
+      }),
+      // P-1: Chain-Verifikation läuft NICHT mehr im Render-Pfad (SHA-256 über
+      // den kompletten Log; Sekunden bei 200k, P2028 ab ~500k). Hier nur das
+      // vom täglichen Worker-Job (audit-verify-check) persistierte Ergebnis.
+      tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
+      }),
+      tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
+      }),
+      tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId, key: AUDIT_ANCHOR_STATUS_SETTING_KEY } },
+      }),
+      tx.$queryRaw<AnchorSummary[]>`
+          WITH latest_anchor AS (
+            SELECT top_audit_id, tsa_gen_time, trust_anchored
+            FROM audit_anchor
+            WHERE tenant_id = ${tenantId}::uuid
+            ORDER BY id DESC
+            LIMIT 1
+          )
+          SELECT
+            (SELECT top_audit_id FROM latest_anchor) AS last_anchored_audit_id,
+            (SELECT tsa_gen_time FROM latest_anchor) AS tsa_gen_time,
+            (SELECT trust_anchored FROM latest_anchor) AS trust_anchored,
+            count(l.id)::bigint AS pending_count,
+            min(l.occurred_at) AS oldest_pending_at
+          FROM audit_log l
+          WHERE l.tenant_id = ${tenantId}::uuid
+            AND l.id > COALESCE((SELECT top_audit_id FROM latest_anchor), 0)
+        `,
+      // P-1: groupBy statt distinct — Prisma dedupliziert `distinct` ohne
+      // nativeDistinct IN-MEMORY und überträgt dafür JEDE Zeile.
+      tx.auditLog.groupBy({
+        by: ['resourceType'],
+        orderBy: { resourceType: 'asc' },
+      }),
+      hasFilter
+        ? tx.auditLog.count({ where })
+        : // pg_class-reltuples-Schätzung statt COUNT(*) über den ganzen Log.
+          tx.$queryRaw<{ estimate: bigint }[]>`
               SELECT reltuples::bigint AS estimate
               FROM pg_class
               WHERE oid = to_regclass('audit_log')
             `.then((rows) => {
-              const est = Number(rows[0]?.estimate ?? -1);
-              // -1 = Tabelle noch nie analysiert (frische DB) → exakter Count ok.
-              return est >= 0 ? est : tx.auditLog.count();
-            }),
-      ]),
+            const est = Number(rows[0]?.estimate ?? -1);
+            // -1 = Tabelle noch nie analysiert (frische DB) → exakter Count ok.
+            return est >= 0 ? est : tx.auditLog.count();
+          }),
+    ]),
   );
 
   const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
   const checkpoint = (checkpointRow?.value ?? null) as PersistedRecoveryCheckpoint | null;
+  const anchorStatus = persistedAnchorStatus(anchorStatusRow);
+  const anchorSummary = normalizeAnchorSummary(anchorSummaryRows);
+  const pendingAnchorCount = Number(anchorSummary.pending_count);
   const pendingVerify = sp.verify === 'queued';
   // „Fertig", wenn das persistierte Ergebnis exakt den angestoßenen Lauf trägt
   // ODER (robust gegen Überschreiben durch nächtlichen/parallelen Lauf) neuer
@@ -185,6 +264,7 @@ export default async function AuditLogPage({
   return (
     <div className="p-8">
       <AuditNotificationAcknowledger resultKey={auditOkResultKey(verifyResult)} />
+      <AuditAnchorAutoRefresh active={hasPendingAnchors(pendingAnchorCount)} />
       {pollVerify && <AuditVerifyAutoRefresh requestId={sp.requestId} queuedAt={sp.queuedAt} />}
       <div className="flex items-end justify-between mb-6">
         <div>
@@ -201,6 +281,12 @@ export default async function AuditLogPage({
           CSV exportieren
         </a>
       </div>
+
+      <RollingAnchorCard
+        summary={anchorSummary}
+        status={anchorStatus}
+        pendingCount={pendingAnchorCount}
+      />
 
       {/* Prüfer-Self-Service: zeitlich begrenzter read-only Verifikations-Link */}
       <div className="card p-4 mb-6">
@@ -260,6 +346,8 @@ export default async function AuditLogPage({
                 </p>
                 <p className="text-xs text-green-700 mt-1 dark:text-green-200">
                   {verifyResult.sealsChecked} Tagesversiegelungen geprüft
+                  {' · '}
+                  {verifiedRollingAnchorCount(verifyResult)} Rolling-Anker geprüft
                   {' · '}zuletzt geprüft {fmtDateTimeSeconds(new Date(verifyResult.checkedAt))}
                 </p>
                 {verifyResult.tsaMode === 'local' && (
@@ -334,6 +422,7 @@ export default async function AuditLogPage({
                     {verifyResult.sealBreaks} Tagesversiegelung(en) mit TSA-Problem
                   </p>
                 )}
+                <RollingAnchorBreakSummary result={verifyResult} />
                 {(verifyResult.policyBreaks ?? []).map((b) => (
                   <p key={b} className="text-xs text-red-700 mt-1 dark:text-red-200">
                     {b}
@@ -574,6 +663,72 @@ export default async function AuditLogPage({
             </Link>
           ) : (
             <span className="text-disabled">Ende der Liste</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Dual-stamping status; kept separate from the already large log page. */
+function RollingAnchorCard({
+  summary,
+  status,
+  pendingCount,
+}: {
+  summary: AnchorSummary;
+  status: PersistedAnchorStatus | null;
+  pendingCount: number;
+}) {
+  const delayed = status?.state === 'DELAYED' || status?.state === 'LOCAL_ONLY';
+  const cardClass = delayed
+    ? 'rounded-md border border-yellow-300 bg-yellow-50 p-4 mb-6 dark:border-yellow-800 dark:bg-yellow-950/50'
+    : pendingCount > 0
+      ? 'rounded-md border border-blue-200 bg-blue-50 p-4 mb-6 dark:border-blue-800 dark:bg-blue-950/50'
+      : 'rounded-md border border-green-200 bg-green-50 p-4 mb-6 dark:border-green-800 dark:bg-green-950/50';
+  return (
+    <div className={cardClass}>
+      <div className="flex items-start gap-3">
+        {pendingCount === 0 && summary.last_anchored_audit_id ? (
+          <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
+        ) : (
+          <ShieldAlert className="h-5 w-5 text-yellow-600 mt-0.5" />
+        )}
+        <div>
+          <p className="text-sm font-medium text-primary">Externe Rolling-Verankerung</p>
+          {summary.last_anchored_audit_id ? (
+            <p className="text-xs text-secondary mt-1">
+              RFC-3161-verankert bis Audit-ID {String(summary.last_anchored_audit_id)}
+              {summary.tsa_gen_time && <> · TSA-Zeit {fmtDateTimeSeconds(summary.tsa_gen_time)}</>}
+              {' · '}
+              {summary.trust_anchored ? 'Trust-verankert' : 'Trust-Anchor fehlt'}
+            </p>
+          ) : (
+            <p className="text-xs text-secondary mt-1">
+              Noch kein externer Rolling-Anker vorhanden.
+            </p>
+          )}
+          {pendingCount > 0 ? (
+            <p className="text-xs text-blue-800 mt-1 dark:text-blue-100">
+              {pendingCount} lokal verkettete{' '}
+              {pendingCount === 1 ? 'Änderung wartet' : 'Änderungen warten'} auf den nächsten
+              TSA-Checkpoint. Neue Einträge bleiben währenddessen möglich.
+              {summary.oldest_pending_at && (
+                <> Ältester offener Eintrag: {fmtDateTimeSeconds(summary.oldest_pending_at)}.</>
+              )}
+            </p>
+          ) : (
+            <p className="text-xs text-green-700 mt-1 dark:text-green-200">
+              Kein unverankerter lokaler Restbestand.
+            </p>
+          )}
+          {status?.error && (
+            <p className="text-xs text-yellow-800 mt-1 dark:text-yellow-100">
+              Letzter TSA-Versuch verzögert: {status.error}
+              {status.nextRetryAt && (
+                <> · nächster Versuch {fmtDateTimeSeconds(new Date(status.nextRetryAt))}</>
+              )}
+            </p>
           )}
         </div>
       </div>

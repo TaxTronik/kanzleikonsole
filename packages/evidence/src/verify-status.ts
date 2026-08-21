@@ -15,6 +15,21 @@ export const AUDIT_VERIFY_RESULT_SETTING_KEY = 'audit_verify_result';
 /** tenant_setting-Key für den bewusst gesetzten Recovery-Checkpoint. */
 export const AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY = 'audit_recovery_checkpoint';
 
+/** Operational status of the non-blocking rolling RFC-3161 worker. */
+export const AUDIT_ANCHOR_STATUS_SETTING_KEY = 'audit_anchor_status';
+
+export interface PersistedAnchorStatus {
+  state: 'ANCHORED' | 'DELAYED' | 'LOCAL_ONLY';
+  lastAttemptAt: string;
+  lastSuccessAt: string | null;
+  lastAnchoredAuditId: string | null;
+  tsaGenTime: string | null;
+  trustAnchored: boolean;
+  consecutiveFailures: number;
+  nextRetryAt: string | null;
+  error: string | null;
+}
+
 export interface PersistedVerifyResult {
   /** Zeitpunkt des Prüf-Laufs (ISO-8601). */
   checkedAt: string;
@@ -31,6 +46,13 @@ export interface PersistedVerifyResult {
   /** Siegel, die bis zu einem hinterlegten Trust-Anchor validierten (rfc3161).
    *  Unter sealsChecked ⇒ Siegel nur cryptoOk (ohne externen Anker). Optional. */
   sealsTrustAnchored?: number;
+  anchorsChecked?: number;
+  anchorBreaks?: number;
+  anchorsTrustAnchored?: number;
+  lastAnchorId?: string | null;
+  lastAnchoredAuditId?: string | null;
+  unanchoredEntries?: number;
+  oldestUnanchoredAt?: string | null;
   policyBreaks: string[];
   firstBreak: { auditId: string; occurredAt: string } | null;
   /** Gesetzt, wenn der Lauf selbst fehlschlug (Exception statt Ketten-Bruch). */
@@ -108,5 +130,12 @@ export function toPersistedVerifyResult(
     recovered: false,
     tsaMode: r.tsaMode,
     sealsTrustAnchored: r.sealsTrustAnchored,
+    anchorsChecked: r.anchorsChecked,
+    anchorBreaks: r.anchorBreaks.length,
+    anchorsTrustAnchored: r.anchorsTrustAnchored,
+    lastAnchorId: r.lastAnchorId === null ? null : String(r.lastAnchorId),
+    lastAnchoredAuditId: r.lastAnchoredAuditId === null ? null : String(r.lastAnchoredAuditId),
+    unanchoredEntries: r.unanchoredEntries,
+    oldestUnanchoredAt: r.oldestUnanchoredAt?.toISOString() ?? null,
   };
 }

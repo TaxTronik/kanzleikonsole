@@ -37,6 +37,11 @@ export interface EvidenceSealJob {
   sealDate?: string;
 }
 
+export interface AuditAnchorJob {
+  /** Omit for the frequent global reconciliation tick. */
+  tenantId?: string;
+}
+
 export interface ChecksJob {
   // optional: nur einen Tenant prüfen (für Manual-Trigger)
   tenantId?: string;
@@ -69,6 +74,10 @@ export interface RiskAnalyseLlmJob {
 }
 
 export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>('evidence-seal', {
+  connection,
+  defaultJobOptions,
+});
+export const auditAnchorQueue = new Queue<AuditAnchorJob, void, string>('audit-anchor', {
   connection,
   defaultJobOptions,
 });

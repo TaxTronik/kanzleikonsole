@@ -34,6 +34,7 @@ const QUEUE_TIMEOUT_MS = 2_000;
 // explizit. WICHTIG: Wird dort eine Queue ergänzt/entfernt, MUSS sie auch hier
 // gepflegt werden, sonst fehlt sie stillschweigend in der Admin-Übersicht.
 const QUEUES: Array<{ name: string; expectedEveryHours: number | null }> = [
+  { name: 'audit-anchor', expectedEveryHours: null },
   { name: 'evidence-seal', expectedEveryHours: 24 },
   { name: 'audit-verify-check', expectedEveryHours: 24 },
   { name: 'audit-rotate', expectedEveryHours: 24 * 7 },
@@ -72,7 +73,7 @@ function getHandle(): { conn: IORedis; queues: Map<string, Queue> } {
   for (const { name } of QUEUES) queues.set(name, new Queue(name, { connection: conn }));
   const handle = { conn, queues };
   // IMMER cachen — nicht nur im Dev: sonst leakt in Produktion jeder Aufruf
-  // eine neue IORedis-Connection samt 17 Queue-Instanzen (pro Seitenaufruf).
+  // eine neue IORedis-Connection samt 20 Queue-Instanzen (pro Seitenaufruf).
   globalThis.__taxtronik_queue_status = handle;
   return handle;
 }

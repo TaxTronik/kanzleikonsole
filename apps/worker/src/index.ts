@@ -9,6 +9,7 @@ import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evidenceSealWorker } from './jobs/evidence-seal';
+import { auditAnchorWorker } from './jobs/audit-anchor';
 import { gwgExpiryWorker } from './jobs/gwg-expiry-check';
 import { invoiceOverdueWorker } from './jobs/invoice-overdue-check';
 import { auditVerifyWorker } from './jobs/audit-verify-check';
@@ -36,6 +37,7 @@ import { log } from './logger';
 // auseinander (backup-run fehlte zeitweise im Ready-Log). Ready-Log und
 // Shutdown leiten sich jetzt aus DIESEM Array ab; `.name` ist der Queue-Name.
 const ALL_WORKERS = [
+  auditAnchorWorker,
   evidenceSealWorker,
   gwgExpiryWorker,
   invoiceOverdueWorker,

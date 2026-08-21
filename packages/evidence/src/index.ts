@@ -6,19 +6,29 @@ export {
   EvidenceService,
   type AuditEventInput,
   type RecordedEvent,
+  type AnchorLatestOptions,
+  type AnchorLatestResult,
   type VerificationResult,
 } from './service';
 export {
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
+  AUDIT_ANCHOR_STATUS_SETTING_KEY,
   BACKUP_DRILL_RESULT_SETTING_KEY,
   toPersistedVerifyResult,
   type PersistedVerifyResult,
   type PersistedRecoveryCheckpoint,
+  type PersistedAnchorStatus,
   type PersistedDrillResult,
 } from './verify-status';
 export { canonicalJson } from './canonical-json';
 export { eventHash, chainValue, type ChainEvent } from './chain';
+export {
+  anchorGenesisHash,
+  anchorPayload,
+  anchorTokenHash,
+  type AnchorPayloadInput,
+} from './anchor';
 export {
   serializeArchive,
   parseArchive,

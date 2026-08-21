@@ -152,7 +152,7 @@ export function buildVerfahrensdoku(data: VerfahrensdokuData): string {
 
   const verifyLine = data.auditVerify
     ? data.auditVerify.ok
-      ? `Letzte Integritätsprüfung: ${d(data.auditVerify.checkedAt)} — Kette intakt (${data.auditVerify.checked} Einträge, ${data.auditVerify.sealsChecked} Tagesversiegelungen).`
+      ? `Letzte Integritätsprüfung: ${d(data.auditVerify.checkedAt)} — Ketten intakt (${data.auditVerify.checked} Einträge, ${data.auditVerify.anchorsChecked ?? 0} Rolling-Anker, ${data.auditVerify.sealsChecked} Tagesversiegelungen).`
       : `Letzte Integritätsprüfung: ${d(data.auditVerify.checkedAt)} — BRUCH FESTGESTELLT. Sofortige Prüfung erforderlich!`
     : 'Integritätsprüfung: noch kein persistiertes Ergebnis (täglicher Prüfjob, 02:45 UTC).';
 
@@ -199,7 +199,12 @@ Mitarbeiter-Konten, ${data.counts.portalContactsActive} aktive Portal-Zugänge.
 - Jede compliance-relevante Aktion wird in einer **kryptografischen
   Audit-Hash-Chain** protokolliert (SHA-256-verkettete Einträge, nur anfügbar).
   Aktuell ${data.counts.auditEntries} Einträge, ${data.counts.archiveSegments} unveränderlich archivierte Segmente.
-- Tagesversiegelung mit Zeitstempel: **${data.tsaLabel}**.
+- Eine zweite, dünne und ebenfalls nur anfügbare Anchor-Kette verankert
+  committete lokale Spitzenstände im Regelfall binnen Sekunden über
+  **${data.tsaLabel}**. Der TSA-Aufruf läuft asynchron und blockiert keine
+  Fachänderung. Die TSA-Zeit belegt den spätesten Existenzzeitpunkt des
+  verankerten Präfixes, nicht die exakte lokale Ereigniszeit.
+- Die tägliche RFC-3161-Tagesversiegelung bleibt als zusätzlicher Nachweis.
 - ${verifyLine}
 - Steuerlich relevante Dokumente liegen im Object-Store mit
   **Object-Lock (COMPLIANCE-Mode, dokumenttypabhängig 6/8/10 Jahre;
@@ -232,7 +237,8 @@ Mitarbeiter-Konten, ${data.counts.portalContactsActive} aktive Portal-Zugänge.
 - **Updates:** Versionierte, signierte Releases; Einspielen ausschließlich
   durch den Betreiber (kein Auto-Update). Vor jeder Migration wird
   automatisch gesichert; Rollback-Verfahren ist dokumentiert.
-- **Überwachung:** Tägliche automatische Integritätsprüfung der Audit-Chain;
+- **Überwachung:** Tägliche automatische Integritätsprüfung beider Audit-Ketten;
+  Betriebsalarm bei anhaltendem Rückstand der externen Verankerung;
   monatlicher automatischer Wiederherstellungstest; optionaler E-Mail-Alarm
   bei Ausfall von Datenbank, Queue, Dokumentenspeicher oder Virenscanner.
 - **Vier-Augen-Prinzip:** Freigaben des geteilten Fachwissens (Begriffskatalog)

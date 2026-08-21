@@ -1,7 +1,7 @@
 // =============================================================================
 // health-alert-Worker — Betriebs-Alarm per E-Mail, wenn Infrastruktur ausfällt.
 //
-// Alle 5 Minuten: Postgres, Redis, Object-Store und ClamAV prüfen. Fällt ein
+// Alle 5 Minuten: Infrastruktur und externe Audit-Verankerung prüfen. Fällt ein
 // Dienst in ZWEI aufeinanderfolgenden Läufen aus (~10 min, Flatter-Schutz),
 // geht EINE Mail an OPS_ALERT_EMAIL; bei Erholung eine Entwarnung. Kein
 // Mail-Sturm: alarmiert wird nur der Zustands-ÜBERGANG (State in Redis).
@@ -36,7 +36,8 @@ export type ServiceName =
   | 'clamav'
   | 'backup'
   | 'app'
-  | 'n8n';
+  | 'n8n'
+  | 'auditAnchor';
 
 const SERVICE_LABEL: Record<ServiceName, string> = {
   postgres: 'Postgres (Datenbank)',
@@ -46,6 +47,7 @@ const SERVICE_LABEL: Record<ServiceName, string> = {
   backup: 'Backup (letzte Sicherung veraltet)',
   app: 'Web-App (Next.js)',
   n8n: 'n8n (Automations/Outbox)',
+  auditAnchor: 'RFC-3161-Verankerung der Audit-Kette',
 };
 
 /** Max. Alter der letzten erfolgreichen Sicherung, bevor Alarm ausgelöst wird. */
@@ -165,6 +167,43 @@ function checkN8n(): Promise<boolean> {
   return checkHttp('http://n8n:5678/healthz');
 }
 
+/**
+ * The rolling worker normally closes the local-only window within seconds.
+ * A tail older than five minutes means the worker/TSA path is persistently
+ * delayed. This is an operational alert only; audit writers remain available.
+ */
+async function checkAuditAnchor(): Promise<boolean> {
+  try {
+    const rows = await withTimeout(
+      prismaOwner.$queryRaw<Array<{ ok: boolean }>>`
+        WITH last_anchor AS (
+          SELECT DISTINCT ON (tenant_id) tenant_id, top_audit_id
+          FROM audit_anchor
+          ORDER BY tenant_id, id DESC
+        )
+        SELECT NOT EXISTS (
+          SELECT 1
+          FROM tenant t
+          LEFT JOIN last_anchor a ON a.tenant_id = t.id
+          JOIN LATERAL (
+            SELECT occurred_at
+            FROM audit_log pending_log
+            WHERE pending_log.tenant_id = t.id
+              AND pending_log.id > COALESCE(a.top_audit_id, 0)
+            ORDER BY pending_log.id ASC
+            LIMIT 1
+          ) first_pending ON true
+          WHERE first_pending.occurred_at < now() - interval '5 minutes'
+        ) AS ok
+      `,
+      'audit-anchor',
+    );
+    return rows[0]?.ok ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** zPING → PONG auf dem clamd-Socket (wie der App-Healthcheck). */
 function checkClamAV(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -211,7 +250,9 @@ function alertMail(service: ServiceName, kind: 'down' | 'up'): { subject: string
         `${label} ist seit mindestens ${FAIL_THRESHOLD * 5} Minuten nicht erreichbar (Stand ${now}).\n\n` +
         `Nächste Schritte auf dem Server:\n` +
         `  ./dc ps\n` +
-        `  ./dc logs ${service === 'objectStore' ? 'seaweedfs' : service} --tail 80\n\n` +
+        `  ./dc logs ${
+          service === 'objectStore' ? 'seaweedfs' : service === 'auditAnchor' ? 'worker' : service
+        } --tail 80\n\n` +
         `Diese Mail kommt vom TaxTronik-Worker (health-alert, alle 5 Minuten). ` +
         `Eine Entwarnung folgt automatisch, sobald der Dienst wieder antwortet.`,
     };
@@ -229,7 +270,7 @@ function alertMail(service: ServiceName, kind: 'down' | 'up'): { subject: string
  * monatliche backup-drill nur die letzte — evtl. uralte — Sicherung validiert.
  */
 async function checkBackupFresh(now: Date = new Date()): Promise<boolean> {
-  // Wie die uebrigen Checks abgeschirmt: alle sieben haengen an EINEM
+  // Wie die uebrigen Checks abgeschirmt: alle Checks haengen an EINEM
   // Promise.all. Ein hier durchgereichter Fehler (DB weg, Query haengt) liess
   // frueher den gesamten Alarm-Lauf werfen — und weil health-alert als
   // 5-Minuten-Job bewusst ohne Retry laeuft, waere dann NIE eine Alarm-Mail
@@ -266,11 +307,12 @@ export async function runHealthAlert(): Promise<{ skipped?: boolean; down: Servi
     checkBackupFresh(),
     checkApp(),
     checkN8n(),
+    checkAuditAnchor(),
   ]);
-  const [postgres, redis, objectStore, clamav, backup, app, n8n] = settled.map((r) =>
+  const [postgres, redis, objectStore, clamav, backup, app, n8n, auditAnchor] = settled.map((r) =>
     r.status === 'fulfilled' ? r.value : false,
-  ) as [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
-  const current = { postgres, redis, objectStore, clamav, backup, app, n8n };
+  ) as [boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+  const current = { postgres, redis, objectStore, clamav, backup, app, n8n, auditAnchor };
 
   const prev = await loadState();
   const { next, alerts } = evaluateTransitions(prev, current);

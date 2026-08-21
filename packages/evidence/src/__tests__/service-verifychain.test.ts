@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { EvidenceService } from '../service';
 import { eventHash } from '../chain';
+import { anchorGenesisHash, anchorPayload, anchorTokenHash } from '../anchor';
 import {
   LocalTimestampAdapter,
   type TimestampPort,
@@ -56,6 +57,16 @@ interface SealRow {
   tsa_response_blob: Buffer | null;
 }
 
+interface AnchorRow {
+  id: bigint;
+  from_audit_id: bigint;
+  top_audit_id: bigint;
+  top_hash: Buffer;
+  previous_anchor_hash: Buffer;
+  anchor_hash: Buffer;
+  tsa_response_blob: Buffer;
+}
+
 /** Baut eine in sich konsistente Hash-Kette aus n Events; gibt Rows + Top-Hash. */
 function buildChain(tenantId: string, n: number): { rows: AuditRow[]; top: Buffer } {
   const rows: AuditRow[] = [];
@@ -94,11 +105,12 @@ function buildChain(tenantId: string, n: number): { rows: AuditRow[]; top: Buffe
 }
 
 /** Fake-tx: dispatcht $queryRaw nach Tabellenname im SQL-Template. */
-function makeTx(rows: AuditRow[], seals: SealRow[]) {
+function makeTx(rows: AuditRow[], seals: SealRow[], anchors: AnchorRow[] = []) {
   const tx = {
     $queryRaw: (strings: TemplateStringsArray) => {
       const sql = strings.join(' ');
       if (sql.includes('audit_seal')) return Promise.resolve(seals);
+      if (sql.includes('audit_anchor')) return Promise.resolve(anchors);
       if (sql.includes('audit_log')) return Promise.resolve(rows);
       return Promise.reject(new Error('unerwartete Query: ' + sql));
     },
@@ -211,6 +223,78 @@ describe('verifyChain — Bindung an die rekonstruierte Kette (Review Punkt 2)',
     const r = await new EvidenceService(new StubTsa()).verifyChain(makeTx(rows, []), t);
     expect(r.ok).toBe(false);
     expect(r.firstBreak?.auditId).toBe(2n);
+  });
+});
+
+describe('verifyChain — gekoppelte externe Anchor-Kette', () => {
+  function buildAnchors(tenantId: string, rows: AuditRow[]): AnchorRow[] {
+    const firstPayload = anchorPayload({
+      tenantId,
+      fromAuditId: 1n,
+      topAuditId: 2n,
+      topHash: rows[1]!.this_hash,
+      previousAnchorHash: anchorGenesisHash(tenantId),
+    });
+    const firstResponse = sha256(firstPayload);
+    const firstHash = anchorTokenHash(firstResponse);
+    const secondPayload = anchorPayload({
+      tenantId,
+      fromAuditId: 3n,
+      topAuditId: 3n,
+      topHash: rows[2]!.this_hash,
+      previousAnchorHash: firstHash,
+    });
+    const secondResponse = sha256(secondPayload);
+    return [
+      {
+        id: 1n,
+        from_audit_id: 1n,
+        top_audit_id: 2n,
+        top_hash: rows[1]!.this_hash,
+        previous_anchor_hash: anchorGenesisHash(tenantId),
+        anchor_hash: firstHash,
+        tsa_response_blob: firstResponse,
+      },
+      {
+        id: 2n,
+        from_audit_id: 3n,
+        top_audit_id: 3n,
+        top_hash: rows[2]!.this_hash,
+        previous_anchor_hash: firstHash,
+        anchor_hash: anchorTokenHash(secondResponse),
+        tsa_response_blob: secondResponse,
+      },
+    ];
+  }
+
+  it('prüft lokale Kettenspitzen und externe Vorgängerverkettung gemeinsam', async () => {
+    const tenantId = 'tenant-anchor';
+    const { rows } = buildChain(tenantId, 3);
+    const result = await new EvidenceService(new StubTsa()).verifyChain(
+      makeTx(rows, [], buildAnchors(tenantId, rows)),
+      tenantId,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.anchorsChecked).toBe(2);
+    expect(result.anchorBreaks).toHaveLength(0);
+    expect(result.lastAnchoredAuditId).toBe(3n);
+    expect(result.unanchoredEntries).toBe(0);
+  });
+
+  it('erkennt eine unterbrochene externe Vorgängerkette', async () => {
+    const tenantId = 'tenant-anchor-break';
+    const { rows } = buildChain(tenantId, 3);
+    const anchors = buildAnchors(tenantId, rows);
+    anchors[1]!.previous_anchor_hash = sha256('falscher-vorgaenger');
+
+    const result = await new EvidenceService(new StubTsa()).verifyChain(
+      makeTx(rows, [], anchors),
+      tenantId,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.anchorBreaks[0]?.reason).toMatch(/Vorgängerkette/);
   });
 });
 

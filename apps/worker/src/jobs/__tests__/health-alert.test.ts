@@ -36,6 +36,7 @@ const allOk = {
   backup: true,
   app: true,
   n8n: true,
+  auditAnchor: true,
 };
 
 describe('evaluateTransitions', () => {

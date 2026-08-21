@@ -2,7 +2,8 @@
 // EvidenceService — Manipulationsevidenz für taxtronik.
 //
 // Schreibt Audit-Events in eine hash-verkettete, append-only Tabelle (audit_log)
-// und versiegelt täglich den Tages-Spitzen-Hash mit RFC-3161 (audit_seal).
+// und verankert committete Präfixe zeitnah in einer zweiten RFC-3161-Kette
+// (audit_anchor). Die tägliche Tages-Spitzenversiegelung bleibt zusätzlich.
 //
 // Mechanik:
 //   this_hash = SHA-256(prev_hash || canonical_json(event))
@@ -14,12 +15,13 @@
 //   Pro-Tenant Advisory-Lock innerhalb der Transaktion serialisiert Inserts.
 //
 // Verifikation (CLI / Wirtschaftsprüfer):
-//   verifyChain(tenantId) rechnet alle Hashes nach und prüft TSA-Stempel.
+//   verifyChain(tenantId) rechnet beide Ketten nach und prüft TSA-Stempel.
 // =============================================================================
 
 import { createHash } from 'node:crypto';
 import type { PrismaClient, AuditActorType } from '@prisma/client';
 import { eventHash, chainValue } from './chain';
+import { anchorGenesisHash, anchorPayload, anchorTokenHash } from './anchor';
 import type { TimestampPort } from './ports/timestamp';
 
 type Tx = Pick<PrismaClient, '$queryRaw' | '$queryRawUnsafe' | '$executeRaw'>;
@@ -45,6 +47,25 @@ export interface RecordedEvent {
   prevHash: Buffer;
   thisHash: Buffer;
 }
+
+export interface AnchorLatestOptions {
+  /** Reject a cryptographically valid token whose signer chain is not rooted
+   * in the configured TSA trust store. Production workers set this to true. */
+  requireTrustAnchor?: boolean;
+}
+
+export type AnchorLatestResult =
+  | {
+      anchored: true;
+      fromAuditId: bigint;
+      topAuditId: bigint;
+      tsaGenTime: Date;
+      trustAnchored: boolean;
+    }
+  | {
+      anchored: false;
+      reason: string;
+    };
 
 export interface VerificationResult {
   ok: boolean;
@@ -72,6 +93,14 @@ export interface VerificationResult {
    * `undefined`, wenn der Adapter keine Verankerungs-Auskunft liefert (local).
    */
   sealsTrustAnchored?: number;
+  /** Successfully verified rolling RFC-3161 checkpoints. */
+  anchorsChecked: number;
+  anchorBreaks: Array<{ anchorId: bigint; topAuditId: bigint; reason: string }>;
+  anchorsTrustAnchored: number;
+  lastAnchorId: bigint | null;
+  lastAnchoredAuditId: bigint | null;
+  unanchoredEntries: number;
+  oldestUnanchoredAt: Date | null;
   /** Welcher Zeitstempel-Adapter geprüft hat — IMMER ausgewiesen (Audit-Transparenz). */
   tsaMode: 'local' | 'rfc3161';
   /** Policy-Verstöße (z. B. Self-Timestamp im Produktivmodus). */
@@ -86,6 +115,19 @@ export interface VerifyChainOptions {
    * Worker-Check) setzen es aus NODE_ENV/EVIDENCE_REQUIRE_TSA.
    */
   requireExternalTsa?: boolean;
+  /** Maximum tolerated age of the oldest locally committed but not yet
+   * externally anchored row. Omit for offline/legacy verification. */
+  maxUnanchoredAgeMs?: number;
+}
+
+interface RollingAnchorRow {
+  id: bigint;
+  from_audit_id: bigint;
+  top_audit_id: bigint;
+  top_hash: Buffer;
+  previous_anchor_hash: Buffer;
+  anchor_hash: Buffer;
+  tsa_response_blob: Buffer;
 }
 
 export class EvidenceService {
@@ -177,6 +219,145 @@ export class EvidenceService {
       occurredAt: row.occurred_at,
       prevHash,
       thisHash,
+    };
+  }
+
+  /**
+   * Externally anchors the latest committed local audit-chain tip.
+   *
+   * Deliberately runs outside the business transaction and outside the local
+   * audit advisory lock. New audit events can therefore be appended while the
+   * TSA request is in flight. The selected top remains a valid prefix and a
+   * later run anchors the newer tail.
+   *
+   * Concurrent workers may request the same/different tip. The conditional
+   * INSERT accepts only the worker whose previous anchor is still current.
+   * Additionally, UNIQUE(tenant_id, previous_anchor_hash) permits exactly one
+   * successor per external predecessor even when concurrent statements share
+   * an MVCC snapshot. Losers discard their token and retry; no branch can enter
+   * the persisted external anchor chain.
+   */
+  async anchorLatest(
+    tx: Tx,
+    tenantId: string,
+    opts: AnchorLatestOptions = {},
+  ): Promise<AnchorLatestResult> {
+    if (this.timestampPort.mode !== 'rfc3161') {
+      return { anchored: false, reason: 'keine externe RFC-3161-TSA konfiguriert' };
+    }
+
+    const previousRows = await tx.$queryRaw<
+      Array<{ id: bigint; top_audit_id: bigint; anchor_hash: Buffer }>
+    >`
+      SELECT id, top_audit_id, anchor_hash
+      FROM audit_anchor
+      WHERE tenant_id = ${tenantId}::uuid
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+    const previous = previousRows[0];
+    const previousTopAuditId = previous?.top_audit_id ?? BigInt(0);
+    const previousAnchorHash = previous
+      ? Buffer.from(previous.anchor_hash)
+      : anchorGenesisHash(tenantId);
+
+    const pendingRows = await tx.$queryRaw<
+      Array<{ from_audit_id: bigint; top_audit_id: bigint; top_hash: Buffer }>
+    >`
+      WITH pending AS (
+        SELECT id, this_hash
+        FROM audit_log
+        WHERE tenant_id = ${tenantId}::uuid
+          AND id > ${previousTopAuditId}
+      )
+      SELECT
+        (SELECT id FROM pending ORDER BY id ASC LIMIT 1) AS from_audit_id,
+        (SELECT id FROM pending ORDER BY id DESC LIMIT 1) AS top_audit_id,
+        (SELECT this_hash FROM pending ORDER BY id DESC LIMIT 1) AS top_hash
+      WHERE EXISTS (SELECT 1 FROM pending)
+    `;
+    const pending = pendingRows[0];
+    if (!pending) return { anchored: false, reason: 'keine unverankerten Audit-Einträge' };
+
+    const payload = anchorPayload({
+      tenantId,
+      fromAuditId: pending.from_audit_id,
+      topAuditId: pending.top_audit_id,
+      topHash: pending.top_hash,
+      previousAnchorHash,
+    });
+    const stamp = await this.timestampPort.timestamp(payload);
+    if (!stamp.tsaRequestBlob || !stamp.tsaResponseBlob) {
+      throw new Error('RFC-3161-TSA lieferte keinen vollständigen Request-/Response-Nachweis.');
+    }
+
+    const response = Buffer.from(stamp.tsaResponseBlob);
+    let verified: { ok: boolean; trustAnchored: boolean };
+    if (this.timestampPort.verifyDetailed) {
+      verified = await this.timestampPort.verifyDetailed(payload, response);
+    } else {
+      verified = {
+        ok: await this.timestampPort.verify(payload, response),
+        trustAnchored: false,
+      };
+    }
+    if (!verified.ok) {
+      throw new Error('RFC-3161-Token konnte nicht gegen den Rolling-Anchor verifiziert werden.');
+    }
+    if (opts.requireTrustAnchor && !verified.trustAnchored) {
+      throw new Error('RFC-3161-Token ist kryptografisch gültig, aber nicht trust-verankert.');
+    }
+
+    const tsaGenTime = new Date(stamp.timestampedAt);
+    if (Number.isNaN(tsaGenTime.getTime())) {
+      throw new Error('RFC-3161-Token enthält keine gültige TSA-genTime.');
+    }
+    const nextAnchorHash = anchorTokenHash(response);
+
+    const inserted = await tx.$executeRaw`
+      INSERT INTO audit_anchor (
+        tenant_id, from_audit_id, top_audit_id, top_hash,
+        previous_anchor_hash, anchor_hash,
+        tsa_request_blob, tsa_response_blob, tsa_serial, tsa_gen_time,
+        trust_anchored
+      )
+      SELECT
+        ${tenantId}::uuid,
+        ${pending.from_audit_id},
+        ${pending.top_audit_id},
+        ${pending.top_hash},
+        ${previousAnchorHash},
+        ${nextAnchorHash},
+        ${Buffer.from(stamp.tsaRequestBlob)},
+        ${response},
+        ${stamp.tsaSerial},
+        ${tsaGenTime},
+        ${verified.trustAnchored}
+      WHERE COALESCE(
+        (SELECT top_audit_id FROM audit_anchor
+         WHERE tenant_id = ${tenantId}::uuid ORDER BY id DESC LIMIT 1),
+        0
+      ) = ${previousTopAuditId}
+        AND NOT EXISTS (
+          SELECT 1 FROM audit_anchor
+          WHERE tenant_id = ${tenantId}::uuid
+            AND top_audit_id = ${pending.top_audit_id}
+        )
+      ON CONFLICT DO NOTHING
+    `;
+    if (inserted === 0) {
+      return {
+        anchored: false,
+        reason: 'paralleler Anchor-Lauf war schneller; neuer Versuch folgt',
+      };
+    }
+
+    return {
+      anchored: true,
+      fromAuditId: pending.from_audit_id,
+      topAuditId: pending.top_audit_id,
+      tsaGenTime,
+      trustAnchored: verified.trustAnchored,
     };
   }
 
@@ -274,6 +455,13 @@ export class EvidenceService {
       lastAuditId: null,
       sealsChecked: 0,
       sealBreaks: [],
+      anchorsChecked: 0,
+      anchorBreaks: [],
+      anchorsTrustAnchored: 0,
+      lastAnchorId: null,
+      lastAnchoredAuditId: null,
+      unanchoredEntries: 0,
+      oldestUnanchoredAt: null,
       tsaMode: this.timestampPort.mode,
       policyBreaks: [],
     };
@@ -305,6 +493,15 @@ export class EvidenceService {
       ORDER BY seal_date ASC
     `;
     const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
+    const anchors = await tx.$queryRaw<RollingAnchorRow[]>`
+      SELECT id, from_audit_id, top_audit_id, top_hash,
+             previous_anchor_hash, anchor_hash, tsa_response_blob
+      FROM audit_anchor
+      WHERE tenant_id = ${tenantId}::uuid
+      ORDER BY id ASC
+    `;
+    const anchorTopIds = new Set<bigint>(anchors.map((a) => a.top_audit_id));
+    const lastAnchoredAuditId = initializeAnchorSummary(result, anchors);
     const recomputedTops = new Map<bigint, Buffer>();
 
     // 1. Audit-Chain durchgehen. RF-5: cursor-basiert in 1000er-Chunks nach id
@@ -355,7 +552,15 @@ export class EvidenceService {
 
         // Den AUS DER KETTE REKONSTRUIERTEN Spitzen-Hash dieses Eintrags festhalten,
         // falls er versiegelt wurde — er (nicht die DB-Spalte) ist der Prüfwert unten.
-        if (sealTopIds.has(r.id)) recomputedTops.set(r.id, computed);
+        trackAuditCheckpoint(
+          result,
+          recomputedTops,
+          sealTopIds,
+          anchorTopIds,
+          lastAnchoredAuditId,
+          r,
+          computed,
+        );
 
         expectedPrev = Buffer.from(r.this_hash);
         result.checked++;
@@ -415,6 +620,9 @@ export class EvidenceService {
       }
     }
 
+    await this.verifyRollingAnchors(tenantId, anchors, recomputedTops, result);
+    applyUnanchoredAgePolicy(result, opts.maxUnanchoredAgeMs);
+
     return result;
   }
 
@@ -433,6 +641,63 @@ export class EvidenceService {
       return { ok: r.ok, trustAnchored: r.trustAnchored };
     }
     return { ok: await port.verify(recomputed, blob), trustAnchored: null };
+  }
+
+  /** Verifies the sparse external chain against reconstructed local tips. */
+  private async verifyRollingAnchors(
+    tenantId: string,
+    anchors: RollingAnchorRow[],
+    recomputedTops: Map<bigint, Buffer>,
+    result: VerificationResult,
+  ): Promise<void> {
+    let expectedPreviousAnchorHash = anchorGenesisHash(tenantId);
+    let previousTopAuditId = BigInt(0);
+    for (const anchor of anchors) {
+      result.anchorsChecked++;
+      const structuralError = anchorStructureError(
+        anchor,
+        previousTopAuditId,
+        expectedPreviousAnchorHash,
+      );
+      if (structuralError) {
+        addAnchorBreak(result, anchor, structuralError);
+        continue;
+      }
+
+      const recomputed = recomputedTops.get(anchor.top_audit_id);
+      const localTipError = anchorLocalTipError(anchor, recomputed);
+      if (localTipError || !recomputed) {
+        addAnchorBreak(result, anchor, localTipError ?? 'verankerter Spitzen-Eintrag fehlt');
+        continue;
+      }
+
+      const response = Buffer.from(anchor.tsa_response_blob);
+      const computedAnchorHash = anchorTokenHash(response);
+      if (!computedAnchorHash.equals(Buffer.from(anchor.anchor_hash))) {
+        addAnchorBreak(
+          result,
+          anchor,
+          'anchor_hash stimmt nicht mit dem gespeicherten TSA-Token überein',
+        );
+        continue;
+      }
+      const payload = anchorPayload({
+        tenantId,
+        fromAuditId: anchor.from_audit_id,
+        topAuditId: anchor.top_audit_id,
+        topHash: recomputed,
+        previousAnchorHash: expectedPreviousAnchorHash,
+      });
+      const verification = await this.verifySealBinding(payload, response);
+      if (!verification.ok) {
+        addAnchorBreak(result, anchor, 'RFC-3161-Verifikation des Rolling-Ankers fehlgeschlagen');
+        continue;
+      }
+      if (verification.trustAnchored) result.anchorsTrustAnchored++;
+
+      expectedPreviousAnchorHash = computedAnchorHash;
+      previousTopAuditId = anchor.top_audit_id;
+    }
   }
 
   /**
@@ -456,6 +721,13 @@ export class EvidenceService {
       lastAuditId: null,
       sealsChecked: 0,
       sealBreaks: [],
+      anchorsChecked: 0,
+      anchorBreaks: [],
+      anchorsTrustAnchored: 0,
+      lastAnchorId: null,
+      lastAnchoredAuditId: null,
+      unanchoredEntries: 0,
+      oldestUnanchoredAt: null,
       tsaMode: this.timestampPort.mode,
       policyBreaks: [],
     };
@@ -612,6 +884,85 @@ interface AuditChainRow {
 }
 
 const BATCH_SIZE = 1000;
+
+function initializeAnchorSummary(
+  result: VerificationResult,
+  anchors: RollingAnchorRow[],
+): bigint | null {
+  const latest = anchors.at(-1);
+  result.lastAnchorId = latest?.id ?? null;
+  result.lastAnchoredAuditId = latest?.top_audit_id ?? null;
+  return result.lastAnchoredAuditId;
+}
+
+function trackAuditCheckpoint(
+  result: VerificationResult,
+  recomputedTops: Map<bigint, Buffer>,
+  sealTopIds: Set<bigint>,
+  anchorTopIds: Set<bigint>,
+  lastAnchoredAuditId: bigint | null,
+  row: Pick<AuditChainRow, 'id' | 'occurred_at'>,
+  computed: Buffer,
+): void {
+  if (sealTopIds.has(row.id) || anchorTopIds.has(row.id)) {
+    recomputedTops.set(row.id, computed);
+  }
+  if (lastAnchoredAuditId === null || row.id > lastAnchoredAuditId) {
+    result.unanchoredEntries++;
+    result.oldestUnanchoredAt ??= row.occurred_at;
+  }
+}
+
+function anchorStructureError(
+  anchor: RollingAnchorRow,
+  previousTopAuditId: bigint,
+  expectedPreviousAnchorHash: Buffer,
+): string | null {
+  if (anchor.from_audit_id > anchor.top_audit_id || anchor.from_audit_id <= previousTopAuditId) {
+    return 'ungültiger oder überlappender Audit-ID-Bereich im Rolling-Anchor';
+  }
+  if (!Buffer.from(anchor.previous_anchor_hash).equals(expectedPreviousAnchorHash)) {
+    return 'previous_anchor_hash passt nicht zur externen Vorgängerkette';
+  }
+  return null;
+}
+
+function anchorLocalTipError(
+  anchor: RollingAnchorRow,
+  recomputed: Buffer | undefined,
+): string | null {
+  if (!recomputed) return `verankerter Spitzen-Eintrag audit_id ${anchor.top_audit_id} fehlt`;
+  if (!recomputed.equals(Buffer.from(anchor.top_hash))) {
+    return 'top_hash weicht vom rekonstruierten lokalen Ketten-Hash ab';
+  }
+  return null;
+}
+
+function addAnchorBreak(
+  result: VerificationResult,
+  anchor: RollingAnchorRow,
+  reason: string,
+): void {
+  result.ok = false;
+  result.anchorBreaks.push({
+    anchorId: anchor.id,
+    topAuditId: anchor.top_audit_id,
+    reason,
+  });
+}
+
+function applyUnanchoredAgePolicy(
+  result: VerificationResult,
+  maxUnanchoredAgeMs: number | undefined,
+): void {
+  if (maxUnanchoredAgeMs === undefined || !result.oldestUnanchoredAt) return;
+  if (Date.now() - result.oldestUnanchoredAt.getTime() <= maxUnanchoredAgeMs) return;
+  result.ok = false;
+  result.policyBreaks.push(
+    `${result.unanchoredEntries} Audit-Eintrag/-Einträge länger als ` +
+      `${Math.ceil(maxUnanchoredAgeMs / 1000)} Sekunden ohne externen RFC-3161-Anker.`,
+  );
+}
 
 /** RF-5: ein id-aufsteigender Chunk der Audit-Chain (Cursor = letzte id). */
 async function fetchAuditBatch(

@@ -52,6 +52,7 @@ vi.mock('@taxtronik/evidence', () => {
     EvidenceService,
     LocalTimestampAdapter,
     Rfc3161HttpAdapter,
+    createRfc3161Adapter: (url: string) => new Rfc3161HttpAdapter(url),
     resolveTsaUrl: (providerId: string | null, customUrl: string | null) =>
       customUrl ?? (providerId ? `https://tsa.example.com/${providerId}` : null),
   };

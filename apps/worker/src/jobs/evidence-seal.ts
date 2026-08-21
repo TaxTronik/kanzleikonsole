@@ -6,69 +6,11 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import { env } from '@taxtronik/config';
 import { prismaOwner } from '../prisma-owner';
-import {
-  EvidenceService,
-  LocalTimestampAdapter,
-  Rfc3161HttpAdapter,
-  resolveTsaUrl,
-  type TimestampPort,
-} from '@taxtronik/evidence';
+import { EvidenceService } from '@taxtronik/evidence';
 import { connection, type EvidenceSealJob } from '../queues';
 import { log } from '../logger';
-import { assertPublicHost } from '../http/ssrf-guard';
-
-const DEFAULT_TSA_PROVIDER_ID = 'globalsign';
-
-/**
- * Bevorzugt die tenant-spezifische TSA-Konfiguration (UI-gepflegt), Fallback
- * auf die ENV-Variable, dann lokaler Self-Timestamp.
- */
-async function timestampPortFor(tenantId: string): Promise<TimestampPort> {
-  const row = await prismaOwner.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
-    select: { value: true },
-  });
-  if (row) {
-    const v = row.value as { providerId?: string; customUrl?: string };
-    const url = resolveTsaUrl(v.providerId || DEFAULT_TSA_PROVIDER_ID, v.customUrl ?? null);
-    if (url) {
-      // F1: TOCTOU-Schutz. Die URL wurde beim Save geprüft (NEW1), aber
-      // DNS-Rebinding oder Legacy-Configs könnten zwischenzeitlich auf
-      // private IPs zeigen. Vor jedem täglichen Use erneut prüfen.
-      try {
-        await assertPublicHost(url);
-      } catch (err) {
-        if (env.NODE_ENV === 'production') throw err;
-        log.warn(
-          { tenantId, url, err: (err as Error).message },
-          'evidence-seal: TSA-URL nicht öffentlich auflösbar — Fallback auf LocalTimestamp',
-        );
-        return new LocalTimestampAdapter();
-      }
-      return new Rfc3161HttpAdapter(url);
-    }
-  }
-  const fallbackUrl = env.TIMESTAMP_AUTHORITY_URL ?? resolveTsaUrl(DEFAULT_TSA_PROVIDER_ID, null);
-  if (fallbackUrl) {
-    try {
-      await assertPublicHost(fallbackUrl);
-    } catch (err) {
-      if (env.NODE_ENV === 'production') throw err;
-      log.warn(
-        { url: fallbackUrl, err: (err as Error).message },
-        'evidence-seal: ENV-TSA-URL nicht öffentlich auflösbar — Fallback auf LocalTimestamp',
-      );
-      return new LocalTimestampAdapter();
-    }
-    return new Rfc3161HttpAdapter(fallbackUrl);
-  }
-  if (env.NODE_ENV === 'production') {
-    throw new Error('Production erfordert eine externe RFC-3161-TSA.');
-  }
-  return new LocalTimestampAdapter();
-}
+import { timestampPortFor } from '../tsa-port';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // RF-2: harte Obergrenze pro Lauf — schützt vor Endlosschleifen bei kaputten

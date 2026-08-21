@@ -58,7 +58,7 @@ Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
 > „Eine Buchung oder eine Aufzeichnung darf nicht in einer Weise verändert
 > werden, dass der ursprüngliche Inhalt nicht mehr feststellbar ist."
 
-**Drei-Schichten-Schutz**:
+**Vier-Schichten-Schutz**:
 
 1. **Object-Lock COMPLIANCE** im S3-kompatiblen Storage (SeaweedFS).
    Datei-Inhalt ist physisch nicht überschreibbar/löschbar bis zum
@@ -67,14 +67,28 @@ Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
    jeder Schreibvorgang erzeugt einen SHA-256-Hash über
    `prev_hash || canonical_json(event)`. Postgres-Trigger blocken UPDATE,
    DELETE und TRUNCATE auf `audit_log`, `audit_seal`, `audit_archive`.
-3. **Tägliche Versiegelung** via RFC-3161-Zeitstempel (`evidence-seal`-
+3. **Zeitnahe externe Verankerung** über eine zweite, dünne Anchor-Kette:
+   `audit-anchor` stempelt den neuesten committeten lokalen Präfix im Regelfall
+   alle zwei Sekunden per RFC 3161. Jeder Anchor bindet auch den vorherigen
+   TSA-Token. Die Anfrage läuft außerhalb der Fachtransaktion; neue Buchungen
+   und Audit-Einträge bleiben möglich. TSA-Ausfälle werden nachgezogen,
+   sichtbar ausgewiesen und bei anhaltendem Rückstand betrieblich alarmiert.
+4. **Tägliche Versiegelung** via RFC-3161-Zeitstempel (`evidence-seal`-
    Worker um 02:30 UTC). Top-Hash des Tages wird extern signiert; Restore
-   aus älterem Backup würde den nachträglichen Stempel offenbaren.
+   aus älterem Backup würde den nachträglichen Stempel offenbaren. Sie bleibt
+   als zusätzlicher Defense-in-Depth-Nachweis bestehen.
+
+Die TSA-`genTime` belegt jeweils, dass der gebundene Ketten-Präfix spätestens
+zu diesem Zeitpunkt existierte. Sie ersetzt den lokalen `occurred_at` nicht
+und attestiert nicht den exakten Zeitpunkt eines einzelnen Ereignisses. Das
+kurze Fenster bis zur asynchronen Antwort ist technisch unvermeidbar, wird
+aber nicht durch einen globalen Schreib-Lock vergrößert.
 
 **Verifikation**:
 
 - `pnpm verify:chain` rechnet die komplette Kette pro Tenant nach,
-  prüft jeden TSA-Stempel und re-hashed jeden Archive-Eintrag (U-4).
+  prüft die externe Anchor-Kette, jeden Tagesstempel und re-hashed jeden
+  Archive-Eintrag (U-4).
 - **Täglicher automatischer Lauf** über `audit-verify-check`-Worker um
   02:45 UTC (siehe [`apps/worker/src/scheduler.ts`](../../apps/worker/src/scheduler.ts)).
   Bei Hash-Bruch wird eine `SYSTEM_AUDIT_BREAK`-Notification an alle

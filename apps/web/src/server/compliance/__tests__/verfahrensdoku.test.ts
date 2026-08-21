@@ -38,6 +38,8 @@ const base: VerfahrensdokuData = {
     lastAuditId: '5000',
     sealsChecked: 120,
     sealBreaks: 0,
+    anchorsChecked: 240,
+    anchorBreaks: 0,
     policyBreaks: [],
     firstBreak: null,
     error: null,
@@ -60,7 +62,7 @@ describe('buildVerfahrensdoku', () => {
     expect(md).toContain('TaxTronik 1.4.0 (Commit abc1234)');
     expect(md).toContain('240 Mandanten');
     expect(md).toContain('ERFOLGREICH; 1234 Audit-Einträge');
-    expect(md).toContain('Kette intakt (5000 Einträge, 120 Tagesversiegelungen)');
+    expect(md).toContain('Ketten intakt (5000 Einträge, 240 Rolling-Anker');
     expect(md).toContain('GlobalSign (RFC-3161)');
     expect(md).toContain('BWA-Auswertungen');
     expect(md).not.toContain('Wissensdatenbank'); // Modul deaktiviert

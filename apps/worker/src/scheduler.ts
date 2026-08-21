@@ -13,6 +13,7 @@
 
 import {
   evidenceSealQueue,
+  auditAnchorQueue,
   gwgExpiryQueue,
   invoiceOverdueQueue,
   auditVerifyQueue,
@@ -50,6 +51,14 @@ const DAILY_RETRY = {
 const BERLIN = 'Europe/Berlin';
 
 export async function setupSchedules(): Promise<void> {
+  // Rolling dual stamp: frequent reconciliation, but no TSA call in the
+  // business transaction. A tick coalesces bursts by timestamping only the
+  // latest committed chain tip per tenant.
+  await auditAnchorQueue.upsertJobScheduler(
+    'rolling-audit-anchor',
+    { every: 2_000 },
+    { name: 'audit-anchor', data: {} },
+  );
   await evidenceSealQueue.upsertJobScheduler(
     'daily-seal',
     { pattern: '30 2 * * *' },
@@ -173,6 +182,7 @@ export async function setupSchedules(): Promise<void> {
   log.info(
     {
       schedules: [
+        'audit-anchor @ every 2 sec',
         'evidence-seal @ 02:30 UTC daily',
         'audit-verify-check @ 02:45 UTC daily',
         'audit-rotate @ 03:00 UTC sundays',

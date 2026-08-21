@@ -31,6 +31,7 @@ model Tenant {
   updatedAt                  DateTime                    @updatedAt @map("updated_at")
   appointments               Appointment[]
   appointmentRequests        AppointmentRequest[]
+  auditAnchors               AuditAnchor[]
   auditLogs                  AuditLog[]
   auditSeals                 AuditSeal[]
   backupRecords              BackupRecord[]
@@ -1489,6 +1490,29 @@ model AuditLog {
   // RF-16 (iter77): Vorgänger-Lookup in record() (ORDER BY id DESC pro Tenant)
   @@index([tenantId, id])
   @@map("audit_log")
+}
+
+model AuditAnchor {
+  id                 BigInt   @id @default(autoincrement())
+  tenantId           String   @map("tenant_id") @db.Uuid
+  fromAuditId        BigInt   @map("from_audit_id")
+  topAuditId         BigInt   @map("top_audit_id")
+  topHash            Bytes    @map("top_hash")
+  previousAnchorHash Bytes    @map("previous_anchor_hash")
+  anchorHash         Bytes    @map("anchor_hash")
+  tsaRequestBlob     Bytes    @map("tsa_request_blob")
+  tsaResponseBlob    Bytes    @map("tsa_response_blob")
+  tsaSerial          String?  @map("tsa_serial")
+  tsaGenTime         DateTime @map("tsa_gen_time") @db.Timestamptz(6)
+  trustAnchored      Boolean  @default(false) @map("trust_anchored")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction)
+
+  @@unique([tenantId, topAuditId])
+  @@unique([tenantId, previousAnchorHash])
+  @@index([tenantId, id])
+  @@index([tenantId, tsaGenTime])
+  @@map("audit_anchor")
 }
 
 model Request {

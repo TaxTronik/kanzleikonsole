@@ -23,9 +23,10 @@ vi.mock('@taxtronik/evidence', () => ({
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: {} }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: vi.fn() }));
+vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { detectTailTruncation } from '../audit-verify-check';
+import { detectAnchorTailTruncation, detectTailTruncation } from '../audit-verify-check';
 
 /** Minimaler Vorbefund; nur `lastAuditId` ist für die Monotonie relevant. */
 function prevWith(lastAuditId: string | null) {
@@ -74,5 +75,22 @@ describe('Regression: Anker ueberlebt einen fehlgeschlagenen Lauf', () => {
     // "kein frueherer Anker" und die Erkennung waere dauerhaft blind.
     const nachFehlerlauf = prevWith('100');
     expect(detectTailTruncation(nachFehlerlauf, 90n)).toMatch(/gesunken/);
+  });
+});
+
+describe('detectAnchorTailTruncation', () => {
+  function previous(lastAnchorId: string | null) {
+    return { lastAnchorId } as unknown as Parameters<typeof detectAnchorTailTruncation>[0];
+  }
+
+  it('erkennt eine geloeschte externe Kettenspitze', () => {
+    expect(detectAnchorTailTruncation(previous('12'), 11n)).toMatch(/Tail-Truncation/);
+    expect(detectAnchorTailTruncation(previous('12'), null)).toMatch(/leer/);
+  });
+
+  it('akzeptiert gleichbleibende und wachsende Anchor-IDs', () => {
+    expect(detectAnchorTailTruncation(previous('12'), 12n)).toBeNull();
+    expect(detectAnchorTailTruncation(previous('12'), 13n)).toBeNull();
+    expect(detectAnchorTailTruncation(previous(null), null)).toBeNull();
   });
 });

@@ -10,26 +10,16 @@ import { env } from '@taxtronik/config';
 import { prismaOwner } from '../prisma-owner';
 import {
   EvidenceService,
-  LocalTimestampAdapter,
-  createRfc3161Adapter,
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   toPersistedVerifyResult,
   type PersistedVerifyResult,
+  type VerificationResult,
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { withWorkerTenantContext } from '../tenant-context';
-
-// C2: HTTP-Adapter statt Stub — der periodische Verify-Job nutzt
-// timestampPort.verify(), das im Stub unbedingt wirft. Bei ENV-only-TSA
-// reicht der HTTP-Adapter; Per-Tenant-TSA-Konfiguration (analog
-// evidence-seal.ts) ist hier nicht nötig, weil verify() nur den Stamp
-// validiert, nicht erneut signiert.
-const timestampPort = env.TIMESTAMP_AUTHORITY_URL
-  ? createRfc3161Adapter(env.TIMESTAMP_AUTHORITY_URL)
-  : new LocalTimestampAdapter();
-const evidenceService = new EvidenceService(timestampPort);
+import { timestampPortFor } from '../tsa-port';
 
 // RF-5: Produktivmodus → externe TSA verpflichtend (Self-Timestamp = harter
 // Fail). Symmetrisch zur CLI (packages/evidence/src/cli/verify.ts) — vorher
@@ -76,6 +66,62 @@ export function detectTailTruncation(
     return `Höchste Audit-ID von ${prevLast} auf ${newLastAuditId} gesunken — die neuesten Einträge wurden gelöscht (Tail-Truncation).`;
   }
   return null;
+}
+
+/**
+ * Same monotonicity guard for the append-only external anchor chain. Verifying
+ * the remaining rows detects gaps in the middle, but deleting only the newest
+ * anchor would otherwise merely look like a larger locally pending tail.
+ */
+export function detectAnchorTailTruncation(
+  prev: PersistedVerifyResult | null,
+  newLastAnchorId: bigint | null,
+): string | null {
+  if (!prev?.lastAnchorId) return null;
+  const prevLast = BigInt(prev.lastAnchorId);
+  if (newLastAnchorId === null) {
+    return `Externe Anchor-Kette ist leer, obwohl zuvor bis Anchor-ID ${prevLast} geprüft wurde — externe Kettenspitze gelöscht.`;
+  }
+  if (newLastAnchorId < prevLast) {
+    return `Höchste Anchor-ID von ${prevLast} auf ${newLastAnchorId} gesunken — externe Kettenspitze gelöscht (Tail-Truncation).`;
+  }
+  return null;
+}
+
+function detectMonotonicityBreaks(
+  previous: PersistedVerifyResult | null,
+  result: Pick<VerificationResult, 'ok' | 'lastAuditId' | 'lastAnchorId'>,
+): string[] {
+  if (!result.ok) return [];
+  return [
+    detectTailTruncation(previous, result.lastAuditId),
+    detectAnchorTailTruncation(previous, result.lastAnchorId),
+  ].filter((reason): reason is string => !!reason);
+}
+
+function monotonicityOutcome(
+  previous: PersistedVerifyResult | null,
+  result: Pick<VerificationResult, 'ok' | 'lastAuditId' | 'lastAnchorId'>,
+  recovered: boolean,
+) {
+  const breaks = detectMonotonicityBreaks(previous, result);
+  const reason = breaks[0] ?? null;
+  return {
+    breaks,
+    reason,
+    effectiveOk: result.ok && !reason,
+    suppressAlarm: recovered && !reason,
+  };
+}
+
+function auditBreakBody(
+  result: Pick<VerificationResult, 'firstBreak'>,
+  monotonicityReason: string | null,
+): string {
+  if (result.firstBreak) {
+    return `Erster Bruch bei Audit-ID ${result.firstBreak.auditId} (${new Date(result.firstBreak.occurredAt).toISOString()})`;
+  }
+  return monotonicityReason ?? 'Verifikation fehlgeschlagen.';
 }
 
 // M7: Tenant-Pagination. Bei vielen Tenants würde `findMany({})` ohne
@@ -131,8 +177,13 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           );
           prev = (prevRow?.value ?? null) as PersistedVerifyResult | null;
 
+          const timestampPort = await timestampPortFor(tenantId);
+          const evidenceService = new EvidenceService(timestampPort);
           const r = await prismaOwner.$transaction(
-            async (tx) => evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
+            async (tx) =>
+              evidenceService.verifyChain(tx, tenantId, {
+                requireExternalTsa,
+              }),
             VERIFY_TX_OPTIONS,
           );
 
@@ -142,8 +193,6 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           // geleerte Kette) hinterlassen sonst eine konsistente Kette (ok=true).
           // Nur bei ok=true auswerten: bei einem Bruch ist lastAuditId die letzte
           // GUTE ID (früher Abbruch), kein echter Ketten-Endpunkt.
-          const shrinkReason = r.ok ? detectTailTruncation(prev, r.lastAuditId) : null;
-
           // Recovery-Checkpoint = bewusste Abgrenzung durch den Admin. Er ist das
           // harte Kill-Signal für den Break-Alarm: sobald gesetzt, gilt der
           // historische Bruch als versorgt (recovered) — keine neue
@@ -163,18 +212,17 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
             recovered = !!cpRow?.value;
           }
 
-          const effectiveOk = r.ok && !shrinkReason;
-          const suppressAlarm = recovered && !shrinkReason;
+          const monotonicity = monotonicityOutcome(prev, r, recovered);
           const base = toPersistedVerifyResult(r, checkedAt);
           await persistVerifyResult(tenantId, {
             ...base,
-            ok: effectiveOk,
-            policyBreaks: shrinkReason ? [...base.policyBreaks, shrinkReason] : base.policyBreaks,
+            ok: monotonicity.effectiveOk,
+            policyBreaks: [...base.policyBreaks, ...monotonicity.breaks],
             requestId: job.data.requestId ?? null,
             recovered,
           });
 
-          if (!effectiveOk && !suppressAlarm) {
+          if (!monotonicity.effectiveOk && !monotonicity.suppressAlarm) {
             // P-8: Notifications werden jetzt in einer Tenant-Context-Transaktion
             // geschrieben — auch wenn prismaOwner BYPASSRLS hat. Setzt die
             // app.current_*-Session-Variablen, sodass Audit-Trigger und etwaige
@@ -204,11 +252,7 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
                   staffId: rec.id,
                   kind: 'SYSTEM_AUDIT_BREAK' as const,
                   title: `⚠ Audit-Hash-Chain gebrochen!`,
-                  body: r.firstBreak
-                    ? `Erster Bruch bei Audit-ID ${r.firstBreak.auditId} (${new Date(r.firstBreak.occurredAt).toISOString()})`
-                    : shrinkReason
-                      ? shrinkReason
-                      : `Verifikation fehlgeschlagen.`,
+                  body: auditBreakBody(r, monotonicity.reason),
                   href: `/staff/admin/audit`,
                   resourceType: 'audit_log',
                   resourceId: r.firstBreak ? String(r.firstBreak.auditId) : null,
@@ -321,6 +365,8 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
             // dauerhaft blind gestellt — genau das Fenster, in dem gelöschte
             // Spitzen-Einträge unbemerkt blieben.
             lastAuditId: prev?.lastAuditId ?? null,
+            lastAnchorId: prev?.lastAnchorId ?? null,
+            lastAnchoredAuditId: prev?.lastAnchoredAuditId ?? null,
             sealsChecked: 0,
             sealBreaks: 0,
             policyBreaks: [],

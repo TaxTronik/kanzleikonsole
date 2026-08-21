@@ -6,8 +6,8 @@ import { headers } from 'next/headers';
 //
 // Für externe Wirtschaftsprüfer: ein zeitlich begrenzter, signierter Token
 // (siehe server/audit-access/token.ts) erlaubt das Nachrechnen der Hash-Chain
-// + TSA-Versiegelungen EINER Kanzlei. Es werden KEINE Mandantendaten gezeigt —
-// nur die Integritäts-Attestierung (Kette intakt?, Anzahl Einträge/Stempel).
+// + Rolling-Anker/Tagesversiegelungen EINER Kanzlei. Es werden KEINE
+// Mandantendaten gezeigt — nur die Integritäts-Attestierung.
 // Kein App-Shell, keine Session.
 // =============================================================================
 
@@ -104,6 +104,17 @@ export default async function AuditVerifyPage({ params }: { params: Promise<{ to
           label="Geprüfte Tagesversiegelungen"
           value={result.sealsChecked.toLocaleString('de-DE')}
         />
+        <Row label="Geprüfte Rolling-Anker" value={result.anchorsChecked.toLocaleString('de-DE')} />
+        <Row
+          label="Rolling-Anker mit Problem"
+          value={result.anchorBreaks.length.toLocaleString('de-DE')}
+          warn={result.anchorBreaks.length > 0}
+        />
+        <Row
+          label="Lokal noch unverankerte Einträge"
+          value={result.unanchoredEntries.toLocaleString('de-DE')}
+          warn={result.unanchoredEntries > 0}
+        />
         <Row
           label="Versiegelungen mit TSA-Problem"
           value={result.sealBreaks.length.toLocaleString('de-DE')}
@@ -123,6 +134,13 @@ export default async function AuditVerifyPage({ params }: { params: Promise<{ to
             warn={(result.sealsTrustAnchored ?? 0) < result.sealsChecked}
           />
         )}
+        {result.tsaMode === 'rfc3161' && result.anchorsChecked > 0 && (
+          <Row
+            label="Trust-verankerte Rolling-Anker"
+            value={`${result.anchorsTrustAnchored} / ${result.anchorsChecked}`}
+            warn={result.anchorsTrustAnchored < result.anchorsChecked}
+          />
+        )}
         <Row
           label="Hash-Chain"
           value={result.ok ? 'lückenlos verkettet' : 'gebrochen'}
@@ -133,8 +151,8 @@ export default async function AuditVerifyPage({ params }: { params: Promise<{ to
       <p className="text-xs text-disabled mt-4">
         Verifiziert am {fmtDateTimeMedium(verifiedAt)} · Link gültig bis{' '}
         {fmtDateMedium(decoded.expiresAt)}. Diese Seite rechnet die SHA-256-Hash-Kette des
-        Audit-Logs nach und prüft die RFC-3161-Zeitstempel. Es werden keine personenbezogenen
-        Mandantendaten angezeigt.
+        Audit-Logs und der gekoppelten externen Anchor-Kette nach und prüft die
+        RFC-3161-Zeitstempel. Es werden keine personenbezogenen Mandantendaten angezeigt.
       </p>
     </Shell>
   );

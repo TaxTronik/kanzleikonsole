@@ -21,7 +21,7 @@ import type { Readable } from 'node:stream';
 // würde Manipulationen nie entdecken. Compliance-blocker für die GoBD-
 // Hash-Chain-Verifikation.
 import { prismaOwner as prisma } from '@taxtronik/db';
-import { EvidenceService } from '../service.js';
+import { EvidenceService, type VerificationResult } from '../service.js';
 import { LocalTimestampAdapter } from '../ports/timestamp.js';
 import { createRfc3161Adapter } from '../ports/rfc3161-http.js';
 import { parseArchive, verifyArchiveChain } from '../archive.js';
@@ -43,6 +43,53 @@ const s3 = new S3Client({
 // CLI beim Buffer-Concat in den OOM treiben, BEVOR der SHA-Vergleich es als
 // gefälscht entlarvt.
 const MAX_ARCHIVE_OBJECT_BYTES = 512 * 1024 * 1024;
+
+function printRollingAnchorSummary(result: VerificationResult): void {
+  process.stdout.write(`  Rolling-Anker geprüft : ${result.anchorsChecked}\n`);
+  process.stdout.write(
+    `  Lokal noch unverankert: ${result.unanchoredEntries}` +
+      (result.oldestUnanchoredAt
+        ? ` (ältester: ${result.oldestUnanchoredAt.toISOString()})\n`
+        : `\n`),
+  );
+  if (result.tsaMode !== 'rfc3161' || result.anchorsChecked === 0) return;
+  const mark = result.anchorsTrustAnchored < result.anchorsChecked ? '⚠' : '✓';
+  process.stdout.write(
+    `  ${mark} Anchor-Trust           : ${result.anchorsTrustAnchored}/${result.anchorsChecked}\n`,
+  );
+}
+
+function printAnchorBreaks(result: VerificationResult): void {
+  for (const broken of result.anchorBreaks) {
+    process.stdout.write(
+      `  ✗ ANCHOR-BRUCH bei Anchor-ID ${broken.anchorId} / Audit-ID ${broken.topAuditId}: ${broken.reason}\n`,
+    );
+  }
+}
+
+function verifyPersistedAnchorMonotonicity(
+  result: VerificationResult,
+  persisted: PersistedVerifyResult | null,
+): boolean {
+  const previous = persisted?.lastAnchorId ? BigInt(persisted.lastAnchorId) : null;
+  if (previous === null) return true;
+  if (result.lastAnchorId === null) {
+    process.stdout.write(
+      `  ✗ ANCHOR-MONOTONIE: externe Kette ist leer, obwohl der letzte Prüf-Lauf bis Anchor-ID ${previous} kam.\n`,
+    );
+    return false;
+  }
+  if (result.lastAnchorId < previous) {
+    process.stdout.write(
+      `  ✗ ANCHOR-MONOTONIE: höchste Anchor-ID ${result.lastAnchorId} liegt unter dem letzten Prüf-Lauf (${previous}).\n`,
+    );
+    return false;
+  }
+  process.stdout.write(
+    `  ✓ Anchor-Monotonie: höchste Anchor-ID ${result.lastAnchorId} ≥ letzter Prüf-Lauf (${previous})\n`,
+  );
+  return true;
+}
 
 async function fetchObjectBytes(bucket: string, key: string): Promise<Buffer> {
   const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -87,6 +134,7 @@ async function main() {
       `  TSA-Modus             : ${result.tsaMode === 'rfc3161' ? 'rfc3161 (externe TSA)' : 'local (Self-Timestamp — kein Drittnachweis)'}\n`,
     );
     process.stdout.write(`  Audit-Einträge geprüft: ${result.checked}\n`);
+    printRollingAnchorSummary(result);
     process.stdout.write(`  Tages-Stempel geprüft : ${result.sealsChecked}\n`);
     if (result.tsaMode === 'rfc3161' && result.sealsChecked > 0) {
       const anchored = result.sealsTrustAnchored ?? 0;
@@ -115,6 +163,7 @@ async function main() {
           `  ✗ TSA-Bruch am ${b.sealDate.toISOString().slice(0, 10)}: ${b.reason}\n`,
         );
       }
+      printAnchorBreaks(result);
     } else if (result.checked === 0) {
       // N-3: Eine leere Kette ist KEIN Integritätsnachweis. Ohne persistierten
       // Monotonie-Anker (den nur der Worker führt) kann die CLI einen kompletten
@@ -160,6 +209,12 @@ async function main() {
         `  ⚠ Kein Monotonie-Anker vorhanden (noch kein Worker-Prüf-Lauf persistiert) — Tail-Truncation nicht ausschließbar.\n`,
       );
     }
+
+    // Gleiches Tail-Truncation-Guardrail für die zweite, append-only
+    // Anchor-Kette. Das Entfernen eines mittleren Anchors bricht die
+    // Vorgängerverkettung; das Entfernen nur der letzten Spitze braucht den
+    // persistierten Höchststand als Monotonie-Anker.
+    allOk = [allOk, verifyPersistedAnchorMonotonicity(result, anchor)].every(Boolean);
 
     // ----- Archive-Verifikation -----
     const archives = await prisma.auditArchive.findMany({
