@@ -138,6 +138,15 @@ assert.throws(
   () =>
     checkReleaseGates({
       ...workflows,
+      ci: workflows.ci.replace('needs: restore', 'needs: quality'),
+    }),
+  /servicebasierte Jobs muessen fuer Forgejo-Host-Netz-Ports serialisiert bleiben/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
       release: workflows.release.replace(
         '"https://x@${REPO_NOSCHEME}"',
         '"https://x:${UPDATE_MANIFEST_TOKEN}@${REPO_NOSCHEME}"',
@@ -164,4 +173,4 @@ assert.throws(
   /keine CycloneDX-SBOMs/,
 );
 
-process.stdout.write('16 release-gate structure tests passed.\n');
+process.stdout.write('17 release-gate structure tests passed.\n');

@@ -120,6 +120,19 @@ export function checkReleaseGates({ release, ci, security, smoke }) {
   ]) {
     jobBlock(ci, job);
   }
+  const db = jobBlock(ci, 'db');
+  const restore = jobBlock(ci, 'restore');
+  const upgradePath = jobBlock(ci, 'upgrade-path');
+  const e2eSmoke = jobBlock(ci, 'e2e-smoke');
+  const e2eParanoid = jobBlock(ci, 'e2e-paranoid');
+  invariant(
+    /needs: quality/.test(db) &&
+      /needs: db/.test(restore) &&
+      /needs: restore/.test(upgradePath) &&
+      /needs: upgrade-path/.test(e2eSmoke) &&
+      /needs: e2e-smoke/.test(e2eParanoid),
+    'ci.yml: servicebasierte Jobs muessen fuer Forgejo-Host-Netz-Ports serialisiert bleiben',
+  );
   for (const job of ['dependencies', 'secrets']) jobBlock(security, job);
   invariant(
     !/^\s+continue-on-error:/m.test(ci) && !/^\s+continue-on-error:/m.test(security),
