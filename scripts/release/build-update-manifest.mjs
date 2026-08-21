@@ -2,13 +2,13 @@
 // Update-Manifest v2 bauen + signieren (Vendor-Seite, release.yml).
 //
 // UPDATE_MANIFEST_PRIVATE_KEY=<PKCS8-PEM> node scripts/release/build-update-manifest.mjs \
-//   --version 1.4.0 --commit-sha <git-sha> \
-//   --web-image git.example.de/taxtronik/web:1.4.0 \
+//   --version 0.2.0 --commit-sha <git-sha> \
+//   --web-image git.example.de/taxtronik/web:0.2.0 \
 //   --web-image-digest sha256:… \
-//   --worker-image git.example.de/taxtronik/worker:1.4.0 \
+//   --worker-image git.example.de/taxtronik/worker:0.2.0 \
 //   --worker-image-digest sha256:… \
 //   --migrations-required true [--notes-file /tmp/notes.txt] \
-//   [--min-previous 1.3.0] [--in /pfad/manifest.json] --out-dir /pfad
+//   [--min-previous 0.1.0] [--in /pfad/manifest.json] --out-dir /pfad
 //
 // Schema v2 bindet Commit, Web-Image und Worker-Image samt Registry-Digests in
 // dieselben Ed25519-signierten Bytes. Ein strikt gültiges altes Single-Image-

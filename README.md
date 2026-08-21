@@ -15,6 +15,9 @@ Postgres-RLS, App-Level-Tenant-Filter, TOTP für Mitarbeiter, Magic-Link für
 Mandanten, S3-kompatibler Object-Store ohne öffentliche Direktlinks, ClamAV,
 Audit-Hash-Chain und optionale RFC-3161-Zeitstempel.
 
+Aktueller Softwarestand: **0.2.0**. Die zugehörigen Änderungen stehen im
+[Changelog](CHANGELOG.md#020---2026-08-21).
+
 Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 
 ## Tech-Stack
@@ -195,11 +198,23 @@ Ein In-place-Produktionsrestore ist nur über den expliziten
 n8n und lässt sie bis zur Prüfung des über `--release-version` gebundenen
 Release-Vertrags gestoppt.
 
-Releases entstehen über **annotierte**, geschützte SemVer-Tags (`v1.4.0`). Der
-Forgejo-Workflow führt für exakt den Tag-Commit im selben Release-DAG die
-vollständige CI- und Security-Suite aus; erst danach baut/scant/pusht er Web und
-Worker und veröffentlicht verpflichtend das Ed25519-signierte Manifest v2 mit
-Commit- sowie beiden Image-Digests. Auf dem Server zeigt
+### Builds über Forgejo CI
+
+Der Forgejo-Workflow [`Build Images`](.forgejo/workflows/build-images.yml)
+baut Web- und Worker-Image bei build-relevanten Pushes auf `main`, bei Pull
+Requests sowie bei manuellem Start. Diese Läufe sind reine, frühzeitige
+Build-Prüfungen: Sie benötigen keine Registry-Zugangsdaten und veröffentlichen
+keine Images.
+
+Verwendbare Produktions-Images entstehen über **annotierte**, geschützte
+SemVer-Tags (für diesen Stand `v0.2.0`). Der Workflow
+[`Release Images`](.forgejo/workflows/release.yml) führt für exakt den
+Tag-Commit im selben Release-DAG die vollständige CI- und Security-Suite aus;
+erst danach baut, scannt und testet er Web und Worker, lädt die
+CycloneDX-SBOMs als CI-Artefakt hoch und veröffentlicht die Images in der
+Forgejo-Registry. Abschließend publiziert er das verpflichtende,
+Ed25519-signierte Manifest v2 mit Commit- sowie beiden Image-Digests. Auf dem
+Server zeigt
 `TAXTRONIK_DEPLOY_CHANNEL=release` zusammen mit
 `TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik` auf die Registry,
 `TAXTRONIK_VERSION` auf das Release. Die Operator-CLI verifiziert Manifest,
@@ -247,7 +262,7 @@ Wichtige `.env`-Werte für ein Multi-Domain-Deploy:
 ```ini
 NODE_ENV=production
 TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
-TAXTRONIK_VERSION=1.4.0
+TAXTRONIK_VERSION=0.2.0
 
 NEXTAUTH_URL=https://kanzlei.example.de
 PORTAL_PUBLIC_URL=https://mandanten.example.de
@@ -284,7 +299,7 @@ SIGNAL_GIT_REF=main
 SIGNAL_GIT_DIR=/opt/signal
 # Alternativ ein bereits veröffentlichtes Image beziehen:
 # SIGNAL_DEPLOY_CHANNEL=image
-# SIGNAL_IMAGE=git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v1.4.0
+# SIGNAL_IMAGE=git.hirschmann-koxha.de/taxtronik/risk-layer-engine:<signal-release>
 RISK_LAYER_URL=http://risk-layer:8000
 # Bearer- und Operator-Token werden im managed-Modus getrennt generiert.
 RISK_LAYER_TOKEN=...

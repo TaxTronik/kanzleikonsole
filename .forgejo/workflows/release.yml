@@ -3,8 +3,8 @@
 # danach web + worker bauen/scannen/pushen und das signierte Manifest zwingend
 # veröffentlichen. Kein Status-API-Polling und kein optionaler Gate-Pfad.
 #
-#   git tag -a v1.4.0 -m "Release 1.4.0"
-#   git push forgejo v1.4.0
+#   git tag -a v0.2.0 -m "Release 0.2.0"
+#   git push forgejo v0.2.0
 #
 # Prozess-Doku: docs/operations/release.md
 # =============================================================================

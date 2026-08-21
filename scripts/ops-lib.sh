@@ -2769,7 +2769,7 @@ configure_initial_deployment_interactive() {
         read -rp 'Veroeffentlichte Release-Version (SemVer X.Y.Z): ' input || true
         _SETUP_RELEASE_VERSION="$input"
         [[ "$_SETUP_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && break
-        warn "Bitte den exakten Tag eines veroeffentlichten Releases eingeben, z. B. 1.4.0."
+        warn "Bitte den exakten Tag eines veroeffentlichten Releases eingeben, z. B. 0.2.0."
       done
       ;;
     *) die "Ungueltige Bezugsweg-Auswahl: $choice" ;;

@@ -2,7 +2,7 @@
 // gibt den strikt validierten, digest-gepinnten Release-Vertrag aus.
 //
 // UPDATE_PUBLIC_KEY=<PEM|raw-base64> node scripts/release/verify-update-manifest.mjs \
-//   --manifest manifest.json --signature manifest.json.sig --version 1.4.0 \
+//   --manifest manifest.json --signature manifest.json.sig --version 0.2.0 \
 //   [--format json|env]
 
 import { readFileSync } from 'node:fs';
