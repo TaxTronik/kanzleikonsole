@@ -5,15 +5,17 @@
 
 .DESCRIPTION
   Keeps TaxTronik and Signal on the same bearer/operator credentials, installs
-  the hash-pinned Windows/Python-3.12 CPU embedding runtime when needed, and
-  starts the native /v1 engine. Secrets are written to TaxTronik's gitignored
-  .env and are never printed.
+  the hash-pinned Windows/Python-3.12 embedding runtime when needed, and starts
+  the native /v1 engine. Supported AMD Radeon GPUs use the official ROCm stack;
+  other hosts use the CPU fallback. Secrets are written to TaxTronik's
+  gitignored .env and are never printed.
 #>
 [CmdletBinding()]
 param(
   [string]$SignalRoot = '',
   [switch]$SkipEmbeddingInstall,
-  [switch]$NoLlmAutostart
+  [switch]$NoLlmAutostart,
+  [ValidateSet('auto', 'cpu', 'amd')][string]$EmbeddingRuntime = 'auto'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -92,6 +94,24 @@ function Test-Token([string]$Value) {
   return ($Value -notmatch '[\r\n]' -and [Text.Encoding]::UTF8.GetByteCount($Value) -ge 32)
 }
 
+function Resolve-EmbeddingProfile([string]$Requested) {
+  if ($Requested -eq 'cpu') {
+    return @{ Runtime = 'cpu'; Device = 'cpu'; Venv = '.venv' }
+  }
+  $gpuNames = @()
+  try {
+    $gpuNames = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object { $_.Name })
+  } catch { $gpuNames = @() }
+  $supportedAmd = ($gpuNames -join ' ') -match '(?i)AMD Radeon (RX (90(60 XT|70|70 XT)|7900 XTX|7700)|AI PRO R9700|PRO W7900)'
+  if ($Requested -eq 'amd' -and -not $supportedAmd) {
+    Fail "AMD-GPU-Runtime angefordert, aber keine von ROCm 7.2.1 unterstuetzte Radeon erkannt: $($gpuNames -join ', ')"
+  }
+  if ($Requested -eq 'amd' -or $supportedAmd) {
+    return @{ Runtime = 'amd'; Device = 'cuda'; Venv = '.venv-amd' }
+  }
+  return @{ Runtime = 'cpu'; Device = 'cpu'; Venv = '.venv' }
+}
+
 if (-not (Test-Path -LiteralPath $EnvFile)) {
   Copy-Item -LiteralPath (Join-Path $Root '.env.example') -Destination $EnvFile
   $script:EnvChanged = $true
@@ -107,6 +127,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $SignalRoot 'risk_layer\web.py') -Pa
 }
 if (-not (Test-Path -LiteralPath (Join-Path $SignalRoot 'corpus\graph.sqlite') -PathType Leaf)) {
   Fail "Signal norm graph is missing. Run Signal scripts\setup.ps1 once."
+}
+$embeddingProfile = Resolve-EmbeddingProfile $EmbeddingRuntime
+$embeddingDevice = [string]$embeddingProfile.Device
+$embeddingRuntimeName = [string]$embeddingProfile.Runtime
+if ($embeddingRuntimeName -eq 'amd') {
+  Info 'Supported AMD Radeon detected: embeddings use ROCm/PyTorch on the GPU.'
+} else {
+  Info 'No supported GPU embedding runtime selected: embeddings use the CPU fallback.'
 }
 
 Info 'TaxTronik development credentials'
@@ -125,7 +153,7 @@ if (-not (Test-Token $operatorToken) -or $operatorToken -ceq $bearerToken) {
 }
 Set-EnvValue 'SIGNAL_DEPLOYMENT' 'external'
 Set-EnvValue 'RISK_LAYER_URL' 'http://127.0.0.1:8000'
-Set-EnvValue 'RISK_LAYER_EMB_DEVICE' 'cpu'
+Set-EnvValue 'RISK_LAYER_EMB_DEVICE' $embeddingDevice
 Set-EnvValue 'RISK_LAYER_LLM_BACKEND' 'auto'
 Set-EnvValue 'RISK_LAYER_LLM_TIMEOUT' '900'
 if ($script:EnvChanged) {
@@ -134,10 +162,10 @@ if ($script:EnvChanged) {
   Ok '.env already matches the local Signal process.'
 }
 
-$python = Join-Path $SignalRoot '.venv\Scripts\python.exe'
+$python = Join-Path $SignalRoot (([string]$embeddingProfile.Venv) + '\Scripts\python.exe')
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-  Info 'Create isolated Signal Python 3.12 environment'
-  & py -3.12 -m venv (Join-Path $SignalRoot '.venv')
+  Info "Create isolated Signal Python 3.12 $embeddingRuntimeName environment"
+  & py -3.12 -m venv (Join-Path $SignalRoot ([string]$embeddingProfile.Venv))
   if ($LASTEXITCODE -ne 0) { Fail 'Python 3.12 venv creation failed.' }
 }
 
@@ -158,31 +186,50 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'Signal development package installation failed.' }
   }
 
-  & $python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('sentence_transformers') and importlib.util.find_spec('torch') else 1)" 2>$null
+  $embeddingProbe = if ($embeddingRuntimeName -eq 'amd') {
+    "import importlib.util,sys; import torch; ok=importlib.util.find_spec('sentence_transformers') and torch.cuda.is_available(); sys.exit(0 if ok else 1)"
+  } else {
+    "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('sentence_transformers') and importlib.util.find_spec('torch') else 1)"
+  }
+  & $python -c $embeddingProbe 2>$null
   $embeddingInstalled = ($LASTEXITCODE -eq 0)
   if (-not $embeddingInstalled) {
     if ($SkipEmbeddingInstall) {
-      Fail 'Embedding runtime is missing. Remove -SkipEmbeddingInstall to install the pinned CPU stack.'
+      Fail "Embedding runtime is missing. Remove -SkipEmbeddingInstall to install the pinned $embeddingRuntimeName stack."
     }
-    Info 'Install hash-pinned CPU embedding runtime (first run can take several minutes)'
-    & $python -m pip install --require-hashes --only-binary=:all: -r 'requirements-embedding-windows-cpu-py312-lock.txt'
-    if ($LASTEXITCODE -ne 0) { Fail 'Pinned CPU embedding runtime installation failed.' }
+    if ($embeddingRuntimeName -eq 'amd') {
+      Info 'Install hash-pinned AMD ROCm embedding runtime (about 2.2 GiB)'
+      & $python -m pip install --no-build-isolation --require-hashes -r 'requirements-embedding-windows-amd-py312-lock.txt'
+      if ($LASTEXITCODE -ne 0) { Fail 'Pinned AMD embedding runtime installation failed.' }
+      & $python -c "import torch,sys; print(torch.__version__); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'GPU unavailable'); sys.exit(0 if torch.cuda.is_available() else 1)"
+      if ($LASTEXITCODE -ne 0) {
+        Fail 'ROCm/PyTorch is installed, but the AMD GPU is unavailable. Check Windows 11 and the AMD 26.2.2-or-newer graphics driver.'
+      }
+    } else {
+      Info 'Install hash-pinned CPU embedding runtime (first run can take several minutes)'
+      & $python -m pip install --require-hashes --only-binary=:all: -r 'requirements-embedding-windows-cpu-py312-lock.txt'
+      if ($LASTEXITCODE -ne 0) { Fail 'Pinned CPU embedding runtime installation failed.' }
+    }
   }
   & $python -m pip check
   if ($LASTEXITCODE -ne 0) { Fail 'Signal Python environment is inconsistent (pip check failed).' }
-  Ok 'CPU embedding runtime is available.'
+  Ok "$embeddingRuntimeName embedding runtime is available on $embeddingDevice."
 
   $embeddingDir = Join-Path $SignalRoot '.signal\embedding'
   [void][IO.Directory]::CreateDirectory($embeddingDir)
   $env:RISK_LAYER_TOKEN = $bearerToken
   $env:RISK_LAYER_OPERATOR_TOKEN = $operatorToken
   $env:RISK_LAYER_EMBEDDING_DIR = $embeddingDir
-  $env:RISK_LAYER_EMB_DEVICE = 'cpu'
+  $env:RISK_LAYER_EMB_DEVICE = $embeddingDevice
   $env:RISK_LAYER_LLM_BACKEND = 'auto'
   $env:RISK_LAYER_LLM_TIMEOUT = '900'
 
   Info 'Start Signal at http://127.0.0.1:8000'
-  Write-Host '    CPU embedding builds can be slow; the LLM backend uses automatic detection.' -ForegroundColor Yellow
+  if ($embeddingRuntimeName -eq 'amd') {
+    Write-Host '    BGE-M3 embeddings and the LLM use the AMD GPU; first model load can take a moment.' -ForegroundColor Green
+  } else {
+    Write-Host '    CPU embedding builds can be slow; the LLM backend uses automatic detection.' -ForegroundColor Yellow
+  }
   $arguments = @('-m', 'risk_layer.web', '--host', '127.0.0.1', '--port', '8000', '--graph', 'corpus/graph.sqlite')
   if (-not $NoLlmAutostart) { $arguments += '--llm-autostart' }
   & $python @arguments

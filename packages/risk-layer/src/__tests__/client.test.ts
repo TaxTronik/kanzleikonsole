@@ -17,6 +17,7 @@ const analysePayload = {
 const embeddingStatusPayload = {
   ok: true,
   engineVersion: '1.4.0',
+  device: 'cuda',
   index: {
     active: true,
     current: false,
@@ -118,6 +119,31 @@ describe('RiskLayerClient', () => {
     const r = await client.analyse({ text: 'x' });
     expect(r.textHash).toBe('h');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('gibt der deterministischen Analyse zwei Minuten für den GPU-Kaltstart', async () => {
+    const timeoutSignal = new AbortController().signal;
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal);
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) =>
+      jsonResponse(analysePayload),
+    );
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    await client.analyse({ text: 'x' });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(120_000);
+    timeoutSpy.mockRestore();
+  });
+
+  it('wiederholt eine abgelaufene Analyse nicht, weil die Engine weiterrechnen kann', async () => {
+    const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => {
+      throw timeout;
+    });
+    const client = new RiskLayerClient({ config, fetchImpl });
+
+    await expect(client.analyse({ text: 'x' })).rejects.toBe(timeout);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('katalogDefiniere wird bei 503 NICHT retried (Schreiben)', async () => {
@@ -259,6 +285,7 @@ describe('RiskLayerClient', () => {
     const status = await client.embeddingStatus();
 
     expect(status.index).toMatchObject({ active: true, current: false });
+    expect(status.device).toBe('cuda');
     expect(status.index).not.toHaveProperty('future_index_field');
     expect(status).not.toHaveProperty('future_top_level');
     expect(status.refresh_available).toBe(true);

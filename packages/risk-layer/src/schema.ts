@@ -264,6 +264,9 @@ export type EmbeddingScheduleStatus = z.infer<typeof EmbeddingScheduleStatusSche
 export const EmbeddingStatusResponseSchema = z.object({
   ok: z.literal(true),
   engineVersion: z.string().min(1).max(200),
+  // Seit Signal 0.1.0: angefordertes PyTorch-Gerät (`cuda` gilt auch fuer ROCm).
+  // Optional hält Rolling Updates mit einer noch älteren Signal-Instanz kompatibel.
+  device: z.string().min(1).max(64).optional(),
   index: EmbeddingIndexStatusSchema,
   job: EmbeddingJobStatusSchema,
   schedule: EmbeddingScheduleStatusSchema,

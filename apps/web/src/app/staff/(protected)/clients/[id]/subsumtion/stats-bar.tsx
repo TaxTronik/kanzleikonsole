@@ -97,6 +97,8 @@ export function StatsBar({
   onRequestLlm,
   llmStatus,
   llmStarting,
+  llmJobState,
+  llmWorkerAvailable,
 }: {
   markings: MarkingDTO[];
   llmEnrichedAt: string | null;
@@ -105,6 +107,8 @@ export function StatsBar({
   onRequestLlm: () => void;
   llmStatus?: LlmStatusDTO | null;
   llmStarting?: boolean;
+  llmJobState?: string | null;
+  llmWorkerAvailable?: boolean | null;
 }) {
   const count = (fn: (m: MarkingDTO) => boolean) => markings.filter(fn).length;
   const treffer = count((m) => m.engineStatus === 'treffer');
@@ -143,7 +147,11 @@ export function StatsBar({
                 <Wand2 className="h-3.5 w-3.5" />
               )}
               {llmStarting
-                ? 'Vertiefung läuft …'
+                ? llmJobState === 'active'
+                  ? 'Vertiefung läuft …'
+                  : llmWorkerAvailable === false
+                    ? 'Wartet auf Worker …'
+                    : 'Vertiefung wartet …'
                 : llmPerformance
                   ? 'KI vertiefen (CPU) +'
                   : 'LLM dazuschalten +'}

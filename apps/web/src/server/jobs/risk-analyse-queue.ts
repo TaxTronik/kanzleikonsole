@@ -86,10 +86,13 @@ export async function enqueueRiskAnalyseLlm(job: RiskAnalyseLlmJob): Promise<voi
  */
 export async function getRiskAnalyseJobState(
   analysisId: string,
-): Promise<{ state: string; failedReason: string | null } | null> {
+): Promise<{ state: string; failedReason: string | null; workers: number } | null> {
   const { queue } = getHandle();
   const job = await withTimeout(queue.getJob(`risk-llm-${analysisId}`), QUEUE_TIMEOUT_MS);
   if (!job) return null;
-  const state = await withTimeout(job.getState(), QUEUE_TIMEOUT_MS);
-  return { state, failedReason: job.failedReason ?? null };
+  const [state, workers] = await Promise.all([
+    withTimeout(job.getState(), QUEUE_TIMEOUT_MS),
+    withTimeout(queue.getWorkersCount(), QUEUE_TIMEOUT_MS),
+  ]);
+  return { state, failedReason: job.failedReason ?? null, workers };
 }

@@ -62,10 +62,12 @@ import {
   type RetryOptions,
 } from './resilience';
 
-// Timeouts: schnell (deterministisch) vs. LLM-Pfad. Letzterer läuft asynchron im
-// Worker (kein synchroner Warter) → großzügig: ein großes Modell (z. B. 14B) kann
-// auf einem langen Sachverhalt mehrere Minuten brauchen. 45 s war zu knapp.
+// Timeouts: billig/schnell, deterministische Analyse mit lokalem Modell-Warm-up
+// und LLM-Pfad. Auch die deterministische Analyse kann beim ersten Aufruf BGE-M3
+// und den Reranker in den GPU-/RAM-Speicher laden. 10 s führen dann zum Abbruch,
+// obwohl die Engine korrekt weiterarbeitet.
 const FAST_TIMEOUT_MS = 10_000;
+const ANALYSE_TIMEOUT_MS = 2 * 60_000;
 // Managed One-Click läuft garantiert auch ohne GPU. CPU-Inferenz ist der
 // erwartete Bottleneck und darf deshalb im asynchronen Worker bis 15 Minuten
 // benötigen; teure LLM-Requests werden weiterhin niemals automatisch retried.
@@ -147,11 +149,20 @@ export class RiskLayerHttpError extends Error {
   }
 }
 
-/** 5xx/429 und Transport-/Timeout-Fehler sind transient → retrybar. 4xx nicht. */
+/** 5xx/429 und Transportfehler sind transient → retrybar. 4xx und Timeouts nicht.
+ *
+ * Ein Timeout sagt nicht, dass die Engine die Arbeit abgebrochen hat. Gerade der
+ * synchrone Signal-Server rechnet nach einem Client-Abbruch weiter. Ein Retry
+ * würde daher dieselbe GPU-Arbeit parallel erneut starten und die Kaltstartzeit
+ * weiter verschlechtern.
+ */
 function isRetryable(err: unknown): boolean {
   if (err instanceof CircuitOpenError) return false;
   if (err instanceof RiskLayerHttpError) return err.status >= 500 || err.status === 429;
-  // Transportfehler (DNS/Connect/Reset) oder Timeout (AbortError).
+  if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+    return false;
+  }
+  // Transportfehler (DNS/Connect/Reset).
   return true;
 }
 
@@ -183,8 +194,11 @@ export class RiskLayerClient {
   // --- Analyse (Zwei-Phasen) ------------------------------------------------
 
   /**
-   * `POST /v1/analyse`. `mitLLM:false` (Default) = schnell/deterministisch und
-   * retrybar; `mitLLM:true` = LLM-Schicht, langer Timeout, KEIN Auto-Retry.
+   * `POST /v1/analyse`. `mitLLM:false` (Default) = deterministisch, aber mit
+   * möglichem GPU-/Modell-Kaltstart; `mitLLM:true` = LLM-Schicht. Beide dürfen
+   * bei einem Timeout nicht wiederholt werden, weil die Engine weiterrechnen
+   * kann. Eindeutige 503-/Transportfehler des deterministischen Pfads bleiben
+   * retrybar.
    */
   async analyse(input: ZweiphasenAnalyseInput): Promise<RiskAnalysisResult> {
     const mitLLM = input.mitLLM ?? false;
@@ -196,7 +210,7 @@ export class RiskLayerClient {
     if (input.nutzer) body.nutzer = input.nutzer;
     const raw = await this.request('POST', '/v1/analyse', {
       body,
-      timeoutMs: mitLLM ? LLM_TIMEOUT_MS : FAST_TIMEOUT_MS,
+      timeoutMs: mitLLM ? LLM_TIMEOUT_MS : ANALYSE_TIMEOUT_MS,
       retry: mitLLM ? NO_RETRY : FAST_RETRY,
     });
     // mapAnalyse validiert das Envelope vollständig (AnalyseResponseSchema)

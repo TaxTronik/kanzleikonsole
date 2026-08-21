@@ -1188,6 +1188,8 @@ test_windows_signal_dev_start_provisions_embedding_operator() {
   local script="$REPO_ROOT/scripts/win/Start-SignalDev.ps1"
   [[ -f "$script" ]] || test_fail "Windows Signal dev starter is missing"
   assert_contains "$script" "requirements-embedding-windows-cpu-py312-lock.txt"
+  assert_contains "$script" "requirements-embedding-windows-amd-py312-lock.txt"
+  assert_contains "$script" "torch.cuda.is_available()"
   assert_contains "$script" "RISK_LAYER_OPERATOR_TOKEN"
   assert_contains "$script" "RISK_LAYER_EMBEDDING_DIR"
   assert_contains "$script" "RISK_LAYER_EMB_DEVICE"
@@ -1195,7 +1197,7 @@ test_windows_signal_dev_start_provisions_embedding_operator() {
   assert_contains "$script" "--llm-autostart"
   assert_not_contains "$script" 'Write-Host $operatorToken'
   assert_not_contains "$script" 'Write-Output $operatorToken'
-  pass "Windows Signal dev starter provisions the CPU embedding operator without leaking secrets"
+  pass "Windows Signal dev starter provisions GPU/CPU embedding without leaking secrets"
 }
 
 set_env_file_value() {

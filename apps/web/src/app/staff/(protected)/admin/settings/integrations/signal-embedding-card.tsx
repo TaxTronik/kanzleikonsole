@@ -158,6 +158,14 @@ function EmbeddingStatusPanel({ status }: { status: EmbeddingStatusResponse }) {
             </dd>
             <dt>Encoder</dt>
             <dd className="break-all text-primary">{status.index.encoder ?? '—'}</dd>
+            <dt>Verarbeitung</dt>
+            <dd className="break-all text-primary">
+              {status.device
+                ? status.device.startsWith('cuda')
+                  ? `${status.device} · GPU${status.device === 'cuda' ? ' (ROCm/CUDA)' : ''}`
+                  : `${status.device} · CPU`
+                : 'Nicht gemeldet'}
+            </dd>
             <dt>Revision</dt>
             <dd className="break-all text-primary">{status.index.revision ?? '—'}</dd>
           </dl>

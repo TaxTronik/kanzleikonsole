@@ -68,8 +68,23 @@ import {
 
 /** Skeleton im Panel, während die LLM-Phase läuft — statt eines harten Reloads:
  *  „lade, du kannst weiterarbeiten". Die fertigen Markierungen kommen automatisch. */
-function LlmDeepeningCard({ status }: { status: LlmStatusDTO | null }) {
-  const label = status?.verfuegbar ? 'KI analysiert den Sachverhalt …' : 'KI-Modell wird geladen …';
+function LlmDeepeningCard({
+  status,
+  jobState,
+  workerAvailable,
+}: {
+  status: LlmStatusDTO | null;
+  jobState: string | null;
+  workerAvailable: boolean | null;
+}) {
+  const waiting = jobState !== 'active';
+  const label = waiting
+    ? workerAvailable === false
+      ? 'KI-Vertiefung wartet auf den Hintergrund-Worker …'
+      : 'KI-Vertiefung steht in der Warteschlange …'
+    : status?.verfuegbar
+      ? 'KI analysiert den Sachverhalt …'
+      : 'KI-Modell wird geladen …';
   return (
     <div className="card p-4 space-y-3">
       <div className="flex items-center gap-2 text-sm text-primary">
@@ -77,7 +92,9 @@ function LlmDeepeningCard({ status }: { status: LlmStatusDTO | null }) {
         <span>{label}</span>
       </div>
       <p className="text-xs text-muted">
-        Neue KI-Markierungen erscheinen automatisch — du kannst in der Zwischenzeit weiterarbeiten.
+        {workerAvailable === false
+          ? 'Es ist noch kein Worker verbunden. Lokal startet „pnpm dev“ Web und Worker gemeinsam.'
+          : 'Neue KI-Markierungen erscheinen automatisch — du kannst in der Zwischenzeit weiterarbeiten.'}
       </p>
       <div className="space-y-2 animate-pulse" aria-hidden>
         <div className="h-3 rounded bg-gray-200 dark:bg-gray-700 w-3/4" />
@@ -194,6 +211,8 @@ export function SubsumtionWorkspace({
   // die neuen KI-Markierungen hervorheben. Kein harter Reload.
   const [llm, setLlm] = useState<LlmStatusDTO | null>(null);
   const [pollLlm, setPollLlm] = useState(false);
+  const [llmJobState, setLlmJobState] = useState<string | null>(null);
+  const [llmWorkerAvailable, setLlmWorkerAvailable] = useState<boolean | null>(null);
   // Final fehlgeschlagener KI-Lauf (Worker-Job). Beendet das „lädt" und bietet Retry.
   const [llmFailed, setLlmFailed] = useState<string | null>(null);
   const enriched = initial?.llmEnrichedAt ?? null;
@@ -210,6 +229,8 @@ export function SubsumtionWorkspace({
     // Modell-Warmlauf + Inferenz können zusammen deutlich über zehn Minuten liegen.
     pollDeadlineRef.current = Date.now() + 30 * 60_000;
     setLlmFailed(null);
+    setLlmJobState('waiting');
+    setLlmWorkerAvailable(null);
     setPollLlm(true);
   }, [enriched]);
 
@@ -223,6 +244,8 @@ export function SubsumtionWorkspace({
       void (async () => {
         if (pollLlm && Date.now() > pollDeadlineRef.current) {
           setPollLlm(false);
+          setLlmJobState(null);
+          setLlmWorkerAvailable(null);
           setInfo(
             'Die KI-Vertiefung läuft im Hintergrund weiter — die Markierungen erscheinen beim nächsten Öffnen.',
           );
@@ -231,21 +254,29 @@ export function SubsumtionWorkspace({
         const r = await llmStatusAction({ clientId, analysisId: initial?.id });
         if (!active || !r.ok) return;
         setLlm(r.status);
+        setLlmJobState(r.jobState);
+        setLlmWorkerAvailable(r.workerAvailable);
         // Läuft serverseitig ein Job (z. B. nach einem Page-Reload — der Client-
         // State ist dann weg, der Job-Zustand aber bekannt)? → „läuft"-Polling
         // wieder aufnehmen, damit Statusanzeige + Trigger-Sperre erneut greifen.
         if (!pollLlm && r.jobRunning) {
           beginLlmRun();
+          setLlmJobState(r.jobState);
+          setLlmWorkerAvailable(r.workerAvailable);
           return;
         }
         if (pollLlm && r.enrichedAt && r.enrichedAt !== llmBaselineRef.current) {
           highlightLlmRef.current = true;
           setPollLlm(false);
+          setLlmJobState(null);
+          setLlmWorkerAvailable(null);
           router.refresh(); // weich: Editor/Selektion/Scroll bleiben erhalten
         } else if (pollLlm && r.jobFailed) {
           // Job endgültig gescheitert → „lädt" beenden, Retry anbieten (nicht bis zum
           // 30-Min-Deadline weiterpollen).
           setPollLlm(false);
+          setLlmJobState(null);
+          setLlmWorkerAvailable(null);
           setLlmFailed(r.jobError || 'Die KI-Vertiefung ist fehlgeschlagen.');
         }
       })().catch((err) => {
@@ -486,6 +517,8 @@ export function SubsumtionWorkspace({
       if (!r.ok) {
         setError(r.error);
         setPollLlm(false);
+        setLlmJobState(null);
+        setLlmWorkerAvailable(null);
         return;
       }
       if (r.llmQueued) beginLlmRun();
@@ -640,6 +673,8 @@ export function SubsumtionWorkspace({
         onRequestLlm={requestLlm}
         llmStatus={llm}
         llmStarting={pollLlm}
+        llmJobState={llmJobState}
+        llmWorkerAvailable={llmWorkerAvailable}
       />
 
       {/* View-Umschalter: Subsumtion ⇆ Recherche-Hub */}
@@ -858,9 +893,19 @@ export function SubsumtionWorkspace({
           >
             <Loader2 className="h-4 w-4 animate-spin shrink-0" />
             <span>
-              <strong>KI-Vertiefung läuft …</strong>{' '}
+              <strong>
+                {llmJobState === 'active'
+                  ? 'KI-Vertiefung läuft …'
+                  : llmWorkerAvailable === false
+                    ? 'KI-Vertiefung wartet auf Worker …'
+                    : 'KI-Vertiefung wartet …'}
+              </strong>{' '}
               <span className="font-normal text-purple-600 dark:text-purple-300">
-                ~15–30 s, im Hintergrund
+                {llmWorkerAvailable === false
+                  ? 'lokal mit „pnpm dev“ starten'
+                  : llmJobState === 'active'
+                    ? 'im Hintergrund'
+                    : 'in der Warteschlange'}
               </span>
             </span>
           </div>
@@ -980,7 +1025,11 @@ export function SubsumtionWorkspace({
                 flash={flash}
               />
             ) : pollLlm ? (
-              <LlmDeepeningCard status={llm} />
+              <LlmDeepeningCard
+                status={llm}
+                jobState={llmJobState}
+                workerAvailable={llmWorkerAvailable}
+              />
             ) : (
               <div className="card p-4 text-sm text-muted">
                 <strong>Klicken</strong> Sie eine Markierung im Text an, um sie zu bewerten, zu

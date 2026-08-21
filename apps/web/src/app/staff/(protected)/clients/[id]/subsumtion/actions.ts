@@ -215,6 +215,8 @@ export async function llmStatusAction(input: { clientId: string; analysisId?: st
     status: LlmStatusDTO | null;
     enrichedAt: string | null;
     jobRunning: boolean;
+    jobState: string | null;
+    workerAvailable: boolean | null;
     jobFailed: boolean;
     jobError: string | null;
   }>
@@ -229,6 +231,8 @@ export async function llmStatusAction(input: { clientId: string; analysisId?: st
     }
     let enrichedAt: string | null = null;
     let jobRunning = false;
+    let jobState: string | null = null;
+    let workerAvailable: boolean | null = null;
     let jobFailed = false;
     let jobError: string | null = null;
     if (input.analysisId) {
@@ -245,19 +249,32 @@ export async function llmStatusAction(input: { clientId: string; analysisId?: st
       // und bietet Retry an. Best-effort (Queue down ⇒ kein Signal).
       if (a) {
         try {
-          const jobState = await getRiskAnalyseJobState(input.analysisId);
-          if (jobState?.state === 'failed') {
+          const jobInfo = await getRiskAnalyseJobState(input.analysisId);
+          if (jobInfo) {
+            workerAvailable = jobInfo.workers > 0;
+          }
+          if (jobInfo?.state === 'failed') {
             jobFailed = true;
-            jobError = jobState.failedReason;
-          } else if (jobState && LLM_JOB_RUNNING_STATES.has(jobState.state)) {
+            jobError = jobInfo.failedReason;
+          } else if (jobInfo && LLM_JOB_RUNNING_STATES.has(jobInfo.state)) {
             jobRunning = true;
+            jobState = jobInfo.state;
           }
         } catch {
           /* Queue nicht erreichbar → kein Signal, normaler Poll-Lauf */
         }
       }
     }
-    return { ok: true, status, enrichedAt, jobRunning, jobFailed, jobError };
+    return {
+      ok: true,
+      status,
+      enrichedAt,
+      jobRunning,
+      jobState,
+      workerAvailable,
+      jobFailed,
+      jobError,
+    };
   } catch (e) {
     return toActionError(e);
   }
