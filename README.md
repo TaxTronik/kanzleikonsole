@@ -263,6 +263,9 @@ Wichtige `.env`-Werte für ein Multi-Domain-Deploy:
 NODE_ENV=production
 TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
 TAXTRONIK_VERSION=0.2.0
+# Der interaktive Release-Deploy setzt beide Werte automatisch:
+UPDATE_MANIFEST_URL=https://git.hirschmann-koxha.de/TaxTronik/updates/raw/branch/main/manifest.json
+UPDATE_PUBLIC_KEY=NE1YtBNNPFM545o1VqoBNTcKIPmZP0rmvLq22YyqKaU=
 
 NEXTAUTH_URL=https://kanzlei.example.de
 PORTAL_PUBLIC_URL=https://mandanten.example.de

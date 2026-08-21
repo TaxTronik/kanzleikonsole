@@ -293,6 +293,10 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
   assert_key_equals "$env_file" TAXTRONIK_DEPLOY_CHANNEL release
   assert_key_equals "$env_file" TAXTRONIK_IMAGE_PREFIX registry.example/taxtronik
   assert_key_equals "$env_file" TAXTRONIK_VERSION 1.2.3
+  assert_key_equals "$env_file" UPDATE_MANIFEST_URL \
+    https://git.hirschmann-koxha.de/TaxTronik/updates/raw/branch/main/manifest.json
+  assert_key_equals "$env_file" UPDATE_PUBLIC_KEY \
+    NE1YtBNNPFM545o1VqoBNTcKIPmZP0rmvLq22YyqKaU=
   assert_key_equals "$env_file" NEXTAUTH_URL https://staff.example.de
   assert_key_equals "$env_file" PORTAL_PUBLIC_URL https://portal.example.de
   assert_key_equals "$env_file" N8N_HOST n8n.example.de

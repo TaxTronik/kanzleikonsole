@@ -101,6 +101,8 @@ nach erfolgreicher Migration und bestandenem Readiness-Gate entfernt.
 Der Assistent validiert und fasst vor der Anwendung zusammen:
 
 - Bezugsweg: aktueller Git-Stand oder veröffentlichtes Release,
+- beim veröffentlichten Release die automatisch gesetzte, signierte
+  Update-Manifest-Quelle samt fest eingebautem Ed25519-Public-Key,
 - die drei tatsächlich verwendeten vollständigen Domains: Kanzlei-/Mitarbeiterportal
   (zum Beispiel `portal.taxtronik.de`), Mandantenportal
   (zum Beispiel `mandanten.taxtronik.de`) und n8n-Administration

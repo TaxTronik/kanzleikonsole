@@ -24,6 +24,11 @@ Noch keine Änderungen.
 
 ### Releaseabschluss
 
+- Der interaktive Erstinstallationspfad setzt bei Registry-Releases jetzt die
+  öffentliche Manifest-URL und den fest eingebauten Ed25519-Verifikationskey
+  automatisch. Damit sind die über Forgejo CI veröffentlichten Images auch bei
+  einem frischen 1-Klick-Deploy ohne manuelle Manifest-Nachkonfiguration
+  auflösbar.
 - **[Scope]** Jeder Audit-Eintrag besitzt einen eigenen, von der App-/Hostuhr
   erzeugten UTC-Ereigniszeitpunkt (`occurredAt`, PostgreSQL `timestamptz(6)`).
   Er ist im Eintrags-Hash gebunden, aber für sich allein keine extern

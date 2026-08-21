@@ -226,7 +226,9 @@ angezeigt. Es gibt bewusst **kein Auto-Update** — einspielen bleibt
    `git push --dry-run`. Fehlt ein Wert oder ist das Ziel nicht beschreibbar,
    starten weder die teuren Gates noch der Image-Build.
 3. Kunden-.env: `UPDATE_MANIFEST_URL` auf die Raw-URL des Manifests +
-   `UPDATE_PUBLIC_KEY` setzen (siehe `.env.example`).
+   `UPDATE_PUBLIC_KEY` setzen (siehe `.env.example`). Der interaktive
+   Erstinstallationspfad übernimmt beide Vendor-Werte im Release-Kanal
+   automatisch; bestehende Installationen tragen sie einmalig nach.
 
 Release-Tags **müssen annotiert sein**; Lightweight-Tags blockiert das
 Promotion-Gate. Die Annotation wird zugleich als Release-Note verwendet:
