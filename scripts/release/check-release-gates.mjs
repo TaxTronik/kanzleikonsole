@@ -49,10 +49,7 @@ function requireWorkflowCall(workflow, name) {
 const ALLOWED_STEP_CONDITIONS = /^(always|failure)\(\)$/;
 
 function forbidJobBypass(block, name) {
-  invariant(
-    !/^ {4}if:/m.test(block),
-    `${name}: job-weites if ist als Gate-Bypass verboten`,
-  );
+  invariant(!/^ {4}if:/m.test(block), `${name}: job-weites if ist als Gate-Bypass verboten`);
   invariant(
     !/^\s+continue-on-error:/m.test(block),
     `${name}: continue-on-error ist als Gate-Bypass verboten (auch auf Schritt-Ebene)`,
@@ -78,6 +75,10 @@ function requireAskpass(block, name) {
   invariant(
     !/https?:\/\/[^\r\n]*UPDATE_MANIFEST_TOKEN/.test(block),
     `${name}: Manifest-Token darf nicht in einer Git-URL stehen`,
+  );
+  invariant(
+    /\*Username\*\)[^\r\n]*\$GITHUB_ACTOR/.test(block),
+    `${name}: Manifest-Git-Zugriff muss den Forgejo-Akteur als Benutzernamen verwenden`,
   );
 }
 

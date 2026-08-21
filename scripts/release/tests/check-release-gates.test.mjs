@@ -129,6 +129,15 @@ assert.throws(
   () =>
     checkReleaseGates({
       ...workflows,
+      release: workflows.release.replace('$GITHUB_ACTOR', 'x'),
+    }),
+  /preflight: Manifest-Git-Zugriff muss den Forgejo-Akteur als Benutzernamen verwenden/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
       release: workflows.release.replace(
         '"https://x@${REPO_NOSCHEME}"',
         '"https://x:${UPDATE_MANIFEST_TOKEN}@${REPO_NOSCHEME}"',
@@ -155,4 +164,4 @@ assert.throws(
   /keine CycloneDX-SBOMs/,
 );
 
-process.stdout.write('15 release-gate structure tests passed.\n');
+process.stdout.write('16 release-gate structure tests passed.\n');

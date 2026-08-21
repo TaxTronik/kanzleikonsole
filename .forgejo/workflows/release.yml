@@ -70,7 +70,7 @@ jobs:
           REPO_NOSCHEME="${UPDATE_MANIFEST_REPO#https://}"
           CHECKOUT="/tmp/manifest-preflight-${GITHUB_RUN_ID:-$$}"
           ASKPASS="/tmp/manifest-askpass-${GITHUB_RUN_ID:-$$}.sh"
-          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) echo x;; *) printf "%s\\n" "$UPDATE_MANIFEST_TOKEN";; esac' > "$ASKPASS"
+          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) printf "%s\\n" "$GITHUB_ACTOR";; *) printf "%s\\n" "$UPDATE_MANIFEST_TOKEN";; esac' > "$ASKPASS"
           chmod 0700 "$ASKPASS"
           export GIT_ASKPASS="$ASKPASS" GIT_ASKPASS_REQUIRE=force GIT_TERMINAL_PROMPT=0
           trap 'rm -rf "$CHECKOUT"; rm -f "$ASKPASS"' EXIT
@@ -334,7 +334,7 @@ jobs:
 
           REPO_NOSCHEME="${UPDATE_MANIFEST_REPO#https://}"
           ASKPASS="/tmp/manifest-askpass-${GITHUB_RUN_ID:-$$}.sh"
-          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) echo x;; *) printf "%s\\n" "$UPDATE_MANIFEST_TOKEN";; esac' > "$ASKPASS"
+          printf '%s\n' '#!/bin/sh' 'case "$1" in *Username*) printf "%s\\n" "$GITHUB_ACTOR";; *) printf "%s\\n" "$UPDATE_MANIFEST_TOKEN";; esac' > "$ASKPASS"
           chmod 0700 "$ASKPASS"
           export GIT_ASKPASS="$ASKPASS" GIT_ASKPASS_REQUIRE=force GIT_TERMINAL_PROMPT=0
           trap 'rm -rf /tmp/updates; rm -f "$ASKPASS"' EXIT
