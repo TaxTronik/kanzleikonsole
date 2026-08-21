@@ -88,6 +88,14 @@ export function checkReleaseGates({ release, ci, security, smoke }) {
       /down -v --remove-orphans/.test(smoke),
     'Release-Image-Smoke braucht einen eindeutigen Compose-Projektnamen vor destruktivem Cleanup',
   );
+  invariant(
+    /docker-compose\.ci\.yml/.test(smoke) &&
+      /COMPOSE=\([^\n]*-f "\$CI"/.test(smoke) &&
+      /"\$\{COMPOSE\[@\]\}" build seaweedfs seaweedfs-init clamav/.test(smoke) &&
+      /app:\s*\n\s+image:[^\n]+\n\s+volumes: !override/.test(smoke) &&
+      /n8n:\s*\n\s+volumes: !override/.test(smoke),
+    'Release-Image-Smoke muss Forgejo-Host-Daemon-Bind-Mounts durch gebaute Config-Images und Named Volumes ersetzen',
+  );
   requireWorkflowCall(ci, 'ci.yml');
   requireWorkflowCall(security, 'security.yml');
   invariant(

@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE="$ROOT/infra/compose/docker-compose.yml"
 APP="$ROOT/infra/compose/docker-compose.app.yml"
+CI="$ROOT/infra/compose/docker-compose.ci.yml"
 
 usage() {
   cat <<'EOF'
@@ -64,11 +65,13 @@ docker run --rm --entrypoint sh "$WORKER_IMAGE" -eu -c '
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/taxtronik-release-smoke.XXXXXX")"
 ENV_FILE="$TMP_DIR/smoke.env"
 OVERRIDE="$TMP_DIR/smoke.override.yml"
-BACKUP_DIR="$TMP_DIR/backups"
-mkdir -p "$BACKUP_DIR"
 
 export TAXTRONIK_SMOKE_WEB_IMAGE="$WEB_IMAGE"
 export TAXTRONIK_SMOKE_WORKER_IMAGE="$WORKER_IMAGE"
+SMOKE_IMAGE_SUFFIX="${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}"
+export TAXTRONIK_SMOKE_SEAWEEDFS_IMAGE="taxtronik-seaweedfs-release-smoke:$SMOKE_IMAGE_SUFFIX"
+export TAXTRONIK_SMOKE_AWSCLI_IMAGE="taxtronik-awscli-release-smoke:$SMOKE_IMAGE_SUFFIX"
+export TAXTRONIK_SMOKE_CLAMAV_IMAGE="taxtronik-clamav-release-smoke:$SMOKE_IMAGE_SUFFIX"
 SMOKE_TIMEOUT="${TAXTRONIK_SMOKE_TIMEOUT:-480}"
 SMOKE_APP_PORT="${TAXTRONIK_SMOKE_APP_PORT:-3000}"
 
@@ -99,25 +102,40 @@ SMTP_FROM=release-smoke@example.invalid
 APP_BIND=127.0.0.1
 APP_BIND_PORT=$SMOKE_APP_PORT
 N8N_BIND=127.0.0.1
-BACKUP_HOST_DIR=$BACKUP_DIR
 EOF
 
 cat >"$OVERRIDE" <<'EOF'
 services:
   app:
     image: ${TAXTRONIK_SMOKE_WEB_IMAGE:?web smoke image missing}
+    volumes: !override
+      - smoke_backups:/app/backups
   worker:
     image: ${TAXTRONIK_SMOKE_WORKER_IMAGE:?worker smoke image missing}
   migrate:
     image: ${TAXTRONIK_SMOKE_WORKER_IMAGE:?worker smoke image missing}
   backup-dir-init:
     image: ${TAXTRONIK_SMOKE_WORKER_IMAGE:?worker smoke image missing}
+    volumes: !override
+      - smoke_backups:/app/backups
+  seaweedfs:
+    image: ${TAXTRONIK_SMOKE_SEAWEEDFS_IMAGE:?SeaweedFS smoke image missing}
+  seaweedfs-init:
+    image: ${TAXTRONIK_SMOKE_AWSCLI_IMAGE:?AWS CLI smoke image missing}
+  clamav:
+    image: ${TAXTRONIK_SMOKE_CLAMAV_IMAGE:?ClamAV smoke image missing}
+  n8n:
+    volumes: !override
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  smoke_backups:
 EOF
 
 # Ein eigener Projektname verhindert, dass `down -v --remove-orphans` auf
 # wiederverwendeten Runnern Ressourcen eines fremden Compose-Projekts trifft.
 SMOKE_PROJECT_NAME="taxtronik-release-smoke-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}"
-COMPOSE=(docker compose --project-name "$SMOKE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$BASE" -f "$APP" -f "$OVERRIDE")
+COMPOSE=(docker compose --project-name "$SMOKE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$BASE" -f "$CI" -f "$APP" -f "$OVERRIDE")
 
 cleanup() {
   local status=$?
@@ -129,6 +147,10 @@ cleanup() {
     "${COMPOSE[@]}" logs --no-color --tail 160 app worker migrate n8n postgres redis seaweedfs clamav >&2 || true
   fi
   "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+  docker image rm \
+    "$TAXTRONIK_SMOKE_SEAWEEDFS_IMAGE" \
+    "$TAXTRONIK_SMOKE_AWSCLI_IMAGE" \
+    "$TAXTRONIK_SMOKE_CLAMAV_IMAGE" >/dev/null 2>&1 || true
   rm -rf "$TMP_DIR"
   exit "$status"
 }
@@ -142,10 +164,13 @@ fi
 
 "${COMPOSE[@]}" config --quiet
 
-# Gepinnte Infrastruktur darf einmalig geladen werden. Danach läuft `up` mit
-# --pull never, sodass Web/Worker garantiert die eben gebauten lokalen Images
-# und nicht gleichnamige Registry-Artefakte verwenden.
-"${COMPOSE[@]}" pull postgres redis seaweedfs seaweedfs-init clamav n8n
+# Gepinnte Infrastruktur darf einmalig geladen werden. Die CI-Override-Images
+# backen die drei Einzeldatei-Configs per gestreamtem Build-Context ein, weil
+# der Forgejo-Daemon keine Bind-Mount-Pfade des Job-Containers sehen kann.
+# Danach läuft `up` mit --pull never, sodass Web/Worker garantiert die eben
+# gebauten lokalen Images und nicht gleichnamige Registry-Artefakte verwenden.
+"${COMPOSE[@]}" pull postgres redis n8n
+"${COMPOSE[@]}" build seaweedfs seaweedfs-init clamav
 "${COMPOSE[@]}" up --pull never -d --wait --wait-timeout "$SMOKE_TIMEOUT" app worker n8n
 
 payload="$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:${SMOKE_APP_PORT}/api/health")"

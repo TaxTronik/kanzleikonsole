@@ -1,5 +1,6 @@
 # =============================================================================
-# CI-Override NUR für den Deploy-Readiness-Job (.forgejo/workflows/ci.yml).
+# CI-Override NUR für den Deploy-Readiness-Job (.forgejo/workflows/ci.yml) und
+# den Release-Image-Stack-Smoke (scripts/release/smoke-release-images.sh).
 #
 # Warum: Der Forgejo-/act-Runner führt `docker compose` gegen den durchgereichten
 # HOST-Docker-Daemon aus. Der Daemon sieht das Job-Workspace (/workspace/…) NICHT

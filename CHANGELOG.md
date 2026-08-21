@@ -98,7 +98,10 @@ Noch keine Änderungen.
   Der Tag-Release serialisiert diese servicebasierten Forgejo-Jobs, extrahiert
   Trivy aus einem digest-gepinnten Image und scannt die noch unveröffentlichten
   Images direkt am Build-Daemon; erst danach folgen SBOM, Stack-Smoke-Test,
-  Registry-Push und das signierte Update-Manifest.
+  Registry-Push und das signierte Update-Manifest. Der Stack-Smoke backt seine
+  Konfigurationsdateien über gestreamte Build-Kontexte ein und nutzt Named
+  Volumes, sodass er auch am äußeren Forgejo-Docker-Daemon ohne fragile
+  Workspace-Bind-Mounts läuft.
 - Toolchain: pnpm ist auf 11.20.0 und Prisma ORM samt Client und PostgreSQL-
   Adapter auf 7.9.1 aktualisiert. Der neue Prisma-Tooling-Graph entfernt dabei
   den verwundbaren transitiven Hono-Pfad; `fast-uri` ist im verbleibenden

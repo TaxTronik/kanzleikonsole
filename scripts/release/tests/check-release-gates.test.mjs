@@ -24,6 +24,15 @@ assert.throws(
   () =>
     checkReleaseGates({
       ...workflows,
+      smoke: workflows.smoke.replace('-f "$CI"', ''),
+    }),
+  /Forgejo-Host-Daemon-Bind-Mounts/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
       release: workflows.release.replace(
         'needs: [preflight, full-ci, security-gate]',
         'needs: preflight',
@@ -185,4 +194,4 @@ assert.throws(
   /Trivy muss im Forgejo-Job nativ/,
 );
 
-process.stdout.write('18 release-gate structure tests passed.\n');
+process.stdout.write('19 release-gate structure tests passed.\n');
