@@ -104,7 +104,8 @@ export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
     ) &&
       /n8n:\s*\n\s+build:[\s\S]*?COPY --chown=node:node workflows \/workflows[\s\S]*?volumes: !override[\s\S]*?- n8n_data:\/home\/node\/\.n8n/.test(
         composeCi,
-      ),
+      ) &&
+      /^volumes:\s*$[\s\S]*?^  n8n_data:\s*$/m.test(composeCi),
     'CI-Compose muss Postgres-Init und n8n-Workflows ohne Host-Workspace-Bind-Mounts bereitstellen',
   );
   requireWorkflowCall(ci, 'ci.yml');

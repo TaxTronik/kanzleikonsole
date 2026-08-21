@@ -73,3 +73,9 @@ services:
     image: ${TAXTRONIK_SMOKE_N8N_IMAGE:-taxtronik-n8n-ci:latest}
     volumes: !override
       - n8n_data:/home/node/.n8n
+
+# `docker-compose.ci.yml` wird im Deploy-Readiness-Job nur mit der Basis-Datei
+# gerendert. Dort existiert das App-Volume noch nicht; Compose validiert es
+# trotzdem, auch wenn der n8n-Service in diesem Job gar nicht gestartet wird.
+volumes:
+  n8n_data:

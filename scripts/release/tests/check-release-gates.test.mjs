@@ -46,6 +46,15 @@ assert.throws(
   () =>
     checkReleaseGates({
       ...workflows,
+      composeCi: workflows.composeCi.replace('\nvolumes:\n  n8n_data:\n', '\n'),
+    }),
+  /Postgres-Init und n8n-Workflows/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
       release: workflows.release.replace(
         'needs: [preflight, full-ci, security-gate]',
         'needs: preflight',
@@ -207,4 +216,4 @@ assert.throws(
   /Trivy muss im Forgejo-Job nativ/,
 );
 
-process.stdout.write('20 release-gate structure tests passed.\n');
+process.stdout.write('21 release-gate structure tests passed.\n');
