@@ -7,15 +7,17 @@
   Keeps TaxTronik and Signal on the same bearer/operator credentials, installs
   the hash-pinned Windows/Python-3.12 embedding runtime when needed, and starts
   the native /v1 engine. Supported AMD Radeon GPUs use the official ROCm stack;
-  other hosts use the CPU fallback. Secrets are written to TaxTronik's
-  gitignored .env and are never printed.
+  other hosts use the CPU fallback. Granite/llama.cpp can independently be
+  forced onto the hash-pinned CPU engine with -LlmBackend cpu. Secrets are
+  written to TaxTronik's gitignored .env and are never printed.
 #>
 [CmdletBinding()]
 param(
   [string]$SignalRoot = '',
   [switch]$SkipEmbeddingInstall,
   [switch]$NoLlmAutostart,
-  [ValidateSet('auto', 'cpu', 'amd')][string]$EmbeddingRuntime = 'auto'
+  [ValidateSet('auto', 'cpu', 'amd')][string]$EmbeddingRuntime = 'auto',
+  [ValidateSet('auto', 'cpu', 'gpu')][string]$LlmBackend = 'auto'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -154,7 +156,7 @@ if (-not (Test-Token $operatorToken) -or $operatorToken -ceq $bearerToken) {
 Set-EnvValue 'SIGNAL_DEPLOYMENT' 'external'
 Set-EnvValue 'RISK_LAYER_URL' 'http://127.0.0.1:8000'
 Set-EnvValue 'RISK_LAYER_EMB_DEVICE' $embeddingDevice
-Set-EnvValue 'RISK_LAYER_LLM_BACKEND' 'auto'
+Set-EnvValue 'RISK_LAYER_LLM_BACKEND' $LlmBackend
 Set-EnvValue 'RISK_LAYER_LLM_TIMEOUT' '900'
 if ($script:EnvChanged) {
   Warn '.env changed. Restart already-running TaxTronik web and worker processes.'
@@ -221,16 +223,31 @@ try {
   $env:RISK_LAYER_OPERATOR_TOKEN = $operatorToken
   $env:RISK_LAYER_EMBEDDING_DIR = $embeddingDir
   $env:RISK_LAYER_EMB_DEVICE = $embeddingDevice
-  $env:RISK_LAYER_LLM_BACKEND = 'auto'
+  $env:RISK_LAYER_LLM_BACKEND = $LlmBackend
   $env:RISK_LAYER_LLM_TIMEOUT = '900'
 
+  $llmBinary = $null
+  if ($LlmBackend -eq 'cpu') {
+    Info 'Verify hash-pinned llama.cpp CPU engine for Granite'
+    $llmBinary = [string](& $python -c "from risk_layer.modell import download_engine, installierte_engine; print(installierte_engine(backend='cpu') or download_engine(backend='cpu') or '')")
+    $llmBinary = $llmBinary.Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $llmBinary -or
+        -not (Test-Path -LiteralPath $llmBinary -PathType Leaf)) {
+      Fail 'Pinned llama.cpp CPU engine could not be provisioned.'
+    }
+    Ok 'Granite CPU engine is available (-ngl 0; no GPU offload).'
+  }
+
   Info 'Start Signal at http://127.0.0.1:8000'
-  if ($embeddingRuntimeName -eq 'amd') {
+  if ($LlmBackend -eq 'cpu') {
+    Write-Host '    Granite runs on CPU only. This is fully functional but a significant performance bottleneck.' -ForegroundColor Yellow
+  } elseif ($embeddingRuntimeName -eq 'amd') {
     Write-Host '    BGE-M3 embeddings and the LLM use the AMD GPU; first model load can take a moment.' -ForegroundColor Green
   } else {
     Write-Host '    CPU embedding builds can be slow; the LLM backend uses automatic detection.' -ForegroundColor Yellow
   }
   $arguments = @('-m', 'risk_layer.web', '--host', '127.0.0.1', '--port', '8000', '--graph', 'corpus/graph.sqlite')
+  if ($llmBinary) { $arguments += @('--llm-bin', $llmBinary) }
   if (-not $NoLlmAutostart) { $arguments += '--llm-autostart' }
   & $python @arguments
   if ($LASTEXITCODE -ne 0) { Fail "Signal exited with code $LASTEXITCODE." }
