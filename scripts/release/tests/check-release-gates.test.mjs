@@ -7,6 +7,7 @@ const workflows = {
   ci: readFileSync('.forgejo/workflows/ci.yml', 'utf8'),
   security: readFileSync('.forgejo/workflows/security.yml', 'utf8'),
   smoke: readFileSync('scripts/release/smoke-release-images.sh', 'utf8'),
+  composeCi: readFileSync('infra/compose/docker-compose.ci.yml', 'utf8'),
 };
 
 assert.equal(checkReleaseGates(workflows), true);
@@ -27,6 +28,18 @@ assert.throws(
       smoke: workflows.smoke.replace('-f "$CI"', ''),
     }),
   /Forgejo-Host-Daemon-Bind-Mounts/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      composeCi: workflows.composeCi.replace(
+        'COPY postgres-init.sh /docker-entrypoint-initdb.d/01-init.sh',
+        'RUN true',
+      ),
+    }),
+  /Postgres-Init und n8n-Workflows/,
 );
 
 assert.throws(
@@ -194,4 +207,4 @@ assert.throws(
   /Trivy muss im Forgejo-Job nativ/,
 );
 
-process.stdout.write('19 release-gate structure tests passed.\n');
+process.stdout.write('20 release-gate structure tests passed.\n');

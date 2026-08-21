@@ -82,7 +82,7 @@ function requireAskpass(block, name) {
   );
 }
 
-export function checkReleaseGates({ release, ci, security, smoke }) {
+export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
   invariant(
     /docker compose --project-name "\$SMOKE_PROJECT_NAME"/.test(smoke) &&
       /down -v --remove-orphans/.test(smoke),
@@ -91,10 +91,21 @@ export function checkReleaseGates({ release, ci, security, smoke }) {
   invariant(
     /docker-compose\.ci\.yml/.test(smoke) &&
       /COMPOSE=\([^\n]*-f "\$CI"/.test(smoke) &&
-      /"\$\{COMPOSE\[@\]\}" build seaweedfs seaweedfs-init clamav/.test(smoke) &&
+      /"\$\{COMPOSE\[@\]\}" build postgres seaweedfs seaweedfs-init clamav n8n/.test(smoke) &&
+      /TAXTRONIK_SMOKE_POSTGRES_IMAGE/.test(smoke) &&
+      /TAXTRONIK_SMOKE_N8N_IMAGE/.test(smoke) &&
       /app:\s*\n\s+image:[^\n]+\n\s+volumes: !override/.test(smoke) &&
       /n8n:\s*\n\s+volumes: !override/.test(smoke),
     'Release-Image-Smoke muss Forgejo-Host-Daemon-Bind-Mounts durch gebaute Config-Images und Named Volumes ersetzen',
+  );
+  invariant(
+    /postgres:\s*\n\s+build:[\s\S]*?COPY postgres-init\.sh \/docker-entrypoint-initdb\.d\/01-init\.sh[\s\S]*?volumes: !override[\s\S]*?- postgres_data:\/var\/lib\/postgresql/.test(
+      composeCi,
+    ) &&
+      /n8n:\s*\n\s+build:[\s\S]*?COPY --chown=node:node workflows \/workflows[\s\S]*?volumes: !override[\s\S]*?- n8n_data:\/home\/node\/\.n8n/.test(
+        composeCi,
+      ),
+    'CI-Compose muss Postgres-Init und n8n-Workflows ohne Host-Workspace-Bind-Mounts bereitstellen',
   );
   requireWorkflowCall(ci, 'ci.yml');
   requireWorkflowCall(security, 'security.yml');
@@ -282,6 +293,7 @@ function main() {
       ci: readFileSync('.forgejo/workflows/ci.yml', 'utf8'),
       security: readFileSync('.forgejo/workflows/security.yml', 'utf8'),
       smoke: readFileSync('scripts/release/smoke-release-images.sh', 'utf8'),
+      composeCi: readFileSync('infra/compose/docker-compose.ci.yml', 'utf8'),
     });
     process.stdout.write('Release-Gate-Struktur verifiziert.\n');
   } catch (error) {

@@ -69,9 +69,11 @@ OVERRIDE="$TMP_DIR/smoke.override.yml"
 export TAXTRONIK_SMOKE_WEB_IMAGE="$WEB_IMAGE"
 export TAXTRONIK_SMOKE_WORKER_IMAGE="$WORKER_IMAGE"
 SMOKE_IMAGE_SUFFIX="${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}"
+export TAXTRONIK_SMOKE_POSTGRES_IMAGE="taxtronik-postgres-release-smoke:$SMOKE_IMAGE_SUFFIX"
 export TAXTRONIK_SMOKE_SEAWEEDFS_IMAGE="taxtronik-seaweedfs-release-smoke:$SMOKE_IMAGE_SUFFIX"
 export TAXTRONIK_SMOKE_AWSCLI_IMAGE="taxtronik-awscli-release-smoke:$SMOKE_IMAGE_SUFFIX"
 export TAXTRONIK_SMOKE_CLAMAV_IMAGE="taxtronik-clamav-release-smoke:$SMOKE_IMAGE_SUFFIX"
+export TAXTRONIK_SMOKE_N8N_IMAGE="taxtronik-n8n-release-smoke:$SMOKE_IMAGE_SUFFIX"
 SMOKE_TIMEOUT="${TAXTRONIK_SMOKE_TIMEOUT:-480}"
 SMOKE_APP_PORT="${TAXTRONIK_SMOKE_APP_PORT:-3000}"
 
@@ -135,7 +137,10 @@ EOF
 # Ein eigener Projektname verhindert, dass `down -v --remove-orphans` auf
 # wiederverwendeten Runnern Ressourcen eines fremden Compose-Projekts trifft.
 SMOKE_PROJECT_NAME="taxtronik-release-smoke-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}"
-COMPOSE=(docker compose --project-name "$SMOKE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$BASE" -f "$CI" -f "$APP" -f "$OVERRIDE")
+# Die CI-Datei folgt der App-Datei, damit ihr gebautes n8n-Image (inklusive
+# Workflows) das digest-gepinnte Basisimage ersetzt; der letzte Smoke-Override
+# setzt ausschließlich die beiden zu prüfenden Release-Images und Volumes.
+COMPOSE=(docker compose --project-name "$SMOKE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$BASE" -f "$APP" -f "$CI" -f "$OVERRIDE")
 
 cleanup() {
   local status=$?
@@ -148,9 +153,11 @@ cleanup() {
   fi
   "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
   docker image rm \
+    "$TAXTRONIK_SMOKE_POSTGRES_IMAGE" \
     "$TAXTRONIK_SMOKE_SEAWEEDFS_IMAGE" \
     "$TAXTRONIK_SMOKE_AWSCLI_IMAGE" \
-    "$TAXTRONIK_SMOKE_CLAMAV_IMAGE" >/dev/null 2>&1 || true
+    "$TAXTRONIK_SMOKE_CLAMAV_IMAGE" \
+    "$TAXTRONIK_SMOKE_N8N_IMAGE" >/dev/null 2>&1 || true
   rm -rf "$TMP_DIR"
   exit "$status"
 }
@@ -165,12 +172,13 @@ fi
 "${COMPOSE[@]}" config --quiet
 
 # Gepinnte Infrastruktur darf einmalig geladen werden. Die CI-Override-Images
-# backen die drei Einzeldatei-Configs per gestreamtem Build-Context ein, weil
-# der Forgejo-Daemon keine Bind-Mount-Pfade des Job-Containers sehen kann.
+# backen sämtliche Workspace-Init-/Config-/Workflow-Dateien per gestreamtem
+# Build-Context ein, weil der Forgejo-Daemon keine Bind-Mount-Pfade des
+# Job-Containers sehen kann.
 # Danach läuft `up` mit --pull never, sodass Web/Worker garantiert die eben
 # gebauten lokalen Images und nicht gleichnamige Registry-Artefakte verwenden.
-"${COMPOSE[@]}" pull postgres redis n8n
-"${COMPOSE[@]}" build seaweedfs seaweedfs-init clamav
+"${COMPOSE[@]}" pull redis
+"${COMPOSE[@]}" build postgres seaweedfs seaweedfs-init clamav n8n
 "${COMPOSE[@]}" up --pull never -d --wait --wait-timeout "$SMOKE_TIMEOUT" app worker n8n
 
 payload="$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:${SMOKE_APP_PORT}/api/health")"
