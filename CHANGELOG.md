@@ -24,11 +24,15 @@ Noch keine Änderungen.
 
 ### Releaseabschluss
 
-- **[Scope]** Jeder Audit-Eintrag besitzt einen eigenen UTC-Ereigniszeitpunkt
-  (`occurredAt`, PostgreSQL `timestamptz(6)`). Dieser Zeitstempel ist Teil der
-  kanonischen Eventdaten und damit im Eintrags-Hash gebunden. Die tägliche
-  RFC-3161-Versiegelung stempelt die Kettenspitze und sichert dadurch alle bis
-  dahin verketteten Einträge gegen unbemerkte nachträgliche Änderung ab.
+- **[Scope]** Jeder Audit-Eintrag besitzt einen eigenen, von der App-/Hostuhr
+  erzeugten UTC-Ereigniszeitpunkt (`occurredAt`, PostgreSQL `timestamptz(6)`).
+  Er ist im Eintrags-Hash gebunden, aber für sich allein keine extern
+  vertrauenswürdige Zeitangabe. Erst die tägliche RFC-3161-Versiegelung der
+  Kettenspitze beweist mit der TSA-`genTime`, dass alle bis dahin verketteten
+  Daten spätestens zu diesem Zeitpunkt existierten. Bis zu dieser
+  Versiegelung bleibt für einen privilegierten Angreifer ein Änderungsfenster;
+  der exakte Zeitpunkt eines einzelnen Events ist nicht durch die TSA
+  attestiert.
 - Managed Signal ist Bestandteil der geführten Ein-Klick-Installation:
   Quanten-Extras werden hash-gepinnt installiert, Engine-Liveness,
   Embedding- und LLM-Bereitschaft werden getrennt ausgewiesen und Granite kann

@@ -954,13 +954,15 @@ Kanzlei nicht.
 ## Compliance & Audit
 
 - Hash-Chain-Audit-Log: Jeder Eintrag erhält einen eigenen UTC-
-  Ereigniszeitpunkt (`occurredAt`, PostgreSQL `timestamptz(6)`). Der
-  ISO-Zeitstempel ist Bestandteil der kanonischen Eventdaten und damit im
-  Eintrags-Hash gebunden; Trigger blocken UPDATE/DELETE auf `audit_log` und
-  `audit_seal`
+  Ereigniszeitpunkt (`occurredAt`, PostgreSQL `timestamptz(6)`) aus der
+  App-/Hostuhr. Der ISO-Zeitpunkt ist Bestandteil der kanonischen Eventdaten
+  und damit im Eintrags-Hash gebunden; Trigger blocken UPDATE/DELETE auf
+  `audit_log` und `audit_seal`
 - Tagesversiegelung mit RFC-3161-Zeitstempel (TSA-Adapter): Gestempelt wird die
-  Kettenspitze, wodurch alle bis dahin verketteten, jeweils individuell
-  zeitgestempelten Einträge gemeinsam extern versiegelt sind
+  Kettenspitze. Die externe TSA-`genTime` beweist, dass die verketteten Daten
+  spätestens dann existierten; sie attestiert weder den lokalen
+  `occurredAt`-Wert eines einzelnen Eintrags noch schützt sie die aktuelle
+  Tageskette schon vor der Versiegelung
 - Verifikations-CLI: `pnpm verify:chain`
 - **Persistiertes Chain-Verify-Ergebnis**: der tägliche
   `audit-verify-check`-Worker legt das Ergebnis als `TenantSetting`
@@ -1310,8 +1312,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 
 - **Manipulationsevidenter Audit-Log zur GoBD-Nachvollziehbarkeit**:
   Hash-Chain pro Tenant; jeder Eintrag hat einen eigenen, im kanonischen Hash
-  gebundenen UTC-Zeitstempel (`occurredAt`, `timestamptz(6)`). Der tägliche
-  RFC-3161-TSA-Stempel der Kettenspitze (`evidence-seal`
+  gebundenen UTC-Zeitpunkt aus der App-/Hostuhr (`occurredAt`,
+  `timestamptz(6)`). Der tägliche RFC-3161-TSA-Stempel der Kettenspitze
+  (`evidence-seal`
   02:30 UTC; Default-TSA **GlobalSign** kostenlos/EU,
   pro Tenant umstellbar, D-Trust für eIDAS-qualifiziert), tägliche Verifikation
   (`audit-verify-check` 02:45 UTC) mit `SYSTEM_AUDIT_BREAK`-Notification an
@@ -1322,7 +1325,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   gebunden (nicht an die DB-Spalte → tötet den DB-gegen-DB-Angriff), Cert-Kette
   bis zum eingebetteten GlobalSign-Root R6 _as-of_ genTime, kritische EKU
   timeStamping + ESS-SigningCertificate-Bindung; Adapter-Modus wird im Report
-  ausgewiesen, Self-Timestamp im Produktivmodus = harter Fail
+  ausgewiesen, Self-Timestamp im Produktivmodus = harter Fail. Das Siegel
+  belegt extern nur den spätesten Existenzzeitpunkt der versiegelten Kette;
+  individuelle Ereigniszeiten und der noch offene Tag besitzen derzeit keinen
+  eigenen RFC-3161-Nachweis
 - **Aufbewahrungs-Buckets nach Recht getrennt**: `gobd` (je Datei-Typ 6/8/10 J.
   nach § 147 AO bzw. § 14b UStG, Object-Lock COMPLIANCE), `gwg` (grundsätzlich
   5 J. nach § 8 Abs. 4 GwG; andere Gesetze können länger verpflichten,
