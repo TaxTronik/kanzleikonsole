@@ -239,7 +239,7 @@ export class RiskLayerClient {
   async katalogReview(input: {
     id: string;
     status: KatalogReviewStatus;
-    /** Prüfer-Kennung (StaffUser-ID) — Engine-Default ist 'berater'. */
+    /** PII-freies internes Prüfer-Tag; keine Staff-ID oder Namensangabe. */
     pruefer?: string;
   }): Promise<KatalogReviewResponse> {
     const raw = await this.request('POST', '/v1/katalog/review', {

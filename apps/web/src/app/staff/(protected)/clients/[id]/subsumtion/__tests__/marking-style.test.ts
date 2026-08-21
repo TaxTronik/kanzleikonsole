@@ -19,6 +19,7 @@ function mk(
     engineStatus: null,
     streitig,
     begriffId: null,
+    catalogReviewable: false,
     begriff: '',
     normAnker: [],
     normRefs: null,

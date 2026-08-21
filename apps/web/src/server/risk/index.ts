@@ -56,11 +56,17 @@ export type {
   KatalogKuratierungView,
 } from './catalog-norms';
 
-export { setKatalogReviewStatus, CatalogReviewFailedError } from './catalog-review';
+export {
+  setKatalogReviewStatus,
+  loadReviewableCatalogMarkingIds,
+  reviewableCatalogMarkingIds,
+  CatalogReviewFailedError,
+} from './catalog-review';
 export type {
   KatalogReviewInput,
   KatalogReviewResult,
   ReviewCapableClient,
+  CatalogMarkingRef,
 } from './catalog-review';
 
 export { getLlmStatus } from './llm';

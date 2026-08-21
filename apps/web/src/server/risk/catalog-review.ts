@@ -11,6 +11,7 @@
 // nicht-geteilte id), wird NICHT auditiert.
 // =============================================================================
 
+import { createHash } from 'node:crypto';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import {
   RiskLayerClient,
@@ -18,11 +19,12 @@ import {
   type KatalogReviewStatus,
 } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 
 /** Minimaler Client-Vertrag für DI/Tests. */
 export type ReviewCapableClient = Pick<RiskLayerClient, 'katalogReview'>;
 
-export class CatalogReviewFailedError extends Error {
+export class CatalogReviewFailedError extends ActionError {
   constructor(message: string) {
     super(message);
     this.name = 'CatalogReviewFailedError';
@@ -41,11 +43,68 @@ export interface KatalogReviewResult {
   neuerStatus: string;
 }
 
-/** Zieht `fehler` aus dem 400-Body der Engine (`{ok:false, fehler}`). */
+export interface CatalogMarkingRef {
+  id: string;
+  begriffId: string | null;
+}
+
+interface CatalogDefinitionAuditRow {
+  resourceId: string | null;
+  after: unknown;
+}
+
+/**
+ * Ordnet nur solche Markierungen dem Review-Lebenszyklus zu, fuer die
+ * TaxTronik nachweislich einen GETEILTEN Berater-Eintrag angelegt hat.
+ * Eine normale Engine-Katalog-ID ist bereits kanonisch und nicht reviewbar.
+ */
+export function reviewableCatalogMarkingIds(
+  markings: CatalogMarkingRef[],
+  definitions: CatalogDefinitionAuditRow[],
+): Set<string> {
+  const currentCatalogId = new Map(markings.map((marking) => [marking.id, marking.begriffId]));
+  const result = new Set<string>();
+  for (const definition of definitions) {
+    if (!definition.resourceId) continue;
+    const after = definition.after;
+    if (!after || typeof after !== 'object' || Array.isArray(after)) continue;
+    const payload = after as { begriffId?: unknown; scope?: unknown };
+    if (
+      payload.scope === 'geteilt' &&
+      typeof payload.begriffId === 'string' &&
+      currentCatalogId.get(definition.resourceId) === payload.begriffId
+    ) {
+      result.add(definition.resourceId);
+    }
+  }
+  return result;
+}
+
+export async function loadReviewableCatalogMarkingIds(
+  ctx: TenantContext,
+  markings: CatalogMarkingRef[],
+): Promise<Set<string>> {
+  if (markings.length === 0) return new Set();
+  const definitions = await withTenantContext(ctx, (tx) =>
+    tx.auditLog.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        action: 'risk.catalog.defined',
+        resourceType: 'risk_marking',
+        resourceId: { in: markings.map((marking) => marking.id) },
+      },
+      select: { resourceId: true, after: true },
+    }),
+  );
+  return reviewableCatalogMarkingIds(markings, definitions);
+}
+
+/** Zieht einen fachlichen Fehler aus 400/422-Antworten der Engine. */
 function fehlerAusBody(body: string): string {
   try {
     const parsed: unknown = JSON.parse(body);
-    const fehler = (parsed as { fehler?: unknown }).fehler;
+    const response = parsed as { fehler?: unknown; error?: unknown };
+    const fehler = response.fehler ?? response.error;
     if (typeof fehler === 'string' && fehler) return fehler;
   } catch {
     // kein JSON → Rohtext unten
@@ -54,9 +113,30 @@ function fehlerAusBody(body: string): string {
 }
 
 /**
+ * Stabiles, mandantengebundenes Actor-Tag fuer die Signal-Auditspur.
+ *
+ * Signal darf wegen § 203 weder die Staff-UUID noch einen Namen persistieren.
+ * Die lokale TaxTronik-Chain behaelt den echten actorId; nach aussen geht nur
+ * ein nicht umkehrbares Tag. Die Hex-Ziffern werden auf Buchstaben abgebildet,
+ * damit ein rein numerischer Hash-Ausschnitt nicht als Telefon-/Steuernummer
+ * fehlklassifiziert werden kann.
+ */
+export function riskReviewActorTag(tenantId: string, actorId: string): string {
+  const digest = createHash('sha256')
+    .update('risk-review-actor:v1\0')
+    .update(tenantId)
+    .update('\0')
+    .update(actorId)
+    .digest('hex')
+    .slice(0, 32)
+    .replace(/[0-9]/g, (digit) => String.fromCharCode('g'.charCodeAt(0) + Number(digit)));
+  return `tt_staff_${digest}`;
+}
+
+/**
  * Schaltet den Review-Status eines geteilten Berater-Eintrags vorwärts und
- * verankert den Übergang in der Hash-Chain. `pruefer` ist der handelnde
- * StaffUser (ctx.actorId) — die Engine spiegelt ihn in der Antwort zurück.
+ * verankert den Übergang in der Hash-Chain. Signal erhaelt fuer `pruefer` nur
+ * ein stabiles Pseudonym; die lokale Chain kennt weiterhin ctx.actorId.
  *
  * Vier-Augen-Prinzip (TCMS): der AUTOR eines Begriffs darf den eigenen
  * Eintrag nicht selbst weiterschalten. Die Engine kennt den Autor nur als
@@ -75,7 +155,10 @@ export async function setKatalogReviewStatus(
       where: {
         tenantId: ctx.tenantId,
         action: 'risk.catalog.defined',
-        after: { path: ['begriffId'], equals: input.begriffId },
+        AND: [
+          { after: { path: ['begriffId'], equals: input.begriffId } },
+          { after: { path: ['scope'], equals: 'geteilt' } },
+        ],
       },
       orderBy: { occurredAt: 'asc' },
       select: { actorId: true },
@@ -88,17 +171,18 @@ export async function setKatalogReviewStatus(
   }
 
   const c = client ?? new RiskLayerClient();
+  const prueferTag = ctx.actorId ? riskReviewActorTag(ctx.tenantId, ctx.actorId) : undefined;
   let res;
   try {
     res = await c.katalogReview({
       id: input.begriffId,
       status: input.status,
-      pruefer: ctx.actorId ?? undefined,
+      pruefer: prueferTag,
     });
   } catch (e) {
-    // Lebenszyklus-Ablehnung kommt als HTTP 400 mit {ok:false, fehler} → als
-    // Domänenfehler weiterreichen (UI-tauglicher Text statt Transportfehler).
-    if (e instanceof RiskLayerHttpError && e.status === 400) {
+    // Lebenszyklus-Ablehnung (400) und Geheimnisschutz-/Formfehler (422) als
+    // sichere Domänenfehler weiterreichen statt sie im UI zu verschleiern.
+    if (e instanceof RiskLayerHttpError && (e.status === 400 || e.status === 422)) {
       throw new CatalogReviewFailedError(fehlerAusBody(e.body));
     }
     throw e;
@@ -120,7 +204,9 @@ export async function setKatalogReviewStatus(
       resourceType: 'risk_catalog',
       resourceId: input.begriffId,
       before: { reviewStatus: alterStatus },
-      after: { reviewStatus: neuerStatus, pruefer: res.pruefer ?? ctx.actorId },
+      // Die lokale Chain darf den echten Actor referenzieren. Signal selbst
+      // persistiert ausschliesslich das oben erzeugte Pseudonym.
+      after: { reviewStatus: neuerStatus, pruefer: ctx.actorId },
     }),
   );
   return { alterStatus, neuerStatus };

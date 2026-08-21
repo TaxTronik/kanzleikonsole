@@ -40,6 +40,8 @@ export interface MarkingDTO {
   engineStatus: string | null;
   streitig: boolean;
   begriffId: string | null;
+  /** Nur geteilte Berater-Entwuerfe besitzen den Katalog-Review-Lebenszyklus. */
+  catalogReviewable: boolean;
   begriff: string;
   normAnker: string[];
   normRefs: NormRefDTO[] | null;

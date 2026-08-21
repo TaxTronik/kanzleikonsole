@@ -183,7 +183,7 @@ export function MarkingPanel(props: {
         flash={flash}
         onChanged={onChanged}
       />
-      {m.begriffId && engineConfigured && (
+      {m.begriffId && m.catalogReviewable && engineConfigured && (
         <KatalogReviewControl
           clientId={clientId}
           katalogId={m.begriffId}

@@ -7,6 +7,7 @@ import {
   loadArchivedResearchResults,
   loadResearchResults,
   loadResearchRequests,
+  loadReviewableCatalogMarkingIds,
   scoreMarkingSuggestions,
 } from '@/server/risk';
 import { loadClientWorkflows } from '@/server/workflows/queries';
@@ -58,17 +59,28 @@ export default async function AnalysisPage({
   const imBlick = (markingId: string | null) =>
     !verdeckt || (markingId != null && sichtbareMarkingIds.has(markingId));
 
-  const [rawResults, rawArchivedResults, rawRequests, wf, aktenregalDocs, clientInfo] =
-    await Promise.all([
-      loadResearchResults(ctx, analysisId),
-      loadArchivedResearchResults(ctx, analysisId),
-      loadResearchRequests(ctx, analysisId),
-      loadClientWorkflows(ctx, { clientId: id, analysisId }),
-      loadAnalysisDocuments(ctx, analysisId),
-      withTenantContext(ctx, (tx) =>
-        tx.client.findUnique({ where: { id }, select: { allowActive: true, name: true } }),
-      ),
-    ]);
+  const [
+    rawResults,
+    rawArchivedResults,
+    rawRequests,
+    wf,
+    aktenregalDocs,
+    clientInfo,
+    reviewableCatalogMarkingIds,
+  ] = await Promise.all([
+    loadResearchResults(ctx, analysisId),
+    loadArchivedResearchResults(ctx, analysisId),
+    loadResearchRequests(ctx, analysisId),
+    loadClientWorkflows(ctx, { clientId: id, analysisId }),
+    loadAnalysisDocuments(ctx, analysisId),
+    withTenantContext(ctx, (tx) =>
+      tx.client.findUnique({ where: { id }, select: { allowActive: true, name: true } }),
+    ),
+    loadReviewableCatalogMarkingIds(
+      ctx,
+      sichtbar.markings.map((marking) => ({ id: marking.id, begriffId: marking.begriffId })),
+    ),
+  ]);
 
   // Rechercheergebnisse + (für NEU) heuristische Zuordnungs-Vorschläge.
   const openMarkings = sichtbar.markings
@@ -189,6 +201,7 @@ export default async function AnalysisPage({
         engineStatus: m.engineStatus,
         streitig: m.streitig,
         begriffId: m.begriffId,
+        catalogReviewable: reviewableCatalogMarkingIds.has(m.id),
         begriff: m.begriff,
         normAnker: m.normAnker,
         normRefs: Array.isArray(m.normRefs) ? (m.normRefs as unknown as NormRefDTO[]) : null,
