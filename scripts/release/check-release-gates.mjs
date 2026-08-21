@@ -196,6 +196,8 @@ export function checkReleaseGates({ release, ci, security, smoke }) {
 
   invariant(/worker_digest:/.test(publish), 'release exportiert keinen Worker-Digest');
   const runtimeSmoke = publish.indexOf('smoke-release-images.sh');
+  const trivyProvision = publish.indexOf('docker cp "$TRIVY_CONTAINER:/usr/local/bin/trivy"');
+  const trivyScan = publish.indexOf('Trivy-Scan (CRITICAL mit Fix blockt den Push)');
   const sbomGeneration = publish.indexOf('--format cyclonedx');
   const sbomUpload = publish.indexOf('release-sbom-${{ steps.meta.outputs.version }}');
   const immutableCheck = publish.indexOf('docker manifest inspect');
@@ -205,6 +207,13 @@ export function checkReleaseGates({ release, ci, security, smoke }) {
   invariant(
     runtimeSmoke >= 0 && runtimeSmoke < firstDockerPush,
     'finale Release-Images werden nicht vor dem Registry-Push als Stack getestet',
+  );
+  invariant(
+    trivyProvision >= 0 &&
+      trivyProvision < trivyScan &&
+      (publish.match(/--docker-host "\$TRIVY_DOCKER_HOST"/g) ?? []).length >= 3 &&
+      !/docker run --rm[\s\S]*?aquasec\/trivy/.test(publish.slice(trivyScan, sbomUpload)),
+    'Trivy muss im Forgejo-Job nativ und gegen exakt denselben Docker-Daemon laufen',
   );
   invariant(
     sbomGeneration >= 0 &&

@@ -158,6 +158,36 @@ jobs:
           username: ${{ secrets.REGISTRY_USER || github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # Forgejo/act stellt den Docker-Daemon dem Job-Container bereit. Ein darin
+      # gestarteter Trivy-Container sieht denselben Socket-Pfad jedoch nicht
+      # zwingend (Docker-outside-of-Docker). Daher wird das Binary aus dem
+      # digest-gepinnten Image kopiert und direkt im Job ausgefuehrt. `docker cp`
+      # streamt auch bei einem entfernten DOCKER_HOST sicher zum Job-Dateisystem.
+      - name: Digest-gepinnten Trivy-Scanner bereitstellen
+        env:
+          TRIVY_IMAGE: aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015
+        run: |
+          set -euo pipefail
+          TRIVY_BIN="$RUNNER_TEMP/trivy"
+          TRIVY_CONTAINER="$(docker create "$TRIVY_IMAGE")"
+          trap 'docker rm -f "$TRIVY_CONTAINER" >/dev/null 2>&1 || true' EXIT
+          docker cp "$TRIVY_CONTAINER:/usr/local/bin/trivy" "$TRIVY_BIN"
+          chmod 0755 "$TRIVY_BIN"
+          docker rm "$TRIVY_CONTAINER" >/dev/null
+          trap - EXIT
+
+          if [ -n "${DOCKER_HOST:-}" ]; then
+            TRIVY_DOCKER_HOST="$DOCKER_HOST"
+          else
+            TRIVY_DOCKER_HOST="$(docker context inspect "$(docker context show)" --format '{{.Endpoints.docker.Host}}')"
+          fi
+          test -n "$TRIVY_DOCKER_HOST"
+          "$TRIVY_BIN" --version
+          {
+            echo "TRIVY_BIN=$TRIVY_BIN"
+            echo "TRIVY_DOCKER_HOST=$TRIVY_DOCKER_HOST"
+          } >> "$GITHUB_ENV"
+
       # push: false + load: true — die Release-Images werden erst nach dem
       # Trivy-Gate publiziert. Dieser Job beginnt erst nach allen Same-run-Gates.
       - name: web — bauen
@@ -202,15 +232,14 @@ jobs:
           mkdir -p "$HOME/.cache/trivy"
           for img in web worker; do
             ref="${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
-            docker run --rm \
-              -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-              aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015 image \
+            docker image inspect "$ref" >/dev/null
+            "$TRIVY_BIN" image \
+              --docker-host "$TRIVY_DOCKER_HOST" \
+              --cache-dir "$HOME/.cache/trivy" \
               --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "$ref"
-            docker run --rm \
-              -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-              aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015 image \
+            "$TRIVY_BIN" image \
+              --docker-host "$TRIVY_DOCKER_HOST" \
+              --cache-dir "$HOME/.cache/trivy" \
               --severity CRITICAL --ignore-unfixed --exit-code 1 --quiet "$ref"
           done
 
@@ -220,12 +249,10 @@ jobs:
           mkdir -p release-sbom
           for img in web worker; do
             ref="${{ steps.meta.outputs.prefix }}/$img:${{ steps.meta.outputs.version }}"
-            docker run --rm \
-              -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "$PWD/release-sbom:/out" \
-              -v "$HOME/.cache/trivy:/root/.cache/trivy" \
-              aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015 image \
-              --format cyclonedx --output "/out/${img}.cdx.json" "$ref"
+            "$TRIVY_BIN" image \
+              --docker-host "$TRIVY_DOCKER_HOST" \
+              --cache-dir "$HOME/.cache/trivy" \
+              --format cyclonedx --output "release-sbom/${img}.cdx.json" "$ref"
             test -s "release-sbom/${img}.cdx.json"
           done
 

@@ -173,4 +173,16 @@ assert.throws(
   /keine CycloneDX-SBOMs/,
 );
 
-process.stdout.write('17 release-gate structure tests passed.\n');
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      release: workflows.release.replaceAll(
+        '--docker-host "$TRIVY_DOCKER_HOST"',
+        '--docker-host unix:///var/run/docker.sock',
+      ),
+    }),
+  /Trivy muss im Forgejo-Job nativ/,
+);
+
+process.stdout.write('18 release-gate structure tests passed.\n');
