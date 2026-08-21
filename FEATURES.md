@@ -136,18 +136,25 @@ Mandanten.
   - Mandant deaktivieren bei Ablauf
 - Personalausweis-Ablauf-Check (60 Tage vor Expiry: Notification an
   Bearbeiter + Auto-Anforderung an Mandant, idempotent)
-- Re-Verifikation bei GwG-relevanten Stammdaten-Änderungen (sowohl bei
-  Staff-Edit als auch bei genehmigten Self-Service-Änderungen)
+- Re-Verifikation nur bei GwG-relevanten Stammdaten-Änderungen (sowohl bei
+  Staff-Edit als auch bei genehmigten Self-Service-Änderungen); eine neue
+  Steuernummer allein löst keine erneute GwG-Prüfung aus
 - **GwG-Onboarding-Einladung** — Mandant identifiziert sich selbst, ohne
   Portal-Account
   - Magic-Link mit 14-Tage-Token, hash-gespeichert (analog PoA-Sign)
   - 4-Schritt-Wizard: Stammdaten → wirtschaftlich Berechtigte →
     Personalausweis-Vorder/Rückseite je Person → optionale Zusatz-Dokumente
-  - Datei-Upload direkt im Wizard (JPG/PNG/PDF, ClamAV-Scan, Object-Lock)
+  - Datei-Upload direkt im Wizard (JPG/PNG/PDF, ClamAV-Scan, Object-Lock);
+    versehentlich ausgewählte Dateien können vor dem Absenden verworfen werden
+    und werden dann weder fachlich gespeichert noch archiviert
   - Beim Submit: Mandant-Stammdaten werden aktualisiert (mit GwG-relevant-
     Audit), bestehender Check geht auf IN_REVIEW oder neuer Check entsteht
   - Wirtschaftlich Berechtigte + Ausweis-Dokumente werden als
     `gwg_beneficial_owner` + `gwg_id_document` (Vorder + Rückseite) angelegt
+  - Ablage nach Person unter `GwG/<Name der Person>`; optionale allgemeine
+    Zusatzdokumente bleiben im GwG-Hauptordner
+  - Die Herzlich-willkommen-Mail wird nur beim ersten abgeschlossenen
+    Mandanten-Onboarding versandt, nicht bei späteren GwG-Wiederholungen
   - Audit-Trail mit IP + User-Agent
   - Kanzlei besorgt nur HR-Auszug + Transparenzregister-Auszug selbst
 - **Pflichtvernichtung nach § 8 Abs. 4 GwG** — Review-Queue unter
@@ -797,6 +804,9 @@ Kanzlei nicht.
   und bis zur Bereitschaft gepollt. UI bleibt nutzbar (Skeleton + Auto-Select
   der neuen Markierungen), ein **fehlgeschlagener Lauf** wird sichtbar gemacht
   mit „Erneut versuchen" statt endlosem „lädt"
+- Der Engine-Status trennt API-Liveness, Embedding- und LLM-Bereitschaft,
+  tatsächlich aktives CPU-/GPU-Backend, Performance-Bottleneck und belegte
+  Inferenz-Slots; eine erreichbare API wird nicht als modellbereit ausgegeben
 - **„Neu analysieren"**: nicht-destruktiver Merge — nur neue Markierungen
   werden ergänzt, die Berater-Bewertungen bleiben erhalten
 
@@ -822,6 +832,9 @@ Kanzlei nicht.
 - **An Mitarbeiter zuweisen** → erzeugt eine Wiedervorlage (`ClientReminder`)
   mit Kontext-Ankern (Begriff/Norm/Analyse), setzt Verantwortlichkeit + Status
   „In Prüfung"; der/die Zuständige muss aktiver Mitarbeiter des Tenants sein
+- Markierungen mit offener Delegation oder ausstehender Antwort zeigen diesen
+  Zustand direkt in der Subsumtionsschicht und verlinken wahlweise zur
+  Wiedervorlage/Delegation oder zum unmittelbaren Anlegen der Definition
 - **Rechercheauftrag an n8n — anonymisiert (§ 203 StGB)**: der Berater wählt,
   was mitgeht (kein/Auszug/ganzer Sachverhalt · Textbausteine · freier Prompt);
   deterministische Schwärzung der bekannten Stammdaten + heuristische Treffer
@@ -901,8 +914,14 @@ Kanzlei nicht.
 - In-App-Notifications mit idempotentem Service (kein Spam)
 - Header-Bell mit Dropdown (8 zuletzt) + ungelesen-Counter
 - 30-Sekunden-Polling, pausiert wenn Tab im Hintergrund
+- Öffnen über Navbar, Dashboard-Widget oder Benachrichtigungsseite markiert
+  denselben Eintrag gelesen und synchronisiert den Zähler sofort
 - „Alle gelesen"-Bulk-Action
 - Volle Liste auf eigener Seite
+- Quellgebundene Benachrichtigungen werden beim Abschluss bzw. bei der
+  Freigabe des zugrunde liegenden Vorgangs automatisch erledigt. Wird ein
+  Vorgang später wieder geöffnet oder erhält echte neue Aktivität, kann eine
+  neue Benachrichtigung entstehen
 - Notification-Kinds u. a. für GwG-Stufen (Soon/90/30/Expired,
   ID-Ablauf), **GwG-Pflichtlöschung** (`GWG_DELETION_DUE`, täglich an
   ADMIN/PARTNER bei löschreifen Belegen/Aufzeichnungen),
@@ -934,9 +953,14 @@ Kanzlei nicht.
 
 ## Compliance & Audit
 
-- Hash-Chain-Audit-Log: jeder Eintrag hash-verkettet, Trigger blockt
-  UPDATE/DELETE auf `audit_log` und `audit_seal`
-- Tagesversiegelung mit RFC-3161-Zeitstempel (TSA-Adapter)
+- Hash-Chain-Audit-Log: Jeder Eintrag erhält einen eigenen UTC-
+  Ereigniszeitpunkt (`occurredAt`, PostgreSQL `timestamptz(6)`). Der
+  ISO-Zeitstempel ist Bestandteil der kanonischen Eventdaten und damit im
+  Eintrags-Hash gebunden; Trigger blocken UPDATE/DELETE auf `audit_log` und
+  `audit_seal`
+- Tagesversiegelung mit RFC-3161-Zeitstempel (TSA-Adapter): Gestempelt wird die
+  Kettenspitze, wodurch alle bis dahin verketteten, jeweils individuell
+  zeitgestempelten Einträge gemeinsam extern versiegelt sind
 - Verifikations-CLI: `pnpm verify:chain`
 - **Persistiertes Chain-Verify-Ergebnis**: der tägliche
   `audit-verify-check`-Worker legt das Ergebnis als `TenantSetting`
@@ -1040,6 +1064,14 @@ Kanzlei nicht.
   Caddy-Beispiel in `docs/operations/subdomain-trennung.md`)
 - Operator-CLI räumt bei lokalen Docker-Builds ungenutzten BuildKit-Cache
   periodisch auf (`TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL`, Default 168h)
+- Die Ein-Klick-Installation provisioniert neben TaxTronik und n8n auch das
+  verwaltete Signal samt hash-gepinnten Quanten-Extras und lokalem Granite-
+  CPU-Backend. CPU-Inferenz funktioniert ohne GPU, wird wegen Analysezeiten
+  von potenziell mehreren Minuten aber ausdrücklich als Performance-
+  Bottleneck ausgewiesen
+- Updates vergleichen den vorgesehenen Signal-Stand mit dem installierten
+  Artefakt und überspringen einen unveränderten Build; ein bewusster Neuaufbau
+  bleibt als Operator-Entscheidung möglich
 - Mailhog ist Dev-only; Produktion verlangt ein echtes SMTP-Relay und blockt
   Mailhog-/localhost:1025-Defaults im `doctor`
 - `pnpm test:ops` prüft Operator-CLI-Gates maschinell (Prod-SMTP, Risk-Layer,
@@ -1164,7 +1196,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   materialisiert die separat gespeicherte, aus n8n erreichbare App-URL,
   Callback-Key-ID und Mail-Nicht-Geheimnisse ohne editionsabhängige n8n Custom
   Variables, Secrets bleiben Credentials; neue/geänderte Routen durchlaufen
-  fail-closed **Entwurf → Test → unveränderte Aktivierung**
+  fail-closed **Entwurf → Test → unveränderte Aktivierung**. Erkannte oder aus
+  Vorlagen geladene Routen werden im Formular materialisiert und mit
+  „Speichern“/„Verwerfen“ explizit übernommen; Aktivstatus, Testmodus, URLs und
+  Event-Abonnements werden gemeinsam persistiert
 - Zentraler n8n-Eventkatalog mit deutschem Label, Kategorie, Beschreibung,
   Schutzklasse/PII-Hinweis und synthetischem Beispielpayload für alle
   statischen Events
@@ -1205,20 +1240,21 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Pro Request: Prisma-Middleware setzt `app.current_tenant_id` /
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
-- BullMQ-Worker für Hintergrund-Jobs (17 Worker):
+- BullMQ-Worker für Hintergrund-Jobs (19 Worker):
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
   `tax-deadline-materialize` (07:30 Berlin, materialisiert Termine, fährt
   die zweistufige Auto-Anforderung inkl. Mandanten-Mail nach Commit),
   `audit-rotate`, `tax-news-fetch`
-  (05:30 UTC, holt alle aktiven RSS-Feeds aus `rss_feed`),
-  `reminders-daily` (06:45 UTC, schickt Notifications für
+  (06:30 Berlin, holt alle aktiven RSS-Feeds aus `rss_feed`),
+  `reminders-daily` (07:45 Berlin, schickt Notifications für
   Einspruchsfristen, fällige Wiedervorlagen, überfällige Pendelordner),
   `n8n-deliver` + `n8n-outbox-reconcile` (HMAC-signierter,
   workflow-spezifischer Outbox-Versand mit stabiler Event-/Delivery-ID,
-  Fan-out und Retry),
+  Fan-out und Retry), `n8n-retention` (03:45 UTC),
   `magic-link-cleanup`, `dsgvo-retention`, `poa-expiry-check`,
   `risk-analyse-llm` (on-demand LLM-Vertiefung der Subsumtion),
+  `reminder-done-notify` (erledigte Delegationen/Wiedervorlagen),
   `backup-run` (täglicher Postgres-Dump direkt nach S3),
   `backup-drill` (monatlicher Restore-Test mit Chain-Verifikation),
   `health-alert` (5-Minuten-Infrastruktur-Health mit Ops-Mail).
@@ -1237,6 +1273,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `/api/integrations/n8n/v1/*` sowie Legacy-`/api/n8n/*`
   gehören dabei auf die Staff/API-Seite oder eine interne App-URL
 - SeaweedFS für Document-Storage mit Object-Lock-Buckets
+- Reproduzierbare Release-Pins: SeaweedFS 4.41 und n8n 2.33.7 jeweils per
+  Image-Digest, BullMQ 5.81.3 im pnpm-Lockfile
 - ClamAV-Synchron-Scan + Helper `commitDocumentFromBytes` für Public-Wizard-
   Uploads
 - Eigenständige Packages: `@taxtronik/db`, `@taxtronik/config`,
@@ -1271,7 +1309,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 ## Sicherheit & Compliance
 
 - **Manipulationsevidenter Audit-Log zur GoBD-Nachvollziehbarkeit**:
-  Hash-Chain pro Tenant, täglicher RFC-3161-TSA-Stempel (`evidence-seal`
+  Hash-Chain pro Tenant; jeder Eintrag hat einen eigenen, im kanonischen Hash
+  gebundenen UTC-Zeitstempel (`occurredAt`, `timestamptz(6)`). Der tägliche
+  RFC-3161-TSA-Stempel der Kettenspitze (`evidence-seal`
   02:30 UTC; Default-TSA **GlobalSign** kostenlos/EU,
   pro Tenant umstellbar, D-Trust für eIDAS-qualifiziert), tägliche Verifikation
   (`audit-verify-check` 02:45 UTC) mit `SYSTEM_AUDIT_BREAK`-Notification an

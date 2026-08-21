@@ -3,9 +3,9 @@
 Änderungsjournal für TaxTronik.
 
 `v0.1.0` wurde am 10. Juni 2026 als erster versionierter interner Stand
-markiert. Der hier vorbereitete `v0.2.0`-Stand ist der erste umfassend
-gehärtete Release-Kandidat für Installation und Betrieb; neue Änderungen
-landen danach wieder unter `[Unreleased]`.
+markiert. `v0.2.0` wurde am 21. August 2026 als erster umfassend gehärteter
+Stand für Installation und Betrieb abgeschlossen; neue Änderungen landen
+danach wieder unter `[Unreleased]`.
 
 Einträge, die Module des Prüfungs-Scopes betreffen (Fakturierung,
 Dokumentenarchiv, Audit-Protokollierung, Zugriffsschutz, Backup/Restore; siehe
@@ -17,6 +17,47 @@ Pflegeregel: Änderungen werden hier im selben Arbeitsstand dokumentiert und
 vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
+
+Noch keine Änderungen.
+
+## [0.2.0] - 2026-08-21
+
+### Releaseabschluss
+
+- **[Scope]** Jeder Audit-Eintrag besitzt einen eigenen UTC-Ereigniszeitpunkt
+  (`occurredAt`, PostgreSQL `timestamptz(6)`). Dieser Zeitstempel ist Teil der
+  kanonischen Eventdaten und damit im Eintrags-Hash gebunden. Die tägliche
+  RFC-3161-Versiegelung stempelt die Kettenspitze und sichert dadurch alle bis
+  dahin verketteten Einträge gegen unbemerkte nachträgliche Änderung ab.
+- Managed Signal ist Bestandteil der geführten Ein-Klick-Installation:
+  Quanten-Extras werden hash-gepinnt installiert, Engine-Liveness,
+  Embedding- und LLM-Bereitschaft werden getrennt ausgewiesen und Granite kann
+  ohne GPU lokal auf der CPU laufen. Die Oberfläche benennt CPU-Inferenz dabei
+  ausdrücklich als deutlichen Performance-Bottleneck.
+- Lokale Windows-Entwicklung unterstützt Signal wahlweise auf CPU oder GPU;
+  Status und Slot-Auslastung zeigen das tatsächlich aktive Backend. Updates
+  überspringen unveränderte Signal-Builds und erlauben einen bewussten
+  Neuaufbau.
+- n8n-Routen übernehmen die öffentlich erreichbaren Produktions-/Test-URLs
+  statt interner Docker-Adressen. Importierte und erkannte Routen lassen sich
+  mit „Speichern“/„Verwerfen“ dauerhaft übernehmen; Aktivstatus,
+  Event-Abonnements und Callback-Credentials bleiben dabei konsistent.
+- GwG-Uploads lassen sich vor dem Absenden verwerfen und werden unter
+  `GwG/<Name der Person>` abgelegt. Eine neue Steuernummer allein startet keine
+  Wiederholungsprüfung, Bestätigungen bleiben nach erneutem Speichern der
+  Stammdaten möglich und die Willkommensmail wird nur beim ersten Onboarding
+  versandt.
+- Quellgebundene Benachrichtigungen werden beim Abschluss des zugrunde
+  liegenden Vorgangs automatisch erledigt und erscheinen bei echter neuer
+  Aktivität oder Wiedereröffnung erneut. Das Lesen ist über Navbar, Dashboard
+  und Liste synchronisiert.
+- Die Subsumtionsschicht zeigt ausstehende Delegationen direkt an und verlinkt
+  zur Wiedervorlage oder Definition. Katalogprüfung, Backend-/Slot-Anzeige und
+  KI-Vertiefung wurden für CPU-/GPU-Betrieb gehärtet.
+- Produktionsabhängigkeiten sind zum Release reproduzierbar gepinnt, darunter
+  SeaweedFS 4.41, n8n 2.33.7 und BullMQ 5.81.3.
+
+### Seit dem Kandidatenstand ergänzte Änderungen
 
 - Signal-Integration: Die Integrations-Einstellungen zeigen Zustand, Aktualität
   und letzten protokollierten Lauf des Embedding-Index. Kanzlei-Admins können
@@ -146,8 +187,6 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
   Kanzleikalender/Steuertermine. Die Integrationsübersicht erkennt alte
   `localhost`-/Loopback-n8n-Vorgaben als geführten Migrationszustand statt als
   irreführenden SSRF-Fehler.
-
-## [0.2.0] - 2026-07-14
 
 ### Betrieb, Deployment und Dokumentation
 

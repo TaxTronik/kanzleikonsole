@@ -101,6 +101,18 @@ describe('eventHash — Record == Verify == Archiv (F1/A2)', () => {
     expect(a.equals(b)).toBe(true);
   });
 
+  it('bindet den occurredAt-Zeitpunkt gegen nachträgliche Änderung in den Hash', () => {
+    const a = eventHash(PREV, {
+      ...ev(null, null),
+      occurredAt: new Date('2026-01-02T03:04:05.678Z'),
+    });
+    const b = eventHash(PREV, {
+      ...ev(null, null),
+      occurredAt: new Date('2026-01-02T03:04:05.679Z'),
+    });
+    expect(a.equals(b)).toBe(false);
+  });
+
   it('unterschiedliche before-Werte ⇒ unterschiedliche Hashes (Manipulation erkannt)', () => {
     const a = eventHash(PREV, ev({ x: 1 }, null));
     const b = eventHash(PREV, ev({ x: 2 }, null));
