@@ -30,6 +30,10 @@ import {
   herkunftBadge,
 } from './_ui';
 
+function canDefineDelegatedMarking(canWrite: boolean, engineConfigured: boolean): boolean {
+  return canWrite && engineConfigured;
+}
+
 export function MarkingPanel(props: {
   clientId: string;
   analysisId: string;
@@ -168,7 +172,7 @@ export function MarkingPanel(props: {
         delegation={m.delegation}
         verantwortlichId={m.verantwortlichId}
         staffOptions={staffOptions}
-        canDefine={canWrite && engineConfigured}
+        canDefine={canDefineDelegatedMarking(canWrite, engineConfigured)}
         onDefine={() => setShowDefine(true)}
       />
       <NormRefList

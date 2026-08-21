@@ -105,6 +105,22 @@ function LlmDeepeningCard({
   );
 }
 
+function llmProgressCopy(
+  jobState: string | null,
+  workerAvailable: boolean | null,
+): { title: string; detail: string } {
+  if (jobState === 'active') {
+    return { title: 'KI-Vertiefung läuft …', detail: 'im Hintergrund' };
+  }
+  if (workerAvailable === false) {
+    return {
+      title: 'KI-Vertiefung wartet auf Worker …',
+      detail: 'lokal mit „pnpm dev“ starten',
+    };
+  }
+  return { title: 'KI-Vertiefung wartet …', detail: 'in der Warteschlange' };
+}
+
 interface Props {
   clientId: string;
   staffOptions: Array<{ id: string; fullName: string }>;
@@ -216,6 +232,7 @@ export function SubsumtionWorkspace({
   // Final fehlgeschlagener KI-Lauf (Worker-Job). Beendet das „lädt" und bietet Retry.
   const [llmFailed, setLlmFailed] = useState<string | null>(null);
   const enriched = initial?.llmEnrichedAt ?? null;
+  const llmProgress = llmProgressCopy(llmJobState, llmWorkerAvailable);
   const pollDeadlineRef = useRef(0);
   const highlightLlmRef = useRef(false);
   const prevEnrichedRef = useRef<string | null>(enriched);
@@ -893,19 +910,9 @@ export function SubsumtionWorkspace({
           >
             <Loader2 className="h-4 w-4 animate-spin shrink-0" />
             <span>
-              <strong>
-                {llmJobState === 'active'
-                  ? 'KI-Vertiefung läuft …'
-                  : llmWorkerAvailable === false
-                    ? 'KI-Vertiefung wartet auf Worker …'
-                    : 'KI-Vertiefung wartet …'}
-              </strong>{' '}
+              <strong>{llmProgress.title}</strong>{' '}
               <span className="font-normal text-purple-600 dark:text-purple-300">
-                {llmWorkerAvailable === false
-                  ? 'lokal mit „pnpm dev“ starten'
-                  : llmJobState === 'active'
-                    ? 'im Hintergrund'
-                    : 'in der Warteschlange'}
+                {llmProgress.detail}
               </span>
             </span>
           </div>
