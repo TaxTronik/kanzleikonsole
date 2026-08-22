@@ -1,10 +1,18 @@
 ﻿'use client';
 
 import { useState, useTransition, useRef, useEffect } from 'react';
-import { Tags } from 'lucide-react';
-import { setActiveAction, setRolesAction, setPermissionsAction } from './actions';
+import Link from 'next/link';
+import { KeyRound, RotateCcw, Tags } from 'lucide-react';
+import {
+  resetPasswordAction,
+  resetTotpAction,
+  setActiveAction,
+  setRolesAction,
+  setPermissionsAction,
+} from './actions';
 import { setStaffSkillsAction } from '../skills/actions';
 import { STAFF_PERMISSIONS, type StaffPermissionName } from '@/lib/staff-permissions';
+import { STAFF_PASSWORD_MAX_LENGTH, STAFF_PASSWORD_MIN_LENGTH } from '@/lib/staff-password-policy';
 
 export function ToggleActiveForm({ userId, active }: { userId: string; active: boolean }) {
   const [isPending, start] = useTransition();
@@ -175,6 +183,162 @@ export function SetPermissionsForm({
         </button>
       )}
       {error && <span className="text-xs text-red-700">{error}</span>}
+    </div>
+  );
+}
+
+export function AccountSecurityForm({
+  userId,
+  isSelf,
+  totpEnrolled,
+  totpConfigured,
+}: {
+  userId: string;
+  isSelf: boolean;
+  totpEnrolled: boolean;
+  totpConfigured: boolean;
+}) {
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [passwordPending, startPassword] = useTransition();
+  const [totpPending, startTotp] = useTransition();
+
+  function submitPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    startPassword(async () => {
+      const result = await resetPasswordAction({
+        userId,
+        password,
+        confirmPassword: confirmation,
+      });
+      if (result.ok) {
+        setPassword('');
+        setConfirmation('');
+        setPasswordOpen(false);
+        setMessage({ ok: true, text: 'Passwort gesetzt; alle Sitzungen wurden abgemeldet.' });
+      } else {
+        setMessage({ ok: false, text: result.error ?? 'Passwort konnte nicht gesetzt werden.' });
+      }
+    });
+  }
+
+  function resetTotp() {
+    if (!window.confirm('2FA wirklich zurücksetzen? Der Benutzer muss sie neu einrichten.')) return;
+    setMessage(null);
+    startTotp(async () => {
+      const result = await resetTotpAction({ userId });
+      setMessage(
+        result.ok
+          ? { ok: true, text: '2FA zurückgesetzt; alle Sitzungen wurden abgemeldet.' }
+          : { ok: false, text: result.error ?? '2FA konnte nicht zurückgesetzt werden.' },
+      );
+    });
+  }
+
+  if (isSelf) {
+    return (
+      <div className="space-y-1 text-xs">
+        <Link
+          href="/staff/profile"
+          className="inline-flex items-center gap-1 text-brand-700 hover:underline"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Eigenes Passwort ändern
+        </Link>
+        <p className="text-disabled">Eigene 2FA: Reset durch weiteren Admin.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-w-0 space-y-2">
+      <div className="flex min-w-0 flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setPasswordOpen((open) => !open);
+            setMessage(null);
+          }}
+          className="inline-flex items-center gap-1 text-xs text-brand-700 hover:underline"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Passwort setzen
+        </button>
+        <button
+          type="button"
+          onClick={resetTotp}
+          disabled={!totpConfigured || totpPending}
+          className="inline-flex items-center gap-1 text-xs text-secondary hover:text-primary hover:underline disabled:cursor-not-allowed disabled:text-disabled disabled:no-underline"
+          title={
+            totpConfigured ? '2FA-Zuordnung und Backup-Codes löschen' : 'Keine 2FA eingerichtet'
+          }
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          {totpPending ? 'Setzt zurück…' : '2FA zurücksetzen'}
+        </button>
+      </div>
+
+      {passwordOpen && (
+        <form
+          onSubmit={submitPassword}
+          className="space-y-2 rounded-md border border-default bg-gray-50 p-3"
+        >
+          <label className="block text-[11px] text-muted">
+            Neues Passwort
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              className="input mt-1"
+              required
+              minLength={STAFF_PASSWORD_MIN_LENGTH}
+              maxLength={STAFF_PASSWORD_MAX_LENGTH}
+            />
+          </label>
+          <label className="block text-[11px] text-muted">
+            Passwort wiederholen
+            <input
+              type="password"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              autoComplete="new-password"
+              className="input mt-1"
+              required
+              minLength={STAFF_PASSWORD_MIN_LENGTH}
+              maxLength={STAFF_PASSWORD_MAX_LENGTH}
+            />
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={passwordPending}
+              className="btn-primary px-2 py-1 text-xs"
+            >
+              {passwordPending ? 'Speichert…' : 'Speichern'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPasswordOpen(false)}
+              className="text-xs text-muted hover:underline"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      )}
+
+      {message && (
+        <p className={message.ok ? 'text-xs text-emerald-700' : 'text-xs text-red-700'}>
+          {message.text}
+        </p>
+      )}
+      {!totpEnrolled && totpConfigured && (
+        <p className="text-[11px] text-amber-700">2FA-Einrichtung ist noch offen.</p>
+      )}
     </div>
   );
 }

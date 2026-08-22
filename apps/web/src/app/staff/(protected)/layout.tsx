@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { staffAuth } from '@/server/auth/staff';
 import { STAFF_SESSION_COOKIE } from '@/server/auth/session-cookie';
 import { isStaffAdmin } from '@/server/auth/rbac';
-import { LogOut } from 'lucide-react';
+import { LogOut, UserRound } from 'lucide-react';
 import { SidebarNav, type NavItem } from '@/components/sidebar-nav';
 import { GlobalSearch } from '@/components/global-search';
 import { NotificationsBellServer } from '@/components/notifications-bell-server';
@@ -193,6 +194,13 @@ export default async function StaffLayout({ children }: { children: ReactNode })
               <p className="text-xs text-muted truncate">{session.user.email}</p>
             </div>
           </div>
+          <Link
+            href="/staff/profile"
+            className="mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-secondary transition-colors hover:bg-gray-100 hover:text-primary"
+          >
+            <UserRound className="h-4 w-4" />
+            Benutzerprofil
+          </Link>
           <form action="/api/staff/force-logout" method="post">
             <button
               type="submit"

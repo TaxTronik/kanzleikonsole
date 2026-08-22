@@ -4,11 +4,12 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { hash } from 'bcryptjs';
 import { revokeAllSessions } from '@/server/auth/revocation';
-import { withTenantContext } from '@taxtronik/db';
+import { Prisma, withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
 import { toActionError } from '@/server/auth/rbac';
 import { STAFF_PERMISSION_VALUES } from '@/lib/staff-permissions';
+import { validateStaffPasswordPair } from '@/lib/staff-password-policy';
 import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
 
 const LIST = '/staff/admin/users';
@@ -18,13 +19,19 @@ const ROLE_VALUES = ['EMPLOYEE', 'PARTNER', 'ADMIN'] as const;
 // Anlegen
 // ----------------------------------------------------------------------------
 
-const CreateSchema = z.object({
-  fullName: z.string().min(2).max(200),
-  email: z.string().email().max(255),
-  password: z.string().min(12).max(200),
-  partner: z.boolean(),
-  admin: z.boolean(),
-});
+const CreateSchema = z
+  .object({
+    fullName: z.string().min(2).max(200),
+    email: z.string().email().max(255),
+    password: z.string(),
+    confirmPassword: z.string(),
+    partner: z.boolean(),
+    admin: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    const error = validateStaffPasswordPair(data.password, data.confirmPassword);
+    if (error) ctx.addIssue({ code: 'custom', path: ['confirmPassword'], message: error });
+  });
 
 export async function createUserAction(
   _prev: ActionResult | null,
@@ -39,6 +46,7 @@ export async function createUserAction(
     fullName: formData.get('fullName'),
     email: formData.get('email'),
     password: formData.get('password'),
+    confirmPassword: formData.get('confirmPassword'),
     partner: formData.get('role.PARTNER') === 'on',
     admin: formData.get('role.ADMIN') === 'on',
   });
@@ -87,6 +95,136 @@ export async function createUserAction(
     return toActionError(e);
   }
 
+  revalidatePath(LIST);
+  return { ok: true };
+}
+
+// ----------------------------------------------------------------------------
+// Kontozugang zurücksetzen
+// ----------------------------------------------------------------------------
+
+export async function resetPasswordAction(input: {
+  userId: string;
+  password: string;
+  confirmPassword: string;
+}): Promise<ActionResult> {
+  // Gate vor bcrypt: nicht autorisierte Requests dürfen keine teure Arbeit auslösen.
+  const guard = await staffActionGuard({ requireAdmin: true });
+  if (!guard.ok) return guard;
+  const { tenantId, staffId, ctx } = guard;
+
+  const parsed = z
+    .object({
+      userId: z.string().uuid(),
+      password: z.string(),
+      confirmPassword: z.string(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const validationError = validateStaffPasswordPair(
+    parsed.data.password,
+    parsed.data.confirmPassword,
+  );
+  if (validationError) return { ok: false, error: validationError };
+  if (parsed.data.userId === staffId) {
+    return { ok: false, error: 'Das eigene Passwort bitte im Benutzerprofil ändern.' };
+  }
+
+  try {
+    const target = await withTenantContext(ctx, (tx) =>
+      tx.staffUser.findUnique({ where: { id: parsed.data.userId }, select: { id: true } }),
+    );
+    if (!target) throw new ActionError('Benutzer nicht gefunden.');
+
+    const passwordHash = await hash(parsed.data.password, 12);
+    await withTenantContext(ctx, async (tx) => {
+      await tx.staffUser.update({
+        where: { id: parsed.data.userId },
+        data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'staff.password.reset',
+        resourceType: 'staff_user',
+        resourceId: parsed.data.userId,
+        after: { changedBy: 'admin' },
+      });
+    });
+  } catch (error) {
+    return toActionError(error);
+  }
+
+  await revokeAllSessions('staff', parsed.data.userId);
+  revalidatePath(LIST);
+  return { ok: true };
+}
+
+export async function resetTotpAction(input: { userId: string }): Promise<ActionResult> {
+  const guard = await staffActionGuard({ requireAdmin: true });
+  if (!guard.ok) return guard;
+  const { tenantId, staffId, ctx } = guard;
+
+  const parsed = z.object({ userId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (parsed.data.userId === staffId) {
+    return { ok: false, error: 'Die eigene 2FA muss ein anderer Admin zurücksetzen.' };
+  }
+
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const before = await tx.staffUser.findUnique({
+        where: { id: parsed.data.userId },
+        select: {
+          totpEnrolledAt: true,
+          totpSecretEnc: true,
+          totpSetupStartedAt: true,
+          totpBackupCodes: true,
+        },
+      });
+      if (!before) throw new ActionError('Benutzer nicht gefunden.');
+      const hasBackupCodes = Array.isArray(before.totpBackupCodes)
+        ? before.totpBackupCodes.length > 0
+        : Boolean(before.totpBackupCodes);
+      if (
+        !before.totpEnrolledAt &&
+        !before.totpSecretEnc &&
+        !before.totpSetupStartedAt &&
+        !hasBackupCodes
+      ) {
+        throw new ActionError('Für diesen Benutzer ist keine 2FA eingerichtet.');
+      }
+
+      await tx.staffUser.update({
+        where: { id: parsed.data.userId },
+        data: {
+          totpSecretEnc: null,
+          totpEnrolledAt: null,
+          totpSetupStartedAt: null,
+          totpBackupCodes: Prisma.DbNull,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'staff.totp.reset',
+        resourceType: 'staff_user',
+        resourceId: parsed.data.userId,
+        before: {
+          enrolled: Boolean(before.totpEnrolledAt),
+          setupPending:
+            Boolean(before.totpSecretEnc || before.totpSetupStartedAt) && !before.totpEnrolledAt,
+        },
+        after: { enrolled: false, setupPending: false },
+      });
+    });
+  } catch (error) {
+    return toActionError(error);
+  }
+
+  await revokeAllSessions('staff', parsed.data.userId);
   revalidatePath(LIST);
   return { ok: true };
 }

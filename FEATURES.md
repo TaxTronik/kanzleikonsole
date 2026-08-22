@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-07-13. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-08-22. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar (Boolean-Toggle unter Admin →
 Einstellungen → Module). Rechnungen und Vollmachten sind keine Toggles,
 sondern Modus-Schalter (`invoiceMode` / `poaMode`) mit `OFF`-Option —
@@ -1126,12 +1126,17 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 ## Benutzer-Verwaltung (ADMIN/PARTNER)
 
 - Anlegen mit Initial-Passwort (TOTP wird beim ersten Login eingerichtet)
+- Persönliches Benutzerprofil für alle Rollen: Passwortänderung mit bisherigem
+  Passwort, Wiederholung und anschließendem Logout auf allen Geräten
 - Anlegen seeded automatisch BMF + BFH als RSS-Feeds für den neuen User
 - Aktivieren/Deaktivieren
 - Rollen-Pflege (EMPLOYEE / PARTNER / ADMIN) inline
 - Self-Lockout-Schutz (eigene Rollen nicht änderbar, eigener Account nicht
   deaktivierbar)
 - Übersicht: Name, E-Mail, Rollen, 2FA-Status, letzter Login
+- Admin-Reset für fremde Passwörter sowie verlorene 2FA-Zuordnungen; Secrets,
+  offene Setups und Backup-Codes werden gemeinsam entfernt, laufende Sitzungen
+  sofort widerrufen und beide Vorgänge auditiert
 - Tätigkeitsbereich-Zuordnung pro Mitarbeiter (Tags-Icon-Popover)
 - **Granulare Einzelrechte je Mitarbeiter** (jenseits der Rollen):
   Rechnungen anlegen/bearbeiten, Rechnungen versenden, Urlaub
@@ -1373,8 +1378,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - **Risk-Layer-Transport** ist davon getrennt: `RISK_LAYER_URL` ist eine
   serverseitige Operator-Konfiguration, wird nur mit festen `/v1/*`-Pfaden und
   Bearer-Token genutzt, erlaubt interne IPs/Loopback und blockt Redirects
-- **Rate-Limiting** auf Login, TOTP, Magic-Link, GwG-Upload, PoA-Sign,
-  Portal-Write — fail-CLOSED in Production bei Redis-Ausfall;
+- **Rate-Limiting** auf Login, Passwortänderung, TOTP, Magic-Link, GwG-Upload,
+  PoA-Sign, Portal-Write — fail-CLOSED in Production bei Redis-Ausfall;
   `checkIpOrGlobalLimit` deckelt sowohl Per-IP als auch globalen Sturm;
   per-User-Limits auf der Staff-Suche (30/min) und allen CSV-/ZIP-Exporten
   (5 pro 10 min je Export-Art: clients, audit, requests, invoices,

@@ -1,10 +1,9 @@
 ﻿// =============================================================================
 // /staff/admin/users — Benutzer-Verwaltung (Admin/Partner only)
 //
-// Übersicht aller Mitarbeiter, Anlegen + Deaktivieren + Rollen-Pflege.
-// Passwort-Reset ist hier nicht vorgesehen — Mitarbeiter müssen den
-// "Passwort vergessen"-Flow nutzen (existiert oder kommt separat).
-// TOTP wird beim ersten Login vom Mitarbeiter selbst eingerichtet.
+// Übersicht aller Mitarbeiter, Anlegen, Rollen-Pflege und Kontozugang.
+// TOTP wird beim ersten Login eingerichtet und kann durch einen anderen Admin
+// vollständig zurückgesetzt werden, falls Gerät und Backup-Codes fehlen.
 // =============================================================================
 
 import Link from 'next/link';
@@ -14,7 +13,13 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateNumeric } from '@/lib/fmt';
 import { CreateUserForm } from './create-form';
-import { ToggleActiveForm, SetRolesForm, SetPermissionsForm, SetSkillsForm } from './row-forms';
+import {
+  AccountSecurityForm,
+  ToggleActiveForm,
+  SetRolesForm,
+  SetPermissionsForm,
+  SetSkillsForm,
+} from './row-forms';
 import { SkillBadge } from '@/components/skill-badge';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -46,7 +51,7 @@ export default async function UsersAdminPage() {
   );
 
   return (
-    <div className="p-8 max-w-7xl">
+    <div className="max-w-[112rem] p-8">
       <div className="flex items-start gap-4 mb-6">
         <Link href="/staff/admin" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
@@ -54,8 +59,8 @@ export default async function UsersAdminPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Benutzer</h1>
           <p className="text-muted text-sm">
-            Mitarbeiter, Rollen und Status. TOTP richtet jeder Benutzer beim ersten Login selbst
-            ein.
+            Mitarbeiter, Rollen, Kontozugänge und Status. TOTP richtet jeder Benutzer beim ersten
+            Login selbst ein.
           </p>
         </div>
       </div>
@@ -73,13 +78,14 @@ export default async function UsersAdminPage() {
       <div className="card overflow-hidden">
         <table className="block w-full text-sm xl:table xl:table-fixed">
           <colgroup className="hidden xl:table-column-group">
-            <col className="w-[19%]" />
-            <col className="w-[17%]" />
-            <col className="w-[20%]" />
             <col className="w-[15%]" />
+            <col className="w-[13%]" />
+            <col className="w-[16%]" />
+            <col className="w-[13%]" />
+            <col className="w-[7%]" />
+            <col className="w-[7%]" />
             <col className="w-[9%]" />
-            <col className="w-[9%]" />
-            <col className="w-[11%]" />
+            <col className="w-[20%]" />
           </colgroup>
           <thead className="hidden xl:table-header-group">
             <tr className="bg-gray-50 border-b border-default">
@@ -101,6 +107,9 @@ export default async function UsersAdminPage() {
               </th>
               <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
                 Status
+              </th>
+              <th className="text-left px-3 py-3 text-xs font-medium text-muted uppercase">
+                Kontosicherheit
               </th>
             </tr>
           </thead>
@@ -215,6 +224,22 @@ export default async function UsersAdminPage() {
                       )}
                       {!isSelf && <ToggleActiveForm userId={u.id} active={u.active} />}
                     </div>
+                  </td>
+                  <td className="min-w-0 align-top sm:col-span-2 xl:table-cell xl:px-3 xl:py-3">
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
+                      Kontosicherheit
+                    </span>
+                    <AccountSecurityForm
+                      userId={u.id}
+                      isSelf={isSelf}
+                      totpEnrolled={Boolean(u.totpEnrolledAt)}
+                      totpConfigured={Boolean(
+                        u.totpSecretEnc ||
+                        u.totpEnrolledAt ||
+                        u.totpSetupStartedAt ||
+                        (Array.isArray(u.totpBackupCodes) && u.totpBackupCodes.length > 0),
+                      )}
+                    />
                   </td>
                 </tr>
               );

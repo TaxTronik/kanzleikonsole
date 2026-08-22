@@ -13,8 +13,8 @@ Digests.
 Releases sind Git-Tags nach SemVer (`vMAJOR.MINOR.PATCH`):
 
 ```bash
-git tag -a v0.2.0 -m "Release 0.2.0"
-git push forgejo v0.2.0
+git tag -a v0.2.1 -m "Release 0.2.1"
+git push forgejo v0.2.1
 ```
 
 Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
@@ -26,13 +26,13 @@ Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
    Backup→Restore, Upgrade-Pfad ab dem vorherigen Tag, Smoke- und Paranoid-E2E,
    KoSIT-XRechnung, Deploy-Readiness, Dependency-Audit und Gitleaks zwingende
    Promotion-Gates.
-3. Baut erst danach `web` + `worker` mit `APP_VERSION=0.2.0` und dem Commit-SHA als
+3. Baut erst danach `web` + `worker` mit `APP_VERSION=0.2.1` und dem Commit-SHA als
    Build-Args (sichtbar in Admin-UI und `/api/health/detail`).
 4. Trivy-Scan: CRITICAL-CVEs mit verfügbarem Fix brechen das Release ab,
    HIGH wird rapportiert.
 5. Push in die Forgejo-Container-Registry:
-   `git.hirschmann-koxha.de/taxtronik/web:0.2.0` und
-   `git.hirschmann-koxha.de/taxtronik/worker:0.2.0`. Ein veränderbares
+   `git.hirschmann-koxha.de/taxtronik/web:0.2.1` und
+   `git.hirschmann-koxha.de/taxtronik/worker:0.2.1`. Ein veränderbares
    `:latest` wird bewusst nicht als Release- oder Deployment-Vertrag
    publiziert.
 6. Ermittelt die Registry-Digests beider Images und publiziert erst danach das
@@ -79,7 +79,7 @@ Update die Version pinnen:
 ```ini
 TAXTRONIK_DEPLOY_CHANNEL=release
 TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
-TAXTRONIK_VERSION=0.2.0
+TAXTRONIK_VERSION=0.2.1
 ```
 
 Dann:
@@ -232,7 +232,7 @@ angezeigt. Es gibt bewusst **kein Auto-Update** — einspielen bleibt
 
 Release-Tags **müssen annotiert sein**; Lightweight-Tags blockiert das
 Promotion-Gate. Die Annotation wird zugleich als Release-Note verwendet:
-`git tag -a v0.2.0 -m "Kurzbeschreibung fürs Admin-Panel"`.
+`git tag -a v0.2.1 -m "Kurzbeschreibung fürs Admin-Panel"`.
 
 Das Manifest-Schema bindet den Commit-SHA sowie Web- und Worker-Image jeweils
 an einen SHA-256-Digest. Der Manifest-Job ist nicht optional und macht den

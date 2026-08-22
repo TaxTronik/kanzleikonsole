@@ -20,4 +20,12 @@ describe('users admin responsive layout', () => {
     expect(rowFormsSource).toContain('flex min-w-0 flex-wrap items-center gap-2');
     expect(rowFormsSource).toContain('flex min-w-0 flex-wrap gap-1');
   });
+
+  it('uses the wide layout for explicit account-security controls', () => {
+    expect(pageSource).toContain('max-w-[112rem]');
+    expect(pageSource).toContain('Kontosicherheit');
+    expect(pageSource).toContain('<AccountSecurityForm');
+    expect(rowFormsSource).toContain('Passwort setzen');
+    expect(rowFormsSource).toContain('2FA zurücksetzen');
+  });
 });

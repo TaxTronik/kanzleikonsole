@@ -5,7 +5,8 @@
 `v0.1.0` wurde am 10. Juni 2026 als erster versionierter interner Stand
 markiert. `v0.2.0` wurde am 21. August 2026 als erster umfassend gehärteter
 Stand für Installation und Betrieb abgeschlossen; neue Änderungen landen
-danach wieder unter `[Unreleased]`.
+danach wieder unter `[Unreleased]`. `v0.2.1` ergänzt am 22. August 2026 die
+Benutzerprofil- und Kontowiederherstellungsfunktionen.
 
 Einträge, die Module des Prüfungs-Scopes betreffen (Fakturierung,
 Dokumentenarchiv, Audit-Protokollierung, Zugriffsschutz, Backup/Restore; siehe
@@ -19,6 +20,34 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 ## [Unreleased]
 
 Noch keine Änderungen.
+
+## [0.2.1] - 2026-08-22
+
+### Hinzugefügt
+
+- **[Scope]** Alle Mitarbeiterrollen können ihr Passwort im neuen
+  Benutzerprofil selbst ändern. Das bisherige Passwort wird geprüft, das neue
+  muss bestätigt werden und nach erfolgreicher Änderung werden alle laufenden
+  Sitzungen widerrufen. Der Vorgang ist rate-limitiert und wird ohne Passwort-
+  oder Hashwerte in der Audit-Kette protokolliert.
+- **[Scope]** ADMIN/PARTNER können in der Benutzerverwaltung ein neues Passwort
+  für fremde Konten setzen und verlorene 2FA-Zuordnungen zurücksetzen. Der
+  2FA-Reset entfernt verschlüsseltes Secret, ein möglicherweise offenes Setup,
+  Enrollment und Backup-Codes gemeinsam; beide Aktionen widerrufen aktive
+  Sitzungen und erzeugen einen Audit-Eintrag. Der eigene 2FA-Reset benötigt
+  bewusst einen zweiten Admin.
+- Die Benutzerverwaltung nutzt auf breiten Ansichten den verfügbaren Platz für
+  eine eigene Spalte „Kontosicherheit“. Initial- und Reset-Passwörter werden
+  verdeckt eingegeben und müssen wiederholt werden.
+
+### Behoben
+
+- Die Abmeldung auf Staff- und Portal-Oberfläche verwendet hosttreue
+  POST-Endpunkte und entfernt alle Session-Cookie-Varianten zuverlässig, ohne
+  interne Docker-/Proxy-Hosts in Browser-Weiterleitungen zu übernehmen.
+- Die Magic-Link-E2E-Suite isoliert ihre Rate-Limit-Schlüssel pro Test und kann
+  dadurch auch im vollständigen paranoiden CI-Lauf nicht mehr durch eigene
+  Vorläuferfälle gedrosselt werden.
 
 ## [0.2.0] - 2026-08-21
 

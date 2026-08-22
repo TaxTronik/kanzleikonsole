@@ -8,7 +8,7 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 
 ## Authentifizierung
 
-- **Staff:** Passwort (bcrypt cost 12, min. 12 Zeichen bei Anlage) +
+- **Staff:** Passwort (bcrypt cost 12, min. 12 Zeichen bei Anlage und Änderung) +
   **TOTP-Pflicht** (Self-Enrollment beim Erstlogin, 60-min-Fenster,
   serverseitig erzeugter QR; Secret verschlüsselt; 8 einmalige
   Backup-Codes, bcrypt-gehasht, atomarer Konsum; TOTP-Replay-Schutz via
@@ -23,7 +23,14 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
   `TRUST_PROXY_REQUIRED` nicht vertraut.
 - **Sessions:** `__Host-`-Cookies, getrennte Auth.js-Instanzen je Surface,
   per-Request-Revalidierung (aktiv? GwG-Freigabe? anonymisiert?),
-  Redis-Revocation (Deaktivierung/Rollenwechsel beendet Sitzungen sofort).
+  Redis-Revocation (Deaktivierung, Rollen-, Passwort- oder 2FA-Reset beendet
+  Sitzungen sofort).
+- **Kontowiederherstellung:** Jeder Mitarbeiter kann sein Passwort im eigenen
+  Benutzerprofil nach Prüfung des bisherigen Passworts ändern (Rate-Limit,
+  Bestätigung, anschließender Logout auf allen Geräten). ADMIN/PARTNER können
+  fremde Passwörter setzen und verlorene TOTP-Zuordnungen einschließlich
+  Secret, offenem Setup und Backup-Codes vollständig zurücksetzen. Eigene TOTP-
+  Resets benötigen bewusst einen zweiten Admin.
 
 ## Autorisierung
 
@@ -57,27 +64,29 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 `auth.login`(+Methode)/`auth.login.failure`/`auth.login.lockout`,
 `auth.totp.enroll`, `auth.backup_code.consume`, `auth.magic_link.consume`,
 `staff.create/.roles.update/.permissions.update/.activate/.deactivate/.skills.update`,
+`staff.password.change/.password.reset/.totp.reset`,
 `client_contact.create/.update/.deactivate` — alle in der Hash-Chain.
 
 ## Traceability
 
-| Anforderung                               | Implementierung                            | Test                                                                                 |
-| ----------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------ |
-| Cross-Tenant unmöglich (DB-Ebene)         | RLS-Policies                               | `rls-cross-tenant.test.ts` (CI-Pflicht)                                              |
-| Kein Owner-Fallback                       | db/client fail-closed                      | `client-fail-closed.test.ts`                                                         |
-| Magic-Link-Lebenszyklus                   | auth/magic-link                            | `magic-link.test.ts` + Security-Audit 2026-06 (One-Time/Replay/Prefetch verifiziert) |
-| Lockout ohne Fremd-Aussperrung            | auth/lockout                               | `lockout.test.ts`                                                                    |
-| TOTP-Helfer                               | auth/totp                                  | `totp.test.ts`                                                                       |
-| Zugriffspolicy-Wahrheitstabelle           | settings/access-policy                     | `access-policy.test.ts`                                                              |
-| Einzelrechte (implizit/Grant/fail-closed) | rbac.hasStaffPermission + decideStaffGuard | `rbac.test.ts` + `staff-action.test.ts` (Wahrheitstabellen)                          |
-| Fehler ohne Internals                     | rbac.toActionError                         | `rbac.test.ts`                                                                       |
-| Open-Redirect-Schutz                      | safePortalReturnTo                         | `safe-return-to.test.ts`                                                             |
-| GwG-Sperre Portal-Zugang                  | DB-Trigger + Session-Check                 | `gwg-allow-active.test.ts` + portal.ts-Revalidierung                                 |
-| Alle Actions geguarded                    | AST-Scan                                   | `server-action-authz.test.ts`                                                        |
+| Anforderung                               | Implementierung                            | Test                                                                                  |
+| ----------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Cross-Tenant unmöglich (DB-Ebene)         | RLS-Policies                               | `rls-cross-tenant.test.ts` (CI-Pflicht)                                               |
+| Kein Owner-Fallback                       | db/client fail-closed                      | `client-fail-closed.test.ts`                                                          |
+| Magic-Link-Lebenszyklus                   | auth/magic-link                            | `magic-link.test.ts` + Security-Audit 2026-06 (One-Time/Replay/Prefetch verifiziert)  |
+| Lockout ohne Fremd-Aussperrung            | auth/lockout                               | `lockout.test.ts`                                                                     |
+| TOTP-Helfer                               | auth/totp                                  | `totp.test.ts`                                                                        |
+| Passwort-/2FA-Kontowiederherstellung      | profile + admin/users actions              | `profile/__tests__/actions.test.ts` + `admin/users/__tests__/account-actions.test.ts` |
+| Zugriffspolicy-Wahrheitstabelle           | settings/access-policy                     | `access-policy.test.ts`                                                               |
+| Einzelrechte (implizit/Grant/fail-closed) | rbac.hasStaffPermission + decideStaffGuard | `rbac.test.ts` + `staff-action.test.ts` (Wahrheitstabellen)                           |
+| Fehler ohne Internals                     | rbac.toActionError                         | `rbac.test.ts`                                                                        |
+| Open-Redirect-Schutz                      | safePortalReturnTo                         | `safe-return-to.test.ts`                                                              |
+| GwG-Sperre Portal-Zugang                  | DB-Trigger + Session-Check                 | `gwg-allow-active.test.ts` + portal.ts-Revalidierung                                  |
+| Alle Actions geguarded                    | AST-Scan                                   | `server-action-authz.test.ts`                                                         |
 
 ## Bekannte Grenzen
 
-Kein Passwort-/TOTP-Reset-Flow für Bestandskonten (Workaround: Konto neu
-anlegen — in der Anwenderdoku ausgewiesen); Passwort-Policy greift nur bei
-Anlage (kein Änderungs-Flow); Sicherheitsmodell setzt auf TOTP-Zweitfaktor
-statt Passwort-Ablauf/-Historie (bewusste, dokumentierte Entscheidung).
+Es gibt bewusst keinen automatischen Passwort-Ablauf und keine Passwort-
+Historie. Ein Benutzer kann seine bestehende TOTP-Zuordnung nicht selbst
+entfernen; bei Verlust von Authenticator und Backup-Codes ist der auditierte
+Reset durch einen anderen Admin erforderlich.

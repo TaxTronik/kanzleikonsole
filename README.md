@@ -15,8 +15,8 @@ Postgres-RLS, App-Level-Tenant-Filter, TOTP für Mitarbeiter, Magic-Link für
 Mandanten, S3-kompatibler Object-Store ohne öffentliche Direktlinks, ClamAV,
 Audit-Hash-Chain und optionale RFC-3161-Zeitstempel.
 
-Aktueller Softwarestand: **0.2.0**. Die zugehörigen Änderungen stehen im
-[Changelog](CHANGELOG.md#020---2026-08-21).
+Aktueller Softwarestand: **0.2.1**. Die zugehörigen Änderungen stehen im
+[Changelog](CHANGELOG.md#021---2026-08-22).
 
 Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 
@@ -207,7 +207,7 @@ Build-Prüfungen: Sie benötigen keine Registry-Zugangsdaten und veröffentliche
 keine Images.
 
 Verwendbare Produktions-Images entstehen über **annotierte**, geschützte
-SemVer-Tags (für diesen Stand `v0.2.0`). Der Workflow
+SemVer-Tags (für diesen Stand `v0.2.1`). Der Workflow
 [`Release Images`](.forgejo/workflows/release.yml) führt für exakt den
 Tag-Commit im selben Release-DAG die vollständige CI- und Security-Suite aus;
 erst danach baut, scannt und testet er Web und Worker, lädt die
@@ -262,7 +262,7 @@ Wichtige `.env`-Werte für ein Multi-Domain-Deploy:
 ```ini
 NODE_ENV=production
 TAXTRONIK_IMAGE_PREFIX=git.hirschmann-koxha.de/taxtronik
-TAXTRONIK_VERSION=0.2.0
+TAXTRONIK_VERSION=0.2.1
 # Der interaktive Release-Deploy setzt beide Werte automatisch:
 UPDATE_MANIFEST_URL=https://git.hirschmann-koxha.de/TaxTronik/updates/raw/branch/main/manifest.json
 UPDATE_PUBLIC_KEY=NE1YtBNNPFM545o1VqoBNTcKIPmZP0rmvLq22YyqKaU=
