@@ -15,6 +15,7 @@ vi.mock('@/server/auth/portal', () => ({
 
 vi.mock('@/server/auth/session-cookie', () => ({
   PORTAL_SESSION_COOKIE_BASE: 'taxtronik_portal_session',
+  USE_SECURE_COOKIES: true,
   sessionCookieNameVariants: () => [
     '__taxtronik_portal_session',
     '__Host-taxtronik_portal_session',
@@ -27,7 +28,10 @@ import { POST } from './route';
 function request(fetchSite: string): NextRequest {
   return new NextRequest('https://portal.example.test/api/portal/logout', {
     method: 'POST',
-    headers: { 'sec-fetch-site': fetchSite },
+    headers: {
+      'sec-fetch-site': fetchSite,
+      cookie: '__Host-taxtronik_portal_session.0=first; __Host-taxtronik_portal_session.1=second',
+    },
   });
 }
 
@@ -42,11 +46,14 @@ describe('POST /api/portal/logout', () => {
 
     expect(mocks.portalSignOut).toHaveBeenCalledWith({ redirect: false });
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toBe('https://portal.example.test/portal/login');
+    expect(response.headers.get('location')).toBe('/portal/login');
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.cookies.get('__taxtronik_portal_session')?.value).toBe('');
     expect(response.cookies.get('__Host-taxtronik_portal_session')?.value).toBe('');
+    expect(response.cookies.get('__Host-taxtronik_portal_session')?.secure).toBe(true);
     expect(response.cookies.get('__Secure-taxtronik_portal_session')?.value).toBe('');
+    expect(response.cookies.get('__Host-taxtronik_portal_session.0')?.value).toBe('');
+    expect(response.cookies.get('__Host-taxtronik_portal_session.1')?.value).toBe('');
   });
 
   it('loescht die Cookies auch dann, wenn Auth.js beim Logout scheitert', async () => {

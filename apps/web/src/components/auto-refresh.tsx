@@ -49,9 +49,28 @@ export function isUserTyping(): boolean {
   );
 }
 
+export function shouldReloadRestoredPage(persisted: boolean): boolean {
+  return persisted;
+}
+
 export function AutoRefresh() {
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    function onPageShow(event: PageTransitionEvent): void {
+      // Browser koennen selbst no-store-Seiten aus dem Back/Forward Cache als
+      // alten Snapshot zeigen. Nach einem Logout wuerde dadurch wieder die
+      // geschuetzte Ansicht erscheinen. Ein Reload erzwingt die Auth-Pruefung.
+      if (shouldReloadRestoredPage(event.persisted)) {
+        window.location.reload();
+      }
+    }
+
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
   useEffect(() => {
     if (!isAutomaticRefreshEnabled(pathname)) return;
 

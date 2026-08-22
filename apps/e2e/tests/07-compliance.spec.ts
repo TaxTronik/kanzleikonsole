@@ -1245,6 +1245,11 @@ test.describe('Session & Cookie Security', () => {
       after?.value,
       `Session-Cookie „${cookieName}" muss nach Logout geleert/gelöscht sein`,
     ).toBeFalsy();
+
+    // Ein Zurueck-Navigieren darf weder eine neue Session herstellen noch
+    // einen geschuetzten Dashboard-Snapshot aus dem Back/Forward Cache zeigen.
+    await page.goBack();
+    await expect(page).toHaveURL(/\/staff\/login/, { timeout: 15_000 });
   });
 
   test('6.3 Portal logout clears session cookie', async ({ page, request }) => {

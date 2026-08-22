@@ -193,7 +193,7 @@ export default async function StaffLayout({ children }: { children: ReactNode })
               <p className="text-xs text-muted truncate">{session.user.email}</p>
             </div>
           </div>
-          <form action="/api/staff/force-logout" method="get">
+          <form action="/api/staff/force-logout" method="post">
             <button
               type="submit"
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-gray-100 rounded-md transition-colors"

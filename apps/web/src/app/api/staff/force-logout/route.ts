@@ -1,52 +1,93 @@
 // =============================================================================
-// GET /api/staff/force-logout
+// GET/POST /api/staff/force-logout
 //
-// Selbstheilung für ungültige/„Geister"-Sessions: Wenn ein Staff-Session-Cookie
-// vorhanden ist, die Session aber nicht (mehr) gültig ist (User/Tenant existiert
-// nicht — z. B. nach DB-Reset/Re-Seed), leitet das geschützte Layout hierher um.
-// Wir LÖSCHEN das Cookie aktiv (statt es nur zu ignorieren) und schicken zum
-// Login. Damit kann sich kein Browser dauerhaft auf ein totes Cookie verklemmen
-// (z. B. wenn ein neues Cookie das alte nicht zuverlässig ersetzt).
+// Selbstheilung fuer ungueltige „Geister“-Sessions und expliziter Logout fuer
+// den Staff-Bereich. GET bleibt fuer den Redirect aus dem geschuetzten Layout,
+// der sichtbare Abmelden-Button verwendet POST.
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@taxtronik/config';
 import { staffSignOut } from '@/server/auth/staff';
-import { STAFF_SESSION_COOKIE_BASE, sessionCookieNameVariants } from '@/server/auth/session-cookie';
+import {
+  STAFF_SESSION_COOKIE_BASE,
+  sessionCookieNameVariants,
+  USE_SECURE_COOKIES,
+} from '@/server/auth/session-cookie';
 
-function expireStaffSessionCookies(response: NextResponse): void {
-  for (const name of sessionCookieNameVariants(STAFF_SESSION_COOKIE_BASE)) {
+function staffCookieNames(req: NextRequest): Set<string> {
+  const variants = sessionCookieNameVariants(STAFF_SESSION_COOKIE_BASE);
+  const names = new Set(variants);
+
+  // Auth.js teilt grosse JWTs in Cookies mit Suffix .0, .1, ... auf. Nur den
+  // Basisnamen zu loeschen laesst diese Chunks als Session im Browser zurueck.
+  for (const cookie of req.cookies.getAll()) {
+    if (
+      variants.some(
+        (base) =>
+          cookie.name.startsWith(`${base}.`) && /^\d+$/.test(cookie.name.slice(base.length + 1)),
+      )
+    ) {
+      names.add(cookie.name);
+    }
+  }
+
+  return names;
+}
+
+function expireStaffSessionCookies(req: NextRequest, response: NextResponse): void {
+  for (const name of staffCookieNames(req)) {
+    const prefixedSecureCookie = name.startsWith('__Host-') || name.startsWith('__Secure-');
     response.cookies.set(name, '', {
       httpOnly: true,
+      secure: USE_SECURE_COOKIES || prefixedSecureCookie,
       sameSite: 'lax',
       path: '/',
       expires: new Date(0),
       maxAge: 0,
-      ...(env.STAFF_COOKIE_DOMAIN ? { domain: env.STAFF_COOKIE_DOMAIN } : {}),
+      // __Host-Cookies duerfen laut Browser-Regeln kein Domain-Attribut haben.
+      ...(!name.startsWith('__Host-') && env.STAFF_COOKIE_DOMAIN
+        ? { domain: env.STAFF_COOKIE_DOMAIN }
+        : {}),
     });
   }
 }
 
-export async function GET(req: NextRequest) {
-  // GET bleibt bewusst GET: einziger Aufrufer ist der redirect() aus
-  // staff/(protected)/layout.tsx — eine Browser-Navigation, kein fetch/form.
-  //
-  // Logout-CSRF-Härtung: die Route ändert Zustand (Cookie-Löschung). Eine
-  // cross-site initiierte Navigation (Link/<img> von fremder Seite) darf das
-  // nicht auslösen → ohne signOut nur zum Login leiten (kein Zustandswechsel,
-  // gleiche Außenwirkung wie ein abgelaufenes Cookie). same-origin/same-site/
-  // none (eigene Redirects, Adresszeile, Bookmarks) und fehlender Header
-  // (ältere Clients) bleiben erlaubt.
+function staffLoginResponse(): NextResponse {
+  // Relative Location ist absichtlich host-neutral: req.url kann hinter einem
+  // Reverse-Proxy die interne Adresse (z. B. https://0.0.0.0:3000) enthalten.
+  return new NextResponse(null, {
+    status: 303,
+    headers: {
+      location: '/staff/login',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+async function logout(req: NextRequest): Promise<NextResponse> {
+  // Cross-site initiierte Navigationen duerfen die Session nicht veraendern.
+  // Die Login-Weiterleitung hat nach aussen dieselbe Wirkung, loescht aber in
+  // diesem Fall weder server- noch browserseitig Session-Zustand.
   if (req.headers.get('sec-fetch-site') === 'cross-site') {
-    return NextResponse.redirect(new URL('/staff/login', req.url));
+    return staffLoginResponse();
   }
+
   try {
-    // Auth.js löscht die (ggf. gechunkten) Session-Cookies sauber.
     await staffSignOut({ redirect: false });
   } catch {
-    // Selbst wenn signOut scheitert: trotzdem zum Login leiten.
+    // Die explizite Cookie-Loeschung unten bleibt der ausfallsichere Pfad.
   }
-  const response = NextResponse.redirect(new URL('/staff/login', req.url));
-  expireStaffSessionCookies(response);
+
+  const response = staffLoginResponse();
+  expireStaffSessionCookies(req, response);
   return response;
+}
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  return logout(req);
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  return logout(req);
 }

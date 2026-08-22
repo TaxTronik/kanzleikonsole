@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isAutomaticRefreshEnabled, REFRESH_INTERVAL_MS } from '../auto-refresh';
+import {
+  isAutomaticRefreshEnabled,
+  REFRESH_INTERVAL_MS,
+  shouldReloadRestoredPage,
+} from '../auto-refresh';
 
 describe('AutoRefresh-Route-Policy', () => {
   it('pollt hoechstens alle zwei Minuten', () => {
@@ -26,5 +30,10 @@ describe('AutoRefresh-Route-Policy', () => {
   it('belaesst die bestehende Audit-Pause', () => {
     expect(isAutomaticRefreshEnabled('/staff/admin/audit')).toBe(false);
     expect(isAutomaticRefreshEnabled('/staff/admin/audit/archive')).toBe(false);
+  });
+
+  it('erzwingt nach Wiederherstellung aus dem Back/Forward Cache eine neue Auth-Pruefung', () => {
+    expect(shouldReloadRestoredPage(true)).toBe(true);
+    expect(shouldReloadRestoredPage(false)).toBe(false);
   });
 });
