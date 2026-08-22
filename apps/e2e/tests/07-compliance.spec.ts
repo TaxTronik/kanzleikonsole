@@ -11,7 +11,12 @@
 // =============================================================================
 import { test, expect, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
-import { expectPortalDashboardReady, loginAsMandant, PORTAL_EMAIL } from './helpers/portal-auth';
+import {
+  clearMailhogMessages,
+  expectPortalDashboardReady,
+  loginAsMandant,
+  PORTAL_EMAIL,
+} from './helpers/portal-auth';
 import { flushRedisDb } from './helpers/redis';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -1638,6 +1643,15 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 // SECTION 8: Magic Link Security
 // =============================================================================
 test.describe('Magic Link Security', () => {
+  test.beforeEach(async ({ request }) => {
+    // Die Suite verwendet absichtlich dieselbe Portal-Adresse. Sowohl das
+    // Issue-Limit (1/60s pro Tenant/E-Mail) als auch das IP-Limit (5/15min)
+    // duerfen deshalb nicht aus vorherigen, unabhaengigen Tests hineinlecken.
+    // Der Hook laeuft auch vor Playwright-Retries und macht diese deterministisch.
+    await flushRedisDb();
+    await clearMailhogMessages(request);
+  });
+
   test('8.1 Magic-Link-Anfrage liefert E-Mail in MailHog', async ({ page, request }) => {
     test.setTimeout(30_000);
 
@@ -1646,9 +1660,6 @@ test.describe('Magic Link Security', () => {
     const mailhogUrl = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
     const mhCheck = await request.get(`${mailhogUrl}/api/v1/health`).catch(() => null);
     expect(mhCheck, 'MailHog muss erreichbar sein (Pflichtservice)').not.toBeNull();
-
-    // Alte Mails löschen, damit wir sicher die neue Mail finden
-    await request.delete(`${mailhogUrl}/api/v1/messages`).catch(() => {});
 
     await page.goto('/portal/login', { waitUntil: 'networkidle' });
     await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
