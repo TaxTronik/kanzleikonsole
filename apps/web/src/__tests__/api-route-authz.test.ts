@@ -34,6 +34,9 @@ const ALTERNATIVE_AUTH: Record<string, string[]> = {
   // Selbstheilungs-Logout: loescht Staff-Cookies via Auth.js und blockt
   // cross-site Navigations ueber Sec-Fetch-Site, statt eine Session zu lesen.
   'api/staff/force-logout/route.ts': ['staffSignOut', 'sec-fetch-site'],
+  // Portal-Logout muss auch dann noch Cookies loeschen, wenn Auth.js scheitert;
+  // Fetch Metadata schuetzt den absichtlich sessionlosen POST-Endpunkt.
+  'api/portal/logout/route.ts': ['portalSignOut', 'sec-fetch-site'],
 };
 
 describe('geschuetzte API-Routes sind autorisiert (Struktur-Guardrail)', () => {

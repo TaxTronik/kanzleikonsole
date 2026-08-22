@@ -38,6 +38,7 @@ const ALTERNATIVE_MUTATION_GUARDS: Record<string, string[]> = {
   ],
   // Logout muss auch bei defekter Session funktionieren; Fetch-Metadata blockt Cross-Site.
   'api/staff/force-logout/route.ts': ['sec-fetch-site', 'staffSignOut'],
+  'api/portal/logout/route.ts': ['sec-fetch-site', 'portalSignOut'],
 };
 
 const mutatingRoutes = walk(API_DIR)

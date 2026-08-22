@@ -1247,7 +1247,26 @@ test.describe('Session & Cookie Security', () => {
     ).toBeFalsy();
   });
 
-  test('6.3 Protected routes redirect to login when session expires', async ({ page }) => {
+  test('6.3 Portal logout clears session cookie', async ({ page, request }) => {
+    test.setTimeout(60_000);
+    await loginAsMandant(page, request);
+
+    const cookiesBefore = await page.context().cookies();
+    const sessionCookie = cookiesBefore.find((c) => /taxtronik[_-]?portal/i.test(c.name));
+    expect(sessionCookie, 'Portal-Session-Cookie muss vor Logout existieren').toBeDefined();
+
+    await page.getByRole('button', { name: /Abmelden/i }).click();
+    await expect(page).toHaveURL(/\/portal\/login/, { timeout: 15_000 });
+
+    const cookiesAfter = await page.context().cookies();
+    const after = cookiesAfter.find((c) => c.name === sessionCookie?.name);
+    expect(
+      after?.value,
+      `Portal-Session-Cookie „${sessionCookie?.name}" muss nach Logout geleert/gelöscht sein`,
+    ).toBeFalsy();
+  });
+
+  test('6.4 Protected routes redirect to login when session expires', async ({ page }) => {
     await page.goto('/staff/dashboard');
     await expect(page).toHaveURL(/\/staff\/login/);
 

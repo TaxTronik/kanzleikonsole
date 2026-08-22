@@ -24,6 +24,11 @@ Noch keine Änderungen.
 
 ### Releaseabschluss
 
+- Der Abmelden-Button im Mandantenportal verwendet jetzt einen hosttreuen
+  POST-Endpunkt statt einer proxy-empfindlichen Server-Action. Der Endpunkt
+  loescht alle Portal-Session-Cookie-Varianten auch bei einem Auth.js-Fehler
+  und bleibt durch SameSite plus Fetch Metadata gegen Cross-Site-POSTs
+  geschuetzt.
 - Der interaktive Erstinstallationspfad setzt bei Registry-Releases jetzt die
   öffentliche Manifest-URL und den fest eingebauten Ed25519-Verifikationskey
   automatisch. Damit sind die über Forgejo CI veröffentlichten Images auch bei
