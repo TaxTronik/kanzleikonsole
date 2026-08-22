@@ -96,7 +96,6 @@
   "apps/worker/src/jobs/n8n-deliver.ts::Async function 'deliver'#1": 41,
   "apps/worker/src/jobs/n8n-deliver.ts::Async function 'resolveSigningState'#1": 24,
   "packages/config/src/env.ts::Function 'parseEnv'#1": 36,
-  "packages/db/seeds/reset-admin-password.ts::Async function 'main'#1": 21,
   "packages/evidence/src/cli/verify.ts::Async function 'main'#1": 29,
   "packages/evidence/src/ports/rfc3161-verify.ts::Function 'checkEssSigningCert'#1": 34,
   "packages/http-utils/src/index.ts::Function 'isPrivateIPv6'#1": 28,
