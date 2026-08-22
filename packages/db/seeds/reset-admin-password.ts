@@ -2,8 +2,10 @@
 // Admin-Passwort-Recovery fuer Production.
 //
 // Setzt fuer ein bestehendes Admin-/Staff-Konto ein neues Passwort, aktiviert
-// den Account wieder und startet das TOTP-Onboarding neu. Keine Tenant- oder
-// Benutzeranlage; das Zielkonto muss existieren.
+// den Account wieder und startet das TOTP-Onboarding neu. ADMIN_EMAIL und
+// TENANT_SLUG sind Pflicht, damit auch bei mehreren Tenants/Admins niemals ein
+// implizit gewähltes Konto verändert wird. Keine Tenant- oder Benutzeranlage;
+// das Zielkonto muss existieren.
 // =============================================================================
 
 import { Prisma, PrismaClient } from '../src/prisma-client';
@@ -27,11 +29,11 @@ async function main() {
   const explicitPassword =
     explicitPasswordRaw && explicitPasswordRaw.trim() ? explicitPasswordRaw : undefined;
 
-  if (adminEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
-    fail('ADMIN_EMAIL ist keine gueltige E-Mail-Adresse.');
+  if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    fail('ADMIN_EMAIL fehlt oder ist keine gueltige E-Mail-Adresse.');
   }
-  if (slug && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
-    fail(`TENANT_SLUG '${slug}' ist ungueltig (a-z, 0-9, Bindestrich).`);
+  if (!slug || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
+    fail('TENANT_SLUG fehlt oder ist ungueltig (a-z, 0-9, Bindestrich).');
   }
   if (explicitPassword !== undefined && explicitPassword.length < 12) {
     fail('ADMIN_PASSWORD muss mindestens 12 Zeichen haben.');
@@ -39,8 +41,8 @@ async function main() {
 
   const candidates = await prisma.staffUser.findMany({
     where: {
-      ...(adminEmail ? { email: adminEmail } : {}),
-      ...(slug ? { tenant: { slug } } : {}),
+      email: adminEmail,
+      tenant: { slug },
       roles: { some: { role: 'ADMIN' } },
     },
     select: {
@@ -52,9 +54,7 @@ async function main() {
   });
 
   if (candidates.length === 0) {
-    fail(
-      adminEmail || slug ? 'Kein passendes ADMIN-Konto gefunden.' : 'Kein ADMIN-Konto gefunden.',
-    );
+    fail('Kein passendes ADMIN-Konto gefunden. Es wurde nichts verändert.');
   }
   if (candidates.length > 1) {
     console.error(

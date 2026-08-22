@@ -5,7 +5,7 @@ import { createUserAction } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
 import { STAFF_PASSWORD_MAX_LENGTH, STAFF_PASSWORD_MIN_LENGTH } from '@/lib/staff-password-policy';
 
-export function CreateUserForm() {
+export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) {
   const ref = useRef<HTMLFormElement>(null);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     createUserAction,
@@ -84,10 +84,14 @@ export function CreateUserForm() {
           <input type="checkbox" name="role.PARTNER" />
           <span>Rolle: Partner</span>
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="role.ADMIN" />
-          <span>Rolle: Admin</span>
-        </label>
+        {canAssignAdmin ? (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="role.ADMIN" />
+            <span>Rolle: Admin</span>
+          </label>
+        ) : (
+          <span className="text-xs text-muted">ADMIN-Rollen vergibt ausschließlich ein Admin.</span>
+        )}
         <span className="text-xs text-muted">(EMPLOYEE wird automatisch vergeben.)</span>
       </div>
 

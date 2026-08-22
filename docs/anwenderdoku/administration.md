@@ -9,9 +9,11 @@ beschriebenen Bereiche erfordern die Rolle ADMIN oder PARTNER.
 Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
 
 - **Anlegen:** Name, E-Mail, Startpasswort (mindestens 12 Zeichen). Rollen:
-  _Mitarbeiter_ (immer), optional _Partner_ und/oder _Admin_ (beide gelten
-  als Administratoren). Mindestens eine Rolle ist Pflicht; die eigenen
-  Rollen und der eigene Aktiv-Status sind nicht änderbar (Selbstschutz).
+  _Mitarbeiter_ (immer), optional _Partner_ und/oder _Admin_ (beide erreichen
+  den Administrationsbereich). Nur ein bestehender ADMIN kann die ADMIN-Rolle
+  vergeben oder verändern; PARTNER können ADMIN-Konten auch nicht
+  deaktivieren. Mindestens eine Rolle ist Pflicht; die eigenen Rollen und der
+  eigene Aktiv-Status sind nicht änderbar (Selbstschutz).
 - **Berechtigungen (Einzelrechte):** Für Mitarbeiter ohne Admin-/Partner-
   Rolle steuern drei Schalter, was sie zusätzlich dürfen: _Rechnungen
   anlegen/bearbeiten_, _Rechnungen versenden_ (löst die unveränderliche
@@ -28,9 +30,15 @@ Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
   verwahren! Das Einrichtungsfenster beträgt 60 Minuten.
 - **Deaktivieren** beendet sofort alle aktiven Sitzungen der Person; ebenso
   erzwingt jede Rollenänderung eine Neuanmeldung.
-- **Wichtig (bekannte Grenze):** Einen Passwort-/TOTP-Reset für bestehende
-  Konten gibt es derzeit nicht — bei verlorenem Authenticator samt
-  Backup-Codes wird das Konto deaktiviert und neu angelegt.
+- **Kontowiederherstellung:** ADMIN können Passwort und TOTP von
+  PARTNER-/Mitarbeiterkonten zurücksetzen; PARTNER dürfen dies ausschließlich
+  für Mitarbeiterkonten. Dabei werden alle laufenden Sitzungen beendet und der
+  Vorgang wird protokolliert. ADMIN-Konten sind von diesen Web-Aktionen
+  ausgenommen und werden bei Passwort- oder TOTP-Verlust ausschließlich über
+  `ADMIN_EMAIL=… TENANT_SLUG=… pnpm --filter @taxtronik/db reset-admin-password`
+  wiederhergestellt. Beide Auswahlwerte sind Pflicht. Gibt es keinen oder
+  wider Erwarten mehrere Treffer, bricht die CLI ohne Änderung ab; sie setzt
+  niemals mehrere Admin-Konten gesammelt zurück.
 - **Fehlversuche:** Wiederholte Fehlanmeldungen werden begrenzt
   (Wartezeiten); ein Konto wird erst gesperrt, wenn Fehlversuche von
   mehreren verschiedenen Quelladressen kommen — eine einzelne Person kann

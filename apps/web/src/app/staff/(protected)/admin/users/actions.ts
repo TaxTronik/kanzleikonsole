@@ -14,6 +14,53 @@ import { staffActionGuard, ActionError, type ActionResult } from '@/server/actio
 
 const LIST = '/staff/admin/users';
 const ROLE_VALUES = ['EMPLOYEE', 'PARTNER', 'ADMIN'] as const;
+type StaffRole = (typeof ROLE_VALUES)[number];
+
+const ADMIN_RECOVERY_CLI_ONLY =
+  'ADMIN-Konten können nur über die Administrations-CLI zurückgesetzt werden.';
+const PARTNER_RECOVERY_ADMIN_ONLY =
+  'PARTNER-Konten können nur durch einen ADMIN zurückgesetzt werden.';
+
+function isActualAdmin(roles: readonly string[]): boolean {
+  return roles.includes('ADMIN');
+}
+
+function roleNames(user: { roles: Array<{ role: StaffRole }> }): StaffRole[] {
+  return user.roles.map((entry) => entry.role);
+}
+
+/**
+ * Kontozugänge folgen einer strengeren Hierarchie als der übrige
+ * ADMIN/PARTNER-Bereich:
+ *   - ADMIN-Zugänge und deren 2FA sind ausschließlich per Operator-CLI recoverbar.
+ *   - PARTNER-Zugänge darf nur ein echter ADMIN zurücksetzen.
+ *   - EMPLOYEE-Zugänge dürfen ADMIN und PARTNER zurücksetzen.
+ *
+ * Diese Prüfung muss serverseitig unmittelbar auf den frisch gelesenen
+ * Zielrollen laufen; die ausgeblendeten UI-Buttons sind nur Bedienkomfort.
+ */
+function assertAccountRecoveryAllowed(
+  actorRoles: readonly string[],
+  targetRoles: readonly StaffRole[],
+): void {
+  if (targetRoles.includes('ADMIN')) throw new ActionError(ADMIN_RECOVERY_CLI_ONLY);
+  if (targetRoles.includes('PARTNER') && !isActualAdmin(actorRoles)) {
+    throw new ActionError(PARTNER_RECOVERY_ADMIN_ONLY);
+  }
+}
+
+function assertPartnerCannotManageAdmin(
+  actorRoles: readonly string[],
+  targetRoles: readonly StaffRole[],
+): void {
+  if (!isActualAdmin(actorRoles) && targetRoles.includes('ADMIN')) {
+    throw new ActionError('ADMIN-Konten können nur durch einen ADMIN verwaltet werden.');
+  }
+}
+
+function accountRecoveryProtectedRoles(actorRoles: readonly string[]): StaffRole[] {
+  return isActualAdmin(actorRoles) ? ['ADMIN'] : ['ADMIN', 'PARTNER'];
+}
 
 // ----------------------------------------------------------------------------
 // Anlegen
@@ -53,10 +100,13 @@ export async function createUserAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
+  if (parsed.data.admin && !isActualAdmin(g.session.user.roles)) {
+    return { ok: false, error: 'Die ADMIN-Rolle kann nur durch einen ADMIN vergeben werden.' };
+  }
 
   const passwordHash = await hash(parsed.data.password, 12);
 
-  const roles: Array<'EMPLOYEE' | 'PARTNER' | 'ADMIN'> = ['EMPLOYEE'];
+  const roles: StaffRole[] = ['EMPLOYEE'];
   if (parsed.data.partner) roles.push('PARTNER');
   if (parsed.data.admin) roles.push('ADMIN');
 
@@ -111,7 +161,7 @@ export async function resetPasswordAction(input: {
   // Gate vor bcrypt: nicht autorisierte Requests dürfen keine teure Arbeit auslösen.
   const guard = await staffActionGuard({ requireAdmin: true });
   if (!guard.ok) return guard;
-  const { tenantId, staffId, ctx } = guard;
+  const { tenantId, staffId, ctx, session } = guard;
 
   const parsed = z
     .object({
@@ -132,16 +182,31 @@ export async function resetPasswordAction(input: {
 
   try {
     const target = await withTenantContext(ctx, (tx) =>
-      tx.staffUser.findUnique({ where: { id: parsed.data.userId }, select: { id: true } }),
+      tx.staffUser.findUnique({
+        where: { id: parsed.data.userId },
+        select: { id: true, roles: { select: { role: true } } },
+      }),
     );
     if (!target) throw new ActionError('Benutzer nicht gefunden.');
+    assertAccountRecoveryAllowed(session.user.roles, roleNames(target));
 
     const passwordHash = await hash(parsed.data.password, 12);
     await withTenantContext(ctx, async (tx) => {
-      await tx.staffUser.update({
-        where: { id: parsed.data.userId },
+      // Zielrollen als Teil DESSELBEN SQL-Statements wie das Update prüfen.
+      // Ein paralleler Rollenwechsel kann damit nicht zwischen Check und
+      // Passwort-Schreibzugriff rutschen (TOCTOU).
+      const updated = await tx.staffUser.updateMany({
+        where: {
+          id: parsed.data.userId,
+          roles: {
+            none: { role: { in: accountRecoveryProtectedRoles(session.user.roles) } },
+          },
+        },
         data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
       });
+      if (updated.count !== 1) {
+        throw new ActionError('Kontorollen wurden parallel geändert; Reset abgebrochen.');
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -164,12 +229,17 @@ export async function resetPasswordAction(input: {
 export async function resetTotpAction(input: { userId: string }): Promise<ActionResult> {
   const guard = await staffActionGuard({ requireAdmin: true });
   if (!guard.ok) return guard;
-  const { tenantId, staffId, ctx } = guard;
+  const { tenantId, staffId, ctx, session } = guard;
 
   const parsed = z.object({ userId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   if (parsed.data.userId === staffId) {
-    return { ok: false, error: 'Die eigene 2FA muss ein anderer Admin zurücksetzen.' };
+    return {
+      ok: false,
+      error: isActualAdmin(session.user.roles)
+        ? ADMIN_RECOVERY_CLI_ONLY
+        : 'Die eigene 2FA muss eine übergeordnete Rolle zurücksetzen.',
+    };
   }
 
   try {
@@ -177,6 +247,7 @@ export async function resetTotpAction(input: { userId: string }): Promise<Action
       const before = await tx.staffUser.findUnique({
         where: { id: parsed.data.userId },
         select: {
+          roles: { select: { role: true } },
           totpEnrolledAt: true,
           totpSecretEnc: true,
           totpSetupStartedAt: true,
@@ -184,6 +255,7 @@ export async function resetTotpAction(input: { userId: string }): Promise<Action
         },
       });
       if (!before) throw new ActionError('Benutzer nicht gefunden.');
+      assertAccountRecoveryAllowed(session.user.roles, roleNames(before));
       const hasBackupCodes = Array.isArray(before.totpBackupCodes)
         ? before.totpBackupCodes.length > 0
         : Boolean(before.totpBackupCodes);
@@ -196,8 +268,13 @@ export async function resetTotpAction(input: { userId: string }): Promise<Action
         throw new ActionError('Für diesen Benutzer ist keine 2FA eingerichtet.');
       }
 
-      await tx.staffUser.update({
-        where: { id: parsed.data.userId },
+      const updated = await tx.staffUser.updateMany({
+        where: {
+          id: parsed.data.userId,
+          roles: {
+            none: { role: { in: accountRecoveryProtectedRoles(session.user.roles) } },
+          },
+        },
         data: {
           totpSecretEnc: null,
           totpEnrolledAt: null,
@@ -205,6 +282,9 @@ export async function resetTotpAction(input: { userId: string }): Promise<Action
           totpBackupCodes: Prisma.DbNull,
         },
       });
+      if (updated.count !== 1) {
+        throw new ActionError('Kontorollen wurden parallel geändert; Reset abgebrochen.');
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -239,7 +319,7 @@ export async function setActiveAction(input: {
 }): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = z.object({ userId: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
@@ -251,13 +331,24 @@ export async function setActiveAction(input: {
     await withTenantContext(ctx, async (tx) => {
       const before = await tx.staffUser.findUnique({
         where: { id: parsed.data.userId },
-        select: { active: true },
+        select: { active: true, roles: { select: { role: true } } },
       });
       if (!before) throw new ActionError('Benutzer nicht gefunden.');
-      await tx.staffUser.update({
-        where: { id: parsed.data.userId },
-        data: { active: parsed.data.active },
-      });
+      assertPartnerCannotManageAdmin(session.user.roles, roleNames(before));
+      if (isActualAdmin(session.user.roles)) {
+        await tx.staffUser.update({
+          where: { id: parsed.data.userId },
+          data: { active: parsed.data.active },
+        });
+      } else {
+        const updated = await tx.staffUser.updateMany({
+          where: { id: parsed.data.userId, roles: { none: { role: 'ADMIN' } } },
+          data: { active: parsed.data.active },
+        });
+        if (updated.count !== 1) {
+          throw new ActionError('Kontorollen wurden parallel geändert; Änderung abgebrochen.');
+        }
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -290,7 +381,7 @@ export async function setRolesAction(input: {
 }): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, staffId, ctx, session } = g;
 
   const parsed = z
     .object({
@@ -311,6 +402,12 @@ export async function setRolesAction(input: {
     await withTenantContext(ctx, async (tx) => {
       const before = await tx.staffRole.findMany({ where: { staffUserId: parsed.data.userId } });
       const beforeRoles = before.map((b) => b.role);
+      if (
+        !isActualAdmin(session.user.roles) &&
+        (beforeRoles.includes('ADMIN') || parsed.data.roles.includes('ADMIN'))
+      ) {
+        throw new ActionError('Die ADMIN-Rolle kann nur durch einen ADMIN verwaltet werden.');
+      }
       const newSet = new Set(parsed.data.roles);
       const oldSet = new Set(beforeRoles);
       const toRemove = beforeRoles.filter((r) => !newSet.has(r));

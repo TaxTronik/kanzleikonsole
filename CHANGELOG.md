@@ -30,18 +30,26 @@ Noch keine Änderungen.
   muss bestätigt werden und nach erfolgreicher Änderung werden alle laufenden
   Sitzungen widerrufen. Der Vorgang ist rate-limitiert und wird ohne Passwort-
   oder Hashwerte in der Audit-Kette protokolliert.
-- **[Scope]** ADMIN/PARTNER können in der Benutzerverwaltung ein neues Passwort
-  für fremde Konten setzen und verlorene 2FA-Zuordnungen zurücksetzen. Der
+- **[Scope]** Kontozugänge folgen einer festen Rollen-Hierarchie: ADMIN können
+  Passwörter und verlorene 2FA-Zuordnungen von PARTNER/EMPLOYEE zurücksetzen,
+  PARTNER ausschließlich die von EMPLOYEE. ADMIN-Zugänge sind in der
+  Weboberfläche vollständig vom Passwort-/2FA-Reset ausgenommen und werden nur
+  über die Administrations-CLI wiederhergestellt. Dort sind ADMIN-E-Mail und
+  Tenant-Slug Pflicht; ohne genau einen Treffer erfolgt keine Änderung. Der
   2FA-Reset entfernt verschlüsseltes Secret, ein möglicherweise offenes Setup,
-  Enrollment und Backup-Codes gemeinsam; beide Aktionen widerrufen aktive
-  Sitzungen und erzeugen einen Audit-Eintrag. Der eigene 2FA-Reset benötigt
-  bewusst einen zweiten Admin.
+  Enrollment und Backup-Codes gemeinsam; beide Web-Aktionen widerrufen aktive
+  Sitzungen und erzeugen einen Audit-Eintrag.
 - Die Benutzerverwaltung nutzt auf breiten Ansichten den verfügbaren Platz für
   eine eigene Spalte „Kontosicherheit“. Initial- und Reset-Passwörter werden
   verdeckt eingegeben und müssen wiederholt werden.
 
 ### Behoben
 
+- **[Scope]** Eine Privilege-Escalation in der Benutzerverwaltung ist
+  geschlossen: PARTNER können weder ADMIN-Zugangsdaten oder -2FA zurücksetzen
+  noch ADMIN-Konten deaktivieren, ADMIN-Rollen vergeben oder bestehende
+  ADMIN-Rollen verändern. Die Regeln werden serverseitig anhand der frisch
+  gelesenen Zielrollen erzwungen und zusätzlich in der Oberfläche abgebildet.
 - Die Abmeldung auf Staff- und Portal-Oberfläche verwendet hosttreue
   POST-Endpunkte und entfernt alle Session-Cookie-Varianten zuverlässig, ohne
   interne Docker-/Proxy-Hosts in Browser-Weiterleitungen zu übernehmen.

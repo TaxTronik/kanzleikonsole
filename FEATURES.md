@@ -1126,6 +1126,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 ## Benutzer-Verwaltung (ADMIN/PARTNER)
 
 - Anlegen mit Initial-Passwort (TOTP wird beim ersten Login eingerichtet)
+- Die ADMIN-Rolle kann ausschließlich von einem bestehenden ADMIN vergeben
+  oder verändert werden; PARTNER können ADMIN-Konten auch nicht deaktivieren
 - Persönliches Benutzerprofil für alle Rollen: Passwortänderung mit bisherigem
   Passwort, Wiederholung und anschließendem Logout auf allen Geräten
 - Anlegen seeded automatisch BMF + BFH als RSS-Feeds für den neuen User
@@ -1134,9 +1136,12 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Self-Lockout-Schutz (eigene Rollen nicht änderbar, eigener Account nicht
   deaktivierbar)
 - Übersicht: Name, E-Mail, Rollen, 2FA-Status, letzter Login
-- Admin-Reset für fremde Passwörter sowie verlorene 2FA-Zuordnungen; Secrets,
+- Hierarchischer Reset für fremde Passwörter und verlorene 2FA-Zuordnungen:
+  ADMIN → PARTNER/EMPLOYEE, PARTNER → EMPLOYEE. ADMIN-Konten werden
+  ausschließlich über die Administrations-CLI wiederhergestellt; E-Mail und
+  Tenant-Slug müssen das einzelne Zielkonto eindeutig festlegen. Secrets,
   offene Setups und Backup-Codes werden gemeinsam entfernt, laufende Sitzungen
-  sofort widerrufen und beide Vorgänge auditiert
+  sofort widerrufen und Web-Resets auditiert
 - Tätigkeitsbereich-Zuordnung pro Mitarbeiter (Tags-Icon-Popover)
 - **Granulare Einzelrechte je Mitarbeiter** (jenseits der Rollen):
   Rechnungen anlegen/bearbeiten, Rechnungen versenden, Urlaub

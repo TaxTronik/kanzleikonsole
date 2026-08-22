@@ -37,16 +37,27 @@ vi.mock('@/server/auth/rbac', () => ({
   }),
 }));
 
-import { createUserAction, resetPasswordAction, resetTotpAction } from '../actions';
+import {
+  createUserAction,
+  resetPasswordAction,
+  resetTotpAction,
+  setActiveAction,
+  setRolesAction,
+} from '../actions';
+
+function guardFor(roles: string[], staffId = ADMIN_ID) {
+  return {
+    ok: true,
+    tenantId: TENANT_ID,
+    staffId,
+    session: { user: { roles } },
+    ctx: { tenantId: TENANT_ID, actorId: staffId, actorType: 'STAFF' },
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.staffActionGuard.mockResolvedValue({
-    ok: true,
-    tenantId: TENANT_ID,
-    staffId: ADMIN_ID,
-    ctx: { tenantId: TENANT_ID, actorId: ADMIN_ID, actorType: 'STAFF' },
-  });
+  mocks.staffActionGuard.mockResolvedValue(guardFor(['ADMIN']));
   mocks.hash.mockResolvedValue('new-password-hash');
   mocks.revokeAllSessions.mockResolvedValue(undefined);
 });
@@ -69,8 +80,11 @@ describe('resetPasswordAction', () => {
   it('setzt das Passwort ohne Geheimnisse im Audit und widerruft alle Sitzungen', async () => {
     const tx = {
       staffUser: {
-        findUnique: vi.fn().mockResolvedValue({ id: USER_ID }),
-        update: vi.fn().mockResolvedValue({ id: USER_ID }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: USER_ID,
+          roles: [{ role: 'EMPLOYEE' }],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     mocks.withTenantContext.mockImplementation(
@@ -84,8 +98,11 @@ describe('resetPasswordAction', () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(tx.staffUser.update).toHaveBeenCalledWith({
-      where: { id: USER_ID },
+    expect(tx.staffUser.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: USER_ID,
+        roles: { none: { role: { in: ['ADMIN'] } } },
+      },
       data: { passwordHash: 'new-password-hash', failedLoginCount: 0, lockedUntil: null },
     });
     expect(mocks.evidenceRecord).toHaveBeenCalledWith(
@@ -115,6 +132,153 @@ describe('resetPasswordAction', () => {
     });
     expect(mocks.hash).not.toHaveBeenCalled();
   });
+
+  it('bricht atomar ab, wenn das Ziel während des Passwort-Resets zum ADMIN wird', async () => {
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: USER_ID,
+          roles: [{ role: 'EMPLOYEE' }],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+
+    const result = await resetPasswordAction({
+      userId: USER_ID,
+      password: 'Neues-Passwort-2026!',
+      confirmPassword: 'Neues-Passwort-2026!',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Kontorollen wurden parallel geändert; Reset abgebrochen.',
+    });
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+    expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+  });
+
+  it('verwehrt einem PARTNER den Passwort-Reset eines ADMIN-Kontos', async () => {
+    mocks.staffActionGuard.mockResolvedValueOnce(guardFor(['PARTNER']));
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: USER_ID,
+          roles: [{ role: 'EMPLOYEE' }, { role: 'ADMIN' }],
+        }),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+
+    const result = await resetPasswordAction({
+      userId: USER_ID,
+      password: 'Neues-Passwort-2026!',
+      confirmPassword: 'Neues-Passwort-2026!',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'ADMIN-Konten können nur über die Administrations-CLI zurückgesetzt werden.',
+    });
+    expect(mocks.hash).not.toHaveBeenCalled();
+    expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+  });
+
+  it('verwehrt auch einem ADMIN den Web-Reset eines anderen ADMIN-Kontos', async () => {
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: USER_ID,
+          roles: [{ role: 'ADMIN' }],
+        }),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+
+    const result = await resetPasswordAction({
+      userId: USER_ID,
+      password: 'Neues-Passwort-2026!',
+      confirmPassword: 'Neues-Passwort-2026!',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'ADMIN-Konten können nur über die Administrations-CLI zurückgesetzt werden.',
+    });
+    expect(mocks.hash).not.toHaveBeenCalled();
+  });
+
+  it('verwehrt einem PARTNER den Passwort-Reset eines anderen PARTNER-Kontos', async () => {
+    mocks.staffActionGuard.mockResolvedValueOnce(guardFor(['PARTNER']));
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: USER_ID,
+          roles: [{ role: 'EMPLOYEE' }, { role: 'PARTNER' }],
+        }),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+
+    const result = await resetPasswordAction({
+      userId: USER_ID,
+      password: 'Neues-Passwort-2026!',
+      confirmPassword: 'Neues-Passwort-2026!',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'PARTNER-Konten können nur durch einen ADMIN zurückgesetzt werden.',
+    });
+    expect(mocks.hash).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { actor: 'ADMIN', target: 'PARTNER', protectedRoles: ['ADMIN'] },
+    { actor: 'PARTNER', target: 'EMPLOYEE', protectedRoles: ['ADMIN', 'PARTNER'] },
+  ])(
+    'erlaubt $actor den vorgesehenen Passwort-Reset für $target',
+    async ({ actor, target, protectedRoles }) => {
+      mocks.staffActionGuard.mockResolvedValueOnce(guardFor([actor]));
+      const tx = {
+        staffUser: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: USER_ID,
+            roles: [{ role: target }],
+          }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+      };
+      mocks.withTenantContext.mockImplementation(
+        async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+      );
+
+      const result = await resetPasswordAction({
+        userId: USER_ID,
+        password: 'Neues-Passwort-2026!',
+        confirmPassword: 'Neues-Passwort-2026!',
+      });
+
+      expect(result).toEqual({ ok: true });
+      expect(tx.staffUser.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: USER_ID,
+            roles: { none: { role: { in: protectedRoles } } },
+          },
+        }),
+      );
+    },
+  );
 });
 
 describe('createUserAction', () => {
@@ -131,6 +295,25 @@ describe('createUserAction', () => {
     expect(mocks.hash).not.toHaveBeenCalled();
     expect(mocks.withTenantContext).not.toHaveBeenCalled();
   });
+
+  it('verhindert, dass ein PARTNER einen ADMIN-Benutzer anlegt', async () => {
+    mocks.staffActionGuard.mockResolvedValueOnce(guardFor(['PARTNER']));
+    const formData = new FormData();
+    formData.set('fullName', 'Unzulässiger Admin');
+    formData.set('email', 'admin-neu@example.test');
+    formData.set('password', 'Initial-Passwort-2026!');
+    formData.set('confirmPassword', 'Initial-Passwort-2026!');
+    formData.set('role.ADMIN', 'on');
+
+    const result = await createUserAction(null, formData);
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Die ADMIN-Rolle kann nur durch einen ADMIN vergeben werden.',
+    });
+    expect(mocks.hash).not.toHaveBeenCalled();
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+  });
 });
 
 describe('resetTotpAction', () => {
@@ -138,12 +321,13 @@ describe('resetTotpAction', () => {
     const tx = {
       staffUser: {
         findUnique: vi.fn().mockResolvedValue({
+          roles: [{ role: 'EMPLOYEE' }],
           totpEnrolledAt: new Date('2026-08-21T12:00:00.000Z'),
           totpSecretEnc: 'encrypted-secret',
           totpSetupStartedAt: null,
           totpBackupCodes: ['hashed-backup-code'],
         }),
-        update: vi.fn().mockResolvedValue({ id: USER_ID }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     mocks.withTenantContext.mockImplementation(
@@ -153,8 +337,11 @@ describe('resetTotpAction', () => {
     const result = await resetTotpAction({ userId: USER_ID });
 
     expect(result).toEqual({ ok: true });
-    expect(tx.staffUser.update).toHaveBeenCalledWith({
-      where: { id: USER_ID },
+    expect(tx.staffUser.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: USER_ID,
+        roles: { none: { role: { in: ['ADMIN'] } } },
+      },
       data: {
         totpSecretEnc: null,
         totpEnrolledAt: null,
@@ -179,9 +366,98 @@ describe('resetTotpAction', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: 'Die eigene 2FA muss ein anderer Admin zurücksetzen.',
+      error: 'ADMIN-Konten können nur über die Administrations-CLI zurückgesetzt werden.',
     });
     expect(mocks.withTenantContext).not.toHaveBeenCalled();
     expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+  });
+
+  it('verwehrt einem PARTNER den 2FA-Reset eines ADMIN-Kontos', async () => {
+    mocks.staffActionGuard.mockResolvedValueOnce(guardFor(['PARTNER']));
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          roles: [{ role: 'ADMIN' }],
+          totpEnrolledAt: new Date('2026-08-21T12:00:00.000Z'),
+          totpSecretEnc: 'encrypted-secret',
+          totpSetupStartedAt: null,
+          totpBackupCodes: [],
+        }),
+        updateMany: vi.fn(),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+
+    const result = await resetTotpAction({ userId: USER_ID });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'ADMIN-Konten können nur über die Administrations-CLI zurückgesetzt werden.',
+    });
+    expect(tx.staffUser.updateMany).not.toHaveBeenCalled();
+    expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+  });
+});
+
+describe('ADMIN-Rollenhierarchie', () => {
+  it('verhindert, dass ein PARTNER einen ADMIN deaktiviert', async () => {
+    mocks.staffActionGuard.mockResolvedValueOnce(guardFor(['PARTNER']));
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          active: true,
+          roles: [{ role: 'ADMIN' }],
+        }),
+        update: vi.fn(),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+
+    const result = await setActiveAction({ userId: USER_ID, active: false });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'ADMIN-Konten können nur durch einen ADMIN verwaltet werden.',
+    });
+    expect(tx.staffUser.update).not.toHaveBeenCalled();
+    expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+  });
+
+  it('verhindert ADMIN-Vergabe und Änderungen bestehender ADMIN-Rollen durch PARTNER', async () => {
+    mocks.staffActionGuard.mockResolvedValue(guardFor(['PARTNER']));
+    const tx = {
+      staffRole: {
+        findMany: vi.fn(),
+        deleteMany: vi.fn(),
+        create: vi.fn(),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+
+    tx.staffRole.findMany.mockResolvedValueOnce([{ role: 'EMPLOYEE' }]);
+    const grantResult = await setRolesAction({
+      userId: USER_ID,
+      roles: ['EMPLOYEE', 'ADMIN'],
+    });
+    expect(grantResult).toEqual({
+      ok: false,
+      error: 'Die ADMIN-Rolle kann nur durch einen ADMIN verwaltet werden.',
+    });
+
+    tx.staffRole.findMany.mockResolvedValueOnce([{ role: 'EMPLOYEE' }, { role: 'ADMIN' }]);
+    const removeResult = await setRolesAction({ userId: USER_ID, roles: ['EMPLOYEE'] });
+    expect(removeResult).toEqual({
+      ok: false,
+      error: 'Die ADMIN-Rolle kann nur durch einen ADMIN verwaltet werden.',
+    });
+
+    expect(tx.staffRole.deleteMany).not.toHaveBeenCalled();
+    expect(tx.staffRole.create).not.toHaveBeenCalled();
   });
 });

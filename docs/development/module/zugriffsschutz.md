@@ -27,15 +27,20 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
   Sitzungen sofort).
 - **Kontowiederherstellung:** Jeder Mitarbeiter kann sein Passwort im eigenen
   Benutzerprofil nach Prüfung des bisherigen Passworts ändern (Rate-Limit,
-  Bestätigung, anschließender Logout auf allen Geräten). ADMIN/PARTNER können
-  fremde Passwörter setzen und verlorene TOTP-Zuordnungen einschließlich
-  Secret, offenem Setup und Backup-Codes vollständig zurücksetzen. Eigene TOTP-
-  Resets benötigen bewusst einen zweiten Admin.
+  Bestätigung, anschließender Logout auf allen Geräten). ADMIN können fremde
+  PARTNER-/EMPLOYEE-Passwörter und -TOTP-Zuordnungen zurücksetzen, PARTNER nur
+  die von EMPLOYEE. Secret, offenes Setup und Backup-Codes werden gemeinsam
+  entfernt. ADMIN-Konten sind von den Web-Resets ausgeschlossen; Passwort und
+  TOTP werden ausschließlich über `reset-admin-password` per Owner-CLI
+  wiederhergestellt. `ADMIN_EMAIL` und `TENANT_SLUG` sind dabei verpflichtend;
+  die CLI mutiert nur bei genau einem Treffer und bricht sonst fail-closed ab.
 
 ## Autorisierung
 
-- Rollen: ADMIN/PARTNER (= Admin-Funktionen) / EMPLOYEE; min. 1 Rolle,
-  Selbständerung gesperrt.
+- Rollen: ADMIN/PARTNER (= allgemeine Admin-Funktionen) / EMPLOYEE; min. 1
+  Rolle, Selbständerung gesperrt. Kontowiederherstellung und Verwaltung der
+  ADMIN-Rolle folgen zusätzlich einer serverseitigen Hierarchie: PARTNER
+  können keine ADMIN-Konten deaktivieren oder ADMIN-Rollen vergeben/ändern.
 - **Einzelrechte (iter87):** `staff_permission` je Mitarbeiter —
   `INVOICE_MANAGE` (Rechnungen anlegen/bearbeiten, Zahlung/Storno),
   `INVOICE_SEND` (versenden = Festschreibung, EXTERNAL-Upload),
@@ -88,5 +93,6 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 
 Es gibt bewusst keinen automatischen Passwort-Ablauf und keine Passwort-
 Historie. Ein Benutzer kann seine bestehende TOTP-Zuordnung nicht selbst
-entfernen; bei Verlust von Authenticator und Backup-Codes ist der auditierte
-Reset durch einen anderen Admin erforderlich.
+entfernen. Bei Verlust von Authenticator und Backup-Codes erfolgt der
+auditierte Web-Reset durch eine übergeordnete Rolle; für ADMIN-Konten ist
+bewusst ausschließlich die Operator-CLI vorgesehen.

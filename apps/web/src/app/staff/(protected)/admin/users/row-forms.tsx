@@ -42,10 +42,14 @@ export function SetRolesForm({
   userId,
   currentRoles,
   disabled,
+  canAssignAdmin,
+  disabledReason,
 }: {
   userId: string;
   currentRoles: string[];
   disabled?: boolean;
+  canAssignAdmin: boolean;
+  disabledReason?: string;
 }) {
   const [roles, setRoles] = useState<Set<string>>(new Set(currentRoles));
   const [isPending, start] = useTransition();
@@ -73,18 +77,24 @@ export function SetRolesForm({
       <div className="flex min-w-0 flex-wrap gap-1">
         {ROLE_OPTIONS.map((r) => {
           const has = roles.has(r);
+          const optionDisabled = disabled || (r === 'ADMIN' && !canAssignAdmin);
+          const title = disabled
+            ? (disabledReason ?? 'Eigene Rollen können nicht geändert werden')
+            : r === 'ADMIN' && !canAssignAdmin
+              ? 'Die ADMIN-Rolle kann nur durch einen ADMIN vergeben werden'
+              : '';
           return (
             <button
               key={r}
               type="button"
-              disabled={disabled}
+              disabled={optionDisabled}
               onClick={() => toggle(r)}
               className={
                 has
                   ? 'px-2 py-0.5 rounded text-[10px] font-medium bg-brand-600 text-white'
                   : 'px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
               }
-              title={disabled ? 'Eigene Rollen können nicht geändert werden' : ''}
+              title={title}
             >
               {r}
             </button>
@@ -190,11 +200,15 @@ export function SetPermissionsForm({
 export function AccountSecurityForm({
   userId,
   isSelf,
+  isAdminAccount,
+  blockedReason,
   totpEnrolled,
   totpConfigured,
 }: {
   userId: string;
   isSelf: boolean;
+  isAdminAccount: boolean;
+  blockedReason?: string;
   totpEnrolled: boolean;
   totpConfigured: boolean;
 }) {
@@ -248,9 +262,17 @@ export function AccountSecurityForm({
           <KeyRound className="h-3.5 w-3.5" />
           Eigenes Passwort ändern
         </Link>
-        <p className="text-disabled">Eigene 2FA: Reset durch weiteren Admin.</p>
+        <p className="text-disabled">
+          {isAdminAccount
+            ? 'Eigene 2FA: Reset ausschließlich per Administrations-CLI.'
+            : 'Eigene 2FA: Reset durch eine übergeordnete Rolle.'}
+        </p>
       </div>
     );
+  }
+
+  if (blockedReason) {
+    return <p className="text-xs text-disabled">{blockedReason}</p>;
   }
 
   return (

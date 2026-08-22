@@ -2,8 +2,8 @@
 // /staff/admin/users — Benutzer-Verwaltung (Admin/Partner only)
 //
 // Übersicht aller Mitarbeiter, Anlegen, Rollen-Pflege und Kontozugang.
-// TOTP wird beim ersten Login eingerichtet und kann durch einen anderen Admin
-// vollständig zurückgesetzt werden, falls Gerät und Backup-Codes fehlen.
+// TOTP wird beim ersten Login eingerichtet. Recovery folgt der Rollen-Hierarchie;
+// ADMIN-Konten werden ausschließlich über die Operator-CLI zurückgesetzt.
 // =============================================================================
 
 import Link from 'next/link';
@@ -28,9 +28,25 @@ const ROLE_LABELS: Record<string, string> = {
   EMPLOYEE: 'Mitarbeiter',
 };
 
+function managementPolicy(actorIsAdmin: boolean, targetRoles: readonly string[]) {
+  const targetIsAdmin = targetRoles.includes('ADMIN');
+  const targetIsPartner = targetRoles.includes('PARTNER');
+  const partnerBlockedFromAdmin = !actorIsAdmin && targetIsAdmin;
+  let accountRecoveryBlockedReason: string | undefined;
+  if (targetIsAdmin) {
+    accountRecoveryBlockedReason =
+      'ADMIN-Zugang und 2FA: Reset ausschließlich per Administrations-CLI.';
+  } else if (!actorIsAdmin && targetIsPartner) {
+    accountRecoveryBlockedReason =
+      'PARTNER-Zugang und 2FA können nur durch einen ADMIN zurückgesetzt werden.';
+  }
+  return { targetIsAdmin, partnerBlockedFromAdmin, accountRecoveryBlockedReason };
+}
+
 export default async function UsersAdminPage() {
   const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
+  const actorIsAdmin = session.user.roles.includes('ADMIN');
 
   const [users, allSkills] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -71,7 +87,7 @@ export default async function UsersAdminPage() {
           Neuen Benutzer anlegen
         </summary>
         <div className="mt-4">
-          <CreateUserForm />
+          <CreateUserForm canAssignAdmin={actorIsAdmin} />
         </div>
       </details>
 
@@ -123,6 +139,8 @@ export default async function UsersAdminPage() {
                 color: a.skill.color,
               }));
               const isSelf = u.id === staffId;
+              const { targetIsAdmin, partnerBlockedFromAdmin, accountRecoveryBlockedReason } =
+                managementPolicy(actorIsAdmin, roleNames);
               return (
                 <tr
                   key={u.id}
@@ -144,7 +162,17 @@ export default async function UsersAdminPage() {
                     <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
                       Rollen
                     </span>
-                    <SetRolesForm userId={u.id} currentRoles={roleNames} disabled={isSelf} />
+                    <SetRolesForm
+                      userId={u.id}
+                      currentRoles={roleNames}
+                      disabled={isSelf || partnerBlockedFromAdmin}
+                      canAssignAdmin={actorIsAdmin}
+                      disabledReason={
+                        partnerBlockedFromAdmin
+                          ? 'ADMIN-Konten können nur durch einen ADMIN verwaltet werden'
+                          : undefined
+                      }
+                    />
                   </td>
                   <td className="min-w-0 align-top xl:px-3 xl:py-3">
                     <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted xl:hidden">
@@ -222,7 +250,9 @@ export default async function UsersAdminPage() {
                       ) : (
                         <span className="badge-gray">Deaktiviert</span>
                       )}
-                      {!isSelf && <ToggleActiveForm userId={u.id} active={u.active} />}
+                      {!isSelf && !partnerBlockedFromAdmin && (
+                        <ToggleActiveForm userId={u.id} active={u.active} />
+                      )}
                     </div>
                   </td>
                   <td className="min-w-0 align-top sm:col-span-2 xl:table-cell xl:px-3 xl:py-3">
@@ -232,6 +262,8 @@ export default async function UsersAdminPage() {
                     <AccountSecurityForm
                       userId={u.id}
                       isSelf={isSelf}
+                      isAdminAccount={targetIsAdmin}
+                      blockedReason={accountRecoveryBlockedReason}
                       totpEnrolled={Boolean(u.totpEnrolledAt)}
                       totpConfigured={Boolean(
                         u.totpSecretEnc ||
