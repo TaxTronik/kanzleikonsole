@@ -11,7 +11,9 @@ import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
-import { portalActionGuard, withPortalContext, ActionError } from '@/server/actions/portal-action';
+import { portalActionGuard, withPortalModule, ActionError } from '@/server/actions/portal-action';
+
+const withAppointmentsPortal = withPortalModule('appointments');
 import { berlinWallClockToUtc } from '@/lib/fmt';
 
 export interface ActionResult {
@@ -36,7 +38,7 @@ export async function createAppointmentRequestAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await portalActionGuard();
+  const g = await portalActionGuard({ module: 'appointments' });
   if (!g.ok) return g;
   const { tenantId, contactId, clientId, ctx } = g;
 
@@ -179,7 +181,7 @@ export async function cancelAppointmentRequestAction(input: { id: string }): Pro
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withPortalContext(
+  return withAppointmentsPortal(
     async (tx, { tenantId, contactId, clientId }) => {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.id },

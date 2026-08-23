@@ -14,6 +14,7 @@ vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
   return {
     withStaff: m.withStaff,
+    withStaffModule: () => m.withStaff,
     ActionError: class ActionError extends Error {},
     parseFormData,
   };

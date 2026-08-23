@@ -85,7 +85,7 @@ export default async function PortalRequestDetailPage({
     );
   }
 
-  const isOpen = reqRow.status !== 'CLOSED' && reqRow.status !== 'CANCELLED';
+  const isOpen = reqRow.status === 'OPEN' || reqRow.status === 'IN_PROGRESS';
 
   return (
     <div className="p-8 max-w-3xl">

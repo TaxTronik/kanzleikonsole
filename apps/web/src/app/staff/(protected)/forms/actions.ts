@@ -12,11 +12,13 @@ import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import {
   staffActionGuard,
-  withStaff,
+  withStaffModule,
   ActionError,
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+
+const withFormsStaff = withStaffModule('forms');
 
 export interface ActionResult extends BaseActionResult {
   id?: string;
@@ -56,7 +58,7 @@ export async function createFormTemplateAction(
   // S3: Form-Templates sind Tenant-weite Konfiguration mit FILE-Feldern
   // (Mandanten-Uploads) und werden in Workflow-Steps referenziert. Symmetrisch
   // zu Workflow-Templates (F4): ADMIN/PARTNER-only.
-  return withStaff(
+  return withFormsStaff(
     async (tx, { tenantId, staffId }) => {
       // S7: expliziter tenantId-Filter (Defense in Depth + lesbarere Intent).
       const dup = await tx.formTemplate.findFirst({ where: { tenantId, name: parsed.data.name } });
@@ -91,7 +93,7 @@ export async function setFormActiveAction(input: {
   const parsed = z.object({ id: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withFormsStaff(
     async (tx) => {
       await tx.formTemplate.update({
         where: { id: parsed.data.id },
@@ -106,7 +108,7 @@ export async function deleteFormTemplateAction(input: { id: string }): Promise<A
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withFormsStaff(
     async (tx, { tenantId, staffId }) => {
       const t = await tx.formTemplate.findUnique({
         where: { id: parsed.data.id },
@@ -170,7 +172,7 @@ export async function saveFormTemplateAction(
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
 
-  return withStaff(
+  return withFormsStaff(
     async (tx, { tenantId, staffId }) => {
       await tx.formTemplate.update({
         where: { id: parsed.data.templateId },
@@ -224,7 +226,7 @@ const CreateSubmissionSchema = z.object({
 export async function createSubmissionAction(
   input: z.infer<typeof CreateSubmissionSchema>,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'forms' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
@@ -315,7 +317,7 @@ export async function reviewSubmissionAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   // R-6: Prisma-Error-Mapping (P2025 = not found / cross-tenant) via withStaff.
-  return withStaff(
+  return withFormsStaff(
     async (tx, { session, staffId }) => {
       // Vertraulich-/RESTRICTED-Ventil: Submission zuerst inkl. clientId lesen.
       const sub = await tx.formSubmission.findUnique({

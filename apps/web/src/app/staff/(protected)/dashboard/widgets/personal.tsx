@@ -190,8 +190,18 @@ export async function PersonalNotes({ tx, staffId }: RenderCtx): Promise<ReactNo
 
 // --- MyDay (persönliche Aufgaben und Termine) --------------------------------
 
-export async function MyDay({ tx, staffId, deniedClientIds }: RenderCtx): Promise<ReactNode> {
-  const items = await loadMyDayEntries(tx, staffId, deniedClientIds);
+export async function MyDay({
+  tx,
+  staffId,
+  deniedClientIds,
+  modules,
+}: RenderCtx): Promise<ReactNode> {
+  const items = await loadMyDayEntries(tx, staffId, deniedClientIds, new Date(), {
+    workflows: modules.workflows,
+    reminders: modules.reminders,
+    appointments: modules.appointments,
+    phoneNotes: modules.phoneNotes,
+  });
   const today = berlinTodayUtcMidnight();
 
   function leading(entry: MyDayEntry): ReactNode {

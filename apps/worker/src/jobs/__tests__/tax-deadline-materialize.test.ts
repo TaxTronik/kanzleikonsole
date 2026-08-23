@@ -26,6 +26,7 @@ const h = vi.hoisted(() => {
   const notifyRequestOpened = vi.fn();
   const upsertNotificationTx = vi.fn();
   const resolveNotificationsTx = vi.fn();
+  const moduleEnabled = vi.fn();
   return {
     prismaOwner,
     tx,
@@ -35,6 +36,7 @@ const h = vi.hoisted(() => {
     notifyRequestOpened,
     upsertNotificationTx,
     resolveNotificationsTx,
+    moduleEnabled,
   };
 });
 
@@ -45,6 +47,9 @@ vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+vi.mock('../../module-gate', () => ({
+  isWorkerTenantModuleEnabled: h.moduleEnabled,
+}));
 vi.mock('../../mail', () => ({ notifyRequestOpened: h.notifyRequestOpened }));
 vi.mock('@taxtronik/db/notification', () => ({
   upsertNotificationTx: h.upsertNotificationTx,
@@ -106,6 +111,7 @@ beforeEach(() => {
   h.materialize.mockResolvedValue(STATS);
   h.notifyRequestOpened.mockResolvedValue({ ok: true, recipients: 2 });
   h.record.mockResolvedValue({});
+  h.moduleEnabled.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -113,6 +119,21 @@ afterEach(() => {
 });
 
 describe('Verdrahtung des DI-Kerns', () => {
+  it('überspringt den direkten Worker-Einstieg bei deaktivierten Steuerbescheiden', async () => {
+    h.moduleEnabled.mockResolvedValue(false);
+
+    await expect(run()).resolves.toEqual({
+      created: 0,
+      requests: 0,
+      overdue: 0,
+      warned: 0,
+      mailRecipients: 0,
+    });
+
+    expect(h.prismaOwner.staffUser.findFirst).not.toHaveBeenCalled();
+    expect(h.materialize).not.toHaveBeenCalled();
+  });
+
   it('übergibt prismaOwner als db und die korrekten Params (horizonDays 90)', async () => {
     const result = await run();
 

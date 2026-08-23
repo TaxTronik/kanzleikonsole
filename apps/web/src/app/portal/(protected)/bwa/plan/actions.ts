@@ -6,9 +6,11 @@ import { redirect } from 'next/navigation';
 
 import {
   portalActionGuard,
-  withPortalContext,
+  withPortalModule,
   type ActionResult,
 } from '@/server/actions/portal-action';
+
+const withBwaPortal = withPortalModule('bwa');
 import { toActionError } from '@/server/auth/rbac';
 import {
   CreateBwaPlanSchema,
@@ -24,7 +26,7 @@ import { checkPortalWriteLimit } from '@/server/rate-limit';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 
 export async function createPlanAction(input: CreateBwaPlanInput): Promise<ActionResult> {
-  const guard = await portalActionGuard();
+  const guard = await portalActionGuard({ module: 'bwa' });
   if (!guard.ok) return guard;
   const { tenantId, contactId, clientId, ctx } = guard;
 
@@ -61,7 +63,7 @@ export async function createPlanAction(input: CreateBwaPlanInput): Promise<Actio
 }
 
 export async function updatePlanAction(input: UpdateBwaPlanInput): Promise<ActionResult> {
-  const guard = await portalActionGuard();
+  const guard = await portalActionGuard({ module: 'bwa' });
   if (!guard.ok) return guard;
   const { tenantId, contactId, clientId, ctx } = guard;
 
@@ -96,7 +98,7 @@ export async function deletePlanAction(input: { planId: string }): Promise<Actio
   const parsed = DeleteBwaPlanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withPortalContext(
+  return withBwaPortal(
     (tx, { tenantId, contactId, clientId }) =>
       deleteBwaPlanTx(tx, {
         tenantId,

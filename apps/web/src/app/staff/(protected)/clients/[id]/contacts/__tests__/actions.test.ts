@@ -150,7 +150,7 @@ describe('rotateIcalTokenAction — Happy Path', () => {
 });
 
 describe('updateContactAction — Portal-Identität', () => {
-  it('widerruft bestehende Portal-Sessions erst nach erfolgreichem E-Mail-Wechsel', async () => {
+  it('widerruft bestehende Portal-Sessions vor dem E-Mail-Wechsel', async () => {
     m.tx.clientContact.findUnique.mockResolvedValue({
       fullName: 'Rey Koxha',
       email: 'alt@example.test',
@@ -182,9 +182,39 @@ describe('updateContactAction — Portal-Identität', () => {
       },
     });
     expect(m.revokeAllSessions).toHaveBeenCalledWith('portal', CONTACT_ID);
-    expect(m.evidenceRecord.mock.invocationCallOrder[0]).toBeLessThan(
-      m.revokeAllSessions.mock.invocationCallOrder[0]!,
+    expect(m.revokeAllSessions.mock.invocationCallOrder[0]!).toBeLessThan(
+      m.tx.clientContact.update.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('schreibt die neue E-Mail nicht, wenn der Session-Widerruf fehlschlägt', async () => {
+    m.tx.clientContact.findUnique.mockResolvedValue({
+      fullName: 'Rey Koxha',
+      email: 'alt@example.test',
+      phone: null,
+      role: null,
+      clientId: CLIENT_ID,
+    });
+    m.tx.clientContact.findFirst.mockResolvedValue(null);
+    m.revokeAllSessions.mockRejectedValueOnce(
+      new Error('Session-Widerruf ist derzeit nicht verfügbar.'),
+    );
+
+    await expect(
+      updateContactAction({
+        contactId: CONTACT_ID,
+        clientId: CLIENT_ID,
+        fullName: 'Rey Koxha',
+        email: 'neu@example.test',
+        phone: null,
+        role: null,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: 'Session-Widerruf ist derzeit nicht verfügbar.',
+    });
+    expect(m.tx.clientContact.update).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('widerruft bei unveränderter normalisierter E-Mail keine Portal-Sessions', async () => {

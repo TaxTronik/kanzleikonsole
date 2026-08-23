@@ -23,13 +23,18 @@ Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
   angelegte Mitarbeiter starten ohne Rechnungs-Rechte**; bestehende
   Mitarbeiter behalten beim Update ihre bisherigen Möglichkeiten und
   können danach gezielt eingeschränkt werden. Jede Änderung steht im
-  Prüfprotokoll und beendet die Sitzungen der betroffenen Person.
+  Prüfprotokoll; ein Rechteentzug beendet die Sitzungen der betroffenen
+  Person sofort. Ist der dafür erforderliche Redis-Widerruf nicht verfügbar,
+  wird die Änderung nicht als erfolgreich gemeldet. Auch die Sessionprüfung
+  lehnt bei einem Redis-Lesefehler fail-closed ab. Erweiterungen werden bei der
+  nächsten Sessionprüfung aus der Datenbank wirksam, ohne zwingend auszuloggen.
 - **Zwei-Faktor (TOTP) ist Pflicht:** Beim ersten Login richtet jede Person
   ihre Authenticator-App selbst ein (QR-Code wird lokal erzeugt, kein
   externer Dienst) und erhält **einmalig acht Backup-Codes** — sicher
   verwahren! Das Einrichtungsfenster beträgt 60 Minuten.
 - **Deaktivieren** beendet sofort alle aktiven Sitzungen der Person; ebenso
-  erzwingt jede Rollenänderung eine Neuanmeldung.
+  erzwingt jede Rollenänderung eine Neuanmeldung. Bei Redis-Ausfall schlägt die
+  Aktion sichtbar fehl, statt einen nicht durchgesetzten Widerruf zu melden.
 - **Kontowiederherstellung:** ADMIN können Passwort und TOTP von
   PARTNER-/Mitarbeiterkonten zurücksetzen; PARTNER dürfen dies ausschließlich
   für Mitarbeiterkonten. Dabei werden alle laufenden Sitzungen beendet und der
@@ -76,10 +81,20 @@ Administratoren sehen immer alles.
   Einzel-Widerruf ist nicht möglich (nur über Schlüsselrotation) — Links
   sparsam vergeben.
 - **Zeitstempel (TSA):** Unter Einstellungen → Beweissicherung wird der
-  RFC-3161-Anbieter gewählt (kostenlose Anbieter oder eIDAS-qualifizierte
-  wie D-Trust; eigener Endpunkt möglich). In Produktion ist ein externer
-  Anbieter Pflicht — reine Selbst-Zeitstempel meldet die tägliche Prüfung
-  als Verstoß.
+  RFC-3161-Anbieter gewählt (kostenlose oder kommerzielle Presets; eigener
+  öffentlich auflösbarer Endpunkt möglich). Private/interne Ziele werden als
+  SSRF-Schutz abgelehnt. Anbieter wie D-Trust bieten qualifizierte Dienste an;
+  TaxTronik leitet die Qualifikation des konkret genutzten Dienstes jedoch
+  nicht allein aus dem Preset ab. Vertrag, Endpunkt, Zertifikat und
+  EU-Vertrauensliste sind durch den Betreiber zu prüfen.
+  Produktion verlangt einen externen Anbieter und verwendet einheitlich in
+  Worker und Statusprüfung die Reihenfolge Tenant-Einstellung →
+  `TIMESTAMP_AUTHORITY_URL` → GlobalSign. Für Nicht-GlobalSign-Anbieter muss
+  der Betreiber den zugehörigen Trust Anchor über `TSA_TRUSTED_ROOTS_FILE`
+  bereitstellen und prüfen. Ein nicht qualifizierter Stempel bleibt ein externer Nachweis,
+  besitzt aber nicht die gesetzliche Vermutungswirkung eines qualifizierten
+  Zeitstempels. Ob diese benötigt wird, entscheidet die Kanzlei für ihren
+  Prozess; Details stehen in `docs/compliance/eidas-tsa.md`.
 - **Archivierung:** Wöchentlich werden ältere Protokollsegmente als
   unveränderliche Dateien (10 Jahre, schreibgeschützt) in den Object-Store
   ausgelagert; die Datenbank-Einträge bleiben zusätzlich erhalten.

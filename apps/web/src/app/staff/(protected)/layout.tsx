@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
+import { notFound, redirect } from 'next/navigation';
+import { cookies, headers } from 'next/headers';
 import { staffAuth } from '@/server/auth/staff';
 import { STAFF_SESSION_COOKIE } from '@/server/auth/session-cookie';
 import { isStaffAdmin } from '@/server/auth/rbac';
@@ -14,6 +14,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { UiModeToggle } from '@/components/ui-mode-toggle';
 import { readBranding } from '@/server/settings/branding';
 import { readModules } from '@/server/settings/modules';
+import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
@@ -68,7 +69,7 @@ const allNavItems: NavConfig[] = [
   { href: '/staff/reports', label: 'Auswertungen', icon: 'BarChart3', moduleKey: 'bwa' },
 ];
 
-type AdminNavConfig = NavItem & { moduleKey?: 'workflows' | 'forms' | 'risk' };
+type AdminNavConfig = NavItem & { moduleKey?: 'workflows' | 'forms' | 'risk' | 'invoices' };
 
 const allAdminNavItems: AdminNavConfig[] = [
   { href: '/staff/admin', label: 'Übersicht', icon: 'Shield', exact: true },
@@ -83,7 +84,12 @@ const allAdminNavItems: AdminNavConfig[] = [
   { href: '/staff/forms', label: 'Formular-Vorlagen', icon: 'ClipboardList', moduleKey: 'forms' },
   { href: '/staff/admin/request-templates', label: 'Anforderungs-Vorlagen', icon: 'Inbox' },
   { href: '/staff/admin/email-templates', label: 'E-Mail-Vorlagen', icon: 'Mail' },
-  { href: '/staff/admin/invoice-categories', label: 'Rechnungstypen', icon: 'Receipt' },
+  {
+    href: '/staff/admin/invoice-categories',
+    label: 'Rechnungstypen',
+    icon: 'Receipt',
+    moduleKey: 'invoices',
+  },
   { href: '/staff/admin/audit', label: 'Audit-Log', icon: 'Shield' },
   { href: '/staff/admin/quantenlos', label: 'Quantenlos', icon: 'Dices', moduleKey: 'risk' },
   { href: '/staff/admin/archive', label: 'Audit-Archiv', icon: 'Archive' },
@@ -116,6 +122,8 @@ export default async function StaffLayout({ children }: { children: ReactNode })
     actorType: 'STAFF' as const,
   };
   const [branding, modules] = await Promise.all([readBranding(ctx), readModules(ctx)]);
+  const pathname = (await headers()).get('x-taxtronik-pathname') ?? '';
+  if (!isModuleRouteEnabled(modules, 'staff', pathname)) notFound();
 
   const navItems: NavItem[] = allNavItems
     .filter((it) => {
@@ -133,7 +141,11 @@ export default async function StaffLayout({ children }: { children: ReactNode })
     }));
 
   const adminNavItems: NavItem[] = allAdminNavItems
-    .filter((it) => !it.moduleKey || modules[it.moduleKey])
+    .filter(
+      (it) =>
+        !it.moduleKey ||
+        (it.moduleKey === 'invoices' ? modules.invoiceMode !== 'OFF' : modules[it.moduleKey]),
+    )
     .map((it) => ({
       href: it.href,
       label: it.label,

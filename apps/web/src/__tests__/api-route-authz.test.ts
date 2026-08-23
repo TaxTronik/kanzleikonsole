@@ -27,16 +27,54 @@ const protectedRouteFiles = walk(join(APP_DIR, 'api')).filter((file) => {
   return rel.startsWith('api/staff/') || rel.startsWith('api/portal/');
 });
 
-const ALTERNATIVE_AUTH: Record<string, string[]> = {
+interface AlternativeAuth {
+  reason: string;
+  validate: (source: string) => boolean;
+}
+
+const ALTERNATIVE_AUTH: Record<string, AlternativeAuth> = {
   // Token-gated Kalenderfeed fuer externe Kalender-Apps. verifyIcalToken()
   // ist hier das Auth-Primitive; eine Session waere fuer ICS-Abos ungeeignet.
-  'api/portal/ical/[token]/route.ts': ['verifyIcalToken'],
-  // Selbstheilungs-Logout: loescht Staff-Cookies via Auth.js und blockt
-  // cross-site Navigations ueber Sec-Fetch-Site, statt eine Session zu lesen.
-  'api/staff/force-logout/route.ts': ['staffSignOut', 'sec-fetch-site'],
-  // Portal-Logout muss auch dann noch Cookies loeschen, wenn Auth.js scheitert;
-  // Fetch Metadata schuetzt den absichtlich sessionlosen POST-Endpunkt.
-  'api/portal/logout/route.ts': ['portalSignOut', 'sec-fetch-site'],
+  'api/portal/ical/[token]/route.ts': {
+    reason: 'der Kalenderfeed muss sein dediziertes iCal-Token validieren',
+    validate: (source) => /\bverifyIcalToken\s*\(/.test(source),
+  },
+  // Selbstheilungs-Logout mit zwei bewusst verschiedenen Vertrauensstufen:
+  // GET darf nur lokale Cookies loeschen (kein globaler Session-Widerruf);
+  // POST darf global widerrufen, muss dafuer aber Same-Origin pruefen und das
+  // Widerrufssubjekt aus der signierten Staff-Session ableiten. Die engen
+  // Aufrufmuster verhindern, dass ein blosses Importieren der Helfer genuegt.
+  'api/staff/force-logout/route.ts': {
+    reason:
+      'GET darf nur lokal bereinigen; POST braucht Same-Origin und ein sessiongebundenes Widerrufssubjekt',
+    validate: (source) =>
+      /export\s+async\s+function\s+GET\s*\([^)]*\)[\s\S]*?return\s+logout\s*\(\s*req\s*,\s*false\s*\)/.test(
+        source,
+      ) &&
+      /export\s+async\s+function\s+POST\s*\([^)]*\)[\s\S]*?assertSameOrigin\s*\(\s*req\s*,\s*env\.NEXTAUTH_URL\s*\)[\s\S]*?return\s+logout\s*\(\s*req\s*,\s*true\s*\)/.test(
+        source,
+      ) &&
+      /if\s*\(\s*revoke\s*\)[\s\S]*?staffSessionSubject\s*\(\s*\)[\s\S]*?revokeAllSessions\s*\(\s*['"]staff['"]\s*,\s*staffId\s*\)/.test(
+        source,
+      ) &&
+      /\bstaffSignOut\s*\(\s*\{\s*redirect:\s*false\s*\}\s*\)/.test(source),
+  },
+  // Portal-Logout bleibt bei defekter Auth.js-Abmeldung cookie-seitig
+  // selbstheilend. Der zustandsaendernde globale Widerruf ist aber nur nach
+  // Same-Origin-Pruefung zulaessig und wird an das signierte Session-Subjekt
+  // gebunden; auch hier reicht die blosse Helfer-Praesenz nicht.
+  'api/portal/logout/route.ts': {
+    reason:
+      'POST braucht Same-Origin und ein aus der signierten Portal-Session abgeleitetes Widerrufssubjekt',
+    validate: (source) =>
+      /export\s+async\s+function\s+POST\s*\([^)]*\)[\s\S]*?assertSameOrigin\s*\(\s*req\s*,\s*portalBaseUrl\s*\)[\s\S]*?if\s*\(\s*csrf\s*\)\s*return\s+csrf/.test(
+        source,
+      ) &&
+      /portalSessionSubject\s*\(\s*\)[\s\S]*?revokeAllSessions\s*\(\s*['"]portal['"]\s*,\s*contactId\s*\)/.test(
+        source,
+      ) &&
+      /\bportalSignOut\s*\(\s*\{\s*redirect:\s*false\s*\}\s*\)/.test(source),
+  },
 };
 
 describe('geschuetzte API-Routes sind autorisiert (Struktur-Guardrail)', () => {
@@ -48,15 +86,15 @@ describe('geschuetzte API-Routes sind autorisiert (Struktur-Guardrail)', () => {
     const rel = relative(APP_DIR, file).replace(/\\/g, '/');
     const source = readFileSync(file, 'utf8');
     const expectedPrimitive = rel.startsWith('api/staff/') ? 'staffAuth' : 'portalAuth';
-    const alternatives = ALTERNATIVE_AUTH[rel] ?? [];
+    const alternative = ALTERNATIVE_AUTH[rel];
 
     it(`${rel}: referenziert ${expectedPrimitive} oder dokumentierte Alternative`, () => {
       const hasExpected = source.includes(expectedPrimitive);
-      const hasAlternative =
-        alternatives.length > 0 && alternatives.every((a) => source.includes(a));
+      const hasAlternative = alternative?.validate(source) ?? false;
       expect(
         hasExpected || hasAlternative,
-        `${rel} muss ${expectedPrimitive} oder eine explizit dokumentierte Alternative nutzen.`,
+        `${rel} muss ${expectedPrimitive} oder eine explizit dokumentierte Alternative nutzen` +
+          (alternative ? ` (${alternative.reason}).` : '.'),
       ).toBe(true);
     });
   }

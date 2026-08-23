@@ -5,8 +5,8 @@
 // Events verloren.
 //
 // Jetzt: jeder emit-Call schreibt in `n8n_outbox` und reiht einen BullMQ-Job
-// in `n8n-deliver`. Der Worker delivered mit Exponential-Backoff (5 Versuche,
-// ~9h Worst-Case). Bei dauerhaftem Fehlschlag bleibt die Reihe mit
+// in `n8n-deliver`. Der Worker liefert mit Exponential-Backoff (insgesamt
+// 6 Versuche; Basis 60 Sekunden). Bei dauerhaftem Fehlschlag bleibt die Reihe mit
 // status=FAILED stehen — ops kann sie manuell re-triggern.
 //
 // Interaktive Tests adressieren heute eine gespeicherte, konkrete Endpoint-URL
@@ -31,6 +31,8 @@ export interface EmitOptions {
    * oder ENV-Fallback). Bei System-Events (z. B. taxtronik.ping) weglassen.
    */
   tenantId?: string;
+  /** Stabiler fachlicher Schlüssel; verhindert doppelte Outbox-Events bei Retry. */
+  dedupeKey?: string;
 }
 
 /**

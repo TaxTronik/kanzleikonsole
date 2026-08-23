@@ -190,4 +190,18 @@ describe('loadKontrollbuch query bounds', () => {
       dueDate: { gte: new Date('2026-06-16T00:00:00.000Z') },
     });
   });
+
+  it('überspringt deaktivierte Steuer- und Wiedervorlage-Quellen vollständig', async () => {
+    const tx = createTx();
+
+    await loadKontrollbuch(tx as never, {} as never, {
+      tage: 30,
+      sources: { taxNotices: false, reminders: false },
+    });
+
+    expect(tx.taxDeadline.findMany).not.toHaveBeenCalled();
+    expect(tx.taxNotice.findMany).not.toHaveBeenCalled();
+    expect(tx.clientReminder.findMany).not.toHaveBeenCalled();
+    expect(tx.request.findMany).toHaveBeenCalledOnce();
+  });
 });

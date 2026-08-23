@@ -28,6 +28,12 @@ import { verifyTimestampResponse, extractTsaMeta } from './rfc3161-verify';
 import { DEFAULT_TSA_TRUSTED_ROOTS } from './globalsign-roots';
 import { resolveTsaTrustedRoots } from './resolve-roots';
 
+const safeFetchPublic = safeFetch as unknown as (
+  url: string,
+  init: RequestInit,
+  policy: { mode: 'public' },
+) => Promise<Response>;
+
 // OID 2.16.840.1.101.3.4.2.1 (SHA-256) in DER
 const SHA256_OID_DER = new Uint8Array([
   0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
@@ -158,15 +164,19 @@ export class Rfc3161HttpAdapter implements TimestampPort {
       // beim eigentlichen Request (TOCTOU gegen interne Dienste, § 203).
       // safeFetch reicht binären Body durch; `signal` überschreibt den
       // safeFetch-Default-Timeout mit unserem TSA-Timeout.
-      res = await safeFetch(this.tsaUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/timestamp-query',
-          Accept: 'application/timestamp-reply',
+      res = await safeFetchPublic(
+        this.tsaUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/timestamp-query',
+            Accept: 'application/timestamp-reply',
+          },
+          body: tsr.buffer.slice(tsr.byteOffset, tsr.byteOffset + tsr.byteLength) as ArrayBuffer,
+          signal: ctrl.signal,
         },
-        body: tsr.buffer.slice(tsr.byteOffset, tsr.byteOffset + tsr.byteLength) as ArrayBuffer,
-        signal: ctrl.signal,
-      });
+        { mode: 'public' },
+      );
     } finally {
       clearTimeout(to);
     }

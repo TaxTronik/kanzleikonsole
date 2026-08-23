@@ -8,6 +8,7 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 import { sendTemplateMail } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
@@ -130,7 +131,10 @@ export async function createInvoiceAction(input: {
   }>;
 }): Promise<ActionResult & { invoiceId?: string; number?: string }> {
   // iter87: Anlegen braucht das Einzelrecht (ADMIN/PARTNER implizit).
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
+  const g = await staffActionGuard({
+    requirePermission: 'INVOICE_MANAGE',
+    modeModule: 'invoices',
+  });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
@@ -412,7 +416,7 @@ export async function markSentAction(
   formData: FormData,
 ): Promise<ActionResult> {
   // iter87: Versenden = GoB-Festschreibung — eigenes Einzelrecht INVOICE_SEND.
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND' });
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND', modeModule: 'invoices' });
   if (!g.ok) {
     // Befund 9: Guard-Ablehnung strukturiert loggen UND an die UI zurückmelden
     // (früher Form-Action ohne Result-Channel → kommentarlos verschluckt).
@@ -605,6 +609,7 @@ export async function markPaidAction(formData: FormData): Promise<void> {
     },
     {
       requirePermission: 'INVOICE_MANAGE',
+      modeModule: 'invoices',
       revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`],
     },
   );
@@ -614,7 +619,10 @@ export async function markPaidAction(formData: FormData): Promise<void> {
 }
 
 export async function cancelInvoiceAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
+  const g = await staffActionGuard({
+    requirePermission: 'INVOICE_MANAGE',
+    modeModule: 'invoices',
+  });
   if (!g.ok) throw new ActionError(g.error ?? 'Nicht berechtigt.');
   const { tenantId, staffId, ctx, session } = g;
   const parsed = parseFormData(StatusSchema, formData);
@@ -848,7 +856,7 @@ export async function uploadExternalInvoiceAction(
 }> {
   // iter87: EXTERNAL-Upload stellt aus UND stellt zu (Mail an Mandanten) —
   // das ist der Versand-Akt, daher INVOICE_SEND statt INVOICE_MANAGE.
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND' });
+  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND', modeModule: 'invoices' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
@@ -976,6 +984,12 @@ export async function uploadExternalInvoiceAction(
       return inv.id;
     });
   } catch (e) {
+    await compensateStorageCommit({
+      tenantId,
+      source: 'staff.external_invoice.pdf',
+      commit: stored,
+      cause: e,
+    });
     if ((e as { code?: string }).code === 'P2002') {
       return { ok: false, error: 'Rechnungsnummer bereits vergeben.' };
     }

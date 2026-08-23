@@ -53,7 +53,11 @@ export async function createInvoiceFromTimeEntriesAction(
   input: z.infer<typeof CreateSchema>,
 ): Promise<CreateResult> {
   // iter87: Stundenabrechnung legt Rechnungs-Entwürfe an → INVOICE_MANAGE.
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_MANAGE' });
+  const g = await staffActionGuard({
+    requirePermission: 'INVOICE_MANAGE',
+    module: 'timeTracking',
+    modeModule: 'invoices',
+  });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 

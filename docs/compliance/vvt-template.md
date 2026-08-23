@@ -86,7 +86,7 @@
 | Empfänger              | Intern; extern: Mandant; ggf. Finanzbehörde                                                           |
 | Drittlandsübermittlung | Keine                                                                                                 |
 | Aufbewahrung           | 8 Jahre (§ 147 Abs. 3 AO / § 14b UStG), soweit keine Ablaufhemmung oder längere Spezialpflicht greift |
-| TOM                    | XRechnung 3.0 / ZUGFeRD EN16931, Audit-Log auf Erstellung+Versand                                     |
+| TOM                    | XRechnung 3.0.2 / ZUGFeRD EN16931, Audit-Log auf Erstellung+Versand                                   |
 
 ### V6 — Elektronische Vollmachten-Bestätigung
 

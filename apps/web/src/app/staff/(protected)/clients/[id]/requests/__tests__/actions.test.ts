@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   assertClientAccessTx: vi.fn(),
   accessibleClientsWhereFor: vi.fn(),
   evidenceRecord: vi.fn(),
+  resolveNotificationsTx: vi.fn(),
   notifyClientContacts: vi.fn(),
   notifyRequestOpened: vi.fn(),
   fireAndForget: vi.fn(),
@@ -16,6 +17,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
+vi.mock('@taxtronik/db/notification', () => ({
+  resolveNotificationsTx: mocks.resolveNotificationsTx,
+}));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: vi.fn() }));
@@ -35,9 +39,22 @@ vi.mock('@/server/auth/rbac', () => ({
 vi.mock('@/server/actions/staff-action', () => ({
   ActionError: class ActionError extends Error {},
   staffActionGuard: mocks.staffActionGuard,
+  parseFormData: (
+    schema: {
+      safeParse: (
+        value: unknown,
+      ) => { success: true; data: unknown } | { success: false; error: unknown };
+    },
+    formData: FormData,
+  ) => {
+    const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, error: parsed.error };
+  },
 }));
 
 import {
+  addRequestInternalCommentAction,
+  addStaffResponseAction,
   createQuickRequestAction,
   createRequestAction,
   searchRequestClientsAction,
@@ -71,8 +88,13 @@ function makeTx() {
     client: { findMany: vi.fn() },
     request: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
       create: vi.fn().mockResolvedValue({ id: REQUEST_ID }),
     },
+    requestResponse: { create: vi.fn() },
+    requestInternalComment: { create: vi.fn() },
+    staffUser: { findFirst: vi.fn() },
   };
 }
 
@@ -89,6 +111,84 @@ beforeEach(() => {
   mocks.notifyClientContacts.mockResolvedValue(undefined);
   mocks.notifyRequestOpened.mockResolvedValue(undefined);
   mocks.accessibleClientsWhereFor.mockResolvedValue({});
+  mocks.resolveNotificationsTx.mockResolvedValue(undefined);
+});
+
+describe('sichtbare Antworten und interne Kanzlei-Kommentare', () => {
+  function commentData(message = 'Interne Rückfrage an das Team'): FormData {
+    const data = new FormData();
+    data.set('requestId', REQUEST_ID);
+    data.set('message', message);
+    data.set('body', message);
+    return data;
+  }
+
+  it.each(['RESPONDED', 'CLOSED'])(
+    'erlaubt interne Notizen auch bei Status %s ohne Mandantenmail',
+    async (status) => {
+      const tx = makeTx();
+      tx.request.findUnique.mockResolvedValue({ clientId: CLIENT_ID, status });
+      tx.staffUser.findFirst.mockResolvedValue({ fullName: 'Steffi Steuer' });
+      tx.requestInternalComment.create.mockResolvedValue({ id: 'comment-1' });
+      mocks.withTenantContext.mockImplementation(
+        async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+      );
+
+      await expect(addRequestInternalCommentAction(commentData())).resolves.toEqual({ ok: true });
+
+      expect(tx.requestInternalComment.create).toHaveBeenCalledWith({
+        data: {
+          requestId: REQUEST_ID,
+          authorStaffId: 'staff-1',
+          authorName: 'Steffi Steuer',
+          body: 'Interne Rückfrage an das Team',
+        },
+      });
+      expect(mocks.evidenceRecord).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({ action: 'request.internal_comment.create' }),
+      );
+      expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+      expect(mocks.fireAndForget).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['RESPONDED', 'CLOSED'])(
+    'blockiert mandantensichtbare Staff-Antworten bei Status %s',
+    async (status) => {
+      const tx = makeTx();
+      tx.request.findUnique.mockResolvedValue({ clientId: CLIENT_ID, status });
+      mocks.withTenantContext.mockImplementation(
+        async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+      );
+
+      const result = await addStaffResponseAction(commentData('Sichtbare Antwort'));
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'Der Portal-Vorgang ist abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
+      });
+      expect(tx.requestResponse.create).not.toHaveBeenCalled();
+      expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+      expect(mocks.fireAndForget).not.toHaveBeenCalled();
+    },
+  );
+
+  it('verhindert per Status-CAS eine Antwort bei parallel abgeschlossenem Vorgang', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({ clientId: CLIENT_ID, status: 'OPEN' });
+    tx.request.updateMany.mockResolvedValue({ count: 0 });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    const result = await addStaffResponseAction(commentData('Sichtbare Antwort'));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('zwischenzeitlich abgeschlossen');
+    expect(tx.requestResponse.create).not.toHaveBeenCalled();
+    expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+  });
 });
 
 describe('Mandantensuche für Quick-Anforderungen', () => {

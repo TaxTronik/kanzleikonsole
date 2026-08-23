@@ -22,6 +22,7 @@ import {
   type FristEintrag,
 } from '@/server/fristen/eintrag';
 import { fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
+import { readModules } from '@/server/settings/modules';
 
 const RANGES = [7, 30, 90] as const;
 
@@ -34,21 +35,27 @@ interface Search {
 export default async function FristenPage({ searchParams }: { searchParams: Promise<Search> }) {
   const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
+  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const modules = await readModules(ctx);
 
   const sp = await searchParams;
   const tage = (RANGES as readonly number[]).includes(Number(sp.tage)) ? Number(sp.tage) : 30;
   const nurOffene = sp.filter !== 'alle';
   const nurMeine = sp.wer === 'meine';
 
-  const eintraege = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      loadKontrollbuch(tx, session, {
-        tage,
-        nurOffene,
-        nurStaffId: nurMeine ? staffId : null,
-      }),
+  const eintraege = await withTenantContext(ctx, (tx) =>
+    loadKontrollbuch(tx, session, {
+      tage,
+      nurOffene,
+      nurStaffId: nurMeine ? staffId : null,
+      sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
+    }),
   );
+  const sourceLabels = [
+    ...(modules.taxNotices ? ['Steuertermine', 'Einspruchsfristen'] : []),
+    'Anforderungen',
+    ...(modules.reminders ? ['Wiedervorlagen'] : []),
+  ];
 
   // bucketFor arbeitet in UTC-Tagesgrenzen (passend zu @db.Date = UTC-Mitternacht).
   // „Heute" muss daher der Berlin-Kalendertag als UTC-Mitternacht sein — sonst
@@ -90,7 +97,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             Fristenkontrollbuch
           </h1>
           <p className="text-muted text-sm">
-            Steuertermine, Einspruchsfristen, Anforderungen und Wiedervorlagen — {offeneCount} offen
+            {sourceLabels.join(', ')} — {offeneCount} offen
             {ueberfaellig > 0 && (
               <span className="text-red-700 font-medium">, davon {ueberfaellig} überfällig</span>
             )}

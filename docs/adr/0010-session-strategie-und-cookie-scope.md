@@ -1,7 +1,7 @@
 # ADR 0010 — Session-Strategie (JWT) und Cookie-Scope
 
-**Status**: Akzeptiert mit Vorbehalt (Iteration 1)
-**Datum**: 2026-05-13
+**Status**: Aktualisiert und akzeptiert
+**Datum**: 2026-05-13 · aktualisiert 2026-08-23
 **Kontext**: Security-Review S11 (JWT-Sessions ohne Revocation) und S12
 (Cookies mit `path: '/'` statt `/staff`/`/portal`) hat die aktuelle
 Auth-Konfiguration hinterfragt. Beide Punkte sind nicht "kritisch", aber
@@ -21,31 +21,44 @@ relevant für Defense in Depth.
 - Database-Sessions würden pro Request eine Postgres-Query auf
   `Account`/`Session` Tabellen erzeugen — bei einer Single-Tenant-Kanzlei
   mit 5–20 Mitarbeitern unnötiger Overhead.
-- Compliance-kritische Operationen sind ohnehin durch Hash-Chain + Audit-Log
-  abgedeckt (siehe [ADR 0004](0004-evidence-chain-mit-rfc3161.md)) — ein
-  kompromittiertes JWT ändert daran nichts.
+- Hash-Chain und Audit-Log machen sicherheitskritische Operationen
+  nachvollziehbar (siehe [ADR 0004](0004-evidence-chain-mit-rfc3161.md)),
+  verhindern aber keine Aktion mit einem gestohlenen gültigen Session-Cookie.
+  Kurze TTL, sofortiger Widerruf und TOTP bei der Neuanmeldung bleiben deshalb
+  eigenständige Kontrollen.
 
-**Bekannter Trade-off**: Bei gestohlenem Token gibt es serverseitig keinen
-sofortigen Revoke. Mitigations:
+**Aktueller Widerruf:** Sessions bleiben stateless JWE, werden aber gegen einen
+serverseitigen Redis-Widerrufszeitpunkt je Surface und Benutzer geprüft.
+Logout sowie sicherheitsrelevante Passwort-/TOTP-Operationen widerrufen die
+bisher ausgestellten Sessions. Ein fehlgeschlagener sicherheitskritischer
+Widerruf darf dem Operator nicht als erfolgreicher Abschluss gemeldet werden.
+Auch ein Fehler beim Lesen des Widerrufszeitpunkts lehnt die Session ab
+(fail-closed); Redis-Ausfälle können Authentifizierung und bestehende Sessions
+daher vorübergehend blockieren. Die Token-TTL bleibt zusätzliche Begrenzung,
+nicht der einzige Schutz.
 
-- TTL des JWT: 24h (NextAuth Default)
+Mitigations und Grenzen:
+
+- TTL des JWT: in beiden Auth-Konfigurationen 24 Stunden
 - `AUTH_SECRET` rotieren entwertet alle Tokens sofort (kickt alle aus, aber
   funktioniert als Emergency-Reset).
-- TOTP-Pflicht für Staff macht Login-Übernahme über Stolen-Cookie schwerer.
+- TOTP schützt die Neuanmeldung, nicht die Nutzung eines bereits gestohlenen
+  Session-Cookies.
 - Für Portal-Surface: Magic-Link-Token ist immer One-Time-Use (siehe
   [magic-link.ts:127-131](../../apps/web/src/server/auth/magic-link.ts)).
 
-**Wann re-eval**: Wenn eine Kanzlei eine Token-Blacklist verlangt (z. B.
-nach Datenschutzvorfall) → Migration zu Database-Sessions, Session-Tabelle
-mit RLS einführen. Schätzaufwand: 1–2 Tage. Kein Schema-Lock-in: NextAuth
-v5 kann zwischen jwt/database umschalten.
+**Wann re-eval**: Wenn per-Gerät-Sessions, einzelne Session-Widerrufe oder ein
+Widerruf ohne Redis-Verfügbarkeitsabhängigkeit verlangt werden, ist eine
+persistente Session-/JTI-Tabelle mit RLS neu zu bewerten.
 
 ### Cookie-Scope: `path: '/'` statt `/staff`/`/portal`
 
 **Begründung**:
 
-- `SameSite=Lax` mitigiert Top-Level-CSRF bereits — der zweite Cookie ist
-  durch Auth.js's CSRF-Token zusätzlich abgesichert.
+- `SameSite=Lax` hält das Cookie aus Cross-Site-POSTs heraus. Mutierende
+  Routen und Server-Actions benötigen unabhängig davon ihre Fetch-Metadata-,
+  Origin- beziehungsweise Framework-Prüfung; Top-Level-GETs können das Cookie
+  weiterhin mitsenden.
 - Beide Cookies haben **separate Namen** (`__taxtronik_staff_session` vs
   `__taxtronik_portal_session`) — das verhindert, dass ein Mandanten-Cookie
   versehentlich an einen Staff-Endpoint geht. Server-Code prüft via

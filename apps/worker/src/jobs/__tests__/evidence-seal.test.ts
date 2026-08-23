@@ -215,7 +215,9 @@ describe('TSA-Auswahl (F1: TOCTOU-Re-Check)', () => {
 
     await run({ tenantId: TENANT });
 
-    expect(h.assertPublicHost).toHaveBeenCalledWith('https://tsa.example.com/tsr');
+    expect(h.assertPublicHost).toHaveBeenCalledWith('https://tsa.example.com/tsr', {
+      mode: 'public',
+    });
     expect(h.constructedPorts[0]).toBeInstanceOf(Rfc3161HttpAdapter);
     expect((h.constructedPorts[0] as { url: string }).url).toBe('https://tsa.example.com/tsr');
   });

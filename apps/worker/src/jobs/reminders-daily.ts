@@ -19,6 +19,7 @@ import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
+import { readWorkerTenantModules } from '../module-gate';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CREATE_MANY_BATCH_SIZE = 1000;
@@ -122,59 +123,66 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
     const counts = { appeal: 0, reminders: 0, binders: 0 };
 
     for (const tenantId of tenantIds) {
+      const modules = await readWorkerTenantModules(tenantId);
       const [notices, reminders, binders] = await Promise.all([
         // Exakt die drei relevanten @db.Date-Tage statt aller künftigen
         // Bescheide zu laden und anschließend im Worker zu filtern.
-        prismaOwner.taxNotice.findMany({
-          where: {
-            tenantId,
-            client: { mandateEndedAt: null },
-            appealDeadline: { in: appealDates },
-            appealFiledAt: null,
-            status: { notIn: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
-          },
-          select: {
-            id: true,
-            kind: true,
-            period: true,
-            appealDeadline: true,
-            client: { select: { id: true, name: true } },
-            reviewedBy: true,
-          },
-        }),
-        prismaOwner.clientReminder.findMany({
-          where: {
-            tenantId,
-            // Interne Aufgaben haben keinen Mandanten — der Mandats-Filter
-            // darf sie nicht mit aussortieren.
-            OR: [{ clientId: null }, { client: { mandateEndedAt: null } }],
-            doneAt: null,
-            dueDate: { lte: today },
-          },
-          select: {
-            id: true,
-            dueDate: true,
-            subject: true,
-            assignees: { select: { staffId: true } },
-            createdByStaff: true,
-            client: { select: { id: true, name: true } },
-          },
-        }),
-        prismaOwner.pendingBinder.findMany({
-          where: {
-            tenantId,
-            client: { mandateEndedAt: null },
-            status: 'WITH_CLIENT',
-            expectedReturnAt: { not: null, lt: today },
-          },
-          select: {
-            id: true,
-            label: true,
-            expectedReturnAt: true,
-            createdByStaff: true,
-            client: { select: { id: true, name: true } },
-          },
-        }),
+        modules.taxNotices
+          ? prismaOwner.taxNotice.findMany({
+              where: {
+                tenantId,
+                client: { mandateEndedAt: null },
+                appealDeadline: { in: appealDates },
+                appealFiledAt: null,
+                status: { notIn: ['EINSPRUCH', 'ABGEHOLFEN', 'ZURUECKGEWIESEN', 'RECHTSKRAEFTIG'] },
+              },
+              select: {
+                id: true,
+                kind: true,
+                period: true,
+                appealDeadline: true,
+                client: { select: { id: true, name: true } },
+                reviewedBy: true,
+              },
+            })
+          : Promise.resolve([]),
+        modules.reminders
+          ? prismaOwner.clientReminder.findMany({
+              where: {
+                tenantId,
+                // Interne Aufgaben haben keinen Mandanten — der Mandats-Filter
+                // darf sie nicht mit aussortieren.
+                OR: [{ clientId: null }, { client: { mandateEndedAt: null } }],
+                doneAt: null,
+                dueDate: { lte: today },
+              },
+              select: {
+                id: true,
+                dueDate: true,
+                subject: true,
+                assignees: { select: { staffId: true } },
+                createdByStaff: true,
+                client: { select: { id: true, name: true } },
+              },
+            })
+          : Promise.resolve([]),
+        modules.binders
+          ? prismaOwner.pendingBinder.findMany({
+              where: {
+                tenantId,
+                client: { mandateEndedAt: null },
+                status: 'WITH_CLIENT',
+                expectedReturnAt: { not: null, lt: today },
+              },
+              select: {
+                id: true,
+                label: true,
+                expectedReturnAt: true,
+                createdByStaff: true,
+                client: { select: { id: true, name: true } },
+              },
+            })
+          : Promise.resolve([]),
       ]);
 
       const appealNotifications: DailyNotification[] = [];

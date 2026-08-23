@@ -10,10 +10,10 @@ import { prisma, withTenantContext } from '@taxtronik/db';
 import { createConnection } from 'node:net';
 import { env, riskLayerConfig } from '@taxtronik/config';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
-import { Rfc3161HttpAdapter, resolveTsaUrl } from '@taxtronik/evidence';
+import { createRfc3161Adapter, resolveTsaUrl } from '@taxtronik/evidence';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { randomBytes } from 'node:crypto';
-import { safeFetch } from '@/server/http/ssrf-guard';
+import { safeFetchN8n } from '@/server/http/ssrf-guard';
 
 export interface ServiceStatus {
   ok: boolean;
@@ -205,7 +205,10 @@ async function checkN8nUrl(rawUrl: string | null): Promise<ServiceStatus> {
     // R1/H1: safeFetch macht assertPublicHost + DNS-Pinning in einem Schritt —
     // kein TOCTOU-Fenster zwischen Check und Verbindung.
     // M-6: redirect:'error' verhindert 302 zu internen Adressen.
-    const res = await safeFetch(url.toString(), { signal: ctrl.signal, redirect: 'error' });
+    const res = await safeFetchN8n(url.toString(), 'health', {
+      signal: ctrl.signal,
+      redirect: 'error',
+    });
     await res.text(); // Body konsumieren, damit safeFetch seinen gepinnten Agent schließt.
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     return { ok: true, latencyMs: Date.now() - start };
@@ -294,27 +297,26 @@ function isLoopbackUrl(rawUrl: string): boolean {
 
 export interface TsaCheck extends ServiceStatus {
   url?: string | null;
-  source?: 'tenant' | 'env' | 'none';
+  source?: 'tenant' | 'env' | 'default';
 }
+
+const DEFAULT_TSA_URL = resolveTsaUrl('globalsign', null);
 
 /**
  * Generischer ENV-only-Check (genutzt vom /api/health-Endpoint, der keinen
  * Tenant-Kontext hat). Pro-Tenant-Check via `checkTsaForTenant`.
  */
 export async function checkTsa(): Promise<TsaCheck> {
-  if (!env.TIMESTAMP_AUTHORITY_URL) {
-    return {
-      ok: false,
-      source: 'none',
-      error: 'TIMESTAMP_AUTHORITY_URL leer — lokaler Self-Timestamp aktiv',
-    };
-  }
-  return roundtripTsa(env.TIMESTAMP_AUTHORITY_URL, 'env');
+  const envUrl = env.TIMESTAMP_AUTHORITY_URL?.trim();
+  if (envUrl) return roundtripTsa(envUrl, 'env');
+  if (!DEFAULT_TSA_URL) throw new Error('GlobalSign-TSA-Preset fehlt.');
+  return roundtripTsa(DEFAULT_TSA_URL, 'default');
 }
 
 /**
  * Tenant-spezifischer TSA-Check: bevorzugt `tenant_setting.evidence.tsa`,
- * fällt sonst auf ENV zurück, sonst keine TSA. Macht einen echten
+ * fällt sonst auf ENV und danach auf den verifizierten GlobalSign-Default
+ * zurück. Macht einen echten
  * RFC-3161-Roundtrip — sieht also auch, wenn der Server zwar erreichbar ist,
  * aber kein granted Response liefert.
  */
@@ -332,25 +334,23 @@ export async function checkTsaForTenant(tenantId: string): Promise<TsaCheck> {
     const url = resolveTsaUrl(v.providerId ?? null, v.customUrl ?? null);
     if (url) return roundtripTsa(url, 'tenant');
   }
-  if (env.TIMESTAMP_AUTHORITY_URL) {
-    return roundtripTsa(env.TIMESTAMP_AUTHORITY_URL, 'env');
-  }
-  return {
-    ok: false,
-    source: 'none',
-    error: 'Kein externer TSA — lokaler Self-Timestamp aktiv',
-  };
+  const envUrl = env.TIMESTAMP_AUTHORITY_URL?.trim();
+  if (envUrl) return roundtripTsa(envUrl, 'env');
+  if (!DEFAULT_TSA_URL) throw new Error('GlobalSign-TSA-Preset fehlt.');
+  return roundtripTsa(DEFAULT_TSA_URL, 'default');
 }
 
-async function roundtripTsa(url: string, source: 'tenant' | 'env'): Promise<TsaCheck> {
+async function roundtripTsa(url: string, source: 'tenant' | 'env' | 'default'): Promise<TsaCheck> {
   const start = Date.now();
   try {
-    // SSRF: kein separater Pre-Check mehr nötig — Rfc3161HttpAdapter geht über
+    // SSRF: kein separater Pre-Check mehr nötig — der RFC-3161-Adapter geht über
     // safeFetch, das die (DB-konfigurierte) TSA-URL genau EINMAL auflöst, jede
     // IP gegen die Block-Listen prüft und die Connection auf die geprüfte
     // Adresse pinnt. Ein vorgelagertes assertPublicHost hätte nur einen zweiten,
     // unabhängigen DNS-Lookup erzeugt (TOCTOU-Fenster) ohne Schutzgewinn.
-    const adapter = new Rfc3161HttpAdapter(url, 5_000);
+    // Die Factory bindet zusaetzlich die operatorseitig hinterlegten Roots ein;
+    // der nackte Konstruktor wuerde nur dem eingebetteten GlobalSign-Root trauen.
+    const adapter = createRfc3161Adapter(url, 5_000);
     await adapter.timestamp(randomBytes(32));
     return { ok: true, latencyMs: Date.now() - start, url, source };
   } catch (e) {

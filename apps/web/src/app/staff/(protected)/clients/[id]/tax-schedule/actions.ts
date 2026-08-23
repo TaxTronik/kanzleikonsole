@@ -51,7 +51,7 @@ export async function saveScheduleConfigAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'taxNotices' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 

@@ -396,8 +396,19 @@ export interface ActionErrorResult {
  * und P2003 (FK) bekommen menschenlesbare Meldungen.
  */
 export function toActionError(e: unknown): ActionErrorResult {
-  if (e instanceof UnauthorizedError || e instanceof ForbiddenError || e instanceof ActionError) {
-    return { ok: false, error: e.message };
+  if (
+    e instanceof UnauthorizedError ||
+    e instanceof ForbiddenError ||
+    e instanceof ActionError ||
+    (e instanceof Error && e.name === 'SessionRevocationUnavailableError')
+  ) {
+    return {
+      ok: false,
+      error:
+        e.name === 'SessionRevocationUnavailableError'
+          ? 'Session-Widerruf ist derzeit nicht verfügbar.'
+          : e.message,
+    };
   }
   if (e instanceof Prisma.PrismaClientKnownRequestError) {
     switch (e.code) {

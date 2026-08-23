@@ -7,7 +7,7 @@
 
 Die Software automatisiert Workflows, Dokumentation, Fristen und Kommunikation.
 Die **fachliche Beurteilung** steuerlicher Sachverhalte bleibt Aufgabe des
-Berater. TaxTronik strukturiert und konserviert, entscheidet aber nicht.
+Beraters. TaxTronik strukturiert und konserviert, entscheidet aber nicht.
 
 ## 2. TaxTronik ist kein TCMS an sich
 
@@ -24,18 +24,23 @@ ausgelegt, ersetzt aber nicht die Prüfung selbst.
 
 ## 4. Quantum Randomness
 
-Die Quantum-Randomness-Komponente (`packages/tax`) beschleunigt nichts und
-beweist nicht die Vollständigkeit der Population. Sie stellt sicher, dass die
-Auswahl **nicht vorhersagbar** ist und **reproduzierbar** bleibt (gleiche Inputs
-→ gleiche Auswahl). Die Vollständigkeit der Erfassungsgrundlage ist eine
-fachliche Eingabe, kein Software-Ergebnis.
+Der Quantenlos-Vertrag liegt in `packages/risk-layer`, die tenantgebundene
+Geschäftslogik in `apps/web/src/server/risk/los.ts`. Die Komponente
+beschleunigt nichts und beweist nicht die Vollständigkeit der Population. Sie
+bindet den vor der Ziehung festgelegten Rahmen an ein Commitment und speichert
+Nachweis, Rahmen und gezogene IDs in der Audit-Chain. Je nach Backend (`qpu`,
+`simulator`, `csprng`) gelten unterschiedliche Vertrauensannahmen. Die
+Vollständigkeit der Erfassungsgrundlage ist eine fachliche Eingabe, kein
+Software-Ergebnis.
 
 ## 5. Replay beweist nur Reproduzierbarkeit
 
-Der Replay-Mechanismus beweist: Gleiche Inputs führen zur gleichen Auswahl.
-Er beweist **nicht**, dass die Auswahl korrekt, vollständig oder rechtlich
-vertretbar ist. Die fachliche Prüfung der Stichproben-Parameter bleibt
-obligatorisch.
+Die Nachweisprüfung sendet den **gespeicherten Nachweis zusammen mit dem damals
+gebundenen Rahmen** an `/v1/los/pruefen`. Sie überprüft Commitment,
+Rahmenbindung und Auswahlbeleg; sie führt keine neue Ziehung aus und verspricht
+nicht „gleiche Inputs → gleiche Auswahl". Der Nachweis belegt **nicht**, dass
+der Rahmen vollständig oder die Stichprobenparameter fachlich beziehungsweise
+rechtlich angemessen sind. Diese Prüfung bleibt obligatorisch.
 
 ## 6. Externe KI ist Hilfsmittel, nicht Entscheidungsinstanz
 
@@ -55,11 +60,13 @@ leaken.
 
 ## 8. Audit-Chain schützt vor nachträglicher Änderung, nicht vor Echtzeit-Manipulation
 
-Die Hash-Chain mit RFC 3161 TSA beweist, dass die Aufzeichnungen nach dem
-Sealing nicht verändert wurden. Sie kann nicht verhindern, dass ein Angreifer
-mit Datenbankzugriff vor dem Sealing Einträge manipuliert. Das Sealing erfolgt
-täglich; bis zum nächsten Seal ist die Chain nur kryptographisch verkettet,
-aber nicht extern timestamped.
+Die lokale Hash-Chain verhindert keine Manipulation durch einen Angreifer, der
+gleichzeitig Anwendung, Datenbank und Hostuhr kontrolliert. Der Worker bindet
+den neuesten committeten Kettenpräfix zwar im Regelfall alle zwei Sekunden an
+einen externen RFC-3161-Anker; zwischen lokalem Commit und erfolgreicher
+TSA-Antwort bleibt jedoch ein sichtbares, nicht vollständig eliminierbares
+Fenster. Bei TSA-/Netzausfall wächst der im Admin-Status überwachte Rückstand.
+Der zusätzliche tägliche Seal ersetzt diese rollende Verankerung nicht.
 
 ## 9. Open Source bedeutet nicht automatisch sicher
 
@@ -119,8 +126,9 @@ Systeme.
 
 Die dokumentierten Upload-Routen parsen Multipart-Daten derzeit im
 Web-Prozess. Eine einzelne Datei ist deshalb auf 25 MiB begrenzt; der
-mitgelieferte nginx begrenzt den Request auf 26 MiB und parallele
-Dokument-Uploads zusätzlich pro IP und für den gesamten Virtual Host. Diese
+Anwendungscode bricht den eingehenden Request-Stream bei rund 26 MiB ab. Das
+mitgelieferte nginx-Beispiel begrenzt zusätzlich Requestgröße und parallele
+Uploads; beim optionalen Traefik-Deployment greift ein Buffering-Limit. Diese
 Schranken reduzieren den Speicher- und DoS-Radius, machen den Parser aber nicht
 zu einem O(1)-Streaming-Pfad.
 
@@ -128,3 +136,21 @@ Ein eigener oder umgangener Reverse Proxy muss mindestens gleichwertige Body-
 und Parallelitätsgrenzen setzen. Für größere Dateien oder höhere parallele Last
 ist vor einer Kapazitätsfreigabe ein Streaming-Multipart-Parser beziehungsweise
 ein isolierter Import-Job erforderlich.
+
+## 14. SMTP-Übergabe und Versandstatus sind keine gemeinsame Transaktion
+
+E-Mail-Schritte speichern den erfolgreichen Status je Empfänger erst nach der
+Annahme durch den konfigurierten SMTP-Server. Ein Retry überspringt bereits als
+versandt gespeicherte Empfänger. Stürzt der Prozess jedoch nach der
+SMTP-Annahme und vor der Statusspeicherung ab, ist eine Doppelzustellung beim
+Retry möglich. SMTP-Annahme belegt außerdem keine endgültige Zustellung an das
+Empfängerpostfach.
+
+## 15. Fail-closed Session-Widerruf hat eine Redis-Verfügbarkeitsabhängigkeit
+
+Schreiben und Lesen des benutzerbezogenen Session-Widerrufszeitpunkts sind
+fail-closed. Bei Redis-Ausfall werden betroffene Sessionprüfungen abgelehnt und
+sicherheitskritische Widerrufsaktionen nicht als erfolgreich gemeldet. Das
+verhindert die Nutzung eines Tokens ohne belastbare Widerrufsprüfung, kann aber
+Authentifizierung und bestehende Sitzungen bis zur Redis-Wiederherstellung
+vorübergehend blockieren.

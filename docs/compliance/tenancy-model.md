@@ -90,6 +90,8 @@ in Web + Worker. Konsolidiert (Round 12):
 - `@taxtronik/crypto` — secret-box v1/v2 (M-1)
 - `@taxtronik/db` — prismaOwner-Singleton + tenant-context (T-1)
 
-RSS-Fetcher bleibt vorerst dupliziert (Worker hat eigene Kopie für den
-täglichen Schedule, Web hat eine on-demand-Variante). Beide nutzen jetzt
-denselben `safeFetch` aus `@taxtronik/http-utils`.
+Der RSS-Fetcher ist inzwischen ebenfalls in `@taxtronik/rss` konsolidiert.
+Web und Worker verwenden damit dieselbe URL-Prüfung, DNS-Pinning-,
+Größenlimit- und Parser-Implementierung. Für tenantkonfigurierbare Feed-URLs
+gilt die strikte Public-URL-Policy; die globale Infrastruktur-Allowlist kann
+sie nicht auf interne Ziele umlenken.

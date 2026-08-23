@@ -28,7 +28,6 @@ import {
   commitBytesWithTier,
   classificationToTier,
   isGobdClassification,
-  MAX_UPLOAD_BYTES,
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
@@ -42,6 +41,7 @@ import { carrierClassification } from '@/server/storage/document-type';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { log } from '@/server/logger';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 // iter55: bevorzugt documentTypeId (trägt die Schutzstufe). classification
 // bleibt als Back-Compat erlaubt (Altpfade / Kern-Typ direkt). Mindestens
@@ -93,17 +93,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  // DoS-Mitigation: ehrlich deklarierte Über-Größe ablehnen, BEVOR req.formData()
-  // den gesamten Body in den RAM puffert (+1 MB Marge für Multipart-Framing +
-  // Metadatenfelder). Lügt der Client über Content-Length oder nutzt chunked-
-  // Encoding, greift weiter unten der file.size-Check (dann ist gepuffert) —
-  // voller Schutz wäre ein Streaming-Multipart-Parser (siehe Backlog).
-  const declaredLen = Number(req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(declaredLen) && declaredLen > MAX_UPLOAD_BYTES + 1024 * 1024) {
-    return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
-  }
-
-  // Befund 12: Multipart-Parse + Datei-Checks zentral (upload-helpers).
+  // Multipart-Body wird zentral am echten Stream begrenzt; das greift auch
+  // ohne Content-Length und bei chunked Transfer-Encoding.
   const upload = await parseMultipartUpload(req);
   if (!upload.ok) return upload.response;
   const { form, file } = upload;
@@ -404,22 +395,12 @@ export async function POST(req: NextRequest) {
       },
     );
   } catch (e) {
-    // Befund 1: zu diesem Zeitpunkt liegt das Objekt bereits object-locked
-    // im Storage und kann NICHT gelöscht werden. Scheitert die DB-Tx jetzt
-    // noch (z. B. TOCTOU: Client zwischen Validierung und Insert gelöscht →
-    // FK-Fehler), bleibt ein verwaistes Objekt zurück → Key strukturiert
-    // loggen, damit Ops aufräumen/abgleichen kann.
-    log.error(
-      {
-        component: 'documents-commit',
-        tenantId,
-        orphanedBucket: commit.targetBucket,
-        orphanedKey: commit.targetKey,
-        sha256: commit.sha256.toString('hex'),
-        err: (e as Error).message,
-      },
-      'documents-commit: DB-Commit nach Storage-Upload fehlgeschlagen — Objekt verwaist',
-    );
+    await compensateStorageCommit({
+      tenantId,
+      source: 'staff.document.commit',
+      commit,
+      cause: e,
+    });
     if (isReferenceChanged(e)) {
       return NextResponse.json(
         {

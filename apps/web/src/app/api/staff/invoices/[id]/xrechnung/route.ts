@@ -9,6 +9,96 @@ import { prismaBytes } from '@/server/db/prisma-bytes';
 import { generateXRechnungCii, toXRechnungInvoice } from '@/server/invoicing/xrechnung';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { isUuid } from '@/lib/uuid';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
+
+interface ArchiveXmlInput {
+  ctx: { tenantId: string; actorId: string; actorType: 'STAFF' };
+  tenantId: string;
+  staffId: string;
+  clientId: string;
+  title: string;
+  xml: string;
+  shareable: boolean;
+}
+
+async function ensureArchivedXmlCopy(input: ArchiveXmlInput): Promise<void> {
+  const existing = await withTenantContext(input.ctx, (tx) =>
+    tx.document.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        clientId: input.clientId,
+        title: input.title,
+        classification: 'GOBD_INVOICE',
+        deletedAt: null,
+      },
+      include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+    }),
+  );
+  if (existing?.versions[0]) {
+    if (input.shareable && !existing.sharedWithClientAt) {
+      await withTenantContext(input.ctx, (tx) =>
+        tx.document.updateMany({
+          where: { id: existing.id, sharedWithClientAt: null },
+          data: { sharedWithClientAt: new Date(), sharedByStaff: input.staffId },
+        }),
+      );
+    }
+    return;
+  }
+
+  let stored: Awaited<ReturnType<typeof commitBytesWithTier>> | null = null;
+  try {
+    stored = await commitBytesWithTier({
+      fileData: Buffer.from(input.xml, 'utf8'),
+      tier: 'GOBD',
+      tenantId: input.tenantId,
+      skipScan: true,
+      classification: 'GOBD_INVOICE',
+    });
+    const committed = stored;
+    await withTenantContext(input.ctx, async (tx) => {
+      const doc = await tx.document.create({
+        data: {
+          tenantId: input.tenantId,
+          clientId: input.clientId,
+          title: input.title,
+          classification: 'GOBD_INVOICE',
+          mimeType: 'application/xml',
+          retentionUntil: committed.retentionUntil,
+          sharedWithClientAt: input.shareable ? new Date() : null,
+          sharedByStaff: input.shareable ? input.staffId : null,
+        },
+      });
+      await tx.documentVersion.create({
+        data: {
+          documentId: doc.id,
+          versionNo: 1,
+          storageBucket: committed.targetBucket,
+          storageKey: committed.targetKey,
+          storageVersionId: committed.storageVersionId,
+          sha256: prismaBytes(committed.sha256),
+          sizeBytes: committed.sizeBytes,
+          immutable: committed.immutable,
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date(),
+          createdById: input.staffId,
+        },
+      });
+    });
+  } catch (error) {
+    if (stored) {
+      await compensateStorageCommit({
+        tenantId: input.tenantId,
+        source: 'staff.invoice.xrechnung',
+        commit: stored,
+        cause: error,
+      });
+    }
+    // Der Download selbst bleibt nutzbar; ein späterer Abruf versucht die
+    // revisionssichere Ablage erneut.
+  }
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
@@ -22,6 +112,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  if (!isModeModuleEnabled(await readModules(ctx), 'invoices')) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
 
   // Export-Limit wie die CSV-Routen: jeder GET rendert XML und kann einen
   // GoBD-Storage-Commit auslösen.
@@ -110,70 +203,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const shareable =
     invoice.status === 'SENT' || invoice.status === 'PAID' || invoice.status === 'OVERDUE';
   const xmlTitle = `Rechnung ${invoice.number} (XRechnung)`;
-  const existingXml = await withTenantContext(ctx, (tx) =>
-    tx.document.findFirst({
-      where: {
-        tenantId,
-        clientId: invoice.clientId,
-        title: xmlTitle,
-        classification: 'GOBD_INVOICE',
-        deletedAt: null,
-      },
-      include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
-    }),
-  );
-  if (existingXml?.versions[0]) {
-    if (shareable && !existingXml.sharedWithClientAt) {
-      await withTenantContext(ctx, (tx) =>
-        tx.document.updateMany({
-          where: { id: existingXml.id, sharedWithClientAt: null },
-          data: { sharedWithClientAt: new Date(), sharedByStaff: staffId },
-        }),
-      );
-    }
-  } else {
-    try {
-      const storedXml = await commitBytesWithTier({
-        fileData: Buffer.from(xml, 'utf8'),
-        tier: 'GOBD',
-        tenantId,
-        skipScan: true,
-        classification: 'GOBD_INVOICE', // Rechnung → 8 J. (BEG IV)
-      });
-      await withTenantContext(ctx, async (tx) => {
-        const doc = await tx.document.create({
-          data: {
-            tenantId,
-            clientId: invoice.clientId,
-            title: xmlTitle,
-            classification: 'GOBD_INVOICE',
-            mimeType: 'application/xml',
-            retentionUntil: storedXml.retentionUntil,
-            sharedWithClientAt: shareable ? new Date() : null,
-            sharedByStaff: shareable ? staffId : null,
-          },
-        });
-        await tx.documentVersion.create({
-          data: {
-            documentId: doc.id,
-            versionNo: 1,
-            storageBucket: storedXml.targetBucket,
-            storageKey: storedXml.targetKey,
-            storageVersionId: storedXml.storageVersionId,
-            sha256: prismaBytes(storedXml.sha256),
-            sizeBytes: storedXml.sizeBytes,
-            immutable: storedXml.immutable,
-            scanStatus: 'CLEAN',
-            scanCompletedAt: new Date(),
-            createdById: staffId,
-          },
-        });
-      });
-    } catch {
-      // Der Download selbst bleibt nutzbar; der Button verschwindet erst, wenn
-      // die revisionssichere Ablage erfolgreich nachgezogen wurde.
-    }
-  }
+  await ensureArchivedXmlCopy({
+    ctx,
+    tenantId,
+    staffId,
+    clientId: invoice.clientId,
+    title: xmlTitle,
+    xml,
+    shareable,
+  });
 
   // Audit-Log (separate Tx, da Hauptlogik abgeschlossen)
   await withTenantContext(ctx, async (tx) => {

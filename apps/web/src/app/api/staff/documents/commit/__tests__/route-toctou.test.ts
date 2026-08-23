@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   emitN8nEvent: vi.fn(),
   getClientIp: vi.fn(),
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  compensateStorageCommit: vi.fn(),
 }));
 
 vi.mock('@taxtronik/config', () => ({
@@ -19,7 +20,11 @@ vi.mock('@taxtronik/config', () => ({
 }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: m.staffAuth }));
 vi.mock('@/server/auth/rbac', () => ({ canAccessClientTx: m.canAccessClientTx }));
-vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
+vi.mock('@taxtronik/db', () => ({
+  withTenantContext: m.withTenantContext,
+  DEFAULT_BOOLEAN_TENANT_MODULES: {},
+  parseBooleanTenantModules: () => ({}),
+}));
 vi.mock('@taxtronik/storage', () => ({
   MAX_UPLOAD_BYTES: 10 * 1024 * 1024,
   classificationToTier: m.classificationToTier,
@@ -50,6 +55,9 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceReco
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: m.getClientIp }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
+vi.mock('@/server/documents/storage-compensation', () => ({
+  compensateStorageCommit: m.compensateStorageCommit,
+}));
 
 import { POST } from '../route';
 
@@ -201,13 +209,15 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
     expect(m.createDocumentWithVersion).not.toHaveBeenCalled();
     expect(m.evidenceRecord).not.toHaveBeenCalled();
     expect(m.emitN8nEvent).not.toHaveBeenCalled();
-    expect(m.log.error).toHaveBeenCalledWith(
+    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
       expect.objectContaining({
-        component: 'documents-commit',
-        orphanedBucket: 'docs-retain-none',
-        orphanedKey: 'tenant-1/documents/raced.txt',
+        tenantId: 'tenant-1',
+        source: 'staff.document.commit',
+        commit: expect.objectContaining({
+          targetBucket: 'docs-retain-none',
+          targetKey: 'tenant-1/documents/raced.txt',
+        }),
       }),
-      expect.any(String),
     );
   });
 });

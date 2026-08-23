@@ -74,6 +74,41 @@ export function sessionCookieNameVariants(base: string): string[] {
   return [`__${base}`, `__Host-${base}`, `__Secure-${base}`];
 }
 
+type SessionCookieReader = {
+  get(name: string): { value: string } | undefined;
+  getAll(): Array<{ name: string; value: string }>;
+};
+
+/**
+ * Liest einen Auth.js-Session-Cookie inklusive der `.0`, `.1`, ...-Chunks.
+ * Die Chunks werden nur bei lückenloser Nummerierung akzeptiert; gemischte
+ * Prefix-Varianten werden nie miteinander verkettet.
+ */
+export function readSessionCookieValue(
+  jar: SessionCookieReader,
+  baseNames: readonly string[],
+): string | null {
+  for (const base of baseNames) {
+    const direct = jar.get(base)?.value;
+    if (direct) return direct;
+
+    const chunks = jar
+      .getAll()
+      .map((cookie) => {
+        if (!cookie.name.startsWith(`${base}.`)) return null;
+        const suffix = cookie.name.slice(base.length + 1);
+        if (!/^\d+$/.test(suffix)) return null;
+        return { index: Number(suffix), value: cookie.value };
+      })
+      .filter((chunk): chunk is { index: number; value: string } => chunk !== null)
+      .sort((left, right) => left.index - right.index);
+    if (chunks.length === 0) continue;
+    if (chunks.some((chunk, index) => chunk.index !== index)) continue;
+    return chunks.map((chunk) => chunk.value).join('');
+  }
+  return null;
+}
+
 export const STAFF_SESSION_JWT_LEGACY_SALT = STAFF_SESSION_COOKIE_BASE;
 export const PORTAL_SESSION_JWT_LEGACY_SALT = PORTAL_SESSION_COOKIE_BASE;
 

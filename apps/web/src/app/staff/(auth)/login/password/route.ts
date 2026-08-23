@@ -11,6 +11,9 @@ import { checkPasswordAction } from '../actions';
 import { evidenceService } from '@/server/container';
 import { auditIp } from '@/server/auth/login-audit';
 import { getClientIp } from '@/server/rate-limit';
+import { isRequestBodyTooLargeError, parseFormDataBounded } from '@/server/http/bounded-form-data';
+
+export const STAFF_PASSWORD_FORM_MAX_BYTES = 64 * 1024;
 
 function safeStaffReturnTo(raw: string | null): string {
   if (!raw) return '/staff/dashboard';
@@ -27,7 +30,15 @@ function loginRedirect(req: NextRequest, error?: string): NextResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const formData = await req.formData();
+  let formData: FormData;
+  try {
+    formData = await parseFormDataBounded(req, STAFF_PASSWORD_FORM_MAX_BYTES);
+  } catch (error) {
+    if (isRequestBodyTooLargeError(error)) {
+      return NextResponse.json({ error: 'request_too_large' }, { status: 413 });
+    }
+    return NextResponse.json({ error: 'invalid_form' }, { status: 400 });
+  }
   const email = String(formData.get('email') ?? '');
   const password = String(formData.get('password') ?? '');
   const tenantSlug = String(formData.get('tenantSlug') ?? 'default');

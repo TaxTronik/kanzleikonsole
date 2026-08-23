@@ -11,12 +11,14 @@ import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import {
   staffActionGuard,
-  withStaff,
+  withStaffModule,
   ActionError,
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { fmtDateShort } from '@/lib/fmt';
+
+const withPhoneNotesStaff = withStaffModule('phoneNotes');
 
 export type ActionResult = BaseActionResult;
 
@@ -37,7 +39,7 @@ export async function createPhoneNoteAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'phoneNotes' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
@@ -140,7 +142,7 @@ export async function createPhoneNoteAction(
 }
 
 export async function markNoteReadAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'phoneNotes' });
   if (!g.ok) return;
   // S2: UUID-Validation (symmetrisch zu markNotificationReadAction).
   const parsed = parseFormData(z.object({ noteId: z.string().uuid() }), formData);
@@ -150,7 +152,7 @@ export async function markNoteReadAction(formData: FormData): Promise<void> {
 }
 
 export async function markPhoneNoteReadById(id: string): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'phoneNotes' });
   if (!g.ok) return g;
   if (typeof id !== 'string' || id.length === 0) return { ok: false, error: 'Ungültige ID.' };
   await markPhoneNoteRead(id, g.tenantId, g.staffId);
@@ -183,7 +185,7 @@ export async function markPhoneNoteDoneAction(input: { id: string }): Promise<Ac
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId }) => {
     const note = await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { doneAt: new Date(), doneByStaff: staffId, readAt: new Date() },
@@ -215,7 +217,7 @@ export async function undoPhoneNoteDoneAction(input: { id: string }): Promise<Ac
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId }) => {
     const note = await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { doneAt: null, doneByStaff: null },
@@ -250,7 +252,7 @@ export async function forwardPhoneNoteAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: {
@@ -334,7 +336,10 @@ export async function phoneNoteToReminderAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const remindersGate = await staffActionGuard({ module: 'reminders' });
+  if (!remindersGate.ok) return remindersGate;
+
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: {

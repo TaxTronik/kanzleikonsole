@@ -119,6 +119,9 @@ describe('changeOwnPasswordAction', () => {
     expect(JSON.stringify(mocks.evidenceRecord.mock.calls)).not.toContain('Neues-Passwort-2026!');
     expect(JSON.stringify(mocks.evidenceRecord.mock.calls)).not.toContain('new-password-hash');
     expect(mocks.revokeAllSessions).toHaveBeenCalledWith('staff', STAFF_ID);
+    expect(mocks.revokeAllSessions.mock.invocationCallOrder[0]!).toBeLessThan(
+      tx.staffUser.updateMany.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('überschreibt keine zwischenzeitliche Passwortänderung', async () => {
@@ -140,6 +143,32 @@ describe('changeOwnPasswordAction', () => {
       error: 'Das Passwort wurde zwischenzeitlich geändert. Bitte melden Sie sich erneut an.',
     });
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
-    expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+    expect(mocks.revokeAllSessions).toHaveBeenCalledWith('staff', STAFF_ID);
+  });
+
+  it('bricht vor der Passwortänderung ab, wenn Redis den Widerruf nicht bestätigt', async () => {
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({ passwordHash: 'old-hash', active: true }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+    mocks.compare.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    mocks.revokeAllSessions.mockRejectedValueOnce(
+      new Error('Session-Widerruf ist derzeit nicht verfügbar.'),
+    );
+
+    const result = await changeOwnPasswordAction(null, passwordForm());
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Session-Widerruf ist derzeit nicht verfügbar.',
+    });
+    expect(mocks.revokeAllSessions).toHaveBeenCalledWith('staff', STAFF_ID);
+    expect(tx.staffUser.updateMany).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
   });
 });

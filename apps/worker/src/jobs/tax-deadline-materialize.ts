@@ -22,6 +22,7 @@ import { materializeTenantTaxDeadlines } from '@taxtronik/tax';
 import { notifyRequestOpened } from '../mail';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { isWorkerTenantModuleEnabled } from '../module-gate';
 
 const HORIZON_DAYS = 90;
 
@@ -43,6 +44,10 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
     let totalMailRecipients = 0;
 
     for (const tenantId of tenantIds) {
+      if (!(await isWorkerTenantModuleEnabled(tenantId, 'taxNotices'))) {
+        log.info({ tenantId }, 'tax-deadline: Modul deaktiviert, skip');
+        continue;
+      }
       // System-Staff für createdByStaff der Auto-Anforderungen — wir nehmen
       // den ersten ADMIN/PARTNER. Ohne so einen Account: skip.
       const systemStaff = await prismaOwner.staffUser.findFirst({

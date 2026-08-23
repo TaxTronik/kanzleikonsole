@@ -67,6 +67,7 @@ const REPRESENTATIVE_FIELD_LABELS: Readonly<Record<string, string>> = {
   fullName: 'Vollständiger Name',
   idNumber: 'Ausweisnummer',
   idIssuedBy: 'Ausstellende Behörde',
+  idIssueDate: 'Ausstellungsdatum des Ausweises',
   idExpiryDate: 'Gültigkeitsdatum des Ausweises',
   idFrontDocumentId: 'Ausweis Vorderseite',
   idBackDocumentId: 'Ausweis Rückseite',

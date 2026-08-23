@@ -128,6 +128,9 @@ services:
       # LocalTimestampAdapter — in Production verlangt @taxtronik/config aber
       # eine externe TSA. MUSS daher durchgereicht werden (sonst still lokal).
       TIMESTAMP_AUTHORITY_URL: ${TIMESTAMP_AUTHORITY_URL:-}
+      # Zusätzliche TSA-Trust-Anchors liegen in einem festen read-only Mount.
+      # Der Wert muss einen Containerpfad unter /etc/taxtronik/tsa-roots nennen.
+      TSA_TRUSTED_ROOTS_FILE: ${TSA_TRUSTED_ROOTS_FILE:-}
       # Optionaler dedizierter Secret-Box-Key (Rotation). Leer → Fallback
       # AUTH_SECRET; ein später gesetzter Wert darf nicht still ignoriert werden.
       SECRET_BOX_KEY: ${SECRET_BOX_KEY:-}
@@ -151,6 +154,7 @@ services:
       # Browser-triggered Backups: lokale Operator-Kopie im Repo-Root unter
       # ./backups, im read-only Container als gezielt schreibbares Volume.
       - ${BACKUP_HOST_DIR:-../../backups}:/app/backups
+      - ${TSA_TRUSTED_ROOTS_HOST_DIR:-./tsa-roots}:/etc/taxtronik/tsa-roots:ro
 
   backup-dir-init:
     <<: [*hardening, *logging]
@@ -246,6 +250,7 @@ services:
       # laufen im Worker — ohne diesen Wert fallen sie still auf den
       # LocalTimestampAdapter, obwohl Prod eine externe TSA verlangt.
       TIMESTAMP_AUTHORITY_URL: ${TIMESTAMP_AUTHORITY_URL:-}
+      TSA_TRUSTED_ROOTS_FILE: ${TSA_TRUSTED_ROOTS_FILE:-}
       SECRET_BOX_KEY: ${SECRET_BOX_KEY:-}
       DATABASE_CONNECTION_LIMIT: ${DATABASE_CONNECTION_LIMIT:-}
       # Risk-Layer/LLM: der risk-analyse-llm-Job instanziiert den RiskLayerClient
@@ -257,6 +262,8 @@ services:
       # ELSTER / eric-bridge — opt-in, siehe app-Service.
       ELSTER_BRIDGE_URL: ${ELSTER_BRIDGE_URL:-}
       ELSTER_BRIDGE_TOKEN: ${ELSTER_BRIDGE_TOKEN:-}
+    volumes:
+      - ${TSA_TRUSTED_ROOTS_HOST_DIR:-./tsa-roots}:/etc/taxtronik/tsa-roots:ro
 
   # ===========================================================================
   # Einmal-Migration: wendet Prisma-Migrationen an, BEVOR app/worker starten

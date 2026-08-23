@@ -37,7 +37,16 @@ const ALLOWLIST_FNS = new Set([
 // Bekannte Autorisierungs-Primitive (Session/Tenant/Ownership) inkl. der
 // zentralen Staff- UND Portal-Helfer (kapseln staffAuth/portalAuth + Kontext).
 const PRIMITIVE =
-  /\b(staffAuth|portalAuth|requireStaffSession|requireStaffAdmin|requireClientAccess|requireSubsumtionAccess|canAccessClient|staffActionGuard|withStaff|portalActionGuard|withPortalContext)\b/;
+  /\b(staffAuth|portalAuth|requireStaffSession|requireStaffAdmin|requireClientAccess|requireSubsumtionAccess|canAccessClient|staffActionGuard|staffModuleActionGuard|withStaff|portalActionGuard|portalModuleActionGuard|withPortalContext)\b/;
+
+// Diese beiden Fabriken liefern gebundene Wrapper, die bei JEDEM Aufruf erst
+// Session, Tenant-Kontext und Modulstatus pruefen. Nur Importe aus den beiden
+// kanonischen Action-Modulen duerfen ein solches Binding autorisierend machen;
+// ein lokales, zufaellig gleich benanntes `withStaffModule` ist kein Freipass.
+const TRUSTED_MODULE_WRAPPER_FACTORIES = new Map<string, ReadonlySet<string>>([
+  ['@/server/actions/staff-action', new Set(['withStaffModule'])],
+  ['@/server/actions/portal-action', new Set(['withPortalModule'])],
+]);
 
 // Delegation: ruft die Action eine ANDERE *Action auf, ist die Autorisierung dort
 // garantiert (jene Action wird von diesem Guardrail selbst geprüft → Transitivität).
@@ -137,6 +146,44 @@ function importedFnsBySource(src: ts.SourceFile): Map<string, string[]> {
   return bySpec;
 }
 
+/**
+ * Findet `const withX = withStaffModule('x')`/`withPortalModule('x')`, aber
+ * ausschliesslich wenn die Fabrik als benannter Import aus dem kanonischen
+ * Auth-Modul stammt. Das Ergebnis ist selbst ein auth-tragendes Callable.
+ */
+function boundModuleAuthWrappers(src: ts.SourceFile): Set<string> {
+  const trustedFactoryLocals = new Set<string>();
+  src.forEachChild((node) => {
+    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return;
+    const trustedExports = TRUSTED_MODULE_WRAPPER_FACTORIES.get(node.moduleSpecifier.text);
+    const bindings = node.importClause?.namedBindings;
+    if (!trustedExports || !bindings || !ts.isNamedImports(bindings)) return;
+    for (const element of bindings.elements) {
+      if (element.isTypeOnly) continue;
+      const importedName = element.propertyName?.text ?? element.name.text;
+      if (trustedExports.has(importedName)) trustedFactoryLocals.add(element.name.text);
+    }
+  });
+
+  const wrappers = new Set<string>();
+  src.forEachChild((node) => {
+    if (!ts.isVariableStatement(node)) return;
+    for (const declaration of node.declarationList.declarations) {
+      if (
+        !ts.isIdentifier(declaration.name) ||
+        !declaration.initializer ||
+        !ts.isCallExpression(declaration.initializer) ||
+        !ts.isIdentifier(declaration.initializer.expression) ||
+        !trustedFactoryLocals.has(declaration.initializer.expression.text)
+      ) {
+        continue;
+      }
+      wrappers.add(declaration.name.text);
+    }
+  });
+  return wrappers;
+}
+
 function authCarryingFns(file: string, seen: Set<string> = new Set()): Set<string> {
   const cached = authFnCache.get(file);
   if (cached) return cached;
@@ -152,7 +199,10 @@ function authCarryingFns(file: string, seen: Set<string> = new Set()): Set<strin
   const fns = topLevelFns(src);
 
   // Basis: direkte Primitive + auth-tragende Importe aus relativen Modulen.
-  const auth = new Set<string>(fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name));
+  const auth = new Set<string>([
+    ...fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name),
+    ...boundModuleAuthWrappers(src),
+  ]);
   for (const [spec, names] of importedFnsBySource(src)) {
     const target = resolveRelative(file, spec);
     if (!target) continue;

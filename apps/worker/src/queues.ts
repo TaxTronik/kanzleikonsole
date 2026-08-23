@@ -121,6 +121,14 @@ export const n8nRetentionQueue = new Queue<Record<string, never>, void, string>(
   connection,
   defaultJobOptions,
 });
+export const workflowN8nDispatchQueue = new Queue<Record<string, never>, void, string>(
+  'workflow-n8n-dispatch',
+  { connection, defaultJobOptions },
+);
+export const storageOrphanCleanupQueue = new Queue<Record<string, never>, void, string>(
+  'storage-orphan-cleanup',
+  { connection, defaultJobOptions },
+);
 export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-link-cleanup', {
   connection,
   defaultJobOptions,

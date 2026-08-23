@@ -15,6 +15,7 @@ import {
   STAFF_SESSION_JWT_DECODE_SALTS,
   STAFF_SESSION_JWT_SALT,
   USE_SECURE_COOKIES,
+  readSessionCookieValue,
   sessionCookieNameVariants,
 } from './session-cookie';
 import { createStableSessionJwtOptions } from './session-jwt';
@@ -105,11 +106,7 @@ function staffSessionCookieNames(): string[] {
 
 async function readStaffSessionTokenCookie(): Promise<string | null> {
   const jar = await cookies();
-  for (const name of staffSessionCookieNames()) {
-    const value = jar.get(name)?.value;
-    if (value) return value;
-  }
-  return null;
+  return readSessionCookieValue(jar, staffSessionCookieNames());
 }
 
 function hasValidJwtLifetime(token: JWT): boolean {
@@ -623,6 +620,14 @@ const _staff = NextAuth(staffConfig);
 export const staffHandlers: typeof _staff.handlers = _staff.handlers;
 export const staffSignIn: typeof _staff.signIn = _staff.signIn;
 export const staffSignOut: typeof _staff.signOut = _staff.signOut;
+
+/** Verifizierter JWT-Subject ohne DB-Hydration, insbesondere für Logout. */
+export async function staffSessionSubject(): Promise<string | null> {
+  const rawToken = await readStaffSessionTokenCookie();
+  if (!rawToken) return null;
+  const token = await decodeStaffSessionToken(rawToken);
+  return isStaffTokenPayload(token) ? token.staffId : null;
+}
 
 // Harter Server-Gatekeeper fuer Staff-Sessions: Cookie prefix-tolerant lesen,
 // JWT mit stabilen Salts decodieren und dann dieselben Revocation-/DB-Gates

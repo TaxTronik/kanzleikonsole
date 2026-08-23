@@ -27,6 +27,8 @@ import { reminderDoneNotifyWorker } from './jobs/reminder-done-notify';
 import { backupDrillWorker } from './jobs/backup-drill';
 import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
+import { workflowN8nDispatchWorker } from './jobs/workflow-n8n-dispatch';
+import { storageOrphanCleanupWorker } from './jobs/storage-orphan-cleanup';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
 import { prismaOwner } from './prisma-owner';
@@ -57,6 +59,8 @@ const ALL_WORKERS = [
   backupDrillWorker,
   backupRunWorker,
   healthAlertWorker,
+  workflowN8nDispatchWorker,
+  storageOrphanCleanupWorker,
 ] as const;
 
 // Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s ins

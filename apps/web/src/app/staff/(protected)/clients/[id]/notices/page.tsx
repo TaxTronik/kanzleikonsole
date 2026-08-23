@@ -34,6 +34,58 @@ function diff(actual: { toString(): string } | null, expected: { toString(): str
   return a - e;
 }
 
+function DataRetrievalEvidenceDetails({
+  issuedAt,
+  notificationDate,
+  legacyFallback,
+  notificationDisputedOrLate,
+  retrievedAt,
+}: {
+  issuedAt: Date | null;
+  notificationDate: Date | null;
+  legacyFallback: boolean;
+  notificationDisputedOrLate: boolean;
+  retrievedAt: Date | null;
+}) {
+  return (
+    <>
+      {issuedAt && <div className="text-xs text-muted">Erlassen: {fmtDateShort(issuedAt)}</div>}
+      {notificationDate && (
+        <div className="text-xs text-muted">Benachrichtigung: {fmtDateShort(notificationDate)}</div>
+      )}
+      {legacyFallback && (
+        <div className="text-xs text-amber-700">
+          Altbestand: Erlass-/Benachrichtigungstag nicht dokumentiert; Frist unverändert übernommen
+        </div>
+      )}
+      {notificationDisputedOrLate && retrievedAt && (
+        <div className="text-xs text-amber-700">
+          Maßgeblicher Abruf: {fmtDateShort(retrievedAt)}
+        </div>
+      )}
+    </>
+  );
+}
+
+function MissingAppealDeadline({
+  deliveryMethod,
+  notificationDisputedOrLate,
+  retrievedAt,
+}: {
+  deliveryMethod: string;
+  notificationDisputedOrLate: boolean;
+  retrievedAt: Date | null;
+}) {
+  if (deliveryMethod === 'DATA_RETRIEVAL' && notificationDisputedOrLate && !retrievedAt) {
+    return (
+      <span className="text-xs text-amber-700">
+        Noch nicht bekanntgegeben — kein Abruf nachgewiesen
+      </span>
+    );
+  }
+  return <span className="text-disabled">—</span>;
+}
+
 export default async function ClientNoticesPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireStaffPage();
   const { id: clientId } = await params;
@@ -199,6 +251,13 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                       <div className="text-xs text-muted">
                         {DELIVERY_LABELS[n.deliveryMethod] ?? n.deliveryMethod}
                       </div>
+                      <DataRetrievalEvidenceDetails
+                        issuedAt={n.retrievalIssuedAt}
+                        notificationDate={n.retrievalNotificationDate}
+                        legacyFallback={n.retrievalNotificationLegacyFallback}
+                        notificationDisputedOrLate={n.retrievalNotificationDisputedOrLate}
+                        retrievedAt={n.retrievedAt}
+                      />
                       {!n.legalRemedyInstructionValid && (
                         <div className="text-xs text-amber-700">Jahresfrist (§ 356 Abs. 2 AO)</div>
                       )}
@@ -247,7 +306,11 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                             )}
                         </div>
                       ) : (
-                        <span className="text-disabled">—</span>
+                        <MissingAppealDeadline
+                          deliveryMethod={n.deliveryMethod}
+                          notificationDisputedOrLate={n.retrievalNotificationDisputedOrLate}
+                          retrievedAt={n.retrievedAt}
+                        />
                       )}
                     </td>
                     <td className="px-4 py-3">

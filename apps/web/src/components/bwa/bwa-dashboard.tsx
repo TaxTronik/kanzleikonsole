@@ -255,7 +255,7 @@ export function BwaDashboard({
                 <strong>kein Abschluss</strong>.
               </p>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <ProjectionCard p={projection.linear} title="Linear + Saisonalität" />
+                <ProjectionCard p={projection.linear} title="Lineare Run-rate" />
                 <ProjectionCard p={projection.trend} title="Trend aus Vorjahren" />
               </div>
             </section>

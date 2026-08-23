@@ -80,6 +80,7 @@ model Tenant {
   riskPromptTemplates        RiskPromptTemplate[]
   rssFeeds                   RssFeed[]
   serviceProviders           ServiceProvider[]
+  storageOrphans             StorageOrphan[]
   staffBookmarks             StaffBookmark[]
   staffNotes                 StaffNote[]
   staffSkills                StaffSkill[]
@@ -93,6 +94,7 @@ model Tenant {
   taxScheduleConfigs         TaxScheduleConfig[]
   settings                   TenantSetting[]
   workflowInstances          WorkflowInstance[]
+  workflowN8nDispatches      WorkflowN8nDispatch[]
   workflowTemplates          WorkflowTemplate[]
   clientReminderNotes        ClientReminderNote[]
 
@@ -443,6 +445,7 @@ model N8nOutbox {
   deliveredAt DateTime?       @map("delivered_at")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
+  dedupeKey   String?         @unique(map: "n8n_outbox_dedupe_key_uq") @map("dedupe_key") @db.VarChar(200)
   tenant      Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   deliveries  N8nDelivery[]
 
@@ -1463,6 +1466,7 @@ model DocumentVersion {
 
   @@unique([documentId, versionNo])
   @@index([documentId])
+  @@index([storageBucket, storageKey, storageVersionId], map: "document_version_storage_identity_idx")
   @@map("document_version")
 }
 
@@ -1516,40 +1520,47 @@ model AuditAnchor {
 }
 
 model Request {
-  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId              String            @map("tenant_id") @db.Uuid
-  clientId              String            @map("client_id") @db.Uuid
+  id                    String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                   @map("tenant_id") @db.Uuid
+  clientId              String                   @map("client_id") @db.Uuid
   title                 String
   description           String
-  priority              RequestPriority   @default(NORMAL)
-  status                RequestStatus     @default(OPEN)
-  dueAt                 DateTime?         @map("due_at")
-  createdByStaff        String            @map("created_by_staff") @db.Uuid
-  closedAt              DateTime?         @map("closed_at")
-  closedByStaff         String?           @map("closed_by_staff") @db.Uuid
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-  formSubmissionId      String?           @map("form_submission_id") @db.Uuid
-  workflowItemId        String?           @map("workflow_item_id") @db.Uuid
+  priority              RequestPriority          @default(NORMAL)
+  status                RequestStatus            @default(OPEN)
+  dueAt                 DateTime?                @map("due_at")
+  createdByStaff        String                   @map("created_by_staff") @db.Uuid
+  closedAt              DateTime?                @map("closed_at")
+  closedByStaff         String?                  @map("closed_by_staff") @db.Uuid
+  createdAt             DateTime                 @default(now()) @map("created_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
+  formSubmissionId      String?                  @map("form_submission_id") @db.Uuid
+  workflowItemId        String?                  @map("workflow_item_id") @db.Uuid
+  /// Stabile Herkunft einer automatisch aus einem Steuertermin erzeugten
+  /// Anforderung. Der Unique-Backstop verhindert auch bei parallelen Web-/
+  /// Worker-Läufen mehr als eine Anforderung pro Termin.
+  taxDeadlineId         String?                  @unique(map: "request_tax_deadline_unique") @map("tax_deadline_id") @db.Uuid
   // U-5: Auto-Requests aus gwg-expiry-check verlinken sauber auf das ID-
   // Dokument, dessen Erneuerung sie anstoßen. Vorher musste der Worker mit
   // einer Titel-Substring-Heuristik (`contains: ownerName`) entscheiden, ob
   // bereits ein offener Auto-Request existiert — zwei BeneficialOwners mit
   // ähnlichen Namen („Müller" / „Müller-Schmidt") fielen unter denselben
   // Match und der zweite Request wurde nie angelegt.
-  linkedGwgIdDocumentId String?           @map("linked_gwg_id_document_id") @db.Uuid
-  client                Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  formSubmission        FormSubmission?   @relation(fields: [formSubmissionId], references: [id], onUpdate: NoAction, map: "request_form_submission_fk")
-  tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  workflowItem          WorkflowItem?     @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "request_workflow_item_fk")
-  linkedGwgIdDocument   GwgIdDocument?    @relation(fields: [linkedGwgIdDocumentId], references: [id], onUpdate: NoAction, map: "request_gwg_id_doc_fk")
+  linkedGwgIdDocumentId String?                  @map("linked_gwg_id_document_id") @db.Uuid
+  client                Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  formSubmission        FormSubmission?          @relation(fields: [formSubmissionId], references: [id], onUpdate: NoAction, map: "request_form_submission_fk")
+  tenant                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowItem          WorkflowItem?            @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "request_workflow_item_fk")
+  taxDeadline           TaxDeadline?             @relation("TaxDeadlineAutoRequest", fields: [taxDeadlineId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "request_tax_deadline_fk")
+  taxDeadlinePointer    TaxDeadline?             @relation("TaxDeadlineRequestPointer")
+  linkedGwgIdDocument   GwgIdDocument?           @relation(fields: [linkedGwgIdDocumentId], references: [id], onUpdate: NoAction, map: "request_gwg_id_doc_fk")
   responses             RequestResponse[]
+  internalComments      RequestInternalComment[]
 
+  @@unique([workflowItemId], map: "request_workflow_item_unique")
   @@index([tenantId, clientId])
   @@index([tenantId, status])
   @@index([tenantId, dueAt])
   @@index([tenantId, createdAt(sort: Desc)])
-  @@index([workflowItemId], map: "request_workflow_item_idx")
   @@index([linkedGwgIdDocumentId], map: "request_gwg_id_doc_idx")
   @@index([tenantId, formSubmissionId])
   // iter71: pg_trgm-GIN für die globale Suche
@@ -1616,6 +1627,21 @@ model RequestResponse {
   @@index([requestId])
   @@index([documentId])
   @@map("request_response")
+}
+
+/// Reine Kanzlei-Zusammenarbeit an einer Anforderung. Diese Zeilen werden nie
+/// in Portal-Abfragen aufgenommen und lösen keine Mandanten-Mail aus.
+model RequestInternalComment {
+  id            String   @id(map: "request_internal_comment_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId     String   @map("request_id") @db.Uuid
+  authorStaffId String   @map("author_staff_id") @db.Uuid
+  authorName    String   @map("author_name")
+  body          String
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  request       Request  @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "request_internal_comment_request_fk")
+
+  @@index([requestId, createdAt], map: "request_internal_comment_request_idx")
+  @@map("request_internal_comment")
 }
 
 /// Ein Analyse-Lauf der Risk-Layer-Engine (§4, TCMS) über einen Text/ein
@@ -1886,7 +1912,7 @@ model TaxDeadline {
   period                       String
   dueDate                      DateTime           @map("due_date") @db.Date
   status                       TaxDeadlineStatus  @default(PLANNED)
-  requestId                    String?            @map("request_id") @db.Uuid
+  requestId                    String?            @unique(map: "tax_deadline_request_unique") @map("request_id") @db.Uuid
   amountDue                    Decimal?           @map("amount_due") @db.Decimal(12, 2)
   notes                        String?
   completedAt                  DateTime?          @map("completed_at")
@@ -1897,11 +1923,16 @@ model TaxDeadline {
   /// completedByStaff.
   autoRequestSuppressedAt      DateTime?          @map("auto_request_suppressed_at") @db.Timestamptz(6)
   autoRequestSuppressedByStaff String?            @map("auto_request_suppressed_by_staff") @db.Uuid
+  /// Kurzlebiger transaktionaler CAS-Claim für die Auto-Anforderung. Bei
+  /// Rollback verschwindet er zusammen mit dem gesamten Erzeugungsversuch.
+  autoRequestClaimedAt         DateTime?          @map("auto_request_claimed_at") @db.Timestamptz(6)
   createdAt                    DateTime           @default(now()) @map("created_at")
   updatedAt                    DateTime           @updatedAt @map("updated_at")
   client                       Client             @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_client_fkey")
   config                       TaxScheduleConfig? @relation(fields: [configId], references: [id], onUpdate: NoAction, map: "tax_deadline_config_fkey")
   tenant                       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_tenant_fkey")
+  autoRequest                  Request?           @relation("TaxDeadlineAutoRequest")
+  request                      Request?           @relation("TaxDeadlineRequestPointer", fields: [requestId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "tax_deadline_request_fk")
 
   @@unique([tenantId, clientId, kind, period])
   @@index([tenantId, dueDate])
@@ -1950,12 +1981,30 @@ model TaxNotice {
   noticeDate                                DateTime        @map("notice_date") @db.Date
   /// Post (Inland/Ausland), elektronische Übermittlung und Datenabruf nutzen
   /// die jeweilige Bekanntgabefiktion; die übrigen Wege brauchen den rechtlich
-  /// maßgeblichen Bekanntgabetag in receivedAt.
+  /// maßgeblichen Bekanntgabetag in receivedAt. Bei DATA_RETRIEVAL ist dies der
+  /// Bereitstellungstag; die historische Benachrichtigung steht separat.
   deliveryMethod                            String          @default("POST") @map("delivery_method")
   legalRemedyInstructionValid               Boolean         @default(true) @map("legal_remedy_instruction_valid")
   /// Tatsächlicher Zugangstag (§ 122 Abs. 2 AO Hs. 2): kam der Bescheid SPÄTER
   /// als die 4-Tage-Fiktion an, läuft die Einspruchsfrist ab diesem Tag.
   receivedAt                                DateTime?       @map("received_at") @db.Date
+  /// Erlass-/Bescheiddatum bei DATA_RETRIEVAL. Es entscheidet nach Art. 97
+  /// § 28 Abs. 2 EGAO über § 122a AO a.F. oder die Neufassung ab 2026.
+  retrievalIssuedAt                         DateTime?       @map("retrieval_issued_at") @db.Date
+  /// Versandtag der elektronischen Bereitstellungsbenachrichtigung nach
+  /// § 122a Abs. 4 AO a.F.; für bis 31.12.2025 erlassene Bescheide erforderlich.
+  retrievalNotificationDate                 DateTime?       @map("retrieval_notification_date") @db.Date
+  /// Nur für migrierten Altbestand: Das alte Modell kannte keinen separaten
+  /// Erlass-/Benachrichtigungstag. true kennzeichnet, dass die vorhandene
+  /// Altfälligkeit erhalten bleibt, ohne unbekannte Daten als Tatsache auszugeben.
+  retrievalNotificationLegacyFallback       Boolean         @default(false) @map("retrieval_notification_legacy_fallback")
+  /// Kennzeichnet den altrechtlichen Ausnahmefall: Zugang der elektronischen
+  /// Benachrichtigung ist bestritten oder wurde erst verspätet empfangen.
+  retrievalNotificationDisputedOrLate       Boolean         @default(false) @map("retrieval_notification_disputed_or_late")
+  /// Tatsächlicher Abruftag; bei markiertem altrechtlichem Ausnahmefall ist er
+  /// statt der Benachrichtigungsfiktion fristauslösend. Fehlt auch er, ist der
+  /// Verwaltungsakt noch nicht bekanntgegeben und appealDeadline bleibt null.
+  retrievedAt                               DateTime?       @map("retrieved_at") @db.Date
   appealDeadline                            DateTime?       @map("appeal_deadline") @db.Date
   status                                    TaxNoticeStatus @default(NEU)
   fileNumber                                String?         @map("file_number")
@@ -2206,34 +2255,86 @@ model WorkflowInstanceMember {
 }
 
 model WorkflowItem {
-  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  instanceId           String                @map("instance_id") @db.Uuid
+  id                   String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  instanceId           String                   @map("instance_id") @db.Uuid
   position             Int
   title                String
   description          String?
-  assigneeStaffId      String?               @map("assignee_staff_id") @db.Uuid
-  skillId              String?               @map("skill_id") @db.Uuid
-  dueDate              DateTime?             @map("due_date") @db.Date
-  doneAt               DateTime?             @map("done_at")
-  doneByStaff          String?               @map("done_by_staff") @db.Uuid
+  assigneeStaffId      String?                  @map("assignee_staff_id") @db.Uuid
+  skillId              String?                  @map("skill_id") @db.Uuid
+  dueDate              DateTime?                @map("due_date") @db.Date
+  doneAt               DateTime?                @map("done_at")
+  doneByStaff          String?                  @map("done_by_staff") @db.Uuid
   notes                String?
-  createdAt            DateTime              @default(now()) @map("created_at")
-  updatedAt            DateTime              @updatedAt @map("updated_at")
-  kind                 WorkflowStepKind      @default(TASK)
-  config               Json                  @default("{}")
-  n8nEvent             String?               @map("n8n_event")
-  startedAt            DateTime?             @map("started_at") @db.Timestamptz(6)
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  kind                 WorkflowStepKind         @default(TASK)
+  config               Json                     @default("{}")
+  n8nEvent             String?                  @map("n8n_event")
+  startedAt            DateTime?                @map("started_at") @db.Timestamptz(6)
   documents            Document[]
   triggeredSubmissions FormSubmission[]
   triggeredRequests    Request[]
-  instance             WorkflowInstance      @relation(fields: [instanceId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_item_instance_fkey")
-  skill                StaffSkill?           @relation(fields: [skillId], references: [id], onUpdate: NoAction, map: "workflow_item_skill_fkey")
+  instance             WorkflowInstance         @relation(fields: [instanceId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_item_instance_fkey")
+  skill                StaffSkill?              @relation(fields: [skillId], references: [id], onUpdate: NoAction, map: "workflow_item_skill_fkey")
   comments             WorkflowItemComment[]
+  emailRecipients      WorkflowEmailRecipient[]
+  n8nDispatch          WorkflowN8nDispatch?
 
   @@index([instanceId, position])
   @@index([assigneeStaffId, doneAt])
   @@index([skillId])
   @@map("workflow_item")
+}
+
+/// Persistenter Versandzustand je Empfänger eines CLIENT_EMAIL-Schritts.
+/// Erfolgreiche Empfänger bleiben bei einem Teilfehler als versendet markiert
+/// und werden bei einem Retry nicht erneut angeschrieben.
+model WorkflowEmailRecipient {
+  id             String       @id(map: "wf_email_recipient_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId         String       @map("item_id") @db.Uuid
+  recipientEmail String       @map("recipient_email") @db.Citext
+  recipientName  String       @map("recipient_name")
+  subject        String
+  bodyText       String       @map("body_text")
+  bodyHtml       String       @map("body_html")
+  claimedAt      DateTime?    @map("claimed_at") @db.Timestamptz(6)
+  sentAt         DateTime?    @map("sent_at") @db.Timestamptz(6)
+  attemptCount   Int          @default(0) @map("attempt_count")
+  lastError      String?      @map("last_error")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  item           WorkflowItem @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "wf_email_recipient_item_fk")
+
+  @@unique([itemId, recipientEmail], map: "wf_email_recipient_item_email_uq")
+  @@index([itemId, sentAt], map: "wf_email_recipient_pending_idx")
+  @@map("workflow_email_recipient")
+}
+
+/// Dauerhafte Workflow-Event-Absicht. Sie wird in derselben Transaktion wie
+/// der fachliche Schritteffekt angelegt und durch App oder Worker mit einem
+/// stabilen n8n-Outbox-Dedupe-Key verarbeitet.
+model WorkflowN8nDispatch {
+  id           String       @id(map: "wf_n8n_dispatch_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId       String       @unique(map: "wf_n8n_dispatch_item_uq") @map("item_id") @db.Uuid
+  tenantId     String       @map("tenant_id") @db.Uuid
+  /// Staff-Akteur der ursprünglichen, dauerhaft gespeicherten Ausführungsabsicht.
+  /// Bewusst ohne FK: Audit-/Recovery-Zuordnung muss ausgeschiedene Nutzer überleben.
+  actorStaffId String       @map("actor_staff_id") @db.Uuid
+  event        String
+  payload      Json
+  claimedAt    DateTime?    @map("claimed_at") @db.Timestamptz(6)
+  enqueuedAt   DateTime?    @map("enqueued_at") @db.Timestamptz(6)
+  outboxId     String?      @map("outbox_id") @db.Uuid
+  attemptCount Int          @default(0) @map("attempt_count")
+  lastError    String?      @map("last_error")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  item         WorkflowItem @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "wf_n8n_dispatch_item_fk")
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "wf_n8n_dispatch_tenant_fk")
+
+  @@index([enqueuedAt, claimedAt, createdAt], map: "wf_n8n_dispatch_pending_idx")
+  @@map("workflow_n8n_dispatch")
 }
 
 /// Mehrfach-Kommentare pro Workflow-Schritt — anders als `notes` (ein Feld
@@ -2318,11 +2419,41 @@ model FormSubmission {
   workflowItem       WorkflowItem?        @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "form_submission_workflow_item_fk")
   requests           Request[]
 
+  @@unique([workflowItemId], map: "form_submission_workflow_item_unique")
   @@index([tenantId, clientId, status])
   @@index([tenantId, status, createdAt])
-  @@index([workflowItemId], map: "form_submission_workflow_item_idx")
   @@index([tenantId, templateId])
   @@map("form_submission")
+}
+
+/// Journal für Storage-Objekte, deren nachgelagerter DB-Commit scheiterte oder
+/// mehrdeutig quittiert wurde. Der Worker prueft nach einer Sicherheitsfrist
+/// zuerst auf persistierte DocumentVersion-Referenzen. Nur echte Orphans werden
+/// geloescht; Object-Lock-Objekte zudem erst nach Ablauf der Retention.
+model StorageOrphan {
+  id               String    @id(map: "storage_orphan_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  source           String
+  storageBucket    String    @map("storage_bucket")
+  storageKey       String    @map("storage_key")
+  storageVersionId String    @default("") @map("storage_version_id")
+  sha256           Bytes
+  sizeBytes        BigInt    @map("size_bytes")
+  immutable        Boolean
+  retentionUntil   DateTime? @map("retention_until") @db.Timestamptz(6)
+  failure          String?
+  cleanupClaimedAt DateTime? @map("cleanup_claimed_at") @db.Timestamptz(6)
+  cleanupAttempts  Int       @default(0) @map("cleanup_attempts")
+  cleanupError     String?   @map("cleanup_error")
+  resolution       StorageOrphanResolution?
+  cleanedAt        DateTime? @map("cleaned_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "storage_orphan_tenant_fk")
+
+  @@unique([storageBucket, storageKey, storageVersionId], map: "storage_orphan_object_uq")
+  @@index([tenantId, cleanedAt, cleanupClaimedAt, createdAt], map: "storage_orphan_cleanup_idx")
+  @@map("storage_orphan")
 }
 
 model GwgOnboardingInvite {
@@ -2887,6 +3018,14 @@ enum DocumentClassification {
   GENERAL
 
   @@map("document_classification")
+}
+
+enum StorageOrphanResolution {
+  DELETED
+  REFERENCED
+  INTEGRITY_INCIDENT
+
+  @@map("storage_orphan_resolution")
 }
 
 enum AuditActorType {

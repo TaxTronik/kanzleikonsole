@@ -20,7 +20,7 @@ import { log } from './logger';
 export async function emitN8nEventFromWorker(
   event: N8nEventName,
   payload: Record<string, unknown>,
-  opts: { tenantId?: string } = {},
+  opts: { tenantId?: string; dedupeKey?: string } = {},
 ): Promise<N8nEnqueueResult> {
   return enqueueN8nEventCore(
     {

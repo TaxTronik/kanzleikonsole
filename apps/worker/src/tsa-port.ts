@@ -31,7 +31,8 @@ export async function timestampPortFor(tenantId: string): Promise<TimestampPort>
     if (url) return checkedPort(url, { tenantId });
   }
 
-  const fallbackUrl = env.TIMESTAMP_AUTHORITY_URL ?? resolveTsaUrl(DEFAULT_TSA_PROVIDER_ID, null);
+  const fallbackUrl =
+    env.TIMESTAMP_AUTHORITY_URL?.trim() || resolveTsaUrl(DEFAULT_TSA_PROVIDER_ID, null);
   if (fallbackUrl) return checkedPort(fallbackUrl, {});
   if (env.NODE_ENV === 'production') {
     throw new Error('Production erfordert eine externe RFC-3161-TSA.');
@@ -41,7 +42,7 @@ export async function timestampPortFor(tenantId: string): Promise<TimestampPort>
 
 async function checkedPort(url: string, context: { tenantId?: string }): Promise<TimestampPort> {
   try {
-    await assertPublicHost(url);
+    await assertPublicHost(url, { mode: 'public' });
   } catch (err) {
     if (env.NODE_ENV === 'production') throw err;
     log.warn(

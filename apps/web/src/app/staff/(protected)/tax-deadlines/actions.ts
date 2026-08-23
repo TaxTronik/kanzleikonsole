@@ -6,12 +6,14 @@ import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
+import { staffActionGuard, withStaffModule, ActionError } from '@/server/actions/staff-action';
+
+const withTaxNoticesStaff = withStaffModule('taxNotices');
 
 export async function markDeadlineDoneAction(formData: FormData): Promise<void> {
   const id = z.string().uuid().parse(formData.get('id'));
 
-  await withStaff(
+  await withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.taxDeadline.findUnique({
         where: { id },
@@ -49,7 +51,7 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
   const ids = z.array(z.string().uuid()).parse(formData.getAll('ids').map((v) => String(v)));
   if (ids.length === 0) return;
 
-  await withStaff(
+  await withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       // Nur offene Termine schließen — bereits erledigte/übersprungene nicht
       // anfassen (kein doppelter Audit-Eintrag, idempotent bei Mehrfachklick).
@@ -97,7 +99,7 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
 // unterbleibt; der Stopp ist über unsuppressAutoRequestAction aufhebbar.
 async function suppressDeadlines(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  await withStaff(
+  await withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const toSuppress = await tx.taxDeadline.findMany({
         where: {
@@ -160,7 +162,7 @@ export async function suppressDeadlinesAction(formData: FormData): Promise<void>
 
 export async function unsuppressAutoRequestAction(formData: FormData): Promise<void> {
   const id = z.string().uuid().parse(formData.get('id'));
-  await withStaff(
+  await withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.taxDeadline.findUnique({
         where: { id },
@@ -187,7 +189,7 @@ export async function unsuppressAutoRequestAction(formData: FormData): Promise<v
 }
 
 export async function rematerializeAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'taxNotices' });
   if (!g.ok) return;
 
   // P-4: tenant-weite Materialisierung gehört nicht in eine interaktive

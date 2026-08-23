@@ -8,7 +8,7 @@ const m = vi.hoisted(() => ({
   canAccessClientTx: vi.fn(),
   withTenantContext: vi.fn(),
   commitBytesWithTier: vi.fn(),
-  deleteObject: vi.fn(),
+  compensateStorageCommit: vi.fn(),
   evidenceRecord: vi.fn(),
   getClientIp: vi.fn(),
   log: { error: vi.fn() },
@@ -25,7 +25,9 @@ vi.mock('@taxtronik/storage', () => ({
   classificationToTier: () => 'GOBD',
   gobdRetentionYears: () => 10,
   commitBytesWithTier: m.commitBytesWithTier,
-  deleteObject: m.deleteObject,
+}));
+vi.mock('@/server/documents/storage-compensation', () => ({
+  compensateStorageCommit: m.compensateStorageCommit,
 }));
 vi.mock('@/server/documents/upload-helpers', () => ({
   parseMultipartUpload: async (req: NextRequest) => {
@@ -75,7 +77,7 @@ beforeEach(() => {
     sizeBytes: 12,
     immutable: true,
   });
-  m.deleteObject.mockResolvedValue(undefined);
+  m.compensateStorageCommit.mockResolvedValue('JOURNALED');
 });
 
 describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
@@ -150,7 +152,13 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
       expect.objectContaining({ error: 'locked_by_gwg_snapshot' }),
     );
     expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
-    expect(m.deleteObject).toHaveBeenCalledWith('docs-gobd', 'tenant-1/poa/raced.pdf');
+    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        source: 'staff.document.new_version',
+        commit: expect.objectContaining({ targetBucket: 'docs-gobd' }),
+      }),
+    );
   });
 
   it('sperrt bereits ab SENT und lädt keine neuen Bytes in den Speicher', async () => {
@@ -227,7 +235,13 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
     expect(m.commitBytesWithTier).toHaveBeenCalledTimes(1);
     expect(finalTx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
-    expect(m.deleteObject).toHaveBeenCalledWith('docs-gobd', 'tenant-1/poa/raced.pdf');
+    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        source: 'staff.document.new_version',
+        commit: expect.objectContaining({ targetBucket: 'docs-gobd' }),
+      }),
+    );
   });
 
   it('verhindert das Anhaengen nach zwischenzeitlichem Entzug des Mandantenzugriffs', async () => {
@@ -281,7 +295,13 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
     );
     expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
     expect(m.canAccessClientTx).toHaveBeenCalledTimes(2);
-    expect(m.deleteObject).toHaveBeenCalledWith('docs', 'tenant-1/general/raced.pdf');
+    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        source: 'staff.document.new_version',
+        commit: expect.objectContaining({ targetBucket: 'docs' }),
+      }),
+    );
   });
 
   it('verwirft den Upload, wenn sich die Schutzpolicy des Dateityps geaendert hat', async () => {
@@ -333,7 +353,13 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
       expect.objectContaining({ error: 'reference_changed' }),
     );
     expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
-    expect(m.deleteObject).toHaveBeenCalledWith('docs-gobd', 'tenant-1/poa/raced.pdf');
+    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        source: 'staff.document.new_version',
+        commit: expect.objectContaining({ targetBucket: 'docs-gobd' }),
+      }),
+    );
   });
 
   it('übernimmt typabhängige Frist und verlängert Document-Metadaten monoton', async () => {

@@ -21,8 +21,9 @@ import { prismaBytes } from '@/server/db/prisma-bytes';
 import { evidenceService } from '@/server/container';
 import { generateXRechnungCii, toXRechnungInvoice } from '@/server/invoicing/xrechnung';
 import { generateZugferdPdf } from '@/server/invoicing/zugferd';
-import { readSellerInfo } from '@/server/settings/tenant-settings';
+import { readSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
 import { readBranding } from '@/server/settings/branding';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 export type ArchiveResult =
   | { ok: true; bucket: string; key: string; number: string }
@@ -35,6 +36,19 @@ export type ArchiveResult =
         | 'reverse_charge_seller_no_vatid'
         | 'buyer_incomplete';
     };
+
+/** Gemeinsame Fail-closed-Prüfung vor jeder XRechnung-/ZUGFeRD-Erzeugung. */
+function isSellerIncomplete(seller: SellerInfo): boolean {
+  return (
+    !seller.name ||
+    !seller.street ||
+    !seller.city ||
+    !seller.postalCode ||
+    !seller.email ||
+    !seller.phone ||
+    (!seller.vatId && !seller.taxNumber)
+  );
+}
 
 /**
  * Liefert die gespeicherte ZUGFeRD-Archiv-PDF einer Rechnung (idempotent).
@@ -110,15 +124,7 @@ export async function ensureZugferdArchive(
       }
     } else {
       const seller = await readSellerInfo(ctx);
-      if (
-        !seller.name ||
-        !seller.street ||
-        !seller.city ||
-        !seller.postalCode ||
-        !seller.email ||
-        !seller.phone ||
-        (!seller.vatId && !seller.taxNumber)
-      ) {
+      if (isSellerIncomplete(seller)) {
         return { ok: false, code: 'seller_incomplete' };
       }
       // BR-AE-01: Reverse-Charge braucht die USt-IdNr des Absenders (nicht nur
@@ -145,35 +151,45 @@ export async function ensureZugferdArchive(
         skipScan: true,
         classification: 'GOBD_INVOICE', // Rechnung → 8 J. (BEG IV)
       });
-      await withTenantContext(ctx, async (tx) => {
-        const xmlDoc = await tx.document.create({
-          data: {
-            tenantId: ctx.tenantId,
-            clientId: loaded.clientId,
-            title: xrechnungTitle,
-            classification: 'GOBD_INVOICE',
-            mimeType: 'application/xml',
-            retentionUntil: storedXml.retentionUntil,
-            sharedWithClientAt: shareable ? new Date() : null,
-            sharedByStaff: shareable ? actorId : null,
-          },
+      try {
+        await withTenantContext(ctx, async (tx) => {
+          const xmlDoc = await tx.document.create({
+            data: {
+              tenantId: ctx.tenantId,
+              clientId: loaded.clientId,
+              title: xrechnungTitle,
+              classification: 'GOBD_INVOICE',
+              mimeType: 'application/xml',
+              retentionUntil: storedXml.retentionUntil,
+              sharedWithClientAt: shareable ? new Date() : null,
+              sharedByStaff: shareable ? actorId : null,
+            },
+          });
+          await tx.documentVersion.create({
+            data: {
+              documentId: xmlDoc.id,
+              versionNo: 1,
+              storageBucket: storedXml.targetBucket,
+              storageKey: storedXml.targetKey,
+              storageVersionId: storedXml.storageVersionId,
+              sha256: prismaBytes(storedXml.sha256),
+              sizeBytes: storedXml.sizeBytes,
+              immutable: storedXml.immutable,
+              scanStatus: 'CLEAN',
+              scanCompletedAt: new Date(),
+              createdById: actorId,
+            },
+          });
         });
-        await tx.documentVersion.create({
-          data: {
-            documentId: xmlDoc.id,
-            versionNo: 1,
-            storageBucket: storedXml.targetBucket,
-            storageKey: storedXml.targetKey,
-            storageVersionId: storedXml.storageVersionId,
-            sha256: prismaBytes(storedXml.sha256),
-            sizeBytes: storedXml.sizeBytes,
-            immutable: storedXml.immutable,
-            scanStatus: 'CLEAN',
-            scanCompletedAt: new Date(),
-            createdById: actorId,
-          },
+      } catch (error) {
+        await compensateStorageCommit({
+          tenantId: ctx.tenantId,
+          source: 'invoice.archive.lazy_xrechnung',
+          commit: storedXml,
+          cause: error,
         });
-      });
+        throw error;
+      }
     }
     return {
       ok: true,
@@ -188,15 +204,7 @@ export async function ensureZugferdArchive(
   // Steuernummer ist bei Standardsatz Pflicht (EN-16931 BR-S-02/BR-CO-26) —
   // ohne sie würde nicht-konformes XML archiviert, daher fail-closed.
   const seller = await readSellerInfo(ctx);
-  if (
-    !seller.name ||
-    !seller.street ||
-    !seller.city ||
-    !seller.postalCode ||
-    !seller.email ||
-    !seller.phone ||
-    (!seller.vatId && !seller.taxNumber)
-  ) {
+  if (isSellerIncomplete(seller)) {
     return { ok: false, code: 'seller_incomplete' };
   }
   // BR-AE-01: Reverse-Charge braucht die USt-IdNr des Absenders (nicht nur die Steuernummer).
@@ -262,6 +270,12 @@ export async function ensureZugferdArchive(
       classification: 'GOBD_INVOICE',
     });
   } catch (e) {
+    await compensateStorageCommit({
+      tenantId: ctx.tenantId,
+      source: 'invoice.archive.zugferd_without_xml',
+      commit: stored,
+      cause: e,
+    });
     throw new Error(
       `XRechnung-Ablage im GOBD-Object-Store fehlgeschlagen: ${(e as Error).message}`,
       { cause: e },
@@ -277,112 +291,169 @@ export async function ensureZugferdArchive(
   //    unter GOBD-Object-Lock unlöschbares Duplikat. Der Lock zwingt den zweiten
   //    Aufruf zu warten, bis der erste committet hat; danach greift der
   //    documentId-Recheck und der zweite nimmt die bestehende Kopie.
-  const result = await withTenantContext(ctx, async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'invoice-archive:' + invoiceId}, 0))`;
-    const fresh = await tx.invoice.findFirst({
-      where: { id: invoiceId, tenantId: ctx.tenantId },
-      include: { document: { include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } } } },
-    });
-    const freshVersion = fresh?.document?.versions[0];
-    if (fresh?.documentId && freshVersion) {
-      return { bucket: freshVersion.storageBucket, key: freshVersion.storageKey };
-    }
-    // Portal-Freigabe NUR für bereits versendete Rechnungen: Wird der ZUGFeRD-
-    // Download für einen DRAFT geöffnet (Kontroll-Klick), entsteht zwar die
-    // Archivkopie, sie darf aber nicht im Mandanten-Portal auftauchen. Beim
-    // Versand selbst läuft dieser Helfer noch im Status DRAFT — markSentAction
-    // gibt die Kopie nach dem Statuswechsel frei. Eine spätere Lazy-Erzeugung
-    // bei schon versendeter Rechnung (z. B. Altbestand) wird hier direkt
-    // freigegeben.
-    const doc = await tx.document.create({
-      data: {
-        tenantId: ctx.tenantId,
-        clientId: loaded.clientId,
-        title: `Rechnung ${loaded.number} (ZUGFeRD)`,
-        classification: 'GOBD_INVOICE',
-        mimeType: 'application/pdf',
-        retentionUntil: stored.retentionUntil,
-        sharedWithClientAt: shareable ? new Date() : null,
-        sharedByStaff: shareable ? actorId : null,
-      },
-    });
-    await tx.documentVersion.create({
-      data: {
-        documentId: doc.id,
-        versionNo: 1,
-        storageBucket: stored.targetBucket,
-        storageKey: stored.targetKey,
-        storageVersionId: stored.storageVersionId,
-        sha256: prismaBytes(stored.sha256),
-        sizeBytes: stored.sizeBytes,
-        immutable: stored.immutable,
-        scanStatus: 'CLEAN',
-        scanCompletedAt: new Date(),
-        createdById: actorId,
-      },
-    });
-    await tx.invoice.update({ where: { id: invoiceId }, data: { documentId: doc.id } });
-    // XRechnung-XML als eigenständiges Dokument (selbe Freigabe-Logik wie das
-    // ZUGFeRD-PDF), damit die XML separat im Mandantenordner auftaucht.
-    // Idempotent: Wurde die XML vorher über den XRechnung-Button erzeugt, wird
-    // sie nur noch freigegeben statt ein Duplikat anzulegen.
-    const existingXmlDoc = await tx.document.findFirst({
-      where: {
-        tenantId: ctx.tenantId,
-        clientId: loaded.clientId,
-        title: xrechnungTitle,
-        classification: 'GOBD_INVOICE',
-        deletedAt: null,
-      },
-      include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
-    });
-    if (existingXmlDoc?.versions[0]) {
-      if (shareable && !existingXmlDoc.sharedWithClientAt) {
-        await tx.document.updateMany({
-          where: { id: existingXmlDoc.id, sharedWithClientAt: null },
-          data: { sharedWithClientAt: new Date(), sharedByStaff: actorId },
-        });
+  let result: {
+    bucket: string;
+    key: string;
+    usedStoredPdf: boolean;
+    usedStoredXml: boolean;
+  };
+  try {
+    result = await withTenantContext(ctx, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'invoice-archive:' + invoiceId}, 0))`;
+      const fresh = await tx.invoice.findFirst({
+        where: { id: invoiceId, tenantId: ctx.tenantId },
+        include: {
+          document: { include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } } },
+        },
+      });
+      const freshVersion = fresh?.document?.versions[0];
+      if (fresh?.documentId && freshVersion) {
+        return {
+          bucket: freshVersion.storageBucket,
+          key: freshVersion.storageKey,
+          usedStoredPdf: false,
+          usedStoredXml: false,
+        };
       }
-    } else {
-      const xmlDoc = await tx.document.create({
+      // Portal-Freigabe NUR für bereits versendete Rechnungen: Wird der ZUGFeRD-
+      // Download für einen DRAFT geöffnet (Kontroll-Klick), entsteht zwar die
+      // Archivkopie, sie darf aber nicht im Mandanten-Portal auftauchen. Beim
+      // Versand selbst läuft dieser Helfer noch im Status DRAFT — markSentAction
+      // gibt die Kopie nach dem Statuswechsel frei. Eine spätere Lazy-Erzeugung
+      // bei schon versendeter Rechnung (z. B. Altbestand) wird hier direkt
+      // freigegeben.
+      const doc = await tx.document.create({
         data: {
           tenantId: ctx.tenantId,
           clientId: loaded.clientId,
-          title: xrechnungTitle,
+          title: `Rechnung ${loaded.number} (ZUGFeRD)`,
           classification: 'GOBD_INVOICE',
-          mimeType: 'application/xml',
-          retentionUntil: storedXml.retentionUntil,
+          mimeType: 'application/pdf',
+          retentionUntil: stored.retentionUntil,
           sharedWithClientAt: shareable ? new Date() : null,
           sharedByStaff: shareable ? actorId : null,
         },
       });
       await tx.documentVersion.create({
         data: {
-          documentId: xmlDoc.id,
+          documentId: doc.id,
           versionNo: 1,
-          storageBucket: storedXml.targetBucket,
-          storageKey: storedXml.targetKey,
-          storageVersionId: storedXml.storageVersionId,
-          sha256: prismaBytes(storedXml.sha256),
-          sizeBytes: storedXml.sizeBytes,
-          immutable: storedXml.immutable,
+          storageBucket: stored.targetBucket,
+          storageKey: stored.targetKey,
+          storageVersionId: stored.storageVersionId,
+          sha256: prismaBytes(stored.sha256),
+          sizeBytes: stored.sizeBytes,
+          immutable: stored.immutable,
           scanStatus: 'CLEAN',
           scanCompletedAt: new Date(),
           createdById: actorId,
         },
       });
-    }
-    await evidenceService.record(tx, {
-      tenantId: ctx.tenantId,
-      actorType: 'STAFF',
-      actorId,
-      action: 'invoice.archive.zugferd',
-      resourceType: 'invoice',
-      resourceId: invoiceId,
-      after: { documentId: doc.id, number: loaded.number, sizeBytes: Number(stored.sizeBytes) },
+      await tx.invoice.update({ where: { id: invoiceId }, data: { documentId: doc.id } });
+      // XRechnung-XML als eigenständiges Dokument (selbe Freigabe-Logik wie das
+      // ZUGFeRD-PDF), damit die XML separat im Mandantenordner auftaucht.
+      // Idempotent: Wurde die XML vorher über den XRechnung-Button erzeugt, wird
+      // sie nur noch freigegeben statt ein Duplikat anzulegen.
+      const existingXmlDoc = await tx.document.findFirst({
+        where: {
+          tenantId: ctx.tenantId,
+          clientId: loaded.clientId,
+          title: xrechnungTitle,
+          classification: 'GOBD_INVOICE',
+          deletedAt: null,
+        },
+        include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+      });
+      let usedStoredXml = false;
+      if (existingXmlDoc?.versions[0]) {
+        if (shareable && !existingXmlDoc.sharedWithClientAt) {
+          await tx.document.updateMany({
+            where: { id: existingXmlDoc.id, sharedWithClientAt: null },
+            data: { sharedWithClientAt: new Date(), sharedByStaff: actorId },
+          });
+        }
+      } else {
+        const xmlDoc = await tx.document.create({
+          data: {
+            tenantId: ctx.tenantId,
+            clientId: loaded.clientId,
+            title: xrechnungTitle,
+            classification: 'GOBD_INVOICE',
+            mimeType: 'application/xml',
+            retentionUntil: storedXml.retentionUntil,
+            sharedWithClientAt: shareable ? new Date() : null,
+            sharedByStaff: shareable ? actorId : null,
+          },
+        });
+        await tx.documentVersion.create({
+          data: {
+            documentId: xmlDoc.id,
+            versionNo: 1,
+            storageBucket: storedXml.targetBucket,
+            storageKey: storedXml.targetKey,
+            storageVersionId: storedXml.storageVersionId,
+            sha256: prismaBytes(storedXml.sha256),
+            sizeBytes: storedXml.sizeBytes,
+            immutable: storedXml.immutable,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            createdById: actorId,
+          },
+        });
+        usedStoredXml = true;
+      }
+      await evidenceService.record(tx, {
+        tenantId: ctx.tenantId,
+        actorType: 'STAFF',
+        actorId,
+        action: 'invoice.archive.zugferd',
+        resourceType: 'invoice',
+        resourceId: invoiceId,
+        after: { documentId: doc.id, number: loaded.number, sizeBytes: Number(stored.sizeBytes) },
+      });
+      return {
+        bucket: stored.targetBucket,
+        key: stored.targetKey,
+        usedStoredPdf: true,
+        usedStoredXml,
+      };
     });
-    return { bucket: stored.targetBucket, key: stored.targetKey };
-  });
+  } catch (error) {
+    await Promise.all([
+      compensateStorageCommit({
+        tenantId: ctx.tenantId,
+        source: 'invoice.archive.zugferd_pdf',
+        commit: stored,
+        cause: error,
+      }),
+      compensateStorageCommit({
+        tenantId: ctx.tenantId,
+        source: 'invoice.archive.xrechnung_xml',
+        commit: storedXml,
+        cause: error,
+      }),
+    ]);
+    throw error;
+  }
+
+  if (!result.usedStoredPdf) {
+    await compensateStorageCommit({
+      tenantId: ctx.tenantId,
+      source: 'invoice.archive.zugferd_race',
+      commit: stored,
+      cause: new Error('Concurrent archive creation won before database commit.'),
+    });
+  }
+  if (!result.usedStoredXml) {
+    await compensateStorageCommit({
+      tenantId: ctx.tenantId,
+      source: result.usedStoredPdf
+        ? 'invoice.archive.xrechnung_already_exists'
+        : 'invoice.archive.xrechnung_race',
+      commit: storedXml,
+      cause: new Error('Stored XRechnung object was not referenced by the database transaction.'),
+    });
+  }
 
   return { ok: true, bucket: result.bucket, key: result.key, number: loaded.number };
 }

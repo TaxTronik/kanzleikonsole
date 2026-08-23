@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
-import { toActionError } from '@/server/auth/rbac';
+import { ForbiddenError, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
@@ -26,6 +26,7 @@ import {
 import { enqueueRiskAnalyseLlm, getRiskAnalyseJobState } from '@/server/jobs/risk-analyse-queue';
 import { jsonDocToText } from './doc-text';
 import { canStartLlm, llmCapabilityError } from '@/lib/risk-llm';
+import { readModules } from '@/server/settings/modules';
 import {
   guard,
   guardWrite,
@@ -457,6 +458,9 @@ export async function delegateAction(
   try {
     const parsed = DelegateSchema.parse(input);
     const { ctx, staffId, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
+    if (!(await readModules(ctx)).reminders) {
+      throw new ForbiddenError('Das Wiedervorlagen-Modul ist für diese Kanzlei deaktiviert.');
+    }
     const res = await delegateMarking(ctx, {
       markingId: parsed.markingId,
       createdByStaffId: staffId,

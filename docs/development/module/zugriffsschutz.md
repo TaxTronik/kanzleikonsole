@@ -24,7 +24,9 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 - **Sessions:** `__Host-`-Cookies, getrennte Auth.js-Instanzen je Surface,
   per-Request-Revalidierung (aktiv? GwG-Freigabe? anonymisiert?),
   Redis-Revocation (Deaktivierung, Rollen-, Passwort- oder 2FA-Reset beendet
-  Sitzungen sofort).
+  Sitzungen sofort); Schreiben und Lesen des Widerrufszeitpunkts sind
+  fail-closed, sodass ein Redis-Ausfall Sessions vorübergehend ablehnt und eine
+  Sicherheitsaktion nicht fälschlich als erfolgreich meldet.
 - **Kontowiederherstellung:** Jeder Mitarbeiter kann sein Passwort im eigenen
   Benutzerprofil nach Prüfung des bisherigen Passworts ändern (Rate-Limit,
   Bestätigung, anschließender Logout auf allen Geräten). ADMIN können fremde

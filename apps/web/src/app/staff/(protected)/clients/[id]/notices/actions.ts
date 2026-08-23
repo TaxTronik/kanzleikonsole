@@ -7,6 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import {
   appealDeadline,
+  appealDeadlineForDataRetrieval,
   appealDeadlineForPostAbroad,
   appealDeadlineFromNotification,
   berlinCalendarDate,
@@ -17,6 +18,7 @@ import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { planNoticeTransition } from './notice-transition';
+import { validateDataRetrievalEvidence } from './data-retrieval';
 
 const YMD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const YmdSchema = z
@@ -58,6 +60,10 @@ const Schema = z.object({
   legalRemedyInstruction: z.enum(['VALID', 'MISSING_OR_INVALID']),
   // Tatsächlicher Zugang (§ 122 Abs. 2 AO Hs. 2) — leer = Fiktion maßgeblich.
   receivedAt: z.string().pipe(YmdSchema).optional().nullable().or(z.literal('')),
+  retrievalIssuedAt: z.string().pipe(YmdSchema).optional().nullable().or(z.literal('')),
+  retrievalNotificationDate: z.string().pipe(YmdSchema).optional().nullable().or(z.literal('')),
+  retrievalNotificationDisputedOrLate: z.boolean(),
+  retrievedAt: z.string().pipe(YmdSchema).optional().nullable().or(z.literal('')),
   fileNumber: z.string().max(100).optional().nullable(),
   assessedAmount: z.string().optional().nullable(),
   expectedAmount: z.string().optional().nullable(),
@@ -66,6 +72,20 @@ const Schema = z.object({
   reviewNotes: z.string().max(10_000).optional().nullable(),
 });
 
+type CreateNoticeInput = z.infer<typeof Schema>;
+type ValidDataRetrievalEvidence = Extract<
+  ReturnType<typeof validateDataRetrievalEvidence>,
+  { ok: true }
+>;
+
+interface PreparedCreateNotice {
+  data: CreateNoticeInput;
+  noticeDate: Date;
+  receivedAt: Date | null;
+  retrievalEvidence: ValidDataRetrievalEvidence;
+  legalRemedyInstructionValid: boolean;
+}
+
 function parseDecimal(s: string | null | undefined): string | undefined {
   if (s === null || s === undefined || s.trim() === '') return undefined;
   const n = Number(s.replace(',', '.'));
@@ -73,12 +93,11 @@ function parseDecimal(s: string | null | undefined): string | undefined {
   return n.toFixed(2);
 }
 
-export async function createNoticeAction(formData: FormData): Promise<void> {
-  // void/throw-Form-Action: Gate liefert die Fehlermeldung als Wurf (Vertrag bleibt).
-  const g = await staffActionGuard();
-  if (!g.ok) throw new Error(g.error);
-  const { tenantId, staffId, ctx, session } = g;
+function optionalYmdToDate(value: string | null | undefined): Date | null {
+  return value ? new Date(`${value}T00:00:00.000Z`) : null;
+}
 
+function parseCreateNoticeInput(formData: FormData): CreateNoticeInput {
   const parsed = Schema.safeParse({
     clientId: formData.get('clientId'),
     kind: formData.get('kind'),
@@ -87,6 +106,11 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
     deliveryMethod: formData.get('deliveryMethod'),
     legalRemedyInstruction: formData.get('legalRemedyInstruction'),
     receivedAt: formData.get('receivedAt'),
+    retrievalIssuedAt: formData.get('retrievalIssuedAt'),
+    retrievalNotificationDate: formData.get('retrievalNotificationDate'),
+    retrievalNotificationDisputedOrLate:
+      formData.get('retrievalNotificationDisputedOrLate') === 'on',
+    retrievedAt: formData.get('retrievedAt'),
     fileNumber: formData.get('fileNumber'),
     assessedAmount: formData.get('assessedAmount'),
     expectedAmount: formData.get('expectedAmount'),
@@ -95,14 +119,15 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
     reviewNotes: formData.get('reviewNotes'),
   });
   if (!parsed.success) throw new Error('Validierungsfehler.');
+  return parsed.data;
+}
 
-  const d = parsed.data;
-  const noticeDate = new Date(d.noticeDate + 'T00:00:00.000Z');
-  // Tatsächlicher Zugang: nur plausible Werte übernehmen (nicht vor dem
-  // Versand-/Bereitstellungstag — ein Bescheid kann nicht vorher zugehen).
-  const receivedAt =
-    d.receivedAt && d.receivedAt !== '' ? new Date(d.receivedAt + 'T00:00:00.000Z') : null;
-  const today = berlinCalendarDate(new Date());
+function validateGeneralDeliveryEvidence(
+  data: CreateNoticeInput,
+  noticeDate: Date,
+  receivedAt: Date | null,
+  today: Date,
+): void {
   if (noticeDate > today) {
     throw new Error('Versand-/Bereitstellungstag darf nicht in der Zukunft liegen.');
   }
@@ -112,17 +137,93 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
   if (receivedAt && receivedAt.getTime() < noticeDate.getTime()) {
     throw new Error('Zugangsdatum darf nicht vor Versand/Bereitstellung liegen.');
   }
-  const usesDeliveryFiction =
-    d.deliveryMethod === 'POST' ||
-    d.deliveryMethod === 'POST_ABROAD' ||
-    d.deliveryMethod === 'ELECTRONIC' ||
-    d.deliveryMethod === 'DATA_RETRIEVAL';
+  const usesDeliveryFiction = ['POST', 'POST_ABROAD', 'ELECTRONIC', 'DATA_RETRIEVAL'].includes(
+    data.deliveryMethod,
+  );
   if (!usesDeliveryFiction && !receivedAt) {
     throw new Error(
       'Bei förmlicher, persönlicher oder sonstiger Bekanntgabe ist der rechtlich maßgebliche Bekanntgabetag erforderlich.',
     );
   }
-  const legalRemedyInstructionValid = d.legalRemedyInstruction === 'VALID';
+  if (data.deliveryMethod === 'DATA_RETRIEVAL' && receivedAt) {
+    throw new Error(
+      'Beim Datenabruf ist das allgemeine Zugangsdatum nicht anwendbar; verwenden Sie gegebenenfalls den tatsächlichen Abruftag.',
+    );
+  }
+}
+
+function prepareCreateNotice(formData: FormData): PreparedCreateNotice {
+  const data = parseCreateNoticeInput(formData);
+  const noticeDate = new Date(`${data.noticeDate}T00:00:00.000Z`);
+  // Tatsächlicher Zugang: nur plausible Werte übernehmen (nicht vor dem
+  // Versand-/Bereitstellungstag — ein Bescheid kann nicht vorher zugehen).
+  const receivedAt = optionalYmdToDate(data.receivedAt);
+  const retrievalIssuedAt = optionalYmdToDate(data.retrievalIssuedAt);
+  const retrievalNotificationDate = optionalYmdToDate(data.retrievalNotificationDate);
+  const retrievedAt = optionalYmdToDate(data.retrievedAt);
+  const today = berlinCalendarDate(new Date());
+  validateGeneralDeliveryEvidence(data, noticeDate, receivedAt, today);
+
+  const retrievalEvidence = validateDataRetrievalEvidence({
+    deliveryMethod: data.deliveryMethod,
+    provisionDate: noticeDate,
+    issuedAt: retrievalIssuedAt,
+    notificationDate: retrievalNotificationDate,
+    notificationDisputedOrLate: data.retrievalNotificationDisputedOrLate,
+    retrievedAt,
+    today,
+  });
+  if (!retrievalEvidence.ok) throw new Error(retrievalEvidence.error);
+
+  return {
+    data,
+    noticeDate,
+    receivedAt,
+    retrievalEvidence,
+    legalRemedyInstructionValid: data.legalRemedyInstruction === 'VALID',
+  };
+}
+
+function calculateAppealDeadline(input: {
+  data: CreateNoticeInput;
+  noticeDate: Date;
+  region: GermanRegion | null;
+  receivedAt: Date | null;
+  legalRemedyInstructionValid: boolean;
+  retrievalEvidence: ValidDataRetrievalEvidence;
+}): Date | null {
+  const { data, noticeDate, region, receivedAt, legalRemedyInstructionValid, retrievalEvidence } =
+    input;
+  if (data.deliveryMethod === 'POST' || data.deliveryMethod === 'ELECTRONIC') {
+    return appealDeadline(noticeDate, region, receivedAt, legalRemedyInstructionValid);
+  }
+  if (data.deliveryMethod === 'POST_ABROAD') {
+    return appealDeadlineForPostAbroad(noticeDate, region, receivedAt, legalRemedyInstructionValid);
+  }
+  if (data.deliveryMethod === 'DATA_RETRIEVAL') {
+    return appealDeadlineForDataRetrieval(noticeDate, region, {
+      issuedAt: retrievalEvidence.issuedAt,
+      notificationDate: retrievalEvidence.notificationDate,
+      notificationDisputedOrLate: retrievalEvidence.notificationDisputedOrLate,
+      retrievedAt: retrievalEvidence.retrievedAt,
+      legalRemedyInstructionValid,
+    });
+  }
+  return appealDeadlineFromNotification(receivedAt!, region, legalRemedyInstructionValid);
+}
+
+export async function createNoticeAction(formData: FormData): Promise<void> {
+  // void/throw-Form-Action: Gate liefert die Fehlermeldung als Wurf (Vertrag bleibt).
+  const g = await staffActionGuard({ module: 'taxNotices' });
+  if (!g.ok) throw new Error(g.error);
+  const { tenantId, staffId, ctx, session } = g;
+  const {
+    data: d,
+    noticeDate,
+    receivedAt,
+    retrievalEvidence,
+    legalRemedyInstructionValid,
+  } = prepareCreateNotice(formData);
 
   await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, session, d.clientId);
@@ -136,18 +237,19 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
     const regionValue = regionRow?.value as { region?: string } | null | undefined;
     const region = (regionValue?.region ?? null) as GermanRegion | null;
     // Post und elektronische Übermittlung: § 122 Abs. 2/2a AO; Abruf:
-    // § 122a Abs. 4 AO. Jeweils 4-Tage-Fiktion (Altbestand bis 2024: 3 Tage).
+    // § 122a Abs. 4 AO mit Stichtag 01.01.2026. Altfälle knüpfen an die
+    // elektronische Benachrichtigung bzw. ausnahmsweise den Abruf an.
     // Nur § 122 Abs. 2/2a lässt einen nachweislich späteren Zugang vorgehen.
     // Förmliche/persönliche/sonstige Wege liefern den feststehenden Tag.
     // Fehlende/unrichtige Belehrung: Jahresfrist nach § 356 Abs. 2 AO.
-    const appealDeadlineDate =
-      d.deliveryMethod === 'POST' || d.deliveryMethod === 'ELECTRONIC'
-        ? appealDeadline(noticeDate, region, receivedAt, legalRemedyInstructionValid)
-        : d.deliveryMethod === 'POST_ABROAD'
-          ? appealDeadlineForPostAbroad(noticeDate, region, receivedAt, legalRemedyInstructionValid)
-          : d.deliveryMethod === 'DATA_RETRIEVAL'
-            ? appealDeadline(noticeDate, region, null, legalRemedyInstructionValid)
-            : appealDeadlineFromNotification(receivedAt!, region, legalRemedyInstructionValid);
+    const appealDeadlineDate = calculateAppealDeadline({
+      data: d,
+      noticeDate,
+      region,
+      receivedAt,
+      legalRemedyInstructionValid,
+      retrievalEvidence,
+    });
     // Auto-Match: bestehende TaxFiling für gleichen Mandant/Steuerart/Zeitraum?
     // Wenn ja, übernehmen wir deren Soll-Wert als expectedAmount (sofern nicht
     // explizit gesetzt) und verknüpfen die beiden Datensätze.
@@ -175,6 +277,10 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
         deliveryMethod: d.deliveryMethod,
         legalRemedyInstructionValid,
         receivedAt,
+        retrievalIssuedAt: retrievalEvidence.issuedAt,
+        retrievalNotificationDate: retrievalEvidence.notificationDate,
+        retrievalNotificationDisputedOrLate: retrievalEvidence.notificationDisputedOrLate,
+        retrievedAt: retrievalEvidence.retrievedAt,
         appealDeadline: appealDeadlineDate,
         fileNumber: d.fileNumber ?? null,
         assessedAmount: parseDecimal(d.assessedAmount),
@@ -200,7 +306,11 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
         deliveryMethod: d.deliveryMethod,
         legalRemedyInstructionValid,
         receivedAt: d.receivedAt || null,
-        appealDeadline: appealDeadlineDate.toISOString().slice(0, 10),
+        retrievalIssuedAt: d.retrievalIssuedAt || null,
+        retrievalNotificationDate: d.retrievalNotificationDate || null,
+        retrievalNotificationDisputedOrLate: retrievalEvidence.notificationDisputedOrLate,
+        retrievedAt: d.retrievedAt || null,
+        appealDeadline: appealDeadlineDate?.toISOString().slice(0, 10) ?? null,
         filingId: matchingFiling?.id ?? null,
       },
     });
@@ -245,7 +355,7 @@ export async function updateNoticeStatusAction(input: {
     klageFiledDate?: string;
   };
 }): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'taxNotices' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 

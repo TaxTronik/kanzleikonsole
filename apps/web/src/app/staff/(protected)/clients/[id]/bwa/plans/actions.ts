@@ -5,7 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-import { staffActionGuard, withStaff, type ActionResult } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  withStaffModule,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import {
   CreateBwaPlanSchema,
@@ -18,6 +22,8 @@ import {
   type UpdateBwaPlanInput,
 } from '@/server/bwa/plans';
 
+const withBwaStaff = withStaffModule('bwa');
+
 function validClientId(clientId: string): boolean {
   return z.string().uuid().safeParse(clientId).success;
 }
@@ -27,7 +33,7 @@ export async function createStaffPlanAction(
   clientId: string,
   input: CreateBwaPlanInput,
 ): Promise<ActionResult> {
-  const guard = await staffActionGuard();
+  const guard = await staffActionGuard({ module: 'bwa' });
   if (!guard.ok) return guard;
   const { tenantId, staffId, ctx, session } = guard;
   if (!validClientId(clientId)) return { ok: false, error: 'Mandant ungültig.' };
@@ -60,7 +66,7 @@ export async function updateStaffPlanAction(
   const parsed = UpdateBwaPlanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withBwaStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, clientId);
       await updateBwaPlanTx(tx, {
@@ -89,7 +95,7 @@ export async function deleteStaffPlanAction(
   const parsed = DeleteBwaPlanSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withBwaStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, clientId);
       await deleteBwaPlanTx(tx, {

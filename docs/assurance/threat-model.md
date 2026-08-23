@@ -31,12 +31,12 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 ### 2.2 Audit-Chain / GoBD
 
-| ID      | Was muss niemals passieren                              | Schicht                                  | Test                                                                                 |
-| ------- | ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------ |
-| T-AUD-1 | Eine audit-pflichtige Mutation erzeugt kein Audit-Event | transaktionales `evidenceService.record` | Modulspezifische Action-Tests; kein vollständiger globaler AST-Nachweis              |
-| T-AUD-2 | Die Hash-Chain ist inkonsistent (Manipulation erkannt)  | SHA-256 + RFC 3161                       | `verify:chain` CLI, `service-verifychain.test.ts`, `canonical-json.property.test.ts` |
-| T-AUD-3 | Ein Audit-Eintrag wird nachträglich geändert            | `prevent_modification()` Trigger         | `rls-cross-tenant.test.ts`                                                           |
-| T-AUD-4 | Ein Replay-Lauf ist nicht reproduzierbar                | Sampling/Replay-Engine                   | `packages/tax` Tests, `08-differential.spec.ts`                                      |
+| ID      | Was muss niemals passieren                                | Schicht                                    | Test                                                                                              |
+| ------- | --------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| T-AUD-1 | Eine audit-pflichtige Mutation erzeugt kein Audit-Event   | transaktionales `evidenceService.record`   | Modulspezifische Action-Tests; kein vollständiger globaler AST-Nachweis                           |
+| T-AUD-2 | Die Hash-Chain ist inkonsistent (Manipulation erkannt)    | SHA-256 + RFC 3161                         | `verify:chain` CLI, `service-verifychain.test.ts`, `canonical-json.property.test.ts`              |
+| T-AUD-3 | Ein Audit-Eintrag wird nachträglich geändert              | `prevent_modification()` Trigger           | `rls-cross-tenant.test.ts`                                                                        |
+| T-AUD-4 | Ein Quantenlos-Nachweis passt nicht zum gebundenen Rahmen | Commitment + gespeicherter Nachweis/Rahmen | `packages/risk-layer/src/__tests__/los.test.ts`, `apps/web/src/server/risk/__tests__/los.test.ts` |
 
 ### 2.3 Authentifizierung & Berechtigungen
 
@@ -57,33 +57,33 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 ### 2.5 Infrastruktur
 
-| ID        | Was muss niemals passieren                                                         | Schicht                                         | Test                                                                                                                                                                  |
-| --------- | ---------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T-INFRA-1 | Ein Secret wird committet                                                          | gitleaks (CI)                                   | `security.yml` (gitleaks scan)                                                                                                                                        |
-| T-INFRA-2 | Eine bekannte Vulnerability (high+) in Prod-Dependencies                           | `pnpm audit`                                    | `security.yml` (täglich + PR); blockierend ist `--prod --audit-level high`, ein nicht-blockierender Vollauf erfasst zusätzlich Dev-Dependencies und alle Schweregrade |
-| T-INFRA-3 | CI-Images oder Actions sind nicht gepinnt                                          | SHA/Digest-Pinning                              | `check-ci-images-pinned.sh`, `check-ci-actions-pinned.sh`                                                                                                             |
-| T-INFRA-4 | Allgemeine Server-Fetches erreichen interne/private Ziele                          | `safeFetch`, DNS-Rebinding-Schutz, Allowlist    | `@taxtronik/http-utils` Tests                                                                                                                                         |
-| T-INFRA-5 | Risk-Layer-Konfiguration ist halb gesetzt oder nutzt ein falsches Vertrauensmodell | `doctor`, dedizierter trusted Risk-Layer-Client | `pnpm test:ops`, Risk-Layer Client Tests                                                                                                                              |
-| T-INFRA-6 | n8n-Webhooks werden gefälscht oder replayed                                        | HMAC, Timestamp-Fenster, Nonce                  | `server/n8n/__tests__/verify.test.ts`, Workflow-Contract-Tests                                                                                                        |
-| T-INFRA-7 | Produktion startet mit Dev-Mailhog-Defaults                                        | Compose `${VAR:?}`, `doctor` SMTP-Gate          | `pnpm test:ops`                                                                                                                                                       |
-| T-INFRA-8 | Backup existiert, ist aber nicht wiederherstellbar                                 | Restore-Roundtrip, Backup-Drill                 | CI `restore`, `backup-drill`, `disaster-recovery.md`                                                                                                                  |
-| T-INFRA-9 | Lokaler Build-Cache füllt den Server                                               | automatischer BuildKit-Prune nach Lokalbuild    | `pnpm test:ops`, Day-2 Runbook                                                                                                                                        |
+| ID        | Was muss niemals passieren                                                         | Schicht                                                                                                                              | Test                                                                                                                                                                  |
+| --------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-INFRA-1 | Ein Secret wird committet                                                          | gitleaks (CI)                                                                                                                        | `security.yml` (gitleaks scan)                                                                                                                                        |
+| T-INFRA-2 | Eine bekannte Vulnerability (high+) in Prod-Dependencies                           | `pnpm audit`                                                                                                                         | `security.yml` (täglich + PR); blockierend ist `--prod --audit-level high`, ein nicht-blockierender Vollauf erfasst zusätzlich Dev-Dependencies und alle Schweregrade |
+| T-INFRA-3 | CI-Images oder Actions sind nicht gepinnt                                          | SHA/Digest-Pinning                                                                                                                   | `check-ci-images-pinned.sh`, `check-ci-actions-pinned.sh`                                                                                                             |
+| T-INFRA-4 | Allgemeine Server-Fetches erreichen interne/private Ziele                          | `safeFetch`, DNS-Rebinding-Schutz, Allowlist                                                                                         | `@taxtronik/http-utils` Tests                                                                                                                                         |
+| T-INFRA-5 | Risk-Layer-Konfiguration ist halb gesetzt oder nutzt ein falsches Vertrauensmodell | `doctor`, dedizierter trusted Risk-Layer-Client                                                                                      | `pnpm test:ops`, Risk-Layer Client Tests                                                                                                                              |
+| T-INFRA-6 | n8n-Callbacks werden gefälscht, tenantübergreifend genutzt oder replayed           | v1: tenantgebundenes Bearer-Credential, Key-ID, Scopes, einmalige Request-ID im fail-closed Redis-Store; Legacy-HMAC nur default-off | `callback-auth.test.ts`, `legacy-callback-routes.test.ts`, Workflow-Contract-Tests                                                                                    |
+| T-INFRA-7 | Produktion startet mit Dev-Mailhog-Defaults                                        | Compose `${VAR:?}`, `doctor` SMTP-Gate                                                                                               | `pnpm test:ops`                                                                                                                                                       |
+| T-INFRA-8 | Backup existiert, ist aber nicht wiederherstellbar                                 | Restore-Roundtrip, Backup-Drill                                                                                                      | CI `restore`, `backup-drill`, `disaster-recovery.md`                                                                                                                  |
+| T-INFRA-9 | Lokaler Build-Cache füllt den Server                                               | automatischer BuildKit-Prune nach Lokalbuild                                                                                         | `pnpm test:ops`, Day-2 Runbook                                                                                                                                        |
 
 ## 3. Angriffsvektoren
 
-| Vektor                   | Beispiel                                           | Gegenmaßnahme                                                       |
-| ------------------------ | -------------------------------------------------- | ------------------------------------------------------------------- |
-| **Direct DB Access**     | Angreifer umgeht App, greift direkt auf DB zu      | RLS (FORCE + Policy), `taxtronik_app` Role                          |
-| **TOCTOU Race**          | Berechtigung gilt beim Precheck, nicht beim Commit | Advisory Locks, `$transaction`                                      |
-| **Mass Assignment**      | Angreifer sendet versteckte Felder mit             | Zod-Schemas pro Action, `decideStaffGuard`                          |
-| **CSRF**                 | Angreifer forciert POST aus fremdem Origin         | SameSite=Lax, Origin-/Fetch-Metadata-Checks, Auth.js/Next.js-Schutz |
-| **XSS**                  | Angreifer injiziert Script in Mandantendaten       | React-Default-Escaping, CSP, E2E 07 (9.1)                           |
-| **SQL Injection**        | Angreifer injiziert SQL in Search/Filter           | Prisma-Parameterized-Queries, E2E 07 (9.2)                          |
-| **File Upload Malware**  | EICAR-Testdatei, Double-Extension                  | ClamAV, MIME-Check, E2E 07 (10.1-10.3)                              |
-| **Brute Force**          | Passwort- oder TOTP-Brute-Force                    | IP-RL + Account-Lockout, E2E 04                                     |
-| **SSRF / DNS-Rebinding** | Admin-konfigurierte URLs zeigen auf interne Netze  | `safeFetch`, gepinnter Lookup, `INTERNAL_FETCH_HOSTS` nur bewusst   |
-| **Webhook Replay**       | alter n8n-Callback wird erneut gesendet            | HMAC + Timestamp + Redis-Nonce                                      |
-| **Dev-Config in Prod**   | Mailhog oder Dev-Secrets gelangen in Production    | ENV-Denylist, Compose-Pflichtvariablen, `doctor`                    |
+| Vektor                   | Beispiel                                           | Gegenmaßnahme                                                                                     |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Direct DB Access**     | Angreifer umgeht App, greift direkt auf DB zu      | RLS (FORCE + Policy), `taxtronik_app` Role                                                        |
+| **TOCTOU Race**          | Berechtigung gilt beim Precheck, nicht beim Commit | Advisory Locks, `$transaction`                                                                    |
+| **Mass Assignment**      | Angreifer sendet versteckte Felder mit             | Zod-Schemas pro Action, `decideStaffGuard`                                                        |
+| **CSRF**                 | Angreifer forciert POST aus fremdem Origin         | SameSite=Lax, Origin-/Fetch-Metadata-Checks, Auth.js/Next.js-Schutz                               |
+| **XSS**                  | Angreifer injiziert Script in Mandantendaten       | React-Default-Escaping, CSP, E2E 07 (9.1)                                                         |
+| **SQL Injection**        | Angreifer injiziert SQL in Search/Filter           | Prisma-Parameterized-Queries, E2E 07 (9.2)                                                        |
+| **File Upload Malware**  | EICAR-Testdatei, Double-Extension                  | ClamAV, MIME-Check, E2E 07 (10.1-10.3)                                                            |
+| **Brute Force**          | Passwort- oder TOTP-Brute-Force                    | IP-RL + Account-Lockout, E2E 04                                                                   |
+| **SSRF / DNS-Rebinding** | Admin-konfigurierte URLs zeigen auf interne Netze  | `safeFetch`, gepinnter Lookup; Infrastruktur-Allowlist gilt nicht für tenantkonfigurierbare Ziele |
+| **Webhook Replay**       | alter n8n-Callback wird erneut gesendet            | v1: einmalige Request-ID im fail-closed Redis-Store; Legacy: HMAC + Timestamp + Nonce             |
+| **Dev-Config in Prod**   | Mailhog oder Dev-Secrets gelangen in Production    | ENV-Denylist, Compose-Pflichtvariablen, `doctor`                                                  |
 
 ## 4. Vertrauensgrenzen (Trust Boundaries)
 

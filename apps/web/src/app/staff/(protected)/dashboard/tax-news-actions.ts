@@ -6,9 +6,11 @@ import { toActionError } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import {
   staffActionGuard,
-  withStaff,
+  withStaffModule,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+
+const withRssReaderStaff = withStaffModule('rssReader');
 
 export type ActionResult = BaseActionResult;
 
@@ -18,7 +20,7 @@ export async function toggleTaxNewsNotifyAction(input: {
   const parsed = z.object({ enabled: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withRssReaderStaff(
     async (tx, { tenantId, staffId }) => {
       await tx.staffUser.update({
         where: { id: staffId },
@@ -42,7 +44,7 @@ export async function toggleTaxNewsNotifyAction(input: {
 export async function triggerTaxNewsFetchAction(): Promise<
   ActionResult & { inserted?: number; fetched?: number; errors?: string[] }
 > {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'rssReader' });
   if (!g.ok) return g;
   try {
     const mod = await import('@/server/tax-news/fetcher');

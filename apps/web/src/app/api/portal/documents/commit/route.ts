@@ -6,7 +6,7 @@ import { getClientIp, checkPortalWriteLimit } from '@/server/rate-limit';
 import { z } from 'zod';
 import { portalAuth } from '@/server/auth/portal';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
-import { commitDocumentFromBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
+import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
 import {
   parseMultipartUpload,
@@ -15,6 +15,7 @@ import {
 } from '@/server/documents/upload-helpers';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 const Schema = z.object({
   title: z.string().min(1).max(500),
@@ -40,16 +41,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
-  // Befund 13 (analog Staff-Route): ehrlich deklarierte Über-Größe ablehnen,
-  // BEVOR req.formData() den gesamten Body in den RAM puffert (+1 MB Marge
-  // für Multipart-Framing + Metadatenfelder). Lügt der Client über
-  // Content-Length, greift der file.size-Check im Multipart-Helfer.
-  const declaredLen = Number(req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(declaredLen) && declaredLen > MAX_UPLOAD_BYTES + 1024 * 1024) {
-    return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
-  }
-
-  // Befund 12: Multipart-Parse + Datei-Checks zentral (upload-helpers).
+  // Multipart-Body wird zentral am echten Stream begrenzt; das greift auch
+  // ohne Content-Length und bei chunked Transfer-Encoding.
   const upload = await parseMultipartUpload(req);
   if (!upload.ok) return upload.response;
   const { form, file } = upload;
@@ -94,47 +87,58 @@ export async function POST(req: NextRequest) {
   // serviert dann mit dem echten Type (preview-mime-Whitelist greift trotzdem).
   const effectiveMime = commit.detectedMime ?? mimeType;
 
-  const docRow = await withTenantContext(
-    { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-    async (tx) => {
-      // Befund 12: Document+Version-Insert zentral (upload-helpers).
-      const { document } = await createDocumentWithVersion(tx, {
-        documentData: {
+  let docRow: { id: string };
+  try {
+    docRow = await withTenantContext(
+      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
+      async (tx) => {
+        // Befund 12: Document+Version-Insert zentral (upload-helpers).
+        const { document } = await createDocumentWithVersion(tx, {
+          documentData: {
+            tenantId,
+            clientId,
+            ownerStaffId: null,
+            title,
+            classification: 'GENERAL',
+            mimeType: effectiveMime,
+            retentionUntil: commit.retentionUntil,
+            // Vom Mandanten selbst hochgeladen (Portal-Upload / Anforderungs-
+            // Antwort) → automatisch geteilt, sonst sähe er seinen eigenen
+            // Upload nicht mehr. sharedByStaff bleibt null (client-originiert).
+            sharedWithClientAt: new Date(),
+          },
+          commit,
+          createdById: contactId,
+        });
+        await evidenceService.record(tx, {
           tenantId,
-          clientId,
-          ownerStaffId: null,
-          title,
-          classification: 'GENERAL',
-          mimeType: effectiveMime,
-          retentionUntil: commit.retentionUntil,
-          // Vom Mandanten selbst hochgeladen (Portal-Upload / Anforderungs-
-          // Antwort) → automatisch geteilt, sonst sähe er seinen eigenen
-          // Upload nicht mehr. sharedByStaff bleibt null (client-originiert).
-          sharedWithClientAt: new Date(),
-        },
-        commit,
-        createdById: contactId,
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
-        action: 'document.upload',
-        resourceType: 'document',
-        resourceId: document.id,
-        after: {
-          title,
-          classification: 'GENERAL',
-          clientId,
-          sha256: commit.sha256.toString('hex'),
-          source: 'portal',
-        },
-        ip: getClientIp(req.headers),
-        userAgent: req.headers.get('user-agent'),
-      });
-      return document;
-    },
-  );
+          actorType: 'CLIENT_CONTACT',
+          actorId: contactId,
+          action: 'document.upload',
+          resourceType: 'document',
+          resourceId: document.id,
+          after: {
+            title,
+            classification: 'GENERAL',
+            clientId,
+            sha256: commit.sha256.toString('hex'),
+            source: 'portal',
+          },
+          ip: getClientIp(req.headers),
+          userAgent: req.headers.get('user-agent'),
+        });
+        return document;
+      },
+    );
+  } catch (error) {
+    await compensateStorageCommit({
+      tenantId,
+      source: 'portal.document.commit',
+      commit,
+      cause: error,
+    });
+    return NextResponse.json({ error: 'database_commit_failed' }, { status: 500 });
+  }
 
   await emitN8nEvent(
     'document.uploaded',

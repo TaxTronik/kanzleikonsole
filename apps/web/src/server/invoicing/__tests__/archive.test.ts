@@ -18,6 +18,9 @@ vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: vi.fn() })
 vi.mock('@/server/settings/branding', () => ({
   readBranding: vi.fn(async () => ({ logoDataUrl: null })),
 }));
+vi.mock('@/server/documents/storage-compensation', () => ({
+  compensateStorageCommit: vi.fn(async () => 'JOURNALED'),
+}));
 
 import { ensureZugferdArchive } from '../archive';
 import { withTenantContext } from '@taxtronik/db';
@@ -25,6 +28,7 @@ import { commitBytesWithTier } from '@taxtronik/storage';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { evidenceService } from '@/server/container';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' as const };
 const RETENTION_UNTIL = new Date('2035-01-01T00:00:00.000Z');
@@ -297,5 +301,37 @@ describe('ensureZugferdArchive', () => {
     expect(tx.document.create).not.toHaveBeenCalled();
     expect(tx.documentVersion.create).not.toHaveBeenCalled();
     expect(tx.invoice.update).not.toHaveBeenCalled();
+    expect(compensateStorageCommit).toHaveBeenCalledTimes(2);
+    expect(compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'invoice.archive.zugferd_race' }),
+    );
+    expect(compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'invoice.archive.xrechnung_race' }),
+    );
+  });
+
+  it('journalisiert die bereits gespeicherte PDF, wenn der XML-Storage-Commit scheitert', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
+    vi.mocked(commitBytesWithTier)
+      .mockResolvedValueOnce({
+        targetBucket: 'gobd',
+        targetKey: 'pdf-key',
+        storageVersionId: 'pdf-version',
+        sha256: Buffer.from([1]),
+        sizeBytes: 3n,
+        immutable: true,
+        retentionUntil: RETENTION_UNTIL,
+        detectedMime: 'application/pdf',
+      })
+      .mockRejectedValueOnce(new Error('xml storage unavailable'));
+
+    await expect(ensureZugferdArchive(ctx, 'inv1')).rejects.toThrow('XRechnung-Ablage');
+
+    expect(compensateStorageCommit).toHaveBeenCalledWith({
+      tenantId: 't1',
+      source: 'invoice.archive.zugferd_without_xml',
+      commit: expect.objectContaining({ targetKey: 'pdf-key' }),
+      cause: expect.any(Error),
+    });
   });
 });

@@ -5,7 +5,7 @@ const h = vi.hoisted(() => {
     tenantSetting: { findUnique: vi.fn() },
     n8nConnection: { findUnique: vi.fn() },
     n8nEventSubscription: { findMany: vi.fn(), count: vi.fn() },
-    n8nOutbox: { create: vi.fn(), update: vi.fn() },
+    n8nOutbox: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     n8nDelivery: { create: vi.fn() },
   };
   return {
@@ -42,6 +42,10 @@ beforeEach(() => {
   h.env.N8N_WEBHOOK_BASE_URL = '';
   h.env.N8N_HMAC_SECRET = '';
   h.isAllowedN8nEvent.mockReturnValue(true);
+  h.prismaOwner.$transaction.mockImplementation(async (fn: (client: typeof h.tx) => unknown) =>
+    fn(h.tx),
+  );
+  h.tx.n8nOutbox.findUnique.mockResolvedValue(null);
   h.tx.n8nOutbox.create.mockResolvedValue({ id: 'outbox-1' });
   h.tx.n8nOutbox.update.mockResolvedValue({});
   h.tx.tenantSetting.findUnique.mockResolvedValue(null);
@@ -307,5 +311,52 @@ describe('enqueueN8nEvent routing', () => {
       deliveryCount: 0,
       error: 'n8n-Outbox konnte nicht geschrieben werden',
     });
+  });
+
+  it('liefert bei bestehendem Dedupe-Key den vorhandenen Outbox-Eintrag ohne neue Delivery', async () => {
+    h.tx.n8nOutbox.findUnique.mockResolvedValue({
+      id: 'outbox-existing',
+      _count: { deliveries: 2 },
+    });
+
+    const result = await enqueueN8nEvent(
+      'request.opened',
+      { requestId: 'request-1' },
+      { tenantId: 'tenant-1', dedupeKey: 'workflow-dispatch:dispatch-1' },
+    );
+
+    expect(result).toEqual({
+      eventId: 'outbox-existing',
+      status: 'DUPLICATE',
+      deliveryCount: 2,
+    });
+    expect(h.tx.n8nOutbox.create).not.toHaveBeenCalled();
+    expect(h.tx.n8nDelivery.create).not.toHaveBeenCalled();
+    expect(h.queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('behandelt den parallelen Unique-Konflikt des Dedupe-Keys als erfolgreichen Duplicate', async () => {
+    const conflict = Object.assign(new Error('unique conflict'), { code: 'P2002' });
+    h.prismaOwner.$transaction
+      .mockRejectedValueOnce(conflict)
+      .mockImplementationOnce(async (fn: (client: typeof h.tx) => unknown) => fn(h.tx));
+    h.tx.n8nOutbox.findUnique.mockResolvedValue({
+      id: 'outbox-winner',
+      _count: { deliveries: 1 },
+    });
+
+    const result = await enqueueN8nEvent(
+      'request.opened',
+      {},
+      { tenantId: 'tenant-1', dedupeKey: 'workflow-dispatch:dispatch-1' },
+    );
+
+    expect(result).toEqual({
+      eventId: 'outbox-winner',
+      status: 'DUPLICATE',
+      deliveryCount: 1,
+    });
+    expect(h.log.error).not.toHaveBeenCalled();
+    expect(h.queueAdd).not.toHaveBeenCalled();
   });
 });

@@ -48,10 +48,7 @@ vi.mock('@taxtronik/storage', () => ({
 }));
 vi.mock('@taxtronik/evidence', () => ({
   serializeArchive: h.serializeArchive,
-  Rfc3161HttpAdapter: class {
-    timestamp = h.tsaTimestamp;
-    constructor(public url: string) {}
-  },
+  createRfc3161Adapter: () => ({ timestamp: h.tsaTimestamp }),
   resolveTsaUrl: (providerId: string | null, customUrl: string | null) =>
     customUrl ?? (providerId ? `https://tsa.example.com/${providerId}` : null),
 }));
@@ -216,7 +213,7 @@ describe('Upload + Archiv-Eintrag', () => {
         fileSizeBytes: BigInt(NDJSON.length),
         storageBucket: 'gobd-bucket',
         storageKey: `tenants/${TENANT}/audit-archive/2026/01/6-7.ndjson`,
-        tsaResponseBlob: null, // keine TSA konfiguriert
+        tsaResponseBlob: expect.any(Uint8Array), // verifizierter GlobalSign-Default
         mode: 'SOFT',
       }),
     });
@@ -259,6 +256,15 @@ describe('N-8: Forward-Recovery nach Crash zwischen PUT und DB-Insert', () => {
 });
 
 describe('F3: optionaler RFC-3161-Stempel', () => {
+  it('ohne Override nutzt das Archiv denselben GlobalSign-Default wie die Tagessiegel', async () => {
+    await run();
+
+    expect(h.assertPublicHost).toHaveBeenCalledWith('https://tsa.example.com/globalsign', {
+      mode: 'public',
+    });
+    expect(h.tsaTimestamp).toHaveBeenCalledWith(SER.fileSha256);
+  });
+
   it('Tenant-TSA konfiguriert → Stempel über fileSha256, Blob landet im Archiv', async () => {
     h.prismaOwner.tenantSetting.findUnique.mockResolvedValue({
       value: { customUrl: 'https://tsa.example.com/tsr' },
@@ -266,7 +272,9 @@ describe('F3: optionaler RFC-3161-Stempel', () => {
 
     await run();
 
-    expect(h.assertPublicHost).toHaveBeenCalledWith('https://tsa.example.com/tsr');
+    expect(h.assertPublicHost).toHaveBeenCalledWith('https://tsa.example.com/tsr', {
+      mode: 'public',
+    });
     expect(h.tsaTimestamp).toHaveBeenCalledWith(SER.fileSha256);
     const data = h.prismaOwner.auditArchive.create.mock.calls[0]![0].data as {
       tsaResponseBlob: Uint8Array;

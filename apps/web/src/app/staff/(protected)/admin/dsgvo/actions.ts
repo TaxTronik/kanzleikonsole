@@ -669,14 +669,20 @@ export async function anonymizeContactAction(formData: FormData): Promise<void> 
   // admin/dsgvo-retention genutzt). Keine gelöschten Klardaten erneut in die
   // unveränderliche Audit-Chain kopieren; Antrag-ID und Kontakt-ID liefern den
   // Rechenschaftsnachweis ohne eine zweite, unbegrenzt persistente PII-Kopie.
-  await withTenantContext(ctx, (tx) =>
-    anonymizeContactInTx(tx, { tenantId, staffId, contactId, personalDataInAudit: false }),
-  );
-
-  // N-2: Art. 17 ("Recht auf Löschung") — alle aktiven Portal-Sessions der Person
-  // sofort revoken. Sonst bliebe der JWT-Cookie bis 24 h gültig und der
-  // anonymisierte Kontakt könnte weiter aufs Portal zugreifen.
-  await revokeAllSessions('portal', contactId);
+  await withTenantContext(ctx, async (tx) => {
+    const target = await tx.clientContact.findUnique({
+      where: { id: contactId },
+      select: { id: true },
+    });
+    if (!target) throw new ActionError('Ansprechpartner nicht gefunden.');
+    await revokeAllSessions('portal', contactId);
+    await anonymizeContactInTx(tx, {
+      tenantId,
+      staffId,
+      contactId,
+      personalDataInAudit: false,
+    });
+  });
 
   revalidatePath('/staff/admin/dsgvo');
 }

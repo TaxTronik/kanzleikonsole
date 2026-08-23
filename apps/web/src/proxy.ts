@@ -311,11 +311,13 @@ function forwardWithHeaders(
   reqHeaders.delete('x-request-id');
   reqHeaders.delete('x-taxtronik-surface');
   reqHeaders.delete('x-taxtronik-tenant-slug');
+  reqHeaders.delete('x-taxtronik-pathname');
   reqHeaders.delete('x-nonce');
 
   reqHeaders.set('x-request-id', ctx.requestId);
   if (ctx.surface) reqHeaders.set('x-taxtronik-surface', ctx.surface);
   if (ctx.tenantSlug) reqHeaders.set('x-taxtronik-tenant-slug', ctx.tenantSlug);
+  reqHeaders.set('x-taxtronik-pathname', request.nextUrl.pathname);
   // Next.js parses the request CSP and applies this nonce to its framework
   // and RSC bootstrap scripts during dynamic rendering.
   reqHeaders.set('x-nonce', security.nonce);

@@ -66,9 +66,11 @@ function findFreeSlot(
 export function DashboardGrid({
   initialLayout,
   renderedWidgets,
+  enabledWidgetTypes,
 }: {
   initialLayout: DashboardLayout;
   renderedWidgets: RenderedWidget[];
+  enabledWidgetTypes: WidgetType[];
 }) {
   const [editMode, setEditMode] = useState(false);
   const [widgets, setWidgets] = useState<LayoutWidget[]>(initialLayout.widgets);
@@ -289,7 +291,9 @@ export function DashboardGrid({
 
       {error && <div className="alert-error-sm">{error}</div>}
 
-      {editMode && <AddWidgetBar widgets={widgets} onAdd={add} />}
+      {editMode && (
+        <AddWidgetBar widgets={widgets} enabledWidgetTypes={enabledWidgetTypes} onAdd={add} />
+      )}
 
       <div
         ref={containerRef}
@@ -351,15 +355,18 @@ export function DashboardGrid({
 
 function AddWidgetBar({
   widgets,
+  enabledWidgetTypes,
   onAdd,
 }: {
   widgets: LayoutWidget[];
+  enabledWidgetTypes: WidgetType[];
   onAdd: (t: WidgetType) => void;
 }) {
   // Pro Widget-Typ nur einmal auf dem Dashboard — Dopplungen sind nicht
   // sinnvoll und verwirren beim Auto-Reflow.
   const usedTypes = new Set(widgets.map((w) => w.type));
-  const available = WIDGETS.filter((w) => !usedTypes.has(w.type));
+  const enabled = new Set(enabledWidgetTypes);
+  const available = WIDGETS.filter((w) => enabled.has(w.type) && !usedTypes.has(w.type));
   return (
     <div className="card p-3">
       <p className="text-xs font-medium text-secondary mb-2">

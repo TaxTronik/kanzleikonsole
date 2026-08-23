@@ -14,6 +14,7 @@ const m = vi.hoisted(() => {
     assertClientAccessTx: vi.fn(),
     revalidatePath: vi.fn(),
     logError: vi.fn(),
+    compensateStorageCommit: vi.fn(),
     txInitial: {
       document: { findFirst: vi.fn() },
       documentType: { findFirst: vi.fn() },
@@ -62,6 +63,9 @@ vi.mock('@/server/actions/staff-action', () => ({
   withStaff: vi.fn(),
 }));
 vi.mock('@/server/logger', () => ({ log: { error: m.logError } }));
+vi.mock('@/server/documents/storage-compensation', () => ({
+  compensateStorageCommit: m.compensateStorageCommit,
+}));
 
 import { retagDocumentAction } from '../actions';
 
@@ -138,6 +142,7 @@ beforeEach(() => {
   m.txCommit.documentVersion.create.mockResolvedValue({ id: 'new-db-version' });
   m.txCommit.document.update.mockResolvedValue({});
   m.evidenceRecord.mockResolvedValue({});
+  m.compensateStorageCommit.mockResolvedValue('JOURNALED');
 });
 
 describe('retagDocumentAction concurrency and immutable history', () => {
@@ -167,14 +172,16 @@ describe('retagDocumentAction concurrency and immutable history', () => {
     expect(m.evidenceRecord).not.toHaveBeenCalled();
     expect(m.deleteObject).not.toHaveBeenCalled();
     expect(m.deleteObjectVersion).not.toHaveBeenCalled();
-    expect(m.logError).toHaveBeenCalledWith(
+    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
       expect.objectContaining({
-        component: 'document-retag',
-        orphanedBucket: 'gobd',
-        orphanedKey: 'new-key',
-        storageVersionId: 'new-version-id',
+        tenantId: 'tenant-1',
+        source: 'staff.document.retag',
+        commit: expect.objectContaining({
+          targetBucket: 'gobd',
+          targetKey: 'new-key',
+          storageVersionId: 'new-version-id',
+        }),
       }),
-      'document-retag: DB-Commit nach geschütztem Storage-Upload fehlgeschlagen',
     );
   });
 

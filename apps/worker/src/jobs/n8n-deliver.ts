@@ -310,6 +310,98 @@ async function ensureLegacyDelivery(outboxId: string): Promise<string | null> {
   });
 }
 
+async function sendSignedDelivery(input: {
+  deliveryId: string;
+  outboxId: string;
+  event: string;
+  targetUrl: string;
+  testMode: boolean;
+  leaseToken: string;
+  signature: string;
+  timestamp: string;
+  nonce: string;
+  body: string;
+}): Promise<void> {
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 15_000);
+  const startedAt = Date.now();
+  try {
+    let response: Response;
+    try {
+      response = await safeFetch(
+        input.targetUrl,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-taxtronik-signature': input.signature,
+            'x-taxtronik-timestamp': input.timestamp,
+            'x-taxtronik-event': input.event,
+            'x-taxtronik-nonce': input.nonce,
+            'x-taxtronik-delivery-id': input.deliveryId,
+          },
+          body: input.body,
+          signal: ctrl.signal,
+          redirect: 'error',
+        },
+        { mode: 'n8n', kind: input.testMode ? 'webhook-test' : 'webhook' },
+      );
+    } catch (err) {
+      if (err instanceof SsrfGuardError) {
+        await markDeliveryTerminal(input.deliveryId, input.outboxId, input.leaseToken, 'FAILED', {
+          latencyMs: Date.now() - startedAt,
+          lastError: `SSRF-Guard (${err.reason}): ${err.message}`,
+        });
+        return;
+      }
+      throw err;
+    }
+
+    const latencyMs = Date.now() - startedAt;
+    if (response.ok) {
+      // safeFetch pinnt den Dispatcher bis der Body konsumiert oder verworfen
+      // wurde. Erfolgsantworten brauchen keinen Inhalt, müssen ihren Stream
+      // aber vor clearTimeout() freigeben, sonst leakt pro Delivery ein Agent.
+      if (response.body) {
+        try {
+          await response.body.cancel();
+        } catch (err) {
+          log.warn(
+            { deliveryId: input.deliveryId, err: (err as Error).message },
+            'n8n-deliver: response body could not be cancelled',
+          );
+        }
+      }
+      await markDeliveryTerminal(input.deliveryId, input.outboxId, input.leaseToken, 'DELIVERED', {
+        httpStatus: response.status,
+        latencyMs,
+        lastError: null,
+      });
+      log.debug({ deliveryId: input.deliveryId, outboxId: input.outboxId }, 'n8n-deliver: ok');
+      return;
+    }
+
+    const responseText = await response.text().catch(() => '');
+    const error = `HTTP ${response.status}: ${responseText.slice(0, 200)}`;
+    if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+      await markDeliveryTerminal(input.deliveryId, input.outboxId, input.leaseToken, 'FAILED', {
+        httpStatus: response.status,
+        latencyMs,
+        lastError: error,
+      });
+      return;
+    }
+
+    await prismaOwner.n8nDelivery.updateMany({
+      where: { id: input.deliveryId, status: 'PROCESSING', leaseToken: input.leaseToken },
+      data: { httpStatus: response.status, latencyMs, lastError: error },
+    });
+    throw new Error(error);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
   const delivery = await prismaOwner.n8nDelivery.findUnique({
     where: { id: deliveryId },
@@ -441,80 +533,18 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
     return;
   }
 
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 15_000);
-  const startedAt = Date.now();
-  try {
-    let response: Response;
-    try {
-      response = await safeFetch(delivery.targetUrl, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-taxtronik-signature': signature,
-          'x-taxtronik-timestamp': timestamp,
-          'x-taxtronik-event': outbox.event,
-          'x-taxtronik-nonce': nonce,
-          'x-taxtronik-delivery-id': delivery.id,
-        },
-        body,
-        signal: ctrl.signal,
-        redirect: 'error',
-      });
-    } catch (err) {
-      if (err instanceof SsrfGuardError) {
-        await markDeliveryTerminal(delivery.id, outbox.id, leaseToken, 'FAILED', {
-          latencyMs: Date.now() - startedAt,
-          lastError: `SSRF-Guard (${err.reason}): ${err.message}`,
-        });
-        return;
-      }
-      throw err;
-    }
-
-    const latencyMs = Date.now() - startedAt;
-    if (response.ok) {
-      // safeFetch pinnt den Dispatcher bis der Body konsumiert oder verworfen
-      // wurde. Erfolgsantworten brauchen keinen Inhalt, müssen ihren Stream
-      // aber vor clearTimeout() freigeben, sonst leakt pro Delivery ein Agent.
-      if (response.body) {
-        try {
-          await response.body.cancel();
-        } catch (err) {
-          log.warn(
-            { deliveryId: delivery.id, err: (err as Error).message },
-            'n8n-deliver: response body could not be cancelled',
-          );
-        }
-      }
-      await markDeliveryTerminal(delivery.id, outbox.id, leaseToken, 'DELIVERED', {
-        httpStatus: response.status,
-        latencyMs,
-        lastError: null,
-      });
-      log.debug({ deliveryId: delivery.id, outboxId: outbox.id }, 'n8n-deliver: ok');
-      return;
-    }
-
-    const responseText = await response.text().catch(() => '');
-    const error = `HTTP ${response.status}: ${responseText.slice(0, 200)}`;
-    if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-      await markDeliveryTerminal(delivery.id, outbox.id, leaseToken, 'FAILED', {
-        httpStatus: response.status,
-        latencyMs,
-        lastError: error,
-      });
-      return;
-    }
-
-    await prismaOwner.n8nDelivery.updateMany({
-      where: { id: delivery.id, status: 'PROCESSING', leaseToken },
-      data: { httpStatus: response.status, latencyMs, lastError: error },
-    });
-    throw new Error(error);
-  } finally {
-    clearTimeout(timeout);
-  }
+  await sendSignedDelivery({
+    deliveryId: delivery.id,
+    outboxId: outbox.id,
+    event: outbox.event,
+    targetUrl: delivery.targetUrl,
+    testMode: n8nDeliveryMode === 'test' || delivery.endpoint?.testMode === true,
+    leaseToken,
+    signature,
+    timestamp,
+    nonce,
+    body,
+  });
 }
 
 function deliveryIdFrom(data: N8nDeliverJob): string | null {

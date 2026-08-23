@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import type { TxClient } from '@taxtronik/db';
+import type { BooleanTenantModules } from '@taxtronik/db/tenant-modules';
 
 // Prisma-Transaktions-Client aus withTenantContext (RLS-gebunden).
 export type Tx = TxClient;
@@ -18,6 +19,7 @@ export interface RenderCtx {
   tx: Tx;
   staffId: string;
   isAdmin?: boolean;
+  modules: BooleanTenantModules;
   /**
    * Zugriffsmodell (vertraulich-Flag / RESTRICTED): Mandanten-IDs, die der
    * Mitarbeiter nicht sehen darf — EINMAL pro Dashboard-Render berechnet und

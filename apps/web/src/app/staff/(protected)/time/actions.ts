@@ -5,11 +5,13 @@ import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
-  withStaff,
+  withStaffModule,
   ActionError,
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+
+const withTimeTrackingStaff = withStaffModule('timeTracking');
 
 export type ActionResult = BaseActionResult;
 
@@ -30,7 +32,7 @@ export async function startTimerAction(
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withTimeTrackingStaff(
     async (tx, { tenantId, staffId, session }) => {
       // R-2: clientId Tenant-Sanity + Vertraulich-/RESTRICTED-Ventil, falls gesetzt
       if (parsed.data.clientId) {
@@ -73,7 +75,7 @@ export async function startTimerAction(
 }
 
 export async function stopTimerAction(): Promise<void> {
-  await withStaff(
+  await withTimeTrackingStaff(
     async (tx, { tenantId, staffId, session }) => {
       const running = await tx.timeEntry.findFirst({
         where: { staffId, endedAt: null },
@@ -107,7 +109,7 @@ export async function deleteTimeEntryAction(formData: FormData): Promise<void> {
   if (!parsed.ok) return;
   const { id } = parsed.data;
 
-  await withStaff(
+  await withTimeTrackingStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.timeEntry.findFirst({ where: { id, staffId } });
       if (!before) return;

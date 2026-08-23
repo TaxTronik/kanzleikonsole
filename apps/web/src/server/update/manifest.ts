@@ -41,7 +41,7 @@
 
 import { createPublicKey, verify as cryptoVerify } from 'node:crypto';
 import { z } from 'zod';
-import { safeFetch } from '@/server/http/ssrf-guard';
+import { safeFetchPublic } from '@/server/http/ssrf-guard';
 
 // H4: 1 MB ist großzügig für ein JSON-Manifest mit N Versionen (typisch <50 KB).
 const MAX_MANIFEST_BYTES = 1024 * 1024;
@@ -198,7 +198,7 @@ export async function checkForUpdates(currentVersion: string): Promise<CheckResu
   // GB-Antwort im RAM (Ed25519-Verify erst NACH dem Read).
   let response: Response;
   try {
-    response = await safeFetch(url, {
+    response = await safeFetchPublic(url, {
       cache: 'no-store',
       signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
       redirect: 'error',
@@ -308,7 +308,7 @@ const MAX_SIG_BYTES = 4096;
  */
 async function fetchDetachedSignature(manifestUrl: string): Promise<string | null> {
   try {
-    const res = await safeFetch(`${manifestUrl}.sig`, {
+    const res = await safeFetchPublic(`${manifestUrl}.sig`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
       redirect: 'error',

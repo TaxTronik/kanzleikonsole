@@ -5,6 +5,7 @@ import { assertClientAccessTx } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { gwgBeneficialOwnerRevision } from '@/server/gwg/revisions';
+import { validateIdentityDates } from '@/server/gwg/identity-date-validation';
 import { withStaff, ActionError, parseFormData } from '@/server/actions/staff-action';
 
 import {
@@ -20,17 +21,23 @@ import {
 // Stabile Typ-Importpfade fuer die Form-Komponenten dieser Route.
 export type { ActionResult, InvalidatedIdentitySet, SavedBeneficialOwner } from './_action-helpers';
 
-const AddOwnerSchema = z.object({
-  checkId: z.string().uuid(),
-  clientId: z.string().uuid(),
-  fullName: z.string().trim().min(1).max(200),
-  birthDate: z.string().date(),
-  birthPlace: z.string().trim().min(1).max(200),
-  residence: z.string().trim().min(1).max(500),
-  nationality: z.string().trim().min(1).max(100),
-  ownershipPct: z.coerce.number().min(0).max(100).optional(),
-  isPep: z.enum(['true', 'false']).transform((value) => value === 'true'),
-});
+const AddOwnerSchema = z
+  .object({
+    checkId: z.string().uuid(),
+    clientId: z.string().uuid(),
+    fullName: z.string().trim().min(1).max(200),
+    birthDate: z.string().date(),
+    birthPlace: z.string().trim().min(1).max(200),
+    residence: z.string().trim().min(1).max(500),
+    nationality: z.string().trim().min(1).max(100),
+    ownershipPct: z.coerce.number().min(0).max(100).optional(),
+    isPep: z.enum(['true', 'false']).transform((value) => value === 'true'),
+  })
+  .superRefine((owner, ctx) => {
+    for (const issue of validateIdentityDates({ birthDate: owner.birthDate })) {
+      ctx.addIssue({ code: 'custom', path: ['birthDate'], message: issue.message });
+    }
+  });
 
 export async function addBeneficialOwnerAction(
   _prev: { ok: boolean; error?: string } | null,
@@ -102,19 +109,25 @@ export async function addBeneficialOwnerAction(
   );
 }
 
-const UpdateOwnerSchema = z.object({
-  ownerId: z.string().uuid(),
-  checkId: z.string().uuid(),
-  clientId: z.string().uuid(),
-  fullName: z.string().trim().min(1).max(200),
-  birthDate: z.string().date(),
-  birthPlace: z.string().trim().min(1).max(200),
-  residence: z.string().trim().min(1).max(500),
-  nationality: z.string().trim().min(1).max(100),
-  ownershipPct: z.coerce.number().min(0).max(100).optional(),
-  isPep: z.enum(['true', 'false']).transform((value) => value === 'true'),
-  expectedRevision: z.string().min(2).max(20_000),
-});
+const UpdateOwnerSchema = z
+  .object({
+    ownerId: z.string().uuid(),
+    checkId: z.string().uuid(),
+    clientId: z.string().uuid(),
+    fullName: z.string().trim().min(1).max(200),
+    birthDate: z.string().date(),
+    birthPlace: z.string().trim().min(1).max(200),
+    residence: z.string().trim().min(1).max(500),
+    nationality: z.string().trim().min(1).max(100),
+    ownershipPct: z.coerce.number().min(0).max(100).optional(),
+    isPep: z.enum(['true', 'false']).transform((value) => value === 'true'),
+    expectedRevision: z.string().min(2).max(20_000),
+  })
+  .superRefine((owner, ctx) => {
+    for (const issue of validateIdentityDates({ birthDate: owner.birthDate })) {
+      ctx.addIssue({ code: 'custom', path: ['birthDate'], message: issue.message });
+    }
+  });
 
 /**
  * Korrigiert die Angaben eines vorhandenen wirtschaftlich Berechtigten. Die

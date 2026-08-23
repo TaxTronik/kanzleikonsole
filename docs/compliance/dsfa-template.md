@@ -119,7 +119,7 @@ sichergestellt.
 | Unbefugter Zugriff           | Mitarbeiter: TOTP-2FA Pflicht; Portal: E-Mail-OTP-Magic-Link, kurze Gültigkeit                                                                         |
 | Cross-Tenant-Datenleck       | Postgres Row-Level-Security + App-Filter (doppelte Verteidigung, ADR-0002)                                                                             |
 | Manipulation Belege          | S3 Object-Lock COMPLIANCE je Dokumenttyp 6/8/10 Jahre + ClamAV-Virenscan vor Commit                                                                    |
-| Manipulation Buchführung     | Hash-Chain auf Audit-Log + tägliche RFC-3161-TSA-Versiegelung (ADR-0004)                                                                               |
+| Manipulation Buchführung     | Hash-Chain auf Audit-Log + rollende RFC-3161-Anker (Regelfall 2 s) + zusätzliche Tagesversiegelung (ADR-0004)                                          |
 | Passwort-Brute-Force         | Rate-Limit 10 Versuche / 10 Min auf Passwort-Step, 5 Versuche / 5 Min auf TOTP                                                                         |
 | Magic-Link-Phishing          | Tokens 32 Byte random, gehashed (SHA-256) gespeichert, 30 Min TTL, one-time                                                                            |
 | Daten in Transit             | HTTPS (Reverse-Proxy der Kanzlei), HSTS-Header                                                                                                         |

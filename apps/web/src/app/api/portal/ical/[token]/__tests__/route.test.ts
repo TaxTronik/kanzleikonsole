@@ -7,6 +7,7 @@ const m = vi.hoisted(() => ({
   contactFindFirst: vi.fn(),
   deadlineFindMany: vi.fn(),
   appointmentFindMany: vi.fn(),
+  readBooleanTenantModules: vi.fn(),
 }));
 
 vi.mock('@/server/ical/feed', () => ({
@@ -21,6 +22,9 @@ vi.mock('@/server/db/prisma-owner', () => ({
   },
 }));
 vi.mock('@taxtronik/tax', () => ({ SCHEDULE_LABELS: {} }));
+vi.mock('@taxtronik/db/tenant-modules', () => ({
+  readBooleanTenantModules: m.readBooleanTenantModules,
+}));
 
 import { GET } from '../route';
 
@@ -28,6 +32,7 @@ const request = {} as NextRequest;
 
 function contact(overrides: Record<string, unknown> = {}) {
   return {
+    tenantId: 'tenant-1',
     clientId: 'client-1',
     icalTokenVersion: 3,
     client: {
@@ -46,6 +51,10 @@ beforeEach(() => {
   m.deadlineFindMany.mockResolvedValue([]);
   m.appointmentFindMany.mockResolvedValue([]);
   m.buildIcs.mockReturnValue('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n');
+  m.readBooleanTenantModules.mockResolvedValue({
+    taxNotices: true,
+    appointments: true,
+  });
 });
 
 async function callRoute(): Promise<Response> {
@@ -92,6 +101,7 @@ describe('portal iCal lifecycle gate', () => {
     expect(m.contactFindFirst).toHaveBeenCalledWith({
       where: { id: 'contact-1', active: true },
       select: {
+        tenantId: true,
         clientId: true,
         icalTokenVersion: true,
         client: { select: { name: true, allowActive: true, anonymizedAt: true } },

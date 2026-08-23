@@ -452,7 +452,7 @@ export const BEKANNTGABE_FIKTION_TAGE = 4;
 /**
  * Fiktionstage abhängig vom Bescheiddatum: Das Postrechtsmodernisierungs-
  * gesetz gilt für Verwaltungsakte, die ab dem 01.01.2025 zur Post gegeben
- * wurden (Art. 97 § 1 Abs. 16 EGAO). Für nacherfasste Alt-Bescheide
+ * wurden (Art. 97 § 1 Abs. 15 EGAO). Für nacherfasste Alt-Bescheide
  * (Aufgabe bis 31.12.2024) gilt weiterhin die Drei-Tages-Fiktion.
  */
 export function bekanntgabeFiktionTage(noticeDate: Date): number {
@@ -536,6 +536,95 @@ export function appealDeadlineForPostAbroad(
     if (received > notificationDate) notificationDate = received;
   }
   return appealDeadlineFromNotification(notificationDate, region, legalRemedyInstructionValid);
+}
+
+export interface DataRetrievalDeadlineOptions {
+  /**
+   * Erlassdatum des Verwaltungsakts. Art. 97 § 28 Abs. 2 EGAO bestimmt anhand
+   * dieses Datums, ob § 122a AO a.F. oder die Neufassung ab 2026 gilt. Bei
+   * Altimporten darf es fehlen; dann wird zur Rückwärtskompatibilität der
+   * Bereitstellungstag als Näherung verwendet.
+   */
+  issuedAt?: Date | null;
+  /**
+   * Versandtag der elektronischen Benachrichtigung nach § 122a Abs. 4 AO a.F.
+   * Für bis einschließlich 31.12.2025 erlassene Verwaltungsakte ist dieser Tag
+   * der Ausgangspunkt der Bekanntgabefiktion. Bei Altimporten darf er fehlen;
+   * dann wird zur Rückwärtskompatibilität der Bereitstellungstag verwendet.
+   */
+  notificationDate?: Date | null;
+  /**
+   * Die Benachrichtigung wurde bestritten oder erst nach Ablauf der Fiktion
+   * empfangen. Nur in diesem gesetzlichen Ausnahmefall ist bei Altfällen der
+   * tatsächliche Abruftag maßgeblich.
+   */
+  notificationDisputedOrLate?: boolean;
+  /** Tatsächlicher Abruftag im Ausnahmefall des § 122a Abs. 4 S. 3/4 AO a.F. */
+  retrievedAt?: Date | null;
+  legalRemedyInstructionValid?: boolean;
+}
+
+/**
+ * Einspruchsfrist bei Bereitstellung zum Datenabruf (§ 122a AO).
+ *
+ * Art. 97 § 28 Abs. 2 EGAO stellt für den Wechsel zur Neufassung auf den Erlass
+ * nach dem 31.12.2025 ab. In der Neufassung knüpft die Vier-Tages-Fiktion
+ * unmittelbar an die Bereitstellung. Für bis 31.12.2025 erlassene Bescheide
+ * gilt dagegen § 122a Abs. 4 AO a.F.: Ausgangspunkt ist der Versand der
+ * elektronischen Benachrichtigung. Wird deren Zugang bestritten und ist auch
+ * kein Abruf nachgewiesen, gilt der Bescheid noch nicht als bekanntgegeben.
+ */
+export function appealDeadlineForDataRetrieval(
+  provisionDate: Date,
+  region: GermanRegion | null = null,
+  options: DataRetrievalDeadlineOptions = {},
+): Date | null {
+  const provision = startOfUtcDay(provisionDate);
+  // Nur für bereits gespeicherte Altbestände ohne das nachträglich ergänzte
+  // Erlassdatum. Neue Eingaben erzwingen issuedAt auf Anwendungsebene.
+  const issuedAt = startOfUtcDay(options.issuedAt ?? provision);
+  const legalRemedyInstructionValid = options.legalRemedyInstructionValid ?? true;
+
+  // Neufassung für nach dem 31.12.2025 erlassene Verwaltungsakte: vier Tage
+  // unmittelbar nach Bereitstellung.
+  if (issuedAt.getTime() >= Date.UTC(2026, 0, 1)) {
+    const fictionDate = new Date(
+      Date.UTC(
+        provision.getUTCFullYear(),
+        provision.getUTCMonth(),
+        provision.getUTCDate() + BEKANNTGABE_FIKTION_TAGE,
+      ),
+    );
+    return appealDeadlineFromNotification(
+      shiftToNextWorkday(fictionDate, region),
+      region,
+      legalRemedyInstructionValid,
+    );
+  }
+
+  if (options.notificationDisputedOrLate) {
+    // Kein nachgewiesener Benachrichtigungszugang und kein Abruf: nach AEAO
+    // 2025 zu § 122a keine Bekanntgabe; die Behörde muss sie wiederholen.
+    if (!options.retrievedAt) return null;
+    return appealDeadlineFromNotification(options.retrievedAt, region, legalRemedyInstructionValid);
+  }
+
+  // Fallback auf den Bereitstellungstag hält bereits gespeicherte Altbestände
+  // ohne das später ergänzte Benachrichtigungsfeld berechenbar. Neue Eingaben
+  // verlangen das Feld auf Anwendungsebene ausdrücklich.
+  const sentNotificationAt = startOfUtcDay(options.notificationDate ?? provision);
+  const fictionDate = new Date(
+    Date.UTC(
+      sentNotificationAt.getUTCFullYear(),
+      sentNotificationAt.getUTCMonth(),
+      sentNotificationAt.getUTCDate() + bekanntgabeFiktionTage(sentNotificationAt),
+    ),
+  );
+  return appealDeadlineFromNotification(
+    shiftToNextWorkday(fictionDate, region),
+    region,
+    legalRemedyInstructionValid,
+  );
 }
 
 /**

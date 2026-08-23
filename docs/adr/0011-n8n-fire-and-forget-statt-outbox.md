@@ -72,21 +72,27 @@ n8n-Downtime nicht toleriert. Aktuell hat kein Tenant so einen Workflow.
 
 **Was wir tun**
 
-- `emitN8nEvent` schreibt jetzt in `n8n_outbox` + reiht BullMQ-Job ein.
-  Geschäftslogik bleibt nicht-blockierend (BullMQ-Add ist ~ms).
-- Verlorene Events sind ausgeschlossen, sofern die Outbox-Tabelle geschrieben
-  werden kann. Bei DB-Ausfall: `console.error` + Geschäftslogik läuft weiter
-  (analog zur alten Semantik).
-- Bei n8n-Ausfall: 6 Versuche mit Exponential-Backoff (~1h Worst-Case bis FAILED).
-- Pull-Endpoints (`/api/n8n/overdue-requests`,
-  `/api/n8n/expiring-gwg-checks`) bleiben die robuste Wahrheit — fällt
-  sowohl App-DB als auch Outbox aus, sieht n8n trotzdem alle überfälligen
-  Vorgänge beim nächsten täglichen Pull.
+- `emitN8nEvent` schreibt in `n8n_outbox` und reiht einen BullMQ-Job ein. Der
+  Aufrufer wartet den Outbox-Write ab, nicht die HTTP-Zustellung an n8n.
+- Zustellungen werden nachgehalten, sofern die Outbox-Tabelle geschrieben
+  werden konnte. Bei einem Write-Fehler liefert der Emit-Pfad `WRITE_FAILED`
+  und die bereits abgeschlossene Geschäftslogik läuft entsprechend der alten
+  Semantik weiter. Workflow-Schritte besitzen zusätzlich einen in derselben
+  Fachtransaktion persistierten Dispatch-Intent, den ein eigener Reconciler in
+  die Outbox überführt.
+- Bei n8n-Ausfall: 6 Versuche mit Exponential-Backoff; nach Ausschöpfung bleibt
+  die Zustellung als `FAILED` für die operative Behandlung erhalten.
+- Die versionierten Pull-Endpunkte
+  (`/api/integrations/n8n/v1/overdue-requests`,
+  `/api/integrations/n8n/v1/expiring-gwg-checks`) lesen den aktuellen
+  Fachzustand tenantgebunden. Die gleichnamigen `/api/n8n/*`-Routen sind nur
+  ein standardmäßig deaktivierter Legacy-Pfad.
 
 **Warum trotzdem pull-first bleibt**
 
 - n8n-Ausfall > 1h ist real (Wartung, Crash, Tenant-Misconfig). Pull-Pfad
-  fängt das, Push-Outbox alleine nicht.
+  kann den aktuellen Fachzustand nach der Wiederherstellung erneut lesen;
+  Push-Outbox und Pull erfüllen unterschiedliche Zwecke.
 - DSGVO-Lösch-/Vergessen-Operationen sollen nicht via Event-Replay reaktiviert
   werden — wer Daten löscht, will sie weg, auch wenn n8n offline war.
   Reconcile-Pull funktioniert dafür sauberer.
@@ -98,4 +104,5 @@ n8n-Downtime nicht toleriert. Aktuell hat kein Tenant so einen Workflow.
   S15-Re-Review).
 - **n8n als Single Source of Truth für Workflows**: weiterhin abgelehnt.
   Aktuelles Setup ist robuster: fällt n8n aus, läuft die App weiter,
-  Outbox + Reconcile sorgt für eventual delivery.
+  eine erfolgreich persistierte Outbox beziehungsweise ein Workflow-Dispatch-
+  Intent wird nach Wiederherstellung erneut zugestellt.

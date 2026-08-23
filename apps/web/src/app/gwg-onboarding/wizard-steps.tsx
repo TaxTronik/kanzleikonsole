@@ -945,6 +945,7 @@ function RepresentativeCard({
                 type="date"
                 value={representative.idIssueDate}
                 onChange={(value) => onPatch({ idIssueDate: value })}
+                required
               />
               <Field
                 label="Gültig bis"

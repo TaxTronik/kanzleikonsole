@@ -22,6 +22,12 @@ import {
 } from '@taxtronik/storage';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { log } from '@/server/logger';
+import { isRequestBodyTooLargeError, parseFormDataBounded } from '@/server/http/bounded-form-data';
+
+// Datei-Limit plus eng begrenzter Platz fuer Multipart-Framing und die
+// validierten Metadatenfelder. Die Grenze wird am echten Request-Stream
+// erzwungen und ist daher auch ohne Content-Length wirksam.
+export const MAX_MULTIPART_BODY_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024;
 
 /**
  * Multipart-Parse + Datei-Checks (identisch in allen drei Commit-Routen).
@@ -34,8 +40,11 @@ export type ParsedUpload =
 export async function parseMultipartUpload(req: NextRequest): Promise<ParsedUpload> {
   let form: FormData;
   try {
-    form = await req.formData();
-  } catch {
+    form = await parseFormDataBounded(req, MAX_MULTIPART_BODY_BYTES);
+  } catch (error) {
+    if (isRequestBodyTooLargeError(error)) {
+      return { ok: false, response: NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 }) };
+    }
     return {
       ok: false,
       response: NextResponse.json({ error: 'invalid_multipart' }, { status: 400 }),

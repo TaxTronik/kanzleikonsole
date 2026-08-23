@@ -25,7 +25,7 @@
 import { Worker } from 'bullmq';
 import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
-  Rfc3161HttpAdapter,
+  createRfc3161Adapter,
   resolveTsaUrl,
   serializeArchive,
   type ArchiveAuditRow,
@@ -53,8 +53,34 @@ const MODE_RAW = (process.env['AUDIT_ARCHIVE_MODE'] ?? 'SOFT') as 'SOFT' | 'HARD
 // bis HARD tatsächlich existiert; der Warn-Hinweis kommt pro Lauf (unten).
 const MODE: 'SOFT' = MODE_RAW === 'HARD' ? 'SOFT' : MODE_RAW;
 const ARCHIVE_BUCKET = env.S3_BUCKET_GOBD;
+const DEFAULT_TSA_PROVIDER_ID = 'globalsign';
 // § 147 AO: 10 Jahre ab Schluss des Kalenderjahres — siehe gobdRetentionUntil
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
+
+async function timestampArchiveHash(tenantId: string, hash: Buffer): Promise<Buffer | null> {
+  const tsaSetting = await prismaOwner.tenantSetting.findUnique({
+    where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
+    select: { value: true },
+  });
+  const selected = tsaSetting?.value as { providerId?: string; customUrl?: string } | undefined;
+  const tsaUrl =
+    resolveTsaUrl(selected?.providerId ?? null, selected?.customUrl ?? null) ||
+    env.TIMESTAMP_AUTHORITY_URL?.trim() ||
+    resolveTsaUrl(DEFAULT_TSA_PROVIDER_ID, null);
+  if (!tsaUrl) return null;
+
+  try {
+    await assertPublicHost(tsaUrl, { mode: 'public' });
+    const stamp = await createRfc3161Adapter(tsaUrl).timestamp(hash);
+    return stamp.tsaResponseBlob ? Buffer.from(stamp.tsaResponseBlob) : null;
+  } catch (err) {
+    log.warn(
+      { tenantId, tsaUrl, err: (err as Error).message },
+      'audit-rotate: TSA-Stempel fehlgeschlagen — Archiv-Eintrag ohne externen Zeitstempel',
+    );
+    return null;
+  }
+}
 
 export const auditRotateWorker = new Worker<ChecksJob>(
   'audit-rotate',
@@ -178,38 +204,12 @@ export const auditRotateWorker = new Worker<ChecksJob>(
 
       // 4. Optionaler RFC-3161-Stempel (F3).
       // Symmetrisch zu evidence-seal.ts: Tenant-spezifische TSA aus
-      // tenant_setting bevorzugt, ENV-Fallback. Bei Erfolg: echter
+      // tenant_setting bevorzugt, ENV- und verifizierter GlobalSign-Fallback.
+      // Bei Erfolg: echter
       // RFC-3161-Response-Blob ins Archiv. Bei Fehlschlag oder fehlender
       // Konfiguration: NULL — ehrlich „dieses Segment ist nicht extern
       // gestempelt" statt ein lokaler SHA-256, der einen Stempel vortäuscht.
-      let tsaResponseBlob: Buffer | null = null;
-      const tsaSetting = await prismaOwner.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
-        select: { value: true },
-      });
-      let tsaUrl: string | null = null;
-      if (tsaSetting) {
-        const v = tsaSetting.value as { providerId?: string; customUrl?: string };
-        tsaUrl = resolveTsaUrl(v.providerId ?? null, v.customUrl ?? null);
-      }
-      if (!tsaUrl && env.TIMESTAMP_AUTHORITY_URL) {
-        tsaUrl = env.TIMESTAMP_AUTHORITY_URL;
-      }
-      if (tsaUrl) {
-        try {
-          await assertPublicHost(tsaUrl);
-          const adapter = new Rfc3161HttpAdapter(tsaUrl);
-          const stamp = await adapter.timestamp(ser.fileSha256);
-          if (stamp.tsaResponseBlob) {
-            tsaResponseBlob = Buffer.from(stamp.tsaResponseBlob);
-          }
-        } catch (err) {
-          log.warn(
-            { tenantId, tsaUrl, err: (err as Error).message },
-            'audit-rotate: TSA-Stempel fehlgeschlagen — Archiv-Eintrag ohne externen Zeitstempel',
-          );
-        }
-      }
+      const tsaResponseBlob = await timestampArchiveHash(tenantId, ser.fileSha256);
 
       // 5. Audit-Archive-Eintrag
       await prismaOwner.auditArchive.create({

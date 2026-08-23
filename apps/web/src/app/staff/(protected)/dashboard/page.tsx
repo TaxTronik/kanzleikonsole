@@ -5,8 +5,14 @@ import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import Link from 'next/link';
 import { ListChecks, ArrowRight } from 'lucide-react';
 
-import { DEFAULT_LAYOUT, parseLayout } from '@/server/dashboard/widgets';
+import {
+  DEFAULT_LAYOUT,
+  enabledDashboardWidgetTypes,
+  filterDashboardLayoutByModules,
+  parseLayout,
+} from '@/server/dashboard/widgets';
 import { getSetupStatus, type SetupStatus } from '@/server/setup/status';
+import { readModules } from '@/server/settings/modules';
 import { renderWidget } from './widgets';
 import { DashboardGrid } from './dashboard-grid';
 
@@ -42,19 +48,23 @@ export default async function DashboardPage() {
 
   // 1. Layout laden (eine kurze Tx) + EIN denied-Set für alle Widgets
   // (Zugriffsmodell: vertraulich-Flag / RESTRICTED).
-  const { layout, deniedClientIds } = await withTenantContext(ctx, async (tx) => {
-    const [staff, deniedClientIds] = await Promise.all([
-      tx.staffUser.findUnique({
-        where: { id: staffId },
-        select: { dashboardLayout: true },
-      }),
-      inaccessibleClientIdsFor(tx, session),
-    ]);
-    return {
-      layout: staff?.dashboardLayout ? parseLayout(staff.dashboardLayout) : DEFAULT_LAYOUT,
-      deniedClientIds,
-    };
-  });
+  const [{ storedLayout, deniedClientIds }, modules] = await Promise.all([
+    withTenantContext(ctx, async (tx) => {
+      const [staff, deniedClientIds] = await Promise.all([
+        tx.staffUser.findUnique({
+          where: { id: staffId },
+          select: { dashboardLayout: true },
+        }),
+        inaccessibleClientIdsFor(tx, session),
+      ]);
+      return {
+        storedLayout: staff?.dashboardLayout ? parseLayout(staff.dashboardLayout) : DEFAULT_LAYOUT,
+        deniedClientIds,
+      };
+    }),
+    readModules(ctx),
+  ]);
+  const layout = filterDashboardLayoutByModules(storedLayout, modules);
 
   // 2. Widgets PARALLEL rendern — jedes in eigener Tx (eigene Connection).
   // serializeTx serialisiert Queries innerhalb EINER Tx; mit je eigener Tx
@@ -63,7 +73,7 @@ export default async function DashboardPage() {
   const rendered = await mapWithConcurrency(layout.widgets, WIDGET_CONCURRENCY, async (w) => ({
     widget: w,
     node: await withTenantContext(ctx, (tx) =>
-      renderWidget(w.type, { tx, staffId, isAdmin, deniedClientIds }),
+      renderWidget(w.type, { tx, staffId, isAdmin, deniedClientIds, modules }),
     ),
   }));
 
@@ -101,7 +111,11 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      <DashboardGrid initialLayout={layout} renderedWidgets={rendered} />
+      <DashboardGrid
+        initialLayout={layout}
+        renderedWidgets={rendered}
+        enabledWidgetTypes={enabledDashboardWidgetTypes(modules)}
+      />
     </div>
   );
 }

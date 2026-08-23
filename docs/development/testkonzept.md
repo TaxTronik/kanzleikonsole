@@ -24,15 +24,21 @@ Ist-Zustand; Änderungen am Testverfahren werden hier nachgezogen.
 | Strukturierte Sicherheits-Reviews | adversariale Mehrfach-Reviews mit dokumentierten Befunden                                                    | Angriffsflächen-Prüfung über automatisierte Tests hinaus                                                                                            | anlassbezogen; Ergebnisse in Commit-Historie und Befundkennungen am Code |
 | Manuelle Abnahme                  | Verantwortlicher Entwickler                                                                                  | Bedien-/Sichtprüfung neuer bzw. geänderter Oberflächen vor Freigabe                                                                                 | je Release                                                               |
 
-Stand bei Einführung dieses Konzepts: > 750 automatisierte Tests über
-11 Pakete; die CI führt **alle** Pakete aus (DB-gebundene Tests im Job `db`
-gegen eine echte Postgres-Instanz, alle übrigen im Job `quality`).
+Die Anzahl erfolgreicher Testfälle ist kein dauerhafter Dokumentationswert und
+keine aktuelle Freigabegarantie. Ein belastbarer Stand muss aus einem
+reproduzierbaren vollständigen CI-Lauf für einen benannten Commit samt
+Testreport abgeleitet werden. DB-gebundene Tests laufen im Job `db` gegen eine
+echte Postgres-Instanz, die übrigen Pakete im Job `quality`.
+Plattformabhängige Evidence-Tests dürfen lokal nur mit ausgewiesenem
+Skip-Grund fehlen; in CI ist die erforderliche OpenSSL-Unterstützung ein Gate.
 
-## 2. Abdeckungsanspruch je Prüfungs-Scope-Modul
+## 2. Zielabdeckung und belegter Ist-Stand
 
 Für die Module des Prüfungs-Scopes (siehe
 [Gap-Analyse, Abschnitt 2](../compliance/idw-ps880-pruefungsbereitschaft.md))
-gilt verbindlich:
+gilt folgende Zielabdeckung. Die Tabelle ist ein **Freigabe-Soll**, keine
+pauschale Behauptung, jede einzelne Exportfunktion sei bereits direkt
+Action-level getestet:
 
 | Modul                 | Mindestabdeckung                                                                                                                                                                                                                                                       |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -46,6 +52,16 @@ Neue Funktionen in Scope-Modulen werden **nicht freigegeben**, bevor die
 zugehörigen Tests existieren; Fehlerbehebungen erfordern einen
 Regressionstest (siehe
 [Entwicklungsverfahren, Abschnitt 6](entwicklungsverfahren.md)).
+
+Der belegte Ist-Stand wird aus den tatsächlich ausgeführten CI-Testdateien und
+Artefakten abgeleitet, nicht aus der Soll-Tabelle. Insbesondere sind bei der
+Fakturierung Nummernvergabe, Statusmatrix, Festschreibungs-Trigger,
+Archivierung, USt-/E-Rechnungs-Generatoren und Storno-Hilfslogik automatisiert
+belegt. Für `markPaidAction`, den vollständigen orchestrierten
+`cancelInvoiceAction`-Korrekturfluss und `uploadExternalInvoiceAction` besteht
+derzeit kein eigener Action-Level-Test; diese Lücke darf in einem Prüfbericht
+nicht als abgedeckt ausgewiesen werden und ist vor einer entsprechenden
+Freigabe durch direkte Regressionstests zu schließen.
 
 ## 3. Testumgebungen
 

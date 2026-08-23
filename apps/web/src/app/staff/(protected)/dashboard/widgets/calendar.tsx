@@ -10,43 +10,51 @@ import { fmtDateShort, fmtTimeShort } from '@/lib/fmt';
 import { CALENDAR_PAST_MS } from '@/lib/consts';
 import { ListShell, notDeniedClient, type RenderCtx } from './_shared';
 
-export async function CalendarWidget({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function CalendarWidget({
+  tx,
+  deniedClientIds,
+  modules,
+}: RenderCtx): Promise<ReactNode> {
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + 30);
   const [appts, deadlines] = await Promise.all([
-    tx.appointment.findMany({
-      where: {
-        status: { not: 'CANCELLED' },
-        endsAt: { gte: new Date() },
-        startsAt: { lte: horizon },
-        // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
-        ...(deniedClientIds?.length
-          ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
-          : {}),
-      },
-      orderBy: { startsAt: 'asc' },
-      take: 20,
-      select: {
-        id: true,
-        title: true,
-        startsAt: true,
-        endsAt: true,
-        location: true,
-        status: true,
-        owner: { select: { fullName: true } },
-        client: { select: { id: true, name: true } },
-      },
-    }),
-    tx.taxDeadline.findMany({
-      where: {
-        status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-        dueDate: { gte: new Date(Date.now() - CALENDAR_PAST_MS), lte: horizon },
-        ...notDeniedClient(deniedClientIds),
-      },
-      orderBy: { dueDate: 'asc' },
-      take: 20,
-      include: { client: { select: { id: true, name: true } } },
-    }),
+    modules.appointments
+      ? tx.appointment.findMany({
+          where: {
+            status: { not: 'CANCELLED' },
+            endsAt: { gte: new Date() },
+            startsAt: { lte: horizon },
+            // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
+            ...(deniedClientIds?.length
+              ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
+              : {}),
+          },
+          orderBy: { startsAt: 'asc' },
+          take: 20,
+          select: {
+            id: true,
+            title: true,
+            startsAt: true,
+            endsAt: true,
+            location: true,
+            status: true,
+            owner: { select: { fullName: true } },
+            client: { select: { id: true, name: true } },
+          },
+        })
+      : Promise.resolve([]),
+    modules.taxNotices
+      ? tx.taxDeadline.findMany({
+          where: {
+            status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
+            dueDate: { gte: new Date(Date.now() - CALENDAR_PAST_MS), lte: horizon },
+            ...notDeniedClient(deniedClientIds),
+          },
+          orderBy: { dueDate: 'asc' },
+          take: 20,
+          include: { client: { select: { id: true, name: true } } },
+        })
+      : Promise.resolve([]),
   ]);
 
   type Row =

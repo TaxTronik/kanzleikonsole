@@ -4,6 +4,7 @@ import { commitBytesWithTier } from '@taxtronik/storage';
 import { ActionError } from '@/server/actions/action-error';
 import { evidenceService } from '@/server/container';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 interface LockedResearchResult {
   id: string;
@@ -99,39 +100,59 @@ export async function saveResearchResultToShelf(
   // koennte inzwischen abgelegt haben. Dann gewinnt der andere Lauf, und unser
   // gerade geschriebenes Objekt bleibt ungenutzt (selten, und deutlich
   // harmloser als ein Lock ueber einen Netz-Roundtrip).
-  return withTenantContext(ctx, async (tx) => {
-    const again = await lockResearchResult(tx, ctx.tenantId, input.resultId);
-    if (!again) throw new ActionError('Ergebnis nicht gefunden.');
-    if (again.shelfDocumentId) {
-      return { documentId: again.shelfDocumentId, alreadySaved: true };
-    }
+  try {
+    const result = await withTenantContext(ctx, async (tx) => {
+      const again = await lockResearchResult(tx, ctx.tenantId, input.resultId);
+      if (!again) throw new ActionError('Ergebnis nicht gefunden.');
+      if (again.shelfDocumentId) {
+        return { documentId: again.shelfDocumentId, alreadySaved: true };
+      }
 
-    const { document } = await createDocumentWithVersion(tx, {
-      documentData: {
+      const { document } = await createDocumentWithVersion(tx, {
+        documentData: {
+          tenantId: ctx.tenantId,
+          clientId: input.clientId,
+          analysisId: input.analysisId,
+          title: title.endsWith('.md') ? title : `${title}.md`,
+          classification: 'GENERAL',
+          mimeType: 'text/markdown',
+        },
+        commit,
+        createdById: input.staffId,
+      });
+      await tx.riskResearchResult.update({
+        where: { id: input.resultId },
+        data: { shelfDocumentId: document.id },
+      });
+      await evidenceService.record(tx, {
         tenantId: ctx.tenantId,
-        clientId: input.clientId,
-        analysisId: input.analysisId,
-        title: title.endsWith('.md') ? title : `${title}.md`,
-        classification: 'GENERAL',
-        mimeType: 'text/markdown',
-      },
-      commit,
-      createdById: input.staffId,
-    });
-    await tx.riskResearchResult.update({
-      where: { id: input.resultId },
-      data: { shelfDocumentId: document.id },
-    });
-    await evidenceService.record(tx, {
-      tenantId: ctx.tenantId,
-      actorType: 'STAFF',
-      actorId: input.staffId,
-      action: 'risk.research.saved_to_shelf',
-      resourceType: 'document',
-      resourceId: document.id,
-      after: { resultId: input.resultId, analysisId: input.analysisId, title },
+        actorType: 'STAFF',
+        actorId: input.staffId,
+        action: 'risk.research.saved_to_shelf',
+        resourceType: 'document',
+        resourceId: document.id,
+        after: { resultId: input.resultId, analysisId: input.analysisId, title },
+      });
+
+      return { documentId: document.id, alreadySaved: false };
     });
 
-    return { documentId: document.id, alreadySaved: false };
-  });
+    if (result.alreadySaved) {
+      await compensateStorageCommit({
+        tenantId: ctx.tenantId,
+        source: 'risk.research.shelf_race',
+        commit,
+        cause: new Error('Concurrent shelf save won before database commit.'),
+      });
+    }
+    return result;
+  } catch (error) {
+    await compensateStorageCommit({
+      tenantId: ctx.tenantId,
+      source: 'risk.research.shelf',
+      commit,
+      cause: error,
+    });
+    throw error;
+  }
 }

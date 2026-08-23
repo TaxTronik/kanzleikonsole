@@ -41,6 +41,10 @@ vi.mock('../session-cookie', () => ({
   PORTAL_SESSION_JWT_SALT: 'portal-session',
   USE_SECURE_COOKIES: false,
   sessionCookieNameVariants: () => ['portal-session'],
+  readSessionCookieValue: (
+    jar: { get(name: string): { value: string } | undefined },
+    names: string[],
+  ) => names.map((name) => jar.get(name)?.value).find(Boolean) ?? null,
 }));
 vi.mock('../session-jwt', () => ({ createStableSessionJwtOptions: () => ({}) }));
 vi.mock('@/server/db/prisma-owner', () => ({
@@ -48,7 +52,7 @@ vi.mock('@/server/db/prisma-owner', () => ({
 }));
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn() } }));
 
-import { portalAuth } from '../portal';
+import { portalAuth, portalSessionSubject } from '../portal';
 
 const CONTACT_ID = '11111111-1111-4111-8111-111111111111';
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -81,6 +85,14 @@ beforeEach(() => {
 });
 
 describe('Portal-Session bindet die aktuelle Kontakt-E-Mail', () => {
+  it('liest den signierten Logout-Subject ohne DB-Hydration', async () => {
+    m.decode.mockResolvedValue(token('alice@example.test'));
+
+    await expect(portalSessionSubject()).resolves.toBe(CONTACT_ID);
+    expect(m.findUnique).not.toHaveBeenCalled();
+    expect(m.isTokenRevoked).not.toHaveBeenCalled();
+  });
+
   it('verwirft einen alten Cookie nach einem Kontakt-E-Mail-Wechsel', async () => {
     m.decode.mockResolvedValue(token('alice@example.test'));
 

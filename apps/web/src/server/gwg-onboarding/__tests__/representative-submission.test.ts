@@ -32,6 +32,28 @@ describe('öffentliche GwG-Vertretererfassung', () => {
     expect(GwgOnboardingRepresentativeSchema.safeParse(separateRepresentative()).success).toBe(
       true,
     );
+    expect(
+      GwgOnboardingRepresentativeSchema.safeParse({
+        ...separateRepresentative(),
+        idIssueDate: '',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('blockiert zukünftige oder widersprüchliche Ausweisdaten', () => {
+    expect(
+      GwgOnboardingRepresentativeSchema.safeParse({
+        ...separateRepresentative(),
+        idIssueDate: '9999-01-01',
+      }).success,
+    ).toBe(false);
+    expect(
+      GwgOnboardingRepresentativeSchema.safeParse({
+        ...separateRepresentative(),
+        idIssueDate: '2030-01-02',
+        idExpiryDate: '2030-01-01',
+      }).success,
+    ).toBe(false);
   });
 
   it('verlangt bei expliziter Doppelrolle keinen zweiten Ausweis', () => {

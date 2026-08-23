@@ -192,6 +192,7 @@ export async function resetPasswordAction(input: {
 
     const passwordHash = await hash(parsed.data.password, 12);
     await withTenantContext(ctx, async (tx) => {
+      await revokeAllSessions('staff', parsed.data.userId);
       // Zielrollen als Teil DESSELBEN SQL-Statements wie das Update prüfen.
       // Ein paralleler Rollenwechsel kann damit nicht zwischen Check und
       // Passwort-Schreibzugriff rutschen (TOCTOU).
@@ -221,7 +222,6 @@ export async function resetPasswordAction(input: {
     return toActionError(error);
   }
 
-  await revokeAllSessions('staff', parsed.data.userId);
   revalidatePath(LIST);
   return { ok: true };
 }
@@ -268,6 +268,7 @@ export async function resetTotpAction(input: { userId: string }): Promise<Action
         throw new ActionError('Für diesen Benutzer ist keine 2FA eingerichtet.');
       }
 
+      await revokeAllSessions('staff', parsed.data.userId);
       const updated = await tx.staffUser.updateMany({
         where: {
           id: parsed.data.userId,
@@ -304,7 +305,6 @@ export async function resetTotpAction(input: { userId: string }): Promise<Action
     return toActionError(error);
   }
 
-  await revokeAllSessions('staff', parsed.data.userId);
   revalidatePath(LIST);
   return { ok: true };
 }
@@ -335,6 +335,9 @@ export async function setActiveAction(input: {
       });
       if (!before) throw new ActionError('Benutzer nicht gefunden.');
       assertPartnerCannotManageAdmin(session.user.roles, roleNames(before));
+      if (!parsed.data.active) {
+        await revokeAllSessions('staff', parsed.data.userId);
+      }
       if (isActualAdmin(session.user.roles)) {
         await tx.staffUser.update({
           where: { id: parsed.data.userId },
@@ -362,10 +365,6 @@ export async function setActiveAction(input: {
     });
   } catch (e) {
     return toActionError(e);
-  }
-  // S11: Deaktivierung sofort wirksam — alle Sessions des Users revoken.
-  if (!parsed.data.active) {
-    await revokeAllSessions('staff', parsed.data.userId);
   }
   revalidatePath(LIST);
   return { ok: true };
@@ -413,6 +412,9 @@ export async function setRolesAction(input: {
       const toRemove = beforeRoles.filter((r) => !newSet.has(r));
       const toAdd = parsed.data.roles.filter((r) => !oldSet.has(r));
 
+      if (toAdd.length > 0 || toRemove.length > 0) {
+        await revokeAllSessions('staff', parsed.data.userId);
+      }
       if (toRemove.length > 0) {
         await tx.staffRole.deleteMany({
           where: { staffUserId: parsed.data.userId, role: { in: toRemove } },
@@ -437,9 +439,6 @@ export async function setRolesAction(input: {
   } catch (e) {
     return toActionError(e);
   }
-  // S11: Rollen-Entzug muss sofort wirksam werden (z. B. ADMIN-Bit zurückgenommen).
-  // Tokens im Umlauf hätten sonst noch die alten Claims bis zu 24h.
-  await revokeAllSessions('staff', parsed.data.userId);
   revalidatePath(LIST);
   return { ok: true };
 }
@@ -472,7 +471,7 @@ export async function setPermissionsAction(input: {
   }
 
   try {
-    const revoke = await withTenantContext(ctx, async (tx) => {
+    await withTenantContext(ctx, async (tx) => {
       // Existenz + Tenant-Zugehörigkeit prüfen: das leere permissions-Array ist
       // erlaubt und schreibt ggf. gar nichts — ohne diese Prüfung würde die
       // Action für eine fremde/erfundene userId mit ok:true enden (RLS schlägt
@@ -492,6 +491,11 @@ export async function setPermissionsAction(input: {
       const toRemove = beforePerms.filter((p) => !newSet.has(p));
       const toAdd = parsed.data.permissions.filter((p) => !oldSet.has(p));
 
+      // Nur Entzug braucht einen Cutoff. Erweiterungen werden ohnehin aus dem
+      // frischen DB-Stand geladen. Widerruf muss vor dem Delete bestaetigt sein.
+      if (toRemove.length > 0) {
+        await revokeAllSessions('staff', parsed.data.userId);
+      }
       if (toRemove.length > 0) {
         await tx.staffPermission.deleteMany({
           where: { staffUserId: parsed.data.userId, permission: { in: toRemove } },
@@ -514,15 +518,7 @@ export async function setPermissionsAction(input: {
           after: { permissions: parsed.data.permissions },
         });
       }
-      // Revoke nur bei ENTZUG: Erweiterungen greifen beim nächsten Request von
-      // selbst (Session lädt Rechte frisch), und der DB-Fallback verweigert ein
-      // erweitertes Recht dort sicher (fail-closed). Entzug dagegen bliebe im
-      // alten Token bis zu 24 h wirksam → Sofort-Logout.
-      return toRemove.length > 0;
     });
-    if (revoke) {
-      await revokeAllSessions('staff', parsed.data.userId);
-    }
   } catch (e) {
     return toActionError(e);
   }

@@ -1,6 +1,6 @@
 # Cookie-Konfiguration der Auth-Surfaces
 
-Stand: 2026-06-10 (Cookie-Präfix-Härtung)
+Stand: 2026-08-23
 
 Übersicht aller von taxtronik gesetzten Cookies — für Datenschutz-Auditoren
 und Pen-Tester. Jeder Cookie ist mit Flags, Lebenszeit und Inhalt
@@ -10,10 +10,10 @@ dokumentiert.
 
 ## Session-Cookies (Authentifizierung)
 
-| Name                                | Surface                               | HttpOnly | Secure            | SameSite | Path | Domain                                                | Max-Age    | Inhalt                                                         |
-| ----------------------------------- | ------------------------------------- | -------- | ----------------- | -------- | ---- | ----------------------------------------------------- | ---------- | -------------------------------------------------------------- |
-| `__Host-taxtronik_staff_session` ¹  | Staff (`/staff/*`, `/api/staff/*`)    | ✓        | nur in Production | `lax`    | `/`  | optional `STAFF_COOKIE_DOMAIN` (sonst implizit Host)  | 24 h (W-1) | JWT mit `staffId`, `tenantId`, `fullName`, `roles[]`, `iat`    |
-| `__Host-taxtronik_portal_session` ¹ | Portal (`/portal/*`, `/api/portal/*`) | ✓        | nur in Production | `lax`    | `/`  | optional `PORTAL_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | JWT mit `contactId`, `tenantId`, `clientId`, `fullName`, `iat` |
+| Name                                            | Surface                               | HttpOnly | Secure       | SameSite | Path | Domain                                                | Max-Age    | Inhalt                                        |
+| ----------------------------------------------- | ------------------------------------- | -------- | ------------ | -------- | ---- | ----------------------------------------------------- | ---------- | --------------------------------------------- |
+| `__Host-`/`__Secure-taxtronik_staff_session` ¹  | Staff (`/staff/*`, `/api/staff/*`)    | ✓        | Production ¹ | `lax`    | `/`  | optional `STAFF_COOKIE_DOMAIN` (sonst implizit Host)  | 24 h (W-1) | verschlüsseltes JWE mit Staff-Session-Claims  |
+| `__Host-`/`__Secure-taxtronik_portal_session` ¹ | Portal (`/portal/*`, `/api/portal/*`) | ✓        | Production ¹ | `lax`    | `/`  | optional `PORTAL_COOKIE_DOMAIN` (sonst implizit Host) | 24 h (W-1) | verschlüsseltes JWE mit Portal-Session-Claims |
 
 ¹ **Cookie-Präfix-Logik** (`apps/web/src/server/auth/session-cookie.ts`): In
 Production ohne konfigurierte Cookie-Domain (Default, host-only) heißen die
@@ -25,21 +25,32 @@ oder unsicheren Kontexten überschrieben werden. Ist `STAFF_COOKIE_DOMAIN` /
 Nur im Dev (HTTP, Browser lehnen Präfix-Cookies ab) bleibt der unpräfixte
 Name `__taxtronik_*_session`.
 
-**Cookie-Domain-Trennung**: Wenn `STAFF_COOKIE_DOMAIN`/`PORTAL_COOKIE_DOMAIN`
+**Surface-Trennung**: Wenn `STAFF_COOKIE_DOMAIN`/`PORTAL_COOKIE_DOMAIN`
 explizit gesetzt sind (z. B. Subdomain-Setup `staff.kanzlei.de` /
 `portal.kanzlei.de`), bekommen beide Cookies unterschiedliche Domain-Scopes
-und können nicht aneinander vorbeigeschickt werden. Default (Single-Host)
-isoliert die Cookies über den **Path** — beide auf `/`, aber unterschiedliche
-Cookie-Namen.
+und werden vom Browser nicht an die jeweils andere Subdomain gesendet. Im
+Single-Host-Default werden **beide** Cookies technisch an alle Pfade des Hosts
+gesendet, weil beide `Path=/` tragen. Die Auth-Surfaces bleiben durch getrennte
+Cookie-Namen, getrennte Auth.js-Konfigurationen und surface-spezifische
+Sessionprüfung isoliert; eine Path-Isolation besteht ausdrücklich nicht.
 
-**JWT-Signing**: `AUTH_SECRET` (HKDF-derived, siehe
-[auth-secret-rotation.md](./auth-secret-rotation.md)). Default-Algorithmus:
-HS256 (NextAuth-default).
+**Sessionformat**: Auth.js erzeugt standardmäßig ein verschlüsseltes JWE, kein
+nur signiertes HS256-JWT. Die gepinnte Version verwendet direkte
+Schlüsselableitung (`alg=dir`) und `enc=A256CBC-HS512`; Schlüsselwurzel ist
+`AUTH_SECRET` (siehe
+[auth-secret-rotation.md](./auth-secret-rotation.md)). Die Anwendung delegiert
+Encode/Decode unverändert an Auth.js und ergänzt nur die Session-Claims.
 
-**Session-Revocation (S11)**: Server-side via Redis-Key
-`revoke:{surface}:{userId}` mit Timestamp. JWTs mit `iat` vor dem Revocation-
-Timestamp werden vom Session-Callback abgelehnt — sofortiger Logout möglich,
-ohne auf JWT-Expiry warten zu müssen.
+**Session-Revocation**: Server-side via Redis-Key
+`revoke:{surface}:{userId}` mit Timestamp. Wegen der Sekundengenauigkeit des
+JWT-Claims wird die gesamte Sekunde des Widerrufs einschließlich aller Tokens
+mit älterem `iat` vom Session-Callback abgelehnt — sofortiger Logout möglich,
+ohne auf JWT-Expiry warten zu müssen. Widerrufsschreibvorgänge und das Lesen des
+Widerrufszeitpunkts sind fail-closed: Ist Redis nicht verfügbar, wird eine
+betroffene Session nicht akzeptiert und die Sicherheitsaktion nicht als Erfolg
+gemeldet. Das schützt nur, solange `AUTH_SECRET` nicht kompromittiert ist: Mit
+dem Schlüssel könnte ein Angreifer ein neues JWE mit jüngerem `iat` erzeugen.
+In diesem Fall ist die Secret-Rotation die entscheidende Eindämmungsmaßnahme.
 
 ## Auth.js-Helper-Cookies
 
@@ -56,16 +67,18 @@ taxtronik setzt **keine** Tracking-, Analytics- oder Werbe-Cookies.
 - Kein A/B-Test-Framework.
 - Keine Drittanbieter-Embeds (alle Assets stammen vom eigenen Host).
 
-Cookie-Banner ist daher nicht erforderlich (nur funktional notwendige
-Cookies nach ePrivacy-Richtlinie / § 25 TTDSG).
+Ein Einwilligungsbanner ist für diese technisch erforderlichen Cookies nicht
+erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG). Ob weitere, außerhalb von TaxTronik
+ergänzte Dienste eine Einwilligung verlangen, bleibt gesondert zu prüfen.
 
 ## Header-Konfiguration
 
-Set-Cookie-Header laufen durch `infra/nginx/taxtronik.conf.example`
-(Reverse-Proxy-Setup). Bei direktem Container-Bind ohne Proxy würden die
-Cookies trotzdem korrekt vom Node-Server gesetzt, aber `Secure` triggert
-nicht, weil Next.js die Production-Erkennung an Connection-Encryption
-hängt — siehe `env.NODE_ENV === 'production'` in den Cookie-Optionen.
+Das nginx-Beispiel und das optionale Traefik-Deployment reichen
+`Set-Cookie` unverändert durch. Die Anwendung setzt `Secure` anhand des
+Production-Modus selbst; nur der explizit dreifach gegatete lokale
+HTTP-E2E-Modus ist davon ausgenommen. Ein direkter Production-Bind ohne TLS
+würde daher Secure-Cookies ausstellen, die der Browser über HTTP zu Recht
+nicht zurücksendet; Produktion benötigt HTTPS-Termination.
 
 ## Verifikation
 
@@ -76,7 +89,7 @@ curl -i -X POST https://kanzlei.example.com/api/auth/staff/callback/credentials 
   -d "email=admin@kanzlei.de&password=...&totpCode=..."
 
 # Erwartet (ohne STAFF_COOKIE_DOMAIN; mit gesetzter Domain stattdessen __Secure-…):
-# Set-Cookie: __Host-taxtronik_staff_session=eyJ...; Path=/; HttpOnly; Secure; SameSite=Lax
+# Set-Cookie: __Host-taxtronik_staff_session=<compact-JWE>; Path=/; HttpOnly; Secure; SameSite=Lax
 ```
 
 In Browser-DevTools → Application → Cookies sollten **nur** die zwei

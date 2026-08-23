@@ -11,9 +11,7 @@ import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import {
   classificationToTier,
   commitBytesWithTier,
-  deleteObject,
   gobdRetentionYears,
-  MAX_UPLOAD_BYTES,
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
@@ -23,7 +21,7 @@ import {
   storageCommitErrorResponse,
 } from '@/server/documents/upload-helpers';
 import { evidenceService } from '@/server/container';
-import { log } from '@/server/logger';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 const Schema = z.object({
   mimeType: z.string().min(1).max(255).default('application/octet-stream'),
@@ -65,17 +63,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id: documentId } = await params;
 
-  // DoS-Mitigation: ehrlich deklarierte Über-Größe ablehnen, BEVOR req.formData()
-  // den gesamten Body in den RAM puffert (+1 MB Marge für Multipart-Framing +
-  // Metadatenfelder) — identisch zu staff/documents/commit. Lügt der Client über
-  // Content-Length oder nutzt chunked-Encoding, greift der file.size-Check in
-  // parseMultipartUpload (dann ist gepuffert).
-  const declaredLen = Number(req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(declaredLen) && declaredLen > MAX_UPLOAD_BYTES + 1024 * 1024) {
-    return NextResponse.json({ error: 'TOO_LARGE' }, { status: 413 });
-  }
-
-  // Befund 12: Multipart-Parse + Datei-Checks zentral (upload-helpers).
+  // Multipart-Body wird zentral am echten Stream begrenzt; das greift auch
+  // ohne Content-Length und bei chunked Transfer-Encoding.
   const upload = await parseMultipartUpload(req);
   if (!upload.ok) return upload.response;
   const { form, file } = upload;
@@ -303,48 +292,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     );
   } catch (e) {
-    // Wie Befund 1: das Objekt liegt bereits object-locked im Storage und
-    // kann nicht gelöscht werden → verwaisten Key strukturiert loggen.
-    log.error(
-      {
-        component: 'documents-new-version',
-        tenantId,
-        documentId,
-        orphanedBucket: commit.targetBucket,
-        orphanedKey: commit.targetKey,
-        sha256: commit.sha256.toString('hex'),
-        err: (e as Error).message,
-      },
-      'documents-new-version: DB-Commit nach Storage-Upload fehlgeschlagen — Objekt verwaist',
-    );
+    await compensateStorageCommit({
+      tenantId,
+      source: 'staff.document.new_version',
+      commit,
+      cause: e,
+    });
     const gwgEvidenceLocked =
       e instanceof GwgEvidenceLockedError ||
       (e instanceof Error && e.message.includes('Zugeordneter GwG-Beweisinhalt'));
-    const rejectedBeforeInsert =
-      e instanceof PoaDocumentLockedError ||
-      gwgEvidenceLocked ||
-      e instanceof DocumentReferenceChangedError ||
-      (e as { code?: string }).code === 'P2002';
-    if (rejectedBeforeInsert) {
-      // NONE-Objekte koennen sofort entfernt werden. Bei aktivem Object-Lock
-      // wird S3 erwartungsgemaess ablehnen; das strukturierte Log haelt den
-      // verwaisten Key dann fuer den spaeteren Abgleich fest.
-      try {
-        await deleteObject(commit.targetBucket, commit.targetKey);
-      } catch (cleanupError) {
-        log.error(
-          {
-            component: 'documents-new-version',
-            tenantId,
-            documentId,
-            orphanedBucket: commit.targetBucket,
-            orphanedKey: commit.targetKey,
-            cleanupErr: (cleanupError as Error).message,
-          },
-          'documents-new-version: Kompensationsloeschung des verwaisten Objekts fehlgeschlagen',
-        );
-      }
-    }
     if (e instanceof PoaDocumentLockedError) return lockedByPoaResponse();
     if (gwgEvidenceLocked) return lockedByGwgResponse();
     if (e instanceof DocumentReferenceChangedError) {

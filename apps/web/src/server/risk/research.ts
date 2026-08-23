@@ -12,6 +12,7 @@
 // =============================================================================
 
 import {
+  readBooleanTenantModules,
   withTenantContext,
   withSystemContext,
   type TenantContext,
@@ -384,6 +385,14 @@ export async function receiveResearchResult(
   }
 
   if (!tenantId) return null; // ohne Tenant nicht zuordenbar
+
+  // Dieser Callback ist ein eigener mutierender Einstieg (ohne Staff-Session).
+  // Deshalb muss er den tenantweiten Schalter selbst erzwingen; ein versteckter
+  // Navigationspunkt oder der Action-Guard der Subsumtions-Seiten reicht hier
+  // nicht aus. `null` wird von beiden Callback-Routen als nicht zuordenbar
+  // abgelehnt, ohne Status oder Ergebnis zu persistieren.
+  const modules = await readBooleanTenantModules(prismaOwner, tenantId);
+  if (!modules.risk) return null;
 
   // Schreiben unter SYSTEM-Kontext → RLS-WITH-CHECK greift (Defense in Depth).
   const result = await withSystemContext(tenantId, async (tx) => {

@@ -135,21 +135,14 @@ export default async function IntegrationsSettingsPage() {
     {
       icon: Clock,
       label: 'Zeitstempel-Behörde (TSA)',
-      endpoint: tsa.url ?? '— lokaler Self-Timestamp —',
-      status:
-        tsa.source === 'none'
-          ? {
-              skipped: true,
-              reason:
-                'Kein externer TSA gewählt — Self-Timestamp aktiv. In den Einstellungen auswählbar.',
-            }
-          : (tsa as ServiceStatus),
+      endpoint: tsa.url ?? '— TSA nicht auflösbar —',
+      status: tsa as ServiceStatus,
       hint:
         tsa.source === 'tenant'
           ? 'Konfiguriert in den Einstellungen → Zeitstempel (TSA). Versiegelt täglich den Tagesspitzen-Hash der Audit-Chain.'
           : tsa.source === 'env'
             ? 'Aus ENV-Vorgabe — kann in den Einstellungen → Zeitstempel pro Kanzlei überschrieben werden.'
-            : 'RFC-3161 für die Audit-Hash-Chain. Für Produktivbetrieb wird ein externer Stempel (z. B. D-Trust) empfohlen.',
+            : 'Verifizierter GlobalSign-Standard. Eine kanzleispezifische TSA kann in den Einstellungen gewählt werden.',
     },
   ];
 

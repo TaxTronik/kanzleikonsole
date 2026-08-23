@@ -41,6 +41,20 @@ export type MyDayEntry =
       sortAt: Date;
     };
 
+export interface MyDaySources {
+  workflows: boolean;
+  reminders: boolean;
+  appointments: boolean;
+  phoneNotes: boolean;
+}
+
+const ALL_MY_DAY_SOURCES: MyDaySources = {
+  workflows: true,
+  reminders: true,
+  appointments: true,
+  phoneNotes: true,
+};
+
 function nullableClientVisibility(deniedClientIds: string[] | undefined) {
   return deniedClientIds?.length
     ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
@@ -57,6 +71,7 @@ export async function loadMyDayEntries(
   staffId: string,
   deniedClientIds?: string[],
   now = new Date(),
+  sources: MyDaySources = ALL_MY_DAY_SOURCES,
 ): Promise<MyDayEntry[]> {
   const reminderAssignment = {
     OR: [
@@ -67,76 +82,84 @@ export async function loadMyDayEntries(
   const reminderVisibility = nullableClientVisibility(deniedClientIds);
 
   const [workflowItems, reminders, appointments, phoneNotes] = await Promise.all([
-    tx.workflowItem.findMany({
-      where: {
-        assigneeStaffId: staffId,
-        doneAt: null,
-        instance: {
-          status: 'ACTIVE',
-          ...(deniedClientIds?.length ? { clientId: { notIn: deniedClientIds } } : {}),
-        },
-      },
-      orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
-      take: MY_DAY_LIMIT,
-      select: {
-        id: true,
-        title: true,
-        dueDate: true,
-        instance: {
-          select: { clientId: true, name: true, client: { select: { name: true } } },
-        },
-      },
-    }),
-    tx.clientReminder.findMany({
-      where: {
-        doneAt: null,
-        ...(deniedClientIds?.length
-          ? { AND: [reminderAssignment, reminderVisibility] }
-          : reminderAssignment),
-      },
-      orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
-      take: MY_DAY_LIMIT,
-      select: {
-        id: true,
-        subject: true,
-        dueDate: true,
-        client: { select: { name: true } },
-      },
-    }),
-    tx.appointment.findMany({
-      where: {
-        ownerStaffId: staffId,
-        status: { not: 'CANCELLED' },
-        endsAt: { gte: now },
-        ...nullableClientVisibility(deniedClientIds),
-      },
-      orderBy: { startsAt: 'asc' },
-      take: MY_DAY_LIMIT,
-      select: {
-        id: true,
-        title: true,
-        startsAt: true,
-        endsAt: true,
-        location: true,
-        client: { select: { name: true } },
-      },
-    }),
-    tx.phoneNote.findMany({
-      where: {
-        forwardToStaff: staffId,
-        doneAt: null,
-        ...nullableClientVisibility(deniedClientIds),
-      },
-      orderBy: { createdAt: 'asc' },
-      take: MY_DAY_LIMIT,
-      select: {
-        id: true,
-        subject: true,
-        callerName: true,
-        createdAt: true,
-        client: { select: { name: true } },
-      },
-    }),
+    sources.workflows
+      ? tx.workflowItem.findMany({
+          where: {
+            assigneeStaffId: staffId,
+            doneAt: null,
+            instance: {
+              status: 'ACTIVE',
+              ...(deniedClientIds?.length ? { clientId: { notIn: deniedClientIds } } : {}),
+            },
+          },
+          orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+          take: MY_DAY_LIMIT,
+          select: {
+            id: true,
+            title: true,
+            dueDate: true,
+            instance: {
+              select: { clientId: true, name: true, client: { select: { name: true } } },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    sources.reminders
+      ? tx.clientReminder.findMany({
+          where: {
+            doneAt: null,
+            ...(deniedClientIds?.length
+              ? { AND: [reminderAssignment, reminderVisibility] }
+              : reminderAssignment),
+          },
+          orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+          take: MY_DAY_LIMIT,
+          select: {
+            id: true,
+            subject: true,
+            dueDate: true,
+            client: { select: { name: true } },
+          },
+        })
+      : Promise.resolve([]),
+    sources.appointments
+      ? tx.appointment.findMany({
+          where: {
+            ownerStaffId: staffId,
+            status: { not: 'CANCELLED' },
+            endsAt: { gte: now },
+            ...nullableClientVisibility(deniedClientIds),
+          },
+          orderBy: { startsAt: 'asc' },
+          take: MY_DAY_LIMIT,
+          select: {
+            id: true,
+            title: true,
+            startsAt: true,
+            endsAt: true,
+            location: true,
+            client: { select: { name: true } },
+          },
+        })
+      : Promise.resolve([]),
+    sources.phoneNotes
+      ? tx.phoneNote.findMany({
+          where: {
+            forwardToStaff: staffId,
+            doneAt: null,
+            ...nullableClientVisibility(deniedClientIds),
+          },
+          orderBy: { createdAt: 'asc' },
+          take: MY_DAY_LIMIT,
+          select: {
+            id: true,
+            subject: true,
+            callerName: true,
+            createdAt: true,
+            client: { select: { name: true } },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   const entries: MyDayEntry[] = [

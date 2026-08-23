@@ -12,6 +12,7 @@ import {
   deleteObjectVersion,
   classificationToTier,
   gobdRetentionYears,
+  type CommitDocumentResult,
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { carrierClassification } from '@/server/storage/document-type';
@@ -19,6 +20,7 @@ import { documentRetagDecision } from '@/server/storage/retag-policy';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 import { log } from '@/server/logger';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 export interface DocActionResult {
   ok: boolean;
@@ -481,8 +483,7 @@ export async function retagDocumentAction(
     return latest;
   };
 
-  let restagedObject: { bucket: string; key: string; storageVersionId: string | null } | null =
-    null;
+  let restagedCommit: CommitDocumentResult | null = null;
   try {
     if (retagDecision === 'METADATA_ONLY') {
       // Gleiche Stufe → reine Metadatenänderung (Bucket/Lock bleiben).
@@ -520,11 +521,7 @@ export async function retagDocumentAction(
           : {}),
         retentionAnchor: ctx.createdAt,
       });
-      restagedObject = {
-        bucket: commit.targetBucket,
-        key: commit.targetKey,
-        storageVersionId: commit.storageVersionId,
-      };
+      restagedCommit = commit;
       await withTenantContext(g.ctx, async (tx) => {
         const latest = await lockAndValidateCurrentDocument(tx, true);
         if (!latest) {
@@ -615,19 +612,13 @@ export async function retagDocumentAction(
       }
     }
   } catch (e) {
-    if (restagedObject) {
-      log.error(
-        {
-          component: 'document-retag',
-          tenantId,
-          documentId,
-          orphanedBucket: restagedObject.bucket,
-          orphanedKey: restagedObject.key,
-          storageVersionId: restagedObject.storageVersionId,
-          err: (e as Error).message,
-        },
-        'document-retag: DB-Commit nach geschütztem Storage-Upload fehlgeschlagen',
-      );
+    if (restagedCommit) {
+      await compensateStorageCommit({
+        tenantId,
+        source: 'staff.document.retag',
+        commit: restagedCommit,
+        cause: e,
+      });
     }
     const msg = (e as Error).message;
     if (msg.startsWith('INFECTED')) {

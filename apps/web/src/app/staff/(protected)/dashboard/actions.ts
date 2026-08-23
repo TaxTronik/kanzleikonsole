@@ -3,13 +3,19 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { Prisma as PrismaRuntime } from '@taxtronik/db/prisma-client';
+import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import type { ReactNode } from 'react';
 import {
   WIDGET_BY_TYPE,
+  isDashboardWidgetEnabled,
   type DashboardLayout,
   type LayoutWidget,
 } from '@/server/dashboard/widgets';
-import { withStaff, type ActionResult as BaseActionResult } from '@/server/actions/staff-action';
+import {
+  ActionError,
+  withStaff,
+  type ActionResult as BaseActionResult,
+} from '@/server/actions/staff-action';
 import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
 import { renderWidget } from './widgets';
 
@@ -72,7 +78,11 @@ export async function addDashboardWidgetAction(
   const widget = cleaned.widgets.find((entry) => entry.id === widgetId);
   if (!widget) return { ok: false, error: 'Widget nicht gefunden.' };
 
-  return withStaff(async (tx, { staffId, session }) => {
+  return withStaff(async (tx, { tenantId, staffId, session }) => {
+    const modules = await readBooleanTenantModules(tx, tenantId);
+    if (!isDashboardWidgetEnabled(widget.type, modules)) {
+      throw new ActionError('Dieses Dashboard-Widget ist für die deaktivierte Funktion gesperrt.');
+    }
     const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
     await tx.staffUser.update({
       where: { id: staffId },
@@ -83,6 +93,7 @@ export async function addDashboardWidgetAction(
       staffId,
       isAdmin: isStaffAdmin(session),
       deniedClientIds,
+      modules,
     });
     return { rendered: { widget, node } };
   });

@@ -12,6 +12,7 @@ import { evidenceService } from '@/server/container';
 import { toCsv, csvResponse, type CsvColumn } from '@/server/export/csv';
 import { loadKontrollbuch } from '@/server/fristen/kontrollbuch';
 import { QUELLE_LABELS, type FristEintrag } from '@/server/fristen/eintrag';
+import { readModules } from '@/server/settings/modules';
 
 const RANGES = [7, 30, 90];
 
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest) {
   const session = await staffAuth();
   if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { tenantId, staffId } = session.user;
+  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  const modules = await readModules(ctx);
 
   const rl = await checkStaffExportLimit('fristen', staffId);
   if (!rl.ok) {
@@ -29,28 +32,26 @@ export async function GET(req: NextRequest) {
   const tage = RANGES.includes(Number(sp.get('tage'))) ? Number(sp.get('tage')) : 30;
   const nurMeine = sp.get('wer') === 'meine';
 
-  const rows = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const eintraege = await loadKontrollbuch(tx, session, {
-        tage,
-        nurStaffId: nurMeine ? staffId : null,
-      });
-      // Der Export ist der Nachweis — er wird in der Chain dokumentiert
-      // (RESTRICTED-Filterung übernimmt der Loader).
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'fristen.export.csv',
-        resourceType: 'tenant',
-        resourceId: tenantId,
-        after: { tage, nurMeine, eintraege: eintraege.length },
-        ip: getClientIp(req.headers),
-      });
-      return eintraege;
-    },
-  );
+  const rows = await withTenantContext(ctx, async (tx) => {
+    const eintraege = await loadKontrollbuch(tx, session, {
+      tage,
+      nurStaffId: nurMeine ? staffId : null,
+      sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
+    });
+    // Der Export ist der Nachweis — er wird in der Chain dokumentiert
+    // (RESTRICTED-Filterung übernimmt der Loader).
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'fristen.export.csv',
+      resourceType: 'tenant',
+      resourceId: tenantId,
+      after: { tage, nurMeine, eintraege: eintraege.length },
+      ip: getClientIp(req.headers),
+    });
+    return eintraege;
+  });
 
   const columns: CsvColumn<FristEintrag>[] = [
     {

@@ -12,6 +12,12 @@
 
 import { safeFetch } from '@taxtronik/http-utils';
 
+const safeFetchPublic = safeFetch as unknown as (
+  url: string,
+  init: RequestInit,
+  policy: { mode: 'public' },
+) => Promise<Response>;
+
 export interface FetchedRssItem {
   source: string; // = feed URL
   guid: string;
@@ -137,14 +143,18 @@ export async function fetchRssFeed(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const userAgent = opts.userAgent ?? DEFAULT_USER_AGENT;
 
-  const res = await safeFetch(url, {
-    headers: {
-      'user-agent': userAgent,
-      accept: 'application/rss+xml, application/xml, text/xml',
+  const res = await safeFetchPublic(
+    url,
+    {
+      headers: {
+        'user-agent': userAgent,
+        accept: 'application/rss+xml, application/xml, text/xml',
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+      // redirect: 'error' ist Default in safeFetch (Round 12).
     },
-    signal: AbortSignal.timeout(timeoutMs),
-    // redirect: 'error' ist Default in safeFetch (Round 12).
-  });
+    { mode: 'public' },
+  );
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }

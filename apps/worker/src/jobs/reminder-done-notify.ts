@@ -16,11 +16,20 @@ import { upsertNotificationTx } from '@taxtronik/db/notification';
 import { connection, type ReminderDoneNotifyJob } from '../queues';
 import { withWorkerTenantContext } from '../tenant-context';
 import { log } from '../logger';
+import { isWorkerTenantModuleEnabled } from '../module-gate';
 
 export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
   'reminder-done-notify',
   async (job) => {
     const { tenantId, reminderId, staffId, clientId, subject, doneByName } = job.data;
+
+    if (!(await isWorkerTenantModuleEnabled(tenantId, 'reminders'))) {
+      log.info(
+        { component: 'reminder-done-notify', tenantId, reminderId },
+        'Wiedervorlagen-Modul deaktiviert — Benachrichtigung entfällt',
+      );
+      return;
+    }
 
     await withWorkerTenantContext(tenantId, async (tx) => {
       const reminder = await tx.clientReminder.findUnique({

@@ -53,6 +53,15 @@ export interface KontrollbuchOptions {
   nurOffene?: boolean;
   /** Nur Einträge, für die diese Person verantwortlich ist. */
   nurStaffId?: string | null;
+  /** Modulquellen; Kern-Anforderungen bleiben unabhängig davon aktiv. */
+  sources?: {
+    taxNotices: boolean;
+    reminders: boolean;
+  };
+}
+
+function queryWhenEnabled<T>(enabled: boolean, query: () => Promise<T[]>): Promise<T[]> {
+  return enabled ? query() : Promise.resolve([]);
 }
 
 export async function loadKontrollbuch(
@@ -63,6 +72,7 @@ export async function loadKontrollbuch(
   const heute = berlinTodayUtcMidnight();
   const horizont = new Date(heute.getTime() + opts.tage * 86400000);
   const rueckschau = new Date(heute.getTime() - opts.tage * 86400000);
+  const sources = { taxNotices: true, reminders: true, ...opts.sources };
 
   const denied = await inaccessibleClientIdsFor(tx, session);
   const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
@@ -147,71 +157,77 @@ export async function loadKontrollbuch(
   // Offen ohne untere Grenze ODER erledigt im Fenster — je Quelle als OR
   // ausgedrückt, da „erledigt" quellspezifisch ist.
   const [deadlines, notices, klagen, requests, reminders] = await Promise.all([
-    tx.taxDeadline.findMany({
-      where: {
-        ...notDenied,
-        ...deadlineWindow,
-        ...(responsibleClient ? { client: responsibleClient } : {}),
-      },
-      select: {
-        id: true,
-        clientId: true,
-        kind: true,
-        period: true,
-        dueDate: true,
-        status: true,
-        completedAt: true,
-        completedByStaff: true,
-        client: { select: { name: true } },
-      },
-    }),
-    tx.taxNotice.findMany({
-      where: {
-        ...notDenied,
-        appealDeadline: { not: null },
-        ...noticeWindow,
-        ...(responsibleClient ? { client: responsibleClient } : {}),
-      },
-      select: {
-        id: true,
-        clientId: true,
-        kind: true,
-        period: true,
-        appealDeadline: true,
-        status: true,
-        reviewedAt: true,
-        reviewedBy: true,
-        appealFiledAt: true,
-        appealFiledBy: true,
-        legalFinalAt: true,
-        legalFinalBy: true,
-        client: { select: { name: true } },
-      },
-    }),
+    queryWhenEnabled(sources.taxNotices, () =>
+      tx.taxDeadline.findMany({
+        where: {
+          ...notDenied,
+          ...deadlineWindow,
+          ...(responsibleClient ? { client: responsibleClient } : {}),
+        },
+        select: {
+          id: true,
+          clientId: true,
+          kind: true,
+          period: true,
+          dueDate: true,
+          status: true,
+          completedAt: true,
+          completedByStaff: true,
+          client: { select: { name: true } },
+        },
+      }),
+    ),
+    queryWhenEnabled(sources.taxNotices, () =>
+      tx.taxNotice.findMany({
+        where: {
+          ...notDenied,
+          appealDeadline: { not: null },
+          ...noticeWindow,
+          ...(responsibleClient ? { client: responsibleClient } : {}),
+        },
+        select: {
+          id: true,
+          clientId: true,
+          kind: true,
+          period: true,
+          appealDeadline: true,
+          status: true,
+          reviewedAt: true,
+          reviewedBy: true,
+          appealFiledAt: true,
+          appealFiledBy: true,
+          legalFinalAt: true,
+          legalFinalBy: true,
+          client: { select: { name: true } },
+        },
+      }),
+    ),
     // Klagefristen (§ 47 FGO): offen bei ZURUECKGEWIESEN/TEILABHILFE, im
     // Rückschau-Fenster auch KLAGE/RECHTSKRAEFTIG (erledigt).
-    tx.taxNotice.findMany({
-      where: {
-        ...notDenied,
-        klageDeadline: { not: null },
-        ...klageWindow,
-        ...(responsibleClient ? { client: responsibleClient } : {}),
-      },
-      select: {
-        id: true,
-        clientId: true,
-        kind: true,
-        period: true,
-        klageDeadline: true,
-        status: true,
-        appealResolvedAt: true,
-        klageFiledAt: true,
-        klageFiledBy: true,
-        legalFinalAt: true,
-        legalFinalBy: true,
-        client: { select: { name: true } },
-      },
-    }),
+    queryWhenEnabled(sources.taxNotices, () =>
+      tx.taxNotice.findMany({
+        where: {
+          ...notDenied,
+          klageDeadline: { not: null },
+          ...klageWindow,
+          ...(responsibleClient ? { client: responsibleClient } : {}),
+        },
+        select: {
+          id: true,
+          clientId: true,
+          kind: true,
+          period: true,
+          klageDeadline: true,
+          status: true,
+          appealResolvedAt: true,
+          klageFiledAt: true,
+          klageFiledBy: true,
+          legalFinalAt: true,
+          legalFinalBy: true,
+          client: { select: { name: true } },
+        },
+      }),
+    ),
     tx.request.findMany({
       where: {
         ...notDenied,
@@ -228,33 +244,35 @@ export async function loadKontrollbuch(
         client: { select: { name: true } },
       },
     }),
-    tx.clientReminder.findMany({
-      where: {
-        ...notDenied,
-        AND: [
-          // Das Fristenbuch fuehrt MANDANTEN-Fristen. Interne Aufgaben ohne
-          // Mandantenbezug haben darin nichts zu suchen (und keinen Platz: der
-          // Eintrag verlangt Mandant + Name).
-          //
-          // Bewusst im AND und NICHT als eigener `clientId`-Schluessel: der
-          // wuerde per Objekt-Spread den `notIn`-Filter aus `notDenied`
-          // ueberschreiben — gesperrte Mandanten waeren wieder sichtbar.
-          { NOT: { clientId: null } },
-          reminderWindow,
-          ...(reminderStaff ? [reminderStaff] : []),
-        ],
-      },
-      select: {
-        id: true,
-        clientId: true,
-        subject: true,
-        dueDate: true,
-        assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
-        doneAt: true,
-        doneByStaff: true,
-        client: { select: { name: true } },
-      },
-    }),
+    queryWhenEnabled(sources.reminders, () =>
+      tx.clientReminder.findMany({
+        where: {
+          ...notDenied,
+          AND: [
+            // Das Fristenbuch fuehrt MANDANTEN-Fristen. Interne Aufgaben ohne
+            // Mandantenbezug haben darin nichts zu suchen (und keinen Platz: der
+            // Eintrag verlangt Mandant + Name).
+            //
+            // Bewusst im AND und NICHT als eigener `clientId`-Schluessel: der
+            // wuerde per Objekt-Spread den `notIn`-Filter aus `notDenied`
+            // ueberschreiben — gesperrte Mandanten waeren wieder sichtbar.
+            { NOT: { clientId: null } },
+            reminderWindow,
+            ...(reminderStaff ? [reminderStaff] : []),
+          ],
+        },
+        select: {
+          id: true,
+          clientId: true,
+          subject: true,
+          dueDate: true,
+          assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
+          doneAt: true,
+          doneByStaff: true,
+          client: { select: { name: true } },
+        },
+      }),
+    ),
   ]);
 
   // Verantwortliche: Hauptbearbeiter je Mandant (eine Query) — Wiedervorlagen

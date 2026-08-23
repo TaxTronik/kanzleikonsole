@@ -12,7 +12,9 @@ export interface TsaProvider {
   url: string;
   cost: 'free' | 'commercial';
   jurisdiction: string;
-  qualified: boolean; // eIDAS-qualifizierte TSA?
+  /** Nur true, wenn genau dieses Preset die Qualifikation technisch belegt.
+   * Ein Anbietername oder ein RFC-3161-Endpunkt allein reicht dafür nicht. */
+  qualified: boolean;
   hint: string;
 }
 
@@ -51,7 +53,7 @@ export const TSA_PROVIDERS: TsaProvider[] = [
     cost: 'free',
     jurisdiction: 'BE',
     qualified: false,
-    hint: 'Standard-Anbieter: kostenlos, in der EU ansässig. Antworten werden kryptografisch gegen den eingebetteten Root „GlobalSign Root CA - R6" geprüft. Nicht eIDAS-qualifiziert — für qualifizierte Stempel D-Trust wählen.',
+    hint: 'Standard-Anbieter: kostenlos, in der EU ansässig. Antworten werden kryptografisch gegen den eingebetteten Root „GlobalSign Root CA - R6" geprüft. Nicht eIDAS-qualifiziert. Wenn ein qualifizierter Dienst benötigt wird, muss der Betreiber Vertrag, konkreten Endpunkt und EU-Vertrauenslistenstatus prüfen.',
   },
   {
     id: 'apple',
@@ -68,8 +70,8 @@ export const TSA_PROVIDERS: TsaProvider[] = [
     url: 'https://tsa.d-trust.net/timestamp',
     cost: 'commercial',
     jurisdiction: 'DE',
-    qualified: true,
-    hint: 'eIDAS-qualifizierte TSA der Bundesdruckerei. Empfohlen für produktiven Einsatz in deutschen Kanzleien. Kostenpflichtiges Konto erforderlich.',
+    qualified: false,
+    hint: 'D-Trust bietet qualifizierte Zeitstempeldienste an. Ob Vertrag, Endpunkt und Zertifikatskette dieses Presets einen qualifizierten Dienst ergeben, muss der Betreiber anhand Vertrag und EU-Vertrauensliste prüfen.',
   },
   {
     id: 'swisscom',
@@ -77,8 +79,8 @@ export const TSA_PROVIDERS: TsaProvider[] = [
     url: 'http://tsa.swisscom.com/CN=Swisscom%20Root%20CA%202',
     cost: 'commercial',
     jurisdiction: 'CH',
-    qualified: true,
-    hint: 'eIDAS-qualifizierte TSA aus der Schweiz. Kostenpflichtig.',
+    qualified: false,
+    hint: 'Swisscom bietet kommerzielle Zeitstempeldienste an. TaxTronik sagt für dieses Preset keine eIDAS-Qualifikation zu; Vertrag, Endpunkt und Vertrauensstatus sind separat zu prüfen.',
   },
   {
     id: 'custom',
@@ -87,7 +89,7 @@ export const TSA_PROVIDERS: TsaProvider[] = [
     cost: 'free',
     jurisdiction: '—',
     qualified: false,
-    hint: 'Eigene URL angeben — z. B. interner Stempeldienst der Kanzlei.',
+    hint: 'Eigene öffentlich auflösbare HTTP(S)-URL angeben; HTTPS wird empfohlen. Private, Loopback- und interne Netzadressen werden als SSRF-Schutz abgelehnt.',
   },
 ];
 

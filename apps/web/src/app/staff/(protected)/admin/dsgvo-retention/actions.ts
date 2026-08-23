@@ -45,7 +45,7 @@ export async function confirmClientAnonymizationAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { clientId } = parsed.data;
 
-  // Für die Session-Revocation NACH der Tx (Redis, nicht transaktional).
+  // Fuer Audit-Zähler der in dieser Transaktion neu anonymisierten Kontakte.
   const anonymizedContactIds: string[] = [];
 
   const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
@@ -99,6 +99,14 @@ export async function confirmClientAnonymizationAction(input: {
         error:
           'Es existieren noch GwG-Belege/-Aufzeichnungen — bitte zuerst über die GwG-Pflichtlöschung vernichten.',
       };
+    }
+
+    // Redis-Widerruf vor jeder irreversiblen Anonymisierung bestaetigen. Ein
+    // spaeterer SQL-Fehler fuehrt damit hoechstens zu einem vorzeitigen Logout.
+    for (const contact of client.contacts) {
+      if (!isAnonymizedContactEmail(contact.email)) {
+        await revokeAllSessions('portal', contact.id);
+      }
     }
 
     // 4. Stammdaten anonymisieren — Skelett bleibt (id, kind, Mandatsende,
@@ -180,11 +188,6 @@ export async function confirmClientAnonymizationAction(input: {
   });
 
   if (result.ok) {
-    // Art. 17: aktive Portal-Sessions der mit-anonymisierten Kontakte sofort
-    // revoken — sonst bliebe der JWT-Cookie bis 24 h gültig.
-    for (const contactId of anonymizedContactIds) {
-      await revokeAllSessions('portal', contactId);
-    }
     revalidatePath('/staff/admin/dsgvo-retention');
     revalidatePath(`/staff/clients/${clientId}`);
   }

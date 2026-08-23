@@ -28,6 +28,7 @@ import {
   appealDeadline,
   appealDeadlineFromNotification,
   appealDeadlineForPostAbroad,
+  appealDeadlineForDataRetrieval,
   klageDeadline,
   bekanntgabeFiktionTage,
   type GermanRegion,
@@ -280,7 +281,7 @@ describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', (
     expect(ymd(appealDeadline(utc('2026-07-01'), null, utc('2026-07-11')))).toBe('2026-08-11');
   });
 
-  // Art. 97 § 1 Abs. 16 EGAO: Die Vier-Tages-Fiktion des PostModG gilt erst
+  // Art. 97 § 1 Abs. 15 EGAO: Die Vier-Tages-Fiktion des PostModG gilt erst
   // für Verwaltungsakte, die ab dem 01.01.2025 zur Post gegeben wurden.
   it('Alt-Bescheid (Aufgabe bis 31.12.2024): DREI-Tages-Fiktion (§ 122 (2) AO a.F.)', () => {
     // Bescheid 10.12.2024 (Di): +3 = 13.12.2024 (Fr, Werktag) → Bekanntgabe.
@@ -303,6 +304,105 @@ describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', (
     expect(ymd(appealDeadlineForPostAbroad(utc('2026-01-10'), null, utc('2026-03-01')))).toBe(
       '2026-04-01',
     );
+  });
+
+  describe('Datenabruf nach § 122a AO am Stichtag 01.01.2026', () => {
+    it('knüpft im Altfall an den Versand der elektronischen Benachrichtigung an', () => {
+      // Bereitstellung 10.01.2025, Benachrichtigung 13.01.2025. Nach § 122a
+      // Abs. 4 a.F. gilt der Bescheid am 17.01. als bekanntgegeben; nicht schon
+      // vier Tage nach der Bereitstellung.
+      expect(
+        ymd(
+          appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
+            issuedAt: utc('2025-01-09'),
+            notificationDate: utc('2025-01-13'),
+          })!,
+        ),
+      ).toBe('2025-02-17');
+    });
+
+    it('verwendet im Altfall bei bestrittener/verspäteter Benachrichtigung den Abruf', () => {
+      expect(
+        ymd(
+          appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
+            issuedAt: utc('2025-01-09'),
+            notificationDate: utc('2025-01-13'),
+            notificationDisputedOrLate: true,
+            retrievedAt: utc('2025-01-20'),
+          })!,
+        ),
+      ).toBe('2025-02-20');
+    });
+
+    it('wendet auf vor 2025 versandte Alt-Benachrichtigungen noch drei Tage an', () => {
+      expect(
+        ymd(
+          appealDeadlineForDataRetrieval(utc('2024-12-09'), null, {
+            issuedAt: utc('2024-12-08'),
+            notificationDate: utc('2024-12-10'),
+          })!,
+        ),
+      ).toBe('2025-01-13');
+    });
+
+    it('leitet den 3→4-Tage-Übergang aus dem Versand der Benachrichtigung ab', () => {
+      // Art. 97 § 1 Abs. 15 EGAO: Bereitstellung noch am 31.12.2024, Versand
+      // der Benachrichtigung am 01.01.2025 → bereits Vier-Tages-Fiktion.
+      expect(
+        ymd(
+          appealDeadlineForDataRetrieval(utc('2024-12-31'), null, {
+            issuedAt: utc('2024-12-30'),
+            notificationDate: utc('2025-01-01'),
+          })!,
+        ),
+      ).toBe('2025-02-06');
+    });
+
+    it('wendet bei Benachrichtigung ab 2025 vier statt drei Tage an', () => {
+      expect(
+        ymd(
+          appealDeadlineForDataRetrieval(utc('2024-12-31'), null, {
+            issuedAt: utc('2024-12-30'),
+            notificationDate: utc('2025-01-03'),
+          })!,
+        ),
+      ).toBe('2025-02-07');
+    });
+
+    it('setzt ohne nachgewiesenen Benachrichtigungszugang und ohne Abruf keine Frist', () => {
+      expect(
+        appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
+          issuedAt: utc('2025-01-09'),
+          notificationDate: utc('2025-01-13'),
+          notificationDisputedOrLate: true,
+        }),
+      ).toBeNull();
+    });
+
+    it('wendet bei Erlass 2025 trotz Bereitstellung 2026 noch die alte Benachrichtigungslogik an', () => {
+      expect(
+        ymd(
+          appealDeadlineForDataRetrieval(utc('2026-01-02'), null, {
+            issuedAt: utc('2025-12-31'),
+            notificationDate: utc('2026-01-03'),
+          })!,
+        ),
+      ).toBe('2026-02-09');
+    });
+
+    it('knüpft bei Erlass und Bereitstellung ab 2026 unmittelbar an Bereitstellung +4 an', () => {
+      expect(
+        ymd(
+          appealDeadlineForDataRetrieval(utc('2026-01-12'), null, {
+            issuedAt: utc('2026-01-11'),
+            // Altrechtliche Zusatzangaben dürfen die Neufassung nicht verändern.
+            notificationDate: utc('2026-01-20'),
+            notificationDisputedOrLate: true,
+            retrievedAt: utc('2026-01-21'),
+          })!,
+        ),
+      ).toBe('2026-02-16');
+    });
   });
 
   it('fehlende oder unrichtige Rechtsbehelfsbelehrung → Jahresfrist (§ 356 Abs. 2 AO)', () => {

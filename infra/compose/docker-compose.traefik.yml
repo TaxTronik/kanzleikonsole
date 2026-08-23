@@ -23,7 +23,10 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     tmpfs:
-      - /tmp:size=16m,mode=1777
+      # Das Buffering-Middleware lagert Upload-Bodies oberhalb 1 MiB hierhin
+      # aus. Der tmpfs bleibt kleiner als das Container-Limit und begrenzt
+      # zugleich parallele Pufferung.
+      - /tmp:size=64m,mode=1777
     command:
       - --global.checknewversion=false
       - --global.sendanonymoususage=false

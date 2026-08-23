@@ -612,8 +612,15 @@ test_traefik_dynamic_route_and_compose_contract_are_socketless() {
     render_traefik_dynamic_config
   )
   assert_contains "$dynamic" 'rule: "Host(`staff.example.de`)"'
+  assert_contains "$dynamic" 'rule: "Host(`staff.example.de`) && Path(`/staff/login/password`)"'
+  assert_contains "$dynamic" 'rule: "Host(`staff.example.de`) && Path(`/staff/login`) && Method(`POST`)"'
+  assert_contains "$dynamic" 'priority: 110'
   assert_contains "$dynamic" 'rule: "Host(`portal.example.de`)"'
   assert_contains "$dynamic" 'rule: "Host(`n8n.example.de`)"'
+  assert_contains "$dynamic" 'maxRequestBodyBytes: 65536'
+  assert_contains "$dynamic" 'maxRequestBodyBytes: 27262976'
+  assert_contains "$dynamic" 'middlewares: [taxtronik-login-body-limit]'
+  assert_contains "$dynamic" 'middlewares: [taxtronik-app-body-limit]'
   assert_contains "$dynamic" 'url: "http://app:3000"'
   assert_contains "$dynamic" 'url: "http://n8n:5678"'
   [[ "$(file_mode "$dynamic")" == "600" ]] || test_fail "Traefik dynamic config mode is not 0600"
@@ -639,6 +646,7 @@ test_traefik_dynamic_route_and_compose_contract_are_socketless() {
   assert_contains "$overlay" "'443:443'"
   assert_contains "$overlay" "max-size: '10m'"
   assert_contains "$overlay" "max-file: '5'"
+  assert_contains "$overlay" "/tmp:size=64m,mode=1777"
   assert_not_contains "$overlay" "docker.sock"
   assert_not_contains "$overlay" "providers.docker"
   pass "managed Traefik uses pinned socketless file-provider contract"

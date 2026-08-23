@@ -14,6 +14,7 @@ import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { isWorkerTenantModuleEnabled } from '../module-gate';
 
 const RSS_FETCH_CONCURRENCY = 5;
 const DB_BATCH_SIZE = 250;
@@ -37,11 +38,22 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
   'tax-news-fetch',
   async () => {
     // Distinct URLs aus aktiven Feeds — pro URL nur ein Fetch.
-    const activeFeeds = await prismaOwner.rssFeed.findMany({
+    const activeFeedRows = await prismaOwner.rssFeed.findMany({
       where: { active: true },
-      select: { url: true },
-      distinct: ['url'],
+      select: { tenantId: true, url: true },
+      distinct: ['tenantId', 'url'],
     });
+    const enabledTenantIds = new Set<string>();
+    for (const tenantId of new Set(activeFeedRows.map((feed) => feed.tenantId))) {
+      if (await isWorkerTenantModuleEnabled(tenantId, 'rssReader')) enabledTenantIds.add(tenantId);
+    }
+    const activeFeeds = Array.from(
+      new Map(
+        activeFeedRows
+          .filter((feed) => enabledTenantIds.has(feed.tenantId))
+          .map((feed) => [feed.url, { url: feed.url }]),
+      ).values(),
+    );
 
     const errors: string[] = [];
     const all: FetchedRssItem[] = [];
@@ -141,6 +153,7 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
 
     const subscribersBySource = new Map<string, typeof subscribers>();
     for (const sub of subscribers) {
+      if (!enabledTenantIds.has(sub.tenantId)) continue;
       subscribersBySource.set(sub.url, [...(subscribersBySource.get(sub.url) ?? []), sub]);
     }
 
@@ -192,13 +205,8 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
     // "aktualisiert am". Bewusst auch bei 0 neuen Items schreiben: der Lauf
     // HAT stattgefunden, nur gab es nichts Neues (max(fetchedAt) wäre dann
     // irreführend alt).
-    const feedTenants = await prismaOwner.rssFeed.findMany({
-      where: { active: true },
-      select: { tenantId: true },
-      distinct: ['tenantId'],
-    });
     const lastFetchAt = new Date().toISOString();
-    for (const { tenantId } of feedTenants) {
+    for (const tenantId of enabledTenantIds) {
       await prismaOwner.tenantSetting.upsert({
         where: { tenantId_key: { tenantId, key: 'tax-news.last-fetch-at' } },
         update: { value: lastFetchAt },

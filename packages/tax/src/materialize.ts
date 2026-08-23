@@ -346,15 +346,23 @@ export async function materializeTenantTaxDeadlines(
     // Request + Deadline-Update + Audit-Eintrag atomar — ein Crash dazwischen
     // würde sonst beim nächsten Lauf doppelte Anforderungen erzeugen.
     await deps.runAtomic(async (tx) => {
-      // Re-Check in der Transaktion: ein paralleler Lauf (Web-Action vs.
-      // Worker-Job) könnte den Termin inzwischen versorgt oder ein
-      // Mitarbeiter ihn inzwischen gestoppt haben.
-      const fresh = await tx.taxDeadline.findUnique({
-        where: { id: dl.id },
-        select: { status: true, requestId: true, autoRequestSuppressedAt: true },
+      // Echte CAS-Beanspruchung statt Read-then-Write: bei parallelem Web-/
+      // Worker-Lauf gewinnt exakt eine Transaktion. Da Claim, Request,
+      // Deadline-Link und Audit in derselben DB-Transaktion liegen, gibt es
+      // weder einen dauerhaft hängenden Claim noch eine verwaiste Request.
+      const claimedAt = new Date();
+      const claim = await tx.taxDeadline.updateMany({
+        where: {
+          id: dl.id,
+          tenantId,
+          status: 'PLANNED',
+          requestId: null,
+          autoRequestSuppressedAt: null,
+          autoRequestClaimedAt: null,
+        },
+        data: { autoRequestClaimedAt: claimedAt },
       });
-      if (!fresh || fresh.status !== 'PLANNED' || fresh.requestId !== null) return;
-      if (fresh.autoRequestSuppressedAt !== null) return;
+      if (claim.count === 0) return;
 
       const title = `${kindLabel} ${dl.period} bis ${dueLabel}`;
       const description = `Bitte stellen Sie die Unterlagen für ${kindLabel} ${dl.period} bereit. Fälligkeit: ${dueLabel}.`;
@@ -367,11 +375,12 @@ export async function materializeTenantTaxDeadlines(
           priority: 'NORMAL',
           createdByStaff: systemStaffId,
           dueAt: dl.dueDate,
+          taxDeadlineId: dl.id,
         },
       });
       await tx.taxDeadline.update({
         where: { id: dl.id },
-        data: { requestId: req.id, status: 'REMINDED' },
+        data: { requestId: req.id, status: 'REMINDED', autoRequestClaimedAt: null },
       });
       await deps.resolveStaffNotifications(tx, {
         tenantId,

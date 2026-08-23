@@ -29,6 +29,8 @@ import {
   backupDrillQueue,
   backupRunQueue,
   healthAlertQueue,
+  workflowN8nDispatchQueue,
+  storageOrphanCleanupQueue,
 } from './queues';
 import { log } from './logger';
 
@@ -120,6 +122,19 @@ export async function setupSchedules(): Promise<void> {
     { every: 5 * 60_000 },
     { name: 'n8n-outbox-reconcile', data: {} },
   );
+  // Fachliche Workflow-Events liegen vor dem Outbox-Handoff dauerhaft in der
+  // DB. WRITE_FAILED-/Crash-Fälle werden minütlich mit stabilem Dedupe-Key
+  // nachgezogen.
+  await workflowN8nDispatchQueue.upsertJobScheduler(
+    'workflow-n8n-dispatch-reconcile',
+    { every: 60_000 },
+    { name: 'workflow-n8n-dispatch', data: {} },
+  );
+  await storageOrphanCleanupQueue.upsertJobScheduler(
+    'storage-orphan-cleanup',
+    { every: 6 * 60 * 60_000 },
+    { name: 'storage-orphan-cleanup', data: {}, opts: DAILY_RETRY },
+  );
   // Begrenzte n8n-Historie: normale Terminal-Events 90 Tage, Fehler/Partial
   // 180 Tage. Der Worker löscht nur weiterhin terminale Reihen in Batches.
   await n8nRetentionQueue.upsertJobScheduler(
@@ -192,6 +207,8 @@ export async function setupSchedules(): Promise<void> {
         'tax-news-fetch @ 06:30 Berlin daily',
         'reminders-daily @ 07:45 Berlin daily',
         'n8n-outbox-reconcile @ every 5 min',
+        'workflow-n8n-dispatch @ every 1 min',
+        'storage-orphan-cleanup @ every 6 h',
         'n8n-retention @ 03:45 UTC daily',
         'magic-link-cleanup @ 03:30 UTC daily',
         'dsgvo-retention @ 04:00 UTC daily',

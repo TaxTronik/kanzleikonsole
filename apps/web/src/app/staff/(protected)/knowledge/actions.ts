@@ -10,11 +10,13 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
   staffActionGuard,
-  withStaff,
+  withStaffModule,
   ActionError,
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+
+const withKnowledgeStaff = withStaffModule('knowledge');
 
 export type ActionResult = BaseActionResult;
 
@@ -37,7 +39,7 @@ export async function createCategoryAction(
 
   // Kategorien sind Wissensstruktur — Pflege via ADMIN/PARTNER, Artikel können
   // alle Mitarbeiter schreiben.
-  return withStaff(
+  return withKnowledgeStaff(
     async (tx, { tenantId, staffId }) => {
       // Q-4: parentId muss zum Tenant gehören. RLS filtert Lesepfade, aber
       // der FK akzeptiert jede UUID, die im DB-Cluster existiert — sonst kann
@@ -81,7 +83,7 @@ const ArticleSchema = z.object({
 });
 
 export async function createArticleAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'knowledge' });
   if (!g.ok) return;
   const { tenantId, staffId, ctx } = g;
 
@@ -147,7 +149,7 @@ export async function createArticleAction(formData: FormData): Promise<void> {
 const UpdateArticleSchema = ArticleSchema.extend({ id: z.string().uuid() });
 
 export async function updateArticleAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'knowledge' });
   if (!g.ok) return;
   const { tenantId, staffId, ctx } = g;
 
@@ -185,7 +187,7 @@ export async function updateArticleAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteArticleAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard({ requireAdmin: true });
+  const g = await staffActionGuard({ requireAdmin: true, module: 'knowledge' });
   if (!g.ok) return;
   const { tenantId, staffId, ctx } = g;
   // S2: UUID-Validation.
@@ -246,7 +248,7 @@ function sanitizeSearchSnippet(raw: string): string {
  * Query wird per `plainto_tsquery` aus User-Input erzeugt (sicher gegen TS-Syntax-Injection).
  */
 export async function searchArticles(query: string): Promise<SearchHit[]> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'knowledge' });
   if (!g.ok) return [];
   const q = query.trim();
   if (!q) return [];

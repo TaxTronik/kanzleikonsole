@@ -44,6 +44,9 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
       // Sicherheits-Check: gehört der Request wirklich diesem Mandanten?
       const req = await tx.request.findFirst({ where: { id: requestId, clientId } });
       if (!req) throw new ActionError('Anforderung nicht gefunden.');
+      if (req.status !== 'OPEN' && req.status !== 'IN_PROGRESS') {
+        throw new ActionError('Diese Anforderung ist bereits abgeschlossen.');
+      }
 
       // H7: Document-Owner-Check. Ohne diese Prüfung könnte ein Portal-User
       // per geratener Document-UUID ein fremdes Dokument an die eigene
@@ -57,6 +60,22 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
         if (!doc) throw new ActionError('Dokument nicht gefunden.');
       }
 
+      // Status-CAS vor dem Response-Insert. Schließt die Race zum parallelen
+      // Kanzlei-Abschluss; ein fehlgeschlagener Folge-Insert rollt den CAS mit
+      // derselben Transaktion wieder zurück.
+      const responded = await tx.request.updateMany({
+        where: {
+          id: requestId,
+          tenantId,
+          clientId,
+          status: { in: ['OPEN', 'IN_PROGRESS'] },
+        },
+        data: { status: 'RESPONDED' },
+      });
+      if (responded.count === 0) {
+        throw new ActionError('Diese Anforderung ist bereits abgeschlossen.');
+      }
+
       const resp = await tx.requestResponse.create({
         data: {
           requestId,
@@ -66,8 +85,6 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
           documentId: documentId || null,
         },
       });
-
-      await tx.request.update({ where: { id: requestId }, data: { status: 'RESPONDED' } });
 
       // In-App-Notification an den Staff, der die Anforderung erstellt hat
       await notify(tx, {

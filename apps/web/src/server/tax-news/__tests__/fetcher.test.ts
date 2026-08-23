@@ -5,6 +5,7 @@ const m = vi.hoisted(() => ({
   taxNewsCreate: vi.fn(),
   tenantSettingUpsert: vi.fn(),
   fetchRssFeed: vi.fn(),
+  readBooleanTenantModules: vi.fn(),
 }));
 
 vi.mock('@/server/db/prisma-owner', () => ({
@@ -15,6 +16,9 @@ vi.mock('@/server/db/prisma-owner', () => ({
   },
 }));
 vi.mock('@taxtronik/rss', () => ({ fetchRssFeed: m.fetchRssFeed }));
+vi.mock('@taxtronik/db/tenant-modules', () => ({
+  readBooleanTenantModules: m.readBooleanTenantModules,
+}));
 
 import { fetchAndPersistTaxNews } from '../fetcher';
 
@@ -24,6 +28,7 @@ describe('fetchAndPersistTaxNews', () => {
     m.rssFeedFindMany.mockResolvedValue([{ url: 'https://example.com/feed.xml' }]);
     m.fetchRssFeed.mockResolvedValue([]);
     m.tenantSettingUpsert.mockResolvedValue({});
+    m.readBooleanTenantModules.mockResolvedValue({ rssReader: true });
   });
 
   it('beschränkt einen Mitarbeiter-Refresh auf dessen eigene Feeds und Tenant-Marker', async () => {

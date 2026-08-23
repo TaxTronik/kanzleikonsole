@@ -406,6 +406,22 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(m.withStaff).not.toHaveBeenCalled();
   });
 
+  it('blockiert ein zukünftiges Geburtsdatum bereits vor dem Datenbankzugriff', async () => {
+    const data = formData();
+    data.set('fullName', 'Erika Muster');
+    data.set('birthDate', '9999-01-01');
+    data.set('birthPlace', 'Berlin');
+    data.set('residence', 'Musterstraße 1, 10115 Berlin');
+    data.set('nationality', 'deutsch');
+    data.set('isPep', 'false');
+
+    expect(await addBeneficialOwnerAction(null, data)).toEqual({
+      ok: false,
+      error: 'Validierungsfehler.',
+    });
+    expect(m.withStaff).not.toHaveBeenCalled();
+  });
+
   it('übernimmt den ausdrücklich gewählten PEP-Status beim manuellen Erfassen', async () => {
     const tx = {
       gwgCheck: {
@@ -860,6 +876,34 @@ describe('atomare GwG-Bearbeitung', () => {
         },
       ],
     });
+  });
+
+  it('blockiert zukünftige und widersprüchliche Ausweisdaten vor dem Datenbankzugriff', async () => {
+    const future = formData();
+    future.set('type', 'PERSONALAUSWEIS');
+    future.set('subjectKey', 'representative:33333333-3333-4333-8333-333333333333');
+    future.set('issueDate', '9999-01-01');
+    future.set('expiryDate', '9999-02-01');
+    future.set('documentId', '55555555-5555-4555-8555-555555555555');
+
+    expect(await addIdDocumentAction(null, future)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Zukunft'),
+    });
+    expect(m.withStaff).not.toHaveBeenCalled();
+
+    const reversed = formData();
+    reversed.set('type', 'PERSONALAUSWEIS');
+    reversed.set('subjectKey', 'representative:33333333-3333-4333-8333-333333333333');
+    reversed.set('issueDate', '2025-01-02');
+    reversed.set('expiryDate', '2025-01-01');
+    reversed.set('documentId', '55555555-5555-4555-8555-555555555555');
+
+    expect(await addIdDocumentAction(null, reversed)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('vor dem Ausstellungsdatum'),
+    });
+    expect(m.withStaff).not.toHaveBeenCalled();
   });
 
   it('vertraut bei der Ausweiszuordnung keinem frei erfundenen Browserwert', async () => {

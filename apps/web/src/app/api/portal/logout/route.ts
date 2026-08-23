@@ -7,8 +7,10 @@
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { env } from '@taxtronik/config';
-import { portalSignOut } from '@/server/auth/portal';
+import { env, portalBaseUrl } from '@taxtronik/config';
+import { portalSessionSubject, portalSignOut } from '@/server/auth/portal';
+import { revokeAllSessions } from '@/server/auth/revocation';
+import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import {
   PORTAL_SESSION_COOKIE_BASE,
   sessionCookieNameVariants,
@@ -61,10 +63,17 @@ function portalLoginResponse(): NextResponse {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  // SameSite=Lax haelt das Session-Cookie aus Cross-Site-POSTs heraus;
-  // Fetch Metadata blockiert den Request zusaetzlich.
-  if (req.headers.get('sec-fetch-site') === 'cross-site') {
-    return NextResponse.json({ error: 'origin_mismatch' }, { status: 403 });
+  const csrf = assertSameOrigin(req, portalBaseUrl);
+  if (csrf) return csrf;
+
+  let revocationFailed = false;
+  try {
+    const contactId = await portalSessionSubject();
+    if (contactId) {
+      await revokeAllSessions('portal', contactId);
+    }
+  } catch {
+    revocationFailed = true;
   }
 
   try {
@@ -74,7 +83,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // 303 stellt sicher, dass der Browser dem POST mit einem GET folgt.
-  const response = portalLoginResponse();
+  const response = revocationFailed
+    ? NextResponse.json(
+        { error: 'session_revocation_unavailable' },
+        { status: 503, headers: { 'cache-control': 'no-store' } },
+      )
+    : portalLoginResponse();
   expirePortalSessionCookies(req, response);
   return response;
 }

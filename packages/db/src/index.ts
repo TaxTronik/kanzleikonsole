@@ -13,4 +13,13 @@ export {
   type TxClient,
 } from './tenant-context';
 export { Prisma } from './prisma-client';
+export {
+  BOOLEAN_MODULE_KEYS,
+  DEFAULT_BOOLEAN_TENANT_MODULES,
+  parseBooleanTenantModules,
+  readBooleanTenantModules,
+  type BooleanTenantModuleKey,
+  type BooleanTenantModules,
+  type TenantModuleSettingReader,
+} from './tenant-modules';
 export type * from '@prisma/client';

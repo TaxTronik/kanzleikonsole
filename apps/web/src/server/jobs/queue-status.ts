@@ -51,6 +51,8 @@ const QUEUES: Array<{ name: string; expectedEveryHours: number | null }> = [
   { name: 'health-alert', expectedEveryHours: null },
   { name: 'n8n-deliver', expectedEveryHours: null },
   { name: 'n8n-outbox-reconcile', expectedEveryHours: null },
+  { name: 'workflow-n8n-dispatch', expectedEveryHours: null },
+  { name: 'storage-orphan-cleanup', expectedEveryHours: 6 },
   { name: 'n8n-retention', expectedEveryHours: 24 },
   { name: 'risk-analyse-llm', expectedEveryHours: null },
   { name: 'reminder-done-notify', expectedEveryHours: null },

@@ -16,6 +16,10 @@ import {
   lockCleanGwgEvidenceDocumentsTx,
 } from '@/server/gwg/evidence-documents';
 import { gwgIdentityDocumentSetRevision } from '@/server/gwg/revisions';
+import {
+  firstIdentityDateError,
+  validateIdentityDates,
+} from '@/server/gwg/identity-date-validation';
 import { organizeGwgDocumentsTx } from '@/server/gwg-onboarding/document-folders';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 
@@ -73,6 +77,18 @@ const AddIdDocSchema = z
         path: ['subjectKey'],
         message: 'Identifizierte Person ist erforderlich.',
       });
+    }
+    if (isPersonalIdType(value.type)) {
+      for (const issue of validateIdentityDates({
+        issueDate: value.issueDate || null,
+        expiryDate: value.expiryDate || null,
+      })) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [issue.field],
+          message: issue.message,
+        });
+      }
     }
   });
 
@@ -138,6 +154,40 @@ function isDateOnOrAfterToday(value: string, now: Date = new Date()): boolean {
   const date = new Date(`${value}T00:00:00.000Z`);
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return Number.isFinite(date.getTime()) && date.getTime() >= today;
+}
+
+function subjectBirthDate(
+  source: IdentitySubjectSource,
+  subject: {
+    kind: string;
+    id: string;
+    linkedBeneficialOwnerId?: string;
+  },
+): Date | string | null {
+  const ownerId =
+    subject.kind === 'BENEFICIAL_OWNER'
+      ? subject.id
+      : subject.kind === 'REPRESENTATIVE'
+        ? subject.linkedBeneficialOwnerId
+        : null;
+  return ownerId
+    ? (source.beneficialOwners.find((owner) => owner.id === ownerId)?.birthDate ?? null)
+    : null;
+}
+
+function assertIdentityDatesForSubject(
+  source: IdentitySubjectSource,
+  subject: ReturnType<typeof resolveIdentitySubject>,
+  issueDate: string | null | undefined,
+  expiryDate: string | null | undefined,
+): void {
+  if (!subject) return;
+  const dateError = firstIdentityDateError({
+    birthDate: subjectBirthDate(source, subject),
+    issueDate: issueDate ?? null,
+    expiryDate: expiryDate ?? null,
+  });
+  if (dateError) throw new ActionError(dateError);
 }
 
 export async function addIdDocumentAction(
@@ -210,6 +260,7 @@ export async function addIdDocumentAction(
           'Die identifizierte Person gehört nicht mehr zu den erfassten Mandanten-, Vertretungs- oder Eigentümerdaten. Bitte Person neu auswählen.',
         );
       }
+      assertIdentityDatesForSubject(subjectSource, subject, data.issueDate, data.expiryDate);
 
       await claimCheckMutation(tx, {
         checkId: data.checkId,
@@ -590,18 +641,27 @@ export async function extendIdentityDocumentSetAction(
   );
 }
 
-const UpdateIdDocumentsSchema = z.object({
-  checkId: z.string().uuid(),
-  clientId: z.string().uuid(),
-  documentSetId: z.string().uuid(),
-  type: z.enum(['PERSONALAUSWEIS', 'REISEPASS']),
-  subjectKey: z.string().min(1).max(500),
-  number: z.string().trim().min(1).max(100),
-  issuedBy: z.string().trim().min(1).max(200),
-  issueDate: z.string().date(),
-  expiryDate: z.string().date(),
-  expectedRevision: z.string().min(2).max(50_000),
-});
+const UpdateIdDocumentsSchema = z
+  .object({
+    checkId: z.string().uuid(),
+    clientId: z.string().uuid(),
+    documentSetId: z.string().uuid(),
+    type: z.enum(['PERSONALAUSWEIS', 'REISEPASS']),
+    subjectKey: z.string().min(1).max(500),
+    number: z.string().trim().min(1).max(100),
+    issuedBy: z.string().trim().min(1).max(200),
+    issueDate: z.string().date(),
+    expiryDate: z.string().date(),
+    expectedRevision: z.string().min(2).max(50_000),
+  })
+  .superRefine((document, ctx) => {
+    for (const issue of validateIdentityDates({
+      issueDate: document.issueDate,
+      expiryDate: document.expiryDate,
+    })) {
+      ctx.addIssue({ code: 'custom', path: [issue.field], message: issue.message });
+    }
+  });
 
 /**
  * Bestätigt oder korrigiert einen zusammengehörigen Ausweissatz (z. B.
@@ -734,21 +794,20 @@ export async function updateIdDocumentsAction(
       );
     }
 
-    const subject = resolveIdentitySubject(
-      {
-        clientId: check.client.id,
-        clientName: check.client.name,
-        clientKind: check.client.kind,
-        representatives: check.representatives,
-        beneficialOwners: check.beneficialOwners,
-      },
-      data.subjectKey,
-    );
+    const subjectSource: IdentitySubjectSource = {
+      clientId: check.client.id,
+      clientName: check.client.name,
+      clientKind: check.client.kind,
+      representatives: check.representatives,
+      beneficialOwners: check.beneficialOwners,
+    };
+    const subject = resolveIdentitySubject(subjectSource, data.subjectKey);
     if (!subject) {
       throw new ActionError(
         'Die identifizierte Person gehört nicht mehr zu den erfassten Mandanten-, Vertretungs- oder Eigentümerdaten. Bitte Person neu auswählen.',
       );
     }
+    assertIdentityDatesForSubject(subjectSource, subject, data.issueDate, data.expiryDate);
 
     await claimCheckMutation(tx, {
       checkId: data.checkId,

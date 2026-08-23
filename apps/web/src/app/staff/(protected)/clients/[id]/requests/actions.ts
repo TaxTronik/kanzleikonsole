@@ -143,6 +143,13 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
 
   const data = parsed.data;
 
+  // Anforderungen sind ein Kernfeature; sobald dieser Einstieg jedoch eine
+  // FormSubmission erzeugt, muss zusätzlich der Formular-Schalter gelten.
+  if (data.formTemplateId) {
+    const formsGate = await staffActionGuard({ module: 'forms' });
+    if (!formsGate.ok) return formsGate;
+  }
+
   let createdId: string;
   let createdFresh: boolean;
   try {
@@ -409,14 +416,27 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
     reqInfo = await withTenantContext(ctx, async (tx) => {
       const req = await tx.request.findUnique({
         where: { id: requestId },
-        select: { clientId: true },
+        select: { clientId: true, status: true },
       });
       if (!req) throw new ActionError('Anforderung nicht gefunden.');
       await assertClientAccessTx(tx, session, req.clientId);
+      if (req.status !== 'OPEN' && req.status !== 'IN_PROGRESS') {
+        throw new ActionError(
+          'Der Portal-Vorgang ist abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
+        );
+      }
+      const claimed = await tx.request.updateMany({
+        where: { id: requestId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        data: { status: 'IN_PROGRESS' },
+      });
+      if (claimed.count === 0) {
+        throw new ActionError(
+          'Der Portal-Vorgang wurde zwischenzeitlich abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
+        );
+      }
       const resp = await tx.requestResponse.create({
         data: { requestId, authorType: 'STAFF', authorId: staffId, message },
       });
-      await tx.request.update({ where: { id: requestId }, data: { status: 'IN_PROGRESS' } });
       await resolveNotificationsTx(tx, {
         tenantId,
         resources: [{ resourceType: 'request', resourceId: requestId }],
@@ -463,5 +483,65 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
     );
   }
   revalidatePath('/staff/requests');
+  return { ok: true };
+}
+
+const InternalCommentSchema = z.object({
+  requestId: z.string().uuid(),
+  body: z.string().trim().min(1).max(5000),
+});
+
+/**
+ * Reine Kanzlei-Notiz: eigener Datentyp, nicht Teil von RequestResponse und
+ * damit weder im Portal sichtbar noch an notifyClientContacts gekoppelt.
+ * Bewusst unabhängig vom Request-Status, damit die Nachbearbeitung nach einer
+ * Formularabgabe (RESPONDED) und auch nach formellem Abschluss möglich bleibt.
+ */
+export async function addRequestInternalCommentAction(formData: FormData): Promise<ActionResult> {
+  const g = await staffActionGuard();
+  if (!g.ok) return g;
+  const { tenantId, staffId, ctx, session } = g;
+
+  const parsed = parseFormData(InternalCommentSchema, formData);
+  if (!parsed.ok) return { ok: false, error: 'Validierungsfehler.' };
+  const { requestId, body } = parsed.data;
+
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const req = await tx.request.findUnique({
+        where: { id: requestId },
+        select: { clientId: true },
+      });
+      if (!req) throw new ActionError('Anforderung nicht gefunden.');
+      await assertClientAccessTx(tx, session, req.clientId);
+      const author = await tx.staffUser.findFirst({
+        where: { id: staffId, tenantId },
+        select: { fullName: true },
+      });
+      if (!author) throw new ActionError('Mitarbeiter nicht gefunden.');
+
+      const comment = await tx.requestInternalComment.create({
+        data: {
+          requestId,
+          authorStaffId: staffId,
+          authorName: author.fullName,
+          body,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'request.internal_comment.create',
+        resourceType: 'request_internal_comment',
+        resourceId: comment.id,
+        after: { requestId, length: body.length },
+      });
+    });
+  } catch (error) {
+    return toActionError(error);
+  }
+
+  revalidatePath(`/staff/requests/${requestId}`);
   return { ok: true };
 }

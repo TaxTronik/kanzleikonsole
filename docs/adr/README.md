@@ -15,7 +15,7 @@ getroffen haben. Format inspiriert von Michael Nygard.
 | [0005](./0005-storage-seaweedfs-objectlock-clamav.md) | Storage: SeaweedFS + Object-Lock + ClamAV (ersetzt MinIO)   | Akzeptiert   | 1       |
 | [0006](./0006-n8n-statt-eigencode-fuer-workflows.md)  | n8n statt Eigencode für Workflows                           | Akzeptiert   | 2       |
 | [0007](./0007-gwg-schranke-via-db-trigger.md)         | GwG-Schranke via DB-Trigger                                 | Akzeptiert   | 1, 4    |
-| [0008](./0008-xrechnung-zugferd-en16931.md)           | XRechnung 3.0 + ZUGFeRD/Factur-X                            | Akzeptiert   | 5b      |
+| [0008](./0008-xrechnung-zugferd-en16931.md)           | XRechnung 3.0.2 + ZUGFeRD/Factur-X                          | Akzeptiert   | 5b      |
 | [0009](./0009-eidas-aes-via-token-und-otp.md)         | Elektronischer Vollmachtsnachweis via Token und E-Mail-Code | Revidiert    | 5, 107  |
 | [0010](./0010-session-strategie-und-cookie-scope.md)  | Session-Strategie (JWT) und Cookie-Scope                    | Akzeptiert   | 1       |
 | [0011](./0011-n8n-fire-and-forget-statt-outbox.md)    | n8n-Events: Outbox statt fire-and-forget                    | Aktualisiert | 45      |

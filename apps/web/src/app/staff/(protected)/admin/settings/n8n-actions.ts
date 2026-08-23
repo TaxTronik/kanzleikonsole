@@ -11,10 +11,9 @@ import {
   requiresSeparateTestWebhook,
   signOutboundN8n,
 } from '@taxtronik/n8n-shared';
-import { safeFetch } from '@taxtronik/http-utils';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { evidenceService } from '@/server/container';
-import { assertPublicHost } from '@/server/http/ssrf-guard';
+import { assertN8nUrl, safeFetchN8n, type N8nTargetKind } from '@/server/http/ssrf-guard';
 import {
   BUNDLED_N8N_WORKFLOWS,
   bindN8nHeaderCredential,
@@ -195,8 +194,12 @@ async function recordEvidence(
   );
 }
 
-async function validateStoredUrl(url: string): Promise<void> {
-  if (url) await assertPublicHost(url);
+async function validateStoredUrl(url: string, kind: N8nTargetKind): Promise<void> {
+  if (url) await assertN8nUrl(url, kind);
+}
+
+function webhookTargetKind(useTestUrl: boolean): N8nTargetKind {
+  return useTestUrl ? 'webhook-test' : 'webhook';
 }
 
 function sameUrlOrigin(left: string, right: string): boolean {
@@ -261,7 +264,7 @@ export async function saveN8nAction(
   // stand neben dem API-Test und wurde als Test-Ergebnis fehlgedeutet — der
   // Admin hielt den verworfenen Save für erfolgreich.
   try {
-    await validateStoredUrl(data.webhookBaseUrl);
+    await validateStoredUrl(data.webhookBaseUrl, 'webhook');
   } catch (error) {
     return {
       ok: false,
@@ -269,7 +272,7 @@ export async function saveN8nAction(
     };
   }
   try {
-    await validateStoredUrl(data.apiBaseUrl);
+    await validateStoredUrl(data.apiBaseUrl, 'api');
   } catch (error) {
     return {
       ok: false,
@@ -456,7 +459,7 @@ export async function testN8nApiAction(
     apiBaseUrl.replace(/\/$/, '') === previous.apiBaseUrl.replace(/\/$/, ''),
   );
   try {
-    await validateStoredUrl(apiBaseUrl);
+    await validateStoredUrl(apiBaseUrl, 'api');
     const result = await new N8nApiClient(apiBaseUrl, apiKey).ping();
     if (previous.connectionId && testingStoredConfig) {
       await withTenantContext(ctx, (tx) =>
@@ -555,8 +558,8 @@ export async function saveN8nEndpointAction(
 
   try {
     await Promise.all([
-      validateStoredUrl(data.productionUrl),
-      data.testUrl ? validateStoredUrl(data.testUrl) : Promise.resolve(),
+      validateStoredUrl(data.productionUrl, 'webhook'),
+      data.testUrl ? validateStoredUrl(data.testUrl, 'webhook-test') : Promise.resolve(),
     ]);
   } catch (error) {
     return { ok: false, error: (error as Error).message };
@@ -1264,7 +1267,7 @@ export async function testN8nEndpointAction(
   const signature = signOutboundN8n(requestedEvent, body, cfg.hmacSecret);
   const started = Date.now();
   try {
-    const response = await safeFetch(targetUrl, {
+    const response = await safeFetchN8n(targetUrl, webhookTargetKind(useTestUrl), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

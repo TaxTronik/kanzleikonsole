@@ -19,6 +19,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   assertPublicHost,
+  isManagedN8nTargetUrl,
   SsrfGuardError,
   isPrivateIPv4,
   isPrivateIPv6,
@@ -39,6 +40,13 @@ describe('isPrivateIPv4', () => {
     ['172.16.0.1', '172.16.0.0/12 (unteres Ende)'],
     ['172.31.255.255', '172.16.0.0/12 (oberes Ende)'],
     ['192.168.0.1', '192.168.0.0/16'],
+    ['192.0.0.1', '192.0.0.0/24 (IETF-Protokollzuweisungen)'],
+    ['192.0.2.1', '192.0.2.0/24 (TEST-NET-1)'],
+    ['192.88.99.1', '192.88.99.0/24 (deprecated 6to4 relay)'],
+    ['198.18.0.1', '198.18.0.0/15 (Benchmarking)'],
+    ['198.19.255.255', '198.18.0.0/15 (oberes Ende)'],
+    ['198.51.100.1', '198.51.100.0/24 (TEST-NET-2)'],
+    ['203.0.113.1', '203.0.113.0/24 (TEST-NET-3)'],
     ['100.64.0.1', '100.64.0.0/10 (CGNAT, unteres Ende)'],
     ['100.127.255.255', '100.64.0.0/10 (CGNAT, oberes Ende)'],
     ['0.0.0.0', '0.0.0.0/8'],
@@ -94,6 +102,7 @@ describe('isPrivateIPv6', () => {
     ['fec0::1', 'fec0::/10 (deprecated site-local)'],
     ['fee0::1', 'fec0::/10 (fee)'],
     ['64:ff9b::808:808', 'NAT64 64:ff9b::/96'],
+    ['64:ff9b:1::808:808', 'lokales NAT64 64:ff9b:1::/48'],
     ['2002:808:808::', '6to4 2002::/16'],
     // N-9: neu ergänzte IANA-Special-Purpose-Bereiche
     ['ff02::1', 'Multicast ff00::/8 (link-local all-nodes)'],
@@ -245,17 +254,21 @@ describe('assertPublicHost', () => {
     });
   });
 
-  it('Dev-Allowlist: http://[::1]:3000 ist im Dev erlaubt und liefert die gepinnte v6-Adresse', async () => {
+  it('Explizite trusted-internal-Policy erlaubt Dev-IPv6-Loopback', async () => {
     process.env['NODE_ENV'] = 'test'; // !== 'production' → Dev-Defaults aktiv
     process.env['INTERNAL_FETCH_HOSTS'] = '';
-    const addrs = await assertPublicHost('http://[::1]:3000/api');
+    const addrs = await assertPublicHost('http://[::1]:3000/api', {
+      mode: 'trusted-internal',
+    });
     expect(addrs).toEqual([{ address: '::1', family: 6 }]);
   });
 
-  it('Dev-Allowlist: http://127.0.0.1 ist im Dev erlaubt', async () => {
+  it('Explizite trusted-internal-Policy erlaubt Dev-IPv4-Loopback', async () => {
     process.env['NODE_ENV'] = 'test';
     process.env['INTERNAL_FETCH_HOSTS'] = '';
-    const addrs = await assertPublicHost('http://127.0.0.1:3000/');
+    const addrs = await assertPublicHost('http://127.0.0.1:3000/', {
+      mode: 'trusted-internal',
+    });
     expect(addrs).toEqual([{ address: '127.0.0.1', family: 4 }]);
   });
 
@@ -266,21 +279,92 @@ describe('assertPublicHost', () => {
     });
   });
 
-  it('INTERNAL_FETCH_HOSTS-Eintrag erlaubt ein IP-Literal auch in production', async () => {
+  it('Explizite trusted-internal-Policy erlaubt einen INTERNAL_FETCH_HOSTS-Eintrag', async () => {
     setProd('10.1.2.3');
-    const addrs = await assertPublicHost('http://10.1.2.3:8333/bucket');
+    const addrs = await assertPublicHost('http://10.1.2.3:8333/bucket', {
+      mode: 'trusted-internal',
+    });
     expect(addrs).toEqual([{ address: '10.1.2.3', family: 4 }]);
+  });
+
+  it.each([
+    'http://10.1.2.3:8333/buckets/general',
+    'http://10.1.2.3:5678/webhook/workflow',
+    'https://10.1.2.3:9443/api/v1',
+  ])('strikte Tenant-Policy ignoriert die Infrastruktur-Allowlist fuer %s', async (url) => {
+    setProd('10.1.2.3');
+    await expect(assertPublicHost(url, { mode: 'public' })).rejects.toMatchObject({
+      reason: 'literal-ip',
+    });
+  });
+
+  it('strikte Tenant-Policy ignoriert auch Dev-Loopback-Ausnahmen', async () => {
+    process.env['NODE_ENV'] = 'test';
+    process.env['INTERNAL_FETCH_HOSTS'] = '127.0.0.1';
+    await expect(
+      assertPublicHost('http://127.0.0.1:5678/webhook', { mode: 'public' }),
+    ).rejects.toMatchObject({ reason: 'literal-ip' });
+  });
+
+  it.each([
+    ['http://n8n:5678/api/v1', 'api'],
+    ['http://n8n:5678/api/v1/workflows?limit=250', 'api'],
+    ['http://n8n:5678/webhook/workflow-id', 'webhook'],
+    ['http://n8n:5678/webhook-test/workflow-id', 'webhook-test'],
+    ['http://n8n:5678/healthz', 'health'],
+  ] as const)('erlaubt den engen verwalteten n8n-Vertrag: %s (%s)', (url, kind) => {
+    expect(isManagedN8nTargetUrl(url, kind)).toBe(true);
+  });
+
+  it.each([
+    ['http://seaweedfs:5678/webhook/x', 'webhook'],
+    ['http://n8n:8888/webhook/x', 'webhook'],
+    ['https://n8n:5678/webhook/x', 'webhook'],
+    ['http://n8n:5678/cluster/status', 'webhook'],
+    ['http://n8n:5678/webhook-test/x', 'webhook'],
+    ['http://n8n:5678/api/v10/workflows', 'api'],
+    ['http://user:pass@n8n:5678/api/v1', 'api'],
+    ['http://n8n:5678/healthz/ready', 'health'],
+    ['http://seaweedfs:8333/healthz', 'health'],
+    ['http://n8n:5678/webhook%2f..%2fapi/v1/workflows', 'webhook'],
+    ['http://n8n:5678/webhook/%252e%252e/api/v1/workflows', 'webhook'],
+    ['http://n8n:5678/webhook%5c..%5capi/v1/workflows', 'webhook'],
+  ] as const)('blockiert Host-/Port-/Pfad-Ausweitung: %s (%s)', (url, kind) => {
+    expect(isManagedN8nTargetUrl(url, kind)).toBe(false);
+  });
+
+  it('n8n-Policy uebernimmt keine andere private IP aus INTERNAL_FETCH_HOSTS', async () => {
+    setProd('10.1.2.3,seaweedfs,clamav,postgres,redis');
+    await expect(
+      assertPublicHost('http://10.1.2.3:5678/webhook/workflow', {
+        mode: 'n8n',
+        kind: 'webhook',
+      }),
+    ).rejects.toMatchObject({ reason: 'literal-ip' });
+  });
+
+  it('n8n-Policy erlaubt Klartext-HTTP nur für den exakt verwalteten Compose-Service', async () => {
+    await expect(
+      assertPublicHost('http://n8n.example.test/webhook/workflow', {
+        mode: 'n8n',
+        kind: 'webhook',
+      }),
+    ).rejects.toMatchObject({ reason: 'forbidden-scheme' });
   });
 
   it('INTERNAL_FETCH_HOSTS akzeptiert IPv6 in Bracket-Form ([::1]) wie in URL-Schreibweise', async () => {
     setProd('[::1]');
-    const addrs = await assertPublicHost('http://[::1]:5678/webhook');
+    const addrs = await assertPublicHost('http://[::1]:5678/webhook', {
+      mode: 'trusted-internal',
+    });
     expect(addrs).toEqual([{ address: '::1', family: 6 }]);
   });
 
   it('INTERNAL_FETCH_HOSTS akzeptiert IPv6 in nackter Form (::1)', async () => {
     setProd('::1');
-    const addrs = await assertPublicHost('http://[::1]:5678/webhook');
+    const addrs = await assertPublicHost('http://[::1]:5678/webhook', {
+      mode: 'trusted-internal',
+    });
     expect(addrs).toEqual([{ address: '::1', family: 6 }]);
   });
 

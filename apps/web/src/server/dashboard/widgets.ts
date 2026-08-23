@@ -9,6 +9,8 @@
  * Stunden, Reaktionszeiten, Quoten) — entspricht der Projekt-Vorgabe.
  */
 
+import type { BooleanTenantModuleKey, BooleanTenantModules } from '@taxtronik/db/tenant-modules';
+
 export type WidgetType =
   | 'kpi_clients'
   | 'kpi_open_requests'
@@ -173,6 +175,56 @@ export interface LayoutWidget {
 export interface DashboardLayout {
   version: 2;
   widgets: LayoutWidget[];
+}
+
+interface WidgetModuleRequirement {
+  all?: BooleanTenantModuleKey[];
+  any?: BooleanTenantModuleKey[];
+}
+
+/**
+ * Modulabhängige Widgets. Diese Zuordnung wird bereits auf dem Server
+ * ausgewertet, bevor ein Widget Daten abfragt oder als auswählbar angeboten
+ * wird. Das zusammengesetzte „Mein Tag“-Widget bleibt aktiv, solange es
+ * wenigstens eine seiner freigeschalteten Quellen gibt; sein Loader filtert
+ * die einzelnen Quellen zusätzlich.
+ */
+const WIDGET_MODULE_REQUIREMENTS: Partial<Record<WidgetType, WidgetModuleRequirement>> = {
+  kpi_unread_notes: { all: ['phoneNotes'] },
+  kpi_open_workflows: { all: ['workflows'] },
+  unreviewed_notices: { all: ['taxNotices'] },
+  my_tax_deadlines: { all: ['taxNotices'] },
+  calendar: { any: ['appointments', 'taxNotices'] },
+  tax_news: { all: ['rssReader'] },
+  phone_notes: { all: ['phoneNotes'] },
+  my_workflow_items: { any: ['workflows', 'reminders', 'appointments', 'phoneNotes'] },
+  my_workflows: { all: ['workflows'] },
+  my_reminders: { all: ['reminders'] },
+};
+
+export function isDashboardWidgetEnabled(type: WidgetType, modules: BooleanTenantModules): boolean {
+  const requirement = WIDGET_MODULE_REQUIREMENTS[type];
+  if (!requirement) return true;
+  if (requirement.all?.some((module) => !modules[module])) return false;
+  if (requirement.any && !requirement.any.some((module) => modules[module])) return false;
+  return true;
+}
+
+/** Filtert nur die Server-Sicht; die gespeicherte Präferenz bleibt für Reaktivierung erhalten. */
+export function filterDashboardLayoutByModules(
+  layout: DashboardLayout,
+  modules: BooleanTenantModules,
+): DashboardLayout {
+  return {
+    version: 2,
+    widgets: layout.widgets.filter((widget) => isDashboardWidgetEnabled(widget.type, modules)),
+  };
+}
+
+export function enabledDashboardWidgetTypes(modules: BooleanTenantModules): WidgetType[] {
+  return WIDGETS.filter((widget) => isDashboardWidgetEnabled(widget.type, modules)).map(
+    (widget) => widget.type,
+  );
 }
 
 /** Default-Größe pro Widget-Slot (in Grid-Einheiten). */

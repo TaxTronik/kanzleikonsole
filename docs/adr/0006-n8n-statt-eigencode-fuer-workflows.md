@@ -1,7 +1,15 @@
-# ADR 0006 — n8n als Workflow-Engine, kein Eigencode für Reminder/Eskalationen
+# ADR 0006 — n8n als optionale Workflow-Engine neben Kernkontrollen im Worker
 
-**Status**: Akzeptiert (Iteration 2), Implementierung in Iter. 45 verfeinert
-**Datum**: 2026-05-10 (initial), 2026-05-13 (Update D1)
+**Status**: Ursprüngliche Vollabgrenzung abgelöst; heutige Hybridentscheidung akzeptiert
+**Datum**: 2026-05-10 (initial), 2026-05-13 (Update D1), 2026-08-23 (Hybridmodell)
+
+> **Update 2026-08-23:** Die Aussage „n8n macht alle Cron-Jobs" und der Vorteil
+> „0 Zeilen TypeScript für Reminder-Cron-Logik" sind abgelöst. Fristen,
+> Retention, Audit, Backups, Rechnungsstatus und zwingende Erinnerungen laufen
+> als versionierte, getestete BullMQ-Jobs im Worker. n8n bleibt für
+> kanzleispezifische Kommunikation, Integrationen und konfigurierbare
+> Eskalationsstrecken zuständig. Der aktuelle Überblick steht in
+> `docs/architecture.md`; die historische Entscheidung bleibt unten erhalten.
 
 > **Update 2026-05-13 (D1)** — Die Push-Pfad-Implementierung hat sich seit
 > initialer Niederschrift weiterentwickelt. Die ursprünglichen Aussagen
@@ -14,20 +22,21 @@
 >    `n8n_outbox` und reiht einen BullMQ-Job ein, der mit Exponential-
 >    Backoff zustellt. Code: [outbox.ts](../../apps/web/src/server/n8n/outbox.ts),
 >    [jobs/n8n-deliver.ts](../../apps/worker/src/jobs/n8n-deliver.ts).
-> 2. **HMAC-Formel ist um einen Timestamp erweitert** (Replay-Schutz, S3-Fix).
->    Die unten genannte Formel `hmac(METHOD pathname?search\nbody)` ist
->    historisch und stimmt nicht mehr mit dem Code überein. Aktuelle
->    Formeln, asymmetrisch:
->    - **Outbound (Web → n8n)**: `hmac(${ts}\n${body})` mit Headern
->      `x-taxtronik-signature` + `x-taxtronik-timestamp`.
->      Code: [sign.ts](../../apps/web/src/server/n8n/sign.ts).
->    - **Inbound (n8n → Web)**: `hmac(${METHOD} ${path}${search}\n${ts}\n${body})`
->      mit zusätzlichem Replay-Schutz via Redis-Nonce-Store
->      (Signatur als Nonce-Key, ±5 min Zeitfenster).
->      Code: [verify.ts](../../apps/web/src/server/n8n/verify.ts),
->      [nonce-store.ts](../../apps/web/src/server/n8n/nonce-store.ts).
->    - Asymmetrie absichtlich: n8n-Workflows können method/path nicht
->      trivial in HMAC einbeziehen.
+> 2. **Heutiger Sicherheitsvertrag ist richtungsabhängig:**
+>    - **Outbound (Web/Worker → n8n)**:
+>      `hmac(${event}\n${timestamp}\n${nonce}\n${body})` mit den Headern
+>      `x-taxtronik-signature`, `x-taxtronik-timestamp`,
+>      `x-taxtronik-event` und `x-taxtronik-nonce`. Code:
+>      [`@taxtronik/n8n-shared`](../../packages/n8n-shared/src/index.ts).
+>    - **Inbound-Standard (n8n → Web)**: `/api/integrations/n8n/v1/*`
+>      verwendet ein tenantgebundenes Bearer-Credential mit Key-ID, minimalen
+>      Scopes und einer einmaligen `x-taxtronik-request-id`; der Redis-
+>      Replay-Store arbeitet fail-closed. Code:
+>      [callback-auth.ts](../../apps/web/src/server/n8n/callback-auth.ts).
+>    - Die globale HMAC-Verifikation unter `/api/n8n/*` ist nur ein
+>      standardmäßig deaktivierter Legacy-Migrationspfad. Code:
+>      [verify.ts](../../apps/web/src/server/n8n/verify.ts) und
+>      [legacy-access.ts](../../apps/web/src/server/n8n/legacy-access.ts).
 
 **Kontext**: Eine Steuerberatungssoftware lebt von Kommunikation —
 Anforderungs-Reminder, GwG-Ablauf-Warnungen, Mahn-Eskalationen,
@@ -35,7 +44,7 @@ Fristerinnerungen. Würden wir das in TypeScript bauen, wäre das eine
 Eigenentwicklung mit Cron-Scheduler, E-Mail-Templating-Engine, Retry-Logik,
 UI für Workflow-Anpassung… mehrere Mannmonate Wartung pro Jahr.
 
-## Entscheidung
+## Ursprüngliche Entscheidung (historisch)
 
 **n8n** läuft als eigener Container im Docker-Compose-Stack.
 
@@ -77,6 +86,21 @@ Workflows liegen als JSON in `infra/n8n/workflows/` versioniert im Repo;
 - n8n-Workflows sind nicht versionsgetestet wie unser TS-Code
   → Mitigation: JSON-Versionierung im Repo, Import-Skript prüft Version
   beim Container-Start (geplant für Iter. 8)
+
+## Heutige Verantwortungsgrenze
+
+- **BullMQ-Worker:** fachlich zwingende und prüfungsrelevante Zeitpläne,
+  insbesondere Steuerfristen, Wiedervorlagen, GwG/PoA, Rechnungen, Retention,
+  Audit-Anker/-Verify/-Archiv, Backups und Infrastruktur-Health.
+- **n8n:** tenantkonfigurierbare Event-Fan-outs, Mail-/Rechercheworkflows und
+  externe Integrationen. Zugriff ausschließlich über signierte Outbox und
+  gescopte Callback-APIs; kein direkter Datenbankzugriff.
+- **App:** transaktionale Fachmutationen und unmittelbar erforderliche
+  Basismails. Ein n8n-Ausfall darf keine bereits committete Fachmutation
+  erfinden oder verschwinden lassen. Zustellungen werden nachgehalten, sobald
+  Outbox oder — bei Workflow-Schritten — der transaktionale Dispatch-Intent
+  dauerhaft geschrieben wurde. Ein generischer Event-Write-Fehler rollt die
+  Fachmutation nicht zurück und muss operativ behandelt werden.
 
 ## Alternativen verworfen
 

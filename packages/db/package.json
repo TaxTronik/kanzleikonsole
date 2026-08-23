@@ -13,6 +13,7 @@
     "./prisma-adapter": "./src/prisma-adapter.ts",
     "./tenant-context": "./src/tenant-context.ts",
     "./notification": "./src/notification.ts",
+    "./tenant-modules": "./src/tenant-modules.ts",
     "./pg-tools": "./src/pg-tools.ts"
   },
   "scripts": {

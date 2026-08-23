@@ -5,23 +5,28 @@
 // Liegt in `tenant_setting.modules` als JSON.
 //
 // Verwendung:
-//   - Sidebar filtert Items basierend auf `enabled.*` (primär UI-Sichtbarkeit).
-//   - Sicherheits-/kostenrelevante Module gaten ZUSÄTZLICH serverseitig über
-//     eigene Helfer: Rechnungen via requireInvoiceMode (invoices/actions.ts),
-//     POA/Risk/Quantenlos über ihre Guards. `assertModuleEnabled` unten steht
-//     als generischer Gate-Baustein bereit (noch nicht flächendeckend
-//     verdrahtet — bewusst, da die reinen Orga-Module ohne Außenwirkung sind).
+//   - Sidebar filtert Items basierend auf `enabled.*` (UI-Sichtbarkeit).
+//   - Direkte Seiten werden zusätzlich im jeweiligen Surface-Layout über die
+//     zentrale Pfadzuordnung gesperrt; Actions/API-Endpunkte verwenden diesen
+//     Gate-Baustein bzw. die module-Option der zentralen Action-Guards.
+//   - Rechnungen, POA, Risk und Signal-Engine behalten ihre strengeren
+//     Spezial-Gates zusätzlich zu den tenantweiten Schaltern.
 //   - PoaMode steuert das Vollmachten-Subsystem.
 // =============================================================================
 
 import { cache } from 'react';
-import type { TenantContext } from '@taxtronik/db';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext } from '@taxtronik/db/tenant-context';
+import type { BooleanTenantModules, BooleanTenantModuleKey } from '@taxtronik/db/tenant-modules';
+import {
+  DEFAULT_BOOLEAN_TENANT_MODULES,
+  parseBooleanTenantModules,
+} from '@taxtronik/db/tenant-modules';
 
 export type PoaMode = 'OFF' | 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
 export type InvoiceMode = 'OFF' | 'IN_APP' | 'EXTERNAL';
+export type ModeModuleKey = 'poa' | 'invoices';
 
-export interface ModuleConfig {
+export interface ModuleConfig extends BooleanTenantModules {
   // Kernfeatures (Default an)
   bwa: boolean; // BWA-Auswertungen
   knowledge: boolean; // Wissensdatenbank
@@ -58,24 +63,7 @@ export interface ModuleConfig {
 }
 
 export const DEFAULT_MODULES: ModuleConfig = {
-  bwa: true,
-  knowledge: true,
-  timeTracking: true,
-  phoneNotes: true,
-  taxNotices: true,
-  workflows: true,
-  forms: true,
-  reminders: true,
-  binders: true,
-  handovers: true,
-  appointments: true,
-  rssReader: true,
-  // Opt-in: erfordert eine n8n-Inbound-Mail-Strecke + dedizierte Mailbox.
-  inboundMail: false,
-  // Opt-in: erfordert zusätzlich die deployte Risk-Engine (riskLayerConfig).
-  risk: false,
-  // Opt-in: erfordert zusätzlich die deployte Signal-Engine (signalEngineConfig).
-  signalEngine: false,
+  ...DEFAULT_BOOLEAN_TENANT_MODULES,
   // Default: PDF_TEMPLATE (extern) — Vollmachten werden als PDF aus einer
   // externen Vorlage angebunden, nicht im Inline-Markdown-Editor verfasst.
   poaMode: 'PDF_TEMPLATE',
@@ -108,12 +96,17 @@ function readModulesByCtx(ctx: TenantContext): Promise<ModuleConfig> {
     });
     if (!row) return { ...DEFAULT_MODULES };
     const value = row.value as Partial<ModuleConfig>;
-    return { ...DEFAULT_MODULES, ...value };
+    return { ...DEFAULT_MODULES, ...value, ...parseBooleanTenantModules(value) };
   });
 }
 
 export function readModules(ctx: TenantContext): Promise<ModuleConfig> {
   return readModulesCached(ctx.tenantId, ctx.actorId, ctx.actorType);
+}
+
+/** Spezialmodule werden nicht mit einem Boolean, sondern mit einem Betriebsmodus geschaltet. */
+export function isModeModuleEnabled(cfg: ModuleConfig, module: ModeModuleKey): boolean {
+  return module === 'poa' ? cfg.poaMode !== 'OFF' : cfg.invoiceMode !== 'OFF';
 }
 
 export async function writeModules(ctx: TenantContext, cfg: ModuleConfig): Promise<void> {
@@ -138,32 +131,22 @@ export async function writeModules(ctx: TenantContext, cfg: ModuleConfig): Promi
  * Wirft, wenn das Modul deaktiviert ist. Server-Actions sollten am Anfang
  * `assertModuleEnabled(ctx, 'bwa')` aufrufen.
  */
-export type BooleanModuleKey =
-  | 'bwa'
-  | 'knowledge'
-  | 'timeTracking'
-  | 'phoneNotes'
-  | 'taxNotices'
-  | 'workflows'
-  | 'forms'
-  | 'reminders'
-  | 'binders'
-  | 'handovers'
-  | 'appointments'
-  | 'rssReader'
-  | 'inboundMail'
-  | 'risk'
-  | 'signalEngine';
+export type BooleanModuleKey = BooleanTenantModuleKey;
 
-/** Generischer serverseitiger Modul-Gate (wirft bei deaktiviertem Modul).
- *  Für Orga-Module ohne Außenwirkung bewusst nicht flächendeckend verdrahtet;
- *  kostenrelevante Module gaten über eigene Helfer (s. Kopfkommentar). */
+export class ModuleDisabledError extends Error {
+  constructor(public readonly module: BooleanModuleKey) {
+    super(`Modul ${module} ist deaktiviert.`);
+    this.name = 'ModuleDisabledError';
+  }
+}
+
+/** Generischer serverseitiger Modul-Gate (wirft bei deaktiviertem Modul). */
 export async function assertModuleEnabled(
   ctx: TenantContext,
   module: BooleanModuleKey,
 ): Promise<void> {
   const cfg = await readModules(ctx);
   if (!cfg[module]) {
-    throw new Error(`Modul ${module} ist deaktiviert.`);
+    throw new ModuleDisabledError(module);
   }
 }

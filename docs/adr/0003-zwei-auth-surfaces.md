@@ -1,19 +1,28 @@
 # ADR 0003 — Zwei Auth-Surfaces (Mitarbeiter vs Mandant)
 
-**Status**: Akzeptiert
-**Datum**: 2026-05-10
+**Status**: Kernentscheidung akzeptiert; Cookie-/Provider-Details am 2026-08-23 abgelöst
+**Datum**: 2026-05-10 · aktualisiert 2026-08-23
+
+> **Aktueller Stand:** Die Trennung in Staff- und Portal-Identitäten sowie zwei
+> Auth.js-Konfigurationen gilt weiter. Die ursprünglichen Cookie-, Provider-
+> und Middleware-Details unten sind historisch: Beide Session-Cookies verwenden
+> `Path=/`, `SameSite=Lax` und getrennte Namen; in Produktion greifen
+> `__Host-` beziehungsweise bei expliziter Domain `__Secure-`. Staff und Portal
+> verwenden getrennte Credentials-Provider, wobei der Portal-Provider einen
+> eigenen gehashten One-Time-Magic-Link verifiziert. Der pfadbasierte
+> Vorschutz liegt in `apps/web/src/proxy.ts`, nicht in `middleware.ts`.
 
 ## Kontext
 
 taxtronik hat zwei sehr unterschiedliche Identitätstypen:
 
-|                   | Mitarbeiter (Staff)                | Mandant (Client Contact)       |
-| ----------------- | ---------------------------------- | ------------------------------ |
-| Login-Methode     | E-Mail + Passwort + TOTP (Pflicht) | Magic-Link (E-Mail) + opt. 2FA |
-| Häufigkeit        | Tägliche Nutzung                   | Sporadisch (Alle paar Wochen)  |
-| Compliance-Klasse | Personalakte                       | § 203 StGB Mandantendaten      |
-| Routing           | `/staff/*`                         | `/portal/*`                    |
-| Datenzugriff      | Eigener Kanzlei-Mandant            | Nur die ihm zugeordneten Daten |
+|                   | Mitarbeiter (Staff)                | Mandant (Client Contact)               |
+| ----------------- | ---------------------------------- | -------------------------------------- |
+| Login-Methode     | E-Mail + Passwort + TOTP (Pflicht) | gehashter Einmal-Magic-Link per E-Mail |
+| Häufigkeit        | Tägliche Nutzung                   | Sporadisch (Alle paar Wochen)          |
+| Compliance-Klasse | Personalakte                       | § 203 StGB Mandantendaten              |
+| Routing           | `/staff/*`                         | `/portal/*`                            |
+| Datenzugriff      | Eigener Kanzlei-Mandant            | Nur die ihm zugeordneten Daten         |
 
 Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
 
@@ -21,7 +30,7 @@ Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
 - Audit-Logs lesen sich klarer mit getrennten FKs.
 - Cookie-Verwechslung muss strukturell ausgeschlossen sein.
 
-## Entscheidung
+## Ursprüngliche Entscheidung (historisch)
 
 - **Zwei separate Tabellen**: `staff_user` und `client_contact` (letzte
   kommt in Iter. 2).
@@ -41,7 +50,7 @@ Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
   Auth.js Email-Adapter prüft das beim Verify; ein für Portal ausgestellter
   Token kann niemals einen Staff-Login auslösen.
 
-## Konsequenzen
+## Fortgeltende Konsequenzen
 
 **Positiv**
 
@@ -64,7 +73,7 @@ Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
 
 ## Verifikation
 
-E2E-Test (folgt in Iter. 2):
+Die Trennung wird durch Auth-/E2E-Tests verifiziert:
 
 1. Staff-Login setzt nur Staff-Cookie, nicht Portal.
 2. Mit Staff-Cookie auf `/portal/*` → Redirect zu `/portal/login`.

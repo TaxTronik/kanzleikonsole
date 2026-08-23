@@ -468,9 +468,10 @@ export async function deleteObject(bucket: string, storageKey: string): Promise<
 
 /**
  * Löscht exakt die persistierte S3-Objektversion und verifiziert anschließend,
- * dass für den Schlüssel weder eine Inhaltsversion noch ein Delete Marker
- * verbleibt. Ohne VersionId wäre ein Delete in versionierten Buckets nur ein
- * unsichtbar machender Marker und keine physische Vernichtung.
+ * dass genau diese Version nicht mehr als Inhaltsversion oder Delete Marker
+ * vorhanden ist. Andere legitime Versionen desselben Schlüssels dürfen
+ * bestehen bleiben. Ohne VersionId wäre ein Delete in versionierten Buckets
+ * nur ein unsichtbar machender Marker und keine physische Vernichtung.
  */
 export async function deleteObjectVersion(
   bucket: string,
@@ -492,11 +493,17 @@ export async function deleteObjectVersion(
   );
 
   for await (const page of listObjectVersionPages(bucket, storageKey)) {
-    const exactVersionRemains = page.Versions?.some((item) => item.Key === storageKey) ?? false;
-    const exactMarkerRemains = page.DeleteMarkers?.some((item) => item.Key === storageKey) ?? false;
+    const exactVersionRemains =
+      page.Versions?.some(
+        (item) => item.Key === storageKey && item.VersionId === storageVersionId,
+      ) ?? false;
+    const exactMarkerRemains =
+      page.DeleteMarkers?.some(
+        (item) => item.Key === storageKey && item.VersionId === storageVersionId,
+      ) ?? false;
     if (exactVersionRemains || exactMarkerRemains) {
       throw new Error(
-        'STORAGE_DELETE_INCOMPLETE: Objektversion oder Delete Marker ist verblieben.',
+        'STORAGE_DELETE_INCOMPLETE: Zielversion oder zugehöriger Delete Marker ist verblieben.',
       );
     }
   }

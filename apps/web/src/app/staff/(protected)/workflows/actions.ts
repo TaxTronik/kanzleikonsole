@@ -6,11 +6,13 @@ import { evidenceService } from '@/server/container';
 import { parseStepConfig } from '@/server/workflows/step-config';
 import { startInstanceAction } from '../clients/[id]/workflows/actions';
 import {
-  withStaff,
+  withStaffModule,
   ActionError,
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+
+const withWorkflowsStaff = withStaffModule('workflows');
 
 export interface ActionResult extends BaseActionResult {
   id?: string;
@@ -31,7 +33,7 @@ export async function createTemplateAction(
   // F4: Workflow-Templates sind Tenant-weite Konfiguration (n8n-Events,
   // CLIENT_EMAIL/REQUEST/FORM-Steps). Konsistent zu email-templates,
   // request-templates, state-machines etc. — ADMIN/PARTNER-only.
-  return withStaff(
+  return withWorkflowsStaff(
     async (tx, { tenantId, staffId }) => {
       // S7: expliziter tenantId-Filter zusätzlich zur RLS — Defense in Depth
       // und liest sich klarer als „RLS macht den Rest".
@@ -69,7 +71,7 @@ export async function setTemplateActiveAction(input: {
   const parsed = z.object({ id: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withWorkflowsStaff(
     async (tx) => {
       await tx.workflowTemplate.update({
         where: { id: parsed.data.id },
@@ -84,7 +86,7 @@ export async function deleteTemplateAction(input: { id: string }): Promise<Actio
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withWorkflowsStaff(
     async (tx, { tenantId, staffId }) => {
       const tpl = await tx.workflowTemplate.findUnique({
         where: { id: parsed.data.id },
@@ -163,7 +165,7 @@ export async function saveTemplateAction(
   const parsed = SaveStepsSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(
+  const r = await withWorkflowsStaff(
     async (tx, { tenantId, staffId }) => {
       await tx.workflowTemplate.update({
         where: { id: parsed.data.templateId },

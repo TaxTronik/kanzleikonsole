@@ -5,9 +5,16 @@ const m = vi.hoisted(() => ({
   inaccessibleClientIdsFor: vi.fn(),
   isStaffAdmin: vi.fn(),
   renderWidget: vi.fn(),
+  readBooleanTenantModules: vi.fn(),
 }));
 
-vi.mock('@/server/actions/staff-action', () => ({ withStaff: m.withStaff }));
+vi.mock('@/server/actions/staff-action', () => ({
+  ActionError: class ActionError extends Error {},
+  withStaff: m.withStaff,
+}));
+vi.mock('@taxtronik/db/tenant-modules', () => ({
+  readBooleanTenantModules: m.readBooleanTenantModules,
+}));
 vi.mock('@/server/auth/rbac', () => ({
   inaccessibleClientIdsFor: m.inaccessibleClientIdsFor,
   isStaffAdmin: m.isStaffAdmin,
@@ -33,10 +40,31 @@ describe('Dashboard-Layout-Actions', () => {
     m.inaccessibleClientIdsFor.mockResolvedValue(['restricted-client']);
     m.isStaffAdmin.mockReturnValue(true);
     m.renderWidget.mockResolvedValue('nur-neues-widget');
+    m.readBooleanTenantModules.mockResolvedValue({
+      bwa: true,
+      knowledge: true,
+      timeTracking: true,
+      phoneNotes: true,
+      taxNotices: true,
+      workflows: true,
+      forms: true,
+      reminders: true,
+      binders: true,
+      handovers: true,
+      appointments: true,
+      rssReader: true,
+      inboundMail: true,
+      risk: true,
+      signalEngine: true,
+    });
     m.withStaff.mockImplementation(
       async (fn: (tx: unknown, context: unknown) => Promise<unknown>) => ({
         ok: true,
-        ...((await fn(tx, { staffId: 'staff-1', session: {} })) as Record<string, unknown>),
+        ...((await fn(tx, {
+          tenantId: 'tenant-1',
+          staffId: 'staff-1',
+          session: {},
+        })) as Record<string, unknown>),
       }),
     );
   });

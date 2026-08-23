@@ -1051,6 +1051,15 @@ export async function rejectCheckAction(
       }
       await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
       await assertLatestCheckForDecision(tx, { clientId, checkId });
+      contactIds = (
+        await tx.clientContact.findMany({
+          where: { clientId, active: true },
+          select: { id: true },
+        })
+      ).map((c) => c.id);
+      for (const contactId of contactIds) {
+        await revokeAllSessions('portal', contactId);
+      }
       // TOCTOU-Schutz: ein bereits verifizierter Check darf nicht per Race
       // nachträglich abgelehnt werden (sonst allowActive=true trotz Reject).
       const claim = await tx.gwgCheck.updateMany({
@@ -1073,12 +1082,6 @@ export async function rejectCheckAction(
         where: { id: clientId, allowActive: true },
         data: { allowActive: false },
       });
-      contactIds = (
-        await tx.clientContact.findMany({
-          where: { clientId, active: true },
-          select: { id: true },
-        })
-      ).map((c) => c.id);
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -1091,15 +1094,6 @@ export async function rejectCheckAction(
     });
   } catch (e) {
     return toActionError(e);
-  }
-
-  // GwG-Schranke (§ 11 GwG): bestehende Portal-Sessions aller Kontakte des
-  // Mandanten sofort beenden — sonst bliebe ein bereits eingeloggter Kontakt
-  // bis zum JWT-Ablauf (24 h) handlungsfähig. Nach dem Commit (Redis ist
-  // nicht transaktional); fail-open analog revocation.ts, der Session-
-  // Callback in portal.ts prüft allowActive zusätzlich pro Request.
-  for (const contactId of contactIds) {
-    await revokeAllSessions('portal', contactId);
   }
 
   await emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' }, { tenantId });

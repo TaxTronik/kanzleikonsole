@@ -205,8 +205,13 @@ describe('n8n delivery worker', () => {
       },
     });
     expect(h.safeFetch).toHaveBeenCalledTimes(1);
-    const [url, init] = h.safeFetch.mock.calls[0] as [string, RequestInit];
+    const [url, init, policy] = h.safeFetch.mock.calls[0] as [
+      string,
+      RequestInit,
+      { mode: string; kind: string },
+    ];
     expect(url).toBe(DELIVERY.targetUrl);
+    expect(policy).toEqual({ mode: 'n8n', kind: 'webhook' });
     expect(init.headers).toMatchObject({
       'x-taxtronik-delivery-id': 'delivery-1',
       'x-taxtronik-event': 'request.opened',

@@ -14,7 +14,7 @@
 // nicht aufhält.
 // =============================================================================
 
-import { safeFetch } from '@taxtronik/http-utils';
+import { safeFetchN8n } from '@/server/http/ssrf-guard';
 
 const TIMEOUT_MS = 10_000;
 
@@ -89,7 +89,7 @@ export class N8nApiClient {
       // `safeFetch` validiert DNS und pinnt die geprüfte IP. Das ist auch
       // nach dem Speichern nötig: ein DNS-Eintrag kann später auf eine
       // interne Adresse umgebogen werden (DNS rebinding).
-      const res = await safeFetch(this.url(path), {
+      const res = await safeFetchN8n(this.url(path), 'api', {
         method,
         headers: {
           'X-N8N-API-KEY': this.apiKey,

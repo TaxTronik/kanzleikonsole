@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { closeRequestAction } from '../../clients/[id]/requests/actions';
 import { StaffResponseForm } from './staff-response-form';
+import { InternalCommentForm } from './internal-comment-form';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
@@ -33,6 +34,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             orderBy: { createdAt: 'asc' },
             include: { document: true },
           },
+          internalComments: { orderBy: { createdAt: 'asc' } },
         },
       });
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderung eines
@@ -116,20 +118,49 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      {reqRow.status !== 'CLOSED' && reqRow.status !== 'CANCELLED' && (
-        <>
-          <div className="card p-6 mb-4">
-            <h2 className="text-sm font-medium text-primary mb-3">Antworten</h2>
-            <StaffResponseForm requestId={reqRow.id} />
+      <div className="card overflow-hidden mb-6 border-amber-200 bg-amber-50/30">
+        <div className="px-6 py-4 border-b border-amber-200">
+          <h2 className="text-sm font-medium text-primary">
+            Kanzlei-intern ({reqRow.internalComments.length})
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            Diese Notizen sind nicht im Mandantenportal sichtbar und lösen keine E-Mail aus.
+          </p>
+        </div>
+        {reqRow.internalComments.length > 0 && (
+          <div className="divide-y divide-amber-100">
+            {reqRow.internalComments.map((comment) => (
+              <div key={comment.id} className="px-6 py-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="badge-yellow">Intern · {comment.authorName}</span>
+                  <span className="text-xs text-disabled">
+                    {fmtDateTimeShort(comment.createdAt)}
+                  </span>
+                </div>
+                <p className="text-sm text-primary whitespace-pre-wrap">{comment.body}</p>
+              </div>
+            ))}
           </div>
+        )}
+        <div className="px-6 py-4 border-t border-amber-200">
+          <InternalCommentForm requestId={reqRow.id} />
+        </div>
+      </div>
 
-          <form action={closeRequestAction}>
-            <input type="hidden" name="requestId" value={reqRow.id} />
-            <button type="submit" className="btn-secondary">
-              Anforderung schließen
-            </button>
-          </form>
-        </>
+      {(reqRow.status === 'OPEN' || reqRow.status === 'IN_PROGRESS') && (
+        <div className="card p-6 mb-4">
+          <h2 className="text-sm font-medium text-primary mb-3">Antwort an den Mandanten</h2>
+          <StaffResponseForm requestId={reqRow.id} />
+        </div>
+      )}
+
+      {reqRow.status !== 'CLOSED' && reqRow.status !== 'CANCELLED' && (
+        <form action={closeRequestAction}>
+          <input type="hidden" name="requestId" value={reqRow.id} />
+          <button type="submit" className="btn-secondary">
+            Anforderung schließen
+          </button>
+        </form>
       )}
     </div>
   );

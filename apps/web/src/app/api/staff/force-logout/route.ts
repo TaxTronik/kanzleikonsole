@@ -8,7 +8,9 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@taxtronik/config';
-import { staffSignOut } from '@/server/auth/staff';
+import { staffSessionSubject, staffSignOut } from '@/server/auth/staff';
+import { revokeAllSessions } from '@/server/auth/revocation';
+import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import {
   STAFF_SESSION_COOKIE_BASE,
   sessionCookieNameVariants,
@@ -65,12 +67,17 @@ function staffLoginResponse(): NextResponse {
   });
 }
 
-async function logout(req: NextRequest): Promise<NextResponse> {
-  // Cross-site initiierte Navigationen duerfen die Session nicht veraendern.
-  // Die Login-Weiterleitung hat nach aussen dieselbe Wirkung, loescht aber in
-  // diesem Fall weder server- noch browserseitig Session-Zustand.
-  if (req.headers.get('sec-fetch-site') === 'cross-site') {
-    return staffLoginResponse();
+async function logout(req: NextRequest, revoke: boolean): Promise<NextResponse> {
+  let revocationFailed = false;
+  if (revoke) {
+    try {
+      const staffId = await staffSessionSubject();
+      if (staffId) {
+        await revokeAllSessions('staff', staffId);
+      }
+    } catch {
+      revocationFailed = true;
+    }
   }
 
   try {
@@ -79,15 +86,24 @@ async function logout(req: NextRequest): Promise<NextResponse> {
     // Die explizite Cookie-Loeschung unten bleibt der ausfallsichere Pfad.
   }
 
-  const response = staffLoginResponse();
+  const response = revocationFailed
+    ? NextResponse.json(
+        { error: 'session_revocation_unavailable' },
+        { status: 503, headers: { 'cache-control': 'no-store' } },
+      )
+    : staffLoginResponse();
   expireStaffSessionCookies(req, response);
   return response;
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  return logout(req);
+  // GET dient ausschliesslich der lokalen Cookie-Selbstheilung. Ein fremd
+  // initiierter GET darf niemals einen globalen Session-Cutoff schreiben.
+  return logout(req, false);
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  return logout(req);
+  const csrf = assertSameOrigin(req, env.NEXTAUTH_URL);
+  if (csrf) return csrf;
+  return logout(req, true);
 }

@@ -49,6 +49,8 @@ export const ACTION_LABELS: Record<string, string> = {
   // Anforderungen
   'request.create': 'Anforderung erstellt',
   'request.response': 'Antwort gesendet',
+  'request.responded': 'Anforderung beantwortet',
+  'request.internal_comment.create': 'Internen Kommentar hinzugefügt',
   'request.response.inbound_mail': 'Antwort per E-Mail eingegangen',
   'request.close': 'Anforderung geschlossen',
 

@@ -124,6 +124,15 @@ server {
     }
 
     # ---- Login-Endpoints stärker raten ----
+    # Sowohl der no-JS-Passwortpfad als auch Next-Server-Actions posten auf
+    # Login-Routen. Die kleine harte Body-Grenze greift vor dem 26-MiB-
+    # App-Limit und verhindert, dass Next den Login-Body erst gross puffert.
+    location ~ ^/staff/login(?:/password)?$ {
+        client_max_body_size 64k;
+        limit_req zone=taxtronik_login burst=10 nodelay;
+        proxy_pass http://taxtronik_app;
+    }
+
     location ~ ^/api/auth/(staff|portal)/callback/ {
         limit_req zone=taxtronik_login burst=10 nodelay;
         proxy_pass http://taxtronik_app;

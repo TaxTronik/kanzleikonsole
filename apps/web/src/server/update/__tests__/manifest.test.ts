@@ -8,9 +8,16 @@ import { fileURLToPath } from 'node:url';
 
 // safeFetch mocken — der SSRF-Guard löst DNS auf und braucht echte Netz-Ziele.
 const h = vi.hoisted(() => ({
-  fetch: vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(),
+  fetch:
+    vi.fn<
+      (
+        url: string,
+        init?: RequestInit,
+        policy?: { mode: 'trusted-internal' | 'public' },
+      ) => Promise<Response>
+    >(),
 }));
-vi.mock('@/server/http/ssrf-guard', () => ({ safeFetch: h.fetch }));
+vi.mock('@/server/http/ssrf-guard', () => ({ safeFetchPublic: h.fetch }));
 
 import { checkForUpdates } from '../manifest';
 
@@ -85,6 +92,7 @@ describe('checkForUpdates', () => {
     expect(r.newer?.[0]?.version).toBe('1.4.0');
     expect(r.newer?.[0]?.artifacts.worker.digest).toBe('sha256:' + 'b'.repeat(64));
     expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(h.fetch).toHaveBeenCalledWith(MANIFEST_URL, expect.anything());
   });
 
   it('fällt ohne Header auf die detached Signatur <url>.sig zurück (statisches Hosting)', async () => {

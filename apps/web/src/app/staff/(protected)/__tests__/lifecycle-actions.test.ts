@@ -49,6 +49,7 @@ vi.mock('@/server/actions/staff-action', () => {
   return {
     ActionError: h.ActionError,
     withStaff: h.withStaff,
+    withStaffModule: () => h.withStaff,
     staffActionGuard: h.staffActionGuard,
     parseFormData: (
       schema: { safeParse(value: unknown): { success: boolean; data?: unknown } },

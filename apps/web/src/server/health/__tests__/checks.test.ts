@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   health: vi.fn(),
   riskLayerClient: vi.fn(),
   safeFetch: vi.fn(),
+  tsaTimestamp: vi.fn(),
   withTenantContext: vi.fn(),
   tx: {
     n8nConnection: { findUnique: vi.fn() },
@@ -37,8 +38,11 @@ vi.mock('@taxtronik/db', () => ({
 }));
 
 vi.mock('@taxtronik/evidence', () => ({
-  Rfc3161HttpAdapter: class {},
-  resolveTsaUrl: vi.fn(),
+  createRfc3161Adapter: vi.fn(() => ({ timestamp: mocks.tsaTimestamp })),
+  resolveTsaUrl: vi.fn(
+    (providerId: string | null, customUrl: string | null) =>
+      customUrl ?? (providerId ? `https://tsa.example.test/${providerId}` : null),
+  ),
 }));
 
 vi.mock('@taxtronik/risk-layer', () => ({
@@ -46,10 +50,44 @@ vi.mock('@taxtronik/risk-layer', () => ({
 }));
 
 vi.mock('@/server/http/ssrf-guard', () => ({
-  safeFetch: mocks.safeFetch,
+  safeFetchN8n: mocks.safeFetch,
 }));
 
-import { checkN8nForTenant, checkSignalEngine } from '../checks';
+import { checkN8nForTenant, checkSignalEngine, checkTsaForTenant } from '../checks';
+
+describe('checkTsaForTenant', () => {
+  beforeEach(() => {
+    mocks.env.TIMESTAMP_AUTHORITY_URL = '';
+    mocks.tsaTimestamp.mockReset().mockResolvedValue({ genTime: new Date() });
+    mocks.tx.tenantSetting.findUnique.mockReset().mockResolvedValue(null);
+    mocks.withTenantContext
+      .mockReset()
+      .mockImplementation(async (_ctx: unknown, callback: (tx: typeof mocks.tx) => unknown) =>
+        callback(mocks.tx),
+      );
+  });
+
+  it('prüft ohne Override denselben GlobalSign-Default wie der Worker', async () => {
+    await expect(checkTsaForTenant('tenant-1')).resolves.toMatchObject({
+      ok: true,
+      source: 'default',
+      url: 'https://tsa.example.test/globalsign',
+    });
+    expect(mocks.tsaTimestamp).toHaveBeenCalledTimes(1);
+  });
+
+  it('bevorzugt die kanzleispezifische TSA', async () => {
+    mocks.tx.tenantSetting.findUnique.mockResolvedValue({
+      value: { providerId: 'custom', customUrl: 'https://custom-tsa.example.test/tsr' },
+    });
+
+    await expect(checkTsaForTenant('tenant-1')).resolves.toMatchObject({
+      ok: true,
+      source: 'tenant',
+      url: 'https://custom-tsa.example.test/tsr',
+    });
+  });
+});
 
 describe('checkN8nForTenant', () => {
   beforeEach(() => {
@@ -104,6 +142,7 @@ describe('checkN8nForTenant', () => {
     });
     expect(mocks.safeFetch).toHaveBeenCalledWith(
       'https://n8n.example.test/healthz',
+      'health',
       expect.objectContaining({ redirect: 'error' }),
     );
   });

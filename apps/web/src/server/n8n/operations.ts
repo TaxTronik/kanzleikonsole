@@ -119,6 +119,17 @@ export interface InboundRequestEmailInput {
   message: string;
 }
 
+class InboundRequestEmailRejected extends Error {
+  constructor(
+    readonly result:
+      | { status: 404; error: 'request_not_found_or_closed' }
+      | { status: 422; error: 'unknown_sender' },
+  ) {
+    super(result.error);
+    this.name = 'InboundRequestEmailRejected';
+  }
+}
+
 export async function handleInboundRequestEmail(
   tenantId: string,
   input: InboundRequestEmailInput,
@@ -134,69 +145,100 @@ export async function handleInboundRequestEmail(
     return { status: 403, error: 'inbound_mail_disabled' };
   }
 
-  return withSystemContext(tenantId, async (tx) => {
-    const request = await tx.request.findFirst({
-      where: {
-        id: input.requestId,
-        tenantId,
-        status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
-      },
-      select: { id: true, title: true, clientId: true, createdByStaff: true },
-    });
-    if (!request) return { status: 404 as const, error: 'request_not_found_or_closed' as const };
+  try {
+    return await withSystemContext(tenantId, async (tx) => {
+      // Der Receipt-Claim steht vor jeder fachlichen Mutation. Wird die
+      // Anforderung unten als geschlossen/ungueltig erkannt, sorgt der Throw
+      // dafuer, dass auch dieser Claim mit derselben Transaktion zurueckrollt.
+      // Ein bereits erfolgreich verarbeiteter Retry bleibt dagegen auch nach
+      // dem Statuswechsel auf RESPONDED idempotent mit HTTP 200 bestaetigbar.
+      if (callbackReceipt) {
+        const receipt = await claimN8nCallbackReceipt(tx, {
+          ...callbackReceipt,
+          tenantId,
+          operation: N8N_CALLBACK_OPERATIONS.inboundMail,
+        });
+        if (receipt.duplicate) return { status: 200 as const, duplicate: true };
+      }
 
-    const normalizedEmail = input.fromEmail.toLowerCase();
-    const contact = await tx.clientContact.findFirst({
-      where: { clientId: request.clientId, email: normalizedEmail, active: true },
-      select: { id: true },
-    });
-    if (!contact) return { status: 422 as const, error: 'unknown_sender' as const };
-
-    if (callbackReceipt) {
-      const receipt = await claimN8nCallbackReceipt(tx, {
-        ...callbackReceipt,
-        tenantId,
-        operation: N8N_CALLBACK_OPERATIONS.inboundMail,
+      const request = await tx.request.findFirst({
+        where: {
+          id: input.requestId,
+          tenantId,
+          status: { in: ['OPEN', 'IN_PROGRESS'] },
+        },
+        select: { id: true, title: true, clientId: true, createdByStaff: true },
       });
-      if (receipt.duplicate) return { status: 200 as const, duplicate: true };
-    }
+      if (!request) {
+        throw new InboundRequestEmailRejected({
+          status: 404,
+          error: 'request_not_found_or_closed',
+        });
+      }
 
-    await tx.requestResponse.create({
-      data: {
-        requestId: input.requestId,
-        authorType: 'CLIENT_CONTACT',
-        authorId: contact.id,
-        message: input.message,
-      },
-    });
-    await tx.request.update({
-      where: { id: input.requestId },
-      data: { status: 'RESPONDED' },
-    });
+      const normalizedEmail = input.fromEmail.toLowerCase();
+      const contact = await tx.clientContact.findFirst({
+        where: { clientId: request.clientId, email: normalizedEmail, active: true },
+        select: { id: true },
+      });
+      if (!contact) {
+        throw new InboundRequestEmailRejected({ status: 422, error: 'unknown_sender' });
+      }
 
-    await notify(tx, {
-      tenantId,
-      staffId: request.createdByStaff,
-      kind: 'REQUEST_RESPONDED',
-      title: `${request.title} — Antwort per E-Mail`,
-      body: input.message.slice(0, 200) + (input.message.length > 200 ? '…' : ''),
-      href: `/staff/requests/${input.requestId}`,
-      resourceType: 'request',
-      resourceId: input.requestId,
-    });
+      // Derselbe Status-CAS wie im Portal: zwei parallele Kanaele koennen
+      // nicht beide eine mandantenseitige Erstantwort anlegen. Nach RESPONDED
+      // bleiben nur die getrennten kanzleiinternen Kommentare zulaessig.
+      const responded = await tx.request.updateMany({
+        where: {
+          id: input.requestId,
+          tenantId,
+          status: { in: ['OPEN', 'IN_PROGRESS'] },
+        },
+        data: { status: 'RESPONDED' },
+      });
+      if (responded.count !== 1) {
+        throw new InboundRequestEmailRejected({
+          status: 404,
+          error: 'request_not_found_or_closed',
+        });
+      }
 
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'CLIENT_CONTACT',
-      actorId: contact.id,
-      action: 'request.response.inbound_mail',
-      resourceType: 'request',
-      resourceId: input.requestId,
-      after: { via: 'inbound_mail', fromEmail: normalizedEmail },
-    });
+      await tx.requestResponse.create({
+        data: {
+          requestId: input.requestId,
+          authorType: 'CLIENT_CONTACT',
+          authorId: contact.id,
+          message: input.message,
+        },
+      });
 
-    return { status: 200 as const, duplicate: false };
-  });
+      await notify(tx, {
+        tenantId,
+        staffId: request.createdByStaff,
+        kind: 'REQUEST_RESPONDED',
+        title: `${request.title} — Antwort per E-Mail`,
+        body: input.message.slice(0, 200) + (input.message.length > 200 ? '…' : ''),
+        href: `/staff/requests/${input.requestId}`,
+        resourceType: 'request',
+        resourceId: input.requestId,
+      });
+
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: contact.id,
+        action: 'request.response.inbound_mail',
+        resourceType: 'request',
+        resourceId: input.requestId,
+        after: { via: 'inbound_mail', fromEmail: normalizedEmail },
+      });
+
+      return { status: 200 as const, duplicate: false };
+    });
+  } catch (error) {
+    if (error instanceof InboundRequestEmailRejected) return error.result;
+    throw error;
+  }
 }
 
 export interface N8nResearchResultInput {

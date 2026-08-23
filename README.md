@@ -13,7 +13,9 @@ Compliance und Hintergrund-Jobs in einem lokalen Deploy. Die Software ist auf
 steuerliche Berufsgeheimnisse und revisionsnahe Anforderungen ausgelegt:
 Postgres-RLS, App-Level-Tenant-Filter, TOTP für Mitarbeiter, Magic-Link für
 Mandanten, S3-kompatibler Object-Store ohne öffentliche Direktlinks, ClamAV,
-Audit-Hash-Chain und optionale RFC-3161-Zeitstempel.
+Audit-Hash-Chain und externe RFC-3161-Zeitstempel. Produktion verwendet einen
+externen RFC-3161-Dienst; ob ein **qualifizierter** eIDAS-Dienst erforderlich
+ist, entscheidet die Kanzlei anhand ihres konkreten Nachweisbedarfs.
 
 Aktueller Softwarestand: **0.2.1**. Die zugehörigen Änderungen stehen im
 [Changelog](CHANGELOG.md#021---2026-08-22).
@@ -22,16 +24,16 @@ Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
 
 ## Tech-Stack
 
-| Schicht     | Wahl                                                                  |
-| ----------- | --------------------------------------------------------------------- |
-| Web/App     | Next.js 16 App Router, React 19, TypeScript                           |
-| Auth        | Auth.js v5, Mitarbeiter mit Passwort + TOTP, Mandanten mit Magic-Link |
-| Datenbank   | Postgres 18, Prisma, Row-Level Security                               |
-| Storage     | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit                 |
-| Jobs        | BullMQ Worker, Redis                                                  |
-| Workflows   | n8n für Reminder, Kommunikation und Cron-Automation                   |
-| Risk / TCMS | optionales on-prem Signal (`/v1/*`, historische `RISK_LAYER_*`-Namen) |
-| Deploy      | Docker Compose, On-Premise, Reverse Proxy davor                       |
+| Schicht     | Wahl                                                                    |
+| ----------- | ----------------------------------------------------------------------- |
+| Web/App     | Next.js 16 App Router, React 19, TypeScript                             |
+| Auth        | Auth.js v5, Mitarbeiter mit Passwort + TOTP, Mandanten mit Magic-Link   |
+| Datenbank   | Postgres 18, Prisma, Row-Level Security                                 |
+| Storage     | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit                   |
+| Jobs        | BullMQ Worker, Redis                                                    |
+| Workflows   | BullMQ für Kernkontrollen; n8n optional für Kommunikation/Integrationen |
+| Risk / TCMS | optionales on-prem Signal (`/v1/*`, historische `RISK_LAYER_*`-Namen)   |
+| Deploy      | Docker Compose, On-Premise, Reverse Proxy davor                         |
 
 ## Entwicklung
 
@@ -112,9 +114,12 @@ Ein anderer Checkout kann explizit angegeben werden:
 
 `RISK_LAYER_URL` ist ein Operator-Backend-Ziel und darf Docker-Service-DNS
 (`http://risk-layer:8000`), Loopback (`http://127.0.0.1:8000`) oder eine
-interne IP enthalten. `INTERNAL_FETCH_HOSTS` wird dafür nicht benötigt; diese
-Allowlist bleibt für allgemeine `safeFetch`-Pfade wie n8n, RSS, TSA und
-Update-Manifest relevant.
+interne IP enthalten. `INTERNAL_FETCH_HOSTS` wird dafür nicht benötigt. Die
+Allowlist gilt nur für ausdrücklich als `trusted-internal` markierte
+Infrastrukturziele; tenant-/admin-konfigurierte RSS-, TSA- und Update-Ziele
+bleiben strikt öffentlich. Das mitgelieferte n8n-Ziel besitzt ausschließlich
+eine eng begrenzte Ausnahme für Host, Port und zulässige Pfade und wertet die
+globale Allowlist nicht aus.
 
 Wichtig bei Docker: `127.0.0.1`/`localhost` wird aus dem App-Container heraus
 als App-Container selbst interpretiert, nicht als Host. Im Compose-Stack mit

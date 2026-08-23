@@ -25,6 +25,7 @@ import {
   PORTAL_SESSION_JWT_DECODE_SALTS,
   PORTAL_SESSION_JWT_SALT,
   USE_SECURE_COOKIES,
+  readSessionCookieValue,
   sessionCookieNameVariants,
 } from './session-cookie';
 import { createStableSessionJwtOptions } from './session-jwt';
@@ -69,11 +70,7 @@ function portalSessionCookieNames(): string[] {
 
 async function readPortalSessionTokenCookie(): Promise<string | null> {
   const jar = await cookies();
-  for (const name of portalSessionCookieNames()) {
-    const value = jar.get(name)?.value;
-    if (value) return value;
-  }
-  return null;
+  return readSessionCookieValue(jar, portalSessionCookieNames());
 }
 
 function hasValidJwtLifetime(token: JWT): boolean {
@@ -349,6 +346,14 @@ const _portal = NextAuth(portalConfig);
 export const portalHandlers: typeof _portal.handlers = _portal.handlers;
 export const portalSignIn: typeof _portal.signIn = _portal.signIn;
 export const portalSignOut: typeof _portal.signOut = _portal.signOut;
+
+/** Verifizierter JWT-Subject ohne DB-Hydration, insbesondere für Logout. */
+export async function portalSessionSubject(): Promise<string | null> {
+  const rawToken = await readPortalSessionTokenCookie();
+  if (!rawToken) return null;
+  const token = await decodePortalSessionToken(rawToken);
+  return isPortalTokenPayload(token) ? token.contactId : null;
+}
 
 // Härtet die Wrapper-Semantik (analog staffAuth): wenn der session-Callback
 // wegen Revocation die contactId nicht gesetzt hat, returnt der Wrapper null.

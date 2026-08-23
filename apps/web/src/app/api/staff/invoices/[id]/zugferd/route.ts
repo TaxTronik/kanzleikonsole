@@ -8,6 +8,7 @@ import { streamObject } from '@taxtronik/storage';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { isUuid } from '@/lib/uuid';
+import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await staffAuth();
@@ -21,6 +22,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  if (!isModeModuleEnabled(await readModules(ctx), 'invoices')) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
 
   const rl = await checkStaffExportLimit('zugferd', staffId);
   if (!rl.ok) {

@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
 
 export type FetchedItem = FetchedRssItem;
@@ -30,6 +31,9 @@ export async function fetchAndPersistTaxNews(scope: TaxNewsFetchScope): Promise<
   }>;
   errors: string[];
 }> {
+  const modules = await readBooleanTenantModules(prismaOwner, scope.tenantId);
+  if (!modules.rssReader) throw new Error('Modul rssReader ist deaktiviert.');
+
   const activeFeeds = await prismaOwner.rssFeed.findMany({
     where: {
       active: true,

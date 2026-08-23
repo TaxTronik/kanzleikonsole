@@ -7,7 +7,9 @@ import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { withStaffModule, ActionError, type ActionResult } from '@/server/actions/staff-action';
+
+const withBindersStaff = withStaffModule('binders');
 
 const StatusEnum = z.enum(['PREPARED', 'WITH_CLIENT', 'RETURNED', 'COMPLETED']);
 
@@ -35,7 +37,7 @@ export async function createBinderAction(
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  return withStaff(
+  return withBindersStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Q-5: clientId Tenant-Sanity
@@ -73,7 +75,7 @@ export async function updateBinderStatusAction(input: {
   const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withBindersStaff(async (tx, { tenantId, staffId, session }) => {
     const before = await tx.pendingBinder.findUnique({
       where: { id: parsed.data.id },
       select: { status: true, clientId: true },
@@ -114,7 +116,7 @@ export async function deleteBinderAction(input: { id: string }): Promise<ActionR
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withBindersStaff(async (tx, { tenantId, staffId, session }) => {
     const b = await tx.pendingBinder.findUnique({
       where: { id: parsed.data.id },
       select: { label: true, clientId: true },

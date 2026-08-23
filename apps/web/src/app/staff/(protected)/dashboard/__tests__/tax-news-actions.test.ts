@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
 vi.mock('@/server/actions/staff-action', () => ({
   staffActionGuard: m.staffActionGuard,
   withStaff: m.withStaff,
+  withStaffModule: () => m.withStaff,
 }));
 vi.mock('@/server/auth/rbac', () => ({
   toActionError: (error: Error) => ({ ok: false, error: error.message }),
@@ -40,7 +41,7 @@ describe('triggerTaxNewsFetchAction', () => {
   it('erlaubt den Refresh ohne Admin-Gate und reicht den Mitarbeiter-Scope weiter', async () => {
     const result = await triggerTaxNewsFetchAction();
 
-    expect(m.staffActionGuard).toHaveBeenCalledWith();
+    expect(m.staffActionGuard).toHaveBeenCalledWith({ module: 'rssReader' });
     expect(m.fetchAndPersistTaxNews).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       staffId: 'staff-1',

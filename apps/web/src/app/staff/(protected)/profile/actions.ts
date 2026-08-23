@@ -49,6 +49,9 @@ export async function changeOwnPasswordAction(
 
     const passwordHash = await hash(newPassword, 12);
     await withTenantContext(ctx, async (tx) => {
+      // Externen Widerruf vor der irreversiblen Passwort-Mutation bestaetigen.
+      // Scheitert danach SQL/Audit, ist der Benutzer nur vorsorglich ausgeloggt.
+      await revokeAllSessions('staff', staffId);
       const updated = await tx.staffUser.updateMany({
         where: { id: staffId, passwordHash: current.passwordHash, active: true },
         data: { passwordHash, failedLoginCount: 0, lockedUntil: null },
@@ -72,8 +75,7 @@ export async function changeOwnPasswordAction(
     return toActionError(error);
   }
 
-  // Auch die aktuelle Sitzung wird absichtlich ungültig. Der Client ruft danach
-  // den hosttreuen Logout-Endpunkt auf, damit zusätzlich alle Cookies verschwinden.
-  await revokeAllSessions('staff', staffId);
+  // Auch die aktuelle Sitzung wurde bereits vor dem DB-Commit widerrufen. Der
+  // Client entfernt danach ueber den hosttreuen Logout-Endpunkt alle Cookies.
   return { ok: true };
 }

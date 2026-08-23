@@ -7,9 +7,9 @@
 //
 // Zwei nebeneinanderlaufende Strategien:
 //
-//   1. linearSeasonal — YTD-Werte aufs Jahr hochrechnen, gewichtet mit
-//      Vorjahres-Monatsverteilung (saisonale Korrektur). Spanne aus dem
-//      Schwankungsbereich der letzten Jahre.
+//   1. linearSeasonal — YTD-Werte mit 12/N aufs Jahr hochrechnen. Eine echte
+//      Saisongewichtung ist ohne Vorjahres-Monatsverteilung nicht belastbar;
+//      die ausgewiesene Spanne wird mit zunehmender Datenabdeckung enger.
 //
 //   2. trendRegression — Linear-Regression über die letzten Jahre. Punkt-
 //      schätzung = nächster Wert auf der Regressionsgeraden. Spanne aus
@@ -94,13 +94,12 @@ function ratio(value: number, denom: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Strategie 1: Linear + Saisonalität
+// Strategie 1: Lineare Run-rate
 // ---------------------------------------------------------------------------
 
 /**
- * Nimmt die jüngste unterjährige Periode (YTD), rechnet linear hoch und
- * korrigiert mit dem Saisonalitätsfaktor aus dem Vorjahr (gleiches
- * Quartal/Halbjahr vs. ganzes Jahr).
+ * Nimmt die jüngste unterjährige Periode (YTD) und rechnet sie linear mit
+ * 12/N hoch. Die Unsicherheitsspanne wird mit wachsender Datenabdeckung enger.
  */
 export function linearSeasonalProjection(
   periods: PeriodInput[],
@@ -210,7 +209,7 @@ export function trendRegressionProjection(
     const reg = linearRegression(points);
     if (!reg) return null;
     const estimate = reg.slope * targetYear + reg.intercept;
-    // Spanne: 1.5 × Standardabweichung (~85% Konfidenz, lean)
+    // Heuristische Spanne; kein kalibriertes statistisches Konfidenzintervall.
     const spread = Math.max(reg.residualStd * 1.5, Math.abs(estimate) * 0.05);
     return {
       estimate,

@@ -17,6 +17,7 @@ import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type RiskAnalyseLlmJob } from '../queues';
 import { withWorkerTenantContext } from '../tenant-context';
 import { log } from '../logger';
+import { isWorkerTenantModuleEnabled } from '../module-gate';
 
 const markingKey = (m: { start: number; end: number; herkunft: string; begriff: string }) =>
   `${m.start}:${m.end}:${m.herkunft}:${m.begriff}`;
@@ -63,6 +64,11 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
   'risk-analyse-llm',
   async (job) => {
     const { tenantId, analysisId, sourceText, optionen } = job.data;
+
+    if (!(await isWorkerTenantModuleEnabled(tenantId, 'risk'))) {
+      log.info({ tenantId, analysisId }, 'risk-analyse-llm: Modul deaktiviert, skip');
+      return;
+    }
 
     const client = new RiskLayerClient();
 

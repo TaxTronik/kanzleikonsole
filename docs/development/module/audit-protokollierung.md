@@ -44,9 +44,12 @@ Tagesversiegelung und unveränderlicher Langzeit-Archivierung.
   (selbst auditiert), CSV-Export (ratenlimitiert, gekappt, auditiert, inkl.
   Hashes), zeitlich begrenzter Prüfer-Link (HMAC, nur Chain-Attestierung,
   kein Datenzugriff).
-- TSA-Konfiguration je Tenant (Anbieterkatalog inkl. eIDAS-qualifizierter;
-  SSRF-Check auf Custom-URLs); Auflösung Tenant → ENV → GlobalSign-Default.
-  In Produktion gibt es keinen stillen Self-Timestamp-Fallback.
+- TSA-Konfiguration je Tenant (kostenlose und kommerzielle Presets; keine
+  pauschale Qualifikationszusage allein aus dem Anbieternamen; SSRF-Check auf
+  Custom-URLs); Auflösung Tenant → ENV → GlobalSign-Default.
+  Statusprüfung und Worker verwenden dieselbe Auflösung. In Produktion gibt es
+  keinen stillen Self-Timestamp-Fallback. Nicht-GlobalSign-Anbieter benötigen
+  ihren Betreiber-Trust-Anchor über `TSA_TRUSTED_ROOTS_FILE`.
 - CLI `pnpm verify:chain` (alle Tenants + Archiv-Segmente, Exit-Codes für CI).
 
 ## Traceability

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateIdentityDates } from '@/server/gwg/identity-date-validation';
 
 export const GwgOnboardingLocalPersonIdSchema = z.string().min(1).max(100);
 
@@ -20,6 +21,7 @@ export const GwgOnboardingRepresentativeSchema = z
     for (const [field, label] of [
       ['idNumber', 'Ausweisnummer'],
       ['idIssuedBy', 'ausstellende Behörde'],
+      ['idIssueDate', 'Ausstellungsdatum'],
       ['idExpiryDate', 'Gültigkeitsdatum'],
       ['idFrontDocumentId', 'Ausweis-Vorderseite'],
       ['idBackDocumentId', 'Ausweis-Rückseite'],
@@ -31,6 +33,16 @@ export const GwgOnboardingRepresentativeSchema = z
           message: `${label} der vertretungsberechtigten Person ist Pflicht.`,
         });
       }
+    }
+    for (const issue of validateIdentityDates({
+      issueDate: representative.idIssueDate,
+      expiryDate: representative.idExpiryDate,
+    })) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [issue.field === 'expiryDate' ? 'idExpiryDate' : 'idIssueDate'],
+        message: issue.message,
+      });
     }
   });
 

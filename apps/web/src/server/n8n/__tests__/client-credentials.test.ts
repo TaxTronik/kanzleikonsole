@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { safeFetchMock } = vi.hoisted(() => ({ safeFetchMock: vi.fn() }));
-vi.mock('@taxtronik/http-utils', () => ({ safeFetch: safeFetchMock }));
+vi.mock('@/server/http/ssrf-guard', () => ({ safeFetchN8n: safeFetchMock }));
 
 import { N8nApiClient } from '../client';
 
@@ -31,6 +31,7 @@ describe('N8nApiClient credentials', () => {
 
     expect(safeFetchMock).toHaveBeenCalledWith(
       'https://n8n.example.test/api/v1/credentials',
+      'api',
       expect.objectContaining({
         method: 'POST',
         headers: {

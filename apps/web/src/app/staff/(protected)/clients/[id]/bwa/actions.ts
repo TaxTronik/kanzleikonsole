@@ -54,7 +54,7 @@ export async function importAddisonCsvAction(input: {
   fileName: string;
   csv: string;
 }): Promise<ImportResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'bwa' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
@@ -152,7 +152,7 @@ export async function importDatevXlsxAction(input: {
   fileName: string;
   xlsxBase64: string;
 }): Promise<ImportResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'bwa' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
@@ -259,7 +259,7 @@ const DeleteSchema = z.object({
 });
 
 export async function deleteBwaPeriodAction(formData: FormData): Promise<void> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'bwa' });
   if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen
   const { tenantId, staffId, ctx, session } = g;
 

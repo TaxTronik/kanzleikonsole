@@ -161,6 +161,7 @@ export async function updateContactAction(
             'E-Mail bereits einem anderen Ansprechpartner dieses Mandanten zugeordnet.',
           );
         }
+        await revokeAllSessions('portal', contactId);
       }
       await tx.clientContact.update({
         where: { id: contactId },
@@ -181,13 +182,7 @@ export async function updateContactAction(
     { revalidate: `/staff/clients/${clientId}` },
   );
 
-  // Die DB-E-Mail ist Teil der Portal-Login-Identität. Der Write ist an dieser
-  // Stelle committed; alte Cookies werden sofort widerrufen und zusätzlich bei
-  // jeder Hydration gegen die aktuelle DB-E-Mail geprüft.
   if (!result.ok) return result;
-  if (result.emailChanged) {
-    await revokeAllSessions('portal', contactId);
-  }
   return { ok: true };
 }
 
@@ -266,6 +261,7 @@ export async function deactivateContactAction(formData: FormData): Promise<void>
     if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
     if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
     await assertClientAccessTx(tx, session, contact.clientId);
+    await revokeAllSessions('portal', contactId);
     await tx.clientContact.update({
       where: { id: contactId },
       data: { active: false },
@@ -279,11 +275,6 @@ export async function deactivateContactAction(formData: FormData): Promise<void>
       resourceId: contactId,
     });
   });
-
-  // N-2: Aktive Portal-Sessions sofort revoken. portalAuth prüft den iat-Claim
-  // gegen den Revocation-Timestamp in Redis — sonst bliebe der JWT-Cookie eines
-  // deaktivierten Kontakts bis 24 h gültig.
-  await revokeAllSessions('portal', contactId);
 
   revalidatePath(`/staff/clients/${clientId}`);
 }

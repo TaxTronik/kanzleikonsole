@@ -50,6 +50,10 @@ GwG-Onboarding (anonym per Token, GWG-Bucket), Rechnungs-PDFs
 
 - Magic-Bytes überschreiben den Client-MIME, lehnen unbekannte Formate aber
   nicht ab (Preview-Whitelist mildert).
-- Verwaiste, gelockte S3-Objekte bei DB-Fehlern nach Commit (geloggt, kein
-  Abgleich-Job); kein Streaming-Multipart (RAM-Puffer bis Cap).
+- Bei DB-Fehlern nach Storage-Commit werden mutable Objekte kompensierend
+  gelöscht. Nicht löschbare oder unveränderliche Objekte werden als
+  `StorageOrphan` journalisiert und vom sechsstündlichen
+  `storage-orphan-cleanup` nach Ablauf der jeweiligen Retention erneut geprüft.
+  Schlägt zusätzlich das Journalisieren fehl, bleibt nur das strukturierte Log
+  für einen manuellen Abgleich. Kein Streaming-Multipart (RAM-Puffer bis Cap).
 - GwG-Frühvernichtung vor Lock-Ablauf (GOVERNANCE-Bypass) nicht implementiert.

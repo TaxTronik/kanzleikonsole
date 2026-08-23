@@ -4,6 +4,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
+import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
 import {
   toCsv,
   csvResponse,
@@ -17,6 +18,10 @@ export async function GET(req: NextRequest) {
   const session = await staffAuth();
   if (!session?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { tenantId, staffId } = session.user;
+  const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+  if (!isModeModuleEnabled(await readModules(ctx), 'invoices')) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
 
   // Per-User-Rate-Limit (Defense in Depth): Exporte sind teuer + datenreich.
   const rl = await checkStaffExportLimit('invoices', staffId);
@@ -27,37 +32,34 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status');
 
-  const { rows, truncated } = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnungen gesperrter
-      // Mandanten tauchen nicht im CSV auf.
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      const list = await tx.invoice.findMany({
-        where: {
-          ...(denied.length ? { clientId: { notIn: denied } } : {}),
-          ...(status && ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'].includes(status)
-            ? { status: status as 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' }
-            : {}),
-        },
-        orderBy: [{ issueDate: 'desc' }],
-        take: MAX_EXPORT_ROWS + 1, // +1 zur Trunkierungs-Erkennung
-        include: { client: { select: { name: true, datevNo: true } } },
-      });
-      const { rows: out, truncated } = applyRowCap(list);
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'invoices.export.csv',
-        resourceType: 'invoice',
-        after: { rows: out.length, truncated, status: status ?? 'all' },
-        ip: getClientIp(req.headers),
-        userAgent: req.headers.get('user-agent'),
-      });
-      return { rows: out, truncated };
-    },
-  );
+  const { rows, truncated } = await withTenantContext(ctx, async (tx) => {
+    // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnungen gesperrter
+    // Mandanten tauchen nicht im CSV auf.
+    const denied = await inaccessibleClientIdsFor(tx, session);
+    const list = await tx.invoice.findMany({
+      where: {
+        ...(denied.length ? { clientId: { notIn: denied } } : {}),
+        ...(status && ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'].includes(status)
+          ? { status: status as 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' }
+          : {}),
+      },
+      orderBy: [{ issueDate: 'desc' }],
+      take: MAX_EXPORT_ROWS + 1, // +1 zur Trunkierungs-Erkennung
+      include: { client: { select: { name: true, datevNo: true } } },
+    });
+    const { rows: out, truncated } = applyRowCap(list);
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'invoices.export.csv',
+      resourceType: 'invoice',
+      after: { rows: out.length, truncated, status: status ?? 'all' },
+      ip: getClientIp(req.headers),
+      userAgent: req.headers.get('user-agent'),
+    });
+    return { rows: out, truncated };
+  });
 
   const cols: CsvColumn<(typeof rows)[number]>[] = [
     { key: 'number', label: 'Rechnungs-Nr.', accessor: (r) => r.number },

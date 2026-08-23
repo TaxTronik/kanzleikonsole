@@ -25,7 +25,7 @@ export type { N8nEnqueueResult, N8nEnqueueStatus };
 export async function enqueueN8nEvent(
   event: N8nEventName,
   payload: Record<string, unknown>,
-  opts: { tenantId?: string } = {},
+  opts: { tenantId?: string; dedupeKey?: string } = {},
 ): Promise<N8nEnqueueResult> {
   return enqueueN8nEventCore(
     {

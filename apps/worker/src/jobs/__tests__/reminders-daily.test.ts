@@ -13,7 +13,7 @@ const h = vi.hoisted(() => {
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (value: typeof tx) => Promise<unknown>) => fn(tx),
   );
-  return { prismaOwner, tx, withWorkerTenantContext };
+  return { prismaOwner, tx, withWorkerTenantContext, readWorkerTenantModules: vi.fn() };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -24,6 +24,9 @@ vi.mock('../../logger', () => ({
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../tenant-context', () => ({
   withWorkerTenantContext: h.withWorkerTenantContext,
+}));
+vi.mock('../../module-gate', () => ({
+  readWorkerTenantModules: h.readWorkerTenantModules,
 }));
 
 import { processors } from './mocks/bullmq';
@@ -53,6 +56,11 @@ beforeEach(() => {
   h.prismaOwner.taxNotice.findMany.mockResolvedValue([]);
   h.prismaOwner.clientReminder.findMany.mockResolvedValue([]);
   h.prismaOwner.pendingBinder.findMany.mockResolvedValue([]);
+  h.readWorkerTenantModules.mockResolvedValue({
+    taxNotices: true,
+    reminders: true,
+    binders: true,
+  });
   h.tx.notification.findMany.mockResolvedValue([]);
   h.tx.notification.createMany.mockImplementation(async ({ data }: { data: unknown[] }) => ({
     count: data.length,
@@ -67,6 +75,21 @@ afterEach(() => {
 });
 
 describe('reminders-daily Query- und Bulk-Dedupe', () => {
+  it('fragt bei deaktivierten Teilmodulen keine ihrer Tabellen ab', async () => {
+    h.readWorkerTenantModules.mockResolvedValue({
+      taxNotices: false,
+      reminders: false,
+      binders: false,
+    });
+
+    await expect(run()).resolves.toEqual({ appeal: 0, reminders: 0, binders: 0 });
+
+    expect(h.prismaOwner.taxNotice.findMany).not.toHaveBeenCalled();
+    expect(h.prismaOwner.clientReminder.findMany).not.toHaveBeenCalled();
+    expect(h.prismaOwner.pendingBinder.findMany).not.toHaveBeenCalled();
+    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+  });
+
   it('fragt Einspruchsfristen ausschließlich für 1, 7 und 14 Tage ab', async () => {
     await run();
 

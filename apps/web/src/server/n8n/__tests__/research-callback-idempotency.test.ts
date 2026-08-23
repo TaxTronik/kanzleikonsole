@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   withSystemContext: vi.fn(),
   withTenantContext: vi.fn(),
+  readBooleanTenantModules: vi.fn(),
   researchRequestFindUnique: vi.fn(),
   resultCreate: vi.fn(),
   requestUpdateMany: vi.fn(),
@@ -16,6 +17,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@taxtronik/db', () => ({
   withSystemContext: h.withSystemContext,
   withTenantContext: h.withTenantContext,
+  readBooleanTenantModules: h.readBooleanTenantModules,
 }));
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: { riskResearchRequest: { findUnique: h.researchRequestFindUnique } },
@@ -47,6 +49,7 @@ const tx = {
 beforeEach(() => {
   vi.clearAllMocks();
   h.researchRequestFindUnique.mockResolvedValue(null);
+  h.readBooleanTenantModules.mockResolvedValue({ risk: true });
   h.withSystemContext.mockImplementation(
     async (_tenantId: string, callback: (transaction: typeof tx) => Promise<unknown>) =>
       callback(tx),
@@ -59,6 +62,22 @@ beforeEach(() => {
 });
 
 describe('research callback transaction idempotency', () => {
+  it('lehnt den direkten Worker-Callback ohne Mutation ab, wenn Risk deaktiviert ist', async () => {
+    h.readBooleanTenantModules.mockResolvedValue({ risk: false });
+
+    await expect(
+      receiveResearchResult(
+        { tenantId: TENANT_ID, body: 'Ergebnis', source: 'n8n' },
+        callbackReceipt,
+      ),
+    ).resolves.toBeNull();
+
+    expect(h.readBooleanTenantModules).toHaveBeenCalledWith(expect.any(Object), TENANT_ID);
+    expect(h.withSystemContext).not.toHaveBeenCalled();
+    expect(h.resultCreate).not.toHaveBeenCalled();
+    expect(h.claimReceipt).not.toHaveBeenCalled();
+  });
+
   it('committed Receipt, Ergebnis-ID und Fachmutation in derselben System-Transaktion', async () => {
     const result = await receiveResearchResult(
       { tenantId: TENANT_ID, body: 'Ergebnis', source: 'n8n' },

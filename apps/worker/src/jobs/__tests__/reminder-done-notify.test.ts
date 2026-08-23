@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   upsertNotificationTx: vi.fn(),
   findUnique: vi.fn(),
+  moduleEnabled: vi.fn(),
 }));
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -25,6 +26,9 @@ vi.mock('@taxtronik/db/notification', () => ({
 vi.mock('../../tenant-context', () => ({
   withWorkerTenantContext: (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
     fn({ clientReminder: { findUnique: h.findUnique } }),
+}));
+vi.mock('../../module-gate', () => ({
+  isWorkerTenantModuleEnabled: h.moduleEnabled,
 }));
 
 import { processors } from './mocks/bullmq';
@@ -41,9 +45,21 @@ const JOB = {
   },
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  h.moduleEnabled.mockResolvedValue(true);
+});
 
 describe('reminder-done-notify', () => {
+  it('überspringt den direkten Job-Einstieg bei deaktivierten Wiedervorlagen', async () => {
+    h.moduleEnabled.mockResolvedValue(false);
+
+    await processors.get('reminder-done-notify')!(JOB);
+
+    expect(h.findUnique).not.toHaveBeenCalled();
+    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+  });
+
   it('stellt zu, wenn die Wiedervorlage noch erledigt ist', async () => {
     h.findUnique.mockResolvedValue({ doneAt: new Date() });
 

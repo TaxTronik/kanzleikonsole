@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
   txRequestFindFirst: vi.fn(),
   contactFindFirst: vi.fn(),
   responseCreate: vi.fn(),
-  requestUpdate: vi.fn(),
+  requestUpdateMany: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
@@ -54,7 +54,7 @@ const callbackReceipt = {
   operation: 'request-inbound' as const,
 };
 const tx = {
-  request: { findFirst: h.txRequestFindFirst, update: h.requestUpdate },
+  request: { findFirst: h.txRequestFindFirst, updateMany: h.requestUpdateMany },
   clientContact: { findFirst: h.contactFindFirst },
   requestResponse: { create: h.responseCreate },
 };
@@ -75,7 +75,7 @@ beforeEach(() => {
   h.contactFindFirst.mockResolvedValue({ id: CONTACT_ID });
   h.claimReceipt.mockResolvedValue({ duplicate: false });
   h.responseCreate.mockResolvedValue({ id: randomUUID() });
-  h.requestUpdate.mockResolvedValue({ id: REQUEST_ID });
+  h.requestUpdateMany.mockResolvedValue({ count: 1 });
   h.notify.mockResolvedValue(undefined);
   h.evidenceRecord.mockResolvedValue({ id: randomUUID() });
 });
@@ -173,6 +173,21 @@ describe('n8n operations privacy', () => {
 });
 
 describe('inbound callback transaction idempotency', () => {
+  it('lehnt den direkten Callback vor jeder Mutation ab, wenn Inbound-Mail deaktiviert ist', async () => {
+    h.readModules.mockResolvedValue({ inboundMail: false });
+
+    await expect(
+      handleInboundRequestEmail(TENANT_ID, {
+        requestId: REQUEST_ID,
+        fromEmail: 'client@example.test',
+        message: 'Antwort',
+      }),
+    ).resolves.toEqual({ status: 403, error: 'inbound_mail_disabled' });
+
+    expect(h.withSystemContext).not.toHaveBeenCalled();
+    expect(h.responseCreate).not.toHaveBeenCalled();
+  });
+
   it('claimed den Receipt unmittelbar vor dem ersten Side Effect in derselben Transaktion', async () => {
     const result = await handleInboundRequestEmail(
       TENANT_ID,
@@ -186,6 +201,9 @@ describe('inbound callback transaction idempotency', () => {
       operation: 'request-inbound',
     });
     expect(h.claimReceipt.mock.invocationCallOrder[0]).toBeLessThan(
+      h.requestUpdateMany.mock.invocationCallOrder[0]!,
+    );
+    expect(h.requestUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
       h.responseCreate.mock.invocationCallOrder[0]!,
     );
     expect(h.evidenceRecord).toHaveBeenCalledWith(tx, expect.any(Object));
@@ -203,7 +221,51 @@ describe('inbound callback transaction idempotency', () => {
     ).resolves.toEqual({ status: 200, duplicate: true });
 
     expect(h.responseCreate).not.toHaveBeenCalled();
-    expect(h.requestUpdate).not.toHaveBeenCalled();
+    expect(h.requestUpdateMany).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('akzeptiert nur OPEN/IN_PROGRESS und lehnt RESPONDED vor jeder Fachmutation ab', async () => {
+    h.txRequestFindFirst.mockResolvedValue(null);
+
+    await expect(
+      handleInboundRequestEmail(TENANT_ID, {
+        requestId: REQUEST_ID,
+        fromEmail: 'client@example.test',
+        message: 'Spaetere Folgeantwort',
+      }),
+    ).resolves.toEqual({ status: 404, error: 'request_not_found_or_closed' });
+
+    expect(h.txRequestFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: { in: ['OPEN', 'IN_PROGRESS'] } }),
+      }),
+    );
+    expect(h.requestUpdateMany).not.toHaveBeenCalled();
+    expect(h.responseCreate).not.toHaveBeenCalled();
+  });
+
+  it('verliert die Race gegen einen parallelen Abschluss per Status-CAS', async () => {
+    h.requestUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      handleInboundRequestEmail(TENANT_ID, {
+        requestId: REQUEST_ID,
+        fromEmail: 'client@example.test',
+        message: 'Parallele Antwort',
+      }),
+    ).resolves.toEqual({ status: 404, error: 'request_not_found_or_closed' });
+
+    expect(h.requestUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: REQUEST_ID,
+        tenantId: TENANT_ID,
+        status: { in: ['OPEN', 'IN_PROGRESS'] },
+      },
+      data: { status: 'RESPONDED' },
+    });
+    expect(h.responseCreate).not.toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
   });

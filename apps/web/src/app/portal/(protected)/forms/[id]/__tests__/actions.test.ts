@@ -24,6 +24,9 @@ vi.mock('@/server/rate-limit', () => ({
   checkPortalWriteLimit: h.checkPortalWriteLimit,
 }));
 vi.mock('@/server/settings/portal-features', () => ({ assertPortalFeature: vi.fn() }));
+vi.mock('@/server/documents/storage-compensation', () => ({
+  compensateStorageCommit: vi.fn(),
+}));
 vi.mock('@/server/auth/rbac', () => ({
   toActionError: (error: unknown) => ({
     ok: false,
@@ -44,6 +47,7 @@ function submission() {
     id: SUBMISSION_ID,
     clientId: 'client-1',
     status: 'DRAFT',
+    requestId: 'request-1',
     template: {
       fields: [{ key: 'name', label: 'Name', required: true, type: 'TEXT' }],
     },
@@ -55,6 +59,10 @@ function mockTx(updateCount = 1) {
     formSubmission: {
       findUnique: vi.fn().mockResolvedValue(submission()),
       updateMany: vi.fn().mockResolvedValue({ count: updateCount }),
+    },
+    request: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'request-1', status: 'OPEN' }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
   h.withTenantContext.mockImplementation(
@@ -109,5 +117,56 @@ describe('Formular-Lifecycle', () => {
     expect(result).toEqual({ ok: false, error: 'Formular wurde bereits übermittelt.' });
     expect(h.evidenceRecord).not.toHaveBeenCalled();
     expect(h.emitN8nEvent).not.toHaveBeenCalled();
+  });
+
+  it('setzt die verknüpfte Anforderung in derselben Transaktion auf RESPONDED', async () => {
+    const tx = mockTx();
+
+    const result = await submitSubmissionAction({
+      submissionId: SUBMISSION_ID,
+      answers: { name: 'Mara' },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(tx.request.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'request-1',
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        status: { in: ['OPEN', 'IN_PROGRESS'] },
+      },
+      data: { status: 'RESPONDED' },
+    });
+    expect(h.evidenceRecord).toHaveBeenCalledTimes(2);
+    expect(h.evidenceRecord).toHaveBeenNthCalledWith(
+      1,
+      tx,
+      expect.objectContaining({
+        action: 'request.responded',
+        resourceId: 'request-1',
+        after: expect.objectContaining({ status: 'RESPONDED', source: 'FORM_SUBMISSION' }),
+      }),
+    );
+    expect(h.emitN8nEvent).toHaveBeenCalledWith(
+      'request.responded',
+      expect.objectContaining({ requestId: 'request-1', formSubmissionId: SUBMISSION_ID }),
+      { tenantId: 'tenant-1' },
+    );
+  });
+
+  it('schreibt bei bereits fachlich beantworteter Anforderung keine zweite Request-Evidenz', async () => {
+    const tx = mockTx();
+    tx.request.findFirst.mockResolvedValue({ id: 'request-1', status: 'RESPONDED' });
+    tx.request.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      submitSubmissionAction({ submissionId: SUBMISSION_ID, answers: { name: 'Mara' } }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(h.evidenceRecord).toHaveBeenCalledOnce();
+    expect(h.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: 'form.submission.submit' }),
+    );
   });
 });

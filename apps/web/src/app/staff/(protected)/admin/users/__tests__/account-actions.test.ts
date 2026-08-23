@@ -117,6 +117,40 @@ describe('resetPasswordAction', () => {
     expect(JSON.stringify(mocks.evidenceRecord.mock.calls)).not.toContain('Neues-Passwort-2026!');
     expect(JSON.stringify(mocks.evidenceRecord.mock.calls)).not.toContain('new-password-hash');
     expect(mocks.revokeAllSessions).toHaveBeenCalledWith('staff', USER_ID);
+    expect(mocks.revokeAllSessions.mock.invocationCallOrder[0]!).toBeLessThan(
+      tx.staffUser.updateMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('bricht vor dem Passwort-Reset ab, wenn der Session-Widerruf fehlschlägt', async () => {
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: USER_ID,
+          roles: [{ role: 'EMPLOYEE' }],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+    mocks.revokeAllSessions.mockRejectedValueOnce(
+      new Error('Session-Widerruf ist derzeit nicht verfügbar.'),
+    );
+
+    const result = await resetPasswordAction({
+      userId: USER_ID,
+      password: 'Neues-Passwort-2026!',
+      confirmPassword: 'Neues-Passwort-2026!',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Session-Widerruf ist derzeit nicht verfügbar.',
+    });
+    expect(tx.staffUser.updateMany).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('verweist für das eigene Passwort auf das Benutzerprofil', async () => {
@@ -158,7 +192,7 @@ describe('resetPasswordAction', () => {
       error: 'Kontorollen wurden parallel geändert; Reset abgebrochen.',
     });
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
-    expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+    expect(mocks.revokeAllSessions).toHaveBeenCalledWith('staff', USER_ID);
   });
 
   it('verwehrt einem PARTNER den Passwort-Reset eines ADMIN-Kontos', async () => {
@@ -359,6 +393,39 @@ describe('resetTotpAction', () => {
     );
     expect(JSON.stringify(mocks.evidenceRecord.mock.calls)).not.toContain('encrypted-secret');
     expect(mocks.revokeAllSessions).toHaveBeenCalledWith('staff', USER_ID);
+    expect(mocks.revokeAllSessions.mock.invocationCallOrder[0]!).toBeLessThan(
+      tx.staffUser.updateMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('bricht vor dem 2FA-Reset ab, wenn der Session-Widerruf fehlschlägt', async () => {
+    const tx = {
+      staffUser: {
+        findUnique: vi.fn().mockResolvedValue({
+          roles: [{ role: 'EMPLOYEE' }],
+          totpEnrolledAt: new Date('2026-08-21T12:00:00.000Z'),
+          totpSecretEnc: 'encrypted-secret',
+          totpSetupStartedAt: null,
+          totpBackupCodes: ['hashed-backup-code'],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+    mocks.revokeAllSessions.mockRejectedValueOnce(
+      new Error('Session-Widerruf ist derzeit nicht verfügbar.'),
+    );
+
+    const result = await resetTotpAction({ userId: USER_ID });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Session-Widerruf ist derzeit nicht verfügbar.',
+    });
+    expect(tx.staffUser.updateMany).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('verhindert den eigenen 2FA-Reset', async () => {

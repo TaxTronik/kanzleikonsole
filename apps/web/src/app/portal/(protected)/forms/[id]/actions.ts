@@ -12,6 +12,7 @@ import { checkRateLimit, checkPortalWriteLimit } from '@/server/rate-limit';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, ActionError, type ActionResult } from '@/server/actions/portal-action';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 const Schema = z.object({
   submissionId: z.string().uuid(),
@@ -36,7 +37,7 @@ async function loadSubmissionAndCheckTx(tx: TxClient, submissionId: string, clie
 export async function saveSubmissionDraftAction(
   input: z.infer<typeof Schema>,
 ): Promise<ActionResult> {
-  const g = await portalActionGuard();
+  const g = await portalActionGuard({ module: 'forms' });
   if (!g.ok) return g;
   const { contactId, clientId, ctx } = g;
 
@@ -78,15 +79,16 @@ export async function saveSubmissionDraftAction(
 }
 
 export async function submitSubmissionAction(input: z.infer<typeof Schema>): Promise<ActionResult> {
-  const g = await portalActionGuard();
+  const g = await portalActionGuard({ module: 'forms' });
   if (!g.ok) return g;
   const { tenantId, contactId, clientId, ctx } = g;
 
   const parsed = Schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
+  let linkedRequestId: string | null;
   try {
-    await withTenantContext(ctx, async (tx) => {
+    linkedRequestId = await withTenantContext(ctx, async (tx) => {
       const sub = await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
 
       // Server-seitige Validierung der Pflichtfelder innerhalb derselben
@@ -117,6 +119,49 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
       if (submitted.count === 0) {
         throw new ActionError('Formular wurde bereits übermittelt.');
       }
+
+      // Die Formularabgabe erfüllt den mandantenseitigen offenen Vorgang.
+      // RESPONDED (statt CLOSED) hält die fachliche Nachbearbeitung und
+      // Kanzlei-Zusammenarbeit offen, entfernt die Anforderung aber aus den
+      // offenen Mandanten-/Reminder-Flows. Fallback über formSubmissionId
+      // deckt ältere Workflow-Submissions ohne requestId-Rücklink ab.
+      let linkedRequest = sub.requestId
+        ? await tx.request.findFirst({
+            where: { id: sub.requestId, tenantId, clientId },
+            select: { id: true, status: true },
+          })
+        : null;
+      linkedRequest ??= await tx.request.findFirst({
+        where: { tenantId, clientId, formSubmissionId: sub.id },
+        select: { id: true, status: true },
+      });
+      if (linkedRequest) {
+        const responded = await tx.request.updateMany({
+          where: {
+            id: linkedRequest.id,
+            tenantId,
+            clientId,
+            status: { in: ['OPEN', 'IN_PROGRESS'] },
+          },
+          data: { status: 'RESPONDED' },
+        });
+        if (responded.count === 1) {
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'CLIENT_CONTACT',
+            actorId: contactId,
+            action: 'request.responded',
+            resourceType: 'request',
+            resourceId: linkedRequest.id,
+            before: { status: linkedRequest.status },
+            after: {
+              status: 'RESPONDED',
+              source: 'FORM_SUBMISSION',
+              formSubmissionId: sub.id,
+            },
+          });
+        }
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'CLIENT_CONTACT',
@@ -126,6 +171,7 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
         resourceId: parsed.data.submissionId,
         after: { fieldCount: sub.template.fields.length },
       });
+      return linkedRequest?.id ?? null;
     });
   } catch (e) {
     return toActionError(e);
@@ -137,12 +183,14 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
       tenantId,
       formSubmissionId: parsed.data.submissionId,
       clientId,
+      requestId: linkedRequestId,
     },
     { tenantId },
   );
 
   revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
   revalidatePath('/portal/forms');
+  if (linkedRequestId) revalidatePath(`/portal/requests/${linkedRequestId}`);
   return { ok: true };
 }
 
@@ -168,7 +216,7 @@ export async function uploadFormFileAction(input: {
   mimeType: string;
   base64: string;
 }): Promise<ActionResult & { documentId?: string }> {
-  const g = await portalActionGuard();
+  const g = await portalActionGuard({ module: 'forms' });
   if (!g.ok) return g;
   const { tenantId, contactId, clientId, ctx } = g;
 
@@ -205,6 +253,7 @@ export async function uploadFormFileAction(input: {
   }
 
   let documentId: string;
+  let stored: Awaited<ReturnType<typeof commitDocumentFromBytes>> | null = null;
   try {
     const sub = await withTenantContext(ctx, (tx) =>
       loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId),
@@ -219,7 +268,12 @@ export async function uploadFormFileAction(input: {
       return { ok: false, error: 'Datei zu groß (max. 10 MB).' };
     }
 
-    const stored = await commitDocumentFromBytes({ fileData, classification: 'GENERAL', tenantId });
+    const committed = await commitDocumentFromBytes({
+      fileData,
+      classification: 'GENERAL',
+      tenantId,
+    });
+    stored = committed;
 
     documentId = await withTenantContext(ctx, async (tx) => {
       const doc = await tx.document.create({
@@ -229,19 +283,19 @@ export async function uploadFormFileAction(input: {
           title: parsed.data.fileName,
           classification: 'GENERAL',
           // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-          mimeType: stored.detectedMime ?? parsed.data.mimeType,
+          mimeType: committed.detectedMime ?? parsed.data.mimeType,
         },
       });
       await tx.documentVersion.create({
         data: {
           documentId: doc.id,
           versionNo: 1,
-          storageBucket: stored.targetBucket,
-          storageKey: stored.targetKey,
-          storageVersionId: stored.storageVersionId,
-          sha256: prismaBytes(stored.sha256),
-          sizeBytes: stored.sizeBytes,
-          immutable: stored.immutable,
+          storageBucket: committed.targetBucket,
+          storageKey: committed.targetKey,
+          storageVersionId: committed.storageVersionId,
+          sha256: prismaBytes(committed.sha256),
+          sizeBytes: committed.sizeBytes,
+          immutable: committed.immutable,
           scanStatus: 'CLEAN',
           scanCompletedAt: new Date(),
           createdById: contactId,
@@ -263,6 +317,14 @@ export async function uploadFormFileAction(input: {
       return doc.id;
     });
   } catch (e) {
+    if (stored) {
+      await compensateStorageCommit({
+        tenantId,
+        source: 'portal.form.file',
+        commit: stored,
+        cause: e,
+      });
+    }
     return toActionError(e);
   }
 

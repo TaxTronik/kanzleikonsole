@@ -10,11 +10,13 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import {
-  withStaff,
+  withStaffModule,
   staffActionGuard,
   ActionError,
   type ActionResult,
 } from '@/server/actions/staff-action';
+
+const withHandoversStaff = withStaffModule('handovers');
 
 const StatusEnum = z.enum(['RECEIVED', 'IN_PROGRESS', 'READY', 'PICKED_UP']);
 
@@ -36,7 +38,7 @@ export async function createHandoverAction(
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  return withStaff(
+  return withHandoversStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Q-5: clientId Tenant-Sanity
@@ -70,7 +72,7 @@ export async function updateHandoverStatusAction(input: {
 }): Promise<ActionResult> {
   // staffActionGuard (Gate-only): die READY-Mail ist ein Post-Commit-Side-Effect
   // und braucht tenantId außerhalb der Tx.
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'handovers' });
   if (!g.ok) return g;
   const { tenantId, ctx, session } = g;
 
@@ -213,7 +215,7 @@ export async function deleteHandoverAction(input: { id: string }): Promise<Actio
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withHandoversStaff(async (tx, { tenantId, staffId, session }) => {
     const h = await tx.clientHandover.findUnique({
       where: { id: parsed.data.id },
       select: { label: true, clientId: true },

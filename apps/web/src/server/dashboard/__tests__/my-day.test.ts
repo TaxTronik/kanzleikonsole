@@ -141,4 +141,18 @@ describe('loadMyDayEntries', () => {
       }),
     );
   });
+
+  it('fragt deaktivierte Teilmodule nicht ab', async () => {
+    await loadMyDayEntries(tx as never, 'staff-1', [], new Date(), {
+      workflows: false,
+      reminders: true,
+      appointments: false,
+      phoneNotes: false,
+    });
+
+    expect(tx.workflowItem.findMany).not.toHaveBeenCalled();
+    expect(tx.clientReminder.findMany).toHaveBeenCalledOnce();
+    expect(tx.appointment.findMany).not.toHaveBeenCalled();
+    expect(tx.phoneNote.findMany).not.toHaveBeenCalled();
+  });
 });

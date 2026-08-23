@@ -10,11 +10,13 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
-  withStaff,
+  withStaffModule,
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { fmtDateTimeShort, fmtDateTimeMedium, berlinWallClockToUtc } from '@/lib/fmt';
+
+const withAppointmentsStaff = withStaffModule('appointments');
 
 export interface ActionResult extends BaseActionResult {
   id?: string;
@@ -65,7 +67,7 @@ export async function createAppointmentAction(
   if (endsAt.getTime() <= startsAt.getTime())
     return { ok: false, error: 'Ende muss nach dem Start liegen.' };
 
-  return withStaff(
+  return withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
       // P-7: Sanity-Check innerhalb des Tenants. RLS schützt cross-tenant,
       // aber FK greift nur auf Existenz im DB-Cluster — sonst kann ein
@@ -156,7 +158,7 @@ export async function updateAppointmentAction(
   if (endsAt.getTime() <= startsAt.getTime())
     return { ok: false, error: 'Ende muss nach dem Start liegen.' };
 
-  return withStaff(
+  return withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
@@ -250,7 +252,7 @@ export async function deleteAppointmentAction(input: { id: string }): Promise<Ac
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
@@ -299,7 +301,7 @@ export async function acceptAppointmentRequestAction(input: {
   // Versand nach dem Commit (Muster uploadExternalInvoiceAction).
   let confirmMail: DispatchOptions | null = null;
 
-  const r = await withStaff(
+  const r = await withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
       // P-7 (Befund 5): ownerStaffId Tenant-Sanity — FK prüft nur Existenz.
       await assertStaffInTenant(tx, parsed.data.ownerStaffId);
@@ -467,7 +469,7 @@ export async function rejectAppointmentRequestAction(input: {
   // Befund 4: Mail-Parameter in der Tx einsammeln, Versand nach dem Commit.
   let rejectMail: DispatchOptions | null = null;
 
-  const r = await withStaff(
+  const r = await withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.requestId },

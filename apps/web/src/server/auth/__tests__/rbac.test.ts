@@ -60,6 +60,17 @@ describe('toActionError', () => {
     expect(r).toEqual({ ok: false, error: 'Nur ADMIN/PARTNER.' });
   });
 
+  it('Session-Revocation-Ausfall → stabile Meldung ohne Redis-Interna', () => {
+    const error = new Error('redis://10.0.0.5:6379 timeout');
+    error.name = 'SessionRevocationUnavailableError';
+    const r = toActionError(error);
+    expect(r).toEqual({
+      ok: false,
+      error: 'Session-Widerruf ist derzeit nicht verfügbar.',
+    });
+    expect(r.error).not.toMatch(/redis|10\.0\.0\.5/i);
+  });
+
   it('Prisma P2025 (not found) → menschenlesbare Meldung, kein Stack', () => {
     const e = new Prisma.PrismaClientKnownRequestError('Record not found', {
       code: 'P2025',

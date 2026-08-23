@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { LogOut } from 'lucide-react';
@@ -9,6 +10,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { UiModeToggle } from '@/components/ui-mode-toggle';
 import { readBranding } from '@/server/settings/branding';
 import { readModules } from '@/server/settings/modules';
+import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
 import { readPortalFeatures, type PortalFeatures } from '@/server/settings/portal-features';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
@@ -95,6 +97,9 @@ export default async function PortalLayout({ children }: { children: ReactNode }
       return moduleEnabled && portalFeatureEnabled;
     })
     .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact }));
+
+  const pathname = (await headers()).get('x-taxtronik-pathname') ?? '';
+  if (!isModuleRouteEnabled(modules, 'portal', pathname)) notFound();
 
   return (
     <div className="flex h-screen bg-surface-page" style={brandPaletteStyle(branding.accentColor)}>

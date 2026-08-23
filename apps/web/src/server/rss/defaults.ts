@@ -6,6 +6,7 @@
 // =============================================================================
 
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 
 export const DEFAULT_RSS_FEEDS: Array<{
   name: string;
@@ -32,6 +33,7 @@ export async function seedDefaultRssFeeds(
   tenantId: string,
   staffId: string,
 ): Promise<void> {
+  if (!(await readBooleanTenantModules(tx, tenantId)).rssReader) return;
   for (const f of DEFAULT_RSS_FEEDS) {
     try {
       await tx.rssFeed.create({

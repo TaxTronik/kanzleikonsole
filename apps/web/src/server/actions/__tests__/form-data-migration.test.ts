@@ -99,7 +99,6 @@ describe('parseFormData-Migrationsrest', () => {
         'staff/(protected)/admin/settings/mail-actions.ts::MailDispatchSchema',
         'staff/(protected)/admin/settings/modules-actions.ts::AccessPolicySchema',
         'staff/(protected)/clients/[id]/edit/actions.ts::GwgSchema',
-        'staff/(protected)/clients/[id]/notices/actions.ts::Schema',
         'staff/(protected)/clients/onboarding/[id]/actions.ts::GwgSchema',
       ].sort(),
     );
@@ -108,11 +107,13 @@ describe('parseFormData-Migrationsrest', () => {
   it('misst den verbleibenden transformierten Rest und die gemeinsame Nutzung', () => {
     const { direct, shared } = inventory();
 
-    // 38→55 bzw. 35→48 beim Wechsel auf den Suffix-Match: die Differenz sind
-    // die schon immer vorhandenen Parses in *-actions.ts-Dateien (bulk-,
-    // folder-, invite-, n8n-, …), die der Exakt-Match nie erfasst hatte.
+    // Der Bescheid-Parser transformiert inzwischen zusaetzliche Abrufdaten und
+    // ist deshalb korrekt im transformierten Rest statt bei den exakten
+    // Feld-zu-Feld-Parses. Die Gesamtzahl der direkten Parses bleibt gleich;
+    // der neue interne Anforderungskommentar nutzt dagegen den gemeinsamen,
+    // strikt schema-basierten parseFormData-Helfer.
     expect(direct).toHaveLength(55);
-    expect(direct.filter((call) => !call.exact)).toHaveLength(48);
-    expect(shared).toBe(30);
+    expect(direct.filter((call) => !call.exact)).toHaveLength(49);
+    expect(shared).toBe(31);
   });
 });

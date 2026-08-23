@@ -60,6 +60,7 @@ export type N8nEnqueueStatus =
   | 'PENDING'
   | 'UNROUTED'
   | 'SKIPPED'
+  | 'DUPLICATE'
   | 'INVALID_EVENT'
   | 'WRITE_FAILED';
 
@@ -74,7 +75,7 @@ export interface N8nEnqueueResult {
 
 interface RoutingPlan {
   outboxId: string;
-  status: 'PENDING' | 'UNROUTED' | 'SKIPPED';
+  status: 'PENDING' | 'UNROUTED' | 'SKIPPED' | 'DUPLICATE';
   deliveryCount: number;
   deliveryIds: string[];
   error?: string;
@@ -104,11 +105,31 @@ async function readLegacyConfigHint(
   };
 }
 
+async function readExistingDedupeResult(
+  deps: OutboxEnqueueDeps,
+  dedupeKey: string | null,
+): Promise<N8nEnqueueResult | null> {
+  if (!dedupeKey) return null;
+  const existing = await deps.db.$transaction((tx) =>
+    tx.n8nOutbox.findUnique({
+      where: { dedupeKey },
+      select: { id: true, _count: { select: { deliveries: true } } },
+    }),
+  );
+  return existing
+    ? {
+        eventId: existing.id,
+        status: 'DUPLICATE',
+        deliveryCount: existing._count.deliveries,
+      }
+    : null;
+}
+
 export async function enqueueN8nEventCore(
   deps: OutboxEnqueueDeps,
   event: N8nEventName,
   payload: Record<string, unknown>,
-  opts: { tenantId?: string } = {},
+  opts: { tenantId?: string; dedupeKey?: string } = {},
 ): Promise<N8nEnqueueResult> {
   const { log } = deps;
   if (!isAllowedN8nEvent(event)) {
@@ -122,12 +143,23 @@ export async function enqueueN8nEventCore(
   }
 
   const tenantId = opts.tenantId ?? null;
+  const dedupeKey = opts.dedupeKey?.trim() || null;
+  if (dedupeKey && dedupeKey.length > 200) {
+    return {
+      eventId: null,
+      status: 'WRITE_FAILED',
+      deliveryCount: 0,
+      error: 'n8n-Dedupe-Key ist zu lang',
+    };
+  }
   let planned: RoutingPlan;
 
   try {
+    const duplicate = await readExistingDedupeResult(deps, dedupeKey);
+    if (duplicate) return duplicate;
     planned = await deps.db.$transaction(async (tx) => {
       const outbox = await tx.n8nOutbox.create({
-        data: { tenantId, event, payload: payload as object },
+        data: { tenantId, event, payload: payload as object, dedupeKey },
         select: { id: true },
       });
       const connection = tenantId
@@ -302,6 +334,25 @@ export async function enqueueN8nEventCore(
       } satisfies RoutingPlan;
     });
   } catch (err) {
+    // Zwei parallele Aufrufer desselben stabilen Dedupe-Keys können beide
+    // den Vorab-Read passieren. Der Unique-Backstop gewinnt; der Verlierer
+    // liest den bereits dauerhaft geschriebenen Outbox-Eintrag zurück und ist
+    // damit kein WRITE_FAILED/Retry-Fehler.
+    if (dedupeKey && (err as { code?: string }).code === 'P2002') {
+      const existing = await deps.db.$transaction((tx) =>
+        tx.n8nOutbox.findUnique({
+          where: { dedupeKey },
+          select: { id: true, _count: { select: { deliveries: true } } },
+        }),
+      );
+      if (existing) {
+        return {
+          eventId: existing.id,
+          status: 'DUPLICATE',
+          deliveryCount: existing._count.deliveries,
+        };
+      }
+    }
     log.error({ component: 'n8n-outbox', event, err: (err as Error).message }, 'write failed');
     return {
       eventId: null,

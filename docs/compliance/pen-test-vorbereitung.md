@@ -15,7 +15,10 @@ ersten Produktivstart bei einer Kanzlei.
 - **Web-App** (`/staff/*`, `/portal/*`, `/poa/sign`, `/gwg-onboarding`)
   - Alle Server-Actions
   - Alle API-Routen unter `/api/staff/*` und `/api/portal/*`
-  - n8n-Webhook-Endpoints `/api/n8n/*` (HMAC-Signatur)
+  - n8n-Callback-Endpoints `/api/integrations/n8n/v1/*` (tenantgebundenes
+    Bearer-Credential, Key-ID, Scopes und einmalige Request-ID); die
+    `/api/n8n/*`-HMAC-Routen nur, wenn der Legacy-Migrationspfad bewusst
+    aktiviert wird
   - Magic-Link-Verify, PoA-Sign-Token, GwG-Onboarding-Token
 - **Auth-Flow** (Auth.js v5 mit TOTP-Pflicht für Staff, Magic-Link für Portal)
 - **Tenant-Isolation** via Postgres-RLS (siehe `packages/db/src/__tests__/rls-cross-tenant.test.ts`)
@@ -76,8 +79,9 @@ TOTP-Secrets liegen in einem separaten verschlüsselten Übergabe-Dokument.
 - [ ] TOTP-Bypass-Versuche (leere Codes, Codes für anderen User)
 - [ ] Magic-Link-Token: Wiederverwendung nach Login? Token-Brute-Force?
       Cross-Tenant-Token verwendbar?
-- [ ] Session-Cookie: HttpOnly, Secure (Production), SameSite=Lax,
-      Path-Beschränkung (Staff-Cookie nicht für `/portal`-Routes verwendbar)
+- [ ] Session-Cookie: HttpOnly, Secure (Production), SameSite=Lax, `Path=/`;
+      getrennte Namen/Auth-Konfigurationen verhindern Cross-Surface-Nutzung.
+      Bei konfigurierten Staff-/Portal-Subdomains zusätzlich Domain-Scope testen
 - [ ] Session-Fixation, CSRF (insbesondere Server-Actions)
 - [ ] Logout: Cookie wirklich invalidiert?
 
@@ -88,8 +92,12 @@ TOTP-Secrets liegen in einem separaten verschlüsselten Übergabe-Dokument.
 - [ ] Cross-Tenant-Updates via direktem API-Call mit fremden IDs
 - [ ] RLS-Bypass-Versuche via Prisma-Bugs / `$queryRaw`-Injection
 - [ ] Subdomain-Spoofing falls produktiv genutzt
-- [ ] N8n-Webhook ohne HMAC: 401?
-- [ ] N8n-Endpunkte mit gültigem HMAC, aber Tenant-A-Daten als Body, Tenant-B-Token
+- [ ] n8n-v1-Callback ohne/falsches Bearer-Credential oder Key-ID: 401?
+- [ ] n8n-v1-Callback ohne Scope: 403; ohne/ungültige Request-ID: 400?
+- [ ] Replay derselben Request-ID sowie Cross-Tenant-IDOR mit gültigem
+      Tenant-A-Credential gegen Tenant-B-Ressourcen werden abgelehnt?
+- [ ] Nur bei aktiviertem Legacy-Pfad: `/api/n8n/*` ohne/falsche HMAC,
+      abgelaufener Timestamp und wiederverwendete Nonce werden abgelehnt?
 
 ### 5.3 Public-Pfade (Token-basiert)
 

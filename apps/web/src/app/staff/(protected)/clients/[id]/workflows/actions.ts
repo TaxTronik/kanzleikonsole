@@ -10,10 +10,12 @@ import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-te
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import {
   staffActionGuard,
-  withStaff,
+  withStaffModule,
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+
+const withWorkflowsStaff = withStaffModule('workflows');
 
 function revalidateClientWorkflow(clientId: string | undefined): void {
   if (clientId) revalidatePath(`/staff/clients/${clientId}`);
@@ -49,7 +51,7 @@ export async function startInstanceAction(input: {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   }
 
-  return withStaff(
+  return withWorkflowsStaff(
     async (tx, { tenantId, staffId, session }) => {
       await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Tenant-Sanity: clientId + (optional) analysisId müssen zu diesem Tenant
@@ -164,7 +166,7 @@ export async function setWorkflowMembersAction(input: { instanceId: string; memb
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
       include: { members: { select: { staffId: true } } },
@@ -224,7 +226,7 @@ export async function toggleItemDoneAction(input: { id: string; done: boolean })
   const parsed = z.object({ id: z.string().uuid(), done: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { staffId, session }) => {
     const existing = await tx.workflowItem.findUnique({
       where: { id: parsed.data.id },
       select: { instance: { select: { clientId: true } } },
@@ -279,7 +281,7 @@ export async function setItemDueDateAction(input: {
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
   // R-6: P2025-Mapping erledigt withStaff via toActionError.
-  const r = await withStaff(async (tx, { session }) => {
+  const r = await withWorkflowsStaff(async (tx, { session }) => {
     const existing = await tx.workflowItem.findUnique({
       where: { id: parsed.data.id },
       select: { instance: { select: { clientId: true } } },
@@ -305,7 +307,7 @@ export async function setItemAssigneeAction(input: { id: string; staffId: string
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { session }) => {
+  const r = await withWorkflowsStaff(async (tx, { session }) => {
     const existing = await tx.workflowItem.findUnique({
       where: { id: parsed.data.id },
       select: { instance: { select: { clientId: true } } },
@@ -341,7 +343,7 @@ export async function cancelInstanceAction(input: { instanceId: string; reason: 
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
     });
@@ -393,7 +395,7 @@ export async function restoreInstanceAction(input: { instanceId: string }) {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
@@ -453,7 +455,7 @@ export async function pauseInstanceAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
@@ -501,7 +503,7 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
@@ -586,7 +588,7 @@ export async function addItemToInstanceAction(input: {
   const configResult = parseStepConfig(kind, parsed.data.config);
   if (!configResult.ok) return { ok: false as const, error: `Kind ${kind}: ${configResult.error}` };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
       include: { items: { orderBy: { position: 'desc' }, take: 1, select: { position: true } } },
@@ -645,7 +647,7 @@ export async function handoverItemAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const myName = session.user.name ?? 'Ich';
     const item = await tx.workflowItem.findUnique({
       where: { id: parsed.data.itemId },
@@ -706,7 +708,7 @@ export async function addItemCommentAction(input: { itemId: string; body: string
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const authorName = session.user.name ?? 'Mitarbeiter';
     const item = await tx.workflowItem.findUnique({
       where: { id: parsed.data.itemId },
@@ -760,7 +762,7 @@ export async function deleteCancelledInstanceAction(input: { instanceId: string 
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
     });
@@ -810,7 +812,7 @@ export async function deleteCancelledInstanceAction(input: { instanceId: string 
 export async function executeItemAction(input: {
   id: string;
 }): Promise<ActionResult & ExecuteResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'workflows' });
   if (!g.ok) return g;
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };

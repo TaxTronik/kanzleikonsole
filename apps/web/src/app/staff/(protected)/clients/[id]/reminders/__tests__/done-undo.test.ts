@@ -24,6 +24,7 @@ const m = vi.hoisted(() => {
 
 vi.mock('@/server/actions/staff-action', () => ({
   withStaff: m.withStaff,
+  withStaffModule: () => m.withStaff,
   ActionError: m.ActionError,
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));

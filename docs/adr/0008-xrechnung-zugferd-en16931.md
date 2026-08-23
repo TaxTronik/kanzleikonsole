@@ -1,4 +1,4 @@
-# ADR 0008 — XRechnung 3.0 + ZUGFeRD/Factur-X (EN 16931)
+# ADR 0008 — XRechnung 3.0.2 + ZUGFeRD/Factur-X (EN 16931)
 
 **Status**: Akzeptiert (Iteration 5b)
 **Datum**: 2026-05-10
@@ -11,7 +11,7 @@ keine konformen E-Rechnungen mehr.
 
 Zwei Export-Formate, beide aus denselben Daten:
 
-1. **XRechnung 3.0** (CII-XML pur)
+1. **XRechnung 3.0.2** (CII-XML pur)
    - Profil-ID: `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0`
    - Endpoint: `/api/staff/invoices/[id]/xrechnung`
    - Verwendung: B2G (öffentliche Auftraggeber), Maschine-zu-Maschine

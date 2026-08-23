@@ -184,7 +184,7 @@ export async function createPoaAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ modeModule: 'poa' });
   if (!g.ok) return { ok: false, error: g.error };
   const { tenantId, staffId, ctx, session } = g;
 
@@ -535,7 +535,7 @@ const SendSchema = z.object({
 });
 
 export async function sendForSignatureAction(formData: FormData): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ modeModule: 'poa' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
@@ -759,6 +759,6 @@ export async function revokePoaAction(formData: FormData): Promise<void> {
         after: { reason: parsed.data.reason },
       });
     },
-    { revalidate: ['/staff/poa', `/staff/poa/${parsed.data.poaId}`] },
+    { modeModule: 'poa', revalidate: ['/staff/poa', `/staff/poa/${parsed.data.poaId}`] },
   );
 }

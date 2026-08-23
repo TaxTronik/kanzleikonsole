@@ -6,7 +6,7 @@
 // Fälle, in denen SameSite nicht greift (ältere Browser, Subdomain-
 // Konstellationen, künftige Cookie-Änderungen). Browser senden bei POST den
 // Origin-Header zuverlässig mit; fehlt er, muss Sec-Fetch-Site eindeutig
-// same-origin/same-site/none sein. Fehlen beide Signale, blocken wir
+// same-origin sein. Fehlen beide Signale, blocken wir
 // fail-closed.
 // =============================================================================
 
@@ -48,7 +48,7 @@ export function assertSameOrigin(req: NextRequest, expectedBaseUrl: string): Nex
   // same-origin) — fehlt er, ist es ein älterer oder Nicht-Browser-Client.
   // Sec-Fetch-Site als zweites Signal; fehlt auch das, blocken wir.
   const fetchSite = req.headers.get('sec-fetch-site');
-  if (fetchSite === 'same-origin' || fetchSite === 'same-site' || fetchSite === 'none') {
+  if (fetchSite === 'same-origin') {
     return null;
   }
   return mismatch();

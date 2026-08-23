@@ -43,10 +43,13 @@ describe('assertSameOrigin', () => {
     expect(res?.status).toBe(403);
   });
 
-  it('akzeptiert fehlenden Origin nur mit eindeutig same-site Fetch-Metadata', () => {
+  it('akzeptiert fehlenden Origin nur mit eindeutig same-origin Fetch-Metadata', () => {
     expect(
-      assertSameOrigin(post({ 'sec-fetch-site': 'same-site' }), 'https://staff.example.de'),
+      assertSameOrigin(post({ 'sec-fetch-site': 'same-origin' }), 'https://staff.example.de'),
     ).toBeNull();
+    expect(
+      assertSameOrigin(post({ 'sec-fetch-site': 'same-site' }), 'https://staff.example.de')?.status,
+    ).toBe(403);
     expect(
       assertSameOrigin(post({ 'sec-fetch-site': 'cross-site' }), 'https://staff.example.de')
         ?.status,

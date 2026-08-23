@@ -9,10 +9,13 @@ import { prismaBytes } from '@/server/db/prisma-bytes';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import {
   staffActionGuard,
-  withStaff,
+  withStaffModule,
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+
+const withTaxNoticesStaff = withStaffModule('taxNotices');
 
 export interface ActionResult extends BaseActionResult {
   id?: string;
@@ -62,7 +65,7 @@ const SaveSchema = z.object({
 export async function saveTaxFilingAction(
   input: z.infer<typeof SaveSchema>,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'taxNotices' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
@@ -71,51 +74,28 @@ export async function saveTaxFilingAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const data = parsed.data;
 
-  // PDF optional vorab ablegen (vor TX, ClamAV-Scan etc.)
-  let documentId: string | undefined;
+  // Zugriff vor dem irreversiblen Object-Lock-Commit prüfen; der finale
+  // Transaktionsblock prüft erneut gegen zwischenzeitliche Änderungen.
+  try {
+    await withTenantContext(ctx, (tx) => assertClientAccessTx(tx, session, data.clientId));
+  } catch (error) {
+    return toActionError(error);
+  }
+
+  let stored: Awaited<ReturnType<typeof commitDocumentFromBytes>> | null = null;
   if (data.pdf) {
     const fileData = Buffer.from(data.pdf.base64, 'base64');
     if (fileData.length > 10 * 1024 * 1024) {
       return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
     }
-    const stored = await commitDocumentFromBytes({
-      fileData,
-      classification: 'GOBD_TAX',
-      tenantId,
-    });
     try {
-      documentId = await withTenantContext(ctx, async (tx) => {
-        await assertClientAccessTx(tx, session, data.clientId);
-        const doc = await tx.document.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            title: data.pdf!.fileName,
-            classification: 'GOBD_TAX',
-            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-            mimeType: stored.detectedMime ?? data.pdf!.mimeType,
-            retentionUntil: stored.retentionUntil,
-          },
-        });
-        await tx.documentVersion.create({
-          data: {
-            documentId: doc.id,
-            versionNo: 1,
-            storageBucket: stored.targetBucket,
-            storageKey: stored.targetKey,
-            storageVersionId: stored.storageVersionId,
-            sha256: prismaBytes(stored.sha256),
-            sizeBytes: stored.sizeBytes,
-            immutable: stored.immutable,
-            scanStatus: 'CLEAN',
-            scanCompletedAt: new Date(),
-            createdById: staffId,
-          },
-        });
-        return doc.id;
+      stored = await commitDocumentFromBytes({
+        fileData,
+        classification: 'GOBD_TAX',
+        tenantId,
       });
-    } catch (e) {
-      return toActionError(e);
+    } catch (error) {
+      return toActionError(error);
     }
   }
 
@@ -123,6 +103,36 @@ export async function saveTaxFilingAction(
   try {
     resultId = await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, data.clientId);
+      const committed = stored;
+      let documentId: string | undefined;
+      if (committed && data.pdf) {
+        const doc = await tx.document.create({
+          data: {
+            tenantId,
+            clientId: data.clientId,
+            title: data.pdf.fileName,
+            classification: 'GOBD_TAX',
+            mimeType: committed.detectedMime ?? data.pdf.mimeType,
+            retentionUntil: committed.retentionUntil,
+          },
+        });
+        await tx.documentVersion.create({
+          data: {
+            documentId: doc.id,
+            versionNo: 1,
+            storageBucket: committed.targetBucket,
+            storageKey: committed.targetKey,
+            storageVersionId: committed.storageVersionId,
+            sha256: prismaBytes(committed.sha256),
+            sizeBytes: committed.sizeBytes,
+            immutable: committed.immutable,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            createdById: staffId,
+          },
+        });
+        documentId = doc.id;
+      }
       const baseData = {
         kind: data.kind,
         period: data.period,
@@ -198,6 +208,14 @@ export async function saveTaxFilingAction(
       return created.id;
     });
   } catch (e) {
+    if (stored) {
+      await compensateStorageCommit({
+        tenantId,
+        source: 'staff.tax_filing.pdf',
+        commit: stored,
+        cause: e,
+      });
+    }
     return toActionError(e);
   }
 
@@ -218,7 +236,7 @@ export async function shareTaxFilingAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
   const { filingId, clientId, share } = parsed.data;
 
-  return withStaff(
+  return withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const filing = await tx.taxFiling.findUnique({ where: { id: filingId } });
       if (!filing) throw new ActionError('Erklärung nicht gefunden.');
@@ -255,7 +273,7 @@ export async function deleteTaxFilingAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const filing = await tx.taxFiling.findUnique({ where: { id: parsed.data.filingId } });
       if (!filing) throw new ActionError('Erklärung nicht gefunden.');

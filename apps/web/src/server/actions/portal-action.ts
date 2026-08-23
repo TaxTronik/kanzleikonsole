@@ -18,6 +18,11 @@ import type { TenantContext, TxClient } from '@taxtronik/db';
 import { portalAuth, type PortalSession } from '@/server/auth/portal';
 import { toActionError, ActionError } from '@/server/auth/rbac';
 import type { ActionResult } from './types';
+import {
+  assertModuleEnabled,
+  ModuleDisabledError,
+  type BooleanModuleKey,
+} from '@/server/settings/modules';
 
 // Domänen-Fehler mit UI-tauglicher Message — im withPortalContext-Callback werfen.
 export { ActionError };
@@ -34,20 +39,35 @@ export interface PortalCtx {
 }
 
 export type PortalGuardResult = ({ ok: true } & PortalCtx) | { ok: false; error: string };
+export type PortalGuardOptions = { module?: BooleanModuleKey };
+export type WithPortalOptions = PortalGuardOptions & { revalidate?: string | string[] };
 
 /**
  * Auth-Gate für Portal-Actions: prüft die Kontakt-Session und liefert Session +
  * Tenant-Kontext (actorType CLIENT_CONTACT). Discriminated Union → Caller:
  * `if (!g.ok) return g;`.
  */
-export async function portalActionGuard(): Promise<PortalGuardResult> {
+export async function portalActionGuard(opts: PortalGuardOptions = {}): Promise<PortalGuardResult> {
   const session = await portalAuth();
   if (!session?.user) return { ok: false, error: 'Nicht eingeloggt.' };
   const { tenantId, contactId, clientId } = session.user;
+  const ctx: TenantContext = {
+    tenantId,
+    actorId: contactId,
+    actorType: 'CLIENT_CONTACT',
+  };
+  if (opts.module) {
+    try {
+      await assertModuleEnabled(ctx, opts.module);
+    } catch (error) {
+      if (error instanceof ModuleDisabledError) return { ok: false, error: error.message };
+      throw error;
+    }
+  }
   return {
     ok: true,
     session,
-    ctx: { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
+    ctx,
     tenantId,
     contactId,
     clientId,
@@ -61,10 +81,10 @@ export async function portalActionGuard(): Promise<PortalGuardResult> {
  */
 export async function withPortalContext<T extends Record<string, unknown> = Record<string, never>>(
   fn: (tx: TxClient, ctx: PortalCtx) => Promise<T | void>,
-  opts: { revalidate?: string | string[] } = {},
+  opts: WithPortalOptions = {},
 ): Promise<ActionResult & Partial<T>> {
   type R = ActionResult & Partial<T>;
-  const guard = await portalActionGuard();
+  const guard = await portalActionGuard(opts);
   if (!guard.ok) return guard as R;
   try {
     const data = await withTenantContext(guard.ctx, (tx) => fn(tx, guard));
@@ -74,4 +94,17 @@ export async function withPortalContext<T extends Record<string, unknown> = Reco
   } catch (e) {
     return toActionError(e) as R;
   }
+}
+
+export function withPortalModule(module: BooleanModuleKey) {
+  return function withBoundPortal<T extends Record<string, unknown> = Record<string, never>>(
+    fn: (tx: TxClient, ctx: PortalCtx) => Promise<T | void>,
+    opts: Omit<WithPortalOptions, 'module'> = {},
+  ): Promise<ActionResult & Partial<T>> {
+    return withPortalContext(fn, { ...opts, module });
+  };
+}
+
+export function portalModuleActionGuard(module: BooleanModuleKey): Promise<PortalGuardResult> {
+  return portalActionGuard({ module });
 }

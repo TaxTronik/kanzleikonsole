@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   commitBytesWithTier: vi.fn(),
   createDocumentWithVersion: vi.fn(),
   evidenceRecord: vi.fn(),
+  compensateStorageCommit: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
@@ -16,6 +17,9 @@ vi.mock('@/server/documents/upload-helpers', () => ({
 }));
 vi.mock('@/server/container', () => ({
   evidenceService: { record: mocks.evidenceRecord },
+}));
+vi.mock('@/server/documents/storage-compensation', () => ({
+  compensateStorageCommit: mocks.compensateStorageCommit,
 }));
 
 import type { TenantContext, TxClient } from '@taxtronik/db';
@@ -150,9 +154,15 @@ describe('saveResearchResultToShelf', () => {
       documentId: fremdesDokument,
       alreadySaved: true,
     });
-    // Objekt wurde geschrieben (und bleibt ungenutzt), aber KEIN zweites
-    // Dokument und keine doppelte Verknuepfung.
+    // Objekt wurde geschrieben, wird nach dem verlorenen Race aber sofort
+    // versionsgenau kompensiert; kein zweites DB-Dokument entsteht.
     expect(mocks.commitBytesWithTier).toHaveBeenCalledTimes(1);
+    expect(mocks.compensateStorageCommit).toHaveBeenCalledWith({
+      tenantId: ctx.tenantId,
+      source: 'risk.research.shelf_race',
+      commit: expect.objectContaining({ targetBucket: 'general', targetKey: 'k' }),
+      cause: expect.any(Error),
+    });
     expect(mocks.createDocumentWithVersion).not.toHaveBeenCalled();
     expect(tx.riskResearchResult.update).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
@@ -199,5 +209,31 @@ describe('saveResearchResultToShelf', () => {
     await expect(saveResearchResultToShelf(ctx, input)).rejects.toThrow('GwG-Prüfung ausstehend');
     expect(mocks.commitBytesWithTier).not.toHaveBeenCalled();
     expect(mocks.createDocumentWithVersion).not.toHaveBeenCalled();
+  });
+
+  it('kompensiert den Storage-Commit, wenn die zweite DB-Transaktion scheitert', async () => {
+    const tx = mockTx();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          id: input.resultId,
+          title: 'Ergebnis',
+          body: '# Antwort',
+          requestTitle: null,
+          shelfDocumentId: null,
+        },
+      ])
+      .mockRejectedValueOnce(new Error('database unavailable'));
+    tx.client.findUnique.mockResolvedValue({ allowActive: true });
+    mocks.commitBytesWithTier.mockResolvedValue({ targetBucket: 'general', targetKey: 'k' });
+
+    await expect(saveResearchResultToShelf(ctx, input)).rejects.toThrow('database unavailable');
+
+    expect(mocks.compensateStorageCommit).toHaveBeenCalledWith({
+      tenantId: ctx.tenantId,
+      source: 'risk.research.shelf',
+      commit: expect.objectContaining({ targetKey: 'k' }),
+      cause: expect.any(Error),
+    });
   });
 });

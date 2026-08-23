@@ -6,13 +6,15 @@ import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
-import { assertPublicHost } from '@/server/http/ssrf-guard';
+import { assertPublicUrl } from '@/server/http/ssrf-guard';
 import {
   staffActionGuard,
-  withStaff,
+  withStaffModule,
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+
+const withRssReaderStaff = withStaffModule('rssReader');
 
 export type ActionResult = BaseActionResult;
 
@@ -38,7 +40,7 @@ export async function addRssFeedAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
+  const g = await staffActionGuard({ module: 'rssReader' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
   const parsed = AddSchema.safeParse({
@@ -57,7 +59,7 @@ export async function addRssFeedAction(
   // vektor. assertPublicHost weist private/loopback/CGNAT/IPv6-Sondernutzung
   // ab (M-5).
   try {
-    await assertPublicHost(urlClean);
+    await assertPublicUrl(urlClean);
   } catch (e) {
     return { ok: false, error: `URL nicht zulässig: ${(e as Error).message}` };
   }
@@ -117,7 +119,7 @@ export async function toggleRssFeedAction(input: {
   const parsed = z.object({ id: z.string().uuid(), active: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withRssReaderStaff(
     async (tx, { tenantId, staffId }) => {
       await tx.rssFeed.update({
         where: { id: parsed.data.id },
@@ -140,7 +142,7 @@ export async function deleteRssFeedAction(input: { id: string }): Promise<Action
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withRssReaderStaff(
     async (tx, { tenantId, staffId }) => {
       const f = await tx.rssFeed.findUnique({
         where: { id: parsed.data.id },
@@ -162,7 +164,7 @@ export async function deleteRssFeedAction(input: { id: string }): Promise<Action
 }
 
 export async function resetRssFeedDefaultsAction(): Promise<ActionResult> {
-  return withStaff(
+  return withRssReaderStaff(
     async (tx, { tenantId, staffId }) => {
       await seedDefaultRssFeeds(tx, tenantId, staffId);
       await evidenceService.record(tx, {

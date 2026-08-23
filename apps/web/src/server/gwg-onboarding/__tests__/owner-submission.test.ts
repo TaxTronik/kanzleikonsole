@@ -65,4 +65,23 @@ describe('öffentliches GwG-Onboarding – PEP-Snapshot', () => {
       notes: 'Anteil: 1000 %',
     });
   });
+
+  it('blockiert zeitlich unmögliche Personen- und Ausweisdaten', () => {
+    expect(
+      GwgOnboardingOwnerSchema.safeParse({ ...validOwner, birthDate: '9999-01-01' }).success,
+    ).toBe(false);
+    expect(
+      GwgOnboardingOwnerSchema.safeParse({ ...validOwner, idIssueDate: '9999-01-01' }).success,
+    ).toBe(false);
+    expect(
+      GwgOnboardingOwnerSchema.safeParse({
+        ...validOwner,
+        idIssueDate: '2035-01-02',
+        idExpiryDate: '2035-01-01',
+      }).success,
+    ).toBe(false);
+    expect(
+      GwgOnboardingOwnerSchema.safeParse({ ...validOwner, idIssueDate: '1979-12-31' }).success,
+    ).toBe(false);
+  });
 });

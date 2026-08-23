@@ -19,11 +19,13 @@ import {
   setReminderAssigneesTx,
 } from '@/server/reminders/service';
 import { REMINDER_PRIORITIES } from '@/lib/reminder-priority';
-import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { withStaffModule, ActionError, type ActionResult } from '@/server/actions/staff-action';
 import {
   scheduleReminderDoneNotification,
   cancelReminderDoneNotification,
 } from '@/server/jobs/reminder-done-queue';
+
+const withRemindersStaff = withStaffModule('reminders');
 
 const CreateSchema = z.object({
   // null/leer = interne Aufgabe ohne Mandantenbezug.
@@ -56,7 +58,7 @@ export async function createReminderAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   const clientId = parsed.data.clientId;
-  return withStaff(
+  return withRemindersStaff(
     async (tx, { tenantId, staffId, session }) => {
       // Mit Mandant: die Mandanten-Policy entscheidet. Ohne Mandant ist es eine
       // interne Aufgabe — die darf jede:r fuer sich und Kolleg:innen anlegen.
@@ -128,7 +130,7 @@ export async function cloneReminderAction(input: {
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const quelle = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
       select: REMINDER_ACCESS_SELECT,
@@ -180,7 +182,7 @@ export async function addReminderNoteAction(input: {
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
       select: REMINDER_ACCESS_SELECT,
@@ -213,7 +215,7 @@ export async function setReminderAssigneesAction(input: {
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
       select: REMINDER_ACCESS_SELECT,
@@ -253,7 +255,7 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
       select: { ...REMINDER_ACCESS_SELECT, subject: true, doneAt: true },
@@ -304,7 +306,7 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
     const eingeplant = await scheduleReminderDoneNotification(geplant);
     if (!eingeplant) {
       // Fail-safe: sofort zustellen statt die Rueckmeldung zu verlieren.
-      await withStaff(async (tx) => {
+      await withRemindersStaff(async (tx) => {
         await notify(tx, {
           tenantId: geplant.tenantId,
           staffId: geplant.staffId,
@@ -338,7 +340,7 @@ export async function reopenReminderAction(input: { id: string }): Promise<Actio
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
       select: { ...REMINDER_ACCESS_SELECT, doneAt: true },
@@ -397,7 +399,7 @@ export async function setReminderPriorityAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
       select: { ...REMINDER_ACCESS_SELECT, priority: true },
@@ -450,7 +452,7 @@ export async function submitResearchResultAction(input: {
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     await assertClientAccessTx(tx, session, parsed.data.clientId);
     await assertClientInTenant(tx, parsed.data.clientId);
     const reminder = await tx.clientReminder.findUnique({
@@ -535,7 +537,7 @@ export async function deleteReminderAction(input: { id: string }): Promise<Actio
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id },
       select: { ...REMINDER_ACCESS_SELECT, subject: true },
@@ -579,7 +581,7 @@ export async function setReminderNotifyModeAction(input: {
   const parsed = z.object({ mode: z.enum(['ALL', 'MENTIONS_ONLY']) }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  return withStaff(
+  return withRemindersStaff(
     async (tx, { tenantId, staffId }) => {
       await tx.staffUser.update({
         where: { id: staffId },

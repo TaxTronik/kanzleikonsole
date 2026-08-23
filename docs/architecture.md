@@ -23,7 +23,8 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
                 │                            ▼            │
         ┌───────┴────────────────────────────────────────┐
         │  worker (Node + BullMQ)                        │
-        │  - Hash-Chain-Versiegelung (täglich, RFC-3161) │
+        │  - rollende Audit-Anker (2 s, RFC-3161)        │
+        │  - zusätzliche Tagesversiegelung + Verify     │
         │  - Chain-Verify + Audit-Archiv-Rotation        │
         │  - Fristen-/Ablauf-Checks (GwG, PoA, Termine)  │
         │  - Reminder, RSS, DSGVO-Retention, n8n-Outbox  │
@@ -47,8 +48,11 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
 
 3. **Manipulationsevidenz via Hash-Chain + RFC-3161** — jede compliance-
    relevante Schreiboperation landet in `audit_log`, hash-verkettet pro Tenant.
-   Worker versiegelt täglich den Tages-Spitzen-Hash mit RFC-3161. Verifikation
-   per CLI (`pnpm verify:chain`).
+   Der Worker verankert den neuesten committeten Kettenpräfix im Regelfall alle
+   zwei Sekunden in einer separaten, ebenfalls append-only geführten
+   RFC-3161-Ankerkette. Eine tägliche Versiegelung der Tageskettenspitze bleibt
+   als unabhängiger zusätzlicher Nachweis bestehen. Verifikation per CLI
+   (`pnpm verify:chain`).
 
 4. **n8n für konfigurierbare Automation, Code für Kernkontrollen** — optionale
    Kommunikations-, Recherche- und Eskalationsstrecken können über die

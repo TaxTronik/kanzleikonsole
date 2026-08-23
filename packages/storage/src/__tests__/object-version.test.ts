@@ -191,18 +191,18 @@ describe('S3-Objektversionen', () => {
     expect(h.send.mock.calls[1]![0]).toBeInstanceOf(ListObjectVersionsCommand);
   });
 
-  it('bricht fail-closed ab, wenn nach dem Delete noch eine Version existiert', async () => {
+  it('akzeptiert andere legitime Versionen desselben Schlüssels', async () => {
     h.send.mockResolvedValueOnce({}).mockResolvedValueOnce({
       Versions: [{ Key: 'tenant/document.bin', VersionId: 'older-version' }],
       DeleteMarkers: [],
     });
 
-    await expect(deleteObjectVersion('gwg', 'tenant/document.bin', 'version-123')).rejects.toThrow(
-      'STORAGE_DELETE_INCOMPLETE',
-    );
+    await expect(
+      deleteObjectVersion('gwg', 'tenant/document.bin', 'version-123'),
+    ).resolves.toBeUndefined();
   });
 
-  it('prüft auch Folgeseiten auf verbliebene Versionen', async () => {
+  it('prüft auch Folgeseiten auf die verbliebene Zielversion', async () => {
     h.send
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({
@@ -214,7 +214,7 @@ describe('S3-Objektversionen', () => {
       })
       .mockResolvedValueOnce({
         IsTruncated: false,
-        Versions: [{ Key: 'tenant/document.bin', VersionId: 'oldest-version' }],
+        Versions: [{ Key: 'tenant/document.bin', VersionId: 'version-123' }],
       });
 
     await expect(deleteObjectVersion('gwg', 'tenant/document.bin', 'version-123')).rejects.toThrow(

@@ -30,6 +30,14 @@ import {
 } from '@/server/auth/rbac';
 import { decideStaffGuard } from './staff-action-policy';
 import type { ActionResult } from './types';
+import {
+  assertModuleEnabled,
+  isModeModuleEnabled,
+  ModuleDisabledError,
+  readModules,
+  type BooleanModuleKey,
+  type ModeModuleKey,
+} from '@/server/settings/modules';
 
 // Domänen-Fehler mit UI-tauglicher Message — innerhalb eines withStaff-Callbacks
 // werfen, um eine konkrete Meldung an den Client zu geben (statt generisch).
@@ -49,14 +57,23 @@ export interface StaffCtx {
 }
 
 export type StaffGuardResult = ({ ok: true } & StaffCtx) | ActionErrorResult;
+export type StaffGuardOptions = {
+  requireAdmin?: boolean;
+  requirePermission?: StaffPermissionName;
+  module?: BooleanModuleKey;
+  /** Module mit Betriebsmodus (OFF = vollständig deaktiviert). */
+  modeModule?: ModeModuleKey;
+};
+export type WithStaffOptions = StaffGuardOptions & {
+  uniqueError?: string;
+  revalidate?: string | string[];
+};
 
 /**
  * Auth-Gate für Staff-Actions: prüft Session (+ optional Admin) und liefert
  * Session + Tenant-Kontext. Discriminated Union → Caller: `if (!g.ok) return g;`.
  */
-export async function staffActionGuard(
-  opts: { requireAdmin?: boolean; requirePermission?: StaffPermissionName } = {},
-): Promise<StaffGuardResult> {
+export async function staffActionGuard(opts: StaffGuardOptions = {}): Promise<StaffGuardResult> {
   const session = await staffAuth();
   const denied = decideStaffGuard({
     hasUser: !!session?.user,
@@ -69,10 +86,26 @@ export async function staffActionGuard(
   });
   if (denied || !session?.user) return { ok: false, error: denied ?? 'Nicht eingeloggt.' };
   const { tenantId, staffId } = session.user;
+  const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
+  if (opts.module) {
+    try {
+      await assertModuleEnabled(ctx, opts.module);
+    } catch (error) {
+      if (error instanceof ModuleDisabledError) return { ok: false, error: error.message };
+      throw error;
+    }
+  }
+  if (opts.modeModule) {
+    const modules = await readModules(ctx);
+    if (!isModeModuleEnabled(modules, opts.modeModule)) {
+      const label = opts.modeModule === 'poa' ? 'Vollmachten' : 'Rechnungen';
+      return { ok: false, error: `Das Modul ${label} ist deaktiviert.` };
+    }
+  }
   return {
     ok: true,
     session,
-    ctx: { tenantId, actorId: staffId, actorType: 'STAFF' },
+    ctx,
     tenantId,
     staffId,
   };
@@ -86,12 +119,7 @@ export async function staffActionGuard(
  */
 export async function withStaff<T extends Record<string, unknown> = Record<string, never>>(
   fn: (tx: TxClient, ctx: StaffCtx) => Promise<T | void>,
-  opts: {
-    requireAdmin?: boolean;
-    requirePermission?: StaffPermissionName;
-    uniqueError?: string;
-    revalidate?: string | string[];
-  } = {},
+  opts: WithStaffOptions = {},
 ): Promise<ActionResult & Partial<T>> {
   // Fehlerpfade tragen keine T-Felder → Cast nach Partial<T> ist korrekt
   // (TS kann das über das generische Partial<T> nur nicht selbst beweisen).
@@ -109,4 +137,25 @@ export async function withStaff<T extends Record<string, unknown> = Record<strin
     }
     return toActionError(e) as R;
   }
+}
+
+/**
+ * Bindet einen Action-Baustein einmalig an ein tenantweites Modul. Dadurch
+ * können Dateien mit vielen Actions das Gate nicht bei einzelnen Writes
+ * versehentlich auslassen; Spezialoptionen wie Admin/Permission bleiben aktiv.
+ */
+export function withStaffModule(module: BooleanModuleKey) {
+  return function withBoundStaff<T extends Record<string, unknown> = Record<string, never>>(
+    fn: (tx: TxClient, ctx: StaffCtx) => Promise<T | void>,
+    opts: Omit<WithStaffOptions, 'module'> = {},
+  ): Promise<ActionResult & Partial<T>> {
+    return withStaff(fn, { ...opts, module });
+  };
+}
+
+export function staffModuleActionGuard(
+  module: BooleanModuleKey,
+  opts: Omit<StaffGuardOptions, 'module'> = {},
+): Promise<StaffGuardResult> {
+  return staffActionGuard({ ...opts, module });
 }

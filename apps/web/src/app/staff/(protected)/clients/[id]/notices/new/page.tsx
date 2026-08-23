@@ -77,8 +77,9 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
             </label>
             <input type="date" name="noticeDate" required className="input w-full" />
             <p className="text-xs text-muted mt-1">
-              Maßgeblich ist der Tag der Aufgabe, elektronischen Absendung oder Bereitstellung. Ist
-              er nicht sicher feststellbar, wird konservativ das Bescheiddatum verwendet.
+              Maßgeblich ist der Tag der Aufgabe, elektronischen Absendung oder Bereitstellung. Beim
+              Datenabruf ist hier stets der Bereitstellungstag einzutragen. Ist der Tag nicht sicher
+              feststellbar, wird konservativ das Bescheiddatum verwendet.
             </p>
           </div>
           <div>
@@ -114,6 +115,44 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </div>
         </div>
 
+        <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+          <legend className="px-1 text-sm font-medium text-primary">
+            Datenabruf (§ 122a Abs. 4 AO)
+          </legend>
+          <p className="text-xs text-muted">
+            Nur bei „Zum Datenabruf bereitgestellt“ ausfüllen. Das Erlassdatum entscheidet über Alt-
+            oder Neurecht; der Bereitstellungstag steht oben im ersten Datumsfeld.
+          </p>
+          <div>
+            <label className="label-sm">Erlass-/Bescheiddatum</label>
+            <input type="date" name="retrievalIssuedAt" className="input w-full" />
+            <p className="text-xs text-muted mt-1">
+              Beim Datenabruf Pflicht. Für nach dem 31.12.2025 erlassene Bescheide gilt
+              Bereitstellung + 4 Tage.
+            </p>
+          </div>
+          <div>
+            <label className="label-sm">Elektronische Benachrichtigung versandt am</label>
+            <input type="date" name="retrievalNotificationDate" className="input w-full" />
+            <p className="text-xs text-muted mt-1">
+              Für bis 31.12.2025 erlassene Bescheide Pflicht; die alte Bekanntgabefiktion beginnt
+              mit dieser Benachrichtigung, nicht mit der Bereitstellung.
+            </p>
+          </div>
+          <label className="flex items-start gap-2 text-sm text-secondary">
+            <input type="checkbox" name="retrievalNotificationDisputedOrLate" className="mt-0.5" />
+            <span>Zugang der Benachrichtigung bestritten oder erst verspätet erfolgt</span>
+          </label>
+          <div>
+            <label className="label-sm">Tatsächlich abgerufen am</label>
+            <input type="date" name="retrievedAt" className="input w-full" />
+            <p className="text-xs text-muted mt-1">
+              Im markierten Ausnahmefall maßgeblich, sobald ein Abruf erfolgt ist. Ohne
+              nachgewiesenen Benachrichtigungszugang und ohne Abruf läuft noch keine Frist.
+            </p>
+          </div>
+        </fieldset>
+
         <div>
           <label className="label-sm">
             Tatsächlich bekanntgegeben / zugegangen am{' '}
@@ -122,8 +161,8 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           <input type="date" name="receivedAt" className="input w-full" />
           <p className="text-xs text-muted mt-1">
             Bei Post im Inland/Ausland oder elektronischer Übermittlung nur ausfüllen, wenn ein{' '}
-            <strong>späterer</strong> Zugang als die 4-Tage-Fiktion nachweisbar ist. Beim Datenabruf
-            gilt der vierte Tag nach Bereitstellung; bei förmlicher, persönlicher oder sonstiger
+            <strong>späterer</strong> Zugang als die gesetzliche Fiktion nachweisbar ist. Dieses
+            Feld gilt nicht für den Datenabruf. Bei förmlicher, persönlicher oder sonstiger
             Bekanntgabe ist der rechtlich maßgebliche Tag Pflicht. Fehlende/unrichtige Belehrung
             führt grundsätzlich zur Jahresfrist (§ 356 Abs. 2 AO; Ausnahmen prüfen).
           </p>

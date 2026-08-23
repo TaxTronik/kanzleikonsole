@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { withTenantContext } from '@taxtronik/db';
 import { env } from '@taxtronik/config';
 import { evidenceService } from '@/server/container';
-import { assertPublicHost } from '@/server/http/ssrf-guard';
+import { assertPublicUrl } from '@/server/http/ssrf-guard';
 import { writeTaxRegion } from '@/server/settings/tax-region';
 import { writeTsaConfig, type TsaConfig } from '@/server/settings/tsa';
 import { Rfc3161HttpAdapter, getTsaProvider } from '@taxtronik/evidence';
@@ -122,7 +122,7 @@ export async function saveTsaAction(
   // private Adressen zeigt — der Worker würde sie täglich anfetchen.
   if (parsed.data.providerId === 'custom') {
     try {
-      await assertPublicHost(parsed.data.customUrl!.trim());
+      await assertPublicUrl(parsed.data.customUrl!.trim());
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
@@ -172,7 +172,7 @@ export async function testTsaAction(
 
   // NEW1: SSRF-Schutz auch beim Test (Admin-supplied URL nicht direkt fetchen).
   try {
-    await assertPublicHost(url);
+    await assertPublicUrl(url);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-08-22. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-08-23. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar (Boolean-Toggle unter Admin →
 Einstellungen → Module). Rechnungen und Vollmachten sind keine Toggles,
 sondern Modus-Schalter (`invoiceMode` / `poaMode`) mit `OFF`-Option —
@@ -383,8 +383,16 @@ nebeneinander auf einer Seite.
   automatisch auf eine bestehende Erklärung, übernimmt deren erwarteten
   Wert als `expectedAmount` und setzt `filing_id`
 - Soll/Ist-Vergleich: festgesetzt vs. erwartet, farbcodierte Differenz
-- Einspruchsfrist automatisch berechnet (Bescheid-Datum + 33 Tage —
-  Bekanntgabefiktion + 1 Monat), Warnung bei < 7 Tagen Restdauer
+- Einspruchsfrist automatisch nach Übermittlungsweg berechnet: bei Post und
+  elektronischer Übermittlung mit datumsabhängiger Drei-/Vier-Tage-Fiktion,
+  bei Auslandsbekanntgabe mit Monatsfiktion und bei förmlicher/persönlicher
+  Bekanntgabe ab dem feststehenden Zugangstag. Ein nachweislich späterer
+  Zugang sowie eine fehlende oder unrichtige Rechtsbehelfsbelehrung werden
+  berücksichtigt; Monats-/Jahresfrist und Wochenend-/Feiertagsverschiebung
+  werden kalendarisch berechnet. Für bis einschließlich 31.12.2025 erlassene
+  Verwaltungsakte im Datenabruf gelten die damaligen Benachrichtigungs-/
+  Abrufregeln; für nach dem 31.12.2025 erlassene Verwaltungsakte gilt die
+  Vier-Tage-Fiktion ab Bereitstellung. Warnung bei < 7 Tagen Restdauer
 - **Einspruchsfristen-Reminder**: Worker `reminders-daily` schickt
   14 / 7 / 1 Tage vor `appealDeadline` Notifications an den Prüfer
   (idempotent über day-bucket pro Resource/Kind)
@@ -393,10 +401,14 @@ nebeneinander auf einer Seite.
   entlang des Einspruchs-Lebenszyklus § 347 ff. AO:
   - NEU → GEPRÜFT (Normalfall) oder direkt EINSPRUCH
   - GEPRÜFT → EINSPRUCH / RECHTSKRÄFTIG; zurück auf NEU (Fehlklick)
-  - EINSPRUCH → ABGEHOLFEN / ZURÜCKGEWIESEN
-  - ABGEHOLFEN / ZURÜCKGEWIESEN → RECHTSKRÄFTIG (final)
+  - EINSPRUCH → ABGEHOLFEN / TEILABHILFE / ZURÜCKGEWIESEN
+  - ABGEHOLFEN → RECHTSKRÄFTIG
+  - TEILABHILFE / ZURÜCKGEWIESEN → KLAGE / RECHTSKRÄFTIG
+  - KLAGE → RECHTSKRÄFTIG (final)
   - Side-Effects: GEPRÜFT stempelt `reviewedAt/-By`, EINSPRUCH
-    `appealFiledAt`, Abschluss `appealResolvedAt`
+    `appealFiledAt`, Einspruchsentscheidung `appealResolvedAt`; bei
+    TEILABHILFE/ZURÜCKGEWIESEN wird die Klagefrist nach § 47 FGO geführt,
+    KLAGE bindet Einreichungszeitpunkt und Bearbeiter als Erledigungsnachweis
 - PDF des Bescheids wird verlinkt (über Document-Modul)
 - Verknüpfungs-Indikator zeigt in der Tabelle „↪ aus Erklärung"
   - „Portal"-Badge, wenn der Mandant die Erklärung sieht
@@ -689,10 +701,13 @@ Aus PNL-Werten abgeleitete Frühwarn-Indikatoren — keine Bilanzkennzahlen
 
 ### Jahres-Hochrechnung — zwei Strategien nebeneinander
 
-- **Linear + Saisonalität**: YTD-Werte aufs Jahr hochgerechnet, Spanne
-  ±5 – ±18 % je nach Anteil restliches Jahr
-- **Trend-Regression**: Linear-Regression über Vorjahre, Spanne aus
-  1,5 × Residuen-Standardabweichung (~85 % Konfidenz)
+- **Lineare Run-rate**: YTD-Werte mit `12 / erfasste Monate` aufs Jahr
+  hochgerechnet; heuristische, mit zunehmender Datenabdeckung enger werdende
+  Spanne. Eine echte Saisongewichtung wird mangels Vorjahres-Monatsverteilung
+  nicht behauptet.
+- **Trend-Regression**: Linear-Regression über Vorjahre; heuristische Spanne
+  aus dem Maximum von 1,5 × Residuen-Standardabweichung und 5 % des
+  Schätzwerts (kein statistisches Konfidenzintervall)
 - Pro KPI (Erlöse / Kosten / Personal / Ergebnis vor Steuern / Steuern /
   Ergebnis nach Steuern): Erwartungswert + low/high-Spanne
 - **Steuer-Pauschale**: 30 % Mittelwert (25–35 % Spanne) auf positives
@@ -866,6 +881,25 @@ Kanzlei nicht.
 - Paket `@taxtronik/risk-layer` als reiner Transport (Schema/Mapping/Resilienz
   mit Circuit-Breaker + `safeFetch`); App-Geschäftslogik in
   `apps/web/src/server/risk/`
+
+### Quantenlos — blind gezogene Compliance-Stichproben
+
+- Admin-Oberfläche `/staff/admin/quantenlos` innerhalb des aktivierten
+  Risk-Moduls; Stichprobenrahmen wahlweise aus Subsumtionsanalysen oder
+  Audit-Ereignissen eines Zeitraums
+- Backends `qpu`, `simulator` und `csprng`; asynchrone QPU-Jobs werden als
+  wartend tenantgebunden persistiert und später explizit abgeholt
+- Der vor der Ziehung festgelegte Rahmen wird als Commitment gebunden. Der
+  Nachweis enthält Rahmen, Backend-Metadaten und gezogene IDs und wird im
+  manipulationsgeschützten Audit-Ereignis `risk.los.gezogen` abgelegt
+- „Nachweis prüfen" übermittelt den gespeicherten Nachweis **zusammen mit dem
+  damals gebundenen Rahmen** an `/v1/los/pruefen`; es wird keine neue Ziehung
+  mit vermeintlich identischen Inputs durchgeführt
+- Für gezogene Subsumtionsfälle mit Mandantenbezug entstehen automatisch
+  14-Tage-Wiedervorlagen; Audit-Stichproben werden nur in der Ergebnisliste
+  ausgewiesen. Die Nachschau bleibt fachliche Aufgabe der Kanzlei.
+  Quantenrandomness beweist weder Vollständigkeit des Rahmens noch fachliche
+  Angemessenheit der Stichprobenparameter
 
 ## Wissensdatenbank ⚙
 
@@ -1172,7 +1206,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Datenschutzerklärung-URL; werden im Footer der Login-Seiten (Staff +
   Portal) verlinkt (insbesondere § 5 DDG und Art. 12/13 DSGVO); in
   angemeldeten Sitzungen bewusst nicht prominent angezeigt
-- Modul-Aktivierung pro Tenant — 15 Boolean-Module: BWA, Wissensdatenbank,
+- Serverseitig durchgesetzte Modul-Aktivierung pro Tenant — 15 Boolean-Module:
+  deaktivierte Module verschwinden aus der Navigation und ihre direkten
+  Seiten, Server-Actions und zugehörigen API-Pfade lehnen Aufrufe ab. Module:
+  BWA, Wissensdatenbank,
   Zeiterfassung, Telefonzettel, Steuertermine + Bescheide (`taxNotices`),
   Workflows, Formulare, Wiedervorlagen, Pendelordner, Anlieferungen,
   Termine (`appointments`), RSS-Reader sowie als Opt-in Inbound-Mail
@@ -1266,7 +1303,7 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Pro Request: Prisma-Middleware setzt `app.current_tenant_id` /
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
-- BullMQ-Worker für Hintergrund-Jobs (20 Worker):
+- BullMQ-Worker für Hintergrund-Jobs (22 Worker):
   `audit-anchor` (alle 2 Sekunden; nicht blockierende RFC-3161-Checkpoints),
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
@@ -1284,7 +1321,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `reminder-done-notify` (erledigte Delegationen/Wiedervorlagen),
   `backup-run` (täglicher Postgres-Dump direkt nach S3),
   `backup-drill` (monatlicher Restore-Test mit Chain-Verifikation),
-  `health-alert` (5-Minuten-Infrastruktur-Health mit Ops-Mail).
+  `health-alert` (5-Minuten-Infrastruktur-Health mit Ops-Mail),
+  `workflow-n8n-dispatch` (minütliche Wiederaufnahme dauerhaft vorgemerkter
+  Workflow-Events) und `storage-orphan-cleanup` (sechsstündliche Bereinigung
+  journalisierter Storage-Waisen nach der jeweiligen Retention).
   Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
   ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
   Die Worker-Jobs haben eigene Unit-Tests
@@ -1343,17 +1383,21 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   jeweils den vorherigen TSA-Token; Fachtransaktionen werden nicht blockiert.
   Der tägliche RFC-3161-TSA-Stempel der Kettenspitze (`evidence-seal` 02:30
   UTC) bleibt zusätzlich bestehen. Die Default-TSA ist **GlobalSign**
-  (kostenlos/EU), pro Tenant umstellbar; D-Trust steht für qualifizierte
-  eIDAS-Zeitstempel zur Verfügung. Die tägliche Verifikation
+  (kostenlos/EU), pro Tenant umstellbar. D-Trust und weitere kommerzielle
+  Endpunkte sind konfigurierbar; die Qualifikation des konkret beauftragten
+  Dienstes wird nicht allein aus dem Anbieternamen behauptet. Die tägliche Verifikation
   (`audit-verify-check` 02:45 UTC) mit `SYSTEM_AUDIT_BREAK`-Notification an
   ADMIN/PARTNER bei Bruch, wöchentliche NDJSON-Auslagerung mit Object-Lock-
   Versiegelung; `pnpm verify:chain` rehasht jeden Eintrag, rekonstruiert die
   Kette aus DB+Archiv und prüft den TSA-Stempel **voll kryptografisch**:
   CMS-Signatur, messageImprint an den _rekonstruierten_ Ketten-Spitzen-Hash
   gebunden (nicht an die DB-Spalte → tötet den DB-gegen-DB-Angriff), Cert-Kette
-  bis zum eingebetteten GlobalSign-Root R6 _as-of_ genTime, kritische EKU
-  timeStamping + ESS-SigningCertificate-Bindung; Adapter-Modus wird im Report
-  ausgewiesen, Self-Timestamp im Produktivmodus = harter Fail. Das Siegel
+  bis zum eingebetteten GlobalSign-Root R6 oder zu einem über
+  `TSA_TRUSTED_ROOTS_FILE` bereitgestellten Betreiber-Trust-Anchor _as-of_
+  genTime, kritische EKU timeStamping + ESS-SigningCertificate-Bindung;
+  Adapter-Modus wird im Report ausgewiesen, Self-Timestamp im Produktivmodus =
+  harter Fail. Für Nicht-GlobalSign-Anbieter muss der Betreiber den passenden
+  Root out-of-band bereitstellen und prüfen. Das Siegel
   belegt extern nur den spätesten Existenzzeitpunkt des jeweiligen verankerten
   Präfixes; individuelle lokale Ereigniszeiten werden nicht als exakte
   TSA-Zeiten ausgegeben. Bis zur asynchronen Antwort bleibt ein kleines,

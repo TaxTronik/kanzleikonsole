@@ -82,6 +82,10 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Test-DB, damit auch direkte SQL-Umgehungsversuche geprüft werden.
   'packages/db/src/__tests__/gwg-identity-assignment.test.ts',
   'packages/db/src/__tests__/tax-notice-evidence.test.ts',
+  // Integrationsbeweis fuer die deferrable TaxDeadline/Request-Pointer-Trigger:
+  // Owner legt gezielt inkonsistente Mutationen vor; die App-Rolle prueft
+  // separat die STAFF-/CLIENT_CONTACT-RLS auf internen Kommentaren.
+  'packages/db/src/__tests__/tax-deadline-request-consistency.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill
@@ -185,6 +189,11 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/server/backup/runner.ts <- @/server/db/prisma-owner',
   // Dev-only Retention/Object-Lock-Fixtures; verweigert NODE_ENV=production.
   'apps/web/src/server/demo/retention-fixtures.ts <- @/server/db/prisma-owner',
+  // Kompensationsjournal nach bereits erfolgreichem Object-Storage-Commit:
+  // der urspruengliche Tenant-Tx kann fehlgeschlagen oder sein ACK mehrdeutig
+  // sein. Der Owner-Pfad schreibt ausschliesslich den tenantgebundenen
+  // StorageOrphan-Recoverydatensatz; er liest oder liefert keine Mandantendaten.
+  'apps/web/src/server/documents/storage-compensation.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/gwg-onboarding/service.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/license/state.ts <- @/server/db/prisma-owner',
   // Externe n8n-Callbacks haben vor der Credential-Pruefung noch keinen

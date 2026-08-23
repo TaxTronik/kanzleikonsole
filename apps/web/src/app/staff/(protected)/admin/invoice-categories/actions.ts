@@ -78,7 +78,12 @@ export async function saveInvoiceCategoryAction(
         });
       }
     },
-    { requireAdmin: true, uniqueError: UNIQUE_ERR, revalidate: REVALIDATE },
+    {
+      requireAdmin: true,
+      modeModule: 'invoices',
+      uniqueError: UNIQUE_ERR,
+      revalidate: REVALIDATE,
+    },
   );
 }
 
@@ -100,6 +105,6 @@ export async function deleteInvoiceCategoryAction(input: { id: string }): Promis
         before: { name: c?.name ?? null, slug: c?.slug ?? null },
       });
     },
-    { requireAdmin: true, revalidate: REVALIDATE },
+    { requireAdmin: true, modeModule: 'invoices', revalidate: REVALIDATE },
   );
 }

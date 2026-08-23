@@ -1,7 +1,7 @@
 # ADR 0005 — Object-Storage: SeaweedFS + Object-Lock COMPLIANCE + ClamAV
 
-**Status**: Akzeptiert (Iteration 1, **MinIO ersetzt 2026-05-12**)
-**Datum**: 2026-05-10 (ursprünglich) · **2026-05-12** (SeaweedFS-Wechsel)
+**Status**: Akzeptiert; Betriebsdetails zuletzt aktualisiert 2026-08-23
+**Datum**: 2026-05-10 (ursprünglich) · 2026-05-12 (SeaweedFS-Wechsel) · 2026-08-23
 **Kontext**: GoBD-pflichtige Dokumente (Rechnungen, Verträge, Steuer-Belege)
 müssen je Dokumentart 6, 8 oder 10 Jahre unveränderbar gespeichert werden;
 Rechnungen regelmäßig acht Jahre. Ein-Datei-Pro-Storage
@@ -15,10 +15,12 @@ COMPLIANCE-Mode. Single-Node-Setup (Master + Volume + Filer + S3 in einem
 Container) für die Kanzlei-Größenordnung (10–500 Mitarbeiter); Multi-Node
 ist später ohne API-Bruch möglich.
 
-- Image: `chrislusf/seaweedfs:latest`, Apache-2.0
+- Image: `chrislusf/seaweedfs:4.41` mit festem OCI-Digest, Apache-2.0
 - Ports: 8333 (S3-API), 9333 (Master), 8888 (Filer-UI)
-- S3-Credentials in `infra/scripts/seaweedfs-s3.json` (für Dev plain; in
-  Produktion wird der Container mit Secrets gemountet)
+- S3-Credentials ausschließlich aus der Compose-Umgebung. Der Entrypoint
+  rendert aus einer platzhalterhaltigen, nicht geheimen Vorlage eine Datei mit
+  Modus `0400` im flüchtigen tmpfs `/run/seaweedfs`; es gibt keine
+  Klartext-Credential-Datei im Repository oder persistenten Bind-Mount.
 
 Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
 (Stand der ursprünglichen Entscheidung; aktueller Stand siehe Addendum):
@@ -75,7 +77,7 @@ Fünf Buckets — angelegt vom `seaweedfs-init`-Container über die AWS-CLI
   AWS CLI. Für unsere Buckets-as-Code-Logik ist das ok.
 - SeaweedFS-Object-Lock seit 3.59 (12/2023) stabil, aber jünger als MinIO —
   Edge-Cases bei concurrent retention-changes weniger gut dokumentiert
-- Setup-Init braucht `amazon/aws-cli:latest` als Init-Container (statt `mc`)
+- Setup-Init verwendet `amazon/aws-cli` mit festem OCI-Digest (statt `mc`)
 
 ## Alternativen verworfen
 
@@ -106,7 +108,7 @@ rclone copy minio-source: seaweed-dest: --progress
 Im Dev reicht `docker compose down -v && ./scripts/setup.ps1` (zerstört alle
 Daten — nur in Test-Umgebungen).
 
-## Addendum (2026-06-10)
+## Addendum (2026-06-10, konsolidiert 2026-08-23)
 
 Zwei Punkte der ursprünglichen Entscheidung sind inzwischen überholt:
 
@@ -138,3 +140,6 @@ Zwei Punkte der ursprünglichen Entscheidung sind inzwischen überholt:
 4. **Dokumenttypabhängige GoBD-Frist**: Der zehnjährige Bucket-Default bleibt
    als konservativer Fallback bestehen; jeder reguläre Upload setzt jedoch
    explizit die Frist seines Datei-Typs (6/8/10 Jahre, Rechnung 8 Jahre).
+5. **Reproduzierbarer Betrieb:** SeaweedFS und AWS-CLI-Init sind digest-gepinnt.
+   Die S3-Konfiguration entsteht erst beim Containerstart aus ENV-Secrets im
+   tmpfs `/run/seaweedfs` und wird nicht auf dem Host persistiert.

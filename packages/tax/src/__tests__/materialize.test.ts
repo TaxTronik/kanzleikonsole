@@ -61,6 +61,7 @@ function makeHarness(opts: HarnessOptions = {}) {
         autoRequestSuppressedAt: null,
       }),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     request: { create: vi.fn().mockResolvedValue({ id: 'req-1' }) },
   };
@@ -224,12 +225,24 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
         priority: 'NORMAL',
         createdByStaff: STAFF,
         dueAt: new Date(Date.UTC(2026, 5, 20)),
+        taxDeadlineId: 'dl-1',
         title: expect.stringContaining('2026-05'),
       }),
     });
     expect(tx.taxDeadline.update).toHaveBeenCalledWith({
       where: { id: 'dl-1' },
-      data: { requestId: 'req-1', status: 'REMINDED' },
+      data: { requestId: 'req-1', status: 'REMINDED', autoRequestClaimedAt: null },
+    });
+    expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'dl-1',
+        tenantId: TENANT,
+        status: 'PLANNED',
+        requestId: null,
+        autoRequestSuppressedAt: null,
+        autoRequestClaimedAt: null,
+      },
+      data: { autoRequestClaimedAt: expect.any(Date) },
     });
     expect(resolveStaffNotifications).toHaveBeenCalledWith(tx, {
       tenantId: TENANT,
@@ -324,12 +337,7 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
 
   it('Re-Check-Race: paralleler Lauf hat den Termin bereits versorgt → No-Op', async () => {
     const { tx, deps, recordEvidence } = makeHarness({ upcoming: [upcomingDeadline(14)] });
-    tx.taxDeadline.findUnique.mockResolvedValue({
-      status: 'REMINDED',
-      requestId: 'req-fremd',
-      staffNotifiedAt: null,
-      autoRequestSuppressedAt: null,
-    });
+    tx.taxDeadline.updateMany.mockResolvedValue({ count: 0 });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
@@ -345,12 +353,7 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
 
   it('Re-Check: Mitarbeiter hat inzwischen gestoppt → No-Op (Race Stopp vs. Lauf)', async () => {
     const { tx, deps } = makeHarness({ upcoming: [upcomingDeadline(14)] });
-    tx.taxDeadline.findUnique.mockResolvedValue({
-      status: 'PLANNED',
-      requestId: null,
-      staffNotifiedAt: null,
-      autoRequestSuppressedAt: new Date('2026-06-09T09:59:00.000Z'),
-    });
+    tx.taxDeadline.updateMany.mockResolvedValue({ count: 0 });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
@@ -364,7 +367,7 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
 
   it('Re-Check: Termin inzwischen gelöscht → No-Op', async () => {
     const { tx, deps } = makeHarness({ upcoming: [upcomingDeadline(14)] });
-    tx.taxDeadline.findUnique.mockResolvedValue(null);
+    tx.taxDeadline.updateMany.mockResolvedValue({ count: 0 });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
@@ -374,6 +377,32 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
 
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(stats.requestsCreated).toBe(0);
+  });
+
+  it('erzeugt auch bei zwei echten parallelen Aufrufen dank CAS nur eine Anforderung', async () => {
+    const { tx, deps, recordEvidence } = makeHarness({
+      upcoming: [upcomingDeadline(14)],
+    });
+    tx.taxDeadline.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValue({ count: 0 });
+
+    const [first, second] = await Promise.all([
+      materializeTenantTaxDeadlines(deps, {
+        tenantId: TENANT,
+        systemStaffId: STAFF,
+        now: NOW,
+      }),
+      materializeTenantTaxDeadlines(deps, {
+        tenantId: TENANT,
+        systemStaffId: STAFF,
+        now: NOW,
+      }),
+    ]);
+
+    expect(tx.taxDeadline.updateMany).toHaveBeenCalledTimes(2);
+    expect(tx.request.create).toHaveBeenCalledOnce();
+    expect(tx.taxDeadline.update).toHaveBeenCalledOnce();
+    expect(recordEvidence).toHaveBeenCalledOnce();
+    expect(first.requestsCreated + second.requestsCreated).toBe(1);
   });
 });
 
