@@ -3,10 +3,11 @@
 Änderungsjournal für TaxTronik.
 
 `v0.1.0` wurde am 10. Juni 2026 als erster versionierter interner Stand
-markiert. `v0.2.0` wurde am 21. August 2026 als erster umfassend gehärteter
-Stand für Installation und Betrieb abgeschlossen; neue Änderungen landen
-danach wieder unter `[Unreleased]`. `v0.2.1` ergänzt am 22. August 2026 die
-Benutzerprofil- und Kontowiederherstellungsfunktionen.
+markiert. Der am 21. August 2026 als `0.2.0` bezeichnete Stand war nur ein
+**ungetaggter Kandidatenstand**; ein Git-Tag `v0.2.0` existiert nicht und darf
+nicht als eigenständige Release-Identität verwendet werden. Seine Änderungen
+gingen in den ersten nachfolgenden getaggten Stand `v0.2.1` vom 22. August 2026
+ein. Neue, noch nicht getaggte Änderungen stehen unter `[Unreleased]`.
 
 Einträge, die Module des Prüfungs-Scopes betreffen (Fakturierung,
 Dokumentenarchiv, Audit-Protokollierung, Zugriffsschutz, Backup/Restore; siehe
@@ -19,7 +20,41 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
-Noch keine Änderungen.
+Dieser Abschnitt beschreibt den Arbeitsstand nach `v0.2.1`. Er ist noch kein
+Release und keine fachliche oder PS-880-bezogene Freigabe.
+
+### Hinzugefügt
+
+- Ein maschinenlesbarer und zugleich berufsträgertauglicher Fachkatalog führt
+  erste atomare Regeln zu Fakturierung, Fristen und Bescheiden. Schema,
+  generierte Indizes, Code-/Testnachweise und CI-Diff-Guard trennen technische
+  Umsetzung von menschlicher Fachfreigabe; die initialen Regeln bleiben bis
+  zum dokumentierten Berufsträger-Review ausdrücklich ungeprüft.
+- Ein zentraler Dokumentationsindex, eine aktuelle Übergabe, ein historisches
+  Handoff-Archiv sowie auszufüllende Vorlagen für PS-880-Prüfumgebung und
+  Release-Evidence ordnen die Nachweise nach Zielgruppe und Dokumenttyp.
+
+### Geändert
+
+- **[Scope]** Die ungetaggten Sammelstände `7318ee1d` und `b5bfb8d4`
+  enthalten umfangreiche fachliche, Berechtigungs-, Mandantentrennungs-,
+  Formular-, Fristen-, GwG-, Rechnungs-, Archiv- und
+  Nachweiskorrekturen. Sie sind auf `main`, aber noch keinem Release
+  zugeordnet. Vor dem nächsten Tag sind die Release-Notes gegen diese Commits
+  fachlich zu vervollständigen; dieser Sammelhinweis ist kein Ersatz dafür.
+- Die PS-880-Gap-Analyse grenzt Release- und Source-Kanal, interne
+  Statusbewertungen, offene Action-Level-Tests, zeitlich begrenzte
+  CI-Artefakte und fehlende Fachfreigaben nun ausdrücklich ab. Vorlagen gelten
+  nicht länger als bereits erbrachte Nachweise.
+
+### Behoben
+
+- **[Scope]** Der Portal-Logout akzeptiert nach einem Magic-Link-Login den von
+  Chromium unter `Referrer-Policy: no-referrer` gesendeten opaken
+  `Origin: null` ausschließlich zusammen mit browsergesetztem
+  `Sec-Fetch-Site: same-origin`. Cross-Site- und headerlose Requests bleiben
+  gesperrt; der reale Logout-E2E-Fall prüft zusätzlich den 303-Redirect und
+  die Cookie-Löschung (`0c1f8174`).
 
 ## [0.2.1] - 2026-08-22
 
@@ -57,7 +92,10 @@ Noch keine Änderungen.
   dadurch auch im vollständigen paranoiden CI-Lauf nicht mehr durch eigene
   Vorläuferfälle gedrosselt werden.
 
-## [0.2.0] - 2026-08-21
+## [0.2.0 – ungetaggter Kandidatenstand] - 2026-08-21
+
+Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
+Änderungen wurden erst als Bestandteil von `v0.2.1` versioniert ausgeliefert.
 
 ### Releaseabschluss
 

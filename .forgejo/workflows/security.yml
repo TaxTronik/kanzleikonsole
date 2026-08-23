@@ -63,6 +63,7 @@ jobs:
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: security-audit-prod
+          retention-days: 90
           path: |
             security-audit-prod.log
             security-audit-full.log
@@ -99,5 +100,6 @@ jobs:
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: security-gitleaks
+          retention-days: 90
           path: security-gitleaks.log
           if-no-files-found: ignore

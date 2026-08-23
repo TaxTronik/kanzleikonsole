@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Fachkatalog: INV-ARCHIVE-EINVOICE-001
+// Fachkatalog: INV-PORTAL-SHARING-001
+
 // IO-Abhängigkeiten mocken (DB/Storage/Generatoren) — wir testen die
 // Idempotenz-/Race-/Validierungs-Logik von ensureZugferdArchive, nicht die
 // PDF-Erzeugung oder den Object-Store.

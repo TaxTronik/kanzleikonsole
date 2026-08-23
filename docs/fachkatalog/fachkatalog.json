@@ -1,0 +1,390 @@
+{
+  "schema_version": 1,
+  "purpose": "Such- und Gegenprüfindex für TaxTronik-Fachregeln; vollständige Regeldatei vor Änderungen lesen.",
+  "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
+  "rules": [
+    {
+      "id": "INV-ARCHIVE-EINVOICE-001",
+      "title": "E-Rechnungsformate aus einer kanonischen Archivfassung bereitstellen",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Rechnungswesen",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "ZUGFeRD-PDF und separate XRechnung-XML werden gemeinsam archiviert und nach Ausstellung byte-stabil wiederverwendet."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0008, XRechnung und ZUGFeRD",
+          "path": "docs/adr/0008-xrechnung-zugferd-en16931.md",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, GoBD-Archiv",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-23",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/invoicing/archive.ts",
+        "apps/web/src/server/invoicing/archive-lock.ts",
+        "apps/web/src/server/invoicing/draft-archive.ts",
+        "apps/web/src/server/invoicing/xrechnung.ts",
+        "apps/web/src/server/invoicing/zugferd.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/invoicing/__tests__/archive.test.ts",
+        "apps/web/src/server/invoicing/__tests__/archive-lock.test.ts",
+        "apps/web/src/server/invoicing/__tests__/draft-archive.test.ts",
+        "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts",
+        "apps/web/src/server/invoicing/__tests__/zugferd.test.ts",
+        "packages/db/src/__tests__/invoice-xrechnung-document-link.test.ts"
+      ],
+      "feature_refs": [
+        "FEATURES.md",
+        "docs/anwenderdoku/rechnungen.md",
+        "docs/adr/0008-xrechnung-zugferd-en16931.md"
+      ],
+      "related_rules": ["INV-LIFECYCLE-FREEZE-001", "INV-PORTAL-SHARING-001"],
+      "tags": ["archiv", "e-rechnung", "xrechnung", "zugferd"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-archive-einvoice-001-kanonische-archivfassung.md",
+      "summary": "Bei der Ausstellung einer In-App-E-Rechnung erzeugt TaxTronik die menschenlesbare ZUGFeRD-PDF und die separate XRechnung-XML aus demselben fachlichen Snapshot und archiviert beide eindeutig verknüpft. Spätere Downloads liefern die gespeicherten Bytes und rendern den ausgestellten Beleg nicht mit heutigen Stammdaten oder Branding-Einstellungen neu."
+    },
+    {
+      "id": "INV-LIFECYCLE-FREEZE-001",
+      "title": "Rechnungsinhalt nach Verlassen des Entwurfs festschreiben",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Rechnungswesen",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Geschäftliche Felder und Positionen sind nach dem Entwurfsstatus durch Datenbankregeln unveränderlich; Korrekturen laufen über Storno."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, Festschreibung",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Rechnungen, Grundprinzipien",
+          "path": "docs/anwenderdoku/rechnungen.md",
+          "checked_at": "2026-08-23",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/db/prisma/migrations/20260801001000_iter85_invoice_gob/migration.sql",
+        "apps/web/src/app/staff/(protected)/invoices/actions.ts",
+        "apps/web/src/server/invoicing/number.ts",
+        "apps/web/src/server/invoicing/storno.ts"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/invoice-festschreibung.test.ts",
+        "apps/web/src/server/invoicing/__tests__/number.test.ts",
+        "apps/web/src/server/invoicing/__tests__/storno.test.ts"
+      ],
+      "feature_refs": [
+        "FEATURES.md",
+        "docs/anwenderdoku/rechnungen.md",
+        "docs/development/module/fakturierung.md"
+      ],
+      "related_rules": ["INV-ARCHIVE-EINVOICE-001", "INV-PORTAL-SHARING-001"],
+      "tags": ["festschreibung", "rechnung", "storno"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-lifecycle-freeze-001-festschreibung.md",
+      "summary": "Solange eine In-App-Rechnung Entwurf ist, dürfen ihre Geschäftsdaten technisch geändert werden. Sobald sie den Entwurfsstatus verlässt, sind Nummer, Beträge, Daten, Steuerangaben und Positionen unveränderlich. Eine fachliche Korrektur erfolgt über den vorgesehenen Storno- und Neuausstellungsprozess, nicht durch Überschreiben des Originalbelegs."
+    },
+    {
+      "id": "INV-PORTAL-SHARING-001",
+      "title": "Rechnungen erst nach Ausstellung im Mandantenportal zeigen",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Rechnungswesen",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "deviates",
+        "summary": "Dokumente nie versendeter Storni bleiben intern, die Portal-Liste zeigt solche CANCELLED-Datensätze derzeit jedoch ohne Versandnachweis an."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Rechnungen, Mandantenportal",
+          "path": "docs/anwenderdoku/rechnungen.md",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, Zugriff",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-23",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/portal/(protected)/invoices/page.tsx",
+        "apps/web/src/server/invoicing/archive.ts",
+        "apps/web/src/server/invoicing/draft-archive.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/invoicing/__tests__/archive.test.ts",
+        "apps/web/src/server/invoicing/__tests__/draft-archive.test.ts"
+      ],
+      "feature_refs": [
+        "FEATURES.md",
+        "docs/anwenderdoku/rechnungen.md",
+        "docs/development/module/fakturierung.md"
+      ],
+      "related_rules": ["INV-LIFECYCLE-FREEZE-001", "INV-ARCHIVE-EINVOICE-001"],
+      "tags": ["mandantenportal", "rechnung", "sichtbarkeit"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-portal-sharing-001-mandantensicht.md",
+      "summary": "Ein Rechnungsentwurf ist ausschließlich kanzleiintern und darf dem Mandanten nicht als Rechnung angezeigt oder als Archivbeleg geteilt werden. Wurde eine Rechnung bereits versendet, bleibt sie auch nach einem späteren Storno als historischer Beleg im Portal sichtbar. Ein nie versendeter stornierter Entwurf bleibt dagegen intern."
+    },
+    {
+      "id": "TAX-CONTROL-STATUS-001",
+      "title": "Offene und erledigte Fristen aus dem Quellstatus ableiten",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "office_policy",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Kanzleileitung Fristenkontrolle",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Das Kontrollbuch leitet den Erledigungsstand ohne eigenen Parallelstatus aus den Fachmodulen ab und behält offene Überfälligkeiten sichtbar."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Fristenkontrollbuch",
+          "path": "docs/anwenderdoku/kalender-fristen-bescheide.md",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Funktionskatalog Fristenkontrollbuch",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-23",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/fristen/eintrag.ts",
+        "apps/web/src/server/fristen/kontrollbuch.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/fristen/__tests__/eintrag.test.ts",
+        "apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
+      "related_rules": ["TAX-NOTICE-APPEAL-001", "TAX-DEADLINE-AUTOREQUEST-001"],
+      "tags": ["fristenkontrollbuch", "erledigung", "status"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-control-status-001-fristenkontrollbuch.md",
+      "summary": "Das Fristenkontrollbuch führt keinen eigenen Erledigt-Schalter. Es liest den Erledigungsstand aus dem jeweiligen Fachmodul, damit Kontrollsicht und Originalvorgang nicht auseinanderlaufen. Offene überfällige Fristen bleiben ohne zeitliche Untergrenze sichtbar, bis der Quellvorgang einen definierten Erledigungsstatus erreicht."
+    },
+    {
+      "id": "TAX-DEADLINE-AUTOREQUEST-001",
+      "title": "Automatische Mandantenanforderung vor Steuerterminen steuern",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Prozessverantwortlicher Deklaration",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Anforderung, Sperre und Doppelanlage-Schutz sind umgesetzt; der Status SENT beweist derzeit nicht den erfolgreichen E-Mail-Zugang."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Funktionskatalog Steuertermine und automatische Anforderungen",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Kalender, Fristen und Bescheide",
+          "path": "docs/anwenderdoku/kalender-fristen-bescheide.md",
+          "checked_at": "2026-08-23",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/tax/src/materialize.ts",
+        "apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts",
+        "apps/worker/src/jobs/tax-deadline-materialize.ts"
+      ],
+      "test_refs": [
+        "packages/tax/src/__tests__/materialize.test.ts",
+        "apps/worker/src/jobs/__tests__/tax-deadline-materialize.test.ts",
+        "packages/db/src/__tests__/tax-deadline-request-consistency.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
+      "related_rules": ["TAX-DEADLINE-WORKDAY-001", "TAX-CONTROL-STATUS-001"],
+      "tags": ["anforderung", "automation", "steuertermin"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-deadline-autorequest-001-automatische-anforderung.md",
+      "summary": "TaxTronik darf zu einem bevorstehenden Steuertermin automatisch genau eine Mandantenanforderung anlegen, sofern die Kanzlei die Automatik aktiviert und nicht zuvor gestoppt hat. Nach Ablauf des Fälligkeitstags wird keine neue Anforderung mehr erzeugt. „Gesendet“ bezeichnet derzeit die angelegte Portal-Anforderung, nicht den nachgewiesenen Zugang einer E-Mail."
+    },
+    {
+      "id": "TAX-DEADLINE-WORKDAY-001",
+      "title": "Fristende auf den nächsten Werktag verschieben",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "statute",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Steuerrecht",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die Verschiebung ist implementiert und getestet; örtliche Feiertage und historische Feiertagsstände sind nur teilweise abgebildet."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 108 Abs. 3 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__108.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        }
+      ],
+      "code_refs": ["packages/tax/src/engine.ts", "packages/tax/src/materialize.ts"],
+      "test_refs": [
+        "packages/tax/src/__tests__/engine.test.ts",
+        "packages/tax/src/__tests__/plausibility-engine.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
+      "related_rules": ["TAX-NOTICE-APPEAL-001"],
+      "tags": ["fristende", "feiertag", "werktag"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-deadline-workday-001-werktagsverschiebung.md",
+      "summary": "Fällt das Ende einer steuerlichen Frist auf einen Samstag, Sonntag oder am maßgeblichen Ort geltenden gesetzlichen Feiertag, verschiebt TaxTronik das Ergebnis auf den nächsten berücksichtigten Werktag. Das Ergebnis bleibt ein Kontrollvorschlag, weil örtliche und historische Feiertagsbesonderheiten nicht vollständig modelliert sind."
+    },
+    {
+      "id": "TAX-NOTICE-APPEAL-001",
+      "title": "Einspruchsfrist im dokumentierten Bekanntgabe-Regelfall berechnen",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": "2025-01-01", "valid_until": null },
+      "professional_owner_role": "Berufsträger Steuerrecht",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die beschriebenen Standardwege sind implementiert und getestet; besondere Bekanntgabe- und Beweisfälle bleiben manueller Prüfung vorbehalten."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 122 Abs. 2 und 2a AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__122.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 97 § 1 Abs. 15 EGAO",
+          "url": "https://www.gesetze-im-internet.de/aoeg_1977/art_97__1.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 355 Abs. 1 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__355.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 356 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__356.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 108 Abs. 3 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__108.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 187 BGB",
+          "url": "https://www.gesetze-im-internet.de/bgb/__187.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 188 BGB",
+          "url": "https://www.gesetze-im-internet.de/bgb/__188.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/tax/src/engine.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts"
+      ],
+      "test_refs": ["packages/tax/src/__tests__/plausibility-engine.test.ts"],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
+      "related_rules": ["TAX-DEADLINE-WORKDAY-001", "TAX-CONTROL-STATUS-001"],
+      "tags": ["bescheid", "bekanntgabe", "einspruch"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-notice-appeal-001-einspruchsfrist-regelfall.md",
+      "summary": "TaxTronik ermittelt für dokumentierte Standard-Bekanntgabewege zunächst einen Bekanntgabetag und berechnet ab diesem grundsätzlich eine Monatsfrist. Bei fehlender oder unrichtiger Rechtsbehelfsbelehrung wird stattdessen eine Jahresfrist vorgeschlagen. Das Ergebnis ist ausdrücklich ein Kontrollvorschlag, kein Ersatz für die Prüfung des tatsächlichen Zugangs und des konkreten Bescheids."
+    }
+  ]
+}

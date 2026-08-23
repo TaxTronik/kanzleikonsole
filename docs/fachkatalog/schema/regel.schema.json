@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taxtronik.local/schemas/fachregel.schema.json",
+  "title": "TaxTronik-Fachregel",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "domain",
+    "rule_type",
+    "jurisdiction",
+    "validity",
+    "professional_owner_role",
+    "professional_review",
+    "implementation",
+    "sources",
+    "code_refs",
+    "test_refs",
+    "feature_refs",
+    "related_rules",
+    "tags"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+-[0-9]{3}$"
+    },
+    "title": { "type": "string", "minLength": 3 },
+    "domain": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "rule_type": {
+      "enum": [
+        "statute",
+        "administrative_guidance",
+        "technical_standard",
+        "professional_interpretation",
+        "office_policy",
+        "product_rule"
+      ]
+    },
+    "jurisdiction": { "type": "string", "minLength": 2 },
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid_from", "valid_until"],
+      "properties": {
+        "valid_from": { "$ref": "#/$defs/nullableDate" },
+        "valid_until": { "$ref": "#/$defs/nullableDate" }
+      }
+    },
+    "professional_owner_role": { "type": "string", "minLength": 3 },
+    "professional_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reviewer", "reviewed_at", "reviewed_content_hash"],
+      "properties": {
+        "status": { "enum": ["unreviewed", "in_review", "approved", "superseded"] },
+        "reviewer": { "type": ["string", "null"] },
+        "reviewed_at": { "$ref": "#/$defs/nullableDate" },
+        "reviewed_content_hash": {
+          "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }]
+        }
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "summary"],
+      "properties": {
+        "status": {
+          "enum": [
+            "not_assessed",
+            "not_implemented",
+            "partial",
+            "implemented",
+            "deviates",
+            "not_applicable"
+          ]
+        },
+        "summary": { "type": "string", "minLength": 10 }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "code_refs": { "$ref": "#/$defs/codePathArray" },
+    "test_refs": { "$ref": "#/$defs/testPathArray" },
+    "feature_refs": { "$ref": "#/$defs/pathArray" },
+    "related_rules": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+-[0-9]{3}$"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 2 }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "professional_review": {
+            "properties": { "status": { "enum": ["approved", "superseded"] } },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "professional_review": {
+            "properties": {
+              "reviewer": { "type": "string", "minLength": 3 },
+              "reviewed_at": { "type": "string", "format": "date" },
+              "reviewed_content_hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          },
+          "sources": {
+            "contains": {
+              "type": "object",
+              "properties": { "primary": { "const": true } },
+              "required": ["primary"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "professional_review": {
+            "properties": { "status": { "const": "unreviewed" } },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "professional_review": {
+            "properties": {
+              "reviewer": { "type": "null" },
+              "reviewed_at": { "type": "null" },
+              "reviewed_content_hash": { "type": "null" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "implementation": {
+            "properties": {
+              "status": { "enum": ["implemented", "partial", "deviates"] }
+            },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "code_refs": { "minItems": 1 },
+          "test_refs": { "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "rule_type": { "const": "statute" } },
+        "required": ["rule_type"]
+      },
+      "then": {
+        "properties": {
+          "sources": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "kind": { "const": "official_law" },
+                "primary": { "const": true }
+              },
+              "required": ["kind", "primary"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "rule_type": { "const": "administrative_guidance" } },
+        "required": ["rule_type"]
+      },
+      "then": {
+        "properties": {
+          "sources": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "kind": { "const": "official_guidance" },
+                "primary": { "const": true }
+              },
+              "required": ["kind", "primary"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "rule_type": { "const": "technical_standard" } },
+        "required": ["rule_type"]
+      },
+      "then": {
+        "properties": {
+          "sources": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "kind": { "const": "technical_standard" },
+                "primary": { "const": true }
+              },
+              "required": ["kind", "primary"]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nullableDate": {
+      "oneOf": [{ "type": "null" }, { "type": "string", "format": "date" }]
+    },
+    "pathArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "codePathArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(?!.*(/__tests__/|\\.(test|spec)\\.))(apps|packages)/.+\\.([cm]?[jt]sx?|sql|prisma|sh)$"
+      }
+    },
+    "testPathArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(?!.*\\.d\\.[cm]?[jt]sx?$)(apps|packages)/.+(/__tests__/[^/]+|\\.(test|spec))\\.([cm]?[jt]sx?)$"
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "citation", "checked_at", "primary"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "official_law",
+            "official_guidance",
+            "technical_standard",
+            "case_law",
+            "professional_literature",
+            "internal_policy",
+            "product_documentation"
+          ]
+        },
+        "citation": { "type": "string", "minLength": 3 },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "path": { "type": "string", "minLength": 1 },
+        "checked_at": { "type": "string", "format": "date" },
+        "primary": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": { "enum": ["internal_policy", "product_documentation"] }
+            },
+            "required": ["kind"]
+          },
+          "then": { "required": ["path"], "not": { "required": ["url"] } },
+          "else": { "required": ["url"], "not": { "required": ["path"] } }
+        }
+      ]
+    }
+  }
+}

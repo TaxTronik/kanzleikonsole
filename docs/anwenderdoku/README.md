@@ -30,6 +30,11 @@ Abschnitt 2). Die vollständige technische Funktionsinventur steht ergänzend in
 kontextsensitives In-App-Handbuch; deshalb darf die Funktionsinventur nicht als
 Ersatz für fehlende Anwenderkapitel bezeichnet werden.
 
+Berufsträger finden die regelweise fachliche Entscheidungsgrundlage im
+[Fachkatalog](../fachkatalog/README.md). Der dortige Prüfstatus ist ausdrücklich
+von der technischen Umsetzung getrennt; ungeprüfte Entwürfe sind keine
+fachliche Freigabe.
+
 Betrieb und Installation sind NICHT Teil des Benutzerhandbuchs — siehe
 Betriebsdokumentation: [README](../../README.md) (Produktivbetrieb),
 [Release/Update](../operations/release.md),

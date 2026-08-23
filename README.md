@@ -17,10 +17,12 @@ Audit-Hash-Chain und externe RFC-3161-Zeitstempel. Produktion verwendet einen
 externen RFC-3161-Dienst; ob ein **qualifizierter** eIDAS-Dienst erforderlich
 ist, entscheidet die Kanzlei anhand ihres konkreten Nachweisbedarfs.
 
-Aktueller Softwarestand: **0.2.1**. Die zugehörigen Änderungen stehen im
+Letzter getaggter Release-Stand: **0.2.1**. Die zugehörigen Änderungen stehen im
 [Changelog](CHANGELOG.md#021---2026-08-22).
 
-Vollständige Architektur: [docs/architecture.md](docs/architecture.md)
+Dokumentation nach Zielgruppe: [docs/README.md](docs/README.md). Aktuelle
+Einarbeitung und Übergabe: [docs/HANDOFF.md](docs/HANDOFF.md). Vollständige
+Architektur: [docs/architecture.md](docs/architecture.md).
 
 ## Tech-Stack
 
@@ -464,6 +466,7 @@ packages/
   config/      ENV-Schema und zentrale Runtime-Konfiguration
   crypto/      Kryptografie-Helfer
   db/          Prisma-Schema, Migrationen, RLS/Tenant-Kontext
+  elster/      ERiC-/ELSTER-Integrationsgrenzen und Adapterlogik
   evidence/    Audit-Hash-Chain, Archive, Verify-CLI
   http-utils/  Safe Fetch, SSRF-Guards, Netzwerk-Utilities
   mail/        Template-Mail-Versand (SMTP, Dispatch, Safe-Markdown) für Web + Worker
@@ -481,9 +484,15 @@ infra/
   scripts/  Postgres-/Storage-Init
 
 docs/
-  adr/          Architecture Decision Records
-  compliance/   DSGVO, GoBD, GwG, eIDAS
-  operations/   Betrieb, Disaster Recovery, Subdomains
+  README.md      Zielgruppenorientierter Dokumentationsindex
+  adr/           Architecture Decision Records
+  anwenderdoku/  Versioniertes Benutzerhandbuch
+  assurance/     Bedrohungs-/Kontrollmodell und Prüfvorlagen
+  compliance/    DSGVO, GoBD, GwG, eIDAS und Readiness
+  development/   Entwicklungs-/Testverfahren und Modulbeschreibungen
+  fachkatalog/   Fachregeln mit Review- und Umsetzungsstatus
+  operations/    Betrieb, Disaster Recovery, Subdomains
+  archive/       Historische, nicht mehr geltende Unterlagen
 ```
 
 ## Compliance

@@ -260,6 +260,7 @@ jobs:
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: release-sbom-${{ steps.meta.outputs.version }}
+          retention-days: 90
           path: release-sbom/*.cdx.json
           if-no-files-found: error
 

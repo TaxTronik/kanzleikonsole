@@ -1,5 +1,6 @@
 // =============================================================================
 // Unit-Tests: materializeTenantTaxDeadlines (gemeinsamer Kern Web/Worker).
+// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001
 //
 // DB + Evidence kommen per Dependency-Injection — die Tests injizieren einen
 // Fake-Client (vi.fn pro Query) und einen separaten Fake-Tx für runAtomic,

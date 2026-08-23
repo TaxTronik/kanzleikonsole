@@ -1,139 +1,162 @@
 # Prüfungsbereitschaft IDW PS 880: Gap-Analyse und Maßnahmenplan
 
-Arbeitsstand: 2026-07-13.
+- **Arbeitsstand:** 2026-08-23
+- **Dokumenttyp:** interne Gap-Analyse, kein Prüfungsbericht und keine
+  Softwarebescheinigung
+- **Bezugsfassung:** IDW PS 880 n.F. (01.2022), Stand 24.01.2022
 
-**Ziel:** TaxTronik soll eine Softwareprüfung nach IDW PS 880 n.F. (01.2022)
-mit Erteilung einer Softwarebescheinigung bestehen können. Dieses Dokument
-hält fest, was der Prüfer vom Hersteller erwartet, was davon bereits existiert
-und was noch fehlt — als lebendes Arbeitsdokument bis zur Prüfung.
+Die Bezugsfassung wurde am 2026-08-23 gegen die
+[offizielle Einzelseite des IDW](https://www.idw.de/idw/idw-verlautbarungen/idw-eps-880-n-f-03-2021.html)
+und die
+[aktuelle Liste der IDW-Verlautbarungen](https://www.idw.de/idw/idw-verlautbarungen/aktuelle-liste/)
+geprüft. Der Volltext ist nicht Bestandteil dieses Repositorys.
+
+**Ziel:** Dieses Dokument ordnet vorhandene Repository-Nachweise vorsichtig
+den erwarteten Themen einer Softwareproduktprüfung zu, benennt Lücken und
+bereitet eine spätere Abstimmung mit einem unabhängigen Prüfer vor. Statuswerte
+sind interne Arbeitseinschätzungen. Sie sind weder ein Prüfungsurteil noch die
+Zusicherung, dass eine Bescheinigung erteilt wird.
 
 > **Quellenregel:** Der Prüfungsstandard wird hier ausschließlich per
-> Fundstelle referenziert (Tz.-Nummern). Sein Wortlaut ist urheberrechtlich
-> geschützt und wird in diesem Repository nirgends wiedergegeben — weder in
-> Dokumenten noch in Code-Kommentaren. Alle Formulierungen hier sind eigene.
+> Fundstelle referenziert. Sein Wortlaut ist urheberrechtlich geschützt und
+> wird in diesem Repository nicht wiedergegeben. Die folgenden
+> Zusammenfassungen sind eigene Arbeitsformulierungen und im Prüfungsauftrag
+> mit dem beauftragten Prüfer abzugleichen.
 
-## 1. Wie der Prüfer vorgeht — und was das für uns heißt
+## 1. Arbeitsmodell der Prüfung
 
-Die Prüfung läuft in vier Schritten (vgl. Tz. 11 ff.): Der Prüfer nimmt
-zunächst Produkt, Entwicklungsumgebung und Verfahrensdokumentation auf,
-beurteilt dann unser Entwicklungs-, Test- und Freigabeverfahren, prüft
-anschließend anhand der Dokumentation, ob die fachlichen Anforderungen
-sachgerecht festgelegt sind (Aufbauprüfung), und verifiziert zuletzt per
-Testfällen die Umsetzung (Funktionsprüfung). Entscheidend: Je besser unsere
-eigene Test- und Verfahrensdokumentation, desto stärker stützt sich der
-Prüfer auf **unsere** Nachweise statt auf eigene, teure Testfälle
-(vgl. Tz. 15 f., 68).
+Für die interne Vorbereitung wird der Prüfungsweg in vier Arbeitsbereiche
+gegliedert (vgl. insbesondere Tz. 11 ff., 49 ff. und 64 ff.):
 
-Daraus folgt: Prüfungsbereitschaft ist zu ~80 % eine **Dokumentations- und
-Nachweisaufgabe**. Der Code selbst ist in gutem Zustand — was fehlt, sind die
-Dokumente, die einem fachkundigen Dritten in angemessener Zeit erklären, was
-das System tut, wie es entsteht und wie es getestet wird (vgl. Tz. 49).
+1. Produkt, Prüfungsumfang, Entwicklungsumgebung und Dokumentation abgrenzen.
+2. Entwicklungs-, Wartungs-, Test- und Freigabeverfahren beurteilen.
+3. Dokumentierte fachliche Anforderungen und Kontrollen nachvollziehen.
+4. Die Umsetzung anhand belastbarer Test- und sonstiger Nachweise prüfen.
 
-Für **Folgeprüfungen** (jedes Release neu bescheinigen zu lassen wäre
-unbezahlbar) verlangt der Standard ein wirksames Entwicklungs-, Wartungs-
-und Freigabesystem plus eine Änderungsdokumentation, aus der die Unterschiede
-zwischen geprüfter und neuer Version eindeutig hervorgehen (vgl. Tz. 109 ff.).
-Unsere Release-Pipeline (Tags, signierte Manifeste, Image-Digests) ist dafür
-die richtige Basis — die Änderungsdokumentation muss formalisiert werden.
+Diese Gliederung ist eine Planungshilfe und ersetzt nicht die Methodik oder
+Ermessensentscheidung des Prüfers. Code, Dokumentation und tatsächlich
+ausgeführte Nachweise müssen für einen **konkret benannten Release**
+zusammenpassen. Repository-Dateien allein beweisen noch keine wirksame
+Durchführung.
 
-## 2. Scope-Entscheidung (beschlossen am 2026-06-10)
+Für spätere Folgeprüfungen ist zusätzlich eine eindeutige
+Änderungsdokumentation zwischen dem bereits geprüften und dem neuen Stand
+erforderlich (vgl. Tz. 109 ff.). Tags, signierte Manifeste und Image-Digests
+sind dafür technische Bausteine; die eingefrorene Differenz- und
+Release-Evidence-Matrix fehlt bis zu ihrer tatsächlichen Befüllung weiterhin.
 
-Prüfungsgegenstand können das Produkt insgesamt, einzelne Module oder
-einzelne Funktionen sein (vgl. Tz. 9, 44, 88). Beschlossener Scope für die
-erste Bescheinigung:
+## 2. Vorgesehener Prüfungsumfang
 
-| Modul/Funktion                                                | Begründung                                                                                                                   |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **Fakturierung** (Rechnungen inkl. XRechnung/ZUGFeRD)         | einzige Funktion mit direktem Rechnungslegungsbezug (Belegfunktion) — hier gelten die strengsten Kriterien (vgl. Tz. 25 ff.) |
-| **Dokumentenarchiv** (GoBD-Tier, Object-Lock, Virenscan)      | Aufbewahrung/Unveränderlichkeit ist das zentrale Kaufargument                                                                |
-| **Audit-Protokollierung** (Hash-Chain, Versiegelung, Verify)  | trägt Nachvollziehbarkeit und Unveränderlichkeit für alles andere                                                            |
-| **Zugriffsschutzsystem** (Rollen, TOTP, RLS, Portal-Trennung) | programminternes Kontrollsystem, wird in jedem Scope mitgeprüft (vgl. Tz. 10, 35)                                            |
-| Backup/Restore inkl. Drill                                    | Sicherheit der Daten (vgl. Tz. 33) — bereits stark nachweisbar                                                               |
+Der am 2026-06-10 intern festgelegte **Vorschlag** für den ersten
+Prüfungsumfang umfasst:
 
-Bewusst zunächst **außerhalb**: BWA, Workflows, Subsumtion/TCMS, n8n-Flows,
-Portal-Fachfunktionen. Sie bleiben über die Abgrenzung im Auftrag und im
-Bericht ausklammerbar (vgl. Tz. 44, 88) und können in Folgeprüfungen
-nachgezogen werden.
+| Modul/Funktion                                                | Interne Begründung                                                                 |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Fakturierung** (Rechnungen inkl. XRechnung/ZUGFeRD)         | rechnungslegungsnahe Beleg-, Status-, Festschreibungs- und Archivierungsfunktionen |
+| **Dokumentenarchiv** (GoBD-Tier, Object Lock, Virenscan)      | Aufbewahrung, Schutzstufen, Unveränderlichkeit und kontrollierte Ausgabe           |
+| **Audit-Protokollierung** (Hash-Chain, Versiegelung, Verify)  | Nachvollziehbarkeit von Fach- und Administrationsereignissen                       |
+| **Zugriffsschutzsystem** (Rollen, TOTP, RLS, Portal-Trennung) | programmierte Kontrollen, die auch die übrigen Scope-Funktionen schützen           |
+| **Backup/Restore einschließlich Drill**                       | Wiederherstellbarkeit, Integritätskontrollen und betriebliche Datensicherheit      |
 
-## 3. Gap-Analyse
+Die endgültige Abgrenzung ist Bestandteil des Prüfungsauftrags (vgl. Tz. 44, 88) und kann vom Prüfer abweichend beurteilt werden. BWA, Workflows,
+Subsumtion/TCMS, n8n-Flows und Portal-Fachfunktionen sind in diesem internen
+Vorschlag zunächst nicht enthalten.
 
-Status: ✅ vorhanden und prüfungstauglich · 🟡 vorhanden, aber formalisieren ·
-🔴 fehlt.
+### 2.1 Auslieferungskanal und Programmidentität
 
-### 3.1 Verfahrensdokumentation (vgl. Tz. 49 — gilt unabhängig vom Scope)
+Der formale Nachweisumfang gilt ausschließlich für den
+`TAXTRONIK_DEPLOY_CHANNEL=release`: annotierter SemVer-Tag, vollständiger
+Release-CI-Lauf, signiertes Manifest sowie digest-gepinnte Web- und
+Worker-Images müssen auf denselben Commit zeigen.
 
-| Bestandteil               | Status                          | Befund                                                                                                                                                                                                                                                                                                                              |
-| ------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Technische Dokumentation  | ✅ (Scope)                      | architecture.md, 12+ ADRs, FEATURES.md, Prisma-Schema, dichte Code-Kommentare. **Seit 2026-06-10:** Modulbeschreibungen je Scope-Modul inkl. Kontrollen + Traceability unter `docs/development/module/`.                                                                                                                            |
-| Betriebsdokumentation     | ✅/🟡                           | README-Produktivbetrieb, release.md, disaster-recovery.md, Verfahrensdoku-Generator, Runbooks. Fehlt: Mengen-/Performance-Annahmen, vollständige Parameter-Referenz (.env-Optionen sind dokumentiert, aber verstreut).                                                                                                              |
-| **Anwenderdokumentation** | ✅ (Scope) / 🟡 (übrige Module) | Benutzerhandbuch unter `docs/anwenderdoku/` für Dokumente, Rechnungen, Administration, BWA/Planung, Workflows/Formulare, Kalender/Fristen/Bescheide sowie Subsumtion/TCMS/Quantenlos. Noch nicht als vollständig für jedes Produktmodul und jede Bedienvariante auszuweisen; für den beschlossenen Scope ausreichend (vgl. Tz. 81). |
+Der unterstützte `source`-Kanal baut dagegen lokal aus einem Checkout. Er ist
+ein betrieblicher Installationsweg, aber **kein** automatisch gleichwertiger
+PS-880-Release-Nachweis. Ein Source-Deployment darf nur dann in einen
+Prüfungsumfang aufgenommen werden, wenn Checkout, Buildumgebung, erzeugte
+Digests, Tests, Abweichungen und Freigabe gesondert eingefroren werden. Bis
+dahin ist er vom formalen Scope ausgeschlossen.
 
-### 3.2 Softwareentwicklungsverfahren (vgl. Tz. 50–63)
+## 3. Statuslogik
 
-| Anforderung                                             | Status | Befund                                                                                                                                                                                                                                                      |
-| ------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Beschriebenes Entwicklungs-/Wartungs-/Freigabeverfahren | ✅     | **Seit 2026-06-10:** `docs/development/entwicklungsverfahren.md` (Rollen inkl. KI-Assistenz, Änderungs-/Hotfix-Weg, Freigabe = annotierter Tag, Fehlermanagement, Doku-Pflicht je Änderung).                                                                |
-| Programmierstandards/Namenskonventionen                 | ✅     | maschinell erzwungen (ESLint/Prettier/tsconfig, vgl. Tz. 58) und im Entwicklungsverfahren benannt.                                                                                                                                                          |
-| Versionsführung, abgegrenzte Releases                   | ✅     | Git-Historie, SemVer-Tags, signierte Update-Manifeste, Image-Digests, APP_VERSION/GIT_SHA im Produkt sichtbar (vgl. Tz. 59, 62 — Programmidentität ist besser gelöst als gefordert).                                                                        |
-| Test-/Abnahmekonzept dokumentiert                       | ✅     | **Seit 2026-06-10:** `docs/development/testkonzept.md` (Testarten inkl. Negativ-/Schnittstellen-/Parametertests, Abdeckungsanspruch je Scope-Modul, Fehler-/Wiederholungstest-Prozess). Nebenbefund behoben: CI testet jetzt ALLE Pakete (vorher 4 von 11). |
-| Testnachweise je Release, für Dritte nachvollziehbar    | ✅     | **Seit 2026-06-10:** CI archiviert Testprotokolle als Artefakte (`testbericht-unit/-ops/-db/-restore`, Playwright-Reports, Security-Logs); Nachweis-Kette Tag → Commit → CI-Lauf → Artefakte im Testkonzept beschrieben.                                    |
-| Doku-Aktualisierung bei jeder Programmänderung          | ✅     | als Pflicht im Entwicklungsverfahren festgeschrieben (vgl. Tz. 63) und gelebt.                                                                                                                                                                              |
-| Kontrollumfeld-Risiken (Personal, Technologie)          | 🟡     | Bus-Faktor 1 ist der relevante Risikoindikator (vgl. Tz. 53) — HANDOFF.md mildert; ehrlich dokumentieren statt verstecken.                                                                                                                                  |
+- ✅ **Repository-intern belegt:** Beschreibung und technische Nachweise sind
+  auffindbar. Das Symbol ist kein externes Prüfungsurteil.
+- 🟡 **teilweise/formalisieren:** Mechanismen oder Dokumente bestehen, aber
+  Vollständigkeit, Wirksamkeitsnachweis, Release-Bindung oder Freigabe fehlen.
+- 🔴 **offen:** der erforderliche Nachweis oder Prozess ist noch nicht
+  vorhanden beziehungsweise noch nicht durchgeführt.
+- — **außerhalb des Repository-Nachweises:** Bestandteil von Auftrag,
+  Erklärung oder unabhängiger Prüfung.
 
-### 3.3 Programmfunktionen im Scope (vgl. Tz. 25–36)
+## 4. Gap-Analyse
 
-| Anforderung                                   | Status | Befund                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| --------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unveränderlichkeit/Protokollierung            | ✅     | Audit-Hash-Chain (append-only, Trigger), Object-Lock, RFC-3161-Versiegelung, Stammdaten-Änderungsprotokoll, täglicher Verify-Job, monatlicher Restore-Drill — Vorzeigebereich.                                                                                                                                                                                                                                                                                                               |
-| Zugriffsschutzsystem                          | ✅/🟡  | Rollen, TOTP-Pflicht, RLS-Backstop, Portal-/Staff-Trennung, Lockout. Passwort-Policy dokumentieren und begründen (TOTP-Zweitfaktor statt Ablauf/Historie — bewusste, zu erläuternde Abweichung von klassischen Beispielen in Tz. 35).                                                                                                                                                                                                                                                        |
-| Eingabe-/Verarbeitungs-/Ausgabekontrollen     | 🟡     | Vorhanden (zod-Validierung, Magic-Byte-Checks, Plausibilitäten), aber nicht als Kontrollsystem **beschrieben** — die Aufbauprüfung (vgl. Tz. 14, 64 ff.) arbeitet auf der Doku, nicht auf dem Code.                                                                                                                                                                                                                                                                                          |
-| **Fakturierung: Belegnummern/Festschreibung** | ✅     | **Seit 2026-06-10 (iter85):** automatische, lückenlose Nummernvergabe je Tenant+Jahr (Sequenz, atomar in der Anlage-Tx — Lücken-Auswertung damit obsolet, Lücken können nicht entstehen); DB-seitige Festschreibung nach Versand (Felder + Positionen, auch für Owner); Status-Matrix nur vorwärts; GoBD-Archivkopie ist Pflicht VOR dem Versand; abgerechnete Zeiteinträge unlöschbar. Details + bewusste Grenzen (USt-Kategorien, Stornobeleg): `docs/development/module/fakturierung.md`. |
+### 4.1 Verfahrensdokumentation (vgl. Tz. 49)
 
-### 3.4 Prüfungsorganisatorisches (vgl. Tz. 44 f., 56, 88 f.)
+| Bestandteil              | Status | Repository-Nachweis und Grenze                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Technische Dokumentation | 🟡     | [Architektur](../architecture.md), ADRs, `FEATURES.md`, Prisma-Schema und Scope-Modulbeschreibungen sind vorhanden. Der [Fachkatalog](../fachkatalog/README.md) startet die regelweise Traceability; seine ersten Regeln sind bis zum Berufsträger-Review ausdrücklich nicht fachlich freigegeben. Eine vollständige Querschnittsmatrix aller Eingabe-, Verarbeitungs- und Ausgabekontrollen fehlt noch. |
+| Betriebsdokumentation    | 🟡     | Release-, Backup-, Restore- und Day-2-Runbooks bestehen. Mengen-/Performance-Annahmen, konsolidierte Parameterreferenz und die installationsabhängigen externen Datenflüsse müssen für das konkrete Prüfsystem eingefroren werden.                                                                                                                                                                       |
+| Anwenderdokumentation    | 🟡     | Das Benutzerhandbuch beschreibt zentrale Scope- und weitere Module. Vollständigkeit für jede Rolle, Bedienvariante und Fehlersituation ist noch nicht formal abgenommen; der Fachkatalog ersetzt keine Bedienungsanleitung.                                                                                                                                                                              |
+| Dokumentenlenkung        | 🟡     | Dokumenttypen, Änderungspflicht und Archivierung sind im Entwicklungsverfahren beschrieben. Eine technisch erzwungene personenbezogene Freigabe, `CODEOWNERS`-Regel oder vollständig gepflegte Owner-/Review-Metadaten je Dokument bestehen noch nicht.                                                                                                                                                  |
 
-| Anforderung                                  | Status | Befund                                                                                                                                                                                                     |
-| -------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Definiertes Testsystem mit Stammdatenbestand | 🟡     | setup.sh + Demo-Seed existieren; als „Prüfumgebung" beschreiben (Hardware/OS/DB-Angaben für den Bericht, vgl. Tz. 89) und Seed ggf. um prüfungsrelevante Fälle erweitern (vgl. Tz. 56).                    |
-| Änderungsdokumentation                       | ✅     | `CHANGELOG.md` führt `[Unreleased]` und versionierte Release-Abschnitte; scope-relevante Änderungen sind mit `[Scope]` gekennzeichnet (Pflegeregel: Eintrag entsteht mit der Änderung; vgl. Tz. 110, 113). |
-| Vollständigkeitserklärung, Auftragsinhalte   | —      | Sache der Beauftragung (vgl. Tz. 44); kein Repo-Artefakt.                                                                                                                                                  |
+### 4.2 Entwicklungs-, Wartungs-, Test- und Freigabeverfahren (vgl. Tz. 50–63)
 
-## 4. Maßnahmenstand und verbleibende Arbeiten
+| Anforderung                                     | Status | Repository-Nachweis und Grenze                                                                                                                                                                                                                                                                |
+| ----------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entwicklungs-/Wartungsverfahren beschrieben     | ✅     | [Entwicklungsverfahren](../development/entwicklungsverfahren.md) beschreibt Rollen, Änderungsweg, Hotfix, KI-Assistenz, Tests und Dokumentationspflicht. Die geringe personelle Trennung bleibt als Risiko ausgewiesen.                                                                       |
+| Programmierstandards und Namenskonventionen     | ✅     | TypeScript strict, ESLint, Prettier, Strukturkonventionen und Guard-Tests werden in CI geprüft.                                                                                                                                                                                               |
+| Versionsführung und abgegrenzte Releases        | 🟡     | Git, SemVer-Tags, signierte Manifeste und Image-Digests ermöglichen eindeutige Identität im Release-Kanal. Die Changelog-Historie kennzeichnet den nie getaggten `0.2.0`-Kandidaten nun ausdrücklich; ein vollständiges Evidence-Bundle für einen Prüf-Release fehlt.                         |
+| Test-/Abnahmekonzept dokumentiert               | 🟡     | Das [Testkonzept](../development/testkonzept.md) beschreibt Testarten und das Scope-Soll. Offene Action-Level-Tests werden dort ausdrücklich genannt; deshalb ist noch keine vollständige Scope-Testfreigabe belegt.                                                                          |
+| Testnachweise je Release für Dritte             | 🟡     | CI erzeugt Logs und Artefakte. Eine feste Aufbewahrungsanforderung wird im Workflow angefordert, ersetzt aber keine langfristige, unveränderliche Prüferablage. Die [Release-Evidence-Vorlage](../assurance/ps880-release-evidence.md) ist erst mit realen Hashes und Freigaben ein Nachweis. |
+| Dokumentation mit Programmänderung aktualisiert | 🟡     | Die Pflicht und der Fachkatalog-Diff-Guard bestehen. Fachliche Freigaben bleiben menschlich; ein allgemeiner Link-Guard schützt nur die technische Navigierbarkeit, nicht die inhaltliche Aktualität.                                                                                         |
+| Kontrollumfeld-Risiken                          | 🟡     | Aktuelle Übergabedokumentation reduziert Such- und Einarbeitungsrisiken. Sie beseitigt weder den Bus-Faktor noch fehlende organisatorische Stellvertretung oder unabhängige Fachfreigabe.                                                                                                     |
 
-**P1 — Fundament: umgesetzt.** Entwicklungs-, Wartungs-, Test- und
-Freigabeverfahren sind unter `docs/development/` beschrieben; CI erzeugt
-Testnachweise, und der Scope ist in Abschnitt 2 festgeschrieben.
+### 4.3 Programmfunktionen im vorgeschlagenen Scope (vgl. Tz. 25–36)
 
-**P2 — Substanz im beschlossenen Scope: umgesetzt.** Anwenderdokumentation,
-technische Modulbeschreibungen, Traceability und CHANGELOG-Prozess sind im Repo
-vorhanden. Vor einer Beauftragung ist ihre Vollständigkeit gegen den konkreten
-Prüfungsauftrag noch einmal gemeinsam mit dem Prüfer abzugrenzen.
+| Anforderung                                   | Status | Repository-Nachweis und Grenze                                                                                                                                                                                                                                                 |
+| --------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unveränderlichkeit und Protokollierung        | 🟡     | Hash-Kette, Object-Lock-Pfade, RFC-3161-Anker, Verify-Jobs und Restore-Drills sind implementiert und getestet. Für den Prüf-Release fehlen noch installationsbezogene Nachweise zu aktivem Object Lock, TSA-Vertrauenskette, ausgeführten Läufen und behandelten Abweichungen. |
+| Zugriffsschutzsystem                          | 🟡     | Rollen, TOTP, RLS, Portal-/Staff-Trennung und Lockout sind beschrieben und getestet. Passwort-/TOTP-Entscheidungen stehen in der [Modulbeschreibung](../development/module/zugriffsschutz.md); die Wirksamkeit im eingefrorenen Prüfsystem bleibt nachzuweisen.                |
+| Eingabe-/Verarbeitungs-/Ausgabekontrollen     | 🟡     | Zod-Validierung, Magic-Byte-Prüfungen, Plausibilitäten, Zustandsautomaten und Autorisierungstests bestehen verteilt. Eine vollständige, vom Berufsträger beurteilbare Querschnittsmatrix ist noch offen.                                                                       |
+| Fakturierung: Nummern, Festschreibung, Storno | 🟡     | Nummernvergabe, Festschreibung, Statusmatrix, Archivierung und E-Rechnungs-Generatoren sind beschrieben und überwiegend getestet. Die im Testkonzept genannten Action-Level-Lücken und die Release-Evidence müssen vor einer vollständigen Scope-Freigabe geschlossen sein.    |
 
-**P3 — Technische GoB-Kontrollen der Fakturierung: umgesetzt.** Atomare
-Nummernvergabe, Festschreibung nach Versand, Storno-Workflow und
-Verfahrensdokumentation sind vorhanden; die Grenzen sind in der technischen
-Modulbeschreibung festgehalten.
+### 4.4 Prüfungsorganisation
 
-**Vor Prüferkontakt verbleibt:**
+| Anforderung                                  | Status | Repository-Nachweis und Grenze                                                                                                                                                                                                      |
+| -------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Definiertes Testsystem mit Stammdatenbestand | 🟡     | Setup und Demo-Seed sind vorhanden. [Prüfumgebung](../assurance/pruefumgebung.md) ist eine auszufüllende Vorlage; Hardware, OS, Images, Seed-Hash, Mengengerüst und Erwartungswerte sind für den konkreten Lauf noch nicht erfasst. |
+| Änderungsdokumentation                       | 🟡     | `CHANGELOG.md`, Git-Historie, Scope-Markierungen und Fachkatalog-Änderungen bilden eine Grundlage. Erst die eingefrorene Differenz zu einem benannten geprüften Release ist ein Folgeprüfungsnachweis.                              |
+| Release-Evidence und Aufbewahrung            | 🔴     | Die Vorlage existiert, aber noch kein vollständig befülltes, extern zugängliches und gegen nachträgliche Änderung geschütztes Evidence-Bundle. CI-Artefakte allein sind zeitlich begrenzt und von der Forgejo-Instanz abhängig.     |
+| Vollständigkeitserklärung und Auftragsinhalt | —      | Mit Prüfer und Auftraggeber zu vereinbaren; kein durch Code oder Repository ersetzbarer Nachweis.                                                                                                                                   |
 
-1. Prüfungsauftrag und Testsystem einschließlich Hardware-, OS-, DB-, Mengen-
-   und Performance-Annahmen formal beschreiben.
-2. Parameterreferenz konsolidieren sowie Passwort-/TOTP-Konzept und die
-   Eingabe-, Verarbeitungs- und Ausgabekontrollen als Kontrollsystem
-   zusammenhängend dokumentieren.
-3. Nachweis-Matrix für den gewählten Release einfrieren und die Artefakte eines
-   vollständigen, grünen Release-Laufs extern prüfbar bereitstellen.
+## 5. Maßnahmenplan vor Prüferkontakt
 
-**Pflegeregel ab sofort:** Jede Änderung an Scope-Funktionen aktualisiert die
-zugehörige Anwender- und Technikdoku **im selben Commit** — das ist nicht
-Kür, sondern Prüfvoraussetzung (vgl. Tz. 63) und bei uns ohnehin Kultur.
+1. Prüfungsauftrag, endgültigen Funktionsumfang, Release-Kanal und explizite
+   Ausschlüsse mit dem Prüfer abstimmen.
+2. Die Vorlage [Prüfumgebung](../assurance/pruefumgebung.md) für einen
+   unveränderlich identifizierten Release vollständig befüllen und die
+   erwarteten Seed-/Testfälle fachlich abnehmen.
+3. Die Action-Level-Lücken der Fakturierung und weitere Scope-Lücken aus dem
+   Testkonzept schließen; vollständigen Release-CI-Lauf wiederholen.
+4. Eingabe-, Verarbeitungs- und Ausgabekontrollen als zusammenhängende
+   Querschnittsmatrix dokumentieren und durch einen Berufsträger beurteilen.
+5. Fachkatalogregeln im vorgesehenen Scope durch Berufsträger prüfen; Status,
+   Inhalts-Hash, Reviewer und Datum ohne KI-Selbstfreigabe festhalten.
+6. [Release-Evidence](../assurance/ps880-release-evidence.md) mit Commit,
+   Digests, Artefakt-Hashes, KoSIT-/SBOM-/Security-Nachweisen, Abweichungen und
+   tatsächlicher Freigabe befüllen und nach der vereinbarten Frist in einer
+   unveränderlichen, für den Prüfer zugänglichen Ablage sichern.
+7. Parameter, externe Datenflüsse, Mengen-/Performance-Annahmen und Known
+   Limits für genau diese Installation einfrieren.
 
-## 5. Realistische Einschätzung
+## 6. Realistische Einschätzung
 
-Technisch stark belegt sind Versionsführung, Schutz vor unbemerkter Änderung,
-Testpraxis und betriebliche Restore-Nachweise. Die früheren Lücken bei
-Anwenderdokumentation und Fakturierungs-Festschreibung sind geschlossen.
-Verbleibend sind vor allem die prüfungsauftragsspezifische Formalisierung, eine
-reproduzierbar beschriebene Prüfumgebung und die Konsolidierung einzelner
-Kontrollbeschreibungen. Das schafft eine gute Ausgangslage, ersetzt aber weder
-die unabhängige Prüfung noch eine Softwarebescheinigung; deren Erteilung kann
-nur der beauftragte Prüfer nach Festlegung des konkreten Scopes beurteilen.
+Die technischen Grundlagen für Versionsidentität, automatisierte Tests,
+Mandantentrennung, Festschreibung, Protokollierung und Restore-Prüfungen sind
+umfangreich. Die wesentlichen offenen Punkte liegen in der vollständigen
+fachlichen Freigabe, der installations- und releasebezogenen Beweisführung,
+einzelnen direkten Funktionstests sowie der langfristigen Dokumentenlenkung.
+
+Damit besteht eine gute Vorbereitung, aber noch **keine nachgewiesene
+Prüfungsbereitschaft und keine Softwarebescheinigung**. Eine solche Aussage
+kann erst nach Festlegung des Auftrags und Durchführung durch einen
+unabhängigen Prüfer getroffen werden.

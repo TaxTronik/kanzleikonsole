@@ -1,5 +1,6 @@
 // =============================================================================
 // Festschreibung Fakturierung (DB-Invariante, iter85) — Pflicht in CI
+// Fachkatalog: INV-LIFECYCLE-FREEZE-001
 //
 // GoB-Kern: Nach Verlassen von DRAFT sind die geschäftlichen Felder einer
 // Rechnung und ihre Positionen unveränderlich, Statusübergänge folgen einer

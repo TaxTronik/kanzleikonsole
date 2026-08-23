@@ -1,5 +1,9 @@
 # Test- und Abnahmekonzept
 
+- **Dokumentstatus:** gültige interne Verfahrensbeschreibung mit ausgewiesenen
+  Lücken
+- **Letzte inhaltliche Prüfung:** 2026-08-23
+
 Dieses Dokument beschreibt, **was** bei TaxTronik getestet wird, **wie** und
 **womit** — und wie die Durchführung für Dritte nachvollziehbar bleibt
 (vgl. IDW PS 880 n.F. (01.2022), Tz. 60, 67 ff.). Es beschreibt den
@@ -20,7 +24,8 @@ Ist-Zustand; Änderungen am Testverfahren werden hier nachgezogen.
 | Negativtests („gegen das System") | in allen obigen Ebenen                                                                                       | abgelehnte Eingaben, Rückwärts-Übergänge, manipulierte Signaturen, fremde IDs (IDOR), kaputte Tokens — Fehlerfälle sind gleichberechtigte Testfälle | jeder CI-Lauf                                                            |
 | Schnittstellentests               | Vitest (HMAC-Signaturen n8n, Engine-Vertragstests gegen eingefrorene Fixtures, XRechnung-/ZUGFeRD-Erzeugung) | Ein-/Ausgangsschnittstellen mit definierten Erwartungswerten                                                                                        | jeder CI-Lauf                                                            |
 | Parametertests                    | ENV-Schema-Tests (`@taxtronik/config`), Modul-Konfigurationstests                                            | variable Steuerungsparameter werden validiert und im Verhalten getestet                                                                             | jeder CI-Lauf                                                            |
-| Sicherheits-Scans                 | gitleaks, `pnpm audit`, Trivy (Release-Images)                                                               | Secrets, verwundbare Abhängigkeiten, Image-CVEs                                                                                                     | täglich + je Push/Release                                                |
+| Dependency-/Secret-Scans          | gitleaks, `pnpm audit`                                                                                       | Secrets und verwundbare Abhängigkeiten                                                                                                              | täglich; Pull Requests; Pushes auf `main`/`develop`; Release-Aufruf      |
+| Release-Image-Scan                | Trivy gegen die gebauten Release-Images                                                                      | Image-CVEs vor der Veröffentlichung                                                                                                                 | ausschließlich im Release-Workflow                                       |
 | Strukturierte Sicherheits-Reviews | adversariale Mehrfach-Reviews mit dokumentierten Befunden                                                    | Angriffsflächen-Prüfung über automatisierte Tests hinaus                                                                                            | anlassbezogen; Ergebnisse in Commit-Historie und Befundkennungen am Code |
 | Manuelle Abnahme                  | Verantwortlicher Entwickler                                                                                  | Bedien-/Sichtprüfung neuer bzw. geänderter Oberflächen vor Freigabe                                                                                 | je Release                                                               |
 
@@ -48,10 +53,12 @@ Action-level getestet:
 | Zugriffsschutz        | Login-Flows beidseitig (TOTP, Magic-Link inkl. Einmaligkeit/Ablauf/Replay), Rollen-Guards, Lockout-Verhalten, Session-Revalidierung, RLS-Cross-Tenant                                                                                                                  |
 | Backup/Restore        | Roundtrip mit Integritäts-Assertions (CI je Lauf), Restore-Drill-Logik, Hash-Verifikation des Backup-Objekts                                                                                                                                                           |
 
-Neue Funktionen in Scope-Modulen werden **nicht freigegeben**, bevor die
-zugehörigen Tests existieren; Fehlerbehebungen erfordern einen
-Regressionstest (siehe
-[Entwicklungsverfahren, Abschnitt 6](entwicklungsverfahren.md)).
+Für eine **formale PS-880-Scope-Freigabe** müssen die zugehörigen Tests
+vorliegen; Fehlerbehebungen erfordern einen Regressionstest (siehe
+[Entwicklungsverfahren, Abschnitt 6](entwicklungsverfahren.md)). Ein
+Produktrelease kann technisch auch Funktionen außerhalb dieses formalen
+Nachweisumfangs enthalten. Solange die hier genannten Lücken bestehen, darf es
+aber nicht als vollständig nach diesem Scope abgedeckt dargestellt werden.
 
 Der belegte Ist-Stand wird aus den tatsächlich ausgeführten CI-Testdateien und
 Artefakten abgeleitet, nicht aus der Soll-Tabelle. Insbesondere sind bei der
@@ -59,17 +66,19 @@ Fakturierung Nummernvergabe, Statusmatrix, Festschreibungs-Trigger,
 Archivierung, USt-/E-Rechnungs-Generatoren und Storno-Hilfslogik automatisiert
 belegt. Für `markPaidAction`, den vollständigen orchestrierten
 `cancelInvoiceAction`-Korrekturfluss und `uploadExternalInvoiceAction` besteht
-derzeit kein eigener Action-Level-Test; diese Lücke darf in einem Prüfbericht
-nicht als abgedeckt ausgewiesen werden und ist vor einer entsprechenden
-Freigabe durch direkte Regressionstests zu schließen.
+derzeit kein eigener Action-Level-Test. Die bereits existierende Version
+`v0.2.1` ist deshalb kein Beleg einer vollständigen PS-880-Scope-Testfreigabe.
+Die Lücke darf in einem Prüfbericht nicht als abgedeckt ausgewiesen werden und
+ist vor einer entsprechenden formalen Freigabe durch direkte Tests zu
+schließen.
 
 ## 3. Testumgebungen
 
-| Umgebung            | Beschreibung                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CI (maßgeblich)     | Forgejo-Runner; je Lauf frische Postgres-18-Instanz (Service-Container), definierte ENV (siehe `ci.yml`), reproduzierbare Installation (`--frozen-lockfile`). Die CI-Umgebung ist die Referenz für alle Testnachweise.                                                                                                                                                                                                                                |
-| Lokal               | identischer Stack via Docker Compose (`./scripts/setup.sh`), Demo-Stammdatenbestand über den Seed (`packages/db/seeds/dev.ts`) — Admin-Konto, Beispiel-Mandant, Dokumente. Optional ergänzt `pnpm demo:retention` GwG-/Object-Lock-Fälle für Löschfrist-Tests (löschreif/nicht löschreif, Lock aktiv/abgelaufen). Dieser Seed ist zugleich die Basis des Prüf-Testsystems für eine Softwareprüfung (definierter, reproduzierbarer Stammdatenbestand). |
-| Prüf-/Abnahmesystem | für eine externe Prüfung wird ein definierter Release-Stand (Tag + Image-Digest) mit dem Seed-Datenbestand auf dem dokumentierten Compose-Stack bereitgestellt; Hardware-/OS-/DB-Angaben ergeben sich aus der Betriebsdokumentation ([README](../../README.md), [release.md](../operations/release.md)).                                                                                                                                              |
+| Umgebung            | Beschreibung                                                                                                                                                                                                                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI (maßgeblich)     | Forgejo-Runner; je Lauf frische Postgres-18-Instanz (Service-Container), im Workflow definierte ENV und Installation mit `--frozen-lockfile`. Runner-Host, Kernel und Ressourcen sind nicht allein aus `ci.yml` eingefroren und müssen im Release-Evidence-Satz ergänzt werden.                                                                           |
+| Lokal               | funktional vergleichbarer Docker-Compose-Stack (`./scripts/setup.sh`) mit Demo-Stammdaten aus `packages/db/seeds/dev.ts`. Image-Varianten, Host-OS, Ports, Ressourcen und optionale Dienste können von CI/Produktion abweichen; lokale Ergebnisse sind deshalb kein Ersatz für den maßgeblichen Release-Lauf.                                             |
+| Prüf-/Abnahmesystem | wird für den konkreten Auftrag aus einem Release-Tag samt beiden Image-Digests bereitgestellt. Hardware, OS/Kernel, Compose-/DB-Versionen, Seed-Hash, Datenvolumen, Fälle und Erwartungswerte werden in der auszufüllenden [Prüfumgebung](../assurance/pruefumgebung.md) festgehalten; README und Release-Runbook allein enthalten diese Ist-Daten nicht. |
 
 ## 4. Testnachweise (Dokumentation der Durchführung)
 
@@ -80,7 +89,9 @@ Vollständigkeit, Abweichungen):
    ihre vollständigen Testprotokolle als Artefakte hoch
    (`testbericht-unit`, `testbericht-ops`, `testbericht-db`,
    `testbericht-restore`); die E2E-Jobs archivieren Playwright-Reports. Ein
-   Testprotokoll weist je Testdatei und Testfall Bestehen/Fehlschlag aus.
+   Testprotokoll weist je Testdatei und Testfall Bestehen/Fehlschlag aus. Die
+   Workflows fordern eine Aufbewahrung von 90 Tagen an; eine kürzere
+   Instanzrichtlinie kann diese Frist begrenzen.
 2. **Job-Logs:** alle übrigen Schritte (Upgrade-Pfad, Drift-Check, Builds)
    sind über die persistierten CI-Logs des jeweiligen Laufs nachvollziehbar.
 3. **Release-Bezug:** maßgeblich für ein Release ist der CI-Lauf des
@@ -91,6 +102,13 @@ Vollständigkeit, Abweichungen):
    entsteht ein neuer vollständiger Lauf (kein partielles „Nachtesten" am
    Gate vorbei). Erkannte Fehler und ihre Wiederholungstests sind über
    Commit (Regressionstest) + CHANGELOG nachvollziehbar.
+5. **Release-Evidence:** Für einen Prüf-Release werden relevante Logs,
+   Reports, SBOMs, Scan-Ergebnisse und Manifeste heruntergeladen, gehasht und
+   mit Freigabe und Abweichungen in der
+   [Release-Evidence-Matrix](../assurance/ps880-release-evidence.md) gebunden.
+   Erst diese tatsächlich befüllte und nach vereinbarter Frist extern gegen
+   Änderung geschützte Ablage ist der langfristige Prüfnachweis; die Vorlage
+   oder ein flüchtiges CI-Artefakt allein ist es nicht.
 
 ## 5. Grenzen und bewusste Entscheidungen
 
@@ -102,6 +120,7 @@ Vollständigkeit, Abweichungen):
   (Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency,
   Upload-Fuzz). Fachliche Detailtiefe liegt zusätzlich in Unit-/Integrations-
   tests, wo Fehlerursachen präzise lokalisierbar sind.
-- **Lasttests:** bisher nicht etabliert; bekanntes offenes Thema (siehe
-  Gap-Analyse) — für die Bescheinigungsfähigkeit nicht vorausgesetzt, für
-  den Betrieb größerer Kanzleien geplant.
+- **Lasttests:** bisher nicht etabliert. Ob und in welchem Umfang sie für den
+  konkreten Prüfungsauftrag und das zugesagte Mengengerüst erforderlich sind,
+  ist risikobasiert mit dem Prüfer festzulegen; bis dahin bleiben
+  Performancegrenzen unbestätigt.

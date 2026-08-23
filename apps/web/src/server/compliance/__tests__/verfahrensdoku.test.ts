@@ -20,6 +20,7 @@ const base: VerfahrensdokuData = {
   generatedBy: 'Rey Koxha',
   appVersion: '1.4.0',
   gitSha: 'abc1234',
+  deployChannel: 'release',
   modules: { bwa: true, knowledge: false } as VerfahrensdokuData['modules'],
   tsaLabel: 'GlobalSign (RFC-3161)',
   lastBackup: { at: '2026-06-10T03:00:00Z', status: 'SUCCESS', sizeBytes: 150 * 1024 * 1024 },
@@ -60,6 +61,8 @@ describe('buildVerfahrensdoku', () => {
     const md = buildVerfahrensdoku(base);
     expect(md).toContain('Musterkanzlei GmbH');
     expect(md).toContain('TaxTronik 1.4.0 (Commit abc1234)');
+    expect(md).toContain('Erfasster Auslieferungskanal:** release');
+    expect(md).toContain('signierte, digest-gepinnte Release-Artefakte');
     expect(md).toContain('240 Mandanten');
     expect(md).toContain('ERFOLGREICH; 1234 Audit-Einträge');
     expect(md).toContain('Ketten intakt (5000 Einträge, 240 Rolling-Anker');
@@ -84,5 +87,14 @@ describe('buildVerfahrensdoku', () => {
     const md = buildVerfahrensdoku({ ...base, drill: null, auditVerify: null });
     expect(md).toContain('noch kein Lauf');
     expect(md).toContain('noch kein persistiertes Ergebnis');
+  });
+
+  it('weist Source-Build und optionale externe Datenflüsse ehrlich aus', () => {
+    const md = buildVerfahrensdoku({ ...base, deployChannel: 'source' });
+    expect(md).toContain('nicht automatisch identisch mit einem in CI gebauten Release-Artefakt');
+    expect(md).toMatch(
+      /Daraus folgt \*\*nicht\*\*, dass jeder\s+Datenfluss rein On-Premise bleibt/,
+    );
+    expect(md).toContain('SMTP, RFC-3161-TSA, n8n, Signal/Risk-Layer');
   });
 });

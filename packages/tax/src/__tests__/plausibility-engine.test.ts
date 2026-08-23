@@ -1,6 +1,7 @@
 // =============================================================================
 // Plausibilitäts-Golden-Tests (fachlicher Audit) — gesetzlich fixierte
 // Erwartungswerte gegen deutsches Steuerrecht.
+// Fachkatalog: TAX-NOTICE-APPEAL-001
 //
 // Jeder Test dokumentiert die Rechtsgrundlage im Kommentar. Diese Tests
 // SOLLEN brechen, wenn jemand die fachlichen Konstanten der Engine ändert.

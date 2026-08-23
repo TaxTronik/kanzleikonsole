@@ -32,6 +32,7 @@ export interface VerfahrensdokuData {
   generatedBy: string; // Name des Erzeugers
   appVersion: string;
   gitSha: string;
+  deployChannel: 'release' | 'source' | 'nicht erfasst';
   modules: ModuleConfig;
   tsaLabel: string;
   lastBackup: { at: string; status: string; sizeBytes: number | null } | null;
@@ -84,12 +85,19 @@ export async function collectVerfahrensdokuData(
   else if (process.env['TIMESTAMP_AUTHORITY_URL'])
     tsaLabel = `RFC-3161-TSA: ${process.env['TIMESTAMP_AUTHORITY_URL']}`;
 
+  const configuredDeployChannel = process.env['TAXTRONIK_DEPLOY_CHANNEL'];
+  const deployChannel: VerfahrensdokuData['deployChannel'] =
+    configuredDeployChannel === 'release' || configuredDeployChannel === 'source'
+      ? configuredDeployChannel
+      : 'nicht erfasst';
+
   return {
     tenantName: tenant.name,
     generatedAt: new Date().toISOString(),
     generatedBy,
     appVersion: process.env['APP_VERSION'] ?? 'dev',
     gitSha: process.env['GIT_SHA'] ?? 'unknown',
+    deployChannel,
     modules,
     tsaLabel,
     lastBackup: lastBackup
@@ -156,26 +164,41 @@ export function buildVerfahrensdoku(data: VerfahrensdokuData): string {
       : `Letzte Integritätsprüfung: ${d(data.auditVerify.checkedAt)} — BRUCH FESTGESTELLT. Sofortige Prüfung erforderlich!`
     : 'Integritätsprüfung: noch kein persistiertes Ergebnis (täglicher Prüfjob, 02:45 UTC).';
 
+  const deploymentLine =
+    data.deployChannel === 'release'
+      ? 'Release-Kanal: Der Betreiber bezieht laut erfasster Konfiguration signierte, digest-gepinnte Release-Artefakte. Manifest, Tag, Commit und laufende Image-Digests sind für den konkreten Stand zusätzlich gegenzuprüfen.'
+      : data.deployChannel === 'source'
+        ? 'Source-Kanal: Die Installation wird lokal aus einem Checkout gebaut. Sie ist damit nicht automatisch identisch mit einem in CI gebauten Release-Artefakt; Checkout, Buildumgebung, Digests und Tests müssen gesondert dokumentiert werden.'
+        : 'Auslieferungskanal nicht erfasst: Ob dieser Stand aus signierten Release-Artefakten oder einem lokalen Source-Build stammt, muss der Betreiber ergänzen.';
+
   return `# Verfahrensdokumentation nach GoBD
 
 **Kanzlei:** ${data.tenantName}
 **Stand:** ${d(data.generatedAt)} (automatisch aus dem laufenden System erzeugt)
 **Erstellt durch:** ${data.generatedBy}
 **Systemversion:** TaxTronik ${data.appVersion} (Commit ${data.gitSha})
+**Erfasster Auslieferungskanal:** ${data.deployChannel}
 
-> Dieses Dokument wurde von TaxTronik aus der tatsächlichen Systemkonfiguration
-> generiert. Die Erzeugung ist als Ereignis in der revisionssicheren
-> Audit-Hash-Chain protokolliert. Es ergänzt die organisatorische
+> Dieses Dokument wurde von TaxTronik aus den technisch erfassten Teilen der
+> Systemkonfiguration und versionierten Herstellertexten generiert. Nicht jede
+> betriebliche Einstellung oder organisatorische Durchführung wird automatisch
+> erhoben. Die Erzeugung ist als Ereignis in der Audit-Hash-Chain
+> protokolliert. Es ergänzt die organisatorische
 > Verfahrensdokumentation der Kanzlei (Arbeitsanweisungen, Zuständigkeiten)
 > um den technischen Teil — es ersetzt sie nicht.
 
 ## 1. Allgemeine Beschreibung des Verfahrens
 
-TaxTronik ist das zentrale Kanzlei- und Mandanten-System dieser Kanzlei und
-wird **On-Premise** betrieben: alle Daten (Datenbank, Dokumente, Protokolle)
-verbleiben auf Systemen unter Kontrolle der Kanzlei. Es verarbeitet
-Mandanten-Stammdaten, Dokumente/Belege, Kommunikation über das Mandantenportal,
-Fristen sowie Compliance-Workflows (GwG, DSGVO, Vollmachten/eIDAS).
+TaxTronik verarbeitet Mandanten-Stammdaten, Dokumente/Belege, Kommunikation
+über das Mandantenportal, Fristen sowie Compliance-Workflows (GwG, DSGVO,
+Vollmachten/eIDAS). Datenbank und Dokumentenspeicher werden in der
+konfigurierten Betriebsumgebung geführt. Daraus folgt **nicht**, dass jeder
+Datenfluss rein On-Premise bleibt: Je nach Installation können insbesondere
+SMTP, RFC-3161-TSA, n8n, Signal/Risk-Layer, Update-/Registry-Dienste oder ein
+extern betriebener S3-Endpunkt Daten beziehungsweise Metadaten empfangen. Die
+tatsächlich aktiven Ziele, übertragenen Kategorien und Verträge sind in der
+kanzleieigenen Verfahrensdokumentation und im VVT installationsbezogen zu
+ergänzen.
 
 Aktive Module: ${activeModules || '—'}.
 
@@ -201,23 +224,30 @@ Mitarbeiter-Konten, ${data.counts.portalContactsActive} aktive Portal-Zugänge.
   Aktuell ${data.counts.auditEntries} Einträge, ${data.counts.archiveSegments} unveränderlich archivierte Segmente.
 - Eine zweite, dünne und ebenfalls nur anfügbare Anchor-Kette verankert
   committete lokale Spitzenstände im Regelfall binnen Sekunden über
-  **${data.tsaLabel}**. Der TSA-Aufruf läuft asynchron und blockiert keine
-  Fachänderung. Die TSA-Zeit belegt den spätesten Existenzzeitpunkt des
-  verankerten Präfixes, nicht die exakte lokale Ereigniszeit.
-- Die tägliche RFC-3161-Tagesversiegelung bleibt als zusätzlicher Nachweis.
+  **${data.tsaLabel}**. Die Verankerung läuft asynchron und blockiert keine
+  Fachänderung; ein externer Aufruf findet nur bei einer externen TSA statt.
+  Eine vertrauenswürdige TSA-Zeit kann den spätesten Existenzzeitpunkt des
+  verankerten Präfixes belegen, nicht die exakte lokale Ereigniszeit.
+- Die tägliche Versiegelung bleibt als zusätzlicher Nachweis; ihre externe
+  Beweiskraft hängt von der tatsächlich konfigurierten und verifizierten TSA
+  samt Vertrauenskette ab.
 - ${verifyLine}
-- Steuerlich relevante Dokumente liegen im Object-Store mit
-  **Object-Lock (COMPLIANCE-Mode, dokumenttypabhängig 6/8/10 Jahre;
-  Rechnungen 8 Jahre)** — auch Administratoren können sie vor Fristablauf
-  nicht löschen oder ändern. GwG-Unterlagen: grundsätzlich 5 Jahre, mögliche
-  längere gesetzliche Pflichten werden geprüft und spätestens nach 10 Jahren
-  wird vernichtet (§ 8 Abs. 4 GwG). Jeder Upload durchläuft vor Annahme einen Virenscan
-  (ClamAV); nicht bestandene Dateien werden nicht gespeichert.
+- Steuerlich relevante Dokumente werden für **Object Lock im COMPLIANCE-Modus**
+  mit dokumenttypabhängig 6/8/10 Jahren (Rechnungen 8 Jahre) geschrieben. Die
+  tatsächliche Bucket-Konfiguration und bestätigte Retention jedes
+  Prüfungsobjekts müssen betriebsseitig verifiziert werden; erst dann trägt der
+  Speicher den zugesagten technischen Löschschutz. GwG-Unterlagen: grundsätzlich
+  5 Jahre, mögliche längere gesetzliche Pflichten werden geprüft und spätestens
+  nach 10 Jahren wird vernichtet (§ 8 Abs. 4 GwG). Jeder Upload durchläuft vor
+  Annahme einen Virenscan (ClamAV); nicht bestandene Dateien werden nicht
+  gespeichert.
 
 ### 2.3 Datensicherung und Wiederherstellbarkeit (GoBD Tz. 10.2)
 
-- Tägliche Datenbanksicherung (pg_dump, komprimiert, SHA-256-geprüft) in den
-  internen Object-Store; Aufbewahrung gemäß Backup-Konzept der Kanzlei.
+- Der Worker plant eine tägliche Datenbanksicherung (pg_dump, komprimiert,
+  SHA-256-geprüft) in den konfigurierten Backup-Bucket. Ob der Lauf tatsächlich
+  ausgeführt wurde und wie lange er aufbewahrt wird, ergibt sich aus dem
+  folgenden Ist-Status und dem Backup-Konzept der Kanzlei.
 - ${backupLine}
 - ${drillLine}
 - Wiederherstellungsverfahren ist dokumentiert (Disaster-Recovery-Runbook)
@@ -234,15 +264,17 @@ Mitarbeiter-Konten, ${data.counts.portalContactsActive} aktive Portal-Zugänge.
 
 ## 3. Betriebsdokumentation / Internes Kontrollsystem
 
-- **Updates:** Versionierte, signierte Releases; Einspielen ausschließlich
-  durch den Betreiber (kein Auto-Update). Vor jeder Migration wird
-  automatisch gesichert; Rollback-Verfahren ist dokumentiert.
+- **Updates:** ${deploymentLine} Das Einspielen erfolgt durch den Betreiber
+  (kein Auto-Update). Vor jeder Migration wird automatisch gesichert; das
+  Rollback-Verfahren ist dokumentiert.
 - **Überwachung:** Tägliche automatische Integritätsprüfung beider Audit-Ketten;
   Betriebsalarm bei anhaltendem Rückstand der externen Verankerung;
   monatlicher automatischer Wiederherstellungstest; optionaler E-Mail-Alarm
   bei Ausfall von Datenbank, Queue, Dokumentenspeicher oder Virenscanner.
-- **Vier-Augen-Prinzip:** Freigaben des geteilten Fachwissens (Begriffskatalog)
-  erfordern eine zweite Person und werden auditiert.
+- **Fachliche Freigaben:** Regeln im Fachkatalog dürfen nur durch einen
+  dokumentierten Berufsträger-Review freigegeben werden. Dieses Dokument
+  erhebt nicht automatisch, ob alle betroffenen Regeln tatsächlich geprüft
+  sind; technische Validatoren oder KI-Ausgaben gelten nicht als Fachfreigabe.
 
 ### 3.1 Mitgeltende Herstellerdokumentation
 
@@ -261,6 +293,7 @@ Version):
   \`docs/operations/secret-rotation.md\`)
 - Disaster-Recovery-Runbook (\`docs/operations/disaster-recovery.md\`)
 - Anwenderdokumentation (\`docs/anwenderdoku/\`)
+- Fachkatalog mit regelweisem Prüfstatus (\`docs/fachkatalog/\`)
 
 ---
 *Generiert von TaxTronik ${data.appVersion}. Dieses Dokument bei wesentlichen

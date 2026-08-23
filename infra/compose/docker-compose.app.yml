@@ -124,6 +124,10 @@ services:
       # ("Hostname löst auf private Adresse auf"). Per .env überschreibbar.
       INTERNAL_FETCH_HOSTS: ${INTERNAL_FETCH_HOSTS:-n8n,seaweedfs,clamav,postgres,redis}
       APP_VERSION: ${TAXTRONIK_VERSION:-dev}
+      # Verfahrensdokumentation: Bezugsweg (lokaler Source-Build oder
+      # verifiziertes Release-Artefakt) unverändert in den Web-Container
+      # durchreichen. Leer bleibt bewusst "nicht erfasst" statt zu raten.
+      TAXTRONIK_DEPLOY_CHANNEL: ${TAXTRONIK_DEPLOY_CHANNEL:-}
       # RFC-3161-Zeitstempel für Audit-Chain/Backup-Drill. Ohne Wert greift der
       # LocalTimestampAdapter — in Production verlangt @taxtronik/config aber
       # eine externe TSA. MUSS daher durchgereicht werden (sonst still lokal).

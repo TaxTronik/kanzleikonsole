@@ -6,6 +6,12 @@ Einstellungen → Module). Rechnungen und Vollmachten sind keine Toggles,
 sondern Modus-Schalter (`invoiceMode` / `poaMode`) mit `OFF`-Option —
 sie tragen der Einheitlichkeit halber ebenfalls ein ⚙.
 
+Die Liste beschreibt den **vorhandenen Funktionsumfang**. Die zugrunde liegende
+steuerliche, rechtliche und kanzleifachliche Logik wird ergänzend im
+[Fachkatalog](docs/fachkatalog/README.md) als atomare, prüfbare Regeln geführt.
+Dort sind fachlicher Prüfstatus, tatsächlicher Umsetzungsstand, bekannte Grenzen
+sowie Code- und Testnachweise getrennt ausgewiesen.
+
 ## Überblick
 
 **Mandanten & Akte** — Mandanten-CRM · Onboarding-Wizard · GwG-Compliance ·
