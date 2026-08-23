@@ -10,10 +10,10 @@
 // Hinweise:
 // - Beträge werden mit 2 Nachkommastellen ausgegeben (Währung EUR).
 // - Dokumenttyp 380 = Handelsrechnung. Stornorechnung wäre 381.
-// - VAT category code "S" = Standard rate. Andere: "Z" (zero), "E" (exempt), "K" (intra-EU).
-// - Für eine vollständige XRechnung sind in der Praxis weitere Felder nötig
-//   (z. B. Buyer Reference / Leitweg-ID für B2G). Diese werden, falls leer,
-//   weggelassen — gilt als "best effort" für B2B.
+// - VAT category code "S" = Standard rate. Andere: "Z" (zero), "E" (exempt),
+//   "AE" (Reverse Charge).
+// - Die Buyer Reference nutzt vorrangig die hinterlegte Leitweg-ID/Referenz und
+//   fällt andernfalls auf Rechnungs-E-Mail oder Mandantenname zurück.
 //
 // Implementierung: nutzt xmlbuilder2 — robusterer Builder mit korrektem
 // Escaping (inkl. Attribute), garantierter Element-Reihenfolge und sauberer

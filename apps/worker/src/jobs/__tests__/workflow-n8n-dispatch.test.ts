@@ -113,6 +113,33 @@ describe('workflow n8n dispatch reconciliation', () => {
     );
   });
 
+  it.each(['UNROUTED', 'SKIPPED'] as const)(
+    'lässt N8N_TRIGGER bei %s pending und schließt das Item nicht ab',
+    async (status) => {
+      h.findMany.mockResolvedValue([{ ...CANDIDATE, item: { kind: 'N8N_TRIGGER' } }]);
+      h.emit.mockResolvedValue({
+        eventId: 'outbox-1',
+        status,
+        deliveryCount: status === 'SKIPPED' ? 1 : 0,
+        error: 'Keine zustellbare Route',
+      });
+
+      await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
+        claimed: 1,
+        enqueued: 0,
+        failed: 1,
+      });
+      expect(h.updateMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ claimedAt: null, lastError: 'Keine zustellbare Route' }),
+        }),
+      );
+      expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+      expect(h.itemUpdateMany).not.toHaveBeenCalled();
+      expect(h.evidenceRecord).not.toHaveBeenCalled();
+    },
+  );
+
   it('behandelt einen deduplizierten Outbox-Eintrag als erfolgreichen Handoff', async () => {
     h.findMany.mockResolvedValue([CANDIDATE]);
     h.emit.mockResolvedValue({

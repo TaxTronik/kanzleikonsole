@@ -1,8 +1,9 @@
 // =============================================================================
-// Briefkopf-Konfiguration für ausgehende PDFs
+// Briefkopf-Konfiguration für App-generierte Rechnungs-PDFs
 //
 // Liegt in `tenant_setting` unter `branding.letterhead`. Wird vom
-// PDF-Generator (Vollmachten, Rechnungen, Bescheinigungen) eingebunden.
+// ZUGFeRD-Rechnungsgenerator eingebunden. Bereits archivierte Rechnungen und
+// extern hochgeladene/signierte PDFs bleiben unverändert.
 // =============================================================================
 
 import { withTenantContext } from '@taxtronik/db';

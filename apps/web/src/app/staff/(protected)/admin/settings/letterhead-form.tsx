@@ -75,8 +75,10 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
       </div>
 
       <p className="text-xs text-muted">
-        Wird in ausgehende PDFs eingebunden (Vollmachten, Rechnungen, Bescheinigungen). Logo +
-        Akzentfarbe oben in den Erscheinungsbild-Settings.
+        Wird bei der erstmaligen Erzeugung von Rechnungs-PDFs eingebunden. Bereits archivierte
+        Rechnungen sowie extern hochgeladene oder signierte PDFs bleiben unverändert. PNG-/JPEG-
+        Logos stammen aus den Erscheinungsbild-Einstellungen; WebP und die Akzentfarbe werden
+        derzeit nicht in die Rechnung übernommen.
       </p>
 
       <div className="flex items-center gap-3 pt-2">

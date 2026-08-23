@@ -6,7 +6,7 @@ import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
 import {
   assertReminderAccessTx,
   darfSteuern,
@@ -307,13 +307,27 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
     if (!eingeplant) {
       // Fail-safe: sofort zustellen statt die Rueckmeldung zu verlieren.
       await withRemindersStaff(async (tx) => {
+        const reminder = await tx.clientReminder.findFirst({
+          where: { id: geplant.reminderId, tenantId: geplant.tenantId },
+          select: { doneAt: true, clientId: true, subject: true },
+        });
+        if (!reminder?.doneAt) return;
+        if (reminder.clientId) {
+          const allowed = await filterStaffAccessClientTx(
+            tx,
+            geplant.tenantId,
+            [geplant.staffId],
+            reminder.clientId,
+          );
+          if (!allowed.has(geplant.staffId)) return;
+        }
         await notify(tx, {
           tenantId: geplant.tenantId,
           staffId: geplant.staffId,
           kind: 'CLIENT_REMINDER_DONE',
-          title: `Wiedervorlage erledigt: ${geplant.subject}`,
+          title: `Wiedervorlage erledigt: ${reminder.subject}`,
           body: `${geplant.doneByName} hat die von dir delegierte Wiedervorlage abgeschlossen.`,
-          href: geplant.clientId ? `/staff/clients/${geplant.clientId}` : '/staff/reminders',
+          href: reminder.clientId ? `/staff/clients/${reminder.clientId}` : '/staff/reminders',
           resourceType: 'client_reminder',
           resourceId: geplant.reminderId,
         });
@@ -515,15 +529,25 @@ export async function submitResearchResultAction(input: {
     // Notify-on-arrival: der/die Delegierende wird informiert (nicht bei
     // Selbst-Zuweisung). Reuse REQUEST_RESPONDED (kein eigener Kind).
     if (reminder.createdByStaff && reminder.createdByStaff !== staffId) {
-      await notify(tx, {
+      const allowed = await filterStaffAccessClientTx(
+        tx,
         tenantId,
-        staffId: reminder.createdByStaff,
-        kind: 'REQUEST_RESPONDED',
-        title: `Rechercheergebnis eingereicht: ${me?.fullName ?? 'Mitarbeiter'}`,
-        href: analysisId ? `/staff/clients/${parsed.data.clientId}/subsumtion/${analysisId}` : null,
-        resourceType: 'risk_research_result',
-        resourceId: result.id,
-      });
+        [reminder.createdByStaff],
+        parsed.data.clientId,
+      );
+      if (allowed.has(reminder.createdByStaff)) {
+        await notify(tx, {
+          tenantId,
+          staffId: reminder.createdByStaff,
+          kind: 'REQUEST_RESPONDED',
+          title: `Rechercheergebnis eingereicht: ${me?.fullName ?? 'Mitarbeiter'}`,
+          href: analysisId
+            ? `/staff/clients/${parsed.data.clientId}/subsumtion/${analysisId}`
+            : null,
+          resourceType: 'risk_research_result',
+          resourceId: result.id,
+        });
+      }
     }
   });
   if (r.ok) {

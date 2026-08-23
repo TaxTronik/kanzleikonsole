@@ -44,7 +44,7 @@ export interface PersistedVerifyResult {
   /** Anzahl Tagesversiegelungen mit TSA-Problem. */
   sealBreaks: number;
   /** Siegel, die bis zu einem hinterlegten Trust-Anchor validierten (rfc3161).
-   *  Unter sealsChecked ⇒ Siegel nur cryptoOk (ohne externen Anker). Optional. */
+   *  Unter sealsChecked ⇒ mindestens ein Siegel ist nicht vertrauenswürdig. */
   sealsTrustAnchored?: number;
   anchorsChecked?: number;
   anchorBreaks?: number;

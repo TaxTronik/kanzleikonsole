@@ -374,10 +374,7 @@ export default async function AuditLogPage({
                         Trust-verankert: {verifyResult.sealsTrustAnchored ?? 0}/
                         {verifyResult.sealsChecked}.
                         {(verifyResult.sealsTrustAnchored ?? 0) < verifyResult.sealsChecked && (
-                          <>
-                            {' '}
-                            Übrige nur kryptografisch (cryptoOk) — Produktiv-TSA-Root hinterlegen.
-                          </>
+                          <> Übrige ungültig — passenden Produktiv-TSA-Root hinterlegen.</>
                         )}
                       </>
                     )}

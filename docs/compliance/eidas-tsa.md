@@ -28,6 +28,14 @@ Versiegelung der Tageskettenspitze. Diese Datei klärt:
   Im Docker-Stack bezeichnet `TSA_TRUSTED_ROOTS_HOST_DIR` das read-only
   eingehängte Host-Verzeichnis; `TSA_TRUSTED_ROOTS_FILE` muss auf die konkrete
   PEM-Datei unter `/etc/taxtronik/tsa-roots/` im Container zeigen.
+- Bei externer RFC-3161-Nutzung werden Antworten für rollende Anker und
+  Tagesversiegelungen nur nach Prüfung von Signatur, Datenbindung,
+  Timestamping-Zertifikatszweck und der Kette bis zu einem konfigurierten
+  Trust-Anchor persistiert. Ein korrekt signiertes Token einer unbekannten CA
+  ist ausdrücklich kein erfolgreicher Nachweis. Der unten beschriebene lokale
+  Development-/Legacy-Pfad ist kein solcher externer Nachweis. Eine
+  Sperrstatusprüfung über OCSP/CRL ist derzeit nicht implementiert; dieses
+  verbleibende Risiko muss der Betreiber bei der TSA-Auswahl berücksichtigen.
 
 ### Unterstützte Provider
 
@@ -82,10 +90,10 @@ Deshalb gilt für TaxTronik:
 2. Produktion fällt **nie** auf lokale Selbstzeit zurück. Ist keine externe
    URL auflösbar oder lehnt der SSRF-/Zertifikats-Guard das Ziel ab, schlägt
    der Zeitstempelversuch fehl und wird mit Backoff wiederholt.
-3. Rollende Anker werden erst nach erfolgreicher externer Antwort persistiert;
-   ein sichtbarer Rückstand bleibt bestehen. Die tägliche Versiegelung kann
-   bei einem temporären Fehler ohne TSA-Blob bestehen bleiben und wird in
-   Folgeläufen nachgestempelt.
+3. Rollende Anker und tägliche Versiegelungen werden erst nach vollständig
+   erfolgreicher Trust-Anchor-Prüfung persistiert. Bei einem temporären Fehler
+   bleibt ein sichtbarer Rückstand bestehen; ein Folgelauf versucht den noch
+   offenen Zeitraum erneut.
 4. `LocalTimestampAdapter` ist ausschließlich ein Development-/Legacy-Pfad.
    Er belegt keinen unabhängigen Existenzzeitpunkt und wird vom rollenden
    Produktionsanker ausdrücklich abgelehnt.
@@ -96,22 +104,53 @@ Deshalb gilt für TaxTronik:
   `checkTsaForTenant` (siehe [`apps/web/src/server/health/checks.ts`](../../apps/web/src/server/health/checks.ts)).
   Statusprüfung und Worker verwenden dieselbe Auswahlreihenfolge:
   Tenant-Einstellung → `TIMESTAMP_AUTHORITY_URL` → GlobalSign-Default.
+  Der Status ist nur grün, wenn ein echter Test-Token nicht nur `granted`
+  meldet, sondern auch an den zufälligen Test-Hash und einen konfigurierten
+  Trust-Anchor gebunden verifiziert wird. Derselbe vollständige Roundtrip gilt
+  für „Verbindung testen“ in den TSA-Einstellungen.
 - Operations-Checkliste: laufend den Anchor-Rückstand in der Admin-Ansicht und
-  täglich die zusätzliche `evidence-seal`-Abdeckung je Tenant prüfen. SQL:
+  täglich die zusätzliche `evidence-seal`-Abdeckung je Tenant prüfen. Die
+  folgende Abfrage erfasst vergangene UTC-Tage mit Audit-Ereignissen; Tage ohne
+  Ereignis benötigen keinen Seal:
   ```sql
-  SELECT tenant_id, seal_date, tsa_response_blob IS NULL AS missing_stamp
-  FROM audit_seal
-  WHERE seal_date >= CURRENT_DATE - INTERVAL '7 days'
-  ORDER BY tenant_id, seal_date;
+  WITH event_days AS (
+    SELECT tenant_id, (occurred_at AT TIME ZONE 'UTC')::date AS seal_date
+    FROM audit_log
+    WHERE occurred_at >= (
+            date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+            - INTERVAL '7 days'
+          ) AT TIME ZONE 'UTC'
+      AND occurred_at < (
+            date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+            AT TIME ZONE 'UTC'
+          )
+    GROUP BY tenant_id, (occurred_at AT TIME ZONE 'UTC')::date
+  )
+  SELECT event_days.tenant_id,
+         event_days.seal_date,
+         audit_seal.id IS NULL AS missing_seal,
+         audit_seal.id IS NOT NULL
+           AND audit_seal.tsa_response_blob IS NULL AS missing_stamp
+  FROM event_days
+  LEFT JOIN audit_seal
+    ON audit_seal.tenant_id = event_days.tenant_id
+   AND audit_seal.seal_date = event_days.seal_date
+  ORDER BY event_days.tenant_id, event_days.seal_date;
   ```
-  `missing_stamp = true` bedeutet: Für diese Tagesversiegelung fehlt der
-  unabhängige RFC-3161-Nachweis. Es bedeutet **nicht**, dass vorhandene
-  elektronische Aufzeichnungen automatisch unzulässig oder wertlos wären.
-  Der Operator sollte den TSA-Anschluss prüfen — fehlende Stempel holt der
-  nächste `evidence-seal`-Lauf automatisch nach (Backfill); einen
-  dedizierten manuellen Re-Seal-Trigger gibt es nicht. Manuell anstoßbar
-  sind: die Audit-Archiv-Rotation unter `/staff/admin/archive` und die
-  Chain-Verifikation über den „Jetzt prüfen"-Button unter
+  `missing_seal = true` bedeutet, dass für einen ereignisbehafteten Tag noch
+  keine Seal-Zeile existiert. `missing_stamp = true` bedeutet: Die Seal-Zeile
+  existiert, aber ihr fehlt der unabhängige RFC-3161-Nachweis. Beides bedeutet
+  **nicht**, dass vorhandene elektronische Aufzeichnungen automatisch
+  unzulässig oder wertlos wären.
+  Der Operator sollte den TSA-Anschluss prüfen. Fehlgeschlagene neue
+  Versiegelungsversuche hinterlassen keine Seal-Zeile und werden im nächsten
+  `evidence-seal`-Lauf erneut versucht. Bereits vorhandene ältere Seal-Zeilen
+  mit `tsa_response_blob IS NULL` gelten für den Backfill dagegen als belegt
+  und werden derzeit **nicht automatisch nachgestempelt**; dafür fehlt noch ein
+  kontrollierter, mit der Insert-only-Historie vereinbarer Reparaturpfad. Einen
+  dedizierten manuellen Re-Seal-Trigger gibt es ebenfalls nicht. Manuell
+  anstoßbar sind: die Audit-Archiv-Rotation unter `/staff/admin/archive` und
+  die Chain-Verifikation über den „Jetzt prüfen"-Button unter
   `/staff/admin/audit` (läuft als Hintergrund-Job, Ergebnis wird
   persistiert angezeigt).
 

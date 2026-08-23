@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { generateZugferdPdf } from '../zugferd';
+import { extractFacturXXml, generateZugferdPdf } from '../zugferd';
 import { generateXRechnungCii } from '../xrechnung';
 import { SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER } from '../sample-fixture';
+import { extractText, getDocumentProxy } from 'unpdf';
 
 describe('generateZugferdPdf — Factur-X-Hybrid (iter/P2-8)', () => {
   it('bettet die XML als „Alternative" ein und trägt den Factur-X-XMP-Block', async () => {
@@ -20,5 +21,38 @@ describe('generateZugferdPdf — Factur-X-Hybrid (iter/P2-8)', () => {
     // BEWUSST kein PDF/A-3-Anspruch (nicht eingebettete Standard-Fonts) — die
     // XMP darf kein pdfaid:part behaupten.
     expect(raw).not.toContain('pdfaid:part');
+  });
+
+  it('druckt Briefkopf-Absender und Fußnote in die menschenlesbare Rechnung', async () => {
+    const cii = generateXRechnungCii(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER);
+    const pdfBytes = await generateZugferdPdf(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER, cii, {
+      logoDataUrl:
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      letterhead: {
+        organisationName: 'Kanzlei am Testplatz',
+        addressLines: 'Briefkopfweg 7\n10117 Berlin',
+        contactLine: 'Telefon 030 123 · briefkopf@example.test',
+        footnote: 'Steuerberaterkammer Berlin · Register 4711',
+      },
+    });
+    // pdf.js darf den übergebenen ArrayBuffer übernehmen/detachen; die rohe
+    // Attachment-Prüfung deshalb vorher durchführen.
+    const raw = Buffer.from(pdfBytes).toString('latin1');
+    expect(raw).toContain('factur-x.xml');
+    expect(raw).toContain('/Subtype /Image');
+    const pdf = await getDocumentProxy(pdfBytes);
+    const { text } = await extractText(pdf, { mergePages: true });
+
+    expect(text).toContain('Kanzlei am Testplatz');
+    expect(text).toContain('Briefkopfweg 7');
+    expect(text).toContain('Telefon 030 123');
+    expect(text).toContain('Steuerberaterkammer Berlin');
+  });
+
+  it('extrahiert für Legacy-Reparaturen exakt die eingebettete Factur-X-XML', async () => {
+    const cii = generateXRechnungCii(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER);
+    const pdfBytes = await generateZugferdPdf(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER, cii);
+
+    await expect(extractFacturXXml(pdfBytes)).resolves.toEqual(Buffer.from(cii, 'utf8'));
   });
 });

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   notifyClientContacts: vi.fn(),
   notifyRequestOpened: vi.fn(),
   fireAndForget: vi.fn(),
+  emitN8nEvent: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
@@ -22,7 +23,7 @@ vi.mock('@taxtronik/db/notification', () => ({
 }));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
-vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: vi.fn() }));
+vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: mocks.emitN8nEvent }));
 vi.mock('@/server/mail/dispatch', () => ({
   notifyClientContacts: mocks.notifyClientContacts,
   notifyRequestOpened: mocks.notifyRequestOpened,
@@ -55,8 +56,10 @@ vi.mock('@/server/actions/staff-action', () => ({
 import {
   addRequestInternalCommentAction,
   addStaffResponseAction,
+  closeRequestAction,
   createQuickRequestAction,
   createRequestAction,
+  reopenRequestAction,
   searchRequestClientsAction,
 } from '../actions';
 
@@ -188,6 +191,185 @@ describe('sichtbare Antworten und interne Kanzlei-Kommentare', () => {
     expect(result.error).toContain('zwischenzeitlich abgeschlossen');
     expect(tx.requestResponse.create).not.toHaveBeenCalled();
     expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+  });
+});
+
+describe('Anforderungsabschluss und Wiedereröffnung', () => {
+  function lifecycleData(): FormData {
+    const data = new FormData();
+    data.set('requestId', REQUEST_ID);
+    return data;
+  }
+
+  it('schließt per CAS und emittiert request.closed nur beim tatsächlichen Übergang', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({
+      id: REQUEST_ID,
+      clientId: CLIENT_ID,
+      status: 'OPEN',
+    });
+    tx.request.updateMany.mockResolvedValue({ count: 1 });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await closeRequestAction(lifecycleData());
+
+    expect(tx.request.updateMany).toHaveBeenCalledWith({
+      where: { id: REQUEST_ID, status: 'OPEN' },
+      data: {
+        status: 'CLOSED',
+        closedAt: expect.any(Date),
+        closedByStaff: 'staff-1',
+      },
+    });
+    expect(mocks.emitN8nEvent).toHaveBeenCalledWith(
+      'request.closed',
+      { tenantId: 'tenant-1', requestId: REQUEST_ID },
+      { tenantId: 'tenant-1' },
+    );
+  });
+
+  it('schreibt nach verlorenem exakten Status-CAS weder stale Audit noch Close-Event', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({
+      id: REQUEST_ID,
+      clientId: CLIENT_ID,
+      status: 'OPEN',
+      formSubmissionId: FORM_TEMPLATE_ID,
+    });
+    // Zwischen Read und CAS hat ein paralleler Mandantenpfad OPEN ->
+    // RESPONDED gewonnen; status=OPEN trifft danach keine Zeile mehr.
+    tx.request.updateMany.mockResolvedValue({ count: 0 });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await closeRequestAction(lifecycleData());
+
+    expect(tx.request.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: REQUEST_ID, status: 'OPEN' } }),
+    );
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+    expect(mocks.resolveNotificationsTx).not.toHaveBeenCalled();
+    expect(mocks.emitN8nEvent).not.toHaveBeenCalled();
+  });
+
+  it.each(['CLOSED', 'RESPONDED'] as const)(
+    'öffnet %s auditierbar als OPEN und räumt Abschlussstempel auf',
+    async (status) => {
+      const tx = makeTx();
+      const closedAt = status === 'CLOSED' ? new Date('2026-08-23T12:00:00.000Z') : null;
+      tx.request.findUnique.mockResolvedValue({
+        clientId: CLIENT_ID,
+        status,
+        closedAt,
+      });
+      tx.request.updateMany.mockResolvedValue({ count: 1 });
+      mocks.withTenantContext.mockImplementation(
+        async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+      );
+
+      await reopenRequestAction(lifecycleData());
+
+      expect(tx.request.updateMany).toHaveBeenCalledWith({
+        where: { id: REQUEST_ID, status },
+        data: { status: 'OPEN', closedAt: null, closedByStaff: null },
+      });
+      expect(mocks.evidenceRecord).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          action: 'request.reopen',
+          before: { status, closedAt },
+          after: { status: 'OPEN', closedAt: null },
+        }),
+      );
+      expect(mocks.emitN8nEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it('macht ein noch nicht abgesendetes Formular nach RESPONDED wieder im Portal erreichbar', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({
+      clientId: CLIENT_ID,
+      status: 'RESPONDED',
+      closedAt: null,
+      formSubmissionId: FORM_TEMPLATE_ID,
+    });
+    tx.request.updateMany.mockResolvedValue({ count: 1 });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await reopenRequestAction(lifecycleData());
+
+    expect(tx.request.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: REQUEST_ID, status: 'RESPONDED' } }),
+    );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/portal/forms');
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/portal/forms/${FORM_TEMPLATE_ID}`);
+  });
+
+  it('lässt CANCELLED terminal und schreibt kein Wiedereröffnungs-Audit', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({
+      clientId: CLIENT_ID,
+      status: 'CANCELLED',
+      closedAt: null,
+      linkedGwgIdDocumentId: '44444444-4444-4444-8444-444444444444',
+    });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await reopenRequestAction(lifecycleData());
+
+    expect(tx.request.findFirst).not.toHaveBeenCalled();
+    expect(tx.request.updateMany).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('lehnt das Wiederöffnen ab, wenn bereits eine aktive GwG-Folgeanforderung besteht', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({
+      clientId: CLIENT_ID,
+      status: 'CLOSED',
+      closedAt: new Date('2026-08-23T12:00:00.000Z'),
+      linkedGwgIdDocumentId: '44444444-4444-4444-8444-444444444444',
+    });
+    tx.request.findFirst.mockResolvedValue({ id: '55555555-5555-4555-8555-555555555555' });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await reopenRequestAction(lifecycleData());
+
+    expect(tx.request.updateMany).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith(`/staff/requests/${REQUEST_ID}?reopenConflict=1`);
+  });
+
+  it('behandelt den parallelen Partial-Unique-Konflikt wie eine bestehende Folgeanforderung', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({
+      clientId: CLIENT_ID,
+      status: 'CLOSED',
+      closedAt: new Date('2026-08-23T12:00:00.000Z'),
+      linkedGwgIdDocumentId: '44444444-4444-4444-8444-444444444444',
+    });
+    tx.request.findFirst.mockResolvedValue(null);
+    tx.request.updateMany.mockRejectedValue({
+      code: 'P2002',
+      meta: { constraint: 'request_gwg_id_doc_open_unique' },
+    });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await reopenRequestAction(lifecycleData());
+
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith(`/staff/requests/${REQUEST_ID}?reopenConflict=1`);
   });
 });
 

@@ -301,12 +301,15 @@ export function TemplateEditor({
                         placeholder="z. B. slack-notify"
                         value={s.n8nEvent}
                         onChange={(e) => update(i, { n8nEvent: e.target.value })}
-                        maxLength={100}
+                        maxLength={41}
+                        pattern="[a-z][a-z0-9_-]{0,40}"
+                        title="Mit Kleinbuchstaben beginnen; danach nur Kleinbuchstaben, Ziffern, _ oder - (maximal 41 Zeichen)."
                         className="input"
                       />
                       <p className="text-[10px] text-disabled mt-1">
-                        Wird beim Ausführen als <code>workflow.step.&lt;event&gt;</code> an n8n
-                        geschickt.
+                        Kleinbuchstaben, Ziffern, <code>_</code> oder <code>-</code>; beginnt mit
+                        einem Buchstaben, maximal 41 Zeichen. Wird als{' '}
+                        <code>workflow.step.&lt;event&gt;</code> an n8n geschickt.
                       </p>
                     </div>
                   </div>

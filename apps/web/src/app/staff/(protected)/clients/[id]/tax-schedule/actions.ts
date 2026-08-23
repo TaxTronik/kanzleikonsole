@@ -12,6 +12,7 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard } from '@/server/actions/staff-action';
+import { berlinTodayUtcMidnight } from '@taxtronik/tax';
 
 const ALL_KINDS: TaxScheduleKind[] = [
   'USTA_MONATLICH',
@@ -265,8 +266,8 @@ export async function saveScheduleConfigAction(
 //
 // Verknüpfte Mandantenanforderungen der entfernten Termine werden geschlossen
 // (kein Verwaisen, keine Dublette bei der Neu-Materialisierung). Grenze
-// dueDate ≥ heute-UTC-Mitternacht deckt sich mit dem Re-Materialize-Tor in
-// materialize.ts, das vergangene Termine nie neu erzeugt.
+// dueDate ≥ UTC-Kodierung des heutigen BERLIN-Kalendertags deckt sich mit dem
+// Re-Materialize-Tor in materialize.ts, das vergangene Termine nie neu erzeugt.
 async function removeReschedulableDeadlines(
   tx: Prisma.TransactionClient,
   tenantId: string,
@@ -275,9 +276,7 @@ async function removeReschedulableDeadlines(
   now: Date,
   includeInProgress = false,
 ): Promise<number> {
-  const startOfToday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
+  const startOfToday = berlinTodayUtcMidnight(now);
   const toRemove = await tx.taxDeadline.findMany({
     where: {
       clientId,

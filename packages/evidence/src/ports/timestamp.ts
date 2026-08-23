@@ -42,11 +42,9 @@ export interface TimestampPort {
 
   /**
    * Optional: wie verify(), liefert aber zusätzlich, ob die Cert-Kette bis zu
-   * einem hinterlegten Trust-Anchor validiert (`trustAnchored`) oder ob das
-   * Token nur kryptografisch wohlgeformt/an die Daten gebunden ist (cryptoOk,
-   * No-Regress-Pfad ohne Anker). Nur der HTTP-Adapter implementiert das; der
-   * Aufrufer nutzt es für Verankerungs-Transparenz und fällt sonst auf verify()
-   * zurück.
+   * einem hinterlegten Trust-Anchor validiert (`trustAnchored`). Nur der
+   * HTTP-Adapter implementiert das; ein lediglich korrekt signiertes Token
+   * ohne vertrauenswürdige Zertifikatskette liefert `ok: false`.
    */
   verifyDetailed?(
     payload: Uint8Array,

@@ -639,54 +639,58 @@ model KbArticle {
 }
 
 model Invoice {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId           String            @map("tenant_id") @db.Uuid
-  clientId           String            @map("client_id") @db.Uuid
-  number             String
-  issueDate          DateTime          @map("issue_date") @db.Date
-  dueDate            DateTime          @map("due_date") @db.Date
-  status             InvoiceStatus     @default(DRAFT)
-  format             InvoiceFormat     @default(PDF)
-  subject            String
-  netAmount          Decimal           @map("net_amount") @db.Decimal(12, 2)
-  vatAmount          Decimal           @map("vat_amount") @db.Decimal(12, 2)
-  totalAmount        Decimal           @map("total_amount") @db.Decimal(12, 2)
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String            @map("tenant_id") @db.Uuid
+  clientId            String            @map("client_id") @db.Uuid
+  number              String
+  issueDate           DateTime          @map("issue_date") @db.Date
+  dueDate             DateTime          @map("due_date") @db.Date
+  status              InvoiceStatus     @default(DRAFT)
+  format              InvoiceFormat     @default(PDF)
+  subject             String
+  netAmount           Decimal           @map("net_amount") @db.Decimal(12, 2)
+  vatAmount           Decimal           @map("vat_amount") @db.Decimal(12, 2)
+  totalAmount         Decimal           @map("total_amount") @db.Decimal(12, 2)
   // iter86: NULL bei Mischsätzen (Satz lebt an den Positionen); bei
   // einheitlichem Satz redundant gesetzt (Anzeige/CSV, Bestandsdaten).
-  vatRate            Decimal?          @map("vat_rate") @db.Decimal(5, 2)
+  vatRate             Decimal?          @map("vat_rate") @db.Decimal(5, 2)
   // iter98: Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG, § 31 Abs. 4 UStDV —
   // Monat genügt). NULL = kein separater Zeitraum → der Empfänger-Vorsteuer-
   // abzug knüpft dann an das Rechnungsdatum. In XRechnung als BG-14
   // (BT-73/BT-74), im ZUGFeRD-PDF als Klartext ausgewiesen.
-  servicePeriodStart DateTime?         @map("service_period_start") @db.Date
-  servicePeriodEnd   DateTime?         @map("service_period_end") @db.Date
+  servicePeriodStart  DateTime?         @map("service_period_start") @db.Date
+  servicePeriodEnd    DateTime?         @map("service_period_end") @db.Date
   // iter101: Befreiungsgrund für 0 %-Umsätze (§ 14 Abs. 4 Nr. 8 UStG; z. B.
   // „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 Nr. …"). NULL = kein
   // 0 %-Umsatz. In XRechnung als BT-120 (Kategorie „E") ausgewiesen.
-  vatExemptionReason String?           @map("vat_exemption_reason")
+  vatExemptionReason  String?           @map("vat_exemption_reason")
   // Reverse-Charge (§ 13b UStG, EN16931 USt-Kategorie AE): der Leistungs-
   // empfänger schuldet die Steuer, Positionen sind 0 %. Nur DRAFT-setzbar,
   // danach festgeschrieben (iter107).
-  reverseCharge      Boolean           @default(false) @map("reverse_charge")
-  notes              String?
-  sentAt             DateTime?         @map("sent_at")
-  paidAt             DateTime?         @map("paid_at")
-  documentId         String?           @map("document_id") @db.Uuid
-  createdByStaff     String            @map("created_by_staff") @db.Uuid
-  createdAt          DateTime          @default(now()) @map("created_at")
-  updatedAt          DateTime          @updatedAt @map("updated_at")
-  categoryId         String?           @map("category_id") @db.Uuid
+  reverseCharge       Boolean           @default(false) @map("reverse_charge")
+  notes               String?
+  sentAt              DateTime?         @map("sent_at")
+  paidAt              DateTime?         @map("paid_at")
+  documentId          String?           @map("document_id") @db.Uuid
+  /// Kanonische separate XRechnung-XML zum selben Snapshot wie die
+  /// ZUGFeRD-Hybrid-PDF. Eigener 1:1-Link statt Titelheuristik.
+  xrechnungDocumentId String?           @unique(map: "invoice_xrechnung_document_unique") @map("xrechnung_document_id") @db.Uuid
+  createdByStaff      String            @map("created_by_staff") @db.Uuid
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  categoryId          String?           @map("category_id") @db.Uuid
   // iter100: Storno-Verkettung. stornoOfId zeigt von der Stornorechnung
   // (TypeCode 381, negierte Beträge) auf die stornierte Originalrechnung.
-  stornoOfId         String?           @map("storno_of_id") @db.Uuid
-  stornoOf           Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction, map: "invoice_storno_of_fkey")
-  stornoBy           Invoice[]         @relation("InvoiceStorno")
-  category           InvoiceCategory?  @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
-  client             Client            @relation(fields: [clientId], references: [id])
-  document           Document?         @relation(fields: [documentId], references: [id])
-  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  positions          InvoicePosition[]
-  timeEntries        TimeEntry[]
+  stornoOfId          String?           @map("storno_of_id") @db.Uuid
+  stornoOf            Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction, map: "invoice_storno_of_fkey")
+  stornoBy            Invoice[]         @relation("InvoiceStorno")
+  category            InvoiceCategory?  @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
+  client              Client            @relation(fields: [clientId], references: [id])
+  document            Document?         @relation("InvoicePrimaryDocument", fields: [documentId], references: [id])
+  xrechnungDocument   Document?         @relation("InvoiceXrechnungDocument", fields: [xrechnungDocumentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "invoice_xrechnung_document_fkey")
+  tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  positions           InvoicePosition[]
+  timeEntries         TimeEntry[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status])
@@ -1143,6 +1147,9 @@ model ClientReminder {
   /// Vorgänger in der Kette (Nachfrage/Folgeauftrag). SET NULL, damit das
   /// Löschen einer alten Stufe die Folgestufe nicht mitreisst.
   predecessorId  String?                  @map("predecessor_id") @db.Uuid
+  /// Optionale Herkunft: eine Telefonnotiz kann bewusst mehrere eigenständige
+  /// Wiedervorlagen erzeugen. Kein Unique-Constraint auf diesem Fremdschlüssel.
+  phoneNoteId    String?                  @map("phone_note_id") @db.Uuid
   createdByStaff String                   @map("created_by_staff") @db.Uuid
   doneAt         DateTime?                @map("done_at") @db.Timestamptz(6)
   doneByStaff    String?                  @map("done_by_staff") @db.Uuid
@@ -1152,6 +1159,7 @@ model ClientReminder {
   tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
   predecessor    ClientReminder?          @relation("ReminderChain", fields: [predecessorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_predecessor_fk")
   successors     ClientReminder[]         @relation("ReminderChain")
+  phoneNote      PhoneNote?               @relation("PhoneNoteReminders", fields: [phoneNoteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_phone_note_fk")
   assignees      ClientReminderAssignee[]
   discussion     ClientReminderNote[]
   attachments    Document[]               @relation("ReminderAttachments")
@@ -1165,6 +1173,7 @@ model ClientReminder {
   // — bisher kein clientId-führender Index → Scan aller Tenant-Wiedervorlagen.
   @@index([clientId, doneAt, dueDate], map: "client_reminder_client_idx")
   @@index([predecessorId], map: "client_reminder_predecessor_idx")
+  @@index([phoneNoteId], map: "client_reminder_phone_note_idx")
   @@map("client_reminder")
 }
 
@@ -1323,6 +1332,11 @@ model Document {
   /// Anhang einer Wiedervorlage. Analog workflowItemId/analysisId; SET NULL,
   /// damit das Löschen der Aufgabe die Datei in der Akte belässt.
   reminderId                String?                @map("reminder_id") @db.Uuid
+  /// Herkunft eines noch nicht abgesendeten Formular-Uploads. Die explizite
+  /// Zuordnung verhindert, dass eine frei übermittelte Dokument-UUID zum
+  /// Löschen oder Absenden in einem anderen Formular/Feld verwendet wird.
+  formSubmissionId          String?                @map("form_submission_id") @db.Uuid
+  formFieldKey              String?                @map("form_field_key")
   // Mandanten-Freigabe (Opt-in): NULL = privat (nur Kanzlei sieht es),
   // gesetzt = im Mandantenportal sichtbar. Vom Mandanten selbst hochgeladene
   // Dokumente (Portal-Upload, Anforderungs-Antwort) werden bei Anlage
@@ -1350,10 +1364,12 @@ model Document {
   workflowItem              WorkflowItem?          @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "document_workflow_item_fk")
   analysis                  RiskAnalysis?          @relation("AnalysisAttachedDocs", fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_analysis_fk")
   reminder                  ClientReminder?        @relation("ReminderAttachments", fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_reminder_fk")
+  formSubmission            FormSubmission?        @relation("FormSubmissionUploads", fields: [formSubmissionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "document_form_submission_fkey")
   gwgOnboardingInvite       GwgOnboardingInvite?   @relation(fields: [gwgOnboardingInviteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_gwg_invite_fk")
   versions                  DocumentVersion[]
   gwgIdDocuments            GwgIdDocument[]
-  invoiceAttachments        Invoice[]
+  invoiceAttachments        Invoice[]              @relation("InvoicePrimaryDocument")
+  xrechnungInvoice          Invoice?               @relation("InvoiceXrechnungDocument")
   requestResponses          RequestResponse[]
   riskAnalyses              RiskAnalysis[]         @relation("AnalysisSourceDoc")
   absences                  Absence[]
@@ -1371,6 +1387,7 @@ model Document {
   @@index([workflowItemId], map: "document_workflow_item_idx")
   @@index([tenantId, analysisId])
   @@index([tenantId, reminderId], map: "document_reminder_idx")
+  @@index([tenantId, formSubmissionId, formFieldKey], map: "document_form_submission_idx")
   @@index([gwgOnboardingInviteId], map: "document_gwg_invite_idx")
   // iter71: pg_trgm-GIN für die globale Suche (Dokument-Titel)
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "document_title_trgm_idx")
@@ -1830,22 +1847,23 @@ model RiskPromptTemplate {
 }
 
 model PhoneNote {
-  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String     @map("tenant_id") @db.Uuid
-  clientId       String?    @map("client_id") @db.Uuid
-  callerName     String     @map("caller_name")
-  callerPhone    String?    @map("caller_phone")
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  clientId       String?          @map("client_id") @db.Uuid
+  callerName     String           @map("caller_name")
+  callerPhone    String?          @map("caller_phone")
   subject        String
   body           String
-  forwardToStaff String?    @map("forward_to_staff") @db.Uuid
-  takenByStaff   String     @map("taken_by_staff") @db.Uuid
-  readAt         DateTime?  @map("read_at")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  doneAt         DateTime?  @map("done_at") @db.Timestamptz(6)
-  doneByStaff    String?    @map("done_by_staff") @db.Uuid
-  client         Client?    @relation(fields: [clientId], references: [id])
-  staff_user     StaffUser? @relation(fields: [doneByStaff], references: [id], onUpdate: NoAction)
-  tenant         Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  forwardToStaff String?          @map("forward_to_staff") @db.Uuid
+  takenByStaff   String           @map("taken_by_staff") @db.Uuid
+  readAt         DateTime?        @map("read_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  doneAt         DateTime?        @map("done_at") @db.Timestamptz(6)
+  doneByStaff    String?          @map("done_by_staff") @db.Uuid
+  client         Client?          @relation(fields: [clientId], references: [id])
+  staff_user     StaffUser?       @relation(fields: [doneByStaff], references: [id], onUpdate: NoAction)
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reminders      ClientReminder[] @relation("PhoneNoteReminders")
 
   @@index([tenantId, clientId])
   @@index([tenantId, forwardToStaff, readAt])
@@ -2418,6 +2436,7 @@ model FormSubmission {
   tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "form_submission_tenant_fkey")
   workflowItem       WorkflowItem?        @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "form_submission_workflow_item_fk")
   requests           Request[]
+  uploadDocuments    Document[]           @relation("FormSubmissionUploads")
 
   @@unique([workflowItemId], map: "form_submission_workflow_item_unique")
   @@index([tenantId, clientId, status])
@@ -2431,25 +2450,25 @@ model FormSubmission {
 /// zuerst auf persistierte DocumentVersion-Referenzen. Nur echte Orphans werden
 /// geloescht; Object-Lock-Objekte zudem erst nach Ablauf der Retention.
 model StorageOrphan {
-  id               String    @id(map: "storage_orphan_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String    @map("tenant_id") @db.Uuid
+  id               String                   @id(map: "storage_orphan_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                   @map("tenant_id") @db.Uuid
   source           String
-  storageBucket    String    @map("storage_bucket")
-  storageKey       String    @map("storage_key")
-  storageVersionId String    @default("") @map("storage_version_id")
+  storageBucket    String                   @map("storage_bucket")
+  storageKey       String                   @map("storage_key")
+  storageVersionId String                   @default("") @map("storage_version_id")
   sha256           Bytes
-  sizeBytes        BigInt    @map("size_bytes")
+  sizeBytes        BigInt                   @map("size_bytes")
   immutable        Boolean
-  retentionUntil   DateTime? @map("retention_until") @db.Timestamptz(6)
+  retentionUntil   DateTime?                @map("retention_until") @db.Timestamptz(6)
   failure          String?
-  cleanupClaimedAt DateTime? @map("cleanup_claimed_at") @db.Timestamptz(6)
-  cleanupAttempts  Int       @default(0) @map("cleanup_attempts")
-  cleanupError     String?   @map("cleanup_error")
+  cleanupClaimedAt DateTime?                @map("cleanup_claimed_at") @db.Timestamptz(6)
+  cleanupAttempts  Int                      @default(0) @map("cleanup_attempts")
+  cleanupError     String?                  @map("cleanup_error")
   resolution       StorageOrphanResolution?
-  cleanedAt        DateTime? @map("cleaned_at") @db.Timestamptz(6)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "storage_orphan_tenant_fk")
+  cleanedAt        DateTime?                @map("cleaned_at") @db.Timestamptz(6)
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "storage_orphan_tenant_fk")
 
   @@unique([storageBucket, storageKey, storageVersionId], map: "storage_orphan_object_uq")
   @@index([tenantId, cleanedAt, cleanupClaimedAt, createdAt], map: "storage_orphan_cleanup_idx")

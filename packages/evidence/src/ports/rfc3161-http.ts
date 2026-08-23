@@ -34,6 +34,11 @@ const safeFetchPublic = safeFetch as unknown as (
   policy: { mode: 'public' },
 ) => Promise<Response>;
 
+// Eine RFC-3161-Antwort liegt üblicherweise im einstelligen KiB-Bereich. Der
+// großzügige Cap verhindert, dass eine kompromittierte/fehlkonfigurierte TSA
+// den Worker über eine unbegrenzte Response in den Speicher laufen lässt.
+const MAX_TSA_RESPONSE_BYTES = 1024 * 1024;
+
 // OID 2.16.840.1.101.3.4.2.1 (SHA-256) in DER
 const SHA256_OID_DER = new Uint8Array([
   0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
@@ -121,6 +126,45 @@ function parsePkiStatus(tsp: Uint8Array): number {
   return -1;
 }
 
+async function readResponseBodyBounded(res: Response, maxBytes: number): Promise<Uint8Array> {
+  const contentLength = res.headers.get('content-length');
+  if (contentLength !== null) {
+    const advertised = Number(contentLength);
+    if (Number.isFinite(advertised) && advertised > maxBytes) {
+      throw new Error(`TSA-Antwort überschreitet das Größenlimit von ${maxBytes} Bytes`);
+    }
+  }
+
+  if (!res.body) return new Uint8Array();
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      if (value.byteLength > maxBytes - total) {
+        await reader.cancel('TSA response size limit exceeded').catch(() => undefined);
+        throw new Error(`TSA-Antwort überschreitet das Größenlimit von ${maxBytes} Bytes`);
+      }
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
 const PKI_STATUS_LABELS: Record<number, string> = {
   0: 'granted',
   1: 'grantedWithMods',
@@ -156,7 +200,6 @@ export class Rfc3161HttpAdapter implements TimestampPort {
 
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), this.timeoutMs);
-    let res: Response;
     try {
       // SSRF/DNS-Rebinding: NICHT rohes fetch — safeFetch löst die TSA-URL
       // einmal auf, prüft jede IP und pinnt die Connection auf die geprüfte
@@ -164,7 +207,7 @@ export class Rfc3161HttpAdapter implements TimestampPort {
       // beim eigentlichen Request (TOCTOU gegen interne Dienste, § 203).
       // safeFetch reicht binären Body durch; `signal` überschreibt den
       // safeFetch-Default-Timeout mit unserem TSA-Timeout.
-      res = await safeFetchPublic(
+      const res = await safeFetchPublic(
         this.tsaUrl,
         {
           method: 'POST',
@@ -177,31 +220,33 @@ export class Rfc3161HttpAdapter implements TimestampPort {
         },
         { mode: 'public' },
       );
+      if (!res.ok) {
+        throw new Error(`TSA HTTP ${res.status} ${res.statusText} @ ${this.tsaUrl}`);
+      }
+      // Der Timeout bleibt ausdrücklich bis zum vollständig gelesenen, begrenzten
+      // Body aktiv. Nur die Header abzuwarten ließe Slow-Body-Angriffe unbegrenzt.
+      const tsp = await readResponseBodyBounded(res, MAX_TSA_RESPONSE_BYTES);
+      const status = parsePkiStatus(tsp);
+      if (status !== 0 && status !== 1) {
+        const label = PKI_STATUS_LABELS[status] ?? String(status);
+        throw new Error(`TSA PKIStatus ${status} (${label}) @ ${this.tsaUrl}`);
+      }
+      // A3: echte TSA-Zeit (genTime) + Seriennummer aus dem TSTInfo lesen. Kein
+      // Fallback auf die App-Uhr: Ein externes Token mit lokal erfundener Anzeige-
+      // Zeit würde genau die Trust-Grenze verwischen, die RFC 3161 herstellen soll.
+      const meta = extractTsaMeta(tsp);
+      if (!meta) {
+        throw new Error(`TSA-Antwort enthält keine auswertbare RFC-3161-genTime @ ${this.tsaUrl}`);
+      }
+      return {
+        timestampedAt: meta.genTime.toISOString(),
+        tsaRequestBlob: tsr,
+        tsaResponseBlob: tsp,
+        tsaSerial: meta.serialHex,
+      };
     } finally {
       clearTimeout(to);
     }
-    if (!res.ok) {
-      throw new Error(`TSA HTTP ${res.status} ${res.statusText} @ ${this.tsaUrl}`);
-    }
-    const tsp = new Uint8Array(await res.arrayBuffer());
-    const status = parsePkiStatus(tsp);
-    if (status !== 0 && status !== 1) {
-      const label = PKI_STATUS_LABELS[status] ?? String(status);
-      throw new Error(`TSA PKIStatus ${status} (${label}) @ ${this.tsaUrl}`);
-    }
-    // A3: echte TSA-Zeit (genTime) + Seriennummer aus dem TSTInfo lesen. Kein
-    // Fallback auf die App-Uhr: Ein externes Token mit lokal erfundener Anzeige-
-    // Zeit würde genau die Trust-Grenze verwischen, die RFC 3161 herstellen soll.
-    const meta = extractTsaMeta(tsp);
-    if (!meta) {
-      throw new Error(`TSA-Antwort enthält keine auswertbare RFC-3161-genTime @ ${this.tsaUrl}`);
-    }
-    return {
-      timestampedAt: meta.genTime.toISOString(),
-      tsaRequestBlob: tsr,
-      tsaResponseBlob: tsp,
-      tsaSerial: meta.serialHex,
-    };
   }
 
   async verify(payload: Uint8Array, response: Uint8Array | null): Promise<boolean> {
@@ -211,13 +256,10 @@ export class Rfc3161HttpAdapter implements TimestampPort {
     // R6) AS-OF genTime, EKU timeStamping. Das rohe Blob bleibt zusätzlich extern
     // prüfbar (openssl ts -verify). Revocation (OCSP/CRL) ist noch nicht abgedeckt.
     const r = await verifyTimestampResponse(payload, response, this.trustedRoots);
-    if (r.valid) return true; // voller kryptografischer Beweis (inkl. Trust-Anchor)
-    // KEIN Regress, aber NICHT lax: cryptoOk verlangt Signatur + messageImprint-
-    // Bindung + kritische EKU + ESS — relaxiert NUR die Trust-Anchor-Verankerung
-    // (z. B. ein anderer TSA-Anbieter, dessen Root nicht hinterlegt ist). Ein
-    // manipuliertes/fremdes Blob, eine kaputte EKU oder fehlende ESS-Bindung
-    // scheitern bereits hier (anders als beim früheren reinen signatureValid).
-    return r.cryptoOk;
+    // Ohne Kette zu einem ausdrücklich konfigurierten Trust-Anchor ist der
+    // Unterzeichner nicht authentisiert. cryptoOk bleibt reine Diagnose im
+    // Parser und darf den produktiven Beweis daher nicht erfolgreich machen.
+    return r.valid;
   }
 
   async verifyDetailed(
@@ -226,8 +268,6 @@ export class Rfc3161HttpAdapter implements TimestampPort {
   ): Promise<{ ok: boolean; trustAnchored: boolean }> {
     if (!response) return { ok: false, trustAnchored: false };
     const r = await verifyTimestampResponse(payload, response, this.trustedRoots);
-    // ok = wie verify(): voll gültig ODER cryptoOk (No-Regress). trustAnchored =
-    // Kette bis zum hinterlegten Root validiert (r.valid impliziert cryptoOk).
-    return { ok: r.valid || r.cryptoOk, trustAnchored: r.valid };
+    return { ok: r.valid, trustAnchored: r.valid };
   }
 }

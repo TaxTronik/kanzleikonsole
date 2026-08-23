@@ -1,4 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  timestampPortFor: vi.fn(),
+}));
 
 // Der Job-Modul-Import zieht Queue/Redis/S3/Prisma — alles mocken, getestet
 // werden die exportierten puren Helfer (URL-Ableitung + Missing-Tenant-Logik).
@@ -27,7 +31,6 @@ vi.mock('@taxtronik/config', () => ({
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {},
   LocalTimestampAdapter: class {},
-  Rfc3161HttpAdapter: class {},
   BACKUP_DRILL_RESULT_SETTING_KEY: 'backup_drill_result',
 }));
 vi.mock('@taxtronik/db/notification', () => ({ resolveNotificationsTx: vi.fn() }));
@@ -36,8 +39,16 @@ vi.mock('../../prisma-owner', () => ({ prismaOwner: {} }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: vi.fn() }));
 vi.mock('../../notify', () => ({ upsertNotification: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('../../tsa-port', () => ({ timestampPortFor: mocks.timestampPortFor }));
 
-import { withDbName, missingTenantResult } from '../backup-drill';
+import {
+  withDbName,
+  missingTenantResult,
+  restoreEvidenceServiceFor,
+  restoreRequiresExternalTsa,
+} from '../backup-drill';
+
+beforeEach(() => vi.clearAllMocks());
 
 describe('withDbName', () => {
   it('tauscht nur den DB-Namen und erhält Query-Parameter (?schema=)', () => {
@@ -72,5 +83,21 @@ describe('missingTenantResult', () => {
   it('Backup ohne finishedAt → konservativ Fehler', () => {
     const r = missingTenantResult(new Date('2026-06-05T10:00:00Z'), null);
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('Restore-TSA-Policy', () => {
+  it('lädt den TSA-Adapter für jeden wiederhergestellten Tenant über den Produktionspfad', async () => {
+    const port = { mode: 'rfc3161' };
+    mocks.timestampPortFor.mockResolvedValueOnce(port);
+
+    await expect(restoreEvidenceServiceFor('tenant-1')).resolves.toBeDefined();
+    expect(mocks.timestampPortFor).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('erzwingt im Produktivmodus oder bei expliziter Vorgabe eine externe TSA', () => {
+    expect(restoreRequiresExternalTsa('production')).toBe(true);
+    expect(restoreRequiresExternalTsa('development', 'true')).toBe(true);
+    expect(restoreRequiresExternalTsa('development')).toBe(false);
   });
 });

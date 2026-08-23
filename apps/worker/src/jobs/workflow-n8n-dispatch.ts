@@ -70,8 +70,8 @@ export async function runWorkflowN8nDispatch(now = new Date()): Promise<{
       tenantId: candidate.tenantId,
       dedupeKey: `workflow-dispatch:${candidate.id}`,
     });
-    const writeFailed = result.status === 'WRITE_FAILED' || result.status === 'INVALID_EVENT';
-    const updated = writeFailed
+    const handoffFailed = result.status !== 'PENDING' && result.status !== 'DUPLICATE';
+    const updated = handoffFailed
       ? await prismaOwner.workflowN8nDispatch.updateMany({
           where: { id: candidate.id, enqueuedAt: null, claimedAt },
           data: {
@@ -122,7 +122,7 @@ export async function runWorkflowN8nDispatch(now = new Date()): Promise<{
           return dispatchDone;
         });
     if (updated.count !== 1) continue;
-    if (writeFailed) failed += 1;
+    if (handoffFailed) failed += 1;
     else enqueued += 1;
   }
 

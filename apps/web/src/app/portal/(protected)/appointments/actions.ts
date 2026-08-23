@@ -9,9 +9,9 @@ import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
-import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, withPortalModule, ActionError } from '@/server/actions/portal-action';
+import { assertAppointmentStaffOptionTx } from './staff-options';
 
 const withAppointmentsPortal = withPortalModule('appointments');
 import { berlinWallClockToUtc } from '@/lib/fmt';
@@ -100,12 +100,9 @@ export async function createAppointmentRequestAction(
   let createdId = '';
   try {
     await withTenantContext(ctx, async (tx) => {
-      // P-7 (Befund 5): preferredStaffId ist Portal-User-kontrolliert und
-      // wurde ungeprüft persistiert + benotified — FK prüft nur Existenz im
-      // DB-Cluster, nicht den Tenant-Match.
-      if (parsed.data.preferredStaffId) {
-        await assertStaffInTenant(tx, parsed.data.preferredStaffId);
-      }
+      // preferredStaffId ist Portal-User-kontrolliert. Der zentrale Helper
+      // prüft Tenant, Aktivstatus und OPEN-/RESTRICTED-/Vertraulichkeits-Policy.
+      await assertAppointmentStaffOptionTx(tx, tenantId, clientId, parsed.data.preferredStaffId);
       const req = await tx.appointmentRequest.create({
         data: {
           tenantId,

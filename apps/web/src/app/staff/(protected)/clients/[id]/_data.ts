@@ -78,6 +78,12 @@ export async function loadClientDashboard(
         where: { clientId },
         orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
         take: 20,
+        include: {
+          reminders: {
+            orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
+            select: { id: true, subject: true, dueDate: true, doneAt: true },
+          },
+        },
       }),
       tx.taxDeadline.findMany({
         where: {

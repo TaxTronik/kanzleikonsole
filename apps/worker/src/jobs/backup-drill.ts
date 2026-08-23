@@ -39,7 +39,6 @@ import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import {
   EvidenceService,
   LocalTimestampAdapter,
-  createRfc3161Adapter,
   BACKUP_DRILL_RESULT_SETTING_KEY,
   type PersistedDrillResult,
 } from '@taxtronik/evidence';
@@ -49,6 +48,7 @@ import { pgConnArgs } from '../pg-conn';
 import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
 import { log } from '../logger';
+import { timestampPortFor } from '../tsa-port';
 
 const DRILL_DB = 'taxtronik_drill';
 
@@ -63,11 +63,27 @@ const s3 = new S3Client({
   forcePathStyle: true,
 });
 
-// Wie audit-verify-check: verify() braucht nur den Stamp-Validator.
-const timestampPort = env.TIMESTAMP_AUTHORITY_URL
-  ? createRfc3161Adapter(env.TIMESTAMP_AUTHORITY_URL)
-  : new LocalTimestampAdapter();
-const evidenceService = new EvidenceService(timestampPort);
+// Der Restore-Drill muss dieselbe externe TSA-Policy wie der tägliche
+// Produktiv-Check verwenden. Andernfalls könnte ein wiederhergestelltes Backup
+// trotz Self-Timestamps oder mit dem falschen Tenant-Anbieter grün werden.
+export function restoreRequiresExternalTsa(nodeEnv: string, explicitFlag?: string): boolean {
+  return nodeEnv === 'production' || explicitFlag === 'true';
+}
+
+const requireExternalTsa = restoreRequiresExternalTsa(
+  env.NODE_ENV,
+  process.env['EVIDENCE_REQUIRE_TSA'],
+);
+
+// record() selbst erzeugt keinen Zeitstempel; der Adapter wird ausschließlich
+// vom separaten Verify-Pfad verwendet. So hängt das Persistieren eines
+// fehlgeschlagenen Drills nicht von einem weiteren TSA-Netzaufruf ab.
+const auditRecorder = new EvidenceService(new LocalTimestampAdapter());
+
+/** Tenant-spezifischer Produktionsadapter; exportiert als schmaler Regressionstest-Seam. */
+export async function restoreEvidenceServiceFor(tenantId: string): Promise<EvidenceService> {
+  return new EvidenceService(await timestampPortFor(tenantId));
+}
 
 /** Gleiche Verbindung, anderer DB-Name (Query — z. B. ?schema= — bleibt erhalten). */
 export function withDbName(url: string, db: string): string {
@@ -181,7 +197,7 @@ async function persistTenantResult(tenantId: string, result: PersistedDrillResul
     });
     // GoBD-/DSGVO-Beweiswert: der Drill ist erst „durchgeführt", wenn er in
     // der (produktiven) Audit-Hash-Chain steht — Erfolg UND Fehlschlag.
-    await evidenceService.record(tx, {
+    await auditRecorder.record(tx, {
       tenantId,
       actorType: 'SYSTEM',
       actorId: null,
@@ -276,10 +292,9 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
           const missing = missingTenantResult(t.createdAt, latest.finishedAt);
           result = { checkedAt, ...base, ok: missing.ok, auditChecked: 0, error: missing.error };
         } else {
+          const evidenceService = await restoreEvidenceServiceFor(t.id);
           const r = await drillPrisma.$transaction(
-            // TSA-Policy prüft audit-verify-check täglich auf der Produktiv-DB;
-            // der Drill beweist Wiederherstellbarkeit + Chain-Integrität.
-            (tx) => evidenceService.verifyChain(tx, t.id, { requireExternalTsa: false }),
+            (tx) => evidenceService.verifyChain(tx, t.id, { requireExternalTsa }),
             VERIFY_TX_OPTIONS,
           );
           result = {

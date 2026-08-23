@@ -343,15 +343,16 @@ function makeBatchTx(cfg: BatchTxConfig) {
   const responsibilityFindMany = vi.fn(async () =>
     (cfg.responsibleIds ?? []).map((staffId) => ({ staffId })),
   );
+  const clientFindFirst = vi.fn(async () => cfg.client ?? null);
   const tx = {
     tenantSetting: {
       findUnique: vi.fn(async () => (cfg.mode ? { value: { clientAccessMode: cfg.mode } } : null)),
     },
-    client: { findUnique: vi.fn(async () => cfg.client ?? null) },
+    client: { findFirst: clientFindFirst },
     staffUser: { findMany: staffFindMany },
     clientResponsibility: { findMany: responsibilityFindMany },
   };
-  return { tx: tx as never, staffFindMany, responsibilityFindMany };
+  return { tx: tx as never, staffFindMany, responsibilityFindMany, clientFindFirst };
 }
 
 describe('filterStaffAccessClientTx', () => {
@@ -367,7 +368,7 @@ describe('filterStaffAccessClientTx', () => {
   });
 
   it('vertraulicher Mandant: Admin/Partner und Zugeordnete, sonst niemand', async () => {
-    const { tx } = makeBatchTx({
+    const { tx, responsibilityFindMany, clientFindFirst } = makeBatchTx({
       mode: 'OPEN',
       client: { vertraulich: true },
       staff: { admin: ['ADMIN'], zust: ['STAFF'], fremd: ['STAFF'] },
@@ -375,6 +376,15 @@ describe('filterStaffAccessClientTx', () => {
     });
     const erlaubt = await filterStaffAccessClientTx(tx, 't1', ['admin', 'zust', 'fremd'], 'c1');
     expect([...erlaubt].sort()).toEqual(['admin', 'zust']);
+    expect(clientFindFirst).toHaveBeenCalledWith({
+      where: { id: 'c1', tenantId: 't1' },
+      select: { vertraulich: true },
+    });
+    expect(responsibilityFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: 't1', clientId: 'c1' }),
+      }),
+    );
   });
 
   it('inaktive/fremde IDs und fehlender Mandant fallen heraus', async () => {

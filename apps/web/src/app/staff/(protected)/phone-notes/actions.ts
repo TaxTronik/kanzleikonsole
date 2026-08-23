@@ -2,12 +2,17 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
-import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import {
+  toActionError,
+  assertClientAccessTx,
+  canOtherStaffAccessClientTx,
+} from '@/server/auth/rbac';
+import type { StaffSession } from '@/server/auth/staff';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import {
   staffActionGuard,
@@ -17,6 +22,7 @@ import {
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { fmtDateShort } from '@/lib/fmt';
+import { createReminderTx } from '@/server/reminders/service';
 
 const withPhoneNotesStaff = withStaffModule('phoneNotes');
 
@@ -24,6 +30,19 @@ export type ActionResult = BaseActionResult;
 
 function revalidatePhoneNoteClient(clientId: string | null | undefined): void {
   if (clientId) revalidatePath(`/staff/clients/${clientId}`);
+}
+
+async function assertPhoneNoteRecipientAccessTx(
+  tx: TxClient,
+  tenantId: string,
+  staffId: string,
+  clientId: string,
+): Promise<void> {
+  if (!(await canOtherStaffAccessClientTx(tx, tenantId, staffId, clientId))) {
+    throw new ActionError(
+      'Die ausgewählte Person hat nach dem Kanzlei-Zugriffsmodus keinen Zugriff auf diesen Mandanten.',
+    );
+  }
 }
 
 const CreateSchema = z.object({
@@ -75,6 +94,9 @@ export async function createPhoneNoteAction(
           select: { id: true },
         });
         if (!s) throw new Error('STAFF_NOT_FOUND: forwardToStaff nicht in diesem Tenant.');
+        if (data.clientId) {
+          await assertPhoneNoteRecipientAccessTx(tx, tenantId, data.forwardToStaff, data.clientId);
+        }
       }
       const note = await tx.phoneNote.create({
         data: {
@@ -147,7 +169,15 @@ export async function markNoteReadAction(formData: FormData): Promise<void> {
   // S2: UUID-Validation (symmetrisch zu markNotificationReadAction).
   const parsed = parseFormData(z.object({ noteId: z.string().uuid() }), formData);
   if (!parsed.ok) return;
-  await markPhoneNoteRead(parsed.data.noteId, g.tenantId, g.staffId);
+  try {
+    await markPhoneNoteRead(parsed.data.noteId, g.tenantId, g.staffId, g.session);
+  } catch (error) {
+    // Form-Actions ohne Rückgabekanal behandeln fremde/vertrauliche IDs wie
+    // nicht vorhandene IDs. Insbesondere darf dabei keine Notification
+    // aufgelöst und kein readAt gesetzt werden.
+    if ((error as Error)?.name === 'ForbiddenError') return;
+    throw error;
+  }
   revalidatePath('/staff/phone-notes');
 }
 
@@ -155,15 +185,30 @@ export async function markPhoneNoteReadById(id: string): Promise<ActionResult> {
   const g = await staffActionGuard({ module: 'phoneNotes' });
   if (!g.ok) return g;
   if (typeof id !== 'string' || id.length === 0) return { ok: false, error: 'Ungültige ID.' };
-  await markPhoneNoteRead(id, g.tenantId, g.staffId);
+  try {
+    await markPhoneNoteRead(id, g.tenantId, g.staffId, g.session);
+  } catch (error) {
+    return toActionError(error);
+  }
   revalidatePath('/staff/phone-notes');
   revalidatePath('/staff/dashboard');
   return { ok: true };
 }
 
 // Interner Helfer (kein UI-Action): erhält bereits autorisierten Kontext.
-async function markPhoneNoteRead(id: string, tenantId: string, staffId: string): Promise<void> {
+async function markPhoneNoteRead(
+  id: string,
+  tenantId: string,
+  staffId: string,
+  session: StaffSession,
+): Promise<void> {
   await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+    const note = await tx.phoneNote.findUnique({
+      where: { id },
+      select: { clientId: true },
+    });
+    if (!note) return;
+    if (note.clientId) await assertClientAccessTx(tx, session, note.clientId);
     await tx.phoneNote.updateMany({
       where: { id, readAt: null },
       data: { readAt: new Date() },
@@ -177,19 +222,24 @@ async function markPhoneNoteRead(id: string, tenantId: string, staffId: string):
 }
 
 // -------------------------------------------------------------------------
-// Lifecycle: erledigen / zurücknehmen / weiterleiten / in Wiedervorlage
-// überführen.
+// Lifecycle: erledigen / zurücknehmen / weiterleiten / verknüpfte
+// Wiedervorlagen anlegen.
 // -------------------------------------------------------------------------
 
 export async function markPhoneNoteDoneAction(input: { id: string }): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId }) => {
-    const note = await tx.phoneNote.update({
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
+    const note = await tx.phoneNote.findUnique({
+      where: { id: parsed.data.id },
+      select: { clientId: true },
+    });
+    if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
+    if (note.clientId) await assertClientAccessTx(tx, session, note.clientId);
+    await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { doneAt: new Date(), doneByStaff: staffId, readAt: new Date() },
-      select: { clientId: true },
     });
     await resolveNotificationsTx(tx, {
       tenantId,
@@ -217,11 +267,16 @@ export async function undoPhoneNoteDoneAction(input: { id: string }): Promise<Ac
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId }) => {
-    const note = await tx.phoneNote.update({
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
+    const note = await tx.phoneNote.findUnique({
+      where: { id: parsed.data.id },
+      select: { clientId: true },
+    });
+    if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
+    if (note.clientId) await assertClientAccessTx(tx, session, note.clientId);
+    await tx.phoneNote.update({
       where: { id: parsed.data.id },
       data: { doneAt: null, doneByStaff: null },
-      select: { clientId: true },
     });
     await evidenceService.record(tx, {
       tenantId,
@@ -252,7 +307,7 @@ export async function forwardPhoneNoteAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId }) => {
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: {
@@ -265,6 +320,7 @@ export async function forwardPhoneNoteAction(input: {
       },
     });
     if (!note) throw new ActionError('Telefonzettel nicht gefunden.');
+    if (note.clientId) await assertClientAccessTx(tx, session, note.clientId);
     if (note.doneAt) throw new ActionError('Erledigte Zettel können nicht übertragen werden.');
     if (note.forwardToStaff === parsed.data.toStaffId) {
       return { clientId: note.clientId };
@@ -273,6 +329,9 @@ export async function forwardPhoneNoteAction(input: {
     // P-7 (Befund 5): toStaffId Tenant-Sanity — Create-Pfad oben prüft
     // forwardToStaff, der Forward-Pfad fehlte.
     await assertStaffInTenant(tx, parsed.data.toStaffId);
+    if (note.clientId) {
+      await assertPhoneNoteRecipientAccessTx(tx, tenantId, parsed.data.toStaffId, note.clientId);
+    }
 
     const forwarded = await tx.phoneNote.updateMany({
       where: {
@@ -360,29 +419,20 @@ export async function phoneNoteToReminderAction(input: {
 
     // P-7 (Befund 5): vom Aufrufer übergebene assigneeStaffId Tenant-Sanity.
     // (note.forwardToStaff/staffId stammen aus dem Tenant-Kontext selbst.)
-    if (parsed.data.assigneeStaffId) {
-      await assertStaffInTenant(tx, parsed.data.assigneeStaffId);
-    }
+    if (parsed.data.assigneeStaffId) await assertStaffInTenant(tx, parsed.data.assigneeStaffId);
+    const assigneeStaffId = parsed.data.assigneeStaffId ?? note.forwardToStaff ?? staffId;
+    await assertPhoneNoteRecipientAccessTx(tx, tenantId, assigneeStaffId, note.clientId);
 
-    const reminder = await tx.clientReminder.create({
-      data: {
-        tenantId,
-        clientId: note.clientId,
-        dueDate: new Date(parsed.data.dueDate),
-        subject: `${note.callerName}: ${note.subject}`,
-        notes: `Telefonnotiz vom ${fmtDateShort(new Date())}${note.callerPhone ? ' (Tel ' + note.callerPhone + ')' : ''}\n\n${note.body}`,
-        createdByStaff: staffId,
-        assigneeStaffId: parsed.data.assigneeStaffId ?? note.forwardToStaff ?? staffId,
-      },
-    });
-
-    await tx.phoneNote.update({
-      where: { id: parsed.data.id },
-      data: { doneAt: new Date(), doneByStaff: staffId, readAt: new Date() },
-    });
-    await resolveNotificationsTx(tx, {
+    const reminder = await createReminderTx(tx, {
       tenantId,
-      resources: [{ resourceType: 'phone_note', resourceId: parsed.data.id }],
+      clientId: note.clientId,
+      phoneNoteId: parsed.data.id,
+      dueDate: new Date(parsed.data.dueDate),
+      subject: `${note.callerName}: ${note.subject}`,
+      notes: `Telefonnotiz vom ${fmtDateShort(new Date())}${note.callerPhone ? ' (Tel ' + note.callerPhone + ')' : ''}\n\n${note.body}`,
+      priority: 'NORMAL',
+      createdByStaff: staffId,
+      assigneeStaffIds: [assigneeStaffId],
     });
 
     await evidenceService.record(tx, {
@@ -404,7 +454,7 @@ export async function phoneNoteToReminderAction(input: {
       after: {
         clientId: note.clientId,
         dueDate: parsed.data.dueDate,
-        fromPhoneNote: parsed.data.id,
+        phoneNoteId: parsed.data.id,
       },
     });
     return { clientId: note.clientId };
@@ -412,6 +462,7 @@ export async function phoneNoteToReminderAction(input: {
   if (r.ok) {
     revalidatePath('/staff/phone-notes');
     revalidatePhoneNoteClient(r.clientId);
+    revalidatePath('/staff/reminders');
     revalidatePath('/staff/dashboard');
   }
   return r;

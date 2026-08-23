@@ -10,10 +10,14 @@ vi.mock('@/server/actions/staff-action', () => {
 });
 
 const notifyMock = vi.hoisted(() => vi.fn());
-const canAccessMock = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+const filterAccessMock = vi.hoisted(() =>
+  vi.fn(async (_tx: unknown, _tenantId: string, staffIds: readonly string[]) => new Set(staffIds)),
+);
 vi.mock('@/server/notifications/service', () => ({ notify: notifyMock }));
 // rbac zieht transitiv next-auth — fuer den Unit-Test gemockt.
-vi.mock('@/server/auth/rbac', () => ({ canOtherStaffAccessClientTx: canAccessMock }));
+vi.mock('@/server/auth/rbac', () => ({
+  filterStaffAccessClientTx: filterAccessMock,
+}));
 
 import { ActionError } from '@/server/actions/staff-action';
 import {
@@ -66,6 +70,11 @@ function makeTx(over: Record<string, unknown> = {}) {
     },
     clientReminder: {
       create: vi.fn(async () => ({ id: 'neu-1' })),
+      findFirst: vi.fn(async () => ({
+        clientId: 'client-1',
+        subject: 'Recherche Kassenführung',
+        dueDate: new Date('2026-09-01'),
+      })),
       findUnique: vi.fn(async () => ({
         clientId: 'client-1',
         subject: 'Recherche Kassenführung',
@@ -96,7 +105,12 @@ const BASIS = {
   priority: 'NORMAL' as const,
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  filterAccessMock.mockImplementation(
+    async (_tx: unknown, _tenantId: string, staffIds: readonly string[]) => new Set(staffIds),
+  );
+});
 
 describe('Benachrichtigung bei Zuweisung', () => {
   it('informiert die Zuständigen — sonst erfahren sie erst am nächsten Tag davon', async () => {
@@ -182,6 +196,37 @@ describe('createReminderTx', () => {
     await createReminderTx(tx as never, { ...BASIS, clientId: null, assigneeStaffIds: [A] });
 
     expect(letzteCreateData(tx.clientReminder.create).clientId).toBeNull();
+    expect(filterAccessMock).not.toHaveBeenCalled();
+  });
+
+  it('OPEN + nicht vertraulich: alle aktiven Tenant-Mitarbeitenden bleiben zuweisbar', async () => {
+    const tx = makeTx();
+
+    await createReminderTx(tx as never, { ...BASIS, assigneeStaffIds: [A, B] });
+
+    expect(filterAccessMock).toHaveBeenCalledWith(tx, TENANT, [A, B], 'client-1');
+    expect(tx.clientReminder.create).toHaveBeenCalledOnce();
+  });
+
+  it('RESTRICTED: verweigert eine Zuweisung, sobald eine Person keinen Mandantenzugriff hat', async () => {
+    const tx = makeTx();
+    filterAccessMock.mockResolvedValueOnce(new Set([A]));
+
+    await expect(
+      createReminderTx(tx as never, { ...BASIS, assigneeStaffIds: [A, B] }),
+    ).rejects.toThrow(/nicht zugreifen/);
+    expect(tx.clientReminder.create).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('OPEN + vertraulich: verweigert unzugeordnete Personen wie der zentrale Access-Filter', async () => {
+    const tx = makeTx();
+    filterAccessMock.mockResolvedValueOnce(new Set());
+
+    await expect(
+      createReminderTx(tx as never, { ...BASIS, assigneeStaffIds: [B] }),
+    ).rejects.toThrow(/nicht zugreifen/);
+    expect(tx.clientReminder.create).not.toHaveBeenCalled();
   });
 
   it('weist unbekannte oder inaktive Zuständige ab', async () => {
@@ -192,6 +237,7 @@ describe('createReminderTx', () => {
       createReminderTx(tx as never, { ...BASIS, assigneeStaffIds: [A, 'fremd'] }),
     ).rejects.toBeInstanceOf(ActionError);
     expect(tx.clientReminder.create).not.toHaveBeenCalled();
+    expect(filterAccessMock).not.toHaveBeenCalled();
   });
 });
 
@@ -303,6 +349,44 @@ describe('setReminderAssigneesTx', () => {
       setReminderAssigneesTx(tx as never, { tenantId: TENANT, reminderId: 'r1', staffIds: [] }),
     ).rejects.toBeInstanceOf(ActionError);
   });
+
+  it('ändert bei einem nicht zugriffsberechtigten Ziel weder Zuweisung noch Benachrichtigung', async () => {
+    const tx = makeTx();
+    filterAccessMock.mockResolvedValueOnce(new Set([A]));
+
+    await expect(
+      setReminderAssigneesTx(tx as never, {
+        tenantId: TENANT,
+        reminderId: 'r1',
+        staffIds: [A, B],
+        von: ICH,
+      }),
+    ).rejects.toThrow(/nicht zugreifen/);
+
+    expect(tx.clientReminderAssignee.deleteMany).not.toHaveBeenCalled();
+    expect(tx.clientReminderAssignee.createMany).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('verweigert eine Cross-Tenant-/inaktive Ziel-ID vor jeder Änderung', async () => {
+    const tx = makeTx({
+      staffUser: {
+        findMany: vi.fn(async () => [{ id: A }]),
+        findUnique: vi.fn(async () => ({ fullName: 'Admin Mustermann' })),
+      },
+    });
+
+    await expect(
+      setReminderAssigneesTx(tx as never, {
+        tenantId: TENANT,
+        reminderId: 'r1',
+        staffIds: [A, 'staff-fremder-tenant'],
+      }),
+    ).rejects.toThrow(/unbekannt oder inaktiv/);
+
+    expect(tx.clientReminderAssignee.deleteMany).not.toHaveBeenCalled();
+    expect(filterAccessMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('Rückkanal: Wortmeldung und Nachfassen', () => {
@@ -333,6 +417,7 @@ describe('Rückkanal: Wortmeldung und Nachfassen', () => {
   it('Upload informiert die Beteiligten ausser der hochladenden Person', async () => {
     const tx = makeTx();
     tx.clientReminder.findUnique = vi.fn(async () => ({
+      clientId: 'client-1',
       subject: 'Belege 2025',
       createdByStaff: ICH,
       assignees: [{ staffId: A }, { staffId: B }],
@@ -371,6 +456,40 @@ describe('Rückkanal: Wortmeldung und Nachfassen', () => {
       .map((c) => c[1] as { staffId: string; kind: string })
       .filter((m) => m.kind === 'CLIENT_REMINDER_FOLLOWUP');
     expect(followups.map((m) => m.staffId).sort()).toEqual([B, ICH].sort());
+  });
+
+  it('OPEN→RESTRICTED: alte Beteiligte ohne aktuellen Zugriff erhalten keine neue Wortmeldung', async () => {
+    const tx = makeTx();
+    // ICH schreibt; nur B ist nach dem Moduswechsel noch verantwortlich.
+    filterAccessMock.mockResolvedValue(new Set([B]));
+
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      staffId: ICH,
+      body: 'Vertraulicher neuer Zwischenstand.',
+    });
+
+    expect(notifyMock.mock.calls.map((call) => call[1])).toEqual([
+      expect.objectContaining({ staffId: B, kind: 'CLIENT_REMINDER_NOTE' }),
+    ]);
+  });
+
+  it('nach vertraulich-Schaltung: alte Attachment-Empfaenger werden aktuell gefiltert', async () => {
+    const tx = makeTx();
+    filterAccessMock.mockResolvedValue(new Set([B]));
+
+    await notifyReminderAttachmentTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      documentId: 'doc-vertraulich',
+      documentTitle: 'Neue vertrauliche Anlage.pdf',
+      uploadedBy: ICH,
+    });
+
+    expect(notifyMock.mock.calls.map((call) => call[1])).toEqual([
+      expect.objectContaining({ staffId: B, kind: 'CLIENT_REMINDER_ATTACHMENT' }),
+    ]);
   });
 
   it('Klonen (ohne Nachfrage) erzeugt keine Followup-Meldung', async () => {
@@ -495,8 +614,6 @@ describe('@-Erwähnungen und Benachrichtigungs-Modus', () => {
       createdByStaff: ICH,
       assignees: [],
     })) as never;
-    canAccessMock.mockResolvedValue(true);
-
     await addReminderNoteTx(tx as never, {
       tenantId: TENANT,
       reminderId: 'r1',
@@ -504,7 +621,12 @@ describe('@-Erwähnungen und Benachrichtigungs-Modus', () => {
       body: '@Person A bitte übernehmen.',
     });
 
-    expect(canAccessMock).toHaveBeenCalledWith(expect.anything(), TENANT, A, 'client-1');
+    expect(filterAccessMock).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.arrayContaining([ICH, A]),
+      'client-1',
+    );
     const anA = notifyMock.mock.calls
       .map((c) => c[1] as { staffId: string; kind: string })
       .filter((m) => m.staffId === A);

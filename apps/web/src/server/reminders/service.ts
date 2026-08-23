@@ -13,7 +13,7 @@ import { ActionError } from '@/server/actions/staff-action';
 import type { ReminderPriority } from '@/lib/reminder-priority';
 import { notify } from '@/server/notifications/service';
 import { extractMentions } from '@/lib/reminder-mentions';
-import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
+import { filterStaffAccessClientTx } from '@/server/auth/rbac';
 
 export interface CreateReminderInput {
   tenantId: string;
@@ -27,9 +27,51 @@ export interface CreateReminderInput {
   assigneeStaffIds: string[];
   /** Vorgänger, wenn dies eine Nachfrage/Folgestufe ist. */
   predecessorId?: string | null;
+  /** Herkunft aus einer Telefonnotiz; mehrere Wiedervorlagen je Notiz erlaubt. */
+  phoneNoteId?: string | null;
 }
 
 const MAX_ASSIGNEES = 20;
+
+/**
+ * Mandantenbezogene Aufgaben duerfen nur Personen zugewiesen werden, die den
+ * Mandanten nach der kanzleiweiten Zugriffspolicy auch oeffnen duerfen. Im
+ * OPEN-Modus laesst der zentrale Filter alle aktiven Tenant-Mitarbeitenden zu;
+ * RESTRICTED und das Vertraulich-Flag begrenzen auf Verantwortliche bzw.
+ * ADMIN/PARTNER. Interne Aufgaben ohne Mandantenbezug brauchen nur die oben
+ * gepruefte Tenant-/Aktiv-Sanity.
+ */
+async function assertReminderAssigneeAccessTx(
+  tx: TxClient,
+  tenantId: string,
+  staffIds: readonly string[],
+  clientId: string | null,
+): Promise<void> {
+  if (!clientId || staffIds.length === 0) return;
+  const erlaubt = await filterStaffAccessClientTx(tx, tenantId, staffIds, clientId);
+  if (erlaubt.size !== staffIds.length) {
+    throw new ActionError(
+      'Mindestens eine zuständige Person darf auf diesen Mandanten nicht zugreifen.',
+    );
+  }
+}
+
+/**
+ * Altzuweisungen bleiben zur Nachvollziehbarkeit bestehen, duerfen nach einem
+ * Wechsel auf RESTRICTED oder beim nachtraeglichen Vertraulich-Markieren aber
+ * keine neuen Sachverhaltsdaten mehr an ehemals Berechtigte tragen.
+ */
+async function filterCurrentReminderRecipientsTx(
+  tx: TxClient,
+  tenantId: string,
+  staffIds: readonly string[],
+  clientId: string | null,
+): Promise<string[]> {
+  const unique = [...new Set(staffIds)].filter(Boolean);
+  if (!clientId || unique.length === 0) return unique;
+  const allowed = await filterStaffAccessClientTx(tx, tenantId, unique, clientId);
+  return unique.filter((staffId) => allowed.has(staffId));
+}
 
 /**
  * Legt eine Wiedervorlage samt Zuständigen an.
@@ -56,6 +98,7 @@ export async function createReminderTx(
   if (gueltig.length !== wirksam.length) {
     throw new ActionError('Mindestens eine zuständige Person ist unbekannt oder inaktiv.');
   }
+  await assertReminderAssigneeAccessTx(tx, input.tenantId, wirksam, input.clientId);
 
   const reminder = await tx.clientReminder.create({
     data: {
@@ -67,6 +110,7 @@ export async function createReminderTx(
       priority: input.priority,
       createdByStaff: input.createdByStaff,
       predecessorId: input.predecessorId ?? null,
+      phoneNoteId: input.phoneNoteId ?? null,
       assignees: { create: wirksam.map((staffId) => ({ staffId })) },
     },
     select: { id: true },
@@ -131,7 +175,12 @@ export async function notifyAssigneesTx(
     an: string[];
   },
 ): Promise<void> {
-  const empfaenger = input.an.filter((id) => id !== input.von);
+  const empfaenger = await filterCurrentReminderRecipientsTx(
+    tx,
+    input.tenantId,
+    input.an.filter((id) => id !== input.von),
+    input.clientId,
+  );
   if (empfaenger.length === 0) return;
 
   const vonName = await staffName(tx, input.von);
@@ -219,12 +268,15 @@ export async function cloneReminderTx(
   // ebensowenig die ausloesende Person selbst.
   if (opts.alsNachfrage) {
     const schonInformiert = new Set([...zustaendige, actor.staffId]);
-    const beteiligte = await filterByNotifyMode(
+    const aktuellBerechtigte = await filterCurrentReminderRecipientsTx(
       tx,
+      actor.tenantId,
       [...new Set([quelle.createdByStaff, ...quelle.assignees.map((a) => a.staffId)])].filter(
         (id) => !schonInformiert.has(id),
       ),
+      quelle.clientId,
     );
+    const beteiligte = await filterByNotifyMode(tx, aktuellBerechtigte);
     if (beteiligte.length > 0) {
       const vonName = await staffName(tx, actor.staffId);
       for (const staffId of beteiligte) {
@@ -313,16 +365,14 @@ export async function addReminderNoteTx(
     const erwaehnt = new Set(
       extractMentions(body, alleAktiven).filter((id) => id !== input.staffId),
     );
+    const kandidaten = [...new Set([...beteiligtenKreis, ...erwaehnt])];
+    const aktuellBerechtigt = new Set(
+      rem.clientId
+        ? await filterCurrentReminderRecipientsTx(tx, input.tenantId, kandidaten, rem.clientId)
+        : [...beteiligtenKreis],
+    );
     for (const staffId of erwaehnt) {
-      if (!beteiligtenKreis.has(staffId)) {
-        // Zugriff pruefen: interne Aufgabe → nur Beteiligte; Mandantenaufgabe
-        // → Mandanten-Policy. Ohne Zugriff keine Meldung (sie fuehrte auf eine
-        // Seite, die die Person nicht oeffnen darf).
-        const darf = rem.clientId
-          ? await canOtherStaffAccessClientTx(tx, input.tenantId, staffId, rem.clientId)
-          : false;
-        if (!darf) continue;
-      }
+      if (!aktuellBerechtigt.has(staffId)) continue;
       await notify(tx, {
         ...basis,
         staffId,
@@ -334,7 +384,9 @@ export async function addReminderNoteTx(
 
     // Beteiligte (ohne Autor, ohne bereits Erwaehnte) — gefiltert nach ihrem
     // persoenlichen Benachrichtigungs-Modus.
-    const uebrige = [...beteiligtenKreis].filter((id) => id !== input.staffId && !erwaehnt.has(id));
+    const uebrige = [...beteiligtenKreis].filter(
+      (id) => id !== input.staffId && !erwaehnt.has(id) && aktuellBerechtigt.has(id),
+    );
     for (const staffId of await filterByNotifyMode(tx, uebrige)) {
       await notify(tx, {
         ...basis,
@@ -366,6 +418,13 @@ export async function setReminderAssigneesTx(
     throw new ActionError('Mindestens eine zuständige Person ist unbekannt oder inaktiv.');
   }
 
+  const rem = await tx.clientReminder.findFirst({
+    where: { id: input.reminderId, tenantId: input.tenantId },
+    select: { clientId: true, subject: true, dueDate: true },
+  });
+  if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
+  await assertReminderAssigneeAccessTx(tx, input.tenantId, ziel, rem.clientId);
+
   // Wer schon zustaendig war, bekommt keine zweite Meldung — nur die neu
   // Hinzugekommenen erfahren davon.
   const vorher = new Set(
@@ -396,21 +455,15 @@ export async function setReminderAssigneesTx(
 
   const neu = ziel.filter((id) => !vorher.has(id));
   if (neu.length > 0 && input.von) {
-    const rem = await tx.clientReminder.findUnique({
-      where: { id: input.reminderId },
-      select: { clientId: true, subject: true, dueDate: true },
+    await notifyAssigneesTx(tx, {
+      tenantId: input.tenantId,
+      reminderId: input.reminderId,
+      clientId: rem.clientId,
+      subject: rem.subject,
+      dueDate: rem.dueDate,
+      von: input.von,
+      an: neu,
     });
-    if (rem) {
-      await notifyAssigneesTx(tx, {
-        tenantId: input.tenantId,
-        reminderId: input.reminderId,
-        clientId: rem.clientId,
-        subject: rem.subject,
-        dueDate: rem.dueDate,
-        von: input.von,
-        an: neu,
-      });
-    }
   }
 }
 
@@ -436,6 +489,7 @@ export async function notifyReminderAttachmentTx(
   const rem = await tx.clientReminder.findUnique({
     where: { id: input.reminderId },
     select: {
+      clientId: true,
       subject: true,
       createdByStaff: true,
       assignees: { select: { staffId: true } },
@@ -446,7 +500,13 @@ export async function notifyReminderAttachmentTx(
   const beteiligte = [
     ...new Set([rem.createdByStaff, ...rem.assignees.map((a) => a.staffId)]),
   ].filter((id) => id !== input.uploadedBy);
-  const empfaenger = await filterByNotifyMode(tx, beteiligte);
+  const aktuellBerechtigte = await filterCurrentReminderRecipientsTx(
+    tx,
+    input.tenantId,
+    beteiligte,
+    rem.clientId,
+  );
+  const empfaenger = await filterByNotifyMode(tx, aktuellBerechtigte);
   if (empfaenger.length === 0) return;
 
   const vonName = await staffName(tx, input.uploadedBy);

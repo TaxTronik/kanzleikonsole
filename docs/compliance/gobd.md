@@ -1,6 +1,6 @@
 # GoBD-Verfahrensdokumentation taxtronik
 
-Stand: 2026-06-10
+Stand: 2026-08-23
 
 Dieses Dokument beschreibt, wie taxtronik die Anforderungen der **Grundsätze
 zur ordnungsmäßigen Führung und Aufbewahrung von Büchern, Aufzeichnungen und
@@ -112,6 +112,11 @@ Hash ein (R-3 / H-2).
 - Wöchentliche Auslagerung in NDJSON-Segmente (`audit-rotate`-Worker
   sonntags 03:00 UTC, manueller Trigger unter `/staff/admin/archive`).
   Aktuell nur SOFT-Rotation (Datei wird geschrieben, DB bleibt).
+  Ein optional erhaltener RFC-3161-Token wird vor dem DB-Insert gegen den
+  SHA-256 der NDJSON-Datei und die konfigurierten Trust-Roots geprüft.
+  Bei TSA-Ausfall wird `tsa_response_blob = NULL` gespeichert. `verify:chain`
+  weist diesen Zustand aus und verifiziert vorhandene Tokens erneut gegen den
+  Hash der tatsächlich aus dem Object-Store geladenen Datei.
   HARD-Rotation (DB-Cleanup) ist nicht implementiert — der Audit-Log
   wächst monoton. Ein konfiguriertes `AUDIT_ARCHIVE_MODE=HARD` wird beim
   Lesen ehrlich auf SOFT normalisiert und pro Lauf als Warnung geloggt,

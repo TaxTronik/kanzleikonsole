@@ -2,12 +2,14 @@
 // Tests für Archive-Serialisierung + Chain-Verifikation
 // =============================================================================
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import {
   serializeArchive,
   parseArchive,
   verifyArchiveChain,
+  verifyArchiveTimestamp,
+  archiveTimestampMeetsPolicy,
   type ArchiveAuditRow,
 } from '../archive';
 
@@ -153,5 +155,39 @@ describe('parseArchive + verifyArchiveChain', () => {
       lastThisHash: Buffer.alloc(32, 0xcd),
     });
     expect(check.ok).toBe(false);
+  });
+});
+
+describe('verifyArchiveTimestamp', () => {
+  it('prüft einen vorhandenen Token gegen den Hash der tatsächlich geladenen Datei', async () => {
+    const actualFileSha256 = Buffer.alloc(32, 0xab);
+    const response = Buffer.from('timestamp-token');
+    const verify = vi.fn().mockResolvedValue(true);
+
+    await expect(verifyArchiveTimestamp({ verify }, actualFileSha256, response)).resolves.toBe(
+      'valid',
+    );
+    expect(verify).toHaveBeenCalledWith(actualFileSha256, response);
+  });
+
+  it('unterscheidet fehlenden Nachweis von einem vorhandenen ungültigen Token', async () => {
+    const verify = vi.fn().mockResolvedValue(false);
+    const hash = Buffer.alloc(32, 0xcd);
+
+    await expect(verifyArchiveTimestamp({ verify }, hash, null)).resolves.toBe('missing');
+    expect(verify).not.toHaveBeenCalled();
+
+    await expect(
+      verifyArchiveTimestamp({ verify }, hash, Buffer.from('untrusted-token')),
+    ).resolves.toBe('invalid');
+    expect(verify).toHaveBeenCalledTimes(1);
+  });
+
+  it('macht fehlende Tokens nur bei verpflichtender externer TSA zum Policy-Fehler', () => {
+    expect(archiveTimestampMeetsPolicy('valid', true)).toBe(true);
+    expect(archiveTimestampMeetsPolicy('missing', false)).toBe(true);
+    expect(archiveTimestampMeetsPolicy('missing', true)).toBe(false);
+    expect(archiveTimestampMeetsPolicy('invalid', false)).toBe(false);
+    expect(archiveTimestampMeetsPolicy('invalid', true)).toBe(false);
   });
 });

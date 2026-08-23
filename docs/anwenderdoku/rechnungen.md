@@ -35,6 +35,17 @@ die Rechnungsdatei **vor** der Festschreibung mit Object-Lock abgelegt
 Absenderdaten der Kanzlei unvollständig sind — wird der Versand abgebrochen
 und der Grund angezeigt; die Rechnung bleibt Entwurf.
 
+**Briefkopf.** Neu erzeugte ZUGFeRD-Rechnungs-PDFs übernehmen ein helles
+Branding-Logo im PNG-/JPEG-Format sowie Organisationsname,
+Adress-/Kontaktzeilen und Fußnote aus
+Einstellungen → Branding. Leere Felder für Organisationsname, Anschrift und
+Kontakt fallen auf die hinterlegten Rechnungs-Absenderdaten zurück; eine leere
+freie Fußnote wird weggelassen. Eine bereits archivierte Rechnung bleibt
+byte-stabil und wird durch spätere Einstellungsänderungen nicht umgeschrieben.
+Extern hochgeladene oder signierte PDF-Belege werden ebenfalls nie verändert.
+WebP-Logos bleiben für das Web-Branding nutzbar, werden vom
+Rechnungs-PDF-Generator derzeit aber nicht eingebettet.
+
 **Prüfprotokoll.** Anlage, Versand, Zahlung, Storno und jeder
 XRechnung-/ZUGFeRD-Download werden in der Audit-Hash-Chain festgehalten.
 
@@ -52,6 +63,10 @@ XRechnung-/ZUGFeRD-Download werden in der Audit-Hash-Chain festgehalten.
 4. Auf der Detailseite: **Als versendet markieren** (erstellt die
    GoBD-Archivkopie und schreibt fest), später **Als bezahlt markieren**.
    XRechnung-XML und ZUGFeRD-PDF lassen sich dort jederzeit herunterladen.
+   Bei ausgestellten Rechnungen liefert der direkte ZUGFeRD-Download dieselben
+   archivierten PDF-Bytes; er erzeugt keine abweichende zweite Fassung.
+   Downloads eines Entwurfs sind dagegen nur aktuelle Kontrollfassungen und
+   werden noch nicht revisionssicher archiviert.
 
 Hinweis: Rechnungen anlegen und versenden dürfen nur Mitarbeiter mit dem
 jeweiligen Recht (_Rechnungen anlegen/bearbeiten_ bzw. _Rechnungen

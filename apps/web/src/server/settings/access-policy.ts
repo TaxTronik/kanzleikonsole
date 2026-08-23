@@ -18,47 +18,18 @@
 
 import { cache } from 'react';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
-import type { TenantContext, TxClient } from '@taxtronik/db';
+import type { TenantContext } from '@taxtronik/db';
+import { readAccessPolicyTx, type AccessPolicy } from '@taxtronik/db/staff-client-access';
 
-export type ClientAccessMode = 'OPEN' | 'RESTRICTED';
-
-export interface AccessPolicy {
-  clientAccessMode: ClientAccessMode;
-}
-
-export const DEFAULT_ACCESS_POLICY: AccessPolicy = { clientAccessMode: 'OPEN' };
-
-/**
- * Reine Zugriffs-Entscheidung (ohne IO, deshalb testbar). Wahrheitstabelle:
- *  - Admin/Partner            → immer Zugriff
- *  - OPEN + nicht vertraulich → Zugriff (kanzleiweite Zusammenarbeit, Default)
- *  - sonst (OPEN+vertraulich ODER RESTRICTED) → nur zugeordnete Berufsträger/
- *    Hauptbearbeiter (`isResponsible`)
- */
-export function decideClientAccess(input: {
-  isAdmin: boolean;
-  mode: ClientAccessMode;
-  vertraulich: boolean;
-  isResponsible: boolean;
-}): boolean {
-  if (input.isAdmin) return true;
-  if (input.mode === 'OPEN' && !input.vertraulich) return true;
-  return input.isResponsible;
-}
+export {
+  DEFAULT_ACCESS_POLICY,
+  decideClientAccess,
+  readAccessPolicyTx,
+  type AccessPolicy,
+  type ClientAccessMode,
+} from '@taxtronik/db/staff-client-access';
 
 const KEY_ACCESS = 'access';
-
-/** Liest die Policy auf einem bestehenden Tx (für canAccessClient, ein Round-Trip). */
-export async function readAccessPolicyTx(tx: TxClient, tenantId: string): Promise<AccessPolicy> {
-  const row = await tx.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: KEY_ACCESS } },
-  });
-  if (!row) return { ...DEFAULT_ACCESS_POLICY };
-  const value = row.value as Partial<AccessPolicy>;
-  // Defensiv: nur die bekannten Werte zulassen, sonst OPEN (fail-open ist hier
-  // GEWOLLT — ein kaputter Setting-Wert soll Mitarbeiter nicht aussperren).
-  return { clientAccessMode: value.clientAccessMode === 'RESTRICTED' ? 'RESTRICTED' : 'OPEN' };
-}
 
 // Standalone-Variante (eigene Tx) — wird im Zugriffs-Gate pro Request u. U.
 // mehrfach gerufen. cache() request-scoped auf Primitiven (s. modules.ts).

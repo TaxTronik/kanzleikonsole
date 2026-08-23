@@ -28,12 +28,22 @@ const h = vi.hoisted(() => {
   const s3Send = vi.fn();
   const serializeArchive = vi.fn();
   const tsaTimestamp = vi.fn();
+  const tsaVerify = vi.fn();
   const assertPublicHost = vi.fn();
   const retention = new Date('2036-12-31T23:59:59.000Z');
   // RF-13: hoisted, damit der Logger auch nach vi.resetModules() (HARD-Test
   // unten) objekt-identisch geteilt bleibt und Warn-Assertions möglich sind.
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-  return { prismaOwner, s3Send, serializeArchive, tsaTimestamp, assertPublicHost, retention, log };
+  return {
+    prismaOwner,
+    s3Send,
+    serializeArchive,
+    tsaTimestamp,
+    tsaVerify,
+    assertPublicHost,
+    retention,
+    log,
+  };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -48,7 +58,7 @@ vi.mock('@taxtronik/storage', () => ({
 }));
 vi.mock('@taxtronik/evidence', () => ({
   serializeArchive: h.serializeArchive,
-  createRfc3161Adapter: () => ({ timestamp: h.tsaTimestamp }),
+  createRfc3161Adapter: () => ({ timestamp: h.tsaTimestamp, verify: h.tsaVerify }),
   resolveTsaUrl: (providerId: string | null, customUrl: string | null) =>
     customUrl ?? (providerId ? `https://tsa.example.com/${providerId}` : null),
 }));
@@ -132,6 +142,7 @@ beforeEach(() => {
   });
   h.assertPublicHost.mockResolvedValue(undefined);
   h.tsaTimestamp.mockResolvedValue({ tsaResponseBlob: Buffer.from('tsa-stamp') });
+  h.tsaVerify.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -263,6 +274,7 @@ describe('F3: optionaler RFC-3161-Stempel', () => {
       mode: 'public',
     });
     expect(h.tsaTimestamp).toHaveBeenCalledWith(SER.fileSha256);
+    expect(h.tsaVerify).toHaveBeenCalledWith(SER.fileSha256, Buffer.from('tsa-stamp'));
   });
 
   it('Tenant-TSA konfiguriert → Stempel über fileSha256, Blob landet im Archiv', async () => {
@@ -293,6 +305,22 @@ describe('F3: optionaler RFC-3161-Stempel', () => {
     expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ tsaResponseBlob: null }),
     });
+    expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+  });
+
+  it('untrusted oder an einen anderen Imprint gebundene Antwort wird nicht persistiert', async () => {
+    h.tsaVerify.mockResolvedValue(false);
+
+    const result = await run();
+
+    expect(h.tsaVerify).toHaveBeenCalledWith(SER.fileSha256, Buffer.from('tsa-stamp'));
+    expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tsaResponseBlob: null }),
+    });
+    expect(h.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT }),
+      expect.stringContaining('TSA-Stempel fehlgeschlagen'),
+    );
     expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
   });
 });

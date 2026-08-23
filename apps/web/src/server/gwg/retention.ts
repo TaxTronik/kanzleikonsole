@@ -9,15 +9,18 @@
 // (DSGVO Art. 5 Abs. 1 lit. e).
 //
 // Das Object-Lock-Retain-Until setzt die Frist ab DOKUMENTERSTELLUNG (5 J.) —
-// das verhindert nur zu FRÜHE Löschung. Die gesetzliche LÖSCH-Pflicht knüpft an
-// das Mandatsende. Diese Datei liefert die reine Fristlogik + die Such-Query für
-// die Review-Queue; die eigentliche Vernichtung bestätigt der Berufsträger
-// (Review-Queue), kein stilles Auto-Delete von Rechtsbelegen.
+// das verhindert nur zu FRÜHE Löschung. Der gesetzliche Fristbeginn knüpft bei
+// bestehenden Beziehungen an deren Ende, sonst an die jeweilige Feststellung.
+// Auch die absolute Zehnjahresgrenze läuft erst ab diesem maßgeblichen Start;
+// das bloße Alter eines Belegs beendet keine laufende Geschäftsbeziehung. Diese Datei liefert die reine
+// Fristlogik + die Such-Query für die Review-Queue; die eigentliche Vernichtung
+// bestätigt der Berufsträger (kein stilles Auto-Delete von Rechtsbelegen).
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
 
 export const GWG_RETENTION_YEARS = 5;
+export const GWG_MAX_RETENTION_YEARS = 10;
 
 /**
  * Stichtag, ab dem die GwG-Belege eines beendeten Mandats zu löschen sind.
@@ -27,6 +30,13 @@ export const GWG_RETENTION_YEARS = 5;
  */
 export function gwgDeletionDeadline(mandateEndedAt: Date): Date {
   return new Date(Date.UTC(mandateEndedAt.getUTCFullYear() + GWG_RETENTION_YEARS + 1, 0, 1));
+}
+
+/** Absolute Vernichtungsgrenze ab dem maßgeblichen Fristbeginn (§ 8 Abs. 4 GwG). */
+export function gwgMaximumDeletionDeadline(retentionStartedAt: Date): Date {
+  return new Date(
+    Date.UTC(retentionStartedAt.getUTCFullYear() + GWG_MAX_RETENTION_YEARS + 1, 0, 1),
+  );
 }
 
 /** True, wenn die GwG-Belege des Mandats (zum Zeitpunkt `now`) löschreif sind. */
@@ -52,14 +62,15 @@ export function gwgEffectiveStart(
   checkStatus: string,
   feststellungAt: Date | null | undefined,
   verifiedAt: Date | null | undefined = null,
+  relationshipEstablished = false,
 ): Date | null {
   if (mandateEndedAt) return mandateEndedAt;
-  // Nur terminale Prüfungen ohne Mandat: eine offene (DRAFT/IN_REVIEW) oder
-  // verifizierte Prüfung kann noch zu einer Geschäftsbeziehung führen.
-  if (
-    (checkStatus === 'REJECTED' || (checkStatus === 'EXPIRED' && !verifiedAt)) &&
-    feststellungAt
-  ) {
+  // Bei einer bereits zustande gekommenen Geschäftsbeziehung beginnt die
+  // reguläre Fünfjahresfrist erst mit deren Ende. Für eine nie abgeschlossene
+  // Erstprüfung greift dagegen der „übrige Fall": Ende des Jahres der
+  // Feststellung — auch wenn ein DRAFT/IN_REVIEW fachlich liegen blieb.
+  if (relationshipEstablished || verifiedAt) return null;
+  if (['DRAFT', 'IN_REVIEW', 'REJECTED', 'EXPIRED'].includes(checkStatus) && feststellungAt) {
     return feststellungAt;
   }
   return null;
@@ -74,6 +85,7 @@ interface GwgRetentionCheckContext {
 export interface GwgDocumentRetentionContext {
   createdAt: Date;
   mandateEndedAt: Date | null;
+  relationshipEstablished?: boolean;
   linkedChecks: GwgRetentionCheckContext[];
   invite: {
     status: string;
@@ -94,50 +106,24 @@ export function gwgDocumentEffectiveStart(
   now: Date = new Date(),
 ): Date | null {
   if (context.mandateEndedAt) return context.mandateEndedAt;
+  if (context.relationshipEstablished) return null;
   const invite = context.invite;
   const referencedChecks = [
     ...context.linkedChecks,
     ...(invite?.gwgCheck ? [invite.gwgCheck] : []),
   ];
   // Derselbe Beleg kann in einer späteren Wiederholungsprüfung erneut genutzt
-  // werden. Solange irgendein verknüpfter Check offen/valid oder zuvor
-  // verifiziert war, darf ein altes abgebrochenes Onboarding ihn nicht löschen.
-  if (
-    referencedChecks.some(
-      (check) =>
-        check.status === 'DRAFT' ||
-        check.status === 'IN_REVIEW' ||
-        check.status === 'VERIFIED' ||
-        (check.status === 'EXPIRED' && check.verifiedAt !== null),
-    )
-  ) {
+  // werden. Sobald ein verknüpfter Check verifiziert wurde, gehört er zu einer
+  // zustande gekommenen Beziehung; deren reguläre Frist wartet auf das Ende.
+  if (referencedChecks.some((check) => check.status === 'VERIFIED' || check.verifiedAt !== null)) {
     return null;
   }
-  if (!invite) {
-    return context.linkedChecks.length > 0 &&
-      context.linkedChecks.every(
-        (check) => check.status === 'REJECTED' || (check.status === 'EXPIRED' && !check.verifiedAt),
-      )
-      ? context.createdAt
-      : null;
-  }
-  if (invite.status === 'CANCELLED') return context.createdAt;
-  if (invite.status === 'EXPIRED') return context.createdAt;
-  if (
-    (invite.status === 'PENDING' || invite.status === 'STARTED') &&
-    invite.expiresAt.getTime() <= now.getTime()
-  ) {
-    return context.createdAt;
-  }
-  if (
-    invite.status === 'SUBMITTED' &&
-    invite.gwgCheck &&
-    (invite.gwgCheck.status === 'REJECTED' ||
-      (invite.gwgCheck.status === 'EXPIRED' && !invite.gwgCheck.verifiedAt))
-  ) {
-    return context.createdAt;
-  }
-  return null;
+  // Ohne jemals verifizierte Beziehung beginnt die Frist mit der Feststellung,
+  // nicht erst mit einem späteren Statuswechsel. `now` bleibt aus API-
+  // Kompatibilität Teil der Signatur; der absolute Ablauf wird unten separat
+  // berücksichtigt.
+  void now;
+  return context.createdAt;
 }
 
 export interface GwgDeletionItem {
@@ -146,15 +132,15 @@ export interface GwgDeletionItem {
   clientName: string;
   title: string;
   retentionStartedAt: Date;
-  retentionReason: 'MANDATE_ENDED' | 'ONBOARDING_TERMINATED';
+  retentionReason: 'MANDATE_ENDED' | 'ONBOARDING_TERMINATED' | 'MAXIMUM_RETENTION';
   deletionDeadline: Date;
   destructionPending: boolean;
 }
 
 /**
  * Liefert die GwG-Beweisdokumente, deren gesetzliche Löschfrist abgelaufen ist
- * (Review-Queue). SQL-Vorfilter über das Jahr, exakte Prüfung via
- * isGwgDeletionDue. `tx` wird übergeben → kein Modul-Level-DB-Import (testbar).
+ * (Review-Queue). Die exakte reguläre und absolute Fristprüfung läuft in JS.
+ * `tx` wird übergeben → kein Modul-Level-DB-Import (testbar).
  */
 export async function findDueGwgDeletionDocs(
   tx: TxClient,
@@ -170,7 +156,14 @@ export async function findDueGwgDeletionDocs(
       clientId: true,
       createdAt: true,
       gwgDestructionRequestedAt: true,
-      client: { select: { name: true, mandateEndedAt: true } },
+      client: {
+        select: {
+          name: true,
+          mandateEndedAt: true,
+          allowActive: true,
+          onboardingCompletedAt: true,
+        },
+      },
       gwgIdDocuments: {
         select: {
           check: { select: { status: true, createdAt: true, verifiedAt: true } },
@@ -197,20 +190,35 @@ export async function findDueGwgDeletionDocs(
       {
         createdAt: d.createdAt,
         mandateEndedAt: d.client.mandateEndedAt,
+        relationshipEstablished: d.client.allowActive || d.client.onboardingCompletedAt !== null,
         linkedChecks: d.gwgIdDocuments.map((idDocument) => idDocument.check),
         invite: d.gwgOnboardingInvite,
       },
       now,
     );
-    if (!start || !isGwgDeletionDue(start, now)) continue;
+    // Bei laufender/etablierter Beziehung ohne Mandatsende hat die Frist noch
+    // nicht begonnen. Das Dokumentalter allein ist ausdrücklich kein Ersatz.
+    if (!start) continue;
+    const regularDeadline = gwgDeletionDeadline(start);
+    const maximumDeadline = gwgMaximumDeletionDeadline(start);
+    if (now < regularDeadline) continue;
+    // Ab fünf Jahren ist der Eintrag regulär prüffällig. Bleibt die manuelle
+    // Review bis zur Höchstfrist offen, eskaliert die Darstellung ab zehn
+    // Jahren sichtbar auf MAXIMUM_RETENTION.
+    const maximumReached = now >= maximumDeadline;
+    const deletionDeadline = maximumReached ? maximumDeadline : regularDeadline;
     out.push({
       documentId: d.id,
       clientId: d.clientId,
       clientName: d.client.name,
       title: d.title,
       retentionStartedAt: start,
-      retentionReason: d.client.mandateEndedAt ? 'MANDATE_ENDED' : 'ONBOARDING_TERMINATED',
-      deletionDeadline: gwgDeletionDeadline(start),
+      retentionReason: maximumReached
+        ? 'MAXIMUM_RETENTION'
+        : d.client.mandateEndedAt
+          ? 'MANDATE_ENDED'
+          : 'ONBOARDING_TERMINATED',
+      deletionDeadline,
       destructionPending: d.gwgDestructionRequestedAt !== null,
     });
   }
@@ -223,7 +231,7 @@ export interface GwgCheckDeletionItem {
   clientName: string;
   status: string;
   retentionStartedAt: Date;
-  retentionReason: 'MANDATE_ENDED' | 'ONBOARDING_TERMINATED';
+  retentionReason: 'MANDATE_ENDED' | 'ONBOARDING_TERMINATED' | 'MAXIMUM_RETENTION';
   deletionDeadline: Date;
   /** Noch nicht vernichtete GWG_EVIDENCE-Dateien des Mandanten — die DB-
    *  Vernichtung ist erst zulässig, wenn die Datei-Belege weg sind. */
@@ -249,10 +257,16 @@ export async function findDueGwgCheckDeletions(
       OR: [
         // Beendetes Mandat: Frist ab Mandatsende.
         { client: { mandateEndedAt: { lt: cutoff } } },
-        // Nie zustande gekommen: terminale Prüfung, Frist ab Feststellung.
+        // Nie zustande gekommene, auch offen liegen gebliebene Erstprüfung:
+        // Frist ab Feststellung.
         {
-          client: { mandateEndedAt: null },
-          status: { in: ['REJECTED', 'EXPIRED'] },
+          client: {
+            mandateEndedAt: null,
+            allowActive: false,
+            onboardingCompletedAt: null,
+          },
+          verifiedAt: null,
+          status: { in: ['DRAFT', 'IN_REVIEW', 'REJECTED', 'EXPIRED'] },
           updatedAt: { lt: cutoff },
         },
       ],
@@ -260,10 +274,18 @@ export async function findDueGwgCheckDeletions(
     select: {
       id: true,
       status: true,
+      createdAt: true,
       updatedAt: true,
       verifiedAt: true,
       clientId: true,
-      client: { select: { name: true, mandateEndedAt: true } },
+      client: {
+        select: {
+          name: true,
+          mandateEndedAt: true,
+          allowActive: true,
+          onboardingCompletedAt: true,
+        },
+      },
       idDocuments: {
         select: {
           createdAt: true,
@@ -273,6 +295,10 @@ export async function findDueGwgCheckDeletions(
       beneficialOwners: { select: { createdAt: true } },
       onboardingInvites: {
         select: {
+          // Teil der fachlichen Feststellung: Eine später aktualisierte
+          // Einladung darf die DB-Backstop-Frist nicht jünger berechnen als
+          // die Review-Queue.
+          updatedAt: true,
           uploadedDocuments: {
             select: { id: true, classification: true, gwgDestroyedAt: true },
           },
@@ -287,14 +313,23 @@ export async function findDueGwgCheckDeletions(
       check.updatedAt,
       ...check.idDocuments.map((document) => document.createdAt),
       ...check.beneficialOwners.map((owner) => owner.createdAt),
+      ...check.onboardingInvites.map((invite) => invite.updatedAt),
     ].reduce((latest, candidate) => (candidate.getTime() > latest.getTime() ? candidate : latest));
     const start = gwgEffectiveStart(
       check.client.mandateEndedAt,
       check.status,
       feststellungAt,
       check.verifiedAt,
+      check.client.allowActive || check.client.onboardingCompletedAt !== null,
     );
-    if (!start || !isGwgDeletionDue(start, now)) continue;
+    // Auch die Höchstfrist beginnt erst mit dem Beziehungsende bzw. — wenn nie
+    // eine Beziehung zustande kam — mit dem Feststellungsjahr.
+    if (!start) continue;
+    const regularDeadline = gwgDeletionDeadline(start);
+    const maximumDeadline = gwgMaximumDeletionDeadline(start);
+    if (now < regularDeadline) continue;
+    const maximumReached = now >= maximumDeadline;
+    const deletionDeadline = maximumReached ? maximumDeadline : regularDeadline;
 
     const openDocumentIds = new Set<string>();
     for (const idDocument of check.idDocuments) {
@@ -317,8 +352,12 @@ export async function findDueGwgCheckDeletions(
       clientName: check.client.name,
       status: check.status,
       retentionStartedAt: start,
-      retentionReason: check.client.mandateEndedAt ? 'MANDATE_ENDED' : 'ONBOARDING_TERMINATED',
-      deletionDeadline: gwgDeletionDeadline(start),
+      retentionReason: maximumReached
+        ? 'MAXIMUM_RETENTION'
+        : check.client.mandateEndedAt
+          ? 'MANDATE_ENDED'
+          : 'ONBOARDING_TERMINATED',
+      deletionDeadline,
       openEvidenceDocs: openDocumentIds.size,
     });
   }

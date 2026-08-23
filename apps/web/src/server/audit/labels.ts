@@ -53,13 +53,14 @@ export const ACTION_LABELS: Record<string, string> = {
   'request.internal_comment.create': 'Internen Kommentar hinzugefügt',
   'request.response.inbound_mail': 'Antwort per E-Mail eingegangen',
   'request.close': 'Anforderung geschlossen',
+  'request.reopen': 'Anforderung wieder geöffnet',
 
   // Telefonzettel
   'phone_note.create': 'Telefonzettel erstellt',
   'phone_note.done': 'Telefonzettel erledigt',
   'phone_note.undone': 'Telefonzettel zurück auf offen',
   'phone_note.forward': 'Telefonzettel übertragen',
-  'phone_note.to_reminder': 'Telefonzettel in Wiedervorlage überführt',
+  'phone_note.to_reminder': 'Wiedervorlage aus Telefonzettel angelegt',
 
   // RSS-Feeds
   'rss_feed.add': 'RSS-Feed hinzugefügt',
@@ -115,6 +116,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'invoice.overdue': 'Rechnung überfällig (System)',
   'invoice.xrechnung.download': 'XRechnung exportiert',
   'invoice.zugferd.download': 'ZUGFeRD exportiert',
+  'invoice.archive.discard_draft': 'Entwurfsarchiv nach Storno ausgeblendet',
+  'invoice.archive.draft.refresh': 'Veraltetes Entwurfsarchiv ersetzt',
 
   // Vollmachten
   'poa.create': 'Vollmacht erstellt',
@@ -209,6 +212,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'form.submission.create': 'Formular versendet',
   'form.submission.submit': 'Formular ausgefüllt',
   'form.submission.upload': 'Formular-Datei hochgeladen',
+  'form.submission.upload.discard': 'Formular-Datei vor Abgabe verworfen',
 
   // Mitarbeiter
   'staff.create': 'Mitarbeiter angelegt',
@@ -284,6 +288,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'invoice_category.delete': 'Rechnungstyp gelöscht',
   'invoice.upload': 'Externe Rechnung hochgeladen',
   'invoice.archive.zugferd': 'ZUGFeRD-Archiv erzeugt',
+  'invoice.archive.xrechnung': 'XRechnung-Archiv erzeugt',
   'email_template.create': 'E-Mail-Vorlage angelegt',
   'email_template.update': 'E-Mail-Vorlage geändert',
   'email_template.delete': 'E-Mail-Vorlage gelöscht',

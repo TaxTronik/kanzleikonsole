@@ -14,6 +14,8 @@
 import { Worker } from 'bullmq';
 import type { NotificationKind } from '@prisma/client';
 import { sanitizeNotificationText } from '@taxtronik/db/notification';
+import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
+import type { TxClient } from '@taxtronik/db/tenant-context';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
@@ -33,6 +35,8 @@ interface DailyNotification {
   title: string;
   body: string;
   href: string;
+  /** Nur fuer den unmittelbar vor Persistenz ausgefuehrten Empfaenger-Check. */
+  clientId?: string | null;
 }
 
 function dailyNotificationKey(notification: {
@@ -48,8 +52,8 @@ async function createDailyNotifications(
   now: Date,
   groups: DailyNotification[][],
 ): Promise<number[]> {
-  const candidates = groups.flat();
-  if (candidates.length === 0) return groups.map(() => 0);
+  const candidatesBeforeAccessCheck = groups.flat();
+  if (candidatesBeforeAccessCheck.length === 0) return groups.map(() => 0);
 
   // Der Daily-Dedupe-Index bucketisiert created_at in UTC-Tage. Mit exakt
   // demselben Fenster eliminiert die Vorab-Abfrage bekannte Keys als Set;
@@ -60,6 +64,10 @@ async function createDailyNotifications(
   const createdAtLt = new Date(createdAtGte.getTime() + DAY_MS);
 
   return withWorkerTenantContext(tenantId, async (tx) => {
+    const filteredGroups = await filterCurrentClientRecipientsTx(tx, tenantId, groups);
+    const candidates = filteredGroups.flat();
+    if (candidates.length === 0) return groups.map(() => 0);
+
     const existing = await tx.notification.findMany({
       where: {
         tenantId,
@@ -71,7 +79,7 @@ async function createDailyNotifications(
     const seen = new Set(existing.map(dailyNotificationKey));
     const insertedCounts: number[] = [];
 
-    for (const group of groups) {
+    for (const group of filteredGroups) {
       const pending = group.filter((candidate) => {
         const key = dailyNotificationKey(candidate);
         if (seen.has(key)) return false;
@@ -106,6 +114,42 @@ async function createDailyNotifications(
 
     return insertedCounts;
   });
+}
+
+/**
+ * Die Zuweisung kann aus einer frueheren OPEN-Phase stammen. Fuer jede
+ * mandantenbezogene Wiedervorlage wird deshalb innerhalb derselben Tenant-Tx
+ * wie der Notification-Insert die aktuelle Policy erneut ausgewertet.
+ */
+async function filterCurrentClientRecipientsTx(
+  tx: TxClient,
+  tenantId: string,
+  groups: DailyNotification[][],
+): Promise<DailyNotification[][]> {
+  const candidatesByClient = new Map<string, Set<string>>();
+  for (const candidate of groups.flat()) {
+    if (!candidate.clientId || !candidate.staffId) continue;
+    const ids = candidatesByClient.get(candidate.clientId) ?? new Set<string>();
+    ids.add(candidate.staffId);
+    candidatesByClient.set(candidate.clientId, ids);
+  }
+
+  const allowedByClient = new Map<string, Set<string>>();
+  for (const [clientId, staffIds] of candidatesByClient) {
+    allowedByClient.set(
+      clientId,
+      await filterStaffAccessClientTx(tx, tenantId, [...staffIds], clientId),
+    );
+  }
+
+  return groups.map((group) =>
+    group.filter(
+      (candidate) =>
+        !candidate.clientId ||
+        (candidate.staffId !== null &&
+          (allowedByClient.get(candidate.clientId)?.has(candidate.staffId) ?? false)),
+    ),
+  );
 }
 
 export const remindersDailyWorker = new Worker<ChecksJob>(
@@ -220,6 +264,7 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
           title: `Wiedervorlage fällig: ${reminder.subject}`,
           body: `${wo} · ${reminder.dueDate.toISOString().slice(0, 10)}`,
           href: reminder.client ? `/staff/clients/${reminder.client.id}` : '/staff/reminders',
+          clientId: reminder.client?.id ?? null,
         }));
       });
 

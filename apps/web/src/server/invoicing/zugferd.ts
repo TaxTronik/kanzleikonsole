@@ -5,7 +5,7 @@
 // Das PDF ist *kein* strikt validiertes PDF/A-3 — für volle Konformität wäre
 // ein nachgelagerter Schritt mit Ghostscript oder einem PDF/A-Validator nötig.
 // Für die meisten B2B-Empfänger ist diese Variante ausreichend, weil:
-//   1. die XML korrekt eingebettet ist (Attachment + AFRelationship: Source),
+//   1. die XML korrekt eingebettet ist (Attachment + AFRelationship: Alternative),
 //   2. die XMP-Metadaten Factur-X erkennen lassen,
 //   3. die Konformitätsstufe EN16931 deklariert ist.
 //
@@ -18,6 +18,11 @@ import {
   PDFName,
   PDFString,
   PDFDict,
+  PDFArray,
+  PDFHexString,
+  PDFRawStream,
+  PDFStream,
+  decodePDFRawStream,
   PDFRef,
   AFRelationship,
   StandardFonts,
@@ -28,6 +33,7 @@ import {
 import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
 import { computeVatTotals } from './vat';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
+import type { LetterheadConfig } from '@/server/settings/letterhead';
 
 import { fmtDateShort, fmtDecimal, fmtEUR } from '@/lib/fmt';
 // re-export für External Imports
@@ -42,6 +48,26 @@ interface PageContext {
   pageWidth: number;
   pageHeight: number;
   margin: number;
+  contentBottom: number;
+}
+
+export interface InvoicePdfPresentation {
+  /** Helles Kanzlei-Logo aus den Branding-Einstellungen. */
+  logoDataUrl?: string | null;
+  /** Optionaler Briefkopf; leere Felder fallen auf die Rechnungs-Absenderdaten zurück. */
+  letterhead?: LetterheadConfig | null;
+}
+
+interface LetterheadLayout {
+  senderName: string;
+  addressLines: string[];
+  contactLines: string[];
+  footerDetailLines: string[];
+  footerMachineY: number;
+  footerDetailsY: number;
+  footerSellerY: number;
+  footerRuleY: number;
+  footerSellerLine: string;
 }
 
 const FONT_SIZE_NORMAL = 9;
@@ -81,8 +107,85 @@ function wrapText(text: string, maxChars: number): string[] {
   return out.length ? out : [''];
 }
 
+function wrapMultiline(text: string, maxChars: number, maxLines: number): string[] {
+  const lines = text
+    .split(/\r?\n/)
+    .flatMap((line) => wrapText(line.trim(), maxChars))
+    .filter((line) => line.length > 0);
+  if (lines.length <= maxLines) return lines;
+  const visible = lines.slice(0, maxLines);
+  const last = visible[maxLines - 1] ?? '';
+  visible[maxLines - 1] = `${last.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+  return visible;
+}
+
+function buildLetterheadLayout(
+  letterhead: LetterheadConfig | null | undefined,
+  seller: SellerInfo,
+): LetterheadLayout {
+  const senderName = letterhead?.organisationName.trim() || seller.name;
+  const configuredAddress = letterhead?.addressLines.trim() ?? '';
+  const addressLines = configuredAddress
+    ? wrapMultiline(configuredAddress, 52, 6)
+    : [seller.street, `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim()].filter(
+        (line): line is string => Boolean(line),
+      );
+  const configuredContact = letterhead?.contactLine.trim() ?? '';
+  const contactLine = configuredContact || [seller.phone, seller.email].filter(Boolean).join(' · ');
+  const configuredFootnote = letterhead?.footnote.trim() ?? '';
+  const footerDetailLines = configuredFootnote ? wrapMultiline(configuredFootnote, 105, 8) : [];
+  const footerMachineY = 18;
+  const footerDetailsY = footerMachineY + 11;
+  const footerSellerY = footerDetailsY + footerDetailLines.length * 8 + 3;
+  const footerRuleY = footerSellerY + 11;
+  const sellerLocation = `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim();
+  const footerSellerLine = [senderName, sellerLocation].filter(Boolean).join(' · ');
+
+  return {
+    senderName,
+    addressLines,
+    contactLines: wrapMultiline(contactLine, 52, 3),
+    footerDetailLines,
+    footerMachineY,
+    footerDetailsY,
+    footerSellerY,
+    footerRuleY,
+    footerSellerLine,
+  };
+}
+
+function drawLetterheadSender(ctx: PageContext, layout: LetterheadLayout): void {
+  drawText(ctx, layout.senderName, ctx.margin, ctx.y, { bold: true, size: FONT_SIZE_SMALL });
+  ctx.y -= 11;
+  for (const line of layout.addressLines) {
+    drawText(ctx, line, ctx.margin, ctx.y, { size: FONT_SIZE_SMALL });
+    ctx.y -= 10;
+  }
+  for (const line of layout.contactLines) {
+    drawText(ctx, line, ctx.margin, ctx.y, { size: FONT_SIZE_SMALL });
+    ctx.y -= 10;
+  }
+}
+
+function drawLetterheadFooterDetails(
+  page: import('pdf-lib').PDFPage,
+  layout: LetterheadLayout,
+  font: PDFFont,
+  margin: number,
+): void {
+  layout.footerDetailLines.forEach((line, lineIndex) => {
+    page.drawText(line, {
+      x: margin,
+      y: layout.footerDetailsY + (layout.footerDetailLines.length - lineIndex - 1) * 8,
+      size: 7,
+      font,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+  });
+}
+
 function newPageIfNeeded(ctx: PageContext, neededHeight: number): void {
-  if (ctx.y - neededHeight < ctx.margin + 30) {
+  if (ctx.y - neededHeight < ctx.contentBottom) {
     ctx.page = ctx.doc.addPage([ctx.pageWidth, ctx.pageHeight]);
     ctx.y = ctx.pageHeight - ctx.margin;
   }
@@ -120,7 +223,7 @@ export async function generateZugferdPdf(
   seller: SellerInfo,
   buyer: XRechnungBuyer,
   ciiXml: string,
-  logoDataUrl?: string | null,
+  presentation: InvoicePdfPresentation = {},
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -129,9 +232,9 @@ export async function generateZugferdPdf(
   // Optional: Kanzlei-Logo (PNG/JPEG aus dem Tenant-Branding). WebP wird von
   // pdf-lib nicht unterstützt → dann kein Logo statt eines Fehlers.
   let logoImg: PDFImage | null = null;
-  if (logoDataUrl) {
+  if (presentation.logoDataUrl) {
     try {
-      const m = /^data:image\/(png|jpe?g);base64,(.+)$/i.exec(logoDataUrl);
+      const m = /^data:image\/(png|jpe?g);base64,(.+)$/i.exec(presentation.logoDataUrl);
       if (m) {
         const bytes = Buffer.from(m[2]!, 'base64');
         const isPng = m[1]!.toLowerCase() === 'png';
@@ -146,6 +249,7 @@ export async function generateZugferdPdf(
   const pageWidth = 595;
   const pageHeight = 842;
   const margin = 50;
+  const letterheadLayout = buildLetterheadLayout(presentation.letterhead, seller);
   const page = doc.addPage([pageWidth, pageHeight]);
 
   const ctx: PageContext = {
@@ -157,31 +261,20 @@ export async function generateZugferdPdf(
     pageWidth,
     pageHeight,
     margin,
+    contentBottom: letterheadLayout.footerRuleY + 15,
   };
 
-  // Verkäufer-Block (oben links, klein)
+  // Briefkopf/Verkäufer-Block (oben links, klein). Der Briefkopf beeinflusst
+  // ausschließlich die menschenlesbare PDF-Darstellung; die strukturierten
+  // Rechnungs-Absenderdaten in der eingebetteten XML bleiben SellerInfo.
   if (logoImg) {
-    const logoH = 36;
-    const logoW = (logoImg.width / logoImg.height) * logoH;
+    const scale = Math.min(40 / logoImg.height, 180 / logoImg.width);
+    const logoH = logoImg.height * scale;
+    const logoW = logoImg.width * scale;
     ctx.page.drawImage(logoImg, { x: margin, y: ctx.y - logoH, width: logoW, height: logoH });
     ctx.y -= logoH + 6;
   }
-  drawText(ctx, seller.name, margin, ctx.y, { bold: true, size: FONT_SIZE_SMALL });
-  ctx.y -= 11;
-  if (seller.street) {
-    drawText(ctx, seller.street, margin, ctx.y, { size: FONT_SIZE_SMALL });
-    ctx.y -= 10;
-  }
-  if (seller.postalCode || seller.city) {
-    drawText(ctx, `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim(), margin, ctx.y, {
-      size: FONT_SIZE_SMALL,
-    });
-    ctx.y -= 10;
-  }
-  if (seller.email) {
-    drawText(ctx, seller.email, margin, ctx.y, { size: FONT_SIZE_SMALL });
-    ctx.y -= 10;
-  }
+  drawLetterheadSender(ctx, letterheadLayout);
 
   // Empfänger-Block (links, größer)
   ctx.y -= 30;
@@ -363,20 +456,31 @@ export async function generateZugferdPdf(
   // Footer auf JEDER Seite: Kanzlei + ZUGFeRD-Hinweis + Seitenzahl.
   const pages = doc.getPages();
   const pageCount = pages.length;
-  const sellerLine =
-    `${seller.name}${seller.postalCode || seller.city ? ' · ' : ''}${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim();
   pages.forEach((p, i) => {
-    p.drawText(sellerLine, { x: margin, y: margin - 4, size: 7, font, color: rgb(0.5, 0.5, 0.5) });
-    p.drawText(`Seite ${i + 1} von ${pageCount}`, {
-      x: pageWidth - margin - 60,
-      y: margin - 4,
+    p.drawLine({
+      start: { x: margin, y: letterheadLayout.footerRuleY },
+      end: { x: pageWidth - margin, y: letterheadLayout.footerRuleY },
+      thickness: 0.4,
+      color: rgb(0.75, 0.75, 0.75),
+    });
+    p.drawText(letterheadLayout.footerSellerLine, {
+      x: margin,
+      y: letterheadLayout.footerSellerY,
       size: 7,
       font,
       color: rgb(0.5, 0.5, 0.5),
     });
+    p.drawText(`Seite ${i + 1} von ${pageCount}`, {
+      x: pageWidth - margin - 60,
+      y: letterheadLayout.footerSellerY,
+      size: 7,
+      font,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+    drawLetterheadFooterDetails(p, letterheadLayout, font, margin);
     p.drawText('Diese PDF enthält eine maschinenlesbare ZUGFeRD/Factur-X-XML (Profil EN 16931).', {
       x: margin,
-      y: margin - 14,
+      y: letterheadLayout.footerMachineY,
       size: 7,
       font,
       color: rgb(0.5, 0.5, 0.5),
@@ -390,6 +494,33 @@ export async function generateZugferdPdf(
   setFacturXMetadata(doc, invoice.number);
 
   return doc.save();
+}
+
+/**
+ * Liest die tatsächlich in einer Factur-X/ZUGFeRD-PDF eingebettete CII-Datei.
+ * Der Reparaturpfad für ältere Archive verwendet bewusst diese Bytes statt
+ * XML aus heutigen Stammdaten neu zu erzeugen; nur so bleiben Hybrid-PDF und
+ * separate XRechnung fachlich identisch.
+ */
+export async function extractFacturXXml(pdfBytes: Uint8Array): Promise<Buffer> {
+  const document = await PDFDocument.load(pdfBytes, { updateMetadata: false });
+  const names = document.catalog.lookupMaybe(PDFName.of('Names'), PDFDict);
+  const embeddedFiles = names?.lookupMaybe(PDFName.of('EmbeddedFiles'), PDFDict);
+  const entries = embeddedFiles?.lookupMaybe(PDFName.of('Names'), PDFArray);
+  if (!entries) throw new Error('ZUGFeRD-PDF enthält kein EmbeddedFiles-Verzeichnis.');
+
+  for (let index = 0; index + 1 < entries.size(); index += 2) {
+    const fileName = entries.lookupMaybe(index, PDFString, PDFHexString)?.decodeText();
+    if (fileName?.toLowerCase() !== 'factur-x.xml') continue;
+    const fileSpec = entries.lookupMaybe(index + 1, PDFDict);
+    const embedded = fileSpec?.lookupMaybe(PDFName.of('EF'), PDFDict);
+    const stream = embedded?.lookupMaybe(PDFName.of('F'), PDFStream);
+    if (!(stream instanceof PDFRawStream)) {
+      throw new Error('Factur-X-Anhang besitzt keinen lesbaren PDF-Stream.');
+    }
+    return Buffer.from(decodePDFRawStream(stream).decode());
+  }
+  throw new Error('ZUGFeRD-PDF enthält keinen factur-x.xml-Anhang.');
 }
 
 /**

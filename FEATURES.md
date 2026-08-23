@@ -162,8 +162,19 @@ Mandanten.
   - Prüfung ab Jahresende des Mandatsendes + 5 Jahre (`client.mandateEndedAt`);
     andere Gesetze können länger verpflichten, spätestens nach 10 Jahren ist
     zu vernichten
-  - **Datei-Belege**: bestätigte Vernichtung löscht Bytes + DB-Records,
-    auditiert `gwg.evidence.destroy` (GwG-Belege liegen dafür im eigenen
+  - Bei nie zustande gekommenen Geschäftsbeziehungen beginnt die Frist mit dem
+    Feststellungsjahr; auch offen gebliebene `DRAFT`-/`IN_REVIEW`-Erstprüfungen
+    werden erfasst. Reguläre Fünfjahres- und absolute Zehnjahresgrenze beginnen
+    beide am fachlich maßgeblichen Zeitpunkt (Beziehungsende bzw. Feststellung),
+    nicht am bloßen Alter eines Belegs einer laufenden Beziehung.
+  - Ab fünf Jahren erscheint der Eintrag regulär in der manuellen Review-Queue.
+    Ist er dort beim Erreichen von zehn Jahren noch offen, eskalieren Grund und
+    angezeigte Frist auf **absolute 10-Jahres-Grenze**; auch dann erfolgt keine
+    automatische Vernichtung.
+  - **Datei-Belege**: bestätigte Vernichtung löscht die Object-Store-Bytes und
+    `document_version`-Zeilen; der `document`-Skelettdatensatz bleibt mit
+    Lösch-/Vernichtungsvermerk erhalten. Der Vorgang wird als
+    `gwg.evidence.destroy` auditiert (GwG-Belege liegen dafür im eigenen
     `gwg`-Bucket mit Object-Lock GOVERNANCE statt COMPLIANCE)
   - **DB-Aufzeichnungen**: zweite Stufe vernichtet das `gwg_check`-Aggregat
     (wirtschaftlich Berechtigte gelöscht, Ausweis-Details genullt,
@@ -190,6 +201,12 @@ Mandanten.
   - Im New-Request-Formular nach Kategorie gruppiertes optgroup-Dropdown
     füllt alle Felder vor — bleibt editierbar
 - Bulk-Aktionen: mehrere Anforderungen gleichzeitig schließen
+- Einzelne beantwortete oder geschlossene Anforderungen lassen sich durch
+  Mitarbeiter auditierbar wieder öffnen; ein noch nicht abgesendetes
+  verknüpftes Formular wird dadurch wieder mandantenseitig bearbeitbar
+- Beim Schließen/Beantworten wird der Mandantenkanal einschließlich eines
+  verknüpften Formulars gesperrt; kanzleiinterne Kommentare bleiben auch danach
+  möglich
 - Tab-Filter (Offen / In Bearbeitung / Beantwortet / Geschlossen)
 - Volltext-Suche über Titel + Mandantenname + DATEV-Nr. + Addison-Nr.
 - Sortierung: Angelegt / Fällig / Mandant / DATEV-Nr. / Addison-Nr.
@@ -351,6 +368,10 @@ Modul `appointments`.
 
 - Über `/portal/appointments` schlägt der Mandant 1–3 Wunschtermine vor
   - Anliegen + optional Wunsch-Bearbeiter
+  - Im Zugriffsmodus `OPEN` stehen alle aktiven Mitarbeiter zur Wahl; bei
+    `RESTRICTED` oder vertraulichen Mandanten nur Admin/Partner und für den
+    Mandanten zuständige Mitarbeiter. Manipulierte fremde/inaktive IDs werden
+    serverseitig abgewiesen.
 - Kanzlei sieht offene Anfragen oben im Kalender als eigene Sektion
 - Inline-Entscheidung: Slot auswählen + Owner zuweisen → Annehmen erzeugt
   `Appointment` mit `fromRequestId`; alternativ Ablehnen mit optionalem Grund
@@ -485,6 +506,9 @@ User-Agent bei Signatur.
   Fälligkeitsdaten erzeugt
 - Items: Häkchen-Toggle mit doneByStaff-Stamping, Inline-Assignment-
   Dropdown pro Mitarbeiter, Skill-Badge sichtbar, Überfälligkeits-Warnung
+- Mitglieder- und Aufgaben-Zuweisungen folgen der Mandanten-Zugriffspolicy:
+  `OPEN` erlaubt alle aktiven Tenant-Mitarbeiter, `RESTRICTED` und
+  vertrauliche Mandanten nur tatsächlich Zugriffsberechtigte
 - Automatisches Schließen der Instanz wenn alle Items erledigt
 - **Workflow-Statistik** unter `/staff/workflows/stats`: pro Vorlage
   Ø Durchlaufzeit (Start → COMPLETED), Anzahl aktiver/abgeschlossener/
@@ -504,8 +528,12 @@ User-Agent bei Signatur.
 - Status-Maschine: PENDING → DRAFT → SUBMITTED → REVIEWED
 - Mandant füllt im Portal aus, kann Entwurf speichern oder absenden
 - **FILE-Feldtyp mit echtem Upload** direkt im Wizard
-  (ClamAV-Scan + Object-Lock-Storage, max. 10 MB pro Datei)
-- Pflichtfeld-Validierung client- und server-seitig
+  (ClamAV-Scan + privater Object-Storage, max. 10 MB pro Datei; Klassifikation
+  `GENERAL` ohne gesetzlichen Object Lock); Mandanten können einen Upload vor
+  der Formularabgabe wieder verwerfen
+- Grundlegende Pflichtfeld-Rückmeldung im Client; vollständige serverseitige
+  Feldvalidierung (Pflicht, Typ/Format, Min/Max, freigegebene
+  Auswahloptionen und Dateireferenz)
 - Antworten typgerecht angezeigt (Geld als €-formatiert, Datum,
   Multiselect als Liste, Datei verlinkt zum Download)
 - „Als geprüft markieren" mit optionaler Notiz
@@ -564,7 +592,9 @@ User-Agent bei Signatur.
 - **Personenbuch / Autocomplete**: bekannte Anrufer (aus früheren Notizen)
   werden vorgeschlagen, Telefonnummer + Mandanten-Zuordnung werden
   automatisch übernommen
-- Pro Mandant in der Detail-Seite sichtbar (alle Kollegen sehen es)
+- Pro Mandant in der Detail-Seite sichtbar: im Zugriffsmodus **OPEN** für alle
+  aktiven Mitarbeiter, bei **RESTRICTED** oder vertraulichem Mandanten nur für
+  Admin/Partner und zugeordnete Berufsträger/Hauptbearbeiter
 - **Inline-Anlage** im Mandanten-Detail-Cockpit per Klappformular
 - **Lifecycle-Status** (`doneAt` + `doneByStaff`)
   - „Erledigt" ist eigenständig von „gelesen" — ein Zettel ist erst fertig,
@@ -574,9 +604,12 @@ User-Agent bei Signatur.
 - **Übertragen** — Inline-Dropdown zum Reassignment an anderen
   Mitarbeiter; setzt `readAt` zurück und schickt Notification an neuen
   Empfänger; nur auf offenen Zetteln möglich
-- **→ Wiedervorlage** — 1-Klick-Konvertierung in `ClientReminder`
-  (Datum + Empfänger wählbar, Betreff/Body wird übernommen); schließt den
-  Zettel automatisch; nur sichtbar wenn Zettel Mandantenbezug hat
+- **→ Wiedervorlage** — legt einen eigenständigen, über `phoneNoteId`
+  verknüpften `ClientReminder` an (Datum + Empfänger wählbar, Betreff/Body
+  wird übernommen); ein Telefonzettel kann bewusst mehrere Wiedervorlagen für
+  verschiedene Sachverhalte erhalten und bleibt bis zum manuellen Erledigen
+  offen. Verknüpfte Wiedervorlagen erscheinen am Zettel mit Status,
+  Fälligkeit und Detail-Link; die Aktion ist nur bei Mandantenbezug sichtbar
 - Gesamtansicht unter `/staff/phone-notes` mit denselben Inline-Aktionen +
   Mandanten-Link
 
@@ -584,6 +617,9 @@ User-Agent bei Signatur.
 
 - Pro Mandant Datum + Stichwort + optional Notiz + zugewiesener
   Bearbeiter (Default: Ersteller)
+- Bei mandantenbezogenen Wiedervorlagen werden Zuweisungen ebenfalls gegen
+  `OPEN`/`RESTRICTED` und das Vertraulich-Flag geprüft; rein interne
+  Wiedervorlagen benötigen nur einen aktiven Tenant-Mitarbeiter
 - Inline-Block am Mandantendetail mit offenen + erledigten Sektionen
 - Dashboard-Widget „Meine Wiedervorlagen" (Items mir zugewiesen oder von
   mir erstellt ohne Assignee)
@@ -1032,7 +1068,13 @@ Kanzlei nicht.
 - **Audit-Log-Rotation** („Kassenbon-Abriss")
   - Wöchentlicher Worker `audit-rotate` archiviert Segmente als
     hash-versiegeltes NDJSON im Object-Store (Object-Lock COMPLIANCE 10 J.)
+  - Ein erhaltener RFC-3161-Token wird vor dem Persistieren gegen den
+    tatsächlichen Datei-Hash und die konfigurierten Trust-Roots geprüft;
+    bei TSA-Ausfall bleibt das explizite Feld `NULL` statt einen untrusted
+    Nachweis zu speichern
   - `verify:chain` rekonstruiert die Chain durchgängig aus DB + Archiv-Dateien
+    und prüft vorhandene Archiv-TSA-Token erneut; fehlende Token werden
+    ausgewiesen und sind bei verpflichtender externer TSA ein Fehler
   - Admin-UI unter `/staff/admin/archive` mit Manual-Trigger
   - Nur SOFT-Rotation (DB bleibt); ein konfiguriertes
     `AUDIT_ARCHIVE_MODE=HARD` wird ehrlich auf SOFT normalisiert und pro
@@ -1197,11 +1239,14 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Branding
   - Anzeige-Name + Untertitel
   - Akzent-Farbe (Hex) → vollständige Tailwind-Brand-Skala
-  - Logo-Upload (PNG/JPG/SVG/WebP, max. 200 KB als Data-URL)
+  - Logo-Upload (PNG/JPG/WebP, max. 200 KB als Data-URL)
 - **Briefkopf** (`branding.letterhead`) — Organisationsname,
   mehrzeilige Adresse, Kontakt-Zeile, Fußnote (Steuerberaterkammer / USt-ID
-  / Geschäftsführer); wird in alle ausgehenden PDFs eingebunden
-  (Vollmachten, Rechnungen, Bescheinigungen)
+  / Geschäftsführer); wird zusammen mit dem Branding-Logo in neu erzeugte
+  In-App-Rechnungs-PDFs eingebunden (Logo im PDF: PNG/JPEG; WebP bleibt im
+  Web-Branding nutzbar). Bereits revisionssicher archivierte
+  Rechnungen und extern hochgeladene/signierte PDFs werden nicht verändert;
+  Vollmachten und Bescheinigungen verwenden diese Einstellung derzeit nicht.
 - **Rechtliche Hinweise** (`tenant_setting.legal`) — Impressum-URL +
   Datenschutzerklärung-URL; werden im Footer der Login-Seiten (Staff +
   Portal) verlinkt (insbesondere § 5 DDG und Art. 12/13 DSGVO); in
@@ -1389,12 +1434,13 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   (`audit-verify-check` 02:45 UTC) mit `SYSTEM_AUDIT_BREAK`-Notification an
   ADMIN/PARTNER bei Bruch, wöchentliche NDJSON-Auslagerung mit Object-Lock-
   Versiegelung; `pnpm verify:chain` rehasht jeden Eintrag, rekonstruiert die
-  Kette aus DB+Archiv und prüft den TSA-Stempel **voll kryptografisch**:
+  Kette aus DB+Archiv und prüft den TSA-Stempel kryptografisch:
   CMS-Signatur, messageImprint an den _rekonstruierten_ Ketten-Spitzen-Hash
   gebunden (nicht an die DB-Spalte → tötet den DB-gegen-DB-Angriff), Cert-Kette
   bis zum eingebetteten GlobalSign-Root R6 oder zu einem über
   `TSA_TRUSTED_ROOTS_FILE` bereitgestellten Betreiber-Trust-Anchor _as-of_
-  genTime, kritische EKU timeStamping + ESS-SigningCertificate-Bindung;
+  genTime, kritische EKU timeStamping + ESS-SigningCertificate-Bindung.
+  Eine Sperrstatusprüfung über OCSP/CRL ist derzeit nicht implementiert;
   Adapter-Modus wird im Report ausgewiesen, Self-Timestamp im Produktivmodus =
   harter Fail. Für Nicht-GlobalSign-Anbieter muss der Betreiber den passenden
   Root out-of-band bereitstellen und prüfen. Das Siegel

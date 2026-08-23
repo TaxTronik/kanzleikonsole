@@ -50,7 +50,11 @@ for migration in "$DB_PACKAGE"/prisma/migrations/20*; do
   [ -d "$migration" ] || continue
   name="${migration##*/}"
   case "$name" in
-    "$REPAIR"|"$FORWARD_REPAIR"|"$EOL_REPAIR") continue ;;
+    # This fixture represents the database immediately before the first repair.
+    # Stop at that chronological cut-off so later migrations cannot be applied
+    # ahead of the omitted repair series and then overwritten by it.
+    "$REPAIR") break ;;
+    "$FORWARD_REPAIR"|"$EOL_REPAIR") continue ;;
   esac
   cp -a "$migration" "$PRE_REPAIR_MIGRATIONS/"
 done

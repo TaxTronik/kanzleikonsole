@@ -82,6 +82,13 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Test-DB, damit auch direkte SQL-Umgehungsversuche geprüft werden.
   'packages/db/src/__tests__/gwg-identity-assignment.test.ts',
   'packages/db/src/__tests__/tax-notice-evidence.test.ts',
+  // Neue Migrations-/RLS-Regressionen laufen gegen isolierte Wegwerf-DBs:
+  // Owner legt die gezielten Race-/Legacy-Fixtures an, die App-Rolle beweist
+  // anschließend die tatsächlichen CLIENT_CONTACT-/STAFF-Grenzen.
+  'packages/db/src/__tests__/form-upload-discard-rls.test.ts',
+  'packages/db/src/__tests__/gwg-id-document-request-lifecycle.test.ts',
+  'packages/db/src/__tests__/gwg-open-first-check-retention.test.ts',
+  'packages/db/src/__tests__/invoice-xrechnung-document-link.test.ts',
   // Integrationsbeweis fuer die deferrable TaxDeadline/Request-Pointer-Trigger:
   // Owner legt gezielt inkonsistente Mutationen vor; die App-Rolle prueft
   // separat die STAFF-/CLIENT_CONTACT-RLS auf internen Kommentaren.

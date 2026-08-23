@@ -16,6 +16,7 @@ import { CancelRequestButton } from './cancel-request-button';
 import { IcalSubscribe } from './ical-subscribe';
 import { signIcalToken } from '@/server/ical/feed';
 import { fmtDateMedium, fmtDateTimeMedium } from '@/lib/fmt';
+import { readAppointmentStaffOptionsTx } from './staff-options';
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Wird geprüft',
@@ -57,17 +58,7 @@ export default async function PortalAppointmentsPage() {
             decidedBy: { select: { fullName: true } },
           },
         }),
-        // Mitarbeiter, die für diesen Mandanten zuständig sind (Berufsträger + Hauptbearbeiter)
-        tx.staffUser.findMany({
-          where: {
-            active: true,
-            responsibilities: {
-              some: { clientId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-            },
-          },
-          orderBy: { fullName: 'asc' },
-          select: { id: true, fullName: true },
-        }),
+        readAppointmentStaffOptionsTx(tx, tenantId, clientId),
         // Eigener Kontakt: icalTokenVersion geht in den Feed-Token-HMAC ein
         // (Einzelwiderruf, Audit 2026-06 Befund 3).
         tx.clientContact.findUnique({

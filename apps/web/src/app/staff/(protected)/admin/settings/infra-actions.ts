@@ -12,7 +12,7 @@ import { evidenceService } from '@/server/container';
 import { assertPublicUrl } from '@/server/http/ssrf-guard';
 import { writeTaxRegion } from '@/server/settings/tax-region';
 import { writeTsaConfig, type TsaConfig } from '@/server/settings/tsa';
-import { Rfc3161HttpAdapter, getTsaProvider } from '@taxtronik/evidence';
+import { createRfc3161Adapter, getTsaProvider } from '@taxtronik/evidence';
 import type { GermanRegion } from '@taxtronik/tax';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 
@@ -178,11 +178,22 @@ export async function testTsaAction(
   }
 
   try {
-    const adapter = new Rfc3161HttpAdapter(url, 8_000);
-    const result = await adapter.timestamp(randomBytes(32));
+    // Factory statt nacktem Konstruktor: so gelten auch die vom Betreiber
+    // ueber TSA_TRUSTED_ROOTS_FILE bereitgestellten Trust-Roots im UI-Test.
+    const adapter = createRfc3161Adapter(url, 8_000);
+    const payload = randomBytes(32);
+    const result = await adapter.timestamp(payload);
+    const response = result.tsaResponseBlob ? Buffer.from(result.tsaResponseBlob) : null;
+    if (!(await adapter.verify(payload, response))) {
+      return {
+        ok: false,
+        error:
+          'Die TSA antwortet, aber der Token ist nicht an den Test-Hash oder einen konfigurierten Trust-Anchor gebunden.',
+      };
+    }
     return {
       ok: true,
-      error: `Antwort ${result.tsaResponseBlob?.byteLength ?? 0} Bytes — Status granted (${result.timestampedAt}).`,
+      error: `Antwort ${response?.byteLength ?? 0} Bytes — Status granted und trust-verifiziert (${result.timestampedAt}).`,
     };
   } catch (e) {
     return { ok: false, error: (e as Error).message };

@@ -26,7 +26,7 @@ const h = vi.hoisted(() => {
     gwgCheck: { findMany: vi.fn(), count: vi.fn() },
     gwgIdDocument: { findMany: vi.fn() },
     document: { count: vi.fn() },
-    request: { findMany: vi.fn(), create: vi.fn() },
+    request: { findMany: vi.fn(), createMany: vi.fn() },
     clientContact: { findMany: vi.fn() },
   };
   const tx = {
@@ -143,7 +143,7 @@ beforeEach(() => {
   h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([]);
   h.prismaOwner.document.count.mockResolvedValue(0);
   h.prismaOwner.request.findMany.mockResolvedValue([]);
-  h.prismaOwner.request.create.mockResolvedValue({ id: 'req-1' });
+  h.prismaOwner.request.createMany.mockResolvedValue({ count: 1 });
   h.prismaOwner.clientContact.findMany.mockResolvedValue([{ id: 'contact-1' }]);
   h.tx.gwgCheck.updateMany.mockResolvedValue({ count: 1 });
   // Default: kein neuerer gültiger Check → Alt-Verhalten (Mandant wird deaktiviert).
@@ -375,15 +375,18 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
       },
       select: { linkedGwgIdDocumentId: true },
     });
-    expect(h.prismaOwner.request.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        tenantId: TENANT,
-        clientId: 'client-1',
-        priority: 'NORMAL',
-        createdByStaff: 'admin-1',
-        dueAt: expiry,
-        linkedGwgIdDocumentId: 'doc-1',
-      }),
+    expect(h.prismaOwner.request.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          tenantId: TENANT,
+          clientId: 'client-1',
+          priority: 'NORMAL',
+          createdByStaff: 'admin-1',
+          dueAt: expiry,
+          linkedGwgIdDocumentId: 'doc-1',
+        }),
+      ],
+      skipDuplicates: true,
     });
     expect(result.idDocRequests).toBe(1);
     expect(result.idDocReminders).toBe(1);
@@ -401,12 +404,37 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
       'hb-1',
       expect.objectContaining({ kind: 'GWG_ID_EXPIRED' }),
     );
-    expect(h.prismaOwner.request.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        priority: 'HIGH',
-        dueAt: new Date(FIXED_NOW.getTime() + 7 * DAY),
-      }),
+    expect(h.prismaOwner.request.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          priority: 'HIGH',
+          dueAt: new Date(FIXED_NOW.getTime() + 7 * DAY),
+        }),
+      ],
+      skipDuplicates: true,
     });
+  });
+
+  it('Ablaufdatum heute gilt einschließlich und wird als „läuft heute ab" gemeldet', async () => {
+    h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([
+      idDoc(new Date('2026-06-09T00:00:00.000Z')),
+    ]);
+
+    const result = await run();
+
+    expect(h.upsertNotification).toHaveBeenCalledWith(
+      TENANT,
+      'hb-1',
+      expect.objectContaining({
+        kind: 'GWG_ID_EXPIRY_SOON',
+        title: expect.stringContaining('läuft heute ab'),
+      }),
+    );
+    expect(h.prismaOwner.request.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ priority: 'NORMAL' })],
+      skipDuplicates: true,
+    });
+    expect(result.idDocRequests).toBe(1);
   });
 
   it('offene Anforderung existiert bereits → keine zweite (idempotent)', async () => {
@@ -417,7 +445,7 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
 
     const result = await run();
 
-    expect(h.prismaOwner.request.create).not.toHaveBeenCalled();
+    expect(h.prismaOwner.request.createMany).not.toHaveBeenCalled();
     expect(result.idDocRequests).toBe(0);
   });
 
@@ -440,9 +468,10 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
       },
       select: { linkedGwgIdDocumentId: true },
     });
-    expect(h.prismaOwner.request.create).toHaveBeenCalledTimes(1);
-    expect(h.prismaOwner.request.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ linkedGwgIdDocumentId: 'doc-2' }),
+    expect(h.prismaOwner.request.createMany).toHaveBeenCalledTimes(1);
+    expect(h.prismaOwner.request.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ linkedGwgIdDocumentId: 'doc-2' })],
+      skipDuplicates: true,
     });
     expect(result.idDocRequests).toBe(1);
   });
@@ -455,7 +484,21 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
     const result = await run();
 
     expect(h.upsertNotification).toHaveBeenCalled();
-    expect(h.prismaOwner.request.create).not.toHaveBeenCalled();
+    expect(h.prismaOwner.request.createMany).not.toHaveBeenCalled();
+    expect(result.idDocRequests).toBe(0);
+  });
+
+  it('zählt einen parallel bereits gewonnenen Unique-Insert nicht als neue Anforderung', async () => {
+    h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([
+      idDoc(new Date(FIXED_NOW.getTime() + 30 * DAY)),
+    ]);
+    h.prismaOwner.request.createMany.mockResolvedValue({ count: 0 });
+
+    const result = await run();
+
+    expect(h.prismaOwner.request.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skipDuplicates: true }),
+    );
     expect(result.idDocRequests).toBe(0);
   });
 });
@@ -485,6 +528,50 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
         OR: expect.arrayContaining([{ client: { mandateEndedAt: { lt: cutoff } } }]),
       }),
     });
+    const documentQuery = h.prismaOwner.document.count.mock.calls[0]?.[0] as {
+      where: { OR: Array<Record<string, unknown>> };
+    };
+    const checkQuery = h.prismaOwner.gwgCheck.count.mock.calls[0]?.[0] as {
+      where: { OR: Array<Record<string, unknown>> };
+    };
+    // Das reine Alter darf bei einer laufenden Geschäftsbeziehung weder Beleg
+    // noch Check in die Lösch-Notification aufnehmen.
+    expect(
+      documentQuery.where.OR.every((branch) => !('createdAt' in branch) || 'client' in branch),
+    ).toBe(true);
+    expect(checkQuery.where.OR.every((branch) => !('createdAt' in branch))).toBe(true);
+    const neverEstablishedDocumentBranch = documentQuery.where.OR.find(
+      (branch) => 'createdAt' in branch,
+    );
+    expect(neverEstablishedDocumentBranch).toMatchObject({
+      NOT: [
+        {
+          gwgIdDocuments: {
+            some: {
+              check: { OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }] },
+            },
+          },
+        },
+        {
+          gwgOnboardingInvite: {
+            is: {
+              gwgCheck: {
+                is: { OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }] },
+              },
+            },
+          },
+        },
+      ],
+    });
+    const neverEstablishedCheckBranch = checkQuery.where.OR.find(
+      (branch) => 'verifiedAt' in branch,
+    );
+    expect(neverEstablishedCheckBranch).toMatchObject({
+      updatedAt: { lt: cutoff },
+      idDocuments: { none: { createdAt: { gte: cutoff } } },
+      beneficialOwners: { none: { createdAt: { gte: cutoff } } },
+      onboardingInvites: { none: { updatedAt: { gte: cutoff } } },
+    });
 
     const calls = h.upsertNotification.mock.calls.filter(
       (c) => (c[2] as { kind: string }).kind === 'GWG_DELETION_DUE',
@@ -499,6 +586,7 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
         resourceType: 'tenant',
         resourceId: TENANT,
       });
+      expect((c[2] as { body: string }).body).toContain('nie zustande gekommener Beziehungen');
     }
     expect(result.deletionDueNotices).toBe(2);
   });

@@ -11,7 +11,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   upsertNotificationTx: vi.fn(),
-  findUnique: vi.fn(),
+  findFirst: vi.fn(),
+  filterStaffAccessClientTx: vi.fn(),
   moduleEnabled: vi.fn(),
 }));
 
@@ -23,9 +24,12 @@ vi.mock('../../logger', () => ({
 vi.mock('@taxtronik/db/notification', () => ({
   upsertNotificationTx: h.upsertNotificationTx,
 }));
+vi.mock('@taxtronik/db/staff-client-access', () => ({
+  filterStaffAccessClientTx: h.filterStaffAccessClientTx,
+}));
 vi.mock('../../tenant-context', () => ({
   withWorkerTenantContext: (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
-    fn({ clientReminder: { findUnique: h.findUnique } }),
+    fn({ clientReminder: { findFirst: h.findFirst } }),
 }));
 vi.mock('../../module-gate', () => ({
   isWorkerTenantModuleEnabled: h.moduleEnabled,
@@ -48,6 +52,9 @@ const JOB = {
 beforeEach(() => {
   vi.clearAllMocks();
   h.moduleEnabled.mockResolvedValue(true);
+  h.filterStaffAccessClientTx.mockImplementation(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[]) => new Set(ids),
+  );
 });
 
 describe('reminder-done-notify', () => {
@@ -56,12 +63,16 @@ describe('reminder-done-notify', () => {
 
     await processors.get('reminder-done-notify')!(JOB);
 
-    expect(h.findUnique).not.toHaveBeenCalled();
+    expect(h.findFirst).not.toHaveBeenCalled();
     expect(h.upsertNotificationTx).not.toHaveBeenCalled();
   });
 
   it('stellt zu, wenn die Wiedervorlage noch erledigt ist', async () => {
-    h.findUnique.mockResolvedValue({ doneAt: new Date() });
+    h.findFirst.mockResolvedValue({
+      doneAt: new Date(),
+      clientId: 'client-current',
+      subject: 'Aktueller Titel',
+    });
 
     await processors.get('reminder-done-notify')!(JOB);
 
@@ -71,13 +82,33 @@ describe('reminder-done-notify', () => {
         kind: 'CLIENT_REMINDER_DONE',
         staffId: 'partner-1',
         resourceId: 'rem-1',
-        href: '/staff/clients/client-1',
+        href: '/staff/clients/client-current',
+        title: 'Wiedervorlage erledigt: Aktueller Titel',
       }),
     );
   });
 
+  it('verwirft einen gequeueten Empfaenger nach OPEN→RESTRICTED/Vertraulich-Umschaltung', async () => {
+    h.findFirst.mockResolvedValue({
+      doneAt: new Date(),
+      clientId: 'client-1',
+      subject: 'Vertraulicher Titel',
+    });
+    h.filterStaffAccessClientTx.mockResolvedValue(new Set());
+
+    await processors.get('reminder-done-notify')!(JOB);
+
+    expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(
+      expect.anything(),
+      'tenant-1',
+      ['partner-1'],
+      'client-1',
+    );
+    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+  });
+
   it('stellt NICHT zu, wenn zwischenzeitlich zurückgeholt wurde', async () => {
-    h.findUnique.mockResolvedValue({ doneAt: null });
+    h.findFirst.mockResolvedValue({ doneAt: null, clientId: 'client-1', subject: 'Test' });
 
     await processors.get('reminder-done-notify')!(JOB);
 
@@ -85,7 +116,7 @@ describe('reminder-done-notify', () => {
   });
 
   it('stellt NICHT zu, wenn die Wiedervorlage gelöscht wurde', async () => {
-    h.findUnique.mockResolvedValue(null);
+    h.findFirst.mockResolvedValue(null);
 
     await processors.get('reminder-done-notify')!(JOB);
 

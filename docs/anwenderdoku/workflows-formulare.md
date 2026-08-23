@@ -29,12 +29,20 @@ beansprucht werden; Doppelklicks oder parallele Browserfenster erzeugen keine
 zweiten Anforderungen/Formulare. Bei einem technischen Fehler bleibt ein
 wiederholbarer Zustand sichtbar.
 
+Mitglieder, Bearbeiter und Übergabe-Empfänger müssen den Mandanten nach der
+konfigurierten Zugriffspolicy öffnen dürfen. Im Modus **Offen** können Aufgaben
+spontan jedem aktiven Kanzleimitarbeiter übertragen werden; **Eingeschränkt**
+und das Vertraulich-Flag begrenzen auf Admin/Partner und zuständige
+Mitarbeiter. Diese Grenze gilt auch bei nachträglicher Zuweisung.
+
 E-Mail-Schritte führen den Versandstatus je Empfänger. Ein Retry überspringt
 Kontakte, deren erfolgreiche SMTP-Übergabe bereits dauerhaft als versandt
 gespeichert ist. Im Ausfallfenster zwischen SMTP-Annahme und dieser
 Statusspeicherung ist eine Doppelzustellung möglich. Die SMTP-Annahme ist keine
 Bestätigung der endgültigen Zustellung. Ein n8n-Trigger gilt erst als
-abgeschlossen, wenn sein Outbox-Ereignis dauerhaft gespeichert ist.
+abgeschlossen, wenn sein Outbox-Ereignis dauerhaft gespeichert **und einer
+zustellbaren Route übergeben** wurde. `UNROUTED`, `SKIPPED` und technische
+Schreibfehler lassen den Workflow-Schritt offen.
 
 ## 3. Anforderungen und Kommentare
 
@@ -51,6 +59,12 @@ Kommunikation. Kanzleiinterne Kommentare und spätere Nachträge bleiben auch be
 **Geschlossen** oder **Storniert** möglich und werden nicht automatisch an den
 Mandanten veröffentlicht.
 
+Beantwortete oder geschlossene Anforderungen können Mitarbeiter in der
+Detailansicht über **Anforderung wieder öffnen** auditierbar auf **Offen**
+zurücksetzen. Stornierte Anforderungen bleiben terminal. Ein noch nicht
+abgesendetes verknüpftes Formular wird dann wieder freigegeben. Bereits
+übermittelte oder geprüfte Formulare bleiben unveränderlich.
+
 ## 4. Formularvorlagen und Versand
 
 Unter **Formular-Vorlagen** erstellt die Kanzlei strukturierte Formulare mit
@@ -58,10 +72,16 @@ Pflicht-/Optionalfeldern, Auswahlfeldern, Hinweisen und Datei-Feldern. Nur
 aktive Vorlagen können neu versandt werden. Im Mandantenprofil wird eine
 Submission erzeugt und mit der zugehörigen Anforderung verknüpft.
 
-Mandanten sehen offene Formulare unter **Formulare**. Beim Absenden werden
-Pflichtfelder serverseitig erneut geprüft. Eine bereits übermittelte Submission
-kann nicht ein zweites Mal denselben fachlichen Abschluss auslösen. Datei-
-Felder unterliegen Größen-, Typ- und Virenscan-Kontrollen.
+Mandanten sehen offene Formulare unter **Formulare**. Draft und Abgabe prüfen
+serverseitig Feldtyp, Format, Zahlen-/Datumsgrenzen, freigegebene Optionen und
+Dateireferenzen; beim Absenden zusätzlich sämtliche Pflichtfelder. Sobald die
+zugehörige Anforderung beantwortet, geschlossen oder storniert ist, sind Draft,
+Abgabe und weitere Datei-Uploads gesperrt. Eine bereits übermittelte Submission
+kann nicht ein zweites Mal denselben fachlichen Abschluss auslösen. Datei-Felder
+unterliegen einem Größenlimit, einer Magic-Byte-Typerkennung und dem
+Virenscan. Einen hochgeladenen Beleg
+kann der Mandant im Wizard vor der Abgabe wieder verwerfen; nach Abgabe oder
+Sperre der zugehörigen Anforderung ist das nicht mehr möglich.
 
 ## 5. Fehlerbehandlung
 

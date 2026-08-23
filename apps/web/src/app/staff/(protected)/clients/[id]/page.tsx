@@ -22,7 +22,7 @@ import { RemindersBlock } from './reminders/reminders-block';
 import { BindersBlock } from './binders/binders-block';
 import { HandoversBlock } from './handovers/handovers-block';
 import { PhoneNotesList } from './phone-notes-list';
-import { fmtDateShort, fmtDateTimeShort, fmtEUR, fmtTimeShort } from '@/lib/fmt';
+import { berlinYmd, fmtDateShort, fmtDateTimeShort, fmtEUR, fmtTimeShort } from '@/lib/fmt';
 import { RecordClientVisit } from '@/components/recent-clients';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
 import {
@@ -633,6 +633,7 @@ export default async function ClientDetailPage({
               <PhoneNotesList
                 currentStaffId={staffId}
                 staffOptions={staffList}
+                todayYmd={berlinYmd(new Date())}
                 notes={phoneNotes.map((p) => ({
                   id: p.id,
                   subject: p.subject,
@@ -645,6 +646,12 @@ export default async function ClientDetailPage({
                   createdAt: p.createdAt.toISOString(),
                   takenByStaff: p.takenByStaff,
                   clientId: p.clientId,
+                  reminders: p.reminders.map((reminder) => ({
+                    id: reminder.id,
+                    subject: reminder.subject,
+                    dueDate: reminder.dueDate.toISOString(),
+                    doneAt: reminder.doneAt?.toISOString() ?? null,
+                  })),
                 }))}
               />
             </div>

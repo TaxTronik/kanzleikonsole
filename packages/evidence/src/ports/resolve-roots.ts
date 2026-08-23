@@ -4,9 +4,8 @@
 // Der eingebaute Default deckt nur GlobalSign R6 ab (den kostenlosen
 // Standard-Anbieter). Wer eine eIDAS-qualifizierte TSA einsetzt (D-Trust,
 // Swisscom, …), muss deren self-signed Root out-of-band hinterlegen, damit
-// verifyTimestampResponse `valid` (voll trust-verankert) statt nur `cryptoOk`
-// liefert. Ohne diesen Anker fällt die Verifikation auf den No-Regress-Pfad
-// zurück und der externe Vertrauensanker ist faktisch dekorativ.
+// verifyTimestampResponse `valid` (voll trust-verankert) liefert. Ohne diesen
+// Anker schlägt die Verifikation fail-closed fehl.
 //
 // Konfiguration (On-Premise-freundlich): `TSA_TRUSTED_ROOTS_FILE` zeigt auf
 // eine PEM-Datei mit einem ODER mehreren `-----BEGIN CERTIFICATE-----`-Blöcken.

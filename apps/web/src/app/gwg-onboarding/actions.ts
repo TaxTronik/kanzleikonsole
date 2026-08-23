@@ -183,6 +183,46 @@ const UploadSchema = z.object({
   personName: z.string().max(200).optional(),
 });
 
+interface PersistedUploadVersion {
+  documentId: string;
+  storageBucket: string;
+  storageKey: string;
+  storageVersionId: string | null;
+  scanStatus: string;
+}
+
+type FailedUploadRecovery = 'COMMITTED' | 'DELETE_OBJECT' | 'RETAIN_AMBIGUOUS' | 'RETAIN';
+
+/**
+ * Ordnet den belastbar nachgelesenen Journalzustand ein. Insbesondere ist ein
+ * PENDING-Satz nach vollständig durchlaufenem Finalisierungs-Callback kein
+ * Rollback-Beweis: Der COMMIT kann erfolgt und lediglich sein ACK verloren
+ * gegangen sein.
+ */
+function classifyFailedUploadRecovery(input: {
+  persistedVersion: PersistedUploadVersion | null;
+  pendingDocumentId: string;
+  stored: CommitDocumentResult;
+  finalizationCallbackCompleted: boolean;
+}): FailedUploadRecovery {
+  const { persistedVersion, pendingDocumentId, stored, finalizationCallbackCompleted } = input;
+  const sameJournalIntent =
+    persistedVersion?.documentId === pendingDocumentId &&
+    persistedVersion.storageBucket === stored.targetBucket &&
+    persistedVersion.storageKey === stored.targetKey;
+  if (!sameJournalIntent) return 'RETAIN';
+  if (
+    persistedVersion.scanStatus === 'CLEAN' &&
+    persistedVersion.storageVersionId === stored.storageVersionId
+  ) {
+    return 'COMMITTED';
+  }
+  const remainsPending =
+    persistedVersion.scanStatus === 'PENDING' && persistedVersion.storageVersionId === null;
+  if (!remainsPending) return 'RETAIN';
+  return finalizationCallbackCompleted ? 'RETAIN_AMBIGUOUS' : 'DELETE_OBJECT';
+}
+
 export async function uploadIdImageAction(input: {
   token: string;
   fileName: string;
@@ -265,6 +305,10 @@ export async function uploadIdImageAction(input: {
   let pendingDocumentId: string | null = null;
   let pendingVersionId: string | null = null;
   let stored: CommitDocumentResult | null = null;
+  // Trennt einen sicher innerhalb des TX-Callbacks aufgetretenen Fehler von
+  // einem verlorenen COMMIT-ACK. Im zweiten Fall darf ein nachfolgender
+  // PENDING-Read niemals als Rollback-Beweis missverstanden werden.
+  let finalizationCallbackCompleted = false;
   try {
     prepared = await prepareBytesCommitWithTier({
       fileData,
@@ -356,6 +400,7 @@ export async function uploadIdImageAction(input: {
             END
         WHERE id = ${invite.id}::uuid
       `;
+      finalizationCallbackCompleted = true;
       return pendingDocumentId!;
     });
   } catch (e) {
@@ -379,16 +424,14 @@ export async function uploadIdImageAction(input: {
             },
           }),
         );
-        const sameJournalIntent =
-          persistedVersion?.documentId === pendingDocumentId &&
-          persistedVersion.storageBucket === stored.targetBucket &&
-          persistedVersion.storageKey === stored.targetKey;
+        const recovery = classifyFailedUploadRecovery({
+          persistedVersion,
+          pendingDocumentId,
+          stored,
+          finalizationCallbackCompleted,
+        });
 
-        if (
-          sameJournalIntent &&
-          persistedVersion.scanStatus === 'CLEAN' &&
-          persistedVersion.storageVersionId === stored.storageVersionId
-        ) {
+        if (recovery === 'COMMITTED') {
           log.warn(
             {
               component: 'gwg-onboarding-upload',
@@ -401,10 +444,22 @@ export async function uploadIdImageAction(input: {
           return { ok: true, documentId: pendingDocumentId };
         }
 
-        storedObjectCanBeDeleted =
-          sameJournalIntent &&
-          persistedVersion.scanStatus === 'PENDING' &&
-          persistedVersion.storageVersionId === null;
+        storedObjectCanBeDeleted = recovery === 'DELETE_OBJECT';
+
+        if (recovery === 'RETAIN_AMBIGUOUS') {
+          // Der Callback war vollständig erfolgreich; der Wrapper kann erst beim
+          // COMMIT/ACK gescheitert sein. Eine Löschung wäre bei einem noch
+          // laufenden oder tatsächlich committeden TX irreversibler Datenverlust.
+          log.warn(
+            {
+              component: 'gwg-onboarding-upload',
+              inviteId: invite.id,
+              tenantId: invite.tenantId,
+              documentId: pendingDocumentId,
+            },
+            'GwG onboarding upload retained after ambiguous database commit response',
+          );
+        }
       } catch (reconciliationError) {
         // Bei einem Read-Fehler bleibt die journalisierte Absicht samt Objekt
         // erhalten. Ohne belastbaren DB-Zustand ist eine Löschung nicht sicher.

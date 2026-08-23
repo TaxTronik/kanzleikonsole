@@ -88,8 +88,7 @@ export interface VerificationResult {
   /**
    * Wie viele der geprüften Siegel bis zu einem hinterlegten Trust-Anchor
    * validiert haben (nur rfc3161-Adapter). Liegt der Wert unter sealsChecked,
-   * werden Siegel nur cryptoOk (No-Regress, ohne externen Anker) akzeptiert —
-   * Hinweis, die Produktiv-TSA-Root via TSA_TRUSTED_ROOTS_FILE zu hinterlegen.
+   * sind die übrigen Siegel ungültig und erscheinen zusätzlich als Bruch.
    * `undefined`, wenn der Adapter keine Verankerungs-Auskunft liefert (local).
    */
   sealsTrustAnchored?: number;
@@ -414,6 +413,16 @@ export class EvidenceService {
     // 3. RFC-3161-Stempel holen (HTTP — deshalb läuft sealDay außerhalb
     //    einer Transaktion, siehe Methodenkommentar).
     const stamp = await this.timestampPort.timestamp(topRow.this_hash);
+
+    // Eine HTTP-200-Antwort ist noch kein vertrauenswürdiger Zeitstempel. Vor
+    // dem Persistieren dieselbe Signatur-/Imprint-/Trust-Anchor-Prüfung wie bei
+    // der späteren Chain-Verifikation erzwingen; sonst würde die UI bis zum
+    // nächsten Prüflauf ein untrusted Token als „versiegelt“ ausweisen.
+    const response = stamp.tsaResponseBlob ? Buffer.from(stamp.tsaResponseBlob) : null;
+    const stampValid = await this.timestampPort.verify(topRow.this_hash, response);
+    if (!stampValid) {
+      throw new Error('Zeitstempel-Antwort konnte nicht vertrauenswürdig verifiziert werden.');
+    }
 
     // 4. INSERT — ON CONFLICT DO NOTHING macht parallele Doppelläufe harmlos.
     const insertedCount = await tx.$executeRaw`

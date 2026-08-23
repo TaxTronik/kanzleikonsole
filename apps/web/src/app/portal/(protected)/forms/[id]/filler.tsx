@@ -4,7 +4,12 @@ import { useState, useTransition, type ReactNode, type ChangeEvent } from 'react
 import { FileText, Upload, X } from 'lucide-react';
 import type { FormFieldType } from '@prisma/client';
 import { fmtTimeMedium } from '@/lib/fmt';
-import { saveSubmissionDraftAction, submitSubmissionAction, uploadFormFileAction } from './actions';
+import {
+  discardFormFileAction,
+  saveSubmissionDraftAction,
+  submitSubmissionAction,
+  uploadFormFileAction,
+} from './actions';
 
 interface FieldDef {
   id: string;
@@ -29,11 +34,13 @@ type AnswerValue = string | number | boolean | string[] | FileAnswer | null;
 export function PortalFormFiller({
   submissionId,
   submitted,
+  requestClosed,
   initialAnswers,
   fields,
 }: {
   submissionId: string;
   submitted: boolean;
+  requestClosed: boolean;
   initialAnswers: Record<string, unknown>;
   fields: FieldDef[];
 }) {
@@ -130,14 +137,20 @@ export function PortalFormFiller({
               {f.required && <span className="text-red-700 ml-1">*</span>}
             </label>
             {f.helpText && <p className="text-xs text-muted mb-2">{f.helpText}</p>}
-            {renderField(f, v, (next) => setVal(f.key, next), submitted, submissionId)}
+            {renderField(
+              f,
+              v,
+              (next) => setVal(f.key, next),
+              submitted || requestClosed,
+              submissionId,
+            )}
           </div>
         );
       })}
 
       {error && <div className="alert-error-sm">{error}</div>}
 
-      {!submitted && (
+      {!submitted && !requestClosed && (
         <div className="flex items-center gap-3 sticky bottom-4 bg-surface border border-default rounded-lg p-3 shadow-lg">
           <button type="button" onClick={saveDraft} disabled={isPending} className="btn-secondary">
             {isPending ? 'Speichert…' : 'Entwurf speichern'}
@@ -156,6 +169,12 @@ export function PortalFormFiller({
       {submitted && (
         <div className="rounded-md bg-emerald-50 p-4 text-sm text-emerald-800">
           ✓ Formular wurde übermittelt. Vielen Dank.
+        </div>
+      )}
+
+      {!submitted && requestClosed && (
+        <div className="rounded-md bg-gray-50 p-4 text-sm text-secondary">
+          Dieses Formular ist gesperrt, weil die zugehörige Anforderung abgeschlossen wurde.
         </div>
       )}
     </div>
@@ -317,6 +336,7 @@ function FileUploadField({
   disabled: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   async function onPick(e: ChangeEvent<HTMLInputElement>) {
@@ -350,27 +370,57 @@ function FileUploadField({
     }
   }
 
+  async function onRemove() {
+    if (!value?.documentId || disabled || removing) return;
+    setUploadError(null);
+    setRemoving(true);
+    try {
+      const result = await discardFormFileAction({
+        submissionId,
+        fieldKey,
+        documentId: value.documentId,
+      });
+      if (!result.ok) {
+        setUploadError(result.error ?? 'Datei konnte nicht entfernt werden.');
+        return;
+      }
+      set(null);
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : 'Datei konnte nicht entfernt werden.',
+      );
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   if (value && value.documentId) {
     return (
-      <div className="flex items-center gap-2">
-        <a
-          href={`/api/portal/documents/${value.documentId}/download`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-sm text-brand-700 hover:underline"
-        >
-          <FileText className="h-4 w-4" /> {value.fileName}
-        </a>
-        {!disabled && (
-          <button
-            type="button"
-            onClick={() => set(null)}
-            className="text-disabled hover:text-red-700 p-1"
-            title="Datei entfernen"
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/portal/documents/${value.documentId}/download`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-brand-700 hover:underline"
           >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+            <FileText className="h-4 w-4" /> {value.fileName}
+          </a>
+          {!disabled && (
+            <button
+              type="button"
+              onClick={onRemove}
+              disabled={removing}
+              className="text-disabled hover:text-red-700 p-1 disabled:opacity-50"
+              title="Datei endgültig entfernen"
+              aria-label={`${value.fileName} endgültig entfernen`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {removing && <span className="text-xs text-muted">Wird entfernt…</span>}
+        </div>
+        {uploadError && <div className="text-xs text-red-700">{uploadError}</div>}
       </div>
     );
   }

@@ -362,6 +362,56 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     expect(m.deleteDocument).not.toHaveBeenCalled();
   });
 
+  it('behält Objekt und Journal bei verlorenem COMMIT-ACK mit zunächst noch sichtbarem PENDING-Stand', async () => {
+    m.findFirst.mockResolvedValueOnce({
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    });
+    m.revalidateInvite.mockResolvedValue(true);
+    m.commitPreparedBytes.mockResolvedValue({
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-ambiguous',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'application/pdf',
+    });
+    let systemContextCall = 0;
+    m.withSystemContext.mockImplementation(
+      async (_tenantId: string, fn: (tx: Record<string, unknown>) => unknown) => {
+        systemContextCall += 1;
+        const result = await fn({
+          $executeRaw: vi.fn(),
+          document: { deleteMany: m.deleteDocument },
+          documentVersion: { findUnique: m.findVersion },
+        });
+        if (systemContextCall === 3) throw new Error('COMMIT acknowledgement lost');
+        return result;
+      },
+    );
+
+    const result = await uploadIdImageAction({
+      token: 'valid-looking-raw-token',
+      fileName: 'ausweis.pdf',
+      mimeType: 'application/pdf',
+      base64: 'YQ==',
+      kind: 'ID_DOCUMENT',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(m.findVersion).toHaveBeenCalledOnce();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(m.deleteDocument).not.toHaveBeenCalled();
+  });
+
   it('behält das PENDING-Journal bei einem Fehler nach PUT aber vor dem Storage-Ergebnis', async () => {
     m.findFirst.mockResolvedValueOnce({
       id: 'invite-1',

@@ -57,7 +57,7 @@ vi.mock('@taxtronik/evidence', () => ({
     record = h.record;
   },
   LocalTimestampAdapter: class {},
-  Rfc3161HttpAdapter: class {},
+  createRfc3161Adapter: vi.fn(() => ({})),
 }));
 vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: class {

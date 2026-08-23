@@ -679,9 +679,9 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
     }
 
     // n8n-Event einsammeln (für alle Kinds — wenn gesetzt); gefeuert wird nach
-    // dem Commit (M-N2). F8: item.n8nEvent ist beim Save via Regex auf
-    // [a-z0-9._-]{1,41} begrenzt → `workflow.step.${...}` ist im
-    // WorkflowStepN8nEvent-Template-Type, kein unsafe-Cast nötig.
+    // dem Commit (M-N2). Vorlagen- und Ad-hoc-Schritte validieren den Suffix
+    // beim Speichern gemeinsam als [a-z][a-z0-9_-]{0,40}; dadurch ist
+    // `workflow.step.${...}` im WorkflowStepN8nEvent-Template-Type.
     const n8nDispatch = await prepareN8nDispatch({
       tx,
       tenantId,
@@ -743,7 +743,7 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
     await Promise.all(
       n8nEvents.map((event, index) => {
         const emitted = emittedN8n[index]!;
-        const failed = emitted.status === 'WRITE_FAILED' || emitted.status === 'INVALID_EVENT';
+        const failed = emitted.status !== 'PENDING' && emitted.status !== 'DUPLICATE';
         // Für N8N_TRIGGER bilden Dispatch-Handoff, fachlicher Abschluss und
         // Evidence unten eine einzige Transaktion. So bleibt bei einem Crash
         // entweder alles pending (Worker-Recovery) oder alles abgeschlossen.
@@ -771,10 +771,10 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
   }
 
   if (executedKind === 'N8N_TRIGGER' && n8nClaimedAt) {
-    const failedWrite = emittedN8n.find(
-      (event) => event.status === 'WRITE_FAILED' || event.status === 'INVALID_EVENT',
+    const failedHandoff = emittedN8n.find(
+      (event) => event.status !== 'PENDING' && event.status !== 'DUPLICATE',
     );
-    if (failedWrite) {
+    if (failedHandoff) {
       await withTenantContext(ctx, (tx) =>
         tx.workflowItem.updateMany({
           where: { id: itemId, doneAt: null, startedAt: n8nClaimedAt },
@@ -784,8 +784,8 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
       return {
         ok: false,
         error:
-          failedWrite.error ??
-          'n8n-Outbox konnte nicht geschrieben werden. Der Schritt kann erneut versucht werden.',
+          failedHandoff.error ??
+          `n8n-Handoff endete mit ${failedHandoff.status}. Der Schritt bleibt offen.`,
       };
     }
 

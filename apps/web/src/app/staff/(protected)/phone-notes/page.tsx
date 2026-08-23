@@ -5,6 +5,7 @@ import { Phone } from 'lucide-react';
 import { NewPhoneNoteForm } from './new-form';
 import { PhoneNotesList } from '@/app/staff/(protected)/clients/[id]/phone-notes-list';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { berlinYmd } from '@/lib/fmt';
 
 export default async function PhoneNotesPage() {
   const session = await requireStaffPage();
@@ -30,7 +31,13 @@ export default async function PhoneNotesPage() {
             { readAt: 'asc' },
             { createdAt: 'desc' },
           ],
-          include: { client: { select: { id: true, name: true } } },
+          include: {
+            client: { select: { id: true, name: true } },
+            reminders: {
+              orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
+              select: { id: true, subject: true, dueDate: true, doneAt: true },
+            },
+          },
           take: 100,
         }),
         tx.client.findMany({
@@ -73,7 +80,7 @@ export default async function PhoneNotesPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Telefonzettel</h1>
         <p className="text-muted text-sm">
-          Anrufe protokollieren, übertragen oder in Wiedervorlage überführen.
+          Anrufe protokollieren, übertragen oder daraus Wiedervorlagen anlegen.
         </p>
       </div>
 
@@ -98,6 +105,7 @@ export default async function PhoneNotesPage() {
               <PhoneNotesList
                 currentStaffId={staffId}
                 staffOptions={staff}
+                todayYmd={berlinYmd(new Date())}
                 notes={notes.map((n) => ({
                   id: n.id,
                   subject: n.subject,
@@ -111,6 +119,12 @@ export default async function PhoneNotesPage() {
                   takenByStaff: n.takenByStaff,
                   clientId: n.clientId,
                   client: n.client,
+                  reminders: n.reminders.map((reminder) => ({
+                    id: reminder.id,
+                    subject: reminder.subject,
+                    dueDate: reminder.dueDate.toISOString(),
+                    doneAt: reminder.doneAt?.toISOString() ?? null,
+                  })),
                 }))}
               />
             </div>

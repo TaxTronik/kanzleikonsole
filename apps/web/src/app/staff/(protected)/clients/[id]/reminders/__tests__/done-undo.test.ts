@@ -17,6 +17,7 @@ const m = vi.hoisted(() => {
     schedule: vi.fn(),
     cancel: vi.fn(),
     assertClientAccessTx: vi.fn(),
+    filterStaffAccessClientTx: vi.fn(),
     isStaffAdmin: vi.fn().mockReturnValue(false),
     ActionError,
   };
@@ -35,6 +36,7 @@ vi.mock('@/server/jobs/reminder-done-queue', () => ({
 }));
 vi.mock('@/server/auth/rbac', () => ({
   assertClientAccessTx: m.assertClientAccessTx,
+  filterStaffAccessClientTx: m.filterStaffAccessClientTx,
   isStaffAdmin: m.isStaffAdmin,
 }));
 vi.mock('@/server/db/assert-tenant', () => ({
@@ -59,6 +61,13 @@ function stubWithStaff(reminder: Record<string, unknown> | null) {
   const tx = {
     clientReminder: {
       findUnique: vi.fn().mockResolvedValue(reminder),
+      findFirst: vi
+        .fn()
+        .mockResolvedValue(
+          reminder
+            ? { ...reminder, doneAt: new Date(), clientId: reminder['clientId'] ?? null }
+            : null,
+        ),
       update: vi.fn().mockResolvedValue({}),
     },
     notification: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
@@ -78,6 +87,9 @@ function stubWithStaff(reminder: Record<string, unknown> | null) {
 beforeEach(() => {
   vi.clearAllMocks();
   m.schedule.mockResolvedValue(true);
+  m.filterStaffAccessClientTx.mockImplementation(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[]) => new Set(ids),
+  );
   m.isStaffAdmin.mockReturnValue(false);
 });
 
@@ -118,6 +130,21 @@ describe('markReminderDoneAction', () => {
       expect.anything(),
       expect.objectContaining({ kind: 'CLIENT_REMINDER_DONE', staffId: DELEGIERT_VON }),
     );
+  });
+
+  it('unterdrueckt auch den Redis-Fallback nach spaeterem Entzug des Mandantenzugriffs', async () => {
+    stubWithStaff({
+      clientId: CLIENT,
+      subject: 'Vertraulicher Inhalt',
+      createdByStaff: DELEGIERT_VON,
+      doneAt: null,
+    });
+    m.schedule.mockResolvedValue(false);
+    m.filterStaffAccessClientTx.mockResolvedValue(new Set());
+
+    await markReminderDoneAction({ id: REMINDER });
+
+    expect(m.notify).not.toHaveBeenCalled();
   });
 
   it('schickt keine Rückmeldung, wenn man die eigene Notiz abhakt', async () => {

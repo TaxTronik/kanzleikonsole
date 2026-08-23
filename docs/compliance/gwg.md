@@ -1,6 +1,6 @@
 # GwG — Pflichten und technische Umsetzung in taxtronik
 
-Stand: 2026-06-10. Steuerberater sind Verpflichtete nach § 2 Abs. 1 Nr. 12
+Stand: 2026-08-23. Steuerberater sind Verpflichtete nach § 2 Abs. 1 Nr. 12
 GwG. Dieses Dokument mappt die zentralen GwG-Pflichten auf die Module, die
 sie in taxtronik abbilden. Es ersetzt NICHT die kanzleieigene Risikoanalyse
 nach § 5 GwG und die internen Sicherungsmaßnahmen nach § 6 GwG — beides
@@ -47,20 +47,32 @@ bleibt organisatorische Pflicht der Kanzlei.
 
 ## 3. Vernichtungspflicht (§ 8 Abs. 4 GwG)
 
-Die Frist beginnt mit dem Schluss des Kalenderjahres, in dem die
-Geschäftsbeziehung endet (`client.mandateEndedAt`); löschreif ist ein
-Mandat ab dem 1. Januar nach Jahresende + 5 Jahren
-(`gwgDeletionDeadline()` in `apps/web/src/server/gwg/retention.ts`).
+Bei einer Geschäftsbeziehung beginnt die Frist mit dem Schluss des
+Kalenderjahres ihres Endes (`client.mandateEndedAt`). In den übrigen Fällen —
+insbesondere wenn die Erstprüfung offen liegen blieb oder keine Beziehung
+zustande kam — beginnt sie mit dem Schluss des Feststellungsjahres. Löschreif
+ist der Datensatz grundsätzlich ab dem 1. Januar nach fünf vollen Jahren
+(`gwgDeletionDeadline()` in `apps/web/src/server/gwg/retention.ts`). Die
+absolute Zehnjahresgrenze läuft ab demselben maßgeblichen Fristbeginn
+(`gwgMaximumDeletionDeadline()`), also bei einer Geschäftsbeziehung erst ab
+deren Ende. Das bloße Alter eines Belegs oder Checks löst bei einer laufenden
+Beziehung keine Vernichtung aus.
 
 **Umsetzung: Review-Queue `/staff/admin/gwg-retention`** — die Vernichtung
 bestätigt ein ADMIN/PARTNER explizit, es gibt kein stilles Auto-Delete von
-Rechtsbelegen. Zwei Stufen:
+Rechtsbelegen. Ein Eintrag erscheint nach Ablauf der regulären Fünfjahresfrist.
+Bleibt die manuelle Prüfung bis zur absoluten Zehnjahresgrenze offen, eskaliert
+die Queue den Löschgrund und die angezeigte Frist auf **absolute
+10-Jahres-Grenze**. Diese Eskalation löscht weiterhin nichts automatisch. Zwei
+Vernichtungsstufen:
 
 1. **Datei-Belege** (`confirmGwgDeletionAction`): prüft serverseitig
    Klassifikation, gesetzliche Frist und Object-Lock-Ablauf, vernichtet
-   dann die Bytes aller Versionen im Object-Store und löscht die
-   DB-Records; auditiert als `gwg.evidence.destroy` (der Vernichtungs-
-   Nachweis bleibt dauerhaft in der insert-only Audit-Chain).
+   dann die Bytes aller Versionen im Object-Store und löscht deren
+   `document_version`-Zeilen. Der `document`-Skelettdatensatz bleibt mit
+   `deletedAt`/`gwgDestroyedAt` als Abschlussvermerk erhalten; auditiert wird
+   als `gwg.evidence.destroy` (der Vernichtungsnachweis bleibt dauerhaft in
+   der insert-only Audit-Chain).
 2. **DB-Aufzeichnungen** (`confirmGwgCheckDeletionAction`): erst zulässig,
    wenn keine Datei-Belege des Mandanten mehr existieren. Wirtschaftlich
    Berechtigte werden gelöscht, Ausweis-Detailfelder genullt
@@ -71,8 +83,9 @@ Rechtsbelegen. Zwei Stufen:
 
 **Erinnerung**: Der tägliche Worker `gwg-expiry-check` schickt eine
 idempotente `GWG_DELETION_DUE`-Notification an alle ADMIN/PARTNER, sobald
-Belege oder Aufzeichnungen beendeter Mandate löschreif sind (Tages-Dedupe
-pro Tenant), mit Link auf die Review-Queue.
+Belege oder Aufzeichnungen beendeter Mandate oder nie zustande gekommener
+Beziehungen nach dem jeweils maßgeblichen Fristbeginn löschreif sind
+(Tages-Dedupe pro Tenant), mit Link auf die Review-Queue.
 
 ## 4. Was die Kanzlei selbst regeln muss
 
@@ -83,8 +96,9 @@ pro Tenant), mit Link auf die Review-Queue.
 - Beschaffung von HR-Auszug und Transparenzregister-Auszug (in taxtronik
   als Dokumenttyp `TRANSPARENZREGISTER_AUSZUG` ablegbar; ein
   automatisierter Registerabruf existiert nicht)
-- Pflege von `mandateEndedAt` bei Mandatsende — ohne dieses Datum kann
-  die Lösch-Queue die Frist nicht berechnen
+- Pflege von `mandateEndedAt` bei Mandatsende — ohne dieses Datum kann für eine
+  tatsächlich zustande gekommene Geschäftsbeziehung weder die reguläre noch
+  die absolute Frist ab Beziehungsende beginnen
 
 ## Querverweise
 

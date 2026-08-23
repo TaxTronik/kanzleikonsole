@@ -15,6 +15,8 @@ const h = vi.hoisted(() => {
     sendTemplateMail: vi.fn(),
     fireAndForget: vi.fn(),
     assertClientAccessTx: vi.fn(),
+    canOtherStaffAccessClientTx: vi.fn(),
+    filterStaffAccessClientTx: vi.fn(),
     assertClientInTenant: vi.fn(),
     assertStaffInTenant: vi.fn(),
     revalidatePath: vi.fn(),
@@ -44,6 +46,8 @@ vi.mock('@/server/auth/rbac', () => ({
     error: error instanceof Error ? error.message : 'Fehler.',
   }),
   assertClientAccessTx: h.assertClientAccessTx,
+  canOtherStaffAccessClientTx: h.canOtherStaffAccessClientTx,
+  filterStaffAccessClientTx: h.filterStaffAccessClientTx,
 }));
 vi.mock('@/server/actions/staff-action', () => {
   return {
@@ -69,7 +73,11 @@ import {
 } from '@/app/staff/(protected)/absences/actions';
 import { updateAppointmentAction } from '@/app/staff/(protected)/calendar/actions';
 import { updateHandoverStatusAction } from '@/app/staff/(protected)/clients/[id]/handovers/actions';
-import { forwardPhoneNoteAction } from '@/app/staff/(protected)/phone-notes/actions';
+import {
+  forwardPhoneNoteAction,
+  markPhoneNoteDoneAction,
+  phoneNoteToReminderAction,
+} from '@/app/staff/(protected)/phone-notes/actions';
 
 const UUID = '11111111-1111-4111-8111-111111111111';
 const OLD_STAFF = '22222222-2222-4222-8222-222222222222';
@@ -103,6 +111,11 @@ describe('fachliche Lifecycle-Guards', () => {
     h.evidenceRecord.mockResolvedValue(undefined);
     h.notify.mockResolvedValue(undefined);
     h.sendTemplateMail.mockResolvedValue({ ok: true, sentViaTemplate: true });
+    h.assertClientAccessTx.mockResolvedValue(undefined);
+    h.canOtherStaffAccessClientTx.mockResolvedValue(true);
+    h.filterStaffAccessClientTx.mockImplementation(
+      async (_tx: unknown, _tenantId: string, staffIds: readonly string[]) => new Set(staffIds),
+    );
   });
 
   it('entscheidet einen bereits entschiedenen Urlaubsantrag nicht erneut', async () => {
@@ -176,6 +189,123 @@ describe('fachliche Lifecycle-Guards', () => {
     expect(h.notify).not.toHaveBeenCalled();
   });
 
+  it('verhindert Erledigen einer Telefonnotiz ohne Mandantenzugriff', async () => {
+    const tx = {
+      phoneNote: {
+        findUnique: vi.fn().mockResolvedValue({ clientId: 'client-1' }),
+        update: vi.fn(),
+      },
+    };
+    h.currentTx = tx;
+    h.assertClientAccessTx.mockRejectedValue(new Error('Kein Zugriff auf diesen Mandanten.'));
+
+    const result = await markPhoneNoteDoneAction({ id: UUID });
+
+    expect(result).toEqual({ ok: false, error: 'Kein Zugriff auf diesen Mandanten.' });
+    expect(tx.phoneNote.update).not.toHaveBeenCalled();
+    expect(h.resolveNotificationsTx).not.toHaveBeenCalled();
+  });
+
+  it('leitet eine mandantengebundene Telefonnotiz nur an zugriffsberechtigte Personen weiter', async () => {
+    const tx = {
+      phoneNote: {
+        findUnique: vi.fn().mockResolvedValue({
+          forwardToStaff: OLD_STAFF,
+          subject: 'Rückruf zur Selbstanzeige',
+          callerName: 'Mara',
+          callerPhone: null,
+          doneAt: null,
+          clientId: 'client-1',
+        }),
+        updateMany: vi.fn(),
+      },
+    };
+    h.currentTx = tx;
+    h.canOtherStaffAccessClientTx.mockResolvedValue(false);
+
+    const result = await forwardPhoneNoteAction({ id: UUID, toStaffId: NEW_STAFF });
+
+    expect(h.canOtherStaffAccessClientTx).toHaveBeenCalledWith(
+      tx,
+      'tenant-1',
+      NEW_STAFF,
+      'client-1',
+    );
+    expect(result).toEqual({
+      ok: false,
+      error:
+        'Die ausgewählte Person hat nach dem Kanzlei-Zugriffsmodus keinen Zugriff auf diesen Mandanten.',
+    });
+    expect(tx.phoneNote.updateMany).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('verknüpft jede angelegte Wiedervorlage mit der Telefonnotiz und lässt die Notiz offen', async () => {
+    const tx = {
+      phoneNote: {
+        findUnique: vi.fn().mockResolvedValue({
+          clientId: 'client-1',
+          subject: 'Zwei getrennte Rückfragen',
+          callerName: 'Mara',
+          callerPhone: '030 123',
+          body: 'Bitte Umsatzsteuer und Lohn getrennt prüfen.',
+          forwardToStaff: NEW_STAFF,
+          doneAt: null,
+        }),
+        update: vi.fn(),
+      },
+      clientReminder: {
+        create: vi.fn().mockResolvedValue({ id: 'reminder-1' }),
+      },
+      staffUser: {
+        findMany: vi.fn().mockResolvedValue([{ id: NEW_STAFF }]),
+        findUnique: vi.fn().mockResolvedValue({ fullName: 'Neue Person' }),
+      },
+      client: {
+        findUnique: vi.fn().mockResolvedValue({ name: 'Mara GmbH' }),
+      },
+    };
+    h.currentTx = tx;
+
+    const result = await phoneNoteToReminderAction({
+      id: UUID,
+      dueDate: '2026-08-25',
+      assigneeStaffId: NEW_STAFF,
+    });
+    const secondResult = await phoneNoteToReminderAction({
+      id: UUID,
+      dueDate: '2026-08-28',
+      assigneeStaffId: NEW_STAFF,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(secondResult.ok).toBe(true);
+    expect(tx.clientReminder.create).toHaveBeenCalledTimes(2);
+    expect(tx.clientReminder.create).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        clientId: 'client-1',
+        phoneNoteId: UUID,
+        priority: 'NORMAL',
+        assignees: { create: [{ staffId: NEW_STAFF }] },
+      }),
+      select: { id: true },
+    });
+    expect(tx.clientReminder.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({ phoneNoteId: UUID, dueDate: new Date('2026-08-28') }),
+      select: { id: true },
+    });
+    expect(tx.phoneNote.update).not.toHaveBeenCalled();
+    expect(h.resolveNotificationsTx).not.toHaveBeenCalled();
+    expect(h.notify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        staffId: NEW_STAFF,
+        kind: 'CLIENT_REMINDER_ASSIGNED',
+        resourceId: 'reminder-1',
+      }),
+    );
+  });
+
   it('verschiebt eine Termin-Notification vom alten zum neuen Verantwortlichen', async () => {
     const tx = {
       appointment: {
@@ -211,6 +341,45 @@ describe('fachliche Lifecycle-Guards', () => {
       tx,
       expect.objectContaining({ staffId: NEW_STAFF, resourceId: UUID }),
     );
+  });
+
+  it('ändert die Terminzuständigkeit nicht auf eine Person ohne Mandantenzugriff', async () => {
+    const tx = {
+      appointment: {
+        findUnique: vi.fn().mockResolvedValue({
+          title: 'Vertrauliche Besprechung',
+          startsAt: new Date('2026-08-21T08:00:00.000Z'),
+          endsAt: new Date('2026-08-21T09:00:00.000Z'),
+          status: 'CONFIRMED',
+          clientId: 'client-1',
+          ownerStaffId: OLD_STAFF,
+        }),
+        update: vi.fn(),
+      },
+    };
+    h.currentTx = tx;
+    h.canOtherStaffAccessClientTx.mockResolvedValue(false);
+    const formData = new FormData();
+    formData.set('id', UUID);
+    formData.set('title', 'Vertrauliche Besprechung');
+    formData.set('ownerStaffId', NEW_STAFF);
+    formData.set('clientId', '44444444-4444-4444-8444-444444444444');
+    formData.set('kind', 'CLIENT_MEETING');
+    formData.set('status', 'CONFIRMED');
+    formData.set('startsAt', '2026-08-21T10:00');
+    formData.set('endsAt', '2026-08-21T11:00');
+
+    const result = await updateAppointmentAction(null, formData);
+
+    expect(h.canOtherStaffAccessClientTx).toHaveBeenCalledWith(
+      tx,
+      'tenant-1',
+      NEW_STAFF,
+      '44444444-4444-4444-8444-444444444444',
+    );
+    expect(result.ok).toBe(false);
+    expect(tx.appointment.update).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 
   it('versendet die Abholbereitschaft nach einem Statuswechsel nicht ein zweites Mal', async () => {

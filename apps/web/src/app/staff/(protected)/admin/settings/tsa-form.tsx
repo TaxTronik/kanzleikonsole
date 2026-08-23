@@ -195,8 +195,9 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
       <div className="rounded-md border border-default bg-surface-raised p-4 space-y-2">
         <div className="text-sm font-medium text-primary">Verbindung testen</div>
         <p className="text-xs text-muted">
-          Schickt eine echte TimeStampReq (mit zufälligem Hash) an den ausgewählten Server und
-          prüft, ob ein granted Response zurückkommt.
+          Schickt eine echte TimeStampReq (mit zufälligem Hash) an den ausgewählten Server und prüft
+          Status, Hash-Bindung, Signatur und Zertifikatskette bis zu einem konfigurierten
+          Trust-Anchor.
         </p>
         {resolvedUrl && <p className="text-xs text-muted font-mono break-all">{resolvedUrl}</p>}
         <div className="flex items-center gap-2">

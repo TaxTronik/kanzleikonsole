@@ -4,7 +4,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Idempotenz-/Race-/Validierungs-Logik von ensureZugferdArchive, nicht die
 // PDF-Erzeugung oder den Object-Store.
 vi.mock('@taxtronik/db', () => ({ withTenantContext: vi.fn() }));
-vi.mock('@taxtronik/storage', () => ({ commitBytesWithTier: vi.fn() }));
+vi.mock('@taxtronik/storage', () => ({
+  commitBytesWithTier: vi.fn(),
+  fetchObjectBytes: vi.fn(async () => Buffer.from('archived-pdf')),
+}));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (b: unknown) => b }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/invoicing/xrechnung', () => ({
@@ -13,10 +16,19 @@ vi.mock('@/server/invoicing/xrechnung', () => ({
 }));
 vi.mock('@/server/invoicing/zugferd', () => ({
   generateZugferdPdf: vi.fn(async () => new Uint8Array([1, 2, 3])),
+  extractFacturXXml: vi.fn(async () => Buffer.from('<embedded-cii/>')),
 }));
 vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: vi.fn() }));
 vi.mock('@/server/settings/branding', () => ({
   readBranding: vi.fn(async () => ({ logoDataUrl: null })),
+}));
+vi.mock('@/server/settings/letterhead', () => ({
+  readLetterhead: vi.fn(async () => ({
+    organisationName: 'Briefkopf-Kanzlei',
+    addressLines: 'Briefkopfweg 1\n10115 Berlin',
+    contactLine: 'Telefon +49 30 1',
+    footnote: 'Kammerangabe',
+  })),
 }));
 vi.mock('@/server/documents/storage-compensation', () => ({
   compensateStorageCommit: vi.fn(async () => 'JOURNALED'),
@@ -24,9 +36,9 @@ vi.mock('@/server/documents/storage-compensation', () => ({
 
 import { ensureZugferdArchive } from '../archive';
 import { withTenantContext } from '@taxtronik/db';
-import { commitBytesWithTier } from '@taxtronik/storage';
+import { commitBytesWithTier, fetchObjectBytes } from '@taxtronik/storage';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
-import { generateZugferdPdf } from '@/server/invoicing/zugferd';
+import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { evidenceService } from '@/server/container';
 import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
@@ -60,7 +72,11 @@ function baseInvoice(overrides: Record<string, unknown> = {}) {
     number: 'R-001',
     format: 'XRECHNUNG',
     clientId: 'c1',
+    status: 'SENT',
+    sentAt: new Date('2026-08-23T12:00:00.000Z'),
+    updatedAt: new Date('2026-08-23T12:00:00.000Z'),
     documentId: null,
+    xrechnungDocumentId: null,
     issueDate: new Date(),
     dueDate: new Date(),
     subject: 'S',
@@ -72,6 +88,7 @@ function baseInvoice(overrides: Record<string, unknown> = {}) {
     client: COMPLETE_CLIENT,
     positions: [],
     document: null,
+    xrechnungDocument: null,
     ...overrides,
   };
 }
@@ -83,9 +100,17 @@ beforeEach(() => {
   tx = {
     // Advisory-Lock zur Race-Serialisierung (archive.ts).
     $executeRaw: vi.fn().mockResolvedValue(0),
-    invoice: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
+    invoice: {
+      findFirst: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     document: {
-      create: vi.fn().mockResolvedValue({ id: 'doc1' }),
+      create: vi.fn().mockImplementation(({ data }: { data: { mimeType: string } }) =>
+        Promise.resolve({
+          id: data.mimeType === 'application/xml' ? 'xml-doc-new' : 'pdf-doc-new',
+        }),
+      ),
       findFirst: vi.fn().mockResolvedValue(null),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
@@ -107,18 +132,19 @@ beforeEach(() => {
 
 describe('ensureZugferdArchive', () => {
   it('idempotent: vorhandenes Archiv → dieselben Bytes, KEINE Neugenerierung', async () => {
-    tx.document.findFirst.mockResolvedValueOnce({
-      id: 'xml-existing',
-      sharedWithClientAt: new Date(),
-      versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
-    });
     tx.invoice.findFirst.mockResolvedValueOnce(
       baseInvoice({
         status: 'SENT',
         documentId: 'doc-existing',
+        xrechnungDocumentId: 'xml-existing',
         document: {
           sharedWithClientAt: new Date(),
           versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
+        },
+        xrechnungDocument: {
+          id: 'xml-existing',
+          sharedWithClientAt: new Date(),
+          versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
         },
       }),
     );
@@ -132,20 +158,21 @@ describe('ensureZugferdArchive', () => {
   });
 
   it('selbstheilend: als DRAFT erzeugte Kopie wird nach Versand nachträglich freigegeben', async () => {
-    tx.document.findFirst.mockResolvedValueOnce({
-      id: 'xml-existing',
-      sharedWithClientAt: new Date(),
-      versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
-    });
     // Rechnung ist inzwischen SENT, das verknüpfte Archiv aber noch ungeteilt
     // (z. B. zuvor per DRAFT-Download erzeugt). Der nächste Helfer-Lauf gibt frei.
     tx.invoice.findFirst.mockResolvedValueOnce(
       baseInvoice({
         status: 'SENT',
         documentId: 'doc-existing',
+        xrechnungDocumentId: 'xml-existing',
         document: {
           sharedWithClientAt: null,
           versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
+        },
+        xrechnungDocument: {
+          id: 'xml-existing',
+          sharedWithClientAt: new Date(),
+          versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
         },
       }),
     );
@@ -157,24 +184,178 @@ describe('ensureZugferdArchive', () => {
     });
   });
 
-  it('DRAFT mit verknüpfter Kopie wird NICHT nachträglich freigegeben', async () => {
-    tx.document.findFirst.mockResolvedValueOnce({
-      id: 'xml-existing',
-      sharedWithClientAt: null,
-      versions: [{ storageBucket: 'gobd', storageKey: 'xml-existing' }],
+  it('rekonstruiert fehlende XML aus der Hybrid-PDF und ignoriert gleichnamige Nicht-XML-Dokumente', async () => {
+    const archivedInvoice = baseInvoice({
+      status: 'SENT',
+      sentAt: new Date(),
+      documentId: 'pdf-doc',
+      document: {
+        sharedWithClientAt: new Date(),
+        versions: [{ storageBucket: 'gobd', storageKey: 'pdf-key' }],
+      },
     });
-    tx.invoice.findFirst.mockResolvedValueOnce(
-      baseInvoice({
-        status: 'DRAFT',
-        documentId: 'doc-existing',
-        document: {
-          sharedWithClientAt: null,
-          versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
-        },
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(archivedInvoice)
+      .mockResolvedValueOnce(archivedInvoice);
+    // Selbst ein gleichnamiges fremdes XML darf nicht als kanonische Kopie
+    // gelten. Nur invoice.xrechnungDocumentId ist ein belastbarer Nachweis.
+    tx.document.findFirst.mockResolvedValue({
+      id: 'unlinked-same-title-xml',
+      title: 'Rechnung R-001 (XRechnung)',
+      mimeType: 'application/xml',
+      versions: [{ storageBucket: 'gobd', storageKey: 'foreign-title-collision' }],
+    });
+
+    const result = await ensureZugferdArchive(ctx, 'inv1');
+
+    expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'pdf-key', number: 'R-001' });
+    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'pdf-key');
+    expect(extractFacturXXml).toHaveBeenCalledWith(Buffer.from('archived-pdf'));
+    expect(tx.document.findFirst).not.toHaveBeenCalled();
+    expect(tx.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ mimeType: 'application/xml' }),
       }),
     );
-    await ensureZugferdArchive(ctx, 'inv1');
+    expect(tx.invoice.update).toHaveBeenCalledWith({
+      where: { id: 'inv1' },
+      data: { xrechnungDocumentId: 'xml-doc-new' },
+    });
+  });
+
+  it('teilt eine nachträglich materialisierte XML auch bei bereits versendetem Storno', async () => {
+    const cancelledAfterSend = baseInvoice({
+      status: 'CANCELLED',
+      sentAt: new Date('2026-08-01T10:00:00.000Z'),
+      documentId: 'pdf-doc',
+      document: {
+        sharedWithClientAt: new Date(),
+        versions: [{ storageBucket: 'gobd', storageKey: 'pdf-key' }],
+      },
+    });
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(cancelledAfterSend)
+      .mockResolvedValueOnce(cancelledAfterSend);
+
+    const result = await ensureZugferdArchive(ctx, 'inv1');
+
+    expect(result.ok).toBe(true);
+    expect(tx.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          mimeType: 'application/xml',
+          sharedWithClientAt: expect.any(Date),
+          sharedByStaff: 's1',
+        }),
+      }),
+    );
+  });
+
+  it('DRAFT-Kontrollvorschau rendert frisch und verändert vorhandene Archive nicht', async () => {
+    const draft = baseInvoice({
+      status: 'DRAFT',
+      sentAt: null,
+      documentId: 'doc-existing',
+      document: {
+        sharedWithClientAt: null,
+        versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
+      },
+    });
+    tx.invoice.findFirst.mockResolvedValueOnce(draft).mockResolvedValueOnce(draft);
+    const result = await ensureZugferdArchive(ctx, 'inv1', { purpose: 'PREVIEW' });
+
+    expect(result).toEqual({ ok: true, bytes: Buffer.from([1, 2, 3]), number: 'R-001' });
     expect(tx.document.updateMany).not.toHaveBeenCalled();
+    expect(tx.document.create).not.toHaveBeenCalled();
+    expect(commitBytesWithTier).not.toHaveBeenCalled();
+  });
+
+  it('liefert nach einem parallelen DRAFT→SENT während des Renderns nur kanonische Archivbytes', async () => {
+    const draft = baseInvoice({ status: 'DRAFT', sentAt: null, documentId: null });
+    const issued = baseInvoice({
+      status: 'SENT',
+      sentAt: new Date('2026-08-23T12:01:00.000Z'),
+      updatedAt: new Date('2026-08-23T12:01:00.000Z'),
+      documentId: 'pdf-issued',
+      xrechnungDocumentId: 'xml-issued',
+      document: {
+        sharedWithClientAt: new Date(),
+        versions: [{ storageBucket: 'gobd', storageKey: 'pdf-issued-key' }],
+      },
+      xrechnungDocument: {
+        id: 'xml-issued',
+        sharedWithClientAt: new Date(),
+        versions: [{ storageBucket: 'gobd', storageKey: 'xml-issued-key' }],
+      },
+    });
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(draft)
+      .mockResolvedValueOnce(issued)
+      .mockResolvedValueOnce(issued);
+
+    const result = await ensureZugferdArchive(ctx, 'inv1', { purpose: 'PREVIEW' });
+
+    expect(result).toEqual({
+      ok: true,
+      bucket: 'gobd',
+      key: 'pdf-issued-key',
+      number: 'R-001',
+    });
+    expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
+    expect(commitBytesWithTier).not.toHaveBeenCalled();
+  });
+
+  it('verwendet nach parallelem Draft-Refresh keinen vor dem Lock geladenen Archivpointer', async () => {
+    const stale = baseInvoice({
+      status: 'DRAFT',
+      sentAt: null,
+      documentId: 'stale-draft-pdf',
+      document: {
+        sharedWithClientAt: null,
+        versions: [{ storageBucket: 'gobd', storageKey: 'stale-draft-key' }],
+      },
+    });
+    const refreshed = baseInvoice({ status: 'DRAFT', sentAt: null });
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(stale)
+      // Ein anderer ISSUE-Aufruf hat das alte Draft-Archiv bereits geloest.
+      .mockResolvedValueOnce(refreshed)
+      // Finale Verknuepfung sieht weiterhin einen archivlosen Entwurf.
+      .mockResolvedValueOnce(refreshed);
+    tx.document.findFirst.mockResolvedValue(null);
+
+    const result = await ensureZugferdArchive(ctx, 'inv1', { purpose: 'ISSUE' });
+
+    expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'k-new', number: 'R-001' });
+    expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
+    expect(fetchObjectBytes).not.toHaveBeenCalled();
+    expect(tx.invoice.update).toHaveBeenCalledWith({
+      where: { id: 'inv1' },
+      data: { documentId: 'pdf-doc-new', xrechnungDocumentId: 'xml-doc-new' },
+    });
+  });
+
+  it('Lazy-XML wird nicht nach einem parallel gewonnenen Entwurfsstorno verknüpft', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(
+        baseInvoice({
+          status: 'DRAFT',
+          sentAt: null,
+          documentId: 'doc-existing',
+          document: {
+            sharedWithClientAt: null,
+            versions: [{ storageBucket: 'gobd', storageKey: 'k-existing' }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(baseInvoice({ status: 'CANCELLED', sentAt: null, documentId: null }));
+
+    const res = await ensureZugferdArchive(ctx, 'inv1');
+
+    expect(res).toEqual({ ok: false, code: 'status_conflict' });
+    expect(tx.document.create).not.toHaveBeenCalled();
+    expect(tx.documentVersion.create).not.toHaveBeenCalled();
+    expect(compensateStorageCommit).not.toHaveBeenCalled();
   });
 
   it('not_applicable für EXTERNAL/PDF-Rechnung (deren documentId ist der Upload)', async () => {
@@ -251,6 +432,16 @@ describe('ensureZugferdArchive', () => {
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: true, bucket: 'gobd', key: 'k-new', number: 'R-001' });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
+    expect(generateZugferdPdf).toHaveBeenCalledWith(
+      expect.anything(),
+      COMPLETE_SELLER,
+      expect.anything(),
+      '<cii/>',
+      expect.objectContaining({
+        logoDataUrl: null,
+        letterhead: expect.objectContaining({ organisationName: 'Briefkopf-Kanzlei' }),
+      }),
+    );
     expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
     expect(tx.document.create).toHaveBeenCalledTimes(2);
     expect(tx.document.create.mock.calls[0]![0]!.data.retentionUntil).toEqual(RETENTION_UNTIL);
@@ -258,17 +449,18 @@ describe('ensureZugferdArchive', () => {
     expect(tx.documentVersion.create).toHaveBeenCalledTimes(2);
     expect(tx.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv1' },
-      data: { documentId: 'doc1' },
+      data: { documentId: 'pdf-doc-new', xrechnungDocumentId: 'xml-doc-new' },
     });
     expect(evidenceService.record).toHaveBeenCalledTimes(1);
   });
 
   it('DRAFT-Archiv wird NICHT fürs Portal freigegeben (sharedWithClientAt=null)', async () => {
-    // Review-Fix: ein Kontroll-Download des ZUGFeRD eines Entwurfs erzeugt die
-    // Archivkopie, darf sie aber nicht im Mandanten-Portal sichtbar machen.
+    // Beim tatsächlichen Versand entsteht die Archivkopie noch vor dem
+    // DRAFT→SENT-Claim und darf bis zu dessen Erfolg nicht im Portal stehen.
     tx.invoice.findFirst
-      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT' }))
-      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT' }));
+      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT', sentAt: null }))
+      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT', sentAt: null }))
+      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT', sentAt: null }));
     await ensureZugferdArchive(ctx, 'inv1');
     const created = tx.document.create.mock.calls[0]![0]!.data;
     expect(created.sharedWithClientAt).toBeNull();
@@ -292,7 +484,13 @@ describe('ensureZugferdArchive', () => {
         baseInvoice({
           // write-tx Re-Check: jetzt verknüpft
           documentId: 'doc-winner',
+          xrechnungDocumentId: 'xml-winner',
           document: { versions: [{ storageBucket: 'gobd', storageKey: 'k-winner' }] },
+          xrechnungDocument: {
+            id: 'xml-winner',
+            sharedWithClientAt: new Date(),
+            versions: [{ storageBucket: 'gobd', storageKey: 'xml-winner-key' }],
+          },
         }),
       );
     const res = await ensureZugferdArchive(ctx, 'inv1');
@@ -308,6 +506,51 @@ describe('ensureZugferdArchive', () => {
     expect(compensateStorageCommit).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'invoice.archive.xrechnung_race' }),
     );
+  });
+
+  it('materialisiert nach einem PDF-only Race-Gewinner XML exakt aus dessen Hybrid-PDF', async () => {
+    const winner = baseInvoice({
+      documentId: 'doc-winner',
+      document: { versions: [{ storageBucket: 'gobd', storageKey: 'k-winner' }] },
+    });
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(baseInvoice())
+      .mockResolvedValueOnce(winner)
+      .mockResolvedValueOnce(winner)
+      .mockResolvedValueOnce(winner);
+
+    const result = await ensureZugferdArchive(ctx, 'inv1');
+
+    expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'k-winner', number: 'R-001' });
+    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'k-winner');
+    expect(extractFacturXXml).toHaveBeenCalledWith(Buffer.from('archived-pdf'));
+    expect(tx.document.create).toHaveBeenCalledTimes(1);
+    expect(tx.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ mimeType: 'application/xml' }) }),
+    );
+    expect(tx.invoice.update).toHaveBeenCalledWith({
+      where: { id: 'inv1' },
+      data: { xrechnungDocumentId: 'xml-doc-new' },
+    });
+    expect(compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'invoice.archive.zugferd_race' }),
+    );
+    expect(compensateStorageCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'invoice.archive.xrechnung_race' }),
+    );
+  });
+
+  it('Race: ein Entwurfsstorno gewinnt vor der Archivverknüpfung', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(baseInvoice({ status: 'DRAFT', sentAt: null }))
+      .mockResolvedValueOnce(baseInvoice({ status: 'CANCELLED', sentAt: null }));
+
+    const res = await ensureZugferdArchive(ctx, 'inv1');
+
+    expect(res).toEqual({ ok: false, code: 'status_conflict' });
+    expect(tx.document.create).not.toHaveBeenCalled();
+    expect(tx.invoice.update).not.toHaveBeenCalled();
+    expect(compensateStorageCommit).not.toHaveBeenCalled();
   });
 
   it('journalisiert die bereits gespeicherte PDF, wenn der XML-Storage-Commit scheitert', async () => {

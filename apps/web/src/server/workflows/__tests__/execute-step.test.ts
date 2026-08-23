@@ -394,6 +394,39 @@ describe('executeWorkflowStep consistency', () => {
     );
   });
 
+  it.each(['UNROUTED', 'SKIPPED'] as const)(
+    'lässt N8N_TRIGGER bei %s offen und schreibt keine Ausführungsevidenz',
+    async (status) => {
+      const { item: state, tx } = makeTx({
+        item: {
+          ...emailItem(),
+          kind: 'N8N_TRIGGER',
+          config: { payload: { source: 'test' } },
+          n8nEvent: 'custom.trigger',
+        },
+      });
+      h.emitN8nEvent.mockResolvedValue({
+        eventId: 'outbox-unrouted',
+        status,
+        deliveryCount: status === 'SKIPPED' ? 1 : 0,
+        error: 'Keine aktive Route',
+      });
+
+      await expect(
+        executeWorkflowStep({ tenantId: 'tenant-1', staffId: 'staff-1', itemId: 'item-1' }),
+      ).resolves.toEqual({ ok: false, error: 'Keine aktive Route' });
+
+      expect(state.doneAt).toBeNull();
+      expect(state.startedAt).toBeNull();
+      expect(h.evidenceRecord).not.toHaveBeenCalled();
+      expect(tx.workflowN8nDispatch.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ claimedAt: null, lastError: 'Keine aktive Route' }),
+        }),
+      );
+    },
+  );
+
   it('lässt unter parallelem TASK-Doppelaufruf nur einen CAS-Gewinner zu', async () => {
     const item = { ...emailItem(), kind: 'TASK', config: {}, n8nEvent: null };
     makeTx({ item });

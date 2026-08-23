@@ -33,10 +33,13 @@ export {
   serializeArchive,
   parseArchive,
   verifyArchiveChain,
+  verifyArchiveTimestamp,
+  archiveTimestampMeetsPolicy,
   type ArchiveAuditRow,
   type ArchiveSerializeResult,
   type ParsedArchiveRow,
   type ChainCheckResult,
+  type ArchiveTimestampVerification,
 } from './archive';
 export {
   type TimestampPort,

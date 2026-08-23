@@ -24,7 +24,13 @@ import { prismaOwner as prisma } from '@taxtronik/db';
 import { EvidenceService, type VerificationResult } from '../service.js';
 import { LocalTimestampAdapter } from '../ports/timestamp.js';
 import { createRfc3161Adapter } from '../ports/rfc3161-http.js';
-import { parseArchive, verifyArchiveChain } from '../archive.js';
+import { resolveTsaUrl } from '../providers/tsa-providers.js';
+import {
+  archiveTimestampMeetsPolicy,
+  parseArchive,
+  verifyArchiveChain,
+  verifyArchiveTimestamp,
+} from '../archive.js';
 import { AUDIT_VERIFY_RESULT_SETTING_KEY, type PersistedVerifyResult } from '../verify-status.js';
 
 const s3 = new S3Client({
@@ -110,14 +116,70 @@ async function fetchObjectBytes(bucket: string, key: string): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+function archiveTimestampVerificationPort(tsaUrl: string | undefined) {
+  const url = tsaUrl ?? resolveTsaUrl('globalsign', null);
+  if (!url) throw new Error('GlobalSign-TSA-Preset für Archiv-Verifikation fehlt.');
+  return createRfc3161Adapter(url);
+}
+
+async function reportArchiveTimestamp(input: {
+  port: ReturnType<typeof createRfc3161Adapter>;
+  archiveId: bigint;
+  fromAuditId: bigint;
+  toAuditId: bigint;
+  actualFileSha256: Buffer;
+  tsaResponseBlob: Uint8Array | null;
+  requireExternalTsa: boolean;
+  priorOk: boolean;
+}): Promise<boolean> {
+  let status: Awaited<ReturnType<typeof verifyArchiveTimestamp>>;
+  try {
+    status = await verifyArchiveTimestamp(
+      input.port,
+      input.actualFileSha256,
+      input.tsaResponseBlob,
+    );
+  } catch (error) {
+    process.stdout.write(
+      `  ✗ Archiv ${input.archiveId} (${String(input.fromAuditId)}-${String(input.toAuditId)}): RFC-3161-Prüfung fehlgeschlagen — ${(error as Error).message}\n`,
+    );
+    return false;
+  }
+  if (status === 'valid') {
+    process.stdout.write(
+      `  ✓ Archiv ${input.archiveId}: RFC-3161-Token ist an den tatsächlichen Datei-Hash und einen Trust-Anchor gebunden.\n`,
+    );
+    return input.priorOk;
+  }
+  if (status === 'missing') {
+    process.stdout.write(
+      `  ${input.requireExternalTsa ? '✗' : '⚠'} Archiv ${input.archiveId}: kein externer RFC-3161-Nachweis` +
+        (input.requireExternalTsa ? ' (externe TSA ist per Policy verpflichtend).\n' : '.\n'),
+    );
+    return archiveTimestampMeetsPolicy(status, input.requireExternalTsa) ? input.priorOk : false;
+  }
+  process.stdout.write(
+    `  ✗ Archiv ${input.archiveId}: RFC-3161-Token ist untrusted oder nicht an den tatsächlichen Datei-Hash gebunden.\n`,
+  );
+  return false;
+}
+
 async function main() {
   const tsaUrl = process.env['TIMESTAMP_AUTHORITY_URL'];
   // C2: HTTP-Adapter statt Stub — wirft nicht unbedingt, prüft echte RFC-3161-Stamps.
   // createRfc3161Adapter zieht die aufgelösten Trust-Roots (Default + optionale
-  // Operator-Roots aus TSA_TRUSTED_ROOTS_FILE) — sonst prüfte die CLI eine
-  // Produktiv-TSA nur cryptoOk statt voll trust-verankert.
+  // Operator-Roots aus TSA_TRUSTED_ROOTS_FILE). Ohne passenden Trust-Anchor
+  // schlägt die Verifikation fail-closed fehl.
   const port = tsaUrl ? createRfc3161Adapter(tsaUrl) : new LocalTimestampAdapter();
   const evidence = new EvidenceService(port);
+
+  // Archivsegmente können einen externen RFC-3161-Token tragen, auch wenn die
+  // CLI ohne TIMESTAMP_AUTHORITY_URL gestartet wird. Deren Prüfung darf deshalb
+  // nie über LocalTimestampAdapter.verify() laufen (der mangels externem Token
+  // bewusst nur eine schwache Dev-Prüfung liefert). Die URL wird beim reinen
+  // verify() nicht angefragt; die Factory bindet hier die Default- und
+  // Operator-Trust-Roots ein.
+  const archiveVerificationPort = archiveTimestampVerificationPort(tsaUrl);
 
   // Produktivmodus → externe TSA verpflichtend (Self-Timestamp = harter Fail).
   const requireExternalTsa =
@@ -142,7 +204,7 @@ async function main() {
       process.stdout.write(
         `  ${mark} Trust-verankert       : ${anchored}/${result.sealsChecked}` +
           (anchored < result.sealsChecked
-            ? ` — restliche nur cryptoOk (Produktiv-TSA-Root via TSA_TRUSTED_ROOTS_FILE hinterlegen)\n`
+            ? ` — übrige ungültig (passenden TSA-Root via TSA_TRUSTED_ROOTS_FILE hinterlegen)\n`
             : `\n`),
       );
     }
@@ -237,6 +299,17 @@ async function main() {
           );
           continue;
         }
+
+        allOk = await reportArchiveTimestamp({
+          port: archiveVerificationPort,
+          archiveId: a.id,
+          fromAuditId: a.fromAuditId,
+          toAuditId: a.toAuditId,
+          actualFileSha256: actualSha,
+          tsaResponseBlob: a.tsaResponseBlob,
+          requireExternalTsa,
+          priorOk: allOk,
+        });
         const parsed = parseArchive(bytes);
         const check = verifyArchiveChain(parsed, {
           firstPrevHash: Buffer.from(a.firstPrevHash),

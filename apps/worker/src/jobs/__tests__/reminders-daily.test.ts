@@ -13,7 +13,13 @@ const h = vi.hoisted(() => {
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (value: typeof tx) => Promise<unknown>) => fn(tx),
   );
-  return { prismaOwner, tx, withWorkerTenantContext, readWorkerTenantModules: vi.fn() };
+  return {
+    prismaOwner,
+    tx,
+    withWorkerTenantContext,
+    readWorkerTenantModules: vi.fn(),
+    filterStaffAccessClientTx: vi.fn(),
+  };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -27,6 +33,9 @@ vi.mock('../../tenant-context', () => ({
 }));
 vi.mock('../../module-gate', () => ({
   readWorkerTenantModules: h.readWorkerTenantModules,
+}));
+vi.mock('@taxtronik/db/staff-client-access', () => ({
+  filterStaffAccessClientTx: h.filterStaffAccessClientTx,
 }));
 
 import { processors } from './mocks/bullmq';
@@ -65,6 +74,9 @@ beforeEach(() => {
   h.tx.notification.createMany.mockImplementation(async ({ data }: { data: unknown[] }) => ({
     count: data.length,
   }));
+  h.filterStaffAccessClientTx.mockImplementation(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[]) => new Set(ids),
+  );
   h.withWorkerTenantContext.mockImplementation(
     async (_tenantId: string, fn: (value: typeof h.tx) => Promise<unknown>) => fn(h.tx),
   );
@@ -190,4 +202,31 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
     );
     expect(result).toEqual({ appeal: 1, reminders: 1, binders: 1 });
   });
+
+  it.each(['OPEN→RESTRICTED ohne Verantwortung', 'nachtraeglich vertraulich ohne Verantwortung'])(
+    '%s: alte Reminder-Zuweisung erzeugt keine Notification',
+    async () => {
+      h.prismaOwner.clientReminder.findMany.mockResolvedValue([
+        {
+          id: 'reminder-stale',
+          dueDate: new Date('2026-07-16T00:00:00.000Z'),
+          subject: 'Nicht mehr sichtbarer Sachverhalt',
+          assignees: [{ staffId: 'staff-alt' }],
+          createdByStaff: 'staff-creator',
+          client: { id: 'client-vertraulich', name: 'Geheim GmbH' },
+        },
+      ]);
+      h.filterStaffAccessClientTx.mockResolvedValue(new Set());
+
+      await expect(run()).resolves.toEqual({ appeal: 0, reminders: 0, binders: 0 });
+
+      expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(
+        h.tx,
+        TENANT_ID,
+        ['staff-alt'],
+        'client-vertraulich',
+      );
+      expect(h.tx.notification.createMany).not.toHaveBeenCalled();
+    },
+  );
 });

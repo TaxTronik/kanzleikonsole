@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   riskLayerClient: vi.fn(),
   safeFetch: vi.fn(),
   tsaTimestamp: vi.fn(),
+  tsaVerify: vi.fn(),
   withTenantContext: vi.fn(),
   tx: {
     n8nConnection: { findUnique: vi.fn() },
@@ -38,7 +39,10 @@ vi.mock('@taxtronik/db', () => ({
 }));
 
 vi.mock('@taxtronik/evidence', () => ({
-  createRfc3161Adapter: vi.fn(() => ({ timestamp: mocks.tsaTimestamp })),
+  createRfc3161Adapter: vi.fn(() => ({
+    timestamp: mocks.tsaTimestamp,
+    verify: mocks.tsaVerify,
+  })),
   resolveTsaUrl: vi.fn(
     (providerId: string | null, customUrl: string | null) =>
       customUrl ?? (providerId ? `https://tsa.example.test/${providerId}` : null),
@@ -58,7 +62,11 @@ import { checkN8nForTenant, checkSignalEngine, checkTsaForTenant } from '../chec
 describe('checkTsaForTenant', () => {
   beforeEach(() => {
     mocks.env.TIMESTAMP_AUTHORITY_URL = '';
-    mocks.tsaTimestamp.mockReset().mockResolvedValue({ genTime: new Date() });
+    mocks.tsaTimestamp.mockReset().mockResolvedValue({
+      timestampedAt: new Date().toISOString(),
+      tsaResponseBlob: Buffer.from('trusted-token'),
+    });
+    mocks.tsaVerify.mockReset().mockResolvedValue(true);
     mocks.tx.tenantSetting.findUnique.mockReset().mockResolvedValue(null);
     mocks.withTenantContext
       .mockReset()
@@ -74,6 +82,8 @@ describe('checkTsaForTenant', () => {
       url: 'https://tsa.example.test/globalsign',
     });
     expect(mocks.tsaTimestamp).toHaveBeenCalledTimes(1);
+    const payload = mocks.tsaTimestamp.mock.calls[0]![0] as Buffer;
+    expect(mocks.tsaVerify).toHaveBeenCalledWith(payload, Buffer.from('trusted-token'));
   });
 
   it('bevorzugt die kanzleispezifische TSA', async () => {
@@ -86,6 +96,18 @@ describe('checkTsaForTenant', () => {
       source: 'tenant',
       url: 'https://custom-tsa.example.test/tsr',
     });
+  });
+
+  it('meldet einen granted, aber nicht trust-verankerten Token als ungesund', async () => {
+    mocks.tsaVerify.mockResolvedValue(false);
+
+    await expect(checkTsaForTenant('tenant-1')).resolves.toMatchObject({
+      ok: false,
+      source: 'default',
+      error: expect.stringContaining('Trust-Anchor'),
+    });
+    expect(mocks.tsaTimestamp).toHaveBeenCalledTimes(1);
+    expect(mocks.tsaVerify).toHaveBeenCalledTimes(1);
   });
 });
 

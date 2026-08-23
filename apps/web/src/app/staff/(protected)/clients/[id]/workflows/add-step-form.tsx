@@ -208,9 +208,15 @@ export function AddStepForm({
             value={n8nEvent}
             onChange={(e) => setN8nEvent(e.target.value)}
             placeholder="z. B. slack-notify"
-            maxLength={100}
+            maxLength={41}
+            pattern="[a-z][a-z0-9_-]{0,40}"
+            title="Mit Kleinbuchstaben beginnen; danach nur Kleinbuchstaben, Ziffern, _ oder - (maximal 41 Zeichen)."
             className="input text-sm"
           />
+          <p className="text-[10px] text-disabled mt-1">
+            Kleinbuchstaben, Ziffern, <code>_</code> oder <code>-</code>; beginnt mit einem
+            Buchstaben, maximal 41 Zeichen.
+          </p>
         </div>
       </div>
 

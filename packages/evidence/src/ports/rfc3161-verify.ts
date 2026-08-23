@@ -12,8 +12,9 @@
 //   5. EKU id-kp-timeStamping auf dem Signer-Cert.
 // Liefert genTime (echte TSA-Zeit) + Seriennummer zurück.
 //
-// Granular (signatureValid vs. chainTrusted), damit der Aufrufer einen TSA OHNE
-// hinterlegten Trust-Anchor NICHT als Manipulation fehldeutet (kein Regress).
+// Granular (signatureValid vs. chainTrusted) für eine präzise Diagnose. Nur
+// `valid` ist ein erfolgreicher Nachweis; `cryptoOk` authentisiert den TSA-
+// Betreiber ohne Trust-Anchor ausdrücklich nicht.
 //
 // Revocation (OCSP/CRL) wird hier NICHT geprüft — der Cert-Status zur Stempelzeit
 // ist über eine zeitnahe Erstprüfung + die Hash-Kette abgesichert; volle
@@ -55,8 +56,8 @@ export interface TsVerifyResult {
   /**
    * Alles AUSSER der Trust-Anchor-Verankerung: Signatur + messageImprint-Bindung
    * + kritische EKU + ESS. true bei einem voll wohlgeformten, an unsere Daten
-   * gebundenen TSA-Token, dessen Root nur (noch) nicht hinterlegt ist. Basis für
-   * den No-Regress-Fallback des Adapters — strenger als signatureValid allein.
+   * gebundenen TSA-Token, dessen Root nur (noch) nicht hinterlegt ist. Dieses
+   * Feld dient ausschließlich der Fehlerdiagnose und ist kein Erfolgsstatus.
    */
   cryptoOk: boolean;
   reason?: string;
@@ -160,14 +161,15 @@ function checkEssSigningCert(
   return { ok: true };
 }
 
-function hasTimestampingEku(cert: Certificate): boolean {
+export function hasTimestampingEku(cert: Certificate): boolean {
   const ext = (cert.extensions ?? []).find((e) => e.extnID === EXT_EKU_OID);
-  // RFC 3161 §2.3: Das EKU-Extension MUSS vorhanden UND als kritisch markiert
-  // sein. Ein Cert mit nicht-kritischer (oder fehlender) timeStamping-EKU darf
-  // NICHT als TSA-Signer akzeptiert werden — sonst genügte irgendein Server-Cert.
+  // RFC 3161 §2.1(10)/§2.3: Der Schlüssel ist ausschliesslich fuer Timestamps
+  // reserviert; das Zertifikat muss genau diesen kritischen EKU-Zweck tragen.
+  // `timeStamping` nur zusaetzlich zu codeSigning/serverAuth zu erlauben wuerde
+  // ein Mehrzweckzertifikat entgegen dieser Zweckbindung als TSA akzeptieren.
   if (!ext || !ext.critical) return false;
   const purposes = (ext.parsedValue as { keyPurposes?: string[] } | undefined)?.keyPurposes;
-  return Array.isArray(purposes) && purposes.includes(EKU_TIMESTAMPING);
+  return Array.isArray(purposes) && purposes.length === 1 && purposes[0] === EKU_TIMESTAMPING;
 }
 
 interface ParsedToken {
@@ -322,7 +324,7 @@ export async function verifyTimestampResponse(
   const reason = valid
     ? undefined
     : !ekuOk
-      ? 'Signer-Cert ohne kritische EKU id-kp-timeStamping (RFC 3161 §2.3)'
+      ? 'Signer-Cert ohne ausschliessliche kritische EKU id-kp-timeStamping (RFC 3161 §2.3)'
       : !ess.ok
         ? ess.reason
         : !chainTrusted

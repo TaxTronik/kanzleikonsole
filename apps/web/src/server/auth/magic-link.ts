@@ -4,10 +4,11 @@ import { env, portalBaseUrl } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { evidenceService } from '@/server/container';
 import { withTenantContext } from '@taxtronik/db';
-import { notify } from '@/server/notifications/service';
+import { notifyMany } from '@/server/notifications/service';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { log } from '@/server/logger';
 import { checkRateLimit } from '@/server/rate-limit';
+import { filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { findEligiblePortalProfilesByEmail, type PortalProfileOption } from './portal-profiles';
 
 const MAGIC_LINK_TTL_MINUTES = 30;
@@ -114,7 +115,11 @@ async function sendMagicLink(input: {
     }
   } catch (e) {
     log[env.NODE_ENV === 'production' ? 'error' : 'warn'](
-      { err: (e as Error).message, email: recipient.email, contactId },
+      {
+        err: (e as Error).message,
+        contactId: recipient.contactId,
+        clientId: recipient.clientId,
+      },
       'magic-link: SMTP-Versand fehlgeschlagen - Token wird invalidiert',
     );
     if (env.NODE_ENV === 'production') {
@@ -124,26 +129,51 @@ async function sendMagicLink(input: {
         });
       } catch (deleteErr) {
         log.error(
-          { err: (deleteErr as Error).message, email: recipient.email, contactId },
+          {
+            err: (deleteErr as Error).message,
+            contactId: recipient.contactId,
+            clientId: recipient.clientId,
+          },
           'magic-link: Token nach SMTP-Fehler konnte nicht invalidiert werden',
         );
       }
     }
     try {
-      await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
-        notify(tx, {
+      await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, async (tx) => {
+        const activeStaff = await tx.staffUser.findMany({
+          where: { tenantId, active: true },
+          select: { id: true },
+        });
+        const allowedStaff = await filterStaffAccessClientTx(
+          tx,
           tenantId,
-          staffId: null,
+          activeStaff.map((staff) => staff.id),
+          recipient.clientId,
+        );
+        if (allowedStaff.size === 0) {
+          log.warn(
+            { contactId: recipient.contactId, clientId: recipient.clientId },
+            'magic-link: kein zugriffsberechtigter Empfaenger fuer SMTP-Fehler-Notification',
+          );
+          return;
+        }
+        await notifyMany(tx, [...allowedStaff], {
+          tenantId,
           kind: 'SYSTEM_MAIL_FAILED',
           title: 'Login-Link konnte nicht versendet werden',
-          body: `Der Magic-Link an ${recipient.email} wurde nicht zugestellt (SMTP-Fehler). Bitte Mailserver pruefen oder den Link erneut senden.`,
+          body: `Der Magic-Link für ${recipient.contactName} (${recipient.clientName}) wurde nicht zugestellt (SMTP-Fehler). Bitte Mailserver prüfen oder den Link erneut senden.`,
+          href: `/staff/clients/${recipient.clientId}`,
           resourceType: 'client_contact',
           resourceId: recipient.contactId,
-        }),
-      );
+        });
+      });
     } catch (notifyErr) {
       log.error(
-        { err: (notifyErr as Error).message, email: recipient.email, contactId },
+        {
+          err: (notifyErr as Error).message,
+          contactId: recipient.contactId,
+          clientId: recipient.clientId,
+        },
         'magic-link: Notification ueber SMTP-Fehler konnte nicht angelegt werden',
       );
     }

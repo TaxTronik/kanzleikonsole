@@ -4,7 +4,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { closeRequestAction } from '../../clients/[id]/requests/actions';
+import { closeRequestAction, reopenRequestAction } from '../../clients/[id]/requests/actions';
 import { StaffResponseForm } from './staff-response-form';
 import { InternalCommentForm } from './internal-comment-form';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
@@ -17,10 +17,17 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Abgebrochen',
 };
 
-export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RequestDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ reopenConflict?: string }>;
+}) {
   const session = await requireStaffPage();
 
   const { id } = await params;
+  const { reopenConflict } = await searchParams;
   const { tenantId, staffId } = session.user;
 
   const reqRow = await withTenantContext(
@@ -49,6 +56,12 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="p-8 max-w-3xl">
+      {reopenConflict === '1' && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Diese Anforderung kann nicht wieder geöffnet werden, weil für dasselbe GwG-Ausweisdokument
+          bereits eine andere aktive Anforderung besteht.
+        </div>
+      )}
       <div className="flex items-start gap-4 mb-6">
         <Link
           href={`/staff/clients/${reqRow.client.id}`}
@@ -159,6 +172,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           <input type="hidden" name="requestId" value={reqRow.id} />
           <button type="submit" className="btn-secondary">
             Anforderung schließen
+          </button>
+        </form>
+      )}
+      {(reqRow.status === 'CLOSED' || reqRow.status === 'RESPONDED') && (
+        <form action={reopenRequestAction}>
+          <input type="hidden" name="requestId" value={reqRow.id} />
+          <button type="submit" className="btn-secondary">
+            Anforderung wieder öffnen
           </button>
         </form>
       )}

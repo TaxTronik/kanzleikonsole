@@ -6,7 +6,29 @@
 // =============================================================================
 
 import type { TaxScheduleKind } from '@prisma/client';
-import { berlinYmd } from '@/lib/fmt';
+import { berlinDayStartUtc, berlinYmd } from '@/lib/fmt';
+
+/**
+ * UTC-Instants des gewaehlten Europe/Berlin-Kalendermonats. Das Ende ist
+ * exklusiv, damit ein Termin exakt um 00:00 Berlin des Folgemonats nicht mehr
+ * in den Vormonat faellt. Die Laenge kann wegen der Zeitumstellung von der
+ * reinen Anzahl Kalendertage mal 24 Stunden abweichen.
+ */
+export function berlinMonthBoundsUtc(
+  year: number,
+  month0: number,
+): { start: Date; endExclusive: Date } {
+  const normalizedStart = new Date(Date.UTC(year, month0, 1));
+  const normalizedEnd = new Date(Date.UTC(year, month0 + 1, 1));
+  const asYmd = (date: Date) =>
+    `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  const start = berlinDayStartUtc(asYmd(normalizedStart));
+  const endExclusive = berlinDayStartUtc(asYmd(normalizedEnd));
+  if (!start || !endExclusive) {
+    throw new RangeError('Ungueltiger Kalendermonat.');
+  }
+  return { start, endExclusive };
+}
 
 /**
  * Parst einen `?month=YYYY-MM`-Query-Parameter. Bei fehlend/invalid: aktueller

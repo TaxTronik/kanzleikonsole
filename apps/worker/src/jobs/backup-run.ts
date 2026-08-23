@@ -23,7 +23,7 @@ import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
-import { EvidenceService, LocalTimestampAdapter, Rfc3161HttpAdapter } from '@taxtronik/evidence';
+import { EvidenceService, LocalTimestampAdapter, createRfc3161Adapter } from '@taxtronik/evidence';
 import { pgConnArgs, pgDumpArgs, prismaBytes, spawnPgDump } from '@taxtronik/db/pg-tools';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
@@ -39,7 +39,7 @@ const s3 = new S3Client({
 });
 
 const timestampPort = env.TIMESTAMP_AUTHORITY_URL
-  ? new Rfc3161HttpAdapter(env.TIMESTAMP_AUTHORITY_URL)
+  ? createRfc3161Adapter(env.TIMESTAMP_AUTHORITY_URL)
   : new LocalTimestampAdapter();
 const evidenceService = new EvidenceService(timestampPort);
 

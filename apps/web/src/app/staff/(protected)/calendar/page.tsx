@@ -10,7 +10,7 @@
 // Ansichts-Schalter in beiden Kalendern direkt erreichbar.
 // =============================================================================
 
-import { parseMonth, shortKind } from '@/lib/tax-calendar';
+import { berlinMonthBoundsUtc, parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox, AlertTriangle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
@@ -33,8 +33,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const { year, month0 } = parseMonth(sp.month);
   const { tenantId, staffId } = session.user;
 
-  const start = new Date(Date.UTC(year, month0, 1));
-  const end = new Date(Date.UTC(year, month0 + 1, 0, 23, 59, 59, 999));
+  // @db.Date-Felder sind als UTC-Kalendertage kodiert. Appointment-Zeitpunkte
+  // sind dagegen echte Instants und brauchen DST-korrekte Berlin-Grenzen.
+  const dateStart = new Date(Date.UTC(year, month0, 1));
+  const dateEnd = new Date(Date.UTC(year, month0 + 1, 0, 23, 59, 59, 999));
+  const { start: appointmentStart, endExclusive: appointmentEndExclusive } = berlinMonthBoundsUtc(
+    year,
+    month0,
+  );
 
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -54,14 +60,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       ] = await Promise.all([
         tx.taxDeadline.groupBy({
           by: ['dueDate', 'kind', 'period', 'status'],
-          where: { dueDate: { gte: start, lte: end }, ...notDenied },
+          where: { dueDate: { gte: dateStart, lte: dateEnd }, ...notDenied },
           orderBy: { dueDate: 'asc' },
           _count: { _all: true },
         }),
         tx.appointment.findMany({
           where: {
-            startsAt: { lte: end },
-            endsAt: { gte: start },
+            startsAt: { lt: appointmentEndExclusive },
+            endsAt: { gte: appointmentStart },
             status: { not: 'CANCELLED' },
             // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
             ...(denied.length ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] } : {}),
@@ -99,16 +105,16 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           where: {
             status: 'APPROVED',
             staff: { active: true },
-            startDate: { lte: end },
-            endDate: { gte: start },
+            startDate: { lte: dateEnd },
+            endDate: { gte: dateStart },
           },
           select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
         }),
         tx.absence.findMany({
           where: {
             staff: { active: true },
-            startDate: { lte: end },
-            OR: [{ endDate: null }, { endDate: { gte: start } }],
+            startDate: { lte: dateEnd },
+            OR: [{ endDate: null }, { endDate: { gte: dateStart } }],
           },
           select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
         }),
@@ -172,8 +178,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   // heute. Anzeige bewusst neutral: „‹Name› Urlaub" bzw. „‹Name› abw.".
   const absenceByDay = new Map<string, string[]>();
   function addAbsenceRange(from: Date, to: Date, label: string) {
-    const clampedFrom = from < start ? start : from;
-    const clampedTo = to > end ? end : to;
+    const clampedFrom = from < dateStart ? dateStart : from;
+    const clampedTo = to > dateEnd ? dateEnd : to;
     for (
       let d = new Date(
         Date.UTC(clampedFrom.getUTCFullYear(), clampedFrom.getUTCMonth(), clampedFrom.getUTCDate()),

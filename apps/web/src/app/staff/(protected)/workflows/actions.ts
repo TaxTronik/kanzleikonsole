@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
-import { parseStepConfig } from '@/server/workflows/step-config';
+import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
 import { startInstanceAction } from '../clients/[id]/workflows/actions';
 import {
   withStaffModule,
@@ -140,20 +140,7 @@ const SaveStepsSchema = z.object({
         skillId: z.string().uuid().nullable(),
         kind: StepKindSchema.default('TASK'),
         config: z.unknown().optional(),
-        // F8: strikte Validierung. Wird via emitN8nEvent als URL-Path-Segment
-        // an n8n geschickt — `?`, `#`, `/` würden die URL-Semantik ändern
-        // (Query, Fragment, Path-Traversal).
-        // L-7: zusätzlich kein Punkt erlaubt — sonst entstehen Sub-Hierarchien
-        // wie `workflow.step.foo.bar.baz`, die in n8n als verschachtelte
-        // Path-Segment-Trigger missrouten könnten. Erlaubt: lowercase + digits + _ -
-        n8nEvent: z
-          .string()
-          .regex(
-            /^[a-z][a-z0-9_-]{0,40}$/,
-            'Nur Kleinbuchstaben, Ziffern, _- erlaubt (Start: Buchstabe, max. 41 Zeichen)',
-          )
-          .nullable()
-          .optional(),
+        n8nEvent: WorkflowN8nEventSchema.nullable().optional(),
       }),
     )
     .min(1),

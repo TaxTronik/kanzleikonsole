@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
@@ -45,6 +45,10 @@ describe('Steuertermin-Neuplanung', () => {
     h.evidenceRecord.mockResolvedValue(undefined);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('schließt Hinweise für gelöschte Termine und deren stornierte Anforderung', async () => {
     const tx = {
       taxScheduleConfig: {
@@ -85,5 +89,48 @@ describe('Steuertermin-Neuplanung', () => {
       ],
     });
     expect(tx.taxDeadline.deleteMany).toHaveBeenCalledAfter(h.resolveNotificationsTx);
+  });
+
+  it('verwendet an der UTC-/Berlin-Tagesgrenze den Berliner Kalendertag', async () => {
+    vi.useFakeTimers();
+    // In Berlin ist bereits der 10. Juni (00:30 MESZ), UTC noch der 9. Juni.
+    vi.setSystemTime(new Date('2026-06-09T22:30:00.000Z'));
+    const tx = {
+      taxScheduleConfig: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'config-1',
+            kind: 'EST_VZ',
+            active: true,
+            hasDauerfrist: false,
+            advised: false,
+            autoRequest: false,
+            reminderDaysBefore: 10,
+            staffLeadDays: 3,
+          },
+        ]),
+        update: vi.fn().mockResolvedValue(undefined),
+      },
+      taxDeadline: {
+        findMany: vi.fn().mockResolvedValue([]),
+        deleteMany: vi.fn(),
+      },
+      request: { updateMany: vi.fn() },
+    };
+    h.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+    const formData = new FormData();
+    formData.set('clientId', CLIENT_ID);
+
+    await expect(saveScheduleConfigAction(null, formData)).resolves.toMatchObject({ ok: true });
+
+    expect(tx.taxDeadline.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          dueDate: { gte: new Date('2026-06-10T00:00:00.000Z') },
+        }),
+      }),
+    );
   });
 });

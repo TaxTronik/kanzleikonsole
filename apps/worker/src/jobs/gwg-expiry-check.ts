@@ -30,6 +30,7 @@ import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
+import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
 // RF-8: record() braucht nur den Tx (der TimestampPort dient dem Versiegeln,
 // nicht dem Schreiben) — gleiches Muster wie risk-analyse-llm.ts.
@@ -75,6 +76,13 @@ async function resolveIdDocumentWarning(
       kinds: ['GWG_ID_EXPIRY_SOON'],
     }),
   );
+}
+
+/** Fachlicher DATE-Status; Ablaufdatum selbst ist noch ein gültiger Tag. */
+export function idDocumentExpiryTitleSuffix(daysLeft: number): string {
+  if (daysLeft < 0) return `seit ${-daysLeft} Tagen abgelaufen`;
+  if (daysLeft === 0) return 'läuft heute ab';
+  return `läuft in ${daysLeft} Tagen ab`;
 }
 
 export const gwgExpiryWorker = new Worker<ChecksJob>(
@@ -266,7 +274,8 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
       // ----------------------------------------------------------------------
       // 2. Personalausweis-Ablauf
       // ----------------------------------------------------------------------
-      const idDocCutoff = new Date(now.getTime() + ID_DOC_WARN_DAYS * 24 * 60 * 60 * 1000);
+      const berlinToday = berlinTodayUtcMidnight(now);
+      const idDocCutoff = new Date(berlinToday.getTime() + ID_DOC_WARN_DAYS * 24 * 60 * 60 * 1000);
       const expiringDocs = await prismaOwner.gwgIdDocument.findMany({
         where: {
           expiryDate: { not: null, lte: idDocCutoff },
@@ -312,16 +321,16 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
 
       for (const doc of expiringDocs) {
         if (!doc.expiryDate) continue;
-        const expiryMs = doc.expiryDate.getTime();
-        const daysLeft = Math.ceil((expiryMs - now.getTime()) / (24 * 60 * 60 * 1000));
-        const isExpired = daysLeft <= 0;
+        // expiry_date ist ein fachliches DATE und gilt einschließlich seines
+        // Berliner Kalendertags. Ein Ausweis mit Ablaufdatum heute ist daher
+        // noch nicht abgelaufen, unabhängig von UTC-Uhrzeit und Sommerzeit.
+        const daysLeft = wholeDaysBetween(berlinToday, doc.expiryDate);
+        const isExpired = daysLeft < 0;
 
         // Notification an Bearbeiter (auch ADMIN/PARTNER als Fallback)
         const respIds = doc.check.client.responsibilities.map((r) => r.staffId);
         const recipients = respIds.length > 0 ? respIds : adminPartners.map((s) => s.id);
-        const titleSuffix = isExpired
-          ? `seit ${-daysLeft} Tagen abgelaufen`
-          : `läuft in ${daysLeft} Tagen ab`;
+        const titleSuffix = idDocumentExpiryTitleSuffix(daysLeft);
         await resolveIdDocumentWarning(tenantId, doc.id, isExpired);
         for (const staffId of recipients) {
           await upsertNotification(tenantId, staffId, {
@@ -340,22 +349,27 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
         // „Müller-Schmidt" teilten den `contains: ownerName`-Match — der
         // zweite Auto-Request wurde nie angelegt.
         if (!requestedIdDocumentIds.has(doc.id) && doc.check.client.allowActive) {
-          await prismaOwner.request.create({
-            data: {
-              tenantId,
-              clientId: doc.check.clientId,
-              title: `Neuer ${idDocTypeLabel(doc.type)} von ${doc.ownerName} erforderlich`,
-              description: `Der ${idDocTypeLabel(doc.type)} läuft am ${dateFmt(
-                doc.expiryDate,
-              )} ab. Bitte stellen Sie eine aktuelle Kopie (Vorder- und Rückseite) zur Verfügung.`,
-              priority: isExpired ? 'HIGH' : 'NORMAL',
-              createdByStaff: systemStaff.id,
-              dueAt: isExpired ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) : doc.expiryDate,
-              linkedGwgIdDocumentId: doc.id,
-            },
+          const created = await prismaOwner.request.createMany({
+            data: [
+              {
+                tenantId,
+                clientId: doc.check.clientId,
+                title: `Neuer ${idDocTypeLabel(doc.type)} von ${doc.ownerName} erforderlich`,
+                description: `Der ${idDocTypeLabel(doc.type)} läuft am ${dateFmt(
+                  doc.expiryDate,
+                )} ab. Bitte stellen Sie eine aktuelle Kopie (Vorder- und Rückseite) zur Verfügung.`,
+                priority: isExpired ? 'HIGH' : 'NORMAL',
+                createdByStaff: systemStaff.id,
+                dueAt: isExpired
+                  ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+                  : doc.expiryDate,
+                linkedGwgIdDocumentId: doc.id,
+              },
+            ],
+            skipDuplicates: true,
           });
           requestedIdDocumentIds.add(doc.id);
-          idDocRequests += 1;
+          idDocRequests += created.count;
         }
       }
 
@@ -363,11 +377,10 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
       // 3. GwG-Lösch-Queue (§ 8 Abs. 1 und 4, DSGVO-Speicherbegrenzung) — tägliche Notification an
       //    ADMIN/PARTNER, sobald Einträge löschreif sind.
       //
-      //    Fristlogik wie apps/web/src/server/gwg/retention.ts: Frist endet am
-      //    Jahresende des Mandatsende-Jahres + 5 Jahre → „löschreif" ⟺
-      //    mandateEndedAt < 1.1.(Jahr(now) − 5). Der SQL-Filter ist hier EXAKT
-      //    (kein Grobfilter): jedes Mandatsende vor diesem Stichtag hat eine
-      //    Frist ≤ 1.1.(Jahr(now)) ≤ now; jedes spätere eine Frist > now.
+      //    Fristlogik wie apps/web/src/server/gwg/retention.ts: fünf Jahre ab
+      //    Mandatsende bzw. Feststellung bei nie zustande gekommener Beziehung.
+      //    Auch die Höchstfrist beginnt erst an diesem fachlichen Startpunkt;
+      //    das bloße Belegalter beendet keine laufende Geschäftsbeziehung.
       // ----------------------------------------------------------------------
       const gwgDeletionCutoff = new Date(Date.UTC(now.getUTCFullYear() - 5, 0, 1));
       const [dueDocs, dueChecks] = await Promise.all([
@@ -380,34 +393,37 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
               { client: { mandateEndedAt: { lt: gwgDeletionCutoff } } },
               {
                 createdAt: { lt: gwgDeletionCutoff },
-                client: { mandateEndedAt: null },
-                gwgOnboardingInvite: {
-                  is: {
-                    OR: [
-                      { status: { in: ['CANCELLED', 'EXPIRED'] } },
-                      { status: { in: ['PENDING', 'STARTED'] }, expiresAt: { lte: now } },
-                      {
-                        status: 'SUBMITTED',
+                client: {
+                  mandateEndedAt: null,
+                  allowActive: false,
+                  onboardingCompletedAt: null,
+                },
+                // Parität zur echten Review-Queue: Ein jemals verifizierter
+                // verknüpfter Check belegt eine zustande gekommene Beziehung.
+                // Deren Frist darf nicht allein durch spätere Deaktivierung
+                // oder das Belegalter starten.
+                NOT: [
+                  {
+                    gwgIdDocuments: {
+                      some: {
+                        check: {
+                          OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }],
+                        },
+                      },
+                    },
+                  },
+                  {
+                    gwgOnboardingInvite: {
+                      is: {
                         gwgCheck: {
                           is: {
-                            OR: [{ status: 'REJECTED' }, { status: 'EXPIRED', verifiedAt: null }],
+                            OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }],
                           },
                         },
                       },
-                    ],
-                  },
-                },
-              },
-              {
-                createdAt: { lt: gwgDeletionCutoff },
-                client: { mandateEndedAt: null },
-                gwgIdDocuments: {
-                  some: {
-                    check: {
-                      OR: [{ status: 'REJECTED' }, { status: 'EXPIRED', verifiedAt: null }],
                     },
                   },
-                },
+                ],
               },
             ],
           },
@@ -419,11 +435,17 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
             OR: [
               { client: { mandateEndedAt: { lt: gwgDeletionCutoff } } },
               {
-                client: { mandateEndedAt: null },
+                client: {
+                  mandateEndedAt: null,
+                  allowActive: false,
+                  onboardingCompletedAt: null,
+                },
+                verifiedAt: null,
                 updatedAt: { lt: gwgDeletionCutoff },
                 idDocuments: { none: { createdAt: { gte: gwgDeletionCutoff } } },
                 beneficialOwners: { none: { createdAt: { gte: gwgDeletionCutoff } } },
-                OR: [{ status: 'REJECTED' }, { status: 'EXPIRED', verifiedAt: null }],
+                onboardingInvites: { none: { updatedAt: { gte: gwgDeletionCutoff } } },
+                status: { in: ['DRAFT', 'IN_REVIEW', 'REJECTED', 'EXPIRED'] },
               },
             ],
           },
@@ -440,8 +462,8 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
             kind: 'GWG_DELETION_DUE' as NotificationKind,
             title: `GwG-Löschprüfung: ${itemWord} löschreif`,
             body:
-              'Belege/Aufzeichnungen beendeter Mandate, deren Aufbewahrungsfrist ' +
-              '(§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
+              'Belege/Aufzeichnungen beendeter Mandate oder nie zustande gekommener Beziehungen, ' +
+              'deren Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
             href: '/staff/admin/gwg-retention',
             resourceType: 'tenant',
             resourceId: tenantId,

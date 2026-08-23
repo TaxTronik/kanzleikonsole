@@ -17,7 +17,7 @@ export interface BrandingInfo {
   accentColor: string;
   // Optional: Untertitel-Text in der Sidebar
   subtitle: string | null;
-  // Logo als Data-URL (PNG/JPG/SVG, base64-encoded). Inline gespeichert weil
+  // Logo als Data-URL (PNG/JPG/WebP, base64-encoded). Inline gespeichert weil
   // typischerweise <50 KB; vermeidet Storage-Komplexität für ein einzelnes
   // Bild pro Tenant. Wenn null: Text-Anzeige (displayName) wird verwendet.
   logoDataUrl: string | null;

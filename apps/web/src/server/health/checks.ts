@@ -318,7 +318,7 @@ export async function checkTsa(): Promise<TsaCheck> {
  * fällt sonst auf ENV und danach auf den verifizierten GlobalSign-Default
  * zurück. Macht einen echten
  * RFC-3161-Roundtrip — sieht also auch, wenn der Server zwar erreichbar ist,
- * aber kein granted Response liefert.
+ * aber keinen granted UND gegen Hash/Trust-Roots verifizierbaren Response liefert.
  */
 export async function checkTsaForTenant(tenantId: string): Promise<TsaCheck> {
   // RLS-Backstop: tenant_setting ist mandantenscharf — Read über
@@ -351,7 +351,14 @@ async function roundtripTsa(url: string, source: 'tenant' | 'env' | 'default'): 
     // Die Factory bindet zusaetzlich die operatorseitig hinterlegten Roots ein;
     // der nackte Konstruktor wuerde nur dem eingebetteten GlobalSign-Root trauen.
     const adapter = createRfc3161Adapter(url, 5_000);
-    await adapter.timestamp(randomBytes(32));
+    const payload = randomBytes(32);
+    const stamp = await adapter.timestamp(payload);
+    const response = stamp.tsaResponseBlob ? Buffer.from(stamp.tsaResponseBlob) : null;
+    if (!(await adapter.verify(payload, response))) {
+      throw new Error(
+        'TSA-Antwort ist nicht an den Test-Hash oder an einen konfigurierten Trust-Anchor gebunden.',
+      );
+    }
     return { ok: true, latencyMs: Date.now() - start, url, source };
   } catch (e) {
     return { ok: false, error: (e as Error).message, url, source };

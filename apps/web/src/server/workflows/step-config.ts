@@ -23,6 +23,22 @@ export {
   type WorkflowStepKind,
 } from '@/lib/workflow-step-kinds';
 
+/**
+ * Suffix eines Workflow-n8n-Events. Der Wert wird als letztes Segment von
+ * `workflow.step.<suffix>` verwendet und darf deshalb keine URL- oder
+ * Hierarchie-Trennzeichen enthalten.
+ *
+ * Dieses Schema ist die gemeinsame Save-Grenze fuer Vorlagen- und
+ * Ad-hoc-Schritte. So koennen keine WorkflowItems entstehen, die erst beim
+ * spaeteren Outbox-Handoff an der Event-Whitelist scheitern.
+ */
+export const WorkflowN8nEventSchema = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9_-]{0,40}$/,
+    'Nur Kleinbuchstaben, Ziffern, _- erlaubt (Start: Buchstabe, max. 41 Zeichen)',
+  );
+
 // -----------------------------------------------------------------------------
 // Per-Kind-Schemata
 // -----------------------------------------------------------------------------

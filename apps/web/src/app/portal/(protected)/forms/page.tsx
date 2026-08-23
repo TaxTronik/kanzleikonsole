@@ -26,12 +26,30 @@ export default async function PortalFormsPage() {
     (tx) =>
       tx.formSubmission.findMany({
         where: { clientId },
+        include: {
+          requests: {
+            where: { tenantId, clientId },
+            select: { id: true, status: true },
+            orderBy: { id: 'asc' },
+          },
+        },
         orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
       }),
   );
 
-  const open = submissions.filter((s) => s.status === 'PENDING' || s.status === 'DRAFT');
-  const done = submissions.filter((s) => s.status === 'SUBMITTED' || s.status === 'REVIEWED');
+  const requestClosed = (submission: (typeof submissions)[number]) => {
+    const requests = submission.requestId
+      ? submission.requests.filter((candidate) => candidate.id === submission.requestId)
+      : submission.requests;
+    if (submission.requestId && requests.length !== 1) return true;
+    return requests.some((request) => !['OPEN', 'IN_PROGRESS'].includes(request.status));
+  };
+  const open = submissions.filter(
+    (s) => (s.status === 'PENDING' || s.status === 'DRAFT') && !requestClosed(s),
+  );
+  const done = submissions.filter(
+    (s) => s.status === 'SUBMITTED' || s.status === 'REVIEWED' || requestClosed(s),
+  );
 
   return (
     <div className="p-8 max-w-3xl">
@@ -91,7 +109,9 @@ export default async function PortalFormsPage() {
                   {s.name}
                 </Link>
                 <span className="text-xs text-muted">
-                  {PORTAL_FORM_STATUS_LABELS[s.status]}
+                  {requestClosed(s) && (s.status === 'PENDING' || s.status === 'DRAFT')
+                    ? 'Geschlossen'
+                    : PORTAL_FORM_STATUS_LABELS[s.status]}
                   {s.submittedAt && ` · ${fmtDateNumeric(s.submittedAt)}`}
                 </span>
               </li>

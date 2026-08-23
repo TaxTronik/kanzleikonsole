@@ -4,7 +4,11 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Check, RotateCcw, UserPlus, CalendarClock, X, Building2 } from 'lucide-react';
-import { fmtDateTimeShort } from '@/lib/fmt';
+import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import {
+  phoneNoteReminderStatus,
+  type PhoneNoteReminderStatus,
+} from '@/lib/phone-note-reminder-status';
 import {
   markPhoneNoteDoneAction,
   undoPhoneNoteDoneAction,
@@ -25,6 +29,12 @@ export interface PhoneNoteItem {
   takenByStaff: string;
   clientId: string | null;
   client?: { id: string; name: string } | null;
+  reminders: Array<{
+    id: string;
+    subject: string;
+    dueDate: string;
+    doneAt: string | null;
+  }>;
 }
 
 interface StaffOption {
@@ -36,10 +46,12 @@ export function PhoneNotesList({
   notes,
   staffOptions,
   currentStaffId,
+  todayYmd,
 }: {
   notes: PhoneNoteItem[];
   staffOptions: StaffOption[];
   currentStaffId: string;
+  todayYmd: string;
 }) {
   const router = useRouter();
   const [isMutating, startMut] = useTransition();
@@ -79,7 +91,7 @@ export function PhoneNotesList({
         assigneeStaffId: assigneeStaffId || null,
       });
       if (!res.ok) {
-        alert(res.error ?? 'Konnte nicht in Wiedervorlage überführt werden.');
+        alert(res.error ?? 'Konnte Wiedervorlage nicht anlegen.');
         return;
       }
       setActivePanel(null);
@@ -102,6 +114,7 @@ export function PhoneNotesList({
               note={p}
               staffName={staffName}
               currentStaffId={currentStaffId}
+              todayYmd={todayYmd}
               isMutating={isMutating}
               activePanel={activePanel?.id === p.id ? activePanel.kind : null}
               onMarkDone={() => markDone(p.id)}
@@ -126,11 +139,12 @@ export function PhoneNotesList({
           <ul className="divide-y divide-border-subtle">
             {done_items.map((p) => (
               <li key={p.id} className="px-6 py-2 flex items-center justify-between gap-3">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-sm text-secondary line-through truncate">{p.subject}</p>
                   <p className="text-[11px] text-disabled">
                     {p.callerName} · erledigt {p.doneAt ? fmtDateTimeShort(new Date(p.doneAt)) : ''}
                   </p>
+                  <PhoneNoteReminderLinks reminders={p.reminders} todayYmd={todayYmd} />
                 </div>
                 <button
                   type="button"
@@ -154,6 +168,7 @@ function PhoneNoteRow({
   note,
   staffName,
   currentStaffId,
+  todayYmd,
   isMutating,
   activePanel,
   onMarkDone,
@@ -167,6 +182,7 @@ function PhoneNoteRow({
   note: PhoneNoteItem;
   staffName: Map<string, string>;
   currentStaffId: string;
+  todayYmd: string;
   isMutating: boolean;
   activePanel: 'forward' | 'reminder' | null;
   onMarkDone: () => void;
@@ -221,6 +237,8 @@ function PhoneNoteRow({
           <p className="text-[10px] text-disabled mt-0.5">
             {fmtDateTimeShort(new Date(note.createdAt))}
           </p>
+
+          <PhoneNoteReminderLinks reminders={note.reminders} todayYmd={todayYmd} />
 
           <div className="flex items-center gap-2 mt-2">
             <button
@@ -328,5 +346,51 @@ function PhoneNoteRow({
         </div>
       </div>
     </li>
+  );
+}
+
+const REMINDER_STATUS: Record<PhoneNoteReminderStatus, { label: string; className: string }> = {
+  DONE: { label: 'Erledigt', className: 'text-muted' },
+  OVERDUE: { label: 'Überfällig', className: 'text-red-700 dark:text-red-400' },
+  DUE_TODAY: { label: 'Heute fällig', className: 'text-yellow-700 dark:text-yellow-400' },
+  OPEN: { label: 'Offen', className: 'text-brand-700 dark:text-brand-400' },
+};
+
+function PhoneNoteReminderLinks({
+  reminders,
+  todayYmd,
+}: {
+  reminders: PhoneNoteItem['reminders'];
+  todayYmd: string;
+}) {
+  if (reminders.length === 0) return null;
+
+  return (
+    <div className="mt-2 rounded border border-default bg-surface-raised px-2.5 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted">
+        Wiedervorlagen ({reminders.length})
+      </p>
+      <ul className="mt-1 space-y-1">
+        {reminders.map((reminder) => {
+          const status = REMINDER_STATUS[phoneNoteReminderStatus(reminder, todayYmd)];
+          return (
+            <li key={reminder.id}>
+              <Link
+                href={`/staff/reminders/${reminder.id}`}
+                className="group flex items-center gap-1.5 text-[11px] hover:text-brand-700"
+              >
+                <CalendarClock className="h-3 w-3 shrink-0 text-disabled group-hover:text-brand-700" />
+                <span className="min-w-0 flex-1 truncate text-secondary group-hover:text-brand-700">
+                  {reminder.subject}
+                </span>
+                <span className={`shrink-0 ${status.className}`}>
+                  {status.label} · fällig {fmtDateShort(new Date(reminder.dueDate))}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

@@ -15,10 +15,12 @@ Zwei Export-Formate, beide aus denselben Daten:
    - Profil-ID: `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0`
    - Endpoint: `/api/staff/invoices/[id]/xrechnung`
    - Verwendung: B2G (öffentliche Auftraggeber), Maschine-zu-Maschine
-2. **ZUGFeRD/Factur-X** (Hybrid PDF/A-3 + eingebettete CII-XML)
+2. **ZUGFeRD/Factur-X** (Hybrid-PDF + eingebettete CII-XML; derzeit ohne
+   Zusage einer strikt validierten PDF/A-3-Datei)
    - Profil: EN 16931
    - Endpoint: `/api/staff/invoices/[id]/zugferd`
-   - Generator: pdf-lib mit `doc.attach(...factur-x.xml..., AFRelationship.Source)`
+   - Generator: pdf-lib mit
+     `doc.attach(...factur-x.xml..., AFRelationship.Alternative)`
    - Verwendung: B2B-Standardfall, weil PDF auch human-readable ist
 
 Verkäufer-Stammdaten (Name, Adresse, USt-ID, IBAN/BIC, Bank) liegen in
@@ -29,9 +31,23 @@ Empfänger-Stammdaten in `client` (Migration `20260520`).
 
 **Vorteile**
 
-- Beide Formate aus einer Datenquelle (keine Drift möglich)
-- Server-side, kein User-Eingriff (Datei wird beim Klick generiert)
-- Tax-Codes laut UN/CEFACT (HUR/DAY/MON/KGM/MTR/LS/C62)
+- Beide Formate nutzen dieselbe fachliche Datenbasis und gemeinsame
+  CII-Generierungslogik; die getrennten Archivfassungen müssen aus demselben
+  fachlichen Snapshot erzeugt werden
+- Server-side, kein User-Eingriff: Bei DRAFT sind Direktdownloads flüchtige,
+  nicht archivierte Kontrollfassungen. Die maßgebliche Archivfassung wird beim
+  Versand aus einem gemeinsamen PDF-/XML-Snapshot einmalig erzeugt; bei
+  bereits ausgestellten Altbeständen ganz ohne Archiv geschieht dies
+  ersatzweise beim ersten Direktdownload aus den dann verfügbaren Rechnungs-
+  und Stammdaten. Danach streamen Downloads die byte-stabil archivierte
+  Fassung. Existiert bei einem Altbestand schon die archivierte Hybrid-PDF,
+  aber noch keine separate XML, wird `factur-x.xml` aus genau dieser PDF
+  extrahiert statt aus heutigen Stammdaten neu erzeugt.
+- Einheitencodes laut UN/CEFACT (unter anderem
+  HUR/DAY/MON/KGM/MTR/LTR/LS/C62)
+- EN-16931-Steuerkategorien `S` (positive Sätze einschließlich 19 %/7 %),
+  `Z` (Nullsatz), `E` (steuerbefreit mit Befreiungsgrund) und `AE`
+  (Reverse Charge) werden je Steuergruppe erzeugt
 
 **Nachteile**
 
@@ -39,11 +55,10 @@ Empfänger-Stammdaten in `client` (Migration `20260520`).
   Postprocessing brauchen). Für die meisten Empfänger dennoch akzeptabel,
   weil die XML korrekt eingebettet ist und die XMP-Metadaten Factur-X
   deklarieren.
-- Aktuell nur Standardsteuersatz (CategoryCode `S`) — `Z`/`E`/`K` für
-  steuerbefreite oder innergemeinschaftliche Lieferungen folgt bei Bedarf
-- Pflichtfeld-Validierung beim Download (422 bei unvollständiger Adresse) —
-  alternative: Validation beim Speichern der Rechnung. Aktuell weicher,
-  damit Entwürfe ohne Adresse möglich sind.
+- Pflichtfeld-Validierung vor Vorschau- und Archiv-Erzeugung (422 in der
+  Downloadroute beziehungsweise Versandabbruch bei unvollständigen Daten) —
+  nicht bereits beim Speichern der Rechnung, damit unvollständige Entwürfe
+  möglich bleiben.
 
 ## Alternativen verworfen
 

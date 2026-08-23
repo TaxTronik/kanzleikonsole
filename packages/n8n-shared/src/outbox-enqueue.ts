@@ -113,16 +113,32 @@ async function readExistingDedupeResult(
   const existing = await deps.db.$transaction((tx) =>
     tx.n8nOutbox.findUnique({
       where: { dedupeKey },
-      select: { id: true, _count: { select: { deliveries: true } } },
+      select: {
+        id: true,
+        status: true,
+        lastError: true,
+        _count: { select: { deliveries: true } },
+      },
     }),
   );
-  return existing
-    ? {
-        eventId: existing.id,
-        status: 'DUPLICATE',
-        deliveryCount: existing._count.deliveries,
-      }
-    : null;
+  if (!existing) return null;
+  // Ein wiederholter Emit darf ein ursprünglich nicht geroutetes oder bewusst
+  // übersprungenes Event nicht durch das bloße Dedupe als erfolgreichen
+  // Handoff ausgeben. Nach einem Admin-Replay steht der Outbox-Satz wieder auf
+  // PENDING und wird beim nächsten Retry korrekt als DUPLICATE bestätigt.
+  if (existing.status === 'UNROUTED' || existing.status === 'SKIPPED') {
+    return {
+      eventId: existing.id,
+      status: existing.status,
+      deliveryCount: existing._count.deliveries,
+      ...(existing.lastError ? { error: existing.lastError } : {}),
+    };
+  }
+  return {
+    eventId: existing.id,
+    status: 'DUPLICATE',
+    deliveryCount: existing._count.deliveries,
+  };
 }
 
 export async function enqueueN8nEventCore(
@@ -339,19 +355,11 @@ export async function enqueueN8nEventCore(
     // liest den bereits dauerhaft geschriebenen Outbox-Eintrag zurück und ist
     // damit kein WRITE_FAILED/Retry-Fehler.
     if (dedupeKey && (err as { code?: string }).code === 'P2002') {
-      const existing = await deps.db.$transaction((tx) =>
-        tx.n8nOutbox.findUnique({
-          where: { dedupeKey },
-          select: { id: true, _count: { select: { deliveries: true } } },
-        }),
-      );
-      if (existing) {
-        return {
-          eventId: existing.id,
-          status: 'DUPLICATE',
-          deliveryCount: existing._count.deliveries,
-        };
-      }
+      // Derselbe statusbewahrende Read wie im Fast-Path: Gewinnt der
+      // parallele Aufrufer mit UNROUTED/SKIPPED, darf der Verlierer das nicht
+      // als erfolgreichen DUPLICATE-Handoff ausgeben.
+      const existing = await readExistingDedupeResult(deps, dedupeKey);
+      if (existing) return existing;
     }
     log.error({ component: 'n8n-outbox', event, err: (err as Error).message }, 'write failed');
     return {

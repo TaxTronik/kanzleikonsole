@@ -22,18 +22,36 @@ export default async function PortalFormFillerPage({
 
   const sub = await withTenantContext(
     { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-    (tx) =>
-      tx.formSubmission.findUnique({
+    async (tx) => {
+      const submission = await tx.formSubmission.findUnique({
         where: { id },
         include: {
           template: { include: { fields: { orderBy: { position: 'asc' } } } },
+          requests: {
+            where: { tenantId, clientId },
+            select: { id: true, status: true },
+            orderBy: { id: 'asc' },
+          },
         },
-      }),
+      });
+      if (!submission) return null;
+      const linkedRequests = submission.requestId
+        ? submission.requests.filter((request) => request.id === submission.requestId)
+        : submission.requests;
+      return {
+        ...submission,
+        linkedRequests,
+        linkedRequestMissing: Boolean(submission.requestId && linkedRequests.length !== 1),
+      };
+    },
   );
   if (!sub) notFound();
   if (sub.clientId !== clientId) notFound();
 
   const submitted = sub.status === 'SUBMITTED' || sub.status === 'REVIEWED';
+  const requestClosed =
+    sub.linkedRequestMissing ||
+    sub.linkedRequests.some((request) => !['OPEN', 'IN_PROGRESS'].includes(request.status));
 
   return (
     <div className="p-8 max-w-3xl">
@@ -61,6 +79,7 @@ export default async function PortalFormFillerPage({
       <PortalFormFiller
         submissionId={sub.id}
         submitted={submitted}
+        requestClosed={requestClosed}
         initialAnswers={(sub.answers as Record<string, unknown>) ?? {}}
         fields={sub.template.fields.map((f) => ({
           id: f.id,

@@ -19,6 +19,7 @@ import {
   type TxClient,
 } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent, type N8nEnqueueResult } from '@/server/n8n/outbox';
 import {
@@ -446,21 +447,33 @@ export async function receiveResearchResult(
       },
     });
 
-    // Notify-on-arrival: Auftraggeber:in (oder alle, wenn unbekannt). Reuse
-    // REQUEST_RESPONDED — der Titel macht den Recherche-Kontext klar.
-    await notify(tx, {
-      tenantId,
-      staffId: recipientStaffId,
-      kind: 'REQUEST_RESPONDED',
-      title: `Rechercheergebnis eingegangen${title ? ': ' + title : ''}`,
-      body: input.source ? `Quelle: ${input.source}` : null,
-      href:
-        hrefClientId && hrefAnalysisId
-          ? `/staff/clients/${hrefClientId}/subsumtion/${hrefAnalysisId}?view=recherche`
-          : null,
-      resourceType: 'risk_research_result',
-      resourceId: created.id,
-    });
+    // Notify-on-arrival: Ein n8n-Ergebnis kann Stunden nach dem Auftrag
+    // eintreffen. Inzwischen kann die Kanzlei auf RESTRICTED gewechselt oder
+    // der Mandant vertraulich geworden sein. Der damalige Auftraggeber bleibt
+    // historisch gespeichert, bekommt ohne JETZIGEN Zugriff aber weder Titel
+    // noch Quellenangabe. Unkorrelierte Ergebnisse ohne Mandantenbezug bleiben
+    // wie bisher eine kanzleiweite Eingangsmeldung.
+    const mayNotify = hrefClientId
+      ? recipientStaffId !== null &&
+        (await filterStaffAccessClientTx(tx, tenantId, [recipientStaffId], hrefClientId)).has(
+          recipientStaffId,
+        )
+      : true;
+    if (mayNotify) {
+      await notify(tx, {
+        tenantId,
+        staffId: recipientStaffId,
+        kind: 'REQUEST_RESPONDED',
+        title: `Rechercheergebnis eingegangen${title ? ': ' + title : ''}`,
+        body: input.source ? `Quelle: ${input.source}` : null,
+        href:
+          hrefClientId && hrefAnalysisId
+            ? `/staff/clients/${hrefClientId}/subsumtion/${hrefAnalysisId}?view=recherche`
+            : null,
+        resourceType: 'risk_research_result',
+        resourceId: created.id,
+      });
+    }
     return { id: created.id, duplicate: false };
   });
   return { resultId: result.id, duplicate: result.duplicate };

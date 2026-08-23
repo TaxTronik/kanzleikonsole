@@ -2,12 +2,12 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/execute-step';
-import { parseStepConfig } from '@/server/workflows/step-config';
+import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+import { assertClientAccessTx, filterStaffAccessClientTx, toActionError } from '@/server/auth/rbac';
 import {
   staffActionGuard,
   withStaffModule,
@@ -16,6 +16,22 @@ import {
 } from '@/server/actions/staff-action';
 
 const withWorkflowsStaff = withStaffModule('workflows');
+
+async function assertWorkflowStaffAccessTx(
+  tx: TxClient,
+  tenantId: string,
+  staffIds: readonly string[],
+  clientId: string,
+): Promise<void> {
+  const ziel = [...new Set(staffIds)].filter(Boolean);
+  if (ziel.length === 0) return;
+  const erlaubt = await filterStaffAccessClientTx(tx, tenantId, ziel, clientId);
+  if (erlaubt.size !== ziel.length) {
+    throw new ActionError(
+      'Mindestens eine ausgewählte Person darf auf diesen Mandanten nicht zugreifen.',
+    );
+  }
+}
 
 function revalidateClientWorkflow(clientId: string | undefined): void {
   if (clientId) revalidatePath(`/staff/clients/${clientId}`);
@@ -82,6 +98,8 @@ export async function startInstanceAction(input: {
 
       const name = tpl ? tpl.name : (parsed.data.name ?? 'Eigener Workflow');
       const stepCount = tpl ? tpl.steps.length : 0;
+      const memberSet = new Set<string>([staffId, ...(parsed.data.memberIds ?? [])]);
+      await assertWorkflowStaffAccessTx(tx, tenantId, [...memberSet], parsed.data.clientId);
       // Items nur im Vorlagen-Modus aus den Schritten erzeugen; eigener Workflow
       // startet leer (Schritte folgen ad-hoc).
       const items = tpl
@@ -116,7 +134,6 @@ export async function startInstanceAction(input: {
         },
       });
       // Mitglieder aufnehmen — immer mindestens der Starter selbst
-      const memberSet = new Set<string>([staffId, ...(parsed.data.memberIds ?? [])]);
       await tx.workflowInstanceMember.createMany({
         data: Array.from(memberSet).map((sid) => ({
           instanceId: inst.id,
@@ -186,6 +203,7 @@ export async function setWorkflowMembersAction(input: { instanceId: string; memb
     for (const sid of toAdd) {
       await assertStaffInTenant(tx, sid);
     }
+    await assertWorkflowStaffAccessTx(tx, tenantId, toAdd, inst.clientId);
 
     if (toAdd.length > 0) {
       await tx.workflowInstanceMember.createMany({
@@ -307,7 +325,7 @@ export async function setItemAssigneeAction(input: { id: string; staffId: string
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, session }) => {
     const existing = await tx.workflowItem.findUnique({
       where: { id: parsed.data.id },
       select: { instance: { select: { clientId: true } } },
@@ -317,6 +335,12 @@ export async function setItemAssigneeAction(input: { id: string; staffId: string
     // R-2: assigneeStaffId muss im aktuellen Tenant existieren (falls nicht null).
     if (parsed.data.staffId) {
       await assertStaffInTenant(tx, parsed.data.staffId);
+      await assertWorkflowStaffAccessTx(
+        tx,
+        tenantId,
+        [parsed.data.staffId],
+        existing.instance.clientId,
+      );
     }
     await tx.workflowItem.update({
       where: { id: parsed.data.id },
@@ -578,7 +602,7 @@ export async function addItemToInstanceAction(input: {
         ])
         .default('TASK'),
       config: z.unknown().optional(),
-      n8nEvent: z.string().max(100).nullable().optional(),
+      n8nEvent: WorkflowN8nEventSchema.nullable().optional(),
       assigneeStaffId: z.string().uuid().nullable().optional(),
     })
     .safeParse(input);
@@ -598,6 +622,11 @@ export async function addItemToInstanceAction(input: {
     if (inst.status === 'COMPLETED' || inst.status === 'CANCELLED') {
       throw new ActionError('Workflow ist abgeschlossen oder abgebrochen.');
     }
+    const assigneeStaffId =
+      parsed.data.assigneeStaffId === undefined ? staffId : parsed.data.assigneeStaffId;
+    if (assigneeStaffId) {
+      await assertWorkflowStaffAccessTx(tx, tenantId, [assigneeStaffId], inst.clientId);
+    }
     const nextPos = (inst.items[0]?.position ?? -1) + 1;
     const item = await tx.workflowItem.create({
       data: {
@@ -605,8 +634,7 @@ export async function addItemToInstanceAction(input: {
         position: nextPos,
         title: parsed.data.title,
         description: parsed.data.description ?? null,
-        assigneeStaffId:
-          parsed.data.assigneeStaffId === undefined ? staffId : parsed.data.assigneeStaffId,
+        assigneeStaffId,
         dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
         kind,
         config: configResult.value as object,
@@ -659,6 +687,12 @@ export async function handoverItemAction(input: {
     if (parsed.data.toStaffId === item.assigneeStaffId) {
       throw new ActionError('Empfänger ist bereits Bearbeiter.');
     }
+    await assertWorkflowStaffAccessTx(
+      tx,
+      tenantId,
+      [parsed.data.toStaffId],
+      item.instance.clientId,
+    );
     const toUser = await tx.staffUser.findUnique({
       where: { id: parsed.data.toStaffId },
       select: { fullName: true, active: true },

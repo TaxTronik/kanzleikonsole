@@ -134,9 +134,12 @@ const TEN_YEAR_BUCKET: Prisma.RequestWhereInput = {
 };
 
 /**
- * Löscht Requests (Cascade auf responses) in Batches. Vorher werden die losen
- * Rückverweise (tax_deadline / form_submission) in derselben Transaktion
- * genullt, damit keine verwaisten request_id-Spalten zurückbleiben.
+ * Löscht Requests (Cascade auf responses) in Batches. Tax-Deadline-Verweise
+ * werden vorher genullt. Bei Formularen bleibt bzw. entsteht dagegen bewusst
+ * ein nicht auflösbarer request_id-Tombstone: PENDING/DRAFT darf nach der
+ * Retention eines terminalen Requests niemals wieder als stand-alone offen
+ * erscheinen. Portal, Actions und SQL-Discard behandeln den fehlenden
+ * expliziten Request deshalb einheitlich fail-closed.
  */
 async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
   let total = 0;
@@ -149,6 +152,29 @@ async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
     if (batch.length === 0) break;
     const ids = batch.map((r) => r.id);
     const deletedCount = await prismaOwner.$transaction(async (tx) => {
+      // Portal-Formularaktionen sperren Submission → Request. Dieselbe
+      // Reihenfolge verhindert einen Deadlock, wenn Retention und ein letzter
+      // Portalzugriff gleichzeitig laufen. Sowohl der explizite request_id-
+      // Link als auch der ältere Request-Rücklink werden berücksichtigt.
+      await tx.$queryRaw(
+        Prisma.sql`
+          SELECT submission."id"
+            FROM "form_submission" AS submission
+           WHERE submission."request_id" IN (
+                   ${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}
+                 )
+              OR submission."id" IN (
+                   SELECT request."form_submission_id"
+                     FROM "request" AS request
+                    WHERE request."id" IN (
+                            ${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}
+                          )
+                      AND request."form_submission_id" IS NOT NULL
+                 )
+           ORDER BY submission."id"
+           FOR UPDATE
+        `,
+      );
       // Fail-closed gegen neue Antworten zwischen Kandidatensuche und Delete:
       // der FK-Check einer Response benötigt einen kollidierenden Key-Share-
       // Lock und wartet, bis diese Transaktion abgeschlossen ist.
@@ -169,10 +195,28 @@ async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
         where: { requestId: { in: eligibleIds } },
         data: { requestId: null },
       });
-      await tx.formSubmission.updateMany({
-        where: { requestId: { in: eligibleIds } },
-        data: { requestId: null },
-      });
+      // Legacy-Submissions besaßen teils nur den Rücklink
+      // request.form_submission_id. Vor dem Delete wird deterministisch eine
+      // der gelöschten UUIDs als Tombstone übernommen; ein schon vorhandener
+      // expliziter request_id bleibt unverändert.
+      await tx.$queryRaw(
+        Prisma.sql`
+          WITH purged_form_links AS (
+            SELECT "form_submission_id",
+                   min("id"::text)::uuid AS "request_id"
+              FROM "request"
+             WHERE "id" IN (${Prisma.join(eligibleIds.map((id) => Prisma.sql`${id}::uuid`))})
+               AND "form_submission_id" IS NOT NULL
+             GROUP BY "form_submission_id"
+          )
+          UPDATE "form_submission" AS submission
+             SET "request_id" = links."request_id"
+            FROM purged_form_links AS links
+           WHERE submission."id" = links."form_submission_id"
+             AND submission."request_id" IS NULL
+          RETURNING submission."id"
+        `,
+      );
       const deleted = await tx.request.deleteMany({
         where: { AND: [where, { id: { in: eligibleIds } }] },
       });

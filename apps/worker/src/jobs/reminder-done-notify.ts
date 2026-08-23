@@ -13,6 +13,7 @@
 
 import { Worker } from 'bullmq';
 import { upsertNotificationTx } from '@taxtronik/db/notification';
+import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { connection, type ReminderDoneNotifyJob } from '../queues';
 import { withWorkerTenantContext } from '../tenant-context';
 import { log } from '../logger';
@@ -21,7 +22,7 @@ import { isWorkerTenantModuleEnabled } from '../module-gate';
 export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
   'reminder-done-notify',
   async (job) => {
-    const { tenantId, reminderId, staffId, clientId, subject, doneByName } = job.data;
+    const { tenantId, reminderId, staffId, doneByName } = job.data;
 
     if (!(await isWorkerTenantModuleEnabled(tenantId, 'reminders'))) {
       log.info(
@@ -32,9 +33,9 @@ export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
     }
 
     await withWorkerTenantContext(tenantId, async (tx) => {
-      const reminder = await tx.clientReminder.findUnique({
-        where: { id: reminderId },
-        select: { doneAt: true },
+      const reminder = await tx.clientReminder.findFirst({
+        where: { id: reminderId, tenantId },
+        select: { doneAt: true, clientId: true, subject: true },
       });
       // Zurückgeholt (oder gelöscht) → nichts zustellen.
       if (!reminder?.doneAt) {
@@ -45,13 +46,24 @@ export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
         return;
       }
 
+      if (reminder.clientId) {
+        const allowed = await filterStaffAccessClientTx(tx, tenantId, [staffId], reminder.clientId);
+        if (!allowed.has(staffId)) {
+          log.info(
+            { component: 'reminder-done-notify', reminderId, staffId },
+            'Empfaenger darf auf Mandanten nicht mehr zugreifen — Benachrichtigung entfaellt',
+          );
+          return;
+        }
+      }
+
       await upsertNotificationTx(tx, {
         tenantId,
         staffId,
         kind: 'CLIENT_REMINDER_DONE',
-        title: `Wiedervorlage erledigt: ${subject}`,
+        title: `Wiedervorlage erledigt: ${reminder.subject}`,
         body: `${doneByName} hat die von dir delegierte Wiedervorlage abgeschlossen.`,
-        href: clientId ? `/staff/clients/${clientId}` : '/staff/reminders',
+        href: reminder.clientId ? `/staff/clients/${reminder.clientId}` : '/staff/reminders',
         resourceType: 'client_reminder',
         resourceId: reminderId,
       });

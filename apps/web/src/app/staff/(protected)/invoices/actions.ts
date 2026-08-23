@@ -17,6 +17,9 @@ import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { toStornoPosition } from '@/server/invoicing/storno';
+import { claimInvoiceDraftForSend } from '@/server/invoicing/send-claim';
+import { discardNeverSentDraftArchiveTx } from '@/server/invoicing/draft-archive';
+import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { round2, fmtEUR, fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
@@ -298,6 +301,7 @@ const ARCHIVE_FAIL_TEXT: Record<string, string> = {
   reverse_charge_seller_no_vatid:
     'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).',
   buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
+  status_conflict: 'Die Rechnung wurde zwischenzeitlich geändert oder storniert.',
 };
 
 /**
@@ -378,16 +382,23 @@ async function finalizeInvoiceSendTx(
     auditExtra?: Record<string, unknown>;
   },
 ) {
-  const res = await tx.invoice.updateMany({
-    where: { id: opts.invoiceId, status: 'DRAFT' },
-    data: { status: 'SENT', sentAt: new Date() },
-  });
-  if (res.count === 0) return null;
+  // Der finale CAS teilt den Lock mit Archiv-Link und Entwurfsstorno. Damit
+  // kann kein Storno DRAFT lesen, während der Versand danach unbemerkt SENT
+  // claimt (oder umgekehrt).
+  await lockInvoiceArchiveTx(tx, opts.invoiceId);
+  const claim = await claimInvoiceDraftForSend(tx, opts.invoiceId);
+  if (claim.outcome !== 'sent') return claim;
 
-  const updated = await tx.invoice.findUniqueOrThrow({ where: { id: opts.invoiceId } });
+  const updated = claim.invoice;
   if (updated.documentId) {
     await tx.document.updateMany({
       where: { id: updated.documentId, sharedWithClientAt: null },
+      data: { sharedWithClientAt: new Date(), sharedByStaff: opts.staffId },
+    });
+  }
+  if (updated.xrechnungDocumentId) {
+    await tx.document.updateMany({
+      where: { id: updated.xrechnungDocumentId, sharedWithClientAt: null },
       data: { sharedWithClientAt: new Date(), sharedByStaff: opts.staffId },
     });
   }
@@ -408,7 +419,29 @@ async function finalizeInvoiceSendTx(
       tenantId: opts.tenantId,
     });
   }
-  return updated;
+  return { outcome: 'sent' as const, invoice: updated };
+}
+
+type NonSentInvoiceResult = Exclude<
+  Awaited<ReturnType<typeof finalizeInvoiceSendTx>>,
+  { outcome: 'sent' }
+>;
+
+function markSentCasResult(result: NonSentInvoiceResult): ActionResult {
+  switch (result.outcome) {
+    case 'already_sent':
+      return { ok: true };
+    case 'not_found':
+      return { ok: false, error: 'Rechnung nicht gefunden.' };
+    case 'conflict':
+      return {
+        ok: false,
+        error:
+          result.status === 'CANCELLED'
+            ? 'Versand abgebrochen: Die Rechnung wurde zwischenzeitlich storniert.'
+            : `Versand abgebrochen: Die Rechnung hat inzwischen den Status ${result.status}.`,
+      };
+  }
 }
 
 export async function markSentAction(
@@ -459,7 +492,10 @@ export async function markSentAction(
 
   let archive;
   try {
-    archive = await withTimeout(ensureZugferdArchive(ctx, parsed.data.invoiceId), 45_000);
+    archive = await withTimeout(
+      ensureZugferdArchive(ctx, parsed.data.invoiceId, { purpose: 'ISSUE' }),
+      45_000,
+    );
   } catch (err) {
     return {
       ok: false,
@@ -493,13 +529,15 @@ export async function markSentAction(
   // TOCTOU-Schutz gegen Doppel-Submit (zwei Tabs / zwei Bearbeiter): beide
   // passieren den Precheck oben, aber der atomare DRAFT→SENT-Claim im Helfer
   // trifft nur beim ersten status=DRAFT — der zweite läuft ins Leere (null).
-  const sent = await withTenantContext(ctx, (tx) =>
+  const sendResult = await withTenantContext(ctx, (tx) =>
     finalizeInvoiceSendTx(tx, { invoiceId: parsed.data.invoiceId, staffId, tenantId }),
   );
 
-  // Race verloren → kein doppeltes n8n-Event, kein doppeltes Revalidate. Der
-  // gewünschte Endzustand (SENT) ist durch das konkurrierende Request erreicht.
-  if (!sent) return { ok: true };
+  // Nur ein tatsächlich bereits ausgelieferter Zustand ist idempotenter Erfolg.
+  // Hat parallel ein Storno gewonnen, darf weder Erfolg noch Zustellung/N8N
+  // gemeldet werden.
+  if (sendResult.outcome !== 'sent') return markSentCasResult(sendResult);
+  const sent = sendResult.invoice;
 
   // Mandant über den Versand informieren. Template-Slug 'invoice-sent' — falls
   // im ACP keines definiert ist, greift der Fallback (hartcodiert). Fire-and-
@@ -636,6 +674,9 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
   let stornoId: string | null = null;
   try {
     await withTenantContext(ctx, async (tx) => {
+      // Derselbe Lock wie beim Archiv-Link: Entwurfsstorno und erstmalige
+      // Archivverknüpfung dürfen sich nicht überholen.
+      await lockInvoiceArchiveTx(tx, invoiceId);
       const current = await tx.invoice.findUnique({
         where: { id: invoiceId },
         include: { positions: { orderBy: { position: 'asc' } } },
@@ -649,6 +690,22 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
       const wasPaid = current.status === 'PAID';
       const wasDelivered = current.status === 'SENT' || current.status === 'OVERDUE' || wasPaid;
       if (!wasDelivered) {
+        // Ein nie ausgelieferter Entwurf ist kein GoBD-Rechnungsbeleg. Bereits
+        // per Kontroll-Download erzeugte App-Archive werden von der Rechnung
+        // gelöst und soft-deleted; Object-Lock-Bytes bleiben regelkonform bis
+        // zum Retention-Ende erhalten. EXTERNAL/PDF wird hier nie verändert.
+        const discarded = await discardNeverSentDraftArchiveTx(tx, current, staffId);
+        if (discarded) {
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'invoice.archive.discard_draft',
+            resourceType: 'invoice',
+            resourceId: invoiceId,
+            after: discarded,
+          });
+        }
         await cancelOriginalAfterDeliveredStornoTx(tx, {
           stornoId: null,
           originalId: invoiceId,
@@ -749,7 +806,10 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
   if (stornoId) {
     let archive;
     try {
-      archive = await withTimeout(ensureZugferdArchive(ctx, stornoId), 45_000);
+      archive = await withTimeout(
+        ensureZugferdArchive(ctx, stornoId, { purpose: 'ISSUE' }),
+        45_000,
+      );
     } catch (error) {
       log.warn(
         { component: 'invoices', action: 'storno-send', stornoId, err: (error as Error).message },
@@ -766,20 +826,23 @@ export async function cancelInvoiceAction(formData: FormData): Promise<void> {
     }
 
     const result = await withTenantContext(ctx, async (tx) => {
-      const sent = await finalizeInvoiceSendTx(tx, {
+      const sendResult = await finalizeInvoiceSendTx(tx, {
         invoiceId: stornoId!,
         staffId,
         tenantId,
         auditExtra: { storno: true },
       });
-      if (sent) return { newlySent: true };
+      if (sendResult.outcome === 'sent') return { newlySent: true };
 
       // Retry/Parallelfall: Der Korrekturbeleg kann bereits SENT sein. Dann
       // wird nur noch idempotent sichergestellt, dass das Original storniert ist.
-      const existing = await tx.invoice.findUnique({
-        where: { id: stornoId! },
-        select: { id: true, status: true, stornoOfId: true },
-      });
+      const existing =
+        sendResult.outcome === 'already_sent'
+          ? sendResult.invoice
+          : await tx.invoice.findUnique({
+              where: { id: stornoId! },
+              select: { id: true, status: true, stornoOfId: true },
+            });
       if (
         existing?.stornoOfId === invoiceId &&
         ['SENT', 'OVERDUE', 'PAID'].includes(existing.status)

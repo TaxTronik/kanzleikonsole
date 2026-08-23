@@ -71,8 +71,15 @@ async function timestampArchiveHash(tenantId: string, hash: Buffer): Promise<Buf
 
   try {
     await assertPublicHost(tsaUrl, { mode: 'public' });
-    const stamp = await createRfc3161Adapter(tsaUrl).timestamp(hash);
-    return stamp.tsaResponseBlob ? Buffer.from(stamp.tsaResponseBlob) : null;
+    const adapter = createRfc3161Adapter(tsaUrl);
+    const stamp = await adapter.timestamp(hash);
+    const response = stamp.tsaResponseBlob ? Buffer.from(stamp.tsaResponseBlob) : null;
+    if (!response || !(await adapter.verify(hash, response))) {
+      throw new Error(
+        'TSA-Antwort konnte nicht gegen Datei-Hash und konfigurierte Trust-Roots verifiziert werden.',
+      );
+    }
+    return response;
   } catch (err) {
     log.warn(
       { tenantId, tsaUrl, err: (err as Error).message },
@@ -205,7 +212,7 @@ export const auditRotateWorker = new Worker<ChecksJob>(
       // 4. Optionaler RFC-3161-Stempel (F3).
       // Symmetrisch zu evidence-seal.ts: Tenant-spezifische TSA aus
       // tenant_setting bevorzugt, ENV- und verifizierter GlobalSign-Fallback.
-      // Bei Erfolg: echter
+      // Bei Erfolg: gegen Datei-Hash und Trust-Roots verifizierter
       // RFC-3161-Response-Blob ins Archiv. Bei Fehlschlag oder fehlender
       // Konfiguration: NULL — ehrlich „dieses Segment ist nicht extern
       // gestempelt" statt ein lokaler SHA-256, der einen Stempel vortäuscht.

@@ -335,15 +335,40 @@ describe('enqueueN8nEvent routing', () => {
     expect(h.queueAdd).not.toHaveBeenCalled();
   });
 
+  it.each(['UNROUTED', 'SKIPPED'] as const)(
+    'verschleiert einen bestehenden %s-Outbox-Eintrag nicht als erfolgreichen Duplicate',
+    async (status) => {
+      h.tx.n8nOutbox.findUnique.mockResolvedValue({
+        id: 'outbox-existing',
+        status,
+        lastError: 'Keine aktive Route',
+        _count: { deliveries: status === 'SKIPPED' ? 1 : 0 },
+      });
+
+      await expect(
+        enqueueN8nEvent(
+          'request.opened',
+          { requestId: 'request-1' },
+          { tenantId: 'tenant-1', dedupeKey: 'workflow-dispatch:dispatch-1' },
+        ),
+      ).resolves.toEqual({
+        eventId: 'outbox-existing',
+        status,
+        deliveryCount: status === 'SKIPPED' ? 1 : 0,
+        error: 'Keine aktive Route',
+      });
+    },
+  );
+
   it('behandelt den parallelen Unique-Konflikt des Dedupe-Keys als erfolgreichen Duplicate', async () => {
     const conflict = Object.assign(new Error('unique conflict'), { code: 'P2002' });
-    h.prismaOwner.$transaction
-      .mockRejectedValueOnce(conflict)
-      .mockImplementationOnce(async (fn: (client: typeof h.tx) => unknown) => fn(h.tx));
-    h.tx.n8nOutbox.findUnique.mockResolvedValue({
+    h.tx.n8nOutbox.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: 'outbox-winner',
+      status: 'PENDING',
+      lastError: null,
       _count: { deliveries: 1 },
     });
+    h.tx.n8nOutbox.create.mockRejectedValueOnce(conflict);
 
     const result = await enqueueN8nEvent(
       'request.opened',
@@ -359,4 +384,33 @@ describe('enqueueN8nEvent routing', () => {
     expect(h.log.error).not.toHaveBeenCalled();
     expect(h.queueAdd).not.toHaveBeenCalled();
   });
+
+  it.each(['UNROUTED', 'SKIPPED'] as const)(
+    'bewahrt beim parallelen P2002-Gewinner dessen Status %s',
+    async (status) => {
+      const conflict = Object.assign(new Error('unique conflict'), { code: 'P2002' });
+      h.tx.n8nOutbox.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        id: 'outbox-winner',
+        status,
+        lastError: 'Keine aktive Route',
+        _count: { deliveries: status === 'SKIPPED' ? 1 : 0 },
+      });
+      h.tx.n8nOutbox.create.mockRejectedValueOnce(conflict);
+
+      await expect(
+        enqueueN8nEvent(
+          'request.opened',
+          {},
+          { tenantId: 'tenant-1', dedupeKey: 'workflow-dispatch:dispatch-1' },
+        ),
+      ).resolves.toEqual({
+        eventId: 'outbox-winner',
+        status,
+        deliveryCount: status === 'SKIPPED' ? 1 : 0,
+        error: 'Keine aktive Route',
+      });
+      expect(h.log.error).not.toHaveBeenCalled();
+      expect(h.queueAdd).not.toHaveBeenCalled();
+    },
+  );
 });

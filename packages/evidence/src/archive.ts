@@ -20,6 +20,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
 import { eventHash } from './chain';
+import type { TimestampPort } from './ports/timestamp';
 
 export interface ArchiveAuditRow {
   id: bigint | number;
@@ -48,6 +49,32 @@ export interface ArchiveSerializeResult {
   firstPrevHash: Buffer;
   lastThisHash: Buffer;
   entryCount: number;
+}
+
+export type ArchiveTimestampVerification = 'missing' | 'valid' | 'invalid';
+
+/**
+ * Prüft den optionalen RFC-3161-Nachweis eines Archivsegments gegen den Hash
+ * der tatsächlich geladenen NDJSON-Datei. `missing` bleibt ein eigener,
+ * ehrlicher Zustand; ein vorhandener, aber untrusted oder falsch gebundener
+ * Token ist dagegen `invalid`.
+ */
+export async function verifyArchiveTimestamp(
+  port: Pick<TimestampPort, 'verify'>,
+  actualFileSha256: Uint8Array,
+  response: Uint8Array | null,
+): Promise<ArchiveTimestampVerification> {
+  if (!response) return 'missing';
+  return (await port.verify(actualFileSha256, response)) ? 'valid' : 'invalid';
+}
+
+/** `missing` ist nur zulässig, solange externe TSA-Nachweise nicht Pflicht sind. */
+export function archiveTimestampMeetsPolicy(
+  status: ArchiveTimestampVerification,
+  requireExternalTsa: boolean,
+): boolean {
+  if (status === 'invalid') return false;
+  return status === 'valid' || !requireExternalTsa;
 }
 
 /**

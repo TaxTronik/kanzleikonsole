@@ -157,6 +157,15 @@ describe('loadClientDashboard', () => {
         responses: expect.objectContaining({ select: { createdAt: true } }),
       },
     });
+    expect(h.tx.phoneNote.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          reminders: expect.objectContaining({
+            select: { id: true, subject: true, dueDate: true, doneAt: true },
+          }),
+        },
+      }),
+    );
     expect(h.tx.document.findMany).not.toHaveBeenCalled();
     expect(h.tx.document.count).not.toHaveBeenCalled();
     expect(h.tx.documentFolder.findMany).not.toHaveBeenCalled();

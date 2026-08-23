@@ -286,7 +286,7 @@ describe('Audit-Nachweis dsgvo.retention.run', () => {
 });
 
 describe('Request-Purge', () => {
-  it('nullt lose Rückverweise + löscht Requests in derselben Batch-Tx', async () => {
+  it('nullt Deadline-Verweise, setzt Formular-Tombstones und löscht im selben Batch', async () => {
     h.prismaOwner.request.findMany
       .mockResolvedValueOnce([{ id: 'req-1' }, { id: 'req-2' }])
       .mockResolvedValueOnce([{ id: 'req-1' }, { id: 'req-2' }])
@@ -296,15 +296,18 @@ describe('Request-Purge', () => {
     await run();
 
     expect(h.prismaOwner.$transaction).toHaveBeenCalledTimes(1);
-    expect(h.retentionTx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(h.retentionTx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(h.prismaOwner.taxDeadline.updateMany).toHaveBeenCalledWith({
       where: { requestId: { in: ['req-1', 'req-2'] } },
       data: { requestId: null },
     });
-    expect(h.prismaOwner.formSubmission.updateMany).toHaveBeenCalledWith({
-      where: { requestId: { in: ['req-1', 'req-2'] } },
-      data: { requestId: null },
-    });
+    expect(h.prismaOwner.formSubmission.updateMany).not.toHaveBeenCalled();
+    const submissionLockSql = h.retentionTx.$queryRaw.mock.calls[0]?.[0] as { sql: string };
+    expect(submissionLockSql.sql).toContain('ORDER BY submission."id"');
+    expect(submissionLockSql.sql).toContain('FOR UPDATE');
+    const tombstoneSql = h.retentionTx.$queryRaw.mock.calls[2]?.[0] as { sql: string };
+    expect(tombstoneSql.sql).toContain('purged_form_links');
+    expect(tombstoneSql.sql).toContain('submission."request_id" IS NULL');
     expect(h.prismaOwner.request.deleteMany).toHaveBeenCalledWith({
       where: {
         AND: [expect.anything(), { id: { in: ['req-1', 'req-2'] } }],
@@ -328,7 +331,7 @@ describe('Request-Purge', () => {
 
     await run();
 
-    expect(h.retentionTx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(h.retentionTx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(h.prismaOwner.taxDeadline.updateMany).not.toHaveBeenCalled();
     expect(h.prismaOwner.formSubmission.updateMany).not.toHaveBeenCalled();
     expect(h.prismaOwner.request.deleteMany).not.toHaveBeenCalled();

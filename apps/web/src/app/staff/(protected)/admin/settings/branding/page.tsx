@@ -23,7 +23,7 @@ export default async function BrandingSettingsPage() {
 
       <SectionCard
         title="Briefkopf"
-        description="Wird in allen ausgehenden PDFs verwendet (Vollmachten, Rechnungen, Bescheinigungen)."
+        description="Wird bei der erstmaligen Erzeugung von In-App-Rechnungs-PDFs verwendet; bestehende Archive und Uploads bleiben unverändert."
       >
         <LetterheadForm initial={letterhead} />
       </SectionCard>

@@ -22,6 +22,7 @@ import type { Prisma as PrismaTypes } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 // type-only: wird zur Compile-Zeit gelöscht, zieht den Owner-Client NICHT rein.
 import type { TxClient } from '@taxtronik/db';
+import { filterStaffAccessClientTx as filterStaffAccessClientSharedTx } from '@taxtronik/db/staff-client-access';
 import { ActionError } from '@/server/actions/action-error';
 import { readAccessPolicyTx, decideClientAccess } from '@/server/settings/access-policy';
 import { staffAuth, type StaffSession } from './staff';
@@ -186,49 +187,7 @@ export async function filterStaffAccessClientTx(
   staffIds: readonly string[],
   clientId: string,
 ): Promise<Set<string>> {
-  if (staffIds.length === 0) return new Set();
-
-  const staff = await tx.staffUser.findMany({
-    where: { id: { in: [...staffIds] }, tenantId, active: true },
-    select: { id: true, roles: { select: { role: true } } },
-  });
-  if (staff.length === 0) return new Set();
-
-  const policy = await readAccessPolicyTx(tx, tenantId);
-  const client = await tx.client.findUnique({
-    where: { id: clientId },
-    select: { vertraulich: true },
-  });
-  if (!client) return new Set();
-
-  const needResponsibility = policy.clientAccessMode === 'RESTRICTED' || client.vertraulich;
-  const responsible = new Set<string>(
-    needResponsibility
-      ? (
-          await tx.clientResponsibility.findMany({
-            where: {
-              clientId,
-              staffId: { in: staff.map((s) => s.id) },
-              role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] },
-            },
-            select: { staffId: true },
-          })
-        ).map((r) => r.staffId)
-      : [],
-  );
-
-  const erlaubt = new Set<string>();
-  for (const s of staff) {
-    const isAdmin = s.roles.some((r) => r.role === 'ADMIN' || r.role === 'PARTNER');
-    const ok = decideClientAccess({
-      isAdmin,
-      mode: policy.clientAccessMode,
-      vertraulich: client.vertraulich,
-      isResponsible: responsible.has(s.id),
-    });
-    if (ok) erlaubt.add(s.id);
-  }
-  return erlaubt;
+  return filterStaffAccessClientSharedTx(tx, tenantId, staffIds, clientId);
 }
 
 /**

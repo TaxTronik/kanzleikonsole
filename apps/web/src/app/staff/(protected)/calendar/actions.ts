@@ -8,7 +8,7 @@ import { notify } from '@/server/notifications/service';
 import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx, canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 import {
   withStaffModule,
   ActionError,
@@ -86,6 +86,18 @@ export async function createAppointmentAction(
         if (!cli) throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
         // Vertraulich-/RESTRICTED-Ventil bei Mandantenbezug.
         await assertClientAccessTx(tx, session, parsed.data.clientId);
+        if (
+          !(await canOtherStaffAccessClientTx(
+            tx,
+            tenantId,
+            parsed.data.ownerStaffId,
+            parsed.data.clientId,
+          ))
+        ) {
+          throw new ActionError(
+            'Die ausgewählte Person hat nach dem Kanzlei-Zugriffsmodus keinen Zugriff auf diesen Mandanten.',
+          );
+        }
       }
       const appt = await tx.appointment.create({
         data: {
@@ -178,7 +190,21 @@ export async function updateAppointmentAction(
       if (parsed.data.clientId) await assertClientInTenant(tx, parsed.data.clientId);
       // Vertraulich-/RESTRICTED-Ventil für alten UND neuen Mandantenbezug.
       if (before.clientId) await assertClientAccessTx(tx, session, before.clientId);
-      if (parsed.data.clientId) await assertClientAccessTx(tx, session, parsed.data.clientId);
+      if (parsed.data.clientId) {
+        await assertClientAccessTx(tx, session, parsed.data.clientId);
+        if (
+          !(await canOtherStaffAccessClientTx(
+            tx,
+            tenantId,
+            parsed.data.ownerStaffId,
+            parsed.data.clientId,
+          ))
+        ) {
+          throw new ActionError(
+            'Die ausgewählte Person hat nach dem Kanzlei-Zugriffsmodus keinen Zugriff auf diesen Mandanten.',
+          );
+        }
+      }
       await tx.appointment.update({
         where: { id: parsed.data.id },
         data: {
@@ -325,6 +351,13 @@ export async function acceptAppointmentRequestAction(input: {
       if (req.status !== 'PENDING') throw new ActionError('Anfrage bereits entschieden.');
       // Vertraulich-/RESTRICTED-Ventil.
       await assertClientAccessTx(tx, session, req.clientId);
+      if (
+        !(await canOtherStaffAccessClientTx(tx, tenantId, parsed.data.ownerStaffId, req.clientId))
+      ) {
+        throw new ActionError(
+          'Die ausgewählte Person hat nach dem Kanzlei-Zugriffsmodus keinen Zugriff auf diesen Mandanten.',
+        );
+      }
 
       const slots = req.proposedSlots as Array<{ startsAt: string; endsAt: string }>;
       const slot = slots[parsed.data.slotIndex];

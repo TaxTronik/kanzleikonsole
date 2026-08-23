@@ -3,101 +3,229 @@ import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { commitBytesWithTier } from '@taxtronik/storage';
+import { streamObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
-import { prismaBytes } from '@/server/db/prisma-bytes';
-import { generateXRechnungCii, toXRechnungInvoice } from '@/server/invoicing/xrechnung';
-import { readSellerInfo } from '@/server/settings/tenant-settings';
+import {
+  generateXRechnungCii,
+  toXRechnungInvoice,
+  type StoredInvoiceForXRechnung,
+} from '@/server/invoicing/xrechnung';
+import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
+import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { readSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
 import { isUuid } from '@/lib/uuid';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
 
 interface ArchiveXmlInput {
   ctx: { tenantId: string; actorId: string; actorType: 'STAFF' };
   tenantId: string;
   staffId: string;
-  clientId: string;
-  title: string;
-  xml: string;
-  shareable: boolean;
+  invoiceId: string;
 }
 
-async function ensureArchivedXmlCopy(input: ArchiveXmlInput): Promise<void> {
-  const existing = await withTenantContext(input.ctx, (tx) =>
-    tx.document.findFirst({
-      where: {
-        tenantId: input.tenantId,
-        clientId: input.clientId,
-        title: input.title,
-        classification: 'GOBD_INVOICE',
-        deletedAt: null,
+type ArchiveXmlState =
+  | { state: 'ready'; bucket: string; key: string }
+  | { state: 'missing' | 'not_found' | 'status_conflict' };
+
+function invoiceStatusAllowsPortalShare(status: string, sentAt: Date | null): boolean {
+  return sentAt !== null || status === 'SENT' || status === 'PAID' || status === 'OVERDUE';
+}
+
+interface XmlInvoice extends StoredInvoiceForXRechnung {
+  client: {
+    name: string;
+    street: string | null;
+    city: string | null;
+    postalCode: string | null;
+    countryIso: string | null;
+    vatId: string | null;
+    invoiceEmail: string | null;
+  };
+}
+
+function xmlInputError(
+  invoice: XmlInvoice,
+  seller: SellerInfo,
+): { error: string; message: string } | null {
+  if (
+    !seller.name ||
+    !seller.street ||
+    !seller.city ||
+    !seller.postalCode ||
+    !seller.email ||
+    !seller.phone ||
+    (!seller.vatId && !seller.taxNumber)
+  ) {
+    return {
+      error: 'seller_incomplete',
+      message:
+        'Verkäufer-Stammdaten unvollständig. Bitte zuerst unter /staff/admin/settings ergänzen (Name, Straße, PLZ, Ort, E-Mail, Telefon, USt-ID oder Steuernummer).',
+    };
+  }
+  if (invoice.reverseCharge && !seller.vatId) {
+    return {
+      error: 'reverse_charge_seller_no_vatid',
+      message:
+        'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei. Bitte zuerst unter /staff/admin/settings ergänzen.',
+    };
+  }
+  if (!invoice.client.street || !invoice.client.city || !invoice.client.postalCode) {
+    return {
+      error: 'buyer_incomplete',
+      message:
+        'Mandanten-Adresse unvollständig. Bitte zuerst Adresse beim Mandanten ergänzen (Straße, PLZ, Ort).',
+    };
+  }
+  return null;
+}
+
+function renderXml(invoice: XmlInvoice, seller: SellerInfo): string {
+  return generateXRechnungCii(toXRechnungInvoice(invoice), seller, {
+    name: invoice.client.name,
+    street: invoice.client.street!,
+    postalCode: invoice.client.postalCode!,
+    city: invoice.client.city!,
+    countryIso: invoice.client.countryIso ?? 'DE',
+    vatId: invoice.client.vatId,
+    email: invoice.client.invoiceEmail,
+  });
+}
+
+/**
+ * Liest die bestehende Archivfassung unter demselben Rechnungs-Lock wie
+ * Versand und Storno. Ein bereits storniertes, nie versendetes DRAFT kann so
+ * weder erneut freigegeben noch nachträglich archiviert werden.
+ */
+async function readArchivedXmlCopy(input: ArchiveXmlInput): Promise<ArchiveXmlState> {
+  return withTenantContext(input.ctx, async (tx) => {
+    await lockInvoiceArchiveTx(tx, input.invoiceId);
+    const fresh = await tx.invoice.findFirst({
+      where: { id: input.invoiceId, tenantId: input.tenantId },
+      select: {
+        status: true,
+        sentAt: true,
+        xrechnungDocument: {
+          select: {
+            id: true,
+            sharedWithClientAt: true,
+            versions: { orderBy: { versionNo: 'desc' }, take: 1 },
+          },
+        },
       },
-      include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
-    }),
-  );
-  if (existing?.versions[0]) {
-    if (input.shareable && !existing.sharedWithClientAt) {
-      await withTenantContext(input.ctx, (tx) =>
-        tx.document.updateMany({
-          where: { id: existing.id, sharedWithClientAt: null },
-          data: { sharedWithClientAt: new Date(), sharedByStaff: input.staffId },
-        }),
-      );
+    });
+    if (!fresh) return { state: 'not_found' as const };
+    if (fresh.status === 'CANCELLED' && !fresh.sentAt) {
+      return { state: 'status_conflict' as const };
     }
-    return;
+    const existing = fresh.xrechnungDocument;
+    const version = existing?.versions[0];
+    if (!existing || !version) return { state: 'missing' as const };
+    if (
+      invoiceStatusAllowsPortalShare(fresh.status, fresh.sentAt) &&
+      !existing.sharedWithClientAt
+    ) {
+      await tx.document.updateMany({
+        where: { id: existing.id, sharedWithClientAt: null },
+        data: { sharedWithClientAt: new Date(), sharedByStaff: input.staffId },
+      });
+    }
+    return {
+      state: 'ready' as const,
+      bucket: version.storageBucket,
+      key: version.storageKey,
+    };
+  });
+}
+
+async function recheckDraftXmlPreview(input: {
+  ctx: ArchiveXmlInput['ctx'];
+  tenantId: string;
+  invoiceId: string;
+  updatedAt: Date;
+  documentId: string | null;
+  xrechnungDocumentId: string | null;
+}): Promise<'current' | 'issued' | 'not_found' | 'status_conflict'> {
+  return withTenantContext(input.ctx, async (tx) => {
+    await lockInvoiceArchiveTx(tx, input.invoiceId);
+    const fresh = await tx.invoice.findFirst({
+      where: { id: input.invoiceId, tenantId: input.tenantId },
+      select: {
+        status: true,
+        sentAt: true,
+        updatedAt: true,
+        documentId: true,
+        xrechnungDocumentId: true,
+      },
+    });
+    if (!fresh) return 'not_found';
+    if (fresh.status === 'CANCELLED' && !fresh.sentAt) return 'status_conflict';
+    const archivePointerChanged =
+      fresh.documentId !== input.documentId ||
+      fresh.xrechnungDocumentId !== input.xrechnungDocumentId;
+    if (fresh.status !== 'DRAFT' || archivePointerChanged) return 'issued';
+    return fresh.updatedAt.getTime() === input.updatedAt.getTime() ? 'current' : 'status_conflict';
+  });
+}
+
+type ReadyXmlArchive = Extract<ArchiveXmlState, { state: 'ready' }>;
+
+function archiveStateResponse(state: 'not_found' | 'status_conflict'): NextResponse {
+  if (state === 'not_found') {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  return NextResponse.json(
+    {
+      error: 'status_conflict',
+      message: 'Die Rechnung wurde während der XRechnung-Erzeugung geändert oder storniert.',
+    },
+    { status: 409 },
+  );
+}
+
+async function resolveIssuedXmlArchive(
+  input: ArchiveXmlInput,
+): Promise<
+  { archive: ReadyXmlArchive; response?: never } | { archive?: never; response: NextResponse }
+> {
+  let archive = await readArchivedXmlCopy(input);
+  if (archive.state === 'ready') return { archive };
+  if (archive.state !== 'missing') return { response: archiveStateResponse(archive.state) };
+
+  let ensured: Awaited<ReturnType<typeof ensureZugferdArchive>>;
+  try {
+    // Kanonischer Archivpfad erzeugt PDF + XML aus demselben Snapshot bzw.
+    // extrahiert bei Legacy-Beständen exakt die eingebettete factur-x.xml der
+    // vorhandenen Hybrid-PDF.
+    ensured = await ensureZugferdArchive(input.ctx, input.invoiceId, { purpose: 'ISSUE' });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      response: NextResponse.json({ error: 'archive_failed', message: detail }, { status: 502 }),
+    };
+  }
+  if (!ensured.ok) {
+    if (ensured.code === 'status_conflict' || ensured.code === 'not_found') {
+      return { response: archiveStateResponse(ensured.code) };
+    }
+    if (ensured.code === 'not_applicable') {
+      return { response: NextResponse.json({ error: 'not_found' }, { status: 404 }) };
+    }
+    return {
+      response: NextResponse.json(
+        { error: ensured.code, message: 'Rechnungs-Stammdaten sind unvollständig.' },
+        { status: 422 },
+      ),
+    };
   }
 
-  let stored: Awaited<ReturnType<typeof commitBytesWithTier>> | null = null;
-  try {
-    stored = await commitBytesWithTier({
-      fileData: Buffer.from(input.xml, 'utf8'),
-      tier: 'GOBD',
-      tenantId: input.tenantId,
-      skipScan: true,
-      classification: 'GOBD_INVOICE',
-    });
-    const committed = stored;
-    await withTenantContext(input.ctx, async (tx) => {
-      const doc = await tx.document.create({
-        data: {
-          tenantId: input.tenantId,
-          clientId: input.clientId,
-          title: input.title,
-          classification: 'GOBD_INVOICE',
-          mimeType: 'application/xml',
-          retentionUntil: committed.retentionUntil,
-          sharedWithClientAt: input.shareable ? new Date() : null,
-          sharedByStaff: input.shareable ? input.staffId : null,
-        },
-      });
-      await tx.documentVersion.create({
-        data: {
-          documentId: doc.id,
-          versionNo: 1,
-          storageBucket: committed.targetBucket,
-          storageKey: committed.targetKey,
-          storageVersionId: committed.storageVersionId,
-          sha256: prismaBytes(committed.sha256),
-          sizeBytes: committed.sizeBytes,
-          immutable: committed.immutable,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: input.staffId,
-        },
-      });
-    });
-  } catch (error) {
-    if (stored) {
-      await compensateStorageCommit({
-        tenantId: input.tenantId,
-        source: 'staff.invoice.xrechnung',
-        commit: stored,
-        cause: error,
-      });
-    }
-    // Der Download selbst bleibt nutzbar; ein späterer Abruf versucht die
-    // revisionssichere Ablage erneut.
-  }
+  archive = await readArchivedXmlCopy(input);
+  if (archive.state === 'ready') return { archive };
+  return {
+    response: NextResponse.json(
+      { error: 'archive_failed', message: 'XRechnung wurde nicht im Archiv verknüpft.' },
+      { status: 502 },
+    ),
+  };
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -116,8 +244,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  // Export-Limit wie die CSV-Routen: jeder GET rendert XML und kann einen
-  // GoBD-Storage-Commit auslösen.
+  // Export-Limit wie die CSV-Routen: DRAFT rendert eine Vorschau; bei
+  // ausgestelltem Altbestand kann der kanonische Archivpfad fehlende
+  // PDF/XML-Kopien revisionssicher nachziehen.
   const rl = await checkStaffExportLimit('xrechnung', staffId);
   if (!rl.ok) {
     return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
@@ -146,72 +275,44 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const seller = await readSellerInfo(ctx);
+  let draftXml: string | null = null;
+  let archive: ArchiveXmlState | null = null;
+  let useArchive = invoice.status !== 'DRAFT';
 
-  // Pflichtfeld-Check — E-Mail/Telefon sind XRechnung-Pflicht (BG-6, BR-DE-2/-6/-7);
-  // USt-ID ODER Steuernummer ist bei Standardsatz-Positionen Pflicht
-  // (EN-16931 BR-S-02 / BR-CO-26) — ohne sie lehnt KoSIT die Rechnung ab.
-  if (
-    !seller.name ||
-    !seller.street ||
-    !seller.city ||
-    !seller.postalCode ||
-    !seller.email ||
-    !seller.phone ||
-    (!seller.vatId && !seller.taxNumber)
-  ) {
-    return NextResponse.json(
-      {
-        error: 'seller_incomplete',
-        message:
-          'Verkäufer-Stammdaten unvollständig. Bitte zuerst unter /staff/admin/settings ergänzen (Name, Straße, PLZ, Ort, E-Mail, Telefon, USt-ID oder Steuernummer).',
-      },
-      { status: 422 },
-    );
+  if (invoice.status === 'DRAFT') {
+    // Ein Entwurf ist noch kein festgeschriebener Beleg. Der Kontroll-Download
+    // wird deshalb frisch erzeugt, aber nicht irreversibel im GOBD-Bucket
+    // archiviert. Beim Versand erzeugt ensureZugferdArchive PDF und XML aus
+    // demselben Snapshot; so kann kein früher Stammdatenstand wiederverwendet
+    // werden und Factur-X/XML driften nicht auseinander.
+    const seller = await readSellerInfo(ctx);
+    const invalid = xmlInputError(invoice, seller);
+    if (invalid) return NextResponse.json(invalid, { status: 422 });
+    const rendered = renderXml(invoice, seller);
+    const rechecked = await recheckDraftXmlPreview({
+      ctx,
+      tenantId,
+      invoiceId: id,
+      updatedAt: invoice.updatedAt,
+      documentId: invoice.documentId,
+      xrechnungDocumentId: invoice.xrechnungDocumentId,
+    });
+    if (rechecked === 'not_found' || rechecked === 'status_conflict') {
+      return archiveStateResponse(rechecked);
+    }
+    if (rechecked === 'current') draftXml = rendered;
+    else useArchive = true;
   }
-  if (invoice.reverseCharge && !seller.vatId) {
-    return NextResponse.json(
-      {
-        error: 'reverse_charge_seller_no_vatid',
-        message:
-          'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei. Bitte zuerst unter /staff/admin/settings ergänzen.',
-      },
-      { status: 422 },
-    );
+  if (useArchive) {
+    const resolved = await resolveIssuedXmlArchive({
+      ctx,
+      tenantId,
+      staffId,
+      invoiceId: id,
+    });
+    if (resolved.response) return resolved.response;
+    archive = resolved.archive;
   }
-  if (!invoice.client.street || !invoice.client.city || !invoice.client.postalCode) {
-    return NextResponse.json(
-      {
-        error: 'buyer_incomplete',
-        message:
-          'Mandanten-Adresse unvollständig. Bitte zuerst Adresse beim Mandanten ergänzen (Straße, PLZ, Ort).',
-      },
-      { status: 422 },
-    );
-  }
-
-  const xml = generateXRechnungCii(toXRechnungInvoice(invoice), seller, {
-    name: invoice.client.name,
-    street: invoice.client.street,
-    postalCode: invoice.client.postalCode,
-    city: invoice.client.city,
-    countryIso: invoice.client.countryIso ?? 'DE',
-    vatId: invoice.client.vatId,
-    email: invoice.client.invoiceEmail,
-  });
-
-  const shareable =
-    invoice.status === 'SENT' || invoice.status === 'PAID' || invoice.status === 'OVERDUE';
-  const xmlTitle = `Rechnung ${invoice.number} (XRechnung)`;
-  await ensureArchivedXmlCopy({
-    ctx,
-    tenantId,
-    staffId,
-    clientId: invoice.clientId,
-    title: xmlTitle,
-    xml,
-    shareable,
-  });
 
   // Audit-Log (separate Tx, da Hauptlogik abgeschlossen)
   await withTenantContext(ctx, async (tx) => {
@@ -222,19 +323,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       action: 'invoice.xrechnung.download',
       resourceType: 'invoice',
       resourceId: id,
-      after: { number: invoice.number, format: 'XRechnung 3.0' },
+      after: { number: invoice.number, format: 'XRechnung 3.0', draftPreview: draftXml !== null },
       ip: getClientIp(req.headers),
       userAgent: req.headers.get('user-agent'),
     });
   });
 
   const fileName = `xrechnung-${invoice.number.replace(/[^A-Za-z0-9_-]/g, '_')}.xml`;
-  return new NextResponse(xml, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/xml; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${fileName}"`,
-      'Cache-Control': 'no-store',
-    },
-  });
+  if (draftXml !== null) {
+    return new NextResponse(draftXml, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  }
+  if (!archive || archive.state !== 'ready') {
+    return NextResponse.json({ error: 'archive_failed' }, { status: 502 });
+  }
+  const object = await streamObject(archive.bucket, archive.key);
+  const responseHeaders: Record<string, string> = {
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${fileName}"`,
+    'Cache-Control': 'private, no-store',
+  };
+  if (object.contentLength !== null) {
+    responseHeaders['Content-Length'] = String(object.contentLength);
+  }
+  return new NextResponse(object.body, { status: 200, headers: responseHeaders });
 }

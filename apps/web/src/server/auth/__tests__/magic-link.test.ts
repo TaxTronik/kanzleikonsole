@@ -23,7 +23,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const m = vi.hoisted(() => ({
   sendTemplateMail: vi.fn(),
   checkRateLimit: vi.fn(),
-  notify: vi.fn(),
+  notifyMany: vi.fn(),
+  filterStaffAccessClientTx: vi.fn(),
   resolveNotificationsTx: vi.fn(),
   withTenantContext: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -31,6 +32,7 @@ const m = vi.hoisted(() => ({
   evidenceRecord: vi.fn(),
   prismaOwner: {
     tenant: { findUnique: vi.fn() },
+    staffUser: { findMany: vi.fn() },
     clientContact: { findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     magicLink: { create: vi.fn(), deleteMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(),
@@ -48,9 +50,12 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@taxtronik/db/notification', () => ({
   resolveNotificationsTx: m.resolveNotificationsTx,
 }));
-vi.mock('@/server/notifications/service', () => ({ notify: m.notify }));
+vi.mock('@/server/notifications/service', () => ({ notifyMany: m.notifyMany }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
 vi.mock('@/server/rate-limit', () => ({ checkRateLimit: m.checkRateLimit }));
+vi.mock('@/server/auth/rbac', () => ({
+  filterStaffAccessClientTx: m.filterStaffAccessClientTx,
+}));
 
 import { hashToken, inspectMagicLink, requestMagicLink, verifyMagicLink } from '../magic-link';
 
@@ -76,6 +81,7 @@ beforeEach(() => {
   // Happy-Path-Defaults — einzelne Tests verstellen gezielt.
   m.checkRateLimit.mockResolvedValue({ ok: true });
   m.prismaOwner.tenant.findUnique.mockResolvedValue(TENANT);
+  m.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'staff-1' }, { id: 'staff-2' }]);
   m.prismaOwner.clientContact.findFirst.mockResolvedValue(CONTACT);
   m.prismaOwner.clientContact.findMany.mockResolvedValue([CONTACT]);
   m.prismaOwner.clientContact.findUnique.mockResolvedValue(CONTACT);
@@ -93,7 +99,8 @@ beforeEach(() => {
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn(m.prismaOwner),
   );
-  m.notify.mockResolvedValue(undefined);
+  m.notifyMany.mockResolvedValue(undefined);
+  m.filterStaffAccessClientTx.mockResolvedValue(new Set(['staff-1']));
 });
 
 afterEach(() => {
@@ -184,7 +191,23 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
     expect(m.prismaOwner.magicLink.deleteMany).toHaveBeenCalledWith({
       where: { tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/), consumedAt: null },
     });
-    expect(m.notify).toHaveBeenCalled();
+    expect(m.filterStaffAccessClientTx).toHaveBeenCalledWith(
+      m.prismaOwner,
+      'tenant-1',
+      ['staff-1', 'staff-2'],
+      CONTACT.clientId,
+    );
+    expect(m.notifyMany).toHaveBeenCalledWith(
+      m.prismaOwner,
+      ['staff-1'],
+      expect.objectContaining({
+        resourceType: 'client_contact',
+        resourceId: CONTACT.id,
+        href: `/staff/clients/${CONTACT.clientId}`,
+      }),
+    );
+    const notification = m.notifyMany.mock.calls[0]![2] as { body: string };
+    expect(notification.body).not.toContain(CONTACT.email);
   });
 
   it('sendTemplateMail ok:false invalidiert den erzeugten Token ebenfalls', async () => {
@@ -196,7 +219,23 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
     expect(m.prismaOwner.magicLink.deleteMany).toHaveBeenCalledWith({
       where: { tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/), consumedAt: null },
     });
-    expect(m.notify).toHaveBeenCalled();
+    expect(m.notifyMany).toHaveBeenCalled();
+  });
+
+  it('legt ohne zugriffsberechtigte Mitarbeiter keine globale Fehler-Notification an', async () => {
+    m.sendTemplateMail.mockRejectedValue(new Error('smtp down'));
+    m.filterStaffAccessClientTx.mockResolvedValue(new Set());
+
+    const res = await withTimersFlushed(
+      requestMagicLink({ tenantId: 'tenant-1', email: 'mandant@example.de' }),
+    );
+
+    expect(res).toEqual({ ok: true });
+    expect(m.notifyMany).not.toHaveBeenCalled();
+    expect(m.log.warn).toHaveBeenCalledWith(
+      { contactId: CONTACT.id, clientId: CONTACT.clientId },
+      expect.stringContaining('kein zugriffsberechtigter Empfaenger'),
+    );
   });
 
   it('auch ein Notification-Fehler nach SMTP-Fehler bricht den Flow nicht', async () => {

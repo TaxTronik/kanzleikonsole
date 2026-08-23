@@ -14,7 +14,10 @@ Ansicht **Steuertermine** gruppiert nach Steuerart und Zeitraum.
 Portalnutzer sehen bestätigte eigene Termine. Neue Wunschtermine können sie nur
 anfragen, wenn das Portal-Feature **Terminanfragen** aktiviert ist. Eine Anfrage
 ist noch kein bestätigter Termin; die Kanzlei nimmt sie an, ändert oder lehnt
-sie ab.
+sie ab. Als Wunsch-Bearbeiter werden im offenen Zugriffsmodus alle aktiven
+Mitarbeiter angeboten. Im eingeschränkten Modus und bei vertraulichen Mandanten
+beschränkt sich die Auswahl auf Admin/Partner und zuständige Mitarbeiter; die
+gleiche Prüfung erfolgt nochmals serverseitig.
 
 ## 2. Steuertermine und Auto-Anforderungen
 

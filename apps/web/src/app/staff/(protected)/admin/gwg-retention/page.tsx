@@ -6,6 +6,12 @@ import { findDueGwgDeletionDocs, findDueGwgCheckDeletions } from '@/server/gwg/r
 import { GwgDeleteButton, GwgCheckDeleteButton } from './delete-button';
 import { GWG_CHECK_STATUS_LABELS } from '@/lib/domain-labels';
 
+function retentionReasonLabel(reason: string): string {
+  if (reason === 'MANDATE_ENDED') return 'Mandatsende';
+  if (reason === 'MAXIMUM_RETENTION') return 'absolute 10-Jahres-Grenze';
+  return 'nie zustande gekommene Beziehung';
+}
+
 export default async function GwgRetentionPage() {
   const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
@@ -20,10 +26,11 @@ export default async function GwgRetentionPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">GwG-Löschprüfung</h1>
         <p className="text-muted text-sm max-w-3xl">
-          GwG-Belege beendeter Mandate sowie abgelehnter, abgebrochener oder abgelaufener
-          Onboardings, deren gesetzliche Aufbewahrungsfrist abgelaufen ist (§ 8 Abs. 4 GwG: 5 Jahre
-          ab Schluss des maßgeblichen Kalenderjahres). Die Vernichtung bestätigt der Berufsträger
-          manuell und ist unwiderruflich. Ein Mandat wird über „Mandat beenden" auf der
+          GwG-Belege beendeter Mandate sowie nie zustande gekommener oder offen gebliebener
+          Erstprüfungen, deren gesetzliche Aufbewahrungsfrist abgelaufen ist (§ 8 Abs. 4 GwG:
+          grundsätzlich 5 Jahre ab Schluss des maßgeblichen Kalenderjahres, absolute Vernichtung
+          nach spätestens 10 Jahren ab demselben Fristbeginn). Die Vernichtung bestätigt der
+          Berufsträger manuell und ist unwiderruflich. Ein Mandat wird über „Mandat beenden" auf der
           Mandanten-Bearbeitungsseite als beendet markiert.
         </p>
       </div>
@@ -55,9 +62,7 @@ export default async function GwgRetentionPage() {
                   <td className="px-4 py-3">
                     {fmtDateShort(item.retentionStartedAt)}
                     <span className="block text-xs text-muted">
-                      {item.retentionReason === 'MANDATE_ENDED'
-                        ? 'Mandatsende'
-                        : 'beendetes Onboarding'}
+                      {retentionReasonLabel(item.retentionReason)}
                     </span>
                   </td>
                   <td className="px-4 py-3">{fmtDateShort(item.deletionDeadline)}</td>
@@ -111,9 +116,7 @@ export default async function GwgRetentionPage() {
                   <td className="px-4 py-3">
                     {fmtDateShort(item.retentionStartedAt)}
                     <span className="block text-xs text-muted">
-                      {item.retentionReason === 'MANDATE_ENDED'
-                        ? 'Mandatsende'
-                        : 'beendetes Onboarding'}
+                      {retentionReasonLabel(item.retentionReason)}
                     </span>
                   </td>
                   <td className="px-4 py-3">{fmtDateShort(item.deletionDeadline)}</td>

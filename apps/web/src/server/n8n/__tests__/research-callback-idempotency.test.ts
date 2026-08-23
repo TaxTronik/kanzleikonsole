@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   notify: vi.fn(),
   claimReceipt: vi.fn(),
   setReceiptResult: vi.fn(),
+  filterStaffAccessClientTx: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({
@@ -25,6 +26,9 @@ vi.mock('@/server/db/prisma-owner', () => ({
 vi.mock('@/server/n8n/outbox', () => ({ enqueueN8nEvent: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/notifications/service', () => ({ notify: h.notify }));
+vi.mock('@taxtronik/db/staff-client-access', () => ({
+  filterStaffAccessClientTx: h.filterStaffAccessClientTx,
+}));
 vi.mock('@/server/n8n/callback-receipts', () => ({
   claimN8nCallbackReceipt: h.claimReceipt,
   setN8nCallbackReceiptResult: h.setReceiptResult,
@@ -59,6 +63,9 @@ beforeEach(() => {
   h.setReceiptResult.mockResolvedValue(undefined);
   h.evidenceRecord.mockResolvedValue({ id: randomUUID() });
   h.notify.mockResolvedValue(undefined);
+  h.filterStaffAccessClientTx.mockImplementation(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[]) => new Set(ids),
+  );
 });
 
 describe('research callback transaction idempotency', () => {
@@ -141,6 +148,35 @@ describe('research callback transaction idempotency', () => {
         resourceId: RESULT_ID,
       }),
     );
+    expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(tx, TENANT_ID, [staffId], clientId);
+  });
+
+  it.each([
+    'OPEN→RESTRICTED ohne aktuelle Verantwortung',
+    'nachtraeglich vertraulich ohne aktuelle Verantwortung',
+  ])('%s: Ergebnis bleibt gespeichert, aber Metadaten werden nicht gemeldet', async () => {
+    const staffId = randomUUID();
+    const clientId = randomUUID();
+    h.researchRequestFindUnique.mockResolvedValue({
+      tenantId: TENANT_ID,
+      markingId: null,
+      title: 'Vertrauliche Steuerfrage',
+      mapping: {},
+      createdById: staffId,
+      analysisId: randomUUID(),
+      analysis: { clientId },
+    });
+    h.filterStaffAccessClientTx.mockResolvedValue(new Set());
+
+    await receiveResearchResult({
+      researchRequestId: randomUUID(),
+      body: 'Ergebnis',
+      source: 'n8n-intern',
+    });
+
+    expect(h.resultCreate).toHaveBeenCalledOnce();
+    expect(h.evidenceRecord).toHaveBeenCalledOnce();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 
   it('legt verschiedene Rechercheaufträge als getrennte Ergebnisse an', async () => {

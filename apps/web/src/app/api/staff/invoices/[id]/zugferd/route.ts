@@ -48,13 +48,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Option B: byte-stabile ZUGFeRD-Archiv-PDF sicherstellen (einmal generiert +
   // revisionssicher abgelegt). Wurde sie beim Ausstellen (markSent) erzeugt,
-  // ist das hier nur ein Lookup; sonst wird sie jetzt generiert + gespeichert.
+  // ist das hier nur ein Lookup. Ein DRAFT wird frisch als nicht archivierte
+  // Kontrollfassung gerendert; die Festschreibung erfolgt erst beim Versand.
   // Validierung (Adresse vollständig) liegt im Helfer.
   // Zeitdach: PDF-Gen + Object-Store sind gebunden, damit der Download nie
   // endlos am Browser-Spinner hängen bleibt (früher „lädt ewig").
   let archive;
   try {
-    archive = await withTimeout(ensureZugferdArchive(ctx, id), 45_000);
+    archive = await withTimeout(ensureZugferdArchive(ctx, id, { purpose: 'PREVIEW' }), 45_000);
   } catch (err) {
     if (err instanceof TimeoutError) {
       return NextResponse.json(
@@ -90,6 +91,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         { status: 422 },
       );
     }
+    if (archive.code === 'status_conflict') {
+      return NextResponse.json(
+        {
+          error: 'status_conflict',
+          message: 'Die Rechnung wurde während der PDF-Erzeugung geändert oder storniert.',
+        },
+        { status: 409 },
+      );
+    }
     // not_found | not_applicable (z. B. EXTERNAL/PDF-Rechnung)
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
@@ -109,14 +119,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   });
 
-  // App-proxied: die archivierten Bytes direkt durchstreamen (O(1)).
+  // Ausgestellte Rechnungen: archivierte Bytes direkt durchstreamen (O(1)).
+  // DRAFT: frisch gerenderte Kontrollfassung; sie wird erst beim Versand
+  // gemeinsam mit der separaten XML revisionssicher festgeschrieben.
   const fileName = `zugferd-${archive.number.replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`;
-  const obj = await streamObject(archive.bucket, archive.key);
   const headers: Record<string, string> = {
     'Content-Type': 'application/pdf',
     'Content-Disposition': `attachment; filename="${fileName}"`,
     'Cache-Control': 'private, no-store',
   };
+  if ('bytes' in archive) {
+    headers['Content-Length'] = String(archive.bytes.length);
+    return new NextResponse(new Uint8Array(archive.bytes), { status: 200, headers });
+  }
+  const obj = await streamObject(archive.bucket, archive.key);
   if (obj.contentLength !== null) headers['Content-Length'] = String(obj.contentLength);
   return new NextResponse(obj.body, { status: 200, headers });
 }
