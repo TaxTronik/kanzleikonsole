@@ -88,6 +88,15 @@ describe('POST /api/portal/logout', () => {
     expect(mocks.portalSignOut).not.toHaveBeenCalled();
   });
 
+  it('akzeptiert den opaken Browser-Origin nur mit same-origin Fetch-Metadata', async () => {
+    const response = await POST(request('same-origin', 'null'));
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/portal/login');
+    expect(mocks.revokeAllSessions).toHaveBeenCalledWith('portal', 'contact-1');
+    expect(mocks.portalSignOut).toHaveBeenCalledWith({ redirect: false });
+  });
+
   it('meldet bei fehlgeschlagenem serverseitigem Widerruf keinen Erfolg', async () => {
     mocks.revokeAllSessions.mockRejectedValueOnce(new Error('redis down'));
 

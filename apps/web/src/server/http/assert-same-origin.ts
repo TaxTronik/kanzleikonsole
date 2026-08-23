@@ -22,7 +22,20 @@ export function assertSameOrigin(req: NextRequest, expectedBaseUrl: string): Nex
   const mismatch = () => NextResponse.json({ error: 'origin_mismatch' }, { status: 403 });
 
   const origin = req.headers.get('origin');
+  const fetchSite = req.headers.get('sec-fetch-site');
   if (origin) {
+    // Chromium serialisiert den Origin einer Formular-Navigation als `null`,
+    // wenn das Dokument unter `Referrer-Policy: no-referrer` geladen wurde.
+    // Das trifft insbesondere direkt nach dem Magic-Link-Login zu: Next.js
+    // navigiert clientseitig von der geschuetzten Verify-URL zum Dashboard,
+    // sodass die Dokument-Policy bis zum naechsten Voll-Reload bestehen bleibt.
+    // `Sec-Fetch-Site` ist ein verbotener, browserseitig gesetzter Header. Nur
+    // sein eindeutiges `same-origin` darf deshalb den opaken Origin ersetzen;
+    // sandbox-null aus fremden/gleichen Sites sowie Nicht-Browser-Requests
+    // bleiben fail-closed.
+    if (origin === 'null') {
+      return fetchSite === 'same-origin' ? null : mismatch();
+    }
     let originUrl: URL;
     try {
       originUrl = new URL(origin);
@@ -47,7 +60,6 @@ export function assertSameOrigin(req: NextRequest, expectedBaseUrl: string): Nex
   // Kein Origin-Header: Browser senden ihn bei POST praktisch immer (auch
   // same-origin) — fehlt er, ist es ein älterer oder Nicht-Browser-Client.
   // Sec-Fetch-Site als zweites Signal; fehlt auch das, blocken wir.
-  const fetchSite = req.headers.get('sec-fetch-site');
   if (fetchSite === 'same-origin') {
     return null;
   }

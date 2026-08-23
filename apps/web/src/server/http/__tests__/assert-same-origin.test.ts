@@ -33,8 +33,32 @@ describe('assertSameOrigin', () => {
     expect(res?.status).toBe(403);
   });
 
-  it('blockt unparsebare Origins wie sandbox-null', () => {
-    const res = assertSameOrigin(post({ origin: 'null' }), 'https://staff.example.de');
+  it('akzeptiert opaken Origin nur mit eindeutig same-origin Fetch-Metadata', () => {
+    expect(
+      assertSameOrigin(
+        post({ origin: 'null', 'sec-fetch-site': 'same-origin' }),
+        'https://staff.example.de',
+      ),
+    ).toBeNull();
+
+    for (const fetchSite of ['same-site', 'cross-site']) {
+      expect(
+        assertSameOrigin(
+          post({ origin: 'null', 'sec-fetch-site': fetchSite }),
+          'https://staff.example.de',
+        )?.status,
+      ).toBe(403);
+    }
+    expect(assertSameOrigin(post({ origin: 'null' }), 'https://staff.example.de')?.status).toBe(
+      403,
+    );
+  });
+
+  it('blockt sonstige unparsebare Origins auch mit Fetch-Metadata', () => {
+    const res = assertSameOrigin(
+      post({ origin: 'not-an-origin', 'sec-fetch-site': 'same-origin' }),
+      'https://staff.example.de',
+    );
     expect(res?.status).toBe(403);
   });
 

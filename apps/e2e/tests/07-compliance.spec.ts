@@ -1265,7 +1265,20 @@ test.describe('Session & Cookie Security', () => {
     const sessionCookie = cookiesBefore.find((c) => /taxtronik[_-]?portal/i.test(c.name));
     expect(sessionCookie, 'Portal-Session-Cookie muss vor Logout existieren').toBeDefined();
 
+    const logoutResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/portal/logout',
+    );
     await page.getByRole('button', { name: /Abmelden/i }).click();
+    const logoutResponse = await logoutResponsePromise;
+    const logoutBody =
+      logoutResponse.status() === 303 ? '' : (await logoutResponse.text()).slice(0, 500);
+    const logoutRequestHeaders = await logoutResponse.request().allHeaders();
+    expect(
+      logoutResponse.status(),
+      `Portal-Logout muss mit Redirect antworten. origin=${logoutRequestHeaders['origin'] ?? 'fehlt'} sec-fetch-site=${logoutRequestHeaders['sec-fetch-site'] ?? 'fehlt'} body=${logoutBody}`,
+    ).toBe(303);
     await expect(page).toHaveURL(/\/portal\/login/, { timeout: 15_000 });
 
     const cookiesAfter = await page.context().cookies();
