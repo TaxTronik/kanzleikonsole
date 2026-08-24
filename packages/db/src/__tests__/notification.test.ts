@@ -11,7 +11,7 @@ import {
 function notificationTx(existing: { id: string } | null = null) {
   const tx = {
     $executeRaw: vi.fn().mockResolvedValue(0),
-    $queryRaw: vi.fn().mockResolvedValue([{ resolvedCount: 0 }]),
+    $queryRaw: vi.fn().mockResolvedValue([{ actorType: 'SYSTEM' }]),
     notification: {
       findFirst: vi.fn().mockResolvedValue(existing),
       update: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +76,30 @@ describe('shared notification persistence', () => {
         resourceId: null,
       },
     });
+  });
+
+  it('delegiert CLIENT_CONTACT-Upserts an den write-only DB-Pfad', async () => {
+    const tx = notificationTx();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ actorType: 'CLIENT_CONTACT' }])
+      .mockResolvedValueOnce([{ upsertClientContactNotification: true }]);
+
+    await upsertNotificationTx(tx, {
+      tenantId: 'tenant-id',
+      staffId: 'staff-id',
+      kind: 'APPOINTMENT_REQUESTED',
+      title: '<Terminanfrage>',
+      body: 'Bitte <intern> bearbeiten',
+      href: '/staff/calendar',
+      resourceType: 'appointment_request',
+      resourceId: 'request-id',
+    });
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.notification.findFirst).not.toHaveBeenCalled();
+    expect(tx.notification.update).not.toHaveBeenCalled();
+    expect(tx.notification.create).not.toHaveBeenCalled();
   });
 
   it('delegiert Portal-Auflösungen ohne Notification-Lesezugriff an die DB', async () => {

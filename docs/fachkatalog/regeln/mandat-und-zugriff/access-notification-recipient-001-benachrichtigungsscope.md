@@ -16,9 +16,11 @@ professional_review:
 implementation:
   status: partial
   summary: >-
-    Die neue Notification-Scope-Migration bindet bekannte Fachressourcen
-    fail-closed an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den
-    aktuellen Empfänger- und Clientzugriff. Reminder revalidieren Empfänger vor
+    Die Notification-Scope-Migration bindet bekannte Fachressourcen fail-closed
+    an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den aktuellen
+    Empfänger- und Clientzugriff. Portal-Kontakte erzeugen die vier
+    klassifizierten Staff-Ereignisse über einen write-only DB-Upsert, ohne
+    SELECT-Freigabe auf interne Hinweise. Reminder revalidieren Empfänger vor
     dem Insert; ein vollständiges Inventar aller Producer sowie Mail- und
     n8n-Austritte bleibt als Härtungsnachweis offen.
 sources:
@@ -50,8 +52,10 @@ sources:
 code_refs:
   - packages/db/src/staff-client-access.ts
   - packages/db/src/notification.ts
+  - apps/web/src/server/notifications/service.ts
   - apps/worker/src/jobs/reminders-daily.ts
   - packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql
+  - packages/db/prisma/migrations/20260824030000_notification_client_contact_insert/migration.sql
 test_refs:
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
   - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
@@ -105,6 +109,7 @@ Kommunikationskanäle außerhalb des Notification-Modells.
 | kanzleiweite mandantenbezogene Notification    | nur aktuell clientberechtigten Staff zeigen                               | Broadcast ohne Zugriffsaufweitung  |
 | Empfänger verliert Zugriff                     | Lesen, Aktualisieren und Löschen sofort verweigern                        | aktueller statt historischer Scope |
 | neutraler technischer Typ                      | nur in der expliziten Neutral-Allowlist ohne Client zulassen              | getrennte Systemdomäne             |
+| Portal-Kontakt erzeugt Staff-Hinweis           | nur klassifiziert und write-only upserten; keinen SELECT-Zugriff eröffnen | interne Inhalte bleiben intern     |
 | Reminder wird erzeugt                          | Fachzeile sperren und Status, Empfängeraktivität sowie Zugriff neu prüfen | Race- und Zuständigkeitskontrolle  |
 
 ## Ausnahmen und Grenzfälle
@@ -136,7 +141,15 @@ Die Migration ergänzt `client_id`, leitet sie über eine geschlossene Liste
 bekannter Ressourcen ab, macht Scope und Ressourcenlink unveränderlich und
 ersetzt die generische Notification-Policy durch getrennte SELECT/INSERT/
 UPDATE/DELETE-Regeln. Der Reminder-Worker sperrt die aktuelle Fachzeile und
-verwendet `filterStaffAccessClientTx` unmittelbar vor `createMany`.
+verwendet `filterStaffAccessClientTx` unmittelbar vor `createMany`. Für
+`CLIENT_CONTACT` erkennt der gemeinsame Persistenzhelfer den Akteurtyp und
+delegiert an eine eng freigegebene SECURITY-DEFINER-Funktion. Diese sperrt den
+aktiven Kontakt und validiert Tenant, Ressourcen-Mandant, Empfänger-Tenant sowie
+die erlaubte Kind-/Ressourcen-Kombination. Sie sperrt den Idempotenzschlüssel
+und erzeugt den Hinweis ohne Rückgabe einer Notification-Zeile. Bei einem
+bereits vorhandenen ungelesenen Hinweis bleibt sie ohne Änderung, weil der
+Schlüssel allein dessen Portal-Provenienz nicht belegt. Die allgemeine
+INSERT-Policy ist für Portal-Kontakte geschlossen.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -144,7 +157,11 @@ Der Status bleibt teilweise, weil noch kein vollständiges Inventar aller
 heutigen Producer sowie Mail-/n8n-Austritte vorliegt. Die Migration und ihre
 Replay-/DB-Regressionen sind technisch nachgewiesen. Die RLS-Schicht
 klassifiziert nur die hinterlegte Fachressource; Freitexttitel und Body werden
-nicht inhaltlich auf unnötige Geheimnisse geprüft.
+nicht inhaltlich auf unnötige Geheimnisse geprüft. Der write-only Portal-Pfad
+ist derzeit absichtlich auf `APPOINTMENT_REQUESTED`, `REQUEST_RESPONDED`,
+`CLIENT_MASTER_CHANGE_REQUEST` und `GWG_ONBOARDING_SUBMITTED` mit ihren jeweils
+festen Ressourcentypen begrenzt; ein neuer Portal-Producer braucht eine
+bewusste Migration und einen DB-Nachweis.
 
 ## Fachliche Prüffragen
 
@@ -156,6 +173,11 @@ nicht inhaltlich auf unnötige Geheimnisse geprüft.
 ## Technische Nachweise
 
 Migrations- und DB-Tests belegen Ableitung, unbekannte Typen, Empfänger-RLS und
-sofortigen Entzug nach Vertraulichkeitsänderung. Worker-Tests belegen Locks,
-Statusrevalidierung, aktive Empfänger und den gemeinsamen Clientfilter. Die
-Nachweise sind noch kein vollständiges Producer-/Kanal-Inventar.
+sofortigen Entzug nach Vertraulichkeitsänderung. Sie belegen außerdem, dass ein
+Portal-Kontakt einen klassifizierten Staff-Hinweis idempotent erzeugen kann,
+ohne ihn anschließend lesen oder einen bestehenden gleichartigen Hinweis
+verändern zu können; ein direkter Raw-INSERT bleibt gesperrt. Negative DB-Tests
+belegen die geschlossene Ereignisliste sowie Kontakt-, Ressourcen- und
+Empfänger-Scope. Worker-Tests belegen Locks, Statusrevalidierung, aktive
+Empfänger und den gemeinsamen Clientfilter. Die Nachweise sind noch kein
+vollständiges Producer-/Kanal-Inventar.
