@@ -34,7 +34,7 @@
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx::Async function 'GwgPage'#1": 76,
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/start-check-cycle-form.tsx::Function 'StartCheckCycleForm'#1": 23,
   "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts::Async function 'updateNoticeStatusAction'#1": 30,
-  "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx::Arrow function#1": 55,
+  "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx::Arrow function#1": 53,
   "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx::Function 'NoticeStatusSelect'#1": 25,
   "apps/web/src/app/staff/(protected)/clients/[id]/page.tsx::Async function 'ClientDetailPage'#1": 21,
   "apps/web/src/app/staff/(protected)/clients/[id]/reminders/reminders-block.tsx::Arrow function#1": 31,
@@ -63,7 +63,6 @@
   "apps/web/src/app/staff/(protected)/reminders/[id]/reminder-detail-view.tsx::Function 'ReminderDetailView'#1": 24,
   "apps/web/src/app/staff/(protected)/reports/page.tsx::Async function 'ReportsPage'#1": 27,
   "apps/web/src/app/staff/(protected)/requests/page.tsx::Async function 'RequestsOverviewPage'#1": 24,
-  "apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx::Arrow function#1": 21,
   "apps/web/src/components/bwa/bwa-dashboard.tsx::Function 'BwaDashboard'#1": 45,
   "apps/web/src/components/document-explorer/browser-view.tsx::Arrow function#1": 29,
   "apps/web/src/components/document-explorer/browser-view.tsx::Function 'BrowserView'#1": 39,
@@ -80,7 +79,7 @@
   "apps/web/src/server/bwa/tax-estimator.ts::Function 'estimateTaxes'#1": 21,
   "apps/web/src/server/documents/resumable-upload.ts::Async arrow function#1": 21,
   "apps/web/src/server/dsgvo/workflow.ts::Function 'validateDsgvoStatusEvidence'#1": 22,
-  "apps/web/src/server/fristen/kontrollbuch.ts::Async function 'loadKontrollbuch'#1": 75,
+  "apps/web/src/server/fristen/kontrollbuch.ts::Async function 'loadKontrollbuch'#1": 38,
   "apps/web/src/server/invoicing/xrechnung.ts::Function 'generateXRechnungCii'#1": 31,
   "apps/web/src/server/invoicing/zugferd.ts::Async function 'generateZugferdPdf'#1": 26,
   "apps/web/src/server/n8n/callback-auth.ts::Async function 'authenticateN8nCallback'#1": 27,
@@ -98,5 +97,5 @@
   "packages/http-utils/src/index.ts::Function 'isPrivateIPv6'#1": 28,
   "packages/n8n-shared/src/outbox-enqueue.ts::Async arrow function#1": 35,
   "packages/risk-layer/src/mapping.ts::Function 'deriveHerkunft'#1": 28,
-  "packages/tax/src/materialize.ts::Async function 'materializeTenantTaxDeadlines'#1": 31
+  "packages/tax/src/materialize.ts::Async function 'materializeTenantTaxDeadlines'#1": 26
 }

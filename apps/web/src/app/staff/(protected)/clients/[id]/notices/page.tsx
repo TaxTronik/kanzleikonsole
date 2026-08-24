@@ -79,6 +79,13 @@ function diff(actual: { toString(): string } | null, expected: { toString(): str
   return a - e;
 }
 
+function AmountDifference({ value }: { value: number | null }) {
+  if (value === null) return <span className="text-disabled">—</span>;
+  if (value > 0) return <span className="text-red-700">+{fmtEUR(value)}</span>;
+  if (value < 0) return <span className="text-emerald-700">{fmtEUR(value)}</span>;
+  return <span className="text-muted">±0</span>;
+}
+
 function DataRetrievalEvidenceDetails({
   issuedAt,
   notificationDate,
@@ -137,6 +144,45 @@ function DataRetrievalEvidenceDetails({
   );
 }
 
+function CalculatedDeadlineAssessment({
+  status,
+  appealDeadline,
+  manualReviewRequired,
+  deadlineDays,
+}: {
+  status: string;
+  appealDeadline: Date | null;
+  manualReviewRequired: boolean;
+  deadlineDays: number | null;
+}) {
+  if (status !== 'CALCULATED' || !appealDeadline) return null;
+  return (
+    <>
+      <span
+        className={
+          manualReviewRequired ? 'text-xs font-medium text-amber-700' : 'text-xs text-muted'
+        }
+      >
+        {manualReviewRequired
+          ? 'Kontrollvorschlag – fachliche Freigabe offen'
+          : 'Kontrollvorschlag'}
+      </span>
+      <span
+        className={
+          deadlineDays !== null && deadlineDays <= 7 ? 'text-red-700 font-medium' : 'text-secondary'
+        }
+      >
+        {fmtDateShort(appealDeadline)}
+      </span>
+      {deadlineDays !== null && (
+        <span className="text-xs text-muted">
+          {deadlineDays >= 0 ? `noch ${deadlineDays} Tage` : `${-deadlineDays} Tage abgelaufen`}
+        </span>
+      )}
+    </>
+  );
+}
+
 function DeadlineAssessment({
   status,
   appealDeadline,
@@ -163,33 +209,12 @@ function DeadlineAssessment({
 
   return (
     <div className="flex flex-col gap-0.5">
-      {status === 'CALCULATED' && appealDeadline && (
-        <>
-          <span
-            className={
-              manualReviewRequired ? 'text-xs font-medium text-amber-700' : 'text-xs text-muted'
-            }
-          >
-            {manualReviewRequired
-              ? 'Kontrollvorschlag – fachliche Freigabe offen'
-              : 'Kontrollvorschlag'}
-          </span>
-          <span
-            className={
-              deadlineDays !== null && deadlineDays <= 7
-                ? 'text-red-700 font-medium'
-                : 'text-secondary'
-            }
-          >
-            {fmtDateShort(appealDeadline)}
-          </span>
-          {deadlineDays !== null && (
-            <span className="text-xs text-muted">
-              {deadlineDays >= 0 ? `noch ${deadlineDays} Tage` : `${-deadlineDays} Tage abgelaufen`}
-            </span>
-          )}
-        </>
-      )}
+      <CalculatedDeadlineAssessment
+        status={status}
+        appealDeadline={appealDeadline}
+        manualReviewRequired={manualReviewRequired}
+        deadlineDays={deadlineDays}
+      />
       {status === 'LEGACY_UNVERIFIED' && appealDeadline && (
         <>
           <span className="text-xs font-medium text-amber-700">Altbestand – ungeprüfte Frist</span>
@@ -450,15 +475,7 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                       {fmtEUR(n.expectedAmount)}
                     </td>
                     <td className="px-4 py-3 font-mono">
-                      {delta === null ? (
-                        <span className="text-disabled">—</span>
-                      ) : delta > 0 ? (
-                        <span className="text-red-700">+{fmtEUR(delta)}</span>
-                      ) : delta < 0 ? (
-                        <span className="text-emerald-700">{fmtEUR(delta)}</span>
-                      ) : (
-                        <span className="text-muted">±0</span>
-                      )}
+                      <AmountDifference value={delta} />
                     </td>
                     <td className="px-4 py-3">
                       <DeadlineAssessment

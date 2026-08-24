@@ -260,37 +260,37 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
   it('erlaubt nur dem expliziten Purge-Pfad die vollständige Neutralisierung', async () => {
     await expect(
       owner.$transaction(async (tx) => {
-          await tx.$queryRaw`
+        await tx.$queryRaw`
             SELECT set_config('app.current_tenant_id', ${tenantId}, true),
                    set_config('app.current_actor_id', ${staffId}, true),
                    set_config('app.current_actor_type', 'STAFF', true)
           `;
-          // Frische isolierte DBs erben den produktiven Default-Grant nicht.
-          // Der transaktionale Grant wird mit dem erwarteten Triggerfehler
-          // zurückgerollt und bildet nur den regulären Runtime-Zugriff ab.
-          await tx.$executeRawUnsafe(
-            'GRANT SELECT, UPDATE ON public."tax_deadline" TO taxtronik_app',
-          );
-          await tx.$executeRawUnsafe('SET LOCAL ROLE taxtronik_app');
-          // Ein frei setzbares Custom-GUC ist kein Autorisierungsnachweis. Der
-          // Runtime-User darf den exklusiven Owner-Retentionpfad nicht imitieren.
-          await tx.$queryRaw(
-            Prisma.sql`SELECT set_config('app.tax_deadline_notification_purge', 'on', true)`,
-          );
-          await tx.taxDeadline.update({
-            where: { id: deadlineId },
-            data: {
-              requestId: null,
-              autoRequestNotificationStatus: 'NOT_REQUIRED',
-              autoRequestNotificationAttemptCount: 0,
-              autoRequestNotificationLastAttemptAt: null,
-              autoRequestNotificationNextAttemptAt: null,
-              autoRequestNotificationAcceptedAt: null,
-              autoRequestNotificationLastError: null,
-              autoRequestNotificationEscalatedAt: null,
-            },
-          });
-        }),
+        // Frische isolierte DBs erben den produktiven Default-Grant nicht.
+        // Der transaktionale Grant wird mit dem erwarteten Triggerfehler
+        // zurückgerollt und bildet nur den regulären Runtime-Zugriff ab.
+        await tx.$executeRawUnsafe(
+          'GRANT SELECT, UPDATE ON public."tax_deadline" TO taxtronik_app',
+        );
+        await tx.$executeRawUnsafe('SET LOCAL ROLE taxtronik_app');
+        // Ein frei setzbares Custom-GUC ist kein Autorisierungsnachweis. Der
+        // Runtime-User darf den exklusiven Owner-Retentionpfad nicht imitieren.
+        await tx.$queryRaw(
+          Prisma.sql`SELECT set_config('app.tax_deadline_notification_purge', 'on', true)`,
+        );
+        await tx.taxDeadline.update({
+          where: { id: deadlineId },
+          data: {
+            requestId: null,
+            autoRequestNotificationStatus: 'NOT_REQUIRED',
+            autoRequestNotificationAttemptCount: 0,
+            autoRequestNotificationLastAttemptAt: null,
+            autoRequestNotificationNextAttemptAt: null,
+            autoRequestNotificationAcceptedAt: null,
+            autoRequestNotificationLastError: null,
+            autoRequestNotificationEscalatedAt: null,
+          },
+        });
+      }),
     ).rejects.toThrow(/orphaned.*history is immutable/i);
 
     await expect(
@@ -423,9 +423,8 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
 
   it('erteilt taxtronik_app keinen Lesezugriff auf die interne Versandhistorie', async () => {
     await expect(
-      withTenantContext(
-        { tenantId, actorId: staffId, actorType: 'STAFF' },
-        (tx) => tx.taxDeadlineNotificationHistory.findMany({ take: 1 }),
+      withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+        tx.taxDeadlineNotificationHistory.findMany({ take: 1 }),
       ),
     ).rejects.toThrow(/permission denied/i);
   });

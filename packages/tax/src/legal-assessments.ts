@@ -118,46 +118,27 @@ function workdayCandidate(date: Date, context: HolidayLocationContext): Date {
   return candidate;
 }
 
-/**
- * Prüft Anwendbarkeit und Feiertagskontext vor der kalendarischen Verschiebung.
- * Anders als shiftToNextWorkday gibt diese API bei unvollständigem Kontext kein
- * scheinbar abschließendes Rechtsdatum zurück.
- */
-export function assessWorkdayShift(input: WorkdayShiftAssessmentInput): WorkdayShiftAssessment {
-  const original = startOfUtcDay(input.date);
+const WORKDAY_APPLICATION_REVIEW_REASON: Partial<
+  Record<WorkdayApplicationType, WorkdayManualReviewReason>
+> = {
+  AUTHORITY_PERFORMANCE_PERIOD: 'AUTHORITY_PERFORMANCE_PERIOD_REQUIRES_SEPARATE_REVIEW',
+  AUTHORITY_FIXED_DATE: 'AUTHORITY_FIXED_DATE_REQUIRES_SEPARATE_REVIEW',
+  HOURLY_DEADLINE: 'HOURLY_DEADLINE_REQUIRES_SEPARATE_REVIEW',
+  UNCLEAR: 'APPLICATION_TYPE_UNCLEAR',
+};
+
+const HOLIDAY_CALENDAR_REVIEW_REASON: Partial<
+  Record<HolidayCalendarStatus, WorkdayManualReviewReason>
+> = {
+  STATE_LEVEL_ONLY: 'LOCAL_HOLIDAY_CALENDAR_INCOMPLETE',
+  HISTORICAL_UNVERIFIED: 'HISTORICAL_HOLIDAY_CALENDAR_UNVERIFIED',
+  FOREIGN_UNSUPPORTED: 'FOREIGN_HOLIDAY_CALENDAR_UNSUPPORTED',
+  UNKNOWN: 'HOLIDAY_CALENDAR_UNKNOWN',
+};
+
+function holidayContextReviewReasons(context: HolidayLocationContext): WorkdayManualReviewReason[] {
   const reasons: WorkdayManualReviewReason[] = [];
 
-  switch (input.applicationType) {
-    case 'AUTHORITY_PERFORMANCE_PERIOD':
-      reasons.push('AUTHORITY_PERFORMANCE_PERIOD_REQUIRES_SEPARATE_REVIEW');
-      break;
-    case 'AUTHORITY_FIXED_DATE':
-      reasons.push('AUTHORITY_FIXED_DATE_REQUIRES_SEPARATE_REVIEW');
-      break;
-    case 'HOURLY_DEADLINE':
-      reasons.push('HOURLY_DEADLINE_REQUIRES_SEPARATE_REVIEW');
-      break;
-    case 'UNCLEAR':
-      reasons.push('APPLICATION_TYPE_UNCLEAR');
-      break;
-    case 'STANDARD_DEADLINE_END':
-      break;
-  }
-
-  // § 108 Abs. 4 bis 6 AO wird nicht durch einen unverbindlichen Shift
-  // vorweggenommen. Der Kontrollwert bleibt in diesen Fällen das Eingabedatum.
-  if (input.applicationType !== 'STANDARD_DEADLINE_END') {
-    return {
-      status: 'MANUAL_REVIEW',
-      date: null,
-      controlDate: original,
-      shifted: false,
-      applicationType: input.applicationType,
-      manualReviewReasons: reasons,
-    };
-  }
-
-  const context = input.holidayContext;
   if (!context.countryCode) reasons.push('HOLIDAY_LOCATION_UNKNOWN');
   else if (context.countryCode !== 'DE') reasons.push('FOREIGN_HOLIDAY_CALENDAR_UNSUPPORTED');
   if (context.countryCode === 'DE' && !context.region) reasons.push('HOLIDAY_REGION_UNKNOWN');
@@ -165,22 +146,8 @@ export function assessWorkdayShift(input: WorkdayShiftAssessmentInput): WorkdayS
     reasons.push('HOLIDAY_LOCALITY_UNKNOWN');
   }
 
-  switch (context.calendarStatus) {
-    case 'CONFIRMED_FOR_DATE_AND_LOCATION':
-      break;
-    case 'STATE_LEVEL_ONLY':
-      reasons.push('LOCAL_HOLIDAY_CALENDAR_INCOMPLETE');
-      break;
-    case 'HISTORICAL_UNVERIFIED':
-      reasons.push('HISTORICAL_HOLIDAY_CALENDAR_UNVERIFIED');
-      break;
-    case 'FOREIGN_UNSUPPORTED':
-      reasons.push('FOREIGN_HOLIDAY_CALENDAR_UNSUPPORTED');
-      break;
-    case 'UNKNOWN':
-      reasons.push('HOLIDAY_CALENDAR_UNKNOWN');
-      break;
-  }
+  const calendarReason = HOLIDAY_CALENDAR_REVIEW_REASON[context.calendarStatus];
+  if (calendarReason) reasons.push(calendarReason);
 
   if (
     context.countryCode === 'DE' &&
@@ -190,8 +157,34 @@ export function assessWorkdayShift(input: WorkdayShiftAssessmentInput): WorkdayS
     reasons.push('BAVARIA_ASSUMPTION_UNRESOLVED');
   }
 
+  return unique(reasons);
+}
+
+/**
+ * Prüft Anwendbarkeit und Feiertagskontext vor der kalendarischen Verschiebung.
+ * Anders als shiftToNextWorkday gibt diese API bei unvollständigem Kontext kein
+ * scheinbar abschließendes Rechtsdatum zurück.
+ */
+export function assessWorkdayShift(input: WorkdayShiftAssessmentInput): WorkdayShiftAssessment {
+  const original = startOfUtcDay(input.date);
+
+  // § 108 Abs. 4 bis 6 AO wird nicht durch einen unverbindlichen Shift
+  // vorweggenommen. Der Kontrollwert bleibt in diesen Fällen das Eingabedatum.
+  if (input.applicationType !== 'STANDARD_DEADLINE_END') {
+    const reason = WORKDAY_APPLICATION_REVIEW_REASON[input.applicationType];
+    return {
+      status: 'MANUAL_REVIEW',
+      date: null,
+      controlDate: original,
+      shifted: false,
+      applicationType: input.applicationType,
+      manualReviewReasons: reason ? [reason] : [],
+    };
+  }
+
+  const context = input.holidayContext;
   const controlDate = workdayCandidate(original, context);
-  const manualReviewReasons = unique(reasons);
+  const manualReviewReasons = holidayContextReviewReasons(context);
   const calculated = manualReviewReasons.length === 0;
   return {
     status: calculated ? 'CALCULATED' : 'MANUAL_REVIEW',
@@ -335,129 +328,38 @@ function assessFictionDate(
   return assessStandardWorkday(unshifted, context);
 }
 
-/**
- * Beweisorientierte Einspruchsfristberechnung. Unbekannte Versanddaten werden
- * nicht aus dem Bescheiddatum ersetzt; ein solcher Wert kann nur explizit als
- * riskReferenceDate in die getrennte Risikorechnung eingehen.
- */
-export function assessAppealDeadline(
-  input: AppealDeadlineAssessmentInput,
-): AppealDeadlineAssessmentResult {
-  const reasons: AppealManualReviewReason[] = [];
-  let notificationBlocked = false;
+type DeadlineManualReviewReason =
+  | 'LEGAL_REMEDY_INSTRUCTION_UNCLEAR'
+  | 'DEADLINE_WORKDAY_REVIEW_REQUIRED';
+
+interface NotificationDeadlineResolution {
+  deadline: Date | null;
+  controlDeadline: Date | null;
+  deadlineBlocked: boolean;
+  reasons: DeadlineManualReviewReason[];
+  deadlineWorkdayAssessment: WorkdayShiftAssessment | null;
+}
+
+function assessNotificationDeadline(
+  notificationDate: Date | null,
+  controlNotificationDate: Date | null,
+  notificationBlocked: boolean,
+  instruction: LegalRemedyInstructionAssessment,
+  context: HolidayLocationContext,
+): NotificationDeadlineResolution {
+  const reasons: DeadlineManualReviewReason[] = [];
   let deadlineBlocked = false;
-  let riskOnly = false;
-  let notificationDate: Date | null = null;
-  let controlNotificationDate: Date | null = null;
-  let riskNotificationDate: Date | null = null;
-  let notificationWorkdayAssessment: WorkdayShiftAssessment | null = null;
+  let deadline: Date | null = null;
+  let controlDeadline: Date | null = null;
+  let deadlineWorkdayAssessment: WorkdayShiftAssessment | null = null;
 
-  const access = input.access ?? { kind: 'NO_DEVIATION_REPORTED' as const };
-
-  if (input.deliveryMethod === 'DETERMINED_NOTIFICATION') {
-    if (input.determinedNotificationDate) {
-      notificationDate = startOfUtcDay(input.determinedNotificationDate);
-      controlNotificationDate = notificationDate;
-    } else {
-      reasons.push('DETERMINED_NOTIFICATION_DATE_MISSING');
-      notificationBlocked = true;
-    }
-  } else if (input.dispatchDate) {
-    notificationWorkdayAssessment = assessFictionDate(
-      input.dispatchDate,
-      input.deliveryMethod,
-      input.notificationHolidayContext,
-    );
-    controlNotificationDate = notificationWorkdayAssessment.controlDate;
-    if (notificationWorkdayAssessment.date) {
-      notificationDate = notificationWorkdayAssessment.date;
-    } else {
-      reasons.push('NOTIFICATION_WORKDAY_REVIEW_REQUIRED');
-      notificationBlocked = true;
-    }
-  } else if (access.kind === 'ACTUAL_ACCESS_DETERMINED') {
-    // Ein unabhängig festgestellter tatsächlicher Zugang ist bei unbekanntem
-    // Versandtag der einzige automatisch verwertbare Ausgangstag.
-    notificationDate = startOfUtcDay(access.date);
-    controlNotificationDate = notificationDate;
-  } else {
-    reasons.push('DISPATCH_DATE_UNKNOWN');
-    notificationBlocked = true;
-    if (input.riskReferenceDate) {
-      notificationWorkdayAssessment = assessFictionDate(
-        input.riskReferenceDate,
-        input.deliveryMethod,
-        input.notificationHolidayContext,
-      );
-      riskNotificationDate = notificationWorkdayAssessment.controlDate;
-      controlNotificationDate = riskNotificationDate;
-      reasons.push('RISK_DATE_ONLY');
-      riskOnly = true;
-    }
-  }
-
-  switch (access.kind) {
-    case 'NO_DEVIATION_REPORTED':
-      break;
-    case 'NON_RECEIPT_DISPUTED':
-      reasons.push('NON_RECEIPT_REQUIRES_EVIDENCE_REVIEW');
-      notificationDate = null;
-      notificationBlocked = true;
-      break;
-    case 'EARLIER_ACCESS_RECORDED': {
-      const actual = startOfUtcDay(access.date);
-      // Ein früher tatsächlicher Eingang verkürzt die Bekanntgabefiktion nicht.
-      // Ist der als „früher“ erfasste Tag tatsächlich später, wird die
-      // widersprüchliche Einordnung nicht stillschweigend verwertet.
-      if (notificationDate && actual.getTime() > notificationDate.getTime()) {
-        reasons.push('RECORDED_EARLIER_ACCESS_AFTER_FICTION');
-        notificationDate = null;
-        notificationBlocked = true;
-      }
-      break;
-    }
-    case 'LATER_ACCESS_CLAIMED': {
-      const claimed = startOfUtcDay(access.date);
-      reasons.push(
-        controlNotificationDate && claimed.getTime() <= controlNotificationDate.getTime()
-          ? 'CLAIMED_LATER_ACCESS_NOT_AFTER_FICTION'
-          : 'LATER_ACCESS_REQUIRES_EVIDENCE_REVIEW',
-      );
-      notificationDate = null;
-      notificationBlocked = true;
-      break;
-    }
-    case 'ACTUAL_ACCESS_DETERMINED': {
-      const actual = startOfUtcDay(access.date);
-      if (!notificationDate || actual.getTime() > notificationDate.getTime()) {
-        notificationDate = actual;
-      }
-      // Ein früher Zugang verkürzt die Fiktion nicht. Der Kontrolltag folgt
-      // deshalb ebenfalls nur einem tatsächlich späteren Zugang.
-      if (!controlNotificationDate || actual.getTime() > controlNotificationDate.getTime()) {
-        controlNotificationDate = actual;
-      }
-      break;
-    }
-  }
-
-  if (input.legalRemedyInstruction === 'UNCLEAR') {
+  if (instruction === 'UNCLEAR') {
     reasons.push('LEGAL_REMEDY_INSTRUCTION_UNCLEAR');
     deadlineBlocked = true;
   }
 
-  let deadline: Date | null = null;
-  let controlDeadline: Date | null = null;
-  let claimedAccessControlDeadline: Date | null = null;
-  let riskDeadline: Date | null = null;
-  let deadlineWorkdayAssessment: WorkdayShiftAssessment | null = null;
-
   if (controlNotificationDate) {
-    deadlineWorkdayAssessment = assessPeriodEnd(
-      controlNotificationDate,
-      input.legalRemedyInstruction,
-      input.deadlineHolidayContext,
-    );
+    deadlineWorkdayAssessment = assessPeriodEnd(controlNotificationDate, instruction, context);
     controlDeadline = deadlineWorkdayAssessment.controlDate;
     if (!deadlineWorkdayAssessment.date) {
       reasons.push('DEADLINE_WORKDAY_REVIEW_REQUIRED');
@@ -465,31 +367,10 @@ export function assessAppealDeadline(
     }
   }
 
-  if (riskNotificationDate && controlDeadline) riskDeadline = controlDeadline;
-
-  if (
-    access.kind === 'LATER_ACCESS_CLAIMED' &&
-    (!controlNotificationDate ||
-      startOfUtcDay(access.date).getTime() > controlNotificationDate.getTime())
-  ) {
-    // Beide Szenarien bleiben sichtbar: controlDeadline bildet die gesetzliche
-    // Fiktion ab, dieser Wert ausschließlich die behauptete spätere Variante.
-    // Keiner von beiden wird ohne fachliche Würdigung als Rechtsfrist freigegeben.
-    claimedAccessControlDeadline = assessPeriodEnd(
-      access.date,
-      input.legalRemedyInstruction,
-      input.deadlineHolidayContext,
-    ).controlDate;
-  }
-
   if (notificationDate && !notificationBlocked && !deadlineBlocked) {
     // Bei einem festgestellten späteren Zugang kann der zuvor berechnete
     // Kontrollwert abweichen; deshalb Fristende aus dem Rechtsdatum neu bilden.
-    deadlineWorkdayAssessment = assessPeriodEnd(
-      notificationDate,
-      input.legalRemedyInstruction,
-      input.deadlineHolidayContext,
-    );
+    deadlineWorkdayAssessment = assessPeriodEnd(notificationDate, instruction, context);
     controlDeadline = deadlineWorkdayAssessment.controlDate;
     if (deadlineWorkdayAssessment.date) deadline = deadlineWorkdayAssessment.date;
     else {
@@ -498,22 +379,213 @@ export function assessAppealDeadline(
     }
   }
 
-  const manualReviewReasons = unique(reasons);
   return {
-    status: riskOnly
+    deadline,
+    controlDeadline,
+    deadlineBlocked,
+    reasons,
+    deadlineWorkdayAssessment,
+  };
+}
+
+interface AppealNotificationResolution {
+  reasons: AppealManualReviewReason[];
+  notificationBlocked: boolean;
+  riskOnly: boolean;
+  notificationDate: Date | null;
+  controlNotificationDate: Date | null;
+  riskNotificationDate: Date | null;
+  notificationWorkdayAssessment: WorkdayShiftAssessment | null;
+}
+
+function resolveAppealNotificationSource(
+  input: AppealDeadlineAssessmentInput,
+  access: NoticeAccessSituation,
+): AppealNotificationResolution {
+  const resolution: AppealNotificationResolution = {
+    reasons: [],
+    notificationBlocked: false,
+    riskOnly: false,
+    notificationDate: null,
+    controlNotificationDate: null,
+    riskNotificationDate: null,
+    notificationWorkdayAssessment: null,
+  };
+
+  if (input.deliveryMethod === 'DETERMINED_NOTIFICATION') {
+    if (input.determinedNotificationDate) {
+      resolution.notificationDate = startOfUtcDay(input.determinedNotificationDate);
+      resolution.controlNotificationDate = resolution.notificationDate;
+    } else {
+      resolution.reasons.push('DETERMINED_NOTIFICATION_DATE_MISSING');
+      resolution.notificationBlocked = true;
+    }
+    return resolution;
+  }
+
+  if (input.dispatchDate) {
+    resolution.notificationWorkdayAssessment = assessFictionDate(
+      input.dispatchDate,
+      input.deliveryMethod,
+      input.notificationHolidayContext,
+    );
+    resolution.controlNotificationDate = resolution.notificationWorkdayAssessment.controlDate;
+    if (resolution.notificationWorkdayAssessment.date) {
+      resolution.notificationDate = resolution.notificationWorkdayAssessment.date;
+    } else {
+      resolution.reasons.push('NOTIFICATION_WORKDAY_REVIEW_REQUIRED');
+      resolution.notificationBlocked = true;
+    }
+    return resolution;
+  }
+
+  if (access.kind === 'ACTUAL_ACCESS_DETERMINED') {
+    // Ein unabhängig festgestellter tatsächlicher Zugang ist bei unbekanntem
+    // Versandtag der einzige automatisch verwertbare Ausgangstag.
+    resolution.notificationDate = startOfUtcDay(access.date);
+    resolution.controlNotificationDate = resolution.notificationDate;
+    return resolution;
+  }
+
+  resolution.reasons.push('DISPATCH_DATE_UNKNOWN');
+  resolution.notificationBlocked = true;
+  if (input.riskReferenceDate) {
+    resolution.notificationWorkdayAssessment = assessFictionDate(
+      input.riskReferenceDate,
+      input.deliveryMethod,
+      input.notificationHolidayContext,
+    );
+    resolution.riskNotificationDate = resolution.notificationWorkdayAssessment.controlDate;
+    resolution.controlNotificationDate = resolution.riskNotificationDate;
+    resolution.reasons.push('RISK_DATE_ONLY');
+    resolution.riskOnly = true;
+  }
+
+  return resolution;
+}
+
+function applyAppealAccess(
+  source: AppealNotificationResolution,
+  access: NoticeAccessSituation,
+): AppealNotificationResolution {
+  const resolution = { ...source, reasons: [...source.reasons] };
+
+  switch (access.kind) {
+    case 'NO_DEVIATION_REPORTED':
+      break;
+    case 'NON_RECEIPT_DISPUTED':
+      resolution.reasons.push('NON_RECEIPT_REQUIRES_EVIDENCE_REVIEW');
+      resolution.notificationDate = null;
+      resolution.notificationBlocked = true;
+      break;
+    case 'EARLIER_ACCESS_RECORDED': {
+      const actual = startOfUtcDay(access.date);
+      // Ein früher tatsächlicher Eingang verkürzt die Bekanntgabefiktion nicht.
+      // Ist der als „früher“ erfasste Tag tatsächlich später, wird die
+      // widersprüchliche Einordnung nicht stillschweigend verwertet.
+      if (resolution.notificationDate && actual.getTime() > resolution.notificationDate.getTime()) {
+        resolution.reasons.push('RECORDED_EARLIER_ACCESS_AFTER_FICTION');
+        resolution.notificationDate = null;
+        resolution.notificationBlocked = true;
+      }
+      break;
+    }
+    case 'LATER_ACCESS_CLAIMED': {
+      const claimed = startOfUtcDay(access.date);
+      resolution.reasons.push(
+        resolution.controlNotificationDate &&
+          claimed.getTime() <= resolution.controlNotificationDate.getTime()
+          ? 'CLAIMED_LATER_ACCESS_NOT_AFTER_FICTION'
+          : 'LATER_ACCESS_REQUIRES_EVIDENCE_REVIEW',
+      );
+      resolution.notificationDate = null;
+      resolution.notificationBlocked = true;
+      break;
+    }
+    case 'ACTUAL_ACCESS_DETERMINED': {
+      const actual = startOfUtcDay(access.date);
+      if (
+        !resolution.notificationDate ||
+        actual.getTime() > resolution.notificationDate.getTime()
+      ) {
+        resolution.notificationDate = actual;
+      }
+      // Ein früher Zugang verkürzt die Fiktion nicht. Der Kontrolltag folgt
+      // deshalb ebenfalls nur einem tatsächlich späteren Zugang.
+      if (
+        !resolution.controlNotificationDate ||
+        actual.getTime() > resolution.controlNotificationDate.getTime()
+      ) {
+        resolution.controlNotificationDate = actual;
+      }
+      break;
+    }
+  }
+
+  return resolution;
+}
+
+function assessClaimedAccessControlDeadline(
+  access: NoticeAccessSituation,
+  controlNotificationDate: Date | null,
+  instruction: LegalRemedyInstructionAssessment,
+  context: HolidayLocationContext,
+): Date | null {
+  if (access.kind !== 'LATER_ACCESS_CLAIMED') return null;
+
+  const claimed = startOfUtcDay(access.date);
+  if (controlNotificationDate && claimed.getTime() <= controlNotificationDate.getTime()) {
+    return null;
+  }
+
+  // Beide Szenarien bleiben sichtbar: der reguläre Kontrollwert bildet die
+  // gesetzliche Fiktion ab, dieser Wert nur die behauptete spätere Variante.
+  return assessPeriodEnd(access.date, instruction, context).controlDate;
+}
+
+/**
+ * Beweisorientierte Einspruchsfristberechnung. Unbekannte Versanddaten werden
+ * nicht aus dem Bescheiddatum ersetzt; ein solcher Wert kann nur explizit als
+ * riskReferenceDate in die getrennte Risikorechnung eingehen.
+ */
+export function assessAppealDeadline(
+  input: AppealDeadlineAssessmentInput,
+): AppealDeadlineAssessmentResult {
+  const access = input.access ?? { kind: 'NO_DEVIATION_REPORTED' as const };
+  const notification = applyAppealAccess(resolveAppealNotificationSource(input, access), access);
+  const deadline = assessNotificationDeadline(
+    notification.notificationDate,
+    notification.controlNotificationDate,
+    notification.notificationBlocked,
+    input.legalRemedyInstruction,
+    input.deadlineHolidayContext,
+  );
+  const claimedAccessControlDeadline = assessClaimedAccessControlDeadline(
+    access,
+    notification.controlNotificationDate,
+    input.legalRemedyInstruction,
+    input.deadlineHolidayContext,
+  );
+  const riskDeadline =
+    notification.riskNotificationDate && deadline.controlDeadline ? deadline.controlDeadline : null;
+  const manualReviewReasons = unique([...notification.reasons, ...deadline.reasons]);
+
+  return {
+    status: notification.riskOnly
       ? 'RISK_ONLY'
       : manualReviewReasons.length > 0
         ? 'MANUAL_REVIEW'
         : 'CALCULATED',
-    notificationDate: notificationBlocked ? null : notificationDate,
-    deadline: notificationBlocked || deadlineBlocked ? null : deadline,
-    controlNotificationDate,
-    controlDeadline,
+    notificationDate: notification.notificationBlocked ? null : notification.notificationDate,
+    deadline:
+      notification.notificationBlocked || deadline.deadlineBlocked ? null : deadline.deadline,
+    controlNotificationDate: notification.controlNotificationDate,
+    controlDeadline: deadline.controlDeadline,
     claimedAccessControlDeadline,
     riskDeadline,
     manualReviewReasons,
-    notificationWorkdayAssessment,
-    deadlineWorkdayAssessment,
+    notificationWorkdayAssessment: notification.notificationWorkdayAssessment,
+    deadlineWorkdayAssessment: deadline.deadlineWorkdayAssessment,
   };
 }
 
@@ -590,27 +662,18 @@ export interface DataRetrievalDeadlineAssessmentResult {
   deadlineWorkdayAssessment: WorkdayShiftAssessment | null;
 }
 
-/**
- * Beweisorientierte §-122a-Berechnung mit Erlassdatum-Cutover, konservativer
- * 2026-Einwilligung und Postantragsprüfung ab 2027. Ein Fehler der
- * Benachrichtigung verändert den Fiktionstag nicht, erzeugt aber ausdrücklich
- * einen manuellen §-110-Prüffall.
- */
-export function assessDataRetrievalDeadline(
+interface DataRetrievalPrerequisiteResolution {
+  reasons: DataRetrievalManualReviewReason[];
+  notificationBlocked: boolean;
+}
+
+function assessDataRetrievalPrerequisites(
   input: DataRetrievalDeadlineAssessmentInput,
-): DataRetrievalDeadlineAssessmentResult {
+  issuedAt: Date | null,
+  provisionDate: Date | null,
+): DataRetrievalPrerequisiteResolution {
   const reasons: DataRetrievalManualReviewReason[] = [];
   let notificationBlocked = false;
-  let deadlineBlocked = false;
-  let regime: DataRetrievalDeadlineAssessmentResult['regime'] = 'UNKNOWN';
-  let notificationDate: Date | null = null;
-  let controlNotificationDate: Date | null = null;
-  let notificationWorkdayAssessment: WorkdayShiftAssessment | null = null;
-  let reinstatementReviewRequired = false;
-  let notificationDutyDeviation = false;
-
-  const issuedAt = input.issuedAt ? startOfUtcDay(input.issuedAt) : null;
-  const provisionDate = input.provisionDate ? startOfUtcDay(input.provisionDate) : null;
 
   if (!issuedAt) {
     reasons.push('ISSUED_AT_UNKNOWN');
@@ -632,146 +695,242 @@ export function assessDataRetrievalDeadline(
     reasons.push('PROVISION_PROFESSIONAL_APPROVAL_PENDING');
   }
 
-  if (issuedAt) {
-    const year = issuedAt.getUTCFullYear();
-    if (year <= 2025) {
-      regime = 'LEGACY_UNTIL_2025';
-      if (input.legacyNotificationDisputedOrLate) {
-        if (input.legacyRetrievedAt) {
-          notificationDate = startOfUtcDay(input.legacyRetrievedAt);
-          controlNotificationDate = notificationDate;
-        } else {
-          reasons.push('LEGACY_NOTIFICATION_ACCESS_DISPUTED');
-          notificationBlocked = true;
-        }
-      } else if (
-        !input.notificationStatus ||
-        ['FAILED', 'NOT_RECEIVED', 'UNKNOWN'].includes(input.notificationStatus)
-      ) {
-        // Im Altrecht ist die Benachrichtigung selbst der Ausgangsvorgang.
-        // Ein bloß eingetragenes Datum darf einen fehlgeschlagenen oder
-        // unklaren Versand nicht in einen nachgewiesenen Versand umdeuten.
-        reasons.push('LEGACY_NOTIFICATION_OUTCOME_NOT_CONFIRMED');
-        notificationBlocked = true;
-      } else if (!input.legacyNotificationDate) {
-        reasons.push('LEGACY_NOTIFICATION_DATE_UNKNOWN');
-        notificationBlocked = true;
-      } else if (provisionDate) {
-        const notificationSent = startOfUtcDay(input.legacyNotificationDate);
-        notificationWorkdayAssessment = assessStandardWorkday(
-          // Art. 97 § 1 Abs. 15 EGAO knüpft den Wechsel von drei auf vier
-          // Tage bei § 122a Abs. 4 AO an die elektronische Bereitstellung,
-          // nicht an den gegebenenfalls späteren Benachrichtigungsversand.
-          addCalendarDays(notificationSent, bekanntgabeFiktionTage(provisionDate)),
-          input.notificationHolidayContext,
-        );
-        controlNotificationDate = notificationWorkdayAssessment.controlDate;
-        if (notificationWorkdayAssessment.date) {
-          notificationDate = notificationWorkdayAssessment.date;
-        } else {
-          reasons.push('NOTIFICATION_WORKDAY_REVIEW_REQUIRED');
-          notificationBlocked = true;
-        }
-      }
+  return { reasons, notificationBlocked };
+}
+
+interface DataRetrievalNotificationResolution {
+  regime: DataRetrievalDeadlineAssessmentResult['regime'];
+  reasons: DataRetrievalManualReviewReason[];
+  notificationBlocked: boolean;
+  notificationDate: Date | null;
+  controlNotificationDate: Date | null;
+  notificationWorkdayAssessment: WorkdayShiftAssessment | null;
+  reinstatementReviewRequired: boolean;
+  notificationDutyDeviation: boolean;
+}
+
+function resolveLegacyDataRetrievalNotification(
+  input: DataRetrievalDeadlineAssessmentInput,
+  provisionDate: Date | null,
+): DataRetrievalNotificationResolution {
+  const resolution: DataRetrievalNotificationResolution = {
+    regime: 'LEGACY_UNTIL_2025',
+    reasons: [],
+    notificationBlocked: false,
+    notificationDate: null,
+    controlNotificationDate: null,
+    notificationWorkdayAssessment: null,
+    reinstatementReviewRequired: false,
+    notificationDutyDeviation: false,
+  };
+
+  if (input.legacyNotificationDisputedOrLate) {
+    if (input.legacyRetrievedAt) {
+      resolution.notificationDate = startOfUtcDay(input.legacyRetrievedAt);
+      resolution.controlNotificationDate = resolution.notificationDate;
     } else {
-      if (year === 2026) {
-        regime = 'CONSENT_2026';
-        if (input.consent2026 !== 'ACTIVE_DOCUMENTED') {
-          reasons.push('ACTIVE_CONSENT_2026_NOT_DOCUMENTED');
-          notificationBlocked = true;
-        }
-      } else {
-        regime = 'DEFAULT_FROM_2027';
-        if (input.eligibility2027 !== 'CONFIRMED') {
-          reasons.push('ELIGIBILITY_2027_NOT_CONFIRMED');
-          notificationBlocked = true;
-        }
-        if (input.postalRequestStatus === 'EFFECTIVE_REQUEST') {
-          const requestReceivedAt = input.postalRequestReceivedAt
-            ? startOfUtcDay(input.postalRequestReceivedAt)
-            : null;
-          // Ein Antrag wirkt nur für die Zukunft. War er bei der konkreten
-          // Bereitstellung bereits zugegangen, wird der tatsächliche Vorgang
-          // samt möglicher Wiedereinsetzung fachlich geprüft. Ein erst später
-          // zugegangener Antrag blockiert diesen früheren Vorgang nicht.
-          if (!requestReceivedAt || !provisionDate || requestReceivedAt <= provisionDate) {
-            reasons.push('POSTAL_REQUEST_EFFECT_REQUIRES_REVIEW');
-            notificationBlocked = true;
-            // Wurde trotz bereits wirksamem Postantrag elektronisch
-            // bereitgestellt, bleibt die tatsächliche Bekanntgabeform
-            // fachlich zu würdigen. Der getrennte Hinweis verhindert, dass
-            // eine mögliche Wiedereinsetzung im manuellen Fall übersehen wird.
-            reinstatementReviewRequired = true;
-          }
-        } else if (input.postalRequestStatus !== 'NO_EFFECTIVE_REQUEST') {
-          reasons.push('POSTAL_REQUEST_STATUS_UNKNOWN');
-          notificationBlocked = true;
-        }
-      }
-
-      if (provisionDate) {
-        notificationWorkdayAssessment = assessStandardWorkday(
-          addCalendarDays(provisionDate, BEKANNTGABE_FIKTION_TAGE),
-          input.notificationHolidayContext,
-        );
-        controlNotificationDate = notificationWorkdayAssessment.controlDate;
-        if (notificationWorkdayAssessment.date) {
-          notificationDate = notificationWorkdayAssessment.date;
-        } else {
-          reasons.push('NOTIFICATION_WORKDAY_REVIEW_REQUIRED');
-          notificationBlocked = true;
-        }
-      }
-
-      const notificationStatus = input.notificationStatus ?? 'UNKNOWN';
-      if (notificationStatus === 'UNKNOWN') {
-        reasons.push('NOTIFICATION_OUTCOME_UNKNOWN');
-      } else if (notificationStatus !== 'SAME_DAY_CONFIRMED') {
-        reasons.push('NOTIFICATION_DUTY_DEVIATION_REQUIRES_SECTION_110_REVIEW');
-        reinstatementReviewRequired = true;
-        notificationDutyDeviation = true;
-      }
+      resolution.reasons.push('LEGACY_NOTIFICATION_ACCESS_DISPUTED');
+      resolution.notificationBlocked = true;
     }
+    return resolution;
   }
 
-  if (input.legalRemedyInstruction === 'UNCLEAR') {
-    reasons.push('LEGAL_REMEDY_INSTRUCTION_UNCLEAR');
-    deadlineBlocked = true;
+  if (
+    !input.notificationStatus ||
+    ['FAILED', 'NOT_RECEIVED', 'UNKNOWN'].includes(input.notificationStatus)
+  ) {
+    // Im Altrecht ist die Benachrichtigung selbst der Ausgangsvorgang.
+    // Ein bloß eingetragenes Datum darf einen fehlgeschlagenen oder
+    // unklaren Versand nicht in einen nachgewiesenen Versand umdeuten.
+    resolution.reasons.push('LEGACY_NOTIFICATION_OUTCOME_NOT_CONFIRMED');
+    resolution.notificationBlocked = true;
+    return resolution;
   }
 
-  let deadline: Date | null = null;
-  let controlDeadline: Date | null = null;
-  let deadlineWorkdayAssessment: WorkdayShiftAssessment | null = null;
-  if (controlNotificationDate) {
-    deadlineWorkdayAssessment = assessPeriodEnd(
-      controlNotificationDate,
-      input.legalRemedyInstruction,
-      input.deadlineHolidayContext,
+  if (!input.legacyNotificationDate) {
+    resolution.reasons.push('LEGACY_NOTIFICATION_DATE_UNKNOWN');
+    resolution.notificationBlocked = true;
+    return resolution;
+  }
+
+  if (!provisionDate) return resolution;
+
+  const notificationSent = startOfUtcDay(input.legacyNotificationDate);
+  resolution.notificationWorkdayAssessment = assessStandardWorkday(
+    // Art. 97 § 1 Abs. 15 EGAO knüpft den Wechsel von drei auf vier
+    // Tage bei § 122a Abs. 4 AO an die elektronische Bereitstellung,
+    // nicht an den gegebenenfalls späteren Benachrichtigungsversand.
+    addCalendarDays(notificationSent, bekanntgabeFiktionTage(provisionDate)),
+    input.notificationHolidayContext,
+  );
+  resolution.controlNotificationDate = resolution.notificationWorkdayAssessment.controlDate;
+  if (resolution.notificationWorkdayAssessment.date) {
+    resolution.notificationDate = resolution.notificationWorkdayAssessment.date;
+  } else {
+    resolution.reasons.push('NOTIFICATION_WORKDAY_REVIEW_REQUIRED');
+    resolution.notificationBlocked = true;
+  }
+
+  return resolution;
+}
+
+interface ModernDataRetrievalRequirements {
+  regime: Extract<
+    DataRetrievalDeadlineAssessmentResult['regime'],
+    'CONSENT_2026' | 'DEFAULT_FROM_2027'
+  >;
+  reasons: DataRetrievalManualReviewReason[];
+  notificationBlocked: boolean;
+  reinstatementReviewRequired: boolean;
+}
+
+function assessModernDataRetrievalRequirements(
+  input: DataRetrievalDeadlineAssessmentInput,
+  issuedYear: number,
+  provisionDate: Date | null,
+): ModernDataRetrievalRequirements {
+  const reasons: DataRetrievalManualReviewReason[] = [];
+  let notificationBlocked = false;
+  let reinstatementReviewRequired = false;
+
+  if (issuedYear === 2026) {
+    if (input.consent2026 !== 'ACTIVE_DOCUMENTED') {
+      reasons.push('ACTIVE_CONSENT_2026_NOT_DOCUMENTED');
+      notificationBlocked = true;
+    }
+    return {
+      regime: 'CONSENT_2026',
+      reasons,
+      notificationBlocked,
+      reinstatementReviewRequired,
+    };
+  }
+
+  if (input.eligibility2027 !== 'CONFIRMED') {
+    reasons.push('ELIGIBILITY_2027_NOT_CONFIRMED');
+    notificationBlocked = true;
+  }
+  if (input.postalRequestStatus === 'EFFECTIVE_REQUEST') {
+    const requestReceivedAt = input.postalRequestReceivedAt
+      ? startOfUtcDay(input.postalRequestReceivedAt)
+      : null;
+    // Ein Antrag wirkt nur für die Zukunft. War er bei der konkreten
+    // Bereitstellung bereits zugegangen, wird der tatsächliche Vorgang
+    // samt möglicher Wiedereinsetzung fachlich geprüft. Ein erst später
+    // zugegangener Antrag blockiert diesen früheren Vorgang nicht.
+    if (!requestReceivedAt || !provisionDate || requestReceivedAt <= provisionDate) {
+      reasons.push('POSTAL_REQUEST_EFFECT_REQUIRES_REVIEW');
+      notificationBlocked = true;
+      // Wurde trotz bereits wirksamem Postantrag elektronisch bereitgestellt,
+      // bleibt die tatsächliche Bekanntgabeform fachlich zu würdigen.
+      reinstatementReviewRequired = true;
+    }
+  } else if (input.postalRequestStatus !== 'NO_EFFECTIVE_REQUEST') {
+    reasons.push('POSTAL_REQUEST_STATUS_UNKNOWN');
+    notificationBlocked = true;
+  }
+
+  return {
+    regime: 'DEFAULT_FROM_2027',
+    reasons,
+    notificationBlocked,
+    reinstatementReviewRequired,
+  };
+}
+
+function resolveModernDataRetrievalNotification(
+  input: DataRetrievalDeadlineAssessmentInput,
+  issuedYear: number,
+  provisionDate: Date | null,
+): DataRetrievalNotificationResolution {
+  const requirements = assessModernDataRetrievalRequirements(input, issuedYear, provisionDate);
+  const resolution: DataRetrievalNotificationResolution = {
+    ...requirements,
+    notificationDate: null,
+    controlNotificationDate: null,
+    notificationWorkdayAssessment: null,
+    notificationDutyDeviation: false,
+  };
+
+  if (provisionDate) {
+    resolution.notificationWorkdayAssessment = assessStandardWorkday(
+      addCalendarDays(provisionDate, BEKANNTGABE_FIKTION_TAGE),
+      input.notificationHolidayContext,
     );
-    controlDeadline = deadlineWorkdayAssessment.controlDate;
-    if (!deadlineWorkdayAssessment.date) {
-      reasons.push('DEADLINE_WORKDAY_REVIEW_REQUIRED');
-      deadlineBlocked = true;
+    resolution.controlNotificationDate = resolution.notificationWorkdayAssessment.controlDate;
+    if (resolution.notificationWorkdayAssessment.date) {
+      resolution.notificationDate = resolution.notificationWorkdayAssessment.date;
+    } else {
+      resolution.reasons.push('NOTIFICATION_WORKDAY_REVIEW_REQUIRED');
+      resolution.notificationBlocked = true;
     }
   }
 
-  if (notificationDate && !notificationBlocked && !deadlineBlocked) {
-    deadlineWorkdayAssessment = assessPeriodEnd(
-      notificationDate,
-      input.legalRemedyInstruction,
-      input.deadlineHolidayContext,
-    );
-    controlDeadline = deadlineWorkdayAssessment.controlDate;
-    if (deadlineWorkdayAssessment.date) deadline = deadlineWorkdayAssessment.date;
-    else {
-      reasons.push('DEADLINE_WORKDAY_REVIEW_REQUIRED');
-      deadlineBlocked = true;
-    }
+  const notificationStatus = input.notificationStatus ?? 'UNKNOWN';
+  if (notificationStatus === 'UNKNOWN') {
+    resolution.reasons.push('NOTIFICATION_OUTCOME_UNKNOWN');
+  } else if (notificationStatus !== 'SAME_DAY_CONFIRMED') {
+    resolution.reasons.push('NOTIFICATION_DUTY_DEVIATION_REQUIRES_SECTION_110_REVIEW');
+    resolution.reinstatementReviewRequired = true;
+    resolution.notificationDutyDeviation = true;
   }
 
-  const manualReviewReasons = unique(reasons);
+  return resolution;
+}
+
+function resolveDataRetrievalNotification(
+  input: DataRetrievalDeadlineAssessmentInput,
+  issuedAt: Date | null,
+  provisionDate: Date | null,
+): DataRetrievalNotificationResolution {
+  if (issuedAt) {
+    const issuedYear = issuedAt.getUTCFullYear();
+    if (issuedYear <= 2025) {
+      return resolveLegacyDataRetrievalNotification(input, provisionDate);
+    }
+    return resolveModernDataRetrievalNotification(input, issuedYear, provisionDate);
+  }
+
+  return {
+    regime: 'UNKNOWN',
+    reasons: [],
+    notificationBlocked: false,
+    notificationDate: null,
+    controlNotificationDate: null,
+    notificationWorkdayAssessment: null,
+    reinstatementReviewRequired: false,
+    notificationDutyDeviation: false,
+  };
+}
+
+/**
+ * Beweisorientierte §-122a-Berechnung mit Erlassdatum-Cutover, konservativer
+ * 2026-Einwilligung und Postantragsprüfung ab 2027. Ein Fehler der
+ * Benachrichtigung verändert den Fiktionstag nicht, erzeugt aber ausdrücklich
+ * einen manuellen §-110-Prüffall.
+ */
+export function assessDataRetrievalDeadline(
+  input: DataRetrievalDeadlineAssessmentInput,
+): DataRetrievalDeadlineAssessmentResult {
+  const issuedAt = input.issuedAt ? startOfUtcDay(input.issuedAt) : null;
+  const provisionDate = input.provisionDate ? startOfUtcDay(input.provisionDate) : null;
+  const prerequisites = assessDataRetrievalPrerequisites(input, issuedAt, provisionDate);
+  const notification = resolveDataRetrievalNotification(input, issuedAt, provisionDate);
+  const notificationBlocked = prerequisites.notificationBlocked || notification.notificationBlocked;
+  const deadline = assessNotificationDeadline(
+    notification.notificationDate,
+    notification.controlNotificationDate,
+    notificationBlocked,
+    input.legalRemedyInstruction,
+    input.deadlineHolidayContext,
+  );
+  const manualReviewReasons = unique([
+    ...prerequisites.reasons,
+    ...notification.reasons,
+    ...deadline.reasons,
+  ]);
   const status: DataRetrievalDeadlineAssessmentResult['status'] =
-    notificationBlocked || deadlineBlocked
+    notificationBlocked || deadline.deadlineBlocked
       ? 'MANUAL_REVIEW'
       : manualReviewReasons.length > 0
         ? 'CALCULATED_WITH_REVIEW'
@@ -779,15 +938,15 @@ export function assessDataRetrievalDeadline(
 
   return {
     status,
-    regime,
-    notificationDate: notificationBlocked ? null : notificationDate,
-    deadline: notificationBlocked || deadlineBlocked ? null : deadline,
-    controlNotificationDate,
-    controlDeadline,
+    regime: notification.regime,
+    notificationDate: notificationBlocked ? null : notification.notificationDate,
+    deadline: notificationBlocked || deadline.deadlineBlocked ? null : deadline.deadline,
+    controlNotificationDate: notification.controlNotificationDate,
+    controlDeadline: deadline.controlDeadline,
     manualReviewReasons,
-    reinstatementReviewRequired,
-    notificationDutyDeviation,
-    notificationWorkdayAssessment,
-    deadlineWorkdayAssessment,
+    reinstatementReviewRequired: notification.reinstatementReviewRequired,
+    notificationDutyDeviation: notification.notificationDutyDeviation,
+    notificationWorkdayAssessment: notification.notificationWorkdayAssessment,
+    deadlineWorkdayAssessment: deadline.deadlineWorkdayAssessment,
   };
 }

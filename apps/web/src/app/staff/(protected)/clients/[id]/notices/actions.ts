@@ -180,6 +180,22 @@ function parseDecimal(s: string | null | undefined): string | undefined {
   return n.toFixed(2);
 }
 
+function trimmedOrNull(value: string | null | undefined): string | null {
+  return value?.trim() || null;
+}
+
+function valueOrNull<T>(value: T | null | undefined): T | null {
+  return value ?? null;
+}
+
+function emptyStringOrNull<T extends string>(value: T | null | undefined): Exclude<T, ''> | null {
+  return (value || null) as Exclude<T, ''> | null;
+}
+
+function joinedReasonsOrNull(reasons: readonly string[]): string | null {
+  return reasons.length > 0 ? reasons.join(', ') : null;
+}
+
 function optionalYmdToDate(value: string | null | undefined): Date | null {
   return value ? new Date(`${value}T00:00:00.000Z`) : null;
 }
@@ -256,7 +272,7 @@ function parseCreateNoticeInput(formData: FormData): CreateNoticeInput {
   return parsed.data;
 }
 
-function validateGeneralDeliveryEvidence(
+function validateDeliveryDatesAndEvidence(
   data: CreateNoticeInput,
   noticeDate: Date,
   receivedAt: Date | null,
@@ -299,6 +315,12 @@ function validateGeneralDeliveryEvidence(
       'Ein Zugangsnachweis darf nur zu einer dokumentierten Abweichung oder einem festgestellten Zugangstag gespeichert werden.',
     );
   }
+}
+
+function validateSpecialDeliveryMethodEvidence(
+  data: CreateNoticeInput,
+  receivedAt: Date | null,
+): void {
   if (
     ['FORMAL', 'PERSONAL', 'OTHER'].includes(data.deliveryMethod) &&
     data.dateBasis !== 'ACTUAL_ACCESS_DETERMINED'
@@ -334,6 +356,9 @@ function validateGeneralDeliveryEvidence(
   if (data.deliveryMethod !== 'DATA_RETRIEVAL' && data.dateBasis === 'PROVISION_DATE') {
     throw new Error('Bereitstellung ist nur beim Bekanntgabeweg Datenabruf zulässig.');
   }
+}
+
+function validateAccessDeviationEvidence(data: CreateNoticeInput, receivedAt: Date | null): void {
   if (data.accessStatus === 'NOT_RECEIVED_DISPUTED' && receivedAt) {
     throw new Error('Bei vollständig bestrittenem Zugang darf kein Zugangstag festgelegt werden.');
   }
@@ -370,6 +395,9 @@ function validateGeneralDeliveryEvidence(
       'Eine Zugangsabweichung zur gesetzlichen Fiktion benötigt den nachgewiesenen Aufgabe-/Übermittlungstag als Ausgangsbasis.',
     );
   }
+}
+
+function validateDeterminedAccessEvidence(data: CreateNoticeInput, receivedAt: Date | null): void {
   if (
     data.dateBasis === 'ACTUAL_ACCESS_DETERMINED' &&
     (!receivedAt || data.accessEvidenceStatus !== 'PROFESSIONALLY_DETERMINED')
@@ -391,6 +419,18 @@ function validateGeneralDeliveryEvidence(
       'Beim bereits fachlich festgestellten Bekanntgabetag darf keine zusätzliche Fiktionsabweichung ausgewählt sein.',
     );
   }
+}
+
+function validateGeneralDeliveryEvidence(
+  data: CreateNoticeInput,
+  noticeDate: Date,
+  receivedAt: Date | null,
+  today: Date,
+): void {
+  validateDeliveryDatesAndEvidence(data, noticeDate, receivedAt, today);
+  validateSpecialDeliveryMethodEvidence(data, receivedAt);
+  validateAccessDeviationEvidence(data, receivedAt);
+  validateDeterminedAccessEvidence(data, receivedAt);
 }
 
 function validateHolidayContext(
@@ -586,29 +626,29 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
         dateBasis: d.dateBasis,
         deliveryMethod: d.deliveryMethod,
         deliveryEvidenceStatus: d.deliveryEvidenceStatus,
-        deliveryEvidenceNote: d.deliveryEvidenceNote?.trim() || null,
+        deliveryEvidenceNote: trimmedOrNull(d.deliveryEvidenceNote),
         legalRemedyInstructionValid,
         legalRemedyInstructionStatus: d.legalRemedyInstruction,
         legalRemedyInstructionNote: d.legalRemedyInstructionNote.trim(),
         receivedAt,
         accessStatus: d.accessStatus,
-        accessEvidenceStatus: d.accessEvidenceStatus || null,
-        accessEvidenceNote: d.accessEvidenceNote?.trim() || null,
+        accessEvidenceStatus: emptyStringOrNull(d.accessEvidenceStatus),
+        accessEvidenceNote: trimmedOrNull(d.accessEvidenceNote),
         recipientName: d.recipientName.trim(),
         recipientCountryCode: d.recipientCountryCode,
-        recipientRegion: d.recipientRegion || null,
-        recipientLocality: d.recipientLocality?.trim() || null,
+        recipientRegion: emptyStringOrNull(d.recipientRegion),
+        recipientLocality: trimmedOrNull(d.recipientLocality),
         recipientLocalHolidayDates,
         recipientBavariaAssumptionApplies: toBavariaAssumption(d.recipientBavariaAssumption),
         recipientHolidayContextStatus: d.recipientHolidayContextStatus,
         authorityName: d.authorityName.trim(),
         authorityCountryCode: d.authorityCountryCode,
-        authorityRegion: d.authorityRegion || null,
-        authorityLocality: d.authorityLocality?.trim() || null,
+        authorityRegion: emptyStringOrNull(d.authorityRegion),
+        authorityLocality: trimmedOrNull(d.authorityLocality),
         authorityLocalHolidayDates,
         authorityBavariaAssumptionApplies: toBavariaAssumption(d.authorityBavariaAssumption),
         authorityHolidayContextStatus: d.authorityHolidayContextStatus,
-        holidayContextNote: d.holidayContextNote?.trim() || null,
+        holidayContextNote: trimmedOrNull(d.holidayContextNote),
         retrievalIssuedAt,
         retrievalNotificationDate,
         retrievalNotificationDisputedOrLate: d.retrievalNotificationDisputedOrLate,
@@ -626,17 +666,14 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
         deadlineCalculationStatus: assessment.calculationStatus,
         deadlineCalculationVersion: NOTICE_DEADLINE_CALCULATION_VERSION,
         manualReviewRequired: assessment.manualReviewRequired,
-        manualReviewReason:
-          assessment.manualReviewReasons.length > 0
-            ? assessment.manualReviewReasons.join(', ')
-            : null,
-        fileNumber: d.fileNumber ?? null,
+        manualReviewReason: joinedReasonsOrNull(assessment.manualReviewReasons),
+        fileNumber: valueOrNull(d.fileNumber),
         assessedAmount: parseDecimal(d.assessedAmount),
         expectedAmount: parseDecimal(d.expectedAmount) ?? expectedFromFiling,
         prepaidAmount: parseDecimal(d.prepaidAmount),
         payAmount: parseDecimal(d.payAmount),
-        reviewNotes: d.reviewNotes ?? null,
-        filingId: matchingFiling?.id ?? null,
+        reviewNotes: valueOrNull(d.reviewNotes),
+        filingId: valueOrNull(matchingFiling?.id),
         createdByStaff: staffId,
       },
     });

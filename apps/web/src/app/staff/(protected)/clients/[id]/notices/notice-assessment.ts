@@ -183,20 +183,16 @@ function assessRetrieval(input: NoticeAssessmentInput): NoticeAssessmentResult {
   };
 }
 
-/**
- * Verbindet die beweisorientierte Tax-Engine mit dem persistierten
- * Bescheidmodell. Ein manueller oder Risikostatus liefert niemals eine
- * scheinbar festgestellte Einspruchsfrist.
- */
-export function assessNoticeEvidence(input: NoticeAssessmentInput): NoticeAssessmentResult {
-  if (input.deliveryMethod === 'DATA_RETRIEVAL') return assessRetrieval(input);
+type AppealDeadlineAssessment = ReturnType<typeof assessAppealDeadline>;
 
+function assessNonRetrievalDeadline(input: NoticeAssessmentInput): AppealDeadlineAssessment {
   const determinedAccess = input.dateBasis === 'ACTUAL_ACCESS_DETERMINED' ? input.receivedAt : null;
   const dispatchDate =
     input.dateBasis === 'DISPATCH_DATE' && evidenceIsUsable(input.deliveryEvidenceStatus)
       ? input.noticeDate
       : null;
-  const result = assessAppealDeadline({
+
+  return assessAppealDeadline({
     deliveryMethod: determinedAccess
       ? 'DETERMINED_NOTIFICATION'
       : appealMethod(input.deliveryMethod),
@@ -208,16 +204,21 @@ export function assessNoticeEvidence(input: NoticeAssessmentInput): NoticeAssess
     notificationHolidayContext: input.recipientHolidayContext,
     deadlineHolidayContext: input.authorityHolidayContext,
   });
+}
 
-  const extraReasons: string[] = [];
+function additionalManualReviewReasons(
+  input: NoticeAssessmentInput,
+  result: AppealDeadlineAssessment,
+): string[] {
+  const reasons: string[] = [];
   if (input.dateBasis === 'DISPATCH_DATE' && !evidenceIsUsable(input.deliveryEvidenceStatus)) {
-    extraReasons.push('DELIVERY_EVIDENCE_INSUFFICIENT');
+    reasons.push('DELIVERY_EVIDENCE_INSUFFICIENT');
   }
   if (
     input.accessStatus === 'LATER_RECEIPT_DETERMINED' &&
     input.accessEvidenceStatus !== 'PROFESSIONALLY_DETERMINED'
   ) {
-    extraReasons.push('ACCESS_NOT_PROFESSIONALLY_DETERMINED');
+    reasons.push('ACCESS_NOT_PROFESSIONALLY_DETERMINED');
   }
   if (
     input.accessStatus === 'LATER_RECEIPT_DETERMINED' &&
@@ -225,8 +226,16 @@ export function assessNoticeEvidence(input: NoticeAssessmentInput): NoticeAssess
     result.notificationWorkdayAssessment?.controlDate &&
     input.receivedAt.getTime() <= result.notificationWorkdayAssessment.controlDate.getTime()
   ) {
-    extraReasons.push('DETERMINED_LATER_ACCESS_NOT_AFTER_FICTION');
+    reasons.push('DETERMINED_LATER_ACCESS_NOT_AFTER_FICTION');
   }
+  return reasons;
+}
+
+function toNoticeAssessmentResult(
+  input: NoticeAssessmentInput,
+  result: AppealDeadlineAssessment,
+  extraReasons: readonly string[],
+): NoticeAssessmentResult {
   const reasons = [...new Set([...result.manualReviewReasons, ...extraReasons])];
   const blocked = result.status !== 'CALCULATED' || extraReasons.length > 0;
 
@@ -250,6 +259,18 @@ export function assessNoticeEvidence(input: NoticeAssessmentInput): NoticeAssess
     manualReviewReasons: reasons,
     reinstatementReviewRequired: false,
   };
+}
+
+/**
+ * Verbindet die beweisorientierte Tax-Engine mit dem persistierten
+ * Bescheidmodell. Ein manueller oder Risikostatus liefert niemals eine
+ * scheinbar festgestellte Einspruchsfrist.
+ */
+export function assessNoticeEvidence(input: NoticeAssessmentInput): NoticeAssessmentResult {
+  if (input.deliveryMethod === 'DATA_RETRIEVAL') return assessRetrieval(input);
+
+  const result = assessNonRetrievalDeadline(input);
+  return toNoticeAssessmentResult(input, result, additionalManualReviewReasons(input, result));
 }
 
 export function holidayContext(input: {
