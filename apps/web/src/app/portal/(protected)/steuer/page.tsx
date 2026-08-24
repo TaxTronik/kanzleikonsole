@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { NOTICE_KIND_LABELS, NOTICE_STATUS_LABELS } from '@/lib/domain-labels';
+import { shouldShowAppealDeadlineToClient } from './notice-visibility';
 // Statuse, ab denen wir den Bescheid dem Mandant zeigen — vorher
 // (NEU) ist er noch nicht von der Kanzlei geprüft, daher zurückhalten.
 const VISIBLE_NOTICE_STATUSES = new Set([
@@ -13,10 +14,19 @@ const VISIBLE_NOTICE_STATUSES = new Set([
   'EINSPRUCH',
   'ABGEHOLFEN',
   'TEILABHILFE',
+  'TEILEINSPRUCHSENTSCHEIDUNG',
   'ZURUECKGEWIESEN',
   'KLAGE',
-  'RECHTSKRAEFTIG',
+  'BESTANDSKRAEFTIG',
 ]);
+
+const NOTICE_DATE_BASIS_LABELS: Record<string, string> = {
+  LEGACY_UNVERIFIED: 'Ausgangsdatum (Altbestand, ungeprüft)',
+  DISPATCH_DATE: 'Aufgabe-/Übermittlungstag',
+  PROVISION_DATE: 'Bereitstellungstag',
+  ACTUAL_ACCESS_DETERMINED: 'Fachlich festgestellter Zugangstag',
+  DOCUMENT_DATE_RISK_ONLY: 'Dokumentdatum (nur Risikobasis)',
+};
 
 export default async function PortalSteuerPage() {
   const session = await portalAuth();
@@ -37,11 +47,14 @@ export default async function PortalSteuerPage() {
             select: {
               id: true,
               noticeDate: true,
+              dateBasis: true,
               status: true,
               assessedAmount: true,
               refundAmount: true,
               payAmount: true,
               appealDeadline: true,
+              deadlineCalculationStatus: true,
+              manualReviewRequired: true,
               document: { select: { id: true, title: true } },
             },
           },
@@ -162,7 +175,8 @@ export default async function PortalSteuerPage() {
                             Bescheid vom Finanzamt eingegangen
                           </p>
                           <p className="text-xs text-emerald-800 mt-0.5">
-                            Bescheid-Datum: {fmtDateShort(notice.noticeDate)}
+                            {NOTICE_DATE_BASIS_LABELS[notice.dateBasis] ?? 'Ausgangsdatum'}:{' '}
+                            {fmtDateShort(notice.noticeDate)}
                             {' · '}
                             Status: {NOTICE_STATUS_LABELS[notice.status] ?? notice.status}
                           </p>
@@ -206,13 +220,12 @@ export default async function PortalSteuerPage() {
                           {delta > 0 ? ' höher als geschätzt' : ' niedriger als geschätzt'}
                         </p>
                       )}
-                      {notice.appealDeadline &&
-                        ['GEPRUEFT', 'EINSPRUCH'].includes(notice.status) && (
-                          <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            Einspruchsfrist bis {fmtDateShort(notice.appealDeadline)}
-                          </p>
-                        )}
+                      {shouldShowAppealDeadlineToClient(notice) && (
+                        <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          Frist-Kontrollvorschlag bis {fmtDateShort(notice.appealDeadline!)}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}

@@ -1,5 +1,6 @@
 // =============================================================================
 // Unit-Tests: poa-expiry-check-Worker (Ablauf signierter Vollmachten).
+// Fachkatalog: POA-LIFECYCLE-001
 //
 // bullmq via mocks/bullmq.ts, Prisma/Notify/Tenant-Context/Evidence per
 // vi.mock. Abgedeckt:

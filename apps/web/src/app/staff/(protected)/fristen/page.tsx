@@ -2,18 +2,26 @@
 // /staff/fristen — Fristenkontrollbuch
 //
 // Vereinheitlichte Kontrollsicht über alle fristenführenden Quellen
-// (Steuertermine, Einspruchsfristen, Anforderungen, Wiedervorlagen) mit
-// Verantwortlichen und Erledigungsnachweis. Haftungsrelevanz: offene Fristen
-// verschwinden NIE durch Zeitablauf; der CSV-Export ist der Nachweis fürs
-// Fristenbuch (auditiert). Erledigt wird im jeweiligen Quellmodul — dieses
+// (Steuertermine, Bescheidprüffälle/Einspruchsfristen, Klagefristen, Anforderungen,
+// Wiedervorlagen) mit Verantwortlichen und abgeleitetem Kontrollzustand.
+// Haftungsrelevanz: offene Fristen verschwinden NIE durch Zeitablauf. Der
+// auditierte CSV-Export ist ein Kontrollauszug, aber kein Nachweis der
+// fristwahrenden Handlung. Erledigt wird im jeweiligen Quellmodul — dieses
 // Buch hält bewusst keinen eigenen Zustand.
 // =============================================================================
 
 import Link from 'next/link';
-import { AlarmClock, FileDown, ExternalLink } from 'lucide-react';
+import { AlarmClock, CheckCircle2, FileDown, ExternalLink, ShieldAlert } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { loadKontrollbuch } from '@/server/fristen/kontrollbuch';
+import {
+  loadDailyReviewSummary,
+  loadOpenDueForDailyReview,
+  prepareDailyReview,
+  type DailyReviewSummary,
+  type PreparedDailyReview,
+} from '@/server/fristen/tagesabschluss';
 import {
   bucketFor,
   BUCKET_LABELS,
@@ -21,8 +29,10 @@ import {
   type FristBucket,
   type FristEintrag,
 } from '@/server/fristen/eintrag';
-import { fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
+import { fmtDateShort, fmtDateTimeMedium, berlinTodayUtcMidnight } from '@/lib/fmt';
 import { readModules } from '@/server/settings/modules';
+import { isStaffAdmin } from '@/server/auth/rbac';
+import { DailyReviewForm } from './daily-review-form';
 
 const RANGES = [7, 30, 90] as const;
 
@@ -37,22 +47,38 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const modules = await readModules(ctx);
+  const canCompleteDailyReview = isStaffAdmin(session);
 
   const sp = await searchParams;
   const tage = (RANGES as readonly number[]).includes(Number(sp.tage)) ? Number(sp.tage) : 30;
   const nurOffene = sp.filter !== 'alle';
   const nurMeine = sp.wer === 'meine';
 
-  const eintraege = await withTenantContext(ctx, (tx) =>
-    loadKontrollbuch(tx, session, {
-      tage,
-      nurOffene,
-      nurStaffId: nurMeine ? staffId : null,
-      sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
-    }),
+  const { eintraege, dailyReview, dailyPreview } = await withTenantContext(
+    ctx,
+    async (tx) => {
+      const entries = await loadKontrollbuch(tx, session, {
+        tage,
+        nurOffene,
+        nurStaffId: nurMeine ? staffId : null,
+        sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
+      });
+      const review = await loadDailyReviewSummary(tx, tenantId);
+      const preview =
+        !review && canCompleteDailyReview
+          ? prepareDailyReview(await loadOpenDueForDailyReview(tx, session))
+          : null;
+      return { eintraege: entries, dailyReview: review, dailyPreview: preview };
+    },
+    // TAX-CONTROL-STATUS-001: Late-ID-Vorabqueries und Hauptabfragen müssen
+    // denselben Datenstand sehen. Ein paralleler Commit darf eine verspätete
+    // Einlegung nicht zwischen beiden Reads scheinbar fristgerecht machen.
+    { isolationLevel: 'RepeatableRead' },
   );
   const sourceLabels = [
-    ...(modules.taxNotices ? ['Steuertermine', 'Einspruchsfristen'] : []),
+    ...(modules.taxNotices
+      ? ['Steuertermine', 'Bescheidprüffälle / Einspruchsfristen', 'Klagefristen']
+      : []),
     'Anforderungen',
     ...(modules.reminders ? ['Wiedervorlagen'] : []),
   ];
@@ -107,12 +133,18 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
         <a
           href={`/api/staff/fristen/export?tage=${tage}${nurMeine ? '&wer=meine' : ''}`}
           className="btn-secondary"
-          title="Fristenbuch als CSV (Erledigungsnachweis, wird im Prüfprotokoll vermerkt)"
+          title="Fristenbuch als CSV-Kontrollauszug (wird im Prüfprotokoll vermerkt; kein Erledigungsnachweis)"
         >
           <FileDown className="h-3.5 w-3.5" />
-          CSV-Nachweis
+          CSV-Auszug
         </a>
       </div>
+
+      <DailyReviewCard
+        review={dailyReview}
+        preview={dailyPreview}
+        canComplete={canCompleteDailyReview}
+      />
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="toggle-group">
@@ -207,6 +239,87 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   );
 }
 
+function DailyReviewCard({
+  review,
+  preview,
+  canComplete,
+}: {
+  review: DailyReviewSummary | null;
+  preview: PreparedDailyReview | null;
+  canComplete: boolean;
+}) {
+  return (
+    <section
+      className={`card p-5 mb-5 ${
+        review
+          ? 'border-l-4 border-l-green-500'
+          : canComplete
+            ? 'border-l-4 border-l-amber-500'
+            : 'border-l-4 border-l-gray-300'
+      }`}
+      aria-labelledby="daily-review-title"
+    >
+      <div className="flex items-start gap-3">
+        {review ? (
+          <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-700 dark:text-green-300" />
+        ) : canComplete ? (
+          <ShieldAlert className="h-5 w-5 mt-0.5 text-amber-700 dark:text-amber-300" />
+        ) : (
+          <AlarmClock className="h-5 w-5 mt-0.5 text-muted" />
+        )}
+        <div className="min-w-0 flex-1">
+          <h2 id="daily-review-title" className="text-sm font-semibold text-primary">
+            Tägliche Abschlusskontrolle
+          </h2>
+          {review ? (
+            <div className="mt-1 space-y-2 text-sm text-secondary">
+              <p>
+                Heute abgeschlossen durch {review.reviewerName ?? 'unbekannte Person'} am{' '}
+                {fmtDateTimeMedium(review.reviewedAt)}. Konsistenter Datenstand ab{' '}
+                {fmtDateTimeMedium(review.snapshotAt)}. Der Snapshot enthält {review.openCount}{' '}
+                offene Fälligkeit{review.openCount === 1 ? '' : 'en'}, davon {review.overdueCount}{' '}
+                überfällig und {review.dueTodayCount} heute fällig.
+              </p>
+              {canComplete && review.escalationNote && (
+                <div className="rounded-md bg-gray-50 px-3 py-2 text-xs whitespace-pre-wrap">
+                  <span className="font-medium">Eskalation:</span> {review.escalationNote}
+                </div>
+              )}
+              <p className="text-xs text-muted">
+                Der Tagesabschluss ist unveränderbar. Er schließt keine Frist im Quellvorgang.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-1">
+              <p className="text-sm text-secondary mb-3">
+                {canComplete
+                  ? 'Für heute ist noch kein tenantweiter Abschluss dokumentiert.'
+                  : 'Der Status des tenantweiten Tagesabschlusses ist nur für ADMIN/PARTNER sichtbar.'}
+                {canComplete && preview && (
+                  <>
+                    {' '}
+                    Aktuell umfasst die Kontrolle {preview.openCount} offene Fälligkeit
+                    {preview.openCount === 1 ? '' : 'en'}, davon {preview.overdueCount} überfällig
+                    und {preview.dueTodayCount} heute fällig.
+                  </>
+                )}
+              </p>
+              {canComplete && preview ? (
+                <DailyReviewForm openCount={preview.openCount} />
+              ) : canComplete ? (
+                <p className="text-xs text-muted">
+                  ADMIN/PARTNER dokumentieren den tenantweiten Tagesabschluss, weil nur diese Rollen
+                  sämtliche Mandanten unabhängig vom Zugriffsmodus einsehen können.
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function FristenTabelle({
   titel,
   rows,
@@ -246,10 +359,17 @@ function FristenTabelle({
                 {fmtDateShort(e.faelligAm)}
               </td>
               <td className="px-4 py-2.5">
-                <span className="badge-gray text-[10px]">{QUELLE_LABELS[e.quelle]}</span>
+                <span className="badge-gray text-[10px]">
+                  {e.artLabel ?? QUELLE_LABELS[e.quelle]}
+                </span>
               </td>
-              <td className="px-4 py-2.5 text-secondary max-w-[26rem] truncate" title={e.titel}>
-                {e.titel}
+              <td className="px-4 py-2.5 text-secondary max-w-[26rem]">
+                <span className="block truncate" title={e.titel}>
+                  {e.titel}
+                </span>
+                {e.kontrollhinweis && (
+                  <span className="block text-xs text-amber-700 mt-0.5">{e.kontrollhinweis}</span>
+                )}
               </td>
               <td className="px-4 py-2.5 text-secondary whitespace-nowrap">
                 <Link href={`/staff/clients/${e.clientId}`} className="hover:underline">
@@ -261,7 +381,7 @@ function FristenTabelle({
               </td>
               <td className="px-4 py-2.5 text-muted whitespace-nowrap">
                 {e.erledigt
-                  ? `${e.erledigtAm ? fmtDateShort(e.erledigtAm) : 'ja'}${e.erledigtVon ? ` · ${e.erledigtVon}` : ''}`
+                  ? `${e.kontrollzustand === 'CLOSED_DISPOSITION' ? 'Disposition' : 'Erfüllt'} · ${e.erledigtAm ? fmtDateShort(e.erledigtAm) : 'Datum fehlt'}${e.erledigtVon ? ` · ${e.erledigtVon}` : ''}`
                   : '—'}
               </td>
               <td className="px-4 py-2.5 text-right">

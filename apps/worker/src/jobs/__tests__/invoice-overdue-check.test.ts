@@ -1,3 +1,4 @@
+// Fachkatalog: INV-DUE-OVERDUE-001
 // =============================================================================
 // Unit-Tests: invoice-overdue-check-Worker (SENT → OVERDUE + Notification).
 //

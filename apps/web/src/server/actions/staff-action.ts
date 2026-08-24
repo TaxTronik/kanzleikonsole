@@ -18,7 +18,7 @@ import { revalidatePath } from 'next/cache';
 // Subpath statt Barrel: hält owner-client (verlangt DATABASE_URL beim Import) aus
 // reinen Unit-Tests heraus, die dieses Modul transitiv ziehen (wie rbac.ts).
 import { withTenantContext } from '@taxtronik/db/tenant-context';
-import type { TenantContext, TxClient } from '@taxtronik/db';
+import type { TenantContext, TenantTransactionOptions, TxClient } from '@taxtronik/db';
 import { staffAuth, type StaffSession } from '@/server/auth/staff';
 import {
   isStaffAdmin,
@@ -67,6 +67,8 @@ export type StaffGuardOptions = {
 export type WithStaffOptions = StaffGuardOptions & {
   uniqueError?: string;
   revalidate?: string | string[];
+  /** Stabiler DB-Snapshot für beweisorientierte Mehrfach-Reads. */
+  transactionIsolationLevel?: TenantTransactionOptions['isolationLevel'];
 };
 
 /**
@@ -127,7 +129,12 @@ export async function withStaff<T extends Record<string, unknown> = Record<strin
   const guard = await staffActionGuard(opts);
   if (!guard.ok) return guard as R;
   try {
-    const data = await withTenantContext(guard.ctx, (tx) => fn(tx, guard));
+    const run = (tx: TxClient) => fn(tx, guard);
+    const data = opts.transactionIsolationLevel
+      ? await withTenantContext(guard.ctx, run, {
+          isolationLevel: opts.transactionIsolationLevel,
+        })
+      : await withTenantContext(guard.ctx, run);
     if (opts.revalidate)
       for (const p of ([] as string[]).concat(opts.revalidate)) revalidatePath(p);
     return { ok: true, ...(data ?? {}) } as R;

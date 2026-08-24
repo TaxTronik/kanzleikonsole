@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 
-import { checkIndexes, loadCatalog, reviewContentHash, writeIndexes } from './lib.mjs';
+import {
+  assertScopeCoverage,
+  checkIndexes,
+  loadCatalog,
+  reviewContentHash,
+  writeIndexes,
+} from './lib.mjs';
 
 const command = process.argv[2] ?? 'check';
 const rootDir = process.cwd();
 
 try {
   const rules = loadCatalog(rootDir);
+  assertScopeCoverage(rootDir, rules);
   switch (command) {
     case 'validate':
       console.log(`Fachkatalog gültig: ${rules.length} Regeln.`);

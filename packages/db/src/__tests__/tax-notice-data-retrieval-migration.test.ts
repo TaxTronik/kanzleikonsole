@@ -8,8 +8,29 @@ const migration = readFileSync(
   ),
   'utf8',
 );
+const professionalControlMigration = readFileSync(
+  new URL(
+    '../../prisma/migrations/20260823201000_tax_professional_control_model/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('DATA_RETRIEVAL-Migrationsstrategie', () => {
+  // Fachkatalog: TAX-NOTICE-DATARETRIEVAL-001, TAX-CONTROL-STATUS-001
+  it('wendet Status-Rename, Backfills und neue DB-Garantien atomar an', () => {
+    const begin = professionalControlMigration.indexOf('BEGIN;');
+    const rename = professionalControlMigration.indexOf(
+      "RENAME VALUE 'RECHTSKRAEFTIG' TO 'BESTANDSKRAEFTIG'",
+    );
+    const finalCommit = professionalControlMigration.lastIndexOf('COMMIT;');
+
+    expect(begin).toBeGreaterThan(-1);
+    expect(rename).toBeGreaterThan(begin);
+    expect(finalCommit).toBeGreaterThan(rename);
+    expect(professionalControlMigration.trimEnd().endsWith('COMMIT;')).toBe(true);
+  });
+
   it('erhält Altfristen ohne den alten Deadline-Trigger auszulösen', () => {
     const disable = migration.indexOf('DISABLE TRIGGER tax_notice_appeal_deadline_trigger');
     const backfill = migration.indexOf('UPDATE public."tax_notice"');

@@ -84,8 +84,12 @@ sich nur überschneiden, wenn die Abgrenzung im Text ausdrücklich erklärt ist.
 
 ## KI-gestützte Entwicklung
 
-KI-Werkzeuge nutzen zuerst `fachkatalog.json`, lesen dann jede betroffene
-Regel vollständig und vergleichen Anforderung, Code, Test und Dokumentation.
-Bei Widersprüchen muss die Abweichung gemeldet werden. Eine KI darf weder
-Quelleninhalte ergänzen, die sie nicht geprüft hat, noch fachliche Freigaben
-erteilen oder Reviewidentitäten eintragen.
+KI-Werkzeuge lesen zuerst `SCOPE.md`, um Abdeckung und ausdrückliche
+Ausschlüsse zu verstehen. Für die Suche dient `fachkatalog.json`; der
+deterministische Volltext-Export `fachkatalog-voll.json` enthält zusätzlich
+den Markdown-Regeltext. Vor einer Änderung ist trotzdem jede betroffene
+Regeldatei als maßgebliche Quelle vollständig zu lesen und mit Anforderung,
+Code, Test und Dokumentation zu vergleichen. Bei Widersprüchen muss die
+Abweichung gemeldet werden. Eine KI darf weder Quelleninhalte ergänzen, die sie
+nicht geprüft hat, noch fachliche Freigaben erteilen oder Reviewidentitäten
+eintragen.

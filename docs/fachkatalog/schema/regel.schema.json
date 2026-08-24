@@ -249,7 +249,7 @@
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "pattern": "^(?!.*(/__tests__/|\\.(test|spec)\\.))(apps|packages)/.+\\.([cm]?[jt]sx?|sql|prisma|sh)$"
+        "pattern": "^(?!.*(/__tests__/|\\.(test|spec)\\.))(?:(apps|packages|scripts)/.+\\.([cm]?[jt]sx?|sql|prisma|sh|py)|\\.forgejo/workflows/.+\\.ya?ml)$"
       }
     },
     "testPathArray": {
@@ -257,7 +257,7 @@
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "pattern": "^(?!.*\\.d\\.[cm]?[jt]sx?$)(apps|packages)/.+(/__tests__/[^/]+|\\.(test|spec))\\.([cm]?[jt]sx?)$"
+        "pattern": "^(?!.*\\.d\\.[cm]?[jt]sx?$)(apps|packages|scripts)/.+(/__tests__/[^/]+|\\.(test|spec))\\.([cm]?[jt]sx?)$"
       }
     },
     "source": {

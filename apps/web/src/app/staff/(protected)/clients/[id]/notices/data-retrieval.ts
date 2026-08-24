@@ -1,123 +1,60 @@
+// Fachkatalog: TAX-NOTICE-DATARETRIEVAL-001
+
+export type RetrievalConsentStatus = 'NOT_APPLICABLE' | 'CONFIRMED' | 'NOT_GIVEN' | 'UNKNOWN';
+export type RetrievalEligibilityStatus = 'NOT_APPLICABLE' | 'CONFIRMED' | 'NOT_MET' | 'UNKNOWN';
+export type RetrievalPostalRequestStatus =
+  | 'NOT_APPLICABLE'
+  | 'NONE_EFFECTIVE'
+  | 'EFFECTIVE'
+  | 'UNKNOWN';
+export type RetrievalNotificationStatus = 'NOT_RECORDED' | 'SENT' | 'FAILED' | 'UNKNOWN';
+
 export interface DataRetrievalEvidenceInput {
   deliveryMethod: string;
+  /** Bei § 122a AO der dokumentierte Bereitstellungstag. */
   provisionDate: Date;
   issuedAt: Date | null;
   notificationDate: Date | null;
   notificationDisputedOrLate: boolean;
   retrievedAt: Date | null;
+  consentStatus: RetrievalConsentStatus;
+  eligibility2027Status: RetrievalEligibilityStatus;
+  postalRequestStatus: RetrievalPostalRequestStatus;
+  postalRequestReceivedAt: Date | null;
+  notificationStatus: RetrievalNotificationStatus;
   today: Date;
 }
 
-export type DataRetrievalEvidenceResult =
-  | {
-      ok: true;
-      issuedAt: Date | null;
-      notificationDate: Date | null;
-      notificationDisputedOrLate: boolean;
-      retrievedAt: Date | null;
-    }
-  | { ok: false; error: string };
+export type DataRetrievalEvidenceResult = { ok: true } | { ok: false; error: string };
 
-function emptyEvidenceResult(): DataRetrievalEvidenceResult {
-  return {
-    ok: true,
-    issuedAt: null,
-    notificationDate: null,
-    notificationDisputedOrLate: false,
-    retrievedAt: null,
-  };
+function invalid(error: string): DataRetrievalEvidenceResult {
+  return { ok: false, error };
 }
 
 function validateNonRetrievalEvidence(
   input: DataRetrievalEvidenceInput,
 ): DataRetrievalEvidenceResult {
-  const hasRetrievalEvidence = [
-    input.issuedAt,
-    input.notificationDate,
-    input.notificationDisputedOrLate,
-    input.retrievedAt,
-  ].some(Boolean);
-  if (hasRetrievalEvidence) {
-    return {
-      ok: false,
-      error: 'Abrufdaten dürfen nur für die Bekanntgabe zum Datenabruf erfasst werden.',
-    };
-  }
-  return emptyEvidenceResult();
-}
+  const hasRetrievalEvidence =
+    Boolean(input.issuedAt) ||
+    Boolean(input.notificationDate) ||
+    input.notificationDisputedOrLate ||
+    Boolean(input.retrievedAt) ||
+    Boolean(input.postalRequestReceivedAt) ||
+    input.consentStatus !== 'NOT_APPLICABLE' ||
+    input.eligibility2027Status !== 'NOT_APPLICABLE' ||
+    input.postalRequestStatus !== 'NOT_APPLICABLE' ||
+    input.notificationStatus !== 'NOT_RECORDED';
 
-function validateNewLawEvidence(
-  input: DataRetrievalEvidenceInput,
-  issuedAt: Date,
-): DataRetrievalEvidenceResult {
-  const hasOldLawEvidence = [
-    input.notificationDate,
-    input.notificationDisputedOrLate,
-    input.retrievedAt,
-  ].some(Boolean);
-  if (hasOldLawEvidence) {
-    return {
-      ok: false,
-      error:
-        'Für nach dem 31.12.2025 erlassene Bescheide gilt beim Datenabruf ausschließlich Bereitstellung + 4 Tage; altrechtliche Benachrichtigungs-/Abrufangaben sind nicht zulässig.',
-    };
-  }
-  return {
-    ok: true,
-    issuedAt,
-    notificationDate: null,
-    notificationDisputedOrLate: false,
-    retrievedAt: null,
-  };
-}
-
-function validateOldLawEvidence(
-  input: DataRetrievalEvidenceInput,
-  issuedAt: Date,
-): DataRetrievalEvidenceResult {
-  if (!input.notificationDate) {
-    return {
-      ok: false,
-      error:
-        'Für einen bis 31.12.2025 erlassenen Bescheid ist der Versandtag der elektronischen Benachrichtigung erforderlich.',
-    };
-  }
-  if (input.notificationDate > input.today) {
-    return { ok: false, error: 'Der Benachrichtigungstag darf nicht in der Zukunft liegen.' };
-  }
-  if (input.notificationDate < input.provisionDate) {
-    return {
-      ok: false,
-      error: 'Der Benachrichtigungstag darf nicht vor der Bereitstellung liegen.',
-    };
-  }
-  if (input.retrievedAt && input.retrievedAt > input.today) {
-    return { ok: false, error: 'Der tatsächliche Abruftag darf nicht in der Zukunft liegen.' };
-  }
-  if (input.retrievedAt && input.retrievedAt < input.provisionDate) {
-    return { ok: false, error: 'Der tatsächliche Abruf darf nicht vor der Bereitstellung liegen.' };
-  }
-  if (!input.notificationDisputedOrLate && input.retrievedAt) {
-    return {
-      ok: false,
-      error:
-        'Ein tatsächlicher Abruftag ist nur bei bestrittener oder verspäteter Benachrichtigung fristauslösend.',
-    };
-  }
-
-  return {
-    ok: true,
-    issuedAt,
-    notificationDate: input.notificationDate,
-    notificationDisputedOrLate: input.notificationDisputedOrLate,
-    retrievedAt: input.retrievedAt,
-  };
+  return hasRetrievalEvidence
+    ? invalid('§-122a-Angaben sind nur beim Bekanntgabeweg Datenabruf zulässig.')
+    : { ok: true };
 }
 
 /**
- * Validiert die zum gesetzlichen Stichtag unterschiedliche §-122a-Evidenz.
- * Die Funktion ist bewusst rein, damit Server-Action und Tests dieselbe
- * fachliche Regel verwenden.
+ * Validiert die rechtsstandsabhängigen §-122a-Eingaben. Bereitstellung,
+ * Benachrichtigung, Abruf, Einwilligung und Postantrag bleiben getrennte
+ * Tatsachen; insbesondere sind Benachrichtigung und Abruf im Neurecht als
+ * Kontrollinformation zulässig und kein Ersatz für die Bereitstellung.
  */
 export function validateDataRetrievalEvidence(
   input: DataRetrievalEvidenceInput,
@@ -126,25 +63,100 @@ export function validateDataRetrievalEvidence(
     return validateNonRetrievalEvidence(input);
   }
 
-  if (!input.issuedAt) {
-    return {
-      ok: false,
-      error: 'Beim Datenabruf ist das Erlass-/Bescheiddatum erforderlich.',
-    };
-  }
-  if (input.issuedAt > input.today) {
-    return { ok: false, error: 'Das Erlass-/Bescheiddatum darf nicht in der Zukunft liegen.' };
-  }
-  if (input.issuedAt > input.provisionDate) {
-    return {
-      ok: false,
-      error: 'Die Bereitstellung darf nicht vor Erlass des Bescheids liegen.',
-    };
+  if (!input.issuedAt) return invalid('Beim Datenabruf ist das Erlassdatum erforderlich.');
+  if (input.issuedAt > input.today || input.issuedAt > input.provisionDate) {
+    return invalid('Das Erlassdatum darf weder zukünftig noch nach der Bereitstellung liegen.');
   }
 
-  const usesOldLaw = input.issuedAt.getTime() < Date.UTC(2026, 0, 1);
-  if (!usesOldLaw) {
-    return validateNewLawEvidence(input, input.issuedAt);
+  for (const [date, label] of [
+    [input.notificationDate, 'Benachrichtigung'],
+    [input.retrievedAt, 'Abruf'],
+    [input.postalRequestReceivedAt, 'Postantrag'],
+  ] as const) {
+    if (date && date > input.today) {
+      return invalid(`${label}: Datum darf nicht in der Zukunft liegen.`);
+    }
   }
-  return validateOldLawEvidence(input, input.issuedAt);
+  if (input.notificationDate && input.notificationDate < input.provisionDate) {
+    return invalid('Die Benachrichtigung darf nicht vor der Bereitstellung liegen.');
+  }
+  if (input.retrievedAt && input.retrievedAt < input.provisionDate) {
+    return invalid('Der Abruf darf nicht vor der Bereitstellung liegen.');
+  }
+  if (input.notificationStatus === 'SENT' && !input.notificationDate) {
+    return invalid('Für eine versandte Benachrichtigung ist das Versanddatum erforderlich.');
+  }
+  if (input.notificationStatus === 'NOT_RECORDED' && input.notificationDate) {
+    return invalid(
+      'Ein Benachrichtigungsdatum darf nicht zugleich als „nicht erfasst“ eingeordnet werden.',
+    );
+  }
+
+  const year = input.issuedAt.getUTCFullYear();
+  if (year <= 2025) {
+    if (!input.notificationDate) {
+      return invalid('Im Altrecht ist der Versandtag der Benachrichtigung erforderlich.');
+    }
+    if (
+      input.consentStatus !== 'NOT_APPLICABLE' ||
+      input.eligibility2027Status !== 'NOT_APPLICABLE' ||
+      input.postalRequestStatus !== 'NOT_APPLICABLE' ||
+      input.postalRequestReceivedAt
+    ) {
+      return invalid(
+        'Einwilligung und Postantrag des Neurechts sind auf diesen Altfall nicht anwendbar.',
+      );
+    }
+    if (!input.notificationDisputedOrLate && input.notificationStatus !== 'SENT') {
+      return invalid(
+        'Im Altrecht darf nur ein bestätigter Versand der Benachrichtigung die Fiktionsberechnung auslösen.',
+      );
+    }
+    return { ok: true };
+  }
+
+  if (input.notificationDisputedOrLate) {
+    return invalid(
+      'Der Streit-/Verspätungsmarker zum Benachrichtigungszugang ist nur im Altrecht bis 2025 anwendbar.',
+    );
+  }
+
+  if (year === 2026) {
+    if (input.consentStatus === 'NOT_APPLICABLE') {
+      return invalid('Für 2026 muss der Einwilligungsstatus dokumentiert werden.');
+    }
+    if (
+      input.eligibility2027Status !== 'NOT_APPLICABLE' ||
+      input.postalRequestStatus !== 'NOT_APPLICABLE' ||
+      input.postalRequestReceivedAt
+    ) {
+      return invalid(
+        'Die Ab-2027-Angaben sind auf einen 2026 erlassenen Bescheid nicht anwendbar.',
+      );
+    }
+    return { ok: true };
+  }
+
+  if (
+    input.eligibility2027Status === 'NOT_APPLICABLE' ||
+    input.postalRequestStatus === 'NOT_APPLICABLE'
+  ) {
+    return invalid('Ab 2027 müssen Voraussetzungen und Postantrag getrennt bewertet werden.');
+  }
+  if (input.consentStatus !== 'NOT_APPLICABLE') {
+    return invalid('Der besondere 2026-Einwilligungsstatus ist ab 2027 nicht anwendbar.');
+  }
+  if (input.postalRequestStatus === 'EFFECTIVE' && !input.postalRequestReceivedAt) {
+    return invalid('Für einen wirksamen Postantrag ist dessen Zugangstag erforderlich.');
+  }
+  if (
+    ['NOT_APPLICABLE', 'NONE_EFFECTIVE'].includes(input.postalRequestStatus) &&
+    input.postalRequestReceivedAt
+  ) {
+    return invalid(
+      'Ohne wirksamen Postantrag darf kein Zugangstag des Postantrags gespeichert werden.',
+    );
+  }
+
+  return { ok: true };
 }

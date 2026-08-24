@@ -1,8 +1,2175 @@
 {
   "schema_version": 1,
   "purpose": "Such- und Gegenprüfindex für TaxTronik-Fachregeln; vollständige Regeldatei vor Änderungen lesen.",
+  "scope": {
+    "manifest_version": 1,
+    "definition_path": "docs/fachkatalog/SCOPE.md",
+    "definition_sha256": "sha256:1a13d7ee2ddafcc267c0c4ef2a7af298d508b61c56c62b504642e70905e83bf9",
+    "expected_active_rule_count": 59,
+    "expected_reserved_rule_count": 8,
+    "active_rule_ids": [
+      "ACCESS-CLIENT-MODE-001",
+      "ACCESS-NOTIFICATION-RECIPIENT-001",
+      "ACCESS-STAFF-PERMISSION-001",
+      "ACCESS-TENANT-RLS-001",
+      "ASSURANCE-PROFESSIONAL-REVIEW-001",
+      "ASSURANCE-RELEASE-EVIDENCE-001",
+      "AUDIT-ARCHIVE-001",
+      "AUDIT-HASH-CHAIN-001",
+      "AUDIT-RFC3161-ANCHOR-001",
+      "AUDIT-VERIFY-ALERT-001",
+      "BWA-IMPORT-MAPPING-001",
+      "BWA-PROJECTION-001",
+      "BWA-TAX-ESTIMATE-001",
+      "CLIENT-MANDATE-LIFECYCLE-001",
+      "DOC-OBJECT-LOCK-001",
+      "DOC-PORTAL-SHARING-001",
+      "DOC-RETENTION-CLASS-001",
+      "DOC-UPLOAD-JOURNAL-001",
+      "DOC-VERSION-IMMUTABILITY-001",
+      "DSGVO-CONSENT-SNAPSHOT-001",
+      "DSGVO-CONTACT-EXPORT-001",
+      "DSGVO-MANDATE-ANONYMIZATION-001",
+      "DSGVO-OPERATIONAL-RETENTION-001",
+      "DSGVO-REQUEST-DEADLINE-001",
+      "DSGVO-REQUEST-EVIDENCE-001",
+      "FORM-PRESUBMIT-UPLOAD-001",
+      "GOBD-VERFAHRENSDOKU-001",
+      "GWG-ACTIVATION-GATE-001",
+      "GWG-BENEFICIAL-OWNERS-001",
+      "GWG-IDENTIFICATION-EVIDENCE-001",
+      "GWG-REPRESENTATIVE-AUTHORITY-001",
+      "GWG-RETENTION-DESTRUCTION-001",
+      "GWG-REVERIFICATION-VALIDITY-001",
+      "GWG-RISK-REVIEW-001",
+      "GWG-SELF-ONBOARDING-001",
+      "INV-ARCHIVE-EINVOICE-001",
+      "INV-DUE-OVERDUE-001",
+      "INV-LIFECYCLE-FREEZE-001",
+      "INV-NUMBER-ALLOCATION-001",
+      "INV-PORTAL-SHARING-001",
+      "INV-STORNO-REFERENCE-001",
+      "INV-TIME-ENTRY-CLAIM-001",
+      "INV-VAT-TOTALS-001",
+      "POA-LIFECYCLE-001",
+      "POA-SIGNER-RETENTION-001",
+      "POA-SIGNING-CONFIRMATION-001",
+      "POA-SIGNING-SNAPSHOT-001",
+      "REQ-INTERNAL-COMMENT-001",
+      "REQ-LIFECYCLE-001",
+      "RISK-AI-SUGGESTION-001",
+      "RISK-ARCHIVE-SNAPSHOT-001",
+      "RISK-CATALOG-FOUR-EYES-001",
+      "RISK-EXTERNAL-ANONYMIZATION-001",
+      "TAX-CONTROL-STATUS-001",
+      "TAX-DEADLINE-AUTOREQUEST-001",
+      "TAX-DEADLINE-WORKDAY-001",
+      "TAX-NOTICE-APPEAL-001",
+      "TAX-NOTICE-DATARETRIEVAL-001",
+      "TCMS-SAMPLE-PROOF-001"
+    ],
+    "reserved_rule_ids": [
+      "DOC-COMPLETE-GOBD-CLASSIFICATION-001",
+      "DSGVO-LEGAL-BASIS-REGISTER-001",
+      "DSGVO-LEGAL-HOLD-001",
+      "INV-COMPLETE-TAX-VALIDATION-001",
+      "POA-LEGAL-VALIDITY-001",
+      "PS880-CERTIFICATION-001",
+      "TCMS-EFFECTIVENESS-001",
+      "TCMS-ORGANSCHAFT-001"
+    ],
+    "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
+  },
+  "rule_count": 59,
+  "active_rule_count": 59,
+  "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
+    {
+      "id": "ACCESS-CLIENT-MODE-001",
+      "title": "Kanzleiweiten Mandantenzugriff nach OPEN, RESTRICTED und Vertraulichkeit steuern",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz und Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Die zentrale Policy erlaubt aktiven Mitarbeitern im Modus OPEN Zugriff auf nicht vertrauliche Mandanten. RESTRICTED und das Vertraulichkeitsflag verlangen eine Berufsträger- oder Hauptbearbeiterzuordnung; ADMIN und PARTNER bleiben unabhängig davon berechtigt."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Feature-Katalog, Zugriffsmodell OPEN/RESTRICTED",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Zugriffsschutz und Benutzerverwaltung",
+          "path": "docs/development/module/zugriffsschutz.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 57 Abs. 1 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__57.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 62 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__62.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. c und f, Art. 25 und 32 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/db/src/staff-client-access.ts",
+        "apps/web/src/server/settings/access-policy.ts",
+        "apps/web/src/server/auth/rbac.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/settings/__tests__/access-policy.test.ts",
+        "apps/web/src/server/settings/__tests__/access-policy.property.test.ts",
+        "apps/web/src/server/auth/__tests__/rbac.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
+      "related_rules": [
+        "ACCESS-STAFF-PERMISSION-001",
+        "ACCESS-TENANT-RLS-001",
+        "ACCESS-NOTIFICATION-RECIPIENT-001"
+      ],
+      "tags": ["mandantenzugriff", "vertraulichkeit", "zuständigkeit"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-client-mode-001-zugriffsmodus.md",
+      "summary": "TaxTronik trennt organisatorische Zuständigkeit vom technischen Lesezugriff. Im Modus OPEN dürfen aktive Mitarbeiter an allen nicht vertraulichen Mandanten der Kanzlei mitarbeiten. RESTRICTED und ein gesetztes Vertraulichkeitsflag beschränken Nicht-Admins auf zugeordnete Berufsträger oder Hauptbearbeiter; ADMIN und PARTNER sind immer zugelassen."
+    },
+    {
+      "id": "ACCESS-NOTIFICATION-RECIPIENT-001",
+      "title": "Mandantenbezogene Mitarbeiterbenachrichtigungen nach aktuellem Zugriff filtern",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz und Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die neue Notification-Scope-Migration bindet bekannte Fachressourcen fail-closed an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den aktuellen Empfänger- und Clientzugriff. Reminder revalidieren Empfänger vor dem Insert; ein vollständiges Inventar aller Producer sowie Mail- und n8n-Austritte bleibt als Härtungsnachweis offen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Fachkatalog-Inventur, Notification-Empfänger und Zugriffshärtung",
+          "path": "docs/fachkatalog/SCOPE.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Feature-Katalog, Empfängerfilter nach OPEN/RESTRICTED und Vertraulichkeit",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 57 Abs. 1 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__57.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 203 StGB",
+          "url": "https://www.gesetze-im-internet.de/stgb/__203.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. c und f, Art. 25 und 32 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/db/src/staff-client-access.ts",
+        "packages/db/src/notification.ts",
+        "apps/worker/src/jobs/reminders-daily.ts",
+        "packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql"
+      ],
+      "test_refs": [
+        "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
+        "apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts",
+        "packages/db/src/__tests__/notification-client-scope-migration.test.ts",
+        "packages/db/src/__tests__/notification-client-scope-rls.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
+      "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001"],
+      "tags": ["notification", "empfänger", "vertraulichkeit"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-notification-recipient-001-benachrichtigungsscope.md",
+      "summary": "Eine alte Zuständigkeit darf nicht dauerhaft Zugang zu einem später vertraulichen oder RESTRICTED-Mandanten vermitteln. Mandantenbezogene Notifications werden daher an eine bekannte Fachressource und deren Mandanten gebunden; Anzeige und Mutation verlangen den aktuellen Clientzugriff. Technisch globale oder persönliche Systemmeldungen bleiben ein getrennter Scope."
+    },
+    {
+      "id": "ACCESS-STAFF-PERMISSION-001",
+      "title": "Aktionsrechte getrennt vom Mandantenzugriff prüfen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "ADMIN und PARTNER besitzen die definierten Einzelrechte implizit. Andere Mitarbeiter benötigen den ausdrücklichen Grant; das Aktionsrecht wird zusätzlich und unabhängig von einem etwaigen Mandantenzugriff geprüft."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Fachkatalog-Inventur, Einzelrechte und getrennte Gates",
+          "path": "docs/fachkatalog/SCOPE.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Zugriffsschutz und Benutzerverwaltung",
+          "path": "docs/development/module/zugriffsschutz.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 32 Abs. 1 und 4 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/auth/rbac.ts",
+        "apps/web/src/server/actions/staff-action.ts",
+        "apps/web/src/lib/staff-permissions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/auth/__tests__/rbac.test.ts",
+        "apps/web/src/server/actions/__tests__/staff-action.test.ts",
+        "apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
+      "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001"],
+      "tags": ["rbac", "einzelrechte", "least-privilege"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-staff-permission-001-einzelrechte.md",
+      "summary": "Ein sichtbarer Mandant allein berechtigt nicht automatisch zu jeder Aktion. TaxTronik prüft für die dafür eingerichteten Funktionen zusätzlich ein Einzelrecht. ADMIN und PARTNER haben diese Rechte implizit; andere Mitarbeiter benötigen einen expliziten Grant."
+    },
+    {
+      "id": "ACCESS-TENANT-RLS-001",
+      "title": "Tenantdaten mit Kontext und erzwungener Row-Level-Security isolieren",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Datenschutzverantwortliche Kanzlei",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Registrierte Tenant-Tabellen werden durch transaktionsgebundenen Tenantkontext, eine App-Rolle ohne BYPASSRLS sowie ENABLE/FORCE-RLS und Policies isoliert. Ein CI-Gate sucht nach neuen Tabellen ohne diesen Backstop; privilegierte Owner-Pfade bleiben gesondert zu kontrollieren."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0002 — Doppelte Verteidigung durch RLS und App-Level-Tenancy",
+          "path": "docs/adr/0002-rls-und-app-level-tenancy.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Architektur, Tenant-Trennung und Compliance-Mapping",
+          "path": "docs/architecture.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. f, Art. 25 und Art. 32 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 203 Abs. 1 Nr. 3, Abs. 3 und 4 StGB",
+          "url": "https://www.gesetze-im-internet.de/stgb/__203.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/db/src/tenant-context.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260623000000_iter42_force_rls/migration.sql",
+        "packages/db/scripts/verify-rls.ts"
+      ],
+      "test_refs": ["packages/db/src/__tests__/rls-cross-tenant.test.ts"],
+      "feature_refs": [
+        "docs/architecture.md",
+        "docs/adr/0002-rls-und-app-level-tenancy.md",
+        "docs/development/module/zugriffsschutz.md"
+      ],
+      "related_rules": [
+        "ACCESS-CLIENT-MODE-001",
+        "ACCESS-STAFF-PERMISSION-001",
+        "ACCESS-NOTIFICATION-RECIPIENT-001"
+      ],
+      "tags": ["rls", "tenant-isolation", "defense-in-depth"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-tenant-rls-001-tenant-isolation.md",
+      "summary": "Anwendungszugriffe auf Tenantdaten laufen in einer Transaktion mit gesetztem Tenant-, Akteur- und Akteurtyp-Kontext. PostgreSQL erzwingt auf den erfassten Tabellen Row-Level-Security auch für den Tabellenowner der App-Rolle. Die Schicht ist ein technischer Backstop gegen Cross-Tenant-Zugriffe, kein Ersatz für Objektberechtigungen innerhalb einer Kanzlei."
+    },
+    {
+      "id": "ASSURANCE-PROFESSIONAL-REVIEW-001",
+      "title": "Fachliche Freigabe von technischer Umsetzung und KI-Beiträgen trennen",
+      "domain": "audit-und-assurance",
+      "rule_type": "office_policy",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Fachkatalog und Qualitätsmanagement",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Schema, Inhalts-Hash und CI trennen technische Umsetzung von fachlicher Freigabe und erkennen geänderte freigegebene Inhalte; belastbare Review-Identität braucht zusätzliche Repository-Governance."
+      },
+      "sources": [
+        {
+          "kind": "internal_policy",
+          "citation": "Beitrags- und Reviewverfahren des TaxTronik-Fachkatalogs",
+          "path": "docs/fachkatalog/BEITRAGEN.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "Arbeitsregeln für fachliche Logik und Verbot der KI-Selbstfreigabe",
+          "path": "AGENTS.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": ["scripts/fachkatalog/cli.mjs", "scripts/fachkatalog/lib.mjs"],
+      "test_refs": ["scripts/tests/fachkatalog.test.mjs"],
+      "feature_refs": ["docs/fachkatalog/BEITRAGEN.md", "docs/fachkatalog/README.md", "AGENTS.md"],
+      "related_rules": ["ASSURANCE-RELEASE-EVIDENCE-001"],
+      "tags": ["assurance", "fachreview", "governance", "ki"],
+      "path": "docs/fachkatalog/regeln/audit-und-assurance/assurance-professional-review-001-fachreview.md",
+      "summary": "Der Fachkatalog führt den technischen Umsetzungsstatus unabhängig vom berufsträgerlichen Reviewstatus. Eine fachliche Freigabe benötigt benannte Person, Prüfdatum und einen Hash des geprüften Fachinhalts. KI-Werkzeuge dürfen diese Freigabedaten nicht setzen. Der Validator erkennt nachträgliche Änderungen am gebundenen Inhalt, authentifiziert aber weder die Person noch deren Berufsqualifikation."
+    },
+    {
+      "id": "ASSURANCE-RELEASE-EVIDENCE-001",
+      "title": "Releasebezogene technische Nachweise in einem Dossier binden",
+      "domain": "audit-und-assurance",
+      "rule_type": "office_policy",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Prüfungskoordination und technische Release-Verantwortung",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Release-Gates und Dossier-Vorlage können Commit, Images, CI-, Security-, SBOM- und Formatnachweise verbinden; ein tatsächlich befülltes dauerhaftes Dossier fehlt noch."
+      },
+      "sources": [
+        {
+          "kind": "professional_literature",
+          "citation": "IDW PS 880 n.F. (01.2022), Die Prüfung von Softwareprodukten, offizielle Fundstelle des IDW",
+          "url": "https://www.idw.de/idw/idw-verlautbarungen/idw-eps-880-n-f-03-2021.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Release-Evidence-Dossier, ausdrücklich auszufüllende Vorlage ohne Prüfaussage",
+          "path": "docs/assurance/ps880-release-evidence.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "Interne Gap-Analyse und Maßnahmenplan zur Vorbereitung einer möglichen Softwareproduktprüfung",
+          "path": "docs/compliance/idw-ps880-pruefungsbereitschaft.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        ".forgejo/workflows/release.yml",
+        "scripts/release/check-release-gates.mjs",
+        "scripts/release/verify-release-config.mjs"
+      ],
+      "test_refs": [
+        "scripts/release/tests/check-release-gates.test.mjs",
+        "scripts/release/tests/verify-release-config.test.mjs"
+      ],
+      "feature_refs": [
+        "docs/assurance/ps880-release-evidence.md",
+        "docs/compliance/idw-ps880-pruefungsbereitschaft.md",
+        "docs/operations/release.md"
+      ],
+      "related_rules": [
+        "ASSURANCE-PROFESSIONAL-REVIEW-001",
+        "AUDIT-HASH-CHAIN-001",
+        "AUDIT-RFC3161-ANCHOR-001",
+        "AUDIT-ARCHIVE-001"
+      ],
+      "tags": ["assurance", "release", "evidence", "ps880-vorbereitung"],
+      "path": "docs/fachkatalog/regeln/audit-und-assurance/assurance-release-evidence-001-release-dossier.md",
+      "summary": "Für einen konkret benannten Release sollen Tag und Commit, unveränderliche Image-Digests, signiertes Update-Manifest, ausgeführte CI- und Security-Jobs, SBOMs, KoSIT-Berichte, Abweichungen und getrennte Freigabeentscheidungen in einem nachvollziehbaren Dossier zusammengeführt werden. Workflow und Vorlage schaffen dafür technische und dokumentarische Voraussetzungen, sind aber noch kein ausgefüllter Nachweis und keine externe Prüfaussage."
+    },
+    {
+      "id": "AUDIT-ARCHIVE-001",
+      "title": "Audit-Ketten in deterministischen Segmenten archivieren",
+      "domain": "audit-und-assurance",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Compliance und Verfahrensdokumentation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Audit-Protokollierung, unveränderliche Langzeitarchivierung",
+          "path": "docs/development/module/audit-protokollierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0004, Vier-Schicht-Modell der Manipulationsevidenz",
+          "path": "docs/adr/0004-evidence-chain-mit-rfc3161.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": ["packages/evidence/src/archive.ts", "apps/worker/src/jobs/audit-rotate.ts"],
+      "test_refs": [
+        "packages/evidence/src/__tests__/archive.test.ts",
+        "apps/worker/src/jobs/__tests__/audit-rotate.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/audit-protokollierung.md",
+        "docs/adr/0004-evidence-chain-mit-rfc3161.md"
+      ],
+      "related_rules": [
+        "AUDIT-HASH-CHAIN-001",
+        "AUDIT-RFC3161-ANCHOR-001",
+        "AUDIT-VERIFY-ALERT-001"
+      ],
+      "tags": ["audit", "archiv", "object-lock", "ndjson"],
+      "path": "docs/fachkatalog/regeln/audit-und-assurance/audit-archive-001-segmentarchiv.md",
+      "summary": "Der Audit-Rotationsjob exportiert einen zusammenhängenden ID-Bereich eines Kanzlei-Tenants als deterministisches NDJSON-Segment. Das Segment enthält Kettenanker und einen Datei-Hash, wird vor der Ablage vollständig nachgerechnet und im Storage mit COMPLIANCE Object Lock gespeichert. Wiederholungen können bereits hochgeladene, aber noch nicht in der Datenbank registrierte Segmente erkennen und übernehmen."
+    },
+    {
+      "id": "AUDIT-HASH-CHAIN-001",
+      "title": "Audit-Ereignisse je Kanzlei-Tenant kanonisch verketten",
+      "domain": "audit-und-assurance",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Compliance und Verfahrensdokumentation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Der Evidence-Service bildet pro Kanzlei-Tenant eine serialisierte SHA-256-Kette über kanonische Audit-Ereignisse und prüft sie mit derselben Abbildung nach."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Audit-Protokollierung, Mechanik der Hash-Kette",
+          "path": "docs/development/module/audit-protokollierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0004, Manipulationsevidenz durch Hash-Kette und RFC 3161",
+          "path": "docs/adr/0004-evidence-chain-mit-rfc3161.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/evidence/src/service.ts",
+        "packages/evidence/src/chain.ts",
+        "packages/evidence/src/canonical-json.ts"
+      ],
+      "test_refs": [
+        "packages/evidence/src/__tests__/service-record.test.ts",
+        "packages/evidence/src/__tests__/hash-chain.test.ts",
+        "packages/evidence/src/__tests__/canonical-json.property.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/audit-protokollierung.md",
+        "docs/adr/0004-evidence-chain-mit-rfc3161.md"
+      ],
+      "related_rules": ["AUDIT-RFC3161-ANCHOR-001", "AUDIT-VERIFY-ALERT-001", "AUDIT-ARCHIVE-001"],
+      "tags": ["audit", "hashkette", "manipulationsevidenz"],
+      "path": "docs/fachkatalog/regeln/audit-und-assurance/audit-hash-chain-001-tenant-hashkette.md",
+      "summary": "TaxTronik schreibt über den Evidence-Service Audit-Ereignisse in eine eigene Kette je Kanzlei-Tenant. Jeder Kettenwert bindet den Vorgänger und eine deterministisch kanonisierte Darstellung von Zeitpunkt, Tenant, Akteur, Aktion, Ressource sowie Vorher- und Nachherzustand. Schreiben und spätere Prüfung verwenden dieselbe Hash-Abbildung."
+    },
+    {
+      "id": "AUDIT-RFC3161-ANCHOR-001",
+      "title": "Audit-Spitzen mit geprüften RFC-3161-Zeitankern koppeln",
+      "domain": "audit-und-assurance",
+      "rule_type": "technical_standard",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Compliance und Verfahrensdokumentation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Externe RFC-3161-Antworten werden kryptografisch und gegen konfigurierte Vertrauensanker geprüft; lokale Stempel bleiben als nicht externe Evidenz erkennbar."
+      },
+      "sources": [
+        {
+          "kind": "technical_standard",
+          "citation": "IETF RFC 3161, Internet X.509 Public Key Infrastructure Time-Stamp Protocol",
+          "url": "https://www.rfc-editor.org/rfc/rfc3161.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "technical_standard",
+          "citation": "IETF RFC 5816, ESSCertIDv2 Update for RFC 3161",
+          "url": "https://www.rfc-editor.org/rfc/rfc5816.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Audit-Protokollierung, externe Anchor-Kette und Tagesversiegelung",
+          "path": "docs/development/module/audit-protokollierung.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/evidence/src/service.ts",
+        "packages/evidence/src/ports/rfc3161-verify.ts",
+        "apps/worker/src/jobs/audit-anchor.ts",
+        "apps/worker/src/jobs/evidence-seal.ts"
+      ],
+      "test_refs": [
+        "packages/evidence/src/__tests__/rfc3161-verify.test.ts",
+        "packages/evidence/src/__tests__/service-verifychain.test.ts",
+        "packages/evidence/src/__tests__/service-seal-trust.test.ts",
+        "apps/worker/src/jobs/__tests__/evidence-seal.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/audit-protokollierung.md",
+        "docs/adr/0004-evidence-chain-mit-rfc3161.md"
+      ],
+      "related_rules": ["AUDIT-HASH-CHAIN-001", "AUDIT-VERIFY-ALERT-001", "AUDIT-ARCHIVE-001"],
+      "tags": ["audit", "rfc3161", "tsa", "zeitanker"],
+      "path": "docs/fachkatalog/regeln/audit-und-assurance/audit-rfc3161-anchor-001-externe-zeitanker.md",
+      "summary": "TaxTronik kann Spitzen der lokalen Audit-Kette und Tagesabschlüsse mit RFC-3161-Antworten verankern. Eine Antwort gilt erst nach Prüfung von Message-Imprint, CMS-Signatur, Zertifikatskette, Timestamping-EKU, Zertifikatsbindung und Erzeugungszeit als vertrauenswürdiger externer Anker. Lokale Entwicklungsstempel werden nicht als externe Evidenz ausgegeben."
+    },
+    {
+      "id": "AUDIT-VERIFY-ALERT-001",
+      "title": "Audit-Ketten regelmäßig prüfen und Abweichungen alarmieren",
+      "domain": "audit-und-assurance",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Compliance und Verfahrensdokumentation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker- und Policy-Fehler und benachrichtigt zuständige interne Rollen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Audit-Protokollierung, Worker und Admin-Oberfläche",
+          "path": "docs/development/module/audit-protokollierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "TaxTronik Assurance Model, Audit-Chain und Known-Limits-Prinzip",
+          "path": "docs/assurance/assurance-model.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/worker/src/jobs/audit-verify-check.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/actions.ts"
+      ],
+      "test_refs": [
+        "apps/worker/src/jobs/__tests__/audit-verify-check.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/audit-protokollierung.md",
+        "docs/assurance/assurance-model.md"
+      ],
+      "related_rules": ["AUDIT-HASH-CHAIN-001", "AUDIT-RFC3161-ANCHOR-001", "AUDIT-ARCHIVE-001"],
+      "tags": ["audit", "verifikation", "alarm", "monitoring"],
+      "path": "docs/fachkatalog/regeln/audit-und-assurance/audit-verify-alert-001-prueflauf-und-alarm.md",
+      "summary": "Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet."
+    },
+    {
+      "id": "BWA-IMPORT-MAPPING-001",
+      "title": "DATEV- und Addison-BWA nur anhand bekannter Strukturen importieren",
+      "domain": "bwa-und-planung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger BWA und betriebswirtschaftliche Beratung",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Strukturierte DATEV-XLSX- und Addison-CSV-Daten werden anhand fest hinterlegter Perioden- und BWA-Positionsmuster importiert. Vollständigkeit, Vorzeichen, Kontenrahmen, Quellformat und fachliche Plausibilität werden nicht abschließend automatisch festgestellt; zudem bezeichnet das interne Mapping DATEV-Gesamtleistung und einen Betriebsergebnis-Fallback zu weit."
+      },
+      "sources": [
+        {
+          "kind": "technical_standard",
+          "citation": "DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Positionen 1051, 1300, 1345 und 1380",
+          "url": "https://www.datev.de/dnlexom/v2/content/files/st13860276747_de.pdf",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation BWA und Planung, Abschnitt Import und Prüfpflichten",
+          "path": "docs/anwenderdoku/bwa-planung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/bwa/datev-parser.ts",
+        "apps/web/src/server/bwa/addison-parser.ts"
+      ],
+      "test_refs": ["apps/web/src/server/bwa/__tests__/datev-parser.test.ts"],
+      "feature_refs": ["docs/anwenderdoku/bwa-planung.md"],
+      "related_rules": ["BWA-PROJECTION-001", "BWA-TAX-ESTIMATE-001"],
+      "tags": ["bwa", "datev", "addison", "import", "mapping"],
+      "path": "docs/fachkatalog/regeln/bwa-und-planung/bwa-import-mapping-001-strukturimport.md",
+      "summary": "TaxTronik liest strukturierte DATEV-BWA aus XLSX und Addison-BWA aus Semikolon-CSV ein. Perioden und Kennzahlen entstehen nur aus den im Parser bekannten Spalten-, Zeilen- und Positionsmustern. Ein erfolgreicher Import belegt weder die Vollständigkeit der Quelldatei noch die richtige fachliche Zuordnung oder Vorzeichenlogik."
+    },
+    {
+      "id": "BWA-PROJECTION-001",
+      "title": "BWA-Hochrechnungen nur als bandbreitenbehaftete Szenarien ausweisen",
+      "domain": "bwa-und-planung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger BWA und betriebswirtschaftliche Beratung",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "deviates",
+        "summary": "Die lineare Run-rate ist als begrenztes Rechenmodell umgesetzt. Die Trendregression filtert jedoch nicht auf Jahre vor dem Zieljahr und kann deshalb Ziel- oder Zukunftsjahre einbeziehen; damit weicht sie von der beschriebenen Vorjahresregel ab."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation BWA und Planung, Abschnitt Hochrechnung und Grenzen",
+          "path": "docs/anwenderdoku/bwa-planung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": ["apps/web/src/server/bwa/projection.ts"],
+      "test_refs": ["apps/web/src/server/bwa/__tests__/projection.test.ts"],
+      "feature_refs": ["docs/anwenderdoku/bwa-planung.md"],
+      "related_rules": ["BWA-IMPORT-MAPPING-001", "BWA-TAX-ESTIMATE-001"],
+      "tags": ["bwa", "hochrechnung", "szenario", "regression", "bandbreite"],
+      "path": "docs/fachkatalog/regeln/bwa-und-planung/bwa-projection-001-szenariorechnung.md",
+      "summary": "TaxTronik stellt zwei bewusst einfache Szenarien bereit: eine lineare Jahres-Run-rate aus der jüngsten unterjährigen Periode und eine lineare Regression aus mindestens zwei vollständigen Vorjahren. Beide zeigen einen Schätzwert und eine heuristische Spanne. Die Werte sind keine Garantie für Ergebnis, Steuer, Liquidität oder Saisonalität."
+    },
+    {
+      "id": "BWA-TAX-ESTIMATE-001",
+      "title": "BWA-Steuerschätzung auf eng begrenzte Annahmen beschränken",
+      "domain": "bwa-und-planung",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": "2025-01-01", "valid_until": "2026-12-31" },
+      "professional_owner_role": "Berufsträger Ertragsteuern und Umsatzsteuer",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der Produktstand bildet einzelne Tarife und Rechenschritte für 2025 und 2026 nach, setzt aber das BWA-Ergebnis vereinfachend mit steuerlichen Bemessungsgrundlagen gleich. Persönliche Faktoren, zahlreiche Gewinnkorrekturen, gemischte Umsatzsteuersachverhalte und Sonderfälle fehlen. Im DATEV-Pfad kann außerdem Gesamtleistung statt Umsatzerlösen in die USt-Pauschale eingehen; Hinweise oder Beta-Kennzeichnung heilen diese Lücken nicht."
+      },
+      "sources": [
+        {
+          "kind": "official_guidance",
+          "citation": "Amtliches Lohnsteuer-Handbuch 2025, § 32a EStG mit Tarifparametern 2025",
+          "url": "https://ksth.bundesfinanzministerium.de/lsth/2025/A-Einkommensteuergesetz/IV-Tarif-31-34b/Paragraf-32a/inhalt.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 32a EStG, Einkommensteuertarif ab Veranlagungszeitraum 2026",
+          "url": "https://www.gesetze-im-internet.de/estg/__32a.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 35 EStG, Steuerermäßigung bei Einkünften aus Gewerbebetrieb",
+          "url": "https://www.gesetze-im-internet.de/estg/__35.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 4 Abs. 5b EStG, Gewerbesteuer ist keine Betriebsausgabe",
+          "url": "https://www.gesetze-im-internet.de/estg/__4.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§§ 2, 7 und 11 GewStG, Steuergegenstand, Gewerbeertrag und Messbetrag",
+          "url": "https://www.gesetze-im-internet.de/gewstg/",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 23 KStG, Körperschaftsteuersatz nach Veranlagungszeitraum",
+          "url": "https://www.gesetze-im-internet.de/kstg_1977/__23.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§§ 3 und 4 SolzG 1995, Bemessungsgrundlage und Zuschlagsatz",
+          "url": "https://www.gesetze-im-internet.de/solzg_1995/",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§§ 12 und 15 UStG, Steuersätze und Vorsteuerabzug",
+          "url": "https://www.gesetze-im-internet.de/ustg_1980/",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "technical_standard",
+          "citation": "DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Gesamtleistung in Position 1051",
+          "url": "https://www.datev.de/dnlexom/v2/content/files/st13860276747_de.pdf",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation BWA und Planung, fachliche Grenzen der Planung",
+          "path": "docs/anwenderdoku/bwa-planung.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": ["apps/web/src/server/bwa/tax-estimator.ts"],
+      "test_refs": ["apps/web/src/server/bwa/__tests__/tax-estimator.test.ts"],
+      "feature_refs": ["docs/anwenderdoku/bwa-planung.md"],
+      "related_rules": ["BWA-IMPORT-MAPPING-001", "BWA-PROJECTION-001"],
+      "tags": [
+        "bwa",
+        "steuerschaetzung",
+        "einkommensteuer",
+        "koerperschaftsteuer",
+        "gewerbesteuer",
+        "umsatzsteuer"
+      ],
+      "path": "docs/fachkatalog/regeln/bwa-und-planung/bwa-tax-estimate-001-vereinfachte-steuerschaetzung.md",
+      "summary": "TaxTronik berechnet eine unverbindliche Orientierung aus einem vorläufigen BWA-Ergebnis. Einzelne gesetzliche Parameter sind für 2025 und 2026 im Code hinterlegt; die erforderlichen steuerlichen Bemessungsgrundlagen werden aber nicht aus einem vollständigen Steuerfall ermittelt. Deshalb ist der Stand nur teilweise umgesetzt und ungeprüft. Ein Disclaimer, die Bezeichnung „Beta“ oder eine plausible Zahl macht eine sachlich unvollständige Berechnung nicht richtig."
+    },
+    {
+      "id": "CLIENT-MANDATE-LIFECYCLE-001",
+      "title": "Mandatsende auditieren und als nachgelagerten Workflow-Anker verwenden",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Mandats- und Aufbewahrungsorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "ADMIN/PARTNER können das aktuelle Mandatsende setzen oder zurücknehmen; beide Änderungen werden auditiert und steuern GwG-/DSGVO-Queues sowie einzelne Neuanlage-Gates. Ein einheitlicher Schreib-, Portal- und Wiederaufnahme-Backstop für alle Module fehlt."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "DSGVO-Konzept, Mandatsende und nachgelagerte Anonymisierung",
+          "path": "docs/compliance/dsgvo-konzept.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 66 Abs. 1 bis 4 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__66.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. e sowie Art. 17 Abs. 1 und 3 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts",
+        "apps/web/src/server/dsgvo/client-retention.ts",
+        "apps/web/src/app/staff/(protected)/poa/actions.ts",
+        "packages/db/prisma/migrations/20260723000000_iter73_client_mandate_ended_at/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/dsgvo/__tests__/client-retention.test.ts",
+        "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/compliance/dsgvo-konzept.md"],
+      "related_rules": [
+        "DSGVO-MANDATE-ANONYMIZATION-001",
+        "GWG-RETENTION-DESTRUCTION-001",
+        "POA-SIGNER-RETENTION-001"
+      ],
+      "tags": ["mandatsende", "wiederaufnahme", "retention"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/client-mandate-lifecycle-001-mandatsende.md",
+      "summary": "TaxTronik speichert ein Mandatsende am Mandanten, protokolliert Setzen und Zurücknehmen und nutzt den Zeitpunkt als Anker für Aufbewahrungs- und Anonymisierungsvorschläge. Eine Wiederaufnahme setzt den Wert auf null. Das Feld ist derzeit kein einheitlicher terminaler Status für alle Fachmodule."
+    },
+    {
+      "id": "DOC-OBJECT-LOCK-001",
+      "title": "Geschützte Dokumentbytes mit passendem Object Lock speichern",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Dokumentation und Archiv",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "GOBD-Uploads erhalten COMPLIANCE-, GwG-Uploads GOVERNANCE-Lock; Bucket, Tenant-Präfix, Hash, Größe, Retention und Objektversion werden gegen die vorbereitete Absicht geprüft. Die Funktion ist ein technischer Schutz und keine GoBD-Konformitäts- oder Löschbescheinigung."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Dokumentenarchiv",
+          "path": "docs/development/module/dokumentenarchiv.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 146 Abs. 4 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__146.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "GoBD in amtlicher AO-Handbuchfassung 2025, insbesondere Rn. 58 bis 60 und 107 bis 113",
+          "url": "https://stberh.bundesfinanzministerium.de/ao/2025/Anhaenge/BMF-Schreiben-und-gleichlautende-Laendererlasse/Anhang-33/inhalt.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/storage/src/service.ts",
+        "packages/storage/src/object-lock-policy.ts",
+        "apps/web/src/server/documents/upload-helpers.ts"
+      ],
+      "test_refs": [
+        "packages/storage/src/__tests__/object-lock-policy.test.ts",
+        "packages/storage/src/__tests__/object-version.test.ts",
+        "apps/web/src/server/documents/__tests__/upload-helpers.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/dokumentenarchiv.md", "docs/compliance/gobd.md"],
+      "related_rules": [
+        "DOC-RETENTION-CLASS-001",
+        "DOC-UPLOAD-JOURNAL-001",
+        "DOC-VERSION-IMMUTABILITY-001"
+      ],
+      "tags": ["object-lock", "speicher", "unveraenderlichkeit"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-object-lock-001-speicherschutz.md",
+      "summary": "TaxTronik schreibt GOBD-geschützte Bytes im S3-Object-Lock-Modus COMPLIANCE und GwG-Bytes im Modus GOVERNANCE. Vorbereitete Uploads binden Tenant, Bucket, Schlüssel, Hash, Größe und Retention; ein geschützter Commit gilt nur mit nachweisbarer Objektversions-ID als erfolgreich. Das belegt einen technischen Lösch-/Überschreibschutz, nicht die Ordnungsmäßigkeit des gesamten Verfahrens."
+    },
+    {
+      "id": "DOC-PORTAL-SHARING-001",
+      "title": "Dokumente im Portal nur nach ausdrücklicher Mandantenfreigabe ausliefern",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Mandatsorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Portal-Download und -Vorschau verlangen Session-Mandant, explizite Freigabe, nicht gelöschtes Dokument und vorhandene Version; unsichere Dateitypen werden nicht inline auf der App-Origin gerendert."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Dokumente, Freigabe und Mandantenportal",
+          "path": "docs/anwenderdoku/dokumente.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Dokumentenarchiv, Zugriff und Auslieferung",
+          "path": "docs/development/module/dokumentenarchiv.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/api/portal/documents/[id]/download/route.ts",
+        "apps/web/src/app/api/portal/documents/[id]/preview-url/route.ts",
+        "apps/web/src/app/staff/(protected)/documents/actions.ts",
+        "apps/web/src/server/storage/preview-mime.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts",
+        "apps/web/src/server/storage/__tests__/preview-mime.test.ts",
+        "apps/web/src/components/__tests__/document-preview-security.test.ts"
+      ],
+      "feature_refs": ["docs/anwenderdoku/dokumente.md"],
+      "related_rules": ["DOC-VERSION-IMMUTABILITY-001"],
+      "tags": ["portal", "freigabe", "dokumentzugriff"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-portal-sharing-001-mandantenfreigabe.md",
+      "summary": "Ein von Mitarbeitern geführtes Dokument ist im Mandantenportal nur sichtbar und abrufbar, wenn es dem Session-Mandanten gehört, nicht soft-gelöscht ist und ausdrücklich freigegeben wurde. Download und Vorschau erzwingen dieselben Filter. Die technische Freigabe entscheidet nicht, ob eine Herausgabe fachlich, berufsrechtlich oder datenschutzrechtlich zulässig ist."
+    },
+    {
+      "id": "DOC-RETENTION-CLASS-001",
+      "title": "Dokumenttyp in technische Schutz- und Aufbewahrungsklasse überführen",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Steuer- und Berufsrecht",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Datei-Typ und Schutzstufe steuern NONE, GWG oder GOBD sowie bei GOBD sechs, acht oder zehn Jahre; unbekannte GOBD-Klassen fallen auf zehn Jahre zurück. Inhaltliche Einordnung, richtiger Fristanker, Übergangsrecht und verlängerte steuerliche Bedeutung werden nicht automatisch entschieden."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 147 Abs. 1 bis 4 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__147.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 14b UStG",
+          "url": "https://www.gesetze-im-internet.de/ustg_1980/__14b.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 97 § 19a EGAO, Übergang zur Achtjahresfrist",
+          "url": "https://www.gesetze-im-internet.de/aoeg_1977/art_97__19a.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Dokumente und Archiv",
+          "path": "docs/anwenderdoku/dokumente.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/storage/src/service.ts",
+        "apps/web/src/server/storage/document-type.ts",
+        "packages/db/prisma/migrations/20260801003520_document_type_retention_years/migration.sql"
+      ],
+      "test_refs": [
+        "packages/storage/src/__tests__/retention.test.ts",
+        "apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts"
+      ],
+      "feature_refs": ["docs/anwenderdoku/dokumente.md", "docs/compliance/gobd.md"],
+      "related_rules": [
+        "DOC-OBJECT-LOCK-001",
+        "DOC-VERSION-IMMUTABILITY-001",
+        "DSGVO-OPERATIONAL-RETENTION-001"
+      ],
+      "tags": ["aufbewahrung", "dokumenttyp", "klassifikation"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-retention-class-001-aufbewahrungsklasse.md",
+      "summary": "TaxTronik bildet einen gewählten Datei-Typ auf die technische Schutzstufe NONE, GWG oder GOBD ab. Für GoBD-Typen sind ausschließlich sechs, acht oder zehn Jahre vorgesehen; die Kernzuordnung lautet Vertrag sechs, Rechnung/Buchungsbeleg acht und Steuerunterlage zehn Jahre. Diese Zuordnung ist eine Produktklassifikation und ersetzt keine Inhalts- und Fristbeginnprüfung."
+    },
+    {
+      "id": "DOC-UPLOAD-JOURNAL-001",
+      "title": "Geschützte Uploads über eine auffindbare Speicherabsicht wiederaufnehmen",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Dokumentation und Archiv",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der zweiphasige Helper und der GwG-Onboarding-Pfad journalisieren einen festen PENDING-Intent vor dem Object-Write und können ihn wiederaufnehmen. Mehrere andere geschützte Commit-Pfade schreiben hingegen zuerst in den Store und besitzen nur eine nachgelagerte Orphan-Kompensation."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Dokumentenarchiv, Upload- und Kompensationsgrenzen",
+          "path": "docs/development/module/dokumentenarchiv.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/documents/resumable-upload.ts",
+        "apps/web/src/server/documents/upload-helpers.ts",
+        "apps/web/src/server/documents/storage-compensation.ts",
+        "apps/web/src/app/gwg-onboarding/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/documents/__tests__/resumable-upload.test.ts",
+        "apps/web/src/server/documents/__tests__/upload-helpers.test.ts",
+        "apps/web/src/server/documents/__tests__/storage-compensation.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/dokumentenarchiv.md"],
+      "related_rules": ["DOC-OBJECT-LOCK-001", "DOC-VERSION-IMMUTABILITY-001"],
+      "tags": ["upload", "journal", "recovery"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-upload-journal-001-zweiphasiger-upload.md",
+      "summary": "Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese Vorab-Journalisierung ist derzeit nicht einheitlich auf allen geschützten Uploadwegen eingesetzt."
+    },
+    {
+      "id": "DOC-VERSION-IMMUTABILITY-001",
+      "title": "Geschützte Dokumentversionen nur anfügen und Schutz nicht herabsetzen",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Dokumentation und Archiv",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Neue Inhalte werden als neue Version gespeichert; bei einer Höherstufung bleibt eine bereits geschützte Version bestehen und erhält eine neue geschützte Nachfolgeversion. Herabstufung, GwG-Tierwechsel und Verkürzung einer gesetzten GoBD-Frist werden blockiert."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Dokumente, Versionen und Schutzstufen",
+          "path": "docs/anwenderdoku/dokumente.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 146 Abs. 4 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__146.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "GoBD in amtlicher AO-Handbuchfassung 2025, Unveränderbarkeit und Protokollierung",
+          "url": "https://stberh.bundesfinanzministerium.de/ao/2025/Anhaenge/BMF-Schreiben-und-gleichlautende-Laendererlasse/Anhang-33/inhalt.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts",
+        "apps/web/src/server/storage/retag-policy.ts",
+        "apps/web/src/app/staff/(protected)/documents/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts",
+        "apps/web/src/server/storage/__tests__/retag-policy.test.ts",
+        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts"
+      ],
+      "feature_refs": [
+        "docs/anwenderdoku/dokumente.md",
+        "docs/development/module/dokumentenarchiv.md"
+      ],
+      "related_rules": ["DOC-OBJECT-LOCK-001", "DOC-RETENTION-CLASS-001"],
+      "tags": ["versionierung", "unveraenderlichkeit", "retagging"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-version-immutability-001-geschuetzte-versionen.md",
+      "summary": "TaxTronik überschreibt bei einem normalen Versionsupload keine bestehenden Bytes, sondern legt eine weitere nummerierte Dokumentversion an. Eine bereits geschützte Version wird auch beim Retagging nicht auf eine neue Speicheridentität umgebogen; die höher geschützte Kopie wird angefügt. Schutzstufen und gesetzte Retention dürfen nicht nachträglich abgesenkt werden."
+    },
+    {
+      "id": "DSGVO-CONSENT-SNAPSHOT-001",
+      "title": "Angezeigte Einwilligungs- und Hinweisfassung unverändert nachweisen",
+      "domain": "datenschutz",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Neue Erklärungen starten ohne freiwillige Vorauswahl und speichern die angezeigte Hinweisfassung, kanonische Optionen sowie verknüpfte Dienstleister append-only. Widerrufe entfernen nur freiwillige Auswahl; die Eignung der Rechtsgrundlage bleibt außerhalb der Produktregel."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Benutzerhandbuch Administration, Datenschutz-Einwilligungen und Dienstleister",
+          "path": "docs/anwenderdoku/administration.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 2, Art. 7 und Art. 28 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/privacy/consent.ts",
+        "apps/web/src/server/privacy/consent-catalog.ts",
+        "apps/web/src/server/privacy/service.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/privacy/__tests__/consent.test.ts",
+        "apps/web/src/server/privacy/__tests__/consent-catalog.test.ts",
+        "apps/web/src/server/privacy/__tests__/consent-display.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["docs/anwenderdoku/administration.md"],
+      "related_rules": ["DSGVO-OPERATIONAL-RETENTION-001"],
+      "tags": ["einwilligung", "widerruf", "snapshot"],
+      "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-consent-snapshot-001-einwilligungsnachweis.md",
+      "summary": "TaxTronik trennt freiwillige Einwilligungsoptionen von erforderlichen Kenntnisnahmen oder Bestätigungen. Neue Erklärungen enthalten keine vorausgewählte freiwillige Option. Gespeichert werden die tatsächlich angezeigte Hinweisfassung, kanonische Optionsdaten und gegebenenfalls ein Snapshot des zugeordneten Dienstleisters; spätere Katalogänderungen schreiben historische Erklärungen nicht um."
+    },
+    {
+      "id": "DSGVO-CONTACT-EXPORT-001",
+      "title": "Kontaktbezogenes Auskunfts- und Portabilitätspaket vorbereiten",
+      "domain": "datenschutz",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": "2018-05-25", "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Das System bündelt direkt oder heuristisch kontaktbezogene Datenklassen in einem byte-stabil gehashten JSON-Paket. Dokumentinhalte, Freitexte, Altimporte und Drittbezüge erfordern weiterhin eine manuelle Suche und Prüfung."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "Art. 12, 15 und 20 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "DSGVO-Konzept, Abschnitt Betroffenenrechte",
+          "path": "docs/compliance/dsgvo-konzept.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/dsgvo/export-package.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/dsgvo/__tests__/export-package.test.ts",
+        "apps/web/src/server/dsgvo/__tests__/workflow.test.ts"
+      ],
+      "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
+      "related_rules": ["DSGVO-REQUEST-EVIDENCE-001"],
+      "tags": ["auskunft", "datenexport", "portabilitaet"],
+      "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-contact-export-001-kontaktpaket.md",
+      "summary": "TaxTronik erzeugt für einen Mandantenkontakt ein strukturiertes JSON-Paket aus den technisch zuordenbaren Datenklassen und bindet die exakten Ausgabebytes mit SHA-256. Das Paket ist eine Arbeitsgrundlage für Auskunft und gegebenenfalls Datenübertragbarkeit, keine Vollständigkeitsbestätigung. Vor Herausgabe sind Identität, Umfang, Daten Dritter und weitere Speicherorte manuell zu prüfen."
+    },
+    {
+      "id": "DSGVO-MANDATE-ANONYMIZATION-001",
+      "title": "Personenbezogene Mandatsdaten nach manueller Fristenprüfung anonymisieren",
+      "domain": "datenschutz",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz und Berufsrecht",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Für natürliche Personen erzeugt TaxTronik nach Mandatsende plus pauschal zehn Jahren ab Jahresende eine manuelle Review-Queue; Gesellschafts-PoA- Personendaten besitzen einen getrennten Redaktionspfad. Fallbezogene Fristen, Legal Holds und die Berufsträgerqualifikation der ausführenden Rolle werden nicht vollständig geprüft."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. e sowie Art. 17 Abs. 1 und 3 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 66 Abs. 1, 2 und 4 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__66.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "DSGVO-Konzept, Mandanten-Anonymisierung nach Fristablauf",
+          "path": "docs/compliance/dsgvo-konzept.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/dsgvo/client-retention.ts",
+        "apps/web/src/server/dsgvo/anonymize-client-data.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/dsgvo/__tests__/client-retention.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/poa-signer-actions.test.ts",
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+      ],
+      "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
+      "related_rules": ["DSGVO-OPERATIONAL-RETENTION-001", "DOC-RETENTION-CLASS-001"],
+      "tags": ["anonymisierung", "mandatsende", "handakte"],
+      "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-mandate-anonymization-001-mandatsende.md",
+      "summary": "TaxTronik stellt personenbezogene Mandatsdaten nicht automatisch frei zur Anonymisierung. Für natürliche Personen erscheint nach dem dokumentierten Mandatsende und einem pauschalen Zehnjahresfenster ab Jahresende ein Prüfvorschlag; die Ausführung bleibt ein manueller Admin-/Partner-Schritt. Dieser Vorschlag ersetzt weder die aktenbezogene Prüfung des § 66 StBerG noch weitere Aufbewahrungs-, Herausgabe-, Anspruchs- oder Beweisgründe."
+    },
+    {
+      "id": "DSGVO-OPERATIONAL-RETENTION-001",
+      "title": "Feste technische Löschfristen für definierte Betriebsdaten anwenden",
+      "domain": "datenschutz",
+      "rule_type": "office_policy",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Tägliche Worker löschen oder neutralisieren ausgewählte Datenklassen nach festen Kanzlei-Defaults und protokollieren Treffer sowie Cutoffs. Eine allgemeine Rechtsgrundlagen-, Legal-Hold- oder Datenklassen-Engine fehlt."
+      },
+      "sources": [
+        {
+          "kind": "internal_policy",
+          "citation": "DSGVO-Lösch-, Aufbewahrungs- und Verarbeitungskonzept, feste Betriebsfristen",
+          "path": "docs/compliance/dsgvo-konzept.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. e, Art. 17 und Art. 18 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/worker/src/jobs/dsgvo-retention.ts",
+        "apps/worker/src/jobs/n8n-retention.ts",
+        "apps/worker/src/jobs/magic-link-cleanup.ts"
+      ],
+      "test_refs": [
+        "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",
+        "apps/worker/src/jobs/__tests__/n8n-retention.test.ts"
+      ],
+      "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
+      "related_rules": ["DSGVO-MANDATE-ANONYMIZATION-001", "DOC-RETENTION-CLASS-001"],
+      "tags": ["loeschung", "retention", "kanzleipolicy"],
+      "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-operational-retention-001-technische-loeschfristen.md",
+      "summary": "TaxTronik setzt für ausdrücklich benannte Betriebsdaten feste technische Lösch- oder Neutralisierungsfristen durch. Diese Werte sind Kanzlei-/Produkt- Defaults, keine aus Art. 5 oder Art. 17 DSGVO unmittelbar ableitbaren Einzelfristen. Die Kanzlei muss Zweck, Rechtsgrundlage, Aufbewahrungspflicht und Sperrbedarf je Datenklasse prüfen."
+    },
+    {
+      "id": "DSGVO-REQUEST-DEADLINE-001",
+      "title": "Monatsfrist für Betroffenenanträge als Kontrolltermin berechnen",
+      "domain": "datenschutz",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": "2018-05-25", "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik berechnet ab dem dokumentierten Eingang monatsende-sicher einen Kontrolltermin einen Kalendermonat später. Verlängerung, Identitätsklärung und weitere einzelfallbezogene Abweichungen sind nicht modelliert."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "Art. 12 Abs. 3 und 6 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "DSGVO-Lösch-, Aufbewahrungs- und Verarbeitungskonzept",
+          "path": "docs/compliance/dsgvo-konzept.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/dsgvo/deadline.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts"
+      ],
+      "test_refs": ["apps/web/src/server/dsgvo/__tests__/deadline.test.ts"],
+      "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
+      "related_rules": ["DSGVO-REQUEST-EVIDENCE-001"],
+      "tags": ["betroffenenantrag", "frist", "kontrolltermin"],
+      "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-request-deadline-001-monatsfrist.md",
+      "summary": "Art. 12 Abs. 3 DSGVO verlangt die Information über Maßnahmen grundsätzlich unverzüglich, spätestens innerhalb eines Monats nach Antragseingang. TaxTronik berechnet dafür ab dem erfassten Eingangsdatum einen monatsende-sicheren Kontrolltermin. Dieser Wert ist kein abschließend freigegebenes Fristende."
+    },
+    {
+      "id": "DSGVO-REQUEST-EVIDENCE-001",
+      "title": "Abschluss und Ablehnung eines Betroffenenantrags technisch nachweisen",
+      "domain": "datenschutz",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Terminale Vorgänge verlangen einen Versandnachweis und je nach Ergebnis ein geprüftes Ergebnisartefakt oder eine begründete Ablehnung; Datenbank- Invarianten frieren den technischen Abschlussstand ein."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "DSGVO-Lösch-, Aufbewahrungs- und Verarbeitungskonzept",
+          "path": "docs/compliance/dsgvo-konzept.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 12 Abs. 1 bis 5 sowie Art. 15 bis 20 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/dsgvo/workflow.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts",
+        "packages/db/prisma/migrations/20260801003510_dsgvo_request_evidence/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/dsgvo/__tests__/workflow.test.ts",
+        "packages/db/src/__tests__/dsgvo-evidence.test.ts"
+      ],
+      "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
+      "related_rules": ["DSGVO-REQUEST-DEADLINE-001", "DSGVO-CONTACT-EXPORT-001"],
+      "tags": ["betroffenenantrag", "nachweis", "abschluss"],
+      "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-request-evidence-001-abschlussnachweis.md",
+      "summary": "TaxTronik lässt einen Betroffenenantrag nur mit einem strukturierten technischen Nachweis auf COMPLETED oder REJECTED wechseln. Auskunft und Datenübertragbarkeit benötigen ein Ergebnisartefakt, eine dokumentierte personelle Prüfung und einen Versandnachweis; eine Ablehnung benötigt eine Begründung und den bestätigten Hinweis auf Rechtsbehelfe. Das Produkt beurteilt nicht, ob Inhalt und Rechtsauffassung fachlich richtig sind."
+    },
+    {
+      "id": "FORM-PRESUBMIT-UPLOAD-001",
+      "title": "Eigene Formularuploads nur vor der Abgabe kontrolliert verwerfen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Portalprozesse und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Ein Portal-Kontakt kann genau seinen eigenen, eindeutig an ein FILE-Feld gebundenen PENDING-/DRAFT-Upload verwerfen, solange der zugehörige Request offen ist. Datenbanklöschung und Cleanup-Journal werden atomar geschrieben; die physische Löschung erfolgt sofort oder durch den Orphan-Worker."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Fachkatalog-Inventur, Self-Service vor Formularabgabe",
+          "path": "docs/fachkatalog/SCOPE.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. c und e sowie Art. 25 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
+        "packages/db/prisma/migrations/20260823160000_form_upload_relation/migration.sql"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/form-upload-discard-rls.test.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md"],
+      "related_rules": ["REQ-LIFECYCLE-001", "ACCESS-TENANT-RLS-001"],
+      "tags": ["formular", "upload", "self-service"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/form-presubmit-upload-001-upload-verwerfen.md",
+      "summary": "Ein Mandant darf einen eigenen Formularupload vor dem Absenden wieder entfernen. Die Datei muss eindeutig zu seiner Submission und dem konkreten FILE-Feld gehören; Submission und gebundene Anforderung müssen noch offen sein. Nach Submit oder Request-Abschluss verweigern App und Datenbank den Pfad."
+    },
+    {
+      "id": "GOBD-VERFAHRENSDOKU-001",
+      "title": "Technischen IST-Baustein der Verfahrensdokumentation erzeugen",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "administrative_guidance",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger GoBD und Verfahrensdokumentation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik rendert aus Laufzeitkonfiguration, Betriebsnachweisen und versionierten Herstellertexten einen datierten technischen IST-Baustein. Vollständige Prozessbeschreibung, Programmidentität, Dokumentenlenkung, tatsächliche Kontrollausführung und Freigabe bleiben Betreiberaufgaben."
+      },
+      "sources": [
+        {
+          "kind": "official_guidance",
+          "citation": "GoBD in amtlicher AO-Handbuchfassung 2025, Rn. 145 bis 155",
+          "url": "https://stberh.bundesfinanzministerium.de/ao/2025/Anhaenge/BMF-Schreiben-und-gleichlautende-Laendererlasse/Anhang-33/inhalt.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische GoBD-Verfahrensdokumentation TaxTronik",
+          "path": "docs/compliance/gobd.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "Kanzleivorlage für organisatorische Verfahrensdokumentation",
+          "path": "docs/compliance/gobd-template.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/compliance/verfahrensdoku.ts",
+        "apps/web/src/app/api/staff/admin/verfahrensdoku/route.ts"
+      ],
+      "test_refs": ["apps/web/src/server/compliance/__tests__/verfahrensdoku.test.ts"],
+      "feature_refs": [
+        "docs/compliance/gobd.md",
+        "docs/compliance/gobd-template.md",
+        "docs/anwenderdoku/administration.md"
+      ],
+      "related_rules": [
+        "DOC-RETENTION-CLASS-001",
+        "DOC-OBJECT-LOCK-001",
+        "DOC-VERSION-IMMUTABILITY-001"
+      ],
+      "tags": ["gobd", "verfahrensdokumentation", "ist-stand"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/gobd-verfahrensdoku-001-ist-dokument.md",
+      "summary": "TaxTronik kann einen datierten Markdown-Baustein aus dem aktuell erfassten Systemzustand und versionierten Herstellertexten erzeugen. Er enthält unter anderem Version, Module, Mengengerüst, Backup-/Drillstatus, Auditprüfung und TSA-Konfiguration. Nach GoBD muss die Verfahrensdokumentation jedoch das tatsächlich eingesetzte organisatorische und technische Verfahren vollständig, schlüssig, verständlich, aktuell und historisch nachvollziehbar beschreiben; der Generator allein erfüllt das nicht."
+    },
+    {
+      "id": "GWG-ACTIVATION-GATE-001",
+      "title": "Operative Aktivierung nur nach gültiger GwG-Freigabe",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "TaxTronik schaltet den Mandanten erst nach einem gültigen, verifizierten und nicht vernichteten GwG-Prüfsnapshot operativ frei. Datenbank-Trigger schützen Aktivierung sowie die Neuanlage von Anforderungen, Rechnungen und Dokumenten; eng begrenzte GwG-Onboarding-Belege sind vorab zulässig."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "GwG-Pflichten und technische Umsetzung in TaxTronik",
+          "path": "docs/compliance/gwg.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0007 — GwG-Schranke via DB-Trigger",
+          "path": "docs/adr/0007-gwg-schranke-via-db-trigger.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 10 Abs. 9 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__10.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 11 Abs. 1 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__11.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/db/prisma/migrations/20260511000000_iter2_portal_requests_notes/migration.sql",
+        "packages/db/prisma/migrations/20260514000000_iter5_invoices/migration.sql",
+        "packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql",
+        "packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/gwg-allow-active.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
+      ],
+      "feature_refs": [
+        "FEATURES.md",
+        "docs/compliance/gwg.md",
+        "docs/anwenderdoku/erste-schritte.md"
+      ],
+      "related_rules": [
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-REPRESENTATIVE-AUTHORITY-001",
+        "GWG-BENEFICIAL-OWNERS-001",
+        "GWG-RISK-REVIEW-001",
+        "GWG-SELF-ONBOARDING-001",
+        "GWG-REVERIFICATION-VALIDITY-001"
+      ],
+      "tags": ["aktivierung", "fail-closed", "sorgfaltspflichten"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-activation-gate-001-operative-aktivierung.md",
+      "summary": "TaxTronik behandelt client.allowActive als produktseitige GwG-Schranke. Die Freischaltung ist nur möglich, wenn ein noch gültiger, nicht vernichteter VERIFIED-Prüfsnapshot mit der für den Mandantentyp erforderlichen Identitätszuordnung existiert. Ohne Freischaltung blockiert die Datenbank neue Anforderungen, Rechnungen und reguläre Dokumente."
+    },
+    {
+      "id": "GWG-BENEFICIAL-OWNERS-001",
+      "title": "Wirtschaftlich Berechtigte ermitteln, erfassen und plausibilisieren",
+      "domain": "gwg",
+      "rule_type": "statute",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik verlangt bei Rechtsträgern mindestens einen wirtschaftlich Berechtigten, vollständige Personendaten, eine Beschreibung der Eigentums- und Kontrollstruktur und regelmäßig einen Transparenzregister-Nachweis. Die rechtliche Ermittlung, Schwellen-, Kontroll- und Auffanglogik sowie Stiftungs-, Trust- und Veranlassungsfälle werden nicht automatisch entschieden."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 3 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__3.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 10 Abs. 1 Nr. 2 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__10.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 11 Abs. 5 bis 7 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__11.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 12 Abs. 3 und 4 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__12.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 8 Abs. 1 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__8.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/gwg/verification.ts",
+        "apps/web/src/server/gwg-onboarding/owner-submission.ts",
+        "apps/web/src/server/gwg-onboarding/submission-validation.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts",
+        "packages/db/prisma/schema.prisma"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg/__tests__/verification.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
+      "related_rules": [
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-REPRESENTATIVE-AUTHORITY-001",
+        "GWG-RISK-REVIEW-001",
+        "GWG-SELF-ONBOARDING-001"
+      ],
+      "tags": ["wirtschaftlich-berechtigter", "eigentumsstruktur", "transparenzregister"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-beneficial-owners-001-wirtschaftlich-berechtigte.md",
+      "summary": "Bei Rechtsträgern muss geklärt werden, welche natürlichen Personen letztlich Eigentum oder Kontrolle ausüben beziehungsweise auf wessen Veranlassung die Geschäftsbeziehung begründet wird. TaxTronik erfasst diese Personen, ihre Risikodaten sowie eine freie Beschreibung der Eigentums- und Kontrollstruktur und verlangt vor der Freigabe mindestens einen Datensatz."
+    },
+    {
+      "id": "GWG-IDENTIFICATION-EVIDENCE-001",
+      "title": "Identitätsangaben erheben und mit zugeordnetem Nachweis prüfen",
+      "domain": "gwg",
+      "rule_type": "statute",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik erfasst natürliche Personen und Rechtsträger strukturiert, bindet eingescannte Nachweise an eine konkrete Person und verlangt für die Freigabe verfügbare, virengeprüfte Belege. Unterstützt werden jedoch nur ausgewählte Nachweisarten; Echtheit, amtliche Registerdaten und alternative elektronische Identifizierungsverfahren werden nicht selbst verifiziert."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 10 Abs. 1 Nr. 1 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__10.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 11 Abs. 1, 3 und 4 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__11.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 12 Abs. 1 und 2 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__12.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 8 Abs. 1 bis 3 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__8.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/gwg/verification.ts",
+        "apps/web/src/server/gwg/evidence-documents.ts",
+        "apps/web/src/server/gwg/identity-subject.ts",
+        "apps/web/src/server/gwg-onboarding/identity-persistence.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg/__tests__/verification.test.ts",
+        "apps/web/src/server/gwg/__tests__/evidence-documents.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
+      "related_rules": [
+        "GWG-ACTIVATION-GATE-001",
+        "GWG-REPRESENTATIVE-AUTHORITY-001",
+        "GWG-BENEFICIAL-OWNERS-001",
+        "GWG-SELF-ONBOARDING-001",
+        "GWG-RETENTION-DESTRUCTION-001"
+      ],
+      "tags": ["identifizierung", "identitaetsnachweis", "ausweis", "register"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-identification-evidence-001-identitaet-und-nachweis.md",
+      "summary": "Vor der Produktfreigabe müssen die für den Mandantentyp vorgesehenen Identitätsangaben gespeichert und mit einem konkreten Nachweis verbunden sein. Bei natürlichen Personen akzeptiert das aktuelle Gate einen gültigen Personalausweis oder Reisepass; bei Rechtsträgern werden Rechtsform, Registerdaten beziehungsweise Registerlosigkeit und ein Register- oder Gründungsnachweis verlangt."
+    },
+    {
+      "id": "GWG-REPRESENTATIVE-AUTHORITY-001",
+      "title": "Auftretende Person identifizieren und Vertretungsberechtigung prüfen",
+      "domain": "gwg",
+      "rule_type": "statute",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik speichert Vertreter als stabile Personen im Prüfsnapshot, unterstützt Doppelrollen mit wirtschaftlich Berechtigten und verlangt bei Rechtsträgern mindestens einen bestätigten Vertreter-Ausweis. Die konkrete Vertretungsmacht, der tatsächlich Auftretende und Vertreter natürlicher Personen werden jedoch nicht vollständig strukturiert geprüft."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 10 Abs. 1 Nr. 1 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__10.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 11 Abs. 1 und 4 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__11.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 12 Abs. 1 und 2 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__12.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/gwg/representatives.ts",
+        "apps/web/src/server/gwg/verification.ts",
+        "apps/web/src/server/gwg-onboarding/representative-submission.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260801004900_gwg_cross_role_person_identity/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg/__tests__/representatives.test.ts",
+        "apps/web/src/server/gwg/__tests__/verification.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
+      "related_rules": [
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-BENEFICIAL-OWNERS-001",
+        "GWG-RISK-REVIEW-001",
+        "GWG-SELF-ONBOARDING-001"
+      ],
+      "tags": ["vertreter", "vertretungsberechtigung", "auftretende-person"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-representative-authority-001-vertretung.md",
+      "summary": "Handelt für den Vertragspartner eine andere Person, sind deren Identität und die Berechtigung zum Auftreten zu prüfen. TaxTronik erfasst bei Rechtsträgern eine geordnete Vertreterliste, kann eine Person zugleich als wirtschaftlich Berechtigten kennzeichnen und verlangt für die Freigabe mindestens einen eindeutig zugeordneten, gültigen Vertreter-Ausweis."
+    },
+    {
+      "id": "GWG-RETENTION-DESTRUCTION-001",
+      "title": "GwG-Aufzeichnungen fristgerecht aufbewahren und vollständig vernichten",
+      "domain": "gwg",
+      "rule_type": "statute",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik berechnet Fünf- und Zehnjahresstichtage, schützt Dateiobjekte und bietet eine manuell bestätigte zweistufige Vernichtung. Die Zehnjahresgrenze wird jedoch nicht automatisch durchgesetzt; außerdem bleiben minimale Skelett- und Auditdaten bestehen, deren weitere Rechtsgrundlage und Löschfrist fachlich noch nicht geklärt sind."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 8 Abs. 1 bis 5 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__8.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/gwg/retention.ts",
+        "apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts",
+        "apps/worker/src/jobs/gwg-expiry-check.ts",
+        "packages/storage/src/service.ts",
+        "packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql",
+        "packages/db/prisma/migrations/20260823170000_gwg_open_first_check_retention/migration.sql"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/gwg-destruction.test.ts",
+        "apps/web/src/server/gwg/__tests__/retention.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts",
+        "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
+      "related_rules": [
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-BENEFICIAL-OWNERS-001",
+        "GWG-SELF-ONBOARDING-001"
+      ],
+      "tags": ["aufbewahrung", "vernichtung", "zehnjahresgrenze", "object-lock"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-retention-destruction-001-aufbewahrung-und-vernichtung.md",
+      "summary": "GwG-Aufzeichnungen und -Belege sind grundsätzlich fünf Jahre aufzubewahren, soweit andere gesetzliche Vorschriften nicht länger verpflichten, und spätestens nach zehn Jahren zu vernichten. Bei einer Geschäftsbeziehung beginnt die Frist mit dem Schluss des Kalenderjahres ihres Endes, in übrigen Fällen mit dem Schluss des Jahres der jeweiligen Feststellung."
+    },
+    {
+      "id": "GWG-REVERIFICATION-VALIDITY-001",
+      "title": "Prüfungsablauf und relevante Änderungen lösen einen neuen Prüfzyklus aus",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "TaxTronik befristet HIGH-Prüfungen auf 365 Tage und andere Stufen auf 1095 Tage, warnt 90 und 30 Tage vor Ablauf und deaktiviert bei Ablauf ohne neueren gültigen Check. Änderungen definierter GwG-Stammdaten erzeugen einen neuen oder zurückgesetzten Entwurf und entwerten frühere Bestätigungen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "GwG-Pflichten und technische Umsetzung in TaxTronik",
+          "path": "docs/compliance/gwg.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 10 Abs. 1 Nr. 5 und Abs. 3a GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__10.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 11 Abs. 3 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__11.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/gwg/reverification.ts",
+        "apps/web/src/server/gwg/risk-score.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/change-requests/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
+        "apps/worker/src/jobs/gwg-expiry-check.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg/__tests__/reverification.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
+        "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
+      "related_rules": [
+        "GWG-ACTIVATION-GATE-001",
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-RISK-REVIEW-001"
+      ],
+      "tags": ["wiederholungspruefung", "ablauf", "stammdaten", "aktualisierung"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-reverification-validity-001-wiederholungspruefung.md",
+      "summary": "TaxTronik versieht jede freigegebene GwG-Prüfung mit einer Produktgültigkeit: 365 Tage bei HIGH, sonst 1095 Tage. Der tägliche Worker warnt 90 und 30 Tage vor Ablauf. Ist der Zeitpunkt erreicht und existiert kein neuerer gültiger Prüfsnapshot, wird der alte Check EXPIRED und der Mandant deaktiviert."
+    },
+    {
+      "id": "GWG-RISK-REVIEW-001",
+      "title": "Regelbasierten Risikoentwurf nur durch zugeordneten Berufsträger freigeben",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "TaxTronik berechnet aus sechs vollständig zu beantwortenden Faktoren einen reproduzierbaren Risikovorschlag, erzwingt bei PEP-Angabe die Stufe HIGH und trennt Vorbereitung, Einreichung und ausdrückliche Freigabe durch den dem Mandanten zugeordneten Berufsträger. Der Score ersetzt keine gesetzliche Risikoanalyse oder verstärkte Sorgfaltspflicht."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "GwG-Pflichten und technische Umsetzung in TaxTronik",
+          "path": "docs/compliance/gwg.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 10 Abs. 1 Nr. 3 bis 5 und Abs. 2 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__10.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 15 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__15.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 8 Abs. 1 Nr. 2 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/__8.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/gwg/risk-score.ts",
+        "apps/web/src/server/gwg/verification.ts",
+        "apps/web/src/server/gwg/professional-review.ts",
+        "apps/web/src/server/gwg/review-snapshot.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg/__tests__/risk-score.test.ts",
+        "apps/web/src/server/gwg/__tests__/verification.test.ts",
+        "apps/web/src/server/gwg/__tests__/professional-review.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
+      "related_rules": [
+        "GWG-ACTIVATION-GATE-001",
+        "GWG-BENEFICIAL-OWNERS-001",
+        "GWG-REVERIFICATION-VALIDITY-001"
+      ],
+      "tags": ["risiko", "pep", "berufstraeger", "vier-augen-prinzip"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-risk-review-001-risikobewertung-und-freigabe.md",
+      "summary": "TaxTronik erzeugt aus sechs manuell beantworteten Risikofaktoren einen reproduzierbaren Vorschlag für LOW, MEDIUM oder HIGH. Eine PEP-Angabe erzwingt unabhängig vom Summenscore HIGH. Erst nach vollständiger Identifizierungs- und Risikoprüfung kann der Entwurf eingereicht und durch den dem Mandanten zugeordneten Berufsträger ausdrücklich freigegeben werden."
+    },
+    {
+      "id": "GWG-SELF-ONBOARDING-001",
+      "title": "Mandantendaten per gebundener Einladung nur als Prüfentwurf einreichen",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Der öffentliche Wizard bindet Uploads und Submit an eine gültige Einladung und einen unveränderten Mandanten- oder Entwurfsstand, validiert Personen- und Dokumentreferenzen und persistiert Einreichung, Snapshot, Audit und Einwilligung atomar. Die Einreichung aktiviert den Mandanten nicht und ist keine fachliche GwG-Freigabe."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "GwG-Pflichten und technische Umsetzung in TaxTronik",
+          "path": "docs/compliance/gwg.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation — erster Mandant und GwG-Onboarding",
+          "path": "docs/anwenderdoku/erste-schritte.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§§ 10 bis 12 GwG",
+          "url": "https://www.gesetze-im-internet.de/gwg_2017/BJNR182210017.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/gwg-onboarding/actions.ts",
+        "apps/web/src/server/gwg-onboarding/invite-binding.ts",
+        "apps/web/src/server/gwg-onboarding/submission-validation.ts",
+        "apps/web/src/server/gwg-onboarding/submission-transaction.ts",
+        "apps/web/src/server/gwg/reverification.ts",
+        "packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql",
+        "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg-onboarding/__tests__/submission-transaction-structure.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts"
+      ],
+      "feature_refs": [
+        "FEATURES.md",
+        "docs/compliance/gwg.md",
+        "docs/anwenderdoku/erste-schritte.md"
+      ],
+      "related_rules": [
+        "GWG-ACTIVATION-GATE-001",
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-REPRESENTATIVE-AUTHORITY-001",
+        "GWG-BENEFICIAL-OWNERS-001",
+        "GWG-RISK-REVIEW-001"
+      ],
+      "tags": ["self-onboarding", "einladung", "submit", "upload"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-self-onboarding-001-einreichung.md",
+      "summary": "Der öffentliche GwG-Wizard erlaubt einer eingeladenen Person, Stammdaten, wirtschaftlich Berechtigte, Vertreter, Identitätsbelege und Zusatzunterlagen ohne Portal-Konto zu übermitteln. Jeder Schreibzugriff ist an den geheimen, noch gültigen Link, den Mandanten und einen bei Einladungsausgabe gebundenen Ausgangsstand gekoppelt."
+    },
     {
       "id": "INV-ARCHIVE-EINVOICE-001",
       "title": "E-Rechnungsformate aus einer kanonischen Archivfassung bereitstellen",
@@ -63,6 +2230,58 @@
       "summary": "Bei der Ausstellung einer In-App-E-Rechnung erzeugt TaxTronik die menschenlesbare ZUGFeRD-PDF und die separate XRechnung-XML aus demselben fachlichen Snapshot und archiviert beide eindeutig verknüpft. Spätere Downloads liefern die gespeicherten Bytes und rendern den ausgestellten Beleg nicht mit heutigen Stammdaten oder Branding-Einstellungen neu."
     },
     {
+      "id": "INV-DUE-OVERDUE-001",
+      "title": "Fällige offene Rechnungen als Produktstatus überfällig markieren",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Rechnungswesen und Forderungsmanagement",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Der Tagesjob setzt versendete unbezahlte Rechnungen ab dem Tag nach dem gespeicherten Fälligkeitsdatum idempotent auf OVERDUE und erzeugt Audit sowie interne Meldung."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 271 BGB, Leistungszeit bei bestimmter Fälligkeit",
+          "url": "https://www.gesetze-im-internet.de/bgb/__271.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 286 BGB, Voraussetzungen und Ausnahmen des Schuldnerverzugs",
+          "url": "https://www.gesetze-im-internet.de/bgb/__286.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, Überfälligkeits-Worker",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": ["apps/worker/src/jobs/invoice-overdue-check.ts"],
+      "test_refs": ["apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts"],
+      "feature_refs": [
+        "docs/development/module/fakturierung.md",
+        "docs/anwenderdoku/rechnungen.md"
+      ],
+      "related_rules": ["INV-LIFECYCLE-FREEZE-001", "INV-STORNO-REFERENCE-001"],
+      "tags": ["rechnung", "faelligkeit", "ueberfaellig", "notification"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-due-overdue-001-ueberfaelligkeitsstatus.md",
+      "summary": "Ein täglicher Worker markiert eine versendete, noch nicht bezahlte Originalrechnung ab dem Kalendertag nach ihrem gespeicherten Fälligkeitsdatum mit dem internen Status OVERDUE. Statuswechsel, Audit-Ereignis und interne Benachrichtigung erfolgen in einer Tenant-Transaktion und werden bei Wiederholung nicht dupliziert. Der Produktstatus ist keine abschließende rechtliche Feststellung des Schuldnerverzugs."
+    },
+    {
       "id": "INV-LIFECYCLE-FREEZE-001",
       "title": "Rechnungsinhalt nach Verlassen des Entwurfs festschreiben",
       "domain": "rechnungen",
@@ -118,6 +2337,58 @@
       "summary": "Solange eine In-App-Rechnung Entwurf ist, dürfen ihre Geschäftsdaten technisch geändert werden. Sobald sie den Entwurfsstatus verlässt, sind Nummer, Beträge, Daten, Steuerangaben und Positionen unveränderlich. Eine fachliche Korrektur erfolgt über den vorgesehenen Storno- und Neuausstellungsprozess, nicht durch Überschreiben des Originalbelegs."
     },
     {
+      "id": "INV-NUMBER-ALLOCATION-001",
+      "title": "In-App-Rechnungsnummern atomar und ohne Wiederverwendung vergeben",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Rechnungswesen",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "In-App-Rechnungen erhalten unter Tenant-Jahres-Lock eine fortlaufende Nummer in derselben Transaktion wie der Entwurf; externe Nummernkreise bleiben fremdgeführt."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 14 Abs. 4 Nr. 4 UStG, fortlaufende und einmalig vergebene Rechnungsnummer",
+          "url": "https://www.gesetze-im-internet.de/ustg_1980/__14.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, Belegnummern und Nummernkreis",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": ["apps/web/src/server/invoicing/number.ts", "packages/db/prisma/schema.prisma"],
+      "test_refs": [
+        "apps/web/src/server/invoicing/__tests__/number.test.ts",
+        "packages/db/src/__tests__/invoice-festschreibung.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/fakturierung.md",
+        "docs/anwenderdoku/rechnungen.md"
+      ],
+      "related_rules": [
+        "INV-LIFECYCLE-FREEZE-001",
+        "INV-STORNO-REFERENCE-001",
+        "INV-TIME-ENTRY-CLAIM-001"
+      ],
+      "tags": ["rechnung", "rechnungsnummer", "nummernkreis", "transaktion"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-number-allocation-001-rechnungsnummern.md",
+      "summary": "In-App-Rechnungen erhalten automatisch eine Nummer im Format JJJJ-NNNN aus einem getrennten Zähler je Kanzlei-Tenant und Rechnungsjahr. Vergabe, Zählererhöhung und Rechnungsanlage laufen in derselben Transaktion unter einem Tenant-Jahres-Advisory-Lock. Ein Rollback verbraucht daher keinen Zählerstand; stornierte Entwürfe und ausgestellte Rechnungen behalten ihre Nummer."
+    },
+    {
       "id": "INV-PORTAL-SHARING-001",
       "title": "Rechnungen erst nach Ausstellung im Mandantenportal zeigen",
       "domain": "rechnungen",
@@ -171,13 +2442,77 @@
       "summary": "Ein Rechnungsentwurf ist ausschließlich kanzleiintern und darf dem Mandanten nicht als Rechnung angezeigt oder als Archivbeleg geteilt werden. Wurde eine Rechnung bereits versendet, bleibt sie auch nach einem späteren Storno als historischer Beleg im Portal sichtbar. Ein nie versendeter stornierter Entwurf bleibt dagegen intern."
     },
     {
-      "id": "TAX-CONTROL-STATUS-001",
-      "title": "Offene und erledigte Fristen aus dem Quellstatus ableiten",
-      "domain": "fristen-und-bescheide",
-      "rule_type": "office_policy",
+      "id": "INV-STORNO-REFERENCE-001",
+      "title": "Ausgestellte In-App-Rechnungen durch referenzierten Korrekturbeleg stornieren",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
       "jurisdiction": "DE",
       "validity": { "valid_from": null, "valid_until": null },
-      "professional_owner_role": "Kanzleileitung Fristenkontrolle",
+      "professional_owner_role": "Berufsträger Umsatzsteuer und Rechnungswesen",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Für ausgelieferte In-App-Rechnungen erzeugt TaxTronik einen nummerierten negativen Korrekturbeleg mit TypeCode 381 und Referenz auf das Original."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 17 UStG, Berichtigung bei Änderung der Bemessungsgrundlage und Rückgängigmachung",
+          "url": "https://www.gesetze-im-internet.de/ustg_1980/__17.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "technical_standard",
+          "citation": "KoSIT, Spezifikation XRechnung 3.0.2, vorausgehende Rechnungsreferenz und Rechnungsberichtigungen",
+          "url": "https://xeinkauf.de/app/uploads/2024/07/XRechnung-v3.0.2.pdf",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, Korrekturbeleg und bekannte Grenzen",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/invoicing/storno.ts",
+        "apps/web/src/server/invoicing/xrechnung.ts",
+        "apps/web/src/app/staff/(protected)/invoices/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/invoicing/__tests__/storno.test.ts",
+        "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/fakturierung.md",
+        "docs/anwenderdoku/rechnungen.md",
+        "docs/adr/0008-xrechnung-zugferd-en16931.md"
+      ],
+      "related_rules": [
+        "INV-NUMBER-ALLOCATION-001",
+        "INV-LIFECYCLE-FREEZE-001",
+        "INV-ARCHIVE-EINVOICE-001"
+      ],
+      "tags": ["rechnung", "storno", "korrekturbeleg", "xrechnung"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-storno-reference-001-korrekturbeleg.md",
+      "summary": "Eine bereits ausgelieferte In-App-Rechnung wird nicht inhaltlich geändert. TaxTronik erzeugt stattdessen einen neuen Korrekturbeleg mit eigener Nummer, invertierten Positions- und Gesamtbeträgen, XRechnung-TypeCode 381 und Referenz auf die ursprüngliche Rechnungsnummer. Erst wenn der Korrekturbeleg archiviert und auf SENT festgeschrieben ist, wird das Original atomar auf CANCELLED gesetzt."
+    },
+    {
+      "id": "INV-TIME-ENTRY-CLAIM-001",
+      "title": "Zeiteinträge atomar genau einem Rechnungsentwurf zuordnen",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Honorar und Rechnungswesen",
       "professional_review": {
         "status": "unreviewed",
         "reviewer": null,
@@ -186,7 +2521,766 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Das Kontrollbuch leitet den Erledigungsstand ohne eigenen Parallelstatus aus den Fachmodulen ab und behält offene Überfälligkeiten sichtbar."
+        "summary": "Abrechenbare freie Zeiteinträge werden in derselben Transaktion vollständig geclaimt; verliert der Lauf auch nur einen Claim, rollen Rechnung und Nummernvergabe zurück."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, Stundenabrechnung und Parallel-Claim",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Rechnungen, Zeiteinträge übernehmen",
+          "path": "docs/anwenderdoku/rechnungen.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/invoicing/time-billing.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/billing/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/invoicing/__tests__/time-billing.test.ts",
+        "packages/db/src/__tests__/invoice-festschreibung.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/fakturierung.md",
+        "docs/anwenderdoku/rechnungen.md"
+      ],
+      "related_rules": [
+        "INV-NUMBER-ALLOCATION-001",
+        "INV-VAT-TOTALS-001",
+        "INV-LIFECYCLE-FREEZE-001"
+      ],
+      "tags": ["rechnung", "zeiterfassung", "concurrency", "claim"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-time-entry-claim-001-zeiteintraege.md",
+      "summary": "Beim Erstellen einer Rechnung aus Zeiten berücksichtigt TaxTronik nur abgeschlossene, abrechenbare und noch keiner Rechnung zugeordnete Einträge des gewählten Mandanten. Nach Anlage des Entwurfs beansprucht ein bedingtes Sammelupdate alle ausgewählten IDs. Werden nicht alle Einträge gewonnen, bricht die Transaktion ab und rollt Rechnung sowie Nummernvergabe vollständig zurück."
+    },
+    {
+      "id": "INV-VAT-TOTALS-001",
+      "title": "Netto-, Umsatzsteuer- und Bruttosummen je Steuersatzgruppe bilden",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Umsatzsteuer und Rechnungswesen",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik gruppiert In-App-Positionen nach USt-Satz, rundet die Steuer je Gruppe und erzeugt daraus konsistente Netto-, Steuer- und Bruttosummen."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 14 Abs. 4 Nr. 7 und 8 UStG, Aufschlüsselung des Entgelts und Ausweis von Steuersatz oder Befreiung",
+          "url": "https://www.gesetze-im-internet.de/ustg_1980/__14.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 12 UStG, allgemeiner und ermäßigter Umsatzsteuersatz",
+          "url": "https://www.gesetze-im-internet.de/ustg_1980/__12.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "technical_standard",
+          "citation": "KoSIT, Spezifikation XRechnung 3.0.2, VAT Breakdown und Umsatzsteuerregeln",
+          "url": "https://xeinkauf.de/app/uploads/2024/07/XRechnung-v3.0.2.pdf",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Fakturierung, USt-Logik und E-Rechnung",
+          "path": "docs/development/module/fakturierung.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/invoicing/vat.ts",
+        "apps/web/src/server/invoicing/time-billing.ts",
+        "apps/web/src/server/invoicing/xrechnung.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/invoicing/__tests__/vat.test.ts",
+        "apps/web/src/server/invoicing/__tests__/time-billing.test.ts",
+        "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/fakturierung.md",
+        "docs/anwenderdoku/rechnungen.md",
+        "docs/adr/0008-xrechnung-zugferd-en16931.md"
+      ],
+      "related_rules": [
+        "INV-ARCHIVE-EINVOICE-001",
+        "INV-STORNO-REFERENCE-001",
+        "INV-TIME-ENTRY-CLAIM-001"
+      ],
+      "tags": ["rechnung", "umsatzsteuer", "summen", "xrechnung"],
+      "path": "docs/fachkatalog/regeln/rechnungen/inv-vat-totals-001-steuersummen.md",
+      "summary": "TaxTronik berechnet In-App-Rechnungsbeträge serverseitig aus den Positionen. Nettobeträge werden nach Umsatzsteuersatz gruppiert, die Steuer wird einmal je Gruppe auf zwei Dezimalstellen gerundet und die Kopfwerte werden aus den Gruppensummen gebildet. Für E-Rechnungen werden technische Kategorien für steuerpflichtige, nullbesteuerte, befreite und Reverse-Charge-Positionen abgeleitet."
+    },
+    {
+      "id": "POA-LIFECYCLE-001",
+      "title": "Vollmachten kontrolliert durch DRAFT, SENT, SIGNED, REVOKED und EXPIRED führen",
+      "domain": "vollmachten-und-signaturen",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Vollmachten und Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Datenbanktrigger und Actions erzwingen die technische Statusmaschine von DRAFT über SENT zu SIGNED sowie REVOKED oder EXPIRED. Der Ablaufworker behandelt nur signierte Vollmachten und ändert ohne ermittelbaren Benachrichtigungsempfänger derzeit auch den Status nicht."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Feature-Katalog, Vollmachten und Statusmaschine",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0009, elektronischer Vollmachtsnachweis via Token und E-Mail-Code",
+          "path": "docs/adr/0009-eidas-aes-via-token-und-otp.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 167 BGB, Erteilung der Vollmacht",
+          "url": "https://www.gesetze-im-internet.de/bgb/__167.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 168 BGB, Erlöschen der Vollmacht",
+          "url": "https://www.gesetze-im-internet.de/bgb/__168.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/poa/actions.ts",
+        "apps/web/src/app/staff/(protected)/poa/sign-actions.ts",
+        "apps/worker/src/jobs/poa-expiry-check.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
+        "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/adr/0009-eidas-aes-via-token-und-otp.md"],
+      "related_rules": [
+        "POA-SIGNING-SNAPSHOT-001",
+        "POA-SIGNING-CONFIRMATION-001",
+        "POA-SIGNER-RETENTION-001"
+      ],
+      "tags": ["vollmacht", "statusmaschine", "widerruf", "ablauf"],
+      "path": "docs/fachkatalog/regeln/vollmachten-und-signaturen/poa-lifecycle-001-statusmaschine.md",
+      "summary": "TaxTronik führt Vollmachten in einer technischen Statusmaschine. Ein Entwurf wird versandt, eine versandte Vollmacht kann nach erfolgreichem Bestätigungsprozess signiert werden, und DRAFT, SENT oder SIGNED können in den vorgesehenen Grenzen widerrufen oder als abgelaufen markiert werden. REVOKED und EXPIRED sind technische Endzustände."
+    },
+    {
+      "id": "POA-SIGNER-RETENTION-001",
+      "title": "Personen- und Nachweisdaten elektronischer Vollmachten kontrolliert redigieren",
+      "domain": "vollmachten-und-signaturen",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Vollmachten und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik nutzt derzeit kanzleiweit einen Zehnjahresstichtag nach dem Ende des Mandatsjahres und redigiert danach getrennt Vollmachts-Personendaten. Ob diese Frist und die verbleibenden Rumpfdaten für jede Vollmacht und jeden Zweck rechtlich passen, ist nicht fachlich validiert."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 66 StBerG, Handakten und Aufbewahrung",
+          "url": "https://www.gesetze-im-internet.de/stberg/__66.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. e und Art. 17 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "VVT-Arbeitsvorlage, V6 elektronische Vollmachten-Bestätigung",
+          "path": "docs/compliance/vvt-template.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Datenschutzkonzept, Aufbewahrung und Anonymisierung",
+          "path": "docs/compliance/dsgvo-konzept.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/dsgvo/client-retention.ts",
+        "apps/web/src/server/dsgvo/anonymize-client-data.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts",
+        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/dsgvo/__tests__/client-retention.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/poa-signer-actions.test.ts",
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+      ],
+      "feature_refs": [
+        "docs/compliance/vvt-template.md",
+        "docs/compliance/dsgvo-konzept.md",
+        "FEATURES.md"
+      ],
+      "related_rules": [
+        "CLIENT-MANDATE-LIFECYCLE-001",
+        "DSGVO-MANDATE-ANONYMIZATION-001",
+        "POA-SIGNING-SNAPSHOT-001"
+      ],
+      "tags": ["vollmacht", "aufbewahrung", "redaktion", "datenschutz"],
+      "path": "docs/fachkatalog/regeln/vollmachten-und-signaturen/poa-signer-retention-001-signer-redaktion.md",
+      "summary": "TaxTronik behandelt Vollmachtsinhalt, Unterzeichner-Kontaktdaten und technische Bestätigungsdaten als personenbezogene Aufbewahrungsbestände. Nach dem derzeitigen Produktmodell werden sie frühestens nach zehn vollen Kalenderjahren ab dem Ende des Mandatsjahres manuell und protokolliert redigiert."
+    },
+    {
+      "id": "POA-SIGNING-CONFIRMATION-001",
+      "title": "Vollmachtsinhalt mit Magic-Link, E-Mail-Code und ausdrücklicher Zustimmung bestätigen",
+      "domain": "vollmachten-und-signaturen",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Vollmachten und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "TaxTronik verlangt einen gehashten 32-Byte-Linktoken, eine ausdrückliche Inhaltsbestätigung und einen kurzlebigen sechsstelligen E-Mail-Code. Der Abschluss schreibt Status und Evidence atomar, ist aber weder eine belastbare Identitätsfeststellung noch eine zugesagte AES oder QES."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0009, elektronischer Vollmachtsnachweis via Token und E-Mail-Code",
+          "path": "docs/adr/0009-eidas-aes-via-token-und-otp.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Feature-Katalog, Vollmachten",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 25 und 26 eIDAS-Verordnung, konsolidierte Fassung",
+          "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX%3A02014R0910-20241018",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 126a BGB, elektronische Form",
+          "url": "https://www.gesetze-im-internet.de/bgb/__126a.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 127 BGB, vereinbarte Form",
+          "url": "https://www.gesetze-im-internet.de/bgb/__127.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/poa/actions.ts",
+        "apps/web/src/app/staff/(protected)/poa/sign-actions.ts",
+        "apps/web/src/app/poa/sign/sign-flow.tsx",
+        "packages/db/prisma/migrations/20260801002800_iter103_poa_signed_content_binding/migration.sql",
+        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
+        "apps/web/src/server/poa/__tests__/signing-snapshot.test.ts",
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/adr/0009-eidas-aes-via-token-und-otp.md"],
+      "related_rules": [
+        "POA-SIGNING-SNAPSHOT-001",
+        "POA-LIFECYCLE-001",
+        "POA-SIGNER-RETENTION-001"
+      ],
+      "tags": ["vollmacht", "magic-link", "email-code", "bestaetigung"],
+      "path": "docs/fachkatalog/regeln/vollmachten-und-signaturen/poa-signing-confirmation-001-token-und-email-code.md",
+      "summary": "TaxTronik stellt einen technischen elektronischen Bestätigungsprozess bereit: Ein zufälliger Magic-Link öffnet die unveränderliche Vollmachtsfassung. Erst nach ausdrücklicher Zustimmung wird ein kurzlebiger sechsstelliger Code an dasselbe E-Mail-Postfach versandt; ein gültiger Code schließt den Vorgang atomar ab."
+    },
+    {
+      "id": "POA-SIGNING-SNAPSHOT-001",
+      "title": "Die versandte Vollmachtsfassung unveränderlich an den Bestätigungsnachweis binden",
+      "domain": "vollmachten-und-signaturen",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Vollmachten und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Beim Versand wird die konkrete Text- oder PDF-Fassung als unveränderlicher JSON-Snapshot mit SHA-256-Bindung gespeichert. Ansicht, Download und Abschluss verwenden ausschließlich diesen Snapshot; daraus folgt weder eine Identitätsprüfung noch eine AES/QES- oder Wirksamkeitsaussage."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "ADR 0009, elektronischer Vollmachtsnachweis via Token und E-Mail-Code",
+          "path": "docs/adr/0009-eidas-aes-via-token-und-otp.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Feature-Katalog, Vollmachten",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 25 und 26 eIDAS-Verordnung, konsolidierte Fassung",
+          "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX%3A02014R0910-20241018",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 126a BGB, elektronische Form",
+          "url": "https://www.gesetze-im-internet.de/bgb/__126a.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 127 BGB, vereinbarte Form",
+          "url": "https://www.gesetze-im-internet.de/bgb/__127.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/poa/signing-snapshot.ts",
+        "apps/web/src/app/staff/(protected)/poa/actions.ts",
+        "apps/web/src/app/staff/(protected)/poa/sign-actions.ts",
+        "apps/web/src/app/poa/sign/document/route.ts",
+        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/poa/__tests__/signing-snapshot.test.ts",
+        "apps/web/src/app/poa/sign/document/__tests__/route-snapshot.test.ts",
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+      ],
+      "feature_refs": [
+        "FEATURES.md",
+        "docs/adr/0009-eidas-aes-via-token-und-otp.md",
+        "docs/architecture.md"
+      ],
+      "related_rules": [
+        "POA-SIGNING-CONFIRMATION-001",
+        "POA-LIFECYCLE-001",
+        "POA-SIGNER-RETENTION-001"
+      ],
+      "tags": ["vollmacht", "snapshot", "inhaltsbindung", "sha256"],
+      "path": "docs/fachkatalog/regeln/vollmachten-und-signaturen/poa-signing-snapshot-001-versandsnapshot.md",
+      "summary": "Vor dem Versand friert TaxTronik die konkret angezeigte Vollmachtsfassung ein. Bei einer Textvollmacht enthält der Snapshot den vollständigen Text, bei einer PDF-Vollmacht die konkrete Dokumentversions-ID und deren SHA-256. Der öffentliche Bestätigungsprozess zeigt und verarbeitet danach nur noch diese Fassung."
+    },
+    {
+      "id": "REQ-INTERNAL-COMMENT-001",
+      "title": "Interne Anforderungskommentare vom Mandantenkanal trennen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiprozesse und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Kanzleiinterne Kommentare werden in einem staff-/systembeschränkten Datentyp gespeichert, bleiben statusunabhängig möglich und werden weder in Portalabfragen angezeigt noch als Mandantenmail versendet."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Feature-Katalog, interner Kanal nach Antwort und Abschluss",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 57 Abs. 1 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__57.html",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5 Abs. 1 Buchst. c und f sowie Art. 25 DSGVO",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts",
+        "apps/web/src/app/staff/(protected)/requests/[id]/page.tsx",
+        "apps/web/src/app/portal/(protected)/requests/[id]/page.tsx",
+        "packages/db/prisma/migrations/20260823130000_request_internal_comment_staff_only/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts",
+        "apps/web/src/app/portal/(protected)/requests/[id]/__tests__/internal-comment-visibility.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md"],
+      "related_rules": ["REQ-LIFECYCLE-001", "ACCESS-CLIENT-MODE-001"],
+      "tags": ["interner-kommentar", "portaltrennung", "zusammenarbeit"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/req-internal-comment-001-interne-kommentare.md",
+      "summary": "Interne Kanzleinotizen an einer Anforderung bleiben auch nach einer Mandantenantwort oder dem formellen Abschluss möglich. Sie werden getrennt von RequestResponse gespeichert, nur staffseitig geladen und lösen keine Mandantenmail aus."
+    },
+    {
+      "id": "REQ-LIFECYCLE-001",
+      "title": "Mandantenkanal einer Anforderung kontrolliert schließen und wieder öffnen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiprozesse",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Portalantworten und Formularabgaben sind nur bei OPEN oder IN_PROGRESS möglich. Mitarbeiter können offene, laufende oder beantwortete Vorgänge schließen und RESPONDED oder CLOSED auditierbar wieder auf OPEN setzen; CANCELLED bleibt terminal."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Feature-Katalog, Anforderungen und Wiedereröffnung",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/portal/(protected)/requests/[id]/actions.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md"],
+      "related_rules": [
+        "REQ-INTERNAL-COMMENT-001",
+        "FORM-PRESUBMIT-UPLOAD-001",
+        "ACCESS-CLIENT-MODE-001"
+      ],
+      "tags": ["anforderung", "lifecycle", "wiedereröffnung"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/req-lifecycle-001-anforderungsstatus.md",
+      "summary": "Eine mandantensichtbare Antwort oder Formularabgabe ist nur möglich, solange die Anforderung OPEN oder INPROGRESS ist. Eine erfolgreiche Mandantenantwort führt zu RESPONDED; Kanzleimitarbeiter können den Vorgang schließen oder aus RESPONDED/CLOSED wieder öffnen. Interne Kommentare folgen einer getrennten Regel."
+    },
+    {
+      "id": "RISK-AI-SUGGESTION-001",
+      "title": "Automatische Risiko- und Normmarkierungen nur als Vorschläge behandeln",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "office_policy",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Subsumtion und Steuerrecht",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Deterministische und optionale LLM-Markierungen werden mit Herkunft und Engine-Metadaten gespeichert und können getrennt kuratiert werden. Nur der initiale Analysepfad referenziert einen vollständigen Rohoutput; der Worker archiviert den LLM-Enrichment-Rohoutput nicht. Eine vollständige fachliche Prüfung wird ebenfalls nicht erzwungen."
+      },
+      "sources": [
+        {
+          "kind": "internal_policy",
+          "citation": "Dokumentierte Produktgrenzen, externe KI ist Hilfsmittel und keine Entscheidungsinstanz",
+          "path": "docs/assurance/known-limits.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Subsumtion, TCMS und Quantenlos, zweistufige Analyse",
+          "path": "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/risk/run-analysis.ts",
+        "apps/web/src/server/risk/persistence.ts",
+        "apps/worker/src/jobs/risk-analyse-llm.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/risk/__tests__/llm.test.ts",
+        "apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts",
+        "apps/web/src/server/risk/__tests__/norms-core.test.ts"
+      ],
+      "feature_refs": [
+        "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+        "docs/assurance/known-limits.md"
+      ],
+      "related_rules": [
+        "RISK-CATALOG-FOUR-EYES-001",
+        "RISK-EXTERNAL-ANONYMIZATION-001",
+        "RISK-ARCHIVE-SNAPSHOT-001"
+      ],
+      "tags": ["subsumtion", "ki", "llm", "vorschlag", "normen"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/risk-ai-suggestion-001-vorschlagscharakter.md",
+      "summary": "Deterministische Treffer, Embedding-Treffer und LLM-Markierungen sind Hinweise für die fachliche Bearbeitung. Sie sind weder eine Subsumtion noch eine Freigabe und dürfen nicht allein wegen ihrer technischen Herkunft als richtig gelten. TaxTronik speichert die Herkunft; beim initialen Analysepfad wird auch ein Engine-Rohoutput referenziert. Die spätere Worker-Anreicherung archiviert ihren LLM-Rohoutput dagegen nicht. Materielle Richtigkeit oder Vollständigkeit des extern gepflegten Risiko- und Normkatalogs werden nicht validiert."
+    },
+    {
+      "id": "RISK-ARCHIVE-SNAPSHOT-001",
+      "title": "Subsumtionsstand als geschützten Snapshot archivieren und Änderungen begrenzen",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Subsumtionsnachweise und Archiv",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Analyse, Sachverhalt, Markierungen und Metadaten werden als gehashter gzip-JSON-Snapshot in den geschützten Bucket geschrieben; zentrale Inhaltsguards sperren danach Änderungen. Rohresultat und Rich-Doc sind nicht vollständig eingebettet, einige nachgelagerte Mutationen sowie Storage-/DB-Fehlerfenster bleiben offen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Subsumtion, TCMS und Quantenlos, Export und Archivierung",
+          "path": "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "Dokumentierte Produktgrenzen zu Audit- und Wiederherstellungsnachweisen",
+          "path": "docs/assurance/known-limits.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/risk/archive.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guards.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/guards-tx.test.ts"
+      ],
+      "feature_refs": [
+        "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+        "docs/assurance/known-limits.md"
+      ],
+      "related_rules": [
+        "RISK-AI-SUGGESTION-001",
+        "RISK-EXTERNAL-ANONYMIZATION-001",
+        "TCMS-SAMPLE-PROOF-001"
+      ],
+      "tags": ["subsumtion", "archiv", "snapshot", "object-lock", "nachweis"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/risk-archive-snapshot-001-archivstand.md",
+      "summary": "TaxTronik serialisiert den aktuellen Sachverhalt, die Analysemetadaten und alle Markierungen als JSON, bildet darüber einen SHA-256-Wert und speichert eine gzip-Fassung im geschützten Speicher. Anschließend werden Archivverweis und Audit-Ereignis gesetzt. Der Snapshot konserviert einen wichtigen Arbeitsstand, ist aber nicht vollständig selbsttragend und die Sperre erfasst noch nicht jede mögliche Folgemutation."
+    },
+    {
+      "id": "RISK-CATALOG-FOUR-EYES-001",
+      "title": "Geteilte Beraterbegriffe nur vorwärts und durch eine zweite Person freigeben",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "office_policy",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Katalog-Governance",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Im eng beschriebenen Integrationsscope werden geteilte, lokal nachvollziehbar angelegte Beraterbegriffe nur vorwärts geschaltet und der bekannte Autor wird als Prüfer blockiert. Erst ein erfolgreicher Engine-Übergang erzeugt einen lokalen Auditnachweis."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Subsumtion, TCMS und Quantenlos, Governance und Zusammenarbeit",
+          "path": "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "TCMS-Einordnung und Fähigkeiten-Mapping, erzwungene Vier-Augen-Prinzipien",
+          "path": "docs/compliance/idw-ps980-tcms.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/risk/catalog-review.ts",
+        "apps/web/src/server/risk/catalog-norms.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/risk/__tests__/catalog-review.test.ts",
+        "apps/web/src/server/risk/__tests__/catalog-norms.test.ts"
+      ],
+      "feature_refs": [
+        "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+        "docs/compliance/idw-ps980-tcms.md"
+      ],
+      "related_rules": ["RISK-AI-SUGGESTION-001"],
+      "tags": ["katalog", "vier-augen", "freigabe", "audit", "tcms"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/risk-catalog-four-eyes-001-freigabe.md",
+      "summary": "Ein geteilter Beraterbegriff durchläuft den Engine-Status nur vorwärts. Ist sein Autor in der lokalen Audit-Chain bekannt, darf diese Person den eigenen Begriff nicht selbst weiterschalten. TaxTronik auditiert den Übergang erst nach bestätigtem Engine-Erfolg. Dieser Lebenszyklus ist vollständig vom Berufsträger-Review der Dateien unter docs/fachkatalog getrennt."
+    },
+    {
+      "id": "RISK-EXTERNAL-ANONYMIZATION-001",
+      "title": "Externe Recherche nur nach enger Datenminimierung und manueller Vorschau senden",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": "2018-05-25", "valid_until": null },
+      "professional_owner_role": "Berufsträger Verschwiegenheit und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Bekannte Mandanten- und Kontaktdaten werden vor n8n-Aufträgen deterministisch ersetzt, weitere Muster nur heuristisch. Normanker werden jedoch unverändert versendet, die Vorschau ist serverseitig nicht gebunden und getrennte Platzhaltermappings können kollidieren. Vollständige Anonymität und zulässige Verarbeitung sind nicht gewährleistet."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 203 StGB, Verletzung von Privatgeheimnissen und mitwirkende Personen",
+          "url": "https://www.gesetze-im-internet.de/stgb/__203.html",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5, 25 und 32 DSGVO, Datenminimierung, Technikgestaltung und Sicherheit",
+          "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Subsumtion, TCMS und Quantenlos, Recherchevorschau",
+          "path": "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "Dokumentierte Produktgrenzen, externe KI als Hilfsmittel",
+          "path": "docs/assurance/known-limits.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/risk/anonymize.ts",
+        "apps/web/src/server/risk/research.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/risk/__tests__/anonymize.test.ts",
+        "apps/web/src/server/risk/__tests__/research-payload.test.ts",
+        "apps/web/src/server/risk/__tests__/research-vertraulich.test.ts"
+      ],
+      "feature_refs": [
+        "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+        "docs/assurance/known-limits.md"
+      ],
+      "related_rules": ["RISK-AI-SUGGESTION-001", "RISK-ARCHIVE-SNAPSHOT-001"],
+      "tags": ["anonymisierung", "n8n", "recherche", "verschwiegenheit", "datenschutz"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/risk-external-anonymization-001-rechercheversand.md",
+      "summary": "TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer. Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird nicht in den Outbound-Payload aufgenommen. Unverändert mitgesendete Normanker können allerdings Freitext enthalten. Die Heuristik ist unvollständig; deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server erzwingt oder bindet diese Vorschauprüfung aktuell nicht."
+    },
+    {
+      "id": "TAX-CONTROL-STATUS-001",
+      "title": "Offene und erledigte Fristen beweisorientiert aus dem Quellvorgang ableiten",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "office_policy",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Kanzleileitung Fristenkontrolle (Berufsträger)",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die zentrale Ableitung verlangt Zeit und handelnde Person, lässt zweifelhafte Quellstatus, interne Risikotermine ohne Rechtsfrist sowie verspätete Einlegungen offen und besitzt einen tenantweiten append-only Tagesabschluss mit konsistentem DB-Snapshot. Strukturierte Belegreferenzen, vollständige Dispositionsgründe, Teilverfahrenszweige und ein organisatorisch erzwungenes Vier-Augen-Prinzip fehlen."
       },
       "sources": [
         {
@@ -202,21 +3296,84 @@
           "path": "FEATURES.md",
           "checked_at": "2026-08-23",
           "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 57 Abs. 1 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__57.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "case_law",
+          "citation": "BFH, Urteil vom 18.06.2015 – IV R 18/13",
+          "url": "https://www.bundesfinanzhof.de/de/entscheidung/entscheidungen-online/detail/STRE201550268/",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 365 Abs. 3 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__365.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 367 Abs. 2 und 2a AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__367.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 47 Abs. 1 FGO",
+          "url": "https://www.gesetze-im-internet.de/fgo/__47.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "AEAO zu § 367, Teil-Einspruchsentscheidung, Ausgabe 2025",
+          "url": "https://ao.bundesfinanzministerium.de/ao/2025/Abgabenordnung/Siebenter-Teil/Zweiter-Abschnitt/Paragraf-367/inhalt.html",
+          "checked_at": "2026-08-23",
+          "primary": false
         }
       ],
       "code_refs": [
+        "packages/db/prisma/schema.prisma",
         "apps/web/src/server/fristen/eintrag.ts",
-        "apps/web/src/server/fristen/kontrollbuch.ts"
+        "apps/web/src/server/fristen/kontrollbuch.ts",
+        "apps/web/src/server/fristen/tagesabschluss.ts",
+        "apps/web/src/app/staff/(protected)/fristen/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-transition.ts",
+        "apps/worker/src/jobs/reminders-daily.ts",
+        "packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql",
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
       ],
       "test_refs": [
+        "packages/db/src/__tests__/tax-notice-evidence.test.ts",
+        "packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts",
         "apps/web/src/server/fristen/__tests__/eintrag.test.ts",
-        "apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts"
+        "apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts",
+        "apps/web/src/server/fristen/__tests__/tagesabschluss.test.ts",
+        "apps/web/src/app/staff/(protected)/fristen/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts",
+        "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
+        "packages/db/src/__tests__/deadline-daily-review.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
-      "related_rules": ["TAX-NOTICE-APPEAL-001", "TAX-DEADLINE-AUTOREQUEST-001"],
+      "related_rules": [
+        "TAX-NOTICE-APPEAL-001",
+        "TAX-NOTICE-DATARETRIEVAL-001",
+        "TAX-DEADLINE-AUTOREQUEST-001"
+      ],
       "tags": ["fristenkontrollbuch", "erledigung", "status"],
       "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-control-status-001-fristenkontrollbuch.md",
-      "summary": "Das Fristenkontrollbuch führt keinen eigenen Erledigt-Schalter. Es liest den Erledigungsstand aus dem jeweiligen Fachmodul, damit Kontrollsicht und Originalvorgang nicht auseinanderlaufen. Offene überfällige Fristen bleiben ohne zeitliche Untergrenze sichtbar, bis der Quellvorgang einen definierten Erledigungsstatus erreicht."
+      "summary": "Das Fristenkontrollbuch führt keinen frei editierbaren parallelen „Erledigt“-Schalter, sondern leitet seine Sicht aus dem jeweiligen Fachvorgang ab. Ein Statusname allein ist dafür nicht immer ausreichend: Eine relevante Frist soll erst geschlossen werden, wenn Erledigungsgrund und erforderlicher Nachweis im Quellvorgang dokumentiert sind."
     },
     {
       "id": "TAX-DEADLINE-AUTOREQUEST-001",
@@ -234,7 +3391,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Anforderung, Sperre und Doppelanlage-Schutz sind umgesetzt; der Status SENT beweist derzeit nicht den erfolgreichen E-Mail-Zugang."
+        "summary": "Portal-Anforderung und Benachrichtigung sind getrennt persistiert; Request-Anlage, Vormerkung, begrenzter Retry eindeutiger Totalfehler, Fail-closed-Behandlung unklarer Ergebnisse und laufender Versandclaims sowie atomare interne Eskalation an aktive Zuständige sind umgesetzt. Externer Versand ist auf offene Requests begrenzt. Provider-Annahme beweist weder Zustellung noch Zugang."
       },
       "sources": [
         {
@@ -250,23 +3407,62 @@
           "path": "docs/anwenderdoku/kalender-fristen-bescheide.md",
           "checked_at": "2026-08-23",
           "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 57 Abs. 1 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__57.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 62a Abs. 2 bis 5 StBerG",
+          "url": "https://www.gesetze-im-internet.de/stberg/__62a.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 5, 6, 28 und 32 DSGVO",
+          "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/HTML/?uri=CELEX%3A02016R0679-20160504",
+          "checked_at": "2026-08-23",
+          "primary": false
         }
       ],
       "code_refs": [
         "packages/tax/src/materialize.ts",
+        "apps/web/src/lib/tax-deadline-pipeline.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts",
+        "apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx",
         "apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts",
-        "apps/worker/src/jobs/tax-deadline-materialize.ts"
+        "apps/worker/src/jobs/tax-deadline-materialize.ts",
+        "apps/worker/src/jobs/tax-deadline-notification.ts",
+        "apps/worker/src/jobs/dsgvo-retention.ts",
+        "apps/worker/src/jobs/reminders-daily.ts",
+        "packages/mail/src/dispatch.ts",
+        "packages/mail/src/request-opened.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260823200100_tax_deadline_notification_kind/migration.sql",
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
       ],
       "test_refs": [
         "packages/tax/src/__tests__/materialize.test.ts",
+        "packages/mail/src/__tests__/dispatch-profile-context.test.ts",
+        "packages/mail/src/__tests__/request-opened.test.ts",
+        "apps/web/src/lib/__tests__/tax-deadline-pipeline.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/tax-deadline-materialize.test.ts",
+        "apps/worker/src/jobs/__tests__/tax-deadline-notification.test.ts",
+        "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",
         "packages/db/src/__tests__/tax-deadline-request-consistency.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
       "related_rules": ["TAX-DEADLINE-WORKDAY-001", "TAX-CONTROL-STATUS-001"],
       "tags": ["anforderung", "automation", "steuertermin"],
       "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-deadline-autorequest-001-automatische-anforderung.md",
-      "summary": "TaxTronik darf zu einem bevorstehenden Steuertermin automatisch genau eine Mandantenanforderung anlegen, sofern die Kanzlei die Automatik aktiviert und nicht zuvor gestoppt hat. Nach Ablauf des Fälligkeitstags wird keine neue Anforderung mehr erzeugt. „Gesendet“ bezeichnet derzeit die angelegte Portal-Anforderung, nicht den nachgewiesenen Zugang einer E-Mail."
+      "summary": "TaxTronik darf zu einem bevorstehenden Steuertermin genau eine Portal-Anforderung anlegen, wenn die Kanzlei die Automatik aktiviert, der Mandant freigeschaltet ist und keine dokumentierte Sperre besteht. Nach Ablauf des Fälligkeitstags wird keine neue automatische Anforderung mehr angelegt."
     },
     {
       "id": "TAX-DEADLINE-WORKDAY-001",
@@ -284,27 +3480,64 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Die Verschiebung ist implementiert und getestet; örtliche Feiertage und historische Feiertagsstände sind nur teilweise abgebildet."
+        "summary": "Der beweisorientierte Bescheidpfad prüft Fristart und einen eigenen Feiertagskontext je Rechenschritt und fällt bei unvollständigem Kontext auf manuelle Prüfung zurück. Die allgemeine Steuertermin-Materialisierung nutzt weiterhin den Tenant-Standardkalender; historische, ausländische und automatisch bezogene kommunale Kalender sind nicht vollständig umgesetzt."
       },
       "sources": [
         {
           "kind": "official_law",
-          "citation": "§ 108 Abs. 3 AO",
+          "citation": "§ 108 AO",
           "url": "https://www.gesetze-im-internet.de/ao_1977/__108.html",
           "checked_at": "2026-08-23",
           "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 193 BGB",
+          "url": "https://www.gesetze-im-internet.de/bgb/__193.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "AEAO zu § 108 AO, Ausgabe 2025",
+          "url": "https://ao.bundesfinanzministerium.de/ao/2025/Abgabenordnung/Dritter-Teil/Erster-Abschnitt/Vierter-Unterabschnitt/Paragraf-108/inhalt.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "case_law",
+          "citation": "BFH, Beschluss vom 05.05.2014 – III B 85/13",
+          "url": "https://www.bundesfinanzhof.de/de/entscheidung/entscheidungen-online/detail/STRE201450312/",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "OFD Cottbus, Verfügung vom 14.01.2004 – S 0260 - 3 - St 251",
+          "url": "https://bravors.brandenburg.de/verwaltungsvorschriften/feiertagsrecht",
+          "checked_at": "2026-08-23",
+          "primary": false
         }
       ],
-      "code_refs": ["packages/tax/src/engine.ts", "packages/tax/src/materialize.ts"],
+      "code_refs": [
+        "packages/tax/src/engine.ts",
+        "packages/tax/src/index.ts",
+        "packages/tax/src/legal-assessments.ts",
+        "packages/tax/src/materialize.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-assessment.ts",
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
+      ],
       "test_refs": [
         "packages/tax/src/__tests__/engine.test.ts",
-        "packages/tax/src/__tests__/plausibility-engine.test.ts"
+        "packages/tax/src/__tests__/legal-assessments.test.ts",
+        "packages/tax/src/__tests__/plausibility-engine.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-assessment.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
-      "related_rules": ["TAX-NOTICE-APPEAL-001"],
+      "related_rules": ["TAX-NOTICE-APPEAL-001", "TAX-NOTICE-DATARETRIEVAL-001"],
       "tags": ["fristende", "feiertag", "werktag"],
       "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-deadline-workday-001-werktagsverschiebung.md",
-      "summary": "Fällt das Ende einer steuerlichen Frist auf einen Samstag, Sonntag oder am maßgeblichen Ort geltenden gesetzlichen Feiertag, verschiebt TaxTronik das Ergebnis auf den nächsten berücksichtigten Werktag. Das Ergebnis bleibt ein Kontrollvorschlag, weil örtliche und historische Feiertagsbesonderheiten nicht vollständig modelliert sind."
+      "summary": "TaxTronik darf ein Datum nur dann nach § 108 Abs. 3 AO verschieben, wenn es das Ende einer Frist ist und keine gesetzliche Ausnahme greift. Fällt dieses Fristende auf einen Sonnabend, Sonntag oder einen am rechtlich maßgeblichen Ort geltenden gesetzlichen Feiertag, endet die Frist mit Ablauf des nächstfolgenden Werktags."
     },
     {
       "id": "TAX-NOTICE-APPEAL-001",
@@ -322,12 +3555,12 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Die beschriebenen Standardwege sind implementiert und getestet; besondere Bekanntgabe- und Beweisfälle bleiben manueller Prüfung vorbehalten."
+        "summary": "Bekanntgabeweg, Drei-/Vier-Tage-Cutover, getrennte Feiertagsorte, Zugangseinwendungen mit Vergleichsszenarien, Risikotermin, dreistufige Belehrungsprüfung und begründete Abschluss-Gates sind beweisorientiert umgesetzt. Es fehlen eine unabhängige fachliche Freigabe, beleggebundene Nachweise und ein verzweigtes Modell für Teilentscheidungen."
       },
       "sources": [
         {
           "kind": "official_law",
-          "citation": "§ 122 Abs. 2 und 2a AO",
+          "citation": "§ 122 Abs. 1, 2, 2a und 5 AO",
           "url": "https://www.gesetze-im-internet.de/ao_1977/__122.html",
           "checked_at": "2026-08-23",
           "primary": true
@@ -355,7 +3588,7 @@
         },
         {
           "kind": "official_law",
-          "citation": "§ 108 Abs. 3 AO",
+          "citation": "§ 108 AO",
           "url": "https://www.gesetze-im-internet.de/ao_1977/__108.html",
           "checked_at": "2026-08-23",
           "primary": true
@@ -373,18 +3606,250 @@
           "url": "https://www.gesetze-im-internet.de/bgb/__188.html",
           "checked_at": "2026-08-23",
           "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 122a AO als Abgrenzung",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__122a.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 97 § 28 EGAO als Abgrenzung",
+          "url": "https://www.gesetze-im-internet.de/aoeg_1977/art_97__28.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "BMF-Schreiben vom 13.08.2026 zur Bekanntgabe durch Bereitstellung zum Datenabruf",
+          "url": "https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/2026-08-13-bekanntgabe-von-steuerverwaltungsakten.pdf?__blob=publicationFile&v=4",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "case_law",
+          "citation": "BFH, Beschluss vom 26.01.2010 – X B 147/09",
+          "url": "https://www.bundesfinanzhof.de/de/entscheidung/entscheidungen-online/detail/STRE201050203/",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "case_law",
+          "citation": "BFH, Beschluss vom 26.02.2021 – X B 108/20",
+          "url": "https://www.bundesfinanzhof.de/de/entscheidung/entscheidungen-online/detail/STRE202150085/",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "case_law",
+          "citation": "BFH, Urteil vom 29.07.2025 – VI R 6/23",
+          "url": "https://www.bundesfinanzhof.de/de/entscheidung/entscheidungen-online/detail/STRE202520315/",
+          "checked_at": "2026-08-23",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/db/prisma/schema.prisma",
+        "packages/tax/src/engine.ts",
+        "packages/tax/src/index.ts",
+        "packages/tax/src/legal-assessments.ts",
+        "apps/web/src/app/portal/(protected)/steuer/page.tsx",
+        "apps/web/src/app/portal/(protected)/steuer/notice-visibility.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/new/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-assessment.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-audit.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-transition.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/transitions.ts",
+        "apps/worker/src/jobs/reminders-daily.ts",
+        "packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql",
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/tax-notice-evidence.test.ts",
+        "packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts",
+        "packages/tax/src/__tests__/legal-assessments.test.ts",
+        "packages/tax/src/__tests__/plausibility-engine.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-assessment.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-audit.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts",
+        "apps/web/src/app/portal/(protected)/steuer/__tests__/notice-visibility.test.ts",
+        "apps/worker/src/jobs/__tests__/reminders-daily.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
+      "related_rules": [
+        "TAX-DEADLINE-WORKDAY-001",
+        "TAX-CONTROL-STATUS-001",
+        "TAX-NOTICE-DATARETRIEVAL-001"
+      ],
+      "tags": ["bescheid", "bekanntgabe", "einspruch"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-notice-appeal-001-einspruchsfrist-regelfall.md",
+      "summary": "TaxTronik ermittelt in klar dokumentierten Standardfällen zunächst den rechtlichen Bekanntgabetag und berechnet daran anschließend grundsätzlich die einmonatige Einspruchsfrist nach § 355 Abs. 1 AO. Bei unterbliebener oder unrichtiger Rechtsbehelfsbelehrung wird nach § 356 Abs. 2 AO grundsätzlich eine Jahresfrist vorgeschlagen."
+    },
+    {
+      "id": "TAX-NOTICE-DATARETRIEVAL-001",
+      "title": "Bekanntgabetag bei Bereitstellung zum Datenabruf nach § 122a AO bestimmen",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "professional_interpretation",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": "2026-01-01", "valid_until": null },
+      "professional_owner_role": "Berufsträger Steuerrecht",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Altfall, Einwilligungsjahr 2026 und Regelfall ab 2027 werden anhand des Erlassdatums getrennt; Bereitstellungsnachweis, Postantrag, Benachrichtigungsabweichung, zwei Feiertagsorte und §-110-Prüfhinweis sind umgesetzt. Belegbindung und unabhängige fachliche Freigabe fehlen."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 122a AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__122a.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 97 § 1 Abs. 15 EGAO",
+          "url": "https://www.gesetze-im-internet.de/aoeg_1977/BJNR033419976.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 97 § 28 Abs. 2 EGAO",
+          "url": "https://www.gesetze-im-internet.de/aoeg_1977/art_97__28.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 108 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__108.html",
+          "checked_at": "2026-08-23",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 110 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__110.html",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "AEAO-Änderung zu § 122a vom 29.01.2026",
+          "url": "https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/AO-Anwendungserlass/2026-01-29-aenderung-aeao-46-usw.pdf?__blob=publicationFile&v=6",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "AEAO-Änderung zu § 122a vom 27.02.2026",
+          "url": "https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/AO-Anwendungserlass/2026-02-27-aenderung-aeao-122a.pdf?__blob=publicationFile&v=5",
+          "checked_at": "2026-08-23",
+          "primary": false
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "BMF-Schreiben vom 13.08.2026 zur Bekanntgabe durch Bereitstellung zum Datenabruf",
+          "url": "https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/2026-08-13-bekanntgabe-von-steuerverwaltungsakten.pdf?__blob=publicationFile&v=4",
+          "checked_at": "2026-08-23",
+          "primary": false
         }
       ],
       "code_refs": [
         "packages/tax/src/engine.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts"
+        "packages/tax/src/index.ts",
+        "packages/tax/src/legal-assessments.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/data-retrieval.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/new/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-assessment.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260823000000_tax_notice_data_retrieval_cutover/migration.sql",
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
       ],
-      "test_refs": ["packages/tax/src/__tests__/plausibility-engine.test.ts"],
+      "test_refs": [
+        "packages/tax/src/__tests__/legal-assessments.test.ts",
+        "packages/tax/src/__tests__/plausibility-engine.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/data-retrieval.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-assessment.test.ts"
+      ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
-      "related_rules": ["TAX-DEADLINE-WORKDAY-001", "TAX-CONTROL-STATUS-001"],
-      "tags": ["bescheid", "bekanntgabe", "einspruch"],
-      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-notice-appeal-001-einspruchsfrist-regelfall.md",
-      "summary": "TaxTronik ermittelt für dokumentierte Standard-Bekanntgabewege zunächst einen Bekanntgabetag und berechnet ab diesem grundsätzlich eine Monatsfrist. Bei fehlender oder unrichtiger Rechtsbehelfsbelehrung wird stattdessen eine Jahresfrist vorgeschlagen. Das Ergebnis ist ausdrücklich ein Kontrollvorschlag, kein Ersatz für die Prüfung des tatsächlichen Zugangs und des konkreten Bescheids."
+      "related_rules": [
+        "TAX-NOTICE-APPEAL-001",
+        "TAX-DEADLINE-WORKDAY-001",
+        "TAX-CONTROL-STATUS-001"
+      ],
+      "tags": ["bekanntgabe", "datenabruf", "elster", "einspruch"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-notice-dataretrieval-001-bereitstellung-datenabruf.md",
+      "summary": "Ein nach § 122a AO zum Datenabruf bereitgestellter Verwaltungsakt gilt grundsätzlich am vierten Tag nach seiner Bereitstellung als bekannt gegeben. Fällt dieser Tag auf einen Sonnabend, Sonntag oder am regelmäßig maßgeblichen Empfängerort geltenden gesetzlichen Feiertag, ist § 108 Abs. 3 AO zu prüfen."
+    },
+    {
+      "id": "TCMS-SAMPLE-PROOF-001",
+      "title": "Stichprobennachweis nur auf den deklarierten Rahmen und die konkrete Ziehung beziehen",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger TCMS und Qualitätssicherung",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "TaxTronik bildet einen sortierten ID-Rahmen, lässt daraus eine Stichprobe ziehen und speichert Rahmen, Commitment, Backend-Metadaten, Nachweis und Treffer im Audit. Das belegt nicht die Vollständigkeit oder fachliche Angemessenheit des Rahmens und nicht die Qualität der anschließenden Nachschau."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Subsumtion, TCMS und Quantenlos, Stichprobe und Nachweisgrenzen",
+          "path": "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+          "checked_at": "2026-08-24",
+          "primary": true
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "Dokumentierte Produktgrenzen zu Quantum Randomness und Replay",
+          "path": "docs/assurance/known-limits.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "TCMS-Einordnung und Abgrenzung zu einer unabhängigen Prüfung",
+          "path": "docs/compliance/idw-ps980-tcms.md",
+          "checked_at": "2026-08-24",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/risk/los.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts"
+      ],
+      "test_refs": ["apps/web/src/server/risk/__tests__/los.test.ts"],
+      "feature_refs": [
+        "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
+        "docs/assurance/known-limits.md",
+        "docs/compliance/idw-ps980-tcms.md"
+      ],
+      "related_rules": ["RISK-ARCHIVE-SNAPSHOT-001"],
+      "tags": ["tcms", "stichprobe", "quantenlos", "commitment", "audit"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-sample-proof-001-rahmenbindung.md",
+      "summary": "TaxTronik erstellt für einen gewählten Zeitraum einen sortierten Rahmen aus Subsumtions- oder Audit-IDs und übergibt nur diese opaken IDs an den Risk-Layer. Nachweis, Rahmen, Backend-Metadaten und Treffer werden gemeinsam im Audit gespeichert und können später gegen genau diesen gespeicherten Rahmen geprüft werden. Damit ist die Ziehung nachvollziehbar, nicht aber die Vollständigkeit oder fachliche Eignung der Grundgesamtheit und Nachschau."
     }
   ]
 }

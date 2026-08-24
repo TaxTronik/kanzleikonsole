@@ -10,12 +10,59 @@ type NoticeEvidence = {
   appealFiledAt: string | null;
   appealFiledComplete: boolean;
   appealResolvedAt: string | null;
+  partialReliefReceivedAt: string | null;
+  partialReliefComplete: boolean;
   decisionReceivedAt: string | null;
   decisionComplete: boolean;
   decisionInstruction: DecisionInstruction;
   klageFiledAt: string | null;
   klageFiledComplete: boolean;
 };
+
+type LegacyEvidenceNeeds = {
+  appealFiled: boolean;
+  abhilfe: boolean;
+  partialRelief: boolean;
+  decision: boolean;
+  klage: boolean;
+  any: boolean;
+};
+
+function getLegacyEvidenceNeeds(
+  currentStatus: string,
+  selectedStatus: string,
+  evidence: NoticeEvidence,
+): LegacyEvidenceNeeds {
+  const appealFiled =
+    [
+      'EINSPRUCH',
+      'ABGEHOLFEN',
+      'TEILABHILFE',
+      'TEILEINSPRUCHSENTSCHEIDUNG',
+      'ZURUECKGEWIESEN',
+      'KLAGE',
+    ].includes(currentStatus) && !evidence.appealFiledComplete;
+  const abhilfe =
+    currentStatus === 'ABGEHOLFEN' &&
+    selectedStatus === 'BESTANDSKRAEFTIG' &&
+    !evidence.appealResolvedAt;
+  const partialRelief = currentStatus === 'TEILABHILFE' && !evidence.partialReliefComplete;
+  const decision =
+    ['TEILEINSPRUCHSENTSCHEIDUNG', 'ZURUECKGEWIESEN', 'KLAGE'].includes(currentStatus) &&
+    !evidence.decisionComplete;
+  const klage =
+    currentStatus === 'KLAGE' &&
+    selectedStatus === 'BESTANDSKRAEFTIG' &&
+    !evidence.klageFiledComplete;
+  return {
+    appealFiled,
+    abhilfe,
+    partialRelief,
+    decision,
+    klage,
+    any: [appealFiled, abhilfe, partialRelief, decision, klage].some(Boolean),
+  };
+}
 
 /**
  * Quick-Action im Bescheid-Postfach: Status-Transition über ein kompaktes
@@ -44,46 +91,39 @@ export function NoticeStatusSelect({
   const [legacyAppealResolvedDate, setLegacyAppealResolvedDate] = useState(
     evidence.appealResolvedAt ?? '',
   );
+  const [legacyPartialReliefReceivedDate, setLegacyPartialReliefReceivedDate] = useState(
+    evidence.partialReliefReceivedAt ?? '',
+  );
   const [legacyDecisionReceivedDate, setLegacyDecisionReceivedDate] = useState(
     evidence.decisionReceivedAt ?? '',
   );
   const [legacyKlageFiledDate, setLegacyKlageFiledDate] = useState(evidence.klageFiledAt ?? '');
+  const [legalFinalReason, setLegalFinalReason] = useState('');
 
   const eventDateLabel: Record<string, string> = {
     EINSPRUCH: 'Einspruch eingelegt am',
     ABGEHOLFEN: 'Abhilfe bekanntgegeben am',
-    TEILABHILFE: 'Einspruchsentscheidung bekanntgegeben am',
+    TEILABHILFE: 'Teilabhilfebescheid bekanntgegeben am',
+    TEILEINSPRUCHSENTSCHEIDUNG: 'Teil-Einspruchsentscheidung bekanntgegeben am',
     ZURUECKGEWIESEN: 'Einspruchsentscheidung bekanntgegeben am',
     KLAGE: 'Klage eingereicht am',
-    RECHTSKRAEFTIG: 'Rechtskraft eingetreten am',
+    BESTANDSKRAEFTIG: 'Bestandskraft fachlich festgestellt am',
   };
 
-  const isAppealChain = [
-    'EINSPRUCH',
-    'ABGEHOLFEN',
-    'TEILABHILFE',
-    'ZURUECKGEWIESEN',
-    'KLAGE',
-  ].includes(currentStatus);
-  const needsLegacyAppealFiled = isAppealChain && !evidence.appealFiledComplete;
-  const needsLegacyAbhilfe =
-    currentStatus === 'ABGEHOLFEN' &&
-    selectedStatus === 'RECHTSKRAEFTIG' &&
-    !evidence.appealResolvedAt;
-  const needsLegacyDecision =
-    ['TEILABHILFE', 'ZURUECKGEWIESEN', 'KLAGE'].includes(currentStatus) &&
-    !evidence.decisionComplete;
-  const needsLegacyKlage =
-    currentStatus === 'KLAGE' &&
-    selectedStatus === 'RECHTSKRAEFTIG' &&
-    !evidence.klageFiledComplete;
-  const needsAnyLegacyEvidence =
-    needsLegacyAppealFiled || needsLegacyAbhilfe || needsLegacyDecision || needsLegacyKlage;
-  const missingRequiredLegacyDate =
-    (needsLegacyAppealFiled && !legacyAppealFiledDate) ||
-    (needsLegacyAbhilfe && !legacyAppealResolvedDate) ||
-    (needsLegacyDecision && !legacyDecisionReceivedDate) ||
-    (needsLegacyKlage && !legacyKlageFiledDate);
+  const legacyNeeds = getLegacyEvidenceNeeds(currentStatus, selectedStatus, evidence);
+  const needsLegacyAppealFiled = legacyNeeds.appealFiled;
+  const needsLegacyAbhilfe = legacyNeeds.abhilfe;
+  const needsLegacyPartialRelief = legacyNeeds.partialRelief;
+  const needsLegacyDecision = legacyNeeds.decision;
+  const needsLegacyKlage = legacyNeeds.klage;
+  const needsAnyLegacyEvidence = legacyNeeds.any;
+  const missingRequiredLegacyDate = [
+    [needsLegacyAppealFiled, legacyAppealFiledDate],
+    [needsLegacyAbhilfe, legacyAppealResolvedDate],
+    [needsLegacyPartialRelief, legacyPartialReliefReceivedDate],
+    [needsLegacyDecision, legacyDecisionReceivedDate],
+    [needsLegacyKlage, legacyKlageFiledDate],
+  ].some(([needed, date]) => needed && !date);
 
   function resetForm() {
     setSelectedStatus('');
@@ -91,8 +131,10 @@ export function NoticeStatusSelect({
     setDecisionInstruction(evidence.decisionInstruction);
     setLegacyAppealFiledDate(evidence.appealFiledAt ?? '');
     setLegacyAppealResolvedDate(evidence.appealResolvedAt ?? '');
+    setLegacyPartialReliefReceivedDate(evidence.partialReliefReceivedAt ?? '');
     setLegacyDecisionReceivedDate(evidence.decisionReceivedAt ?? '');
     setLegacyKlageFiledDate(evidence.klageFiledAt ?? '');
+    setLegalFinalReason('');
   }
 
   function submit(status: string, date?: string, instruction?: DecisionInstruction) {
@@ -103,11 +145,15 @@ export function NoticeStatusSelect({
         status,
         ...(date ? { eventDate: date } : {}),
         ...(instruction ? { decisionLegalRemedyInstruction: instruction } : {}),
+        ...(status === 'BESTANDSKRAEFTIG' ? { legalFinalReason } : {}),
         ...(needsAnyLegacyEvidence
           ? {
               legacyEvidence: {
                 ...(needsLegacyAppealFiled ? { appealFiledDate: legacyAppealFiledDate } : {}),
                 ...(needsLegacyAbhilfe ? { appealResolvedDate: legacyAppealResolvedDate } : {}),
+                ...(needsLegacyPartialRelief
+                  ? { partialReliefReceivedDate: legacyPartialReliefReceivedDate }
+                  : {}),
                 ...(needsLegacyDecision
                   ? { appealDecisionReceivedDate: legacyDecisionReceivedDate }
                   : {}),
@@ -169,7 +215,7 @@ export function NoticeStatusSelect({
             onChange={(e) => setEventDate(e.target.value)}
             required
           />
-          {(selectedStatus === 'TEILABHILFE' || selectedStatus === 'ZURUECKGEWIESEN') && (
+          {['TEILEINSPRUCHSENTSCHEIDUNG', 'ZURUECKGEWIESEN'].includes(selectedStatus) && (
             <div>
               <label
                 className="block text-xs font-medium text-amber-900"
@@ -190,6 +236,22 @@ export function NoticeStatusSelect({
                 <option value="MISSING_OR_INVALID">fehlt oder ist unrichtig</option>
               </select>
             </div>
+          )}
+          {selectedStatus === 'BESTANDSKRAEFTIG' && (
+            <label className="block text-xs font-medium text-amber-900">
+              Fachliche Abschlussbegründung *
+              <textarea
+                className="input mt-1 w-full text-xs py-1"
+                rows={3}
+                minLength={10}
+                maxLength={2000}
+                value={legalFinalReason}
+                disabled={pending}
+                onChange={(e) => setLegalFinalReason(e.target.value)}
+                placeholder="Fristablauf, Aktenprüfung und bewusste Abschlussentscheidung dokumentieren"
+                required
+              />
+            </label>
           )}
           {needsAnyLegacyEvidence && (
             <fieldset className="rounded border border-amber-300 bg-white p-2 space-y-2">
@@ -222,6 +284,19 @@ export function NoticeStatusSelect({
                     value={legacyAppealResolvedDate}
                     disabled={pending}
                     onChange={(e) => setLegacyAppealResolvedDate(e.target.value)}
+                    required
+                  />
+                </label>
+              )}
+              {needsLegacyPartialRelief && (
+                <label className="block text-xs font-medium text-amber-900">
+                  Teilabhilfebescheid tatsächlich bekanntgegeben am *
+                  <input
+                    type="date"
+                    className="input mt-1 w-full text-xs py-1"
+                    value={legacyPartialReliefReceivedDate}
+                    disabled={pending}
+                    onChange={(e) => setLegacyPartialReliefReceivedDate(e.target.value)}
                     required
                   />
                 </label>
@@ -274,13 +349,17 @@ export function NoticeStatusSelect({
             <button
               type="button"
               className="btn-primary text-xs py-1 px-2"
-              disabled={pending || !eventDate || missingRequiredLegacyDate}
+              disabled={
+                pending ||
+                !eventDate ||
+                missingRequiredLegacyDate ||
+                (selectedStatus === 'BESTANDSKRAEFTIG' && legalFinalReason.trim().length < 10)
+              }
               onClick={() =>
                 submit(
                   selectedStatus,
                   eventDate,
-                  selectedStatus === 'TEILABHILFE' ||
-                    selectedStatus === 'ZURUECKGEWIESEN' ||
+                  ['TEILEINSPRUCHSENTSCHEIDUNG', 'ZURUECKGEWIESEN'].includes(selectedStatus) ||
                     needsLegacyDecision
                     ? decisionInstruction
                     : undefined,
@@ -301,10 +380,22 @@ export function NoticeStatusSelect({
               Abbrechen
             </button>
           </div>
-          <p className="text-xs text-amber-800">
-            Die Frist wird aus diesem tatsächlichen Datum berechnet, nicht aus dem Zeitpunkt des
-            Statuswechsels.
-          </p>
+          {selectedStatus === 'TEILABHILFE' ? (
+            <p className="text-xs text-amber-800">
+              Der Teilabhilfebescheid wird im laufenden Einspruchsverfahren dokumentiert. Allein
+              daraus entsteht keine Klagefrist.
+            </p>
+          ) : selectedStatus === 'TEILEINSPRUCHSENTSCHEIDUNG' ? (
+            <p className="text-xs text-amber-800">
+              Die Klagefrist gilt nur für den in der Teil-Einspruchsentscheidung entschiedenen Teil;
+              der übrige Einspruch kann weiter anhängig sein.
+            </p>
+          ) : (
+            <p className="text-xs text-amber-800">
+              Die Frist wird aus diesem tatsächlichen Datum berechnet, nicht aus dem Zeitpunkt des
+              Statuswechsels.
+            </p>
+          )}
         </div>
       )}
       {error && <span className="text-xs text-red-600">{error}</span>}

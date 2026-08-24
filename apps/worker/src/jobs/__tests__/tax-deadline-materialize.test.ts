@@ -8,6 +8,8 @@
 //     withWorkerTenantContext(tenantId, …), recordEvidence an EvidenceService
 //   - System-Staff: erster aktiver ADMIN/PARTNER; ohne so einen Account → skip
 //   - Stats-Summierung über mehrere Tenants
+//
+// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -23,7 +25,8 @@ const h = vi.hoisted(() => {
   );
   const record = vi.fn();
   const materialize = vi.fn();
-  const notifyRequestOpened = vi.fn();
+  const processNotifications = vi.fn();
+  const notifyAutomaticTaxRequestOpened = vi.fn();
   const upsertNotificationTx = vi.fn();
   const resolveNotificationsTx = vi.fn();
   const moduleEnabled = vi.fn();
@@ -33,7 +36,8 @@ const h = vi.hoisted(() => {
     withWorkerTenantContext,
     record,
     materialize,
-    notifyRequestOpened,
+    processNotifications,
+    notifyAutomaticTaxRequestOpened,
     upsertNotificationTx,
     resolveNotificationsTx,
     moduleEnabled,
@@ -50,12 +54,17 @@ vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTe
 vi.mock('../../module-gate', () => ({
   isWorkerTenantModuleEnabled: h.moduleEnabled,
 }));
-vi.mock('../../mail', () => ({ notifyRequestOpened: h.notifyRequestOpened }));
+vi.mock('../../mail', () => ({
+  notifyAutomaticTaxRequestOpened: h.notifyAutomaticTaxRequestOpened,
+}));
 vi.mock('@taxtronik/db/notification', () => ({
   upsertNotificationTx: h.upsertNotificationTx,
   resolveNotificationsTx: h.resolveNotificationsTx,
 }));
 vi.mock('@taxtronik/tax', () => ({ materializeTenantTaxDeadlines: h.materialize }));
+vi.mock('../tax-deadline-notification', () => ({
+  processTaxDeadlineNotifications: h.processNotifications,
+}));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {
     record = h.record;
@@ -80,25 +89,11 @@ function run(data: { tenantId?: string } = { tenantId: TENANT }): Promise<Materi
   return processors.get('tax-deadline-materialize')!({ data }) as Promise<MaterializeResult>;
 }
 
-const CREATED_REQUEST = {
-  tenantId: TENANT,
-  clientId: 'client-1',
-  deadlineId: 'dl-1',
-  requestId: 'req-1',
-  kind: 'USTA_MONATLICH',
-  period: '2026-05',
-  dueDate: new Date(Date.UTC(2026, 5, 20)),
-  title: 'USt-Voranmeldung (monatlich) 2026-05 bis 20.6.2026',
-  description: 'Bitte stellen Sie die Unterlagen bereit.',
-  priority: 'NORMAL' as const,
-};
-
 const STATS = {
   deadlinesCreated: 2,
   requestsCreated: 1,
   markedOverdue: 3,
   staffWarned: 1,
-  createdRequests: [CREATED_REQUEST],
 };
 
 beforeEach(() => {
@@ -109,7 +104,20 @@ beforeEach(() => {
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.staffUser.findFirst.mockResolvedValue({ id: 'staff-1' });
   h.materialize.mockResolvedValue(STATS);
-  h.notifyRequestOpened.mockResolvedValue({ ok: true, recipients: 2 });
+  h.notifyAutomaticTaxRequestOpened.mockResolvedValue({
+    ok: true,
+    recipients: 2,
+    attempted: 2,
+    externalSideEffectOccurred: false,
+    uncertainFailure: false,
+  });
+  h.processNotifications.mockResolvedValue({
+    processed: 1,
+    providerAccepted: 1,
+    recipientsAccepted: 2,
+    retryPending: 0,
+    escalated: 0,
+  });
   h.record.mockResolvedValue({});
   h.moduleEnabled.mockResolvedValue(true);
 });
@@ -132,6 +140,7 @@ describe('Verdrahtung des DI-Kerns', () => {
 
     expect(h.prismaOwner.staffUser.findFirst).not.toHaveBeenCalled();
     expect(h.materialize).not.toHaveBeenCalled();
+    expect(h.processNotifications).not.toHaveBeenCalled();
   });
 
   it('übergibt prismaOwner als db und die korrekten Params (horizonDays 90)', async () => {
@@ -205,38 +214,59 @@ describe('System-Staff-Auswahl', () => {
     });
   });
 
-  it('ohne ADMIN/PARTNER wird der Tenant übersprungen', async () => {
+  it('ohne ADMIN/PARTNER werden keine neuen Requests erzeugt, persistierte Benachrichtigungen aber verarbeitet', async () => {
     h.prismaOwner.staffUser.findFirst.mockResolvedValue(null);
 
     const result = await run();
 
     expect(h.materialize).not.toHaveBeenCalled();
-    expect(result).toEqual({ created: 0, requests: 0, overdue: 0, warned: 0, mailRecipients: 0 });
+    expect(h.processNotifications).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ created: 0, requests: 0, overdue: 0, warned: 0, mailRecipients: 2 });
   });
 });
 
-describe('Mandanten-Mail nach Commit', () => {
-  it('versendet pro createdRequest genau eine request-opened-Benachrichtigung', async () => {
+describe('Persistierter Benachrichtigungsfluss nach Commit', () => {
+  it('delegiert QUEUED/FAILED-Zustaende an den getrennten Processor', async () => {
     await run();
 
-    expect(h.notifyRequestOpened).toHaveBeenCalledTimes(1);
-    expect(h.notifyRequestOpened).toHaveBeenCalledWith({
+    expect(h.processNotifications).toHaveBeenCalledTimes(1);
+    const [deps, input] = h.processNotifications.mock.calls[0]!;
+    expect(input).toEqual({ tenantId: TENANT });
+    const dispatchInput = {
       tenantId: TENANT,
       clientId: 'client-1',
       requestId: 'req-1',
-      title: 'USt-Voranmeldung (monatlich) 2026-05 bis 20.6.2026',
-      description: 'Bitte stellen Sie die Unterlagen bereit.',
       priority: 'NORMAL',
       dueAtIso: '2026-06-20T00:00:00.000Z',
-    });
+    };
+    await deps.notifyAutomaticTaxRequestOpened(dispatchInput);
+    expect(h.notifyAutomaticTaxRequestOpened).toHaveBeenCalledWith(dispatchInput);
   });
 
-  it('ein Mail-Fehler failt den Job NICHT (Termin ist bereits REMINDED)', async () => {
-    h.notifyRequestOpened.mockRejectedValue(new Error('SMTP down'));
+  it('unklare/terminale Versandzustaende failen den Job nicht', async () => {
+    h.processNotifications.mockResolvedValue({
+      processed: 1,
+      providerAccepted: 0,
+      recipientsAccepted: 0,
+      retryPending: 0,
+      escalated: 1,
+    });
 
     const result = await run();
 
     expect(result).toEqual({ created: 2, requests: 1, overdue: 3, warned: 1, mailRecipients: 0 });
+  });
+
+  it('laesst nur eindeutig FAILED fuer BullMQ-Retry fehlschlagen', async () => {
+    h.processNotifications.mockResolvedValue({
+      processed: 1,
+      providerAccepted: 0,
+      recipientsAccepted: 0,
+      retryPending: 1,
+      escalated: 0,
+    });
+
+    await expect(run()).rejects.toThrow('warten auf Retry');
   });
 });
 
@@ -249,14 +279,27 @@ describe('Multi-Tenant', () => {
         requestsCreated: 1,
         markedOverdue: 0,
         staffWarned: 2,
-        createdRequests: [CREATED_REQUEST],
       })
       .mockResolvedValueOnce({
         deadlinesCreated: 3,
         requestsCreated: 0,
         markedOverdue: 4,
         staffWarned: 0,
-        createdRequests: [],
+      });
+    h.processNotifications
+      .mockResolvedValueOnce({
+        processed: 1,
+        providerAccepted: 1,
+        recipientsAccepted: 2,
+        retryPending: 0,
+        escalated: 0,
+      })
+      .mockResolvedValueOnce({
+        processed: 0,
+        providerAccepted: 0,
+        recipientsAccepted: 0,
+        retryPending: 0,
+        escalated: 0,
       });
 
     const result = await run({});

@@ -11,6 +11,8 @@
 // (berlinCalendarDate) — dieselbe Kodierung wie TaxDeadline.dueDate.
 // =============================================================================
 
+import type { TaxDeadlineNotificationStatus } from '@prisma/client';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type AutoRequestPipeline =
@@ -22,14 +24,29 @@ export type AutoRequestPipeline =
   | { state: 'WARNED'; sendDate: Date }
   /** Von einem Mitarbeiter gestoppt (aufhebbar). */
   | { state: 'SUPPRESSED' }
-  /** Anforderung wurde erzeugt und versendet. */
-  | { state: 'SENT' };
+  /**
+   * Portal-Anforderung wurde erzeugt. Der getrennte Notification-Zustand
+   * behauptet niemals Zugang oder Kenntnisnahme beim Mandanten.
+   */
+  | {
+      state: 'REQUEST_CREATED';
+      notificationState: AutoRequestNotificationState;
+      attemptCount: number;
+      escalated: boolean;
+    }
+  /** Request-Link entfernt; Versandhistorie bleibt nachvollziehbar erhalten. */
+  | { state: 'ORPHANED'; attemptCount: number; escalated: boolean };
+
+export type AutoRequestNotificationState = TaxDeadlineNotificationStatus;
 
 export interface PipelineInput {
   status: string;
   requestId: string | null;
   staffNotifiedAt: Date | null;
   autoRequestSuppressedAt: Date | null;
+  autoRequestNotificationStatus: AutoRequestNotificationState;
+  autoRequestNotificationAttemptCount: number;
+  autoRequestNotificationEscalatedAt: Date | null;
   dueDate: Date;
   config: {
     active: boolean;
@@ -42,7 +59,21 @@ export interface PipelineInput {
 }
 
 export function deriveAutoRequestPipeline(input: PipelineInput): AutoRequestPipeline {
-  if (input.requestId !== null) return { state: 'SENT' };
+  if (input.autoRequestNotificationStatus === 'ORPHANED') {
+    return {
+      state: 'ORPHANED',
+      attemptCount: input.autoRequestNotificationAttemptCount,
+      escalated: input.autoRequestNotificationEscalatedAt !== null,
+    };
+  }
+  if (input.requestId !== null) {
+    return {
+      state: 'REQUEST_CREATED',
+      notificationState: input.autoRequestNotificationStatus,
+      attemptCount: input.autoRequestNotificationAttemptCount,
+      escalated: input.autoRequestNotificationEscalatedAt !== null,
+    };
+  }
   if (input.autoRequestSuppressedAt !== null) return { state: 'SUPPRESSED' };
   if (input.status !== 'PLANNED') return { state: 'NONE' };
   const cfg = input.config;

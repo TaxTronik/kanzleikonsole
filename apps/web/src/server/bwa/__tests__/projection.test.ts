@@ -1,3 +1,4 @@
+// Fachkatalog: BWA-PROJECTION-001
 import { describe, it, expect } from 'vitest';
 import { computeBwaKpis } from '../addison-parser';
 import { linearSeasonalProjection, type PeriodInput } from '../projection';

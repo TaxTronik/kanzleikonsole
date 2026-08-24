@@ -69,6 +69,12 @@ export async function enqueueTaxDeadlineMaterialize(tenantId: string): Promise<v
       { tenantId },
       {
         jobId,
+        // Persistierte Auto-Request-Benachrichtigungen duerfen bei einem
+        // eindeutig technischen Fehlschlag maximal dreimal versucht werden.
+        // UNKNOWN/Teilversand/kein Empfaenger werden vom Worker terminal
+        // eskaliert und loesen keinen BullMQ-Retry aus.
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5 * 60_000 },
         removeOnComplete: 20,
         removeOnFail: 20,
       },

@@ -32,6 +32,13 @@ vor dem Versand eine editierbare Anonymisierungsvorschau; das Mapping von
 Platzhaltern zu Originalwerten bleibt in der Kanzlei. Ergebnisse werden über
 gescopte, tenantgebundene Callback-Zugänge zurückgeführt.
 
+Die Vorschau ist derzeit nicht serverseitig durch Token oder Hash an den
+Versand gebunden. Frei befüllbare Normanker werden unverändert an n8n
+übergeben, und getrennt erzeugte Platzhaltermappings für Text, Rechtsfrage und
+Auftrag können denselben Platzhalternamen verwenden. Deshalb müssen auch
+Normanker und die spätere Rückzuordnung manuell geprüft werden; die Funktion
+gewährleistet keine vollständige Anonymisierung oder zulässige Offenbarung.
+
 ## 3. Export und Archivierung
 
 Berichte können als DOCX/PDF erzeugt werden. Vor dem Export wird ausgewählt,

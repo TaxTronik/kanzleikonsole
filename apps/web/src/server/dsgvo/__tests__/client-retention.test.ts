@@ -1,3 +1,5 @@
+// Fachkatalog: DSGVO-MANDATE-ANONYMIZATION-001
+// Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001
 import { describe, it, expect, vi } from 'vitest';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import type { TxClient } from '@taxtronik/db';

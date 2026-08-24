@@ -1,3 +1,4 @@
+// Fachkatalog: INV-NUMBER-ALLOCATION-001
 import { describe, it, expect } from 'vitest';
 import { formatInvoiceNumber, isValidInvoiceTransition } from '../number';
 

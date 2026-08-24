@@ -1,3 +1,4 @@
+// Fachkatalog: AUDIT-VERIFY-ALERT-001
 import { describe, it, expect, vi } from 'vitest';
 
 // Modul-Import zieht Queue/Redis/Prisma/Evidence — mocken; getestet wird die

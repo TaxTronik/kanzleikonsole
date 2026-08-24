@@ -93,6 +93,15 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Owner legt gezielt inkonsistente Mutationen vor; die App-Rolle prueft
   // separat die STAFF-/CLIENT_CONTACT-RLS auf internen Kommentaren.
   'packages/db/src/__tests__/tax-deadline-request-consistency.test.ts',
+  // Tagesabschluss-Integration: Owner erzeugt isolierte Fixtures; App-Client
+  // beweist RLS, Append-only-Snapshot, Datumskonsistenz und Tenant-Trennung.
+  'packages/db/src/__tests__/deadline-daily-review.test.ts',
+  // Notification-Client-Scope-RLS: Owner legt isolierte Fixtures an; die
+  // App-Rolle beweist die CLIENT_CONTACT-/STAFF-Grenzen der neuen Scopes.
+  'packages/db/src/__tests__/notification-client-scope-rls.test.ts',
+  // Reminders-Daily-Source-Lock: Owner fuer Fixtures, App-Rolle als Beweis —
+  // selbes Muster wie die uebrigen RLS-Regressionstests.
+  'packages/db/src/__tests__/reminders-daily-source-lock.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill

@@ -39,6 +39,17 @@ export interface TenantContext {
 
 export type TxClient = Prisma.TransactionClient;
 
+export interface TenantTransactionOptions {
+  /**
+   * Für beweisorientierte Mehrfach-Reads kann ein stabiler Transaktions-
+   * snapshot verlangt werden. Der Standard bleibt aus Performancegründen die
+   * Prisma/Postgres-Voreinstellung READ COMMITTED.
+   */
+  isolationLevel?: Prisma.TransactionIsolationLevel;
+  timeout?: number;
+  maxWait?: number;
+}
+
 /**
  * Führt einen Callback mit gesetztem Tenant-Kontext aus.
  *
@@ -104,17 +115,21 @@ export const TX_OPTIONS = { timeout: 15_000, maxWait: 5_000 } as const;
 export async function withTenantContext<T>(
   ctx: TenantContext,
   fn: (tx: TxClient) => Promise<T>,
+  transactionOptions: TenantTransactionOptions = {},
 ): Promise<T> {
-  return prisma.$transaction(async (rawTx) => {
-    const tx = serializeTx(rawTx);
-    await tx.$queryRaw`
+  return prisma.$transaction(
+    async (rawTx) => {
+      const tx = serializeTx(rawTx);
+      await tx.$queryRaw`
       SELECT
         set_config('app.current_tenant_id', ${ctx.tenantId}, true),
         set_config('app.current_actor_id', ${ctx.actorId ?? ''}, true),
         set_config('app.current_actor_type', ${ctx.actorType}, true)
     `;
-    return fn(tx);
-  }, TX_OPTIONS);
+      return fn(tx);
+    },
+    { ...TX_OPTIONS, ...transactionOptions },
+  );
 }
 
 /**

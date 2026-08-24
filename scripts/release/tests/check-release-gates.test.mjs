@@ -1,3 +1,4 @@
+// Fachkatalog: ASSURANCE-RELEASE-EVIDENCE-001
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { checkReleaseGates } from '../check-release-gates.mjs';

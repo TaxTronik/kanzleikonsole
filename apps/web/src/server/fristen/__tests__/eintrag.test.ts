@@ -15,39 +15,100 @@ import {
 // hieße: eine offene Frist erscheint als erledigt (Haftungsrisiko) oder
 // umgekehrt (Rauschen).
 describe('Erledigt-Wahrheitstabellen', () => {
-  it('Steuertermin: nur DONE/SKIPPED erledigt — OVERDUE bleibt offen', () => {
-    expect(taxDeadlineErledigt('DONE')).toBe(true);
-    expect(taxDeadlineErledigt('SKIPPED')).toBe(true);
+  it('Steuertermin: DONE braucht Zeit und Person; SKIPPED bleibt ohne Grund offen', () => {
+    expect(taxDeadlineErledigt('DONE')).toBe(false);
+    expect(taxDeadlineErledigt('DONE', new Date('2026-06-01'), 'staff-1')).toBe(true);
+    expect(taxDeadlineErledigt('SKIPPED')).toBe(false);
     for (const offen of ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'SUBMITTED', 'OVERDUE']) {
       expect(taxDeadlineErledigt(offen), offen).toBe(false);
     }
   });
 
-  it('Einspruchsfrist: GEPRUEFT ist NICHT erledigt (Entscheidung steht aus)', () => {
+  it('Einspruchsfrist: Status allein schließt nicht; Einlegung oder Disposition braucht Nachweis', () => {
     expect(taxNoticeFristErledigt('NEU')).toBe(false);
     expect(taxNoticeFristErledigt('GEPRUEFT')).toBe(false);
-    for (const done of [
+    for (const status of [
       'EINSPRUCH',
       'ABGEHOLFEN',
       'TEILABHILFE',
+      'TEILEINSPRUCHSENTSCHEIDUNG',
       'ZURUECKGEWIESEN',
       'KLAGE',
-      'RECHTSKRAEFTIG',
+      'BESTANDSKRAEFTIG',
     ]) {
-      expect(taxNoticeFristErledigt(done), done).toBe(true);
+      expect(taxNoticeFristErledigt(status), status).toBe(false);
     }
+    expect(
+      taxNoticeFristErledigt('TEILABHILFE', {
+        appealDeadline: new Date('2026-06-01'),
+        appealFiledAt: new Date('2026-06-01'),
+        appealFiledBy: 'staff-1',
+      }),
+    ).toBe(true);
+    expect(
+      taxNoticeFristErledigt('EINSPRUCH', {
+        appealDeadline: new Date('2026-06-01'),
+        appealFiledAt: new Date('2026-06-02'),
+        appealFiledBy: 'staff-1',
+      }),
+    ).toBe(false);
+    expect(
+      taxNoticeFristErledigt('BESTANDSKRAEFTIG', {
+        legalFinalAt: new Date('2026-06-01'),
+        legalFinalBy: 'staff-1',
+        legalFinalReason: 'Fristablauf und Aktenlage fachlich geprüft.',
+      }),
+    ).toBe(true);
+    expect(
+      taxNoticeFristErledigt('BESTANDSKRAEFTIG', {
+        legalFinalAt: new Date('2026-06-01'),
+        legalFinalBy: 'staff-1',
+      }),
+    ).toBe(false);
   });
 
-  it('Klagefrist (§ 47 FGO): offen bei ZURUECKGEWIESEN/TEILABHILFE, erledigt bei KLAGE/RECHTSKRAEFTIG', () => {
+  it('Klagefrist (§ 47 FGO): offen nach Einspruchsentscheidung, erledigt bei KLAGE/Bestandskraft', () => {
     expect(taxNoticeKlageFristErledigt('ZURUECKGEWIESEN')).toBe(false);
+    // TEILABHILFE ist kein Klagefrist-Auslöser; die Loader-Abfrage nimmt den
+    // Status deshalb gar nicht als Klagefrist auf. Ein etwaiger Altwert darf
+    // jedenfalls nicht als nachgewiesen erledigt gelten.
     expect(taxNoticeKlageFristErledigt('TEILABHILFE')).toBe(false);
-    expect(taxNoticeKlageFristErledigt('KLAGE')).toBe(true);
-    expect(taxNoticeKlageFristErledigt('RECHTSKRAEFTIG')).toBe(true);
+    expect(taxNoticeKlageFristErledigt('TEILEINSPRUCHSENTSCHEIDUNG')).toBe(false);
+    expect(taxNoticeKlageFristErledigt('KLAGE')).toBe(false);
+    expect(
+      taxNoticeKlageFristErledigt('KLAGE', {
+        klageDeadline: new Date('2026-06-01'),
+        klageFiledAt: new Date('2026-06-01'),
+        klageFiledBy: 'staff-1',
+      }),
+    ).toBe(true);
+    expect(
+      taxNoticeKlageFristErledigt('KLAGE', {
+        klageDeadline: new Date('2026-06-01'),
+        klageFiledAt: new Date('2026-06-02'),
+        klageFiledBy: 'staff-1',
+      }),
+    ).toBe(false);
+    expect(
+      taxNoticeKlageFristErledigt('BESTANDSKRAEFTIG', {
+        legalFinalAt: new Date('2026-06-01'),
+        legalFinalBy: 'staff-1',
+        legalFinalReason: 'Klagefrist und Aktenlage fachlich geprüft.',
+      }),
+    ).toBe(true);
+    expect(
+      taxNoticeKlageFristErledigt('BESTANDSKRAEFTIG', {
+        klageDeadline: new Date('2026-05-20'),
+        klageFiledAt: new Date('2026-05-20'),
+        klageFiledBy: 'staff-1',
+      }),
+    ).toBe(true);
   });
 
   it('Anforderung: RESPONDED bleibt offen (Prüfung steht aus)', () => {
-    expect(requestErledigt('CLOSED')).toBe(true);
-    expect(requestErledigt('CANCELLED')).toBe(true);
+    expect(requestErledigt('CLOSED')).toBe(false);
+    expect(requestErledigt('CLOSED', new Date('2026-06-01'), 'staff-1')).toBe(true);
+    expect(requestErledigt('CANCELLED')).toBe(false);
     for (const offen of ['OPEN', 'IN_PROGRESS', 'RESPONDED']) {
       expect(requestErledigt(offen), offen).toBe(false);
     }
@@ -74,12 +135,15 @@ describe('bucketFor (UTC-Tagesgrenzen)', () => {
 function eintrag(over: Partial<FristEintrag>): FristEintrag {
   return {
     quelle: 'WIEDERVORLAGE',
+    kontrollart: 'OPERATIONAL_DUE_DATE',
     id: 'x',
     titel: 'T',
     clientId: 'c',
     clientName: 'C',
     faelligAm: new Date('2026-06-10'),
     erledigt: false,
+    kontrollzustand: 'OPEN',
+    kontrollhinweis: null,
     erledigtAm: null,
     erledigtVon: null,
     verantwortlich: null,

@@ -1,3 +1,4 @@
+// Fachkatalog: DSGVO-CONTACT-EXPORT-001
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { serializeDsgvoExport } from '../export-package';

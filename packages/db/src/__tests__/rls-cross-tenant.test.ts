@@ -1,5 +1,6 @@
 // =============================================================================
 // Cross-Tenant-RLS-Test — Pflicht in CI (siehe ADR 0002)
+// Fachkatalog: ACCESS-TENANT-RLS-001
 //
 // Öffnet zwei Sessions mit unterschiedlichen tenant_ids.
 // Stellt sicher, dass die App-Role KEINE Daten anderer Tenants sehen kann.
@@ -44,6 +45,7 @@ const TENANT_CLIENT_PAIR_TABLES = [
   'gwg_check',
   'gwg_onboarding_invite',
   'invoice',
+  'notification',
   'pending_binder',
   'phone_note',
   'power_of_attorney',

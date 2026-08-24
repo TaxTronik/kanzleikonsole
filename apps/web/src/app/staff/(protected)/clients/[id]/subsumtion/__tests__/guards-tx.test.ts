@@ -1,3 +1,4 @@
+// Fachkatalog: RISK-ARCHIVE-SNAPSHOT-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // =============================================================================

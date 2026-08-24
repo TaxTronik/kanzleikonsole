@@ -13,6 +13,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { FilingsSection } from './filings/filings-section';
 import { NoticeStatusSelect } from './status-select';
 import { NOTICE_STATUS_TRANSITIONS } from './transitions';
+import { taxNoticeKlageFristErledigt } from '@/server/fristen/eintrag';
 
 import { berlinTodayUtcMidnight, fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { NOTICE_KIND_LABELS, NOTICE_STATUS_LABELS } from '@/lib/domain-labels';
@@ -24,6 +25,50 @@ const DELIVERY_LABELS: Record<string, string> = {
   FORMAL: 'förmlich zugestellt',
   PERSONAL: 'persönlich übergeben',
   OTHER: 'sonstiger Zugang',
+};
+
+const DATE_BASIS_LABELS: Record<string, string> = {
+  LEGACY_UNVERIFIED: 'Altbestand: Datumsbedeutung ungeprüft',
+  DISPATCH_DATE: 'nachgewiesener Aufgabe-/Übermittlungstag',
+  PROVISION_DATE: 'nachgewiesener Bereitstellungstag',
+  ACTUAL_ACCESS_DETERMINED: 'fachlich festgestellter Bekanntgabetag',
+  DOCUMENT_DATE_RISK_ONLY: 'Bescheiddatum, nur interner Risikobezug',
+};
+
+const REVIEW_REASON_LABELS: Record<string, string> = {
+  DISPATCH_DATE_UNKNOWN: 'Aufgabe-/Übermittlungstag unbekannt',
+  DETERMINED_NOTIFICATION_DATE_MISSING: 'festgestellter Bekanntgabetag fehlt',
+  NON_RECEIPT_REQUIRES_EVIDENCE_REVIEW: 'Nichtzugang ist fachlich zu würdigen',
+  RECORDED_EARLIER_ACCESS_AFTER_FICTION:
+    'als früher erfasster Eingang liegt nach dem Fiktionstag; Einordnung prüfen',
+  LATER_ACCESS_REQUIRES_EVIDENCE_REVIEW: 'behaupteter späterer Zugang ist zu würdigen',
+  CLAIMED_LATER_ACCESS_NOT_AFTER_FICTION:
+    'als später behaupteter Zugang liegt nicht nach dem Fiktionstag; Einordnung prüfen',
+  LEGAL_REMEDY_INSTRUCTION_UNCLEAR: 'Rechtsbehelfsbelehrung ist unklar',
+  NOTIFICATION_WORKDAY_REVIEW_REQUIRED: 'Feiertagskontext des Bekanntgabetags ist offen',
+  DEADLINE_WORKDAY_REVIEW_REQUIRED: 'Feiertagskontext des Fristendes ist offen',
+  HOLIDAY_LOCALITY_UNKNOWN: 'konkreter Feiertagsort ist nicht dokumentiert',
+  RISK_DATE_ONLY: 'nur Bescheiddatum als interner Risikobezug vorhanden',
+  DELIVERY_EVIDENCE_INSUFFICIENT: 'Ausgangsdatum ist nicht ausreichend nachgewiesen',
+  ACCESS_NOT_PROFESSIONALLY_DETERMINED: 'Zugang ist nicht fachlich festgestellt',
+  DETERMINED_LATER_ACCESS_NOT_AFTER_FICTION:
+    'als später festgestellter Zugang liegt nicht nach dem Fiktionstag; Einordnung prüfen',
+  ISSUED_AT_UNKNOWN: 'Erlassdatum fehlt',
+  PROVISION_DATE_UNKNOWN: 'Bereitstellungstag fehlt',
+  PROVISION_NOT_SUFFICIENTLY_EVIDENCED: 'Bereitstellung ist nicht ausreichend nachgewiesen',
+  PROVISION_PROFESSIONAL_APPROVAL_PENDING:
+    'technischer Bereitstellungsnachweis vorhanden; fachliche Freigabe steht aus',
+  ACTIVE_CONSENT_2026_NOT_DOCUMENTED: 'Einwilligung/Akzeptanz für 2026 ist nicht belegt',
+  ELIGIBILITY_2027_NOT_CONFIRMED: 'Voraussetzungen ab 2027 sind nicht bestätigt',
+  POSTAL_REQUEST_EFFECT_REQUIRES_REVIEW: 'wirksamer Postantrag erfordert Einzelfallprüfung',
+  POSTAL_REQUEST_STATUS_UNKNOWN: 'Postantragsstatus ist unbekannt',
+  LEGACY_NOTIFICATION_DATE_UNKNOWN: 'Benachrichtigungstag im Altrecht fehlt',
+  LEGACY_NOTIFICATION_ACCESS_DISPUTED: 'Zugang der Altbenachrichtigung ist streitig',
+  LEGACY_NOTIFICATION_OUTCOME_NOT_CONFIRMED:
+    'Versand der Altbenachrichtigung ist fehlgeschlagen oder nicht bestätigt',
+  NOTIFICATION_OUTCOME_UNKNOWN: 'Ergebnis der Benachrichtigung ist unbekannt',
+  NOTIFICATION_DUTY_DEVIATION_REQUIRES_SECTION_110_REVIEW:
+    'Benachrichtigungsabweichung: Wiedereinsetzung nach § 110 AO prüfen',
 };
 
 function diff(actual: { toString(): string } | null, expected: { toString(): string } | null) {
@@ -40,18 +85,43 @@ function DataRetrievalEvidenceDetails({
   legacyFallback,
   notificationDisputedOrLate,
   retrievedAt,
+  consentStatus,
+  eligibility2027Status,
+  postalRequestStatus,
+  postalRequestReceivedAt,
+  notificationStatus,
 }: {
   issuedAt: Date | null;
   notificationDate: Date | null;
   legacyFallback: boolean;
   notificationDisputedOrLate: boolean;
   retrievedAt: Date | null;
+  consentStatus: string;
+  eligibility2027Status: string;
+  postalRequestStatus: string;
+  postalRequestReceivedAt: Date | null;
+  notificationStatus: string;
 }) {
   return (
     <>
       {issuedAt && <div className="text-xs text-muted">Erlassen: {fmtDateShort(issuedAt)}</div>}
       {notificationDate && (
         <div className="text-xs text-muted">Benachrichtigung: {fmtDateShort(notificationDate)}</div>
+      )}
+      {notificationStatus !== 'NOT_RECORDED' && (
+        <div className="text-xs text-muted">Benachrichtigungsstatus: {notificationStatus}</div>
+      )}
+      {consentStatus !== 'NOT_APPLICABLE' && (
+        <div className="text-xs text-muted">Einwilligung 2026: {consentStatus}</div>
+      )}
+      {eligibility2027Status !== 'NOT_APPLICABLE' && (
+        <div className="text-xs text-muted">Voraussetzungen ab 2027: {eligibility2027Status}</div>
+      )}
+      {postalRequestStatus !== 'NOT_APPLICABLE' && (
+        <div className="text-xs text-muted">
+          Postantrag ab 2027: {postalRequestStatus}
+          {postalRequestReceivedAt ? ` (Zugang ${fmtDateShort(postalRequestReceivedAt)})` : ''}
+        </div>
       )}
       {legacyFallback && (
         <div className="text-xs text-amber-700">
@@ -67,23 +137,114 @@ function DataRetrievalEvidenceDetails({
   );
 }
 
-function MissingAppealDeadline({
-  deliveryMethod,
-  notificationDisputedOrLate,
-  retrievedAt,
+function DeadlineAssessment({
+  status,
+  appealDeadline,
+  internalRiskDeadline,
+  alternativeClaimedAccessDeadline,
+  manualReviewRequired,
+  manualReviewReason,
+  reinstatementReviewRequired,
+  deadlineDays,
 }: {
-  deliveryMethod: string;
-  notificationDisputedOrLate: boolean;
-  retrievedAt: Date | null;
+  status: string;
+  appealDeadline: Date | null;
+  internalRiskDeadline: Date | null;
+  alternativeClaimedAccessDeadline: Date | null;
+  manualReviewRequired: boolean;
+  manualReviewReason: string | null;
+  reinstatementReviewRequired: boolean;
+  deadlineDays: number | null;
 }) {
-  if (deliveryMethod === 'DATA_RETRIEVAL' && notificationDisputedOrLate && !retrievedAt) {
-    return (
-      <span className="text-xs text-amber-700">
-        Noch nicht bekanntgegeben — kein Abruf nachgewiesen
-      </span>
-    );
-  }
-  return <span className="text-disabled">—</span>;
+  const reasons = (manualReviewReason ?? '')
+    .split(',')
+    .map((reason) => reason.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      {status === 'CALCULATED' && appealDeadline && (
+        <>
+          <span
+            className={
+              manualReviewRequired ? 'text-xs font-medium text-amber-700' : 'text-xs text-muted'
+            }
+          >
+            {manualReviewRequired
+              ? 'Kontrollvorschlag – fachliche Freigabe offen'
+              : 'Kontrollvorschlag'}
+          </span>
+          <span
+            className={
+              deadlineDays !== null && deadlineDays <= 7
+                ? 'text-red-700 font-medium'
+                : 'text-secondary'
+            }
+          >
+            {fmtDateShort(appealDeadline)}
+          </span>
+          {deadlineDays !== null && (
+            <span className="text-xs text-muted">
+              {deadlineDays >= 0 ? `noch ${deadlineDays} Tage` : `${-deadlineDays} Tage abgelaufen`}
+            </span>
+          )}
+        </>
+      )}
+      {status === 'LEGACY_UNVERIFIED' && appealDeadline && (
+        <>
+          <span className="text-xs font-medium text-amber-700">Altbestand – ungeprüfte Frist</span>
+          <span className="text-amber-800">{fmtDateShort(appealDeadline)}</span>
+        </>
+      )}
+      {status === 'RISK_ONLY' && internalRiskDeadline && (
+        <>
+          <span className="text-xs font-medium text-amber-700">
+            Interner Risikotermin – keine Rechtsfrist
+          </span>
+          <span className="text-amber-800">{fmtDateShort(internalRiskDeadline)}</span>
+        </>
+      )}
+      {status === 'MANUAL_REVIEW' && (
+        <span className="text-xs font-medium text-amber-700">
+          Manuelle Fristprüfung erforderlich
+        </span>
+      )}
+      {status === 'MANUAL_REVIEW' && internalRiskDeadline && (
+        <span className="text-xs text-amber-700">
+          Szenario gesetzliche Fiktion: {fmtDateShort(internalRiskDeadline)}
+        </span>
+      )}
+      {status === 'MANUAL_REVIEW' && alternativeClaimedAccessDeadline && (
+        <span className="text-xs text-amber-700">
+          Szenario behaupteter späterer Zugang: {fmtDateShort(alternativeClaimedAccessDeadline)}
+        </span>
+      )}
+      {reasons.map((reason) => (
+        <span key={reason} className="text-xs text-amber-700">
+          {REVIEW_REASON_LABELS[reason] ?? reason}
+        </span>
+      ))}
+      {reinstatementReviewRequired && (
+        <span className="text-xs font-medium text-red-700">
+          Wiedereinsetzung nach § 110 AO gesondert prüfen
+        </span>
+      )}
+      {!appealDeadline && !internalRiskDeadline && status === 'LEGACY_UNVERIFIED' && (
+        <span className="text-xs text-amber-700">Altbestand fachlich noch nicht beurteilt</span>
+      )}
+    </div>
+  );
+}
+
+function PartialReliefEvidence({ receivedAt }: { receivedAt: Date | null }) {
+  if (!receivedAt) return null;
+  return (
+    <div className="text-xs text-muted mt-1">Teilabhilfe bekannt am {fmtDateShort(receivedAt)}</div>
+  );
+}
+
+function hasCompletePartialReliefEvidence(receivedAt: Date | null, receivedBy: string | null) {
+  return Boolean(receivedAt && receivedBy);
 }
 
 export default async function ClientNoticesPage({ params }: { params: Promise<{ id: string }> }) {
@@ -181,7 +342,7 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                   Bescheid
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
-                  Post-/Bescheiddatum
+                  Ausgangsdatum
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
                   Festgesetzt
@@ -211,8 +372,15 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                       (n.klageDeadline.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
                     )
                   : null;
-                const showDeadline =
-                  n.appealDeadline && ['NEU', 'GEPRUEFT', 'EINSPRUCH'].includes(n.status);
+                const klageFristErledigt = taxNoticeKlageFristErledigt(n.status, {
+                  klageDeadline: n.klageDeadline,
+                  klageFiledAt: n.klageFiledAt,
+                  klageFiledBy: n.klageFiledBy,
+                  legalFinalAt: n.legalFinalAt,
+                  legalFinalBy: n.legalFinalBy,
+                  legalFinalReason: n.legalFinalReason,
+                });
+                const klageEinreichungDokumentiert = Boolean(n.klageFiledAt && n.klageFiledBy);
                 return (
                   <tr key={n.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
@@ -251,15 +419,30 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                       <div className="text-xs text-muted">
                         {DELIVERY_LABELS[n.deliveryMethod] ?? n.deliveryMethod}
                       </div>
+                      <div className="text-xs text-muted">
+                        {DATE_BASIS_LABELS[n.dateBasis] ?? n.dateBasis}
+                      </div>
                       <DataRetrievalEvidenceDetails
                         issuedAt={n.retrievalIssuedAt}
                         notificationDate={n.retrievalNotificationDate}
                         legacyFallback={n.retrievalNotificationLegacyFallback}
                         notificationDisputedOrLate={n.retrievalNotificationDisputedOrLate}
                         retrievedAt={n.retrievedAt}
+                        consentStatus={n.retrievalConsentStatus}
+                        eligibility2027Status={n.retrievalEligibility2027Status}
+                        postalRequestStatus={n.retrievalPostalRequestStatus}
+                        postalRequestReceivedAt={n.retrievalPostalRequestReceivedAt}
+                        notificationStatus={n.retrievalNotificationStatus}
                       />
-                      {!n.legalRemedyInstructionValid && (
-                        <div className="text-xs text-amber-700">Jahresfrist (§ 356 Abs. 2 AO)</div>
+                      {n.legalRemedyInstructionStatus === 'UNWIRKSAM' && (
+                        <div className="text-xs text-amber-700">
+                          Jahresfrist-Kontrollvorschlag (§ 356 Abs. 2 AO)
+                        </div>
+                      )}
+                      {n.legalRemedyInstructionStatus === 'UNKLAR' && (
+                        <div className="text-xs text-amber-700">
+                          Rechtsbehelfsbelehrung unklar – manuell prüfen
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 font-mono text-primary">{fmtEUR(n.assessedAmount)}</td>
@@ -278,40 +461,16 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {showDeadline && n.appealDeadline ? (
-                        <div className="flex flex-col">
-                          <span
-                            className={
-                              deadlineDays !== null && deadlineDays <= 7
-                                ? 'text-red-700 font-medium'
-                                : 'text-secondary'
-                            }
-                          >
-                            {fmtDateShort(n.appealDeadline)}
-                          </span>
-                          {deadlineDays !== null && (
-                            <span className="text-xs text-muted">
-                              {deadlineDays >= 0
-                                ? `noch ${deadlineDays} Tage`
-                                : `${-deadlineDays} Tage abgelaufen`}
-                            </span>
-                          )}
-                          {deadlineDays !== null &&
-                            deadlineDays < 0 &&
-                            (n.status === 'NEU' || n.status === 'GEPRUEFT') && (
-                              <span className="text-xs text-amber-700 mt-0.5">
-                                Frist verstrichen — Wiedereinsetzung (§ 110 AO) binnen 1 Monat nach
-                                Wegfall des Hindernisses prüfen.
-                              </span>
-                            )}
-                        </div>
-                      ) : (
-                        <MissingAppealDeadline
-                          deliveryMethod={n.deliveryMethod}
-                          notificationDisputedOrLate={n.retrievalNotificationDisputedOrLate}
-                          retrievedAt={n.retrievedAt}
-                        />
-                      )}
+                      <DeadlineAssessment
+                        status={n.deadlineCalculationStatus}
+                        appealDeadline={n.appealDeadline}
+                        internalRiskDeadline={n.internalRiskDeadline}
+                        alternativeClaimedAccessDeadline={n.alternativeClaimedAccessDeadline}
+                        manualReviewRequired={n.manualReviewRequired}
+                        manualReviewReason={n.manualReviewReason}
+                        reinstatementReviewRequired={n.retrievalReinstatementReviewRequired}
+                        deadlineDays={deadlineDays}
+                      />
                     </td>
                     <td className="px-4 py-3">
                       {n.status === 'NEU' && (
@@ -329,30 +488,35 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                       {n.status === 'TEILABHILFE' && (
                         <span className="badge-yellow">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
+                      <PartialReliefEvidence receivedAt={n.partialReliefReceivedAt} />
+                      {n.status === 'TEILEINSPRUCHSENTSCHEIDUNG' && (
+                        <span className="badge-red">{NOTICE_STATUS_LABELS[n.status]}</span>
+                      )}
                       {n.status === 'ZURUECKGEWIESEN' && (
                         <span className="badge-red">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
                       {n.status === 'KLAGE' && (
                         <span className="badge-red">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
-                      {n.status === 'RECHTSKRAEFTIG' && (
+                      {n.status === 'BESTANDSKRAEFTIG' && (
                         <span className="badge-gray">{NOTICE_STATUS_LABELS[n.status]}</span>
                       )}
-                      {n.appealDecisionReceivedAt && (
+                      {n.status !== 'TEILABHILFE' && n.appealDecisionReceivedAt && (
                         <div className="text-xs text-muted mt-1">
                           Einspruchsentscheidung bekannt am{' '}
                           {fmtDateShort(n.appealDecisionReceivedAt)}
                         </div>
                       )}
-                      {n.appealDecisionLegalRemedyInstructionValid === false && (
-                        <div className="text-xs text-amber-700">
-                          Jahresfrist wegen Belehrungsmangel (§ 55 Abs. 2 FGO)
-                        </div>
-                      )}
-                      {n.klageDeadline && (
+                      {n.status !== 'TEILABHILFE' &&
+                        n.appealDecisionLegalRemedyInstructionValid === false && (
+                          <div className="text-xs text-amber-700">
+                            Jahresfrist wegen Belehrungsmangel (§ 55 Abs. 2 FGO)
+                          </div>
+                        )}
+                      {n.status !== 'TEILABHILFE' && n.klageDeadline && (
                         <div
                           className={`text-xs mt-1 ${
-                            (n.status === 'TEILABHILFE' || n.status === 'ZURUECKGEWIESEN') &&
+                            n.status === 'ZURUECKGEWIESEN' &&
                             klageDeadlineDays !== null &&
                             klageDeadlineDays <= 7
                               ? 'text-red-700 font-medium'
@@ -360,7 +524,14 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                           }`}
                         >
                           Klagefrist: {fmtDateShort(n.klageDeadline)}
-                          {(n.status === 'KLAGE' || n.status === 'RECHTSKRAEFTIG') && ' · erledigt'}
+                          {klageFristErledigt && ' · erledigt'}
+                          {!klageFristErledigt &&
+                            klageEinreichungDokumentiert &&
+                            ' · Einreichung dokumentiert, Fristkontrolle offen'}
+                          {!klageFristErledigt &&
+                            !klageEinreichungDokumentiert &&
+                            n.status === 'BESTANDSKRAEFTIG' &&
+                            ' · Abschlussnachweis unvollständig'}
                         </div>
                       )}
                       <NoticeStatusSelect
@@ -371,6 +542,12 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
                           appealFiledAt: n.appealFiledAt?.toISOString().slice(0, 10) ?? null,
                           appealFiledComplete: Boolean(n.appealFiledAt && n.appealFiledBy),
                           appealResolvedAt: n.appealResolvedAt?.toISOString().slice(0, 10) ?? null,
+                          partialReliefReceivedAt:
+                            n.partialReliefReceivedAt?.toISOString().slice(0, 10) ?? null,
+                          partialReliefComplete: hasCompletePartialReliefEvidence(
+                            n.partialReliefReceivedAt,
+                            n.partialReliefReceivedBy,
+                          ),
                           decisionReceivedAt:
                             n.appealDecisionReceivedAt?.toISOString().slice(0, 10) ?? null,
                           decisionComplete: Boolean(

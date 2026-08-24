@@ -15,7 +15,8 @@ nach dem Import insbesondere:
 
 1. Mandant und Wirtschaftsjahr,
 2. enthaltene Monate und Vorjahreswerte,
-3. Erlöse, Material-/Personalkosten und Ergebnis,
+3. Umsatzerlöse, Gesamtleistung, Material-/Personalkosten, Betriebsergebnis,
+   Ergebnis vor Steuern und vorläufiges Ergebnis,
 4. auffällige Lücken oder Vorzeichen.
 
 Die Periodenansicht zeigt Kennzahlen, Vergleiche und Liquiditätsindikatoren.
@@ -30,8 +31,11 @@ TaxTronik stellt zwei Rechenwege nebeneinander dar:
   `12 / erfasste Monate` auf das Gesamtjahr fortgeschrieben. Die Spanne wird
   mit zunehmender Datenabdeckung enger; eine Saisongewichtung findet nicht
   statt.
-- **Vorjahrestrend:** Aus mindestens zwei vollständigen Vorjahren wird eine
-  lineare Regression mit eigener Unsicherheitsspanne gebildet.
+- **Vorjahrestrend (derzeit abweichend):** Die Regression soll mindestens zwei
+  vollständige Vorjahre verwenden. Der aktuelle Code filtert zwölfmonatige
+  `YEAR`-Perioden jedoch nicht auf Jahre vor dem Zieljahr; vor Verwendung muss
+  deshalb manuell ausgeschlossen werden, dass Ziel- oder Zukunftsjahre in die
+  Datenbasis gelangt sind.
 
 Abweichende Ergebnisse sind kein technischer Fehler, sondern zeigen die
 unterschiedlichen Annahmen. Die Oberfläche weist die Datenbasis als Zahl der
@@ -62,5 +66,9 @@ Empfohlener Ablauf:
 - Keine automatische fachliche Freigabe von Annahmen.
 - Ergebnisse hängen vollständig von importierten Daten und eingegebenen
   Szenarien ab.
+- Das DATEV-Mapping führt Position 1051 (Gesamtleistung) intern als `revenue`
+  und verwendet Position 1300 (Betriebsergebnis) ersatzweise als
+  `resultBeforeTax`. Diese Felder dürfen nicht ohne fachliche Überleitung als
+  Umsatzerlöse oder Ergebnis vor Steuern behandelt werden.
 - Exporte und Screenshots müssen außerhalb von TaxTronik nach dem
   Berechtigungskonzept der Kanzlei behandelt werden.

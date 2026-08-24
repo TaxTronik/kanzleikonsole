@@ -18,12 +18,17 @@ export {
   renderTemplate,
   plainTextBody,
   type TemplateFallback,
+  type TemplateMailResult,
+  type ContactNotificationResult,
   type DispatchOptions,
 } from './dispatch';
 export {
   notifyRequestOpened,
+  notifyAutomaticTaxRequestOpened,
   REQUEST_OPENED_FALLBACK,
+  AUTOMATIC_TAX_REQUEST_OPENED_FALLBACK,
   type RequestOpenedInput,
+  type AutomaticTaxRequestOpenedInput,
 } from './request-opened';
 export {
   readSmtpConfig,

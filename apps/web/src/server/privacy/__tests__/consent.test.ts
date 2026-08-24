@@ -1,3 +1,4 @@
+// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
 import { describe, expect, it } from 'vitest';
 import {
   consentForNewDeclaration,

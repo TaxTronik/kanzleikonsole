@@ -1,4 +1,6 @@
 // =============================================================================
+// Fachkatalog: GWG-ACTIVATION-GATE-001
+//
 // GwG-Schranke (DB-Invariante) — Pflicht in CI
 //
 // Kern-Compliance-Invariante (§ 8 GwG): Ein Mandant darf NUR aktiv geschaltet

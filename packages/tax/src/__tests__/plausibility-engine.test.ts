@@ -1,7 +1,9 @@
 // =============================================================================
 // Plausibilitäts-Golden-Tests (fachlicher Audit) — gesetzlich fixierte
 // Erwartungswerte gegen deutsches Steuerrecht.
+// Fachkatalog: TAX-DEADLINE-WORKDAY-001
 // Fachkatalog: TAX-NOTICE-APPEAL-001
+// Fachkatalog: TAX-NOTICE-DATARETRIEVAL-001
 //
 // Jeder Test dokumentiert die Rechtsgrundlage im Kommentar. Diese Tests
 // SOLLEN brechen, wenn jemand die fachlichen Konstanten der Engine ändert.
@@ -33,7 +35,7 @@ import {
   klageDeadline,
   bekanntgabeFiktionTage,
   type GermanRegion,
-} from '../index';
+} from '../engine';
 
 function ymd(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
@@ -308,6 +310,15 @@ describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', (
   });
 
   describe('Datenabruf nach § 122a AO am Stichtag 01.01.2026', () => {
+    it('bleibt ohne Erlassdatum sowie im Altfall ohne Benachrichtigung fail-closed', () => {
+      expect(appealDeadlineForDataRetrieval(utc('2026-01-12'))).toBeNull();
+      expect(
+        appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
+          issuedAt: utc('2025-01-09'),
+        }),
+      ).toBeNull();
+    });
+
     it('knüpft im Altfall an den Versand der elektronischen Benachrichtigung an', () => {
       // Bereitstellung 10.01.2025, Benachrichtigung 13.01.2025. Nach § 122a
       // Abs. 4 a.F. gilt der Bescheid am 17.01. als bekanntgegeben; nicht schon
@@ -346,9 +357,9 @@ describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', (
       ).toBe('2025-01-13');
     });
 
-    it('leitet den 3→4-Tage-Übergang aus dem Versand der Benachrichtigung ab', () => {
+    it('leitet den 3→4-Tage-Übergang aus der Bereitstellung ab', () => {
       // Art. 97 § 1 Abs. 15 EGAO: Bereitstellung noch am 31.12.2024, Versand
-      // der Benachrichtigung am 01.01.2025 → bereits Vier-Tages-Fiktion.
+      // der Benachrichtigung am 01.01.2025 → noch Drei-Tages-Fiktion.
       expect(
         ymd(
           appealDeadlineForDataRetrieval(utc('2024-12-31'), null, {
@@ -359,7 +370,7 @@ describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', (
       ).toBe('2025-02-06');
     });
 
-    it('wendet bei Benachrichtigung ab 2025 vier statt drei Tage an', () => {
+    it('wendet trotz Benachrichtigung ab 2025 bei Bereitstellung 2024 drei Tage an', () => {
       expect(
         ymd(
           appealDeadlineForDataRetrieval(utc('2024-12-31'), null, {
@@ -367,7 +378,7 @@ describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', (
             notificationDate: utc('2025-01-03'),
           })!,
         ),
-      ).toBe('2025-02-07');
+      ).toBe('2025-02-06');
     });
 
     it('setzt ohne nachgewiesenen Benachrichtigungszugang und ohne Abruf keine Frist', () => {

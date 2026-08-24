@@ -22,15 +22,15 @@ eingerichtet oder fachlich freigegeben ist.
 
 ### Berufsträger und fachlich Verantwortliche
 
-| Einstieg                                                                         | Typ / Status                | Wofür?                                                                                  |
-| -------------------------------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------- |
-| [Fachkatalog](fachkatalog/README.md)                                             | Fachregeln mit Einzelstatus | Fachlogik, Entscheidungsgrundlagen, Grenzen, Code- und Testnachweise regelweise prüfen  |
-| [Funktionsumfang](../FEATURES.md)                                                | Ist-Inventur                | Vorhandene Funktionen und Produktgrenzen überblicken                                    |
-| [Anwenderdokumentation](anwenderdoku/README.md)                                  | Ist-Dokumentation           | Fachliche Abläufe aus Sicht von Kanzlei und Mandanten nachvollziehen                    |
-| [Bekannte Grenzen](assurance/known-limits.md)                                    | Ist-Abgrenzung              | Aussagen erkennen, die TaxTronik ausdrücklich nicht trifft                              |
-| [Compliance-Übersicht](compliance/README.md)                                     | Gemischter Index            | Softwaredokumente, Kanzleivorlagen und Prüfungs-Readiness unterscheiden                 |
-| [IDW-PS-880-Prüfungsbereitschaft](compliance/idw-ps880-pruefungsbereitschaft.md) | Gap-Analyse / Readiness     | Softwareprüfungs-Scope, Nachweisstand und offene Maßnahmen einordnen                    |
-| [IDW-PS-980-/TCMS-Einordnung](compliance/idw-ps980-tcms.md)                      | Ist-Mapping plus Zielbild   | Werkzeugunterstützung vom organisatorischen TCMS und nicht umgesetzten Zielbild trennen |
+| Einstieg                                                                         | Typ / Status                | Wofür?                                                                                     |
+| -------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
+| [Fachkatalog](fachkatalog/README.md)                                             | Fachregeln mit Einzelstatus | Fachlogik, [Abdeckung](fachkatalog/SCOPE.md), Grenzen sowie Code- und Testnachweise prüfen |
+| [Funktionsumfang](../FEATURES.md)                                                | Ist-Inventur                | Vorhandene Funktionen und Produktgrenzen überblicken                                       |
+| [Anwenderdokumentation](anwenderdoku/README.md)                                  | Ist-Dokumentation           | Fachliche Abläufe aus Sicht von Kanzlei und Mandanten nachvollziehen                       |
+| [Bekannte Grenzen](assurance/known-limits.md)                                    | Ist-Abgrenzung              | Aussagen erkennen, die TaxTronik ausdrücklich nicht trifft                                 |
+| [Compliance-Übersicht](compliance/README.md)                                     | Gemischter Index            | Softwaredokumente, Kanzleivorlagen und Prüfungs-Readiness unterscheiden                    |
+| [IDW-PS-880-Prüfungsbereitschaft](compliance/idw-ps880-pruefungsbereitschaft.md) | Gap-Analyse / Readiness     | Softwareprüfungs-Scope, Nachweisstand und offene Maßnahmen einordnen                       |
+| [IDW-PS-980-/TCMS-Einordnung](compliance/idw-ps980-tcms.md)                      | Ist-Mapping plus Zielbild   | Werkzeugunterstützung vom organisatorischen TCMS und nicht umgesetzten Zielbild trennen    |
 
 ### Kanzleianwender und Administratoren
 

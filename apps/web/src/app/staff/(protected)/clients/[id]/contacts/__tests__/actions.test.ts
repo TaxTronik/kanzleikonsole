@@ -179,6 +179,7 @@ describe('updateContactAction — Portal-Identität', () => {
         email: 'neu@example.test',
         phone: null,
         role: null,
+        lastLoginAt: null,
       },
     });
     expect(m.revokeAllSessions).toHaveBeenCalledWith('portal', CONTACT_ID);
@@ -238,5 +239,14 @@ describe('updateContactAction — Portal-Identität', () => {
       }),
     ).resolves.toEqual({ ok: true });
     expect(m.revokeAllSessions).not.toHaveBeenCalled();
+    expect(m.tx.clientContact.update).toHaveBeenCalledWith({
+      where: { id: CONTACT_ID },
+      data: {
+        fullName: 'Rey Koxha',
+        email: 'rey@example.test',
+        phone: null,
+        role: null,
+      },
+    });
   });
 });

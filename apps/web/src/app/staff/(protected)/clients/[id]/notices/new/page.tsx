@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
+import { REGION_LABELS } from '@taxtronik/tax';
 import { createNoticeAction } from '../actions';
 
 const KIND_OPTIONS: Array<[string, string]> = [
@@ -29,7 +30,7 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
   if (!client) notFound();
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-8 max-w-4xl">
       <Link href={`/staff/clients/${clientId}/notices`} className="back-link">
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
@@ -70,22 +71,67 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label-sm">
-              Versand / Bereitstellung / hilfsweise Bescheiddatum *
-            </label>
-            <input type="date" name="noticeDate" required className="input w-full" />
-            <p className="text-xs text-muted mt-1">
-              Maßgeblich ist der Tag der Aufgabe, elektronischen Absendung oder Bereitstellung. Beim
-              Datenabruf ist hier stets der Bereitstellungstag einzutragen. Ist der Tag nicht sicher
-              feststellbar, wird konservativ das Bescheiddatum verwendet.
-            </p>
+        <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+          <legend className="px-1 text-sm font-medium text-primary">
+            Ausgangsdatum und Nachweis
+          </legend>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-sm">Datum *</label>
+              <input type="date" name="noticeDate" required className="input w-full" />
+            </div>
+            <div>
+              <label className="label-sm">Bedeutung des Datums *</label>
+              <select name="dateBasis" required className="input w-full" defaultValue="">
+                <option value="" disabled>
+                  Bitte auswählen
+                </option>
+                <option value="DISPATCH_DATE">Postaufgabe / elektronische Absendung</option>
+                <option value="PROVISION_DATE">Bereitstellung zum Datenabruf</option>
+                <option value="ACTUAL_ACCESS_DETERMINED">
+                  Fachlich festgestellter tatsächlicher Zugang
+                </option>
+                <option value="DOCUMENT_DATE_RISK_ONLY">
+                  Nur Bescheiddatum (interner Risikotermin)
+                </option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="label-sm">Aktenzeichen FA</label>
-            <input name="fileNumber" maxLength={100} className="input w-full" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-sm">Nachweisstatus des Datums *</label>
+              <select
+                name="deliveryEvidenceStatus"
+                required
+                className="input w-full"
+                defaultValue="CLAIMED"
+              >
+                <option value="CLAIMED">nur angegeben</option>
+                <option value="SUBSTANTIATED">durch Unterlagen/Technik belegt</option>
+                <option value="PROFESSIONALLY_DETERMINED">fachlich festgestellt</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-sm">Nachweis / Fundstelle</label>
+              <input
+                name="deliveryEvidenceNote"
+                maxLength={2000}
+                className="input w-full"
+                placeholder="z. B. Postaufgabevermerk oder ELSTER-Protokoll"
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted">
+            Ein Bescheiddatum ersetzt keinen unbekannten Aufgabe- oder Absendungstag. In diesem Fall
+            wird nur ein sichtbar getrennter interner Risikotermin gespeichert. Bei „fachlich
+            festgestellter tatsächlicher Zugang“ müssen dieses Datum und der unten dokumentierte
+            Zugangstag übereinstimmen.
+          </p>
+        </fieldset>
+
+        <div>
+          <label className="label-sm">Aktenzeichen FA</label>
+          <input name="fileNumber" maxLength={100} className="input w-full" />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -107,66 +153,206 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
               name="legalRemedyInstruction"
               required
               className="input w-full"
-              defaultValue="VALID"
+              defaultValue="UNKLAR"
             >
-              <option value="VALID">vorhanden und korrekt</option>
-              <option value="MISSING_OR_INVALID">fehlt oder ist unrichtig</option>
+              <option value="WIRKSAM">wirksam geprüft</option>
+              <option value="UNWIRKSAM">fehlt oder ist unwirksam</option>
+              <option value="UNKLAR">unklar — Berufsträgerprüfung erforderlich</option>
             </select>
           </div>
         </div>
+        <div>
+          <label className="label-sm">Begründung der Belehrungsprüfung *</label>
+          <textarea
+            name="legalRemedyInstructionNote"
+            required
+            minLength={3}
+            maxLength={2000}
+            rows={2}
+            className="input w-full"
+            placeholder="Pflichtbestandteile, Auffälligkeiten oder Grund für den offenen Prüffall"
+          />
+        </div>
+
+        <HolidayLocationFields
+          prefix="recipient"
+          title="Empfängerort der Bekanntgabefiktion"
+          defaultName={client.name}
+        />
+        <HolidayLocationFields
+          prefix="authority"
+          title="Sitz der zuständigen Finanzbehörde für das Fristende"
+        />
+        <div>
+          <label className="label-sm">Kalenderquelle / Prüfnachweis *</label>
+          <textarea
+            name="holidayContextNote"
+            required
+            minLength={3}
+            rows={2}
+            maxLength={2000}
+            className="input w-full"
+            placeholder="z. B. geprüfte Behördenquelle, Stand und Umfang der örtlichen Prüfung"
+          />
+          <p className="text-xs text-muted mt-1">
+            Dokumentieren Sie Quelle und Prüfstand auch bei einem bestätigten Kalender. Der Nachweis
+            gehört zur reproduzierbaren Berechnungsgrundlage.
+          </p>
+        </div>
 
         <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
-          <legend className="px-1 text-sm font-medium text-primary">
-            Datenabruf (§ 122a Abs. 4 AO)
-          </legend>
+          <legend className="px-1 text-sm font-medium text-primary">Datenabruf (§ 122a AO)</legend>
           <p className="text-xs text-muted">
-            Nur bei „Zum Datenabruf bereitgestellt“ ausfüllen. Das Erlassdatum entscheidet über Alt-
-            oder Neurecht; der Bereitstellungstag steht oben im ersten Datumsfeld.
+            Nur beim Bekanntgabeweg „Datenabruf“ ausfüllen. Das Erlassdatum wählt das Regime;
+            Bereitstellung, Benachrichtigung, Einwilligung und Postantrag bleiben getrennte
+            Tatsachen.
           </p>
           <div>
             <label className="label-sm">Erlass-/Bescheiddatum</label>
             <input type="date" name="retrievalIssuedAt" className="input w-full" />
-            <p className="text-xs text-muted mt-1">
-              Beim Datenabruf Pflicht. Für nach dem 31.12.2025 erlassene Bescheide gilt
-              Bereitstellung + 4 Tage.
-            </p>
           </div>
-          <div>
-            <label className="label-sm">Elektronische Benachrichtigung versandt am</label>
-            <input type="date" name="retrievalNotificationDate" className="input w-full" />
-            <p className="text-xs text-muted mt-1">
-              Für bis 31.12.2025 erlassene Bescheide Pflicht; die alte Bekanntgabefiktion beginnt
-              mit dieser Benachrichtigung, nicht mit der Bereitstellung.
-            </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-sm">Einwilligung im Jahr 2026</label>
+              <select
+                name="retrievalConsentStatus"
+                defaultValue="NOT_APPLICABLE"
+                className="input w-full"
+              >
+                <option value="NOT_APPLICABLE">nicht anwendbar</option>
+                <option value="CONFIRMED">aktiv erteilt und nachgewiesen</option>
+                <option value="NOT_GIVEN">nicht erteilt</option>
+                <option value="UNKNOWN">unbekannt</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-sm">Voraussetzungen ab 2027</label>
+              <select
+                name="retrievalEligibility2027Status"
+                defaultValue="NOT_APPLICABLE"
+                className="input w-full"
+              >
+                <option value="NOT_APPLICABLE">nicht anwendbar</option>
+                <option value="CONFIRMED">Voraussetzungen bestätigt</option>
+                <option value="NOT_MET">nicht erfüllt</option>
+                <option value="UNKNOWN">unbekannt</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-sm">Postantrag / Widerruf ab 2027</label>
+              <select
+                name="retrievalPostalRequestStatus"
+                defaultValue="NOT_APPLICABLE"
+                className="input w-full"
+              >
+                <option value="NOT_APPLICABLE">nicht anwendbar</option>
+                <option value="NONE_EFFECTIVE">kein wirksamer Antrag</option>
+                <option value="EFFECTIVE">wirksamer Antrag liegt vor</option>
+                <option value="UNKNOWN">unbekannt</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-sm">Postantrag bei Behörde eingegangen am</label>
+              <input type="date" name="retrievalPostalRequestReceivedAt" className="input w-full" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-sm">Benachrichtigungsstatus</label>
+              <select
+                name="retrievalNotificationStatus"
+                defaultValue="NOT_RECORDED"
+                className="input w-full"
+              >
+                <option value="NOT_RECORDED">nicht erfasst</option>
+                <option value="SENT">versandt</option>
+                <option value="FAILED">technisch fehlgeschlagen</option>
+                <option value="UNKNOWN">Ergebnis unbekannt</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-sm">Benachrichtigung versandt am</label>
+              <input type="date" name="retrievalNotificationDate" className="input w-full" />
+            </div>
           </div>
           <label className="flex items-start gap-2 text-sm text-secondary">
             <input type="checkbox" name="retrievalNotificationDisputedOrLate" className="mt-0.5" />
-            <span>Zugang der Benachrichtigung bestritten oder erst verspätet erfolgt</span>
+            <span>
+              Altrecht: Zugang der Benachrichtigung bestritten oder erst verspätet erfolgt
+            </span>
           </label>
           <div>
             <label className="label-sm">Tatsächlich abgerufen am</label>
             <input type="date" name="retrievedAt" className="input w-full" />
             <p className="text-xs text-muted mt-1">
-              Im markierten Ausnahmefall maßgeblich, sobald ein Abruf erfolgt ist. Ohne
-              nachgewiesenen Benachrichtigungszugang und ohne Abruf läuft noch keine Frist.
+              Der Abruf ist grundsätzlich Kontrollinformation. Nur im markierten altrechtlichen
+              Ausnahmefall kann er fristauslösend sein.
             </p>
           </div>
+          <p className="text-xs text-muted">
+            Ein Benachrichtigungsfehler verändert den Vier-Tage-Fiktionstag nicht automatisch. Er
+            wird separat als Pflichtabweichung und manueller §-110-Prüffall gespeichert.
+          </p>
         </fieldset>
 
-        <div>
-          <label className="label-sm">
-            Tatsächlich bekanntgegeben / zugegangen am{' '}
-            <span className="text-disabled font-normal">(bei Fiktionswegen optional)</span>
-          </label>
-          <input type="date" name="receivedAt" className="input w-full" />
-          <p className="text-xs text-muted mt-1">
-            Bei Post im Inland/Ausland oder elektronischer Übermittlung nur ausfüllen, wenn ein{' '}
-            <strong>späterer</strong> Zugang als die gesetzliche Fiktion nachweisbar ist. Dieses
-            Feld gilt nicht für den Datenabruf. Bei förmlicher, persönlicher oder sonstiger
-            Bekanntgabe ist der rechtlich maßgebliche Tag Pflicht. Fehlende/unrichtige Belehrung
-            führt grundsätzlich zur Jahresfrist (§ 356 Abs. 2 AO; Ausnahmen prüfen).
+        <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+          <legend className="px-1 text-sm font-medium text-primary">
+            Tatsächlicher Zugang und Einwendungen
+          </legend>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-sm">Zugangslage *</label>
+              <select
+                name="accessStatus"
+                required
+                defaultValue="UNCONTESTED"
+                className="input w-full"
+              >
+                <option value="UNCONTESTED">keine Abweichung vorgetragen</option>
+                <option value="NOT_RECEIVED_DISPUTED">Zugang vollständig bestritten</option>
+                <option value="EARLIER_RECEIPT_RECORDED">
+                  früherer tatsächlicher Eingang dokumentiert (Fiktion bleibt maßgeblich)
+                </option>
+                <option value="LATER_RECEIPT_CLAIMED">späterer Zugang behauptet</option>
+                <option value="LATER_RECEIPT_DETERMINED">
+                  späterer Zugang fachlich festgestellt
+                </option>
+              </select>
+            </div>
+            <div>
+              <label className="label-sm">Zugangstag</label>
+              <input type="date" name="receivedAt" className="input w-full" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-sm">Nachweisstatus des Zugangs</label>
+              <select name="accessEvidenceStatus" defaultValue="" className="input w-full">
+                <option value="">nicht anwendbar</option>
+                <option value="CLAIMED">nur angegeben</option>
+                <option value="SUBSTANTIATED">durch Unterlagen belegt</option>
+                <option value="PROFESSIONALLY_DETERMINED">fachlich festgestellt</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-sm">Zugangsnachweis / Würdigung</label>
+              <input
+                name="accessEvidenceNote"
+                maxLength={2000}
+                className="input w-full"
+                placeholder="z. B. Posteingangsbuch, Umschlag, dokumentierte Würdigung"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted">
+            Ein behaupteter späterer Zugang öffnet einen manuellen Prüffall. Er wird erst nach
+            dokumentierter fachlicher Feststellung als Rechtsdatum verwendet. Beim Datenabruf
+            bleiben diese allgemeinen Felder unverändert; Benachrichtigung, Streitfall und Abruf
+            werden ausschließlich im §-122a-Bereich darüber dokumentiert.
           </p>
-        </div>
+        </fieldset>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -213,5 +399,114 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
         </div>
       </form>
     </div>
+  );
+}
+
+function HolidayLocationFields({
+  prefix,
+  title,
+  defaultName = '',
+}: {
+  prefix: 'recipient' | 'authority';
+  title: string;
+  defaultName?: string;
+}) {
+  return (
+    <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+      <legend className="px-1 text-sm font-medium text-primary">{title}</legend>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label-sm">Empfänger / Behörde *</label>
+          <input
+            name={prefix + 'Name'}
+            defaultValue={defaultName}
+            required
+            maxLength={200}
+            className="input w-full"
+          />
+        </div>
+        <div>
+          <label className="label-sm">Staat (ISO-2) *</label>
+          <input
+            name={prefix + 'CountryCode'}
+            defaultValue="DE"
+            required
+            minLength={2}
+            maxLength={2}
+            pattern="[A-Z]{2}"
+            className="input w-full uppercase"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="label-sm">Zusätzliche örtliche Feiertage</label>
+        <input
+          name={prefix + 'LocalHolidayDates'}
+          maxLength={1000}
+          className="input w-full"
+          placeholder="2026-08-08, 2026-08-17"
+        />
+        <p className="text-xs text-muted mt-1">
+          Nur gesetzliche Feiertage ergänzen, die für diesen konkreten Ort gelten und nicht bereits
+          im Bundeslandkalender enthalten sind; Format JJJJ-MM-TT, getrennt durch Komma oder
+          Leerzeichen.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label-sm">Bundesland</label>
+          <select name={prefix + 'Region'} defaultValue="" className="input w-full">
+            <option value="">Unbekannt / nicht deutsch</option>
+            {Object.entries(REGION_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label-sm">Ort / Gemeinde (bei bestätigtem Kalender Pflicht)</label>
+          <input name={prefix + 'Locality'} maxLength={200} className="input w-full" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label-sm">Kalenderstand *</label>
+          <select
+            name={prefix + 'HolidayContextStatus'}
+            required
+            defaultValue="UNKNOWN"
+            className="input w-full"
+          >
+            <option value="CONFIRMED_FOR_DATE_AND_LOCATION">
+              für Datum und konkreten Ort bestätigt
+            </option>
+            <option value="STATE_LEVEL_ONLY">nur Bundeslandkalender geprüft</option>
+            <option value="HISTORICAL_UNVERIFIED">historischer Stand ungeprüft</option>
+            <option value="FOREIGN_UNSUPPORTED">ausländischer Kalender nicht unterstützt</option>
+            <option value="UNKNOWN">unklar — manuell prüfen</option>
+          </select>
+        </div>
+        <div>
+          <label className="label-sm">Mariä Himmelfahrt in Bayern *</label>
+          <select
+            name={prefix + 'BavariaAssumption'}
+            required
+            defaultValue="UNKNOWN"
+            className="input w-full"
+          >
+            <option value="UNKNOWN">nicht geklärt / nicht relevant</option>
+            <option value="YES">am Ort gesetzlicher Feiertag</option>
+            <option value="NO">am Ort kein gesetzlicher Feiertag</option>
+          </select>
+        </div>
+      </div>
+      <p className="text-xs text-muted">
+        Beide Orte werden getrennt gespeichert. Der Kanzleisitz wird nicht stillschweigend als
+        Empfänger- oder Behördenort übernommen. „Für Datum und konkreten Ort bestätigt“ darf nur
+        gewählt werden, wenn Ort, örtliche Feiertage und gegebenenfalls die bayerische
+        Gemeindeannahme tatsächlich geprüft wurden.
+      </p>
+    </fieldset>
   );
 }

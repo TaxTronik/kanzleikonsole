@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+// Fachkatalog: GWG-RETENTION-DESTRUCTION-001
 import { Prisma } from '../prisma-client';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';

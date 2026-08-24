@@ -1,5 +1,6 @@
 // =============================================================================
 // Unit-Tests: § 147 AO / § 8 Abs. 4 GwG Aufbewahrungsfristen & Object-Lock-Modus.
+// Fachkatalog: DOC-RETENTION-CLASS-001
 //
 // Getestet werden ausschließlich REINE Funktionen aus service.ts, die ohne
 // S3/ClamAV/Netzwerk laufen:

@@ -110,10 +110,11 @@ describe('parseFormData-Migrationsrest', () => {
     // Der Bescheid-Parser transformiert inzwischen zusaetzliche Abrufdaten und
     // ist deshalb korrekt im transformierten Rest statt bei den exakten
     // Feld-zu-Feld-Parses. Die Gesamtzahl der direkten Parses bleibt gleich;
-    // der neue interne Anforderungskommentar nutzt dagegen den gemeinsamen,
-    // strikt schema-basierten parseFormData-Helfer.
+    // Der interne Anforderungskommentar und die neue tägliche
+    // Fristenabschlusskontrolle nutzen dagegen den gemeinsamen, strikt
+    // schema-basierten parseFormData-Helfer.
     expect(direct).toHaveLength(55);
     expect(direct.filter((call) => !call.exact)).toHaveLength(49);
-    expect(shared).toBe(32);
+    expect(shared).toBe(33);
   });
 });

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
+// Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+// Fachkatalog: GWG-BENEFICIAL-OWNERS-001
 import {
   gwgDecisionGateErrors,
   gwgVerificationErrors,

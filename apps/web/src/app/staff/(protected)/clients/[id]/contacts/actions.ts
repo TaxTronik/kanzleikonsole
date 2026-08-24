@@ -165,7 +165,16 @@ export async function updateContactAction(
       }
       await tx.clientContact.update({
         where: { id: contactId },
-        data: { fullName, email, phone, role },
+        data: {
+          fullName,
+          email,
+          phone,
+          role,
+          // lastLoginAt dient zugleich als Nachweis, dass genau diese
+          // Login-Adresse bereits verwendet wurde. Nach einem Adresswechsel
+          // darf dieser Nachweis nicht auf die neue E-Mail übergehen.
+          ...(emailChanged ? { lastLoginAt: null } : {}),
+        },
       });
       await evidenceService.record(tx, {
         tenantId,

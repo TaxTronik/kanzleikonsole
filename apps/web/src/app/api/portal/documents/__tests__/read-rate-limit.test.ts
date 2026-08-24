@@ -1,6 +1,7 @@
 // =============================================================================
 // Unit-Tests: Read-Rate-Limit der Portal-Dokument-Routen (Audit 2026-06,
 // Befund 6).
+// Fachkatalog: DOC-PORTAL-SHARING-001
 //
 // Download- und Preview-Route schreiben pro Abruf einen Audit-Eintrag
 // (evidenceService.record) — das Limit pro Session-Kontakt muss deshalb VOR

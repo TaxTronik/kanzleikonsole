@@ -6,6 +6,8 @@
 // personenbezogenen Daten:
 //
 //   - notification          → 1 Jahr nach Erstellung  (löschen)
+//   - tax_deadline_notification_history → max. 1 Jahr nach Archivierung
+//                             (pseudonymen technischen Nachweis löschen)
 //   - phone_note            → 3 Jahre nach Erstellung  (löschen)
 //   - client_contact.lastLoginAt → 2 Jahre nach letztem Login (Feld nullen,
 //                             Kontakt selbst bleibt — nur der Zeitstempel ist
@@ -19,7 +21,9 @@
 // geht automatisch mit. Das referenzierte Dokument bleibt (eigene Object-Lock-
 // Retention). tax_deadline.request_id und form_submission.request_id sind lose
 // Spalten ohne FK — sie würden sonst verwaisen, daher werden sie pro Batch in
-// derselben Transaktion zuerst genullt.
+// derselben Transaktion zuerst genullt. Bei einer bereits terminalisierten
+// Auto-Benachrichtigung ist tax_deadline.request_id schon leer; ihre stabile
+// Herkunft wird vor dem Request-Delete über request.tax_deadline_id aufgelöst.
 //
 // Fristen leap-year-korrekt über setFullYear (nicht n*365 Tage).
 // Idempotent: doppelte Ausführung pro Tag ist ein no-op (zweiter Lauf findet
@@ -186,15 +190,130 @@ async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
 
       const stillEligible = await tx.request.findMany({
         where: { AND: [where, { id: { in: ids } }] },
-        select: { id: true },
+        // Die Request-Zeilen sind bereits FOR UPDATE gesperrt. Damit ist auch
+        // taxDeadlineId bis zum Delete stabil und kann eine zuvor vom Worker
+        // nach ORPHANED entkoppelte Deadline weiterhin sicher identifizieren.
+        select: { id: true, taxDeadlineId: true },
       });
       const eligibleIds = stillEligible.map((r) => r.id);
       if (eligibleIds.length === 0) return 0;
+      const eligibleTaxDeadlineIds = Array.from(
+        new Set(
+          stillEligible
+            .map((request) => request.taxDeadlineId)
+            .filter((id): id is string => typeof id === 'string'),
+        ),
+      );
 
-      await tx.taxDeadline.updateMany({
-        where: { requestId: { in: eligibleIds } },
-        data: { requestId: null },
+      // Pointer-Zeilen und bereits ORPHANED gewordene Ursprungszeilen werden
+      // in fester Reihenfolge gesperrt. So kann zwischen Recheck,
+      // Neutralisierung und Request-Delete weder ein Worker-Abschluss noch
+      // eine neue Verknüpfung denselben Deadline-Zustand umhängen.
+      const originDeadlineFilter =
+        eligibleTaxDeadlineIds.length > 0
+          ? Prisma.sql`OR deadline."id" IN (${Prisma.join(
+              eligibleTaxDeadlineIds.map((id) => Prisma.sql`${id}::uuid`),
+            )})`
+          : Prisma.sql``;
+      await tx.$queryRaw(
+        Prisma.sql`
+          SELECT deadline."id"
+            FROM "tax_deadline" AS deadline
+           WHERE deadline."request_id" IN (
+                   ${Prisma.join(eligibleIds.map((id) => Prisma.sql`${id}::uuid`))}
+                 )
+              ${originDeadlineFilter}
+           ORDER BY deadline."id"
+           FOR UPDATE
+        `,
+      );
+
+      // Der Unlink-Trigger akzeptiert eine vollständige Neutralisierung nur
+      // mit dieser transaktionslokalen, expliziten Purge-Freigabe. Ein
+      // laufender UNKNOWN-Versandclaim bleibt auch dann fail-closed gesperrt.
+      await tx.$queryRaw(
+        Prisma.sql`SELECT set_config('app.tax_deadline_notification_purge', 'on', true)`,
+      );
+      const neutralizedDeadlines = await tx.taxDeadline.updateMany({
+        where: {
+          OR: [
+            // Noch bestehender technischer Pointer.
+            { requestId: { in: eligibleIds } },
+            // Der Worker kann den Pointer bereits terminal nach ORPHANED
+            // gelöst haben. Request.taxDeadlineId bewahrt bis zum Purge die
+            // stabile Herkunft; nur dieser explizite Zustand wird hier über
+            // die asymmetrische Relation neutralisiert.
+            ...(eligibleTaxDeadlineIds.length > 0
+              ? [
+                  {
+                    id: { in: eligibleTaxDeadlineIds },
+                    requestId: null,
+                    autoRequestNotificationStatus: 'ORPHANED' as const,
+                  },
+                ]
+              : []),
+          ],
+        },
+        data: {
+          // TAX-DEADLINE-AUTOREQUEST-001: Beim DSGVO-Purge verschwindet die
+          // fachliche Request-Verknuepfung. Der davon getrennte technische
+          // Benachrichtigungszustand muss in derselben Transaktion neutralisiert
+          // werden; sonst bliebe eine Provider-Aussage ohne Bezugsobjekt stehen.
+          requestId: null,
+          autoRequestNotificationStatus: 'NOT_REQUIRED',
+          autoRequestNotificationAttemptCount: 0,
+          autoRequestNotificationLastAttemptAt: null,
+          autoRequestNotificationNextAttemptAt: null,
+          autoRequestNotificationAcceptedAt: null,
+          autoRequestNotificationLastError: null,
+          autoRequestNotificationEscalatedAt: null,
+        },
       });
+      if (neutralizedDeadlines.count < eligibleTaxDeadlineIds.length) {
+        // Jede stabile Auto-Request-Herkunft muss vor dem Delete entweder als
+        // Pointer- oder als ORPHANED-Zeile vollständig neutralisiert worden
+        // sein. Bei inkonsistentem Altbestand wird der gesamte Batch
+        // zurückgerollt, statt die letzte Zuordnung zur Versandhistorie zu
+        // vernichten.
+        throw new Error('RETENTION_TAX_DEADLINE_NEUTRALIZATION_CHANGED');
+      }
+      if (eligibleTaxDeadlineIds.length > 0) {
+        const neutralizedOrigins = await tx.taxDeadline.findMany({
+          where: { id: { in: eligibleTaxDeadlineIds } },
+          select: {
+            id: true,
+            requestId: true,
+            autoRequestNotificationStatus: true,
+            autoRequestNotificationAttemptCount: true,
+            autoRequestNotificationLastAttemptAt: true,
+            autoRequestNotificationNextAttemptAt: true,
+            autoRequestNotificationAcceptedAt: true,
+            autoRequestNotificationLastError: true,
+            autoRequestNotificationEscalatedAt: true,
+          },
+        });
+        const originById = new Map(neutralizedOrigins.map((deadline) => [deadline.id, deadline]));
+        const everyStableOriginNeutralized = eligibleTaxDeadlineIds.every((deadlineId) => {
+          const deadline = originById.get(deadlineId);
+          return (
+            deadline?.requestId === null &&
+            deadline.autoRequestNotificationStatus === 'NOT_REQUIRED' &&
+            deadline.autoRequestNotificationAttemptCount === 0 &&
+            deadline.autoRequestNotificationLastAttemptAt === null &&
+            deadline.autoRequestNotificationNextAttemptAt === null &&
+            deadline.autoRequestNotificationAcceptedAt === null &&
+            deadline.autoRequestNotificationLastError === null &&
+            deadline.autoRequestNotificationEscalatedAt === null
+          );
+        });
+        if (!everyStableOriginNeutralized) {
+          // Ein aggregierter Update-Count kann einen verfehlten Ursprung durch
+          // eine zusätzlich aktualisierte Legacy-Pointer-Zeile verdecken. Erst
+          // der vollständige Nachzustand jedes stabilen Origins autorisiert den
+          // anschließenden Request-Delete.
+          throw new Error('RETENTION_TAX_DEADLINE_NEUTRALIZATION_CHANGED');
+        }
+      }
       // Legacy-Submissions besaßen teils nur den Rücklink
       // request.form_submission_id. Vor dem Delete wird deterministisch eine
       // der gelöschten UUIDs als Tombstone übernommen; ein schon vorhandener
@@ -251,6 +370,14 @@ export const dsgvoRetentionWorker = new Worker<ChecksJob>(
       const notifications = await prismaOwner.notification.deleteMany({
         where: { tenantId, createdAt: { lt: notifCutoff } },
       });
+      const taxDeadlineNotificationHistory =
+        await prismaOwner.taxDeadlineNotificationHistory.deleteMany({
+          // TAX-DEADLINE-AUTOREQUEST-001: Der beim Rematerialisieren bewusst
+          // pseudonym gehaltene technische Versandnachweis ist kein
+          // Dauerarchiv. Maximal ein Jahr nach archivedAt wird er strikt
+          // tenantgebunden entfernt.
+          where: { tenantId, archivedAt: { lt: notifCutoff } },
+        });
       const phoneNotes = await prismaOwner.phoneNote.deleteMany({
         where: { tenantId, createdAt: { lt: phoneCutoff } },
       });
@@ -277,6 +404,7 @@ export const dsgvoRetentionWorker = new Worker<ChecksJob>(
 
       const counts = {
         notificationsDeleted: notifications.count,
+        taxDeadlineNotificationHistoryDeleted: taxDeadlineNotificationHistory.count,
         phoneNotesDeleted: phoneNotes.count,
         lastLoginCleared: lastLogins.count,
         requestsDeletedSixYear,
@@ -300,6 +428,7 @@ export const dsgvoRetentionWorker = new Worker<ChecksJob>(
             after: {
               ...counts,
               notifCutoff: notifCutoff.toISOString(),
+              taxDeadlineNotificationHistoryCutoff: notifCutoff.toISOString(),
               phoneCutoff: phoneCutoff.toISOString(),
               loginCutoff: loginCutoff.toISOString(),
               requestCutoff: requestCutoff.toISOString(),
@@ -315,6 +444,7 @@ export const dsgvoRetentionWorker = new Worker<ChecksJob>(
           tenantId,
           ...counts,
           notifCutoff: notifCutoff.toISOString(),
+          taxDeadlineNotificationHistoryCutoff: notifCutoff.toISOString(),
           phoneCutoff: phoneCutoff.toISOString(),
           loginCutoff: loginCutoff.toISOString(),
           requestCutoff: requestCutoff.toISOString(),

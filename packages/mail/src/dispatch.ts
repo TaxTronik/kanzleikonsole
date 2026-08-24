@@ -50,6 +50,34 @@ export interface DispatchOptions {
   attachments?: MailAttachment[];
 }
 
+export interface ContactNotificationResult {
+  /** Mindestens ein Mail-Einzelversuch wurde vom SMTP-Provider angenommen. */
+  ok: boolean;
+  /** Zahl der vom SMTP-Provider angenommenen Einzelversuche. */
+  recipients: number;
+  /** Zahl der adressierten Kontakte. */
+  attempted: number;
+  /**
+   * Ein nachgelagerter, nicht empfängerbezogener Side-Effect (derzeit n8n)
+   * wurde erfolgreich ausgelöst. Bei Mail-Totalfehler darf dann nicht blind
+   * erneut versucht werden, weil der externe Workflow bereits gelaufen ist.
+   */
+  externalSideEffectOccurred: boolean;
+  /**
+   * Mindestens ein SMTP-Versuch endete mit einer Exception ohne explizite
+   * Provider-Ablehnung. Nach moeglicher Annahme darf ein Aufrufer dann nicht
+   * automatisch erneut senden.
+   */
+  uncertainFailure: boolean;
+}
+
+export interface TemplateMailResult {
+  ok: boolean;
+  sentViaTemplate: boolean;
+  /** Siehe `ContactNotificationResult.uncertainFailure`. */
+  uncertainFailure: boolean;
+}
+
 /**
  * System-generierte URL-Variablen (Portal-Links, Magic-Links). Diese Werte
  * stammen ausschließlich aus portalBaseUrl + App-Routen — sie dürfen NICHT
@@ -145,9 +173,7 @@ async function resolveProfileSubjectSuffix(opts: DispatchOptions): Promise<strin
   return clientIds.size > 1 ? client.name : undefined;
 }
 
-export async function sendTemplateMail(
-  opts: DispatchOptions,
-): Promise<{ ok: boolean; sentViaTemplate: boolean }> {
+export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateMailResult> {
   const dispatch = await readMailDispatch({
     tenantId: opts.tenantId,
     actorId: null,
@@ -184,7 +210,7 @@ export async function sendTemplateMail(
         tenantId: opts.tenantId,
       });
     }
-    return { ok: false, sentViaTemplate: false };
+    return { ok: false, sentViaTemplate: false, uncertainFailure: false };
   }
 
   const subjectSuffix = (
@@ -215,7 +241,15 @@ export async function sendTemplateMail(
         tenantId: opts.tenantId,
       });
     }
-    return { ok: false, sentViaTemplate };
+    return {
+      ok: false,
+      sentViaTemplate,
+      // TAX-DEADLINE-AUTOREQUEST-001: Nur eine explizite negative SMTP-
+      // Antwort beweist hier hinreichend, dass der Provider die Nachricht
+      // nicht angenommen hat. Transport-/Socket-/Timeout-Exceptions bleiben
+      // wegen moeglicher Annahme vor dem Verbindungsabbruch fail-closed.
+      uncertainFailure: !isExplicitSmtpRejection(err),
+    };
   }
 
   if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
@@ -223,7 +257,18 @@ export async function sendTemplateMail(
       tenantId: opts.tenantId,
     });
   }
-  return { ok: true, sentViaTemplate };
+  return { ok: true, sentViaTemplate, uncertainFailure: false };
+}
+
+function isExplicitSmtpRejection(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const responseCode = (error as { responseCode?: unknown }).responseCode;
+  return (
+    typeof responseCode === 'number' &&
+    Number.isInteger(responseCode) &&
+    responseCode >= 400 &&
+    responseCode <= 599
+  );
 }
 
 /**
@@ -231,25 +276,57 @@ export async function sendTemplateMail(
  * eingeschaltetem `notificationsEnabled`. Pro Kontakt werden die Vars
  * mit `contact.fullName` + `contact.email` ergänzt.
  *
- * Skippt komplett, wenn der Mandant keinen aktiven Kontakt mit Mail-Opt-in
- * hat — kein Fehler, weil das eine valide Konfiguration ist (Mandant ohne
- * Portal-Zugang).
+ * Skippt den SMTP-Pfad, wenn der Mandant keinen aktiven, bereits per
+ * erfolgreichem Portal-Login bestätigten Kontakt mit Mail-Opt-in hat. Ein
+ * konfiguriertes vorgangsbezogenes n8n-Ereignis wird davon getrennt weiterhin
+ * einmal ausgelöst. Der Einladungsversand bleibt ein eigener Pfad; fachliche
+ * Mails gehen nicht an eine lediglich eingetragene, unbestätigte Adresse.
  */
 export async function notifyClientContacts(
   opts: Omit<DispatchOptions, 'to'> & {
     clientId: string;
   },
-): Promise<{ ok: boolean; recipients: number }> {
+): Promise<ContactNotificationResult> {
   const contacts = await prismaOwner.clientContact.findMany({
     where: {
       tenantId: opts.tenantId,
       clientId: opts.clientId,
       active: true,
       notificationsEnabled: true,
+      lastLoginAt: { not: null },
+      client: { allowActive: true, anonymizedAt: null },
     },
     select: { fullName: true, email: true },
   });
-  if (contacts.length === 0) return { ok: true, recipients: 0 };
+
+  // Das n8n-Ereignis beschreibt den fachlichen Vorgang, nicht einen einzelnen
+  // Empfänger. Es wird deshalb je Aufruf genau einmal emittiert, auch wenn kein
+  // aktiver Mailkontakt existiert. `attempted = 0` bleibt davon getrennt die
+  // wahrheitsgemaesse Aussage ueber den SMTP-Pfad.
+  const aggregateDispatch = opts.n8nEvent
+    ? await readMailDispatch({
+        tenantId: opts.tenantId,
+        actorId: null,
+        actorType: 'SYSTEM',
+      })
+    : null;
+  let externalSideEffectOccurred = false;
+
+  if (contacts.length === 0) {
+    if (aggregateDispatch?.mode === 'BOTH' && opts.n8nEvent) {
+      await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
+        tenantId: opts.tenantId,
+      });
+      externalSideEffectOccurred = true;
+    }
+    return {
+      ok: true,
+      recipients: 0,
+      attempted: 0,
+      externalSideEffectOccurred,
+      uncertainFailure: false,
+    };
+  }
 
   const emailKeys = Array.from(new Set(contacts.map((contact) => contact.email.toLowerCase())));
   const [client, profilesWithSameEmail] = await Promise.all([
@@ -281,10 +358,15 @@ export async function notifyClientContacts(
       : {};
 
   let okCount = 0;
+  let uncertainFailure = false;
   for (const c of contacts) {
     const hasMultipleProfiles = (profileCountByEmail.get(c.email.toLowerCase())?.size ?? 0) > 1;
     const res = await sendTemplateMail({
       ...opts,
+      // Der vorgangsbezogene Side-Effect wird nach der Schleife einmalig
+      // ausgelöst; sendTemplateMail darf ihn nicht je Kontakt emittieren.
+      n8nEvent: undefined,
+      n8nPayload: undefined,
       to: c.email,
       subjectSuffix: opts.subjectSuffix ?? (hasMultipleProfiles ? client?.name : ''),
       vars: {
@@ -294,6 +376,25 @@ export async function notifyClientContacts(
       },
     });
     if (res.ok) okCount++;
+    if (res.uncertainFailure) uncertainFailure = true;
   }
-  return { ok: okCount > 0, recipients: okCount };
+
+  if (aggregateDispatch?.mode === 'BOTH' && opts.n8nEvent) {
+    await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
+      tenantId: opts.tenantId,
+    });
+    externalSideEffectOccurred = true;
+  }
+
+  // `recipients` bleibt aus Kompatibilitaetsgruenden die Zahl der vom
+  // Provider angenommenen Einzelversuche. `attempted` macht erstmals
+  // unterscheidbar, ob gar kein Empfaenger vorhanden war, alle Versuche
+  // scheiterten oder nur ein Teil angenommen wurde.
+  return {
+    ok: okCount > 0,
+    recipients: okCount,
+    attempted: contacts.length,
+    externalSideEffectOccurred,
+    uncertainFailure,
+  };
 }

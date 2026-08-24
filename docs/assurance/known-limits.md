@@ -50,6 +50,19 @@ treffen aber keine bindenden Entscheidungen. Die Verantwortung liegt immer beim
 menschlichen Berater. KI-Ergebnisse sind als Arbeitserleichterung zu verstehen,
 nicht als fachliches Urteil.
 
+Beim n8n-Rechercheversand werden Text, Rechtsfrage und Auftrag technisch
+reduziert, frei befüllbare Normanker jedoch unverändert übertragen. Die
+editierbare Vorschau ist serverseitig nicht per Token oder Hash an den Versand
+gebunden. Getrennt anonymisierte Felder können außerdem gleiche
+Platzhalternamen erzeugen, deren lokale Mappings sich bei der Zusammenführung
+überschreiben. Diese Funktion ist deshalb weder ein Anonymitätsnachweis noch
+eine Freigabe nach § 203 StGB oder Datenschutzrecht.
+
+Der initiale Risk-Analysepfad referenziert einen vollständigen Engine-Rohoutput.
+Die spätere asynchrone LLM-Anreicherung speichert dagegen nur neue
+Markierungen, Status und begrenzte Audit-Metadaten, nicht ihren vollständigen
+Rohoutput und dessen Katalogversion.
+
 ## 7. RLS ist die letzte Barriere, nicht die einzige
 
 Row-Level Security verhindert Cross-Tenant-Zugriff auf Datenbankebene. Sie ist

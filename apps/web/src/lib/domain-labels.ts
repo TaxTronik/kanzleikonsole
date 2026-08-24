@@ -34,9 +34,10 @@ export const NOTICE_STATUS_LABELS: Readonly<Record<string, string>> = {
   EINSPRUCH: 'Einspruch eingelegt',
   ABGEHOLFEN: 'Einspruch abgeholfen',
   TEILABHILFE: 'Teilweise abgeholfen',
+  TEILEINSPRUCHSENTSCHEIDUNG: 'Teil-Einspruchsentscheidung',
   ZURUECKGEWIESEN: 'Einspruch zurückgewiesen',
   KLAGE: 'Klage beim Finanzgericht',
-  RECHTSKRAEFTIG: 'Rechtskräftig',
+  BESTANDSKRAEFTIG: 'Bestandskräftig',
 };
 
 // Vollständig über alle NotificationKind-Werte — abgesichert durch den
@@ -66,6 +67,7 @@ export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
   TAX_NEWS_NEW: 'Neue BMF/BFH-News',
   TAX_NOTICE_APPEAL_REMINDER: 'Einspruchsfrist-Erinnerung',
   TAX_DEADLINE_REQUEST_PENDING: 'Auto-Anforderung angekündigt',
+  TAX_DEADLINE_NOTIFICATION_FAILED: 'Auto-Anforderung: Benachrichtigung prüfen',
   CLIENT_REMINDER_DUE: 'Wiedervorlage fällig',
   CLIENT_REMINDER_DONE: 'Wiedervorlage erledigt',
   CLIENT_REMINDER_ASSIGNED: 'Wiedervorlage zugewiesen',

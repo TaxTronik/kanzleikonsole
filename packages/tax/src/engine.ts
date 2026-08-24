@@ -450,18 +450,19 @@ export function startOfUtcDay(d: Date): Date {
 export const BEKANNTGABE_FIKTION_TAGE = 4;
 
 /**
- * Fiktionstage abhängig vom Bescheiddatum: Das Postrechtsmodernisierungs-
- * gesetz gilt für Verwaltungsakte, die ab dem 01.01.2025 zur Post gegeben
- * wurden (Art. 97 § 1 Abs. 15 EGAO). Für nacherfasste Alt-Bescheide
- * (Aufgabe bis 31.12.2024) gilt weiterhin die Drei-Tages-Fiktion.
+ * Fiktionstage abhängig vom tatsächlichen Aufgabe-, Übermittlungs- oder
+ * Bereitstellungstag. Das Postrechtsmodernisierungsgesetz gilt für Vorgänge
+ * nach dem 31.12.2024 (Art. 97 § 1 Abs. 15 EGAO). Das Dokument-/Bescheiddatum
+ * ist dafür kein Ersatzwert.
  */
-export function bekanntgabeFiktionTage(noticeDate: Date): number {
-  return noticeDate.getTime() < Date.UTC(2025, 0, 1) ? 3 : BEKANNTGABE_FIKTION_TAGE;
+export function bekanntgabeFiktionTage(referenceDate: Date): number {
+  return referenceDate.getTime() < Date.UTC(2025, 0, 1) ? 3 : BEKANNTGABE_FIKTION_TAGE;
 }
 
 /**
- * Berechnet die Einspruchsfrist eines Steuerbescheids aus dem Bescheiddatum
- * (Tag der Aufgabe zur Post, als UTC-Mitternacht).
+ * Niedrigstufiger Legacy-Helfer für bereits als tatsächlicher Postaufgabetag
+ * feststehende Daten. Das Dokument-/Bescheiddatum darf hier nicht eingesetzt
+ * werden.
  *
  * `receivedAt` (optional): TATSÄCHLICHER Zugangstag beim Empfänger. § 122
  * Abs. 2 AO: die Fiktion gilt, „außer wenn der Verwaltungsakt nicht oder zu
@@ -475,9 +476,12 @@ export function bekanntgabeFiktionTage(noticeDate: Date): number {
  * `region`: Standard `null` = nur bundeseinheitliche Feiertage. Bewusst
  * konservativ — würde man Landesfeiertage annehmen, verschöbe sich die Frist
  * eher nach hinten; `null` wahrt die Frist eher zu früh als zu spät.
+ *
+ * @deprecated Nicht aus neuen Fachpfaden aufrufen. Die öffentliche Paket-API
+ * exportiert ausschließlich die beweisorientierten `assess*`-Funktionen.
  */
 export function appealDeadline(
-  noticeDate: Date,
+  dispatchDate: Date,
   region: GermanRegion | null = null,
   receivedAt: Date | null = null,
   legalRemedyInstructionValid = true,
@@ -486,9 +490,9 @@ export function appealDeadline(
   //    dann Werktagsverschiebung.
   const fiktion = new Date(
     Date.UTC(
-      noticeDate.getUTCFullYear(),
-      noticeDate.getUTCMonth(),
-      noticeDate.getUTCDate() + bekanntgabeFiktionTage(noticeDate),
+      dispatchDate.getUTCFullYear(),
+      dispatchDate.getUTCMonth(),
+      dispatchDate.getUTCDate() + bekanntgabeFiktionTage(dispatchDate),
     ),
   );
   let bekanntgabe = shiftToNextWorkday(fiktion, region);
@@ -507,6 +511,9 @@ export function appealDeadline(
  * förmliche, persönliche oder anderweitig nachgewiesene Bekanntgaben darf die
  * Postfiktion nicht aufgeschlagen werden. Bei fehlender/unrichtiger
  * Rechtsbehelfsbelehrung gilt grundsätzlich die Jahresfrist des § 356 Abs. 2 AO.
+ *
+ * @deprecated Interner Rechenkern ohne Beweis-/Freigabemodell. Neue Fachpfade
+ * müssen `assessAppealDeadline` verwenden.
  */
 export function appealDeadlineFromNotification(
   notificationDate: Date,
@@ -523,6 +530,9 @@ export function appealDeadlineFromNotification(
  * Einspruchsfrist bei postalischer Übermittlung ins Ausland (§ 122 Abs. 2
  * Nr. 2 AO): Bekanntgabefiktion einen Monat nach Aufgabe zur Post; ein
  * nachweislich späterer Zugang geht vor.
+ *
+ * @deprecated Interner Rechenkern ohne Beweis-/Freigabemodell. Neue Fachpfade
+ * müssen `assessAppealDeadline` verwenden.
  */
 export function appealDeadlineForPostAbroad(
   sentAt: Date,
@@ -542,15 +552,14 @@ export interface DataRetrievalDeadlineOptions {
   /**
    * Erlassdatum des Verwaltungsakts. Art. 97 § 28 Abs. 2 EGAO bestimmt anhand
    * dieses Datums, ob § 122a AO a.F. oder die Neufassung ab 2026 gilt. Bei
-   * Altimporten darf es fehlen; dann wird zur Rückwärtskompatibilität der
-   * Bereitstellungstag als Näherung verwendet.
+   * Ohne dieses Datum liefert der Legacy-Helfer fail-closed kein Ergebnis.
    */
   issuedAt?: Date | null;
   /**
    * Versandtag der elektronischen Benachrichtigung nach § 122a Abs. 4 AO a.F.
    * Für bis einschließlich 31.12.2025 erlassene Verwaltungsakte ist dieser Tag
-   * der Ausgangspunkt der Bekanntgabefiktion. Bei Altimporten darf er fehlen;
-   * dann wird zur Rückwärtskompatibilität der Bereitstellungstag verwendet.
+   * der Ausgangspunkt der Bekanntgabefiktion. Ohne diesen Nachweis liefert der
+   * Legacy-Helfer im Altfall fail-closed kein Ergebnis.
    */
   notificationDate?: Date | null;
   /**
@@ -573,6 +582,9 @@ export interface DataRetrievalDeadlineOptions {
  * gilt dagegen § 122a Abs. 4 AO a.F.: Ausgangspunkt ist der Versand der
  * elektronischen Benachrichtigung. Wird deren Zugang bestritten und ist auch
  * kein Abruf nachgewiesen, gilt der Bescheid noch nicht als bekanntgegeben.
+ *
+ * @deprecated Interner Legacy-Rechenkern ohne vollständiges Beweis- und
+ * Freigabemodell. Neue Fachpfade müssen `assessDataRetrievalDeadline` nutzen.
  */
 export function appealDeadlineForDataRetrieval(
   provisionDate: Date,
@@ -580,9 +592,8 @@ export function appealDeadlineForDataRetrieval(
   options: DataRetrievalDeadlineOptions = {},
 ): Date | null {
   const provision = startOfUtcDay(provisionDate);
-  // Nur für bereits gespeicherte Altbestände ohne das nachträglich ergänzte
-  // Erlassdatum. Neue Eingaben erzwingen issuedAt auf Anwendungsebene.
-  const issuedAt = startOfUtcDay(options.issuedAt ?? provision);
+  if (!options.issuedAt) return null;
+  const issuedAt = startOfUtcDay(options.issuedAt);
   const legalRemedyInstructionValid = options.legalRemedyInstructionValid ?? true;
 
   // Neufassung für nach dem 31.12.2025 erlassene Verwaltungsakte: vier Tage
@@ -609,15 +620,16 @@ export function appealDeadlineForDataRetrieval(
     return appealDeadlineFromNotification(options.retrievedAt, region, legalRemedyInstructionValid);
   }
 
-  // Fallback auf den Bereitstellungstag hält bereits gespeicherte Altbestände
-  // ohne das später ergänzte Benachrichtigungsfeld berechenbar. Neue Eingaben
-  // verlangen das Feld auf Anwendungsebene ausdrücklich.
-  const sentNotificationAt = startOfUtcDay(options.notificationDate ?? provision);
+  if (!options.notificationDate) return null;
+  const sentNotificationAt = startOfUtcDay(options.notificationDate);
   const fictionDate = new Date(
     Date.UTC(
       sentNotificationAt.getUTCFullYear(),
       sentNotificationAt.getUTCMonth(),
-      sentNotificationAt.getUTCDate() + bekanntgabeFiktionTage(sentNotificationAt),
+      // Art. 97 § 1 Abs. 15 EGAO knüpft den 3→4-Tage-Wechsel an die
+      // elektronische Bereitstellung des Verwaltungsakts, nicht an den
+      // gegebenenfalls späteren Versand der Benachrichtigung.
+      sentNotificationAt.getUTCDate() + bekanntgabeFiktionTage(provision),
     ),
   );
   return appealDeadlineFromNotification(

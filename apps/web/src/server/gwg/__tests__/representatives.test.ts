@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+
+// Fachkatalog: GWG-REPRESENTATIVE-AUTHORITY-001
 import type { TxClient } from '@taxtronik/db';
 import {
   syncGwgRepresentativesTx,

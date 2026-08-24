@@ -7,7 +7,7 @@ import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
-import { notifyRequestOpened } from '@/server/mail/dispatch';
+import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
@@ -224,25 +224,14 @@ export async function saveScheduleConfigAction(
   // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind
   const stats = await materializeTaxDeadlines(ctx, { systemStaffId: staffId });
 
-  // Mandanten-Mail + n8n-Event NACH dem Commit (gleiche Semantik wie
-  // createRequestCore). Trifft hier nur Configs mit staffLeadDays = 0, deren
-  // Versandfenster bereits offen ist — sonst kommt der Versand vom Tageslauf.
-  if (stats.createdRequests.length > 0) {
+  // TAX-DEADLINE-AUTOREQUEST-001: Der Kern hat den Request samt QUEUED-
+  // Benachrichtigungszustand atomar gespeichert. Den Versand macht nur noch
+  // der Worker, damit Provider-Annahme, Retry und Eskalation persistiert und
+  // nicht durch einen parallelen Fire-and-forget-Pfad verdoppelt werden.
+  if (stats.requestsCreated > 0) {
     fireAndForget(
-      'notifyRequestOpened (tax-schedule save)',
-      Promise.all(
-        stats.createdRequests.map((r) =>
-          notifyRequestOpened({
-            tenantId: r.tenantId,
-            clientId: r.clientId,
-            requestId: r.requestId,
-            title: r.title,
-            description: r.description,
-            priority: r.priority,
-            dueAtIso: r.dueDate.toISOString(),
-          }),
-        ),
-      ).then(() => undefined),
+      'tax-deadline notification worker (tax-schedule save)',
+      enqueueTaxDeadlineMaterialize(tenantId),
     );
   }
 

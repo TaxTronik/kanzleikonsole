@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db';
-import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { resolveClientContactNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
@@ -192,9 +192,10 @@ export async function cancelAppointmentRequestAction(input: { id: string }): Pro
         where: { id: parsed.data.id },
         data: { status: 'CANCELLED', decidedAt: new Date() },
       });
-      await resolveNotificationsTx(tx, {
+      await resolveClientContactNotificationsTx(tx, {
         tenantId,
-        resources: [{ resourceType: 'appointment_request', resourceId: parsed.data.id }],
+        resourceType: 'appointment_request',
+        resourceId: parsed.data.id,
       });
       await evidenceService.record(tx, {
         tenantId,

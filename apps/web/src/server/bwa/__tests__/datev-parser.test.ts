@@ -1,3 +1,4 @@
+// Fachkatalog: BWA-IMPORT-MAPPING-001
 // =============================================================================
 // Tests fuer den DATEV-BWA-Import.
 //

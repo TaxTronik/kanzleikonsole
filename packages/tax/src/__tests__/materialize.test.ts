@@ -33,8 +33,11 @@ interface HarnessOptions {
   upcoming?: unknown[];
   createdCount?: number;
   overdueCount?: number;
-  hauptbearbeiter?: Array<{ clientId: string; staffId: string }>;
+  hauptbearbeiter?: Array<{ clientId: string; staffId: string; active?: boolean }>;
   adminPartners?: Array<{ id: string }>;
+  /** Simuliert den inzwischen veralteten Empfängerstand außerhalb des Claim-Tx. */
+  outerHauptbearbeiter?: Array<{ clientId: string; staffId: string }>;
+  outerAdminPartners?: Array<{ id: string }>;
 }
 
 function makeHarness(opts: HarnessOptions = {}) {
@@ -46,9 +49,11 @@ function makeHarness(opts: HarnessOptions = {}) {
       findMany: vi.fn().mockResolvedValue(opts.upcoming ?? []),
       updateMany: vi.fn().mockResolvedValue({ count: opts.overdueCount ?? 0 }),
     },
-    clientResponsibility: { findMany: vi.fn().mockResolvedValue(opts.hauptbearbeiter ?? []) },
+    clientResponsibility: {
+      findMany: vi.fn().mockResolvedValue(opts.outerHauptbearbeiter ?? []),
+    },
     staffUser: {
-      findMany: vi.fn().mockResolvedValue(opts.adminPartners ?? [{ id: 'admin-1' }]),
+      findMany: vi.fn().mockResolvedValue(opts.outerAdminPartners ?? [{ id: 'outer-admin' }]),
     },
   };
   // Separater Tx-Fake: so ist nachweisbar, dass der atomare Block NICHT auf
@@ -63,6 +68,20 @@ function makeHarness(opts: HarnessOptions = {}) {
       }),
       update: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    clientResponsibility: {
+      findMany: vi.fn().mockImplementation(async (args?: unknown) => {
+        const rows = opts.hauptbearbeiter ?? [];
+        const onlyActive =
+          (args as { where?: { staff?: { active?: boolean } } } | undefined)?.where?.staff
+            ?.active === true;
+        return rows
+          .filter((row) => !onlyActive || row.active !== false)
+          .map(({ staffId }) => ({ staffId }));
+      }),
+    },
+    staffUser: {
+      findMany: vi.fn().mockResolvedValue(opts.adminPartners ?? [{ id: 'admin-1' }]),
     },
     request: { create: vi.fn().mockResolvedValue({ id: 'req-1' }) },
   };
@@ -232,7 +251,18 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
     });
     expect(tx.taxDeadline.update).toHaveBeenCalledWith({
       where: { id: 'dl-1' },
-      data: { requestId: 'req-1', status: 'REMINDED', autoRequestClaimedAt: null },
+      data: {
+        requestId: 'req-1',
+        status: 'REMINDED',
+        autoRequestClaimedAt: null,
+        autoRequestNotificationStatus: 'QUEUED',
+        autoRequestNotificationAttemptCount: 0,
+        autoRequestNotificationLastAttemptAt: null,
+        autoRequestNotificationNextAttemptAt: NOW,
+        autoRequestNotificationAcceptedAt: null,
+        autoRequestNotificationLastError: null,
+        autoRequestNotificationEscalatedAt: null,
+      },
     });
     expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith({
       where: {
@@ -242,6 +272,13 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
         requestId: null,
         autoRequestSuppressedAt: null,
         autoRequestClaimedAt: null,
+        config: {
+          active: true,
+          autoRequest: true,
+          reminderDaysBefore: 14,
+          staffLeadDays: 0,
+        },
+        client: { allowActive: true },
       },
       data: { autoRequestClaimedAt: expect.any(Date) },
     });
@@ -263,22 +300,8 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
       after: { requestId: 'req-1', kind: 'USTA_MONATLICH', period: '2026-05' },
     });
     expect(stats.requestsCreated).toBe(1);
-    // Mail/n8n macht der Adapter nach Commit — der Kern liefert die Daten.
-    expect(stats.createdRequests).toEqual([
-      {
-        tenantId: TENANT,
-        clientId: 'client-1',
-        deadlineId: 'dl-1',
-        requestId: 'req-1',
-        kind: 'USTA_MONATLICH',
-        period: '2026-05',
-        dueDate: new Date(Date.UTC(2026, 5, 20)),
-        title: 'USt-Voranmeldung (monatlich) 2026-05 bis 20.6.2026',
-        description:
-          'Bitte stellen Sie die Unterlagen für USt-Voranmeldung (monatlich) 2026-05 bereit. Fälligkeit: 20.6.2026.',
-        priority: 'NORMAL',
-      },
-    ]);
+    // QUEUED ist die persistierte Wahrheit; der Zähler stößt nur den
+    // nachgelagerten Worker an und dupliziert keine Request-Nutzlast.
   });
 
   it('SQL-Vorfilter: Fenster = heute + max(reminderDaysBefore + staffLeadDays)', async () => {
@@ -380,6 +403,54 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
     expect(stats.requestsCreated).toBe(0);
   });
 
+  it.each([
+    {
+      fall: 'verringerter Versandabstand',
+      current: { reminderDaysBefore: 5, staffLeadDays: 0 },
+    },
+    {
+      fall: 'nachträglich aktivierte Vorwarnung',
+      current: { reminderDaysBefore: 14, staffLeadDays: 3 },
+    },
+  ])('Config-Race ($fall): veralteter Zeitplan erzeugt keinen Request', async ({ current }) => {
+    // Der vorgelagerte Read sah 14/0 und würde deshalb heute direkt senden.
+    // Im CAS simuliert `current` den inzwischen gespeicherten Stand. Nur ein
+    // vollständig identischer Relations-Snapshot darf den Claim erhalten.
+    const { tx, deps, recordEvidence } = makeHarness({
+      upcoming: [upcomingDeadline(14, { staffLeadDays: 0 })],
+    });
+    tx.taxDeadline.updateMany.mockImplementation(async (args: unknown) => {
+      const config = (args as { where: { config: Record<string, unknown> } }).where.config;
+      const matchesCurrent =
+        config.active === true &&
+        config.autoRequest === true &&
+        config.reminderDaysBefore === current.reminderDaysBefore &&
+        config.staffLeadDays === current.staffLeadDays;
+      return { count: matchesCurrent ? 1 : 0 };
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        config: {
+          active: true,
+          autoRequest: true,
+          reminderDaysBefore: 14,
+          staffLeadDays: 0,
+        },
+      }),
+      data: { autoRequestClaimedAt: expect.any(Date) },
+    });
+    expect(tx.request.create).not.toHaveBeenCalled();
+    expect(recordEvidence).not.toHaveBeenCalled();
+    expect(stats.requestsCreated).toBe(0);
+  });
+
   it('erzeugt auch bei zwei echten parallelen Aufrufen dank CAS nur eine Anforderung', async () => {
     const { tx, deps, recordEvidence } = makeHarness({
       upcoming: [upcomingDeadline(14)],
@@ -421,8 +492,22 @@ describe('Vorwarnung (3a) — interne Benachrichtigung vor dem Versand', () => {
     });
 
     expect(runAtomic).toHaveBeenCalledTimes(1);
-    expect(tx.taxDeadline.update).toHaveBeenCalledWith({
-      where: { id: 'dl-1' },
+    expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'dl-1',
+        tenantId: TENANT,
+        status: 'PLANNED',
+        requestId: null,
+        staffNotifiedAt: null,
+        autoRequestSuppressedAt: null,
+        config: {
+          active: true,
+          autoRequest: true,
+          reminderDaysBefore: 10,
+          staffLeadDays: 3,
+        },
+        client: { allowActive: true },
+      },
       data: { staffNotifiedAt: NOW },
     });
     // Fallback-Empfänger (kein HAUPTBEARBEITER hinterlegt) — auf dem Tx.
@@ -462,6 +547,94 @@ describe('Vorwarnung (3a) — interne Benachrichtigung vor dem Versand', () => {
       (c) => (c[1] as { staffId: string }).staffId,
     );
     expect(staffIds).toEqual(['hb-1', 'hb-2']);
+  });
+
+  it('ignoriert inaktive HAUPTBEARBEITER und nutzt den aktiven ADMIN/PARTNER-Fallback', async () => {
+    const { tx, deps, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(10, { staffLeadDays: 3 })],
+      hauptbearbeiter: [{ clientId: 'client-1', staffId: 'hb-inaktiv', active: false }],
+      adminPartners: [{ id: 'admin-aktiv' }],
+    });
+
+    await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(tx.clientResponsibility.findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        clientId: 'client-1',
+        role: 'HAUPTBEARBEITER',
+        staff: { tenantId: TENANT, active: true },
+      },
+      select: { staffId: true },
+    });
+    expect(upsertStaffNotification).toHaveBeenCalledOnce();
+    expect(upsertStaffNotification.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ staffId: 'admin-aktiv' }),
+    );
+  });
+
+  it('revalidiert Empfänger im Claim-Tx und ignoriert eine zwischenzeitlich entzogene Zuständigkeit', async () => {
+    const { db, tx, deps, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(10, { staffLeadDays: 3 })],
+      // Dieser Stand wäre vor dem Claim veraltet und vertraulichkeitskritisch.
+      outerHauptbearbeiter: [{ clientId: 'client-1', staffId: 'hb-entzogen' }],
+      // Im Claim-Tx ist die Zuordnung bereits entzogen; der aktive Fallback
+      // wird dort neu ermittelt.
+      hauptbearbeiter: [],
+      adminPartners: [{ id: 'admin-aktuell' }],
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(db.clientResponsibility.findMany).not.toHaveBeenCalled();
+    expect(tx.clientResponsibility.findMany).toHaveBeenCalledOnce();
+    expect(tx.staffUser.findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        active: true,
+        roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+      },
+      select: { id: true },
+    });
+    expect(upsertStaffNotification).toHaveBeenCalledOnce();
+    expect(upsertStaffNotification.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ staffId: 'admin-aktuell' }),
+    );
+    expect(upsertStaffNotification).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ staffId: 'hb-entzogen' }),
+    );
+    expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { staffNotifiedAt: NOW } }),
+    );
+    expect(stats.staffWarned).toBe(1);
+  });
+
+  it('setzt ohne aktuell berechtigten Empfänger im Claim-Tx kein staffNotifiedAt', async () => {
+    const { tx, deps, upsertStaffNotification } = makeHarness({
+      upcoming: [upcomingDeadline(10, { staffLeadDays: 3 })],
+      outerHauptbearbeiter: [{ clientId: 'client-1', staffId: 'hb-deaktiviert' }],
+      hauptbearbeiter: [],
+      adminPartners: [],
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(tx.taxDeadline.updateMany).not.toHaveBeenCalled();
+    expect(upsertStaffNotification).not.toHaveBeenCalled();
+    expect(stats.staffWarned).toBe(0);
   });
 
   it('keine Vorwarnung bei staffLeadDays = 0 — Versand direkt im Fenster', async () => {
@@ -544,12 +717,7 @@ describe('Vorwarnung (3a) — interne Benachrichtigung vor dem Versand', () => {
     const { tx, deps, upsertStaffNotification } = makeHarness({
       upcoming: [upcomingDeadline(10, { staffLeadDays: 3 })],
     });
-    tx.taxDeadline.findUnique.mockResolvedValue({
-      status: 'PLANNED',
-      requestId: null,
-      staffNotifiedAt: new Date('2026-06-09T07:35:00.000Z'),
-      autoRequestSuppressedAt: null,
-    });
+    tx.taxDeadline.updateMany.mockResolvedValue({ count: 0 });
 
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,

@@ -32,7 +32,7 @@ sources:
   - kind: product_documentation
     citation: Interne Anforderung oder Dokumentation
     path: FEATURES.md
-    checked_at: '2026-08-23'
+    checked_at: '<YYYY-MM-DD>'
     primary: true
 code_refs: []
 test_refs: []

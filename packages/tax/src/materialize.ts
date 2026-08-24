@@ -7,8 +7,10 @@
 // Vorwarnung an Zuständige, danach Request-Anlage inkl. Audit-Eintrag
 // `tax_deadline.auto_request`; Mitarbeiter können den Versand stoppen) und
 // markiert abgelaufene Termine als OVERDUE — erst NACH Ende des
-// Fälligkeitstags (§ 108 (1) AO). Mandanten-Mail + n8n-Event versendet der
-// jeweilige Adapter nach Commit über stats.createdRequests.
+// Fälligkeitstags (§ 108 (1) AO). Die atomare Request-Anlage setzt den
+// getrennten Benachrichtigungsstatus auf QUEUED; der Worker verarbeitet diese
+// persistierte Queue nach dem Commit. `requestsCreated` ist nur das Signal,
+// einen zeitnahen Worker-Lauf anzustoßen, keine I/O-Nutzlast.
 //
 // DB und Evidence kommen per Dependency-Injection (vgl. DI-Muster in
 // packages/risk-layer): die Web-App ruft mit ihrem withTenantContext-Tx +
@@ -66,24 +68,6 @@ export interface StaffNotificationInput {
   resourceId: string;
 }
 
-/**
- * Eine in diesem Lauf erzeugte Auto-Anforderung. Die Mandanten-Mail (und das
- * n8n-Event) versendet der ADAPTER erst NACH dem Commit — niemals dieses
- * Paket, sonst hinge SMTP-I/O in der Web-Transaktion.
- */
-export interface CreatedAutoRequest {
-  tenantId: string;
-  clientId: string;
-  deadlineId: string;
-  requestId: string;
-  kind: TaxScheduleKind;
-  period: string;
-  dueDate: Date;
-  title: string;
-  description: string;
-  priority: 'NORMAL';
-}
-
 export interface MaterializeDeps {
   /** Client für Reads, Deadline-Inserts und das OVERDUE-Update. */
   db: MaterializeDb;
@@ -122,8 +106,6 @@ export interface MaterializeStats {
   markedOverdue: number;
   /** Termine, für die in diesem Lauf die interne Vorwarnung rausging. */
   staffWarned: number;
-  /** Erzeugte Auto-Anforderungen — Mail/n8n macht der Adapter nach Commit. */
-  createdRequests: CreatedAutoRequest[];
 }
 
 // Zeitzone fest auf Europe/Berlin — identisch zu fmtDateShort der Web-App.
@@ -148,7 +130,6 @@ export async function materializeTenantTaxDeadlines(
     requestsCreated: 0,
     markedOverdue: 0,
     staffWarned: 0,
-    createdRequests: [],
   };
 
   // 0. Bundesland der Kanzlei (tenant_setting `tax_region`) für die
@@ -223,7 +204,8 @@ export async function materializeTenantTaxDeadlines(
   //    (3b) Versand: Request anlegen + REMINDED, sobald heute ≥ Fälligkeit −
   //         reminderDaysBefore UND die Vorwarnung mindestens einen Tageslauf
   //         alt ist (bzw. staffLeadDays = 0). Die Mandanten-Mail versendet
-  //         der ADAPTER nach Commit über stats.createdRequests.
+  //         QUEUED persistieren. Der separate Worker liest diesen Zustand
+  //         nach Commit; requestsCreated dient nur als Enqueue-Signal.
   //    P-4: SQL-Vorfilter auf dueDate ≤ heute + max(Versand- + Vorwarn-Tage) —
   //    vorher wurden ALLE geplanten Termine (90-Tage-Horizont × Mandanten)
   //    geladen und der Großteil in JS verworfen.
@@ -256,32 +238,6 @@ export async function materializeTenantTaxDeadlines(
     },
   });
 
-  // Empfänger der Vorwarnung: HAUPTBEARBEITER des Mandanten, Fallback alle
-  // aktiven ADMIN/PARTNER (Muster recipientsForStage, gwg-expiry-check).
-  // Einmal pro Lauf laden — nur wenn überhaupt eine Vorwarnung ansteht.
-  const hauptbearbeiterByClient = new Map<string, string[]>();
-  let fallbackStaffIds: string[] = [];
-  const anyWarnCandidate = upcoming.some(
-    (dl) => (dl.config?.staffLeadDays ?? 0) > 0 && dl.staffNotifiedAt === null,
-  );
-  if (anyWarnCandidate) {
-    const clientIds = Array.from(new Set(upcoming.map((dl) => dl.clientId)));
-    const responsibilities = await db.clientResponsibility.findMany({
-      where: { tenantId, clientId: { in: clientIds }, role: 'HAUPTBEARBEITER' },
-      select: { clientId: true, staffId: true },
-    });
-    for (const r of responsibilities) {
-      const list = hauptbearbeiterByClient.get(r.clientId) ?? [];
-      list.push(r.staffId);
-      hauptbearbeiterByClient.set(r.clientId, list);
-    }
-    const adminPartners = await db.staffUser.findMany({
-      where: { tenantId, active: true, roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } } },
-      select: { id: true },
-    });
-    fallbackStaffIds = adminPartners.map((s) => s.id);
-  }
-
   const tomorrow = new Date(today.getTime() + DAY_MS);
   for (const dl of upcoming) {
     const cfg = dl.config;
@@ -293,30 +249,66 @@ export async function materializeTenantTaxDeadlines(
 
     // (3a) Vorwarnung — genau einmal pro Termin (staffNotifiedAt-Guard).
     if (cfg.staffLeadDays > 0 && dl.staffNotifiedAt === null && warnFrom <= today) {
-      const recipients = Array.from(
-        new Set(
-          (hauptbearbeiterByClient.get(dl.clientId) ?? []).length > 0
-            ? hauptbearbeiterByClient.get(dl.clientId)!
-            : fallbackStaffIds,
-        ),
-      );
       // Versand frühestens am Folgelauf (Gate in 3b) — angekündigt wird das
       // tatsächliche Datum, auch wenn die Config spät angelegt wurde.
       const plannedSend = sendFrom.getTime() > tomorrow.getTime() ? sendFrom : tomorrow;
       const clientName = dl.client?.name ?? 'Mandant';
       await deps.runAtomic(async (tx) => {
-        const fresh = await tx.taxDeadline.findUnique({
-          where: { id: dl.id },
-          select: {
-            status: true,
-            requestId: true,
-            staffNotifiedAt: true,
-            autoRequestSuppressedAt: true,
+        // TAX-DEADLINE-AUTOREQUEST-001: Empfänger erst im Claim-Tx bestimmen.
+        // Eine zwischen Kandidaten-Read und Claim entzogene Zuständigkeit oder
+        // deaktivierte Person darf weder Mandatsdaten erhalten noch den
+        // ADMIN/PARTNER-Fallback unterdrücken. Die aktuelle
+        // HAUPTBEARBEITER-Zuordnung ist zugleich das Mandantenzugriffs-Gate.
+        const activeResponsibilities = await tx.clientResponsibility.findMany({
+          where: {
+            tenantId,
+            clientId: dl.clientId,
+            role: 'HAUPTBEARBEITER',
+            staff: { tenantId, active: true },
           },
+          select: { staffId: true },
         });
-        if (!fresh || fresh.status !== 'PLANNED' || fresh.requestId !== null) return;
-        if (fresh.staffNotifiedAt !== null || fresh.autoRequestSuppressedAt !== null) return;
-        await tx.taxDeadline.update({ where: { id: dl.id }, data: { staffNotifiedAt: now } });
+        let recipients = Array.from(new Set(activeResponsibilities.map((r) => r.staffId)));
+        if (recipients.length === 0) {
+          const activeAdminPartners = await tx.staffUser.findMany({
+            where: {
+              tenantId,
+              active: true,
+              roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+            },
+            select: { id: true },
+          });
+          recipients = Array.from(new Set(activeAdminPartners.map((staff) => staff.id)));
+        }
+        // Ohne ein aktuell berechtigtes internes Ziel ist keine Vorwarnung
+        // erfolgt. Insbesondere darf staffNotifiedAt dann nicht den späteren
+        // Mandantenversand freischalten.
+        if (recipients.length === 0) return;
+
+        // TAX-DEADLINE-AUTOREQUEST-001: Die im vorgelagerten Read verwendeten
+        // Zeitparameter werden im selben UPDATE erneut als Relations-Snapshot
+        // geprüft. Wurde die Konfiguration parallel geändert, gewinnt kein
+        // veralteter Zeitplan; der aktuelle Stand wird im nächsten Lauf neu
+        // bewertet. Zugleich verhindert der CAS doppelte Vorwarnungen.
+        const warningClaim = await tx.taxDeadline.updateMany({
+          where: {
+            id: dl.id,
+            tenantId,
+            status: 'PLANNED',
+            requestId: null,
+            staffNotifiedAt: null,
+            autoRequestSuppressedAt: null,
+            config: {
+              active: true,
+              autoRequest: true,
+              reminderDaysBefore: cfg.reminderDaysBefore,
+              staffLeadDays: cfg.staffLeadDays,
+            },
+            client: { allowActive: true },
+          },
+          data: { staffNotifiedAt: now },
+        });
+        if (warningClaim.count === 0) return;
         for (const staffId of recipients) {
           await deps.upsertStaffNotification(tx, {
             tenantId,
@@ -359,6 +351,21 @@ export async function materializeTenantTaxDeadlines(
           requestId: null,
           autoRequestSuppressedAt: null,
           autoRequestClaimedAt: null,
+          // Die Freigaben werden im CAS erneut geprüft: Konfiguration oder
+          // Mandant können nach dem vorgelagerten Read deaktiviert worden
+          // sein. Ohne diese Tore könnte der bereits geladene Kandidat trotz
+          // zwischenzeitlichem Stopp noch Request und Mail erzeugen.
+          // Die Zeitparameter gehören ebenfalls zum CAS-Snapshot. Eine
+          // parallele Verringerung von reminderDaysBefore darf keinen zu
+          // frühen Versand auslösen; ein neu gesetzter staffLeadDays-Wert
+          // darf die interne Vorwarnung nicht umgehen.
+          config: {
+            active: true,
+            autoRequest: true,
+            reminderDaysBefore: cfg.reminderDaysBefore,
+            staffLeadDays: cfg.staffLeadDays,
+          },
+          client: { allowActive: true },
         },
         data: { autoRequestClaimedAt: claimedAt },
       });
@@ -380,7 +387,21 @@ export async function materializeTenantTaxDeadlines(
       });
       await tx.taxDeadline.update({
         where: { id: dl.id },
-        data: { requestId: req.id, status: 'REMINDED', autoRequestClaimedAt: null },
+        data: {
+          requestId: req.id,
+          status: 'REMINDED',
+          autoRequestClaimedAt: null,
+          // TAX-DEADLINE-AUTOREQUEST-001: Request-Anlage und Vormerkung des
+          // davon getrennten Benachrichtigungswegs sind eine atomare Einheit.
+          // QUEUED behauptet weder Versand noch Zugang beim Mandanten.
+          autoRequestNotificationStatus: 'QUEUED',
+          autoRequestNotificationAttemptCount: 0,
+          autoRequestNotificationLastAttemptAt: null,
+          autoRequestNotificationNextAttemptAt: now,
+          autoRequestNotificationAcceptedAt: null,
+          autoRequestNotificationLastError: null,
+          autoRequestNotificationEscalatedAt: null,
+        },
       });
       await deps.resolveStaffNotifications(tx, {
         tenantId,
@@ -397,18 +418,6 @@ export async function materializeTenantTaxDeadlines(
         after: { requestId: req.id, kind: dl.kind, period: dl.period },
       });
       stats.requestsCreated += 1;
-      stats.createdRequests.push({
-        tenantId,
-        clientId: dl.clientId,
-        deadlineId: dl.id,
-        requestId: req.id,
-        kind: dl.kind,
-        period: dl.period,
-        dueDate: dl.dueDate,
-        title,
-        description,
-        priority: 'NORMAL',
-      });
     });
   }
 

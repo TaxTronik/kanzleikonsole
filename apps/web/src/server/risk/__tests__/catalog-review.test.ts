@@ -1,3 +1,4 @@
+// Fachkatalog: RISK-CATALOG-FOUR-EYES-001
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // @taxtronik/db (Barrel) verlangt DATABASE_URL beim Import + macht echte Tx →

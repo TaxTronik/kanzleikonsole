@@ -1,5 +1,6 @@
 // =============================================================================
 // Unit-Test: toActionError aus rbac.ts.
+// Fachkatalog: ACCESS-STAFF-PERMISSION-001
 //
 // Audit Round 14, Finding 3: Unbekannte Errors dürfen NIE direkt ans UI
 // durchgereicht werden — könnten Stacktraces oder DB-Internals leaken.

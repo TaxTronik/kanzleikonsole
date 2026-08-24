@@ -1,17 +1,21 @@
+// Fachkatalog: ASSURANCE-PROFESSIONAL-REVIEW-001
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
+  assertScopeCoverage,
   checkIndexes,
   extractSection,
   IMPLEMENTATION_STATUSES,
+  latestPlausibleCalendarDate,
   loadCatalog,
   parseRuleSource,
   REVIEW_STATUSES,
   reviewContentHash,
   RULE_TYPES,
+  renderFullJsonExport,
   renderJsonIndex,
   SOURCE_KINDS,
   writeIndexes,
@@ -39,11 +43,32 @@ const HEADINGS = [
   ['Technische Nachweise', 'Die Fixture-Dateien belegen Code und Test.'],
 ];
 
+function scopeSource({
+  activeIds = ['TEST-RULE-001'],
+  reservedIds = ['RESERVED-RULE-001'],
+  expectedActive = activeIds.length,
+  expectedReserved = reservedIds.length,
+} = {}) {
+  return `# Test-Scope
+
+<!-- fachkatalog-scope: version=1; active=${expectedActive}; reserved=${expectedReserved} -->
+
+${activeIds.map((id) => `\`${id}\``).join('\n')}
+
+## 8. Ausschlüsse
+
+${reservedIds.map((id) => `\`${id}\``).join('\n')}
+
+## 9. Ausbau
+`;
+}
+
 function makeRoot() {
   const root = mkdtempSync(join(tmpdir(), 'taxtronik-fachkatalog-'));
   mkdirSync(join(root, 'docs', 'fachkatalog', 'regeln', 'testbereich'), { recursive: true });
   mkdirSync(join(root, 'packages', 'example', 'src', '__tests__'), { recursive: true });
   writeFileSync(join(root, 'FEATURES.md'), '# Features\n', 'utf8');
+  writeFileSync(join(root, 'docs', 'fachkatalog', 'SCOPE.md'), scopeSource(), 'utf8');
   writeFileSync(
     join(root, 'packages', 'example', 'src', 'rule.ts'),
     'export const rule = true;\n',
@@ -192,8 +217,140 @@ test('erzeugt deterministische Indizes und erkennt Drift', async () => {
     const rules = loadCatalog(root);
     await writeIndexes(root, rules);
     assert.equal(await checkIndexes(root, rules), true);
+    const fullExport = JSON.parse(
+      readFileSync(join(root, 'docs', 'fachkatalog', 'fachkatalog-voll.json'), 'utf8'),
+    );
+    assert.equal(fullExport.scope.definition_path, 'docs/fachkatalog/SCOPE.md');
+    assert.equal(fullExport.scope.expected_active_rule_count, 1);
+    assert.deepEqual(fullExport.scope.active_rule_ids, ['TEST-RULE-001']);
+    assert.deepEqual(fullExport.scope.reserved_rule_ids, ['RESERVED-RULE-001']);
+    assert.match(fullExport.scope.definition_markdown, /## 8\. Ausschlüsse/);
+    const compactExport = JSON.parse(
+      readFileSync(join(root, 'docs', 'fachkatalog', 'fachkatalog.json'), 'utf8'),
+    );
+    assert.equal(compactExport.scope.definition_markdown, undefined);
+    assert.equal(fullExport.rule_count, fullExport.rules.length);
+    assert.equal(fullExport.active_rule_count, 1);
+    assert.equal(fullExport.historical_rule_count, 0);
+    assert.match(fullExport.rules[0].body, /## Entscheidungslogik/);
     writeFileSync(join(root, 'docs', 'fachkatalog', 'INDEX.md'), '# veraltet\n', 'utf8');
     await assert.rejects(() => checkIndexes(root, rules), /INDEX.md ist nicht aktuell/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('normalisiert Zeilenenden im Volltext-Export plattformunabhängig', async () => {
+  const exported = JSON.parse(
+    await renderFullJsonExport([{ id: 'TEST-RULE-001', body: 'A\r\nB\rC' }]),
+  );
+  assert.equal(exported.rules[0].body, 'A\nB\nC');
+});
+
+test('sortiert direkte Renderer-Aufrufe und weist aktive sowie historische Regeln aus', async () => {
+  const exported = JSON.parse(
+    await renderJsonIndex([
+      { id: 'TEST-RULE-002', professional_review: { status: 'superseded' } },
+      { id: 'TEST-RULE-001', professional_review: { status: 'unreviewed' } },
+    ]),
+  );
+  assert.deepEqual(
+    exported.rules.map((rule) => rule.id),
+    ['TEST-RULE-001', 'TEST-RULE-002'],
+  );
+  assert.equal(exported.rule_count, 2);
+  assert.equal(exported.active_rule_count, 1);
+  assert.equal(exported.historical_rule_count, 1);
+});
+
+test('verhindert unvollständige oder gegenüber dem Scope überzählige Exporte', () => {
+  const root = makeRoot();
+  try {
+    writeRule(root, ruleSource());
+    const rules = loadCatalog(root);
+    assert.deepEqual(assertScopeCoverage(root, rules).active_rule_ids, ['TEST-RULE-001']);
+    assert.throws(
+      () =>
+        assertScopeCoverage(
+          root,
+          rules.map((rule) => ({
+            ...rule,
+            professional_review: { ...rule.professional_review, status: 'superseded' },
+          })),
+        ),
+      /aktive Regeldateien.*TEST-RULE-001/s,
+    );
+
+    writeFileSync(
+      join(root, 'docs', 'fachkatalog', 'SCOPE.md'),
+      scopeSource({ activeIds: ['TEST-RULE-001', 'TEST-RULE-002'] }),
+      'utf8',
+    );
+    assert.throws(() => assertScopeCoverage(root, rules), /TEST-RULE-002/);
+
+    writeFileSync(
+      join(root, 'docs', 'fachkatalog', 'SCOPE.md'),
+      scopeSource({ activeIds: ['TEST-RULE-002'] }),
+      'utf8',
+    );
+    assert.throws(() => assertScopeCoverage(root, rules), /nicht im Produkt-Scope.*TEST-RULE-001/s);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('verhindert doppelte Scope-IDs und eine fehlende Ausschlussgrenze', () => {
+  const root = makeRoot();
+  try {
+    writeRule(root, ruleSource());
+    const rules = loadCatalog(root);
+    writeFileSync(
+      join(root, 'docs', 'fachkatalog', 'SCOPE.md'),
+      scopeSource({ activeIds: ['TEST-RULE-001', 'TEST-RULE-001'], expectedActive: 1 }),
+      'utf8',
+    );
+    assert.throws(() => assertScopeCoverage(root, rules), /mehrfach.*TEST-RULE-001/s);
+
+    writeFileSync(
+      join(root, 'docs', 'fachkatalog', 'SCOPE.md'),
+      '# Test-Scope\n\n<!-- fachkatalog-scope: version=1; active=1; reserved=1 -->\n\n`TEST-RULE-001`\n',
+      'utf8',
+    );
+    assert.throws(() => assertScopeCoverage(root, rules), /Abschnitte „## 8\.“.*„## 9\.“/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('bindet Sollzahlen und reservierte IDs maschinell', () => {
+  const root = makeRoot();
+  try {
+    writeRule(root, ruleSource());
+    const rules = loadCatalog(root);
+
+    writeFileSync(
+      join(root, 'docs', 'fachkatalog', 'SCOPE.md'),
+      scopeSource({ expectedActive: 2 }),
+      'utf8',
+    );
+    assert.throws(() => assertScopeCoverage(root, rules), /erwartet 2 aktive IDs/);
+
+    writeFileSync(
+      join(root, 'docs', 'fachkatalog', 'SCOPE.md'),
+      scopeSource({ reservedIds: ['TEST-RULE-001'] }),
+      'utf8',
+    );
+    assert.throws(() => assertScopeCoverage(root, rules), /reservierte IDs.*TEST-RULE-001/s);
+
+    writeFileSync(join(root, 'docs', 'fachkatalog', 'SCOPE.md'), scopeSource(), 'utf8');
+    assert.throws(
+      () =>
+        assertScopeCoverage(root, [
+          ...rules,
+          { id: 'RESERVED-RULE-001', professional_review: { status: 'superseded' } },
+        ]),
+      /reservierte IDs.*RESERVED-RULE-001/s,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -228,6 +385,11 @@ test('verhindert Prüf- und Quelldaten in der Zukunft', () => {
   }
 });
 
+test('verwendet den deutschen Kalendertag an UTC-Tagesgrenzen', () => {
+  assert.equal(latestPlausibleCalendarDate(new Date('2026-08-23T22:30:00.000Z')), '2026-08-24');
+  assert.equal(latestPlausibleCalendarDate(new Date('2026-08-24T10:00:00.000Z')), '2026-08-24');
+});
+
 test('verhindert interne Dateien als angeblich amtliche Quelle', () => {
   const root = makeRoot();
   try {
@@ -247,6 +409,22 @@ test('akzeptiert amtliche Quellen nur von freigegebenen Domains', () => {
       .replace('path: FEATURES.md', 'url: https://evil.example/ao');
     writeRule(root, source);
     assert.throws(() => loadCatalog(root), /keine freigegebene amtliche Domain/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('akzeptiert amtliche Landesverwaltungsvorschriften vom freigegebenen Host', () => {
+  const root = makeRoot();
+  try {
+    const source = ruleSource()
+      .replace('kind: product_documentation', 'kind: official_guidance')
+      .replace(
+        'path: FEATURES.md',
+        'url: https://bravors.brandenburg.de/verwaltungsvorschriften/feiertagsrecht',
+      );
+    writeRule(root, source);
+    assert.doesNotThrow(() => loadCatalog(root));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -306,6 +484,40 @@ test('weist Dokumente als Code- oder Testnachweis zurück', () => {
   }
 });
 
+test('akzeptiert ausführbare Skripte, Skripttests und Forgejo-Workflows als Nachweise', () => {
+  const root = makeRoot();
+  try {
+    mkdirSync(join(root, 'scripts', 'release', 'tests'), { recursive: true });
+    mkdirSync(join(root, '.forgejo', 'workflows'), { recursive: true });
+    writeFileSync(join(root, 'scripts', 'release', 'gate.mjs'), 'export const gate = true;\n');
+    writeFileSync(
+      join(root, 'scripts', 'release', 'tests', 'gate.test.mjs'),
+      '// Fachkatalog: TEST-RULE-001\nvoid 0;\n',
+    );
+    writeFileSync(join(root, '.forgejo', 'workflows', 'release.yml'), 'name: release\n');
+
+    writeRule(
+      root,
+      ruleSource({
+        codeRef: 'scripts/release/gate.mjs',
+        testRef: 'scripts/release/tests/gate.test.mjs',
+      }),
+    );
+    assert.doesNotThrow(() => loadCatalog(root));
+
+    writeRule(
+      root,
+      ruleSource({
+        codeRef: '.forgejo/workflows/release.yml',
+        testRef: 'scripts/release/tests/gate.test.mjs',
+      }),
+    );
+    assert.doesNotThrow(() => loadCatalog(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('trennt Implementierungs- und Testnachweise', () => {
   const root = makeRoot();
   try {
@@ -335,6 +547,18 @@ test('fordert für Änderungen an Fachpfaden eine Regel oder dokumentierte Ausna
   assert.equal(isFachPath(fachPath), true);
   assert.equal(isFachPath('packages/db/prisma/schema.prisma'), true);
   assert.equal(isFachPath('packages/db/prisma/migrations/neutraler-name/migration.sql'), true);
+  assert.equal(isFachPath('apps/web/src/server/gwg/verification.ts'), true);
+  assert.equal(isFachPath('apps/web/src/server/dsgvo/client-retention.ts'), true);
+  assert.equal(isFachPath('packages/storage/src/service.ts'), true);
+  assert.equal(isFachPath('packages/evidence/src/chain.ts'), true);
+  assert.equal(isFachPath('apps/web/src/server/poa/signing-snapshot.ts'), true);
+  assert.equal(isFachPath('apps/web/src/server/auth/rbac.ts'), true);
+  assert.equal(isFachPath('apps/web/src/server/settings/access-policy.ts'), true);
+  assert.equal(isFachPath('apps/web/src/server/bwa/tax-estimator.ts'), true);
+  assert.equal(isFachPath('apps/web/src/server/risk/los.ts'), true);
+  assert.equal(isFachPath('packages/db/src/staff-client-access.ts'), true);
+  assert.equal(isFachPath('apps/web/src/app/portal/(protected)/forms/[id]/actions.ts'), true);
+  assert.equal(isFachPath('.forgejo/workflows/release.yml'), true);
   assert.match(evaluateCatalogDiff([{ status: 'M', path: fachPath }]).findings[0], /Fachpfade/);
   assert.deepEqual(
     evaluateCatalogDiff(
@@ -369,6 +593,15 @@ test('eine beliebige Katalogänderung schaltet fremde Fachpfade nicht frei', () 
       path: 'docs/fachkatalog/regeln/rechnungen/inv-rule-001-test.md',
     },
   ]);
+  assert.match(result.findings[0], /keiner geänderten Regel/);
+});
+
+test('überwacht jeden katalogisierten Codepfad auch außerhalb statischer Präfixe', () => {
+  const catalogPath = 'apps/web/src/app/staff/(protected)/beispiel/fach-action.ts';
+  const result = evaluateCatalogDiff([{ status: 'M', path: catalogPath }], {
+    catalogFachPaths: [catalogPath],
+  });
+  assert.deepEqual(result.fachChanges, [catalogPath]);
   assert.match(result.findings[0], /keiner geänderten Regel/);
 });
 

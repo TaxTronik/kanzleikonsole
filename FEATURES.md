@@ -320,23 +320,67 @@ Modul `appointments`.
   Erklärungsart aktivierbar (Spalte „Beraten"); nur für Erklärungen
   (USt-Jahres-, ESt-/KSt-/GewSt-Erklärung), nicht für Anmeldungen/
   Vorauszahlungen. Beim Umschalten werden offene Termine neu materialisiert
-- Werktagsverschiebung gem. § 108 (3) AO inkl. bundes­länderspezifischer
-  Feiertage (alle 16 Länder + Buß-Bettag, Karfreitag/Ostermontag/
-  Pfingstmontag via Gauß-Algorithmus)
+- Technische Werktagsverschiebung für von der Engine berechnete Fristenden:
+  Wochenenden sowie bundesweite und anhand der Tenant-Steuerregion
+  konfigurierte Landesfeiertage werden berücksichtigt. Dieser allgemeine
+  Steuerterminpfad prüft die Anwendbarkeit des § 108 Abs. 3 bis 6 AO und den
+  rechtlich maßgeblichen Feiertagsort nicht vorgelagert; sein Ergebnis bleibt
+  ein Kontrollvorschlag. Der beweisorientierte Bescheidpfad kann dagegen
+  Fristklassifikation, Empfängerort und Behördensitz getrennt erfassen und
+  fällt bei unvollständigem, historischem oder ausländischem Kalenderkontext
+  auf manuelle Prüfung zurück. Kommunale Feiertage werden dort nur aus den für
+  den Vorgang eingegebenen Daten berücksichtigt, nicht aus einer amtlich
+  versionierten Quelle
 - **Tagesgenaue Überfälligkeit (§ 108 (1) AO)**: ein heute fälliger Termin
   ist noch nicht überfällig — OVERDUE wird erst nach Ende des
   Fälligkeitstags gesetzt
 - **Zweistufige Auto-Anforderung an Mandanten** (pro Mandant × Terminart
   konfigurierbar: An/Aus, Versand N Tage vor Fälligkeit, Vorwarnung M Tage
-  davor): Stufe 1 warnt die HAUPTBEARBEITER des Mandanten intern vor
-  (`TAX_DEADLINE_REQUEST_PENDING`, Fallback ADMIN/PARTNER) — Opt-out-Modell,
-  auf der Gruppen-Seite lässt sich der Versand einzeln oder als Bulk stoppen
-  (aufhebbar; z. B. Unterlagen bereits in Papierform geliefert). Stufe 2
-  versendet frühestens einen Tageslauf nach der Vorwarnung die Anforderung
-  samt `request-opened`-Mail an alle aktiven Ansprechpartner + n8n-Event
-  (Parität zum manuellen Anlegen), auditiert als `tax_deadline.auto_request`
-  bzw. `tax_deadline.request_suppressed`/`_unsuppressed`. Nach Ende des
-  Fälligkeitstags wird nie mehr automatisch angefordert
+  davor): Stufe 1 beansprucht die Vorwarnung atomar und warnt alle aktiven
+  HAUPTBEARBEITER des Mandanten intern vor (`TAX_DEADLINE_REQUEST_PENDING`,
+  bei vollständig fehlender Hauptbearbeitung Fallback auf alle aktiven
+  ADMIN/PARTNER). Ohne aktiven Empfänger wird der
+  Warnzeitpunkt nicht als erledigt gestempelt — Opt-out-Modell,
+  auf der Gruppen-Seite lässt sich die Anlage einzeln oder als Bulk stoppen
+  (aufhebbar; z. B. Unterlagen bereits in Papierform geliefert). Stufe 2 legt
+  frühestens einen Tageslauf nach der Vorwarnung die Portal-Anforderung
+  unter einem Compare-and-set-Claim mit den gelesenen Konfigurationsabständen
+  atomar an, verknüpft sie mit dem Termin und merkt die getrennte
+  Benachrichtigung als `QUEUED` vor. Nach dem Commit verarbeitet der Worker
+  denselben Request über eine eigene datenminimierte Mailvorlage. Mandantenname,
+  Steuerart, Zeitraum, Fälligkeit, Request-Titel und -Beschreibung bleiben im
+  geschützten Portal und werden weder als Mail-Template-Variablen noch als
+  Betreff-Suffix angeboten. Fachliche Mandantenhinweise gehen
+  nur an aktive Kontakte mit Benachrichtigungsfreigabe und einem gespeicherten
+  erfolgreichen Portal-Login; bloß eingeladene, noch nie erfolgreich
+  angemeldete Kontakte werden nicht verwendet. Eine Änderung der
+  Kontakt-E-Mail setzt diesen Login-Nachweis zurück. Versand erfolgt nur,
+  solange der Request `OPEN` oder `IN_PROGRESS` ist; fachlich terminale
+  Requests werden ohne Versand als `ORPHANED` aus der technischen Pipeline
+  gelöst. Das optionale n8n-Ereignis wird je logischem Request genau einmal,
+  nicht pro Kontakt und auch bei vollständig fehlendem Mailkontakt ausgelöst;
+  der Mailstatus bleibt dann `NO_RECIPIENT`. Nur ein durch eine ausdrückliche negative
+  SMTP-Providerantwort eindeutig belegter Totalfehler wird höchstens dreimal
+  versucht; Transport-, Socket- oder Timeout-Exceptions, Teilannahme,
+  fehlender Empfänger, inkonsistente Verknüpfung oder sonst unklarer Ausgang
+  werden ohne Blind-Retry intern eskaliert.
+  Persistiert werden unter anderem Versuchszahl, nächster Versuch, Fehler und
+  Eskalationszeit. `PROVIDER_ACCEPTED` bedeutet nur technische Annahme aller
+  Einzelversuche — weder Zustellung noch Zugang oder Kenntnisnahme. Ein Fehler
+  rollt die Portal-Anforderung nicht zurück. Ein persistierter, noch nicht
+  eskalierter `UNKNOWN`-Versandclaim sperrt Unlink und DSGVO-Purge bis zum
+  gespeicherten Versandabschluss oder zur Timeout-Eskalation. Reguläre Unlinks
+  übernehmen Versuch, Annahme, Fehler und Eskalation geschützt nach
+  `ORPHANED`; die Versandmetadaten sind danach unveränderlich. Nur der explizite
+  transaktionslokal freigegebene Purge darf den vollständigen technischen
+  Tupel auf `NOT_REQUIRED`/leer neutralisieren. Wird ein Steuertermin mit
+  terminaler Anforderung regulär gelöscht, archiviert die Datenbank höchstens
+  pseudonyme technische Versandmerkmale; Fehlertext wird nur als SHA-256-Wert
+  gebunden. Der Anwendung fehlen Leserechte, und der Retention-Worker löscht
+  den Hilfsnachweis tenantgebunden spätestens nach einem Jahr. Die Vorgänge werden
+  als `tax_deadline.auto_request` beziehungsweise
+  `tax_deadline.request_suppressed`/`_unsuppressed` auditiert. Nach Ende
+  des Fälligkeitstags wird nie mehr automatisch angefordert
 - **Gemeinsamer Materialisierer-Kern** in `@taxtronik/tax`
   (`materializeTenantTaxDeadlines`): Web-App und Worker nutzen exakt
   dieselbe Logik (per Dependency-Injection, transaktional) — keine
@@ -410,32 +454,75 @@ nebeneinander auf einer Seite.
   automatisch auf eine bestehende Erklärung, übernimmt deren erwarteten
   Wert als `expectedAmount` und setzt `filing_id`
 - Soll/Ist-Vergleich: festgesetzt vs. erwartet, farbcodierte Differenz
-- Einspruchsfrist automatisch nach Übermittlungsweg berechnet: bei Post und
-  elektronischer Übermittlung mit datumsabhängiger Drei-/Vier-Tage-Fiktion,
-  bei Auslandsbekanntgabe mit Monatsfiktion und bei förmlicher/persönlicher
-  Bekanntgabe ab dem feststehenden Zugangstag. Ein nachweislich späterer
-  Zugang sowie eine fehlende oder unrichtige Rechtsbehelfsbelehrung werden
-  berücksichtigt; Monats-/Jahresfrist und Wochenend-/Feiertagsverschiebung
-  werden kalendarisch berechnet. Für bis einschließlich 31.12.2025 erlassene
-  Verwaltungsakte im Datenabruf gelten die damaligen Benachrichtigungs-/
-  Abrufregeln; für nach dem 31.12.2025 erlassene Verwaltungsakte gilt die
-  Vier-Tage-Fiktion ab Bereitstellung. Warnung bei < 7 Tagen Restdauer
+- Einspruchsfrist als beweisorientierter Kontrollvorschlag nach
+  Übermittlungsweg: Bei Post und unmittelbarer elektronischer Übermittlung muss
+  das Ausgangsdatum als tatsächlicher Aufgabe- beziehungsweise Absendetag
+  klassifiziert und mindestens substantiiert sein. Fehlt es, darf das
+  Bescheiddatum nur einen getrennten internen Risikotermin erzeugen;
+  Bekanntgabetag und Rechtsfrist bleiben leer. Die Maske trennt behaupteten,
+  substantiierten und als fachlich festgestellt eingegebenen Nachweis,
+  Nichtzugang, früheren tatsächlichen und späteren Zugang, Empfänger- und
+  Behördenort sowie eine dreistufige Belehrungsprüfung. Ein früher erfasster
+  Zugang verkürzt die Fiktion nicht. Bei nur behauptetem späterem Zugang zeigt
+  die UI getrennt das Szenario aus der gesetzlichen Fiktion und das Szenario
+  aus dem behaupteten Zugang; beide bleiben manuell zu prüfen. Unklare
+  Nachweise, Belehrung oder Feiertagskontexte liefern `MANUAL_REVIEW`. Eine unabhängige
+  Berufsträger-/Vier-Augen-Freigabe und beleggebundene Evidenz sind noch nicht
+  implementiert
+- Beim Datenabruf wählt die Kernlogik anhand des Erlassdatums zwischen
+  Altrecht bis 2025, dem konservativ nur mit dokumentierter aktiver
+  Einwilligung berechenbaren Jahr 2026 und dem Regelfall ab 2027. Ab 2027
+  müssen Voraussetzungen und Postantrag getrennt bewertet sein. Die
+  Engine vergleicht den Zugangstag eines als wirksam erfassten Postantrags mit
+  der Bereitstellung: Zugang bis einschließlich Bereitstellungstag blockiert
+  den Automatismus; ein erst später zugegangener Antrag blockiert diese bereits
+  frühere Bereitstellung nicht allein deshalb. Die
+  Bereitstellung benötigt einen Nachweisstatus; Empfängerort und Behördensitz
+  werden separat geprüft. Fehlerhafte oder verspätete Same-Day-
+  Benachrichtigung verändert den Fiktionstag nicht, wird aber als manueller
+  Wiedereinsetzungs-Prüfhinweis gespeichert. Die UI kennt noch keinen eigenen
+  Status „Benachrichtigung nicht zugegangen“, und der Hinweis ist kein
+  vollständiger §-110-Workflow. Warnung bei < 7 Tagen Restdauer
 - **Einspruchsfristen-Reminder**: Worker `reminders-daily` schickt
-  14 / 7 / 1 Tage vor `appealDeadline` Notifications an den Prüfer
-  (idempotent über day-bucket pro Resource/Kind)
+  14 / 7 / 1 Tage vor `appealDeadline` nur dann Notifications, wenn der
+  Vorschlag `CALCULATED` ist und keinen manuellen Prüfbedarf trägt. Empfänger
+  ist der weiterhin aktive und aktuell mandatsberechtigte dokumentierte
+  Prüfer; sonst alle aktiven Hauptbearbeiter, danach aktive Admins/Partner als
+  Fallback. Fehlt ein berechtigtes Ziel, entsteht insbesondere keine globale
+  Notification. Fristqualifikation und Zugriff werden im Insert-Tx erneut
+  geprüft; Deduplizierung erfolgt per Day-Bucket und Resource/Kind
 - **Status-Maschine mit bedienbaren Übergängen** (Quick-Action-Auswahl in
   der Tabelle, `updateNoticeStatusAction`, auditiert `tax_notice.status`),
   entlang des Einspruchs-Lebenszyklus § 347 ff. AO:
   - NEU → GEPRÜFT (Normalfall) oder direkt EINSPRUCH
-  - GEPRÜFT → EINSPRUCH / RECHTSKRÄFTIG; zurück auf NEU (Fehlklick)
-  - EINSPRUCH → ABGEHOLFEN / TEILABHILFE / ZURÜCKGEWIESEN
-  - ABGEHOLFEN → RECHTSKRÄFTIG
-  - TEILABHILFE / ZURÜCKGEWIESEN → KLAGE / RECHTSKRÄFTIG
-  - KLAGE → RECHTSKRÄFTIG (final)
+  - GEPRÜFT → EINSPRUCH / BESTANDSKRÄFTIG; zurück auf NEU (Fehlklick)
+  - EINSPRUCH → ABGEHOLFEN / TEILABHILFE /
+    TEIL-EINSPRUCHSENTSCHEIDUNG / ZURÜCKGEWIESEN
+  - ABGEHOLFEN → BESTANDSKRÄFTIG
+  - TEILABHILFE → ABGEHOLFEN / TEIL-EINSPRUCHSENTSCHEIDUNG /
+    ZURÜCKGEWIESEN; allein keine Klagefrist
+  - TEIL-EINSPRUCHSENTSCHEIDUNG → ABGEHOLFEN / ZURÜCKGEWIESEN / KLAGE
+  - ZURÜCKGEWIESEN → KLAGE / BESTANDSKRÄFTIG
+  - KLAGE → BESTANDSKRÄFTIG (final)
   - Side-Effects: GEPRÜFT stempelt `reviewedAt/-By`, EINSPRUCH
-    `appealFiledAt`, Einspruchsentscheidung `appealResolvedAt`; bei
-    TEILABHILFE/ZURÜCKGEWIESEN wird die Klagefrist nach § 47 FGO geführt,
-    KLAGE bindet Einreichungszeitpunkt und Bearbeiter als Erledigungsnachweis
+    `appealFiledAt`; TEILABHILFE speichert den tatsächlichen Bekanntgabetag
+    des Teilabhilfebescheids und die dokumentierende Person, ohne den Einspruch
+    zu erledigen. Einspruchsentscheidung speichert ihren eigenen Nachweis; technisch
+    wird nur bei `TEILEINSPRUCHSENTSCHEIDUNG` und `ZURUECKGEWIESEN` eine
+    Klagefrist geführt; KLAGE bindet Einreichungszeitpunkt und Bearbeiter als
+    Erledigungsnachweis. BESTANDSKRÄFTIG ist in der Server-Action auf Admin
+    oder Partner beschränkt und verlangt Ereignistag, Person sowie eine
+    Begründung von mindestens zehn Zeichen. Aus GEPRÜFT sind zusätzlich eine
+    vollständig berechnete Einspruchsfrist ohne manuellen Prüfbedarf, deren
+    Ablauf und das Fehlen eines dokumentierten Einspruchs Pflicht; aus
+    ZURÜCKGEWIESEN muss die dokumentierte Klagefrist abgelaufen sein. Der
+    jeweilige Fristtag ist gesperrt; frühestens der Folgetag ist zulässig. Die
+    Rollenprüfung belegt keine Berufsträgerqualifikation
+  - Bekannte fachliche Modellgrenze: Trotz getrennter Teilabhilfe und
+    Teil-Einspruchsentscheidung bleibt `TaxNotice.status` linear. Eine
+    Klagefrist für den entschiedenen Teil und der gleichzeitig fortdauernde
+    Einspruch über den Rest lassen sich nicht als parallele, gegenständlich
+    abgegrenzte Verfahrenszweige abbilden
 - PDF des Bescheids wird verlinkt (über Document-Modul)
 - Verknüpfungs-Indikator zeigt in der Tabelle „↪ aus Erklärung"
   - „Portal"-Badge, wenn der Mandant die Erklärung sieht
@@ -446,7 +533,9 @@ nebeneinander auf einer Seite.
   Disclaimer „nicht rechtsverbindlich"
 - Wenn der zugehörige Bescheid eingegangen + ab Status GEPRÜFT freigegeben:
   grüner Bestätigungs-Block mit Ist-Beträgen, Abweichung zur Erklärung,
-  Einspruchsfrist-Hinweis, Download des Bescheid-PDF
+  basisabhängig bezeichnetem Ausgangsdatum und Download des Bescheid-PDF. Der
+  Einspruchsfrist-Kontrollvorschlag erscheint nur bei `CALCULATED` ohne offenen
+  manuellen Prüfbedarf
 - Vor GEPRÜFT: dezenter Hinweis „Bescheid liegt vor und wird von Ihrer
   Kanzlei geprüft."
 
@@ -635,24 +724,57 @@ User-Agent bei Signatur.
 
 ## Fristenkontrollbuch
 
-Vereinheitlichte Kontrollsicht `/staff/fristen` über alle vier
-fristenführenden Quellen — Steuertermine, Einspruchsfristen (Bescheide),
-Anforderungs-Fälligkeiten und Wiedervorlagen.
+Vereinheitlichte Kontrollsicht `/staff/fristen` über alle fünf
+fristenführenden Quellen — Steuertermine, Bescheidprüffälle/Einspruchsfristen,
+Klagefristen, Anforderungs-Fälligkeiten und Wiedervorlagen.
 
-- **Kein eigener Zustand**: Erledigung wird aus den Quellmodulen abgelesen
-  (dort auditiert) — das Buch kann nie vom echten Stand abweichen
+- **Kein eigener Zustand**: Die Ansicht liest den aktuellen Status aus den
+  Quellmodulen, sodass keine zweite manuelle Statuspflege entsteht. Ihre
+  fachliche Richtigkeit bleibt aber von Quellstatus, Abschlussgrund und
+  Nachweisen abhängig
 - Offene Fristen erscheinen bis zum Horizont **ohne untere Grenze** — eine
   überfällige Frist verschwindet nie durch Zeitablauf; Erledigte als
   Rückschau im gewählten Fenster (7/30/90 Tage)
 - Gruppierung nach Dringlichkeit (Überfällig / Heute / Diese Woche /
   Später), Filter „Meine" (Verantwortlicher = Hauptbearbeiter des
   Mandanten, bei Wiedervorlagen die Zuweisung)
-- Erledigt-Wahrheitstabellen bewusst konservativ: GEPRÜFT (Bescheid) und
-  RESPONDED (Anforderung) gelten als OFFEN, solange die Entscheidung/
-  Prüfung aussteht (Unit-getestet)
-- **CSV-Export als Erledigungsnachweis** (Fälligkeit, Verantwortlicher,
-  Status, erledigt am/von) — jeder Export als `fristen.export.csv` in der
-  Audit-Hash-Chain, rate-limitiert
+- Aktuelle Wahrheitstabellen verlangen mehr als einen Status: Steuertermine
+  schließen nur mit `DONE` samt Zeit/Person, Einspruchs- und Klagefristen nur
+  mit dokumentierter Einlegung oder Bestandskraft-Disposition, Anforderungen
+  nur mit `CLOSED` samt Zeit/Person und Wiedervorlagen nur mit dokumentiertem
+  Abschluss. `SKIPPED`, `RESPONDED` und `CANCELLED` bleiben offen.
+  Nach Fristende dokumentierte Einsprüche oder Klagen bleiben als
+  Wiedereinsetzungs-/Dispositionsfall offen; ein strukturierter
+  Wiedereinsetzungsworkflow ist noch nicht implementiert.
+  `TEILABHILFE` erzeugt keine Klagefrist; die lineare Modellgrenze für
+  parallele Teilverfahren bleibt. Eine bereits nach einer
+  Teil-Einspruchsentscheidung persistierte Klagefrist bleibt auch bei einem
+  späteren Status `ABGEHOLFEN` bis zum Einreichungs- oder vollständigen
+  Dispositionsnachweis offen
+- Fehlt wegen ungeklärter Bekanntgabe-/Nachweislage eine berechenbare
+  Einspruchsfrist, bleibt ein vorhandener `internalRiskDeadline` als deutlich
+  bezeichneter **interner Prüftermin** offen. UI, CSV und Tagesabschluss nennen
+  ihn ausdrücklich keine Rechtsbehelfsfrist; eine echte Einspruchsfrist
+  verdrängt den Prüffall. Ein eigener strukturierter Abschlussgrund „nicht
+  anwendbar“ ist für diesen Prüffall noch nicht implementiert
+- **Tägliche Abschlusskontrolle**: Admin/Partner können einmal pro Tenant und
+  Kalendertag einen append-only Snapshot aller heute fälligen und überfälligen
+  offenen Fristen dokumentieren. Bei offenen Positionen ist eine
+  Eskalationsnotiz Pflicht. Quellabfragen und Insert verwenden einen
+  konsistenten `REPEATABLE READ`-Lesestand; Stichtag, Snapshot- und
+  Abschlusszeit stammen von der Datenbank. Die Einträge enthalten nur Quelle,
+  technische Kontrollart (`CALCULATED_CONTROL_PROPOSAL`,
+  `REVIEW_PENDING_CONTROL_PROPOSAL`, `INTERNAL_RISK` oder
+  `OPERATIONAL_DUE_DATE`), Fälligkeit und pseudonyme UUID-Referenzen, keine Namen oder Fachtitel;
+  Abschluss und Zählwerte werden auditiert. Der
+  Snapshot führt keine fristwahrende Handlung aus, versendet keine Eskalation
+  und erzwingt weder einen bestimmten Arbeitsschluss noch Vier-Augen-Prüfung.
+  UUIDs und die freie Eskalationsnotiz bleiben aufbewahrungsrelevante Daten
+- **CSV-Export als auditierter Kontrollauszug** (Fälligkeit,
+  Verantwortlicher, Status, erledigt am/von) — jeder Export als
+  `fristen.export.csv` in der Audit-Hash-Chain, rate-limitiert. Der Export
+  ist kein Beweis der fristwahrenden Handlung und kein vollständiger
+  historischer Erledigungsnachweis
 - Zugriffsmodell: RESTRICTED-/vertrauliche Mandanten gefiltert (identisch
   zu Kalender/Exporten)
 
@@ -727,6 +849,10 @@ Pro Mitarbeiter abonnierte RSS-Feeds — aus dem ursprünglichen
   **CSV (Addison)** mit Auto-Erkennung der Langform `a*.csv`
   (`Nummer;Bezeichnung;…`) vs. Kompaktform `s*.csv` (Erlöse / BE / Personal
   / Kosten / Vorl. Ergebnis als Spaltenüberschriften)
+- Bekannte Mapping-Grenze: DATEV 1051 (Gesamtleistung) wird intern als
+  `revenue`, DATEV 1300 (Betriebsergebnis) ersatzweise als `resultBeforeTax`
+  geführt; das ist keine fachliche Gleichsetzung mit Umsatzerlösen
+  beziehungsweise Ergebnis vor Steuern
 - Idempotenter Re-Import: existierende Perioden werden übersprungen
 - Periodenvergleich mit Vorjahr / Vorquartal, Score-Card-Engine
 
@@ -747,9 +873,11 @@ Aus PNL-Werten abgeleitete Frühwarn-Indikatoren — keine Bilanzkennzahlen
   hochgerechnet; heuristische, mit zunehmender Datenabdeckung enger werdende
   Spanne. Eine echte Saisongewichtung wird mangels Vorjahres-Monatsverteilung
   nicht behauptet.
-- **Trend-Regression**: Linear-Regression über Vorjahre; heuristische Spanne
-  aus dem Maximum von 1,5 × Residuen-Standardabweichung und 5 % des
-  Schätzwerts (kein statistisches Konfidenzintervall)
+- **Trend-Regression (bekannte Abweichung)**: Der aktuelle Filter nimmt alle
+  zwölfmonatigen `YEAR`-Perioden und begrenzt sie nicht auf Jahre vor dem
+  Zieljahr. Die heuristische Spanne ist das Maximum von 1,5 ×
+  Residuen-Standardabweichung und 5 % des Schätzwerts (kein statistisches
+  Konfidenzintervall)
 - Pro KPI (Erlöse / Kosten / Personal / Ergebnis vor Steuern / Steuern /
   Ergebnis nach Steuern): Erwartungswert + low/high-Spanne
 - **Steuer-Pauschale**: 30 % Mittelwert (25–35 % Spanne) auf positives
@@ -892,12 +1020,18 @@ Kanzlei nicht.
 - Markierungen mit offener Delegation oder ausstehender Antwort zeigen diesen
   Zustand direkt in der Subsumtionsschicht und verlinken wahlweise zur
   Wiedervorlage/Delegation oder zum unmittelbaren Anlegen der Definition
-- **Rechercheauftrag an n8n — anonymisiert (§ 203 StGB)**: der Berater wählt,
+- **Rechercheauftrag an n8n — technische Datenminimierung, kein §-203-Nachweis**:
+  der Berater wählt,
   was mitgeht (kein/Auszug/ganzer Sachverhalt · Textbausteine · freier Prompt);
   deterministische Schwärzung der bekannten Stammdaten + heuristische Treffer
   (Firma, IBAN, Steuernummer, Betrag, Datum, **E-Mail**) in einer
   hervorgehobenen, **editierbaren Vorschau**; das Platzhalter→Original-Mapping
   verlässt die Kanzlei nie (RLS-geschützt gespeichert)
+- Bekannte Versandgrenzen: frei befüllbare Normanker werden unverändert
+  übertragen; die Vorschau ist serverseitig nicht per Token/Hash gebunden und
+  getrennte Mappings für Text, Rechtsfrage und Auftrag können bei gleichen
+  Platzhalternamen kollidieren. Die Funktion gewährleistet daher weder
+  vollständige Anonymität noch die Zulässigkeit der Offenbarung.
 - **Kanzleiweite, selbst anlegbare Prompt-Vorlagen**
 - **Rechercheergebnisse-Ablage**: tenantgebundener n8n-Callback
   (Bearer-Credential, `research:write`-Scope, einmalige Request-ID);
@@ -1010,6 +1144,11 @@ Kanzlei nicht.
   **Appointment-Decided** (Anfrage angenommen/abgelehnt),
   **Tax-Deadline-Request-Pending** (Vorwarnung vor dem automatischen
   Versand einer Steuertermin-Anforderung, mit Absprung zur Stopp-Aktion)
+- Vor dem Daily-Insert werden bei Wiedervorlagen offener Zustand, Fälligkeit
+  und aktuelle Zuweisung, bei Pendelordnern `WITH_CLIENT`-Status,
+  Rückgabedatum und Ersteller erneut gelesen. Mandantenbezogene Empfänger
+  müssen aktiv und aktuell zugriffsberechtigt sein; bei internen
+  Wiedervorlagen wird die aktive Tenant-Zugehörigkeit geprüft
 
 ## DSGVO
 
@@ -1294,7 +1433,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Vollmachten-Modus (`MARKDOWN_OTP` / `PDF_TEMPLATE` / `OFF`)
 - Rechnungs-Modus (`IN_APP` / `EXTERNAL` / `OFF`)
 - PDF-Begleittext-Templates für beide Modi (Markdown mit Platzhaltern)
-- Steuer-Region pro Tenant (Bundesland für Feiertagsberechnung)
+- Steuer-Region pro Tenant als technischer Standardkalender. Sie ist nicht
+  automatisch der rechtlich maßgebliche Feiertagsort eines konkreten
+  Bekanntgabe- oder Fristvorgangs
 - Feiertagskalender pro Bundesland konfigurierbar (alle 16 Länder +
   Buß-Bettag-Berechnung)
 - Custom-Felder-Definitionen für Mandanten
@@ -1358,8 +1499,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `audit-anchor` (alle 2 Sekunden; nicht blockierende RFC-3161-Checkpoints),
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
-  `tax-deadline-materialize` (07:30 Berlin, materialisiert Termine, fährt
-  die zweistufige Auto-Anforderung inkl. Mandanten-Mail nach Commit),
+  `tax-deadline-materialize` (07:30 Berlin, materialisiert Termine, legt
+  Auto-Anforderungen samt `QUEUED`-Status atomar an und verarbeitet den
+  persistierten Benachrichtigungsfluss; höchstens drei Versuche nur bei
+  eindeutigem Totalfehler, sonst fail-closed interne Eskalation),
   `audit-rotate`, `tax-news-fetch`
   (06:30 Berlin, holt alle aktiven RSS-Feeds aus `rss_feed`),
   `reminders-daily` (07:45 Berlin, schickt Notifications für
@@ -1496,12 +1639,14 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   SMTP mit `requireTLS` + `minVersion TLSv1.2`, `from`/`to`/`subject`/
   `replyTo` durch CRLF-Stripping, Markdown-Renderer escapt user-supplied
   Variablen vor `{{var}}`-Substitution
-- **§ 203-Anonymisierung vor jedem Egress**: Rechercheaufträge aus der
-  Subsumtion werden vor dem n8n-Relay deterministisch (bekannte Stammdaten) +
-  heuristisch (Firma/IBAN/Steuernummer/Betrag/Datum/E-Mail) geschwärzt,
-  editierbare Vorschau, das Platzhalter→Original-Mapping bleibt RLS-lokal;
-  scoped n8n-Inbound (tenantgebundene Key-ID + Bearer-Token + einmalige
-  Request-ID im Redis-Replay-Store, fail-closed)
+- **Technische Pseudonymisierung vor dem Recherche-Egress, kein
+  §-203-Nachweis**: Text, Rechtsfrage und Auftrag werden vor dem n8n-Relay
+  deterministisch (bekannte Stammdaten) plus heuristisch
+  (Firma/IBAN/Steuernummer/Betrag/Datum/E-Mail) reduziert; Normanker bleiben
+  derzeit unverändert, Vorschau und Versand sind serverseitig nicht gebunden
+  und getrennte Platzhaltermappings können kollidieren. Das Mapping bleibt
+  RLS-lokal; scoped n8n-Inbound nutzt tenantgebundene Key-ID, Bearer-Token und
+  einmalige Request-ID im Redis-Replay-Store (fail-closed).
 - **Security Policy**: `SECURITY.md` mit vertraulichem Reporting-Kanal
   (E-Mail), Response-SLA (2/5 Werktage), Scope-Definition und Hinweis auf
   ADR-0002–0010 als Secure-by-Design-Grundlage

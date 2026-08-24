@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+
+// Fachkatalog: GWG-RISK-REVIEW-001
 import { computeRiskScore, riskValidForDays } from '../risk-score';
 
 describe('computeRiskScore — PEP-Override (§ 15 Abs. 3/4 GwG)', () => {

@@ -19,10 +19,11 @@ import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/noti
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { materializeTenantTaxDeadlines } from '@taxtronik/tax';
-import { notifyRequestOpened } from '../mail';
+import { notifyAutomaticTaxRequestOpened } from '../mail';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
+import { processTaxDeadlineNotifications } from './tax-deadline-notification';
 
 const HORIZON_DAYS = 90;
 
@@ -42,14 +43,19 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
     let totalOverdue = 0;
     let totalWarned = 0;
     let totalMailRecipients = 0;
+    let totalNotificationAttempts = 0;
+    let totalProviderAccepted = 0;
+    let totalNotificationEscalated = 0;
+    let totalNotificationRetries = 0;
 
     for (const tenantId of tenantIds) {
       if (!(await isWorkerTenantModuleEnabled(tenantId, 'taxNotices'))) {
         log.info({ tenantId }, 'tax-deadline: Modul deaktiviert, skip');
         continue;
       }
-      // System-Staff für createdByStaff der Auto-Anforderungen — wir nehmen
-      // den ersten ADMIN/PARTNER. Ohne so einen Account: skip.
+      // System-Staff fuer createdByStaff neuer Auto-Anforderungen. Bereits
+      // persistierte Benachrichtigungen werden auch ohne diesen Account noch
+      // abgearbeitet; sie gehoeren zu einem schon existierenden Request.
       const systemStaff = await prismaOwner.staffUser.findFirst({
         where: {
           tenantId,
@@ -58,55 +64,63 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
         },
         select: { id: true },
       });
-      if (!systemStaff) {
-        log.info({ tenantId }, 'tax-deadline: kein ADMIN/PARTNER, skip');
-        continue;
+      if (systemStaff) {
+        const stats = await materializeTenantTaxDeadlines(
+          {
+            db: prismaOwner,
+            runAtomic: (fn) => withWorkerTenantContext(tenantId, fn),
+            recordEvidence: (tx, event) => evidence.record(tx, event),
+            // Läuft in derselben withWorkerTenantContext-Tx wie staffNotifiedAt.
+            upsertStaffNotification: (tx, input) => upsertNotificationTx(tx, input),
+            resolveStaffNotifications: (tx, input) =>
+              resolveNotificationsTx(tx, {
+                tenantId: input.tenantId,
+                resources: [{ resourceType: input.resourceType, resourceId: input.resourceId }],
+              }),
+          },
+          { tenantId, systemStaffId: systemStaff.id, horizonDays: HORIZON_DAYS },
+        );
+        totalCreated += stats.deadlinesCreated;
+        totalRequests += stats.requestsCreated;
+        totalOverdue += stats.markedOverdue;
+        totalWarned += stats.staffWarned;
+      } else {
+        log.info(
+          { tenantId },
+          'tax-deadline: kein ADMIN/PARTNER, nur bestehende Benachrichtigungen',
+        );
       }
 
-      const stats = await materializeTenantTaxDeadlines(
+      // TAX-DEADLINE-AUTOREQUEST-001: Nicht nur die in DIESEM Lauf neu
+      // erzeugten Requests bearbeiten, sondern auch persistierte QUEUED- und
+      // eindeutig FAILED-Zustaende. So bleibt die requestId stabil und ein
+      // Worker-/SMTP-Fehler kann keine zweite fachliche Anforderung erzeugen.
+      const notificationStats = await processTaxDeadlineNotifications(
         {
           db: prismaOwner,
           runAtomic: (fn) => withWorkerTenantContext(tenantId, fn),
-          recordEvidence: (tx, event) => evidence.record(tx, event),
-          // Läuft in derselben withWorkerTenantContext-Tx wie staffNotifiedAt.
+          notifyAutomaticTaxRequestOpened,
           upsertStaffNotification: (tx, input) => upsertNotificationTx(tx, input),
-          resolveStaffNotifications: (tx, input) =>
+          resolveFailureNotifications: (tx, input) =>
             resolveNotificationsTx(tx, {
               tenantId: input.tenantId,
-              resources: [{ resourceType: input.resourceType, resourceId: input.resourceId }],
+              resources: [{ resourceType: 'tax_deadline', resourceId: input.deadlineId }],
+              kinds: ['TAX_DEADLINE_NOTIFICATION_FAILED'],
             }),
+          logUncertainError: ({ deadlineId, requestId, error }) => {
+            log.error(
+              { tenantId, deadlineId, requestId, err: (error as Error).message },
+              'tax-deadline: Benachrichtigungsstatus unklar',
+            );
+          },
         },
-        { tenantId, systemStaffId: systemStaff.id, horizonDays: HORIZON_DAYS },
+        { tenantId },
       );
-      totalCreated += stats.deadlinesCreated;
-      totalRequests += stats.requestsCreated;
-      totalOverdue += stats.markedOverdue;
-      totalWarned += stats.staffWarned;
-
-      // Mandanten-Mail (request-opened, Parität zum manuellen Anlegen) + n8n-
-      // Event NACH dem Commit der Request-Anlage. Fehler failen den Job NICHT:
-      // der Termin ist bereits REMINDED — ein BullMQ-Retry würde keine Mails
-      // nachholen, aber die restlichen Tenants blockieren. (Gleiche Semantik
-      // wie fireAndForget im manuellen Web-Pfad.)
-      for (const r of stats.createdRequests) {
-        try {
-          const res = await notifyRequestOpened({
-            tenantId: r.tenantId,
-            clientId: r.clientId,
-            requestId: r.requestId,
-            title: r.title,
-            description: r.description,
-            priority: r.priority,
-            dueAtIso: r.dueDate.toISOString(),
-          });
-          totalMailRecipients += res.recipients;
-        } catch (e) {
-          log.error(
-            { tenantId, requestId: r.requestId, err: (e as Error).message },
-            'tax-deadline: request-opened-Versand fehlgeschlagen',
-          );
-        }
-      }
+      totalNotificationAttempts += notificationStats.processed;
+      totalProviderAccepted += notificationStats.providerAccepted;
+      totalMailRecipients += notificationStats.recipientsAccepted;
+      totalNotificationEscalated += notificationStats.escalated;
+      totalNotificationRetries += notificationStats.retryPending;
     }
 
     log.info(
@@ -116,9 +130,21 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
         overdue: totalOverdue,
         warned: totalWarned,
         mailRecipients: totalMailRecipients,
+        notificationAttempts: totalNotificationAttempts,
+        providerAccepted: totalProviderAccepted,
+        notificationEscalated: totalNotificationEscalated,
+        notificationRetries: totalNotificationRetries,
       },
       'tax-deadline-materialize: done',
     );
+    // Ein eindeutig fehlgeschlagener Versuch darf BullMQ erneut ausfuehren.
+    // Der persistierte FAILED-Zustand + CAS verhindert Doppelversand; UNKNOWN,
+    // Teilfehler und fehlende Empfaenger werden dagegen bewusst nicht retried.
+    if (totalNotificationRetries > 0) {
+      throw new Error(
+        `${totalNotificationRetries} Auto-Anforderungs-Benachrichtigung(en) warten auf Retry`,
+      );
+    }
     return {
       created: totalCreated,
       requests: totalRequests,

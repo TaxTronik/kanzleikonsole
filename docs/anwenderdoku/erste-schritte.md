@@ -34,7 +34,9 @@ direkt verlinkt:
 
 1. **Erscheinungsbild** — Logo und Anzeigename der Kanzlei (erscheinen in
    beiden Oberflächen und in E-Mails).
-2. **Bundesland** — steuert die Werktagsverschiebung der Steuertermine.
+2. **Bundesland** — liefert den technischen Standardkalender für die
+   Werktagsverschiebung. Es ist nicht automatisch der rechtlich maßgebliche
+   Feiertagsort eines konkreten Bekanntgabe- oder Fristvorgangs.
 3. **Kanzlei-Stammdaten** — Name, Anschrift, **USt-ID oder Steuernummer**,
    **E-Mail und Telefon**. Eine der beiden steuerlichen Kennungen genügt. Die
    Kontaktdaten sind Pflichtangaben der E-Rechnung (XRechnung); ohne sie

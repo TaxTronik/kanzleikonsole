@@ -1,5 +1,6 @@
 // =============================================================================
 // Unit-Tests: PoA-Signatur-Flow — OTP-Fehlversuchszähler (poa/actions.ts).
+// Fachkatalog: POA-SIGNING-CONFIRMATION-001
 //
 // Audit 2026-06 Befund 2: Der pro-OTP-Zähler (signingOtpAttempts, max 5) wird
 // beim Re-Issue bewusst auf 0 gesetzt (UX) — mit dem Issue-Cap von 10 ergab

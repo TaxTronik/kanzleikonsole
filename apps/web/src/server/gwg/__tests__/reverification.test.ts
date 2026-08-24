@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+
+// Fachkatalog: GWG-REVERIFICATION-VALIDITY-001
 import type { TxClient } from '@taxtronik/db';
 import { Prisma } from '@prisma/client';
 import {

@@ -11,6 +11,7 @@ export {
   type TenantContext,
   type ActorType,
   type TxClient,
+  type TenantTransactionOptions,
 } from './tenant-context';
 export { Prisma } from './prisma-client';
 export {

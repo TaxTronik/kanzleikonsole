@@ -4,31 +4,93 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
-import { assertRepositoryFile, loadCatalog, parseRuleSource } from './lib.mjs';
+import {
+  assertRepositoryFile,
+  latestPlausibleCalendarDate,
+  loadCatalog,
+  parseRuleSource,
+} from './lib.mjs';
 
 const FACH_PREFIXES = [
   'packages/tax/',
+  'packages/storage/src/',
+  'packages/evidence/src/',
   'packages/db/prisma/migrations/',
   'apps/web/src/server/fristen/',
   'apps/web/src/server/invoicing/',
+  'apps/web/src/server/bwa/',
+  'apps/web/src/server/risk/',
+  'apps/web/src/server/gwg/',
+  'apps/web/src/server/gwg-onboarding/',
+  'apps/web/src/server/dsgvo/',
+  'apps/web/src/server/privacy/',
+  'apps/web/src/server/documents/',
+  'apps/web/src/server/storage/',
+  'apps/web/src/server/poa/',
+  'apps/web/src/server/compliance/',
   'apps/web/src/app/staff/(protected)/clients/[id]/notices/',
   'apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/',
+  'apps/web/src/app/staff/(protected)/clients/[id]/gwg/',
+  'apps/web/src/app/staff/(protected)/clients/[id]/privacy/',
+  'apps/web/src/app/staff/(protected)/clients/[id]/requests/',
+  'apps/web/src/app/staff/(protected)/clients/[id]/change-requests/',
   'apps/web/src/app/staff/(protected)/tax-deadlines/',
   'apps/web/src/app/staff/(protected)/invoices/',
+  'apps/web/src/app/staff/(protected)/poa/',
+  'apps/web/src/app/staff/(protected)/documents/',
+  'apps/web/src/app/staff/(protected)/admin/gwg-retention/',
+  'apps/web/src/app/staff/(protected)/admin/dsgvo-retention/',
+  'apps/web/src/app/staff/(protected)/admin/privacy/',
+  'apps/web/src/app/staff/(protected)/admin/dsgvo/',
+  'apps/web/src/app/staff/(protected)/admin/audit/',
+  'apps/web/src/app/staff/(protected)/notifications/',
+  'apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/',
   'apps/web/src/app/portal/(protected)/invoices/',
+  'apps/web/src/app/portal/(protected)/requests/',
+  'apps/web/src/app/portal/(protected)/forms/',
+  'apps/web/src/app/portal/(protected)/steuer/',
+  'apps/web/src/app/gwg-onboarding/',
+  'apps/web/src/app/poa/sign/',
   'apps/web/src/app/api/staff/invoices/',
+  'apps/web/src/app/api/staff/documents/',
+  'apps/web/src/app/api/staff/admin/verfahrensdoku/',
+  'apps/web/src/app/api/portal/documents/',
   'apps/worker/src/jobs/tax-deadline-',
   'apps/worker/src/jobs/invoice-',
+  'apps/worker/src/jobs/gwg-',
+  'apps/worker/src/jobs/dsgvo-',
+  'apps/worker/src/jobs/poa-',
+  'apps/worker/src/jobs/audit-',
+  'apps/worker/src/jobs/evidence-',
+  'apps/worker/src/jobs/risk-',
   'apps/worker/src/jobs/reminders-daily.ts',
+  'scripts/release/',
 ];
-const FACH_FILES = new Set(['packages/db/prisma/schema.prisma']);
+const FACH_FILES = new Set([
+  'packages/db/prisma/schema.prisma',
+  'packages/db/src/staff-client-access.ts',
+  'packages/db/src/tenant-context.ts',
+  'packages/db/src/notification.ts',
+  'packages/db/scripts/verify-rls.ts',
+  'packages/mail/src/dispatch.ts',
+  'packages/mail/src/request-opened.ts',
+  'apps/web/src/lib/tax-deadline-pipeline.ts',
+  'apps/web/src/lib/staff-permissions.ts',
+  'apps/web/src/server/actions/staff-action.ts',
+  'apps/web/src/server/auth/rbac.ts',
+  'apps/web/src/server/settings/access-policy.ts',
+  'apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts',
+  'apps/worker/src/jobs/magic-link-cleanup.ts',
+  'apps/worker/src/jobs/n8n-retention.ts',
+  '.forgejo/workflows/release.yml',
+]);
 const CATALOG_RULE_PREFIX = 'docs/fachkatalog/regeln/';
 const EXCEPTION_LOG = 'docs/fachkatalog/AENDERUNGEN.md';
 const EXCEPTION_ID_PATTERN = /^FK-EXC-\d{8}-\d{3}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const RULE_ID_PATTERN = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+-\d{3}$/;
 const TEST_PATH_PATTERN =
-  /^(?:apps|packages)\/.+(?:\/__tests__\/[^/]+|\.(?:test|spec))\.(?:[cm]?[jt]sx?)$/;
+  /^(?:apps|packages|scripts)\/.+(?:\/__tests__\/[^/]+|\.(?:test|spec))\.(?:[cm]?[jt]sx?)$/;
 
 export function isFachPath(file) {
   return FACH_FILES.has(file) || FACH_PREFIXES.some((prefix) => file.startsWith(prefix));
@@ -45,6 +107,7 @@ export function evaluateCatalogDiff(
     headRuleIds = [],
     documentedFachPaths = [],
     newExceptionPaths = [],
+    catalogFachPaths = [],
     extraFindings = [],
   } = {},
 ) {
@@ -57,7 +120,12 @@ export function evaluateCatalogDiff(
           !change.path.startsWith(CATALOG_RULE_PREFIX)),
     )
     .map((change) => change.oldPath ?? change.path);
-  const fachChanges = [...new Set(changes.flatMap(changePaths).filter((file) => isFachPath(file)))];
+  const catalogPaths = new Set(catalogFachPaths);
+  const fachChanges = [
+    ...new Set(
+      changes.flatMap(changePaths).filter((file) => isFachPath(file) || catalogPaths.has(file)),
+    ),
+  ];
   const removedRuleIds = baseRuleIds.filter((id) => !headRuleIds.includes(id));
   const documented = new Set([...documentedFachPaths, ...newExceptionPaths]);
   const undocumentedFachChanges = fachChanges.filter((file) => !documented.has(file));
@@ -320,7 +388,7 @@ export function parseExceptionLedger(source, label = EXCEPTION_LOG) {
       !ISO_DATE_PATTERN.test(entry.date) ||
       Number.isNaN(parsedDate.valueOf()) ||
       parsedDate.toISOString().slice(0, 10) !== entry.date ||
-      entry.date > new Date().toISOString().slice(0, 10)
+      entry.date > latestPlausibleCalendarDate()
     ) {
       throw new Error(`${entryLabel}.date muss ein heutiges oder früheres ISO-Datum sein.`);
     }
@@ -414,6 +482,9 @@ export function runDiffGuard() {
     headRuleIds,
     documentedFachPaths: changedRuleEvidence(context.changes, baseRules, headRules),
     newExceptionPaths: exceptions.paths,
+    catalogFachPaths: [...baseRules, ...headRules].flatMap((rule) =>
+      Array.isArray(rule.code_refs) ? rule.code_refs : [],
+    ),
     extraFindings: exceptions.findings,
   });
   if (result.findings.length > 0) {

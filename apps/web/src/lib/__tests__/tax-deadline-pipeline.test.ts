@@ -1,3 +1,5 @@
+// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001
+
 import { describe, expect, it } from 'vitest';
 import { deriveAutoRequestPipeline, type PipelineInput } from '../tax-deadline-pipeline';
 
@@ -10,6 +12,9 @@ function input(overrides: Partial<PipelineInput> = {}): PipelineInput {
     requestId: null,
     staffNotifiedAt: null,
     autoRequestSuppressedAt: null,
+    autoRequestNotificationStatus: 'NOT_REQUIRED',
+    autoRequestNotificationAttemptCount: 0,
+    autoRequestNotificationEscalatedAt: null,
     dueDate: DUE,
     config: { active: true, autoRequest: true, reminderDaysBefore: 10, staffLeadDays: 3 },
     today: TODAY,
@@ -18,10 +23,49 @@ function input(overrides: Partial<PipelineInput> = {}): PipelineInput {
 }
 
 describe('deriveAutoRequestPipeline', () => {
-  it('SENT sobald ein Request verknüpft ist — unabhängig vom Rest', () => {
+  it('trennt die angelegte Anforderung vom technischen Benachrichtigungszustand', () => {
     expect(
-      deriveAutoRequestPipeline(input({ requestId: 'req-1', autoRequestSuppressedAt: new Date() })),
-    ).toEqual({ state: 'SENT' });
+      deriveAutoRequestPipeline(
+        input({
+          requestId: 'req-1',
+          autoRequestSuppressedAt: new Date(),
+          autoRequestNotificationStatus: 'FAILED',
+          autoRequestNotificationAttemptCount: 2,
+        }),
+      ),
+    ).toEqual({
+      state: 'REQUEST_CREATED',
+      notificationState: 'FAILED',
+      attemptCount: 2,
+      escalated: false,
+    });
+  });
+
+  it('weist eine interne Eskalation aus, ohne sie als Versand zu bezeichnen', () => {
+    expect(
+      deriveAutoRequestPipeline(
+        input({
+          requestId: 'req-1',
+          autoRequestNotificationStatus: 'UNKNOWN',
+          autoRequestNotificationAttemptCount: 1,
+          autoRequestNotificationEscalatedAt: new Date('2026-06-09T11:00:00.000Z'),
+        }),
+      ),
+    ).toMatchObject({ state: 'REQUEST_CREATED', notificationState: 'UNKNOWN', escalated: true });
+  });
+
+  it('zeigt einen entfernten Request-Link als ORPHANED mit erhaltener Historie', () => {
+    expect(
+      deriveAutoRequestPipeline(
+        input({
+          status: 'REMINDED',
+          requestId: null,
+          autoRequestNotificationStatus: 'ORPHANED',
+          autoRequestNotificationAttemptCount: 2,
+          autoRequestNotificationEscalatedAt: new Date('2026-06-09T11:00:00.000Z'),
+        }),
+      ),
+    ).toEqual({ state: 'ORPHANED', attemptCount: 2, escalated: true });
   });
 
   it('SUPPRESSED wenn gestoppt und noch kein Request raus ist', () => {

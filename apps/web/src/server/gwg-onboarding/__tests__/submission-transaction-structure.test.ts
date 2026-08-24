@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 
+// Fachkatalog: GWG-SELF-ONBOARDING-001
+
 import { describe, expect, it } from 'vitest';
 
 const actions = readFileSync(

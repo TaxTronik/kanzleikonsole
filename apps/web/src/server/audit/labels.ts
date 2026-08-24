@@ -196,6 +196,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'requests.export.csv': 'Anforderungen exportiert (CSV)',
   'invoices.export.csv': 'Rechnungen exportiert (CSV)',
   'fristen.export.csv': 'Fristenkontrollbuch exportiert (CSV)',
+  'fristen.daily_review.complete': 'Tägliche Fristenkontrolle abgeschlossen',
   'clients.export.csv': 'Mandanten exportiert (CSV)',
   'audit.export.csv': 'Audit-Log exportiert (CSV)',
 
@@ -410,6 +411,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   power_of_attorney: 'Vollmacht',
   tax_schedule_config: 'Steuertermin-Konfig',
   tax_deadline: 'Steuertermin',
+  deadline_daily_review: 'Tägliche Fristenkontrolle',
   tax_notice: 'Bescheid',
   bwa_period: 'BWA-Periode',
   time_entry: 'Zeiteintrag',

@@ -12,10 +12,12 @@ Regel.
 > prüfende Person erst zusammen mit geschützten Branches und Berufsträger-
 > CODEOWNERS oder einer gleichwertig signierten Attestation.
 
-Die ersten Einträge sind Pilotregeln für Fristen/Bescheide und Rechnungen. Sie
-bilden den aktuellen Programmstand ab, sind aber ausnahmslos noch
-**ungeprüfte Entwürfe**. Damit ist nicht behauptet, dass ein Berufsträger die
-zugrunde liegende Rechtsauffassung bereits bestätigt hat.
+Die [Abdeckungsmatrix](SCOPE.md) grenzt die derzeit inventarisierte
+Produktlogik von ausdrücklich nicht abgedeckten Rechts- und
+Organisationsfragen ab. Die daraus erzeugten Regeln bilden den ermittelten
+Programmstand ab, sind aber ausnahmslos noch **ungeprüfte Entwürfe**. Damit ist
+nicht behauptet, dass ein Berufsträger die zugrunde liegende Rechtsauffassung
+bereits bestätigt hat.
 
 ## In zehn Minuten fachlich prüfen
 
@@ -77,6 +79,9 @@ Diese entsteht ausschließlich über die andere Achse.
 ## Aufbau und Geltung
 
 - Eine Markdown-Datei beschreibt genau eine entscheidbare Regel.
+- [SCOPE.md](SCOPE.md) definiert die belastbare Vollständigkeitsgrenze des
+  aktuellen Exports. „Vollständig“ bezieht sich ausschließlich auf die dort
+  als in scope bezeichneten Produktentscheidungen, nicht auf ein Rechtsgebiet.
 - Stabile IDs bleiben erhalten. Ändert sich der fachliche Gehalt für einen
   neuen Rechtsstand, wird eine Nachfolgeregel angelegt statt die Historie
   umzudeuten.
@@ -101,9 +106,13 @@ Diese entsteht ausschließlich über die andere Achse.
   beschränkte Review-/CODEOWNERS-Regel oder eine gleichwertig signierte
   Attestation voraus. Ohne diese Repository-Governance ist `approved` nur eine
   dokumentierte, technisch nicht identitätsgeprüfte Behauptung.
-- [fachkatalog.json](fachkatalog.json) ist der deterministisch erzeugte
-  Suchindex für KI-Werkzeuge; [INDEX.md](INDEX.md) ist der entsprechende
-  menschliche Einstieg.
+- [fachkatalog.json](fachkatalog.json) ist der kompakte, deterministisch
+  erzeugte Suchindex für KI-Werkzeuge; [fachkatalog-voll.json](fachkatalog-voll.json)
+  enthält zusätzlich den vollständigen Markdown-Regeltext jeder Regel. Beide
+  Exporte führen die aktiven und reservierten Scope-IDs, Sollzahlen und den
+  SHA-256-Wert der zugrunde liegenden Abdeckungsmatrix mit; der Volltext-Export
+  bettet zusätzlich die Matrix selbst ein. [INDEX.md](INDEX.md) ist der
+  entsprechende menschliche Einstieg.
 
 Der Fachkatalog ist nicht mit dem fachlich anderen Signal-Begriffs- und
 Normgraph-Katalog unter `release/catalog/` zu verwechseln.
@@ -124,16 +133,18 @@ zusätzlich aufrufen. Das Gate verhindert unter anderem doppelte IDs, ungültige
 Statuswerte, fehlende Pflichtabschnitte, tote lokale Nachweise und veraltete
 Indizes.
 Ein zusätzliches Diff-Gate verlangt bei Änderungen an den erfassten Steuer-,
-Bescheid-, Fristen-, Rechnungs- und zugehörigen Prisma-Pfaden eine konkret über
+Bescheid-, Fristen-, Rechnungs-, GwG-, Datenschutz-, Aufbewahrungs-,
+Vollmachts-, Zugriffs- und Nachweispfaden eine konkret über
 `code_refs`/`test_refs` zugeordnete geänderte Regel oder einen neuen,
 strukturierten Eintrag in [AENDERUNGEN.md](AENDERUNGEN.md). Ein beliebiger
 Katalogtext schaltet fremde Fachpfade nicht frei. Historische Regel-IDs und
 Regeldateien müssen erhalten und bei Ablösung als `superseded` fortgeführt
 werden.
 
-## Geplanter Ausbau
+## Abdeckung und Ausbau
 
-Nach dem Pilot sollen insbesondere GwG, Datenschutz, Dokumentenaufbewahrung,
-Mandat/Zugriff, Vollmachten und Signaturen regelweise aufgenommen werden. Der
-Ausbau erfolgt fachbereichsweise; Vollständigkeit darf erst behauptet werden,
-wenn dafür eine eigene, freigegebene Scope-Liste existiert.
+Der inventarisierte Produkt-Scope, reservierte Lücken und die Reihenfolge für
+weitere Regeln stehen in [SCOPE.md](SCOPE.md). Neue Funktionen oder
+Rechtsgebiete erweitern diese Grenze nur durch eine ausdrückliche Änderung der
+Matrix. Auch eine vollständig exportierte Matrix bleibt ohne Berufsträgerreview
+fachlich ungeprüft.

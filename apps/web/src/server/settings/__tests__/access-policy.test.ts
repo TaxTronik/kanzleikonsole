@@ -1,3 +1,4 @@
+// Fachkatalog: ACCESS-CLIENT-MODE-001
 import { describe, it, expect } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 import { decideClientAccess, readAccessPolicyTx, DEFAULT_ACCESS_POLICY } from '../access-policy';

@@ -1,16 +1,17 @@
 // =============================================================================
 // Fristenkontrollbuch — Loader.
 //
-// Aggregiert die vier fristenführenden Quellen (Steuertermine, Einspruchs-
-// fristen, Anforderungen, Wiedervorlagen) zu einer Kontrollsicht. Eigener
-// Zustand entsteht hier NICHT (siehe eintrag.ts) — Erledigung wird aus den
-// Quellmodulen abgelesen, wo sie auditiert geführt wird.
+// Aggregiert die fünf fristenführenden Quellen (Steuertermine, Bescheidprüf-
+// fälle/Einspruchsfristen, Klagefristen, Anforderungen, Wiedervorlagen) zu
+// einer Kontrollsicht. Eigener Zustand entsteht hier NICHT (siehe eintrag.ts)
+// — Erledigung wird aus den Quellmodulen abgelesen, wo sie auditiert geführt
+// wird.
 //
 // Fensterlogik: OFFENE Fristen erscheinen bis zum Horizont (heute + tage)
 // OHNE untere Grenze — eine überfällige Frist verschwindet nie durch
 // Zeitablauf. ERLEDIGTE erscheinen nur im Fenster [heute − tage, Horizont]
-// (Erledigungsnachweis der jüngeren Vergangenheit; Vollnachweis = CSV-Export
-// oder Audit-Chain).
+// (Kontrollsicht der jüngeren Vergangenheit). Der CSV-Export ist ein
+// auditierter Kontrollauszug, aber kein Nachweis der fristwahrenden Handlung.
 //
 // Zugriffsmodell: RESTRICTED-/vertrauliche Mandanten werden über das
 // denied-Set ausgeblendet (identisch zu Kalender/Exporten).
@@ -25,6 +26,7 @@ import { berlinTodayUtcMidnight } from '@/lib/fmt';
 import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
 import {
   type FristEintrag,
+  filingWithinDeadline,
   taxDeadlineErledigt,
   taxNoticeFristErledigt,
   taxNoticeKlageFristErledigt,
@@ -58,6 +60,8 @@ export interface KontrollbuchOptions {
     taxNotices: boolean;
     reminders: boolean;
   };
+  /** Festgehaltener fachlicher Stichtag, z. B. aus der DB-Uhr des Tagesabschlusses. */
+  referenceDate?: Date;
 }
 
 function queryWhenEnabled<T>(enabled: boolean, query: () => Promise<T[]>): Promise<T[]> {
@@ -69,7 +73,7 @@ export async function loadKontrollbuch(
   session: StaffSession,
   opts: KontrollbuchOptions,
 ): Promise<FristEintrag[]> {
-  const heute = berlinTodayUtcMidnight();
+  const heute = opts.referenceDate ?? berlinTodayUtcMidnight();
   const horizont = new Date(heute.getTime() + opts.tage * 86400000);
   const rueckschau = new Date(heute.getTime() - opts.tage * 86400000);
   const sources = { taxNotices: true, reminders: true, ...opts.sources };
@@ -84,66 +88,197 @@ export async function loadKontrollbuch(
       }
     : undefined;
 
+  // Prisma kann zwei Spalten in einem normalen Where-Objekt nicht portabel
+  // gegeneinander vergleichen. Die tenant-/RLS-gebundenen Vorabfragen liefern
+  // deshalb nur die IDs tatsächlich nach Fristende dokumentierter Einlegungen.
+  // Diese Vorgänge müssen im Kontrollbuch offen bleiben, bis eine fachliche
+  // Wiedereinsetzungs-/Dispositionsentscheidung dokumentiert ist.
+  const [lateAppealRows, lateKlageRows] = await Promise.all([
+    queryWhenEnabled(
+      sources.taxNotices,
+      () =>
+        tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+          FROM public."tax_notice"
+         WHERE "appeal_deadline" IS NOT NULL
+           AND "appeal_deadline" <= ${horizont}
+           AND "appeal_filed_at" IS NOT NULL
+           AND ("appeal_filed_at" AT TIME ZONE 'UTC')::date > "appeal_deadline"
+      `,
+    ),
+    queryWhenEnabled(
+      sources.taxNotices,
+      () =>
+        tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+          FROM public."tax_notice"
+         WHERE "klage_deadline" IS NOT NULL
+           AND "klage_deadline" <= ${horizont}
+           AND "klage_filed_at" IS NOT NULL
+           AND ("klage_filed_at" AT TIME ZONE 'UTC')::date > "klage_deadline"
+      `,
+    ),
+  ]);
+  const lateAppealIds = lateAppealRows.map((row) => row.id);
+  const lateKlageIds = lateKlageRows.map((row) => row.id);
+
+  const deadlineOpen: Prisma.TaxDeadlineWhereInput = {
+    dueDate: { lte: horizont },
+    OR: [
+      { status: { not: 'DONE' } },
+      { status: 'DONE', completedAt: null },
+      { status: 'DONE', completedByStaff: null },
+    ],
+  };
+  const deadlineClosed: Prisma.TaxDeadlineWhereInput = {
+    status: 'DONE',
+    completedAt: { not: null },
+    completedByStaff: { not: null },
+    dueDate: { gte: rueckschau, lte: horizont },
+  };
   const deadlineWindow: Prisma.TaxDeadlineWhereInput = opts.nurOffene
-    ? { status: { notIn: ['DONE', 'SKIPPED'] }, dueDate: { lte: horizont } }
+    ? deadlineOpen
     : {
-        OR: [
-          { status: { notIn: ['DONE', 'SKIPPED'] }, dueDate: { lte: horizont } },
-          { status: { in: ['DONE', 'SKIPPED'] }, dueDate: { gte: rueckschau, lte: horizont } },
-        ],
+        OR: [deadlineOpen, deadlineClosed],
       };
+  const appealFilingMissing: Prisma.TaxNoticeWhereInput = {
+    OR: [{ appealFiledAt: null }, { appealFiledBy: null }],
+  };
+  const appealFilingMissingOrLate: Prisma.TaxNoticeWhereInput = lateAppealIds.length
+    ? { OR: [appealFilingMissing, { id: { in: lateAppealIds } }] }
+    : appealFilingMissing;
+  const appealDispositionMissing: Prisma.TaxNoticeWhereInput = {
+    OR: [
+      { status: { not: 'BESTANDSKRAEFTIG' } },
+      { legalFinalAt: null },
+      { legalFinalBy: null },
+      { legalFinalReason: null },
+    ],
+  };
+  const noticeOpen: Prisma.TaxNoticeWhereInput = {
+    appealDeadline: { lte: horizont },
+    AND: [appealFilingMissingOrLate, appealDispositionMissing],
+  };
+  const timelyAppealFiling: Prisma.TaxNoticeWhereInput = {
+    appealFiledAt: { not: null },
+    appealFiledBy: { not: null },
+    ...(lateAppealIds.length ? { id: { notIn: lateAppealIds } } : {}),
+  };
+  const noticeClosed: Prisma.TaxNoticeWhereInput = {
+    appealDeadline: { gte: rueckschau, lte: horizont },
+    OR: [
+      timelyAppealFiling,
+      {
+        status: 'BESTANDSKRAEFTIG',
+        legalFinalAt: { not: null },
+        legalFinalBy: { not: null },
+        legalFinalReason: { not: null },
+      },
+    ],
+  };
   const noticeWindow: Prisma.TaxNoticeWhereInput = opts.nurOffene
-    ? { status: { in: ['NEU', 'GEPRUEFT'] }, appealDeadline: { lte: horizont } }
+    ? noticeOpen
     : {
-        OR: [
-          { status: { in: ['NEU', 'GEPRUEFT'] }, appealDeadline: { lte: horizont } },
-          {
-            // MUSS mit taxNoticeFristErledigt (eintrag.ts) übereinstimmen —
-            // sonst fallen TEILABHILFE/KLAGE-Bescheide ganz aus dem
-            // Kontrollbuch (weder offen noch im Erledigungsnachweis).
-            status: {
-              in: [
-                'EINSPRUCH',
-                'ABGEHOLFEN',
-                'TEILABHILFE',
-                'ZURUECKGEWIESEN',
-                'KLAGE',
-                'RECHTSKRAEFTIG',
-              ],
-            },
-            appealDeadline: { gte: rueckschau, lte: horizont },
-          },
-        ],
+        OR: [noticeOpen, noticeClosed],
       };
+  // TAX-NOTICE-APPEAL-001 / TAX-CONTROL-STATUS-001: Wenn die
+  // Bekanntgabe-/Fristgrundlage keine belastbare Rechtsbehelfsfrist erlaubt,
+  // darf ein gespeicherter interner Risikotermin nicht aus der Kontrolle
+  // verschwinden. Er ist ausdrücklich KEINE Einspruchsfrist und bleibt bis zu
+  // einer echten Frist offen. Das Produkt besitzt hierfür noch keinen eigenen
+  // strukturierten Abschlussgrund; ein generischer BESTANDSKRAEFTIG-Satz darf
+  // deshalb auch bei Legacy-/Importdaten nicht als Erledigung fehlgedeutet
+  // werden.
+  const noticeRiskWindow: Prisma.TaxNoticeWhereInput = {
+    appealDeadline: null,
+    internalRiskDeadline: { lte: horizont },
+    deadlineCalculationStatus: { in: ['MANUAL_REVIEW', 'RISK_ONLY'] },
+  };
+  const klageFilingMissing: Prisma.TaxNoticeWhereInput = {
+    OR: [{ klageFiledAt: null }, { klageFiledBy: null }],
+  };
+  const klageFilingMissingOrLate: Prisma.TaxNoticeWhereInput = lateKlageIds.length
+    ? { OR: [klageFilingMissing, { id: { in: lateKlageIds } }] }
+    : klageFilingMissing;
+  const klageDispositionMissing: Prisma.TaxNoticeWhereInput = {
+    OR: [
+      { status: { not: 'BESTANDSKRAEFTIG' } },
+      { legalFinalAt: null },
+      { legalFinalBy: null },
+      { legalFinalReason: null },
+    ],
+  };
+  const klageOpen: Prisma.TaxNoticeWhereInput = {
+    status: {
+      in: [
+        'TEILEINSPRUCHSENTSCHEIDUNG',
+        'ZURUECKGEWIESEN',
+        // TAX-CONTROL-STATUS-001: Ein spaeterer ABGEHOLFEN-Status beseitigt
+        // eine bereits persistierte Klagefrist nicht. Bis ein fristwahrender
+        // Einreichungs- oder Bestandskraft-/Dispositionsnachweis vorliegt,
+        // bleibt sie fail-closed in der Kontrollsicht offen.
+        'ABGEHOLFEN',
+        'KLAGE',
+        'BESTANDSKRAEFTIG',
+      ],
+    },
+    klageDeadline: { lte: horizont },
+    AND: [klageFilingMissingOrLate, klageDispositionMissing],
+  };
+  const timelyKlageFiling: Prisma.TaxNoticeWhereInput = {
+    klageFiledAt: { not: null },
+    klageFiledBy: { not: null },
+    ...(lateKlageIds.length ? { id: { notIn: lateKlageIds } } : {}),
+  };
+  const klageClosed: Prisma.TaxNoticeWhereInput = {
+    klageDeadline: { gte: rueckschau, lte: horizont },
+    OR: [
+      timelyKlageFiling,
+      {
+        status: 'BESTANDSKRAEFTIG',
+        legalFinalAt: { not: null },
+        legalFinalBy: { not: null },
+        legalFinalReason: { not: null },
+      },
+    ],
+  };
   const klageWindow: Prisma.TaxNoticeWhereInput = opts.nurOffene
-    ? {
-        status: { in: ['ZURUECKGEWIESEN', 'TEILABHILFE'] },
-        klageDeadline: { lte: horizont },
-      }
+    ? klageOpen
     : {
-        OR: [
-          { status: { in: ['ZURUECKGEWIESEN', 'TEILABHILFE'] }, klageDeadline: { lte: horizont } },
-          {
-            status: { in: ['KLAGE', 'RECHTSKRAEFTIG'] },
-            klageDeadline: { gte: rueckschau, lte: horizont },
-          },
-        ],
+        OR: [klageOpen, klageClosed],
       };
+  const requestOpen: Prisma.RequestWhereInput = {
+    dueAt: { lte: horizont },
+    OR: [
+      { status: { not: 'CLOSED' } },
+      { status: 'CLOSED', closedAt: null },
+      { status: 'CLOSED', closedByStaff: null },
+    ],
+  };
+  const requestClosed: Prisma.RequestWhereInput = {
+    status: 'CLOSED',
+    closedAt: { not: null },
+    closedByStaff: { not: null },
+    dueAt: { gte: rueckschau, lte: horizont },
+  };
   const requestWindow: Prisma.RequestWhereInput = opts.nurOffene
-    ? { status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] }, dueAt: { lte: horizont } }
+    ? requestOpen
     : {
-        OR: [
-          { status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] }, dueAt: { lte: horizont } },
-          { status: { in: ['CLOSED', 'CANCELLED'] }, dueAt: { gte: rueckschau, lte: horizont } },
-        ],
+        OR: [requestOpen, requestClosed],
       };
+  const reminderOpen: Prisma.ClientReminderWhereInput = {
+    dueDate: { lte: horizont },
+    OR: [{ doneAt: null }, { doneByStaff: null }],
+  };
+  const reminderClosed: Prisma.ClientReminderWhereInput = {
+    doneAt: { not: null },
+    doneByStaff: { not: null },
+    dueDate: { gte: rueckschau, lte: horizont },
+  };
   const reminderWindow: Prisma.ClientReminderWhereInput = opts.nurOffene
-    ? { doneAt: null, dueDate: { lte: horizont } }
+    ? reminderOpen
     : {
-        OR: [
-          { doneAt: null, dueDate: { lte: horizont } },
-          { doneAt: { not: null }, dueDate: { gte: rueckschau, lte: horizont } },
-        ],
+        OR: [reminderOpen, reminderClosed],
       };
   const reminderStaff: Prisma.ClientReminderWhereInput | undefined = opts.nurStaffId
     ? {
@@ -156,7 +291,7 @@ export async function loadKontrollbuch(
 
   // Offen ohne untere Grenze ODER erledigt im Fenster — je Quelle als OR
   // ausgedrückt, da „erledigt" quellspezifisch ist.
-  const [deadlines, notices, klagen, requests, reminders] = await Promise.all([
+  const [deadlines, notices, klagen, riskNotices, requests, reminders] = await Promise.all([
     queryWhenEnabled(sources.taxNotices, () =>
       tx.taxDeadline.findMany({
         where: {
@@ -191,6 +326,7 @@ export async function loadKontrollbuch(
           kind: true,
           period: true,
           appealDeadline: true,
+          manualReviewRequired: true,
           status: true,
           reviewedAt: true,
           reviewedBy: true,
@@ -198,12 +334,14 @@ export async function loadKontrollbuch(
           appealFiledBy: true,
           legalFinalAt: true,
           legalFinalBy: true,
+          legalFinalReason: true,
           client: { select: { name: true } },
         },
       }),
     ),
-    // Klagefristen (§ 47 FGO): offen bei ZURUECKGEWIESEN/TEILABHILFE, im
-    // Rückschau-Fenster auch KLAGE/RECHTSKRAEFTIG (erledigt).
+    // TAX-CONTROL-STATUS-001: Klagefristen sind erst nach einer
+    // Einspruchs- oder Teil-Einspruchsentscheidung offen, nicht bereits bei
+    // TEILABHILFE. Im Rückschau-Fenster auch nachgewiesene Abschlüsse.
     queryWhenEnabled(sources.taxNotices, () =>
       tx.taxNotice.findMany({
         where: {
@@ -218,12 +356,32 @@ export async function loadKontrollbuch(
           kind: true,
           period: true,
           klageDeadline: true,
+          manualReviewRequired: true,
           status: true,
           appealResolvedAt: true,
           klageFiledAt: true,
           klageFiledBy: true,
           legalFinalAt: true,
           legalFinalBy: true,
+          legalFinalReason: true,
+          client: { select: { name: true } },
+        },
+      }),
+    ),
+    queryWhenEnabled(sources.taxNotices, () =>
+      tx.taxNotice.findMany({
+        where: {
+          ...notDenied,
+          ...noticeRiskWindow,
+          ...(responsibleClient ? { client: responsibleClient } : {}),
+        },
+        select: {
+          id: true,
+          clientId: true,
+          kind: true,
+          period: true,
+          internalRiskDeadline: true,
+          deadlineCalculationStatus: true,
           client: { select: { name: true } },
         },
       }),
@@ -241,6 +399,8 @@ export async function loadKontrollbuch(
         title: true,
         dueAt: true,
         status: true,
+        closedAt: true,
+        closedByStaff: true,
         client: { select: { name: true } },
       },
     }),
@@ -278,7 +438,7 @@ export async function loadKontrollbuch(
   // Verantwortliche: Hauptbearbeiter je Mandant (eine Query) — Wiedervorlagen
   // mit eigener Zuweisung überschreiben das. Namen in einer zweiten Query.
   const clientIds = new Set<string>();
-  for (const r of [...deadlines, ...notices, ...klagen, ...requests, ...reminders])
+  for (const r of [...deadlines, ...notices, ...klagen, ...riskNotices, ...requests, ...reminders])
     if (r.clientId) clientIds.add(r.clientId);
   const responsibilities = clientIds.size
     ? await tx.clientResponsibility.findMany({
@@ -304,6 +464,7 @@ export async function loadKontrollbuch(
     for (const a of r.assignees) staffIds.add(a.staffId);
     if (r.doneByStaff) staffIds.add(r.doneByStaff);
   }
+  for (const r of requests) if (r.closedByStaff) staffIds.add(r.closedByStaff);
   const staff = staffIds.size
     ? await tx.staffUser.findMany({
         where: { id: { in: [...staffIds] } },
@@ -316,14 +477,23 @@ export async function loadKontrollbuch(
 
   for (const d of deadlines) {
     const verantwortlichId = hauptbearbeiter.get(d.clientId) ?? null;
+    const erledigt = taxDeadlineErledigt(d.status, d.completedAt, d.completedByStaff);
     eintraege.push({
       quelle: 'STEUERTERMIN',
+      kontrollart: 'OPERATIONAL_DUE_DATE',
       id: d.id,
       titel: `${SCHEDULE_LABELS[d.kind] ?? d.kind} ${d.period}`,
       clientId: d.clientId,
       clientName: d.client.name,
       faelligAm: d.dueDate,
-      erledigt: taxDeadlineErledigt(d.status),
+      erledigt,
+      kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+      kontrollhinweis:
+        d.status === 'SKIPPED'
+          ? 'Übersprungen ohne strukturierten Grund und fachliche Freigabe.'
+          : d.status === 'DONE' && !erledigt
+            ? 'Erledigungszeit oder handelnde Person fehlt.'
+            : null,
       erledigtAm: d.completedAt,
       erledigtVon: d.completedByStaff ? (staffName.get(d.completedByStaff) ?? null) : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
@@ -334,22 +504,67 @@ export async function loadKontrollbuch(
 
   for (const n of notices) {
     const verantwortlichId = hauptbearbeiter.get(n.clientId) ?? null;
+    const erledigt = taxNoticeFristErledigt(n.status, n);
+    const filingTimely = filingWithinDeadline(n.appealFiledAt, n.appealFiledBy, n.appealDeadline);
+    const filingLate = Boolean(n.appealFiledAt && n.appealFiledBy && !filingTimely);
+    const disposition =
+      !filingTimely &&
+      n.status === 'BESTANDSKRAEFTIG' &&
+      Boolean(n.legalFinalAt && n.legalFinalBy && n.legalFinalReason?.trim());
     eintraege.push({
       quelle: 'EINSPRUCHSFRIST',
+      kontrollart: n.manualReviewRequired
+        ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
+        : 'CALCULATED_CONTROL_PROPOSAL',
       id: n.id,
       titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`,
       clientId: n.clientId,
       clientName: n.client.name,
       faelligAm: n.appealDeadline!,
-      erledigt: taxNoticeFristErledigt(n.status),
-      erledigtAm: n.appealFiledAt ?? n.legalFinalAt ?? n.reviewedAt,
-      erledigtVon: n.appealFiledBy
-        ? (staffName.get(n.appealFiledBy) ?? null)
-        : n.legalFinalBy
-          ? (staffName.get(n.legalFinalBy) ?? null)
-          : n.reviewedBy
-            ? (staffName.get(n.reviewedBy) ?? null)
+      erledigt,
+      kontrollzustand: disposition ? 'CLOSED_DISPOSITION' : erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+      kontrollhinweis:
+        filingLate && !disposition
+          ? 'Einspruch wurde erst nach dem dokumentierten Fristende eingelegt; Wiedereinsetzung oder fachliche Disposition ist offen.'
+          : !erledigt && n.manualReviewRequired
+            ? 'Frist ist ein technischer Kontrollvorschlag; die fachliche Freigabe ist noch offen.'
+            : !erledigt && !['NEU', 'GEPRUEFT'].includes(n.status)
+              ? 'Verfahrensstatus vorhanden, aber Einlegungs- oder Dispositionsnachweis unvollständig.'
+              : null,
+      erledigtAm: filingTimely ? n.appealFiledAt : disposition ? n.legalFinalAt : null,
+      erledigtVon:
+        filingTimely && n.appealFiledBy
+          ? (staffName.get(n.appealFiledBy) ?? null)
+          : disposition && n.legalFinalBy
+            ? (staffName.get(n.legalFinalBy) ?? null)
             : null,
+      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
+      verantwortlichId,
+      href: `/staff/clients/${n.clientId}/notices`,
+    });
+  }
+
+  for (const n of riskNotices) {
+    if (!n.internalRiskDeadline) continue;
+    const verantwortlichId = hauptbearbeiter.get(n.clientId) ?? null;
+    const noticeTitle = `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`;
+    eintraege.push({
+      // Technisch dieselbe Bescheidquelle, aber mit eigener Anzeigeart: weder
+      // UI noch CSV dürfen aus dem Risikotermin eine Einspruchsfrist machen.
+      quelle: 'EINSPRUCHSFRIST',
+      kontrollart: 'INTERNAL_RISK',
+      artLabel: 'Interner Prüftermin',
+      id: n.id,
+      titel: `Interner Prüftermin: ${noticeTitle} (keine Rechtsbehelfsfrist)`,
+      clientId: n.clientId,
+      clientName: n.client.name,
+      faelligAm: n.internalRiskDeadline,
+      erledigt: false,
+      kontrollzustand: 'OPEN',
+      kontrollhinweis:
+        'Interner Risikotermin ohne berechnete Rechtsbehelfsfrist. Bekanntgabe und Fristgrundlage fachlich prüfen; ein eigener strukturierter Abschlussgrund ist noch nicht implementiert.',
+      erledigtAm: null,
+      erledigtVon: null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
       href: `/staff/clients/${n.clientId}/notices`,
@@ -359,24 +574,44 @@ export async function loadKontrollbuch(
   for (const k of klagen) {
     if (!k.klageDeadline) continue;
     const verantwortlichId = hauptbearbeiter.get(k.clientId) ?? null;
+    const erledigt = taxNoticeKlageFristErledigt(k.status, k);
+    const filingTimely = filingWithinDeadline(k.klageFiledAt, k.klageFiledBy, k.klageDeadline);
+    const filingLate = Boolean(k.klageFiledAt && k.klageFiledBy && !filingTimely);
+    const disposition =
+      !filingTimely &&
+      k.status === 'BESTANDSKRAEFTIG' &&
+      Boolean(k.legalFinalAt && k.legalFinalBy && k.legalFinalReason?.trim());
     eintraege.push({
       quelle: 'KLAGEFRIST',
+      kontrollart: k.manualReviewRequired
+        ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
+        : 'CALCULATED_CONTROL_PROPOSAL',
       id: k.id,
       titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[k.kind] ?? k.kind} ${k.period} (Klage FG)`,
       clientId: k.clientId,
       clientName: k.client.name,
       faelligAm: k.klageDeadline,
-      erledigt: taxNoticeKlageFristErledigt(k.status),
+      erledigt,
+      kontrollzustand: disposition ? 'CLOSED_DISPOSITION' : erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+      kontrollhinweis:
+        filingLate && !disposition
+          ? 'Klage wurde erst nach dem dokumentierten Fristende eingereicht; Wiedereinsetzung oder fachliche Disposition ist offen.'
+          : !erledigt && k.status === 'ABGEHOLFEN'
+            ? 'Die bereits dokumentierte Klagefrist bleibt trotz Abhilfe-Status bis zum Einreichungs- oder Dispositionsnachweis in Kontrolle.'
+            : !erledigt && ['KLAGE', 'BESTANDSKRAEFTIG'].includes(k.status)
+              ? 'Abschlussstatus vorhanden, aber Klage- oder Dispositionsnachweis unvollständig.'
+              : null,
       // #11: Erledigung = tatsächliche Klageeinreichung (wer/wann), nicht die
       // Einspruchsentscheidung (= Fristbeginn) bzw. der Bescheidprüfer. Fallback
       // auf Abschluss-/Entscheidungsdaten nur für Altbestand ohne die
       // belastbaren klageFiled*-Felder.
-      erledigtAm: k.klageFiledAt ?? k.legalFinalAt ?? k.appealResolvedAt,
-      erledigtVon: k.klageFiledBy
-        ? (staffName.get(k.klageFiledBy) ?? null)
-        : k.legalFinalBy
-          ? (staffName.get(k.legalFinalBy) ?? null)
-          : null,
+      erledigtAm: filingTimely ? k.klageFiledAt : disposition ? k.legalFinalAt : null,
+      erledigtVon:
+        filingTimely && k.klageFiledBy
+          ? (staffName.get(k.klageFiledBy) ?? null)
+          : disposition && k.legalFinalBy
+            ? (staffName.get(k.legalFinalBy) ?? null)
+            : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
       href: `/staff/clients/${k.clientId}/notices`,
@@ -385,16 +620,25 @@ export async function loadKontrollbuch(
 
   for (const r of requests) {
     const verantwortlichId = hauptbearbeiter.get(r.clientId) ?? null;
+    const erledigt = requestErledigt(r.status, r.closedAt, r.closedByStaff);
     eintraege.push({
       quelle: 'ANFORDERUNG',
+      kontrollart: 'OPERATIONAL_DUE_DATE',
       id: r.id,
       titel: r.title,
       clientId: r.clientId,
       clientName: r.client.name,
       faelligAm: r.dueAt!,
-      erledigt: requestErledigt(r.status),
-      erledigtAm: null,
-      erledigtVon: null,
+      erledigt,
+      kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+      kontrollhinweis:
+        r.status === 'CANCELLED'
+          ? 'Storniert ohne strukturierten Abschlussgrund.'
+          : r.status === 'CLOSED' && !erledigt
+            ? 'Abschlusszeit oder handelnde Person fehlt.'
+            : null,
+      erledigtAm: erledigt ? r.closedAt : null,
+      erledigtVon: erledigt && r.closedByStaff ? (staffName.get(r.closedByStaff) ?? null) : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
       verantwortlichId,
       href: `/staff/requests/${r.id}`,
@@ -406,14 +650,19 @@ export async function loadKontrollbuch(
     // kennt genau eine verantwortliche Person je Eintrag.
     const clientId = w.clientId!;
     const verantwortlichId = w.assignees[0]?.staffId ?? hauptbearbeiter.get(clientId) ?? null;
+    const erledigt = Boolean(w.doneAt && w.doneByStaff);
     eintraege.push({
       quelle: 'WIEDERVORLAGE',
+      kontrollart: 'OPERATIONAL_DUE_DATE',
       id: w.id,
       titel: w.subject,
       clientId,
       clientName: w.client!.name,
       faelligAm: w.dueDate,
-      erledigt: w.doneAt !== null,
+      erledigt,
+      kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+      kontrollhinweis:
+        w.doneAt && !w.doneByStaff ? 'Erledigungszeit vorhanden, handelnde Person fehlt.' : null,
       erledigtAm: w.doneAt,
       erledigtVon: w.doneByStaff ? (staffName.get(w.doneByStaff) ?? null) : null,
       verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,

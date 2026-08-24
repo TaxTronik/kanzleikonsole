@@ -24,79 +24,81 @@ datasource db {
 }
 
 model Tenant {
-  id                         String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug                       String                      @unique
-  name                       String
-  createdAt                  DateTime                    @default(now()) @map("created_at")
-  updatedAt                  DateTime                    @updatedAt @map("updated_at")
-  appointments               Appointment[]
-  appointmentRequests        AppointmentRequest[]
-  auditAnchors               AuditAnchor[]
-  auditLogs                  AuditLog[]
-  auditSeals                 AuditSeal[]
-  backupRecords              BackupRecord[]
-  bwaPeriods                 BwaPeriod[]
-  bwaPlans                   BwaPlan[]
-  clients                    Client[]
-  clientContacts             ClientContact[]
-  clientCustomFieldDefs      ClientCustomFieldDef[]
-  clientCustomFieldValues    ClientCustomFieldValue[]
-  clientHandovers            ClientHandover[]
-  clientConsents             ClientConsent[]
-  clientMasterChangeRequests ClientMasterChangeRequest[]
-  clientReminders            ClientReminder[]
-  documents                  Document[]
-  documentFolders            DocumentFolder[]
-  documentTypes              DocumentType[]
-  dsgvoRequests              DsgvoRequest[]
-  elsterKontoabfragen        ElsterKontoabfrage[]
-  emailTemplates             EmailTemplate[]
-  formSubmissions            FormSubmission[]
-  formTemplates              FormTemplate[]
-  gwgChecks                  GwgCheck[]
-  gwgInvites                 GwgOnboardingInvite[]
-  invoices                   Invoice[]
-  invoiceCategories          InvoiceCategory[]
-  invoiceNumberSeqs          InvoiceNumberSeq[]
-  kbArticles                 KbArticle[]
-  kbCategories               KbCategory[]
-  magicLinks                 MagicLink[]
-  n8nConnection              N8nConnection?
-  n8nCallbackReceipts        N8nCallbackReceipt[]
-  n8nDeliveries              N8nDelivery[]
-  n8nEventSubscriptions      N8nEventSubscription[]
-  n8nOutbox                  N8nOutbox[]
-  n8nWebhookEndpoints        N8nWebhookEndpoint[]
-  notifications              Notification[]
-  pendingBinders             PendingBinder[]
-  phoneNotes                 PhoneNote[]
-  poas                       PowerOfAttorney[]
-  requests                   Request[]
-  requestTemplates           RequestTemplate[]
-  riskAnalyses               RiskAnalysis[]
-  riskMarkings               RiskMarking[]
-  riskResearchRequests       RiskResearchRequest[]
-  riskResearchResults        RiskResearchResult[]
-  riskPromptTemplates        RiskPromptTemplate[]
-  rssFeeds                   RssFeed[]
-  serviceProviders           ServiceProvider[]
-  storageOrphans             StorageOrphan[]
-  staffBookmarks             StaffBookmark[]
-  staffNotes                 StaffNote[]
-  staffSkills                StaffSkill[]
-  staff                      StaffUser[]
-  stateMachines              StateMachine[]
-  stateMachineStates         StateMachineState[]
-  stateMachineTransitions    StateMachineTransition[]
-  taxDeadlines               TaxDeadline[]
-  taxFilings                 TaxFiling[]
-  taxNotices                 TaxNotice[]
-  taxScheduleConfigs         TaxScheduleConfig[]
-  settings                   TenantSetting[]
-  workflowInstances          WorkflowInstance[]
-  workflowN8nDispatches      WorkflowN8nDispatch[]
-  workflowTemplates          WorkflowTemplate[]
-  clientReminderNotes        ClientReminderNote[]
+  id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                           String                           @unique
+  name                           String
+  createdAt                      DateTime                         @default(now()) @map("created_at")
+  updatedAt                      DateTime                         @updatedAt @map("updated_at")
+  appointments                   Appointment[]
+  appointmentRequests            AppointmentRequest[]
+  auditAnchors                   AuditAnchor[]
+  auditLogs                      AuditLog[]
+  auditSeals                     AuditSeal[]
+  backupRecords                  BackupRecord[]
+  bwaPeriods                     BwaPeriod[]
+  bwaPlans                       BwaPlan[]
+  clients                        Client[]
+  clientContacts                 ClientContact[]
+  clientCustomFieldDefs          ClientCustomFieldDef[]
+  clientCustomFieldValues        ClientCustomFieldValue[]
+  clientHandovers                ClientHandover[]
+  clientConsents                 ClientConsent[]
+  clientMasterChangeRequests     ClientMasterChangeRequest[]
+  clientReminders                ClientReminder[]
+  deadlineDailyReviews           DeadlineDailyReview[]
+  documents                      Document[]
+  documentFolders                DocumentFolder[]
+  documentTypes                  DocumentType[]
+  dsgvoRequests                  DsgvoRequest[]
+  elsterKontoabfragen            ElsterKontoabfrage[]
+  emailTemplates                 EmailTemplate[]
+  formSubmissions                FormSubmission[]
+  formTemplates                  FormTemplate[]
+  gwgChecks                      GwgCheck[]
+  gwgInvites                     GwgOnboardingInvite[]
+  invoices                       Invoice[]
+  invoiceCategories              InvoiceCategory[]
+  invoiceNumberSeqs              InvoiceNumberSeq[]
+  kbArticles                     KbArticle[]
+  kbCategories                   KbCategory[]
+  magicLinks                     MagicLink[]
+  n8nConnection                  N8nConnection?
+  n8nCallbackReceipts            N8nCallbackReceipt[]
+  n8nDeliveries                  N8nDelivery[]
+  n8nEventSubscriptions          N8nEventSubscription[]
+  n8nOutbox                      N8nOutbox[]
+  n8nWebhookEndpoints            N8nWebhookEndpoint[]
+  notifications                  Notification[]
+  pendingBinders                 PendingBinder[]
+  phoneNotes                     PhoneNote[]
+  poas                           PowerOfAttorney[]
+  requests                       Request[]
+  requestTemplates               RequestTemplate[]
+  riskAnalyses                   RiskAnalysis[]
+  riskMarkings                   RiskMarking[]
+  riskResearchRequests           RiskResearchRequest[]
+  riskResearchResults            RiskResearchResult[]
+  riskPromptTemplates            RiskPromptTemplate[]
+  rssFeeds                       RssFeed[]
+  serviceProviders               ServiceProvider[]
+  storageOrphans                 StorageOrphan[]
+  staffBookmarks                 StaffBookmark[]
+  staffNotes                     StaffNote[]
+  staffSkills                    StaffSkill[]
+  staff                          StaffUser[]
+  stateMachines                  StateMachine[]
+  stateMachineStates             StateMachineState[]
+  stateMachineTransitions        StateMachineTransition[]
+  taxDeadlines                   TaxDeadline[]
+  taxDeadlineNotificationHistory TaxDeadlineNotificationHistory[]
+  taxFilings                     TaxFiling[]
+  taxNotices                     TaxNotice[]
+  taxScheduleConfigs             TaxScheduleConfig[]
+  settings                       TenantSetting[]
+  workflowInstances              WorkflowInstance[]
+  workflowN8nDispatches          WorkflowN8nDispatch[]
+  workflowTemplates              WorkflowTemplate[]
+  clientReminderNotes            ClientReminderNote[]
 
   @@map("tenant")
 }
@@ -1016,6 +1018,7 @@ model StaffNote {
 model Notification {
   id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId     String           @map("tenant_id") @db.Uuid
+  clientId     String?          @map("client_id") @db.Uuid
   staffId      String?          @map("staff_id") @db.Uuid
   kind         NotificationKind
   title        String
@@ -1025,10 +1028,12 @@ model Notification {
   resourceId   String?          @map("resource_id")
   readAt       DateTime?        @map("read_at")
   createdAt    DateTime         @default(now()) @map("created_at")
+  client       Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "notification_client_id_fkey")
   staff        StaffUser?       @relation(fields: [staffId], references: [id], onDelete: Cascade)
   tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, staffId, readAt, createdAt])
+  @@index([tenantId, clientId, staffId, readAt, createdAt], map: "notification_tenant_client_staff_read_created_idx")
   @@index([tenantId, resourceType, resourceId])
   @@map("notification")
 }
@@ -1102,6 +1107,7 @@ model Client {
   gwgIdentityDocuments    GwgIdDocument[]             @relation("gwg_natural_client_subject")
   gwgInvites              GwgOnboardingInvite[]
   invoices                Invoice[]
+  notifications           Notification[]
   pendingBinders          PendingBinder[]
   phoneNotes              PhoneNote[]
   poas                    PowerOfAttorney[]
@@ -1569,6 +1575,7 @@ model Request {
   workflowItem          WorkflowItem?            @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "request_workflow_item_fk")
   taxDeadline           TaxDeadline?             @relation("TaxDeadlineAutoRequest", fields: [taxDeadlineId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "request_tax_deadline_fk")
   taxDeadlinePointer    TaxDeadline?             @relation("TaxDeadlineRequestPointer")
+  taxDeadlineNotificationHistory TaxDeadlineNotificationHistory[]
   linkedGwgIdDocument   GwgIdDocument?           @relation(fields: [linkedGwgIdDocumentId], references: [id], onUpdate: NoAction, map: "request_gwg_id_doc_fk")
   responses             RequestResponse[]
   internalComments      RequestInternalComment[]
@@ -1922,41 +1929,78 @@ model TaxScheduleConfig {
 }
 
 model TaxDeadline {
-  id                           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                     String             @map("tenant_id") @db.Uuid
-  clientId                     String             @map("client_id") @db.Uuid
-  configId                     String?            @map("config_id") @db.Uuid
-  kind                         TaxScheduleKind
-  period                       String
-  dueDate                      DateTime           @map("due_date") @db.Date
-  status                       TaxDeadlineStatus  @default(PLANNED)
-  requestId                    String?            @unique(map: "tax_deadline_request_unique") @map("request_id") @db.Uuid
-  amountDue                    Decimal?           @map("amount_due") @db.Decimal(12, 2)
-  notes                        String?
-  completedAt                  DateTime?          @map("completed_at")
-  completedByStaff             String?            @map("completed_by_staff") @db.Uuid
+  id                                   String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                             String                        @map("tenant_id") @db.Uuid
+  clientId                             String                        @map("client_id") @db.Uuid
+  configId                             String?                       @map("config_id") @db.Uuid
+  kind                                 TaxScheduleKind
+  period                               String
+  dueDate                              DateTime                      @map("due_date") @db.Date
+  status                               TaxDeadlineStatus             @default(PLANNED)
+  requestId                            String?                       @unique(map: "tax_deadline_request_unique") @map("request_id") @db.Uuid
+  amountDue                            Decimal?                      @map("amount_due") @db.Decimal(12, 2)
+  notes                                String?
+  completedAt                          DateTime?                     @map("completed_at")
+  completedByStaff                     String?                       @map("completed_by_staff") @db.Uuid
   /// Interne Vorwarnung versendet (Auto-Anforderungs-Pipeline, Stufe 3a).
-  staffNotifiedAt              DateTime?          @map("staff_notified_at") @db.Timestamptz(6)
+  staffNotifiedAt                      DateTime?                     @map("staff_notified_at") @db.Timestamptz(6)
   /// Auto-Anforderung durch Mitarbeiter gestoppt (aufhebbar); ohne FK wie
   /// completedByStaff.
-  autoRequestSuppressedAt      DateTime?          @map("auto_request_suppressed_at") @db.Timestamptz(6)
-  autoRequestSuppressedByStaff String?            @map("auto_request_suppressed_by_staff") @db.Uuid
+  autoRequestSuppressedAt              DateTime?                     @map("auto_request_suppressed_at") @db.Timestamptz(6)
+  autoRequestSuppressedByStaff         String?                       @map("auto_request_suppressed_by_staff") @db.Uuid
   /// Kurzlebiger transaktionaler CAS-Claim für die Auto-Anforderung. Bei
   /// Rollback verschwindet er zusammen mit dem gesamten Erzeugungsversuch.
-  autoRequestClaimedAt         DateTime?          @map("auto_request_claimed_at") @db.Timestamptz(6)
-  createdAt                    DateTime           @default(now()) @map("created_at")
-  updatedAt                    DateTime           @updatedAt @map("updated_at")
-  client                       Client             @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_client_fkey")
-  config                       TaxScheduleConfig? @relation(fields: [configId], references: [id], onUpdate: NoAction, map: "tax_deadline_config_fkey")
-  tenant                       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_tenant_fkey")
-  autoRequest                  Request?           @relation("TaxDeadlineAutoRequest")
-  request                      Request?           @relation("TaxDeadlineRequestPointer", fields: [requestId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "tax_deadline_request_fk")
+  autoRequestClaimedAt                 DateTime?                     @map("auto_request_claimed_at") @db.Timestamptz(6)
+  /// Zustellung der zu diesem Termin angelegten Portal-Anforderung. Der
+  /// Status beschreibt ausschließlich den technischen Benachrichtigungsweg;
+  /// er ist weder Request-Status noch Zugangs-/Kenntnisnahmenachweis.
+  autoRequestNotificationStatus        TaxDeadlineNotificationStatus @default(NOT_REQUIRED) @map("auto_request_notification_status")
+  autoRequestNotificationAttemptCount  Int                           @default(0) @map("auto_request_notification_attempt_count")
+  autoRequestNotificationLastAttemptAt DateTime?                     @map("auto_request_notification_last_attempt_at") @db.Timestamptz(6)
+  autoRequestNotificationNextAttemptAt DateTime?                     @map("auto_request_notification_next_attempt_at") @db.Timestamptz(6)
+  autoRequestNotificationAcceptedAt    DateTime?                     @map("auto_request_notification_accepted_at") @db.Timestamptz(6)
+  autoRequestNotificationLastError     String?                       @map("auto_request_notification_last_error")
+  autoRequestNotificationEscalatedAt   DateTime?                     @map("auto_request_notification_escalated_at") @db.Timestamptz(6)
+  createdAt                            DateTime                      @default(now()) @map("created_at")
+  updatedAt                            DateTime                      @updatedAt @map("updated_at")
+  client                               Client                        @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_client_fkey")
+  config                               TaxScheduleConfig?            @relation(fields: [configId], references: [id], onUpdate: NoAction, map: "tax_deadline_config_fkey")
+  tenant                               Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_tenant_fkey")
+  autoRequest                          Request?                      @relation("TaxDeadlineAutoRequest")
+  request                              Request?                      @relation("TaxDeadlineRequestPointer", fields: [requestId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "tax_deadline_request_fk")
 
   @@unique([tenantId, clientId, kind, period])
   @@index([tenantId, dueDate])
   @@index([tenantId, status, dueDate])
   @@index([tenantId, configId])
+  @@index([tenantId, autoRequestNotificationStatus, autoRequestNotificationNextAttemptAt], map: "tax_deadline_notification_retry_idx")
   @@map("tax_deadline")
+}
+
+/// Unveränderbarer technischer Benachrichtigungsnachweis für einen im Zuge
+/// einer Neu-Materialisierung entfernten Steuertermin. Namen und Titel werden
+/// bewusst nicht dupliziert; die Herkunft bleibt über pseudonyme IDs erhalten.
+model TaxDeadlineNotificationHistory {
+  id                        String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                  String                        @map("tenant_id") @db.Uuid
+  originalDeadlineId        String                        @unique(map: "tax_deadline_notification_history_deadline_key") @map("original_deadline_id") @db.Uuid
+  requestId                 String                        @map("request_id") @db.Uuid
+  notificationStatus        TaxDeadlineNotificationStatus @map("notification_status")
+  notificationAttemptCount  Int                           @map("notification_attempt_count")
+  notificationLastAttemptAt DateTime?                     @map("notification_last_attempt_at") @db.Timestamptz(6)
+  notificationNextAttemptAt DateTime?                     @map("notification_next_attempt_at") @db.Timestamptz(6)
+  notificationAcceptedAt    DateTime?                     @map("notification_accepted_at") @db.Timestamptz(6)
+  notificationErrorRecorded Boolean                       @map("notification_error_recorded")
+  notificationLastErrorSha256 Bytes?                      @map("notification_last_error_sha256")
+  notificationEscalatedAt   DateTime?                     @map("notification_escalated_at") @db.Timestamptz(6)
+  archiveReason             String                        @map("archive_reason")
+  archivedAt                DateTime                      @default(dbgenerated("transaction_timestamp()")) @map("archived_at") @db.Timestamptz(6)
+  tenant                    Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_notification_history_tenant_fk")
+  request                   Request                       @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_notification_history_request_fk")
+
+  @@index([tenantId, archivedAt(sort: Desc)], map: "tax_deadline_notification_history_tenant_archived_idx")
+  @@index([tenantId, requestId], map: "tax_deadline_notification_history_request_idx")
+  @@map("tax_deadline_notification_history")
 }
 
 model TaxFiling {
@@ -1991,81 +2035,133 @@ model TaxFiling {
 }
 
 model TaxNotice {
-  id                                        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                                  String          @map("tenant_id") @db.Uuid
-  clientId                                  String          @map("client_id") @db.Uuid
+  id                                        String                                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                                  String                                @map("tenant_id") @db.Uuid
+  clientId                                  String                                @map("client_id") @db.Uuid
   kind                                      TaxNoticeKind
   period                                    String
-  noticeDate                                DateTime        @map("notice_date") @db.Date
+  noticeDate                                DateTime                              @map("notice_date") @db.Date
+  /// Fachliche Bedeutung von noticeDate. Altbestand bleibt ausdrücklich
+  /// ungeprüft; ein Bescheiddatum darf nur als interner Risikotermin dienen.
+  dateBasis                                 TaxNoticeDateBasis                    @default(LEGACY_UNVERIFIED) @map("date_basis")
   /// Post (Inland/Ausland), elektronische Übermittlung und Datenabruf nutzen
   /// die jeweilige Bekanntgabefiktion; die übrigen Wege brauchen den rechtlich
   /// maßgeblichen Bekanntgabetag in receivedAt. Bei DATA_RETRIEVAL ist dies der
   /// Bereitstellungstag; die historische Benachrichtigung steht separat.
-  deliveryMethod                            String          @default("POST") @map("delivery_method")
-  legalRemedyInstructionValid               Boolean         @default(true) @map("legal_remedy_instruction_valid")
-  /// Tatsächlicher Zugangstag (§ 122 Abs. 2 AO Hs. 2): kam der Bescheid SPÄTER
-  /// als die 4-Tage-Fiktion an, läuft die Einspruchsfrist ab diesem Tag.
-  receivedAt                                DateTime?       @map("received_at") @db.Date
+  deliveryMethod                            String                                @default("POST") @map("delivery_method")
+  deliveryEvidenceStatus                    TaxNoticeEvidenceStatus               @default(CLAIMED) @map("delivery_evidence_status")
+  deliveryEvidenceNote                      String?                               @map("delivery_evidence_note")
+  legalRemedyInstructionValid               Boolean                               @default(true) @map("legal_remedy_instruction_valid")
+  legalRemedyInstructionStatus              TaxNoticeLegalRemedyInstructionStatus @default(UNKLAR) @map("legal_remedy_instruction_status")
+  legalRemedyInstructionNote                String?                               @map("legal_remedy_instruction_note")
+  /// Dokumentierter tatsächlicher Zugangstag. Ein früherer Eingang verkürzt
+  /// die Fiktion nicht; ein späterer wird erst nach fachlicher Feststellung
+  /// als Rechtsdatum verwendet.
+  receivedAt                                DateTime?                             @map("received_at") @db.Date
+  accessStatus                              TaxNoticeAccessStatus                 @default(UNCONTESTED) @map("access_status")
+  accessEvidenceStatus                      TaxNoticeEvidenceStatus?              @map("access_evidence_status")
+  accessEvidenceNote                        String?                               @map("access_evidence_note")
+  recipientName                             String?                               @map("recipient_name")
+  recipientCountryCode                      String                                @default("ZZ") @map("recipient_country_code") @db.VarChar(2)
+  recipientRegion                           String?                               @map("recipient_region")
+  recipientLocality                         String?                               @map("recipient_locality")
+  recipientLocalHolidayDates                DateTime[]                            @default([]) @map("recipient_local_holiday_dates") @db.Date
+  recipientBavariaAssumptionApplies         Boolean?                              @map("recipient_bavaria_assumption_applies")
+  authorityName                             String?                               @map("authority_name")
+  authorityCountryCode                      String                                @default("DE") @map("authority_country_code") @db.VarChar(2)
+  authorityRegion                           String?                               @map("authority_region")
+  authorityLocality                         String?                               @map("authority_locality")
+  authorityLocalHolidayDates                DateTime[]                            @default([]) @map("authority_local_holiday_dates") @db.Date
+  authorityBavariaAssumptionApplies         Boolean?                              @map("authority_bavaria_assumption_applies")
+  recipientHolidayContextStatus             TaxNoticeHolidayContextStatus         @default(UNKNOWN) @map("recipient_holiday_context_status")
+  authorityHolidayContextStatus             TaxNoticeHolidayContextStatus         @default(UNKNOWN) @map("authority_holiday_context_status")
+  holidayContextNote                        String?                               @map("holiday_context_note")
   /// Erlass-/Bescheiddatum bei DATA_RETRIEVAL. Es entscheidet nach Art. 97
   /// § 28 Abs. 2 EGAO über § 122a AO a.F. oder die Neufassung ab 2026.
-  retrievalIssuedAt                         DateTime?       @map("retrieval_issued_at") @db.Date
+  retrievalIssuedAt                         DateTime?                             @map("retrieval_issued_at") @db.Date
   /// Versandtag der elektronischen Bereitstellungsbenachrichtigung nach
   /// § 122a Abs. 4 AO a.F.; für bis 31.12.2025 erlassene Bescheide erforderlich.
-  retrievalNotificationDate                 DateTime?       @map("retrieval_notification_date") @db.Date
+  retrievalNotificationDate                 DateTime?                             @map("retrieval_notification_date") @db.Date
   /// Nur für migrierten Altbestand: Das alte Modell kannte keinen separaten
   /// Erlass-/Benachrichtigungstag. true kennzeichnet, dass die vorhandene
   /// Altfälligkeit erhalten bleibt, ohne unbekannte Daten als Tatsache auszugeben.
-  retrievalNotificationLegacyFallback       Boolean         @default(false) @map("retrieval_notification_legacy_fallback")
+  retrievalNotificationLegacyFallback       Boolean                               @default(false) @map("retrieval_notification_legacy_fallback")
   /// Kennzeichnet den altrechtlichen Ausnahmefall: Zugang der elektronischen
   /// Benachrichtigung ist bestritten oder wurde erst verspätet empfangen.
-  retrievalNotificationDisputedOrLate       Boolean         @default(false) @map("retrieval_notification_disputed_or_late")
+  retrievalNotificationDisputedOrLate       Boolean                               @default(false) @map("retrieval_notification_disputed_or_late")
   /// Tatsächlicher Abruftag; bei markiertem altrechtlichem Ausnahmefall ist er
   /// statt der Benachrichtigungsfiktion fristauslösend. Fehlt auch er, ist der
   /// Verwaltungsakt noch nicht bekanntgegeben und appealDeadline bleibt null.
-  retrievedAt                               DateTime?       @map("retrieved_at") @db.Date
-  appealDeadline                            DateTime?       @map("appeal_deadline") @db.Date
-  status                                    TaxNoticeStatus @default(NEU)
-  fileNumber                                String?         @map("file_number")
-  assessedAmount                            Decimal?        @map("assessed_amount") @db.Decimal(12, 2)
-  prepaidAmount                             Decimal?        @map("prepaid_amount") @db.Decimal(12, 2)
-  refundAmount                              Decimal?        @map("refund_amount") @db.Decimal(12, 2)
-  payAmount                                 Decimal?        @map("pay_amount") @db.Decimal(12, 2)
-  expectedAmount                            Decimal?        @map("expected_amount") @db.Decimal(12, 2)
-  reviewNotes                               String?         @map("review_notes")
-  reviewedAt                                DateTime?       @map("reviewed_at")
-  reviewedBy                                String?         @map("reviewed_by") @db.Uuid
-  appealFiledAt                             DateTime?       @map("appeal_filed_at")
+  retrievedAt                               DateTime?                             @map("retrieved_at") @db.Date
+  /// 2026 verlangt das konservative Produktmodell eine nachweisbare aktive
+  /// Einwilligung; ab 2027 wird stattdessen ein Postantrag/Widerruf bewertet.
+  retrievalConsentStatus                    TaxNoticeRetrievalConsentStatus       @default(NOT_APPLICABLE) @map("retrieval_consent_status")
+  retrievalPostalRequestStatus              TaxNoticePostalRequestStatus          @default(NOT_APPLICABLE) @map("retrieval_postal_request_status")
+  retrievalPostalRequestReceivedAt          DateTime?                             @map("retrieval_postal_request_received_at") @db.Date
+  retrievalEligibility2027Status            TaxNoticeRetrievalEligibilityStatus   @default(NOT_APPLICABLE) @map("retrieval_eligibility_2027_status")
+  retrievalNotificationStatus               TaxNoticeDeliveryNotificationStatus   @default(NOT_RECORDED) @map("retrieval_notification_status")
+  retrievalReinstatementReviewRequired      Boolean                               @default(false) @map("retrieval_reinstatement_review_required")
+  /// Von der Engine ermittelter Bekanntgabetag. Er wird getrennt vom
+  /// Ausgangsdatum persistiert, damit jeder Rechenschritt prüfbar bleibt.
+  calculatedNotificationDate                DateTime?                             @map("calculated_notification_date") @db.Date
+  appealDeadline                            DateTime?                             @map("appeal_deadline") @db.Date
+  internalRiskDeadline                      DateTime?                             @map("internal_risk_deadline") @db.Date
+  /// Reines Vergleichsszenario für einen behaupteten späteren Zugang; niemals
+  /// ohne fachliche Würdigung als Rechtsfrist ausgeben.
+  alternativeClaimedAccessDeadline          DateTime?                             @map("alternative_claimed_access_deadline") @db.Date
+  deadlineCalculationStatus                 TaxNoticeDeadlineCalculationStatus    @default(LEGACY_UNVERIFIED) @map("deadline_calculation_status")
+  deadlineCalculationVersion                String?                               @map("deadline_calculation_version")
+  manualReviewRequired                      Boolean                               @default(true) @map("manual_review_required")
+  manualReviewReason                        String?                               @map("manual_review_reason")
+  status                                    TaxNoticeStatus                       @default(NEU)
+  fileNumber                                String?                               @map("file_number")
+  assessedAmount                            Decimal?                              @map("assessed_amount") @db.Decimal(12, 2)
+  prepaidAmount                             Decimal?                              @map("prepaid_amount") @db.Decimal(12, 2)
+  refundAmount                              Decimal?                              @map("refund_amount") @db.Decimal(12, 2)
+  payAmount                                 Decimal?                              @map("pay_amount") @db.Decimal(12, 2)
+  expectedAmount                            Decimal?                              @map("expected_amount") @db.Decimal(12, 2)
+  reviewNotes                               String?                               @map("review_notes")
+  reviewedAt                                DateTime?                             @map("reviewed_at")
+  reviewedBy                                String?                               @map("reviewed_by") @db.Uuid
+  appealFiledAt                             DateTime?                             @map("appeal_filed_at")
   /// Person, die die fristwahrende Einspruchseinlegung dokumentiert hat.
-  appealFiledBy                             String?         @map("appeal_filed_by") @db.Uuid
-  appealReason                              String?         @map("appeal_reason")
-  appealResolvedAt                          DateTime?       @map("appeal_resolved_at")
+  appealFiledBy                             String?                               @map("appeal_filed_by") @db.Uuid
+  appealReason                              String?                               @map("appeal_reason")
+  /// Bekanntgabetag des Teilabhilfebescheids und Person, die dieses
+  /// Fachereignis dokumentiert hat. Der Nachweis bleibt bei Folgestatus erhalten.
+  partialReliefReceivedAt                   DateTime?                             @map("partial_relief_received_at") @db.Date
+  partialReliefReceivedBy                   String?                               @map("partial_relief_received_by") @db.Uuid
+  appealResolvedAt                          DateTime?                             @map("appeal_resolved_at")
   /// Tatsächlicher Bekanntgabetag der Einspruchsentscheidung. Nur dieses
   /// Datum ist der belastbare Beginn der Klagefrist (§ 47 Abs. 1 FGO).
-  appealDecisionReceivedAt                  DateTime?       @map("appeal_decision_received_at") @db.Date
-  appealDecisionLegalRemedyInstructionValid Boolean?        @map("appeal_decision_legal_remedy_instruction_valid")
+  appealDecisionReceivedAt                  DateTime?                             @map("appeal_decision_received_at") @db.Date
+  appealDecisionLegalRemedyInstructionValid Boolean?                              @map("appeal_decision_legal_remedy_instruction_valid")
   /// Klagefrist zum FG (§ 47 Abs. 1 FGO, 1 Monat ab Bekanntgabe der
-  /// Einspruchsentscheidung). Gesetzt beim Übergang nach ZURUECKGEWIESEN/
-  /// TEILABHILFE; wird im Fristenkontrollbuch überwacht.
-  klageDeadline                             DateTime?       @map("klage_deadline") @db.Date
+  /// Einspruchsentscheidung). Gesetzt beim Übergang nach ZURUECKGEWIESEN oder
+  /// TEILEINSPRUCHSENTSCHEIDUNG; wird im Fristenkontrollbuch überwacht.
+  klageDeadline                             DateTime?                             @map("klage_deadline") @db.Date
   /// #11: tatsächliche Klageeinreichung (wer/wann) — für den Fristenkontrollbuch-
   /// Erledigungsnachweis. Gesetzt beim Statuswechsel auf KLAGE; ersetzt die
   /// bisherige Behelfsnutzung von appealResolvedAt/reviewedBy.
-  klageFiledAt                              DateTime?       @map("klage_filed_at")
-  klageFiledBy                              String?         @map("klage_filed_by") @db.Uuid
+  klageFiledAt                              DateTime?                             @map("klage_filed_at")
+  klageFiledBy                              String?                               @map("klage_filed_by") @db.Uuid
   /// Abschluss ohne (weitere) Klage bzw. nach Abschluss des Rechtsbehelfswegs.
   /// Der Klagefrist-Nachweis bleibt daneben unverändert erhalten.
-  legalFinalAt                              DateTime?       @map("legal_final_at")
-  legalFinalBy                              String?         @map("legal_final_by") @db.Uuid
-  documentId                                String?         @map("document_id") @db.Uuid
-  deadlineId                                String?         @map("deadline_id") @db.Uuid
-  createdByStaff                            String          @map("created_by_staff") @db.Uuid
-  createdAt                                 DateTime        @default(now()) @map("created_at")
-  updatedAt                                 DateTime        @updatedAt @map("updated_at")
-  filingId                                  String?         @map("filing_id") @db.Uuid
-  client                                    Client          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_client_fkey")
-  document                                  Document?       @relation(fields: [documentId], references: [id], onUpdate: NoAction, map: "tax_notice_document_fkey")
-  filing                                    TaxFiling?      @relation("FilingNotices", fields: [filingId], references: [id], onUpdate: NoAction, map: "tax_notice_filing_fk")
-  tenant                                    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_tenant_fkey")
+  legalFinalAt                              DateTime?                             @map("legal_final_at")
+  legalFinalBy                              String?                               @map("legal_final_by") @db.Uuid
+  /// Nachvollziehbare fachliche Abschlussentscheidung; der Status allein darf
+  /// eine offene Einspruchs-/Klagefrist nicht schließen.
+  legalFinalReason                          String?                               @map("legal_final_reason")
+  documentId                                String?                               @map("document_id") @db.Uuid
+  deadlineId                                String?                               @map("deadline_id") @db.Uuid
+  createdByStaff                            String                                @map("created_by_staff") @db.Uuid
+  createdAt                                 DateTime                              @default(now()) @map("created_at")
+  updatedAt                                 DateTime                              @updatedAt @map("updated_at")
+  filingId                                  String?                               @map("filing_id") @db.Uuid
+  client                                    Client                                @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_client_fkey")
+  document                                  Document?                             @relation(fields: [documentId], references: [id], onUpdate: NoAction, map: "tax_notice_document_fkey")
+  filing                                    TaxFiling?                            @relation("FilingNotices", fields: [filingId], references: [id], onUpdate: NoAction, map: "tax_notice_filing_fk")
+  tenant                                    Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_notice_tenant_fkey")
 
   // Kein @@unique auf (tenant, client, kind, period): Änderungsbescheide (§§ 164,
   // 172 ff. AO) betreffen dieselbe Steuerart/Periode und lösen je eine eigene
@@ -2076,6 +2172,30 @@ model TaxNotice {
   @@index([tenantId, status, appealDeadline])
   @@index([tenantId, documentId])
   @@map("tax_notice")
+}
+
+/// Unveränderbarer Tagesabschluss der zentralen Fristenkontrolle. Der Snapshot
+/// schließt keine Fachfrist, sondern dokumentiert, welche fälligen/überfälligen
+/// Einträge geprüft und welche offenen Risiken eskaliert wurden.
+model DeadlineDailyReview {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  reviewDate      DateTime @map("review_date") @db.Date
+  /// DB-seitiger Beginn der REPEATABLE-READ-Transaktion, deren konsistenten
+  /// Lesestand entriesSnapshot dokumentiert. Ein Clientwert wird verworfen.
+  snapshotAt      DateTime @default(dbgenerated("transaction_timestamp()")) @map("snapshot_at") @db.Timestamptz(6)
+  reviewedAt      DateTime @default(now()) @map("reviewed_at") @db.Timestamptz(6)
+  reviewedBy      String   @map("reviewed_by") @db.Uuid
+  openCount       Int      @map("open_count")
+  overdueCount    Int      @map("overdue_count")
+  dueTodayCount   Int      @map("due_today_count")
+  escalationNote  String?  @map("escalation_note")
+  entriesSnapshot Json     @map("entries_snapshot")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "deadline_daily_review_tenant_fk")
+
+  @@unique([tenantId, reviewDate], map: "deadline_daily_review_tenant_date_key")
+  @@index([tenantId, reviewDate(sort: Desc)], map: "deadline_daily_review_tenant_date_idx")
+  @@map("deadline_daily_review")
 }
 
 /// ELSTER-Kontoabfrage-Vorgang (Stufe 2 über die eric-bridge). Jeder Abruf ist
@@ -2979,6 +3099,7 @@ enum NotificationKind {
   CLIENT_REMINDER_ATTACHMENT
   CLIENT_REMINDER_MENTION
   TAX_DEADLINE_REQUEST_PENDING
+  TAX_DEADLINE_NOTIFICATION_FAILED
 
   @@map("notification_kind")
 }
@@ -3180,6 +3301,115 @@ enum TaxDeadlineStatus {
   @@map("tax_deadline_status")
 }
 
+enum TaxDeadlineNotificationStatus {
+  NOT_REQUIRED
+  QUEUED
+  PROVIDER_ACCEPTED
+  FAILED
+  PARTIAL_FAILURE
+  UNKNOWN
+  NO_RECIPIENT
+  ESCALATED
+  /// Die Request-Verknüpfung wurde außerhalb eines dokumentierten
+  /// DSGVO-Purge entfernt; technische Versandmetadaten bleiben erhalten.
+  ORPHANED
+
+  @@map("tax_deadline_notification_status")
+}
+
+enum TaxNoticeDateBasis {
+  /// Historischer Datensatz, dessen bisherige Datumsbedeutung nicht
+  /// nachträglich als Tatsache umgedeutet werden darf.
+  LEGACY_UNVERIFIED
+  DISPATCH_DATE
+  PROVISION_DATE
+  ACTUAL_ACCESS_DETERMINED
+  DOCUMENT_DATE_RISK_ONLY
+
+  @@map("tax_notice_date_basis")
+}
+
+enum TaxNoticeEvidenceStatus {
+  CLAIMED
+  SUBSTANTIATED
+  PROFESSIONALLY_DETERMINED
+
+  @@map("tax_notice_evidence_status")
+}
+
+enum TaxNoticeAccessStatus {
+  UNCONTESTED
+  NOT_RECEIVED_DISPUTED
+  EARLIER_RECEIPT_RECORDED
+  LATER_RECEIPT_CLAIMED
+  LATER_RECEIPT_DETERMINED
+
+  @@map("tax_notice_access_status")
+}
+
+enum TaxNoticeLegalRemedyInstructionStatus {
+  WIRKSAM
+  UNWIRKSAM
+  UNKLAR
+
+  @@map("tax_notice_legal_remedy_instruction_status")
+}
+
+enum TaxNoticeHolidayContextStatus {
+  CONFIRMED_FOR_DATE_AND_LOCATION
+  STATE_LEVEL_ONLY
+  HISTORICAL_UNVERIFIED
+  FOREIGN_UNSUPPORTED
+  UNKNOWN
+
+  @@map("tax_notice_holiday_context_status")
+}
+
+enum TaxNoticeDeadlineCalculationStatus {
+  CALCULATED
+  MANUAL_REVIEW
+  RISK_ONLY
+  LEGACY_UNVERIFIED
+
+  @@map("tax_notice_deadline_calculation_status")
+}
+
+enum TaxNoticeRetrievalConsentStatus {
+  NOT_APPLICABLE
+  CONFIRMED
+  NOT_GIVEN
+  UNKNOWN
+
+  @@map("tax_notice_retrieval_consent_status")
+}
+
+enum TaxNoticePostalRequestStatus {
+  NOT_APPLICABLE
+  NONE_EFFECTIVE
+  EFFECTIVE
+  UNKNOWN
+
+  @@map("tax_notice_postal_request_status")
+}
+
+enum TaxNoticeRetrievalEligibilityStatus {
+  NOT_APPLICABLE
+  CONFIRMED
+  NOT_MET
+  UNKNOWN
+
+  @@map("tax_notice_retrieval_eligibility_status")
+}
+
+enum TaxNoticeDeliveryNotificationStatus {
+  NOT_RECORDED
+  SENT
+  FAILED
+  UNKNOWN
+
+  @@map("tax_notice_delivery_notification_status")
+}
+
 enum TaxNoticeKind {
   USTA
   UST_JAHR
@@ -3201,9 +3431,10 @@ enum TaxNoticeStatus {
   EINSPRUCH
   ABGEHOLFEN
   TEILABHILFE
+  TEILEINSPRUCHSENTSCHEIDUNG
   ZURUECKGEWIESEN
   KLAGE
-  RECHTSKRAEFTIG
+  BESTANDSKRAEFTIG
 
   @@map("tax_notice_status")
 }

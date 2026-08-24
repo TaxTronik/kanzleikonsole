@@ -87,6 +87,7 @@ const AUTHORITATIVE_SOURCE_HOSTS = {
     'bund.de',
     'bundesfinanzministerium.de',
     'bundesanzeiger.de',
+    'bravors.brandenburg.de',
     'verwaltungsvorschriften-im-internet.de',
   ],
   case_law: [
@@ -102,9 +103,10 @@ const REQUIRED_PRIMARY_KIND = {
   administrative_guidance: 'official_guidance',
   technical_standard: 'technical_standard',
 };
-const CODE_REFERENCE_PATTERN = /^(?:apps|packages)\/.+\.(?:[cm]?[jt]sx?|sql|prisma|sh)$/;
+const CODE_REFERENCE_PATTERN =
+  /^(?:(?:apps|packages|scripts)\/.+\.(?:[cm]?[jt]sx?|sql|prisma|sh|py)|\.forgejo\/workflows\/.+\.ya?ml)$/;
 const TEST_REFERENCE_PATTERN =
-  /^(?:apps|packages)\/.+(?:\/__tests__\/[^/]+|\.(?:test|spec))\.(?:[cm]?[jt]sx?)$/;
+  /^(?:apps|packages|scripts)\/.+(?:\/__tests__\/[^/]+|\.(?:test|spec))\.(?:[cm]?[jt]sx?)$/;
 
 const REVIEW_LABELS = {
   unreviewed: 'Ungeprüfter Entwurf',
@@ -128,7 +130,12 @@ const DOMAIN_LABELS = {
   'dokumente-und-aufbewahrung': 'Dokumente und Aufbewahrung',
   'mandat-und-zugriff': 'Mandat und Zugriff',
   'vollmachten-und-signaturen': 'Vollmachten und Signaturen',
+  'audit-und-assurance': 'Audit und Software-Assurance',
+  'bwa-und-planung': 'BWA und Planung',
+  'subsumtion-und-tcms': 'Subsumtion und TCMS-Produktgrenzen',
 };
+
+const SCOPE_DEFINITION_PATH = 'docs/fachkatalog/SCOPE.md';
 
 function toPosix(value) {
   return value.split(sep).join('/');
@@ -140,6 +147,22 @@ function isPlainObject(value) {
 
 function addError(errors, file, message) {
   errors.push(`${file}: ${message}`);
+}
+
+export function latestPlausibleCalendarDate(now = new Date()) {
+  const timestamp = now instanceof Date ? now.valueOf() : Number.NaN;
+  if (Number.isNaN(timestamp)) {
+    throw new TypeError('now muss ein gültiges Date-Objekt sein.');
+  }
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const calendar = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${calendar.year}-${calendar.month}-${calendar.day}`;
 }
 
 function validateKnownKeys(value, allowed, label, errors, file) {
@@ -171,7 +194,7 @@ function validateDate(value, label, errors, file, { nullable = true, notFuture =
   const parsed = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
     addError(errors, file, `${label} ist kein gültiges Kalenderdatum.`);
-  } else if (notFuture && value > new Date().toISOString().slice(0, 10)) {
+  } else if (notFuture && value > latestPlausibleCalendarDate()) {
     addError(errors, file, `${label} darf nicht in der Zukunft liegen.`);
   }
 }
@@ -669,7 +692,7 @@ function validateMetadata(metadata, context) {
         addError(
           errors,
           file,
-          `code_refs[${index}] muss auf ausführungsnahe Software unter apps/ oder packages/ zeigen.`,
+          `code_refs[${index}] muss auf ausführungsnahe Software unter apps/, packages/ oder scripts/ beziehungsweise auf einen Workflow unter .forgejo/workflows/ zeigen.`,
         );
       }
     }
@@ -678,7 +701,7 @@ function validateMetadata(metadata, context) {
         addError(
           errors,
           file,
-          `test_refs[${index}] muss auf eine ausführbare Testdatei unter apps/ oder packages/ zeigen.`,
+          `test_refs[${index}] muss auf eine ausführbare Testdatei unter apps/, packages/ oder scripts/ zeigen.`,
         );
       }
     }
@@ -851,6 +874,153 @@ export function loadCatalog(rootDir = process.cwd()) {
   return rules.sort((left, right) => left.id.localeCompare(right.id, 'de'));
 }
 
+export function assertScopeCoverage(rootDir, rules) {
+  if (!Array.isArray(rules)) {
+    throw new TypeError('rules muss eine Liste validierter Fachregeln sein.');
+  }
+
+  const errors = [];
+  const scopeFile = assertRepositoryFile(
+    rootDir,
+    SCOPE_DEFINITION_PATH,
+    'Scope-Definition',
+    errors,
+    SCOPE_DEFINITION_PATH,
+  );
+  if (!scopeFile) {
+    throw new Error(`Fachkatalog-Scope ist ungültig:\n- ${errors.join('\n- ')}`);
+  }
+
+  const source = readFileSync(scopeFile, 'utf8');
+  const scopeManifestMatches = [
+    ...source.matchAll(
+      /<!--\s*fachkatalog-scope:\s*version=(\d+);\s*active=(\d+);\s*reserved=(\d+)\s*-->/g,
+    ),
+  ];
+  if (scopeManifestMatches.length !== 1) {
+    throw new Error(
+      `${SCOPE_DEFINITION_PATH}: genau ein Maschinenmarker „fachkatalog-scope: version=…; active=…; reserved=…“ ist erforderlich.`,
+    );
+  }
+  const [, manifestVersionText, expectedActiveText, expectedReservedText] = scopeManifestMatches[0];
+  const manifestVersion = Number(manifestVersionText);
+  const expectedActiveRuleCount = Number(expectedActiveText);
+  const expectedReservedRuleCount = Number(expectedReservedText);
+  if (manifestVersion !== 1) {
+    throw new Error(
+      `${SCOPE_DEFINITION_PATH}: unbekannte Scope-Manifestversion ${manifestVersion}.`,
+    );
+  }
+
+  const excludedSection = source.search(/^## 8\./m);
+  const prioritizationSection = source.search(/^## 9\./m);
+  if (
+    excludedSection === -1 ||
+    prioritizationSection === -1 ||
+    prioritizationSection <= excludedSection
+  ) {
+    throw new Error(
+      `${SCOPE_DEFINITION_PATH}: geordnete Abschnitte „## 8.“ (Ausschlüsse) und „## 9.“ (Ausbau) fehlen.`,
+    );
+  }
+
+  const extractIds = (text) =>
+    [...text.matchAll(/`([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+-\d{3})`/g)].map((match) => match[1]);
+  const scopedIds = extractIds(source.slice(0, excludedSection));
+  const reservedIds = extractIds(source.slice(excludedSection, prioritizationSection));
+  if (scopedIds.length === 0) {
+    throw new Error(`${SCOPE_DEFINITION_PATH}: Vor Abschnitt 8 sind keine Regel-IDs definiert.`);
+  }
+
+  const countIds = (ids) => {
+    const counts = new Map();
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+    return counts;
+  };
+  const scopeCounts = countIds(scopedIds);
+  const reservedCounts = countIds(reservedIds);
+  const duplicateScopedIds = [...scopeCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id)
+    .sort((left, right) => left.localeCompare(right, 'de'));
+  const duplicateReservedIds = [...reservedCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id)
+    .sort((left, right) => left.localeCompare(right, 'de'));
+  const uniqueScopedIds = new Set(scopeCounts.keys());
+  const uniqueReservedIds = new Set(reservedCounts.keys());
+  const catalogIds = new Set(rules.map((rule) => rule.id));
+  const activeCatalogIds = new Set(
+    rules
+      .filter((rule) => rule.professional_review?.status !== 'superseded')
+      .map((rule) => rule.id),
+  );
+  const missing = [...uniqueScopedIds]
+    .filter((id) => !activeCatalogIds.has(id))
+    .sort((left, right) => left.localeCompare(right, 'de'));
+  const outsideScope = [...activeCatalogIds]
+    .filter((id) => !uniqueScopedIds.has(id))
+    .sort((left, right) => left.localeCompare(right, 'de'));
+  const reservedInCatalog = [...catalogIds]
+    .filter((id) => uniqueReservedIds.has(id))
+    .sort((left, right) => left.localeCompare(right, 'de'));
+
+  const findings = [];
+  if (duplicateScopedIds.length > 0) {
+    findings.push(`IDs mehrfach vor Abschnitt 8 genannt: ${duplicateScopedIds.join(', ')}.`);
+  }
+  if (duplicateReservedIds.length > 0) {
+    findings.push(
+      `reservierte IDs mehrfach in Abschnitt 8 genannt: ${duplicateReservedIds.join(', ')}.`,
+    );
+  }
+  if (uniqueScopedIds.size !== expectedActiveRuleCount) {
+    findings.push(
+      `Scope-Marker erwartet ${expectedActiveRuleCount} aktive IDs, gefunden wurden ${uniqueScopedIds.size}.`,
+    );
+  }
+  if (uniqueReservedIds.size !== expectedReservedRuleCount) {
+    findings.push(
+      `Scope-Marker erwartet ${expectedReservedRuleCount} reservierte IDs, gefunden wurden ${uniqueReservedIds.size}.`,
+    );
+  }
+  if (missing.length > 0) {
+    findings.push(`aktive Regeldateien für in-scope IDs fehlen: ${missing.join(', ')}.`);
+  }
+  if (outsideScope.length > 0) {
+    findings.push(
+      `aktive Regel-IDs sind nicht im Produkt-Scope erfasst: ${outsideScope.join(', ')}.`,
+    );
+  }
+  if (reservedInCatalog.length > 0) {
+    findings.push(
+      `reservierte IDs dürfen keine Regeldatei besitzen: ${reservedInCatalog.join(', ')}.`,
+    );
+  }
+  if (findings.length > 0) {
+    throw new Error(
+      `Fachkatalog-Scope ist unvollständig (${findings.length} Befunde):\n- ${findings.join('\n- ')}`,
+    );
+  }
+
+  return {
+    manifest_version: manifestVersion,
+    definition_path: SCOPE_DEFINITION_PATH,
+    definition_sha256: `sha256:${createHash('sha256')
+      .update(source.replace(/\r\n?/g, '\n'), 'utf8')
+      .digest('hex')}`,
+    expected_active_rule_count: expectedActiveRuleCount,
+    expected_reserved_rule_count: expectedReservedRuleCount,
+    active_rule_ids: [...uniqueScopedIds].sort((left, right) => left.localeCompare(right, 'de')),
+    reserved_rule_ids: [...uniqueReservedIds].sort((left, right) =>
+      left.localeCompare(right, 'de'),
+    ),
+    definition_markdown: source.replace(/\r\n?/g, '\n'),
+    completeness:
+      'Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe.',
+  };
+}
+
 function periodLabel(validity) {
   if (!validity.valid_from && !validity.valid_until) return 'nicht eingegrenzt';
   if (validity.valid_from && validity.valid_until)
@@ -859,9 +1029,30 @@ function periodLabel(validity) {
   return `bis ${validity.valid_until}`;
 }
 
+const FALLBACK_EXPORT_SCOPE = {
+  definition_path: SCOPE_DEFINITION_PATH,
+  completeness:
+    'Vollständig nur für die dort als in scope bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe.',
+};
+
+function sortedRules(rules) {
+  return [...rules].sort((left, right) => left.id.localeCompare(right.id, 'de'));
+}
+
+function exportCounts(rules) {
+  const activeRuleCount = rules.filter(
+    (rule) => rule.professional_review?.status !== 'superseded',
+  ).length;
+  return {
+    rule_count: rules.length,
+    active_rule_count: activeRuleCount,
+    historical_rule_count: rules.length - activeRuleCount,
+  };
+}
+
 export function renderMarkdownIndex(rules) {
   const groups = new Map();
-  for (const rule of rules) {
+  for (const rule of sortedRules(rules)) {
     if (!groups.has(rule.domain)) groups.set(rule.domain, []);
     groups.get(rule.domain).push(rule);
   }
@@ -893,8 +1084,11 @@ export function renderMarkdownIndex(rules) {
   return `${lines.join('\n').trimEnd()}\n`;
 }
 
-export async function renderJsonIndex(rules) {
-  const serializable = rules.map((rule) => {
+export async function renderJsonIndex(rules, scope = FALLBACK_EXPORT_SCOPE) {
+  const orderedRules = sortedRules(rules);
+  const compactScope = { ...scope };
+  delete compactScope.definition_markdown;
+  const serializable = orderedRules.map((rule) => {
     const indexEntry = { ...rule };
     delete indexEntry.body;
     return indexEntry;
@@ -903,6 +1097,8 @@ export async function renderJsonIndex(rules) {
     schema_version: 1,
     purpose:
       'Such- und Gegenprüfindex für TaxTronik-Fachregeln; vollständige Regeldatei vor Änderungen lesen.',
+    scope: compactScope,
+    ...exportCounts(orderedRules),
     warning:
       'Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.',
     rules: serializable,
@@ -916,10 +1112,35 @@ export async function renderJsonIndex(rules) {
   });
 }
 
-export async function expectedIndexes(rules) {
+export async function renderFullJsonExport(rules, scope = FALLBACK_EXPORT_SCOPE) {
+  const normalizedRules = sortedRules(rules).map((rule) => ({
+    ...rule,
+    body: typeof rule.body === 'string' ? rule.body.replace(/\r\n?/g, '\n') : rule.body,
+  }));
+  const source = JSON.stringify({
+    schema_version: 1,
+    purpose:
+      'Vollständiger Maschinenexport aller TaxTronik-Fachregeln einschließlich Markdown-Regeltext.',
+    scope,
+    ...exportCounts(normalizedRules),
+    warning:
+      'Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.',
+    rules: normalizedRules,
+  });
+  return formatWithPrettier(source, {
+    parser: 'json',
+    printWidth: 100,
+    tabWidth: 2,
+    useTabs: false,
+    endOfLine: 'lf',
+  });
+}
+
+export async function expectedIndexes(rules, scope = FALLBACK_EXPORT_SCOPE) {
   return {
     markdown: renderMarkdownIndex(rules),
-    json: await renderJsonIndex(rules),
+    json: await renderJsonIndex(rules, scope),
+    fullJson: await renderFullJsonExport(rules, scope),
   };
 }
 
@@ -951,21 +1172,25 @@ function atomicWrite(target, content) {
 }
 
 export async function writeIndexes(rootDir, rules) {
-  const expected = await expectedIndexes(rules);
+  const scope = assertScopeCoverage(rootDir, rules);
+  const expected = await expectedIndexes(rules, scope);
   atomicWrite(safeIndexTarget(rootDir, 'INDEX.md'), expected.markdown);
   atomicWrite(safeIndexTarget(rootDir, 'fachkatalog.json'), expected.json);
+  atomicWrite(safeIndexTarget(rootDir, 'fachkatalog-voll.json'), expected.fullJson);
 }
 
 function normalizeLineEndings(source) {
-  return source.replace(/\r\n/g, '\n');
+  return source.replace(/\r\n?/g, '\n');
 }
 
 export async function checkIndexes(rootDir, rules) {
-  const expected = await expectedIndexes(rules);
+  const scope = assertScopeCoverage(rootDir, rules);
+  const expected = await expectedIndexes(rules, scope);
   const findings = [];
   for (const [name, content] of [
     ['INDEX.md', expected.markdown],
     ['fachkatalog.json', expected.json],
+    ['fachkatalog-voll.json', expected.fullJson],
   ]) {
     const target = safeIndexTarget(rootDir, name);
     if (!existsSync(target)) {

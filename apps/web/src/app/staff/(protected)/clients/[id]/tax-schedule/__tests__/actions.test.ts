@@ -1,3 +1,5 @@
+// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -6,6 +8,8 @@ const h = vi.hoisted(() => ({
   resolveNotificationsTx: vi.fn(),
   evidenceRecord: vi.fn(),
   materializeTaxDeadlines: vi.fn(),
+  enqueueTaxDeadlineMaterialize: vi.fn(),
+  fireAndForget: vi.fn(),
   assertClientAccessTx: vi.fn(),
   assertClientInTenant: vi.fn(),
   revalidatePath: vi.fn(),
@@ -20,8 +24,10 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceReco
 vi.mock('@/server/tax-deadlines/materialize', () => ({
   materializeTaxDeadlines: h.materializeTaxDeadlines,
 }));
-vi.mock('@/server/mail/dispatch', () => ({ notifyRequestOpened: vi.fn() }));
-vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: vi.fn() }));
+vi.mock('@/server/jobs/tax-deadline-materialize-queue', () => ({
+  enqueueTaxDeadlineMaterialize: h.enqueueTaxDeadlineMaterialize,
+}));
+vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: h.fireAndForget }));
 vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: h.assertClientInTenant }));
 vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: h.assertClientAccessTx }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: h.staffActionGuard }));
@@ -40,7 +46,8 @@ describe('Steuertermin-Neuplanung', () => {
       session: {},
       ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
     });
-    h.materializeTaxDeadlines.mockResolvedValue({ createdRequests: [] });
+    h.materializeTaxDeadlines.mockResolvedValue({ requestsCreated: 0 });
+    h.enqueueTaxDeadlineMaterialize.mockResolvedValue(undefined);
     h.resolveNotificationsTx.mockResolvedValue(2);
     h.evidenceRecord.mockResolvedValue(undefined);
   });
@@ -131,6 +138,30 @@ describe('Steuertermin-Neuplanung', () => {
           dueDate: { gte: new Date('2026-06-10T00:00:00.000Z') },
         }),
       }),
+    );
+  });
+
+  it('uebergibt neu angelegte QUEUED-Benachrichtigungen an den Worker', async () => {
+    const tx = {
+      taxScheduleConfig: { findMany: vi.fn().mockResolvedValue([]) },
+      taxDeadline: { findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn() },
+      request: { updateMany: vi.fn() },
+    };
+    h.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+    h.materializeTaxDeadlines.mockResolvedValue({
+      requestsCreated: 1,
+    });
+    const formData = new FormData();
+    formData.set('clientId', CLIENT_ID);
+
+    await expect(saveScheduleConfigAction(null, formData)).resolves.toMatchObject({ ok: true });
+
+    expect(h.enqueueTaxDeadlineMaterialize).toHaveBeenCalledWith('tenant-1');
+    expect(h.fireAndForget).toHaveBeenCalledWith(
+      'tax-deadline notification worker (tax-schedule save)',
+      expect.any(Promise),
     );
   });
 });

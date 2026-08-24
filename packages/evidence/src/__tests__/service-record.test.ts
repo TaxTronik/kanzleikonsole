@@ -1,3 +1,4 @@
+// Fachkatalog: AUDIT-HASH-CHAIN-001
 import { describe, expect, it, vi } from 'vitest';
 import { EvidenceService } from '../service';
 import { LocalTimestampAdapter } from '../ports/timestamp';

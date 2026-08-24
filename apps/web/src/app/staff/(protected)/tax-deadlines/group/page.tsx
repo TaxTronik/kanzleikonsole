@@ -113,6 +113,9 @@ export default async function TaxDeadlineGroupPage({
       requestId: d.requestId,
       staffNotifiedAt: d.staffNotifiedAt,
       autoRequestSuppressedAt: d.autoRequestSuppressedAt,
+      autoRequestNotificationStatus: d.autoRequestNotificationStatus,
+      autoRequestNotificationAttemptCount: d.autoRequestNotificationAttemptCount,
+      autoRequestNotificationEscalatedAt: d.autoRequestNotificationEscalatedAt,
       dueDate: d.dueDate,
       config: d.config,
       today,
@@ -323,6 +326,46 @@ function Section({
                       Gestoppt
                     </span>
                   )}
+                  {d.pipeline.state === 'REQUEST_CREATED' && (
+                    <span
+                      className={
+                        d.pipeline.notificationState === 'PROVIDER_ACCEPTED'
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : d.pipeline.notificationState === 'QUEUED'
+                            ? 'text-muted'
+                            : 'text-amber-700 dark:text-amber-300'
+                      }
+                      title={
+                        d.pipeline.notificationState === 'PROVIDER_ACCEPTED'
+                          ? 'Der Versanddienst hat alle Einzelversuche technisch angenommen. Das ist kein Zugangs- oder Kenntnisnahmenachweis.'
+                          : 'Portal-Anforderung und externe Benachrichtigung werden getrennt geführt.'
+                      }
+                    >
+                      {d.pipeline.notificationState === 'PROVIDER_ACCEPTED'
+                        ? 'Anforderung angelegt · Provider angenommen'
+                        : d.pipeline.notificationState === 'QUEUED'
+                          ? 'Anforderung angelegt · Benachrichtigung vorgemerkt'
+                          : d.pipeline.notificationState === 'FAILED'
+                            ? `Anforderung angelegt · Versandversuch ${d.pipeline.attemptCount} fehlgeschlagen`
+                            : d.pipeline.notificationState === 'PARTIAL_FAILURE'
+                              ? 'Anforderung angelegt · teilweise benachrichtigt, Prüfung offen'
+                              : d.pipeline.notificationState === 'NO_RECIPIENT'
+                                ? 'Anforderung angelegt · kein Empfänger, Prüfung offen'
+                                : d.pipeline.notificationState === 'UNKNOWN'
+                                  ? 'Anforderung angelegt · Versandstatus unklar, Prüfung offen'
+                                  : d.pipeline.notificationState === 'ESCALATED'
+                                    ? 'Anforderung angelegt · Versand intern eskaliert'
+                                    : 'Anforderung angelegt · Benachrichtigung nicht nachgewiesen'}
+                    </span>
+                  )}
+                  {d.pipeline.state === 'ORPHANED' && (
+                    <span
+                      className="text-amber-700 dark:text-amber-300"
+                      title="Die Request-Verknüpfung wurde entfernt. Technische Versandmetadaten bleiben als Historie erhalten; es erfolgt kein automatischer Neuversand."
+                    >
+                      Request-Verknüpfung entfernt · Versandhistorie erhalten
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
@@ -337,33 +380,36 @@ function Section({
                     {/* Zeilen liegen im äußeren Bulk-Formular — verschachtelte
                         Formulare sind invalide, deshalb formAction + name/value
                         am Button (React 19 Multi-Action-Form). */}
-                    {selectable && d.pipeline.state !== 'NONE' && d.pipeline.state !== 'SENT' && (
-                      <>
-                        {d.pipeline.state === 'SUPPRESSED' ? (
-                          <button
-                            type="submit"
-                            formAction={unsuppressAutoRequestAction}
-                            name="id"
-                            value={d.id}
-                            className="text-xs text-muted hover:text-brand-700"
-                            title="Stopp aufheben — der nächste Tageslauf versendet die Anforderung wieder wie konfiguriert."
-                          >
-                            Stopp aufheben
-                          </button>
-                        ) : (
-                          <button
-                            type="submit"
-                            formAction={suppressAutoRequestAction}
-                            name="id"
-                            value={d.id}
-                            className="text-xs text-muted hover:text-red-700"
-                            title="Auto-Anforderung stoppen — z. B. weil die Unterlagen bereits vorliegen."
-                          >
-                            Stoppen
-                          </button>
-                        )}
-                      </>
-                    )}
+                    {selectable &&
+                      d.pipeline.state !== 'NONE' &&
+                      d.pipeline.state !== 'REQUEST_CREATED' &&
+                      d.pipeline.state !== 'ORPHANED' && (
+                        <>
+                          {d.pipeline.state === 'SUPPRESSED' ? (
+                            <button
+                              type="submit"
+                              formAction={unsuppressAutoRequestAction}
+                              name="id"
+                              value={d.id}
+                              className="text-xs text-muted hover:text-brand-700"
+                              title="Stopp aufheben — der nächste Tageslauf versendet die Anforderung wieder wie konfiguriert."
+                            >
+                              Stopp aufheben
+                            </button>
+                          ) : (
+                            <button
+                              type="submit"
+                              formAction={suppressAutoRequestAction}
+                              name="id"
+                              value={d.id}
+                              className="text-xs text-muted hover:text-red-700"
+                              title="Auto-Anforderung stoppen — z. B. weil die Unterlagen bereits vorliegen."
+                            >
+                              Stoppen
+                            </button>
+                          )}
+                        </>
+                      )}
                     {!selectable && d.status !== 'DONE' && d.status !== 'SKIPPED' && (
                       <form action={markDeadlineDoneAction} className="inline">
                         <input type="hidden" name="id" value={d.id} />

@@ -4,6 +4,8 @@ import type { TxClient } from './tenant-context';
 
 export interface NotificationUpsertInput {
   tenantId: string;
+  /** Persistierter Mandantenscope; bekannte resourceType/resourceId-Paare werden DB-seitig validiert. */
+  clientId?: string | null;
   staffId?: string | null;
   kind: NotificationKind;
   title: string;
@@ -30,6 +32,13 @@ export interface NotificationResolutionInput {
   staffIds?: readonly string[];
   /** Bewusste tenant-weite Recovery; nur zusammen mit `kinds` zulässig. */
   tenantWide?: boolean;
+  resolvedAt?: Date;
+}
+
+export interface ClientContactNotificationResolutionInput {
+  tenantId: string;
+  resourceType: string;
+  resourceId: string;
   resolvedAt?: Date;
 }
 
@@ -60,6 +69,7 @@ export async function upsertNotificationTx(
   const body = input.body != null ? sanitizeNotificationText(input.body) : null;
   const where = {
     tenantId: input.tenantId,
+    ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
     staffId: input.staffId ?? null,
     kind: input.kind,
     resourceType: input.resourceType ?? null,
@@ -87,6 +97,7 @@ export async function upsertNotificationTx(
   await tx.notification.create({
     data: {
       tenantId: input.tenantId,
+      clientId: input.clientId ?? null,
       staffId: input.staffId ?? null,
       kind: input.kind,
       title,
@@ -96,6 +107,28 @@ export async function upsertNotificationTx(
       resourceId: input.resourceId ?? null,
     },
   });
+}
+
+/**
+ * Eng begrenzter Portal-Pfad: CLIENT_CONTACT darf Staff-Notifications nicht
+ * lesen. Die DB-Funktion prüft daher ausschließlich die aktuelle
+ * Kontakt-/Mandantenzuordnung und markiert passende Ressourcenhinweise, ohne
+ * deren Inhalt an den Portal-Actor zurückzugeben.
+ */
+export async function resolveClientContactNotificationsTx(
+  tx: TxClient,
+  input: ClientContactNotificationResolutionInput,
+): Promise<number> {
+  const resolvedAt = input.resolvedAt ?? new Date();
+  const [result] = await tx.$queryRaw<Array<{ resolvedCount: number }>>`
+    SELECT app.resolve_client_contact_notifications(
+      ${input.tenantId}::uuid,
+      ${input.resourceType}::text,
+      ${input.resourceId}::text,
+      ${resolvedAt}::timestamptz
+    )::integer AS "resolvedCount"
+  `;
+  return result?.resolvedCount ?? 0;
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { TxClient } from '../tenant-context';
 import {
+  resolveClientContactNotificationsTx,
   resolveNotificationsTx,
   sanitizeNotificationText,
   upsertNotificationTx,
@@ -10,6 +11,7 @@ import {
 function notificationTx(existing: { id: string } | null = null) {
   const tx = {
     $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: vi.fn().mockResolvedValue([{ resolvedCount: 0 }]),
     notification: {
       findFirst: vi.fn().mockResolvedValue(existing),
       update: vi.fn().mockResolvedValue(undefined),
@@ -64,6 +66,7 @@ describe('shared notification persistence', () => {
     expect(tx.notification.create).toHaveBeenCalledWith({
       data: {
         tenantId: 'tenant-id',
+        clientId: null,
         staffId: null,
         kind: 'SYSTEM_BACKUP_FAILED',
         title: 'Backup',
@@ -73,6 +76,22 @@ describe('shared notification persistence', () => {
         resourceId: null,
       },
     });
+  });
+
+  it('delegiert Portal-Auflösungen ohne Notification-Lesezugriff an die DB', async () => {
+    const tx = notificationTx();
+    tx.$queryRaw.mockResolvedValue([{ resolvedCount: 2 }]);
+
+    await expect(
+      resolveClientContactNotificationsTx(tx, {
+        tenantId: 'tenant-id',
+        resourceType: 'appointment_request',
+        resourceId: 'request-id',
+        resolvedAt: new Date('2026-08-23T09:00:00.000Z'),
+      }),
+    ).resolves.toBe(2);
+
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
   });
 
   it('resolves all unread notifications for completed resources and legacy hrefs', async () => {

@@ -1,3 +1,4 @@
+// Fachkatalog: GOBD-VERFAHRENSDOKU-001
 import { describe, it, expect, vi } from 'vitest';
 
 // Nur der pure Builder wird getestet — der Collector zieht DB/Settings und

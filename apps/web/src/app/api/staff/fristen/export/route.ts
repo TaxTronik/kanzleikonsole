@@ -1,7 +1,6 @@
 // =============================================================================
-// CSV-Export des Fristenkontrollbuchs — der Erledigungsnachweis (z. B. für
-// Berufshaftpflicht/Organisationsnachweis). Jeder Export landet als
-// fristen.export.csv in der Audit-Hash-Chain.
+// CSV-Export des Fristenkontrollbuchs. Er ist ein auditierter Snapshot der
+// Kontrollsicht, aber kein Ersatz für den Nachweis der fristwahrenden Handlung.
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -32,26 +31,32 @@ export async function GET(req: NextRequest) {
   const tage = RANGES.includes(Number(sp.get('tage'))) ? Number(sp.get('tage')) : 30;
   const nurMeine = sp.get('wer') === 'meine';
 
-  const rows = await withTenantContext(ctx, async (tx) => {
-    const eintraege = await loadKontrollbuch(tx, session, {
-      tage,
-      nurStaffId: nurMeine ? staffId : null,
-      sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
-    });
-    // Der Export ist der Nachweis — er wird in der Chain dokumentiert
-    // (RESTRICTED-Filterung übernimmt der Loader).
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'fristen.export.csv',
-      resourceType: 'tenant',
-      resourceId: tenantId,
-      after: { tage, nurMeine, eintraege: eintraege.length },
-      ip: getClientIp(req.headers),
-    });
-    return eintraege;
-  });
+  const rows = await withTenantContext(
+    ctx,
+    async (tx) => {
+      const eintraege = await loadKontrollbuch(tx, session, {
+        tage,
+        nurStaffId: nurMeine ? staffId : null,
+        sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
+      });
+      // Der Export-Snapshot wird in der Chain dokumentiert; die Nachweise der
+      // Quellhandlungen bleiben in den jeweiligen Fachvorgängen.
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'fristen.export.csv',
+        resourceType: 'tenant',
+        resourceId: tenantId,
+        after: { tage, nurMeine, eintraege: eintraege.length },
+        ip: getClientIp(req.headers),
+      });
+      return eintraege;
+    },
+    // Raw-Vorabqueries und Prisma-Hauptqueries bilden genau einen stabilen
+    // Kontrollauszug; ein Commit dazwischen wird erst im Folgelauf sichtbar.
+    { isolationLevel: 'RepeatableRead' },
+  );
 
   const columns: CsvColumn<FristEintrag>[] = [
     {
@@ -59,11 +64,16 @@ export async function GET(req: NextRequest) {
       label: 'Faellig am',
       accessor: (e) => e.faelligAm.toISOString().slice(0, 10),
     },
-    { key: 'art', label: 'Art', accessor: (e) => QUELLE_LABELS[e.quelle] },
+    {
+      key: 'art',
+      label: 'Art',
+      accessor: (e) => e.artLabel ?? QUELLE_LABELS[e.quelle],
+    },
     { key: 'frist', label: 'Frist', accessor: (e) => e.titel },
     { key: 'mandant', label: 'Mandant', accessor: (e) => e.clientName },
     { key: 'verantwortlich', label: 'Verantwortlich', accessor: (e) => e.verantwortlich ?? '' },
-    { key: 'status', label: 'Status', accessor: (e) => (e.erledigt ? 'erledigt' : 'offen') },
+    { key: 'status', label: 'Kontrollzustand', accessor: (e) => e.kontrollzustand },
+    { key: 'hinweis', label: 'Kontrollhinweis', accessor: (e) => e.kontrollhinweis ?? '' },
     {
       key: 'erledigtAm',
       label: 'Erledigt am',

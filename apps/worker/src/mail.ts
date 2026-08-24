@@ -18,4 +18,9 @@ import { emitN8nEventFromWorker } from './n8n-emit';
 setMailLogger(log);
 setN8nEmitter(emitN8nEventFromWorker);
 
-export { notifyClientContacts, notifyRequestOpened, sendTemplateMail } from '@taxtronik/mail';
+export {
+  notifyAutomaticTaxRequestOpened,
+  notifyClientContacts,
+  notifyRequestOpened,
+  sendTemplateMail,
+} from '@taxtronik/mail';

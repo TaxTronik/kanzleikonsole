@@ -35,7 +35,7 @@
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/start-check-cycle-form.tsx::Function 'StartCheckCycleForm'#1": 23,
   "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts::Async function 'updateNoticeStatusAction'#1": 30,
   "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx::Arrow function#1": 55,
-  "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx::Function 'NoticeStatusSelect'#1": 35,
+  "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx::Function 'NoticeStatusSelect'#1": 25,
   "apps/web/src/app/staff/(protected)/clients/[id]/page.tsx::Async function 'ClientDetailPage'#1": 21,
   "apps/web/src/app/staff/(protected)/clients/[id]/reminders/reminders-block.tsx::Arrow function#1": 31,
   "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts::Async arrow function#1": 32,

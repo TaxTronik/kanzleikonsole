@@ -1,3 +1,4 @@
+// Fachkatalog: RISK-EXTERNAL-ANONYMIZATION-001
 import { describe, it, expect } from 'vitest';
 import { anonymize, deanonymize } from '../anonymize';
 

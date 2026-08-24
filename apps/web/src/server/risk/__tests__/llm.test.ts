@@ -1,3 +1,4 @@
+// Fachkatalog: RISK-AI-SUGGESTION-001
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@taxtronik/risk-layer', () => ({

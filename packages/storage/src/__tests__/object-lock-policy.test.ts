@@ -1,3 +1,4 @@
+// Fachkatalog: DOC-OBJECT-LOCK-001
 import { describe, expect, it } from 'vitest';
 import { evaluateObjectLockConfiguration } from '../object-lock-policy';
 

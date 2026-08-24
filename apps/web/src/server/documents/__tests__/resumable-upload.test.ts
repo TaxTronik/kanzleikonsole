@@ -1,3 +1,4 @@
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
