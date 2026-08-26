@@ -23,6 +23,7 @@ import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter, createRfc3161Adapter } from '@taxtronik/evidence';
 import { pgConnArgs, pgDumpArgs, prismaBytes, spawnPgDump } from '@taxtronik/db/pg-tools';
 import { connection, type ChecksJob } from '../queues';
@@ -193,7 +194,7 @@ export async function runScheduledBackup(
 }
 
 export const backupRunWorker = new Worker<ChecksJob>(
-  'backup-run',
+  JOB_QUEUES.backupRun.name,
   async () => runScheduledBackup(),
   { connection, concurrency: 1 },
 );

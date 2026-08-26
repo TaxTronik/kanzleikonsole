@@ -8,6 +8,8 @@
 
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   AUDIT_ANCHOR_STATUS_SETTING_KEY,
   EvidenceService,
@@ -75,13 +77,10 @@ async function pendingTenantIds(): Promise<string[]> {
 }
 
 async function previousStatus(tenantId: string): Promise<PersistedAnchorStatus | null> {
-  const row = await withWorkerTenantContext(tenantId, (tx) =>
-    tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId, key: AUDIT_ANCHOR_STATUS_SETTING_KEY } },
-      select: { value: true },
-    }),
+  const stored = await withWorkerTenantContext(tenantId, (tx) =>
+    readTenantSettingValue(tx, tenantId, AUDIT_ANCHOR_STATUS_SETTING_KEY),
   );
-  return (row?.value ?? null) as PersistedAnchorStatus | null;
+  return (stored ?? null) as PersistedAnchorStatus | null;
 }
 
 async function persistStatus(tenantId: string, status: PersistedAnchorStatus): Promise<void> {
@@ -218,7 +217,7 @@ async function processInChunks(tenantIds: string[]) {
 }
 
 export const auditAnchorWorker = new Worker<AuditAnchorJob>(
-  'audit-anchor',
+  JOB_QUEUES.auditAnchor.name,
   async (job) => {
     // The conditional DB insert in EvidenceService prevents anchor branches if
     // reconciliation ticks overlap across worker replicas.

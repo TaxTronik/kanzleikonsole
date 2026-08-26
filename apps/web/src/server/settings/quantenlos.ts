@@ -17,6 +17,11 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
+import {
+  deleteTenantSettingValue,
+  readTenantSettingValue,
+  writeTenantSettingValue,
+} from '@taxtronik/db/tenant-settings';
 import { decryptSecret, encryptSecret, looksEncrypted } from '@/server/crypto/secret-box';
 
 const KEY = 'quantenlos.ibm';
@@ -37,14 +42,9 @@ export interface IbmTokenStatus {
 
 /** Entschlüsselter Token für den Engine-Request — NIE an den Client geben. */
 export async function readIbmToken(ctx: TenantContext): Promise<string | null> {
-  const row = await withTenantContext(ctx, (tx) =>
-    tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      select: { value: true },
-    }),
-  );
-  if (!row) return null;
-  const stored = row.value as Partial<QuantenlosIbmStored>;
+  const value = await withTenantContext(ctx, (tx) => readTenantSettingValue(tx, ctx.tenantId, KEY));
+  if (value === undefined) return null;
+  const stored = value as Partial<QuantenlosIbmStored>;
   if (!stored.tokenEncrypted || !looksEncrypted(stored.tokenEncrypted)) return null;
   try {
     const token = decryptSecret(stored.tokenEncrypted);
@@ -63,37 +63,26 @@ export async function writeIbmToken(ctx: TenantContext, token: string): Promise<
     gesetztAm: new Date().toISOString(),
   };
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY,
-        value: stored as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: { value: stored as object, updatedBy: ctx.actorId ?? undefined },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY,
+      value: stored as object,
+      updatedBy: ctx.actorId,
     });
   });
 }
 
 export async function deleteIbmToken(ctx: TenantContext): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.deleteMany({
-      where: { tenantId: ctx.tenantId, key: KEY },
-    });
+    await deleteTenantSettingValue(tx, ctx.tenantId, KEY);
   });
 }
 
 /** UI-Status ohne Entschlüsselung. */
 export async function getIbmTokenStatus(ctx: TenantContext): Promise<IbmTokenStatus> {
-  const row = await withTenantContext(ctx, (tx) =>
-    tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      select: { value: true },
-    }),
-  );
-  if (!row) return { hinterlegt: false, suffix: null, gesetztAm: null };
-  const stored = row.value as Partial<QuantenlosIbmStored>;
+  const value = await withTenantContext(ctx, (tx) => readTenantSettingValue(tx, ctx.tenantId, KEY));
+  if (value === undefined) return { hinterlegt: false, suffix: null, gesetztAm: null };
+  const stored = value as Partial<QuantenlosIbmStored>;
   return {
     hinterlegt: Boolean(stored.tokenEncrypted),
     suffix: stored.suffix ?? null,

@@ -14,6 +14,7 @@
     "./tenant-context": "./src/tenant-context.ts",
     "./notification": "./src/notification.ts",
     "./staff-client-access": "./src/staff-client-access.ts",
+    "./tenant-settings": "./src/tenant-settings.ts",
     "./tenant-modules": "./src/tenant-modules.ts",
     "./pg-tools": "./src/pg-tools.ts"
   },

@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
@@ -22,7 +23,7 @@ const evidence = new EvidenceService(new LocalTimestampAdapter());
 // also `dueDate < berlinTodayUtcMidnight()`. Helfer liegt geteilt in date-util.
 
 export const invoiceOverdueWorker = new Worker<ChecksJob>(
-  'invoice-overdue-check',
+  JOB_QUEUES.invoiceOverdue.name,
   async (job) => {
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]

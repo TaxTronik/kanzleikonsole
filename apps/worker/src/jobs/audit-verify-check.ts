@@ -7,6 +7,8 @@
 
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { prismaOwner } from '../prisma-owner';
 import {
   EvidenceService,
@@ -39,10 +41,10 @@ const VERIFY_TX_OPTIONS = { timeout: 120_000, maxWait: 5_000 } as const;
 // selbst die komplette Chain zu hashen.
 async function persistVerifyResult(tenantId: string, result: PersistedVerifyResult): Promise<void> {
   await withWorkerTenantContext(tenantId, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-      create: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY, value: result as object },
-      update: { value: result as object },
+    await writeTenantSettingValue(tx, {
+      tenantId,
+      key: AUDIT_VERIFY_RESULT_SETTING_KEY,
+      value: result,
     });
   });
 }
@@ -151,7 +153,7 @@ async function loadTenantIdsChunked(): Promise<AsyncGenerator<string[]>> {
 }
 
 export const auditVerifyWorker = new Worker<ChecksJob>(
-  'audit-verify-check',
+  JOB_QUEUES.auditVerify.name,
   async (job) => {
     const results: Array<{ tenantId: string; ok: boolean; broken?: string }> = [];
     const manualSingleTenant = !!job.data.tenantId;
@@ -170,12 +172,10 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           const checkedAt = new Date();
           // Vorergebnis VOR dem neuen Lauf lesen — liefert den Monotonie-Anker
           // (lastAuditId) für die Tail-Truncation-Erkennung unten.
-          const prevRow = await withWorkerTenantContext(tenantId, (tx) =>
-            tx.tenantSetting.findUnique({
-              where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-            }),
+          const prevValue = await withWorkerTenantContext(tenantId, (tx) =>
+            readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
           );
-          prev = (prevRow?.value ?? null) as PersistedVerifyResult | null;
+          prev = (prevValue ?? null) as PersistedVerifyResult | null;
 
           const timestampPort = await timestampPortFor(tenantId);
           const evidenceService = new EvidenceService(timestampPort);
@@ -204,12 +204,10 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
           // Schrumpf-Befund wird davon NICHT abgedeckt — das ist neue Manipulation.
           let recovered = false;
           if (!r.ok) {
-            const cpRow = await withWorkerTenantContext(tenantId, (tx) =>
-              tx.tenantSetting.findUnique({
-                where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
-              }),
+            const checkpointValue = await withWorkerTenantContext(tenantId, (tx) =>
+              readTenantSettingValue(tx, tenantId, AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY),
             );
-            recovered = !!cpRow?.value;
+            recovered = !!checkpointValue;
           }
 
           const monotonicity = monotonicityOutcome(prev, r, recovered);

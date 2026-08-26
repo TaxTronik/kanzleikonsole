@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   AUDIT_VERIFY_RESULT_SETTING_KEY,
@@ -84,10 +85,11 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
       .slice(0, 500) || null;
 
   await withTenantContext(ctx, async (tx) => {
-    const verifyRow = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-    });
-    const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
+    const verifyResult = (await readTenantSettingValue(
+      tx,
+      tenantId,
+      AUDIT_VERIFY_RESULT_SETTING_KEY,
+    )) as PersistedVerifyResult | undefined;
     if (!verifyResult) {
       throw new ActionError('Noch kein Audit-Prüfergebnis vorhanden. Bitte zuerst prüfen.');
     }
@@ -125,15 +127,11 @@ export async function createAuditRecoveryCheckpointAction(formData: FormData): P
       trustedThisHash: ev.thisHash.toString('hex'),
     };
 
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
-      create: {
-        tenantId,
-        key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
-        value: checkpoint as object,
-        updatedBy: staffId,
-      },
-      update: { value: checkpoint as object, updatedBy: staffId },
+    await writeTenantSettingValue(tx, {
+      tenantId,
+      key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
+      value: checkpoint as object,
+      updatedBy: staffId,
     });
   });
 

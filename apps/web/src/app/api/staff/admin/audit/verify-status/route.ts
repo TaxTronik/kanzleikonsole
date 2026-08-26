@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { AUDIT_VERIFY_RESULT_SETTING_KEY, type PersistedVerifyResult } from '@taxtronik/evidence';
 
 export async function GET(req: NextRequest) {
@@ -27,12 +28,9 @@ export async function GET(req: NextRequest) {
   const { tenantId, staffId } = session.user;
   const result = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const row = await tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-      });
-      return (row?.value ?? null) as PersistedVerifyResult | null;
-    },
+    async (tx) =>
+      ((await readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY)) ??
+        null) as PersistedVerifyResult | null,
   );
 
   const checkedAtMs = result?.checkedAt ? Date.parse(result.checkedAt) : NaN;

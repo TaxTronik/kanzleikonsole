@@ -1,9 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getClientIp, checkPortalReadLimit } from '@/server/rate-limit';
+
 import { portalAuth } from '@/server/auth/portal';
-import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
-import { documentPreviewMetadata, loadDocumentPreview } from '@/server/storage/document-preview';
+import { documentPreviewResponse, loadDocumentDelivery } from '@/server/documents/delivery';
+import { checkPortalReadLimit } from '@/server/rate-limit';
 import { isUuid } from '@/lib/uuid';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,79 +17,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   const { tenantId, contactId, clientId } = session.user;
 
-  // Audit 2026-06 Befund 6: Read-Limit pro Session-Kontakt (gemeinsamer
-  // Bucket mit der Download-Route) — deckelt Audit-Spam/Last, BEVOR der
-  // Abruf einen evidence-Eintrag schreibt.
-  const rl = await checkPortalReadLimit(contactId);
-  if (!rl.ok) {
+  // Fachkatalog DOC-PORTAL-SHARING-001: Limit greift vor DB und Audit.
+  const limit = await checkPortalReadLimit(contactId);
+  if (!limit.ok) {
     return NextResponse.json(
-      { error: 'rate_limited', retryAfter: rl.retryAfter },
-      { status: 429, headers: { 'retry-after': String(rl.retryAfter) } },
+      { error: 'rate_limited', retryAfter: limit.retryAfter },
+      { status: 429, headers: { 'retry-after': String(limit.retryAfter) } },
     );
   }
 
-  const doc = await withTenantContext(
-    { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-    async (tx) => {
-      const d = await tx.document.findFirst({
-        // Nur freigegebene Dokumente — sonst könnte ein Mandant per
-        // erratener ID ein nicht-geteiltes Dokument abrufen.
-        where: { id, clientId, deletedAt: null, sharedWithClientAt: { not: null } },
-        include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
-      });
-      if (!d || !d.versions[0]) return null;
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
-        action: 'document.preview',
-        resourceType: 'document',
-        resourceId: id,
-        ip: getClientIp(req.headers),
-        userAgent: req.headers.get('user-agent'),
-      });
-      const isPoaDocument = await tx.powerOfAttorney.findFirst({
-        where: { tenantId, documentId: d.id },
-        select: { id: true },
-      });
-      return {
-        title: d.title,
-        mimeType: d.mimeType,
-        classification: d.classification,
-        bucket: d.versions[0].storageBucket,
-        key: d.versions[0].storageKey,
-        isPoaDocument: !!isPoaDocument,
-      };
-    },
-  );
-
-  if (!doc) {
+  const document = await loadDocumentDelivery({
+    tenantId,
+    actorId: contactId,
+    actorType: 'CLIENT_CONTACT',
+    documentId: id,
+    action: 'document.preview',
+    request: req,
+    // Download und Vorschau teilen exakt denselben Portal-Freigabefilter.
+    where: { id, clientId, deletedAt: null, sharedWithClientAt: { not: null } },
+  });
+  if (!document) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  // Object-Store bleibt intern: ?stream=1 streamt Bytes inline, sonst
-  // JSON-Metadata mit `url` auf diese Route mit ?stream=1.
-  if (req.nextUrl.searchParams.get('stream') === '1') {
-    let preview: Awaited<ReturnType<typeof loadDocumentPreview>>;
-    try {
-      preview = await loadDocumentPreview(doc);
-    } catch {
-      return NextResponse.json({ error: 'storage_unavailable' }, { status: 502 });
-    }
-    const headers: Record<string, string> = {
-      ...preview.headers,
-      // Audit 2026-06 Befund 4: CSP sandbox für text/plain — Inline-Anzeige
-      // hängt nicht mehr allein an nosniff.
-    };
-    return new NextResponse(new Uint8Array(preview.bytes), { status: 200, headers });
-  }
-
-  const url = `${req.nextUrl.pathname}?stream=1`;
-  const meta = documentPreviewMetadata(doc);
-  return NextResponse.json({
-    url,
-    mimeType: meta.mimeType,
-    documentMimeType: meta.documentMimeType,
-    title: meta.title,
-  });
+  return documentPreviewResponse(req, document);
 }

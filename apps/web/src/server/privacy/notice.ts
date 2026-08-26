@@ -14,6 +14,7 @@
 
 import type { TxClient } from '@taxtronik/db';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { lockConsentCatalogTx } from './catalog-lock';
 
 /** Inhaltliche Version des Standardtextes. Bei Textänderung erhöhen. */
@@ -57,11 +58,9 @@ export async function readPrivacyConfig(ctx: TenantContext): Promise<PrivacyConf
 }
 
 export async function readPrivacyConfigTx(tx: TxClient, tenantId: string): Promise<PrivacyConfig> {
-  const row = await tx.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: PRIVACY_SETTING_KEY } },
-  });
-  if (!row) return { ...DEFAULT_PRIVACY_CONFIG };
-  return { ...DEFAULT_PRIVACY_CONFIG, ...(row.value as Partial<PrivacyConfig>) };
+  const value = await readTenantSettingValue(tx, tenantId, PRIVACY_SETTING_KEY);
+  if (value === undefined) return { ...DEFAULT_PRIVACY_CONFIG };
+  return { ...DEFAULT_PRIVACY_CONFIG, ...(value as Partial<PrivacyConfig>) };
 }
 
 export async function writePrivacyConfig(ctx: TenantContext, cfg: PrivacyConfig): Promise<void> {
@@ -78,15 +77,11 @@ export async function writePrivacyConfigTx(
   updatedBy: string | null,
   cfg: PrivacyConfig,
 ): Promise<void> {
-  await tx.tenantSetting.upsert({
-    where: { tenantId_key: { tenantId, key: PRIVACY_SETTING_KEY } },
-    create: {
-      tenantId,
-      key: PRIVACY_SETTING_KEY,
-      value: cfg as object,
-      updatedBy: updatedBy ?? undefined,
-    },
-    update: { value: cfg as object, updatedBy: updatedBy ?? undefined },
+  await writeTenantSettingValue(tx, {
+    tenantId,
+    key: PRIVACY_SETTING_KEY,
+    value: cfg as object,
+    updatedBy,
   });
 }
 

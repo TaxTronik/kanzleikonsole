@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { prismaOwner } from '../prisma-owner';
 import { EvidenceService } from '@taxtronik/evidence';
 import { connection, type EvidenceSealJob } from '../queues';
@@ -65,7 +66,7 @@ async function pendingSealDays(tenantId: string): Promise<Date[]> {
 }
 
 export const evidenceSealWorker = new Worker<EvidenceSealJob>(
-  'evidence-seal',
+  JOB_QUEUES.evidenceSeal.name,
   async (job) => {
     let tenantIds: string[];
     if (job.data.tenantId) {

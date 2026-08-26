@@ -225,9 +225,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
 
     expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
     expect(h.tx.$queryRaw).toHaveBeenCalledTimes(3);
-    const lockSql = h.tx.$queryRaw.mock.calls.map(
-      (call) => (call[0] as { sql: string }).sql,
-    );
+    const lockSql = h.tx.$queryRaw.mock.calls.map((call) => (call[0] as { sql: string }).sql);
     expect(lockSql[0]).toContain('FROM public."tax_notice"');
     expect(lockSql[1]).toContain('FROM public."client_reminder"');
     expect(lockSql[2]).toContain('FROM public."pending_binder"');

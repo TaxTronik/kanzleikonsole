@@ -9,6 +9,7 @@
 
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
+import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
 
 export type FetchedItem = FetchedRssItem;
@@ -97,10 +98,10 @@ export async function fetchAndPersistTaxNews(scope: TaxNewsFetchScope): Promise<
   ];
   const lastFetchAt = new Date().toISOString();
   for (const { tenantId, key } of markerTargets) {
-    await prismaOwner.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId, key } },
-      update: { value: lastFetchAt },
-      create: { tenantId, key, value: lastFetchAt },
+    await writeTenantSettingValue(prismaOwner, {
+      tenantId,
+      key,
+      value: lastFetchAt,
     });
   }
 

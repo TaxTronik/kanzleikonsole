@@ -8,6 +8,7 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 
 export interface SellerInfo {
   name: string;
@@ -47,17 +48,15 @@ const KEY_SELLER = 'invoicing.seller';
  */
 export async function readSellerInfo(ctx: TenantContext): Promise<SellerInfo> {
   return withTenantContext(ctx, async (tx) => {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_SELLER } },
-    });
+    const stored = await readTenantSettingValue(tx, ctx.tenantId, KEY_SELLER);
     const tenant = await tx.tenant.findUnique({
       where: { id: ctx.tenantId },
       select: { name: true },
     });
-    if (!row) {
+    if (stored === undefined) {
       return { ...DEFAULT_SELLER_INFO, name: tenant?.name ?? '' };
     }
-    const value = row.value as Partial<SellerInfo>;
+    const value = stored as Partial<SellerInfo>;
     return {
       ...DEFAULT_SELLER_INFO,
       ...value,
@@ -68,18 +67,11 @@ export async function readSellerInfo(ctx: TenantContext): Promise<SellerInfo> {
 
 export async function writeSellerInfo(ctx: TenantContext, info: SellerInfo): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_SELLER } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY_SELLER,
-        value: info as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: {
-        value: info as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY_SELLER,
+      value: info as object,
+      updatedBy: ctx.actorId,
     });
   });
 }

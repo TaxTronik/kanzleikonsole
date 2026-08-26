@@ -14,6 +14,11 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
+import {
+  deleteTenantSettingValue,
+  readTenantSettingValue,
+  writeTenantSettingValue,
+} from '@taxtronik/db/tenant-settings';
 import { env } from '@taxtronik/config';
 import { encryptSecret, readEncryptedSetting } from '@taxtronik/crypto';
 import { mailLog } from './logger';
@@ -58,11 +63,9 @@ export interface SmtpStatus {
 
 export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | null> {
   return withTenantContext(ctx, async (tx) => {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-    });
-    if (!row) return null;
-    const stored = row.value as Partial<SmtpStored> & { password?: string };
+    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY);
+    if (value === undefined) return null;
+    const stored = value as Partial<SmtpStored> & { password?: string };
     // Legacy-Klartext (stored.password) als Fallback; Decrypt-Fehler wird
     // geloggt statt still zu '' (Key-Rotation ohne Re-Wrap).
     const password = readEncryptedSetting(
@@ -98,27 +101,18 @@ export async function writeSmtpConfig(ctx: TenantContext, cfg: SmtpConfig): Prom
     replyTo: cfg.replyTo.trim(),
   };
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY,
-        value: stored as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: {
-        value: stored as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY,
+      value: stored as object,
+      updatedBy: ctx.actorId,
     });
   });
 }
 
 export async function deleteSmtpConfig(ctx: TenantContext): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.deleteMany({
-      where: { tenantId: ctx.tenantId, key: KEY },
-    });
+    await deleteTenantSettingValue(tx, ctx.tenantId, KEY);
   });
 }
 
@@ -126,13 +120,8 @@ export async function deleteSmtpConfig(ctx: TenantContext): Promise<void> {
  * Status-Check ohne das Passwort zu entschlüsseln — für UI-Banner.
  */
 export async function getSmtpStatus(ctx: TenantContext): Promise<SmtpStatus> {
-  const row = await withTenantContext(ctx, (tx) =>
-    tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      select: { value: true },
-    }),
-  );
-  const stored = row?.value as Partial<SmtpStored> | undefined;
+  const value = await withTenantContext(ctx, (tx) => readTenantSettingValue(tx, ctx.tenantId, KEY));
+  const stored = value as Partial<SmtpStored> | undefined;
   if (stored?.host && stored.from) return { configured: true, fromDb: true };
 
   // Exakt wie sendMail(): Fehlt eine vollständige Tenant-Konfiguration, ist

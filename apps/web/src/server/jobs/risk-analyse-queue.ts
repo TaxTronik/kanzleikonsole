@@ -1,70 +1,26 @@
 // =============================================================================
 // BullMQ-Queue für die asynchrone LLM-Phase des Subsumtions-Workspace.
 //
-// Singleton auf Modul-Ebene (Muster wie n8n/queue.ts). Die schnelle Analyse
-// läuft synchron in der Server-Action; „Mit KI vertiefen" reiht hierüber einen
+// Die schnelle Analyse läuft synchron in der Server-Action; „Mit KI vertiefen" reiht hierüber einen
 // Job an den Worker (jobs/risk-analyse-llm.ts), der die Analyse anreichert.
 // =============================================================================
 
-import IORedis from 'ioredis';
-import { Queue } from 'bullmq';
-import { env } from '@taxtronik/config';
-import { log } from '@/server/logger';
+import { JOB_QUEUES, type RiskAnalyseLlmJob } from '@taxtronik/config/job-queues';
 import { withTimeout } from '@/lib/with-timeout';
+import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
 
-/**
- * BullMQ-Connections laufen bewusst mit `maxRetriesPerRequest: null` (so
- * verlangt es BullMQ). Faellt Redis aus, parkt ioredis den Befehl dann aber in
- * der Offline-Queue und das Promise resolved NIE — die Server Action haengt,
- * bis der Browser aufgibt. Dieselbe Deckelung wie in n8n/outbox.ts.
- */
-const QUEUE_TIMEOUT_MS = 2_000;
-
-export interface RiskAnalyseLlmJob {
-  tenantId: string;
-  analysisId: string;
-  sourceText: string;
-  optionen?: Record<string, unknown>;
-}
-
-declare global {
-  // `var` is intentional for ambient globalThis augmentation.
-  // noinspection ES6ConvertVarToLetConst
-  var __taxtronik_risk_analyse_queue:
-    | { conn: IORedis; queue: Queue<RiskAnalyseLlmJob> }
-    | undefined;
-}
-
-function init(): { conn: IORedis; queue: Queue<RiskAnalyseLlmJob> } {
-  const conn = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
-  conn.on('error', (err) => {
-    log.warn({ component: 'risk-analyse-queue', err: err.message }, 'redis error');
-  });
-  const queue = new Queue<RiskAnalyseLlmJob>('risk-analyse-llm', { connection: conn });
-  return { conn, queue };
-}
-
-function getHandle(): { conn: IORedis; queue: Queue<RiskAnalyseLlmJob> } {
-  const existing = globalThis.__taxtronik_risk_analyse_queue;
-  if (existing) return existing;
-
-  const handle = init();
-  // IMMER cachen — nicht nur im Dev: sonst leakt in Produktion jeder Aufruf
-  // eine neue IORedis-Connection (bis Redis maxclients erschöpft ist).
-  globalThis.__taxtronik_risk_analyse_queue = handle;
-  return handle;
-}
+export type { RiskAnalyseLlmJob } from '@taxtronik/config/job-queues';
 
 /** Reiht die LLM-Anreicherung einer Analyse ein. Idempotent über jobId. */
 export async function enqueueRiskAnalyseLlm(job: RiskAnalyseLlmJob): Promise<void> {
-  const { queue } = getHandle();
+  const queue = getWebQueue(JOB_QUEUES.riskAnalyseLlm.name);
   // BullMQ verbietet ':' in Custom-Job-IDs (':' ist ihr interner Key-Separator)
   // — daher '-'. Idempotenz pro Analyse bleibt (analysisId ist eindeutig).
   const jobId = `risk-llm-${job.analysisId}`;
   // Alten Job (failed/completed) mit derselben ID räumen, damit ein erneuter
   // Anstoß durchläuft. Läuft gerade einer (locked), schlägt remove fehl (ok) und
   // der add unten ist ohnehin ein No-Op (ID existiert) → kein Doppellauf.
-  await withTimeout(queue.remove(jobId), QUEUE_TIMEOUT_MS).catch(() => {});
+  await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch(() => {});
   await withTimeout(
     queue.add('enrich', job, {
       jobId,
@@ -73,7 +29,7 @@ export async function enqueueRiskAnalyseLlm(job: RiskAnalyseLlmJob): Promise<voi
       removeOnComplete: 100,
       removeOnFail: 200,
     }),
-    QUEUE_TIMEOUT_MS,
+    WEB_QUEUE_TIMEOUT_MS,
   );
 }
 
@@ -87,12 +43,12 @@ export async function enqueueRiskAnalyseLlm(job: RiskAnalyseLlmJob): Promise<voi
 export async function getRiskAnalyseJobState(
   analysisId: string,
 ): Promise<{ state: string; failedReason: string | null; workers: number } | null> {
-  const { queue } = getHandle();
-  const job = await withTimeout(queue.getJob(`risk-llm-${analysisId}`), QUEUE_TIMEOUT_MS);
+  const queue = getWebQueue(JOB_QUEUES.riskAnalyseLlm.name);
+  const job = await withTimeout(queue.getJob(`risk-llm-${analysisId}`), WEB_QUEUE_TIMEOUT_MS);
   if (!job) return null;
   const [state, workers] = await Promise.all([
-    withTimeout(job.getState(), QUEUE_TIMEOUT_MS),
-    withTimeout(queue.getWorkersCount(), QUEUE_TIMEOUT_MS),
+    withTimeout(job.getState(), WEB_QUEUE_TIMEOUT_MS),
+    withTimeout(queue.getWorkersCount(), WEB_QUEUE_TIMEOUT_MS),
   ]);
   return { state, failedReason: job.failedReason ?? null, workers };
 }

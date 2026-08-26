@@ -22,6 +22,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { type NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
@@ -86,7 +87,7 @@ export function idDocumentExpiryTitleSuffix(daysLeft: number): string {
 }
 
 export const gwgExpiryWorker = new Worker<ChecksJob>(
-  'gwg-expiry-check',
+  JOB_QUEUES.gwgExpiry.name,
   async (job) => {
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]

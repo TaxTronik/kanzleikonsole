@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { N8nOutboxStatus } from '@prisma/client';
 import { connection } from '../queues';
 import { log } from '../logger';
@@ -102,7 +103,7 @@ export async function runN8nRetention(now = new Date()): Promise<{
 }
 
 export const n8nRetentionWorker = new Worker<Record<string, never>>(
-  'n8n-retention',
+  JOB_QUEUES.n8nRetention.name,
   async () => {
     await runN8nRetention();
   },

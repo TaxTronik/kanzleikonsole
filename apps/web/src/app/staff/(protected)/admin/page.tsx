@@ -16,6 +16,7 @@ import {
 import { requireStaffPage } from '@/server/auth/staff-page';
 
 import { withTenantContext } from '@taxtronik/db';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   BACKUP_DRILL_RESULT_SETTING_KEY,
   type PersistedDrillResult,
@@ -42,7 +43,7 @@ export default async function AdminPage() {
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
   const [
-    verifyRow,
+    verifySetting,
     lastBackup,
     drillSetting,
     openDsgvoCount,
@@ -57,17 +58,13 @@ export default async function AdminPage() {
       // ganzen Log; Sekunden bei 200k, P2028 ab ~500k). Nur das vom täglichen
       // Worker-Job (audit-verify-check) persistierte Ergebnis lesen — wie die
       // Audit-Seite (admin/audit/page.tsx).
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-      }),
+      readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
       tx.backupRecord.findFirst({
         orderBy: { startedAt: 'desc' },
       }),
       // Letztes Restore-Drill-Ergebnis (monatlicher Worker-Job — Art. 32
       // DSGVO Wirksamkeitsnachweis). Nur lesen, nie hier rechnen.
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
-      }),
+      readTenantSettingValue(tx, tenantId, BACKUP_DRILL_RESULT_SETTING_KEY),
       tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
       tx.serviceProvider.count(),
       tx.clientContact.count({ where: { active: true } }),
@@ -79,8 +76,8 @@ export default async function AdminPage() {
     ]),
   );
 
-  const drill = (drillSetting?.value ?? null) as PersistedDrillResult | null;
-  const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
+  const drill = (drillSetting ?? null) as PersistedDrillResult | null;
+  const verifyResult = (verifySetting ?? null) as PersistedVerifyResult | null;
 
   const setup = await getSetupStatus(ctx);
 
@@ -392,11 +389,6 @@ export default async function AdminPage() {
           <li>
             <Link href="/staff/admin/document-types" className="text-brand-700 hover:underline">
               → Datei-Typen &amp; Schutzstufen
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/admin/state-machines" className="text-brand-700 hover:underline">
-              → Status-Maschinen
             </Link>
           </li>
           <li>

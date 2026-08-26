@@ -11,6 +11,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
@@ -33,7 +34,7 @@ function dateFmt(d: Date): string {
 }
 
 export const poaExpiryWorker = new Worker<ChecksJob>(
-  'poa-expiry-check',
+  JOB_QUEUES.poaExpiry.name,
   async (job) => {
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]

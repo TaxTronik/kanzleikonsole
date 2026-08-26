@@ -21,6 +21,7 @@ import {
   DEFAULT_BOOLEAN_TENANT_MODULES,
   parseBooleanTenantModules,
 } from '@taxtronik/db/tenant-modules';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 
 export type PoaMode = 'OFF' | 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
 export type InvoiceMode = 'OFF' | 'IN_APP' | 'EXTERNAL';
@@ -91,11 +92,9 @@ const readModulesCached = cache(
 
 function readModulesByCtx(ctx: TenantContext): Promise<ModuleConfig> {
   return withTenantContext(ctx, async (tx) => {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_MODULES } },
-    });
-    if (!row) return { ...DEFAULT_MODULES };
-    const value = row.value as Partial<ModuleConfig>;
+    const stored = await readTenantSettingValue(tx, ctx.tenantId, KEY_MODULES);
+    if (stored === undefined) return { ...DEFAULT_MODULES };
+    const value = stored as Partial<ModuleConfig>;
     return { ...DEFAULT_MODULES, ...value, ...parseBooleanTenantModules(value) };
   });
 }
@@ -111,18 +110,11 @@ export function isModeModuleEnabled(cfg: ModuleConfig, module: ModeModuleKey): b
 
 export async function writeModules(ctx: TenantContext, cfg: ModuleConfig): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_MODULES } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY_MODULES,
-        value: cfg as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: {
-        value: cfg as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY_MODULES,
+      value: cfg as object,
+      updatedBy: ctx.actorId,
     });
   });
 }

@@ -11,6 +11,7 @@ import { ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, FileDown } from 'l
 import { requireStaffPage } from '@/server/auth/staff-page';
 
 import { withTenantContext } from '@taxtronik/db';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   AUDIT_ANCHOR_STATUS_SETTING_KEY,
@@ -68,10 +69,6 @@ function normalizeAnchorSummary(rows: AnchorSummary[]): AnchorSummary {
       oldest_pending_at: null,
     }
   );
-}
-
-function persistedAnchorStatus(row: { value: Prisma.JsonValue } | null) {
-  return (row?.value ?? null) as PersistedAnchorStatus | null;
 }
 
 function verifiedRollingAnchorCount(result: PersistedVerifyResult): number {
@@ -140,9 +137,9 @@ export default async function AuditLogPage({
 
   const [
     entries,
-    verifyRow,
-    checkpointRow,
-    anchorStatusRow,
+    verifySetting,
+    checkpointSetting,
+    anchorStatusSetting,
     anchorSummaryRows,
     resourceTypeRows,
     totalCount,
@@ -156,15 +153,9 @@ export default async function AuditLogPage({
       // P-1: Chain-Verifikation läuft NICHT mehr im Render-Pfad (SHA-256 über
       // den kompletten Log; Sekunden bei 200k, P2028 ab ~500k). Hier nur das
       // vom täglichen Worker-Job (audit-verify-check) persistierte Ergebnis.
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-      }),
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY } },
-      }),
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: AUDIT_ANCHOR_STATUS_SETTING_KEY } },
-      }),
+      readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
+      readTenantSettingValue(tx, tenantId, AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY),
+      readTenantSettingValue(tx, tenantId, AUDIT_ANCHOR_STATUS_SETTING_KEY),
       tx.$queryRaw<AnchorSummary[]>`
           WITH latest_anchor AS (
             SELECT top_audit_id, tsa_gen_time, trust_anchored
@@ -204,9 +195,9 @@ export default async function AuditLogPage({
     ]),
   );
 
-  const verifyResult = (verifyRow?.value ?? null) as PersistedVerifyResult | null;
-  const checkpoint = (checkpointRow?.value ?? null) as PersistedRecoveryCheckpoint | null;
-  const anchorStatus = persistedAnchorStatus(anchorStatusRow);
+  const verifyResult = (verifySetting ?? null) as PersistedVerifyResult | null;
+  const checkpoint = (checkpointSetting ?? null) as PersistedRecoveryCheckpoint | null;
+  const anchorStatus = (anchorStatusSetting ?? null) as PersistedAnchorStatus | null;
   const anchorSummary = normalizeAnchorSummary(anchorSummaryRows);
   const pendingAnchorCount = Number(anchorSummary.pending_count);
   const pendingVerify = sp.verify === 'queued';

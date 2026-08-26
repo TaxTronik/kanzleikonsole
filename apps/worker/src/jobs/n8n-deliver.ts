@@ -11,7 +11,9 @@ import { randomUUID } from 'node:crypto';
 import { Queue, Worker } from 'bullmq';
 import type { Prisma } from '@prisma/client';
 import { env, n8nDeliveryMode } from '@taxtronik/config';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { decryptSecret, looksEncrypted } from '@taxtronik/crypto';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { safeFetch, SsrfGuardError } from '@taxtronik/http-utils';
 import { isAllowedN8nEvent, signOutboundN8n } from '@taxtronik/n8n-shared';
 import { connection, type N8nDeliverJob } from '../queues';
@@ -57,11 +59,8 @@ function decryptIfUsable(value: string | null | undefined): string {
 
 async function readLegacyStored(tenantId: string | null): Promise<LegacyStored | null> {
   if (!tenantId) return null;
-  const row = await prismaOwner.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: 'integrations.n8n' } },
-    select: { value: true },
-  });
-  return row ? (row.value as LegacyStored) : null;
+  const stored = await readTenantSettingValue(prismaOwner, tenantId, 'integrations.n8n');
+  return stored === undefined ? null : (stored as LegacyStored);
 }
 
 async function resolveSigningState(tenantId: string | null): Promise<{
@@ -552,7 +551,7 @@ function deliveryIdFrom(data: N8nDeliverJob): string | null {
 }
 
 export const n8nDeliverWorker = new Worker<N8nDeliverJob>(
-  'n8n-deliver',
+  JOB_QUEUES.n8nDeliver.name,
   async (job) => {
     const deliveryId =
       deliveryIdFrom(job.data) ??
@@ -594,7 +593,7 @@ n8nDeliverWorker.on('failed', (job, err) => {
 // Findet Deliveries, die zwischen DB-Commit und BullMQ-Add liegen geblieben
 // sind oder deren Worker nach dem DB-Claim abgestürzt ist.
 export const n8nOutboxReconcileWorker = new Worker(
-  'n8n-outbox-reconcile',
+  JOB_QUEUES.n8nOutboxReconcile.name,
   async () => {
     const cutoff = new Date(Date.now() - 5 * 60_000);
     const now = new Date();
@@ -627,7 +626,7 @@ export const n8nOutboxReconcileWorker = new Worker(
     ]);
     if (stuckDeliveries.length === 0 && legacyOutboxes.length === 0) return;
 
-    const queue = new Queue<N8nDeliverJob>('n8n-deliver', { connection });
+    const queue = new Queue<N8nDeliverJob>(JOB_QUEUES.n8nDeliver.name, { connection });
     for (const row of stuckDeliveries) {
       await queue.add(
         'deliver',

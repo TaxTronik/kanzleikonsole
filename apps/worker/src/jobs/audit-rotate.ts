@@ -23,6 +23,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
   createRfc3161Adapter,
@@ -31,6 +32,7 @@ import {
   type ArchiveAuditRow,
 } from '@taxtronik/evidence';
 import { env } from '@taxtronik/config';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 // RF-11: gemeinsamer S3-Client + Bucket aus @taxtronik/storage/@taxtronik/config
 // statt eigenem Client mit ''-Credential-Fallbacks (lief sonst mit leeren Keys
 // einfach los und scheiterte erst am Request).
@@ -58,11 +60,10 @@ const DEFAULT_TSA_PROVIDER_ID = 'globalsign';
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
 
 async function timestampArchiveHash(tenantId: string, hash: Buffer): Promise<Buffer | null> {
-  const tsaSetting = await prismaOwner.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
-    select: { value: true },
-  });
-  const selected = tsaSetting?.value as { providerId?: string; customUrl?: string } | undefined;
+  const selected = (await readTenantSettingValue(prismaOwner, tenantId, 'evidence.tsa')) as
+    | { providerId?: string; customUrl?: string }
+    | null
+    | undefined;
   const tsaUrl =
     resolveTsaUrl(selected?.providerId ?? null, selected?.customUrl ?? null) ||
     env.TIMESTAMP_AUTHORITY_URL?.trim() ||
@@ -90,7 +91,7 @@ async function timestampArchiveHash(tenantId: string, hash: Buffer): Promise<Buf
 }
 
 export const auditRotateWorker = new Worker<ChecksJob>(
-  'audit-rotate',
+  JOB_QUEUES.auditRotate.name,
   async (job) => {
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]

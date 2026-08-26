@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-08-23. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-08-27. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar (Boolean-Toggle unter Admin →
 Einstellungen → Module). Rechnungen und Vollmachten sind keine Toggles,
 sondern Modus-Schalter (`invoiceMode` / `poaMode`) mit `OFF`-Option —
@@ -25,7 +25,7 @@ Subsumtions-Workspace / TCMS ⚙ · Wissensdatenbank ⚙
 **Abrechnung & Vertretung** — Rechnungen ⚙ · Vollmachten ⚙ · Zeiterfassung ⚙
 
 **Prozesse & Vorlagen** — Workflow-Vorlagen ⚙ · Form-Builder ⚙ ·
-Status-Maschinen-Builder · Anforderungs-Vorlagen · Custom-Felder
+Anforderungs-Vorlagen · Custom-Felder
 
 **Mitarbeiter & Kanzlei** — Dashboard-Widget-Builder · RSS-Reader ⚙ ·
 Abwesenheiten · Benutzer-Verwaltung (inkl. Einzelrechte) ·
@@ -634,19 +634,6 @@ User-Agent bei Signatur.
 - „Als geprüft markieren" mit optionaler Notiz
 - **Verknüpfung mit Anforderungs-Vorlagen** — siehe Anforderungen
 - n8n-Events `request.opened` / `request.responded` für Mail-Trigger
-
-## Status-Maschinen-Builder (Admin)
-
-- Kanzlei definiert eigene Zustandsautomaten unter
-  `/staff/admin/state-machines`
-  (z. B. „Mandanten-Onboarding-Phase", „Erklärungs-Bearbeitungsstand")
-- Listen-Editor mit Drag-and-Drop für Zustände
-- Pro Zustand: Key, Label, Farbe (8 Tailwind-Tönungen), Initial-/Endzustand-Flag
-- Pro Übergang: Quelle → Ziel, Label, optionale Freitext-Bedingung
-- Validierung: genau ein Initial-State pro Maschine, alle Transitionen
-  verweisen auf vorhandene States
-- Anwendung an Ressourcen (Mandant, GwG-Check) ist als Folge-Iteration
-  geplant — der Builder existiert eigenständig
 
 ## Dashboard-Widget-Builder
 
@@ -1440,7 +1427,6 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Buß-Bettag-Berechnung)
 - Custom-Felder-Definitionen für Mandanten
 - Anforderungs-Vorlagen
-- Status-Maschinen-Definitionen
 - SMTP-Konfiguration + Test-Mail
 - TSA-Konfiguration (RFC-3161)
 - **Geführte n8n-Automatisierung** — getrennte Instanz-UI/API-Verbindung,

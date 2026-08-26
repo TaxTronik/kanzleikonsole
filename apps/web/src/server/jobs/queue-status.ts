@@ -6,83 +6,21 @@
 // nicht" fiel niemandem auf. Diese Funktion liest je Queue die Job-Zähler,
 // den letzten Completed-Zeitstempel und die letzte Fehlermeldung.
 //
-// Eine modulweite Connection (maxRetriesPerRequest: null wie bei BullMQ üblich)
-// + je Queue ein Queue-Objekt. Rein lesend (getJobCounts/getCompleted/
-// getFailed) — es werden KEINE Jobs eingereiht.
+// Queue-Namen und Health-Fenster kommen aus derselben runtime-leichten Quelle
+// wie der Worker-Scheduler. Rein lesend (getJobCounts/getCompleted/getFailed)
+// — es werden KEINE Jobs eingereiht.
 // =============================================================================
 
-import IORedis from 'ioredis';
-import { Queue } from 'bullmq';
-import { env } from '@taxtronik/config';
+import { QUEUE_HEALTH } from '@taxtronik/config/job-queues';
 import { log } from '@/server/logger';
 
 import { withTimeout } from '@/lib/with-timeout';
-
-/**
- * BullMQ-Connections laufen bewusst mit `maxRetriesPerRequest: null`. Faellt
- * Redis aus, parkt ioredis den Befehl dann in der Offline-Queue und das Promise
- * resolved NIE — der aufrufende Pfad haengt. Deckelung wie in n8n/outbox.ts.
- */
-const QUEUE_TIMEOUT_MS = 2_000;
-
-// Alle vom Worker betriebenen Queues mit Soll-Intervall in Stunden (für die
-// „veraltet?"-Einordnung; null = ereignisgetrieben).
-//
-// SOURCE OF TRUTH der Namen: apps/worker/src/queues.ts. Web hängt nicht vom
-// Worker-Package ab (kein gemeinsamer Import möglich) und das Intervall ist
-// ohnehin UI-Metadatum ohne Entsprechung im Worker → die Liste bleibt bewusst
-// explizit. WICHTIG: Wird dort eine Queue ergänzt/entfernt, MUSS sie auch hier
-// gepflegt werden, sonst fehlt sie stillschweigend in der Admin-Übersicht.
-const QUEUES: Array<{ name: string; expectedEveryHours: number | null }> = [
-  { name: 'audit-anchor', expectedEveryHours: null },
-  { name: 'evidence-seal', expectedEveryHours: 24 },
-  { name: 'audit-verify-check', expectedEveryHours: 24 },
-  { name: 'audit-rotate', expectedEveryHours: 24 * 7 },
-  { name: 'gwg-expiry-check', expectedEveryHours: 24 },
-  { name: 'invoice-overdue-check', expectedEveryHours: 24 },
-  { name: 'tax-deadline-materialize', expectedEveryHours: 24 },
-  { name: 'tax-news-fetch', expectedEveryHours: 24 },
-  { name: 'reminders-daily', expectedEveryHours: 24 },
-  { name: 'magic-link-cleanup', expectedEveryHours: 24 },
-  { name: 'dsgvo-retention', expectedEveryHours: 24 },
-  { name: 'poa-expiry-check', expectedEveryHours: 24 },
-  { name: 'backup-run', expectedEveryHours: 24 },
-  { name: 'backup-drill', expectedEveryHours: 24 * 31 },
-  { name: 'health-alert', expectedEveryHours: null },
-  { name: 'n8n-deliver', expectedEveryHours: null },
-  { name: 'n8n-outbox-reconcile', expectedEveryHours: null },
-  { name: 'workflow-n8n-dispatch', expectedEveryHours: null },
-  { name: 'storage-orphan-cleanup', expectedEveryHours: 6 },
-  { name: 'n8n-retention', expectedEveryHours: 24 },
-  { name: 'risk-analyse-llm', expectedEveryHours: null },
-  { name: 'reminder-done-notify', expectedEveryHours: null },
-];
-
-declare global {
-  // `var` is intentional for ambient globalThis augmentation.
-  // noinspection ES6ConvertVarToLetConst
-  var __taxtronik_queue_status: { conn: IORedis; queues: Map<string, Queue> } | undefined;
-}
-
-function getHandle(): { conn: IORedis; queues: Map<string, Queue> } {
-  const existing = globalThis.__taxtronik_queue_status;
-  if (existing) return existing;
-  const conn = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
-  conn.on('error', (err) =>
-    log.warn({ component: 'queue-status', err: err.message }, 'redis error'),
-  );
-  const queues = new Map<string, Queue>();
-  for (const { name } of QUEUES) queues.set(name, new Queue(name, { connection: conn }));
-  const handle = { conn, queues };
-  // IMMER cachen — nicht nur im Dev: sonst leakt in Produktion jeder Aufruf
-  // eine neue IORedis-Connection samt 20 Queue-Instanzen (pro Seitenaufruf).
-  globalThis.__taxtronik_queue_status = handle;
-  return handle;
-}
+import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
 
 export interface QueueStatus {
   name: string;
-  expectedEveryHours: number | null;
+  expectedMaxGapMs: number | null;
+  staleAfterMs: number | null;
   waiting: number;
   active: number;
   completed: number;
@@ -91,33 +29,31 @@ export interface QueueStatus {
   lastCompletedAt: number | null;
   lastFailedAt: number | null;
   lastFailedReason: string | null;
-  /** Overdue: letzter Completed-Lauf älter als das 1,5-fache des Soll-Intervalls. */
+  /** Overdue according to the shared schedule's health grace window. */
   stale: boolean;
 }
 
 export async function getQueuesStatus(now: number = Date.now()): Promise<QueueStatus[]> {
-  const { queues } = getHandle();
   return Promise.all(
-    QUEUES.map(async ({ name, expectedEveryHours }): Promise<QueueStatus> => {
-      const q = queues.get(name)!;
+    QUEUE_HEALTH.map(async ({ name, expectedMaxGapMs, staleAfterMs }): Promise<QueueStatus> => {
+      const q = getWebQueue(name);
       try {
         // Das try/catch unten faengt Fehler, aber kein Haengen: bei Redis-
         // Ausfall parkt ioredis den Befehl und das Promise resolved nie — die
         // Admin-Seite bliebe endlos im Laden. Deshalb zusaetzlich gedeckelt.
         const counts = await withTimeout(
           q.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed'),
-          QUEUE_TIMEOUT_MS,
+          WEB_QUEUE_TIMEOUT_MS,
         );
-        const [lastCompleted] = await withTimeout(q.getCompleted(0, 0), QUEUE_TIMEOUT_MS);
-        const [lastFailed] = await withTimeout(q.getFailed(0, 0), QUEUE_TIMEOUT_MS);
+        const [lastCompleted] = await withTimeout(q.getCompleted(0, 0), WEB_QUEUE_TIMEOUT_MS);
+        const [lastFailed] = await withTimeout(q.getFailed(0, 0), WEB_QUEUE_TIMEOUT_MS);
         const lastCompletedAt = lastCompleted?.finishedOn ?? null;
         const stale =
-          expectedEveryHours != null &&
-          (lastCompletedAt == null ||
-            now - lastCompletedAt > expectedEveryHours * 1.5 * 60 * 60 * 1000);
+          staleAfterMs != null && (lastCompletedAt == null || now - lastCompletedAt > staleAfterMs);
         return {
           name,
-          expectedEveryHours,
+          expectedMaxGapMs,
+          staleAfterMs,
           waiting: counts.waiting ?? 0,
           active: counts.active ?? 0,
           completed: counts.completed ?? 0,
@@ -135,7 +71,8 @@ export async function getQueuesStatus(now: number = Date.now()): Promise<QueueSt
         );
         return {
           name,
-          expectedEveryHours,
+          expectedMaxGapMs,
+          staleAfterMs,
           waiting: 0,
           active: 0,
           completed: 0,

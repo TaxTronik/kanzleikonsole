@@ -12,6 +12,7 @@
 
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { readBranding } from '@/server/settings/branding';
 import { readTaxRegion } from '@/server/settings/tax-region';
@@ -40,7 +41,7 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
     readPrivacyConfig(ctx),
     readLegal(ctx),
     withTenantContext(ctx, async (tx) => {
-      const [contactCount, activeClientCount, modulesRow, dismissedRow] = await Promise.all([
+      const [contactCount, activeClientCount, modulesRow, dismissedValue] = await Promise.all([
         tx.clientContact.count({ where: { active: true } }),
         tx.client.count({ where: { allowActive: true } }),
         // readModules liefert Defaults, wenn nie gespeichert wurde — für die
@@ -49,19 +50,14 @@ export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
           where: { tenantId_key: { tenantId: ctx.tenantId, key: 'modules' } },
           select: { tenantId: true },
         }),
-        tx.tenantSetting.findUnique({
-          where: {
-            tenantId_key: { tenantId: ctx.tenantId, key: SETUP_DISMISSED_SETTING_KEY },
-          },
-          select: { value: true },
-        }),
+        readTenantSettingValue(tx, ctx.tenantId, SETUP_DISMISSED_SETTING_KEY),
       ]);
-      const dismissedValue = dismissedRow?.value as { dismissed?: unknown } | null | undefined;
+      const dismissed = dismissedValue as { dismissed?: unknown } | null | undefined;
       return {
         contactCount,
         activeClientCount,
         modulesConfigured: modulesRow !== null,
-        dismissed: dismissedValue?.dismissed === true,
+        dismissed: dismissed?.dismissed === true,
       };
     }),
   ]);

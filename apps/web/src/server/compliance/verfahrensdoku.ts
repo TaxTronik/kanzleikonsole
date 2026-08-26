@@ -16,6 +16,7 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   BACKUP_DRILL_RESULT_SETTING_KEY,
@@ -63,12 +64,8 @@ export async function collectVerfahrensdokuData(
   const [lastBackup, drillSetting, verifySetting, ...counts] = await withTenantContext(ctx, (tx) =>
     Promise.all([
       tx.backupRecord.findFirst({ orderBy: { startedAt: 'desc' } }),
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId: ctx.tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
-      }),
-      tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId: ctx.tenantId, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-      }),
+      readTenantSettingValue(tx, ctx.tenantId, BACKUP_DRILL_RESULT_SETTING_KEY),
+      readTenantSettingValue(tx, ctx.tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
       tx.staffUser.count({ where: { active: true } }),
       tx.client.count(),
       tx.clientContact.count({ where: { active: true } }),
@@ -107,8 +104,8 @@ export async function collectVerfahrensdokuData(
           sizeBytes: lastBackup.sizeBytes === null ? null : Number(lastBackup.sizeBytes),
         }
       : null,
-    drill: (drillSetting?.value ?? null) as PersistedDrillResult | null,
-    auditVerify: (verifySetting?.value ?? null) as PersistedVerifyResult | null,
+    drill: (drillSetting ?? null) as PersistedDrillResult | null,
+    auditVerify: (verifySetting ?? null) as PersistedVerifyResult | null,
     counts: {
       staffActive: counts[0],
       clients: counts[1],

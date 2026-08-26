@@ -20,6 +20,7 @@ import { cache } from 'react';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 import type { TenantContext } from '@taxtronik/db';
 import { readAccessPolicyTx, type AccessPolicy } from '@taxtronik/db/staff-client-access';
+import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 
 export {
   DEFAULT_ACCESS_POLICY,
@@ -49,15 +50,11 @@ export function readAccessPolicy(ctx: TenantContext): Promise<AccessPolicy> {
 
 export async function writeAccessPolicy(ctx: TenantContext, cfg: AccessPolicy): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_ACCESS } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY_ACCESS,
-        value: cfg as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: { value: cfg as object, updatedBy: ctx.actorId ?? undefined },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY_ACCESS,
+      value: cfg as object,
+      updatedBy: ctx.actorId,
     });
   });
 }

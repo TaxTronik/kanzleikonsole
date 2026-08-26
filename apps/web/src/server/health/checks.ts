@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { prisma, withTenantContext } from '@taxtronik/db';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { createConnection } from 'node:net';
 import { env, riskLayerConfig } from '@taxtronik/config';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
@@ -122,13 +123,11 @@ export async function checkN8nForTenant(tenantId: string): Promise<N8nTenantStat
         },
       });
       if (connection) return { connection, legacyUrl: '' };
-      const row = await tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: 'integrations.n8n' } },
-        select: { value: true },
-      });
+      const value = await readTenantSettingValue(tx, tenantId, 'integrations.n8n');
       return {
         connection: null,
-        legacyUrl: row ? ((row.value as { webhookBaseUrl?: string }).webhookBaseUrl ?? '') : '',
+        legacyUrl:
+          value === undefined ? '' : ((value as { webhookBaseUrl?: string }).webhookBaseUrl ?? ''),
       };
     },
   );
@@ -323,14 +322,11 @@ export async function checkTsa(): Promise<TsaCheck> {
 export async function checkTsaForTenant(tenantId: string): Promise<TsaCheck> {
   // RLS-Backstop: tenant_setting ist mandantenscharf — Read über
   // withTenantContext, sonst gibt die App-Verbindung keine Zeilen aus.
-  const row = await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
-    tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
-      select: { value: true },
-    }),
+  const value = await withTenantContext({ tenantId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
+    readTenantSettingValue(tx, tenantId, 'evidence.tsa'),
   );
-  if (row) {
-    const v = row.value as { providerId?: string; customUrl?: string };
+  if (value !== undefined) {
+    const v = value as { providerId?: string; customUrl?: string };
     const url = resolveTsaUrl(v.providerId ?? null, v.customUrl ?? null);
     if (url) return roundtripTsa(url, 'tenant');
   }

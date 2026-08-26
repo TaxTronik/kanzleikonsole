@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   ConsentSelectionsSchema,
   defaultConsentOptionsCatalog,
@@ -60,13 +61,10 @@ export async function readConsentOptionsCatalogTx(
   tx: TxClient,
   tenantId: string,
 ): Promise<ConsentOptionsCatalog> {
-  const row = await tx.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: CONSENT_OPTIONS_SETTING_KEY } },
-    select: { value: true },
-  });
-  if (!row) return defaultConsentOptionsCatalog();
+  const value = await readTenantSettingValue(tx, tenantId, CONSENT_OPTIONS_SETTING_KEY);
+  if (value === undefined) return defaultConsentOptionsCatalog();
   try {
-    return normalizeConsentOptionsCatalog(row.value);
+    return normalizeConsentOptionsCatalog(value);
   } catch {
     // Ein korrupter Katalog darf nicht stillschweigend Defaults reaktivieren
     // (z. B. ein bewusst deaktiviertes Fax). Der Erfassungsflow stoppt daher.

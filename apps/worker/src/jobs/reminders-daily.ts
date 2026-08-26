@@ -14,6 +14,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { NotificationKind } from '@prisma/client';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { sanitizeNotificationText } from '@taxtronik/db/notification';
@@ -570,7 +571,7 @@ async function filterCurrentRecipientsTx(
 }
 
 export const remindersDailyWorker = new Worker<ChecksJob>(
-  'reminders-daily',
+  JOB_QUEUES.remindersDaily.name,
   async (job) => {
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]

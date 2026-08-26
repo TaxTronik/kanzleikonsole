@@ -14,6 +14,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
@@ -32,7 +33,7 @@ const HORIZON_DAYS = 90;
 const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
-  'tax-deadline-materialize',
+  JOB_QUEUES.taxDeadlineMaterialize.name,
   async (job) => {
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]

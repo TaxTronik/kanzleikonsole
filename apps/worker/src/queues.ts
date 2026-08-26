@@ -16,6 +16,24 @@
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { env } from '@taxtronik/config';
+import {
+  JOB_QUEUES,
+  QUEUE_STATUS_HISTORY_RETENTION_SECONDS,
+  type AuditAnchorJob,
+  type ChecksJob,
+  type EvidenceSealJob,
+  type N8nDeliverJob,
+  type RiskAnalyseLlmJob,
+} from '@taxtronik/config/job-queues';
+
+export type {
+  AuditAnchorJob,
+  ChecksJob,
+  EvidenceSealJob,
+  N8nDeliverJob,
+  ReminderDoneNotifyJob,
+  RiskAnalyseLlmJob,
+} from '@taxtronik/config/job-queues';
 
 const redisUrl = env.REDIS_URL;
 
@@ -28,132 +46,109 @@ export const connection = new IORedis(redisUrl, {
 // 5 min) monoton — Redis ohne maxmemory läuft langfristig voll. Per-Job-Options
 // (z. B. n8n-deliver) überschreiben diese Defaults weiterhin.
 const defaultJobOptions = {
-  removeOnComplete: { age: 24 * 60 * 60, count: 500 },
-  removeOnFail: { age: 7 * 24 * 60 * 60 },
+  // The Ops UI uses the latest completed job for stale detection. Keep that
+  // marker beyond the monthly backup-drill health window; count still bounds
+  // high-frequency queues such as audit-anchor.
+  removeOnComplete: { age: QUEUE_STATUS_HISTORY_RETENTION_SECONDS, count: 500 },
+  removeOnFail: { age: QUEUE_STATUS_HISTORY_RETENTION_SECONDS, count: 500 },
 } as const;
 
-export interface EvidenceSealJob {
-  tenantId?: string;
-  sealDate?: string;
-}
-
-export interface AuditAnchorJob {
-  /** Omit for the frequent global reconciliation tick. */
-  tenantId?: string;
-}
-
-export interface ChecksJob {
-  // optional: nur einen Tenant prüfen (für Manual-Trigger)
-  tenantId?: string;
-  // optional: Mitarbeiter, der den manuellen Check ausgelöst hat.
-  requestedByStaffId?: string;
-  requestId?: string;
-}
-
-/** Neue Jobs adressieren eine Delivery; outboxId toleriert bereits liegende Altjobs. */
-export type N8nDeliverJob =
-  | { deliveryId: string; outboxId?: never }
-  | { outboxId: string; deliveryId?: never };
-
-/** Verzögerte „Wiedervorlage erledigt"-Rückmeldung an die delegierende Person. */
-export interface ReminderDoneNotifyJob {
-  tenantId: string;
-  reminderId: string;
-  staffId: string;
-  clientId: string | null;
-  subject: string;
-  doneByName: string;
-}
-
-export interface RiskAnalyseLlmJob {
-  tenantId: string;
-  analysisId: string;
-  /** Der bereits analysierte Sachverhalt — die Engine ist zustandslos. */
-  sourceText: string;
-  optionen?: Record<string, unknown>;
-}
-
-export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>('evidence-seal', {
+export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>(
+  JOB_QUEUES.evidenceSeal.name,
+  { connection, defaultJobOptions },
+);
+export const auditAnchorQueue = new Queue<AuditAnchorJob, void, string>(
+  JOB_QUEUES.auditAnchor.name,
+  { connection, defaultJobOptions },
+);
+export const gwgExpiryQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.gwgExpiry.name, {
   connection,
   defaultJobOptions,
 });
-export const auditAnchorQueue = new Queue<AuditAnchorJob, void, string>('audit-anchor', {
-  connection,
-  defaultJobOptions,
-});
-export const gwgExpiryQueue = new Queue<ChecksJob, void, string>('gwg-expiry-check', {
-  connection,
-  defaultJobOptions,
-});
-export const invoiceOverdueQueue = new Queue<ChecksJob, void, string>('invoice-overdue-check', {
-  connection,
-  defaultJobOptions,
-});
-export const auditVerifyQueue = new Queue<ChecksJob, void, string>('audit-verify-check', {
+export const invoiceOverdueQueue = new Queue<ChecksJob, void, string>(
+  JOB_QUEUES.invoiceOverdue.name,
+  { connection, defaultJobOptions },
+);
+export const auditVerifyQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.auditVerify.name, {
   connection,
   defaultJobOptions,
 });
 export const taxDeadlineMaterializeQueue = new Queue<ChecksJob, void, string>(
-  'tax-deadline-materialize',
+  JOB_QUEUES.taxDeadlineMaterialize.name,
   { connection, defaultJobOptions },
 );
-export const auditRotateQueue = new Queue<ChecksJob, void, string>('audit-rotate', {
+export const auditRotateQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.auditRotate.name, {
   connection,
   defaultJobOptions,
 });
-export const taxNewsFetchQueue = new Queue<ChecksJob, void, string>('tax-news-fetch', {
+export const taxNewsFetchQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.taxNewsFetch.name, {
   connection,
   defaultJobOptions,
 });
-export const remindersDailyQueue = new Queue<ChecksJob, void, string>('reminders-daily', {
-  connection,
-  defaultJobOptions,
-});
-export const n8nDeliverQueue = new Queue<N8nDeliverJob, void, string>('n8n-deliver', {
+export const remindersDailyQueue = new Queue<ChecksJob, void, string>(
+  JOB_QUEUES.remindersDaily.name,
+  {
+    connection,
+    defaultJobOptions,
+  },
+);
+export const n8nDeliverQueue = new Queue<N8nDeliverJob, void, string>(JOB_QUEUES.n8nDeliver.name, {
   connection,
   defaultJobOptions,
 });
 export const n8nOutboxReconcileQueue = new Queue<Record<string, never>, void, string>(
-  'n8n-outbox-reconcile',
+  JOB_QUEUES.n8nOutboxReconcile.name,
   { connection, defaultJobOptions },
 );
-export const n8nRetentionQueue = new Queue<Record<string, never>, void, string>('n8n-retention', {
-  connection,
-  defaultJobOptions,
-});
+export const n8nRetentionQueue = new Queue<Record<string, never>, void, string>(
+  JOB_QUEUES.n8nRetention.name,
+  {
+    connection,
+    defaultJobOptions,
+  },
+);
 export const workflowN8nDispatchQueue = new Queue<Record<string, never>, void, string>(
-  'workflow-n8n-dispatch',
+  JOB_QUEUES.workflowN8nDispatch.name,
   { connection, defaultJobOptions },
 );
 export const storageOrphanCleanupQueue = new Queue<Record<string, never>, void, string>(
-  'storage-orphan-cleanup',
+  JOB_QUEUES.storageOrphanCleanup.name,
   { connection, defaultJobOptions },
 );
-export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>('magic-link-cleanup', {
+export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>(
+  JOB_QUEUES.magicLinkCleanup.name,
+  {
+    connection,
+    defaultJobOptions,
+  },
+);
+export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>(
+  JOB_QUEUES.dsgvoRetention.name,
+  {
+    connection,
+    defaultJobOptions,
+  },
+);
+export const poaExpiryQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.poaExpiry.name, {
   connection,
   defaultJobOptions,
 });
-export const dsgvoRetentionQueue = new Queue<ChecksJob, void, string>('dsgvo-retention', {
+export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>(
+  JOB_QUEUES.riskAnalyseLlm.name,
+  {
+    connection,
+    defaultJobOptions,
+  },
+);
+export const backupDrillQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.backupDrill.name, {
   connection,
   defaultJobOptions,
 });
-export const poaExpiryQueue = new Queue<ChecksJob, void, string>('poa-expiry-check', {
+export const backupRunQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.backupRun.name, {
   connection,
   defaultJobOptions,
 });
-export const riskAnalyseLlmQueue = new Queue<RiskAnalyseLlmJob, void, string>('risk-analyse-llm', {
-  connection,
-  defaultJobOptions,
-});
-export const backupDrillQueue = new Queue<ChecksJob, void, string>('backup-drill', {
-  connection,
-  defaultJobOptions,
-});
-export const backupRunQueue = new Queue<ChecksJob, void, string>('backup-run', {
-  connection,
-  defaultJobOptions,
-});
-export const healthAlertQueue = new Queue<ChecksJob, void, string>('health-alert', {
+export const healthAlertQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.healthAlert.name, {
   connection,
   defaultJobOptions,
 });

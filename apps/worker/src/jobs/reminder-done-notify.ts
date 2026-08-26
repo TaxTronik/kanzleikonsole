@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { upsertNotificationTx } from '@taxtronik/db/notification';
 import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { connection, type ReminderDoneNotifyJob } from '../queues';
@@ -20,7 +21,7 @@ import { log } from '../logger';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 
 export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
-  'reminder-done-notify',
+  JOB_QUEUES.reminderDoneNotify.name,
   async (job) => {
     const { tenantId, reminderId, staffId, doneByName } = job.data;
 

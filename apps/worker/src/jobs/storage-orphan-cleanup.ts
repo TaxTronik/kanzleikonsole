@@ -1,4 +1,5 @@
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { deleteObject, deleteObjectVersion } from '@taxtronik/storage';
 import { connection } from '../queues';
 import { prismaOwner } from '../prisma-owner';
@@ -206,7 +207,7 @@ export async function runStorageOrphanCleanup(now = new Date()): Promise<{
 }
 
 export const storageOrphanCleanupWorker = new Worker<Record<string, never>>(
-  'storage-orphan-cleanup',
+  JOB_QUEUES.storageOrphanCleanup.name,
   async () => {
     await runStorageOrphanCleanup();
   },

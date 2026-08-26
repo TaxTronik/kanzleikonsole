@@ -1,3 +1,5 @@
+import { readTenantSettingValue } from './tenant-settings';
+
 export const BOOLEAN_MODULE_KEYS = [
   'bwa',
   'knowledge',
@@ -63,9 +65,6 @@ export async function readBooleanTenantModules(
   db: TenantModuleSettingReader,
   tenantId: string,
 ): Promise<BooleanTenantModules> {
-  const row = await db.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: 'modules' } },
-    select: { value: true },
-  });
-  return parseBooleanTenantModules(row?.value);
+  const value = await readTenantSettingValue(db, tenantId, 'modules');
+  return parseBooleanTenantModules(value);
 }

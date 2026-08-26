@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type { TxClient } from './tenant-context';
+import { readTenantSettingValue } from './tenant-settings';
 
 export type ClientAccessMode = 'OPEN' | 'RESTRICTED';
 
@@ -31,11 +32,9 @@ export function decideClientAccess(input: {
 const KEY_ACCESS = 'access';
 
 export async function readAccessPolicyTx(tx: TxClient, tenantId: string): Promise<AccessPolicy> {
-  const row = await tx.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: KEY_ACCESS } },
-  });
-  if (!row) return { ...DEFAULT_ACCESS_POLICY };
-  const value = row.value as Partial<AccessPolicy>;
+  const stored = await readTenantSettingValue(tx, tenantId, KEY_ACCESS);
+  if (stored === undefined) return { ...DEFAULT_ACCESS_POLICY };
+  const value = stored as Partial<AccessPolicy>;
   return { clientAccessMode: value.clientAccessMode === 'RESTRICTED' ? 'RESTRICTED' : 'OPEN' };
 }
 

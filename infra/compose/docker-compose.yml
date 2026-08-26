@@ -119,9 +119,10 @@ services:
     command: ['redis-server', '--appendonly', 'yes']
     ports:
       # Host-Port 6380 statt 6379, weil oft schon ein System-Redis-Daemon
-      # auf 6379 läuft. Container-intern bleibt 6379, daher REDIS_URL
-      # innerhalb des Compose-Netzes unverändert: redis://redis:6379
-      - '127.0.0.1:6380:6379'
+      # auf 6379 läuft. Unter Windows können dynamisch reservierte Portbereiche
+      # auch 6380 blockieren; REDIS_HOST_PORT erlaubt dann einen lokalen
+      # Ausweichport. Container-intern bleibt Redis immer auf 6379.
+      - '127.0.0.1:${REDIS_HOST_PORT:-6380}:6379'
     volumes:
       - redis_data:/data
     healthcheck:

@@ -9,6 +9,7 @@
 
 import { env } from '@taxtronik/config';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { deleteTenantSettingValue, readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import type { Prisma } from '@prisma/client';
 import { encryptSecret, readEncryptedSetting } from '@/server/crypto/secret-box';
 
@@ -147,11 +148,8 @@ export async function readN8nConfig(ctx: TenantContext): Promise<N8nConfig | nul
       };
     }
 
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: LEGACY_KEY } },
-      select: { value: true },
-    });
-    return row ? fromLegacy(row.value as LegacyN8nStored, 'LEGACY_SETTING') : null;
+    const value = await readTenantSettingValue(tx, ctx.tenantId, LEGACY_KEY);
+    return value === undefined ? null : fromLegacy(value as LegacyN8nStored, 'LEGACY_SETTING');
   });
 }
 
@@ -195,9 +193,7 @@ export async function writeN8nConfigTx(
     select: { id: true },
   });
 
-  await tx.tenantSetting.deleteMany({
-    where: { tenantId: ctx.tenantId, key: LEGACY_KEY },
-  });
+  await deleteTenantSettingValue(tx, ctx.tenantId, LEGACY_KEY);
   return connection.id;
 }
 
@@ -209,7 +205,7 @@ export async function writeN8nConfig(ctx: TenantContext, cfg: N8nConfig): Promis
 export async function deleteN8nConfig(ctx: TenantContext): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
     await tx.n8nConnection.deleteMany({ where: { tenantId: ctx.tenantId } });
-    await tx.tenantSetting.deleteMany({ where: { tenantId: ctx.tenantId, key: LEGACY_KEY } });
+    await deleteTenantSettingValue(tx, ctx.tenantId, LEGACY_KEY);
   });
 }
 

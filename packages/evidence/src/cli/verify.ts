@@ -20,7 +20,7 @@ import type { Readable } from 'node:stream';
 // `tenant.findMany()` zurück → CLI schlösse stillschweigend „grün" ab und
 // würde Manipulationen nie entdecken. Compliance-blocker für die GoBD-
 // Hash-Chain-Verifikation.
-import { prismaOwner as prisma } from '@taxtronik/db';
+import { prismaOwner as prisma, readTenantSettingValue } from '@taxtronik/db';
 import { EvidenceService, type VerificationResult } from '../service.js';
 import { LocalTimestampAdapter } from '../ports/timestamp.js';
 import { createRfc3161Adapter } from '../ports/rfc3161-http.js';
@@ -244,11 +244,8 @@ async function main() {
     // IDs. Ein konsistent gekürzter Chain-Schwanz (prev_hash-Links intakt) wäre
     // sonst für die CLI unsichtbar; nur der persistierte Anker entlarvt ihn.
     // Read-only: die CLI aktualisiert den Anker bewusst NICHT (Auditor-Tool).
-    const anchorRow = await prisma.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: t.id, key: AUDIT_VERIFY_RESULT_SETTING_KEY } },
-      select: { value: true },
-    });
-    const anchor = (anchorRow?.value ?? null) as PersistedVerifyResult | null;
+    const anchorValue = await readTenantSettingValue(prisma, t.id, AUDIT_VERIFY_RESULT_SETTING_KEY);
+    const anchor = (anchorValue ?? null) as PersistedVerifyResult | null;
     const anchorLast = anchor?.lastAuditId ? BigInt(anchor.lastAuditId) : null;
     if (anchorLast !== null) {
       if (result.lastAuditId === null) {

@@ -17,9 +17,9 @@ export default async function AdminJobsPage() {
         <h1 className="text-2xl font-bold text-primary mb-1">System → Jobs</h1>
         <p className="text-muted text-sm max-w-3xl">
           Verarbeitungsstatus der Hintergrund-Jobs (BullMQ). „Veraltet" = der letzte erfolgreiche
-          Lauf liegt über dem 1,5-fachen des Soll-Intervalls zurück — ein Hinweis, dass ein
-          täglicher Job ausgefallen ist. Fehlgeschlagene Jobs (`failed`) sollten geprüft werden; die
-          letzte Fehlermeldung steht rechts.
+          Lauf liegt außerhalb des zum tatsächlichen Zeitplan gehörenden Karenzfensters — ein
+          Hinweis auf einen ausgefallenen periodischen Job. Fehlgeschlagene Jobs (`failed`) sollten
+          geprüft werden; die letzte Fehlermeldung steht rechts.
         </p>
       </div>
 

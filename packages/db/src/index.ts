@@ -23,4 +23,14 @@ export {
   type BooleanTenantModules,
   type TenantModuleSettingReader,
 } from './tenant-modules';
+export {
+  deleteTenantSettingValue,
+  readTenantSettingValue,
+  writeTenantSettingValue,
+  type TenantSettingDb,
+  type TenantSettingDeleter,
+  type TenantSettingReader,
+  type TenantSettingWriter,
+  type WriteTenantSettingInput,
+} from './tenant-settings';
 export type * from '@prisma/client';

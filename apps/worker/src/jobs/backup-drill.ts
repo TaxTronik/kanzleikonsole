@@ -32,8 +32,10 @@ import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
+import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { env } from '@taxtronik/config';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import {
@@ -190,10 +192,10 @@ async function restoreIntoDrill(
 /** Ergebnis persistieren + in der Produktiv-Chain verankern + ggf. alarmieren. */
 async function persistTenantResult(tenantId: string, result: PersistedDrillResult): Promise<void> {
   await withWorkerTenantContext(tenantId, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY } },
-      create: { tenantId, key: BACKUP_DRILL_RESULT_SETTING_KEY, value: result as object },
-      update: { value: result as object },
+    await writeTenantSettingValue(tx, {
+      tenantId,
+      key: BACKUP_DRILL_RESULT_SETTING_KEY,
+      value: result,
     });
     // GoBD-/DSGVO-Beweiswert: der Drill ist erst „durchgeführt", wenn er in
     // der (produktiven) Audit-Hash-Chain steht — Erfolg UND Fehlschlag.
@@ -327,7 +329,7 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
 }
 
 export const backupDrillWorker = new Worker<ChecksJob>(
-  'backup-drill',
+  JOB_QUEUES.backupDrill.name,
   async () => {
     const r = await runDrill();
     log.info(r, 'backup-drill: done');

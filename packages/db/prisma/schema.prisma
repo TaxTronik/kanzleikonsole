@@ -86,9 +86,6 @@ model Tenant {
   staffNotes                     StaffNote[]
   staffSkills                    StaffSkill[]
   staff                          StaffUser[]
-  stateMachines                  StateMachine[]
-  stateMachineStates             StateMachineState[]
-  stateMachineTransitions        StateMachineTransition[]
   taxDeadlines                   TaxDeadline[]
   taxDeadlineNotificationHistory TaxDeadlineNotificationHistory[]
   taxFilings                     TaxFiling[]
@@ -2693,62 +2690,6 @@ model ClientCustomFieldValue {
   @@unique([clientId, fieldId], map: "client_custom_field_value_client_field_key")
   @@index([tenantId, clientId], map: "client_custom_field_value_tenant_client_idx")
   @@map("client_custom_field_value")
-}
-
-model StateMachine {
-  id          String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String                   @map("tenant_id") @db.Uuid
-  slug        String
-  name        String
-  description String?
-  appliesTo   String?                  @map("applies_to")
-  active      Boolean                  @default(true)
-  createdAt   DateTime                 @default(now()) @map("created_at")
-  updatedAt   DateTime                 @default(now()) @updatedAt @map("updated_at")
-  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_tenant_fk")
-  states      StateMachineState[]
-  transitions StateMachineTransition[]
-
-  @@unique([tenantId, slug], map: "state_machine_tenant_slug_key")
-  @@map("state_machine")
-}
-
-model StateMachineState {
-  id         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String                   @map("tenant_id") @db.Uuid
-  machineId  String                   @map("machine_id") @db.Uuid
-  key        String
-  label      String
-  color      String?
-  position   Int                      @default(0)
-  isInitial  Boolean                  @default(false) @map("is_initial")
-  isTerminal Boolean                  @default(false) @map("is_terminal")
-  machine    StateMachine             @relation(fields: [machineId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_state_machine_fk")
-  tenant     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_state_tenant_fk")
-  outgoing   StateMachineTransition[] @relation("FromState")
-  incoming   StateMachineTransition[] @relation("ToState")
-
-  @@unique([machineId, key], map: "state_machine_state_machine_key_key")
-  @@index([tenantId, machineId], map: "state_machine_state_tenant_machine_idx")
-  @@map("state_machine_state")
-}
-
-model StateMachineTransition {
-  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId      String            @map("tenant_id") @db.Uuid
-  machineId     String            @map("machine_id") @db.Uuid
-  fromStateId   String            @map("from_state_id") @db.Uuid
-  toStateId     String            @map("to_state_id") @db.Uuid
-  label         String
-  conditionNote String?           @map("condition_note")
-  fromState     StateMachineState @relation("FromState", fields: [fromStateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_transition_from_fk")
-  machine       StateMachine      @relation(fields: [machineId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_transition_machine_fk")
-  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_transition_tenant_fk")
-  toState       StateMachineState @relation("ToState", fields: [toStateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "state_machine_transition_to_fk")
-
-  @@index([machineId], map: "state_machine_transition_machine_idx")
-  @@index([tenantId])
-  @@map("state_machine_transition")
 }
 
 model AuditArchive {

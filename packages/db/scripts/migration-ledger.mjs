@@ -5,8 +5,30 @@ import { join } from 'node:path';
 export const REPAIR_MIGRATION = '20260809000000_repair_known_legacy_migration_drift';
 export const FORWARD_REPAIR_MIGRATION = '20260809000100_reconcile_repair_migration_history';
 export const EOL_REPAIR_MIGRATION = '20260809000200_reconcile_windows_migration_line_endings';
+export const LATE_SECURITY_REPAIR_MIGRATION =
+  '20260827100000_reconcile_late_security_guards';
 export const CANONICAL_REPAIR_CHECKSUM =
   '028fdbe47d7fd9901bc3b042e3dce078ac2283247b48b742f35e89db8e559d74';
+
+// Exact pre-release checksums for late security migrations whose database
+// objects did not yet match the canonical files. The forward repair restores
+// those objects before it converges the ledger to the repository checksums.
+export const KNOWN_LATE_SECURITY_DRIFT = new Map([
+  [
+    '20260823201000_tax_professional_control_model',
+    {
+      legacy: 'b828cca902a2336b2419e4817fe9a90e661726b747e62b58327ff524e8a5b676',
+      canonical: '7c401ee74bc4de95f24cf84349634122cb03e6d76384f2387c39baa1e51e94aa',
+    },
+  ],
+  [
+    '20260823202000_notification_client_scope',
+    {
+      legacy: '2c245e87e70139c3d49c4e798a15ba367e87ebceb7548918b33fad7a1dd78379',
+      canonical: '48a645cea2c55377835a3da0d925937e8edfba9faa748010e0a7ed87ac15e80d',
+    },
+  ],
+]);
 
 // Exact ledger states produced by the two historical variants of 090000.
 // The forward repair accepts them only before 090001 is applied and rewrites
@@ -294,6 +316,8 @@ export function analyzeMigrationLedger({ repository, ledgerRows, phase = 'after-
   const repairState = KNOWN_REPAIR_STATES.get(repairChecksum);
   const forwardRepairPending = !applied.has(FORWARD_REPAIR_MIGRATION);
   const eolRepairPending = !applied.has(EOL_REPAIR_MIGRATION);
+  const lateSecurityRepairPending = !applied.has(LATE_SECURITY_REPAIR_MIGRATION);
+  const lateSecurityRepairAvailable = repository.has(LATE_SECURITY_REPAIR_MIGRATION);
 
   for (const [migrationName, databaseChecksum] of applied) {
     const repositoryChecksum = repository.get(migrationName);
@@ -306,13 +330,18 @@ export function analyzeMigrationLedger({ repository, ledgerRows, phase = 'after-
     const knownLegacy = KNOWN_LEGACY_CHECKSUMS.get(migrationName);
     const knownRepairStateChecksum = repairState?.get(migrationName);
     const knownEolVariant = KNOWN_EOL_VARIANTS.get(migrationName);
+    const knownLateSecurityDrift = KNOWN_LATE_SECURITY_DRIFT.get(migrationName);
     if (
       phase === 'before-deploy' &&
       ((forwardRepairPending &&
         ((migrationName === REPAIR_MIGRATION && repairState !== undefined) ||
           (!repairApplied && knownLegacy === databaseChecksum) ||
           (repairApplied && knownRepairStateChecksum === databaseChecksum))) ||
-        (eolRepairPending && knownEolVariant?.crlf === databaseChecksum))
+        (eolRepairPending && knownEolVariant?.crlf === databaseChecksum) ||
+        (lateSecurityRepairPending &&
+          lateSecurityRepairAvailable &&
+          knownLateSecurityDrift?.legacy === databaseChecksum &&
+          knownLateSecurityDrift.canonical === repositoryChecksum))
     ) {
       legacyMismatches.push(migrationName);
       continue;

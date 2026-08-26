@@ -11,8 +11,10 @@ import {
   EOL_REPAIR_MIGRATION,
   FORWARD_REPAIR_MIGRATION,
   KNOWN_EOL_VARIANTS,
+  KNOWN_LATE_SECURITY_DRIFT,
   KNOWN_LEGACY_CHECKSUMS,
   KNOWN_REPAIR_STATES,
+  LATE_SECURITY_REPAIR_MIGRATION,
   REPAIR_MIGRATION,
 } from './migration-ledger.mjs';
 
@@ -110,6 +112,110 @@ test('rejects an attested CRLF checksum after 090002 was applied', () => {
   const result = analyzeMigrationLedger({
     repository,
     ledgerRows: [applied(migrationName, variant.crlf), applied(EOL_REPAIR_MIGRATION, 'eol-repair')],
+    phase: 'before-deploy',
+  });
+
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /Checksum-Abweichung/);
+});
+
+test('converges every attested late security checksum in the forward SQL migration', () => {
+  const repairSql = readFileSync(
+    join(
+      import.meta.dirname,
+      '..',
+      'prisma',
+      'migrations',
+      LATE_SECURITY_REPAIR_MIGRATION,
+      'migration.sql',
+    ),
+    'utf8',
+  );
+
+  for (const [migrationName, drift] of KNOWN_LATE_SECURITY_DRIFT) {
+    const exactTuple = new RegExp(
+      `\\(\\s*'${migrationName}',\\s*'${drift.legacy}',\\s*'${drift.canonical}'\\s*\\)`,
+    );
+    assert.match(repairSql, exactTuple, `${migrationName}: attestiertes Checksum-Paar fehlt`);
+  }
+});
+
+test('pins late security canonical checksums to the actual migration bytes', () => {
+  for (const [migrationName, drift] of KNOWN_LATE_SECURITY_DRIFT) {
+    const migrationFile = join(
+      import.meta.dirname,
+      '..',
+      'prisma',
+      'migrations',
+      migrationName,
+      'migration.sql',
+    );
+    const actual = createHash('sha256').update(readFileSync(migrationFile)).digest('hex');
+    assert.equal(actual, drift.canonical, `${migrationName}: kanonische Checksumme ist veraltet`);
+  }
+});
+
+test('allows only attested late security drift while its repair is pending', () => {
+  const repository = new Map([
+    [LATE_SECURITY_REPAIR_MIGRATION, 'late-security-repair'],
+    ...[...KNOWN_LATE_SECURITY_DRIFT].map(([migrationName, drift]) => [
+      migrationName,
+      drift.canonical,
+    ]),
+  ]);
+  const result = analyzeMigrationLedger({
+    repository,
+    ledgerRows: [...KNOWN_LATE_SECURITY_DRIFT].map(([migrationName, drift]) =>
+      applied(migrationName, drift.legacy),
+    ),
+    phase: 'before-deploy',
+  });
+
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.legacyMismatches, [...KNOWN_LATE_SECURITY_DRIFT.keys()]);
+});
+
+test('rejects late security drift after its repair was applied', () => {
+  const [migrationName, drift] = KNOWN_LATE_SECURITY_DRIFT.entries().next().value;
+  const repository = new Map([
+    [migrationName, drift.canonical],
+    [LATE_SECURITY_REPAIR_MIGRATION, 'late-security-repair'],
+  ]);
+  const result = analyzeMigrationLedger({
+    repository,
+    ledgerRows: [
+      applied(migrationName, drift.legacy),
+      applied(LATE_SECURITY_REPAIR_MIGRATION, 'late-security-repair'),
+    ],
+    phase: 'before-deploy',
+  });
+
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /Checksum-Abweichung/);
+});
+
+test('rejects unrecognized late security drift even before its repair', () => {
+  const [migrationName, drift] = KNOWN_LATE_SECURITY_DRIFT.entries().next().value;
+  const repository = new Map([
+    [migrationName, drift.canonical],
+    [LATE_SECURITY_REPAIR_MIGRATION, 'late-security-repair'],
+  ]);
+  const result = analyzeMigrationLedger({
+    repository,
+    ledgerRows: [applied(migrationName, 'unrecognized')],
+    phase: 'before-deploy',
+  });
+
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /Checksum-Abweichung/);
+});
+
+test('rejects late security drift when the repair migration is absent from the repository', () => {
+  const [migrationName, drift] = KNOWN_LATE_SECURITY_DRIFT.entries().next().value;
+  const repository = new Map([[migrationName, drift.canonical]]);
+  const result = analyzeMigrationLedger({
+    repository,
+    ledgerRows: [applied(migrationName, drift.legacy)],
     phase: 'before-deploy',
   });
 

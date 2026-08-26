@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { env } from '@taxtronik/config';
+import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   LocalTimestampAdapter,
   createRfc3161Adapter,
@@ -21,12 +22,9 @@ const DEFAULT_TSA_PROVIDER_ID = 'globalsign';
  * daily-seal flow. Rolling anchors explicitly refuse local ports.
  */
 export async function timestampPortFor(tenantId: string): Promise<TimestampPort> {
-  const row = await prismaOwner.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: 'evidence.tsa' } },
-    select: { value: true },
-  });
-  if (row) {
-    const value = row.value as { providerId?: string; customUrl?: string };
+  const stored = await readTenantSettingValue(prismaOwner, tenantId, 'evidence.tsa');
+  if (stored !== undefined) {
+    const value = stored as { providerId?: string; customUrl?: string };
     const url = resolveTsaUrl(value.providerId || DEFAULT_TSA_PROVIDER_ID, value.customUrl ?? null);
     if (url) return checkedPort(url, { tenantId });
   }

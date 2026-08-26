@@ -13,6 +13,7 @@
 
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   ALL_CLIENT_BLOCKS,
   BLOCK_SIZE,
@@ -84,10 +85,8 @@ function normalize(value: unknown): ClientLayoutConfig {
 
 export async function readClientLayout(ctx: TenantContext): Promise<ClientLayoutConfig> {
   return withTenantContext(ctx, async (tx) => {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-    });
-    return row ? normalize(row.value) : DEFAULT_CLIENT_LAYOUT;
+    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY);
+    return value === undefined ? DEFAULT_CLIENT_LAYOUT : normalize(value);
   });
 }
 
@@ -97,18 +96,11 @@ export async function writeClientLayout(
 ): Promise<void> {
   const stored = normalize(cfg);
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY,
-        value: stored as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: {
-        value: stored as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY,
+      value: stored as object,
+      updatedBy: ctx.actorId,
     });
   });
 }

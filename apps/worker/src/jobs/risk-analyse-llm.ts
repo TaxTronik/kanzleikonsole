@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { Worker, UnrecoverableError } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type RiskAnalyseLlmJob } from '../queues';
@@ -61,7 +62,7 @@ async function ensureLlmReady(
 const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
-  'risk-analyse-llm',
+  JOB_QUEUES.riskAnalyseLlm.name,
   async (job) => {
     const { tenantId, analysisId, sourceText, optionen } = job.data;
 

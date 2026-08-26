@@ -39,6 +39,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { Prisma } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
@@ -353,7 +354,7 @@ async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
 }
 
 export const dsgvoRetentionWorker = new Worker<ChecksJob>(
-  'dsgvo-retention',
+  JOB_QUEUES.dsgvoRetention.name,
   async (job) => {
     const notifCutoff = yearsAgo(NOTIFICATION_RETENTION_YEARS);
     const phoneCutoff = yearsAgo(PHONE_NOTE_RETENTION_YEARS);

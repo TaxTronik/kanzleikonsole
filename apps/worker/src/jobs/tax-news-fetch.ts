@@ -1,14 +1,16 @@
 // =============================================================================
 // tax-news-fetch-Worker (RSS-Reader)
 //
-// Täglich um 05:30 UTC: alle aktiven RSS-Feeds (rss_feed.active=true) holen,
-// neue Einträge in tax_news_item ablegen, pro neuem Item den abonnierten
-// Staff-Members (mit taxNewsNotify=true) eine Notification anlegen.
+// Alle zwei Stunden zwischen 06:30 und 20:30 Europe/Berlin: aktive RSS-Feeds
+// (rss_feed.active=true) holen, neue Einträge in tax_news_item ablegen und pro
+// neuem Item abonnierte Staff-Members (taxNewsNotify=true) informieren.
 //
 // Konsolidierung Round 12: Parser + Body-Cap aus @taxtronik/rss.
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
@@ -35,7 +37,7 @@ function chunks<T>(items: T[], size: number): T[][] {
 }
 
 export const taxNewsFetchWorker = new Worker<ChecksJob>(
-  'tax-news-fetch',
+  JOB_QUEUES.taxNewsFetch.name,
   async () => {
     // Distinct URLs aus aktiven Feeds — pro URL nur ein Fetch.
     const activeFeedRows = await prismaOwner.rssFeed.findMany({
@@ -207,10 +209,10 @@ export const taxNewsFetchWorker = new Worker<ChecksJob>(
     // irreführend alt).
     const lastFetchAt = new Date().toISOString();
     for (const tenantId of enabledTenantIds) {
-      await prismaOwner.tenantSetting.upsert({
-        where: { tenantId_key: { tenantId, key: 'tax-news.last-fetch-at' } },
-        update: { value: lastFetchAt },
-        create: { tenantId, key: 'tax-news.last-fetch-at', value: lastFetchAt },
+      await writeTenantSettingValue(prismaOwner, {
+        tenantId,
+        key: 'tax-news.last-fetch-at',
+        value: lastFetchAt,
       });
     }
 

@@ -37,6 +37,11 @@
 import { z } from 'zod';
 import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import {
+  deleteTenantSettingValue,
+  readTenantSettingValue,
+  writeTenantSettingValue,
+} from '@taxtronik/db/tenant-settings';
+import {
   RiskLayerClient,
   LosNachweisSchema,
   type LosBackend,
@@ -249,15 +254,11 @@ export async function zieheLosStichprobe(
       beantragtVon: ctx.actorId,
     };
     await withTenantContext(ctx, async (tx) => {
-      await tx.tenantSetting.upsert({
-        where: { tenantId_key: { tenantId: ctx.tenantId, key: PENDING_KEY } },
-        create: {
-          tenantId: ctx.tenantId,
-          key: PENDING_KEY,
-          value: pending as object,
-          updatedBy: ctx.actorId ?? undefined,
-        },
-        update: { value: pending as object, updatedBy: ctx.actorId ?? undefined },
+      await writeTenantSettingValue(tx, {
+        tenantId: ctx.tenantId,
+        key: PENDING_KEY,
+        value: pending as object,
+        updatedBy: ctx.actorId,
       });
       // Auch die BEANTRAGUNG ist chain-verankert (wer hat wann mit welchem
       // Commitment gezogen) — der Nachweis folgt beim Abholen.
@@ -294,13 +295,11 @@ export async function zieheLosStichprobe(
 
 /** Liest den wartenden QPU-Job (oder null). */
 export async function getPendingLos(ctx: TenantContext): Promise<PendingLos | null> {
-  const row = await withTenantContext(ctx, (tx) =>
-    tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: PENDING_KEY } },
-    }),
+  const value = await withTenantContext(ctx, (tx) =>
+    readTenantSettingValue(tx, ctx.tenantId, PENDING_KEY),
   );
-  if (!row) return null;
-  const parsed = PendingLosSchema.safeParse(row.value);
+  if (value === undefined) return null;
+  const parsed = PendingLosSchema.safeParse(value);
   if (!parsed.success) {
     log.warn(
       { component: 'los', tenantId: ctx.tenantId },
@@ -453,9 +452,7 @@ async function finalisiereZiehung(
     });
 
     if (pendingJobId) {
-      await tx.tenantSetting.deleteMany({
-        where: { tenantId: ctx.tenantId, key: PENDING_KEY },
-      });
+      await deleteTenantSettingValue(tx, ctx.tenantId, PENDING_KEY);
     }
 
     return { auditId: ev.id, eintraege, nachschau };

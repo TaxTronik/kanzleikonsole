@@ -7,17 +7,13 @@
 // `REMINDER_DONE_NOTIFY_DELAY_MS`; ein „Rückgängig" in diesem Fenster entfernt
 // den Job, und es geht gar nichts raus.
 //
-// Singleton-Muster wie risk-analyse-queue.ts (eine IORedis-Connection pro
-// Prozess, im globalThis gecacht).
+// Die Queue kommt aus dem zentralen Web-BullMQ-Registry.
 // =============================================================================
 
-import IORedis from 'ioredis';
-import { Queue } from 'bullmq';
-import { env } from '@taxtronik/config';
-import { log } from '@/server/logger';
+import { JOB_QUEUES, type ReminderDoneNotifyJob } from '@taxtronik/config/job-queues';
 import { withTimeout } from '@/lib/with-timeout';
-
-const QUEUE_TIMEOUT_MS = 2_000;
+import { log } from '@/server/logger';
+import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
 
 /**
  * Rücknahme-Fenster. Wird auch von der UI für den Countdown des
@@ -25,39 +21,7 @@ const QUEUE_TIMEOUT_MS = 2_000;
  */
 export const REMINDER_DONE_NOTIFY_DELAY_MS = 10_000;
 
-export interface ReminderDoneNotifyJob {
-  tenantId: string;
-  reminderId: string;
-  /** Empfänger = die delegierende Person. */
-  staffId: string;
-  /** null = interne Aufgabe ohne Mandantenbezug. */
-  clientId: string | null;
-  subject: string;
-  /** Wer erledigt hat — für den Benachrichtigungstext. */
-  doneByName: string;
-}
-
-declare global {
-  // `var` is intentional for ambient globalThis augmentation.
-  // noinspection ES6ConvertVarToLetConst
-  var __taxtronik_reminder_done_queue:
-    | { conn: IORedis; queue: Queue<ReminderDoneNotifyJob> }
-    | undefined;
-}
-
-function getHandle(): { conn: IORedis; queue: Queue<ReminderDoneNotifyJob> } {
-  const existing = globalThis.__taxtronik_reminder_done_queue;
-  if (existing) return existing;
-
-  const conn = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
-  conn.on('error', (err) => {
-    log.warn({ component: 'reminder-done-queue', err: err.message }, 'redis error');
-  });
-  const queue = new Queue<ReminderDoneNotifyJob>('reminder-done-notify', { connection: conn });
-  const handle = { conn, queue };
-  globalThis.__taxtronik_reminder_done_queue = handle;
-  return handle;
-}
+export type { ReminderDoneNotifyJob } from '@taxtronik/config/job-queues';
 
 /** Job-ID pro Wiedervorlage — ein erneutes Erledigen ersetzt den alten Job. */
 function jobIdFor(reminderId: string): string {
@@ -73,9 +37,9 @@ export async function scheduleReminderDoneNotification(
   job: ReminderDoneNotifyJob,
 ): Promise<boolean> {
   try {
-    const { queue } = getHandle();
+    const queue = getWebQueue(JOB_QUEUES.reminderDoneNotify.name);
     const jobId = jobIdFor(job.reminderId);
-    await withTimeout(queue.remove(jobId), QUEUE_TIMEOUT_MS).catch(() => {});
+    await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch(() => {});
     await withTimeout(
       queue.add('notify', job, {
         jobId,
@@ -85,7 +49,7 @@ export async function scheduleReminderDoneNotification(
         removeOnComplete: 100,
         removeOnFail: 200,
       }),
-      QUEUE_TIMEOUT_MS,
+      WEB_QUEUE_TIMEOUT_MS,
     );
     return true;
   } catch (err) {
@@ -104,8 +68,8 @@ export async function scheduleReminderDoneNotification(
  */
 export async function cancelReminderDoneNotification(reminderId: string): Promise<void> {
   try {
-    const { queue } = getHandle();
-    await withTimeout(queue.remove(jobIdFor(reminderId)), QUEUE_TIMEOUT_MS);
+    const queue = getWebQueue(JOB_QUEUES.reminderDoneNotify.name);
+    await withTimeout(queue.remove(jobIdFor(reminderId)), WEB_QUEUE_TIMEOUT_MS);
   } catch {
     /* best-effort */
   }

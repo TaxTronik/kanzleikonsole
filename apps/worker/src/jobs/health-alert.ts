@@ -24,6 +24,7 @@ import { Socket } from 'node:net';
 import { ListBucketsCommand, S3Client } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
+import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { sendOpsMail } from '../mailer';
@@ -346,7 +347,7 @@ export async function runHealthAlert(): Promise<{ skipped?: boolean; down: Servi
 }
 
 export const healthAlertWorker = new Worker<ChecksJob>(
-  'health-alert',
+  JOB_QUEUES.healthAlert.name,
   async () => runHealthAlert(),
   { connection, concurrency: 1 },
 );

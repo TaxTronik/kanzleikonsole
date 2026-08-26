@@ -13,6 +13,7 @@
 
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 
 export type MailDispatchMode = 'APP' | 'BOTH';
 
@@ -35,10 +36,8 @@ function normalize(value: unknown): MailDispatchConfig {
 
 export async function readMailDispatch(ctx: TenantContext): Promise<MailDispatchConfig> {
   return withTenantContext(ctx, async (tx) => {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-    });
-    return row ? normalize(row.value) : DEFAULT_DISPATCH;
+    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY);
+    return value === undefined ? DEFAULT_DISPATCH : normalize(value);
   });
 }
 
@@ -48,18 +47,11 @@ export async function writeMailDispatch(
 ): Promise<void> {
   const stored = normalize(cfg);
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY,
-        value: stored as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: {
-        value: stored as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY,
+      value: stored as object,
+      updatedBy: ctx.actorId,
     });
   });
 }
