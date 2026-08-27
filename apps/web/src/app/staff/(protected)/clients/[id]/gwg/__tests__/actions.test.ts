@@ -56,12 +56,17 @@ vi.mock('@/server/actions/staff-action', async () => {
 
 import {
   addBeneficialOwnerAction,
+  addBeneficialOwnerRoleAction,
+  addGwgPersonAction,
   removeBeneficialOwnerAction,
   updateBeneficialOwnerAction,
+  updateGwgPersonGeneralAction,
 } from '../owner-actions';
 import {
   addIdDocumentAction,
   extendIdentityDocumentSetAction,
+  removeGwgEvidenceLinkAction,
+  selectCurrentIdentityDocumentSetAction,
   searchUnlinkedGwgDocumentsAction,
   updateIdDocumentsAction,
 } from '../id-document-actions';
@@ -78,6 +83,7 @@ import {
   gwgBeneficialOwnerRevision,
   gwgIdentityDocumentSetRevision,
   gwgLegalEntityRevision,
+  gwgPersonGeneralRevision,
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
 import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
@@ -164,7 +170,13 @@ function completeCheck(overrides: Record<string, unknown> = {}) {
         id: '33333333-3333-4333-8333-333333333333',
         gwgCheckId: CHECK_ID,
         fullName: 'Erika Muster',
+        birthDate: new Date('1980-01-02T00:00:00Z'),
+        birthPlace: 'Berlin',
+        residence: 'Musterstraße 1, 10115 Berlin',
+        nationality: 'deutsch',
+        isPep: false,
         position: 0,
+        linkedBeneficialOwnerId: '44444444-4444-4444-8444-444444444444',
       },
     ],
     ownershipStructureNotes: 'Erika Muster hält sämtliche Anteile.',
@@ -364,7 +376,16 @@ describe('atomare GwG-Bearbeitung', () => {
     const data = formData();
     data.set('legalForm', 'GbR');
     data.set('noRegisterEntry', 'on');
-    data.set('representativeNamesText', 'Erika Muster');
+    data.set(
+      'representativesJson',
+      JSON.stringify([
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          fullName: 'Erika Muster',
+          isNew: false,
+        },
+      ]),
+    );
     data.set('ownershipStructureNotes', 'Erika Muster kontrolliert die Gesellschaft.');
     data.set(
       'expectedRevision',
@@ -403,6 +424,23 @@ describe('atomare GwG-Bearbeitung', () => {
     const result = await addBeneficialOwnerAction(null, data);
 
     expect(result).toEqual({ ok: false, error: 'Validierungsfehler.' });
+    expect(m.withStaff).not.toHaveBeenCalled();
+  });
+
+  it('GWG-REPRESENTATIVE-AUTHORITY-001: weist die alte Freitextpflege für Vertreter zurück', async () => {
+    const data = formData();
+    data.set('legalForm', 'GbR');
+    data.set('noRegisterEntry', 'on');
+    data.set('representativeNamesText', 'Erika Muster');
+    data.set('ownershipStructureNotes', 'Erika Muster kontrolliert die Gesellschaft.');
+    data.set('expectedRevision', 'stale');
+
+    const result = await saveLegalEntityDetailsAction(null, data);
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Gesetzliche Vertreter müssen über erfasste Personen ausgewählt werden.',
+    });
     expect(m.withStaff).not.toHaveBeenCalled();
   });
 
@@ -456,6 +494,259 @@ describe('atomare GwG-Bearbeitung', () => {
         isPep: true,
       },
     });
+  });
+
+  // Fachkatalog: GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001
+  it('erfasst eine neue Person mit ausgewählten Rollen statt einer freien Vertreterzeile', async () => {
+    const ownerId = '33333333-3333-4333-8333-333333333333';
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          client: { kind: 'JURPERS' },
+          representatives: [{ position: 0 }],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgBeneficialOwner: {
+        create: vi.fn().mockResolvedValue({ id: ownerId }),
+      },
+      gwgRepresentative: {
+        create: vi.fn().mockResolvedValue({ id: '44444444-4444-4444-8444-444444444444' }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('fullName', 'Erika Muster');
+    data.set('isBeneficialOwner', 'on');
+    data.set('isRepresentative', 'on');
+    data.set('birthDate', '1980-01-02');
+    data.set('birthPlace', 'Berlin');
+    data.set('residence', 'Musterstraße 1, 10115 Berlin');
+    data.set('nationality', 'deutsch');
+    data.set('isPep', 'false');
+
+    expect(await addGwgPersonAction(null, data)).toEqual({ ok: true });
+    expect(tx.gwgBeneficialOwner.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        gwgCheckId: CHECK_ID,
+        fullName: 'Erika Muster',
+        isPep: false,
+      }),
+      select: { id: true },
+    });
+    expect(tx.gwgRepresentative.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        gwgCheckId: CHECK_ID,
+        fullName: 'Erika Muster',
+        position: 1,
+        linkedBeneficialOwnerId: ownerId,
+      }),
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'gwg.person.add',
+        after: expect.objectContaining({
+          roles: ['WIRTSCHAFTLICH_BERECHTIGT', 'VERTRETUNGSBERECHTIGT'],
+        }),
+      }),
+    );
+  });
+
+  // Fachkatalog: GWG-REPRESENTATIVE-AUTHORITY-001
+  it('erfasst eine reine Vertreterperson ohne wirtschaftliche Eigentümerrolle', async () => {
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          client: { kind: 'PERSGES' },
+          representatives: [],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgBeneficialOwner: { create: vi.fn() },
+      gwgRepresentative: { create: vi.fn().mockResolvedValue({ id: 'representative-1' }) },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('fullName', 'Max Vertreter');
+    data.set('birthDate', '1980-01-02');
+    data.set('birthPlace', 'Berlin');
+    data.set('residence', 'Musterstraße 1, 10115 Berlin');
+    data.set('nationality', 'deutsch');
+    data.set('isPep', 'false');
+    data.set('isRepresentative', 'on');
+
+    expect(await addGwgPersonAction(null, data)).toEqual({ ok: true });
+    expect(tx.gwgBeneficialOwner.create).not.toHaveBeenCalled();
+    expect(tx.gwgRepresentative.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        gwgCheckId: CHECK_ID,
+        fullName: 'Max Vertreter',
+        birthDate: new Date('1980-01-02T00:00:00.000Z'),
+        birthPlace: 'Berlin',
+        residence: 'Musterstraße 1, 10115 Berlin',
+        nationality: 'deutsch',
+        isPep: false,
+        position: 0,
+        linkedBeneficialOwnerId: null,
+      }),
+    });
+  });
+
+  // Fachkatalog: GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001
+  it('ergänzt eine bestehende gesetzliche Vertretung atomar um die wirtschaftlich-berechtigte Rolle', async () => {
+    const representativeId = '33333333-3333-4333-8333-333333333333';
+    const ownerId = '44444444-4444-4444-8444-444444444444';
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'IN_REVIEW',
+          client: { kind: 'JURPERS' },
+          representatives: [
+            {
+              id: representativeId,
+              fullName: 'Max Vertreter',
+              birthDate: new Date('1980-01-02T00:00:00.000Z'),
+              birthPlace: 'Berlin',
+              residence: 'Musterstraße 1, 10115 Berlin',
+              nationality: 'deutsch',
+              isPep: false,
+              linkedBeneficialOwnerId: null,
+            },
+          ],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgBeneficialOwner: {
+        create: vi.fn().mockResolvedValue({ id: ownerId }),
+      },
+      gwgRepresentative: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('representativeId', representativeId);
+    data.set('ownershipPct', '40');
+
+    expect(await addBeneficialOwnerRoleAction(null, data)).toEqual({
+      ok: true,
+      createdOwnerId: ownerId,
+      reviewReset: true,
+    });
+    expect(tx.gwgBeneficialOwner.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        gwgCheckId: CHECK_ID,
+        fullName: 'Max Vertreter',
+        ownershipPct: 40,
+        isPep: false,
+      }),
+      select: { id: true },
+    });
+    expect(tx.gwgRepresentative.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: representativeId,
+        gwgCheckId: CHECK_ID,
+        linkedBeneficialOwnerId: null,
+      },
+      data: { linkedBeneficialOwnerId: ownerId },
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'gwg.person.roles.update',
+        after: expect.objectContaining({
+          roles: ['VERTRETUNGSBERECHTIGT', 'WIRTSCHAFTLICH_BERECHTIGT'],
+        }),
+      }),
+    );
+  });
+
+  // Fachkatalog: GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001,
+  // GWG-IDENTIFICATION-EVIDENCE-001
+  it('speichert allgemeine Angaben einer Doppelrolle einmal und synchronisiert beide Rollensnapshots', async () => {
+    const ownerId = '33333333-3333-4333-8333-333333333333';
+    const representativeId = '44444444-4444-4444-8444-444444444444';
+    const current = {
+      fullName: 'Erika Muster',
+      birthDate: new Date('1980-01-02T00:00:00.000Z'),
+      birthPlace: 'Bonn',
+      residence: 'Musterstraße 1, 10115 Berlin',
+      nationality: 'deutsch',
+      isPep: false,
+    };
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'IN_REVIEW',
+          representativeNames: ['Erika Muster'],
+          beneficialOwners: [{ id: ownerId, ...current }],
+          representatives: [
+            {
+              id: representativeId,
+              ...current,
+              position: 0,
+              linkedBeneficialOwnerId: ownerId,
+            },
+          ],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgBeneficialOwner: { update: vi.fn().mockResolvedValue({}) },
+      gwgRepresentative: { update: vi.fn().mockResolvedValue({}) },
+      gwgIdDocument: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('ownerId', ownerId);
+    data.set('representativeId', representativeId);
+    data.set('fullName', 'Erika Muster');
+    data.set('birthDate', '1980-01-02');
+    data.set('birthPlace', 'Berlin');
+    data.set('residence', 'Musterstraße 1, 10115 Berlin');
+    data.set('nationality', 'deutsch');
+    data.set('isPep', 'true');
+    data.set('expectedRevision', gwgPersonGeneralRevision(current));
+
+    const result = await updateGwgPersonGeneralAction(null, data);
+
+    expect(result).toMatchObject({
+      ok: true,
+      reviewReset: true,
+      saved: {
+        fullName: 'Erika Muster',
+        birthDate: '1980-01-02',
+        birthPlace: 'Berlin',
+        residence: 'Musterstraße 1, 10115 Berlin',
+        nationality: 'deutsch',
+        isPep: true,
+      },
+    });
+    const commonData = {
+      fullName: 'Erika Muster',
+      birthDate: new Date('1980-01-02T00:00:00.000Z'),
+      birthPlace: 'Berlin',
+      residence: 'Musterstraße 1, 10115 Berlin',
+      nationality: 'deutsch',
+      isPep: true,
+    };
+    expect(tx.gwgBeneficialOwner.update).toHaveBeenCalledWith({
+      where: { id: ownerId },
+      data: commonData,
+    });
+    expect(tx.gwgRepresentative.update).toHaveBeenCalledWith({
+      where: { id: representativeId },
+      data: commonData,
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: 'gwg.person.general.update' }),
+    );
   });
 
   it('korrigiert alle Personenangaben atomar, auditierbar und nimmt die Übergabe zurück', async () => {
@@ -571,6 +862,7 @@ describe('atomare GwG-Bearbeitung', () => {
       where: {
         gwgCheckId: CHECK_ID,
         id: { in: [ownerDocument.id] },
+        supersededAt: null,
       },
       data: {
         identityAssignmentConfirmedAt: null,
@@ -709,7 +1001,7 @@ describe('atomare GwG-Bearbeitung', () => {
       ],
     });
     expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
-      where: { gwgCheckId: CHECK_ID, id: { in: [document.id] } },
+      where: { gwgCheckId: CHECK_ID, id: { in: [document.id] }, supersededAt: null },
       data: {
         beneficialOwnerSubjectId: null,
         identityAssignmentConfirmedAt: null,
@@ -794,6 +1086,7 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(tx.gwgIdDocument.findMany).toHaveBeenNthCalledWith(1, {
       where: {
         gwgCheckId: CHECK_ID,
+        supersededAt: null,
         OR: [
           { beneficialOwnerSubjectId: ownerId },
           { representativeSubjectId: { in: [representativeId] } },
@@ -808,7 +1101,15 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(tx.gwgIdDocument.updateMany).not.toHaveBeenCalled();
     expect(tx.gwgRepresentative.updateMany).toHaveBeenCalledWith({
       where: { gwgCheckId: CHECK_ID, linkedBeneficialOwnerId: ownerId },
-      data: { linkedBeneficialOwnerId: null },
+      data: {
+        fullName: 'Erika Muster',
+        birthDate: new Date('1980-01-02T00:00:00.000Z'),
+        birthPlace: 'Berlin',
+        residence: 'Berlin',
+        nationality: 'deutsch',
+        isPep: false,
+        linkedBeneficialOwnerId: null,
+      },
     });
     expect(m.evidenceRecord).toHaveBeenCalledWith(
       tx,
@@ -840,6 +1141,7 @@ describe('atomare GwG-Bearbeitung', () => {
       },
       gwgIdDocument: {
         findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue({ id: '66666666-6666-4666-8666-666666666666' }),
       },
     };
@@ -959,6 +1261,7 @@ describe('atomare GwG-Bearbeitung', () => {
       },
       gwgIdDocument: {
         findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue({ id: '66666666-6666-4666-8666-666666666666' }),
       },
     };
@@ -1004,6 +1307,7 @@ describe('atomare GwG-Bearbeitung', () => {
       },
       gwgIdDocument: {
         findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn(),
         createMany: vi.fn().mockResolvedValue({ count: 2 }),
       },
@@ -1030,6 +1334,303 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(created[0]!.documentSetId).toBe(created[1]!.documentSetId);
     expect(created[0]!.representativeSubjectId).toBe('33333333-3333-4333-8333-333333333333');
     expect(tx.gwgIdDocument.create).not.toHaveBeenCalled();
+  });
+
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+  it('ersetzt einen Ausweissatz atomar und erhält die Originalbelege in der Akte', async () => {
+    const replacementId = '55555555-5555-4555-8555-555555555555';
+    const oldSetId = '77777777-7777-4777-8777-777777777777';
+    const secondOldSetId = '77777777-7777-4777-8777-777777777778';
+    const oldDocuments = [
+      {
+        id: '88888888-8888-4888-8888-888888888881',
+        documentSetId: oldSetId,
+        documentId: '99999999-9999-4999-8999-999999999991',
+        type: 'PERSONALAUSWEIS',
+        ownerName: 'Rey Koxha',
+        naturalClientSubjectId: null,
+        beneficialOwnerSubjectId: null,
+        representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+        verifiedAt: new Date('2026-01-01T00:00:00Z'),
+        identityAssignmentConfirmedAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      {
+        id: '88888888-8888-4888-8888-888888888882',
+        documentSetId: oldSetId,
+        documentId: '99999999-9999-4999-8999-999999999992',
+        type: 'PERSONALAUSWEIS',
+        ownerName: 'Rey Koxha',
+        naturalClientSubjectId: null,
+        beneficialOwnerSubjectId: null,
+        representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+        verifiedAt: new Date('2026-01-01T00:00:00Z'),
+        identityAssignmentConfirmedAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      {
+        id: '88888888-8888-4888-8888-888888888883',
+        documentSetId: secondOldSetId,
+        documentId: '99999999-9999-4999-8999-999999999993',
+        type: 'REISEPASS',
+        ownerName: 'Rey Koxha',
+        naturalClientSubjectId: null,
+        beneficialOwnerSubjectId: null,
+        representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+        verifiedAt: new Date('2026-01-01T00:00:00Z'),
+        identityAssignmentConfirmedAt: new Date('2026-01-01T00:00:00Z'),
+      },
+    ];
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          representatives: [
+            { id: '33333333-3333-4333-8333-333333333333', fullName: 'Rey Koxha', position: 0 },
+          ],
+          client: { id: CLIENT_ID, name: 'Muster GbR', kind: 'PERSGES' },
+          beneficialOwners: [],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgIdDocument: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue(oldDocuments),
+        updateMany: vi.fn().mockResolvedValue({ count: 3 }),
+        create: vi.fn().mockResolvedValue({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('type', 'PERSONALAUSWEIS');
+    data.set('subjectKey', 'representative:33333333-3333-4333-8333-333333333333');
+    data.set('number', 'NEU123');
+    data.set('issuedBy', 'Stadt Berlin');
+    data.set('issueDate', '2026-01-01');
+    data.set('expiryDate', '2036-01-01');
+    data.set('documentId', replacementId);
+    data.set('replacementMode', 'set');
+    data.set('replaceDocumentSetId', oldSetId);
+
+    expect(await addIdDocumentAction(null, data)).toEqual({ ok: true, reviewReset: false });
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        gwgCheckId: CHECK_ID,
+        id: { in: oldDocuments.map((document) => document.id) },
+        supersededAt: null,
+      },
+      data: {
+        supersededAt: expect.any(Date),
+        supersededByDocumentSetId: expect.any(String),
+      },
+    });
+    expect(tx.gwgIdDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ documentId: replacementId, number: 'NEU123' }),
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: 'gwg.id_document.replace' }),
+    );
+  });
+
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+  it('legt aus einem Doppelbestand bewusst genau einen Ausweissatz als aktuell fest', async () => {
+    const selectedSetId = '77777777-7777-4777-8777-777777777777';
+    const oldSetId = '77777777-7777-4777-8777-777777777778';
+    const representativeSubjectId = '33333333-3333-4333-8333-333333333333';
+    const selectedDocument = {
+      id: '88888888-8888-4888-8888-888888888881',
+      documentSetId: selectedSetId,
+      documentId: '99999999-9999-4999-8999-999999999991',
+      type: 'PERSONALAUSWEIS',
+      naturalClientSubjectId: null,
+      beneficialOwnerSubjectId: null,
+      representativeSubjectId,
+    };
+    const oldDocuments = [
+      {
+        id: '88888888-8888-4888-8888-888888888882',
+        documentSetId: oldSetId,
+        documentId: '99999999-9999-4999-8999-999999999992',
+        type: 'REISEPASS',
+      },
+      {
+        id: '88888888-8888-4888-8888-888888888883',
+        documentSetId: oldSetId,
+        documentId: '99999999-9999-4999-8999-999999999993',
+        type: 'REISEPASS',
+      },
+    ];
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({ status: 'IN_REVIEW' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgIdDocument: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([selectedDocument])
+          .mockResolvedValueOnce([selectedDocument, ...oldDocuments]),
+        updateMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('documentSetId', selectedSetId);
+
+    expect(await selectCurrentIdentityDocumentSetAction(null, data)).toEqual({
+      ok: true,
+      reviewReset: true,
+    });
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        gwgCheckId: CHECK_ID,
+        id: { in: oldDocuments.map((document) => document.id) },
+        supersededAt: null,
+      },
+      data: {
+        supersededAt: expect.any(Date),
+        supersededByDocumentSetId: selectedSetId,
+      },
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'gwg.id_document.make_current',
+        resourceId: selectedSetId,
+      }),
+    );
+  });
+
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+  it('ersetzt alle bisherigen Registernachweise desselben Typs', async () => {
+    const replacementId = '55555555-5555-4555-8555-555555555555';
+    const oldDocument = {
+      id: '88888888-8888-4888-8888-888888888881',
+      documentSetId: '77777777-7777-4777-8777-777777777777',
+      documentId: '99999999-9999-4999-8999-999999999991',
+      type: 'HANDELSREGISTERAUSZUG',
+      ownerName: 'Muster GmbH',
+      naturalClientSubjectId: null,
+      beneficialOwnerSubjectId: null,
+      representativeSubjectId: null,
+      verifiedAt: null,
+      identityAssignmentConfirmedAt: null,
+    };
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'IN_REVIEW',
+          representatives: [],
+          client: { id: CLIENT_ID, name: 'Muster GmbH', kind: 'JURPERS' },
+          beneficialOwners: [],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgIdDocument: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([oldDocument]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        create: vi.fn().mockResolvedValue({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('type', 'HANDELSREGISTERAUSZUG');
+    data.set('documentId', replacementId);
+    data.set('replacementMode', 'type');
+
+    expect(await addIdDocumentAction(null, data)).toEqual({ ok: true, reviewReset: true });
+    expect(tx.gwgIdDocument.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          gwgCheckId: CHECK_ID,
+          type: 'HANDELSREGISTERAUSZUG',
+          supersededAt: null,
+        },
+      }),
+    );
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
+      where: { gwgCheckId: CHECK_ID, id: { in: [oldDocument.id] }, supersededAt: null },
+      data: {
+        supersededAt: expect.any(Date),
+        supersededByDocumentSetId: expect.any(String),
+      },
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: 'gwg.evidence.replace' }),
+    );
+  });
+
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+  it('blockiert mehr als zwei Dateien in einem neuen Ausweissatz vor jedem DB-Zugriff', async () => {
+    const data = formData();
+    data.set('type', 'PERSONALAUSWEIS');
+    data.set('subjectKey', 'representative:33333333-3333-4333-8333-333333333333');
+    data.append('documentIds', '55555555-5555-4555-8555-555555555551');
+    data.append('documentIds', '55555555-5555-4555-8555-555555555552');
+    data.append('documentIds', '55555555-5555-4555-8555-555555555553');
+
+    const result = await addIdDocumentAction(null, data);
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining('höchstens zwei Dateien'),
+    });
+    expect(m.withStaff).not.toHaveBeenCalled();
+  });
+
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+  it('entfernt nur die aktive GwG-Zuordnung und entbestätigt die verbleibende Ausweisseite', async () => {
+    const evidenceId = '88888888-8888-4888-8888-888888888881';
+    const documentId = '99999999-9999-4999-8999-999999999991';
+    const setId = '77777777-7777-4777-8777-777777777777';
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({ status: 'IN_REVIEW' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgIdDocument: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: evidenceId,
+          documentId,
+          documentSetId: setId,
+          type: 'PERSONALAUSWEIS',
+          ownerName: 'Rey Koxha',
+          naturalClientSubjectId: null,
+          beneficialOwnerSubjectId: null,
+          representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+        }),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('gwgIdDocumentId', evidenceId);
+
+    expect(await removeGwgEvidenceLinkAction(null, data)).toEqual({
+      ok: true,
+      reviewReset: true,
+    });
+    expect(tx.gwgIdDocument.deleteMany).toHaveBeenCalledWith({
+      where: { id: evidenceId, gwgCheckId: CHECK_ID, supersededAt: null },
+    });
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
+      where: { gwgCheckId: CHECK_ID, documentSetId: setId, supersededAt: null },
+      data: {
+        identityAssignmentConfirmedAt: null,
+        identityAssignmentConfirmedBy: null,
+        verifiedAt: null,
+      },
+    });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'gwg.id_document.unlink',
+        after: expect.objectContaining({ documentId, documentRetainedInClientFile: true }),
+      }),
+    );
+    expect((tx as { document?: unknown }).document).toBeUndefined();
   });
 
   it('meldet einen bereits zugeordneten Aktenbeleg klar statt eines stillen Erfolgs', async () => {
@@ -1107,8 +1708,6 @@ describe('atomare GwG-Bearbeitung', () => {
     const sourceSetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const targetDocumentId = '55555555-5555-4555-8555-555555555555';
     const sourceFrontId = '66666666-6666-4666-8666-666666666666';
-    const sourceBackId = '77777777-7777-4777-8777-777777777777';
-    const unlinkedId = '88888888-8888-4888-8888-888888888888';
     const representativeId = '33333333-3333-4333-8333-333333333333';
     const row = (id: string, documentSetId: string, documentId: string, confirmed: boolean) => ({
       id,
@@ -1138,7 +1737,6 @@ describe('atomare GwG-Bearbeitung', () => {
     const existing = [
       row('10000000-0000-4000-8000-000000000001', targetSetId, targetDocumentId, true),
       row('10000000-0000-4000-8000-000000000002', sourceSetId, sourceFrontId, false),
-      row('10000000-0000-4000-8000-000000000003', sourceSetId, sourceBackId, false),
     ];
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(0),
@@ -1148,17 +1746,14 @@ describe('atomare GwG-Bearbeitung', () => {
       },
       gwgIdDocument: {
         findMany: vi.fn().mockResolvedValue(existing),
-        updateMany: vi.fn().mockResolvedValue({ count: 3 }),
-        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 2 }),
+        createMany: vi.fn(),
       },
     };
     runWithStaffOn(tx);
     const data = formData();
     data.set('targetDocumentSetId', targetSetId);
-    // Selbst wenn nur eine Seite des offenen Quellsatzes übermittelt wird,
-    // verschiebt der Server den gesamten persistierten Satz.
     data.append('documentIds', sourceFrontId);
-    data.append('documentIds', unlinkedId);
 
     const result = await extendIdentityDocumentSetAction(null, data);
 
@@ -1167,7 +1762,7 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(m.lockCleanGwgDocuments).toHaveBeenCalledWith(tx, {
       tenantId: 'tenant-1',
       clientId: CLIENT_ID,
-      documentIds: [targetDocumentId, sourceFrontId, sourceBackId, unlinkedId],
+      documentIds: [targetDocumentId, sourceFrontId],
     });
     expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
       where: {
@@ -1183,16 +1778,7 @@ describe('atomare GwG-Bearbeitung', () => {
         verifiedAt: null,
       }),
     });
-    expect(tx.gwgIdDocument.createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          gwgCheckId: CHECK_ID,
-          documentId: unlinkedId,
-          documentSetId: targetSetId,
-          verifiedAt: null,
-        }),
-      ],
-    });
+    expect(tx.gwgIdDocument.createMany).not.toHaveBeenCalled();
     expect(m.evidenceRecord).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
@@ -1399,7 +1985,7 @@ describe('atomare GwG-Bearbeitung', () => {
       data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
     });
     expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
-      where: { documentSetId, gwgCheckId: CHECK_ID },
+      where: { documentSetId, gwgCheckId: CHECK_ID, supersededAt: null },
       data: expect.objectContaining({
         type: 'PERSONALAUSWEIS',
         ownerName: 'Rey Koxha',
@@ -1493,7 +2079,16 @@ describe('atomare GwG-Bearbeitung', () => {
     const data = formData();
     data.set('legalForm', 'GbR');
     data.set('noRegisterEntry', 'on');
-    data.set('representativeNamesText', 'Erika Muster');
+    data.set(
+      'representativesJson',
+      JSON.stringify([
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          fullName: 'Erika Muster',
+          isNew: false,
+        },
+      ]),
+    );
     data.set('ownershipStructureNotes', 'Erika Muster kontrolliert die Gesellschaft.');
     data.set(
       'expectedRevision',

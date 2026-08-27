@@ -2,7 +2,6 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createPortal } from 'react-dom';
 import { FileSearch, Loader2, X } from 'lucide-react';
 import { addIdDocumentAction } from './id-document-actions';
 import { type ActionResult } from './actions';
@@ -18,6 +17,7 @@ import {
   type SelectableGwgDocument,
 } from './use-gwg-document-search';
 import { useGwgIdentitySubjects } from './identity-subjects-context';
+import { Modal } from '@/components/ui/modal';
 
 const identityTypes = [
   { value: 'PERSONALAUSWEIS', label: 'Personalausweis' },
@@ -40,6 +40,15 @@ interface Props {
   clientDocuments: SelectableGwgDocument[];
   variant: 'identity' | 'entity';
   subjectOptions?: IdentitySubjectOption[];
+  /** Vorausgewählte Person (z. B. innerhalb einer Personen-Karte). */
+  defaultSubjectKey?: string;
+  /** Voreingestellter Dokumenttyp (z. B. innerhalb eines Typ-Unterblocks). */
+  defaultType?: string;
+  /** Bindet das Formular an den voreingestellten Typ und blendet die Typwahl aus. */
+  lockType?: boolean;
+  /** Ersetzt im bearbeitbaren Snapshot einen Ausweissatz, alle Ausweise der
+   * Person oder alle Rechtsträgernachweise des Typs. */
+  replacement?: { mode: 'set'; documentSetId: string } | { mode: 'subject' } | { mode: 'type' };
 }
 
 export function AddIdDocumentForm({
@@ -48,6 +57,10 @@ export function AddIdDocumentForm({
   clientDocuments,
   variant,
   subjectOptions = EMPTY_SUBJECT_OPTIONS,
+  defaultSubjectKey,
+  defaultType,
+  lockType = false,
+  replacement,
 }: Props) {
   const { subjectOptions: allSubjects } = useGwgIdentitySubjects(subjectOptions);
   const availableSubjects = useMemo(
@@ -58,13 +71,19 @@ export function AddIdDocumentForm({
   const primaryDocumentIdRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   const types = variant === 'identity' ? identityTypes : entityTypes;
-  const [type, setType] = useState<string>(types[0].value);
+  const [type, setType] = useState<string>(
+    defaultType && types.some((t) => t.value === defaultType) ? defaultType : types[0].value,
+  );
+  const typeLabel = types.find((entry) => entry.value === type)?.label ?? type;
   const [selectedDocuments, setSelectedDocuments] = useState<SelectableGwgDocument[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedSubjectKey, setSelectedSubjectKey] = useState(
-    availableSubjects.length === 1 ? availableSubjects[0]!.key : '',
+    defaultSubjectKey && availableSubjects.some((option) => option.key === defaultSubjectKey)
+      ? defaultSubjectKey
+      : availableSubjects.length === 1
+        ? availableSubjects[0]!.key
+        : '',
   );
   const router = useRouter();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
@@ -72,20 +91,23 @@ export function AddIdDocumentForm({
     null,
   );
 
-  useEffect(() => setMounted(true), []);
   useEffect(() => {
     setSelectedSubjectKey((current) =>
       availableSubjects.some((option) => option.key === current)
         ? current
-        : availableSubjects.length === 1
-          ? availableSubjects[0]!.key
-          : '',
+        : defaultSubjectKey && availableSubjects.some((option) => option.key === defaultSubjectKey)
+          ? defaultSubjectKey
+          : availableSubjects.length === 1
+            ? availableSubjects[0]!.key
+            : '',
     );
-  }, [availableSubjects]);
+  }, [availableSubjects, defaultSubjectKey]);
   useEffect(() => {
     if (!state?.ok) return;
     formRef.current?.reset();
-    setType(types[0].value);
+    setType(
+      defaultType && types.some((t) => t.value === defaultType) ? defaultType : types[0].value,
+    );
     setSelectedDocuments([]);
     // Refresh außerhalb der Form-Transition (Action revalidiert die aktuelle
     // Route nicht mehr — sonst hing die Transition bis zum nächsten Klick).
@@ -107,7 +129,7 @@ export function AddIdDocumentForm({
     if (isPending || submittingRef.current) return;
     if (variant === 'identity') {
       setSelectedDocuments((current) =>
-        current.some((entry) => entry.id === document.id) || current.length >= 4
+        current.some((entry) => entry.id === document.id) || current.length >= 2
           ? current
           : [...current, document],
       );
@@ -136,139 +158,135 @@ export function AddIdDocumentForm({
     setSelectedDocuments((current) =>
       current.some((entry) => entry.id === document.id)
         ? current.filter((entry) => entry.id !== document.id)
-        : current.length >= 4
+        : current.length >= 2
           ? current
           : [...current, document],
     );
   }
 
   const picker = pickerOpen ? (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
-      onClick={() => setPickerOpen(false)}
+    <Modal
+      title="Dokument aus der Mandantenakte"
+      onClose={() => setPickerOpen(false)}
+      panelClassName="card flex max-h-[85vh] w-full max-w-3xl flex-col p-0"
+      showCloseButton={false}
+      closeDisabled={isPending}
     >
-      <div
-        className="card flex max-h-[85vh] w-full max-w-3xl flex-col p-0"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-default px-5 py-4">
-          <div>
-            <h2 className="font-semibold text-primary">Dokument aus der Mandantenakte</h2>
-            <p className="text-xs text-muted">Nur verfügbare GwG-Nachweise werden angezeigt.</p>
-          </div>
+      <div className="flex items-center justify-between border-b border-default px-5 py-4">
+        <div>
+          <h2 className="font-semibold text-primary">Dokument aus der Mandantenakte</h2>
+          <p className="text-xs text-muted">Nur verfügbare GwG-Nachweise werden angezeigt.</p>
+        </div>
+        <button
+          type="button"
+          className="modal-close"
+          onClick={() => setPickerOpen(false)}
+          aria-label="Dokumentauswahl schließen"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="border-b border-default p-4">
+        <label className="sr-only" htmlFor={`${variant}-document-search`}>
+          Dokumente durchsuchen
+        </label>
+        <input
+          id={`${variant}-document-search`}
+          className="input"
+          type="search"
+          placeholder="Titel durchsuchen …"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          autoFocus
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {documentSearch.documents.length === 0 ? (
+          <p className="p-6 text-center text-sm text-muted">
+            {documentSearch.pending
+              ? 'Durchsucht die gesamte Akte …'
+              : 'Kein passender GwG-Nachweis.'}
+          </p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {documentSearch.documents.map((document) => {
+              const selected = selectedDocuments.some((entry) => entry.id === document.id);
+              return (
+                <li
+                  key={document.id}
+                  className={`rounded-md border p-3 ${selected ? 'border-brand-500 bg-brand-50/40' : 'border-default'}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-primary">{document.title}</p>
+                      <p className="text-xs text-muted">
+                        {new Intl.DateTimeFormat('de-DE').format(new Date(document.createdAt))}
+                      </p>
+                    </div>
+                    <DocumentPreviewButton
+                      documentId={document.id}
+                      documentTitle={document.title}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary mt-3 w-full text-xs"
+                    onClick={() =>
+                      variant === 'identity'
+                        ? toggleIdentityDocument(document)
+                        : selectDocument(document)
+                    }
+                    disabled={
+                      isPending ||
+                      (variant === 'identity' && !selected && selectedDocuments.length >= 2)
+                    }
+                  >
+                    {variant === 'identity'
+                      ? selected
+                        ? 'Aus Satz entfernen'
+                        : 'Zum Ausweissatz hinzufügen'
+                      : 'Dieses Dokument verwenden'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div className="mt-3 space-y-1 text-xs text-muted">
+          {documentSearch.pending && (
+            <p className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gesamte Mandantenakte wird durchsucht
+              …
+            </p>
+          )}
+          {documentSearch.normalizedQuery.length < 2 && (
+            <p>
+              Gezeigt werden die neuesten Belege. Ab zwei Zeichen durchsucht die Suche die gesamte
+              Akte.
+            </p>
+          )}
+          {documentSearch.limited && (
+            <p>Mehr als 50 Treffer — bitte den Suchbegriff weiter eingrenzen.</p>
+          )}
+          {documentSearch.error && <p className="text-red-700">{documentSearch.error}</p>}
+        </div>
+      </div>
+      {variant === 'identity' && (
+        <div className="flex items-center justify-between gap-3 border-t border-default px-5 py-3">
+          <p className="text-xs text-muted">
+            {selectedDocuments.length} von maximal 2 Dateien ausgewählt
+          </p>
           <button
             type="button"
-            className="modal-close"
+            className="btn-primary text-xs"
             onClick={() => setPickerOpen(false)}
-            aria-label="Dokumentauswahl schließen"
+            disabled={selectedDocuments.length === 0}
           >
-            <X className="h-5 w-5" />
+            Auswahl übernehmen
           </button>
         </div>
-        <div className="border-b border-default p-4">
-          <label className="sr-only" htmlFor={`${variant}-document-search`}>
-            Dokumente durchsuchen
-          </label>
-          <input
-            id={`${variant}-document-search`}
-            className="input"
-            type="search"
-            placeholder="Titel durchsuchen …"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            autoFocus
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {documentSearch.documents.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted">
-              {documentSearch.pending
-                ? 'Durchsucht die gesamte Akte …'
-                : 'Kein passender GwG-Nachweis.'}
-            </p>
-          ) : (
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {documentSearch.documents.map((document) => {
-                const selected = selectedDocuments.some((entry) => entry.id === document.id);
-                return (
-                  <li
-                    key={document.id}
-                    className={`rounded-md border p-3 ${selected ? 'border-brand-500 bg-brand-50/40' : 'border-default'}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-primary">
-                          {document.title}
-                        </p>
-                        <p className="text-xs text-muted">
-                          {new Intl.DateTimeFormat('de-DE').format(new Date(document.createdAt))}
-                        </p>
-                      </div>
-                      <DocumentPreviewButton
-                        documentId={document.id}
-                        documentTitle={document.title}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="btn-secondary mt-3 w-full text-xs"
-                      onClick={() =>
-                        variant === 'identity'
-                          ? toggleIdentityDocument(document)
-                          : selectDocument(document)
-                      }
-                      disabled={
-                        isPending ||
-                        (variant === 'identity' && !selected && selectedDocuments.length >= 4)
-                      }
-                    >
-                      {variant === 'identity'
-                        ? selected
-                          ? 'Aus Satz entfernen'
-                          : 'Zum Ausweissatz hinzufügen'
-                        : 'Dieses Dokument verwenden'}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <div className="mt-3 space-y-1 text-xs text-muted">
-            {documentSearch.pending && (
-              <p className="flex items-center gap-1.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gesamte Mandantenakte wird
-                durchsucht …
-              </p>
-            )}
-            {documentSearch.normalizedQuery.length < 2 && (
-              <p>
-                Gezeigt werden die neuesten Belege. Ab zwei Zeichen durchsucht die Suche die gesamte
-                Akte.
-              </p>
-            )}
-            {documentSearch.limited && (
-              <p>Mehr als 50 Treffer — bitte den Suchbegriff weiter eingrenzen.</p>
-            )}
-            {documentSearch.error && <p className="text-red-700">{documentSearch.error}</p>}
-          </div>
-        </div>
-        {variant === 'identity' && (
-          <div className="flex items-center justify-between gap-3 border-t border-default px-5 py-3">
-            <p className="text-xs text-muted">
-              {selectedDocuments.length} von maximal 4 Dateien ausgewählt
-            </p>
-            <button
-              type="button"
-              className="btn-primary text-xs"
-              onClick={() => setPickerOpen(false)}
-              disabled={selectedDocuments.length === 0}
-            >
-              Auswahl übernehmen
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      )}
+    </Modal>
   ) : null;
 
   return (
@@ -280,16 +298,28 @@ export function AddIdDocumentForm({
       >
         <div>
           <p className="text-xs uppercase tracking-wide text-muted">
-            {variant === 'identity' ? 'Ausweis prüfen und zuordnen' : 'Nachweis hinzufügen'}
+            {replacement
+              ? variant === 'identity'
+                ? 'Ausweis ersetzen'
+                : 'Nachweis ersetzen'
+              : variant === 'identity'
+                ? 'Ausweis prüfen und zuordnen'
+                : 'Nachweis hinzufügen'}
           </p>
           <p className="mt-1 text-xs text-muted">
-            {variant === 'identity'
-              ? 'Vorder- und Rückseite gemeinsam aus der Akte auswählen oder nacheinander hochladen und anschließend als einen Ausweissatz speichern.'
-              : 'Vorhandenes Dokument auswählen oder direkt hochladen — die GwG-Zuordnung wird dabei sofort mitgespeichert.'}
+            {replacement
+              ? 'Der bisherige Nachweis wird im bearbeitbaren Prüfsnapshot abgelöst. Das Originaldokument und seine Versionen bleiben in der Mandantenakte erhalten.'
+              : variant === 'identity'
+                ? 'Vorder- und Rückseite gemeinsam aus der Akte auswählen oder nacheinander hochladen und anschließend als einen Ausweissatz speichern.'
+                : 'Vorhandenes Dokument auswählen oder direkt hochladen — die GwG-Zuordnung wird dabei sofort mitgespeichert.'}
           </p>
         </div>
         <input type="hidden" name="checkId" value={checkId} />
         <input type="hidden" name="clientId" value={clientId} />
+        <input type="hidden" name="replacementMode" value={replacement?.mode ?? 'none'} />
+        {replacement?.mode === 'set' && (
+          <input type="hidden" name="replaceDocumentSetId" value={replacement.documentSetId} />
+        )}
         <input
           ref={primaryDocumentIdRef}
           type="hidden"
@@ -301,25 +331,33 @@ export function AddIdDocumentForm({
         ))}
 
         <div className={variant === 'identity' ? 'grid gap-3 sm:grid-cols-2' : ''}>
-          <div>
-            <label className="label" htmlFor={`${variant}-document-type`}>
-              Nachweistyp
-            </label>
-            <select
-              id={`${variant}-document-type`}
-              name="type"
-              className="input"
-              required
-              value={type}
-              onChange={(event) => setType(event.target.value)}
-            >
-              {types.map((entry) => (
-                <option key={entry.value} value={entry.value}>
-                  {entry.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {lockType ? (
+            <div>
+              <span className="label">Nachweistyp</span>
+              <p className="text-sm font-medium text-primary">{typeLabel}</p>
+              <input type="hidden" name="type" value={type} />
+            </div>
+          ) : (
+            <div>
+              <label className="label" htmlFor={`${variant}-document-type`}>
+                Nachweistyp
+              </label>
+              <select
+                id={`${variant}-document-type`}
+                name="type"
+                className="input"
+                required
+                value={type}
+                onChange={(event) => setType(event.target.value)}
+              >
+                {types.map((entry) => (
+                  <option key={entry.value} value={entry.value}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {variant === 'identity' && (
             <div>
               <label className="label" htmlFor="id-subjectKey">
@@ -445,7 +483,7 @@ export function AddIdDocumentForm({
               buttonClassName="btn-secondary text-xs"
               disabled={
                 isPending ||
-                (variant === 'identity' && (!selectedSubjectKey || selectedDocuments.length >= 4))
+                (variant === 'identity' && (!selectedSubjectKey || selectedDocuments.length >= 2))
               }
               onUploaded={(document) =>
                 selectDocument({ ...document, createdAt: new Date().toISOString() })
@@ -463,9 +501,13 @@ export function AddIdDocumentForm({
         {state?.error && <div className="alert-error-sm">{state.error}</div>}
         {state?.ok && (
           <div className="alert-success-sm">
-            {variant === 'identity'
-              ? 'Ausweissatz wurde eindeutig zugeordnet.'
-              : 'Nachweis wurde direkt zugeordnet.'}
+            {replacement
+              ? variant === 'identity'
+                ? 'Ausweissatz wurde ersetzt und neu zugeordnet.'
+                : 'Nachweis wurde ersetzt.'
+              : variant === 'identity'
+                ? 'Ausweissatz wurde eindeutig zugeordnet.'
+                : 'Nachweis wurde direkt zugeordnet.'}
           </div>
         )}
 
@@ -481,11 +523,15 @@ export function AddIdDocumentForm({
           {isPending
             ? 'Speichert…'
             : variant === 'identity'
-              ? 'Ausweissatz speichern'
-              : 'Auswahl speichern'}
+              ? replacement
+                ? 'Ausweissatz ersetzen'
+                : 'Ausweissatz speichern'
+              : replacement
+                ? 'Nachweis ersetzen'
+                : 'Auswahl speichern'}
         </button>
       </form>
-      {mounted && picker ? createPortal(picker, document.body) : null}
+      {picker}
     </>
   );
 }

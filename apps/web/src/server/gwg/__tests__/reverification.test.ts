@@ -164,6 +164,7 @@ describe('GwG-Wiederholungsprüfung', () => {
       where: {
         gwgCheckId: 'open-review',
         type: { in: ['PERSONALAUSWEIS', 'REISEPASS'] },
+        supersededAt: null,
       },
       data: {
         naturalClientSubjectId: null,
@@ -403,6 +404,28 @@ describe('GwG-Wiederholungsprüfung', () => {
             gwgDestroyedAt: null,
           },
         },
+        {
+          id: 'identity-superseded',
+          documentSetId: 'set-superseded',
+          documentId: 'document-superseded',
+          type: 'PERSONALAUSWEIS',
+          ownerName: 'Rita Rolle',
+          number: 'ID-ALT',
+          issuedBy: 'Berlin',
+          issueDate: new Date('2010-01-01T00:00:00.000Z'),
+          expiryDate: new Date('2020-01-01T00:00:00.000Z'),
+          notes: null,
+          supersededAt: new Date('2026-01-01T00:00:00.000Z'),
+          document: {
+            id: 'document-superseded',
+            tenantId: 'tenant-1',
+            clientId: 'client-1',
+            classification: 'GWG_EVIDENCE',
+            deletedAt: null,
+            gwgDestructionRequestedAt: null,
+            gwgDestroyedAt: null,
+          },
+        },
       ],
     };
     const tx = {
@@ -472,6 +495,9 @@ describe('GwG-Wiederholungsprüfung', () => {
         }),
       ],
     });
+    expect(vi.mocked(tx.gwgIdDocument.createMany).mock.calls[0]![0]!.data).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ documentId: 'document-superseded' })]),
+    );
     const copiedDocumentData = vi.mocked(tx.gwgIdDocument.createMany).mock.calls[0]![0]!.data;
     const copiedDocument = Array.isArray(copiedDocumentData)
       ? copiedDocumentData[0]!

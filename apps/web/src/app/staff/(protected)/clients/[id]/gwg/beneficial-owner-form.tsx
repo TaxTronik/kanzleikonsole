@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import { removeBeneficialOwnerAction, updateBeneficialOwnerAction } from './owner-actions';
 import {
@@ -10,6 +11,7 @@ import {
 } from './actions';
 import { useGwgIdentitySubjects } from './identity-subjects-context';
 import { useGwgEditState } from './edit-state-context';
+import { confirmFormSubmission } from '@/components/ui/modal';
 
 type BeneficialOwnerFormValue = {
   fullName: string;
@@ -27,13 +29,16 @@ export function BeneficialOwnerForm({
   clientId,
   value,
   revision,
+  defaultOpen = false,
 }: {
   ownerId: string;
   checkId: string;
   clientId: string;
   value: BeneficialOwnerFormValue;
   revision: string;
+  defaultOpen?: boolean;
 }) {
+  const router = useRouter();
   const { updateBeneficialOwner, removeBeneficialOwner, registerIdentityInvalidations } =
     useGwgIdentitySubjects();
   const { markDraft, markRiskInvalidated } = useGwgEditState();
@@ -72,7 +77,15 @@ export function BeneficialOwnerForm({
     // das Risiko-Formular muss seine CAS-Revision sofort nachziehen.
     markRiskInvalidated();
     if (state.reviewReset) markDraft();
-  }, [markDraft, markRiskInvalidated, registerIdentityInvalidations, state, updateBeneficialOwner]);
+    router.refresh();
+  }, [
+    markDraft,
+    markRiskInvalidated,
+    registerIdentityInvalidations,
+    router,
+    state,
+    updateBeneficialOwner,
+  ]);
 
   useEffect(() => {
     if (!removeState?.ok || !removeState.removedOwnerId) return;
@@ -80,12 +93,14 @@ export function BeneficialOwnerForm({
     registerIdentityInvalidations(removeState.invalidatedIdentitySets ?? []);
     markRiskInvalidated();
     if (removeState.reviewReset) markDraft();
+    router.refresh();
   }, [
     markDraft,
     markRiskInvalidated,
     registerIdentityInvalidations,
     removeBeneficialOwner,
     removeState,
+    router,
   ]);
 
   if (removeState?.ok && removeState.removedOwnerId === ownerId) {
@@ -99,156 +114,49 @@ export function BeneficialOwnerForm({
 
   return (
     <div className="min-w-0 w-full">
-      <div className="flex items-center gap-2">
-        <span className="font-medium text-primary">{displayValue.fullName}</span>
-        {displayValue.isPep && <span className="badge-red">PEP</span>}
-      </div>
       <p className="text-xs text-muted">
-        {displayValue.ownershipPct ? `${Number(displayValue.ownershipPct).toFixed(2)} % · ` : ''}
-        {displayValue.nationality}
-        {displayValue.residence ? ` · ${displayValue.residence}` : ''}
+        Anteil:{' '}
+        {displayValue.ownershipPct
+          ? `${Number(displayValue.ownershipPct).toFixed(2)} %`
+          : 'nicht beziffert'}
       </p>
-      <details className="mt-3 rounded-md border border-default bg-subtle px-3 py-2">
+      <details
+        className="mt-3 rounded-md border border-default bg-subtle px-3 py-2"
+        open={defaultOpen || undefined}
+      >
         <summary className="cursor-pointer text-xs font-medium text-secondary">
-          Angaben bearbeiten
+          Angaben zur wirtschaftlichen Berechtigung
         </summary>
         <form action={action} className="mt-3 space-y-3">
           <input type="hidden" name="ownerId" value={ownerId} />
           <input type="hidden" name="checkId" value={checkId} />
           <input type="hidden" name="clientId" value={clientId} />
           <input type="hidden" name="expectedRevision" value={currentRevision} />
+          <input type="hidden" name="fullName" value={draftValue.fullName} />
+          <input type="hidden" name="birthDate" value={draftValue.birthDate} />
+          <input type="hidden" name="birthPlace" value={draftValue.birthPlace} />
+          <input type="hidden" name="nationality" value={draftValue.nationality} />
+          <input type="hidden" name="residence" value={draftValue.residence} />
+          <input type="hidden" name="isPep" value={draftValue.isPep ? 'true' : 'false'} />
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label-sm" htmlFor={id('fullName')}>
-                Name
-              </label>
-              <input
-                id={id('fullName')}
-                name="fullName"
-                type="text"
-                className="input"
-                value={draftValue.fullName}
-                onChange={(event) =>
-                  setDraftValue((current) => ({ ...current, fullName: event.target.value }))
-                }
-                maxLength={200}
-                required
-                disabled={pending || removePending}
-              />
-            </div>
-            <div>
-              <label className="label-sm" htmlFor={id('birthDate')}>
-                Geburtsdatum
-              </label>
-              <input
-                id={id('birthDate')}
-                name="birthDate"
-                type="date"
-                className="input"
-                value={draftValue.birthDate}
-                onChange={(event) =>
-                  setDraftValue((current) => ({ ...current, birthDate: event.target.value }))
-                }
-                required
-                disabled={pending || removePending}
-              />
-            </div>
-            <div>
-              <label className="label-sm" htmlFor={id('birthPlace')}>
-                Geburtsort
-              </label>
-              <input
-                id={id('birthPlace')}
-                name="birthPlace"
-                type="text"
-                className="input"
-                value={draftValue.birthPlace}
-                onChange={(event) =>
-                  setDraftValue((current) => ({ ...current, birthPlace: event.target.value }))
-                }
-                maxLength={200}
-                required
-                disabled={pending || removePending}
-              />
-            </div>
-            <div>
-              <label className="label-sm" htmlFor={id('nationality')}>
-                Staatsangehörigkeit
-              </label>
-              <input
-                id={id('nationality')}
-                name="nationality"
-                type="text"
-                className="input"
-                value={draftValue.nationality}
-                onChange={(event) =>
-                  setDraftValue((current) => ({ ...current, nationality: event.target.value }))
-                }
-                maxLength={100}
-                required
-                disabled={pending || removePending}
-              />
-            </div>
-            <div>
-              <label className="label-sm" htmlFor={id('residence')}>
-                Wohnsitz
-              </label>
-              <input
-                id={id('residence')}
-                name="residence"
-                type="text"
-                className="input"
-                value={draftValue.residence}
-                onChange={(event) =>
-                  setDraftValue((current) => ({ ...current, residence: event.target.value }))
-                }
-                maxLength={500}
-                required
-                disabled={pending || removePending}
-              />
-            </div>
-            <div>
-              <label className="label-sm" htmlFor={id('ownershipPct')}>
-                Anteil (%)
-              </label>
-              <input
-                id={id('ownershipPct')}
-                name="ownershipPct"
-                type="number"
-                className="input"
-                value={draftValue.ownershipPct}
-                onChange={(event) =>
-                  setDraftValue((current) => ({ ...current, ownershipPct: event.target.value }))
-                }
-                step="0.01"
-                min="0"
-                max="100"
-                disabled={pending || removePending}
-              />
-            </div>
-            <div>
-              <label className="label-sm" htmlFor={id('isPep')}>
-                PEP-Status
-              </label>
-              <select
-                id={id('isPep')}
-                name="isPep"
-                className="input"
-                value={draftValue.isPep ? 'true' : 'false'}
-                onChange={(event) =>
-                  setDraftValue((current) => ({
-                    ...current,
-                    isPep: event.target.value === 'true',
-                  }))
-                }
-                required
-                disabled={pending || removePending}
-              >
-                <option value="false">Keine PEP</option>
-                <option value="true">PEP / enges Familienmitglied</option>
-              </select>
-            </div>
+          <div className="max-w-xs">
+            <label className="label-sm" htmlFor={id('ownershipPct')}>
+              Anteil (%)
+            </label>
+            <input
+              id={id('ownershipPct')}
+              name="ownershipPct"
+              type="number"
+              className="input"
+              value={draftValue.ownershipPct}
+              onChange={(event) =>
+                setDraftValue((current) => ({ ...current, ownershipPct: event.target.value }))
+              }
+              step="0.01"
+              min="0"
+              max="100"
+              disabled={pending || removePending}
+            />
           </div>
 
           <p className="text-xs text-muted">
@@ -264,21 +172,23 @@ export function BeneficialOwnerForm({
             </p>
           )}
           <button type="submit" className="btn-secondary text-xs" disabled={pending}>
-            {pending ? 'Speichert…' : 'Angaben speichern'}
+            {pending ? 'Speichert…' : 'Rollendaten speichern'}
           </button>
         </form>
         <form
           action={removeAction}
           className="mt-3 border-t border-default pt-3"
-          onSubmit={(event) => {
-            if (
-              !window.confirm(
-                `${displayValue.fullName} wirklich aus dem aktuellen Prüfsnapshot entfernen? Zugeordnete Ausweise müssen danach neu zugeordnet werden.`,
-              )
-            ) {
-              event.preventDefault();
-            }
-          }}
+          onSubmit={(event) =>
+            confirmFormSubmission(
+              event,
+              `${displayValue.fullName} wirklich aus dem aktuellen Prüfsnapshot entfernen? Zugeordnete Ausweise müssen danach neu zugeordnet werden.`,
+              {
+                title: 'Wirtschaftlich Berechtigten entfernen',
+                confirmLabel: 'Entfernen',
+                danger: true,
+              },
+            )
+          }
         >
           <input type="hidden" name="ownerId" value={ownerId} />
           <input type="hidden" name="checkId" value={checkId} />

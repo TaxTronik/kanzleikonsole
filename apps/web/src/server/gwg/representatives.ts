@@ -54,6 +54,7 @@ export async function syncGwgRepresentativesTx(
       where: {
         gwgCheckId: input.checkId,
         representativeSubjectId: { in: changedIdentityIds },
+        supersededAt: null,
       },
       select: { id: true, documentSetId: true },
     });
@@ -61,6 +62,7 @@ export async function syncGwgRepresentativesTx(
       where: {
         gwgCheckId: input.checkId,
         id: { in: assignedDocuments.map((document) => document.id) },
+        supersededAt: null,
       },
       data: {
         representativeSubjectId: null,

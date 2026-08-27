@@ -32,7 +32,22 @@ interface AlternativeAuth {
   validate: (source: string) => boolean;
 }
 
+const validatesKnowledgeStaffActionGuard = (source: string): boolean =>
+  /import\s+\{[^}]*\bstaffActionGuard\b[^}]*\}\s+from\s+['"]@\/server\/actions\/staff-action['"]/.test(
+    source,
+  ) && /staffActionGuard\s*\(\s*\{\s*module:\s*['"]knowledge['"]\s*\}\s*\)/.test(source);
+
 const ALTERNATIVE_AUTH: Record<string, AlternativeAuth> = {
+  // Die Wissens-Anhangsrouten brauchen neben der Staff-Session zugleich die
+  // Modulfreigabe und nutzen deshalb den zentralen Guard, der beides koppelt.
+  'api/staff/knowledge/attachments/route.ts': {
+    reason: 'der zentrale Staff-Action-Guard bindet Session und Wissensmodul zusammen',
+    validate: validatesKnowledgeStaffActionGuard,
+  },
+  'api/staff/knowledge/attachments/[id]/route.ts': {
+    reason: 'der zentrale Staff-Action-Guard bindet Session und Wissensmodul zusammen',
+    validate: validatesKnowledgeStaffActionGuard,
+  },
   // Token-gated Kalenderfeed fuer externe Kalender-Apps. verifyIcalToken()
   // ist hier das Auth-Primitive; eine Session waere fuer ICS-Abos ungeeignet.
   'api/portal/ical/[token]/route.ts': {

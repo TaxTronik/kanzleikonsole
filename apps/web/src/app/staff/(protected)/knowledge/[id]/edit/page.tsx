@@ -1,6 +1,7 @@
 ﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { randomUUID } from 'node:crypto';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ArticleEditor } from '../../article-editor';
@@ -16,7 +17,15 @@ export default async function EditArticlePage({ params }: { params: Promise<{ id
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) =>
       Promise.all([
-        tx.kbArticle.findUnique({ where: { id } }),
+        tx.kbArticle.findUnique({
+          where: { id },
+          include: {
+            attachments: {
+              orderBy: { createdAt: 'asc' },
+              select: { id: true, displayName: true, mimeType: true },
+            },
+          },
+        }),
         tx.kbCategory.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       ]),
   );
@@ -24,7 +33,7 @@ export default async function EditArticlePage({ params }: { params: Promise<{ id
   if (!article) notFound();
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="mx-auto max-w-[1600px] p-8">
       <div className="flex items-start gap-4 mb-6">
         <Link
           href={`/staff/knowledge/${article.id}`}
@@ -38,12 +47,14 @@ export default async function EditArticlePage({ params }: { params: Promise<{ id
       <ArticleEditor
         action={updateArticleAction}
         categories={categories}
+        draftToken={randomUUID()}
         initial={{
           id: article.id,
           title: article.title,
           body: article.body,
           categoryId: article.categoryId ?? '',
           published: article.published,
+          attachments: article.attachments,
         }}
       />
     </div>

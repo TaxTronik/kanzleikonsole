@@ -75,12 +75,40 @@ export async function createCategoryAction(
   );
 }
 
-const ArticleSchema = z.object({
-  title: z.string().min(1).max(300),
-  body: z.string().min(1).max(100000),
-  categoryId: z.string().uuid().optional().or(z.literal('')),
-  published: z.enum(['1', 'on', 'true']).optional(),
-});
+const AttachmentIdsSchema = z
+  .string()
+  .max(20_000)
+  .optional()
+  .default('[]')
+  .transform((raw, ctx) => {
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'Anhangsliste ist ungültig.' });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(z.string().uuid()).max(50))
+  .transform((ids) => [...new Set(ids)]);
+
+const ArticleSchema = z
+  .object({
+    title: z.string().min(1).max(300),
+    body: z.string().min(1).max(100000),
+    categoryId: z.string().uuid().optional().or(z.literal('')),
+    published: z.enum(['1', 'on', 'true']).optional(),
+    attachmentIds: AttachmentIdsSchema,
+    attachmentDraftToken: z.string().uuid().optional().or(z.literal('')),
+  })
+  .superRefine((article, ctx) => {
+    if (article.attachmentIds.length > 0 && !article.attachmentDraftToken) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['attachmentDraftToken'],
+        message: 'Anhangszuordnung fehlt.',
+      });
+    }
+  });
 
 export async function createArticleAction(formData: FormData): Promise<void> {
   const g = await staffActionGuard({ module: 'knowledge' });
@@ -89,6 +117,10 @@ export async function createArticleAction(formData: FormData): Promise<void> {
 
   const parsed = parseFormData(ArticleSchema, formData);
   if (!parsed.ok) throw new ActionError(parsed.error);
+  const attachmentDraftToken = parsed.data.attachmentDraftToken;
+  if (parsed.data.attachmentIds.length > 0 && !attachmentDraftToken) {
+    throw new ActionError('Anhangszuordnung fehlt. Bitte Seite neu laden.');
+  }
 
   const baseSlug = slugify(parsed.data.title);
   let slug = baseSlug;
@@ -119,6 +151,23 @@ export async function createArticleAction(formData: FormData): Promise<void> {
             authorId: staffId,
           },
         });
+        if (parsed.data.attachmentIds.length > 0) {
+          const claimed = await tx.kbAttachment.updateMany({
+            where: {
+              id: { in: parsed.data.attachmentIds },
+              tenantId,
+              articleId: null,
+              draftToken: attachmentDraftToken,
+              uploadedBy: staffId,
+            },
+            data: { articleId: article.id },
+          });
+          if (claimed.count !== parsed.data.attachmentIds.length) {
+            throw new ActionError(
+              'Mindestens ein Anhang gehört nicht zu diesem Artikelentwurf. Bitte Seite neu laden.',
+            );
+          }
+        }
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',
@@ -126,7 +175,12 @@ export async function createArticleAction(formData: FormData): Promise<void> {
           action: 'kb.article.create',
           resourceType: 'kb_article',
           resourceId: article.id,
-          after: { title: parsed.data.title, slug, published: !!parsed.data.published },
+          after: {
+            title: parsed.data.title,
+            slug,
+            published: !!parsed.data.published,
+            attachmentCount: parsed.data.attachmentIds.length,
+          },
         });
         return article.id;
       } catch (err) {
@@ -156,10 +210,42 @@ export async function updateArticleAction(formData: FormData): Promise<void> {
   const parsed = parseFormData(UpdateArticleSchema, formData);
   if (!parsed.ok) throw new ActionError(parsed.error);
   const data = parsed.data;
+  const attachmentDraftToken = data.attachmentDraftToken;
+  if (data.attachmentIds.length > 0 && !attachmentDraftToken) {
+    throw new ActionError('Anhangszuordnung fehlt. Bitte Seite neu laden.');
+  }
 
   await withTenantContext(ctx, async (tx) => {
     const before = await tx.kbArticle.findUnique({ where: { id: data.id } });
     if (!before) return;
+    if (data.attachmentIds.length > 0) {
+      const attachments = await tx.kbAttachment.findMany({
+        where: { id: { in: data.attachmentIds }, tenantId },
+        select: { id: true, articleId: true, draftToken: true, uploadedBy: true },
+      });
+      const valid = attachments.every(
+        (attachment) =>
+          attachment.articleId === data.id ||
+          (attachment.articleId === null &&
+            attachment.uploadedBy === staffId &&
+            attachment.draftToken === attachmentDraftToken),
+      );
+      if (attachments.length !== data.attachmentIds.length || !valid) {
+        throw new ActionError(
+          'Mindestens ein Anhang gehört nicht zu diesem Artikel. Bitte Seite neu laden.',
+        );
+      }
+      await tx.kbAttachment.updateMany({
+        where: {
+          id: { in: data.attachmentIds },
+          tenantId,
+          articleId: null,
+          draftToken: attachmentDraftToken,
+          uploadedBy: staffId,
+        },
+        data: { articleId: data.id },
+      });
+    }
     const updated = await tx.kbArticle.update({
       where: { id: data.id },
       data: {
@@ -177,7 +263,11 @@ export async function updateArticleAction(formData: FormData): Promise<void> {
       resourceType: 'kb_article',
       resourceId: updated.id,
       before: { title: before.title, published: before.published },
-      after: { title: updated.title, published: updated.published },
+      after: {
+        title: updated.title,
+        published: updated.published,
+        attachmentCount: data.attachmentIds.length,
+      },
     });
   });
 
@@ -221,6 +311,8 @@ export interface SearchHit {
   snippet: string;
   rank: number;
   categoryName: string | null;
+  authorName: string;
+  createdAt: Date;
 }
 
 /**
@@ -262,6 +354,8 @@ export async function searchArticles(query: string): Promise<SearchHit[]> {
         snippet: string;
         rank: number;
         category_name: string | null;
+        author_name: string;
+        created_at: Date;
       }>
     >`
       SELECT
@@ -275,9 +369,12 @@ export async function searchArticles(query: string): Promise<SearchHit[]> {
           'StartSel=<mark>, StopSel=</mark>, MaxFragments=2, MaxWords=20, MinWords=8'
         ) AS snippet,
         ts_rank(a.search_vec, plainto_tsquery('german', ${q})) AS rank,
-        c.name AS category_name
+        c.name AS category_name,
+        COALESCE(s.full_name, 'Unbekannter Verfasser') AS author_name,
+        a.created_at
       FROM kb_article a
       LEFT JOIN kb_category c ON c.id = a.category_id
+      LEFT JOIN staff_user s ON s.id = a.author_id AND s.tenant_id = a.tenant_id
       WHERE a.published = TRUE
         AND a.search_vec @@ plainto_tsquery('german', ${q})
       ORDER BY rank DESC
@@ -290,6 +387,8 @@ export async function searchArticles(query: string): Promise<SearchHit[]> {
       snippet: sanitizeSearchSnippet(r.snippet),
       rank: r.rank,
       categoryName: r.category_name,
+      authorName: r.author_name,
+      createdAt: r.created_at,
     }));
   });
 }

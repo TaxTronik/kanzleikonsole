@@ -1,5 +1,6 @@
 ﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { randomUUID } from 'node:crypto';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ArticleEditor } from '../article-editor';
@@ -15,7 +16,7 @@ export default async function NewArticlePage() {
   );
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="mx-auto max-w-[1600px] p-8">
       <div className="flex items-start gap-4 mb-6">
         <Link href="/staff/knowledge" className="text-disabled hover:text-secondary mt-1">
           <ArrowLeft className="h-5 w-5" />
@@ -23,7 +24,11 @@ export default async function NewArticlePage() {
         <h1 className="text-2xl font-bold text-primary">Neuer Artikel</h1>
       </div>
 
-      <ArticleEditor action={createArticleAction} categories={categories} />
+      <ArticleEditor
+        action={createArticleAction}
+        categories={categories}
+        draftToken={randomUUID()}
+      />
     </div>
   );
 }

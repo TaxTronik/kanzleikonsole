@@ -60,7 +60,11 @@ export async function invalidatedIdentitySetRevisions(
   const documentSetIds = [...new Set(affectedDocumentSetIds)];
   if (documentSetIds.length === 0) return [];
   const documents = await tx.gwgIdDocument.findMany({
-    where: { gwgCheckId: checkId, documentSetId: { in: documentSetIds } },
+    where: {
+      gwgCheckId: checkId,
+      documentSetId: { in: documentSetIds },
+      supersededAt: null,
+    },
     select: {
       id: true,
       gwgCheckId: true,

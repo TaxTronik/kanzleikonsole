@@ -149,6 +149,39 @@ exceptions:
       - packages/db/src/__tests__/tax-deadline-request-consistency.test.ts
       - packages/db/src/__tests__/tax-notice-evidence.test.ts
     reviewer: Codex (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20260826-001
+    date: '2026-08-26'
+    paths:
+      - packages/db/prisma/migrations/20260826021500_kb_article_attachments/migration.sql
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - DOC-RETENTION-CLASS-001
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Die Migration ergänzt ausschließlich eine mandantengetrennte Zuordnung
+      zwischen Wissensartikeln und bereits nach den bestehenden Dokumentregeln
+      gespeicherten Dokumenten. Sie erzwingt RLS, verändert aber weder
+      Klassifikations- und Aufbewahrungsentscheidung noch Versionierung,
+      Object-Lock oder die Auslieferungsbedingungen bestehender Dokumente.
+    tests:
+      - packages/db/src/__tests__/knowledge-attachment-migration.test.ts
+      - apps/web/src/app/staff/(protected)/knowledge/__tests__/editor-structure.test.ts
+    reviewer: Codex (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20260827-006
+    date: '2026-08-27'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/invite-section.tsx
+    rule_ids:
+      - GWG-SELF-ONBOARDING-001
+    reason: >-
+      Die Einladung wird ohne fachliche Änderung in den neuen Seitenaufbau
+      eingebettet. Das Zurückziehen verwendet den gemeinsamen App-Dialog statt
+      des nativen Browserdialogs; Ziel-ID, Server-Action, Bestätigungstext und
+      Wirkung der Aktion bleiben unverändert.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+    reviewer: Codex (automatisierter technischer UI-Abgleich ohne fachliche Freigabe)
 ---
 
 # Fachkatalog – dokumentierte Änderungen ohne Regelwirkung
@@ -205,3 +238,8 @@ Löschung.
 - `FK-EXC-20260827-005` — atomare Wiederherstellung der bereits dokumentierten
   ACL-, Nachweis-, Empfänger- und RLS-Guards für zwei exakt attestierte
   Pre-Release-Migrationsstände.
+- `FK-EXC-20260826-001` — mandantengetrennte Verknüpfung von
+  Wissensanhängen mit dem bestehenden Dokumentenspeicher; keine Änderung der
+  Klassifikations-, Aufbewahrungs- oder Unveränderbarkeitsregeln.
+- `FK-EXC-20260827-006` — Einbettung der GwG-Einladung in den neuen Seitenaufbau
+  und gemeinsamer Bestätigungsdialog bei unveränderter Einladungslogik.

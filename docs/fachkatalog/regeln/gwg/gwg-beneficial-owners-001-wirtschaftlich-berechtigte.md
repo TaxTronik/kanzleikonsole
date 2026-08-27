@@ -50,14 +50,24 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/server/gwg/verification.ts
+  - apps/web/src/server/gwg/revisions.ts
   - apps/web/src/server/gwg-onboarding/owner-submission.ts
   - apps/web/src/server/gwg-onboarding/submission-validation.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-owner-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/beneficial-owner-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-beneficial-owner-role-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/new-gwg-person-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/person-general-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/person-roles-panel.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
   - packages/db/prisma/schema.prisma
+  - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -160,15 +170,31 @@ und zu dokumentieren.
 ## Umsetzung in TaxTronik
 
 Wirtschaftlich Berechtigte sind eigene, an den jeweiligen Prüfsnapshot
-gebundene Datensätze. Self-Onboarding und Staff-Oberfläche erfassen
-Personenangaben, Beteiligungsangabe, PEP-Status und Nachweise. Das zentrale Gate
-verlangt bei Rechtsträgern mindestens eine Person, vollständige Kerndaten und
-eine Beschreibung der Eigentumsstruktur.
+gebundene Datensätze. Self-Onboarding und Staff-Oberfläche erfassen allgemeine
+Personenangaben und PEP-Status getrennt von der rollenspezifischen
+Beteiligungsangabe sowie den Nachweisen. Das zentrale Gate verlangt bei
+Rechtsträgern mindestens eine wirtschaftlich berechtigte Person, vollständige
+Kerndaten und eine Beschreibung der Eigentumsstruktur.
 
 Bei einem registrierten Rechtsträger muss vor der finalen Freigabe ein
 verfügbarer `TRANSPARENZREGISTER_AUSZUG` vorliegen. Der Mandant muss ihn im
 Self-Service nicht zwingend beschaffen; die Kanzlei kann ihn anschließend
 hinterlegen. Alle inhaltlichen Schlussfolgerungen bleiben manuell.
+
+In der Staff-Oberfläche heißt der gemeinsame Bereich „Personen“. „Neue Person
+erfassen“ erhebt die allgemeinen Angaben unabhängig von den anschließend
+ausgewählten Rollen. Anschließend erscheint jede Person in einem eigenen
+Expandable; „Allgemeine Angaben“ zeigt und bearbeitet Name, Geburtsdaten,
+Wohnsitz, Staatsangehörigkeit und PEP-Status an genau einer Stelle. Der
+Unterbereich „Rolle(n)“ zeigt die Zuordnung zuerst nur lesend und öffnet über
+„Bearbeiten“ ausschließlich rollenspezifische Daten. Bei der Rolle
+„Wirtschaftlich berechtigt“ ist dies insbesondere der gespeicherte Anteil.
+Eine bereits als gesetzlicher Vertreter erfasste Person kann deshalb ohne
+erneute Eingabe ihrer allgemeinen Angaben zusätzlich als wirtschaftlich
+berechtigt zugeordnet werden. Der wirtschaftlich Berechtigte und die
+ausdrückliche Verknüpfung zur Vertreterperson entstehen atomar; die
+Vertreterrolle bleibt erhalten. Bei einer Doppelrolle werden die technisch
+weiterhin rollengebundenen Personensnapshots atomar synchronisiert.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -201,7 +227,9 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 ## Technische Nachweise
 
 Schema, Owner-Submission und Verifikationsgate belegen die gespeicherten
-Personendaten, PEP-Angabe, Pflichtstruktur und den Registerbeleg. Tests prüfen
-fehlende Personendaten, ungültige Beteiligungsangaben, Zeitplausibilität,
-fehlende Struktur- und Registerbelege sowie Doppelrollen. Sie belegen nicht die
-rechtliche Ermittlung der wirtschaftlich Berechtigten.
+Personendaten, PEP-Angabe, Pflichtstruktur und den Registerbeleg. Action- und
+Strukturtests prüfen zusätzlich die zentrale Bearbeitung allgemeiner Angaben,
+deren atomare Synchronisation bei Doppelrollen und die auf den Anteil reduzierte
+Rollenpflege. Weitere Tests prüfen fehlende Personendaten, ungültige
+Beteiligungsangaben, Zeitplausibilität, fehlende Struktur- und Registerbelege.
+Sie belegen nicht die rechtliche Ermittlung der wirtschaftlich Berechtigten.

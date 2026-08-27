@@ -26,6 +26,41 @@ describe('renderMarkdown XSS hardening', () => {
     expect(html).not.toContain('onmouseover="');
     expect(html).not.toContain('href="javascript:');
   });
+
+  it('rendert ausschließlich authentifizierte Wissensanhänge als Bilder', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    expect(renderMarkdown(`![Akte](/api/staff/knowledge/attachments/${id})`)).toContain(
+      `<img src="/api/staff/knowledge/attachments/${id}" alt="Akte" loading="lazy">`,
+    );
+    expect(renderMarkdown('![Extern](https://tracking.example/pixel.png)')).toContain(
+      '<img src="#"',
+    );
+    expect(renderMarkdown('![Unsicher](javascript:alert(1))')).not.toContain('javascript:');
+  });
+
+  it('rendert ausschließlich die vom Inline-Editor erlaubten Textstile', () => {
+    const html = renderMarkdown(
+      '<span style="color: #dc2626; background-color: #fef08a; font-size: 1.25rem">**Wichtig**</span>',
+    );
+
+    expect(html).toContain(
+      '<span style="color: #dc2626; background-color: #fef08a; font-size: 1.25rem"><strong>Wichtig</strong></span>',
+    );
+    expect(renderMarkdown('<u>Unterstrichen</u> und ~~gestrichen~~')).toContain(
+      '<u>Unterstrichen</u> und <s>gestrichen</s>',
+    );
+  });
+
+  it('verwirft gefährliche Inline-Styles und unbekanntes HTML', () => {
+    const html = renderMarkdown(
+      '<span style="color: red; background-image: url(javascript:alert(1))">Text</span><script>alert(2)</script>',
+    );
+
+    expect(html).not.toContain('style=');
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('&lt;script&gt;');
+  });
 });
 
 describe('renderMarkdown Tabellen und Trennlinien', () => {

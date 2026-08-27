@@ -1,10 +1,11 @@
 ﻿'use client';
 
 import { useState, useTransition } from 'react';
-import { Send, Copy, Check, X } from 'lucide-react';
+import { Copy, Check, X } from 'lucide-react';
 import { sendInviteAction, cancelInviteAction } from './invite-actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { GWG_INVITE_STATUS_LABELS } from '@/lib/domain-labels';
+import { confirmDialog } from '@/components/ui/modal';
 
 interface Contact {
   fullName: string;
@@ -72,8 +73,15 @@ export function InviteSection({
     });
   }
 
-  function cancel(id: string) {
-    if (!confirm('Einladung zurückziehen? Der Link wird sofort ungültig.')) return;
+  async function cancel(id: string) {
+    if (
+      !(await confirmDialog('Einladung zurückziehen? Der Link wird sofort ungültig.', {
+        title: 'Einladung zurückziehen',
+        confirmLabel: 'Zurückziehen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       await cancelInviteAction({ id });
     });
@@ -94,17 +102,8 @@ export function InviteSection({
   const otherInvites = invites.filter((i) => !(i.status === 'PENDING' || i.status === 'STARTED'));
 
   return (
-    <div className="card overflow-hidden">
-      <div className="px-6 py-4 border-b border-default flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-medium text-primary flex items-center gap-2">
-            <Send className="h-4 w-4 text-brand-600" />
-            Mandant zur GwG-Identifizierung einladen
-          </h2>
-          <p className="text-xs text-muted mt-0.5">
-            Mandant füllt Stammdaten + Ausweis-Fotos selbst aus, ohne Login.
-          </p>
-        </div>
+    <div>
+      <div className="flex items-center justify-end">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -116,10 +115,10 @@ export function InviteSection({
         </button>
       </div>
 
-      {disabledReason && <div className="px-6 py-3 text-xs text-muted">{disabledReason}</div>}
+      {disabledReason && <div className="py-2 text-xs text-muted">{disabledReason}</div>}
 
       {open && (
-        <div className="px-6 py-4 border-b border-default bg-subtle space-y-3">
+        <div className="mt-3 rounded-md border border-default bg-subtle p-4 space-y-3">
           {contacts.length > 0 && (
             <div>
               <p className="text-xs text-muted mb-2">Bekannte Ansprechpartner:</p>

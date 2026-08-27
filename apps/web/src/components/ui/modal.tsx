@@ -10,17 +10,22 @@
 //     Initial-Fokus, Fokus-Rückgabe an den Auslöser (useDialogA11y)
 // =============================================================================
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { createRoot, type Root } from 'react-dom/client';
 import { X } from 'lucide-react';
 
 /** Modal-A11y: Esc schließt, Tab bleibt im Dialog gefangen, Initial-Fokus aufs
  *  erste Element (bzw. [autofocus]), beim Schließen kehrt der Fokus zum
  *  Auslöser zurück. */
-export function useDialogA11y(onClose: () => void) {
+export function useDialogA11y(onClose: () => void, closeDisabled = false) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const closeDisabledRef = useRef(closeDisabled);
+  useEffect(() => {
+    closeRef.current = onClose;
+    closeDisabledRef.current = closeDisabled;
+  }, [closeDisabled, onClose]);
   useEffect(() => {
     const node = ref.current;
     const prevFocus = document.activeElement as HTMLElement | null;
@@ -37,7 +42,7 @@ export function useDialogA11y(onClose: () => void) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        closeRef.current();
+        if (!closeDisabledRef.current) closeRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -72,30 +77,52 @@ export function Modal({
   onClose,
   children,
   maxWidth = 'max-w-md',
+  panelClassName,
+  backdropClassName = 'bg-black/50 p-4',
+  showCloseButton = true,
+  closeDisabled = false,
 }: {
   /** Für aria-label — kurze deutsche Bezeichnung des Dialogs. */
   title: string;
   onClose: () => void;
   children: ReactNode;
   maxWidth?: string;
+  /** Vollständige Panel-Klassen für Dialoge mit eigenem Layout. */
+  panelClassName?: string;
+  /** Ergänzt die gemeinsame Backdrop-Basis. */
+  backdropClassName?: string;
+  /** Ausblenden, wenn der Dialogkopf bereits einen eigenen Schließen-Button hat. */
+  showCloseButton?: boolean;
+  /** Verhindert Schließen per Escape, Backdrop und Schließen-Button. */
+  closeDisabled?: boolean;
 }) {
-  const ref = useDialogA11y(onClose);
+  const ref = useDialogA11y(onClose, closeDisabled);
   const modal = (
     <div
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
+      className={`modal-backdrop fixed inset-0 z-[130] flex items-center justify-center ${backdropClassName}`}
+      onClick={() => {
+        if (!closeDisabled) onClose();
+      }}
     >
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${maxWidth} card p-6 relative`}
+        className={panelClassName ?? `w-full ${maxWidth} card p-6 relative`}
         onClick={(e) => e.stopPropagation()}
       >
-        <button type="button" onClick={onClose} className="modal-close" aria-label="Schließen">
-          <X className="h-5 w-5" />
-        </button>
+        {showCloseButton && (
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={closeDisabled}
+            className="modal-close"
+            aria-label="Schließen"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
         {children}
       </div>
     </div>
@@ -127,7 +154,7 @@ export function ConfirmModal({
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
   return (
-    <Modal title={title} onClose={onClose} maxWidth="max-w-sm">
+    <Modal title={title} onClose={onClose} maxWidth="max-w-sm" closeDisabled={busy}>
       <h2 className="text-base font-semibold text-primary mb-2">{title}</h2>
       <div className="text-sm text-secondary mb-4 whitespace-pre-line">{message}</div>
       {err && (
@@ -169,6 +196,7 @@ export function ConfirmModal({
  */
 export function InputModal({
   title,
+  message,
   initialValue = '',
   placeholder,
   maxLength = 120,
@@ -178,6 +206,7 @@ export function InputModal({
   onClose,
 }: {
   title: string;
+  message?: ReactNode;
   initialValue?: string;
   placeholder?: string;
   maxLength?: number;
@@ -200,8 +229,9 @@ export function InputModal({
     });
   };
   return (
-    <Modal title={title} onClose={onClose} maxWidth="max-w-sm">
+    <Modal title={title} onClose={onClose} maxWidth="max-w-sm" closeDisabled={busy}>
       <h2 className="text-base font-semibold text-primary mb-3">{title}</h2>
+      {message && <div className="text-sm text-secondary mb-3 whitespace-pre-line">{message}</div>}
       <input
         autoFocus
         value={value}
@@ -232,4 +262,155 @@ export function InputModal({
       </div>
     </Modal>
   );
+}
+
+/** Nicht-blockierender Ersatz für window.alert(). */
+export function NoticeModal({
+  title = 'Hinweis',
+  message,
+  confirmLabel = 'OK',
+  onClose,
+}: {
+  title?: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} onClose={onClose} maxWidth="max-w-sm">
+      <h2 className="text-base font-semibold text-primary mb-2">{title}</h2>
+      <div className="text-sm text-secondary mb-4 whitespace-pre-line">{message}</div>
+      <div className="flex justify-end">
+        <button type="button" autoFocus onClick={onClose} className="btn-primary min-w-24">
+          {confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+type ConfirmDialogOptions = {
+  title?: string;
+  confirmLabel?: string;
+  danger?: boolean;
+};
+
+type NoticeDialogOptions = {
+  title?: string;
+  confirmLabel?: string;
+};
+
+type PromptDialogOptions = {
+  title?: string;
+  initialValue?: string;
+  placeholder?: string;
+  maxLength?: number;
+  confirmLabel?: string;
+};
+
+/**
+ * Rendert einen gemeinsamen App-Dialog für imperative Call-Sites. Das ist vor
+ * allem für bestehende Event-Handler gedacht, die bisher die synchronen
+ * Browserdialoge verwendet haben. Neue, zustandsreiche UI sollte Modal,
+ * ConfirmModal oder InputModal direkt rendern.
+ */
+function showDialog<T>(
+  cancelledValue: T,
+  render: (settle: (value: T) => void) => ReactNode,
+): Promise<T> {
+  if (typeof document === 'undefined') return Promise.resolve(cancelledValue);
+
+  const host = document.createElement('div');
+  host.dataset.appDialogHost = 'true';
+  document.body.appendChild(host);
+  const root: Root = createRoot(host);
+
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const settle = (value: T) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+      queueMicrotask(() => {
+        root.unmount();
+        host.remove();
+      });
+    };
+    root.render(render(settle));
+  });
+}
+
+export function confirmDialog(
+  message: ReactNode,
+  {
+    title = 'Bitte bestätigen',
+    confirmLabel = 'Bestätigen',
+    danger = false,
+  }: ConfirmDialogOptions = {},
+) {
+  return showDialog(false, (settle) => (
+    <ConfirmModal
+      title={title}
+      message={message}
+      confirmLabel={confirmLabel}
+      danger={danger}
+      onClose={() => settle(false)}
+      onConfirm={async () => {
+        settle(true);
+        return { ok: true };
+      }}
+    />
+  ));
+}
+
+export function noticeDialog(message: ReactNode, options: NoticeDialogOptions = {}) {
+  return showDialog(undefined, (settle) => (
+    <NoticeModal {...options} message={message} onClose={() => settle(undefined)} />
+  ));
+}
+
+export function promptDialog(message: ReactNode, options: PromptDialogOptions = {}) {
+  return showDialog<string | null>(null, (settle) => (
+    <InputModal
+      title={options.title ?? 'Eingabe'}
+      message={message}
+      initialValue={options.initialValue}
+      placeholder={options.placeholder}
+      maxLength={options.maxLength}
+      confirmLabel={options.confirmLabel}
+      onClose={() => settle(null)}
+      onSubmit={async (value) => {
+        settle(value);
+        return { ok: true };
+      }}
+    />
+  ));
+}
+
+const confirmedForms = new WeakSet<HTMLFormElement>();
+
+/**
+ * Bestätigt ein React-Formular, ohne dessen Server-Action oder nativen
+ * Submitter zu umgehen. Beim zweiten, programmatisch ausgelösten Submit wird
+ * die zuvor bestätigte Form genau einmal durchgelassen.
+ */
+export function confirmFormSubmission(
+  event: FormEvent<HTMLFormElement>,
+  message: ReactNode,
+  options?: ConfirmDialogOptions,
+) {
+  const form = event.currentTarget;
+  if (confirmedForms.delete(form)) return;
+
+  event.preventDefault();
+  const nativeSubmitter = (event.nativeEvent as SubmitEvent).submitter;
+  const submitter =
+    nativeSubmitter instanceof HTMLButtonElement || nativeSubmitter instanceof HTMLInputElement
+      ? nativeSubmitter
+      : undefined;
+  void confirmDialog(message, options).then((confirmed) => {
+    if (!confirmed || !form.isConnected) return;
+    confirmedForms.add(form);
+    form.requestSubmit(submitter);
+  });
 }

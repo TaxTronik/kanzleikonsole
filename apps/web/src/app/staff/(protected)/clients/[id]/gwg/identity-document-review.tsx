@@ -1,10 +1,12 @@
 'use client';
 
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { createPortal } from 'react-dom';
-import { ChevronDown, Download, FileCheck, FileSearch, Loader2, X } from 'lucide-react';
+import { ChevronDown, Download, FileCheck, FileSearch, Loader2, Pencil, X } from 'lucide-react';
 import { extendIdentityDocumentSetAction, updateIdDocumentsAction } from './id-document-actions';
+import { RemoveEvidenceLinkButton } from './remove-evidence-link-button';
+import { SelectCurrentIdentitySetButton } from './select-current-identity-set-button';
 import { type ActionResult } from './actions';
 import {
   identitySubjectRoleLabel,
@@ -13,12 +15,14 @@ import {
 } from '@/server/gwg/identity-subject';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
+import { Modal } from '@/components/ui/modal';
 import {
   useUnlinkedGwgDocumentSearch,
   type SelectableGwgDocument,
 } from './use-gwg-document-search';
 import { useGwgIdentitySubjects } from './identity-subjects-context';
 import { useGwgEditState } from './edit-state-context';
+import { AddIdDocumentForm } from './add-id-doc-form';
 import {
   useIdentityReviewState,
   type IdentityReviewLocalState,
@@ -79,10 +83,12 @@ function InlineEvidence({
   document,
   label,
   active,
+  removeControl,
 }: {
   document: NonNullable<IdentityReviewDocument['document']>;
   label: string | null;
   active: boolean;
+  removeControl?: ReactNode;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
@@ -154,6 +160,7 @@ function InlineEvidence({
         >
           <Download className="h-4 w-4" />
         </a>
+        {removeControl}
       </div>
       <div className="flex min-h-72 items-center justify-center lg:min-h-96">
         {loading && <Loader2 className="h-6 w-6 animate-spin text-disabled" />}
@@ -209,7 +216,6 @@ function IdentitySetFileManager({
   clientDocuments: SelectableGwgDocument[];
   mergeCandidates: IdentitySetFileCandidate[];
 }) {
-  const [mounted, setMounted] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [uploadedDocuments, setUploadedDocuments] = useState<SelectableGwgDocument[]>([]);
@@ -219,7 +225,7 @@ function IdentitySetFileManager({
     (ActionResult & { reviewReset?: boolean }) | null,
     FormData
   >(extendIdentityDocumentSetAction, null);
-  const remaining = Math.max(0, 4 - currentDocumentCount);
+  const remaining = Math.max(0, 2 - currentDocumentCount);
   const documentSearch = useUnlinkedGwgDocumentSearch({
     checkId,
     clientId,
@@ -228,7 +234,6 @@ function IdentitySetFileManager({
     enabled: pickerOpen,
   });
 
-  useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (!state?.ok) return;
     setSelectedCandidates([]);
@@ -282,140 +287,138 @@ function IdentitySetFileManager({
   }
 
   const picker = pickerOpen ? (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
-      onClick={() => setPickerOpen(false)}
+    <Modal
+      title="Ausweisseiten aus der Akte ergänzen"
+      onClose={() => setPickerOpen(false)}
+      panelClassName="card flex max-h-[85vh] w-full max-w-4xl flex-col p-0"
+      showCloseButton={false}
+      closeDisabled={isPending}
     >
-      <div
-        className="card flex max-h-[85vh] w-full max-w-4xl flex-col p-0"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-default px-5 py-4">
-          <div>
-            <h2 className="font-semibold text-primary">Ausweisseiten aus der Akte ergänzen</h2>
-            <p className="text-xs text-muted">
-              Einzelne Dateien auswählen oder einen offenen Alt-Satz vollständig zusammenführen.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="modal-close"
-            onClick={() => setPickerOpen(false)}
-            aria-label="Dateiauswahl schließen"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="border-b border-default p-4">
-          <label className="sr-only" htmlFor={`identity-set-search-${targetDocumentSetId}`}>
-            Dokumente durchsuchen
-          </label>
-          <input
-            id={`identity-set-search-${targetDocumentSetId}`}
-            type="search"
-            className="input"
-            placeholder="Titel in der gesamten Mandantenakte durchsuchen …"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            autoFocus
-          />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {candidates.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted">
-              {documentSearch.pending ? 'Durchsucht die gesamte Akte …' : 'Keine passende Datei.'}
-            </p>
-          ) : (
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {candidates.map((candidate) => {
-                const selected = selectedCandidates.some((entry) => entry.key === candidate.key);
-                const exceedsCapacity = candidate.documents.length > remaining;
-                return (
-                  <li
-                    key={candidate.key}
-                    className={`rounded-md border p-3 ${selected ? 'border-brand-500 bg-brand-50/40' : 'border-default'}`}
-                  >
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      {candidate.sourceDocumentSetId
-                        ? `Offener Ausweissatz · ${candidate.documents.length} Dateien`
-                        : 'Noch nicht zugeordnet'}
-                    </p>
-                    <div className="space-y-2">
-                      {candidate.documents.map((document) => (
-                        <div key={document.id} className="flex items-center justify-between gap-2">
-                          <p className="min-w-0 flex-1 truncate text-sm font-medium text-primary">
-                            {document.title}
-                          </p>
-                          <DocumentPreviewButton
-                            documentId={document.id}
-                            documentTitle={document.title}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    {candidate.sourceDocumentSetId && (
-                      <p className="mt-2 text-xs text-muted">
-                        Alle Seiten dieses offenen Satzes werden gemeinsam übernommen.
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      className="btn-secondary mt-3 w-full text-xs"
-                      onClick={() => toggleCandidate(candidate)}
-                      disabled={
-                        isPending ||
-                        (!selected &&
-                          (exceedsCapacity ||
-                            selectedDocumentIds.length + candidate.documents.length > remaining))
-                      }
-                    >
-                      {selected ? 'Aus Auswahl entfernen' : 'Zum Ausweissatz hinzufügen'}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <div className="mt-3 space-y-1 text-xs text-muted">
-            {documentSearch.pending && (
-              <p className="flex items-center gap-1.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gesamte Mandantenakte wird
-                durchsucht …
-              </p>
-            )}
-            {documentSearch.normalizedQuery.length < 2 && (
-              <p>
-                Gezeigt werden offene Alt-Sätze und die neuesten Belege. Ab zwei Zeichen wird die
-                gesamte Akte durchsucht.
-              </p>
-            )}
-            {documentSearch.limited && (
-              <p>Mehr als 50 Treffer — bitte den Suchbegriff weiter eingrenzen.</p>
-            )}
-            {documentSearch.error && <p className="text-red-700">{documentSearch.error}</p>}
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-3 border-t border-default px-5 py-3">
+      <div className="flex items-center justify-between border-b border-default px-5 py-4">
+        <div>
+          <h2 className="font-semibold text-primary">Ausweisseiten aus der Akte ergänzen</h2>
           <p className="text-xs text-muted">
-            {selectedDocumentIds.length} von {remaining} möglichen Dateien ausgewählt
+            Einzelne Dateien auswählen oder einen offenen Alt-Satz vollständig zusammenführen.
           </p>
-          <button
-            type="button"
-            className="btn-primary text-xs"
-            onClick={() => setPickerOpen(false)}
-            disabled={selectedDocumentIds.length === 0}
-          >
-            Auswahl übernehmen
-          </button>
+        </div>
+        <button
+          type="button"
+          className="modal-close"
+          onClick={() => setPickerOpen(false)}
+          aria-label="Dateiauswahl schließen"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="border-b border-default p-4">
+        <label className="sr-only" htmlFor={`identity-set-search-${targetDocumentSetId}`}>
+          Dokumente durchsuchen
+        </label>
+        <input
+          id={`identity-set-search-${targetDocumentSetId}`}
+          type="search"
+          className="input"
+          placeholder="Titel in der gesamten Mandantenakte durchsuchen …"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          autoFocus
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {candidates.length === 0 ? (
+          <p className="p-6 text-center text-sm text-muted">
+            {documentSearch.pending ? 'Durchsucht die gesamte Akte …' : 'Keine passende Datei.'}
+          </p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {candidates.map((candidate) => {
+              const selected = selectedCandidates.some((entry) => entry.key === candidate.key);
+              const exceedsCapacity = candidate.documents.length > remaining;
+              return (
+                <li
+                  key={candidate.key}
+                  className={`rounded-md border p-3 ${selected ? 'border-brand-500 bg-brand-50/40' : 'border-default'}`}
+                >
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    {candidate.sourceDocumentSetId
+                      ? `Offener Ausweissatz · ${candidate.documents.length} Dateien`
+                      : 'Noch nicht zugeordnet'}
+                  </p>
+                  <div className="space-y-2">
+                    {candidate.documents.map((document) => (
+                      <div key={document.id} className="flex items-center justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-primary">
+                          {document.title}
+                        </p>
+                        <DocumentPreviewButton
+                          documentId={document.id}
+                          documentTitle={document.title}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {candidate.sourceDocumentSetId && (
+                    <p className="mt-2 text-xs text-muted">
+                      Alle Seiten dieses offenen Satzes werden gemeinsam übernommen.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="btn-secondary mt-3 w-full text-xs"
+                    onClick={() => toggleCandidate(candidate)}
+                    disabled={
+                      isPending ||
+                      (!selected &&
+                        (exceedsCapacity ||
+                          selectedDocumentIds.length + candidate.documents.length > remaining))
+                    }
+                  >
+                    {selected ? 'Aus Auswahl entfernen' : 'Zum Ausweissatz hinzufügen'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div className="mt-3 space-y-1 text-xs text-muted">
+          {documentSearch.pending && (
+            <p className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gesamte Mandantenakte wird durchsucht
+              …
+            </p>
+          )}
+          {documentSearch.normalizedQuery.length < 2 && (
+            <p>
+              Gezeigt werden offene Alt-Sätze und die neuesten Belege. Ab zwei Zeichen wird die
+              gesamte Akte durchsucht.
+            </p>
+          )}
+          {documentSearch.limited && (
+            <p>Mehr als 50 Treffer — bitte den Suchbegriff weiter eingrenzen.</p>
+          )}
+          {documentSearch.error && <p className="text-red-700">{documentSearch.error}</p>}
         </div>
       </div>
-    </div>
+      <div className="flex items-center justify-between gap-3 border-t border-default px-5 py-3">
+        <p className="text-xs text-muted">
+          {selectedDocumentIds.length} von {remaining} möglichen Dateien ausgewählt
+        </p>
+        <button
+          type="button"
+          className="btn-primary text-xs"
+          onClick={() => setPickerOpen(false)}
+          disabled={selectedDocumentIds.length === 0}
+        >
+          Auswahl übernehmen
+        </button>
+      </div>
+    </Modal>
   ) : null;
 
   if (remaining === 0) {
     return (
       <p className="text-xs text-muted">
-        Dieser Ausweissatz enthält bereits die maximal zulässigen vier Dateien.
+        Dieser Ausweissatz enthält bereits die maximal zulässigen zwei Dateien.
       </p>
     );
   }
@@ -492,7 +495,7 @@ function IdentitySetFileManager({
           </button>
         )}
       </form>
-      {mounted && picker ? createPortal(picker, document.body) : null}
+      {picker}
     </div>
   );
 }
@@ -507,6 +510,8 @@ function IdentityReviewCard({
   grandfathered,
   disabled,
   reviewMode,
+  hasCompetingActiveSets,
+  historicalEvidence,
 }: {
   checkId: string;
   clientId: string;
@@ -517,11 +522,15 @@ function IdentityReviewCard({
   grandfathered: boolean;
   disabled: boolean;
   reviewMode: boolean;
+  hasCompetingActiveSets: boolean;
+  historicalEvidence?: ReactNode;
 }) {
   const { markDraft } = useGwgEditState();
   const { invalidatedIdentitySets, acknowledgeIdentitySet } = useGwgIdentitySubjects();
   const first = group.documents[0]!;
   const [expanded, setExpanded] = useState(reviewMode);
+  const [editing, setEditing] = useState(false);
+  const [replacementOpen, setReplacementOpen] = useState(false);
   const [state, formAction, isPending] = useActionState<
     | (ActionResult & {
         reviewReset?: boolean;
@@ -570,7 +579,11 @@ function IdentityReviewCard({
     onReviewReset: markDraft,
   });
   useEffect(() => {
-    if (state?.ok) setExpanded(true);
+    if (state?.ok) {
+      setExpanded(true);
+      setEditing(false);
+      setReplacementOpen(false);
+    }
   }, [state]);
   // Nach der Entscheidung (VERIFIED/REJECTED/EXPIRED) die Karten einklappen:
   // die im Review-Modus aufgeklappten 65vh-Vorschau-Frames blieben sonst nach
@@ -682,10 +695,39 @@ function IdentityReviewCard({
             mit der aktuellen Person erneut bestätigt werden.
           </div>
         )}
+        {editing && !disabled && hasCompetingActiveSets && (
+          <div className="alert-error-sm space-y-2">
+            <p>
+              Für diese Person sind mehrere Ausweissätze aktiv. Wählen Sie den tatsächlich aktuellen
+              Ausweis; die übrigen bleiben anschließend unter „Alte Ausweise“ einsehbar.
+            </p>
+            <SelectCurrentIdentitySetButton
+              checkId={checkId}
+              clientId={clientId}
+              documentSetId={group.documentSetId}
+            />
+          </div>
+        )}
         {attachedDocuments.length < group.documents.length && (
-          <div className="alert-error-sm">
-            Mindestens eine Datei dieses Ausweissatzes ist nicht mehr verfügbar. Bitte einen neuen
-            vollständigen Ausweissatz zuordnen.
+          <div className="alert-error-sm space-y-2">
+            <p>
+              Mindestens eine Datei dieses Ausweissatzes ist nicht mehr verfügbar. Bitte einen neuen
+              vollständigen Ausweissatz zuordnen.
+            </p>
+            {editing &&
+              !disabled &&
+              group.documents
+                .filter((entry) => !entry.document)
+                .map((entry) => (
+                  <div key={entry.id} className="flex items-center gap-2">
+                    <span className="text-xs">Nicht verfügbare Zuordnung</span>
+                    <RemoveEvidenceLinkButton
+                      checkId={checkId}
+                      clientId={clientId}
+                      gwgIdDocumentId={entry.id}
+                    />
+                  </div>
+                ))}
           </div>
         )}
         {attachedDocuments.length > 0 ? (
@@ -702,6 +744,15 @@ function IdentityReviewCard({
                       : null
                 }
                 active={expanded}
+                removeControl={
+                  editing && !disabled ? (
+                    <RemoveEvidenceLinkButton
+                      checkId={checkId}
+                      clientId={clientId}
+                      gwgIdDocumentId={entry.id}
+                    />
+                  ) : undefined
+                }
               />
             ))}
           </div>
@@ -709,7 +760,61 @@ function IdentityReviewCard({
           <div className="text-sm text-muted">Keine Vorschau verfügbar.</div>
         )}
 
-        {!disabled && (
+        {!editing && (
+          <div className="space-y-4">
+            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="text-xs text-muted">Ausweistyp</dt>
+                <dd className="text-sm font-medium text-primary">{typeLabels[displayedType]}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted">Ausweisnummer</dt>
+                <dd className="text-sm font-medium text-primary">{displayedNumber || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted">Ausstellende Behörde</dt>
+                <dd className="text-sm font-medium text-primary">{fields.issuedBy || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted">Ausgestellt am</dt>
+                <dd className="text-sm font-medium text-primary">{fields.issueDate || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted">Gültig bis</dt>
+                <dd className="text-sm font-medium text-primary">{displayedExpiryDate || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted">Zugeordnete Person</dt>
+                <dd className="text-sm font-medium text-primary">{displayedOwnerName || '—'}</dd>
+              </div>
+            </dl>
+            {!disabled && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Bearbeiten
+                </button>
+                {group.subjectKey && (
+                  <button
+                    type="button"
+                    className="btn-primary text-xs"
+                    onClick={() => {
+                      setEditing(true);
+                      setReplacementOpen(true);
+                    }}
+                  >
+                    Ausweis ersetzen
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {editing && !disabled && (
           <IdentitySetFileManager
             checkId={checkId}
             clientId={clientId}
@@ -720,170 +825,279 @@ function IdentityReviewCard({
           />
         )}
 
-        <form
-          action={formAction}
-          className="space-y-4"
-          onSubmit={() => {
-            markSubmitted(
-              invalidatedRevision ?? localState.revision,
-              invalidation?.generation ?? null,
-            );
-          }}
-        >
-          <input type="hidden" name="checkId" value={checkId} />
-          <input type="hidden" name="clientId" value={clientId} />
-          <input type="hidden" name="documentSetId" value={group.documentSetId} />
-          <input
-            type="hidden"
-            name="expectedRevision"
-            value={invalidatedRevision ?? currentRevision}
-          />
+        {editing && !disabled && group.subjectKey && (
+          <details
+            className="group/replace rounded-md border border-default bg-subtle"
+            open={replacementOpen}
+            onToggle={(event) => setReplacementOpen(event.currentTarget.open)}
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-primary">
+              Ausweis ersetzen
+              <ChevronDown className="h-4 w-4 text-muted transition-transform group-open/replace:rotate-180" />
+            </summary>
+            <div className="border-t border-default p-3">
+              <AddIdDocumentForm
+                checkId={checkId}
+                clientId={clientId}
+                clientDocuments={clientDocuments}
+                variant="identity"
+                subjectOptions={subjectOptions}
+                defaultSubjectKey={group.subjectKey}
+                defaultType={displayedType}
+                replacement={{ mode: 'set', documentSetId: group.documentSetId }}
+              />
+            </div>
+          </details>
+        )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor={`identity-type-${group.key}`}>
-                Ausweistyp
-              </label>
-              <select
-                id={`identity-type-${group.key}`}
-                name="type"
-                className="input"
-                value={fields.type}
-                onChange={(event) =>
-                  patchFields({
-                    type: event.target.value as 'PERSONALAUSWEIS' | 'REISEPASS',
-                  })
-                }
-                disabled={disabled || isPending}
-              >
-                <option value="PERSONALAUSWEIS">Personalausweis</option>
-                <option value="REISEPASS">Reisepass</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor={`identity-subject-${group.key}`}>
-                Identifizierte Person
-              </label>
-              <select
-                id={`identity-subject-${group.key}`}
-                name="subjectKey"
-                className="input"
-                value={selectedSubjectKey}
-                onChange={(event) => selectSubject(event.target.value)}
-                required
-                disabled={disabled || isPending}
-              >
-                <option value="" disabled>
-                  — erfasste Person auswählen —
-                </option>
-                {subjectOptions.map((option) => (
-                  <option key={option.key} value={option.key}>
-                    {option.name} — {identitySubjectRoleLabel(option)}
-                  </option>
-                ))}
-              </select>
-              {!selectedSubjectKey && (
-                <p className="mt-1 text-xs text-amber-700">
-                  Der bisherige Anzeigewert „{first.ownerName}“ besitzt noch keine bestätigte
-                  1:1-Zuordnung. Bitte die konkrete Person auswählen.
-                </p>
-              )}
-              {duplicateRoleNames.size > 0 && (
-                <p className="mt-1 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
-                  Gleichnamige Einträge in verschiedenen Rollen sind nicht automatisch zwei
-                  Personen. Wählen Sie bewusst die Rollen-Zuordnung: Für den Vertretungsnachweis
-                  muss der Eintrag „vertretungsberechtigt“ gewählt werden; Geburtsdatum und
-                  Eintragsnummer unterscheiden echte Namensdopplungen.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div>
-              <label className="label" htmlFor={`identity-number-${group.key}`}>
-                Ausweisnummer
-              </label>
-              <input
-                id={`identity-number-${group.key}`}
-                name="number"
-                className="input"
-                value={fields.number}
-                onChange={(event) => patchFields({ number: event.target.value })}
-                required
-                maxLength={100}
-                disabled={disabled || isPending}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor={`identity-issue-date-${group.key}`}>
-                Ausgestellt am
-              </label>
-              <input
-                id={`identity-issue-date-${group.key}`}
-                name="issueDate"
-                type="date"
-                className="input"
-                value={fields.issueDate}
-                onChange={(event) => patchFields({ issueDate: event.target.value })}
-                required
-                disabled={disabled || isPending}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor={`identity-expiry-date-${group.key}`}>
-                Gültig bis
-              </label>
-              <input
-                id={`identity-expiry-date-${group.key}`}
-                name="expiryDate"
-                type="date"
-                className="input"
-                value={fields.expiryDate}
-                onChange={(event) => patchFields({ expiryDate: event.target.value })}
-                required
-                disabled={disabled || isPending}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="label" htmlFor={`identity-issued-by-${group.key}`}>
-              Ausstellende Behörde
-            </label>
+        {editing && (
+          <form
+            action={formAction}
+            className="space-y-4"
+            onSubmit={() => {
+              markSubmitted(
+                invalidatedRevision ?? localState.revision,
+                invalidation?.generation ?? null,
+              );
+            }}
+          >
+            <input type="hidden" name="checkId" value={checkId} />
+            <input type="hidden" name="clientId" value={clientId} />
+            <input type="hidden" name="documentSetId" value={group.documentSetId} />
             <input
-              id={`identity-issued-by-${group.key}`}
-              name="issuedBy"
-              className="input"
-              value={fields.issuedBy}
-              onChange={(event) => patchFields({ issuedBy: event.target.value })}
-              required
-              maxLength={200}
-              disabled={disabled || isPending}
+              type="hidden"
+              name="expectedRevision"
+              value={invalidatedRevision ?? currentRevision}
             />
-          </div>
 
-          {state?.error && <div className="alert-error-sm">{state.error}</div>}
-          {state?.ok && !invalidated && (
-            <div className="alert-success-sm">Ausweisangaben wurden bestätigt.</div>
-          )}
-          {!disabled && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor={`identity-type-${group.key}`}>
+                  Ausweistyp
+                </label>
+                <select
+                  id={`identity-type-${group.key}`}
+                  name="type"
+                  className="input"
+                  value={fields.type}
+                  onChange={(event) =>
+                    patchFields({
+                      type: event.target.value as 'PERSONALAUSWEIS' | 'REISEPASS',
+                    })
+                  }
+                  disabled={disabled || isPending}
+                >
+                  <option value="PERSONALAUSWEIS">Personalausweis</option>
+                  <option value="REISEPASS">Reisepass</option>
+                </select>
+              </div>
+              <div>
+                <label className="label" htmlFor={`identity-subject-${group.key}`}>
+                  Identifizierte Person
+                </label>
+                <select
+                  id={`identity-subject-${group.key}`}
+                  name="subjectKey"
+                  className="input"
+                  value={selectedSubjectKey}
+                  onChange={(event) => selectSubject(event.target.value)}
+                  required
+                  disabled={disabled || isPending}
+                >
+                  <option value="" disabled>
+                    — erfasste Person auswählen —
+                  </option>
+                  {subjectOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.name} — {identitySubjectRoleLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                {!selectedSubjectKey && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Der bisherige Anzeigewert „{first.ownerName}“ besitzt noch keine bestätigte
+                    1:1-Zuordnung. Bitte die konkrete Person auswählen.
+                  </p>
+                )}
+                {duplicateRoleNames.size > 0 && (
+                  <p className="mt-1 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+                    Gleichnamige Einträge in verschiedenen Rollen sind nicht automatisch zwei
+                    Personen. Wählen Sie bewusst die Rollen-Zuordnung: Für den Vertretungsnachweis
+                    muss der Eintrag „vertretungsberechtigt“ gewählt werden; Geburtsdatum und
+                    Eintragsnummer unterscheiden echte Namensdopplungen.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className="label" htmlFor={`identity-number-${group.key}`}>
+                  Ausweisnummer
+                </label>
+                <input
+                  id={`identity-number-${group.key}`}
+                  name="number"
+                  className="input"
+                  value={fields.number}
+                  onChange={(event) => patchFields({ number: event.target.value })}
+                  required
+                  maxLength={100}
+                  disabled={disabled || isPending}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor={`identity-issue-date-${group.key}`}>
+                  Ausgestellt am
+                </label>
+                <input
+                  id={`identity-issue-date-${group.key}`}
+                  name="issueDate"
+                  type="date"
+                  className="input"
+                  value={fields.issueDate}
+                  onChange={(event) => patchFields({ issueDate: event.target.value })}
+                  required
+                  disabled={disabled || isPending}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor={`identity-expiry-date-${group.key}`}>
+                  Gültig bis
+                </label>
+                <input
+                  id={`identity-expiry-date-${group.key}`}
+                  name="expiryDate"
+                  type="date"
+                  className="input"
+                  value={fields.expiryDate}
+                  onChange={(event) => patchFields({ expiryDate: event.target.value })}
+                  required
+                  disabled={disabled || isPending}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="label" htmlFor={`identity-issued-by-${group.key}`}>
+                Ausstellende Behörde
+              </label>
+              <input
+                id={`identity-issued-by-${group.key}`}
+                name="issuedBy"
+                className="input"
+                value={fields.issuedBy}
+                onChange={(event) => patchFields({ issuedBy: event.target.value })}
+                required
+                maxLength={200}
+                disabled={disabled || isPending}
+              />
+            </div>
+
+            {state?.error && <div className="alert-error-sm">{state.error}</div>}
+            {state?.ok && !invalidated && (
+              <div className="alert-success-sm">Ausweisangaben wurden bestätigt.</div>
+            )}
+            {!disabled && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  className="btn-primary text-sm"
+                  disabled={
+                    isPending ||
+                    attachedDocuments.length !== group.documents.length ||
+                    subjectOptions.length === 0
+                  }
+                >
+                  {isPending
+                    ? 'Speichert…'
+                    : confirmed
+                      ? 'Änderungen speichern und bestätigen'
+                      : 'Angaben übernehmen und bestätigen'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  onClick={() => {
+                    setEditing(false);
+                    setReplacementOpen(false);
+                  }}
+                  disabled={isPending}
+                >
+                  Abbrechen
+                </button>
+              </div>
+            )}
+          </form>
+        )}
+        {historicalEvidence}
+      </div>
+    </details>
+  );
+}
+
+function EmptyIdentityDocumentReview({
+  checkId,
+  clientId,
+  subjectOptions,
+  clientDocuments,
+  defaultSubjectKey,
+  disabled,
+  historicalEvidence,
+}: {
+  checkId: string;
+  clientId: string;
+  subjectOptions: IdentitySubjectOption[];
+  clientDocuments: SelectableGwgDocument[];
+  defaultSubjectKey: string;
+  disabled: boolean;
+  historicalEvidence?: ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <details className="group rounded-md border border-default bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+        <FileCheck className="h-5 w-5 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-primary">Personalausweis</span>
+          <p className="text-xs text-muted">Noch kein Ausweis zugeordnet.</p>
+        </div>
+        <span className="badge-yellow">Ausweis fehlt</span>
+        <ChevronDown className="h-4 w-4 text-muted transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-4 border-t border-default p-4">
+        {!editing ? (
+          <>
+            <p className="text-sm text-muted">Für diese Person liegt noch kein Ausweissatz vor.</p>
+            {!disabled && (
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={() => setEditing(true)}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Bearbeiten
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="space-y-3">
+            <AddIdDocumentForm
+              checkId={checkId}
+              clientId={clientId}
+              clientDocuments={clientDocuments}
+              variant="identity"
+              subjectOptions={subjectOptions}
+              defaultSubjectKey={defaultSubjectKey}
+            />
             <button
-              type="submit"
-              className="btn-primary text-sm"
-              disabled={
-                isPending ||
-                attachedDocuments.length !== group.documents.length ||
-                subjectOptions.length === 0
-              }
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => setEditing(false)}
             >
-              {isPending
-                ? 'Speichert…'
-                : confirmed
-                  ? 'Änderungen speichern und bestätigen'
-                  : 'Angaben übernehmen und bestätigen'}
+              Abbrechen
             </button>
-          )}
-        </form>
+          </div>
+        )}
+        {historicalEvidence}
       </div>
     </details>
   );
@@ -895,6 +1109,8 @@ export function IdentityDocumentReview({
   groups,
   subjectOptions,
   clientDocuments,
+  defaultSubjectKey,
+  historicalEvidence,
   grandfathered,
   disabled,
   reviewMode = false,
@@ -904,6 +1120,8 @@ export function IdentityDocumentReview({
   groups: IdentityReviewGroup[];
   subjectOptions: IdentitySubjectOption[];
   clientDocuments: SelectableGwgDocument[];
+  defaultSubjectKey?: string;
+  historicalEvidence?: ReactNode;
   grandfathered: boolean;
   disabled: boolean;
   reviewMode?: boolean;
@@ -914,7 +1132,19 @@ export function IdentityDocumentReview({
     [allSubjectOptions],
   );
   if (groups.length === 0) {
-    return <p className="mb-4 text-xs text-disabled">Noch kein Ausweis zugeordnet.</p>;
+    return defaultSubjectKey ? (
+      <EmptyIdentityDocumentReview
+        checkId={checkId}
+        clientId={clientId}
+        subjectOptions={availableSubjectOptions}
+        clientDocuments={clientDocuments}
+        defaultSubjectKey={defaultSubjectKey}
+        disabled={disabled}
+        historicalEvidence={historicalEvidence}
+      />
+    ) : (
+      <p className="mb-4 text-xs text-disabled">Noch kein Ausweis zugeordnet.</p>
+    );
   }
   const mergeCandidates: IdentitySetFileCandidate[] = groups
     .filter(
@@ -936,7 +1166,7 @@ export function IdentityDocumentReview({
 
   return (
     <div className="mb-4 space-y-3">
-      {groups.map((group) => (
+      {groups.map((group, index) => (
         <IdentityReviewCard
           // Keep the card mounted across RSC revalidation. Verification
           // timestamps and subject assignment change after every save; using
@@ -952,6 +1182,8 @@ export function IdentityDocumentReview({
           grandfathered={grandfathered}
           disabled={disabled}
           reviewMode={reviewMode}
+          hasCompetingActiveSets={groups.length > 1}
+          historicalEvidence={index === 0 ? historicalEvidence : undefined}
         />
       ))}
     </div>

@@ -25,6 +25,24 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Hinzugefügt
 
+- **[Scope]** Wissensartikel besitzen jetzt einen großen Markdown-Arbeitsbereich
+  mit Formatierungsleiste, direkt gerendertem Inline-Modus und Markdown-
+  Quellansicht. Bilder und
+  beliebige Dateien lassen sich als Anhänge hochladen; sie durchlaufen den
+  bestehenden Virenscan, werden mandantengetrennt im Dokumentenspeicher
+  versioniert, revisionsnah protokolliert und erst nach erfolgreichem Scan über
+  authentifizierte Vorschau- beziehungsweise Download-Endpunkte ausgeliefert.
+- Die GwG-Personenverwaltung bündelt je erfasster Person die ausklappbaren
+  Bereiche „Allgemeine Angaben“, „Personalausweis“ und „Rolle(n)“. Allgemeine
+  Personendaten werden unabhängig von der Rolle zentral gepflegt; Rollen und
+  Beteiligungsanteile lassen sich getrennt im Lese- und Bearbeitungsmodus
+  ändern. Gesetzliche Vertreter können zugleich wirtschaftlich Berechtigte
+  sein, ohne dass Personendaten doppelt erfasst werden müssen.
+- GwG-Nachweise können ersetzt und fehlerhafte aktive Verknüpfungen über ein X
+  aus der aktuellen Prüfungsansicht entfernt werden. Frühere Ausweise und
+  Registernachweise bleiben für Verlauf und Aufbewahrung in eingeklappten
+  Unterbereichen einsehbar, während die gespeicherten Dokumentversionen im
+  Mandantenarchiv erhalten bleiben.
 - Ein maschinenlesbarer und zugleich berufsträgertauglicher Fachkatalog führt
   erste atomare Regeln zu Fakturierung, Fristen und Bescheiden. Schema,
   generierte Indizes, Code-/Testnachweise und CI-Diff-Guard trennen technische
@@ -36,6 +54,45 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Geändert
 
+- Kategorien der Wissensdatenbank werden über „Kategorie anlegen“ direkt in
+  der Kategorienleiste erfasst; der Seitenwechsel zum separaten Formular
+  entfällt. Anlage und Bearbeitung von Wissensartikeln nutzen nahezu die volle
+  verfügbare Seitenbreite, und die Artikeldetailseite zeigt vorhandene Anhänge
+  zusätzlich als übersichtliche Downloadliste.
+- Die Inline-Anlage einer Wissenskategorie ist auf eine einzige kompakte Zeile
+  reduziert. Der Artikeldesigner startet nun als direkt formatierbarer
+  WYSIWYG-Markdown-Editor; die bisherige Markdown-Eingabe ist als separate
+  Quellansicht erreichbar. Überschriftsebenen, Schriftgröße, Text- und
+  Markerfarbe, Unterstreichung, Durchstreichung, Listen, Zitate, Code und Links
+  lassen sich unmittelbar über die Werkzeugleiste gestalten. Farb- und
+  Größenangaben werden als eng begrenztes, serverseitig bereinigtes
+  Inline-Markup im Markdown erhalten.
+- Wissensartikel zeigen ihren Verfasser und das ursprüngliche Erstellungsdatum
+  direkt in der Hauptliste, in Suchergebnissen und in der Artikelansicht an.
+- Die GwG-Prüfungsseite beginnt mit dem Prüfverlauf. Stammdaten einschließlich
+  der gesetzlichen Vertretung stehen vor der Mandanteneinladung; danach folgen
+  „Personen“ (vormals „Identitätsnachweise“) und die Rechtsträger- und
+  Registernachweise. Personen werden untereinander in voller Spaltenbreite als
+  Expandables dargestellt und über „Neue Person erfassen“ ergänzt.
+- Gesetzliche Vertreter werden nicht mehr über freie Namenstexte gepflegt,
+  sondern aus vollständig erfassten Personen ausgewählt. Änderungen an
+  gemeinsam genutzten Personendaten werden bei Doppelrollen atomar
+  synchronisiert; beim Hinzufügen oder Entfernen der Rolle „Wirtschaftlich
+  berechtigt“ bleiben die allgemeinen Angaben erhalten. Unvollständige
+  allgemeine Angaben eines Vertreters sperren die abschließende Verifikation.
+- Die Bereiche „Allgemeine Angaben“ und „Rolle(n)“ sind durch eigene Icons
+  hervorgehoben; der bestehende Ausweisbereich behält sein Ausweissymbol.
+- Registernachweise starten eingeklappt. Das jeweilige Ersatzformular öffnet
+  sich nur über den Button „Nachweis ersetzen“ und ist fest an den aufgeklappten
+  Nachweistyp gebunden, sodass etwa ein Handelsregisterauszug nicht mehr als
+  Transparenzregister-Nachweis hochgeladen werden kann.
+- Für eine Person wird genau ein aktuelles Ausweis-Set mit höchstens zwei
+  Dateien (Vorder- und Rückseite) ausgewertet. „Ausweis ersetzen“ macht ein
+  neues Set zum aktuellen Nachweis; ältere Sets erscheinen nur unter
+  „Alte Ausweise“. Änderungen an Identitätsdaten heben eine frühere
+  Identitätsbestätigung und Risikoprüfung auf. Betroffen sind die Regeln
+  `GWG-BENEFICIAL-OWNERS-001`, `GWG-REPRESENTATIVE-AUTHORITY-001` und
+  `GWG-IDENTIFICATION-EVIDENCE-001`.
 - **[Scope]** Die ungetaggten Sammelstände `7318ee1d` und `b5bfb8d4`
   enthalten umfangreiche fachliche, Berechtigungs-, Mandantentrennungs-,
   Formular-, Fristen-, GwG-, Rechnungs-, Archiv- und
@@ -49,6 +106,21 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Behoben
 
+- „Abmelden“ im Konto-Menü der oberen Leiste sendet den Logout-POST jetzt
+  zuverlässig über ein dauerhaft gemountetes Formular. Das Schließen des
+  Dropdowns kann den Submit nicht mehr vorzeitig abbrechen.
+- Wissensanhänge lassen sich nach dem Datenmodellwechsel wieder hochladen. Der
+  Dev-Stack lädt dazu den neu generierten Prisma-Client; verständliche
+  Fehlermeldungen ersetzen interne Upload-Fehlercodes.
+- Ein abgelaufener oder anderweitig nicht mehr gültiger Ausweis wird nicht
+  länger als fehlend bezeichnet. Neu erfasste, gültige Ausweise und aktuelle
+  Registerauszüge werden nicht mehr irrtümlich sofort unter den alten
+  Nachweisen einsortiert; mehrere gleichzeitige aktuelle Ausweise derselben
+  Person werden verhindert.
+- Beim Aufklappen eines Handelsregisterauszugs bleibt ein daneben angeordneter,
+  vorhandener Transparenzregisterauszug nicht mehr scheinbar leer. Offene
+  Uploadformulare und die redundante Auswahl des Nachweistyps in jedem
+  Registerbereich wurden entfernt.
 - **[Scope]** Der Portal-Logout akzeptiert nach einem Magic-Link-Login den von
   Chromium unter `Referrer-Policy: no-referrer` gesendeten opaken
   `Origin: null` ausschließlich zusammen mit browsergesetztem

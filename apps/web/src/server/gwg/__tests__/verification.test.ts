@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
 // Fachkatalog: GWG-BENEFICIAL-OWNERS-001
+// Fachkatalog: GWG-REPRESENTATIVE-AUTHORITY-001
 import {
   gwgDecisionGateErrors,
   gwgVerificationErrors,
@@ -63,7 +64,13 @@ function legalSnapshot(overrides: Partial<GwgVerificationSnapshot> = {}): GwgVer
         id: REPRESENTATIVE_ID,
         gwgCheckId: CHECK_ID,
         fullName: 'Erika Muster',
+        birthDate: new Date('1980-01-02T00:00:00Z'),
+        birthPlace: 'Berlin',
+        residence: 'Musterstrasse 1, 10115 Berlin',
+        nationality: 'deutsch',
+        isPep: false,
         position: 0,
+        linkedBeneficialOwnerId: null,
       },
     ],
     ownershipStructureNotes: 'Erika Muster haelt 100 % der Geschaeftsanteile.',
@@ -122,6 +129,26 @@ describe('gwgVerificationErrors', () => {
       NOW,
     );
     expect(errors.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it('verlangt allgemeine Angaben auch für eine ausschließlich gesetzlich vertretende Person', () => {
+    const errors = gwgVerificationErrors(
+      legalSnapshot({
+        representatives: legalSnapshot().representatives.map((representative) => ({
+          ...representative,
+          birthDate: null,
+          birthPlace: null,
+          residence: null,
+          nationality: null,
+          isPep: null,
+        })),
+      }),
+      NOW,
+    );
+
+    expect(errors).toContain(
+      'Gesetzliche Vertretung 1: Geburtsdatum, Geburtsort, Wohnsitz, Staatsangehörigkeit, PEP-Status fehlen.',
+    );
   });
 
   it('wertet fremde, geloeschte, pending oder falsch klassifizierte Dateien nicht als Nachweis', () => {
@@ -273,6 +300,55 @@ describe('gwgVerificationErrors', () => {
       NOW,
     );
     expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
+  });
+
+  it('blockiert einen Ausweissatz mit mehr als Vorder- und Rückseite', () => {
+    const documents = ['front', 'back', 'third'].map((documentId) =>
+      evidence('PERSONALAUSWEIS', { documentId }),
+    );
+    const errors = gwgVerificationErrors(
+      legalSnapshot({
+        idDocuments: [
+          ...documents,
+          evidence('HANDELSREGISTERAUSZUG'),
+          evidence('TRANSPARENZREGISTER_AUSZUG'),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
+  });
+
+  it('wertet abgelöste Nachweise nicht als aktuelle Prüfgrundlage', () => {
+    const errors = gwgVerificationErrors(
+      legalSnapshot({
+        idDocuments: [
+          evidence('PERSONALAUSWEIS'),
+          evidence('HANDELSREGISTERAUSZUG', { supersededAt: NOW }),
+          evidence('TRANSPARENZREGISTER_AUSZUG'),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(errors.some((error) => error.includes('Registerauszug'))).toBe(true);
+  });
+
+  it('blockiert zwei aktive Ausweissätze für dieselbe Person', () => {
+    const errors = gwgVerificationErrors(
+      legalSnapshot({
+        idDocuments: [
+          evidence('PERSONALAUSWEIS'),
+          evidence('REISEPASS'),
+          evidence('HANDELSREGISTERAUSZUG'),
+          evidence('TRANSPARENZREGISTER_AUSZUG'),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(errors.some((error) => error.includes('mehrere aktive Ausweissätze'))).toBe(true);
   });
 });
 

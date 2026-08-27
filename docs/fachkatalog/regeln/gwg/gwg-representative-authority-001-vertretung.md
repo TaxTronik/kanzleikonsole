@@ -16,11 +16,12 @@ professional_review:
 implementation:
   status: partial
   summary: >-
-    TaxTronik speichert Vertreter als stabile Personen im Prüfsnapshot,
-    unterstützt Doppelrollen mit wirtschaftlich Berechtigten und verlangt bei
-    Rechtsträgern mindestens einen bestätigten Vertreter-Ausweis. Die konkrete
-    Vertretungsmacht, der tatsächlich Auftretende und Vertreter natürlicher
-    Personen werden jedoch nicht vollständig strukturiert geprüft.
+    TaxTronik speichert Vertreter mit stabiler Identität und vollständigen
+    allgemeinen Personenangaben im Prüfsnapshot, unterstützt Doppelrollen mit
+    wirtschaftlich Berechtigten und verlangt bei Rechtsträgern mindestens
+    einen bestätigten Vertreter-Ausweis. Die konkrete Vertretungsmacht, der
+    tatsächlich Auftretende und Vertreter natürlicher Personen werden jedoch
+    nicht vollständig strukturiert geprüft.
 sources:
   - kind: official_law
     citation: § 10 Abs. 1 Nr. 1 GwG
@@ -40,13 +41,26 @@ sources:
 code_refs:
   - apps/web/src/server/gwg/representatives.ts
   - apps/web/src/server/gwg/verification.ts
+  - apps/web/src/server/gwg/revisions.ts
   - apps/web/src/server/gwg-onboarding/representative-submission.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-beneficial-owner-role-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/new-gwg-person-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/person-general-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/person-roles-panel.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/legal-entity-details-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260801004900_gwg_cross_role_person_identity/migration.sql
+  - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
   - apps/web/src/server/gwg/__tests__/representatives.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/ui-state.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -142,16 +156,37 @@ des Personennachweises; die Vertretungsmacht bleibt gesondert zu prüfen.
 
 ## Umsetzung in TaxTronik
 
-Vertreter werden als eigene Datensätze mit stabiler UUID und Reihenfolge
-gespeichert. `syncGwgRepresentativesTx` aktualisiert die Liste
-konkurrenzsicher; Änderungen an Name oder Doppelrollen-Verknüpfung entwerten
-zugeordnete Identitätsdokumente. Der Self-Onboarding-Pfad verlangt für einen
-separaten Vertreter einen vollständigen Ausweissatz.
+Vertreter werden als eigene Datensätze mit stabiler UUID, Reihenfolge und
+allgemeinen Personenangaben gespeichert. `syncGwgRepresentativesTx`
+aktualisiert die Liste konkurrenzsicher; Änderungen an identitätsrelevanten
+allgemeinen Angaben oder der Doppelrollen-Verknüpfung entwerten zugeordnete
+Identitätsdokumente. Der Self-Onboarding-Pfad verlangt für einen separaten
+Vertreter einen vollständigen Ausweissatz.
 
 Das zentrale Freigabegate akzeptiert nur eine bestätigte Ausweiszuordnung zu
 einer Vertreter-ID desselben Prüfsnapshots. Register- und Gründungsbelege können
 die manuelle Berechtigungsprüfung unterstützen, werden aber nicht semantisch
 ausgewertet.
+
+Die Staff-Oberfläche zeigt gesetzliche Vertreter als erfasste Personen im
+Bereich „Personen“. Neue Vertreter entstehen nur über „Neue Person erfassen“
+oder durch das Zuweisen der Vertreterrolle an eine bereits erfasste Person.
+Freie Namenszeilen in den Rechtsträgerdaten und in der Rollenpflege gibt es
+nicht; auch die Staff-Action weist das frühere Freitextfeld zurück. Jede Person
+besitzt den Unterbereich „Allgemeine Angaben“ für Name, Geburtsdaten, Wohnsitz,
+Staatsangehörigkeit und PEP-Status. Das Gate verlangt diese Angaben auch für
+eine ausschließlich vertretungsberechtigte Person. Der Unterbereich „Rolle(n)“
+zeigt die Zuordnung zuerst nur lesend; „Bearbeiten“ ermöglicht die
+Rollenänderung und stellt eine Doppelrolle über die stabile Personenreferenz
+her. Eine bereits als Vertreter erfasste Person wird ohne erneute Eingabe ihrer
+allgemeinen Angaben um die wirtschaftlich-berechtigte Rolle ergänzt; nur der
+rollenspezifische Anteil wird erfasst. Beide Rollensnapshots werden atomar
+synchronisiert, ohne die Vertreterrolle zu entfernen. Ein eigener
+Stammdaten-Überblick oberhalb von
+Stepper und Mandanteneinladung nennt die gesetzlichen Vertreter zusammen mit
+den zentralen Rechtsträger- und Registerangaben. Der spätere Abschnitt
+„Rechtsträger- und Registernachweise“ enthält nur noch die Dokumentnachweise und
+keine zweite Stammdaten- oder Vertreterpflege.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -179,7 +214,10 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 ## Technische Nachweise
 
 Der Synchronisationshelfer und die Datenbankmigration belegen stabile
-Vertreteridentitäten, Doppelrollen und das Entwerten überholter Zuordnungen.
-Die Tests prüfen Positions- und Rollenwechsel, separate Ausweissätze,
-unbekannte Doppelrollen und den Schutz vor Namensheuristik. Sie belegen nicht
-die materielle Vertretungsmacht.
+Vertreteridentitäten, allgemeine Personenangaben, Doppelrollen und das
+Entwerten überholter Zuordnungen. Die Tests prüfen Positions- und Rollenwechsel,
+die gemeinsame Anlage einer Person mit Vertreter- und
+wirtschaftlich-berechtigter Rolle, die spätere atomare Ergänzung der Rolle ohne
+erneute Stammdateneingabe, die Synchronisation allgemeiner Angaben, das
+Vollständigkeitsgate, separate Ausweissätze, unbekannte Doppelrollen und den
+Schutz vor Namensheuristik. Sie belegen nicht die materielle Vertretungsmacht.

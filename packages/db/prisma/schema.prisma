@@ -60,6 +60,7 @@ model Tenant {
   invoiceCategories              InvoiceCategory[]
   invoiceNumberSeqs              InvoiceNumberSeq[]
   kbArticles                     KbArticle[]
+  kbAttachments                  KbAttachment[]
   kbCategories                   KbCategory[]
   magicLinks                     MagicLink[]
   n8nConnection                  N8nConnection?
@@ -291,6 +292,11 @@ model GwgIdDocument {
   expiryDate                    DateTime?           @map("expiry_date") @db.Date
   verifiedAt                    DateTime?           @map("verified_at")
   notes                         String?
+  /// Durch einen neueren Nachweis fachlich abgeloest. Die Aktenverknuepfung
+  /// bleibt fuer Verlauf und Aufbewahrung erhalten, wird aber nicht mehr fuer
+  /// den aktuellen Pruefsnapshot ausgewertet.
+  supersededAt                  DateTime?           @map("superseded_at") @db.Timestamptz(6)
+  supersededByDocumentSetId     String?             @map("superseded_by_document_set_id") @db.Uuid
   createdAt                     DateTime            @default(now()) @map("created_at")
   document                      Document?           @relation(fields: [documentId], references: [id])
   check                         GwgCheck            @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
@@ -304,6 +310,7 @@ model GwgIdDocument {
   @@unique([gwgCheckId, documentId])
   @@index([gwgCheckId])
   @@index([gwgCheckId, documentSetId])
+  @@index([gwgCheckId, supersededAt])
   @@index([documentId])
   @@index([naturalClientSubjectId])
   @@index([beneficialOwnerSubjectId])
@@ -318,6 +325,14 @@ model GwgRepresentative {
   id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   gwgCheckId              String              @map("gwg_check_id") @db.Uuid
   fullName                String              @map("full_name")
+  /// Allgemeine Angaben der Person. Bei einer Doppelrolle werden sie mit dem
+  /// verknuepften wirtschaftlich Berechtigten synchron gehalten; bei einer
+  /// reinen Vertreterperson sind sie hier die alleinige Quelle.
+  birthDate               DateTime?           @map("birth_date") @db.Date
+  birthPlace              String?             @map("birth_place")
+  residence               String?
+  nationality             String?
+  isPep                   Boolean?            @map("is_pep")
   position                Int
   /// Explizite Rollenidentität: derselbe Mensch kann Vertreter und zugleich
   /// wirtschaftlich Berechtigter sein. Keine heuristische Namensverknüpfung.
@@ -615,26 +630,46 @@ model KbCategory {
 }
 
 model KbArticle {
-  id         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String                   @map("tenant_id") @db.Uuid
-  categoryId String?                  @map("category_id") @db.Uuid
-  title      String
-  slug       String
-  body       String
-  search_vec Unsupported("tsvector")? @default(dbgenerated("(setweight(to_tsvector('german'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('german'::regconfig, COALESCE(body, ''::text)), 'B'::\"char\"))"))
-  authorId   String                   @map("author_id") @db.Uuid
-  published  Boolean                  @default(true)
-  viewCount  Int                      @default(0) @map("view_count")
-  createdAt  DateTime                 @default(now()) @map("created_at")
-  updatedAt  DateTime                 @updatedAt @map("updated_at")
-  category   KbCategory?              @relation(fields: [categoryId], references: [id])
-  tenant     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id          String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String                   @map("tenant_id") @db.Uuid
+  categoryId  String?                  @map("category_id") @db.Uuid
+  title       String
+  slug        String
+  body        String
+  search_vec  Unsupported("tsvector")? @default(dbgenerated("(setweight(to_tsvector('german'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('german'::regconfig, COALESCE(body, ''::text)), 'B'::\"char\"))"))
+  authorId    String                   @map("author_id") @db.Uuid
+  published   Boolean                  @default(true)
+  viewCount   Int                      @default(0) @map("view_count")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  category    KbCategory?              @relation(fields: [categoryId], references: [id])
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  attachments KbAttachment[]
 
   @@unique([tenantId, slug])
   @@index([tenantId, categoryId])
   @@index([tenantId, published])
   @@index([search_vec], type: Gin)
   @@map("kb_article")
+}
+
+model KbAttachment {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String     @map("tenant_id") @db.Uuid
+  articleId   String?    @map("article_id") @db.Uuid
+  documentId  String     @unique @map("document_id") @db.Uuid
+  draftToken  String     @map("draft_token") @db.Uuid
+  displayName String     @map("display_name")
+  mimeType    String     @map("mime_type")
+  uploadedBy  String     @map("uploaded_by") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  article     KbArticle? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  document    Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, articleId])
+  @@index([tenantId, draftToken])
+  @@map("kb_attachment")
 }
 
 model Invoice {
@@ -1379,6 +1414,7 @@ model Document {
   taxFilings                TaxFiling[]
   taxNotices                TaxNotice[]
   researchShelfResult       RiskResearchResult?    @relation("ResearchResultShelfDocument")
+  knowledgeAttachment       KbAttachment?
 
   @@index([tenantId, clientId])
   @@index([tenantId, classification])

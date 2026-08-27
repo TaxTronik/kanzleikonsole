@@ -400,15 +400,14 @@ export async function saveLegalEntityDetailsAction(
 > {
   let representatives: unknown;
   const representativesJson = formData.get('representativesJson');
+  if (typeof representativesJson !== 'string' || !representativesJson.trim()) {
+    return {
+      ok: false,
+      error: 'Gesetzliche Vertreter müssen über erfasste Personen ausgewählt werden.',
+    };
+  }
   try {
-    representatives =
-      typeof representativesJson === 'string' && representativesJson.trim()
-        ? JSON.parse(representativesJson)
-        : String(formData.get('representativeNamesText') ?? '')
-            .split(/\r?\n/)
-            .map((fullName) => fullName.trim())
-            .filter(Boolean)
-            .map((fullName) => ({ id: null, fullName }));
+    representatives = JSON.parse(representativesJson);
   } catch {
     return { ok: false, error: 'Die Vertreterliste ist ungültig.' };
   }

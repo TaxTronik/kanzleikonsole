@@ -100,6 +100,24 @@ export function gwgBeneficialOwnerRevision(source: {
   });
 }
 
+export function gwgPersonGeneralRevision(source: {
+  fullName: string;
+  birthDate: Date | string | null;
+  birthPlace: string | null;
+  residence: string | null;
+  nationality: string | null;
+  isPep: boolean | null;
+}): string {
+  return revision({
+    fullName: source.fullName,
+    birthDate: dateOnly(source.birthDate),
+    birthPlace: source.birthPlace,
+    residence: source.residence,
+    nationality: source.nationality,
+    isPep: source.isPep,
+  });
+}
+
 export interface IdentityDocumentRevisionSource {
   id: string;
   gwgCheckId?: string;

@@ -111,10 +111,11 @@ describe('parseFormData-Migrationsrest', () => {
     // ist deshalb korrekt im transformierten Rest statt bei den exakten
     // Feld-zu-Feld-Parses. Die Gesamtzahl der direkten Parses bleibt gleich;
     // Der interne Anforderungskommentar und die neue tägliche
-    // Fristenabschlusskontrolle nutzen dagegen den gemeinsamen, strikt
-    // schema-basierten parseFormData-Helfer.
+    // Fristenabschlusskontrolle sowie die fünf neuen GwG-Personen- und
+    // Nachweisaktionen nutzen dagegen den gemeinsamen, strikt schema-basierten
+    // parseFormData-Helfer.
     expect(direct).toHaveLength(55);
     expect(direct.filter((call) => !call.exact)).toHaveLength(49);
-    expect(shared).toBe(33);
+    expect(shared).toBe(38);
   });
 });

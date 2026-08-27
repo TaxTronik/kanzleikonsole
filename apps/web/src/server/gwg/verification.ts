@@ -13,6 +13,7 @@ export interface VerificationDocument {
   representativeSubjectId: string | null;
   identityAssignmentConfirmedAt: Date | null;
   identityAssignmentConfirmedBy: string | null;
+  supersededAt?: Date | null;
   documentId: string | null;
   document: {
     clientId: string | null;
@@ -34,7 +35,18 @@ export interface GwgVerificationSnapshot {
   registerAuthority: string | null;
   noRegisterEntry: boolean;
   representativeNames: string[];
-  representatives: Array<{ id: string; gwgCheckId: string; fullName: string; position: number }>;
+  representatives: Array<{
+    id: string;
+    gwgCheckId: string;
+    fullName: string;
+    birthDate: Date | null;
+    birthPlace: string | null;
+    residence: string | null;
+    nationality: string | null;
+    isPep: boolean | null;
+    position: number;
+    linkedBeneficialOwnerId: string | null;
+  }>;
   ownershipStructureNotes: string | null;
   beneficialOwners: Array<{
     fullName: string;
@@ -85,6 +97,7 @@ function personalIdSets(
 ): ValidPersonalIdSet[] {
   const groups = new Map<string, VerificationDocument[]>();
   for (const document of documents) {
+    if (document.supersededAt != null) continue;
     if (document.type !== 'PERSONALAUSWEIS' && document.type !== 'REISEPASS') continue;
     const group = groups.get(document.documentSetId) ?? [];
     group.push(document);
@@ -125,7 +138,13 @@ function personalIdSets(
         startOfUtcDay(entry.expiryDate) >= startOfUtcDay(now) &&
         hasAttachedEvidence(entry, clientId),
     );
-    if (sameSet && uniqueDocuments && subjectCount === 1 && completeAndAvailable) {
+    if (
+      group.length <= 2 &&
+      sameSet &&
+      uniqueDocuments &&
+      subjectCount === 1 &&
+      completeAndAvailable
+    ) {
       valid.push({
         naturalClientSubjectId: first.naturalClientSubjectId,
         beneficialOwnerSubjectId: first.beneficialOwnerSubjectId,
@@ -134,6 +153,26 @@ function personalIdSets(
     }
   }
   return valid;
+}
+
+function hasMultipleActivePersonalIdSets(documents: VerificationDocument[]): boolean {
+  const setIdsBySubject = new Map<string, Set<string>>();
+  for (const document of documents) {
+    if (document.supersededAt != null) continue;
+    if (document.type !== 'PERSONALAUSWEIS' && document.type !== 'REISEPASS') continue;
+    const subjectKeys = [
+      document.naturalClientSubjectId ? `client:${document.naturalClientSubjectId}` : null,
+      document.beneficialOwnerSubjectId ? `owner:${document.beneficialOwnerSubjectId}` : null,
+      document.representativeSubjectId
+        ? `representative:${document.representativeSubjectId}`
+        : null,
+    ].filter((value): value is string => value !== null);
+    if (subjectKeys.length !== 1) continue;
+    const setIds = setIdsBySubject.get(subjectKeys[0]!) ?? new Set<string>();
+    setIds.add(document.documentSetId);
+    setIdsBySubject.set(subjectKeys[0]!, setIds);
+  }
+  return [...setIdsBySubject.values()].some((setIds) => setIds.size > 1);
 }
 
 /**
@@ -147,6 +186,11 @@ export function gwgVerificationErrors(
 ): string[] {
   const errors: string[] = [];
   const personalIds = personalIdSets(snapshot.idDocuments, snapshot.clientId, now);
+  if (hasMultipleActivePersonalIdSets(snapshot.idDocuments)) {
+    errors.push(
+      'Für eine Person dürfen nicht mehrere aktive Ausweissätze gleichzeitig als Prüfgrundlage geführt werden. Bitte einen aktuellen Ausweis festlegen; die übrigen Sätze müssen als alte Nachweise abgelöst werden.',
+    );
+  }
 
   if (snapshot.clientKind === 'NATPERS') {
     if (!personalIds.some((set) => set.naturalClientSubjectId === snapshot.clientId)) {
@@ -193,6 +237,20 @@ export function gwgVerificationErrors(
       'Mindestens ein Mitglied des Vertretungsorgans/gesetzlicher Vertreter ist zu erfassen.',
     );
   }
+  snapshot.representatives.forEach((representative, index) => {
+    const missing: string[] = [];
+    if (!representative.fullName.trim()) missing.push('Name');
+    if (!representative.birthDate) missing.push('Geburtsdatum');
+    if (!representative.birthPlace?.trim()) missing.push('Geburtsort');
+    if (!representative.residence?.trim()) missing.push('Wohnsitz');
+    if (!representative.nationality?.trim()) missing.push('Staatsangehörigkeit');
+    if (representative.isPep == null) missing.push('PEP-Status');
+    if (missing.length > 0) {
+      errors.push(
+        `Gesetzliche Vertretung ${index + 1}: ${missing.join(', ')} ${missing.length === 1 ? 'fehlt' : 'fehlen'}.`,
+      );
+    }
+  });
   if (!snapshot.ownershipStructureNotes?.trim()) {
     errors.push(
       'Die Eigentums- und Kontrollstruktur sowie die Ermittlung des wirtschaftlich Berechtigten sind zu dokumentieren.',
@@ -201,6 +259,7 @@ export function gwgVerificationErrors(
 
   const entityEvidence = snapshot.idDocuments.some(
     (document) =>
+      document.supersededAt == null &&
       (snapshot.noRegisterEntry
         ? document.type === 'GESELLSCHAFTSVERTRAG'
         : document.type === 'HANDELSREGISTERAUSZUG' || document.type === 'GESELLSCHAFTSVERTRAG') &&
@@ -218,6 +277,7 @@ export function gwgVerificationErrors(
     snapshot.noRegisterEntry ||
     snapshot.idDocuments.some(
       (document) =>
+        document.supersededAt == null &&
         document.type === 'TRANSPARENZREGISTER_AUSZUG' &&
         hasAttachedEvidence(document, snapshot.clientId),
     );
@@ -276,7 +336,7 @@ export function gwgDecisionGateErrors(
 
   errors.push(...gwgVerificationErrors(snapshot, now));
 
-  if (snapshot.idDocuments.length === 0) {
+  if (!snapshot.idDocuments.some((document) => document.supersededAt == null)) {
     errors.push('Mindestens ein Identitätsdokument erforderlich.');
   }
   if (snapshot.beneficialOwners.some((owner) => owner.isPep) && savedAnswers['pep'] !== 3) {

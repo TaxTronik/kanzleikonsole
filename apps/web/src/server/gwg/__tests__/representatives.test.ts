@@ -65,11 +65,19 @@ describe('syncGwgRepresentativesTx', () => {
     });
 
     expect(tx.gwgIdDocument.findMany).toHaveBeenCalledWith({
-      where: { gwgCheckId: CHECK_ID, representativeSubjectId: { in: [REP_A, REP_B] } },
+      where: {
+        gwgCheckId: CHECK_ID,
+        representativeSubjectId: { in: [REP_A, REP_B] },
+        supersededAt: null,
+      },
       select: { id: true, documentSetId: true },
     });
     expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
-      where: { gwgCheckId: CHECK_ID, id: { in: ['document-a', 'document-b'] } },
+      where: {
+        gwgCheckId: CHECK_ID,
+        id: { in: ['document-a', 'document-b'] },
+        supersededAt: null,
+      },
       data: {
         representativeSubjectId: null,
         identityAssignmentConfirmedAt: null,

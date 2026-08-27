@@ -29,12 +29,24 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
   });
 
   it('führt Vertreter als strukturierte Personen statt als Mehrzeilen-Freitext', () => {
-    const source = read('legal-entity-details-form.tsx');
+    const legalDetails = read('legal-entity-details-form.tsx');
+    const roles = read('person-roles-panel.tsx');
+    const newPerson = read('new-gwg-person-form.tsx');
+    const addOwnerRole = read('add-beneficial-owner-role-form.tsx');
 
-    expect(source).toContain('name="representativesJson"');
-    expect(source).toContain('Bereits angelegte Person auswählen');
-    expect(source).toContain('Neue Person anlegen');
-    expect(source).not.toContain('name="representativeNamesText"');
+    expect(legalDetails).toContain('name="representativesJson"');
+    expect(roles).toContain('name="representativesJson"');
+    expect(roles).toContain('können hier nicht frei eingegeben werden');
+    expect(roles).toContain('<Pencil className="h-3.5 w-3.5" /> Bearbeiten');
+    expect(roles).toContain('defaultOpen');
+    expect(roles).toContain('setAddOwnerRole(event.target.checked)');
+    expect(addOwnerRole).toContain('addBeneficialOwnerRoleAction');
+    expect(addOwnerRole).toContain('Doppelrolle speichern');
+    expect(roles).not.toContain('name="fullName"');
+    expect(newPerson).toContain('name="fullName"');
+    expect(newPerson).toContain('Neue Person erfassen');
+    expect(legalDetails).not.toContain('name="representativeNamesText"');
+    expect(roles).not.toContain('name="representativeNamesText"');
   });
 
   it('aktualisiert Kopfstatus und Owner-Zusammenfassung ohne Seitenreload', () => {

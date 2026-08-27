@@ -3,34 +3,93 @@
 //
 // Bewusst minimal — kein Library-Overhead. Unterstützt:
 // - # ## ### Headings
-// - **bold**, *italic*, `code`
+// - **bold**, *italic*, ~~strike~~, `code`
 // - - / * unordered lists
 // - 1. ordered lists
 // - > blockquote
 // - ```code blocks```
 // - [link](url)
+// - ![alt](url) für intern hochgeladene Wissensbilder
 // - | Tabellen | (GitHub-Stil, mit Separator-Zeile)
 // - --- horizontale Trennlinie
 // - paragraphs
 //
 // HTML-Escape für jeden Text-Block — keine XSS-Lücke. Nur die definierten
-// Markdown-Tokens werden zu HTML-Tags. Keine HTML-Passthrough.
+// Markdown-Tokens sowie eng begrenzte, vom Inline-Editor erzeugte
+// Textstil-Spans werden zu HTML-Tags. Keine allgemeine HTML-Passthrough.
 // =============================================================================
 
 import { escapeHtml, safeHref } from './markdown-safety';
 
+const KNOWLEDGE_IMAGE_SRC =
+  /^\/api\/staff\/knowledge\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SAFE_STYLE_COLOR = /^#[0-9a-f]{6}$/i;
+const SAFE_STYLE_FONT_SIZE = /^(?:0\.875|1|1\.125|1\.25|1\.5)rem$/;
+
+function safeImageSrc(url: string): string {
+  const safe = safeHref(url);
+  return KNOWLEDGE_IMAGE_SRC.test(safe) ? safe : '#';
+}
+
+function safeTextStyle(raw: string): string | null {
+  const declarations: string[] = [];
+  for (const declaration of raw.split(';')) {
+    const separator = declaration.indexOf(':');
+    if (separator < 0) continue;
+    const property = declaration.slice(0, separator).trim().toLowerCase();
+    const value = declaration
+      .slice(separator + 1)
+      .trim()
+      .toLowerCase();
+    if ((property === 'color' || property === 'background-color') && SAFE_STYLE_COLOR.test(value)) {
+      declarations.push(`${property}: ${value}`);
+    }
+    if (property === 'font-size' && SAFE_STYLE_FONT_SIZE.test(value)) {
+      declarations.push(`${property}: ${value}`);
+    }
+  }
+  return declarations.length > 0 ? [...new Set(declarations)].join('; ') : null;
+}
+
 function inline(s: string): string {
-  let out = escapeHtml(s);
+  const preserved: string[] = [];
+  const preserve = (html: string): string => {
+    const token = `\uE000${preserved.length}\uE001`;
+    preserved.push(html);
+    return token;
+  };
+  let source = s.replace(
+    /<span\s+style=(['"])([^'"]*)\1>(.*?)<\/span>/gi,
+    (_match, _quote: string, style: string, content: string) => {
+      const safeStyle = safeTextStyle(style);
+      return safeStyle ? preserve(`<span style="${safeStyle}">${inline(content)}</span>`) : content;
+    },
+  );
+  source = source.replace(/<u>(.*?)<\/u>/gi, (_match, content: string) => {
+    return preserve(`<u>${inline(content)}</u>`);
+  });
+
+  let out = escapeHtml(source);
   // Code first (so its contents don't get further processed)
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Durchgestrichen
+  out = out.replace(/~~([^~]+)~~/g, '<s>$1</s>');
   // Bold
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   // Italic
   out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // Bilder ausschließlich aus dem authentifizierten Wissens-Anhangspfad.
+  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, url: string) => {
+    return `<img src="${safeImageSrc(url)}" alt="${alt}" loading="lazy">`;
+  });
   // Links
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text: string, url: string) => {
     return `<a href="${safeHref(url)}">${text}</a>`;
   });
+  out = out.replace(
+    /\uE000(\d+)\uE001/g,
+    (_match, index: string) => preserved[Number(index)] ?? '',
+  );
   return out;
 }
 

@@ -29,12 +29,15 @@ sources:
     primary: true
 code_refs:
   - apps/web/src/server/gwg/retention.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
   - apps/worker/src/jobs/gwg-expiry-check.ts
   - packages/storage/src/service.ts
   - packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql
   - packages/db/prisma/migrations/20260823170000_gwg_open_first_check_retention/migration.sql
+  - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - packages/db/src/__tests__/gwg-destruction.test.ts
   - apps/web/src/server/gwg/__tests__/retention.test.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
@@ -155,6 +158,12 @@ gesperrte Versionsliste neu, löscht jede konkrete Storage-Version und setzt
 einen DB-Abschluss. Erst anschließend darf eine SECURITY-DEFINER-Funktion die
 strukturierten Checkdaten bereinigen. Datenbankprüfungen und Lifecycle-Locks
 sollen zu frühe oder konkurrierende Vernichtung verhindern.
+
+Beim Ersetzen eines Nachweises bleibt die abgelöste Prüfzuordnung ausdrücklich
+als historische `GwgIdDocument`-Zeile erhalten. Das Lösen einer irrtümlichen
+Zuordnung entfernt dagegen nur diese Verknüpfungszeile; das Dokument und seine
+Object-Store-Versionen verbleiben bis zum kontrollierten Vernichtungspfad in
+der Mandantenakte.
 
 ## Bekannte Abweichungen und Grenzen
 

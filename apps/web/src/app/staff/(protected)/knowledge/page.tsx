@@ -1,9 +1,10 @@
 ﻿import Link from 'next/link';
-import { BookOpen, Plus } from 'lucide-react';
+import { BookOpen, CalendarDays, Plus, UserRound } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { searchArticles, type SearchHit } from './actions';
 import { fmtDateShort } from '@/lib/fmt';
+import { InlineCategoryForm } from './inline-category-form';
 
 export default async function KnowledgePage({
   searchParams,
@@ -22,7 +23,7 @@ export default async function KnowledgePage({
     searchHits = await searchArticles(query);
   }
 
-  const [categories, articles] = await withTenantContext(
+  const [categories, articles, staffUsers] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) =>
       Promise.all([
@@ -36,8 +37,12 @@ export default async function KnowledgePage({
           take: 50,
           include: { category: { select: { name: true } } },
         }),
+        tx.staffUser.findMany({
+          select: { id: true, fullName: true },
+        }),
       ]),
   );
+  const staffNames = new Map(staffUsers.map((staff) => [staff.id, staff.fullName]));
 
   return (
     <div className="p-8">
@@ -83,7 +88,17 @@ export default async function KnowledgePage({
                     className="block hover:bg-gray-50 -mx-6 px-6"
                   >
                     <p className="font-medium text-primary">{h.title}</p>
-                    {h.categoryName && <p className="text-xs text-muted mb-2">{h.categoryName}</p>}
+                    <div className="mb-2 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                      {h.categoryName && <span>{h.categoryName}</span>}
+                      <span className="inline-flex items-center gap-1">
+                        <UserRound className="h-3.5 w-3.5" />
+                        {h.authorName}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        Erstellt am {fmtDateShort(h.createdAt)}
+                      </span>
+                    </div>
                     <p
                       className="text-sm text-secondary [&_mark]:bg-yellow-200 [&_mark]:px-0.5"
                       dangerouslySetInnerHTML={{ __html: h.snippet }}
@@ -133,12 +148,12 @@ export default async function KnowledgePage({
                 <li className="text-sm text-disabled px-3 py-2">Noch keine Kategorien</li>
               )}
             </ul>
-            <Link
-              href="/staff/knowledge/categories/new"
-              className="mt-4 inline-block text-xs text-brand-700 hover:underline"
-            >
-              + Kategorie anlegen
-            </Link>
+            <InlineCategoryForm
+              categories={categories.map((category) => ({
+                id: category.id,
+                name: category.name,
+              }))}
+            />
           </aside>
 
           {/* Artikel-Liste */}
@@ -157,11 +172,18 @@ export default async function KnowledgePage({
                         <p className="font-medium text-primary">{a.title}</p>
                         {!a.published && <span className="badge-gray">Entwurf</span>}
                       </div>
-                      <p className="text-xs text-muted">
-                        {a.category?.name ?? 'Ohne Kategorie'}
-                        {' · '}
-                        Aktualisiert {fmtDateShort(a.updatedAt)}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                        <span>{a.category?.name ?? 'Ohne Kategorie'}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <UserRound className="h-3.5 w-3.5" />
+                          {staffNames.get(a.authorId) ?? 'Unbekannter Verfasser'}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarDays className="h-3.5 w-3.5" />
+                          Erstellt am {fmtDateShort(a.createdAt)}
+                        </span>
+                        <span>Aktualisiert {fmtDateShort(a.updatedAt)}</span>
+                      </div>
                     </Link>
                   </li>
                 ))}

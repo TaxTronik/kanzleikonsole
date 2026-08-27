@@ -138,39 +138,44 @@ export async function copyGwgSnapshotTx(
 
   const copiedOwnerIds = new Map(source.beneficialOwners.map((owner) => [owner.id, randomUUID()]));
   const copiedDocumentSetIds = new Map<string, string>();
-  const documentsToCopy = source.idDocuments.map((document) => {
-    const evidence = document.document;
-    const reusableDocumentId =
-      evidence &&
-      evidence.id === document.documentId &&
-      evidence.tenantId === input.tenantId &&
-      evidence.clientId === input.clientId &&
-      evidence.classification === 'GWG_EVIDENCE' &&
-      evidence.deletedAt === null &&
-      evidence.gwgDestructionRequestedAt === null &&
-      evidence.gwgDestroyedAt === null
-        ? evidence.id
-        : null;
-    let copiedDocumentSetId = copiedDocumentSetIds.get(document.documentSetId);
-    if (!copiedDocumentSetId) {
-      copiedDocumentSetId = randomUUID();
-      copiedDocumentSetIds.set(document.documentSetId, copiedDocumentSetId);
-    }
-    return {
-      gwgCheckId: input.targetCheckId,
-      type: document.type,
-      ownerName: document.ownerName,
-      documentId: reusableDocumentId,
-      number: document.number,
-      issuedBy: document.issuedBy,
-      issueDate: document.issueDate,
-      expiryDate: document.expiryDate,
-      // Sets sind check-lokal; Vorder-/Rueckseite behalten nur innerhalb des
-      // neuen Checks dieselbe, frisch erzeugte Gruppen-ID.
-      documentSetId: copiedDocumentSetId,
-      notes: document.notes,
-    };
-  });
+  const documentsToCopy = source.idDocuments
+    .filter(
+      (document) =>
+        (document as typeof document & { supersededAt?: Date | null }).supersededAt == null,
+    )
+    .map((document) => {
+      const evidence = document.document;
+      const reusableDocumentId =
+        evidence &&
+        evidence.id === document.documentId &&
+        evidence.tenantId === input.tenantId &&
+        evidence.clientId === input.clientId &&
+        evidence.classification === 'GWG_EVIDENCE' &&
+        evidence.deletedAt === null &&
+        evidence.gwgDestructionRequestedAt === null &&
+        evidence.gwgDestroyedAt === null
+          ? evidence.id
+          : null;
+      let copiedDocumentSetId = copiedDocumentSetIds.get(document.documentSetId);
+      if (!copiedDocumentSetId) {
+        copiedDocumentSetId = randomUUID();
+        copiedDocumentSetIds.set(document.documentSetId, copiedDocumentSetId);
+      }
+      return {
+        gwgCheckId: input.targetCheckId,
+        type: document.type,
+        ownerName: document.ownerName,
+        documentId: reusableDocumentId,
+        number: document.number,
+        issuedBy: document.issuedBy,
+        issueDate: document.issueDate,
+        expiryDate: document.expiryDate,
+        // Sets sind check-lokal; Vorder-/Rueckseite behalten nur innerhalb des
+        // neuen Checks dieselbe, frisch erzeugte Gruppen-ID.
+        documentSetId: copiedDocumentSetId,
+        notes: document.notes,
+      };
+    });
 
   await tx.gwgCheck.update({
     where: { id: input.targetCheckId },
@@ -427,6 +432,7 @@ export async function requireGwgReverificationTx(
         where: {
           gwgCheckId: existing.id,
           type: { in: ['PERSONALAUSWEIS', 'REISEPASS'] },
+          supersededAt: null,
         },
         data: {
           naturalClientSubjectId: null,

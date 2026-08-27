@@ -680,6 +680,169 @@
   }
 
   /*
+   * Stepper — geführter Fortschritt (Setup-/Prüfprozesse).
+   */
+  .stepper {
+    display: flex;
+    align-items: flex-start;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    position: relative;
+  }
+  .step-line {
+    flex: 1;
+    height: 2px;
+    border-radius: 2px;
+    background-color: rgb(var(--border-default));
+    margin: 0 4px 0 2px;
+  }
+  .step.done .step-line {
+    background-color: rgb(var(--brand-600));
+  }
+  .step-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    flex: none;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-muted));
+    border: 1px solid rgb(var(--border-default));
+  }
+  .step.done .step-dot {
+    background-color: rgb(var(--brand-600));
+    border-color: rgb(var(--brand-600));
+    color: rgb(var(--text-on-brand));
+  }
+  .step.active .step-dot {
+    background-color: rgb(var(--brand-600));
+    border-color: rgb(var(--brand-600));
+    color: rgb(var(--text-on-brand));
+    box-shadow: 0 0 0 4px rgb(var(--brand-500) / 0.22);
+  }
+  .step-txt {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .step-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(var(--text-secondary));
+    white-space: nowrap;
+  }
+  .step.done .step-title,
+  .step.active .step-title {
+    color: rgb(var(--text-primary));
+  }
+  .step-sub {
+    font-size: 11.5px;
+    color: rgb(var(--text-muted));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /*
+   * Stage — ein Schritt als Karte mit Nummer, Titel und Status.
+   */
+  .stage {
+    overflow: hidden;
+  }
+  .stage-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+  }
+  .stage-head .num {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12.5px;
+    font-weight: 700;
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-muted));
+  }
+  .stage.done .num {
+    background-color: #e7f6ec;
+    color: #166534;
+  }
+  .dark .stage.done .num {
+    background-color: rgb(16 185 129 / 0.15);
+    color: #6ee7b7;
+  }
+  .stage.active .num {
+    background-color: rgb(var(--brand-600));
+    color: rgb(var(--text-on-brand));
+  }
+  .stage-title {
+    font-size: 14px;
+    font-weight: 650;
+    color: rgb(var(--text-primary));
+  }
+  .stage-sub {
+    font-size: 12px;
+    color: rgb(var(--text-muted));
+    margin-top: 1px;
+  }
+  .stage-body {
+    padding: 4px 18px 16px;
+  }
+  .stage-body.with-rule {
+    border-top: 1px solid rgb(var(--border-subtle));
+    padding-top: 14px;
+  }
+
+  /* Details-Box — <details>/<summary> als aufklappbare Karte. */
+  .details-box {
+    border: 1px solid rgb(var(--border-default));
+    border-radius: 10px;
+  }
+  .details-box > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(var(--text-secondary));
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .details-box > summary::-webkit-details-marker {
+    display: none;
+  }
+  .details-box > summary .ic,
+  .details-box > summary > svg:first-child {
+    transition: transform 0.15s ease;
+    color: rgb(var(--text-muted));
+  }
+  .details-box[open] > summary .ic,
+  .details-box[open] > summary > svg:first-child {
+    transform: rotate(90deg);
+  }
+  .details-box .details-body {
+    padding: 0 14px 12px;
+  }
+  /*
    * Form-Action-Row — Buttons rechts am Form-Ende (z. B. "Abbrechen / Speichern").
    */
   .form-actions {
