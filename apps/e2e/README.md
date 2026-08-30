@@ -114,6 +114,11 @@ Authentisierung, Seitenprüfungen und Assertions werden nicht übersprungen;
 Rate-Limits bleiben aktiv. Die Profiltests ändern weiterhin gezielt die
 Seed-Profilpräferenzen und stellen sie anschließend wieder her. Für den
 vollständigen CI-Lauf sind isolierte Services ohne diese Option vorgesehen.
+Bei schnellen lokalen Nachläufen können die unveränderten Grenzen von einem
+Magic-Link je Minute und fünf Anfragen je 15 Minuten greifen. Betroffene
+Browserfälle erst nach Ablauf erneut starten; die Limits nicht für UI-Tests
+abschalten. Der schonende Modus ist deshalb kein Ersatz für einen isolierten
+CI-Lauf.
 
 Lokal liest der Staff-Login zuerst explizite `E2E_ADMIN_*`-Variablen und sonst
 die vom Dev-Seed erzeugte, gitignorierte

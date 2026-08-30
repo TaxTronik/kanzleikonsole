@@ -247,6 +247,59 @@ Frame-Fakes. Ein Live-Umschalten des React-Profilproviders mitten in einer
 laufenden Zähleranimation wurde nicht als eigener Browsertest ausgeführt.
 Auch dieser Nachweis ist keine vollständige manuelle A11Y-Abnahme.
 
+### 3.4 Integrationsnachweis vom 30. August 2026
+
+Der abschließende Implementierungsstand `cdb100c5` enthält den aktuellen
+`main`-Stand `744d9431` und die hier beschriebenen Erweiterungen. Nachträge
+betreffen dieses Prüfprotokoll und das Ausnehmen ausschließlich lokaler
+Diagnoseartefakte unter `.codex-run/` aus dem Repository-Lint.
+
+| Prüfung                                    | Lokal nachgewiesenes Ergebnis                                                                                                                                                    |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nicht-DB-Tests, vollständig neu ausgeführt | 381 Dateien, 3.070 Tests bestanden, keine Skips; davon Web 313 Dateien / 2.208 Tests                                                                                             |
+| RFC3161-Gegenprüfung                       | In obigem Ergebnis enthalten: alle acht OpenSSL-Differenztests; OpenSSL 3.5.7 nur für den Testprozess im PATH                                                                    |
+| DB-Tests                                   | 39 Dateien, 272 Tests bestanden, einschließlich des Forward-Replays für den write-only Portal-Benachrichtigungspfad                                                              |
+| Typprüfung                                 | Workspace und E2E-TypeScript bestanden                                                                                                                                           |
+| Format und Lint                            | Bestanden; weiterhin 156 bekannte Warnungen, keine Lintfehler                                                                                                                    |
+| Warnungsbaselines                          | 60 React-Compiler-Warnungen und 95 Komplexitätsbefunde, keine neuen/höheren Treffer; bestehende Schuld bleibt sichtbar                                                           |
+| Fachkatalog                                | 29 Tests, 59 gültige Regeln; Diff gegen den eingebundenen `main` ordnet 110 Fachpfadänderungen zu                                                                                |
+| Dokumentation                              | Linkprüfung und alle vier Tests bestanden                                                                                                                                        |
+| Migrationen und RLS                        | 181 konsistente Migrationen, LF-Prüfung bestanden; 93 Tabellen mit ENABLE/FORCE-RLS und Policy                                                                                   |
+| Frischer Schemaabgleich                    | Eigene leere lokale Testdatenbank mit allen 181 Migrationen über `migrate deploy` aufgebaut; `migrate diff --exit-code` meldet keinen Unterschied; Testdatenbank danach entfernt |
+| Web-Build                                  | `next build` und Standalone-Trace-Prüfung bestanden, 437 nachverfolgte Dateien ohne Quellbaum-/Backup-Leak                                                                       |
+| Zusätzliche technische Gates               | Vier Migrationsdeploy-Tests, 18 Docker-Basis-/Kontexttests sowie die Guards für Testverdrahtung, gepinnte Images/Actions und Lieferkette bestanden                               |
+
+Zusätzlich bestanden **23 unterschiedliche Browserfälle** aus Smoke und den
+vier A11Y-Suiten: 21 im letzten Gesamtlauf, der Konto-Menü- und der individuelle
+Optionsfall anschließend jeweils separat nach Ablauf der regulären Login-
+beziehungsweise Mail-Sperrfrist. Es war somit kein einzelner fehlerfreier
+23-Fälle-Gesamtlauf im schonenden lokalen Modus; keiner der 23 Fälle bleibt
+ungeprüft. Der letzte Optionsfall belegt auch Speichern/Reload, getrennte
+Profile, Rücksetzen, 320-Pixel-Reflow und Fokus-Erhalt beim Speicherfehler.
+
+Der Build verwendete die lokale Testkonfiguration wie im Quality-Workflow.
+Ein vorheriger Versuch mit Produktionsvalidierung wurde wegen der bekannten
+lokalen Dev-Zugangsdaten korrekt abgewiesen. Produktive Secrets wurden weder
+ersetzt noch geprüft; der erfolgreiche Testbuild ist kein Deploymentnachweis.
+Die Browserprüfungen laufen gegen den lokalen Dev-Server, nicht gegen ein
+versioniertes Release-Artefakt. Nicht sämtliche separaten CI-Jobs (etwa der
+vollständige Restore- und Produktions-Sicherheitslauf) wurden lokal reproduziert.
+
+Im Integrationslauf wurde ein echter Fokusfehler der mobilen Navigation
+gefunden: Die kurze Sichtbarkeitsanimation im persönlichen Modus konnte den
+ersten Fokusversuch ablehnen. Der Fokus wartet nun gezielt auf Sichtbarkeit;
+sechs neue Tests sichern Erfolg, verzögerten Start, Abbruch und das Ausbleiben
+eines erneuten Fokuszugriffs nach Erfolg. Drei gezielte Browsernachläufe
+bestanden. Ein zweiter anfänglicher Befund betraf den Testlogin mit einer alten
+Magic-Link-Mail: Im schonenden lokalen Testmodus werden nun vorhandene
+Mail-IDs vor der Anfrage erfasst und ausschließlich neue Links ausgewertet.
+Redis-Warteschlangen, bestehende Testmails und die aktiven Login-Limits werden
+bei diesen Nachläufen nicht geleert oder abgeschaltet.
+
+Diese Ergebnisse sind technische Entwicklungsnachweise, keine fachliche
+Freigabe, keine vollständige WCAG-Abnahme und keine unabhängige Zertifizierung.
+Die nachfolgende manuelle Matrix bleibt offen.
+
 ## 4. Manueller Prüfumfang
 
 Die Überarbeitung beruhte auf einer breiten Quellcodeprüfung der gemeinsamen

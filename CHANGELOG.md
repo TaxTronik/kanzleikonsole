@@ -91,7 +91,8 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 - Lokale A11Y-Browserprüfungen können vorhandene Redis-Warteschlangen und
   MailHog-Nachrichten erhalten. Der Portal-Testlogin wartet dabei auf einen
   neuen Magic-Link zur aktuellen Anfrage; Authentisierung und Assertions
-  bleiben vollständig aktiv.
+  bleiben vollständig aktiv. Lokale Diagnoseartefakte unter `.codex-run/`
+  bleiben außerhalb von Git sowie Format- und Lint-Prüfung.
 - Die gemeinsame Staff-/Portal-Shell besitzt Skip-Links, fokussierbare
   Hauptinhalte und semantisch isolierte mobile Navigation mit Zustand,
   Fokusfalle, Escape und Fokus-Rückgabe. Die globale Suche bildet nun ein

@@ -17,6 +17,7 @@ export default [
       '**/coverage/**',
       '**/playwright-report/**',
       '**/test-results/**',
+      '.codex-run/**',
       '.VSCodeCounter/**',
       'DEMODATEN/**',
       'infra/compose/.volumes/**',
