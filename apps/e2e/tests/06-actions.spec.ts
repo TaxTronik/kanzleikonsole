@@ -391,7 +391,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
 
     await page.getByRole('button', { name: /Neuer Termin/ }).click();
 
-    const titleInput = page.locator('input[name="title"]');
+    const appointmentDialog = page.getByRole('dialog', { name: 'Neuer Termin', exact: true });
+    await expect(appointmentDialog).toBeVisible({ timeout: 5000 });
+    const titleInput = appointmentDialog.locator('input[name="title"]');
     await expect(titleInput).toBeVisible({ timeout: 5000 });
     await titleInput.fill('E2E Test Termin');
     await page.locator('select[name="clientId"]').selectOption({ label: 'Mustermann GmbH' });
@@ -405,7 +407,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const btn = page.locator('button[type="submit"]').filter({ hasText: /Anlegen/ });
     await expect(btn).toBeVisible({ timeout: 5000 });
     await btn.click();
-    await expect(page.locator('.modal-overlay')).toBeHidden({ timeout: 10_000 });
+    await expect(appointmentDialog).toBeHidden({ timeout: 10_000 });
     await page.goto(`/staff/calendar?month=${s.slice(0, 7)}`, { waitUntil: 'networkidle' });
 
     // FIX 2: Statt body-visible — der Termin MUSS im Kalender/der Liste
@@ -447,9 +449,18 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     }
     await startBtn.click();
 
-    await page.locator('.modal-overlay select').selectOption({ label: 'Mustermann GmbH' });
-    const startSubmit = page.getByRole('button', { name: /Workflow starten/ });
+    const startDialog = page.getByRole('dialog', {
+      name: `„${workflowName}" starten`,
+      exact: true,
+    });
+    await expect(startDialog).toBeVisible({ timeout: 5000 });
+    const startSubmit = startDialog.getByRole('button', { name: 'Workflow starten', exact: true });
     await expect(startSubmit).toBeVisible({ timeout: 5000 });
+    await expect(startSubmit).toBeDisabled();
+    await startDialog
+      .getByRole('listbox', { name: 'Mandant auswählen', exact: true })
+      .selectOption({ label: 'Mustermann GmbH' });
+    await expect(startSubmit).toBeEnabled();
     await startSubmit.click();
     await page.waitForURL(
       /\/staff\/clients\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/workflows$/i,
@@ -484,8 +495,21 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     }
     const articleTitle = `E2E Test Wissensartikel ${randomUUID().slice(0, 8)}`;
     await titleEl.fill(articleTitle);
-    await page.locator('#body').fill('## E2E Test\n\nAutomatisch erstellter Test-Artikel.');
-    const s = page.getByRole('button', { name: /Anlegen/ });
+    const articleEditor = page.getByRole('textbox', {
+      name: 'Artikelinhalt direkt formatiert bearbeiten',
+      exact: true,
+    });
+    await expect(articleEditor).toBeVisible();
+    await page.getByRole('button', { name: 'Markdown', exact: true }).click();
+    await page
+      .getByRole('textbox', { name: 'Markdown-Quelltext', exact: true })
+      .fill('## E2E Test\n\nAutomatisch erstellter Test-Artikel.');
+    await page.getByRole('button', { name: 'Inline', exact: true }).click();
+    await expect(
+      articleEditor.getByRole('heading', { name: 'E2E Test', exact: true }),
+    ).toBeVisible();
+    await expect(articleEditor).toContainText('Automatisch erstellter Test-Artikel.');
+    const s = page.getByRole('button', { name: 'Artikel anlegen', exact: true });
     await expect(s).toBeVisible({ timeout: 5000 });
     await s.click();
     await page.waitForURL(
@@ -496,6 +520,9 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       page.getByRole('heading', { name: articleTitle, exact: true }),
       'Neu angelegter Wissensartikel muss auf seiner Detailseite erscheinen',
     ).toBeVisible({ timeout: 5000 });
+    const article = page.getByRole('article');
+    await expect(article.getByRole('heading', { name: 'E2E Test', exact: true })).toBeVisible();
+    await expect(article).toContainText('Automatisch erstellter Test-Artikel.');
     await ctx.close();
   });
 

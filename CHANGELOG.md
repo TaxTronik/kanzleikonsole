@@ -221,6 +221,17 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Behoben
 
+- Die Profilüberschrift bricht bei schmalen Fenstern und vergrößerter Schrift
+  auch mit breiteren Systemschriften um, ohne den Hauptinhalt seitlich
+  hinauszuschieben.
+- Die E2E-Tests für Suche, aktive Navigation, Kalender-/Workflowdialoge und
+  Wissensartikel verwenden die aktuellen benannten Bedienelemente. Sie prüfen
+  weiterhin Navigation, Speicherung und Artikelinhalt. Der Dashboard-Axe-Test
+  beginnt nach einem Größenwechsel an einer definierten Scrollposition, damit
+  die feste Kopfzeile keine zufällig angeschnittenen Schaltflächen als zu klein
+  erscheinen lässt; Prüfregeln und Tastaturprüfungen bleiben erhalten.
+- Der Mandantenfilter der Workflow-Übersicht besitzt auch nach dem Anlegen
+  erster Workflows eine zugängliche Beschriftung.
 - Der Initialfokus der mobilen Navigation wartet bei einer animierten
   Sichtbarkeitsänderung auf das tatsächlich sichtbare Menü. Im persönlichen
   Anzeigemodus konnte der erste Fokusversuch sonst zu früh stattfinden.

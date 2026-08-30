@@ -25,10 +25,10 @@ export default async function StaffProfilePage() {
   return (
     <div className="max-w-5xl p-8">
       <div className="mb-6 flex items-start gap-3">
-        <div className="rounded-lg bg-brand-100 p-2 text-brand-700">
+        <div className="shrink-0 rounded-lg bg-brand-100 p-2 text-brand-700">
           <UserRound className="h-5 w-5" />
         </div>
-        <div>
+        <div className="min-w-0 break-words">
           <h1 className="text-2xl font-bold text-primary">Benutzerprofil</h1>
           <p className="mt-1 text-sm text-muted">Persönliche Konto- und Zugangseinstellungen.</p>
         </div>

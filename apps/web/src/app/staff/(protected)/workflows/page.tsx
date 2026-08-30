@@ -158,7 +158,11 @@ export default async function ActiveWorkflowsPage({
         {allClients.length > 0 && (
           <form action="/staff/workflows" method="get" className="ml-2 flex items-center gap-1">
             {filter !== 'all' && <input type="hidden" name="filter" value={filter} />}
+            <label htmlFor="workflow-client-filter" className="sr-only">
+              Nach Mandant filtern
+            </label>
             <select
+              id="workflow-client-filter"
               name="clientId"
               defaultValue={clientFilterId}
               className="input text-xs py-1 min-w-[12rem]"

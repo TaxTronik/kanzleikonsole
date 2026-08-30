@@ -2,6 +2,16 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
 
+async function startPageAuditAtTop(page: Page): Promise<void> {
+  // Resizing a focused form preserves its scroll position. Start the page-wide
+  // audit at the top so the sticky header does not partially cover a different
+  // add-widget button depending on wrapping/font metrics (all targets remain
+  // included). Keyboard scrolling and focus are checked separately below.
+  const main = page.locator('main');
+  await main.evaluate((element) => element.scrollTo({ top: 0, behavior: 'instant' }));
+  await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBe(0);
+}
+
 async function expectNarrowKeyboardControls(page: Page, controls: Locator): Promise<void> {
   await controls.getByRole('combobox').focus();
   for (const label of ['Startspalte', 'Startzeile', 'Breite (Spalten)', 'Höhe (Rasterzeilen)']) {
@@ -89,12 +99,16 @@ test('Dashboard-Layout: Tastatur, Eingabeentwurf, Fehlerstatus und schmale Vorsc
       }),
     )
     .toBeLessThanOrEqual(1);
+  await startPageAuditAtTop(page);
   const axe = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .exclude('nextjs-portal')
     .analyze();
   expect(
-    axe.violations.map(({ id, nodes }) => ({ id, targets: nodes.map(({ target }) => target) })),
+    axe.violations.map(({ id, nodes }) => ({
+      id,
+      nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+    })),
   ).toEqual([]);
   await expectNarrowKeyboardControls(page, controls);
   await test.info().attach('dashboard-layout-controls-320px.png', {
@@ -159,7 +173,10 @@ test('ACP-Mandantenlayout: benannte Block-Steuerung ohne Ziehen bei 320px', asyn
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
     .analyze();
   expect(
-    axe.violations.map(({ id, nodes }) => ({ id, targets: nodes.map(({ target }) => target) })),
+    axe.violations.map(({ id, nodes }) => ({
+      id,
+      nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
+    })),
   ).toEqual([]);
   await expectNarrowKeyboardControls(page, controls);
   await test.info().attach('client-layout-controls-320px.png', {
