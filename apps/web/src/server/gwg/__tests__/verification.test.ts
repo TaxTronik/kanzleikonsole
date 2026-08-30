@@ -15,6 +15,7 @@ const NOW = new Date('2026-07-11T14:00:00Z');
 const CHECK_ID = 'check-1';
 const CLIENT_ID = 'client-1';
 const REPRESENTATIVE_ID = 'representative-1';
+const OWNER_ID = 'owner-1';
 
 function evidence(
   type: string,
@@ -76,6 +77,7 @@ function legalSnapshot(overrides: Partial<GwgVerificationSnapshot> = {}): GwgVer
     ownershipStructureNotes: 'Erika Muster haelt 100 % der Geschaeftsanteile.',
     beneficialOwners: [
       {
+        id: OWNER_ID,
         fullName: 'Erika Muster',
         birthDate: new Date('1980-01-02T00:00:00Z'),
         birthPlace: 'Berlin',
@@ -228,6 +230,73 @@ describe('gwgVerificationErrors', () => {
       NOW,
     );
     expect(errors.some((error) => error.includes('vertretungsberechtigte Person'))).toBe(true);
+  });
+
+  it('verwendet bei einer expliziten Doppelrolle den bestaetigten UBO-Ausweis fuer die Vertretung', () => {
+    const ownerIdentity = evidence('PERSONALAUSWEIS', {
+      representativeSubjectId: null,
+      beneficialOwnerSubjectId: OWNER_ID,
+    });
+    const snapshot = legalSnapshot({
+      representatives: legalSnapshot().representatives.map((representative) => ({
+        ...representative,
+        linkedBeneficialOwnerId: OWNER_ID,
+      })),
+      idDocuments: [
+        ownerIdentity,
+        evidence('HANDELSREGISTERAUSZUG'),
+        evidence('TRANSPARENZREGISTER_AUSZUG'),
+      ],
+    });
+
+    expect(gwgVerificationErrors(snapshot, NOW)).toEqual([]);
+  });
+
+  it('verwendet bei einer Doppelrolle die gemeinsamen Owner-Angaben trotz leerem Vertreter-Altbestand', () => {
+    const ownerIdentity = evidence('PERSONALAUSWEIS', {
+      representativeSubjectId: null,
+      beneficialOwnerSubjectId: OWNER_ID,
+    });
+    const snapshot = legalSnapshot({
+      representatives: legalSnapshot().representatives.map((representative) => ({
+        ...representative,
+        birthDate: null,
+        birthPlace: null,
+        residence: null,
+        nationality: null,
+        isPep: null,
+        linkedBeneficialOwnerId: OWNER_ID,
+      })),
+      idDocuments: [
+        ownerIdentity,
+        evidence('HANDELSREGISTERAUSZUG'),
+        evidence('TRANSPARENZREGISTER_AUSZUG'),
+      ],
+    });
+
+    expect(gwgVerificationErrors(snapshot, NOW)).toEqual([]);
+  });
+
+  it('behandelt Owner- und Vertreter-ID einer Doppelrolle als dieselbe Person mit nur einem aktiven Ausweissatz', () => {
+    const snapshot = legalSnapshot({
+      representatives: legalSnapshot().representatives.map((representative) => ({
+        ...representative,
+        linkedBeneficialOwnerId: OWNER_ID,
+      })),
+      idDocuments: [
+        evidence('PERSONALAUSWEIS', {
+          representativeSubjectId: null,
+          beneficialOwnerSubjectId: OWNER_ID,
+        }),
+        evidence('REISEPASS'),
+        evidence('HANDELSREGISTERAUSZUG'),
+        evidence('TRANSPARENZREGISTER_AUSZUG'),
+      ],
+    });
+
+    expect(gwgVerificationErrors(snapshot, NOW)).toContain(
+      'Für eine Person dürfen nicht mehrere aktive Ausweissätze gleichzeitig als Prüfgrundlage geführt werden. Bitte einen aktuellen Ausweis festlegen; die übrigen Sätze müssen als alte Nachweise abgelöst werden.',
+    );
   });
 
   it('verlangt verifiedAt und die explizite Bestaetigung gleichzeitig', () => {

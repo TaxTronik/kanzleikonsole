@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 import nextPlugin from '@next/eslint-plugin-next';
 
 export default [
@@ -67,6 +68,7 @@ export default [
     files: ['apps/web/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,
+      'jsx-a11y': jsxA11y,
       '@next/next': nextPlugin,
     },
     settings: {
@@ -76,7 +78,16 @@ export default [
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
       ...nextPlugin.configs.recommended.rules,
+      // Fokus wird in mehrstufigen Login- und Dialog-Flows bewusst gesetzt
+      // und durch eigene Fokus-Rückgabe-/Fokusfallen-Tests abgesichert. Ein
+      // pauschales Autofokus-Verbot würde diese Tastaturführung verschlechtern.
+      'jsx-a11y/no-autofocus': 'off',
+      // Scrollbare Listen ohne interaktive Kinder benötigen gemäß Axe einen
+      // eigenen Tastaturfokus, damit sie insbesondere in Safari scrollbar
+      // bleiben. Nur das semantische Listenelement wird dafür freigegeben.
+      'jsx-a11y/no-noninteractive-tabindex': ['error', { tags: ['ul'] }],
       // React-Compiler-Regeln bleiben als Warnungen sichtbar. Das separate
       // Baseline-Gate deckelt jeden Regeltyp und verhindert neue Treffer.
       'react-hooks/purity': 'warn',

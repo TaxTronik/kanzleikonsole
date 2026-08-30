@@ -50,21 +50,11 @@ function validateNonRetrievalEvidence(
     : { ok: true };
 }
 
-/**
- * Validiert die rechtsstandsabhängigen §-122a-Eingaben. Bereitstellung,
- * Benachrichtigung, Abruf, Einwilligung und Postantrag bleiben getrennte
- * Tatsachen; insbesondere sind Benachrichtigung und Abruf im Neurecht als
- * Kontrollinformation zulässig und kein Ersatz für die Bereitstellung.
- */
-export function validateDataRetrievalEvidence(
+function validateCommonRetrievalEvidence(
   input: DataRetrievalEvidenceInput,
-): DataRetrievalEvidenceResult {
-  if (input.deliveryMethod !== 'DATA_RETRIEVAL') {
-    return validateNonRetrievalEvidence(input);
-  }
-
-  if (!input.issuedAt) return invalid('Beim Datenabruf ist das Erlassdatum erforderlich.');
-  if (input.issuedAt > input.today || input.issuedAt > input.provisionDate) {
+  issuedAt: Date,
+): DataRetrievalEvidenceResult | null {
+  if (issuedAt > input.today || issuedAt > input.provisionDate) {
     return invalid('Das Erlassdatum darf weder zukünftig noch nach der Bereitstellung liegen.');
   }
 
@@ -91,52 +81,52 @@ export function validateDataRetrievalEvidence(
       'Ein Benachrichtigungsdatum darf nicht zugleich als „nicht erfasst“ eingeordnet werden.',
     );
   }
+  return null;
+}
 
-  const year = input.issuedAt.getUTCFullYear();
-  if (year <= 2025) {
-    if (!input.notificationDate) {
-      return invalid('Im Altrecht ist der Versandtag der Benachrichtigung erforderlich.');
-    }
-    if (
-      input.consentStatus !== 'NOT_APPLICABLE' ||
-      input.eligibility2027Status !== 'NOT_APPLICABLE' ||
-      input.postalRequestStatus !== 'NOT_APPLICABLE' ||
-      input.postalRequestReceivedAt
-    ) {
-      return invalid(
-        'Einwilligung und Postantrag des Neurechts sind auf diesen Altfall nicht anwendbar.',
-      );
-    }
-    if (!input.notificationDisputedOrLate && input.notificationStatus !== 'SENT') {
-      return invalid(
-        'Im Altrecht darf nur ein bestätigter Versand der Benachrichtigung die Fiktionsberechnung auslösen.',
-      );
-    }
-    return { ok: true };
+function validateLegacyRetrievalEvidence(
+  input: DataRetrievalEvidenceInput,
+): DataRetrievalEvidenceResult {
+  if (!input.notificationDate) {
+    return invalid('Im Altrecht ist der Versandtag der Benachrichtigung erforderlich.');
   }
-
-  if (input.notificationDisputedOrLate) {
+  if (
+    input.consentStatus !== 'NOT_APPLICABLE' ||
+    input.eligibility2027Status !== 'NOT_APPLICABLE' ||
+    input.postalRequestStatus !== 'NOT_APPLICABLE' ||
+    input.postalRequestReceivedAt
+  ) {
     return invalid(
-      'Der Streit-/Verspätungsmarker zum Benachrichtigungszugang ist nur im Altrecht bis 2025 anwendbar.',
+      'Einwilligung und Postantrag des Neurechts sind auf diesen Altfall nicht anwendbar.',
     );
   }
-
-  if (year === 2026) {
-    if (input.consentStatus === 'NOT_APPLICABLE') {
-      return invalid('Für 2026 muss der Einwilligungsstatus dokumentiert werden.');
-    }
-    if (
-      input.eligibility2027Status !== 'NOT_APPLICABLE' ||
-      input.postalRequestStatus !== 'NOT_APPLICABLE' ||
-      input.postalRequestReceivedAt
-    ) {
-      return invalid(
-        'Die Ab-2027-Angaben sind auf einen 2026 erlassenen Bescheid nicht anwendbar.',
-      );
-    }
-    return { ok: true };
+  if (!input.notificationDisputedOrLate && input.notificationStatus !== 'SENT') {
+    return invalid(
+      'Im Altrecht darf nur ein bestätigter Versand der Benachrichtigung die Fiktionsberechnung auslösen.',
+    );
   }
+  return { ok: true };
+}
 
+function validate2026RetrievalEvidence(
+  input: DataRetrievalEvidenceInput,
+): DataRetrievalEvidenceResult {
+  if (input.consentStatus === 'NOT_APPLICABLE') {
+    return invalid('Für 2026 muss der Einwilligungsstatus dokumentiert werden.');
+  }
+  if (
+    input.eligibility2027Status !== 'NOT_APPLICABLE' ||
+    input.postalRequestStatus !== 'NOT_APPLICABLE' ||
+    input.postalRequestReceivedAt
+  ) {
+    return invalid('Die Ab-2027-Angaben sind auf einen 2026 erlassenen Bescheid nicht anwendbar.');
+  }
+  return { ok: true };
+}
+
+function validateCurrentRetrievalEvidence(
+  input: DataRetrievalEvidenceInput,
+): DataRetrievalEvidenceResult {
   if (
     input.eligibility2027Status === 'NOT_APPLICABLE' ||
     input.postalRequestStatus === 'NOT_APPLICABLE'
@@ -157,6 +147,40 @@ export function validateDataRetrievalEvidence(
       'Ohne wirksamen Postantrag darf kein Zugangstag des Postantrags gespeichert werden.',
     );
   }
-
   return { ok: true };
+}
+
+/**
+ * Validiert die rechtsstandsabhängigen §-122a-Eingaben. Bereitstellung,
+ * Benachrichtigung, Abruf, Einwilligung und Postantrag bleiben getrennte
+ * Tatsachen; insbesondere sind Benachrichtigung und Abruf im Neurecht als
+ * Kontrollinformation zulässig und kein Ersatz für die Bereitstellung.
+ */
+export function validateDataRetrievalEvidence(
+  input: DataRetrievalEvidenceInput,
+): DataRetrievalEvidenceResult {
+  if (input.deliveryMethod !== 'DATA_RETRIEVAL') {
+    return validateNonRetrievalEvidence(input);
+  }
+
+  if (!input.issuedAt) return invalid('Beim Datenabruf ist das Erlassdatum erforderlich.');
+  const commonValidation = validateCommonRetrievalEvidence(input, input.issuedAt);
+  if (commonValidation) return commonValidation;
+
+  const year = input.issuedAt.getUTCFullYear();
+  if (year <= 2025) {
+    return validateLegacyRetrievalEvidence(input);
+  }
+
+  if (input.notificationDisputedOrLate) {
+    return invalid(
+      'Der Streit-/Verspätungsmarker zum Benachrichtigungszugang ist nur im Altrecht bis 2025 anwendbar.',
+    );
+  }
+
+  if (year === 2026) {
+    return validate2026RetrievalEvidence(input);
+  }
+
+  return validateCurrentRetrievalEvidence(input);
 }

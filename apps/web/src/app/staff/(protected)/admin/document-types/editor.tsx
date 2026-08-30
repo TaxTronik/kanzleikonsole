@@ -7,6 +7,7 @@ import {
   updateDocumentTypeAction,
   deleteDocumentTypeAction,
 } from './actions';
+import { confirmDialog, noticeDialog } from '@/components/ui/modal';
 
 type Tier = 'NONE' | 'GWG' | 'GOBD';
 
@@ -84,14 +85,22 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
       setEditId(null);
     });
   }
-  function remove(t: DocType) {
+  async function remove(t: DocType) {
     if (t.docCount > 0) {
-      alert(
+      await noticeDialog(
         `„${t.name}" wird von ${t.docCount} Dokument(en) genutzt — bitte deaktivieren statt löschen.`,
+        { title: 'Dokumenttyp wird verwendet' },
       );
       return;
     }
-    if (!confirm(`Typ „${t.name}" löschen?`)) return;
+    if (
+      !(await confirmDialog(`Typ „${t.name}" löschen?`, {
+        title: 'Dokumenttyp löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     setError(null);
     start(async () => {
       const r = await deleteDocumentTypeAction({ id: t.id });

@@ -70,6 +70,11 @@ export function setThemePref(pref: ThemePref): void {
   } catch {
     // ignore
   }
+  // Cross-Fade NUR bei explizitem Nutzerwechsel. Sync-Pfade (storage/pageshow/
+  // focus, theme-sync.tsx) rufen applyTheme direkt auf und animieren nicht.
+  const root = document.documentElement;
+  root.classList.add('theme-fade');
   applyTheme(pref);
+  window.setTimeout(() => root.classList.remove('theme-fade'), 350);
   window.dispatchEvent(new Event(THEME_EVENT));
 }

@@ -449,7 +449,7 @@ function ScopeLink({
       href={qs({ scope, view, q })}
       className={
         active
-          ? 'px-3 py-1.5 bg-brand-600 text-white'
+          ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
           : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
       }
     >
@@ -476,7 +476,7 @@ function ViewLink({
       href={qs({ view, scope, q })}
       className={
         active
-          ? 'px-3 py-1.5 bg-brand-600 text-white'
+          ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
           : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
       }
     >

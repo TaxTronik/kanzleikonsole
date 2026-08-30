@@ -81,3 +81,33 @@ pnpm --filter @taxtronik/e2e report
 ```
 
 öffnet den HTML-Report im Browser.
+
+## Barrierefreiheit
+
+`tests/12-accessibility.spec.ts` prüft zentrale öffentliche und angemeldete
+Oberflächen mit Axe gegen WCAG 2.0/2.1/2.2 Level A und AA. Zusätzlich werden
+Skip-Link und mobile Navigation per Tastatur getestet. Der Axe-Bericht wird je
+Seite als JSON an den Playwright-Testbericht angehängt.
+
+`tests/13-accessible-display.spec.ts` ergänzt den persönlichen Anzeigemodus:
+Tastaturaktivierung, Server-Rendering, geräteübergreifende Persistenz nach
+Anmeldung, getrennte Mitarbeiter-/Portalpräferenzen, Logout sowie Light/Dark-
+und 320px-Stichproben. Avatar-Zentrierung und das offene Konto-Menü werden
+zusätzlich bei 320 × 240 Pixeln in Staff und Portal geprüft, einschließlich
+Scrollen, Tab/Shift+Tab, Pfeiltasten, Escape und Axe. Die Suite stellt die
+ursprünglichen Einstellungen der Dev-Seed-Profile anschließend wieder her.
+`tests/14-dashboard-keyboard.spec.ts` prüft die alternativen Layout-Eingaben
+von Dashboard und Portal-Layouteditor mit abgefangenen Speicherrequests;
+`tests/15-search-notifications-a11y.spec.ts` prüft lange Such-/Benachrichtigungslisten,
+Fokus und Toast-Lesezeiten mit lokalen GET-Fixtures. Der Profilmodus-Test
+deckt zusätzlich individuelle Optionen, Rücksetzen und Fehler-Rollback ab.
+`pnpm a11y:e2e` führt alle vier Suiten aus.
+
+Diese automatisierten Prüfungen erkennen nur einen Teil möglicher Barrieren.
+Sie ersetzen insbesondere keine manuelle Tastatur-, Screenreader-, Reflow- und
+Kontrastprüfung.
+
+Lokal liest der Staff-Login zuerst explizite `E2E_ADMIN_*`-Variablen und sonst
+die vom Dev-Seed erzeugte, gitignorierte
+`packages/db/.admin-credentials.txt`. Das Passwort wird nicht in den
+Testbericht geschrieben. In CI haben die gesetzten Umgebungsvariablen Vorrang.

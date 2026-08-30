@@ -114,49 +114,54 @@ model TenantSetting {
 }
 
 model StaffUser {
-  id                           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                     String                      @map("tenant_id") @db.Uuid
-  email                        String                      @db.Citext
-  fullName                     String                      @map("full_name")
-  passwordHash                 String                      @map("password_hash")
-  totpSecretEnc                String?                     @map("totp_secret_enc")
-  totpEnrolledAt               DateTime?                   @map("totp_enrolled_at")
+  id                            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                      String                      @map("tenant_id") @db.Uuid
+  email                         String                      @db.Citext
+  fullName                      String                      @map("full_name")
+  passwordHash                  String                      @map("password_hash")
+  totpSecretEnc                 String?                     @map("totp_secret_enc")
+  totpEnrolledAt                DateTime?                   @map("totp_enrolled_at")
   // M-3: Setup-Fenster-TTL. Wird beim ersten Secret-Set gesetzt; nach 60 min
   // ohne Confirm wird der Setup-Versuch abgelehnt.
-  totpSetupStartedAt           DateTime?                   @map("totp_setup_started_at")
-  totpBackupCodes              Json?                       @map("totp_backup_codes")
-  active                       Boolean                     @default(true)
-  lockedUntil                  DateTime?                   @map("locked_until")
-  lastLoginAt                  DateTime?                   @map("last_login_at")
-  createdAt                    DateTime                    @default(now()) @map("created_at")
-  updatedAt                    DateTime                    @updatedAt @map("updated_at")
-  dashboardLayout              Json?                       @map("dashboard_layout")
-  taxNewsNotify                Boolean                     @default(false) @map("tax_news_notify")
+  totpSetupStartedAt            DateTime?                   @map("totp_setup_started_at")
+  totpBackupCodes               Json?                       @map("totp_backup_codes")
+  active                        Boolean                     @default(true)
+  lockedUntil                   DateTime?                   @map("locked_until")
+  lastLoginAt                   DateTime?                   @map("last_login_at")
+  createdAt                     DateTime                    @default(now()) @map("created_at")
+  updatedAt                     DateTime                    @updatedAt @map("updated_at")
+  dashboardLayout               Json?                       @map("dashboard_layout")
+  accessibleDisplay             Boolean                     @default(false) @map("accessible_display")
+  accessibleDisplayFontSize     String                      @default("large") @map("accessible_display_font_size")
+  accessibleDisplaySpacing      String                      @default("relaxed") @map("accessible_display_spacing")
+  accessibleDisplayContrast     String                      @default("strong") @map("accessible_display_contrast")
+  accessibleDisplayReduceMotion Boolean                     @default(true) @map("accessible_display_reduce_motion")
+  taxNewsNotify                 Boolean                     @default(false) @map("tax_news_notify")
   /// Benachrichtigungs-Modus fuer Wiedervorlagen-Aktivitaet (Chat, Uploads,
   /// Nachfassen). Zuweisungen, Faelligkeiten und @-Erwaehnungen kommen IMMER
   /// durch — die sind Arbeitsauftrag bzw. gezielte Ansprache, kein Rauschen.
-  reminderNotifyMode           ReminderNotifyMode          @default(ALL) @map("reminder_notify_mode")
-  failedLoginCount             Int                         @default(0) @map("failed_login_count")
-  appointmentsCreated          Appointment[]               @relation("appointment_creator")
-  appointmentsOwned            Appointment[]               @relation("appointment_owner")
-  appointmentRequestsDecided   AppointmentRequest[]        @relation("appointment_request_decided")
-  appointmentRequestsPreferred AppointmentRequest[]        @relation("appointment_request_preferred")
-  client_handover              ClientHandover[]
-  client_master_change_request ClientMasterChangeRequest[]
-  responsibilities             ClientResponsibility[]
-  notifications                Notification[]
-  phone_note                   PhoneNote[]
-  rssFeeds                     RssFeed[]
-  absences                     Absence[]
-  bookmarks                    StaffBookmark[]
-  notes                        StaffNote[]
-  roles                        StaffRole[]
-  permissions                  StaffPermission[]
-  skillAssignments             StaffSkillAssignment[]
-  tenant                       Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  timeEntries                  TimeEntry[]
-  vacationRequests             VacationRequest[]
-  reminderAssignments          ClientReminderAssignee[]
+  reminderNotifyMode            ReminderNotifyMode          @default(ALL) @map("reminder_notify_mode")
+  failedLoginCount              Int                         @default(0) @map("failed_login_count")
+  appointmentsCreated           Appointment[]               @relation("appointment_creator")
+  appointmentsOwned             Appointment[]               @relation("appointment_owner")
+  appointmentRequestsDecided    AppointmentRequest[]        @relation("appointment_request_decided")
+  appointmentRequestsPreferred  AppointmentRequest[]        @relation("appointment_request_preferred")
+  client_handover               ClientHandover[]
+  client_master_change_request  ClientMasterChangeRequest[]
+  responsibilities              ClientResponsibility[]
+  notifications                 Notification[]
+  phone_note                    PhoneNote[]
+  rssFeeds                      RssFeed[]
+  absences                      Absence[]
+  bookmarks                     StaffBookmark[]
+  notes                         StaffNote[]
+  roles                         StaffRole[]
+  permissions                   StaffPermission[]
+  skillAssignments              StaffSkillAssignment[]
+  tenant                        Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  timeEntries                   TimeEntry[]
+  vacationRequests              VacationRequest[]
+  reminderAssignments           ClientReminderAssignee[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1287,27 +1292,32 @@ model ClientResponsibility {
 }
 
 model ClientContact {
-  id                   String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId             String                      @map("tenant_id") @db.Uuid
-  clientId             String                      @map("client_id") @db.Uuid
-  email                String                      @db.Citext
-  fullName             String                      @map("full_name")
-  active               Boolean                     @default(true)
-  lastLoginAt          DateTime?                   @map("last_login_at")
-  createdAt            DateTime                    @default(now()) @map("created_at")
-  updatedAt            DateTime                    @updatedAt @map("updated_at")
-  notificationsEnabled Boolean                     @default(true) @map("notifications_enabled")
-  phone                String?
-  role                 String?
+  id                            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                      String                      @map("tenant_id") @db.Uuid
+  clientId                      String                      @map("client_id") @db.Uuid
+  email                         String                      @db.Citext
+  fullName                      String                      @map("full_name")
+  active                        Boolean                     @default(true)
+  lastLoginAt                   DateTime?                   @map("last_login_at")
+  createdAt                     DateTime                    @default(now()) @map("created_at")
+  updatedAt                     DateTime                    @updatedAt @map("updated_at")
+  notificationsEnabled          Boolean                     @default(true) @map("notifications_enabled")
+  accessibleDisplay             Boolean                     @default(false) @map("accessible_display")
+  accessibleDisplayFontSize     String                      @default("large") @map("accessible_display_font_size")
+  accessibleDisplaySpacing      String                      @default("relaxed") @map("accessible_display_spacing")
+  accessibleDisplayContrast     String                      @default("strong") @map("accessible_display_contrast")
+  accessibleDisplayReduceMotion Boolean                     @default(true) @map("accessible_display_reduce_motion")
+  phone                         String?
+  role                          String?
   // Audit 2026-06 Befund 3: geht in den iCal-Feed-HMAC ein (server/ical/feed.ts).
   // Inkrementieren widerruft alle ausgegebenen Feed-URLs NUR dieses Kontakts —
   // vorher ging Revocation nur global über AUTH_SECRET-Rotation.
-  icalTokenVersion     Int                         @default(1) @map("ical_token_version")
-  appointmentRequests  AppointmentRequest[]
-  client               Client                      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tenant               Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  masterChangeRequests ClientMasterChangeRequest[]
-  magicLinks           MagicLink[]
+  icalTokenVersion              Int                         @default(1) @map("ical_token_version")
+  appointmentRequests           AppointmentRequest[]
+  client                        Client                      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant                        Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  masterChangeRequests          ClientMasterChangeRequest[]
+  magicLinks                    MagicLink[]
 
   @@unique([tenantId, clientId, email])
   @@index([tenantId, clientId])
@@ -1576,42 +1586,42 @@ model AuditAnchor {
 }
 
 model Request {
-  id                    String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId              String                   @map("tenant_id") @db.Uuid
-  clientId              String                   @map("client_id") @db.Uuid
-  title                 String
-  description           String
-  priority              RequestPriority          @default(NORMAL)
-  status                RequestStatus            @default(OPEN)
-  dueAt                 DateTime?                @map("due_at")
-  createdByStaff        String                   @map("created_by_staff") @db.Uuid
-  closedAt              DateTime?                @map("closed_at")
-  closedByStaff         String?                  @map("closed_by_staff") @db.Uuid
-  createdAt             DateTime                 @default(now()) @map("created_at")
-  updatedAt             DateTime                 @updatedAt @map("updated_at")
-  formSubmissionId      String?                  @map("form_submission_id") @db.Uuid
-  workflowItemId        String?                  @map("workflow_item_id") @db.Uuid
+  id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                       String                           @map("tenant_id") @db.Uuid
+  clientId                       String                           @map("client_id") @db.Uuid
+  title                          String
+  description                    String
+  priority                       RequestPriority                  @default(NORMAL)
+  status                         RequestStatus                    @default(OPEN)
+  dueAt                          DateTime?                        @map("due_at")
+  createdByStaff                 String                           @map("created_by_staff") @db.Uuid
+  closedAt                       DateTime?                        @map("closed_at")
+  closedByStaff                  String?                          @map("closed_by_staff") @db.Uuid
+  createdAt                      DateTime                         @default(now()) @map("created_at")
+  updatedAt                      DateTime                         @updatedAt @map("updated_at")
+  formSubmissionId               String?                          @map("form_submission_id") @db.Uuid
+  workflowItemId                 String?                          @map("workflow_item_id") @db.Uuid
   /// Stabile Herkunft einer automatisch aus einem Steuertermin erzeugten
   /// Anforderung. Der Unique-Backstop verhindert auch bei parallelen Web-/
   /// Worker-Läufen mehr als eine Anforderung pro Termin.
-  taxDeadlineId         String?                  @unique(map: "request_tax_deadline_unique") @map("tax_deadline_id") @db.Uuid
+  taxDeadlineId                  String?                          @unique(map: "request_tax_deadline_unique") @map("tax_deadline_id") @db.Uuid
   // U-5: Auto-Requests aus gwg-expiry-check verlinken sauber auf das ID-
   // Dokument, dessen Erneuerung sie anstoßen. Vorher musste der Worker mit
   // einer Titel-Substring-Heuristik (`contains: ownerName`) entscheiden, ob
   // bereits ein offener Auto-Request existiert — zwei BeneficialOwners mit
   // ähnlichen Namen („Müller" / „Müller-Schmidt") fielen unter denselben
   // Match und der zweite Request wurde nie angelegt.
-  linkedGwgIdDocumentId String?                  @map("linked_gwg_id_document_id") @db.Uuid
-  client                Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  formSubmission        FormSubmission?          @relation(fields: [formSubmissionId], references: [id], onUpdate: NoAction, map: "request_form_submission_fk")
-  tenant                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  workflowItem          WorkflowItem?            @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "request_workflow_item_fk")
-  taxDeadline           TaxDeadline?             @relation("TaxDeadlineAutoRequest", fields: [taxDeadlineId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "request_tax_deadline_fk")
-  taxDeadlinePointer    TaxDeadline?             @relation("TaxDeadlineRequestPointer")
+  linkedGwgIdDocumentId          String?                          @map("linked_gwg_id_document_id") @db.Uuid
+  client                         Client                           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  formSubmission                 FormSubmission?                  @relation(fields: [formSubmissionId], references: [id], onUpdate: NoAction, map: "request_form_submission_fk")
+  tenant                         Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowItem                   WorkflowItem?                    @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "request_workflow_item_fk")
+  taxDeadline                    TaxDeadline?                     @relation("TaxDeadlineAutoRequest", fields: [taxDeadlineId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "request_tax_deadline_fk")
+  taxDeadlinePointer             TaxDeadline?                     @relation("TaxDeadlineRequestPointer")
   taxDeadlineNotificationHistory TaxDeadlineNotificationHistory[]
-  linkedGwgIdDocument   GwgIdDocument?           @relation(fields: [linkedGwgIdDocumentId], references: [id], onUpdate: NoAction, map: "request_gwg_id_doc_fk")
-  responses             RequestResponse[]
-  internalComments      RequestInternalComment[]
+  linkedGwgIdDocument            GwgIdDocument?                   @relation(fields: [linkedGwgIdDocumentId], references: [id], onUpdate: NoAction, map: "request_gwg_id_doc_fk")
+  responses                      RequestResponse[]
+  internalComments               RequestInternalComment[]
 
   @@unique([workflowItemId], map: "request_workflow_item_unique")
   @@index([tenantId, clientId])
@@ -2014,22 +2024,22 @@ model TaxDeadline {
 /// einer Neu-Materialisierung entfernten Steuertermin. Namen und Titel werden
 /// bewusst nicht dupliziert; die Herkunft bleibt über pseudonyme IDs erhalten.
 model TaxDeadlineNotificationHistory {
-  id                        String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                  String                        @map("tenant_id") @db.Uuid
-  originalDeadlineId        String                        @unique(map: "tax_deadline_notification_history_deadline_key") @map("original_deadline_id") @db.Uuid
-  requestId                 String                        @map("request_id") @db.Uuid
-  notificationStatus        TaxDeadlineNotificationStatus @map("notification_status")
-  notificationAttemptCount  Int                           @map("notification_attempt_count")
-  notificationLastAttemptAt DateTime?                     @map("notification_last_attempt_at") @db.Timestamptz(6)
-  notificationNextAttemptAt DateTime?                     @map("notification_next_attempt_at") @db.Timestamptz(6)
-  notificationAcceptedAt    DateTime?                     @map("notification_accepted_at") @db.Timestamptz(6)
-  notificationErrorRecorded Boolean                       @map("notification_error_recorded")
-  notificationLastErrorSha256 Bytes?                      @map("notification_last_error_sha256")
-  notificationEscalatedAt   DateTime?                     @map("notification_escalated_at") @db.Timestamptz(6)
-  archiveReason             String                        @map("archive_reason")
-  archivedAt                DateTime                      @default(dbgenerated("transaction_timestamp()")) @map("archived_at") @db.Timestamptz(6)
-  tenant                    Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_notification_history_tenant_fk")
-  request                   Request                       @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_notification_history_request_fk")
+  id                          String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                        @map("tenant_id") @db.Uuid
+  originalDeadlineId          String                        @unique(map: "tax_deadline_notification_history_deadline_key") @map("original_deadline_id") @db.Uuid
+  requestId                   String                        @map("request_id") @db.Uuid
+  notificationStatus          TaxDeadlineNotificationStatus @map("notification_status")
+  notificationAttemptCount    Int                           @map("notification_attempt_count")
+  notificationLastAttemptAt   DateTime?                     @map("notification_last_attempt_at") @db.Timestamptz(6)
+  notificationNextAttemptAt   DateTime?                     @map("notification_next_attempt_at") @db.Timestamptz(6)
+  notificationAcceptedAt      DateTime?                     @map("notification_accepted_at") @db.Timestamptz(6)
+  notificationErrorRecorded   Boolean                       @map("notification_error_recorded")
+  notificationLastErrorSha256 Bytes?                        @map("notification_last_error_sha256")
+  notificationEscalatedAt     DateTime?                     @map("notification_escalated_at") @db.Timestamptz(6)
+  archiveReason               String                        @map("archive_reason")
+  archivedAt                  DateTime                      @default(dbgenerated("transaction_timestamp()")) @map("archived_at") @db.Timestamptz(6)
+  tenant                      Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_notification_history_tenant_fk")
+  request                     Request                       @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_deadline_notification_history_request_fk")
 
   @@index([tenantId, archivedAt(sort: Desc)], map: "tax_deadline_notification_history_tenant_archived_idx")
   @@index([tenantId, requestId], map: "tax_deadline_notification_history_request_idx")

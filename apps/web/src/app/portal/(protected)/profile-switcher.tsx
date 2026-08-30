@@ -22,7 +22,7 @@ export function PortalProfileSwitcher({ currentContactId, profiles }: PortalProf
         <Building2 className="h-3.5 w-3.5" />
         Profil wechseln
         <span
-          className="inline-flex min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white"
+          className="inline-flex min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-on-brand"
           aria-label={`${profiles.length} verfügbare Mandantenprofile`}
         >
           {profiles.length}

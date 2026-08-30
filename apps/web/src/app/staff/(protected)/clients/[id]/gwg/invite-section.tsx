@@ -110,6 +110,8 @@ export function InviteSection({
           className="btn-secondary text-xs"
           disabled={Boolean(disabledReason)}
           title={disabledReason}
+          aria-expanded={open}
+          aria-controls={`gwg-invite-${gwgCheckId ?? clientId}-form`}
         >
           {open ? 'Schließen' : '+ Einladung senden'}
         </button>
@@ -118,7 +120,10 @@ export function InviteSection({
       {disabledReason && <div className="py-2 text-xs text-muted">{disabledReason}</div>}
 
       {open && (
-        <div className="mt-3 rounded-md border border-default bg-subtle p-4 space-y-3">
+        <div
+          id={`gwg-invite-${gwgCheckId ?? clientId}-form`}
+          className="mt-3 rounded-md border border-default bg-subtle p-4 space-y-3"
+        >
           {contacts.length > 0 && (
             <div>
               <p className="text-xs text-muted mb-2">Bekannte Ansprechpartner:</p>
@@ -138,8 +143,11 @@ export function InviteSection({
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Name</label>
+              <label className="label" htmlFor={`gwg-invite-${gwgCheckId ?? clientId}-name`}>
+                Name
+              </label>
               <input
+                id={`gwg-invite-${gwgCheckId ?? clientId}-name`}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="input"
@@ -147,8 +155,11 @@ export function InviteSection({
               />
             </div>
             <div>
-              <label className="label">E-Mail</label>
+              <label className="label" htmlFor={`gwg-invite-${gwgCheckId ?? clientId}-email`}>
+                E-Mail
+              </label>
               <input
+                id={`gwg-invite-${gwgCheckId ?? clientId}-email`}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 type="email"
@@ -160,15 +171,23 @@ export function InviteSection({
           <p className="text-xs text-muted">
             Mandant: <strong>{clientName}</strong> · Einladung gilt 14 Tage.
           </p>
-          {error && <div className="alert-error-sm">{error}</div>}
+          {error && (
+            <div className="alert-error-sm" role="alert">
+              {error}
+            </div>
+          )}
           {createdLink && (
-            <div className="rounded-md bg-green-50 p-3 space-y-2">
+            <div className="rounded-md bg-green-50 p-3 space-y-2" role="status" aria-live="polite">
               <p className="text-sm text-green-800">
                 Einladung erstellt. Mandant erhält gleich eine Mail mit dem Link. Sie können den
                 Link aber auch manuell weiterleiten:
               </p>
               <div className="flex items-center gap-2">
+                <label className="sr-only" htmlFor={`gwg-invite-${gwgCheckId ?? clientId}-link`}>
+                  Einladungslink
+                </label>
                 <input
+                  id={`gwg-invite-${gwgCheckId ?? clientId}-link`}
                   readOnly
                   value={createdLink}
                   className="input text-xs font-mono bg-surface"

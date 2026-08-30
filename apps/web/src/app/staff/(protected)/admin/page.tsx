@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 import Link from 'next/link';
 import {
@@ -12,6 +12,16 @@ import {
   CheckCircle2,
   Circle,
   ArrowRight,
+  Download,
+  UserX,
+  Server,
+  ScrollText,
+  SlidersHorizontal,
+  FileStack,
+  Inbox,
+  Mail,
+  Settings,
+  type LucideIcon,
 } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 
@@ -30,10 +40,26 @@ import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
 import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
 import { LicenseCard } from './license-card';
 import { BackupRunButton } from './backup-run-button';
+import { CountUp } from '@/components/count-up';
 import { fmtBytes, fmtDateTimeShort } from '@/lib/fmt';
 import { dismissSetupChecklistAction, restoreSetupChecklistAction } from './setup-actions';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
+
+interface StatusIssue {
+  href: string;
+  label: string;
+}
+
+interface QuickLink {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  desc: string;
+  /** true = Route-Handler-Download, kein Client-Side-Routing (<a> statt <Link>). */
+  external?: boolean;
+  badge?: { count: number; label: string };
+}
 
 export default async function AdminPage() {
   const session = await requireStaffPage({ admin: true });
@@ -88,6 +114,126 @@ export default async function AdminPage() {
 
   const license = await getLicenseInfo();
 
+  // --- Systemstatus-Aggregation (nur Darstellung der bereits geladenen Daten) ---
+  const issues: StatusIssue[] = [];
+  if (verifyResult && !verifyResult.ok && !verifyResult.error && !verifyResult.recovered) {
+    issues.push({ href: '#audit', label: 'Audit-Hash-Chain gebrochen' });
+  }
+  if (verifyResult?.recovered) {
+    issues.push({ href: '#audit', label: 'Historischer Chain-Bruch (Recovery gesetzt)' });
+  }
+  if (verifyResult?.error) {
+    issues.push({ href: '#audit', label: 'Audit-Verifikationslauf fehlgeschlagen' });
+  }
+  if (!lastBackup) {
+    issues.push({ href: '#backup', label: 'Noch kein Backup erstellt' });
+  } else if (lastBackup.status === 'FAILED') {
+    issues.push({ href: '#backup', label: 'Letztes Backup fehlgeschlagen' });
+  }
+  if (drill && !drill.ok) {
+    issues.push({ href: '#backup', label: 'Restore-Test fehlgeschlagen' });
+  }
+  if (updateCheck.ok && 'hasUpdate' in updateCheck && updateCheck.hasUpdate) {
+    issues.push({
+      href: '#updates',
+      label: `${updateCheck.newer?.length ?? 1} neuere Version${(updateCheck.newer?.length ?? 0) === 1 ? '' : 'en'} verfügbar`,
+    });
+  }
+  if (openDsgvoCount > 0) {
+    issues.push({
+      href: '#dsgvo',
+      label: `${openDsgvoCount} offene DSGVO-Anfrage${openDsgvoCount === 1 ? '' : 'n'}`,
+    });
+  }
+  if (gwgDueCount > 0) {
+    issues.push({ href: '#quicklinks', label: `${gwgDueCount} GwG-Pflichtlöschung löschreif` });
+  }
+  if (anonDueCount > 0) {
+    issues.push({ href: '#quicklinks', label: `${anonDueCount} DSGVO-Anonymisierung fällig` });
+  }
+  if (legacyStorageVersionCount > 0) {
+    issues.push({ href: '#storage', label: 'Storage-Inventur erforderlich' });
+  }
+
+  const quickLinks: QuickLink[] = [
+    {
+      href: '/staff/admin/settings',
+      icon: Settings,
+      label: 'Einstellungen',
+      desc: 'Erscheinungsbild, Module, E-Mail, Integrationen',
+    },
+    {
+      href: '/staff/admin/dsgvo',
+      icon: Shield,
+      label: 'DSGVO-Anfragen',
+      desc: 'Auskunft, Berichtigung, Löschung',
+      badge: openDsgvoCount > 0 ? { count: openDsgvoCount, label: 'offen' } : undefined,
+    },
+    {
+      href: '/api/staff/admin/verfahrensdoku',
+      icon: Download,
+      label: 'Verfahrensdokumentation',
+      desc: 'GoBD-Doku aus dem IST-Zustand erzeugen',
+      external: true,
+    },
+    {
+      href: '/staff/admin/gwg-retention',
+      icon: UserX,
+      label: 'GwG-Pflichtlöschung',
+      desc: 'Löschkonzept § 8 Abs. 4 GwG',
+      badge: gwgDueCount > 0 ? { count: gwgDueCount, label: 'löschreif' } : undefined,
+    },
+    {
+      href: '/staff/admin/dsgvo-retention',
+      icon: UserX,
+      label: 'DSGVO-Anonymisierung',
+      desc: 'Mandanten nach Art. 17 DSGVO',
+      badge: anonDueCount > 0 ? { count: anonDueCount, label: 'fällig' } : undefined,
+    },
+    {
+      href: '/staff/admin/jobs',
+      icon: Server,
+      label: 'System → Jobs',
+      desc: 'Hintergrund-Verarbeitung',
+    },
+    {
+      href: '/staff/service-providers',
+      icon: Building2,
+      label: 'Dienstleisterverzeichnis',
+      desc: 'DSGVO Art. 28 / GwG § 11',
+    },
+    {
+      href: '/staff/poa',
+      icon: ScrollText,
+      label: 'Vollmachten',
+      desc: 'Elektronischer Bestätigungsnachweis',
+    },
+    {
+      href: '/staff/admin/custom-fields',
+      icon: SlidersHorizontal,
+      label: 'Mandanten-Custom-Felder',
+      desc: 'Eigene Felder definieren',
+    },
+    {
+      href: '/staff/admin/document-types',
+      icon: FileStack,
+      label: 'Datei-Typen & Schutzstufen',
+      desc: 'Ablage- und Schutzregeln',
+    },
+    {
+      href: '/staff/admin/request-templates',
+      icon: Inbox,
+      label: 'Anforderungs-Vorlagen',
+      desc: 'Standard-Anfragen pflegen',
+    },
+    {
+      href: '/staff/admin/email-templates',
+      icon: Mail,
+      label: 'E-Mail-Vorlagen',
+      desc: 'Textbausteine pflegen',
+    },
+  ];
+
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -99,7 +245,7 @@ export default async function AdminPage() {
       <LicenseCard info={license} />
 
       {legacyStorageVersionCount > 0 && (
-        <div className="card p-4 mb-6 border-l-4 border-l-yellow-500">
+        <div id="storage" className="card p-4 mb-6 border-l-4 border-l-yellow-500">
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
             <div>
@@ -119,66 +265,67 @@ export default async function AdminPage() {
 
       <SetupChecklist setup={setup} />
 
+      {/* Systemstatus-Hero: aggregiert alle bereits geladenen Prüfpunkte */}
+      <StatusHero issues={issues} />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Audit-Chain */}
-        <div className="card p-6">
-          <div className="flex items-start gap-3 mb-3">
-            <ShieldCheck
-              className={
+        <div id="audit" className="card p-6 scroll-mt-6">
+          <div className="flex items-start gap-3 mb-2">
+            <span
+              className={`kpi-chip ${
                 verifyResult?.ok
-                  ? 'h-5 w-5 text-green-600'
+                  ? 'chip-green'
                   : verifyResult?.recovered
-                    ? 'h-5 w-5 text-amber-600'
+                    ? 'chip-amber'
                     : verifyResult
-                      ? 'h-5 w-5 text-red-600'
-                      : 'h-5 w-5 text-muted'
-              }
-            />
+                      ? 'chip-red'
+                      : 'chip-gray'
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+            </span>
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-primary">Audit-Hash-Chain</h2>
+              <h2 className="text-sm font-semibold text-primary">Audit-Hash-Chain</h2>
               {verifyResult ? (
                 verifyResult.ok ? (
                   <>
-                    <p className="text-xs text-green-700 mt-1">
+                    <StatusLine tone="green">
                       Intakt — {verifyResult.checked} Einträge geprüft
-                    </p>
-                    <p className="text-xs text-muted mt-1">
+                    </StatusLine>
+                    <StatusLine tone="gray">
                       {verifyResult.sealsChecked} Tagesversiegelungen geprüft
                       {verifyResult.sealBreaks > 0
                         ? `, ${verifyResult.sealBreaks} mit TSA-Problem`
                         : ''}
-                    </p>
-                    <p className="text-xs text-muted mt-1">
+                    </StatusLine>
+                    <StatusLine tone="gray">
                       Zuletzt geprüft: {fmtDateTimeShort(new Date(verifyResult.checkedAt))}
-                    </p>
+                    </StatusLine>
                   </>
                 ) : verifyResult.error ? (
                   <>
-                    <p className="text-xs text-red-700 mt-1">⚠ Verifikationslauf fehlgeschlagen</p>
-                    <p className="text-xs text-muted mt-1">{verifyResult.error}</p>
+                    <StatusLine tone="red">Verifikationslauf fehlgeschlagen</StatusLine>
+                    <StatusLine tone="gray">{verifyResult.error}</StatusLine>
                   </>
                 ) : (
                   <>
-                    <p
-                      className={`text-xs mt-1 ${
-                        verifyResult.recovered ? 'text-amber-700' : 'text-red-700'
-                      }`}
-                    >
+                    <StatusLine tone={verifyResult.recovered ? 'amber' : 'red'}>
                       {verifyResult.recovered
                         ? 'Historischer Bruch — Recovery-Checkpoint gesetzt'
-                        : '⚠ Hash-Chain gebrochen!'}
-                    </p>
+                        : 'Hash-Chain gebrochen!'}
+                    </StatusLine>
                     {verifyResult.firstBreak && (
-                      <p className="text-xs text-muted mt-1">
+                      <StatusLine tone="gray">
                         Bei Audit-ID {String(verifyResult.firstBreak.auditId)}
-                      </p>
+                      </StatusLine>
                     )}
                   </>
                 )
               ) : (
-                <p className="text-xs text-muted mt-1">
+                <StatusLine tone="gray">
                   Noch keine Verifikation — der tägliche Prüf-Job hat noch nicht gelaufen.
-                </p>
+                </StatusLine>
               )}
             </div>
           </div>
@@ -188,58 +335,55 @@ export default async function AdminPage() {
         </div>
 
         {/* Backup */}
-        <div className="card p-6">
-          <div className="flex items-start gap-3 mb-3">
-            <Database
-              className={
+        <div id="backup" className="card p-6 scroll-mt-6">
+          <div className="flex items-start gap-3 mb-2">
+            <span
+              className={`kpi-chip ${
                 lastBackup?.status === 'SUCCESS'
-                  ? 'h-5 w-5 text-green-600'
+                  ? 'chip-green'
                   : lastBackup?.status === 'FAILED'
-                    ? 'h-5 w-5 text-red-600'
-                    : 'h-5 w-5 text-disabled'
-              }
-            />
+                    ? 'chip-red'
+                    : 'chip-gray'
+              }`}
+            >
+              <Database className="h-4 w-4" />
+            </span>
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-primary">Letztes Backup</h2>
+              <h2 className="text-sm font-semibold text-primary">Letztes Backup</h2>
               {lastBackup ? (
                 <>
-                  <p className="text-xs text-secondary mt-1">
+                  <StatusLine tone={lastBackup.status === 'SUCCESS' ? 'green' : 'red'}>
                     {fmtDateTimeShort(lastBackup.startedAt)} — {lastBackup.status}
-                  </p>
+                  </StatusLine>
                   {lastBackup.sizeBytes && (
-                    <p className="text-xs text-muted mt-1">
+                    <StatusLine tone="gray">
                       {fmtBytes(Number(lastBackup.sizeBytes))} → {lastBackup.bucket}
-                    </p>
+                    </StatusLine>
                   )}
-                  {lastBackup.errorMsg && (
-                    <p className="text-xs text-red-700 mt-1 truncate">{lastBackup.errorMsg}</p>
-                  )}
+                  {lastBackup.errorMsg && <StatusLine tone="red">{lastBackup.errorMsg}</StatusLine>}
                 </>
               ) : (
-                <p className="text-xs text-yellow-700 mt-1 flex items-center gap-1">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Noch nie gesichert
-                </p>
+                <StatusLine tone="amber">Noch nie gesichert</StatusLine>
               )}
               {/* Restore-Drill: beweisbarer Wiederherstellungstest (monatlich) */}
               {drill ? (
                 drill.ok ? (
-                  <p className="text-xs text-green-700 mt-1">
+                  <StatusLine tone="green">
                     Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))}: erfolgreich
                     {drill.auditChecked > 0
                       ? ` (${drill.auditChecked} Audit-Einträge verifiziert)`
                       : ''}
-                  </p>
+                  </StatusLine>
                 ) : (
-                  <p className="text-xs text-red-700 mt-1">
-                    ⚠ Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))} fehlgeschlagen
+                  <StatusLine tone="red">
+                    Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))} fehlgeschlagen
                     {drill.error ? ` — ${drill.error}` : ''}
-                  </p>
+                  </StatusLine>
                 )
               ) : (
-                <p className="text-xs text-muted mt-1">
+                <StatusLine tone="gray">
                   Restore-Test: noch kein Lauf (monatlich am 1., 05:00 UTC)
-                </p>
+                </StatusLine>
               )}
               <div className="mt-3 flex flex-wrap items-start gap-2">
                 <BackupRunButton />
@@ -261,52 +405,56 @@ export default async function AdminPage() {
         </div>
 
         {/* Updates */}
-        <div className="card p-6">
-          <div className="flex items-start gap-3 mb-3">
-            <Package
-              className={
+        <div id="updates" className="card p-6 scroll-mt-6">
+          <div className="flex items-start gap-3 mb-2">
+            <span
+              className={`kpi-chip ${
                 updateCheck.ok && 'hasUpdate' in updateCheck && updateCheck.hasUpdate
-                  ? 'h-5 w-5 text-yellow-600'
-                  : 'h-5 w-5 text-green-600'
-              }
-            />
+                  ? 'chip-amber'
+                  : 'chip-green'
+              }`}
+            >
+              <Package className="h-4 w-4" />
+            </span>
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-primary">Versionen / Updates</h2>
-              <p className="text-xs text-secondary mt-1">
+              <h2 className="text-sm font-semibold text-primary">Versionen / Updates</h2>
+              <StatusLine tone="gray">
                 Installiert: <strong>{APP_VERSION}</strong>
-              </p>
+              </StatusLine>
               {updateCheck.ok ? (
                 'hasUpdate' in updateCheck && updateCheck.hasUpdate ? (
-                  <p className="text-xs text-yellow-700 mt-1">
+                  <StatusLine tone="amber">
                     {updateCheck.newer?.length} neuere Version
                     {updateCheck.newer && updateCheck.newer.length === 1 ? '' : 'en'} verfügbar
-                  </p>
+                  </StatusLine>
                 ) : (
-                  <p className="text-xs text-green-700 mt-1">Aktuell auf dem neuesten Stand.</p>
+                  <StatusLine tone="green">Aktuell auf dem neuesten Stand.</StatusLine>
                 )
               ) : (
-                <p className="text-xs text-muted mt-1">
+                <StatusLine tone="gray">
                   {updateCheck.warning ?? updateCheck.error ?? 'Update-Server nicht konfiguriert.'}
-                </p>
+                </StatusLine>
               )}
             </div>
           </div>
         </div>
 
         {/* DSGVO */}
-        <div className="card p-6">
-          <div className="flex items-start gap-3 mb-3">
-            <Shield
-              className={openDsgvoCount > 0 ? 'h-5 w-5 text-yellow-600' : 'h-5 w-5 text-green-600'}
-            />
+        <div id="dsgvo" className="card p-6 scroll-mt-6">
+          <div className="flex items-start gap-3 mb-2">
+            <span className={`kpi-chip ${openDsgvoCount > 0 ? 'chip-amber' : 'chip-green'}`}>
+              <Shield className="h-4 w-4" />
+            </span>
             <div className="flex-1">
-              <h2 className="text-sm font-medium text-primary">Offene DSGVO-Anfragen</h2>
-              <p className="text-xs text-secondary mt-1">
-                {openDsgvoCount} Anfragen in Bearbeitung
-              </p>
+              <h2 className="text-sm font-semibold text-primary">Offene DSGVO-Anfragen</h2>
+              <StatusLine tone={openDsgvoCount > 0 ? 'amber' : 'green'}>
+                {openDsgvoCount === 0
+                  ? 'Keine offenen Anfragen.'
+                  : `${openDsgvoCount} Anfrage${openDsgvoCount === 1 ? '' : 'n'} in Bearbeitung`}
+              </StatusLine>
               <Link
                 href="/staff/admin/dsgvo"
-                className="inline-block mt-2 text-xs text-brand-700 hover:underline"
+                className="inline-block mt-2 text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
               >
                 Anfragen verwalten →
               </Link>
@@ -317,93 +465,118 @@ export default async function AdminPage() {
 
       {/* Sekundäre KPIs */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <SmallKpi icon={Users} label="Aktive Portal-Kontakte" value={contactCount} />
-        <SmallKpi icon={Building2} label="Dienstleister erfasst" value={providerCount} />
+        <SmallKpi icon={Users} label="Aktive Portal-Kontakte" value={contactCount} tone="brand" />
+        <SmallKpi
+          icon={Building2}
+          label="Dienstleister erfasst"
+          value={providerCount}
+          tone="brand"
+        />
         <SmallKpi
           icon={CheckCircle2}
           label="Audit-Einträge"
           value={verifyResult?.checked ?? 0}
           subtitle="hash-versiegelt"
+          tone="green"
         />
       </div>
 
-      <div className="card p-6">
+      {/* Quick-Links als Icon-Grid */}
+      <div id="quicklinks" className="card p-6 scroll-mt-6">
         <QuickLinksHeader setup={setup} />
-        <ul className="space-y-2 text-sm">
-          <li>
-            <Link href="/staff/admin/settings" className="text-brand-700 hover:underline">
-              → Einstellungen (Erscheinungsbild, Module, E-Mail, Integrationen)
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/admin/dsgvo" className="text-brand-700 hover:underline">
-              → DSGVO-Anfragen
-            </Link>
-          </li>
-          <li>
-            {/* Route-Handler-Download (kein <Link> — kein Client-Side-Routing) */}
-            <a href="/api/staff/admin/verfahrensdoku" className="text-brand-700 hover:underline">
-              → Verfahrensdokumentation (GoBD) aus dem IST-Zustand erzeugen
-            </a>
-          </li>
-          <li>
-            <Link href="/staff/admin/gwg-retention" className="text-brand-700 hover:underline">
-              → GwG-Pflichtlöschung (§ 8 Abs. 4)
-            </Link>
-            {gwgDueCount > 0 && (
-              <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                {gwgDueCount} löschreif
-              </span>
-            )}
-          </li>
-          <li>
-            <Link href="/staff/admin/dsgvo-retention" className="text-brand-700 hover:underline">
-              → DSGVO-Anonymisierung Mandanten (Art. 17)
-            </Link>
-            {anonDueCount > 0 && (
-              <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                {anonDueCount} fällig
-              </span>
-            )}
-          </li>
-          <li>
-            <Link href="/staff/admin/jobs" className="text-brand-700 hover:underline">
-              → System → Jobs (Hintergrund-Verarbeitung)
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/service-providers" className="text-brand-700 hover:underline">
-              → Dienstleisterverzeichnis (DSGVO Art. 28 / GwG § 11)
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/poa" className="text-brand-700 hover:underline">
-              → Vollmachten (elektronischer Bestätigungsnachweis)
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/admin/custom-fields" className="text-brand-700 hover:underline">
-              → Mandanten-Custom-Felder
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/admin/document-types" className="text-brand-700 hover:underline">
-              → Datei-Typen &amp; Schutzstufen
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/admin/request-templates" className="text-brand-700 hover:underline">
-              → Anforderungs-Vorlagen
-            </Link>
-          </li>
-          <li>
-            <Link href="/staff/admin/email-templates" className="text-brand-700 hover:underline">
-              → E-Mail-Vorlagen
-            </Link>
-          </li>
-        </ul>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {quickLinks.map((l) => {
+            const Icon = l.icon;
+            const content = (
+              <>
+                <span className="kpi-chip chip-gray">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-primary">
+                    {l.label}
+                    {l.badge && (
+                      <span className="badge badge-red">
+                        {l.badge.count} {l.badge.label}
+                      </span>
+                    )}
+                  </span>
+                  <span className="block text-xs text-muted mt-0.5">{l.desc}</span>
+                </span>
+                <ArrowRight className="h-3.5 w-3.5 mt-1 text-disabled transition-colors group-hover:text-muted" />
+              </>
+            );
+            const cls =
+              'group flex items-start gap-3 rounded-[10px] border border-default bg-surface-raised p-3.5 transition-colors hover:bg-surface-sunken hover:border-strong';
+            return l.external ? (
+              <a key={l.href} href={l.href} className={cls}>
+                {content}
+              </a>
+            ) : (
+              <Link key={l.href} href={l.href} className={cls}>
+                {content}
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </div>
+  );
+}
+
+function StatusHero({ issues }: { issues: StatusIssue[] }) {
+  const ok = issues.length === 0;
+  return (
+    <div
+      className={`card p-5 mb-6 border-l-4 ${ok ? 'border-l-emerald-500' : 'border-l-amber-500'}`}
+    >
+      <div className="flex items-start gap-3">
+        <span className={`kpi-chip ${ok ? 'chip-green' : 'chip-amber'}`}>
+          {ok ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+        </span>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-primary">
+            {ok
+              ? 'Systemstatus: Alles in Ordnung'
+              : `Systemstatus: ${issues.length} ${issues.length === 1 ? 'Punkt braucht' : 'Punkte brauchen'} Aufmerksamkeit`}
+          </p>
+          {ok ? (
+            <p className="text-xs text-muted mt-0.5">
+              Audit-Chain, Backup, Updates und Pflichtaufgaben ohne Befund.
+            </p>
+          ) : (
+            <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+              {issues.map((i) => (
+                <li key={i.href + i.label}>
+                  <a
+                    href={i.href}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:underline dark:text-amber-300"
+                  >
+                    <span className="status-dot dot-amber" aria-hidden />
+                    {i.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusLine({
+  tone,
+  children,
+}: {
+  tone: 'green' | 'amber' | 'red' | 'gray';
+  children: ReactNode;
+}) {
+  return (
+    <p className="flex items-center gap-2 text-xs text-secondary mt-1.5">
+      <span className={`status-dot dot-${tone}`} aria-hidden />
+      <span className="min-w-0">{children}</span>
+    </p>
   );
 }
 
@@ -469,8 +642,8 @@ function SetupChecklist({ setup }: { setup: SetupStatus }) {
 
 function QuickLinksHeader({ setup }: { setup: SetupStatus }) {
   return (
-    <div className="flex items-center justify-between gap-3 mb-3">
-      <h2 className="text-sm font-medium text-primary">Quick-Links</h2>
+    <div className="flex items-center justify-between gap-3 mb-4">
+      <h2 className="text-sm font-semibold text-primary">Quick-Links</h2>
       {setup.dismissed && !setup.allDone && (
         <form action={restoreSetupChecklistAction}>
           <button type="submit" className="text-xs text-brand-700 hover:underline">
@@ -487,20 +660,26 @@ function SmallKpi({
   label,
   value,
   subtitle,
+  tone = 'brand',
 }: {
   icon: ComponentType<{ className?: string }>;
   label: string;
   value: number;
   subtitle?: string;
+  tone?: 'brand' | 'green';
 }) {
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon className="h-4 w-4 text-disabled" />
-        <p className="text-xs font-medium text-muted uppercase tracking-wide">{label}</p>
+    <div className="card p-4 flex items-center gap-3">
+      <span className={`kpi-chip ${tone === 'green' ? 'chip-green' : 'chip-brand'}`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-muted uppercase tracking-wide truncate">{label}</p>
+        <p className="text-2xl font-bold text-primary tabular-nums leading-tight">
+          <CountUp value={value} />
+        </p>
+        {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
       </div>
-      <p className="text-2xl font-bold text-primary">{value}</p>
-      {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
     </div>
   );
 }

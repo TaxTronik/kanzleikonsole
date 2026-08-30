@@ -5,6 +5,7 @@ import { saveBrandingAction, type ActionResult } from './actions';
 import type { BrandingInfo } from '@/server/settings/branding';
 import { TenantLogo } from '@/components/tenant-logo';
 import { FileButton } from '@/components/file-button';
+import { brandContrastInfo } from '@/lib/brand-palette';
 
 const MAX_LOGO_BYTES = 200 * 1024; // 200 KB nach base64
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -49,6 +50,12 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
   }
 
   const previewAccent = safeHexColor(accent);
+  const accentIsValid = HEX_COLOR_RE.test(accent);
+  const contrast = brandContrastInfo(previewAccent);
+  const contrastDescription =
+    contrast.onBrandHex === '#000000'
+      ? `Die Akzentfarbe ist hell. Weiße Beschriftung hätte nur ${contrast.whiteContrast.toFixed(2)}:1 Kontrast. Die Oberfläche verwendet deshalb automatisch schwarze Beschriftung mit ${contrast.onBrandContrast.toFixed(2)}:1; die Markenfarbe bleibt unverändert.`
+      : `Auf der Akzentfarbe verwendet die Oberfläche automatisch weiße Beschriftung mit ${contrast.onBrandContrast.toFixed(2)}:1 Kontrast.`;
 
   return (
     <form action={formAction} className="space-y-4">
@@ -85,20 +92,24 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         />
       </div>
 
-      <div>
-        <label className="label" htmlFor="accentColor">
-          Akzent-Farbe
-        </label>
-        <div className="flex items-center gap-3">
+      <fieldset>
+        <legend className="label">Akzent-Farbe</legend>
+        <div className="flex flex-wrap items-center gap-3">
           <input
-            id="accentColor"
+            id="accentColorPicker"
             type="color"
             className="h-10 w-16 rounded border border-default cursor-pointer"
             value={previewAccent}
             onChange={(e) => setAccent(e.target.value)}
+            aria-label="Akzent-Farbe auswählen"
+            aria-describedby="accentColorHelp accentColorContrast"
           />
           <input type="hidden" name="accentColor" value={accent} />
+          <label htmlFor="accentColorHex" className="sr-only">
+            Akzent-Farbe als Hex-Wert
+          </label>
           <input
+            id="accentColorHex"
             type="text"
             className="input font-mono"
             value={accent}
@@ -106,10 +117,25 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
             pattern="^#[0-9a-fA-F]{6}$"
             maxLength={7}
             required
+            aria-invalid={!accentIsValid}
+            aria-describedby="accentColorHelp accentColorContrast"
           />
         </div>
-        <p className="text-xs text-muted mt-1">Hex-Format, z. B. #2563eb (Standard)</p>
-      </div>
+        <p id="accentColorHelp" className="text-xs text-muted mt-1">
+          Hex-Format, z. B. #2563eb (Standard)
+        </p>
+        <p
+          id="accentColorContrast"
+          className="mt-2 text-xs text-secondary"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {accentIsValid
+            ? contrastDescription
+            : 'Sobald der Hex-Wert vollständig ist, wird der Kontrast automatisch geprüft.'}
+        </p>
+      </fieldset>
 
       <div>
         <span className="label">Logo — hell (PNG/JPG/WebP, max. 200 KB)</span>
@@ -123,7 +149,11 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
           </FileButton>
         </div>
         <input type="hidden" name="logoDataUrl" value={logo ?? ''} />
-        {logoError && <p className="text-xs text-red-700 mt-1">{logoError}</p>}
+        {logoError && (
+          <p className="text-xs text-red-700 mt-1" role="alert">
+            {logoError}
+          </p>
+        )}
         {logo && (
           <div className="mt-2 flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element -- Logo previews are tenant-provided data URLs. */}
@@ -155,7 +185,11 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
           </FileButton>
         </div>
         <input type="hidden" name="logoDataUrlDark" value={logoDark ?? ''} />
-        {logoDarkError && <p className="text-xs text-red-700 mt-1">{logoDarkError}</p>}
+        {logoDarkError && (
+          <p className="text-xs text-red-700 mt-1" role="alert">
+            {logoDarkError}
+          </p>
+        )}
         {logoDark ? (
           <div className="mt-2 flex items-center gap-3">
             <div className="rounded p-1 bg-gray-900">
@@ -185,8 +219,8 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
         className="rounded-md p-4 border border-default"
         style={{ backgroundColor: `${previewAccent}15` }}
       >
-        <p className="text-xs text-muted uppercase tracking-wide mb-2">Vorschau</p>
-        <div className="flex items-center gap-3">
+        <p className="text-xs text-secondary uppercase tracking-wide mb-2">Vorschau</p>
+        <div className="flex flex-wrap items-center gap-3">
           {logo || logoDark ? (
             <TenantLogo
               branding={{ logoDataUrl: logo, logoDataUrlDark: logoDark }}
@@ -198,13 +232,23 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
               {displayName}
             </span>
           )}
-          {subtitle && <span className="text-sm text-muted">{subtitle}</span>}
+          {subtitle && <span className="text-sm text-secondary">{subtitle}</span>}
+          <span
+            className="ml-auto rounded-md px-3 py-2 text-xs font-semibold"
+            style={{ backgroundColor: contrast.accentHex, color: contrast.onBrandHex }}
+          >
+            Schaltflächen-Vorschau
+          </span>
         </div>
       </div>
 
-      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.error && (
+        <div className="alert-error-sm" role="alert">
+          {state.error}
+        </div>
+      )}
       {state?.ok && (
-        <div className="alert-success-sm">
+        <div className="alert-success-sm" role="status" aria-live="polite">
           Gespeichert. Die Änderung wird beim nächsten Pageload sichtbar.
         </div>
       )}

@@ -93,7 +93,7 @@ export function UiModeToggle() {
     window.dispatchEvent(new Event(UI_MODE_EVENT));
   }
 
-  if (!mounted) return <div className="w-9 h-9" aria-hidden />;
+  if (!mounted) return <div className="w-8 h-8" aria-hidden />;
 
   const Icon = mode === 'modern' ? Sparkles : Square;
   const title =
@@ -102,13 +102,7 @@ export function UiModeToggle() {
       : 'Klassisches UI — klicken für Modern (für leistungsfähige Geräte)';
 
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      title={title}
-      aria-label={title}
-      className="p-2 text-muted hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
-    >
+    <button type="button" onClick={toggle} title={title} aria-label={title} className="icon-action">
       <Icon className="h-5 w-5" />
     </button>
   );

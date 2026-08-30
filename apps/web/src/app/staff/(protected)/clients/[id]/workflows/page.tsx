@@ -68,7 +68,7 @@ export default async function ClientWorkflowsPage({
           href={`/staff/clients/${clientId}/workflows`}
           className={
             filter === 'all'
-              ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-600 text-white'
+              ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-600 text-on-brand'
               : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-secondary bg-gray-100 hover:bg-gray-200'
           }
         >
@@ -78,7 +78,7 @@ export default async function ClientWorkflowsPage({
           href={`/staff/clients/${clientId}/workflows?filter=mine`}
           className={
             filter === 'mine'
-              ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-600 text-white'
+              ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-600 text-on-brand'
               : 'inline-flex items-center px-3 py-1 rounded-full text-xs text-secondary bg-gray-100 hover:bg-gray-200'
           }
         >

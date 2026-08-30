@@ -182,3 +182,26 @@ export function subjectKeyForAssignment(assignment: PersistedIdentityAssignment)
   if (assignment.beneficialOwnerSubjectId) return `owner:${assignment.beneficialOwnerSubjectId}`;
   return null;
 }
+
+/**
+ * Ordnet eine persistierte Ausweiszuordnung der in der Personenansicht
+ * sichtbaren Identität zu. Bei einer ausdrücklich verknüpften Doppelrolle
+ * wird der ausgeblendete Owner-Eintrag ausschließlich über seine stabile
+ * Fremdschlüsselbeziehung auf den Vertreter-Eintrag abgebildet.
+ */
+export function displaySubjectKeyForAssignment(
+  assignment: PersistedIdentityAssignment,
+  options: IdentitySubjectOption[],
+): string | null {
+  const persistedKey = subjectKeyForAssignment(assignment);
+  if (!persistedKey) return null;
+
+  const assignedSubject = options.find((option) => option.key === persistedKey);
+  if (!assignedSubject) return null;
+  if (assignedSubject.kind !== 'BENEFICIAL_OWNER' || !assignedSubject.linkedRepresentativeId) {
+    return persistedKey;
+  }
+
+  const representativeKey = `representative:${assignedSubject.linkedRepresentativeId}`;
+  return options.some((option) => option.key === representativeKey) ? representativeKey : null;
+}

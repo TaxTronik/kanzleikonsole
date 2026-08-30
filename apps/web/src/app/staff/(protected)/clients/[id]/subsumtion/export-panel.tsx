@@ -55,6 +55,19 @@ export function ExportPanel({
   );
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(() => new Set(ordered.map((m) => m.id)));
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
 
   // Die Markierungsmenge ändert sich zur Laufzeit (z. B. „Neu analysieren" hängt
   // welche an) — der useState-Initializer läuft aber nur einmal. Ohne Abgleich
@@ -113,10 +126,13 @@ export function ExportPanel({
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="btn-secondary text-xs"
         title="Exportieren (Auswahl der Markierungen)"
+        aria-expanded={open}
+        aria-controls="subsumtion-export-options"
       >
         <FileDown className="h-3.5 w-3.5" /> Export <ChevronDown className="h-3 w-3" />
       </button>
@@ -124,8 +140,22 @@ export function ExportPanel({
       {open && (
         <>
           {/* Klick außerhalb schließt das Panel. */}
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-30 mt-1 w-96 max-w-[92vw] card p-3 shadow-lg space-y-2">
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden="true"
+            className="fixed inset-0 z-20 cursor-default"
+            onClick={() => {
+              setOpen(false);
+              requestAnimationFrame(() => triggerRef.current?.focus());
+            }}
+          />
+          <div
+            id="subsumtion-export-options"
+            role="region"
+            aria-label="Exportoptionen"
+            className="absolute right-0 z-30 mt-1 w-96 max-w-[92vw] card p-3 shadow-lg space-y-2"
+          >
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-medium text-primary">Markierungen für den Export</p>
               <div className="text-xs flex items-center gap-2">

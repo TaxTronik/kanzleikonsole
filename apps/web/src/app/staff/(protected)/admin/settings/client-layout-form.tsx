@@ -30,6 +30,15 @@ import {
   type ClientGridItem,
   type ClientLayoutConfig,
 } from '@/server/settings/client-layout-shared';
+import { confirmDialog } from '@/components/ui/modal';
+import { GridLayoutControls } from '@/components/ui/grid-layout-controls';
+import {
+  GRID_COLUMNS,
+  GRID_MAX_HEIGHT,
+  gridGeometryDescription,
+  type GridGeometry,
+} from '@/components/ui/grid-layout-geometry';
+import { adjustClientLayoutItem } from './client-layout-adjustment';
 
 const ICONS: Record<ClientBlockKey, typeof CalendarDays> = {
   contacts: Users,
@@ -88,8 +97,14 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
   // Synchroner Spiegel: Click-Handler sehen die aktuellste Liste auch bei
   // schnellen Mehrfach-Klicks (vor dem nächsten Render).
   const itemsRef = useRef(items);
-  itemsRef.current = items;
   const [error, setError] = useState<string | null>(null);
+  const [layoutStatus, setLayoutStatus] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const resettingRef = useRef(false);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const saveRevision = useRef(0);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const layoutDescription = useRef('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width, containerRef, mounted } = useContainerWidth();
 
@@ -100,35 +115,71 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
   }, []);
 
   function persist(next: ClientGridItem[]) {
+    const revision = ++saveRevision.current;
+    setError(null);
+    setLayoutStatus(`${layoutDescription.current} Änderungen werden gespeichert …`.trim());
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const r = await saveClientLayoutAction({ items: next });
-      if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
-      else router.refresh();
+    saveTimer.current = setTimeout(() => {
+      saveQueue.current = saveQueue.current
+        .then(async () => {
+          const r = await saveClientLayoutAction({ items: next });
+          if (revision !== saveRevision.current) return;
+          if (!r.ok) {
+            setError(r.error ?? 'Fehler beim Speichern.');
+            setLayoutStatus('');
+          } else {
+            setLayoutStatus(`${layoutDescription.current} Layout gespeichert.`.trim());
+            router.refresh();
+          }
+        })
+        .catch(() => {
+          if (revision !== saveRevision.current) return;
+          setError('Layout konnte nicht gespeichert werden. Bitte die Änderung erneut übernehmen.');
+          setLayoutStatus('');
+        });
     }, 600);
   }
 
   function onLayoutChange(next: Layout) {
-    setItems((current) => {
-      const byId = new Map(current.map((it) => [it.id, it]));
-      const updated: ClientGridItem[] = [];
-      for (const l of next) {
-        const it = byId.get(l.i as ClientBlockKey);
-        if (!it) continue;
-        updated.push({ ...it, x: l.x, y: l.y, w: l.w, h: l.h });
-      }
-      const same =
-        updated.length === current.length &&
-        updated.every((u, i) => {
-          const c = current[i];
-          return c && c.id === u.id && c.x === u.x && c.y === u.y && c.w === u.w && c.h === u.h;
-        });
-      if (!same && editMode) persist(updated);
-      return updated;
-    });
+    if (resettingRef.current) return;
+    const current = itemsRef.current;
+    const byId = new Map(current.map((it) => [it.id, it]));
+    const updated: ClientGridItem[] = [];
+    for (const l of next) {
+      const it = byId.get(l.i as ClientBlockKey);
+      if (!it) continue;
+      updated.push({ ...it, x: l.x, y: l.y, w: l.w, h: l.h });
+    }
+    const same =
+      updated.length === current.length &&
+      updated.every((u, i) => {
+        const c = current[i];
+        return c && c.id === u.id && c.x === u.x && c.y === u.y && c.w === u.w && c.h === u.h;
+      });
+    if (same) return;
+    itemsRef.current = updated;
+    setItems(updated);
+    if (editMode) {
+      layoutDescription.current = '';
+      persist(updated);
+    }
+  }
+
+  function applyGeometry(id: string, geometry: GridGeometry) {
+    if (resettingRef.current) return;
+    const result = adjustClientLayoutItem(itemsRef.current, id, geometry);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    itemsRef.current = result.items;
+    setItems(result.items);
+    layoutDescription.current = `${CLIENT_BLOCK_LABELS[result.item.id]}: ${gridGeometryDescription(result.item)}.`;
+    persist(result.items);
   }
 
   function add(key: ClientBlockKey) {
+    if (resettingRef.current) return;
     const current = itemsRef.current;
     if (current.some((it) => it.id === key)) return;
     const def = BLOCK_SIZE[key];
@@ -139,25 +190,52 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
     ];
     itemsRef.current = next;
     setItems(next);
+    layoutDescription.current = `${CLIENT_BLOCK_LABELS[key]} hinzugefügt.`;
     persist(next);
   }
 
-  function remove(key: ClientBlockKey) {
+  function remove(key: string) {
+    if (resettingRef.current) return;
     const current = itemsRef.current;
+    if (current.length <= 1) {
+      setError('Mindestens ein Block muss erhalten bleiben.');
+      return;
+    }
     const next = current.filter((it) => it.id !== key);
     itemsRef.current = next;
     setItems(next);
+    layoutDescription.current = 'Block entfernt.';
+    editButtonRef.current?.focus();
     persist(next);
   }
 
   async function reset() {
-    if (!confirm('Standard-Layout wiederherstellen?')) return;
-    const r = await resetClientLayoutAction();
-    if (!r.ok) {
-      setError(r.error ?? 'Fehler.');
+    if (resettingRef.current) return;
+    if (
+      !(await confirmDialog('Standard-Layout wiederherstellen?', {
+        title: 'Mandanten-Layout zurücksetzen',
+        confirmLabel: 'Wiederherstellen',
+      }))
+    )
       return;
+    resettingRef.current = true;
+    setResetting(true);
+    saveRevision.current += 1;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    try {
+      await saveQueue.current;
+      const r = await resetClientLayoutAction();
+      if (!r.ok) {
+        setError(r.error ?? 'Fehler.');
+      } else {
+        window.location.reload();
+      }
+    } catch {
+      setError('Standard-Layout konnte nicht wiederhergestellt werden.');
+    } finally {
+      resettingRef.current = false;
+      setResetting(false);
     }
-    window.location.reload();
   }
 
   const rglLayout: LayoutItem[] = items.map((it) => {
@@ -170,6 +248,8 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
       h: it.h,
       minW: def.minW,
       minH: def.minH,
+      maxW: GRID_COLUMNS,
+      maxH: GRID_MAX_HEIGHT,
     };
   });
 
@@ -177,29 +257,33 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
   const available = ALL_CLIENT_BLOCKS.filter((k) => !usedKeys.has(k));
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-2">
+    <div className="min-w-0 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-xs text-muted flex-1">
           Tenant-globales Layout für das Mandanten-Cockpit (Block-Bereich auf
-          <code className="mx-1 px-1 rounded bg-gray-100">/staff/clients/:id</code>). Anpassungen
-          gelten für alle Mitarbeiter. Deaktivierte Module erscheinen nicht — die Position bleibt
-          aber gespeichert.
+          <code className="mx-1 px-1 rounded bg-surface-sunken break-all">/staff/clients/:id</code>
+          ). Anpassungen gelten für alle Mitarbeiter. Deaktivierte Module erscheinen nicht — die
+          Position bleibt aber gespeichert.
         </p>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           {editMode && (
             <button
               type="button"
               onClick={reset}
               className="btn-secondary text-xs inline-flex items-center gap-1"
               title="Auf Standard zurücksetzen"
+              disabled={resetting}
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Standard
             </button>
           )}
           <button
+            ref={editButtonRef}
             type="button"
             onClick={() => setEditMode((v) => !v)}
+            aria-expanded={editMode}
+            disabled={resetting}
             className={
               editMode
                 ? 'btn-primary text-xs inline-flex items-center gap-1'
@@ -212,7 +296,18 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
         </div>
       </div>
 
-      {error && <div className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
+      <p
+        role="status"
+        aria-atomic="true"
+        className={layoutStatus ? 'text-sm text-secondary' : 'sr-only'}
+      >
+        {layoutStatus}
+      </p>
 
       {editMode && available.length > 0 && (
         <div className="card p-3">
@@ -225,6 +320,7 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
                   key={k}
                   type="button"
                   onClick={() => add(k)}
+                  disabled={resetting}
                   className="btn-secondary text-xs inline-flex items-center gap-1"
                 >
                   <Plus className="h-3 w-3" />
@@ -237,51 +333,90 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
         </div>
       )}
 
+      {editMode && (
+        <GridLayoutControls
+          widgets={items.map((item) => ({
+            ...item,
+            label: CLIENT_BLOCK_LABELS[item.id],
+            minW: BLOCK_SIZE[item.id].minW,
+            minH: BLOCK_SIZE[item.id].minH,
+          }))}
+          itemKind="Block"
+          disabled={resetting}
+          removeDisabled={items.length <= 1}
+          onApply={applyGeometry}
+          onRemove={remove}
+        />
+      )}
+
+      {editMode && width < 640 && (
+        <p className="text-sm text-secondary">
+          Bei wenig Platz werden die Blöcke untereinander als Vorschau angezeigt. Das gespeicherte
+          Raster bleibt unverändert; Position und Größe können oben angepasst werden.
+        </p>
+      )}
+
       <div ref={containerRef} className={editMode ? 'dashboard-edit relative' : 'relative'}>
-        {mounted && items.length > 0 && (
-          <GridLayout
-            width={width}
-            layout={rglLayout}
-            gridConfig={{ cols: 12, rowHeight: 30, margin: [16, 16], containerPadding: [0, 0] }}
-            dragConfig={{ enabled: editMode, cancel: '.block-remove' }}
-            resizeConfig={{
-              enabled: editMode,
-              handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
-            }}
-            onLayoutChange={onLayoutChange}
-          >
-            {items.map((it) => {
-              const Icon = ICONS[it.id];
-              return (
-                <div
-                  key={it.id}
-                  className={
-                    'relative card flex items-center justify-center text-sm text-secondary ' +
-                    (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')
-                  }
-                >
-                  {editMode && (
-                    <button
-                      type="button"
-                      onClick={() => remove(it.id)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className="block-remove absolute -top-2 -right-2 z-10 bg-surface border border-default rounded-full p-1 shadow-sm text-disabled hover:text-red-700"
-                      title="Block entfernen"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                  <div className="flex flex-col items-center gap-2 px-4 text-center">
-                    <Icon className="h-6 w-6 text-disabled" />
-                    <span className="font-medium text-primary">{CLIENT_BLOCK_LABELS[it.id]}</span>
-                    <span className="text-[10px] text-disabled font-mono">
-                      {it.w} × {it.h}
-                    </span>
-                  </div>
+        {mounted && editMode && width < 640 ? (
+          <div className="space-y-3">
+            {[...items]
+              .sort((a, b) => a.y - b.y || a.x - b.x)
+              .map((item) => (
+                <div key={item.id} className="card min-w-0 p-4">
+                  <p className="font-medium text-primary">{CLIENT_BLOCK_LABELS[item.id]}</p>
+                  <p className="mt-1 text-sm text-secondary">{gridGeometryDescription(item)}</p>
                 </div>
-              );
-            })}
-          </GridLayout>
+              ))}
+          </div>
+        ) : (
+          mounted &&
+          items.length > 0 && (
+            <GridLayout
+              width={width}
+              layout={rglLayout}
+              gridConfig={{ cols: 12, rowHeight: 30, margin: [16, 16], containerPadding: [0, 0] }}
+              dragConfig={{ enabled: editMode, cancel: '.block-remove' }}
+              resizeConfig={{
+                enabled: editMode,
+                handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
+              }}
+              onLayoutChange={onLayoutChange}
+            >
+              {items.map((it) => {
+                const Icon = ICONS[it.id];
+                return (
+                  <div
+                    key={it.id}
+                    className={
+                      'relative card flex items-center justify-center text-sm text-secondary ' +
+                      (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')
+                    }
+                  >
+                    {editMode && (
+                      <button
+                        type="button"
+                        onClick={() => remove(it.id)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        className="block-remove absolute -top-2 -right-2 z-10 bg-surface border border-default rounded-full p-1 shadow-sm text-disabled hover:text-red-700"
+                        title="Block entfernen"
+                        aria-label={`Block entfernen: ${CLIENT_BLOCK_LABELS[it.id]}`}
+                        disabled={resetting || items.length <= 1}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                    <div className="flex flex-col items-center gap-2 px-4 text-center">
+                      <Icon className="h-6 w-6 text-disabled" />
+                      <span className="font-medium text-primary">{CLIENT_BLOCK_LABELS[it.id]}</span>
+                      <span className="text-[10px] text-disabled font-mono">
+                        {it.w} × {it.h}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </GridLayout>
+          )
         )}
       </div>
 

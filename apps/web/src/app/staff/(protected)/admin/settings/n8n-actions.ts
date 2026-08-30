@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { env, n8nDeliveryMode } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
+import { deleteTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   isAllowedN8nEvent,
   N8N_EVENT_CATALOG,
@@ -396,9 +397,7 @@ export async function resetN8nAction(): Promise<ActionResult> {
       },
       select: { id: true },
     });
-    await tx.tenantSetting.deleteMany({
-      where: { tenantId: ctx.tenantId, key: 'integrations.n8n' },
-    });
+    await deleteTenantSettingValue(tx, ctx.tenantId, 'integrations.n8n');
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,
       actorType: 'STAFF',

@@ -15,6 +15,7 @@ import {
   forwardPhoneNoteAction,
   phoneNoteToReminderAction,
 } from '@/app/staff/(protected)/phone-notes/actions';
+import { noticeDialog } from '@/components/ui/modal';
 
 export interface PhoneNoteItem {
   id: string;
@@ -91,7 +92,9 @@ export function PhoneNotesList({
         assigneeStaffId: assigneeStaffId || null,
       });
       if (!res.ok) {
-        alert(res.error ?? 'Konnte Wiedervorlage nicht anlegen.');
+        await noticeDialog(res.error ?? 'Konnte Wiedervorlage nicht anlegen.', {
+          title: 'Wiedervorlage anlegen',
+        });
         return;
       }
       setActivePanel(null);

@@ -25,8 +25,11 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label-sm">Abfrageart *</label>
+          <label className="label-sm" htmlFor="elster-kontoabfrage-art">
+            Abfrageart *
+          </label>
           <select
+            id="elster-kontoabfrage-art"
             name="art"
             value={art}
             onChange={(e) => setArt(e.target.value as 'ZS' | 'O' | 'I')}
@@ -40,11 +43,12 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
 
         {art !== 'O' && (
           <div>
-            <label className="label-sm">
+            <label className="label-sm" htmlFor="elster-kontoabfrage-steuerart">
               Steuerart {art === 'ZS' ? '*' : ''}
               {art === 'I' && <span className="text-disabled font-normal"> (leer = alle)</span>}
             </label>
             <select
+              id="elster-kontoabfrage-steuerart"
               name="steuerart"
               className="input w-full"
               defaultValue={art === 'ZS' ? 'ESt' : ''}
@@ -61,8 +65,11 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
 
         {art === 'ZS' && (
           <div>
-            <label className="label-sm">Jahr *</label>
+            <label className="label-sm" htmlFor="elster-kontoabfrage-jahr">
+              Jahr *
+            </label>
             <input
+              id="elster-kontoabfrage-jahr"
               name="jahr"
               maxLength={4}
               pattern="[0-9]{4}"
@@ -77,8 +84,11 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
         {art === 'I' && (
           <>
             <div>
-              <label className="label-sm">Wertstellungsdatum * (TTMMJJJJ)</label>
+              <label className="label-sm" htmlFor="elster-kontoabfrage-wertstellungsdatum">
+                Wertstellungsdatum * (TTMMJJJJ)
+              </label>
               <input
+                id="elster-kontoabfrage-wertstellungsdatum"
                 name="wertstellungsdatum"
                 maxLength={8}
                 pattern="[0-9]{8}"
@@ -89,8 +99,15 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
               />
             </div>
             <div>
-              <label className="label-sm">Datums-Option *</label>
-              <select name="wertstellungsdatumOption" className="input w-full" defaultValue="V">
+              <label className="label-sm" htmlFor="elster-kontoabfrage-datumsoption">
+                Datums-Option *
+              </label>
+              <select
+                id="elster-kontoabfrage-datumsoption"
+                name="wertstellungsdatumOption"
+                className="input w-full"
+                defaultValue="V"
+              >
                 <option value="V">ab diesem Datum</option>
                 <option value="J">genau dieses Datum</option>
               </select>
@@ -101,23 +118,37 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label-sm">PIN des Portalzertifikats *</label>
-          <input type="password" name="pin" autoComplete="off" className="input w-full" required />
-          <p className="text-xs text-muted mt-1">
+          <label className="label-sm" htmlFor="elster-kontoabfrage-pin">
+            PIN des Portalzertifikats *
+          </label>
+          <input
+            id="elster-kontoabfrage-pin"
+            type="password"
+            name="pin"
+            autoComplete="off"
+            className="input w-full"
+            required
+            aria-describedby="elster-kontoabfrage-pin-hint"
+          />
+          <p id="elster-kontoabfrage-pin-hint" className="text-xs text-muted mt-1">
             Wird nur für diesen Vorgang an die Bridge durchgereicht — nie gespeichert.
           </p>
         </div>
         {!echtfall && (
           <div>
-            <label className="label-sm">Testmerker *</label>
+            <label className="label-sm" htmlFor="elster-kontoabfrage-testmerker">
+              Testmerker *
+            </label>
             <input
+              id="elster-kontoabfrage-testmerker"
               name="testmerker"
               maxLength={20}
               className="input w-full font-mono"
               placeholder="laut ERiC-/Bridge-Doku"
               required={!echtfall}
+              aria-describedby="elster-kontoabfrage-testmerker-hint"
             />
-            <p className="text-xs text-muted mt-1">
+            <p id="elster-kontoabfrage-testmerker-hint" className="text-xs text-muted mt-1">
               Test-Übertragung: die Clearingstelle validiert und verwirft.
             </p>
           </div>
@@ -141,12 +172,18 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
       </label>
 
       {state && !state.ok && state.error && (
-        <div className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
+        <div
+          className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300"
+          role="alert"
+        >
           {state.error}
         </div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300">
+        <div
+          className="rounded-md bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300"
+          role="status"
+        >
           Abfrage übermittelt — Ergebnis siehe Historie unten.
         </div>
       )}

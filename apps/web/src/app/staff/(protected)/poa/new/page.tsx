@@ -82,6 +82,7 @@ export default async function NewPoaPage({
               ? `/staff/clients/onboarding/${onboardingClientId}?step=poa`
               : '/staff/poa'
           }
+          aria-label="Zurück"
           className="text-disabled hover:text-secondary mt-1"
         >
           <ArrowLeft className="h-5 w-5" />

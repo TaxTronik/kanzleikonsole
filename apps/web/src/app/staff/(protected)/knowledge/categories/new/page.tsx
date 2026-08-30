@@ -16,7 +16,11 @@ export default async function NewCategoryPage() {
   return (
     <div className="p-8 max-w-md">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/knowledge" className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href="/staff/knowledge"
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-2xl font-bold text-primary">Neue Kategorie</h1>

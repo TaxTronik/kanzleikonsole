@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import { FolderInput } from 'lucide-react';
 
 import { fmtDateShort } from '@/lib/fmt';
+import { confirmDialog } from '@/components/ui/modal';
 import type { ActionResult } from '@/server/actions/staff-action';
 
 import { ClientStatusFlowCard, type ClientStatusFlowDefinition } from '../status-flow-card';
@@ -71,7 +72,13 @@ export function BindersBlock({ clientId, initial }: { clientId: string; initial:
       emptyText="Keine aktiven Pendelordner."
       updateStatus={(id, status) => updateBinderStatusAction({ id, status })}
       deleteItem={(id) => deleteBinderAction({ id })}
-      confirmDelete={() => confirm('Pendelordner löschen?')}
+      confirmDelete={() =>
+        confirmDialog('Pendelordner löschen?', {
+          title: 'Pendelordner löschen',
+          confirmLabel: 'Löschen',
+          danger: true,
+        })
+      }
       transitionTitle={(_binder, _next, label) => `Status: ${label}`}
       renderCreateForm={(close) => (
         <form

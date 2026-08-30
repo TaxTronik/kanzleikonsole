@@ -49,7 +49,7 @@ export function ThemeToggle() {
 
   // Vor Mount: invisible Placeholder (gleicher Slot, kein Layout-Shift)
   if (!mounted) {
-    return <div className="w-9 h-9" aria-hidden />;
+    return <div className="w-8 h-8" aria-hidden />;
   }
 
   const Icon = pref === 'dark' ? Moon : pref === 'light' ? Sun : Monitor;
@@ -61,13 +61,7 @@ export function ThemeToggle() {
         : 'System — klicken für Hell';
 
   return (
-    <button
-      type="button"
-      onClick={cycle}
-      title={title}
-      aria-label={title}
-      className="p-2 text-muted hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
-    >
+    <button type="button" onClick={cycle} title={title} aria-label={title} className="icon-action">
       <Icon className="h-5 w-5" />
     </button>
   );

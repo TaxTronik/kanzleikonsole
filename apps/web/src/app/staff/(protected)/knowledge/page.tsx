@@ -122,7 +122,7 @@ export default async function KnowledgePage({
                   href="/staff/knowledge"
                   className={
                     !catFilter
-                      ? 'block px-3 py-2 text-sm rounded-md bg-brand-50 text-brand-700 font-medium'
+                      ? 'block px-3 py-2 text-sm rounded-md bg-brand-50 text-brand-accessible font-medium'
                       : 'block px-3 py-2 text-sm rounded-md hover:bg-gray-100 text-secondary'
                   }
                 >
@@ -135,7 +135,7 @@ export default async function KnowledgePage({
                     href={`/staff/knowledge?cat=${c.id}`}
                     className={
                       catFilter === c.id
-                        ? 'flex items-center justify-between px-3 py-2 text-sm rounded-md bg-brand-50 text-brand-700 font-medium'
+                        ? 'flex items-center justify-between px-3 py-2 text-sm rounded-md bg-brand-50 text-brand-accessible font-medium'
                         : 'flex items-center justify-between px-3 py-2 text-sm rounded-md hover:bg-gray-100 text-secondary'
                     }
                   >

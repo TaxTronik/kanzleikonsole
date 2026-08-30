@@ -202,6 +202,8 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Portal-Settings
   'portal.notifications.toggle': 'Portal-Benachrichtigungen geändert',
+  'portal.accessible_display.change': 'Persönliche Portal-Anzeigeeinstellung geändert',
+  'portal.accessible_display.options.change': 'Persönliche Portal-Anzeigeoptionen geändert',
 
   // Exporte
   'requests.export.csv': 'Anforderungen exportiert (CSV)',
@@ -234,6 +236,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'staff.permissions.update': 'Mitarbeiter-Berechtigungen geändert',
   'staff.skills.update': 'Mitarbeiter-Tätigkeiten geändert',
   'staff.password.change': 'Eigenes Passwort geändert',
+  'staff.accessible_display.change': 'Persönliche Anzeigeeinstellung geändert',
+  'staff.accessible_display.options.change': 'Persönliche Anzeigeoptionen geändert',
   'staff.password.reset': 'Mitarbeiter-Passwort zurückgesetzt',
   'staff.totp.reset': 'Mitarbeiter-2FA zurückgesetzt',
   'staff_skill.create': 'Tätigkeit angelegt',
@@ -346,7 +350,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'client_custom_field.delete': 'Custom-Feld gelöscht',
   'client_custom_field.values.update': 'Custom-Werte gespeichert',
 
-  // Status-Maschinen
+  // Historische Status-Maschinen-Einträge (Builder seit 2026-08-27 entfernt)
   'state_machine.create': 'Status-Maschine angelegt',
   'state_machine.update': 'Status-Maschine geändert',
   'state_machine.delete': 'Status-Maschine gelöscht',

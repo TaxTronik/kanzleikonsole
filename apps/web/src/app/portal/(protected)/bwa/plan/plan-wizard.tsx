@@ -207,8 +207,11 @@ export function PlanWizard({
           <h2 className="text-sm font-medium text-primary">Schritt 1: Eckdaten</h2>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Name der Planung</label>
+              <label className="label" htmlFor="bwa-plan-wizard-name">
+                Name der Planung
+              </label>
               <input
+                id="bwa-plan-wizard-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -217,8 +220,11 @@ export function PlanWizard({
               />
             </div>
             <div>
-              <label className="label">Planjahr</label>
+              <label className="label" htmlFor="bwa-plan-wizard-year">
+                Planjahr
+              </label>
               <input
+                id="bwa-plan-wizard-year"
                 type="number"
                 min={2020}
                 max={2099}
@@ -229,14 +235,18 @@ export function PlanWizard({
             </div>
           </div>
           <div>
-            <label className="label">Basis (aus welcher BWA übernehmen?)</label>
+            <label className="label" htmlFor="bwa-plan-wizard-base">
+              Basis (aus welcher BWA übernehmen?)
+            </label>
             <select
+              id="bwa-plan-wizard-base"
               value={baseId}
               onChange={(e) => {
                 setBaseId(e.target.value);
                 setLastAppliedPct(null);
               }}
               className="input"
+              aria-describedby="bwa-plan-wizard-base-hint"
             >
               <option value="">— Basis frei / leere Werte —</option>
               {bases.map((b) => (
@@ -246,13 +256,13 @@ export function PlanWizard({
               ))}
             </select>
             {selectedBase && (
-              <p className="text-xs text-muted mt-1">
+              <p id="bwa-plan-wizard-base-hint" className="text-xs text-muted mt-1">
                 Erlöse {fmtEURRound(selectedBase.revenue ?? 0)} · Ergebnis{' '}
                 {fmtEURRound(selectedBase.result ?? 0)}
               </p>
             )}
             {!selectedBase && (
-              <p className="text-xs text-muted mt-1">
+              <p id="bwa-plan-wizard-base-hint" className="text-xs text-muted mt-1">
                 Ohne Basis startest du in Schritt 2 mit Null-Werten.
               </p>
             )}
@@ -273,7 +283,7 @@ export function PlanWizard({
                     className={
                       'text-xs py-1 px-2.5 rounded-md border ' +
                       (lastAppliedPct === pct
-                        ? 'bg-brand-600 text-white border-brand-600'
+                        ? 'bg-brand-600 text-on-brand border-brand-600'
                         : 'bg-surface text-secondary border-strong hover:bg-gray-50')
                     }
                   >
@@ -282,7 +292,11 @@ export function PlanWizard({
                 ))}
                 <span className="text-xs text-disabled mx-1">oder</span>
                 <div className="flex items-center gap-1">
+                  <label className="sr-only" htmlFor="bwa-plan-wizard-percentage">
+                    Prozentuale Anpassung
+                  </label>
                   <input
+                    id="bwa-plan-wizard-percentage"
                     type="text"
                     inputMode="decimal"
                     value={customPct}
@@ -304,7 +318,11 @@ export function PlanWizard({
 
               {/* Live-Preview: was haben die Buttons gerade gemacht? */}
               {lastAppliedPct !== null && (
-                <div className="border-t border-brand-200 pt-2 mt-2">
+                <div
+                  className="border-t border-brand-200 pt-2 mt-2"
+                  role="status"
+                  aria-live="polite"
+                >
                   <p className="text-xs text-muted mb-1.5">
                     Vorbelegung übernommen
                     {lastAppliedPct !== 0
@@ -398,8 +416,11 @@ export function PlanWizard({
         <div className="card p-6 space-y-4">
           <h2 className="text-sm font-medium text-primary">Schritt 3: Speichern</h2>
           <div>
-            <label className="label">Anmerkungen / Annahmen (optional, Markdown)</label>
+            <label className="label" htmlFor="bwa-plan-wizard-notes">
+              Anmerkungen / Annahmen (optional, Markdown)
+            </label>
             <textarea
+              id="bwa-plan-wizard-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
@@ -408,8 +429,8 @@ export function PlanWizard({
               className="input text-sm"
             />
           </div>
-          <div>
-            <label className="label">Status</label>
+          <fieldset>
+            <legend className="label">Status</legend>
             <div className="space-y-1.5">
               <label className="flex items-start gap-2 text-sm">
                 <input
@@ -439,7 +460,7 @@ export function PlanWizard({
                 </span>
               </label>
             </div>
-          </div>
+          </fieldset>
           <div className="rounded-md bg-amber-50/60 border border-amber-200 p-3 text-xs text-amber-900 flex items-start gap-2">
             <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
@@ -448,7 +469,11 @@ export function PlanWizard({
               kann das deutlich präziser rechnen.
             </span>
           </div>
-          {error && <div className="alert-error-sm">{error}</div>}
+          {error && (
+            <div className="alert-error-sm" role="alert">
+              {error}
+            </div>
+          )}
           <div className="flex justify-between">
             <button
               type="button"
@@ -481,22 +506,32 @@ function AxisRow({
 }) {
   return (
     <div className="grid grid-cols-[1fr_180px_2fr] gap-2 items-center">
-      <label className="text-sm text-secondary">{AXIS_LABELS[axis]}</label>
+      <label className="text-sm text-secondary" htmlFor={`bwa-wizard-axis-${axis}-amount`}>
+        {AXIS_LABELS[axis]}
+      </label>
       <div className="relative">
         <input
+          id={`bwa-wizard-axis-${axis}-amount`}
           type="number"
           value={line.amount}
           onChange={(e) => onChange({ amount: Number(e.target.value) || 0 })}
           className="input pr-8 text-sm font-mono"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">€</span>
+        <span
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted"
+          aria-hidden="true"
+        >
+          €
+        </span>
       </div>
       <input
+        id={`bwa-wizard-axis-${axis}-note`}
         type="text"
         value={line.note}
         onChange={(e) => onChange({ note: e.target.value })}
         maxLength={300}
         placeholder="Annahme / Notiz (optional)"
+        aria-label={`Anmerkung zu ${AXIS_LABELS[axis]} (optional)`}
         className="input text-xs"
       />
     </div>

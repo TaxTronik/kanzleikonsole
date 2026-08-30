@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -19,6 +20,9 @@ import {
   Receipt,
   ArrowRight,
 } from 'lucide-react';
+import { useAccessibleDisplayEnabled } from './accessible-display';
+import { useAnchoredPanel } from './ui/use-anchored-panel';
+import { revealPanelOption } from './ui/anchored-panel';
 
 interface SearchResult {
   type: 'client' | 'request' | 'document' | 'kb_article' | 'invoice' | 'nav';
@@ -49,12 +53,18 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const accessibleDisplay = useAccessibleDisplayEnabled();
+  const listboxId = useId();
+  const statusId = useId();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
+  const showPanel = open && query.trim().length >= 1;
+  const panelStyle = useAnchoredPanel(showPanel, containerRef, 448, 'start', 384);
 
   // Nav-Kommandos (Sprung zu Seiten) — rein clientseitig aus der gefilterten
   // Navigation des Layouts. Schon ab 1 Zeichen, damit „re“ → Rechnungen sofort
@@ -84,9 +94,6 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
         e.preventDefault();
         inputRef.current?.focus();
         setOpen(true);
-      } else if (e.key === 'Escape') {
-        setOpen(false);
-        inputRef.current?.blur();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -147,21 +154,43 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
   // activeIdx zurücksetzen, wenn sich die Trefferliste ändert
   useEffect(() => {
     setActiveIdx(0);
-  }, [items.length]);
+  }, [items.length, query]);
+
+  useEffect(() => {
+    if (!showPanel || !panelRef.current) return;
+    const option = panelRef.current.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (option) revealPanelOption(panelRef.current, option);
+  }, [activeIdx, items, showPanel, panelStyle]);
 
   function handleKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveIdx((i) => Math.min(i + 1, items.length - 1));
+      setOpen(true);
+      if (items.length > 0)
+        setActiveIdx((i) => (showPanel ? Math.min(i + 1, items.length - 1) : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActiveIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
+      setOpen(true);
+      if (items.length > 0)
+        setActiveIdx((i) => (showPanel ? Math.max(i - 1, 0) : items.length - 1));
+    } else if (e.key === 'Home' && showPanel && items.length > 0) {
+      e.preventDefault();
+      setActiveIdx(0);
+    } else if (e.key === 'End' && showPanel && items.length > 0) {
+      e.preventDefault();
+      setActiveIdx(items.length - 1);
+    } else if (e.key === 'Enter' && showPanel) {
       const r = items[activeIdx];
       if (r) {
         e.preventDefault();
         navigate(r);
       }
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      setOpen(false);
+    } else if (e.key === 'Tab') {
+      // Results use aria-activedescendant; Tab continues in the page, not the list.
+      setOpen(false);
     }
   }
 
@@ -172,54 +201,100 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
     router.push(r.href);
   }
 
-  const showPanel = open && query.trim().length >= 1;
+  const activeOptionId =
+    showPanel && items[activeIdx] ? `${listboxId}-option-${activeIdx}` : undefined;
+  const statusMessage = !query.trim()
+    ? ''
+    : loading
+      ? 'Suche läuft.'
+      : error
+        ? error
+        : items.length === 0
+          ? 'Keine Treffer.'
+          : `${items.length} Treffer verfügbar.`;
 
   return (
     <div ref={containerRef} className="relative w-full max-w-md">
       <div className="relative">
         {loading ? (
-          <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled animate-spin" />
+          <Loader2
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled animate-spin"
+            aria-hidden="true"
+          />
         ) : (
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled" />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled"
+            aria-hidden="true"
+          />
         )}
         <input
           ref={inputRef}
           type="search"
           name="taxtronik-global-search"
           autoComplete="off"
+          role="combobox"
           aria-label="Globale Suche"
+          aria-autocomplete="list"
+          aria-controls={showPanel ? listboxId : undefined}
+          aria-expanded={showPanel}
+          aria-activedescendant={activeOptionId}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
           onKeyDown={handleKeyDown}
           placeholder="Mandanten, Anforderungen, Seiten…  (Strg+K)"
-          className="w-full pl-9 pr-12 py-2 text-sm border border-default rounded-md bg-gray-50 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          className="w-full pl-9 pr-12 py-2 text-sm border border-default rounded-md bg-gray-50 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-focus focus:border-transparent"
         />
-        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-disabled bg-surface border border-default rounded px-1.5 py-0.5 hidden md:block">
+        <kbd
+          aria-hidden="true"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-disabled bg-surface border border-default rounded px-1.5 py-0.5 hidden md:block"
+        >
           ⌘K
         </kbd>
       </div>
 
+      <p id={statusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {statusMessage}
+      </p>
+
       {showPanel && (
-        <div className="absolute left-0 right-0 mt-1 bg-surface border border-default rounded-md shadow-lg max-h-96 overflow-y-auto z-50">
+        <div
+          ref={panelRef}
+          id={listboxId}
+          role="listbox"
+          aria-label="Suchergebnisse"
+          aria-busy={loading}
+          style={panelStyle}
+          className="absolute bg-surface border border-default rounded-md shadow-lg overflow-y-auto overscroll-contain z-50"
+        >
           {items.length === 0 && !loading ? (
             error ? (
-              <p className="px-4 py-3 text-sm text-red-700 text-center">{error}</p>
+              <p role="presentation" className="px-4 py-3 text-sm text-red-700 text-center">
+                {error}
+              </p>
             ) : (
-              <p className="px-4 py-3 text-sm text-disabled text-center">Keine Treffer.</p>
+              <p role="presentation" className="px-4 py-3 text-sm text-disabled text-center">
+                Keine Treffer.
+              </p>
             )
           ) : (
-            <ul>
+            <ul role="presentation">
               {items.map((r, i) => {
                 const Icon = ICON[r.type];
                 return (
-                  <li key={`${r.type}-${r.id}`}>
+                  <li key={`${r.type}-${r.id}`} role="presentation">
                     <button
+                      id={`${listboxId}-option-${i}`}
                       type="button"
+                      role="option"
+                      tabIndex={-1}
+                      aria-selected={i === activeIdx}
                       onClick={() => navigate(r)}
+                      onMouseDown={(event) => event.preventDefault()}
                       onMouseEnter={() => setActiveIdx(i)}
                       className={
                         i === activeIdx
@@ -227,10 +302,22 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
                           : 'w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3'
                       }
                     >
-                      <Icon className="h-4 w-4 text-muted shrink-0" />
+                      <Icon className="h-4 w-4 text-muted shrink-0" aria-hidden="true" />
                       <div className="min-w-0 flex-1">
-                        <p className="item-title">{r.title}</p>
-                        {r.subtitle && <p className="text-xs text-muted truncate">{r.subtitle}</p>}
+                        <p className={accessibleDisplay ? 'font-medium break-words' : 'item-title'}>
+                          {r.title}
+                        </p>
+                        {r.subtitle && (
+                          <p
+                            className={
+                              accessibleDisplay
+                                ? 'text-sm text-muted break-words'
+                                : 'text-xs text-muted truncate'
+                            }
+                          >
+                            {r.subtitle}
+                          </p>
+                        )}
                       </div>
                     </button>
                   </li>

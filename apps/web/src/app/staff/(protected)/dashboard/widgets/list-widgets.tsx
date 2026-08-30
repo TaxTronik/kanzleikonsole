@@ -135,8 +135,11 @@ export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Prom
     >
       {items.map(
         (r: { id: string; title: string; dueAt: Date | null; client: { name: string } }) => (
-          <li key={r.id} className="px-5 py-2.5">
-            <Link href={`/staff/requests/${r.id}`} className="block hover:bg-gray-50 -mx-5 px-5">
+          <li key={r.id}>
+            <Link
+              href={`/staff/requests/${r.id}`}
+              className="block px-5 py-2.5 hover:bg-gray-50 transition-colors"
+            >
               <p className="item-title">{r.title}</p>
               <p className="text-xs text-muted truncate">
                 {r.client.name}
@@ -169,10 +172,10 @@ export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<R
     >
       {checks.map(
         (c: { id: string; validUntil: Date | null; client: { id: string; name: string } }) => (
-          <li key={c.id} className="px-5 py-2.5">
+          <li key={c.id}>
             <Link
               href={`/staff/clients/${c.client.id}/gwg`}
-              className="block hover:bg-gray-50 -mx-5 px-5"
+              className="block px-5 py-2.5 hover:bg-gray-50 transition-colors"
             >
               <p className="item-title">{c.client.name}</p>
               <p className="text-xs text-muted truncate">
@@ -211,10 +214,10 @@ export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Pro
           createdAt: Date;
           client: { id: string; name: string };
         }) => (
-          <li key={n.id} className="px-5 py-2.5">
+          <li key={n.id}>
             <Link
               href={`/staff/clients/${n.client.id}/notices`}
-              className="block hover:bg-gray-50 -mx-5 px-5"
+              className="block px-5 py-2.5 hover:bg-gray-50 transition-colors"
             >
               <p className="item-title">{n.client.name}</p>
               <p className="text-xs text-muted truncate">
@@ -255,8 +258,11 @@ export async function TaxDeadlines({ tx, deniedClientIds }: RenderCtx): Promise<
           status: string;
           client: { id: string; name: string };
         }) => (
-          <li key={d.id} className="px-5 py-2.5">
-            <Link href={`/staff/tax-deadlines`} className="block hover:bg-gray-50 -mx-5 px-5">
+          <li key={d.id}>
+            <Link
+              href={`/staff/tax-deadlines`}
+              className="block px-5 py-2.5 hover:bg-gray-50 transition-colors"
+            >
               <p className="item-title">{d.client.name}</p>
               <p className="text-xs text-muted truncate">{SCHEDULE_LABELS[d.kind] ?? d.kind}</p>
               <p className={d.status === 'OVERDUE' ? 'text-xs text-red-700' : 'text-xs text-muted'}>

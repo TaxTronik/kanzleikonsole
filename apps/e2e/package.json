@@ -9,10 +9,12 @@
     "e2e": "playwright install chromium --with-deps && playwright test",
     "e2e:ui": "playwright install chromium --with-deps && playwright test --ui",
     "e2e:headed": "playwright install chromium --with-deps && playwright test --headed",
+    "a11y": "playwright install chromium --with-deps && playwright test tests/12-accessibility.spec.ts tests/13-accessible-display.spec.ts tests/14-dashboard-keyboard.spec.ts tests/15-search-notifications-a11y.spec.ts",
     "report": "playwright show-report",
     "install:browsers": "playwright install chromium"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^24.13.2",
     "otplib": "^13.4.0",

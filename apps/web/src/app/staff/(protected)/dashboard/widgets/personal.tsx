@@ -340,10 +340,10 @@ export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): 
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
           const startedByMe = inst.startedByStaff === staffId;
           return (
-            <li key={inst.id} className="px-5 py-2.5">
+            <li key={inst.id}>
               <Link
                 href={`/staff/clients/${inst.client.id}/workflows`}
-                className="block hover:bg-gray-50 -mx-5 px-5"
+                className="block px-5 py-2.5 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="item-title">{inst.name}</p>
@@ -405,10 +405,10 @@ export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): 
         }) => {
           const overdue = r.dueDate.getTime() < today.getTime();
           return (
-            <li key={r.id} className="px-5 py-2.5">
+            <li key={r.id}>
               <Link
                 href={r.client ? `/staff/clients/${r.client.id}` : '/staff/reminders'}
-                className="block hover:bg-gray-50 -mx-5 px-5"
+                className="block px-5 py-2.5 hover:bg-gray-50 transition-colors"
               >
                 <p className="item-title">{r.subject}</p>
                 <p className="text-xs text-muted truncate">

@@ -130,6 +130,15 @@ describe('GwG-Prüfung Seitenstruktur', () => {
   });
 
   // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+  it('bestätigt einen vollständigen gültigen Ausweis direkt aus dem Lesemodus', () => {
+    expect(identityReviewSource).toContain('const canConfirmDirectly =');
+    expect(identityReviewSource).toContain("'Als geprüft markieren'");
+    expect(identityReviewSource).toContain('action={formAction}');
+    expect(identityReviewSource).toContain('router.refresh();');
+    expect(identityReviewSource).toContain('!hasCompetingActiveSets');
+  });
+
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
   it('zeigt alte Nachweise eingeklappt und entfernt per X nur ihre Prüfzuordnung', () => {
     expect(pageSource).toContain('Alte Ausweise ({groups.length})');
     expect(pageSource).toContain('historicalEvidence={');
@@ -171,6 +180,12 @@ describe('GwG-Prüfung Seitenstruktur', () => {
     );
   });
 
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001, GWG-REPRESENTATIVE-AUTHORITY-001
+  it('zeigt einen Owner-Ausweis bei einer verknüpften Doppelrolle unter der gemeinsamen Person', () => {
+    expect(pageSource).toContain('displaySubjectKeyForAssignment(');
+    expect(pageSource).not.toContain('const persistedSubjectKey = subjectKeyForAssignment(');
+  });
+
   // Fachkatalog: GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001
   it('trennt allgemeine Personenangaben von rollenspezifischen Angaben', () => {
     const general = pageSource.indexOf('<PersonGeneralForm');
@@ -194,5 +209,13 @@ describe('GwG-Prüfung Seitenstruktur', () => {
     expect(addOwnerRoleSource).not.toContain('name="isPep"');
     expect(beneficialOwnerSource).not.toContain('<label className="label-sm">Geburtsdatum');
     expect(beneficialOwnerSource).toContain('name="ownershipPct"');
+  });
+
+  it('stellt die Anteilsangabe der Doppelrolle mit semantischen Dark-Mode-Flächen dar', () => {
+    expect(addOwnerRoleSource).toContain('bg-surface-raised');
+    expect(addOwnerRoleSource).toContain('border-default bg-surface p-3');
+    expect(addOwnerRoleSource).toContain('text-secondary');
+    expect(addOwnerRoleSource).toContain('<BadgePercent');
+    expect(addOwnerRoleSource).not.toContain('bg-brand-50/30');
   });
 });

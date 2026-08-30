@@ -1,10 +1,10 @@
 ﻿'use client';
 
 import { useState, useTransition, useEffect, type FormEvent } from 'react';
-import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Upload, X } from 'lucide-react';
 import { useDocumentCommit } from '@/components/use-document-commit';
+import { Modal } from '@/components/ui/modal';
 
 interface Props {
   clientId?: string;
@@ -52,12 +52,6 @@ export function DocumentUploadButton({
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  // SSR-Guard: createPortal nutzt document, das im Server-Render nicht
-  // existiert. Erst nach Mount portalen — sonst Hydration-Mismatch.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [types, setTypes] = useState<DocType[]>([]);
@@ -162,119 +156,116 @@ export function DocumentUploadButton({
     });
   }
 
-  // Modal in Portal an `document.body` rendern — Modern-Mode setzt
-  // `transform: translateY(-2px)` auf `.card:hover`, was einen
-  // Containing-Block für `position: fixed`-Kinder erzeugt. Inline gerendert
-  // hängt das Modal sonst an der nächsten transformierten Karte (springt
-  // beim Card-Hover sichtbar). Portal entkoppelt es vom Parent-DOM.
   const modal = open ? (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={close}
+    <Modal
+      title="Dokument hochladen"
+      onClose={close}
+      panelClassName="w-full max-w-md card p-6 relative"
+      backdropClassName="bg-black/40 p-4"
+      showCloseButton={false}
+      closeDisabled={isPending}
     >
-      <div className="w-full max-w-md card p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={close} className="modal-close" aria-label="Schließen">
-          <X className="h-5 w-5" />
-        </button>
+      <button type="button" onClick={close} className="modal-close" aria-label="Schließen">
+        <X className="h-5 w-5" />
+      </button>
 
-        <h2 className="text-lg font-semibold text-primary mb-4">Dokument hochladen</h2>
+      <h2 className="text-lg font-semibold text-primary mb-4">Dokument hochladen</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="label" htmlFor="upload-file">
-              Datei
-            </label>
-            <input
-              id="upload-file"
-              type="file"
-              className="input"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                setFile(f);
-                if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ''));
-              }}
-              required
-            />
-          </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="label" htmlFor="upload-file">
+            Datei
+          </label>
+          <input
+            id="upload-file"
+            type="file"
+            className="input"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setFile(f);
+              if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ''));
+            }}
+            required
+          />
+        </div>
 
-          <div>
-            <label className="label" htmlFor="upload-title">
-              Titel
-            </label>
-            <input
-              id="upload-title"
-              type="text"
-              className="input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={file?.name ?? 'Optionaler Titel'}
-              required
-            />
-          </div>
+        <div>
+          <label className="label" htmlFor="upload-title">
+            Titel
+          </label>
+          <input
+            id="upload-title"
+            type="text"
+            className="input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={file?.name ?? 'Optionaler Titel'}
+            required
+          />
+        </div>
 
-          <div>
-            <label className="label" htmlFor="upload-type">
-              Datei-Typ
-            </label>
-            <select
-              id="upload-type"
-              className="input"
-              value={typeId}
-              onChange={(e) => setTypeId(e.target.value)}
-            >
-              {types.length === 0 && <option value="">Lädt…</option>}
-              {types.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.tier !== 'NONE'
-                    ? ` — ${t.tier === 'GOBD' ? 'GoBD' : 'GwG'} ${t.retentionYears ?? '?'} J.`
-                    : ''}
-                </option>
-              ))}
-            </select>
-            {requiredTier && types.length === 0 && (
-              <p className="mt-1 text-xs text-amber-700">
-                Für die benötigte Schutzstufe ist kein aktiver Datei-Typ eingerichtet.
-              </p>
-            )}
-            {(() => {
-              const sel = types.find((t) => t.id === typeId);
-              return sel && sel.tier !== 'NONE' ? (
-                <p className="mt-1 text-xs text-amber-700">{tierHint(sel)}</p>
-              ) : null;
-            })()}
-          </div>
-
-          {error && <div className="alert-error-sm">{error}</div>}
-
-          {progress !== 'idle' && (
-            <div className="alert-info-sm">
-              {progress === 'presign' && 'Hochladevorbereitung…'}
-              {progress === 'upload' && 'Datei wird hochgeladen…'}
-              {progress === 'commit' && 'Virus-Scan & Verarbeitung…'}
-            </div>
+        <div>
+          <label className="label" htmlFor="upload-type">
+            Datei-Typ
+          </label>
+          <select
+            id="upload-type"
+            className="input"
+            value={typeId}
+            onChange={(e) => setTypeId(e.target.value)}
+          >
+            {types.length === 0 && <option value="">Lädt…</option>}
+            {types.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.tier !== 'NONE'
+                  ? ` — ${t.tier === 'GOBD' ? 'GoBD' : 'GwG'} ${t.retentionYears ?? '?'} J.`
+                  : ''}
+              </option>
+            ))}
+          </select>
+          {requiredTier && types.length === 0 && (
+            <p className="mt-1 text-xs text-amber-700">
+              Für die benötigte Schutzstufe ist kein aktiver Datei-Typ eingerichtet.
+            </p>
           )}
+          {(() => {
+            const sel = types.find((t) => t.id === typeId);
+            return sel && sel.tier !== 'NONE' ? (
+              <p className="mt-1 text-xs text-amber-700">{tierHint(sel)}</p>
+            ) : null;
+          })()}
+        </div>
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={close}
-              disabled={isPending}
-              className="btn-secondary flex-1"
-            >
-              Abbrechen
-            </button>
-            <button
-              type="submit"
-              disabled={isPending || !file || !typeId}
-              className="btn-primary flex-1"
-            >
-              {isPending ? 'Lädt…' : 'Hochladen'}
-            </button>
+        {error && <div className="alert-error-sm">{error}</div>}
+
+        {progress !== 'idle' && (
+          <div className="alert-info-sm">
+            {progress === 'presign' && 'Hochladevorbereitung…'}
+            {progress === 'upload' && 'Datei wird hochgeladen…'}
+            {progress === 'commit' && 'Virus-Scan & Verarbeitung…'}
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={close}
+            disabled={isPending}
+            className="btn-secondary flex-1"
+          >
+            Abbrechen
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || !file || !typeId}
+            className="btn-primary flex-1"
+          >
+            {isPending ? 'Lädt…' : 'Hochladen'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   ) : null;
 
   return (
@@ -288,7 +279,7 @@ export function DocumentUploadButton({
         <Upload className="h-3.5 w-3.5" />
         {buttonLabel}
       </button>
-      {mounted && modal ? createPortal(modal, document.body) : null}
+      {modal}
     </>
   );
 }

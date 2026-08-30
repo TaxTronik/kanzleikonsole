@@ -88,6 +88,13 @@ const candidateSelect = {
 } satisfies Prisma.TaxDeadlineSelect;
 
 type Candidate = Prisma.TaxDeadlineGetPayload<{ select: typeof candidateSelect }>;
+type ReadyCandidate = Candidate & {
+  requestId: string;
+  request: NonNullable<Candidate['request']>;
+};
+type NotificationDispatchResult = Awaited<
+  ReturnType<TaxDeadlineNotificationDeps['notifyAutomaticTaxRequestOpened']>
+>;
 
 function failureNotification(
   candidate: Pick<Candidate, 'id' | 'tenantId' | 'requestId'>,
@@ -320,6 +327,252 @@ async function persistDefiniteFailure(
   });
 }
 
+function hasConsistentRequest(candidate: Candidate): candidate is ReadyCandidate {
+  return Boolean(
+    candidate.requestId && candidate.request && candidate.request.id === candidate.requestId,
+  );
+}
+
+async function escalateInconsistentRequest(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: Candidate,
+  now: Date,
+): Promise<boolean> {
+  return deps.runAtomic(async (tx) => {
+    const update = await tx.taxDeadline.updateMany({
+      where: {
+        id: candidate.id,
+        tenantId: candidate.tenantId,
+        requestId: candidate.requestId,
+        autoRequestNotificationStatus: candidate.autoRequestNotificationStatus,
+        autoRequestNotificationAttemptCount: candidate.autoRequestNotificationAttemptCount,
+      },
+      data: {
+        autoRequestNotificationStatus: 'UNKNOWN',
+        autoRequestNotificationNextAttemptAt: null,
+        autoRequestNotificationLastError:
+          'Die gespeicherte Request-Verknuepfung konnte nicht eindeutig aufgeloest werden.',
+        autoRequestNotificationEscalatedAt: now,
+      },
+    });
+    if (update.count !== 1) return false;
+    await deps.upsertStaffNotification(
+      tx,
+      failureNotification(
+        candidate,
+        'Auto-Anforderung kann nicht benachrichtigt werden',
+        'Die gespeicherte Request-Verknuepfung ist inkonsistent. Es wurde keine zweite Anforderung erzeugt und kein Versand versucht.',
+      ),
+    );
+    return true;
+  });
+}
+
+async function persistNoRecipientResult(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: ReadyCandidate,
+  attemptNo: number,
+  attemptAt: Date,
+  result: NotificationDispatchResult,
+  stats: TaxDeadlineNotificationStats,
+): Promise<void> {
+  const sideEffectHint = result.externalSideEffectOccurred
+    ? ' Das einmalige n8n-Ereignis wurde dennoch ausgelöst.'
+    : '';
+  const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
+    status: 'NO_RECIPIENT',
+    error: `Kein aktiver, per Portal-Login bestätigter Kontakt mit eingeschalteten Benachrichtigungen vorhanden.${sideEffectHint}`,
+    escalate: {
+      title: 'Auto-Anforderung ohne Benachrichtigungsempfänger',
+      body: `Die Portal-Anforderung wurde angelegt, aber es ist kein aktiver, per Portal-Login bestätigter Kontakt mit eingeschalteten Benachrichtigungen vorhanden.${sideEffectHint} Bitte Empfängerzuordnung manuell prüfen.`,
+    },
+  });
+  if (changed) stats.escalated += 1;
+}
+
+async function persistUncertainResult(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: ReadyCandidate,
+  attemptNo: number,
+  attemptAt: Date,
+  result: NotificationDispatchResult,
+  stats: TaxDeadlineNotificationStats,
+): Promise<void> {
+  const acceptedHint =
+    result.recipients > 0
+      ? `${result.recipients} Mail-Einzelversuch(e) wurden sicher technisch angenommen; `
+      : '';
+  const sideEffectHint = result.externalSideEffectOccurred
+    ? ' Ein externer Workflow wurde bereits ausgelöst.'
+    : '';
+  const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
+    status: 'UNKNOWN',
+    error: `${acceptedHint}mindestens ein SMTP-Versuch endete ohne explizite Provider-Ablehnung; der Gesamtausgang ist nicht sicher bestimmbar.${sideEffectHint} Kein automatischer Neuversand.`,
+    escalate: {
+      title: 'Versandstatus einer Auto-Anforderung ist unklar',
+      body: `${acceptedHint}mindestens ein SMTP-Versuch endete ohne eindeutig bestimmbare Provider-Antwort.${sideEffectHint} Wegen des Doppelversandrisikos erfolgt kein automatischer Neuversand; bitte manuell prüfen.`,
+    },
+  });
+  if (changed) {
+    stats.recipientsAccepted += result.recipients;
+    stats.escalated += 1;
+  }
+}
+
+async function persistAcceptedResult(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: ReadyCandidate,
+  attemptNo: number,
+  attemptAt: Date,
+  result: NotificationDispatchResult,
+  stats: TaxDeadlineNotificationStats,
+): Promise<void> {
+  const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
+    status: 'PROVIDER_ACCEPTED',
+    error: null,
+    acceptedAt: attemptAt,
+  });
+  if (changed) {
+    stats.providerAccepted += 1;
+    stats.recipientsAccepted += result.recipients;
+  }
+}
+
+async function persistPartialResult(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: ReadyCandidate,
+  attemptNo: number,
+  attemptAt: Date,
+  result: NotificationDispatchResult,
+  stats: TaxDeadlineNotificationStats,
+): Promise<void> {
+  const sideEffectHint = result.externalSideEffectOccurred
+    ? ' Ein externer Workflow wurde bereits ausgelöst.'
+    : '';
+  const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
+    status: 'PARTIAL_FAILURE',
+    error: `${result.recipients} von ${result.attempted} Mail-Einzelversuchen wurden vom Provider angenommen.${sideEffectHint} Kein automatischer Neuversand wegen Doppelverarbeitungsrisiko.`,
+    escalate: {
+      title: 'Auto-Anforderung nur teilweise benachrichtigt',
+      body: `${result.recipients} von ${result.attempted} Mail-Empfängerversuchen wurden technisch angenommen.${sideEffectHint} Wegen des Doppelverarbeitungsrisikos erfolgt kein automatischer Neuversand; bitte manuell prüfen.`,
+    },
+  });
+  if (changed) {
+    stats.recipientsAccepted += result.recipients;
+    stats.escalated += 1;
+  }
+}
+
+async function persistNotificationResult(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: ReadyCandidate,
+  attemptNo: number,
+  attemptAt: Date,
+  result: NotificationDispatchResult,
+  stats: TaxDeadlineNotificationStats,
+): Promise<void> {
+  if (result.attempted === 0) {
+    await persistNoRecipientResult(deps, candidate, attemptNo, attemptAt, result, stats);
+    return;
+  }
+  if (result.uncertainFailure) {
+    await persistUncertainResult(deps, candidate, attemptNo, attemptAt, result, stats);
+    return;
+  }
+  if (result.recipients === result.attempted) {
+    await persistAcceptedResult(deps, candidate, attemptNo, attemptAt, result, stats);
+    return;
+  }
+  if (result.recipients > 0 || result.externalSideEffectOccurred) {
+    await persistPartialResult(deps, candidate, attemptNo, attemptAt, result, stats);
+    return;
+  }
+
+  const outcome = await persistDefiniteFailure(
+    deps,
+    candidate,
+    attemptNo,
+    attemptAt,
+    result.attempted,
+  );
+  if (outcome === 'retry') stats.retryPending += 1;
+  if (outcome === 'escalated') stats.escalated += 1;
+}
+
+async function persistUncertainException(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: ReadyCandidate,
+  attemptNo: number,
+  attemptAt: Date,
+  error: unknown,
+  stats: TaxDeadlineNotificationStats,
+): Promise<void> {
+  // Eine Exception kann nach tatsaechlicher Provider-Annahme auftreten
+  // (z. B. nachgelagerter n8n-Side-Effect). Deshalb niemals blind erneut.
+  deps.logUncertainError?.({
+    tenantId: candidate.tenantId,
+    deadlineId: candidate.id,
+    requestId: candidate.requestId,
+    error,
+  });
+  const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
+    status: 'UNKNOWN',
+    error:
+      'Der Versandversuch endete mit einem unklaren technischen Zustand; Provider-Annahme nicht sicher bestimmbar.',
+    escalate: {
+      title: 'Versandstatus einer Auto-Anforderung ist unklar',
+      body: 'Der technische Versandversuch endete ohne eindeutig bestimmbaren Providerstatus. Wegen des Doppelversandrisikos erfolgt kein automatischer Neuversand; bitte manuell prüfen.',
+    },
+  });
+  if (changed) stats.escalated += 1;
+}
+
+async function processNotificationCandidate(
+  deps: TaxDeadlineNotificationDeps,
+  candidate: Candidate,
+  now: Date,
+  stats: TaxDeadlineNotificationStats,
+): Promise<void> {
+  // Defense in depth: Selbst bei einem fehlerhaften DB-Adapter oder einer
+  // spaeter erweiterten Query bleiben ORPHANED und alle terminalen Zustaende
+  // vom Versand ausgeschlossen.
+  if (!WORKER_ELIGIBLE_STATUSES.has(candidate.autoRequestNotificationStatus)) return;
+
+  // Eine inkonsistente Verknuepfung ist kein Anlass, einen neuen Request zu
+  // erzeugen. Sie wird wie ein unklarer technischer Zustand eskaliert.
+  if (!hasConsistentRequest(candidate)) {
+    const changed = await escalateInconsistentRequest(deps, candidate, now);
+    if (changed) stats.escalated += 1;
+    return;
+  }
+
+  // RESPONDED ist ebenso nicht mehr mandantenseitig offen. Fuer den
+  // Versand sind ausschliesslich OPEN und IN_PROGRESS zugelassen; CLOSED,
+  // CANCELLED und RESPONDED werden ohne externen Versuch terminalisiert.
+  if (!ACTIVE_REQUEST_STATUS_SET.has(candidate.request.status)) {
+    await orphanNotificationForTerminalRequest(deps, candidate);
+    return;
+  }
+
+  const attemptAt = new Date();
+  const attemptNo = await claimAttempt(deps, candidate, attemptAt);
+  if (attemptNo === null) return;
+  stats.processed += 1;
+
+  try {
+    const result = await deps.notifyAutomaticTaxRequestOpened({
+      tenantId: candidate.tenantId,
+      clientId: candidate.clientId,
+      requestId: candidate.requestId,
+      priority: candidate.request.priority as RequestPriority,
+      dueAtIso: (candidate.request.dueAt ?? candidate.dueDate).toISOString(),
+    });
+    await persistNotificationResult(deps, candidate, attemptNo, attemptAt, result, stats);
+  } catch (error) {
+    await persistUncertainException(deps, candidate, attemptNo, attemptAt, error, stats);
+  }
+}
+
 export async function processTaxDeadlineNotifications(
   deps: TaxDeadlineNotificationDeps,
   input: { tenantId: string; now?: Date },
@@ -354,172 +607,7 @@ export async function processTaxDeadlineNotifications(
   });
 
   for (const candidate of candidates) {
-    // Defense in depth: Selbst bei einem fehlerhaften DB-Adapter oder einer
-    // spaeter erweiterten Query bleiben ORPHANED und alle terminalen Zustaende
-    // vom Versand ausgeschlossen.
-    if (!WORKER_ELIGIBLE_STATUSES.has(candidate.autoRequestNotificationStatus)) continue;
-
-    // Eine inkonsistente Verknuepfung ist kein Anlass, einen neuen Request zu
-    // erzeugen. Sie wird wie ein unklarer technischer Zustand eskaliert.
-    if (
-      !candidate.requestId ||
-      !candidate.request ||
-      candidate.request.id !== candidate.requestId
-    ) {
-      const changed = await deps.runAtomic(async (tx) => {
-        const update = await tx.taxDeadline.updateMany({
-          where: {
-            id: candidate.id,
-            tenantId: candidate.tenantId,
-            requestId: candidate.requestId,
-            autoRequestNotificationStatus: candidate.autoRequestNotificationStatus,
-            autoRequestNotificationAttemptCount: candidate.autoRequestNotificationAttemptCount,
-          },
-          data: {
-            autoRequestNotificationStatus: 'UNKNOWN',
-            autoRequestNotificationNextAttemptAt: null,
-            autoRequestNotificationLastError:
-              'Die gespeicherte Request-Verknuepfung konnte nicht eindeutig aufgeloest werden.',
-            autoRequestNotificationEscalatedAt: now,
-          },
-        });
-        if (update.count !== 1) return false;
-        await deps.upsertStaffNotification(
-          tx,
-          failureNotification(
-            candidate,
-            'Auto-Anforderung kann nicht benachrichtigt werden',
-            'Die gespeicherte Request-Verknuepfung ist inkonsistent. Es wurde keine zweite Anforderung erzeugt und kein Versand versucht.',
-          ),
-        );
-        return true;
-      });
-      if (changed) stats.escalated += 1;
-      continue;
-    }
-
-    // RESPONDED ist ebenso nicht mehr mandantenseitig offen. Fuer den
-    // Versand sind ausschliesslich OPEN und IN_PROGRESS zugelassen; CLOSED,
-    // CANCELLED und RESPONDED werden ohne externen Versuch terminalisiert.
-    if (!ACTIVE_REQUEST_STATUS_SET.has(candidate.request.status)) {
-      await orphanNotificationForTerminalRequest(deps, candidate);
-      continue;
-    }
-
-    const attemptAt = new Date();
-    const attemptNo = await claimAttempt(deps, candidate, attemptAt);
-    if (attemptNo === null) continue;
-    stats.processed += 1;
-
-    try {
-      const result = await deps.notifyAutomaticTaxRequestOpened({
-        tenantId: candidate.tenantId,
-        clientId: candidate.clientId,
-        requestId: candidate.requestId,
-        priority: candidate.request.priority as RequestPriority,
-        dueAtIso: (candidate.request.dueAt ?? candidate.dueDate).toISOString(),
-      });
-
-      if (result.attempted === 0) {
-        const sideEffectHint = result.externalSideEffectOccurred
-          ? ' Das einmalige n8n-Ereignis wurde dennoch ausgelöst.'
-          : '';
-        const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
-          status: 'NO_RECIPIENT',
-          error: `Kein aktiver, per Portal-Login bestätigter Kontakt mit eingeschalteten Benachrichtigungen vorhanden.${sideEffectHint}`,
-          escalate: {
-            title: 'Auto-Anforderung ohne Benachrichtigungsempfänger',
-            body: `Die Portal-Anforderung wurde angelegt, aber es ist kein aktiver, per Portal-Login bestätigter Kontakt mit eingeschalteten Benachrichtigungen vorhanden.${sideEffectHint} Bitte Empfängerzuordnung manuell prüfen.`,
-          },
-        });
-        if (changed) stats.escalated += 1;
-        continue;
-      }
-
-      if (result.uncertainFailure) {
-        const acceptedHint =
-          result.recipients > 0
-            ? `${result.recipients} Mail-Einzelversuch(e) wurden sicher technisch angenommen; `
-            : '';
-        const sideEffectHint = result.externalSideEffectOccurred
-          ? ' Ein externer Workflow wurde bereits ausgelöst.'
-          : '';
-        const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
-          status: 'UNKNOWN',
-          error: `${acceptedHint}mindestens ein SMTP-Versuch endete ohne explizite Provider-Ablehnung; der Gesamtausgang ist nicht sicher bestimmbar.${sideEffectHint} Kein automatischer Neuversand.`,
-          escalate: {
-            title: 'Versandstatus einer Auto-Anforderung ist unklar',
-            body: `${acceptedHint}mindestens ein SMTP-Versuch endete ohne eindeutig bestimmbare Provider-Antwort.${sideEffectHint} Wegen des Doppelversandrisikos erfolgt kein automatischer Neuversand; bitte manuell prüfen.`,
-          },
-        });
-        if (changed) {
-          stats.recipientsAccepted += result.recipients;
-          stats.escalated += 1;
-        }
-        continue;
-      }
-
-      if (result.recipients === result.attempted) {
-        const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
-          status: 'PROVIDER_ACCEPTED',
-          error: null,
-          acceptedAt: attemptAt,
-        });
-        if (changed) {
-          stats.providerAccepted += 1;
-          stats.recipientsAccepted += result.recipients;
-        }
-        continue;
-      }
-
-      if (result.recipients > 0 || result.externalSideEffectOccurred) {
-        const sideEffectHint = result.externalSideEffectOccurred
-          ? ' Ein externer Workflow wurde bereits ausgelöst.'
-          : '';
-        const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
-          status: 'PARTIAL_FAILURE',
-          error: `${result.recipients} von ${result.attempted} Mail-Einzelversuchen wurden vom Provider angenommen.${sideEffectHint} Kein automatischer Neuversand wegen Doppelverarbeitungsrisiko.`,
-          escalate: {
-            title: 'Auto-Anforderung nur teilweise benachrichtigt',
-            body: `${result.recipients} von ${result.attempted} Mail-Empfängerversuchen wurden technisch angenommen.${sideEffectHint} Wegen des Doppelverarbeitungsrisikos erfolgt kein automatischer Neuversand; bitte manuell prüfen.`,
-          },
-        });
-        if (changed) {
-          stats.recipientsAccepted += result.recipients;
-          stats.escalated += 1;
-        }
-        continue;
-      }
-
-      const outcome = await persistDefiniteFailure(
-        deps,
-        candidate,
-        attemptNo,
-        attemptAt,
-        result.attempted,
-      );
-      if (outcome === 'retry') stats.retryPending += 1;
-      if (outcome === 'escalated') stats.escalated += 1;
-    } catch (error) {
-      // Eine Exception kann nach tatsaechlicher Provider-Annahme auftreten
-      // (z. B. nachgelagerter n8n-Side-Effect). Deshalb niemals blind erneut.
-      deps.logUncertainError?.({
-        tenantId: candidate.tenantId,
-        deadlineId: candidate.id,
-        requestId: candidate.requestId,
-        error,
-      });
-      const changed = await persistTerminalOutcome(deps, candidate, attemptNo, attemptAt, {
-        status: 'UNKNOWN',
-        error:
-          'Der Versandversuch endete mit einem unklaren technischen Zustand; Provider-Annahme nicht sicher bestimmbar.',
-        escalate: {
-          title: 'Versandstatus einer Auto-Anforderung ist unklar',
-          body: 'Der technische Versandversuch endete ohne eindeutig bestimmbaren Providerstatus. Wegen des Doppelversandrisikos erfolgt kein automatischer Neuversand; bitte manuell prüfen.',
-        },
-      });
-      if (changed) stats.escalated += 1;
-    }
+    await processNotificationCandidate(deps, candidate, now, stats);
   }
 
   return stats;

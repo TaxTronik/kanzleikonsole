@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Trash2 } from 'lucide-react';
 import { confirmGwgDeletionAction, confirmGwgCheckDeletionAction } from './actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 export function GwgDeleteButton({
   documentId,
@@ -16,11 +17,12 @@ export function GwgDeleteButton({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function onClick() {
-    const ok = window.confirm(
+  async function onClick() {
+    const ok = await confirmDialog(
       `GwG-Beleg endgültig und unwiderruflich vernichten?\n\n${label}\n\n` +
         'Die Datei wird aus dem Object-Store gelöscht. Nur fortfahren, wenn die ' +
         'gesetzliche Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist.',
+      { title: 'GwG-Beleg vernichten', confirmLabel: 'Endgültig vernichten', danger: true },
     );
     if (!ok) return;
     setError(null);
@@ -58,12 +60,17 @@ export function GwgCheckDeleteButton({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function onClick() {
-    const ok = window.confirm(
+  async function onClick() {
+    const ok = await confirmDialog(
       `GwG-Aufzeichnungen endgültig und unwiderruflich vernichten?\n\n${label}\n\n` +
         'Wirtschaftlich Berechtigte werden gelöscht, Ausweis-Details und ' +
         'Risikoangaben entfernt. Ein Skelett-Datensatz (Status, Vernichtungsvermerk) ' +
         'bleibt als Nachweis erhalten (§ 8 Abs. 4 GwG).',
+      {
+        title: 'GwG-Aufzeichnungen vernichten',
+        confirmLabel: 'Endgültig vernichten',
+        danger: true,
+      },
     );
     if (!ok) return;
     setError(null);

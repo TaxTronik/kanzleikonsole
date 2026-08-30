@@ -72,15 +72,16 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
         <fieldset className="space-y-2">
           <legend className="label mb-2">Anbieter</legend>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <label
+            <div
               className={
                 providerId === ''
-                  ? 'cursor-pointer rounded-md border-2 border-brand-600 bg-brand-50 dark:bg-brand-900/30 p-3'
-                  : 'cursor-pointer rounded-md border border-default hover:bg-gray-50 p-3'
+                  ? 'rounded-md border-2 border-brand-600 bg-brand-50 dark:bg-brand-900/30 p-3'
+                  : 'rounded-md border border-default hover:bg-gray-50 p-3'
               }
             >
               <div className="flex items-start gap-2">
                 <input
+                  id="tsa-provider-self"
                   type="radio"
                   name="providerId"
                   value=""
@@ -88,36 +89,47 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
                   disabled={production}
                   onChange={() => setProviderId('')}
                   className="mt-1"
+                  aria-describedby="tsa-provider-self-hint"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-primary">Lokaler Self-Timestamp</div>
-                  <div className="text-xs text-muted">
+                  <label
+                    className="text-sm font-medium text-primary cursor-pointer"
+                    htmlFor="tsa-provider-self"
+                  >
+                    Lokaler Self-Timestamp
+                  </label>
+                  <div id="tsa-provider-self-hint" className="text-xs text-muted">
                     Kein externer Dienst — Server-Uhrzeit als Stempel.{' '}
                     {production ? 'In Produktion nicht zulässig.' : 'Nur für Dev/Test.'}
                   </div>
                 </div>
               </div>
-            </label>
+            </div>
             {providers.map((p) => (
-              <label
+              <div
                 key={p.id}
                 className={
                   providerId === p.id
-                    ? 'cursor-pointer rounded-md border-2 border-brand-600 bg-brand-50 dark:bg-brand-900/30 p-3'
-                    : 'cursor-pointer rounded-md border border-default hover:bg-gray-50 p-3'
+                    ? 'rounded-md border-2 border-brand-600 bg-brand-50 dark:bg-brand-900/30 p-3'
+                    : 'rounded-md border border-default hover:bg-gray-50 p-3'
                 }
               >
                 <div className="flex items-start gap-2">
                   <input
+                    id={`tsa-provider-${p.id}`}
                     type="radio"
                     name="providerId"
                     value={p.id}
                     checked={providerId === p.id}
                     onChange={() => setProviderId(p.id)}
                     className="mt-1"
+                    aria-describedby={`tsa-provider-${p.id}-hint`}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-primary flex items-center gap-1.5 flex-wrap">
+                    <label
+                      className="text-sm font-medium text-primary flex items-center gap-1.5 flex-wrap cursor-pointer"
+                      htmlFor={`tsa-provider-${p.id}`}
+                    >
                       {p.label}
                       {p.qualified && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 rounded px-1 py-0.5">
@@ -135,8 +147,10 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
                         {p.cost === 'free' ? 'kostenlos' : 'kostenpflichtig'}
                       </span>
                       <span className="text-[10px] text-disabled">{p.jurisdiction}</span>
+                    </label>
+                    <div id={`tsa-provider-${p.id}-hint`} className="text-xs text-muted">
+                      {p.hint}
                     </div>
-                    <div className="text-xs text-muted">{p.hint}</div>
                     {p.id !== 'custom' && (
                       <div className="text-[10px] text-disabled font-mono mt-0.5 truncate">
                         {p.url}
@@ -144,7 +158,7 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
                     )}
                   </div>
                 </div>
-              </label>
+              </div>
             ))}
           </div>
         </fieldset>
@@ -177,13 +191,13 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
             {isSaving ? 'Speichere…' : 'Speichern'}
           </button>
           {saveState?.ok && (
-            <span className="trend-up">
+            <span className="trend-up" role="status">
               <CheckCircle2 className="h-4 w-4" />
               Gespeichert.
             </span>
           )}
           {saveState && !saveState.ok && (
-            <span className="trend-down">
+            <span className="trend-down" role="alert">
               <AlertCircle className="h-4 w-4" />
               {saveState.error}
             </span>
@@ -211,13 +225,13 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
             {isTesting ? 'Sende…' : 'Test senden'}
           </button>
           {testResult?.ok && (
-            <span className="trend-up">
+            <span className="trend-up" role="status">
               <CheckCircle2 className="h-4 w-4" />
               {testResult.error}
             </span>
           )}
           {testResult && !testResult.ok && (
-            <span className="trend-down">
+            <span className="trend-down" role="alert">
               <AlertCircle className="h-4 w-4" />
               {testResult.error}
             </span>

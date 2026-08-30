@@ -190,16 +190,25 @@ export default async function ClientsPage({
       <form action="/staff/clients" method="get" className="card p-4 mb-4 space-y-3">
         <div className="flex gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[240px] relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled" />
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled"
+            />
             <input
               type="search"
               name="q"
+              aria-label="Mandanten durchsuchen"
               className="input pl-9"
               placeholder="Name, DATEV-, Addison-Nr. oder USt-ID…"
               defaultValue={sp.q ?? ''}
             />
           </div>
-          <select name="status" className="input w-44" defaultValue={sp.status ?? ''}>
+          <select
+            name="status"
+            aria-label="Status filtern"
+            className="input w-44"
+            defaultValue={sp.status ?? ''}
+          >
             <option value="">Alle Status</option>
             <option value="active">Nur aktive</option>
             <option value="pending">Nur GwG-ausstehend</option>
@@ -217,20 +226,30 @@ export default async function ClientsPage({
               </option>
             ))}
           </select>
-          <select name="onboarding" className="input w-52" defaultValue={sp.onboarding ?? ''}>
+          <select
+            name="onboarding"
+            aria-label="Onboarding-Status filtern"
+            className="input w-52"
+            defaultValue={sp.onboarding ?? ''}
+          >
             <option value="">Onboarding: alle</option>
             <option value="open">Onboarding: offen</option>
             <option value="in_progress">Onboarding: läuft</option>
             <option value="complete">Onboarding: abgeschlossen</option>
           </select>
-          <select name="sort" className="input w-44" defaultValue={sort}>
+          <select name="sort" aria-label="Sortierung" className="input w-44" defaultValue={sort}>
             <option value="name">Sortierung: Name</option>
             <option value="kind">Sortierung: Typ</option>
             <option value="datev">Sortierung: DATEV-Nr.</option>
             <option value="addison">Sortierung: Addison-Nr.</option>
             <option value="created">Sortierung: Angelegt</option>
           </select>
-          <select name="dir" className="input w-32" defaultValue={dir}>
+          <select
+            name="dir"
+            aria-label="Sortierreihenfolge"
+            className="input w-32"
+            defaultValue={dir}
+          >
             <option value="asc">Aufsteigend</option>
             <option value="desc">Absteigend</option>
           </select>

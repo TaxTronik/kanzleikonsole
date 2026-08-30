@@ -222,6 +222,11 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/server/n8n/outbox.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/risk/research.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/settings/legal.ts <- @/server/db/prisma-owner',
+  // readBrandingForSlug: oeffentlicher Reader fuer die Login-Seiten (Staff +
+  // Portal) — vor der Session gibt es keinen Tenant-Kontext; liefert nur
+  // Anzeige-Name/Akzentfarbe/Logo-Data-URLs des per Slug adressierten Tenants
+  // (Muster: readLegalForSlug in legal.ts).
+  'apps/web/src/server/settings/branding.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/tax-news/fetcher.ts <- @/server/db/prisma-owner',
 ]);
 

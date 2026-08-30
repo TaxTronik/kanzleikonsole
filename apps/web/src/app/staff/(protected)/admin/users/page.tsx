@@ -69,7 +69,11 @@ export default async function UsersAdminPage() {
   return (
     <div className="max-w-[112rem] p-8">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/admin" className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href="/staff/admin"
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
@@ -282,7 +286,7 @@ export default async function UsersAdminPage() {
 
       <p className="text-xs text-disabled mt-4">
         Verfügbare Rollen: {Object.values(ROLE_LABELS).join(', ')}. Tätigkeitsbereiche werden in{' '}
-        <Link href="/staff/admin/skills" className="text-brand-700 hover:underline">
+        <Link href="/staff/admin/skills" className="text-brand-700 underline underline-offset-2">
           /admin/skills
         </Link>{' '}
         verwaltet.

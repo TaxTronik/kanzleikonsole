@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { BadgePercent } from 'lucide-react';
 import { addBeneficialOwnerRoleAction } from './owner-actions';
 import type { ActionResult } from './actions';
 import { useGwgEditState } from './edit-state-context';
@@ -34,23 +35,28 @@ export function AddBeneficialOwnerRoleForm({
   return (
     <form
       action={action}
-      className="space-y-4 rounded-md border border-brand-200 bg-brand-50/30 p-4 dark:border-brand-900 dark:bg-brand-950/10"
+      className="max-w-2xl space-y-4 rounded-lg border border-default bg-surface-raised p-4"
     >
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="representativeId" value={representativeId} />
 
-      <div>
-        <p className="text-sm font-semibold text-primary">
-          Wirtschaftlich berechtigte Rolle für {personName}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          Die allgemeinen Angaben werden aus der Person übernommen. Hier fehlt nur noch der
-          rollenspezifische Anteil.
-        </p>
+      <div className="flex items-start gap-3">
+        <span className="rounded-md border border-default bg-surface p-2 text-brand-600 dark:text-brand-300">
+          <BadgePercent className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-primary">
+            Wirtschaftlich berechtigte Rolle für {personName}
+          </p>
+          <p className="mt-1 text-xs text-secondary">
+            Die allgemeinen Angaben werden aus der Person übernommen. Hier fehlt nur noch der
+            rollenspezifische Anteil.
+          </p>
+        </div>
       </div>
 
-      <div className="max-w-xs">
+      <div className="max-w-xs rounded-md border border-default bg-surface p-3">
         <label className="label-sm" htmlFor={`owner-role-ownership-${representativeId}`}>
           Anteil (%)
         </label>

@@ -50,6 +50,7 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/server/gwg/verification.ts
+  - apps/web/src/server/gwg/identity-subject.ts
   - apps/web/src/server/gwg/revisions.ts
   - apps/web/src/server/gwg-onboarding/owner-submission.ts
   - apps/web/src/server/gwg-onboarding/submission-validation.ts
@@ -65,6 +66,7 @@ code_refs:
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
   - apps/web/src/server/gwg/__tests__/verification.test.ts
+  - apps/web/src/server/gwg/__tests__/identity-subject.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
@@ -194,7 +196,12 @@ erneute Eingabe ihrer allgemeinen Angaben zusätzlich als wirtschaftlich
 berechtigt zugeordnet werden. Der wirtschaftlich Berechtigte und die
 ausdrückliche Verknüpfung zur Vertreterperson entstehen atomar; die
 Vertreterrolle bleibt erhalten. Bei einer Doppelrolle werden die technisch
-weiterhin rollengebundenen Personensnapshots atomar synchronisiert.
+weiterhin rollengebundenen Personensnapshots atomar synchronisiert. Das gilt
+für Name, Geburtsdatum, Geburtsort, Wohnsitz, Staatsangehörigkeit und PEP-Status
+sowohl beim Herstellen der Verknüpfung als auch bei späteren Korrekturen. Für
+ältere, noch unvollständige Vertretersnapshots verwendet das Gate bei
+ausdrücklich verknüpfter Doppelrolle die allgemeinen Owner-Angaben; ein auf der
+Owner-ID gespeicherter Ausweis erscheint unter derselben sichtbaren Person.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -229,7 +236,12 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 Schema, Owner-Submission und Verifikationsgate belegen die gespeicherten
 Personendaten, PEP-Angabe, Pflichtstruktur und den Registerbeleg. Action- und
 Strukturtests prüfen zusätzlich die zentrale Bearbeitung allgemeiner Angaben,
-deren atomare Synchronisation bei Doppelrollen und die auf den Anteil reduzierte
-Rollenpflege. Weitere Tests prüfen fehlende Personendaten, ungültige
-Beteiligungsangaben, Zeitplausibilität, fehlende Struktur- und Registerbelege.
-Sie belegen nicht die rechtliche Ermittlung der wirtschaftlich Berechtigten.
+deren vollständige atomare Synchronisation bei Doppelrollen und die auf den Anteil reduzierte
+Rollenpflege. Das Verifikationsgate sowie Identity-Subject- und Strukturtests
+belegen zusätzlich, dass ein
+bestätigter Owner-Ausweis bei ausdrücklich verknüpfter Doppelrolle zugleich den
+Vertreternachweis erfüllen kann und unter der gemeinsamen Person sichtbar
+bleibt, während Namensgleichheit allein nicht genügt.
+Weitere Tests prüfen fehlende Personendaten, ungültige Beteiligungsangaben,
+Zeitplausibilität, fehlende Struktur- und Registerbelege. Sie belegen nicht die
+rechtliche Ermittlung der wirtschaftlich Berechtigten.

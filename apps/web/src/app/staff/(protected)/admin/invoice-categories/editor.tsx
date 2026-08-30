@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Pencil, Receipt, Lock } from 'lucide-react';
 import { saveInvoiceCategoryAction, deleteInvoiceCategoryAction } from './actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 interface Category {
   id: string;
@@ -32,11 +33,12 @@ export function InvoiceCategoryEditor({
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function remove(id: string) {
+  async function remove(id: string) {
     if (
-      !confirm(
+      !(await confirmDialog(
         'Rechnungstyp wirklich löschen? Bestehende Rechnungen behalten ihren Typ als „— gelöscht —".',
-      )
+        { title: 'Rechnungstyp löschen', confirmLabel: 'Löschen', danger: true },
+      ))
     )
       return;
     start(async () => {
@@ -95,6 +97,7 @@ export function InvoiceCategoryEditor({
                     onClick={() => setEditing(t)}
                     className="text-muted hover:text-brand-700 p-1"
                     title="Bearbeiten"
+                    aria-label={`Rechnungstyp „${t.name}“ bearbeiten`}
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -104,6 +107,7 @@ export function InvoiceCategoryEditor({
                     disabled={isPending}
                     className="text-disabled hover:text-red-700 p-1"
                     title="Löschen"
+                    aria-label={`Rechnungstyp „${t.name}“ löschen`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -133,8 +137,11 @@ export function InvoiceCategoryEditor({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Anzeige-Name</label>
+              <label className="label" htmlFor="invoice-category-name">
+                Anzeige-Name
+              </label>
               <input
+                id="invoice-category-name"
                 type="text"
                 className="input"
                 value={editing.name}
@@ -144,11 +151,12 @@ export function InvoiceCategoryEditor({
               />
             </div>
             <div>
-              <label className="label">
+              <label className="label" htmlFor="invoice-category-slug">
                 Slug{' '}
                 <span className="text-xs font-normal text-muted">(optional, sonst aus Name)</span>
               </label>
               <input
+                id="invoice-category-slug"
                 type="text"
                 className="input font-mono"
                 value={editing.slug}
@@ -160,13 +168,17 @@ export function InvoiceCategoryEditor({
           </div>
 
           <div>
-            <label className="label">E-Mail-Vorlage (optional)</label>
+            <label className="label" htmlFor="invoice-category-email-template">
+              E-Mail-Vorlage (optional)
+            </label>
             <select
+              id="invoice-category-email-template"
               className="input"
               value={editing.emailTemplateSlug ?? ''}
               onChange={(e) =>
                 setEditing({ ...editing, emailTemplateSlug: e.target.value || null })
               }
+              aria-describedby="invoice-category-email-template-hint"
             >
               <option value="">— Standard-Rechnungstemplate —</option>
               {emailTemplates.map((t) => (
@@ -175,7 +187,7 @@ export function InvoiceCategoryEditor({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-muted mt-1">
+            <p id="invoice-category-email-template-hint" className="text-xs text-muted mt-1">
               Pro Rechnungstyp eine eigene Mail-Vorlage. Ohne Auswahl wird das allgemeine
               Rechnungs-Template aus den Einstellungen verwendet.
             </p>
@@ -191,7 +203,11 @@ export function InvoiceCategoryEditor({
             Aktiv (wählbar im Rechnungs-Formular)
           </label>
 
-          {error && <div className="rounded-md bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+          {error && (
+            <div className="rounded-md bg-red-50 p-2 text-xs text-red-700" role="alert">
+              {error}
+            </div>
+          )}
 
           <div className="flex items-center gap-2 pt-2">
             <button

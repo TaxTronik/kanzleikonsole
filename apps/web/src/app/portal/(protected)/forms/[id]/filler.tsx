@@ -4,6 +4,7 @@ import { useState, useTransition, type ReactNode, type ChangeEvent } from 'react
 import { FileText, Upload, X } from 'lucide-react';
 import type { FormFieldType } from '@prisma/client';
 import { fmtTimeMedium } from '@/lib/fmt';
+import { confirmDialog } from '@/components/ui/modal';
 import {
   discardFormFileAction,
   saveSubmissionDraftAction,
@@ -99,14 +100,20 @@ export function PortalFormFiller({
     });
   }
 
-  function send() {
+  async function send() {
     setError(null);
     const ve = validate();
     if (ve) {
       setError(ve);
       return;
     }
-    if (!confirm('Formular jetzt absenden? Danach sind keine Änderungen mehr möglich.')) return;
+    if (
+      !(await confirmDialog('Formular jetzt absenden? Danach sind keine Änderungen mehr möglich.', {
+        title: 'Formular absenden',
+        confirmLabel: 'Absenden',
+      }))
+    )
+      return;
     start(async () => {
       const r = await submitSubmissionAction({ submissionId, answers });
       if (!r.ok) {

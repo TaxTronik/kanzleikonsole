@@ -12,6 +12,7 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { countGranted, countRevocableGranted, parseConsent } from '@/server/privacy/consent';
 import { revokeOwnConsentAction, saveNotificationSettingAction } from './actions';
+import { AccessibleDisplaySettings } from '@/components/accessible-display';
 
 export default async function PortalSettingsPage() {
   const session = await portalAuth();
@@ -47,6 +48,8 @@ export default async function PortalSettingsPage() {
       <p className="text-muted text-sm mb-6">
         {contact.fullName} · {contact.email}
       </p>
+
+      <AccessibleDisplaySettings />
 
       <div className="card p-6 mb-6">
         <h2 className="text-sm font-medium text-primary mb-1 flex items-center gap-2">

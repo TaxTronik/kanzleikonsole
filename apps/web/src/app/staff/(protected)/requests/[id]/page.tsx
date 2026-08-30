@@ -65,6 +65,7 @@ export default async function RequestDetailPage({
       <div className="flex items-start gap-4 mb-6">
         <Link
           href={`/staff/clients/${reqRow.client.id}`}
+          aria-label="Zurück"
           className="text-disabled hover:text-secondary mt-1"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -131,8 +132,8 @@ export default async function RequestDetailPage({
         </div>
       </div>
 
-      <div className="card overflow-hidden mb-6 border-amber-200 bg-amber-50/30">
-        <div className="px-6 py-4 border-b border-amber-200">
+      <div className="card mb-6 overflow-hidden border-default border-l-4 border-l-amber-500 bg-surface-raised">
+        <div className="border-b border-default px-6 py-4">
           <h2 className="text-sm font-medium text-primary">
             Kanzlei-intern ({reqRow.internalComments.length})
           </h2>
@@ -141,21 +142,19 @@ export default async function RequestDetailPage({
           </p>
         </div>
         {reqRow.internalComments.length > 0 && (
-          <div className="divide-y divide-amber-100">
+          <div className="divide-y divide-border-subtle">
             {reqRow.internalComments.map((comment) => (
               <div key={comment.id} className="px-6 py-4">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="badge-yellow">Intern · {comment.authorName}</span>
-                  <span className="text-xs text-disabled">
-                    {fmtDateTimeShort(comment.createdAt)}
-                  </span>
+                  <span className="text-xs text-muted">{fmtDateTimeShort(comment.createdAt)}</span>
                 </div>
                 <p className="text-sm text-primary whitespace-pre-wrap">{comment.body}</p>
               </div>
             ))}
           </div>
         )}
-        <div className="px-6 py-4 border-t border-amber-200">
+        <div className="border-t border-default px-6 py-4">
           <InternalCommentForm requestId={reqRow.id} />
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { setTemplateActiveAction, deleteTemplateAction } from '../actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 export function ToggleActiveForm({ id, active }: { id: string; active: boolean }) {
   const [isPending, start] = useTransition();
@@ -35,7 +36,7 @@ export function DeleteTemplateForm({
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function handleClick() {
+  async function handleClick() {
     setError(null);
     if (instances > 0) {
       setError(
@@ -43,7 +44,17 @@ export function DeleteTemplateForm({
       );
       return;
     }
-    if (!confirm(`Vorlage „${name}" wirklich löschen? Alle Schritte werden mit gelöscht.`)) return;
+    if (
+      !(await confirmDialog(
+        `Vorlage „${name}" wirklich löschen? Alle Schritte werden mit gelöscht.`,
+        {
+          title: 'Workflow-Vorlage löschen',
+          confirmLabel: 'Löschen',
+          danger: true,
+        },
+      ))
+    )
+      return;
     start(async () => {
       const r = await deleteTemplateAction({ id });
       if (!r.ok) setError(r.error ?? 'Fehler beim Löschen.');

@@ -1,12 +1,19 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useEffect, useReducer } from 'react';
 import { useRouter } from 'next/navigation';
 import { ContactRound, Pencil, X } from 'lucide-react';
-import { updateGwgPersonGeneralAction, type SavedGwgPersonGeneral } from './owner-actions';
-import type { ActionResult, InvalidatedIdentitySet } from './actions';
+import {
+  updateGwgPersonGeneralAction,
+  type GwgPersonGeneralActionResult,
+  type SavedGwgPersonGeneral,
+} from './owner-actions';
 import { useGwgIdentitySubjects } from './identity-subjects-context';
 import { useGwgEditState } from './edit-state-context';
+import {
+  gwgPersonGeneralStateReducer,
+  initialGwgPersonGeneralState,
+} from './person-general-conflict';
 
 export function PersonGeneralForm({
   ownerId,
@@ -28,33 +35,38 @@ export function PersonGeneralForm({
   const router = useRouter();
   const { registerIdentityInvalidations } = useGwgIdentitySubjects();
   const { markDraft, markRiskInvalidated } = useGwgEditState();
-  const [editing, setEditing] = useState(false);
-  const [displayValue, setDisplayValue] = useState(value);
-  const [draftValue, setDraftValue] = useState(value);
-  const [currentRevision, setCurrentRevision] = useState(revision);
-  const [state, action, pending] = useActionState<
-    | (ActionResult & {
-        saved?: SavedGwgPersonGeneral;
-        revision?: string;
-        reviewReset?: boolean;
-        invalidatedIdentitySets?: InvalidatedIdentitySet[];
-      })
-    | null,
-    FormData
-  >(updateGwgPersonGeneralAction, null);
+  const [local, dispatchLocal] = useReducer(
+    gwgPersonGeneralStateReducer,
+    initialGwgPersonGeneralState(value, revision),
+  );
+  const { editing, displayValue, draftValue, conflictNotice } = local;
+  const [state, action, pending] = useActionState<GwgPersonGeneralActionResult | null, FormData>(
+    updateGwgPersonGeneralAction,
+    null,
+  );
   const fieldId = (field: string) => `person-general-${ownerId ?? representativeId}-${field}`;
 
   useEffect(() => {
     if (!state?.ok || !state.saved) return;
-    setDisplayValue(state.saved);
-    setDraftValue(state.saved);
-    if (state.revision) setCurrentRevision(state.revision);
+    dispatchLocal({ type: 'save-succeeded', saved: state.saved, revision: state.revision });
     registerIdentityInvalidations(state.invalidatedIdentitySets ?? []);
     if (state.reviewReset) markDraft();
     markRiskInvalidated();
-    setEditing(false);
     router.refresh();
   }, [markDraft, markRiskInvalidated, registerIdentityInvalidations, router, state]);
+
+  useEffect(() => {
+    if (!state?.conflict || !state.latest || !state.revision) return;
+    dispatchLocal({ type: 'conflict', latest: state.latest, revision: state.revision });
+    router.refresh();
+  }, [router, state]);
+
+  // Ein RSC-Refresh darf einen offenen Entwurf nicht überschreiben. Außerhalb
+  // des Bearbeitungsmodus wird ein neuer Serverstand hingegen sofort lokal
+  // übernommen, sodass gar keine veraltete Revision abgesendet wird.
+  useEffect(() => {
+    dispatchLocal({ type: 'server-state', value, revision });
+  }, [revision, value]);
 
   return (
     <details className="details-box">
@@ -112,7 +124,7 @@ export function PersonGeneralForm({
               <button
                 type="button"
                 className="btn-secondary text-xs"
-                onClick={() => setEditing(true)}
+                onClick={() => dispatchLocal({ type: 'start-editing' })}
               >
                 <Pencil className="h-3.5 w-3.5" /> Bearbeiten
               </button>
@@ -124,7 +136,7 @@ export function PersonGeneralForm({
             <input type="hidden" name="representativeId" value={representativeId ?? ''} />
             <input type="hidden" name="checkId" value={checkId} />
             <input type="hidden" name="clientId" value={clientId} />
-            <input type="hidden" name="expectedRevision" value={currentRevision} />
+            <input type="hidden" name="expectedRevision" value={local.revision} />
             <div className="flex items-start justify-between gap-3">
               <p className="text-xs text-muted">
                 Änderungen gelten für die Person in allen zugeordneten Rollen.
@@ -132,10 +144,7 @@ export function PersonGeneralForm({
               <button
                 type="button"
                 className="modal-close"
-                onClick={() => {
-                  setDraftValue(displayValue);
-                  setEditing(false);
-                }}
+                onClick={() => dispatchLocal({ type: 'cancel-editing' })}
                 aria-label="Bearbeitung der allgemeinen Angaben schließen"
               >
                 <X className="h-4 w-4" />
@@ -152,7 +161,10 @@ export function PersonGeneralForm({
                   className="input"
                   value={draftValue.fullName}
                   onChange={(event) =>
-                    setDraftValue((current) => ({ ...current, fullName: event.target.value }))
+                    dispatchLocal({
+                      type: 'patch-draft',
+                      patch: { fullName: event.target.value },
+                    })
                   }
                   maxLength={200}
                   required
@@ -170,7 +182,10 @@ export function PersonGeneralForm({
                   className="input"
                   value={draftValue.birthDate}
                   onChange={(event) =>
-                    setDraftValue((current) => ({ ...current, birthDate: event.target.value }))
+                    dispatchLocal({
+                      type: 'patch-draft',
+                      patch: { birthDate: event.target.value },
+                    })
                   }
                   required
                   disabled={pending}
@@ -186,7 +201,10 @@ export function PersonGeneralForm({
                   className="input"
                   value={draftValue.birthPlace}
                   onChange={(event) =>
-                    setDraftValue((current) => ({ ...current, birthPlace: event.target.value }))
+                    dispatchLocal({
+                      type: 'patch-draft',
+                      patch: { birthPlace: event.target.value },
+                    })
                   }
                   maxLength={200}
                   required
@@ -203,7 +221,10 @@ export function PersonGeneralForm({
                   className="input"
                   value={draftValue.nationality}
                   onChange={(event) =>
-                    setDraftValue((current) => ({ ...current, nationality: event.target.value }))
+                    dispatchLocal({
+                      type: 'patch-draft',
+                      patch: { nationality: event.target.value },
+                    })
                   }
                   maxLength={100}
                   required
@@ -220,7 +241,10 @@ export function PersonGeneralForm({
                   className="input"
                   value={draftValue.residence}
                   onChange={(event) =>
-                    setDraftValue((current) => ({ ...current, residence: event.target.value }))
+                    dispatchLocal({
+                      type: 'patch-draft',
+                      patch: { residence: event.target.value },
+                    })
                   }
                   maxLength={500}
                   required
@@ -237,10 +261,10 @@ export function PersonGeneralForm({
                   className="input"
                   value={draftValue.isPep === null ? '' : draftValue.isPep ? 'true' : 'false'}
                   onChange={(event) =>
-                    setDraftValue((current) => ({
-                      ...current,
-                      isPep: event.target.value === 'true',
-                    }))
+                    dispatchLocal({
+                      type: 'patch-draft',
+                      patch: { isPep: event.target.value === 'true' },
+                    })
                   }
                   required
                   disabled={pending}
@@ -253,7 +277,20 @@ export function PersonGeneralForm({
                 </select>
               </div>
             </div>
-            {state?.error && <div className="alert-error-sm">{state.error}</div>}
+            {conflictNotice && (
+              <div className="alert-info-sm flex items-start justify-between gap-3" role="status">
+                <span>{conflictNotice}</span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-0.5 text-current opacity-70 transition hover:opacity-100"
+                  onClick={() => dispatchLocal({ type: 'dismiss-conflict' })}
+                  aria-label="Hinweis zum automatischen Abgleich schließen"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            )}
+            {state?.error && !state.conflict && <div className="alert-error-sm">{state.error}</div>}
             <button type="submit" className="btn-primary text-xs" disabled={pending}>
               {pending ? 'Speichert…' : 'Allgemeine Angaben speichern'}
             </button>

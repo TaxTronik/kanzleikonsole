@@ -1,9 +1,9 @@
 ﻿'use client';
 
-import { useState, useTransition, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRightLeft, X } from 'lucide-react';
+import { Modal } from '@/components/ui/modal';
 import { handoverItemAction } from './actions';
 
 interface StaffOption {
@@ -30,10 +30,6 @@ export function HandoverButton({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
   const [toStaffId, setToStaffId] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -61,68 +57,83 @@ export function HandoverButton({
   }
 
   const modal = open ? (
-    <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div className="card w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
-            <ArrowRightLeft className="h-4 w-4 text-brand-600" />
-            Schritt übergeben
-          </h2>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="text-disabled hover:text-secondary"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="text-xs text-secondary">
-          <strong>{itemTitle}</strong> — der bisherige Bearbeiter wird ersetzt und es wird
-          automatisch ein Kommentar mit Datum und Empfänger angelegt.
-        </p>
-        <div>
-          <label className="label">An wen</label>
-          <select
-            value={toStaffId}
-            onChange={(e) => setToStaffId(e.target.value)}
-            className="input text-sm"
-          >
-            <option value="">— Empfänger wählen —</option>
-            {candidates.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.fullName}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">Übergabe-Hinweis (optional)</label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            maxLength={2000}
-            placeholder='z. B. „Beleg-Check fertig, bitte mit Vorgesetztem freigeben"'
-            className="input text-sm"
-          />
-        </div>
-        {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
-        <div className="form-actions">
-          <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
-            Abbrechen
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={isPending || !toStaffId}
-            className="btn-primary text-sm inline-flex items-center gap-1.5"
-          >
-            <ArrowRightLeft className="h-3.5 w-3.5" />
-            {isPending ? 'Übergibt…' : 'Übergeben'}
-          </button>
-        </div>
+    <Modal
+      title="Schritt übergeben"
+      onClose={() => setOpen(false)}
+      panelClassName="card w-full max-w-md p-5 space-y-3"
+      showCloseButton={false}
+      closeDisabled={isPending}
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
+          <ArrowRightLeft className="h-4 w-4 text-brand-600" />
+          Schritt übergeben
+        </h2>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-disabled hover:text-secondary"
+          aria-label="Dialog schließen"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
-    </div>
+      <p className="text-xs text-secondary">
+        <strong>{itemTitle}</strong> — der bisherige Bearbeiter wird ersetzt und es wird automatisch
+        ein Kommentar mit Datum und Empfänger angelegt.
+      </p>
+      <div>
+        <label className="label" htmlFor={`handover-${itemId}-staff`}>
+          An wen
+        </label>
+        <select
+          id={`handover-${itemId}-staff`}
+          value={toStaffId}
+          onChange={(e) => setToStaffId(e.target.value)}
+          className="input text-sm"
+        >
+          <option value="">— Empfänger wählen —</option>
+          {candidates.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.fullName}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="label" htmlFor={`handover-${itemId}-note`}>
+          Übergabe-Hinweis (optional)
+        </label>
+        <textarea
+          id={`handover-${itemId}-note`}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={3}
+          maxLength={2000}
+          placeholder='z. B. „Beleg-Check fertig, bitte mit Vorgesetztem freigeben"'
+          className="input text-sm"
+        />
+      </div>
+      {error && (
+        <div className="alert-error-sm text-xs p-2" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="form-actions">
+        <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
+          Abbrechen
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={isPending || !toStaffId}
+          className="btn-primary text-sm inline-flex items-center gap-1.5"
+        >
+          <ArrowRightLeft className="h-3.5 w-3.5" />
+          {isPending ? 'Übergibt…' : 'Übergeben'}
+        </button>
+      </div>
+    </Modal>
   ) : null;
 
   return (
@@ -132,10 +143,11 @@ export function HandoverButton({
         onClick={() => setOpen(true)}
         className="text-disabled hover:text-brand-700 dark:hover:text-brand-300 p-1"
         title="Schritt an Kollegen übergeben"
+        aria-label="Schritt an Kollegen übergeben"
       >
         <ArrowRightLeft className="h-3.5 w-3.5" />
       </button>
-      {mounted && modal ? createPortal(modal, document.body) : null}
+      {modal}
     </>
   );
 }

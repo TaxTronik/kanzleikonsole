@@ -475,201 +475,274 @@ export async function loadKontrollbuch(
 
   const eintraege: FristEintrag[] = [];
 
-  for (const d of deadlines) {
-    const verantwortlichId = hauptbearbeiter.get(d.clientId) ?? null;
-    const erledigt = taxDeadlineErledigt(d.status, d.completedAt, d.completedByStaff);
-    eintraege.push({
-      quelle: 'STEUERTERMIN',
-      kontrollart: 'OPERATIONAL_DUE_DATE',
-      id: d.id,
-      titel: `${SCHEDULE_LABELS[d.kind] ?? d.kind} ${d.period}`,
-      clientId: d.clientId,
-      clientName: d.client.name,
-      faelligAm: d.dueDate,
-      erledigt,
-      kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-      kontrollhinweis:
-        d.status === 'SKIPPED'
-          ? 'Übersprungen ohne strukturierten Grund und fachliche Freigabe.'
-          : d.status === 'DONE' && !erledigt
-            ? 'Erledigungszeit oder handelnde Person fehlt.'
-            : null,
-      erledigtAm: d.completedAt,
-      erledigtVon: d.completedByStaff ? (staffName.get(d.completedByStaff) ?? null) : null,
-      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
-      verantwortlichId,
-      href: `/staff/tax-deadlines/group?kind=${d.kind}&period=${encodeURIComponent(d.period)}&scope=all`,
-    });
+  type NoticeRow = (typeof notices)[number];
+  type KlageRow = (typeof klagen)[number];
+
+  function personName(staffId: string | null): string | null {
+    return staffId ? (staffName.get(staffId) ?? null) : null;
   }
 
-  for (const n of notices) {
-    const verantwortlichId = hauptbearbeiter.get(n.clientId) ?? null;
-    const erledigt = taxNoticeFristErledigt(n.status, n);
+  function verantwortung(clientId: string): { id: string | null; name: string | null } {
+    const id = hauptbearbeiter.get(clientId) ?? null;
+    return { id, name: personName(id) };
+  }
+
+  function noticeFilingOutcome(n: NoticeRow) {
     const filingTimely = filingWithinDeadline(n.appealFiledAt, n.appealFiledBy, n.appealDeadline);
-    const filingLate = Boolean(n.appealFiledAt && n.appealFiledBy && !filingTimely);
-    const disposition =
-      !filingTimely &&
-      n.status === 'BESTANDSKRAEFTIG' &&
-      Boolean(n.legalFinalAt && n.legalFinalBy && n.legalFinalReason?.trim());
-    eintraege.push({
-      quelle: 'EINSPRUCHSFRIST',
-      kontrollart: n.manualReviewRequired
-        ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
-        : 'CALCULATED_CONTROL_PROPOSAL',
-      id: n.id,
-      titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`,
-      clientId: n.clientId,
-      clientName: n.client.name,
-      faelligAm: n.appealDeadline!,
-      erledigt,
-      kontrollzustand: disposition ? 'CLOSED_DISPOSITION' : erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-      kontrollhinweis:
-        filingLate && !disposition
-          ? 'Einspruch wurde erst nach dem dokumentierten Fristende eingelegt; Wiedereinsetzung oder fachliche Disposition ist offen.'
-          : !erledigt && n.manualReviewRequired
-            ? 'Frist ist ein technischer Kontrollvorschlag; die fachliche Freigabe ist noch offen.'
-            : !erledigt && !['NEU', 'GEPRUEFT'].includes(n.status)
-              ? 'Verfahrensstatus vorhanden, aber Einlegungs- oder Dispositionsnachweis unvollständig.'
-              : null,
-      erledigtAm: filingTimely ? n.appealFiledAt : disposition ? n.legalFinalAt : null,
-      erledigtVon:
-        filingTimely && n.appealFiledBy
-          ? (staffName.get(n.appealFiledBy) ?? null)
-          : disposition && n.legalFinalBy
-            ? (staffName.get(n.legalFinalBy) ?? null)
-            : null,
-      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
-      verantwortlichId,
-      href: `/staff/clients/${n.clientId}/notices`,
-    });
+    return {
+      filingTimely,
+      filingLate: Boolean(n.appealFiledAt && n.appealFiledBy && !filingTimely),
+      disposition:
+        !filingTimely &&
+        n.status === 'BESTANDSKRAEFTIG' &&
+        Boolean(n.legalFinalAt && n.legalFinalBy && n.legalFinalReason?.trim()),
+    };
   }
 
-  for (const n of riskNotices) {
-    if (!n.internalRiskDeadline) continue;
-    const verantwortlichId = hauptbearbeiter.get(n.clientId) ?? null;
-    const noticeTitle = `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`;
-    eintraege.push({
-      // Technisch dieselbe Bescheidquelle, aber mit eigener Anzeigeart: weder
-      // UI noch CSV dürfen aus dem Risikotermin eine Einspruchsfrist machen.
-      quelle: 'EINSPRUCHSFRIST',
-      kontrollart: 'INTERNAL_RISK',
-      artLabel: 'Interner Prüftermin',
-      id: n.id,
-      titel: `Interner Prüftermin: ${noticeTitle} (keine Rechtsbehelfsfrist)`,
-      clientId: n.clientId,
-      clientName: n.client.name,
-      faelligAm: n.internalRiskDeadline,
-      erledigt: false,
-      kontrollzustand: 'OPEN',
-      kontrollhinweis:
-        'Interner Risikotermin ohne berechnete Rechtsbehelfsfrist. Bekanntgabe und Fristgrundlage fachlich prüfen; ein eigener strukturierter Abschlussgrund ist noch nicht implementiert.',
-      erledigtAm: null,
-      erledigtVon: null,
-      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
-      verantwortlichId,
-      href: `/staff/clients/${n.clientId}/notices`,
-    });
+  function noticeControlHint(
+    n: NoticeRow,
+    erledigt: boolean,
+    filingLate: boolean,
+    disposition: boolean,
+  ): string | null {
+    if (filingLate && !disposition) {
+      return 'Einspruch wurde erst nach dem dokumentierten Fristende eingelegt; Wiedereinsetzung oder fachliche Disposition ist offen.';
+    }
+    if (!erledigt && n.manualReviewRequired) {
+      return 'Frist ist ein technischer Kontrollvorschlag; die fachliche Freigabe ist noch offen.';
+    }
+    if (!erledigt && !['NEU', 'GEPRUEFT'].includes(n.status)) {
+      return 'Verfahrensstatus vorhanden, aber Einlegungs- oder Dispositionsnachweis unvollständig.';
+    }
+    return null;
   }
 
-  for (const k of klagen) {
-    if (!k.klageDeadline) continue;
-    const verantwortlichId = hauptbearbeiter.get(k.clientId) ?? null;
-    const erledigt = taxNoticeKlageFristErledigt(k.status, k);
+  function klageFilingOutcome(k: KlageRow) {
     const filingTimely = filingWithinDeadline(k.klageFiledAt, k.klageFiledBy, k.klageDeadline);
-    const filingLate = Boolean(k.klageFiledAt && k.klageFiledBy && !filingTimely);
-    const disposition =
-      !filingTimely &&
-      k.status === 'BESTANDSKRAEFTIG' &&
-      Boolean(k.legalFinalAt && k.legalFinalBy && k.legalFinalReason?.trim());
-    eintraege.push({
-      quelle: 'KLAGEFRIST',
-      kontrollart: k.manualReviewRequired
-        ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
-        : 'CALCULATED_CONTROL_PROPOSAL',
-      id: k.id,
-      titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[k.kind] ?? k.kind} ${k.period} (Klage FG)`,
-      clientId: k.clientId,
-      clientName: k.client.name,
-      faelligAm: k.klageDeadline,
-      erledigt,
-      kontrollzustand: disposition ? 'CLOSED_DISPOSITION' : erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-      kontrollhinweis:
-        filingLate && !disposition
-          ? 'Klage wurde erst nach dem dokumentierten Fristende eingereicht; Wiedereinsetzung oder fachliche Disposition ist offen.'
-          : !erledigt && k.status === 'ABGEHOLFEN'
-            ? 'Die bereits dokumentierte Klagefrist bleibt trotz Abhilfe-Status bis zum Einreichungs- oder Dispositionsnachweis in Kontrolle.'
-            : !erledigt && ['KLAGE', 'BESTANDSKRAEFTIG'].includes(k.status)
-              ? 'Abschlussstatus vorhanden, aber Klage- oder Dispositionsnachweis unvollständig.'
+    return {
+      filingTimely,
+      filingLate: Boolean(k.klageFiledAt && k.klageFiledBy && !filingTimely),
+      disposition:
+        !filingTimely &&
+        k.status === 'BESTANDSKRAEFTIG' &&
+        Boolean(k.legalFinalAt && k.legalFinalBy && k.legalFinalReason?.trim()),
+    };
+  }
+
+  function klageControlHint(
+    k: KlageRow,
+    erledigt: boolean,
+    filingLate: boolean,
+    disposition: boolean,
+  ): string | null {
+    if (filingLate && !disposition) {
+      return 'Klage wurde erst nach dem dokumentierten Fristende eingereicht; Wiedereinsetzung oder fachliche Disposition ist offen.';
+    }
+    if (!erledigt && k.status === 'ABGEHOLFEN') {
+      return 'Die bereits dokumentierte Klagefrist bleibt trotz Abhilfe-Status bis zum Einreichungs- oder Dispositionsnachweis in Kontrolle.';
+    }
+    if (!erledigt && ['KLAGE', 'BESTANDSKRAEFTIG'].includes(k.status)) {
+      return 'Abschlussstatus vorhanden, aber Klage- oder Dispositionsnachweis unvollständig.';
+    }
+    return null;
+  }
+
+  function appendTaxDeadlineEntries(): void {
+    for (const d of deadlines) {
+      const verantwortlich = verantwortung(d.clientId);
+      const erledigt = taxDeadlineErledigt(d.status, d.completedAt, d.completedByStaff);
+      eintraege.push({
+        quelle: 'STEUERTERMIN',
+        kontrollart: 'OPERATIONAL_DUE_DATE',
+        id: d.id,
+        titel: `${SCHEDULE_LABELS[d.kind] ?? d.kind} ${d.period}`,
+        clientId: d.clientId,
+        clientName: d.client.name,
+        faelligAm: d.dueDate,
+        erledigt,
+        kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+        kontrollhinweis:
+          d.status === 'SKIPPED'
+            ? 'Übersprungen ohne strukturierten Grund und fachliche Freigabe.'
+            : d.status === 'DONE' && !erledigt
+              ? 'Erledigungszeit oder handelnde Person fehlt.'
               : null,
-      // #11: Erledigung = tatsächliche Klageeinreichung (wer/wann), nicht die
-      // Einspruchsentscheidung (= Fristbeginn) bzw. der Bescheidprüfer. Fallback
-      // auf Abschluss-/Entscheidungsdaten nur für Altbestand ohne die
-      // belastbaren klageFiled*-Felder.
-      erledigtAm: filingTimely ? k.klageFiledAt : disposition ? k.legalFinalAt : null,
-      erledigtVon:
-        filingTimely && k.klageFiledBy
-          ? (staffName.get(k.klageFiledBy) ?? null)
-          : disposition && k.legalFinalBy
-            ? (staffName.get(k.legalFinalBy) ?? null)
-            : null,
-      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
-      verantwortlichId,
-      href: `/staff/clients/${k.clientId}/notices`,
-    });
+        erledigtAm: d.completedAt,
+        erledigtVon: personName(d.completedByStaff),
+        verantwortlich: verantwortlich.name,
+        verantwortlichId: verantwortlich.id,
+        href: `/staff/tax-deadlines/group?kind=${d.kind}&period=${encodeURIComponent(d.period)}&scope=all`,
+      });
+    }
   }
 
-  for (const r of requests) {
-    const verantwortlichId = hauptbearbeiter.get(r.clientId) ?? null;
-    const erledigt = requestErledigt(r.status, r.closedAt, r.closedByStaff);
-    eintraege.push({
-      quelle: 'ANFORDERUNG',
-      kontrollart: 'OPERATIONAL_DUE_DATE',
-      id: r.id,
-      titel: r.title,
-      clientId: r.clientId,
-      clientName: r.client.name,
-      faelligAm: r.dueAt!,
-      erledigt,
-      kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-      kontrollhinweis:
-        r.status === 'CANCELLED'
-          ? 'Storniert ohne strukturierten Abschlussgrund.'
-          : r.status === 'CLOSED' && !erledigt
-            ? 'Abschlusszeit oder handelnde Person fehlt.'
+  function appendNoticeEntries(): void {
+    for (const n of notices) {
+      const verantwortlich = verantwortung(n.clientId);
+      const erledigt = taxNoticeFristErledigt(n.status, n);
+      const { filingTimely, filingLate, disposition } = noticeFilingOutcome(n);
+      eintraege.push({
+        quelle: 'EINSPRUCHSFRIST',
+        kontrollart: n.manualReviewRequired
+          ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
+          : 'CALCULATED_CONTROL_PROPOSAL',
+        id: n.id,
+        titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`,
+        clientId: n.clientId,
+        clientName: n.client.name,
+        faelligAm: n.appealDeadline!,
+        erledigt,
+        kontrollzustand: disposition
+          ? 'CLOSED_DISPOSITION'
+          : erledigt
+            ? 'CLOSED_FULFILLED'
+            : 'OPEN',
+        kontrollhinweis: noticeControlHint(n, erledigt, filingLate, disposition),
+        erledigtAm: filingTimely ? n.appealFiledAt : disposition ? n.legalFinalAt : null,
+        erledigtVon: filingTimely
+          ? personName(n.appealFiledBy)
+          : disposition
+            ? personName(n.legalFinalBy)
             : null,
-      erledigtAm: erledigt ? r.closedAt : null,
-      erledigtVon: erledigt && r.closedByStaff ? (staffName.get(r.closedByStaff) ?? null) : null,
-      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
-      verantwortlichId,
-      href: `/staff/requests/${r.id}`,
-    });
+        verantwortlich: verantwortlich.name,
+        verantwortlichId: verantwortlich.id,
+        href: `/staff/clients/${n.clientId}/notices`,
+      });
+    }
   }
 
-  for (const w of reminders) {
-    // Bei mehreren Zustaendigen fuehrt die erste Zuweisung — das Fristenbuch
-    // kennt genau eine verantwortliche Person je Eintrag.
-    const clientId = w.clientId!;
-    const verantwortlichId = w.assignees[0]?.staffId ?? hauptbearbeiter.get(clientId) ?? null;
-    const erledigt = Boolean(w.doneAt && w.doneByStaff);
-    eintraege.push({
-      quelle: 'WIEDERVORLAGE',
-      kontrollart: 'OPERATIONAL_DUE_DATE',
-      id: w.id,
-      titel: w.subject,
-      clientId,
-      clientName: w.client!.name,
-      faelligAm: w.dueDate,
-      erledigt,
-      kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-      kontrollhinweis:
-        w.doneAt && !w.doneByStaff ? 'Erledigungszeit vorhanden, handelnde Person fehlt.' : null,
-      erledigtAm: w.doneAt,
-      erledigtVon: w.doneByStaff ? (staffName.get(w.doneByStaff) ?? null) : null,
-      verantwortlich: verantwortlichId ? (staffName.get(verantwortlichId) ?? null) : null,
-      verantwortlichId,
-      href: `/staff/clients/${clientId}`,
-    });
+  function appendRiskNoticeEntries(): void {
+    for (const n of riskNotices) {
+      if (!n.internalRiskDeadline) continue;
+      const verantwortlich = verantwortung(n.clientId);
+      const noticeTitle = `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`;
+      eintraege.push({
+        // Technisch dieselbe Bescheidquelle, aber mit eigener Anzeigeart: weder
+        // UI noch CSV dürfen aus dem Risikotermin eine Einspruchsfrist machen.
+        quelle: 'EINSPRUCHSFRIST',
+        kontrollart: 'INTERNAL_RISK',
+        artLabel: 'Interner Prüftermin',
+        id: n.id,
+        titel: `Interner Prüftermin: ${noticeTitle} (keine Rechtsbehelfsfrist)`,
+        clientId: n.clientId,
+        clientName: n.client.name,
+        faelligAm: n.internalRiskDeadline,
+        erledigt: false,
+        kontrollzustand: 'OPEN',
+        kontrollhinweis:
+          'Interner Risikotermin ohne berechnete Rechtsbehelfsfrist. Bekanntgabe und Fristgrundlage fachlich prüfen; ein eigener strukturierter Abschlussgrund ist noch nicht implementiert.',
+        erledigtAm: null,
+        erledigtVon: null,
+        verantwortlich: verantwortlich.name,
+        verantwortlichId: verantwortlich.id,
+        href: `/staff/clients/${n.clientId}/notices`,
+      });
+    }
   }
+
+  function appendKlageEntries(): void {
+    for (const k of klagen) {
+      if (!k.klageDeadline) continue;
+      const verantwortlich = verantwortung(k.clientId);
+      const erledigt = taxNoticeKlageFristErledigt(k.status, k);
+      const { filingTimely, filingLate, disposition } = klageFilingOutcome(k);
+      eintraege.push({
+        quelle: 'KLAGEFRIST',
+        kontrollart: k.manualReviewRequired
+          ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
+          : 'CALCULATED_CONTROL_PROPOSAL',
+        id: k.id,
+        titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[k.kind] ?? k.kind} ${k.period} (Klage FG)`,
+        clientId: k.clientId,
+        clientName: k.client.name,
+        faelligAm: k.klageDeadline,
+        erledigt,
+        kontrollzustand: disposition
+          ? 'CLOSED_DISPOSITION'
+          : erledigt
+            ? 'CLOSED_FULFILLED'
+            : 'OPEN',
+        kontrollhinweis: klageControlHint(k, erledigt, filingLate, disposition),
+        // #11: Erledigung = tatsächliche Klageeinreichung (wer/wann), nicht die
+        // Einspruchsentscheidung (= Fristbeginn) bzw. der Bescheidprüfer. Fallback
+        // auf Abschluss-/Entscheidungsdaten nur für Altbestand ohne die
+        // belastbaren klageFiled*-Felder.
+        erledigtAm: filingTimely ? k.klageFiledAt : disposition ? k.legalFinalAt : null,
+        erledigtVon: filingTimely
+          ? personName(k.klageFiledBy)
+          : disposition
+            ? personName(k.legalFinalBy)
+            : null,
+        verantwortlich: verantwortlich.name,
+        verantwortlichId: verantwortlich.id,
+        href: `/staff/clients/${k.clientId}/notices`,
+      });
+    }
+  }
+
+  function appendRequestEntries(): void {
+    for (const r of requests) {
+      const verantwortlich = verantwortung(r.clientId);
+      const erledigt = requestErledigt(r.status, r.closedAt, r.closedByStaff);
+      eintraege.push({
+        quelle: 'ANFORDERUNG',
+        kontrollart: 'OPERATIONAL_DUE_DATE',
+        id: r.id,
+        titel: r.title,
+        clientId: r.clientId,
+        clientName: r.client.name,
+        faelligAm: r.dueAt!,
+        erledigt,
+        kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+        kontrollhinweis:
+          r.status === 'CANCELLED'
+            ? 'Storniert ohne strukturierten Abschlussgrund.'
+            : r.status === 'CLOSED' && !erledigt
+              ? 'Abschlusszeit oder handelnde Person fehlt.'
+              : null,
+        erledigtAm: erledigt ? r.closedAt : null,
+        erledigtVon: erledigt ? personName(r.closedByStaff) : null,
+        verantwortlich: verantwortlich.name,
+        verantwortlichId: verantwortlich.id,
+        href: `/staff/requests/${r.id}`,
+      });
+    }
+  }
+
+  function appendReminderEntries(): void {
+    for (const w of reminders) {
+      // Bei mehreren Zustaendigen fuehrt die erste Zuweisung — das Fristenbuch
+      // kennt genau eine verantwortliche Person je Eintrag.
+      const clientId = w.clientId!;
+      const verantwortlichId = w.assignees[0]?.staffId ?? hauptbearbeiter.get(clientId) ?? null;
+      const erledigt = Boolean(w.doneAt && w.doneByStaff);
+      eintraege.push({
+        quelle: 'WIEDERVORLAGE',
+        kontrollart: 'OPERATIONAL_DUE_DATE',
+        id: w.id,
+        titel: w.subject,
+        clientId,
+        clientName: w.client!.name,
+        faelligAm: w.dueDate,
+        erledigt,
+        kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
+        kontrollhinweis:
+          w.doneAt && !w.doneByStaff ? 'Erledigungszeit vorhanden, handelnde Person fehlt.' : null,
+        erledigtAm: w.doneAt,
+        erledigtVon: personName(w.doneByStaff),
+        verantwortlich: personName(verantwortlichId),
+        verantwortlichId,
+        href: `/staff/clients/${clientId}`,
+      });
+    }
+  }
+
+  appendTaxDeadlineEntries();
+  appendNoticeEntries();
+  appendRiskNoticeEntries();
+  appendKlageEntries();
+  appendRequestEntries();
+  appendReminderEntries();
 
   return sortEintraege(eintraege);
 }

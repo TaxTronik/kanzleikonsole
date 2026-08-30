@@ -7,8 +7,11 @@ const layoutSource = readFileSync(new URL('../../layout.tsx', import.meta.url), 
 
 describe('staff user profile UI', () => {
   it('is reachable beside logout for every protected staff session', () => {
-    expect(layoutSource).toContain('href="/staff/profile"');
-    expect(layoutSource).toContain('Benutzerprofil');
+    // Konto-Menü (UserMenu) oben rechts in der Topbar verlinkt aufs Profil;
+    // Abmelden bleibt zusätzlich im Sidebar-Footer.
+    expect(layoutSource).toContain('profileHref="/staff/profile"');
+    expect(layoutSource).toContain('profileLabel="Benutzerprofil"');
+    expect(layoutSource).toContain('/api/staff/force-logout');
   });
 
   it('collects current, new and confirmation passwords without displaying them', () => {

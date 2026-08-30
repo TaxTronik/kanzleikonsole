@@ -18,6 +18,15 @@ import {
 } from './actions';
 import { createDashboardMutationQueue, snapshotForQueuedDashboardAdd } from './mutation-queue';
 import { dashboardRenderMap, type RenderedWidget } from './dashboard-render-state';
+import { confirmDialog } from '@/components/ui/modal';
+import { DashboardLayoutControls } from './dashboard-layout-controls';
+import {
+  adjustDashboardWidget,
+  dashboardGeometryDescription,
+  DASHBOARD_COLUMNS,
+  DASHBOARD_MAX_HEIGHT,
+  type DashboardGeometry,
+} from './dashboard-layout-adjustment';
 
 // IDs für neu hinzugefügte Widgets. Wird nur in Click-Handlern aufgerufen
 // (kein Render-Pfad → keine Hydration-Differenz möglich). crypto.randomUUID
@@ -84,8 +93,11 @@ export function DashboardGrid({
   // Seitenwirkungen in setWidgets-Updatern absetzen zu müssen. Fixt das
   // „weiterhin als hinzufügbar"-Verhalten bei rapid Adds.
   const widgetsRef = useRef(widgets);
-  widgetsRef.current = widgets;
   const [error, setError] = useState<string | null>(null);
+  const [layoutStatus, setLayoutStatus] = useState('');
+  const layoutDescription = useRef('');
+  const saveRevision = useRef(0);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
   // settled=false beim ersten Paint → der Grid bleibt per Inline-Style
   // `visibility:hidden` UNSICHTBAR (Layout-Dimensionen bleiben erhalten, die
   // Breitenmessung stimmt also weiter) und die CSS-Klasse unterdrückt zusätzlich
@@ -125,6 +137,9 @@ export function DashboardGrid({
   }
 
   function persist() {
+    const revision = ++saveRevision.current;
+    setError(null);
+    setLayoutStatus(`${layoutDescription.current} Änderungen werden gespeichert …`.trim());
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       void enqueueMutation(async () => {
@@ -132,34 +147,59 @@ export function DashboardGrid({
         // laufenden Add-Action kann das Layout bereits weitergeaendert sein.
         const snapshot = [...widgetsRef.current];
         const r = await saveDashboardLayoutAction({ version: 2, widgets: snapshot });
-        if (!r.ok) setError(r.error ?? 'Fehler beim Speichern.');
+        if (revision !== saveRevision.current) return;
+        if (!r.ok) {
+          setError(r.error ?? 'Fehler beim Speichern.');
+          setLayoutStatus('');
+        } else {
+          setLayoutStatus(`${layoutDescription.current} Layout gespeichert.`.trim());
+        }
+      }).catch(() => {
+        if (revision !== saveRevision.current) return;
+        setError('Layout konnte nicht gespeichert werden. Bitte die Änderung erneut übernehmen.');
+        setLayoutStatus('');
       });
     }, 600);
   }
 
+  function applyGeometry(id: string, geometry: DashboardGeometry) {
+    if (resettingRef.current) return;
+    const result = adjustDashboardWidget(widgetsRef.current, id, geometry);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    widgetsRef.current = result.widgets;
+    setWidgets(result.widgets);
+    layoutDescription.current = `${WIDGET_BY_TYPE[result.widget.type].label}: ${dashboardGeometryDescription(result.widget)}.`;
+    persist();
+  }
+
   function onLayoutChange(next: Layout) {
-    setWidgets((current) => {
-      if (resettingRef.current) return current;
-      const byId = new Map(current.map((w) => [w.id, w]));
-      const updated: LayoutWidget[] = [];
-      for (const l of next) {
-        const w = byId.get(l.i);
-        if (!w) continue;
-        updated.push({ ...w, x: l.x, y: l.y, w: l.w, h: l.h });
-      }
-      // Nur persist, wenn sich tatsächlich etwas geändert hat
-      const same =
-        updated.length === current.length &&
-        updated.every((u, i) => {
-          const c = current[i];
-          return c && c.id === u.id && c.x === u.x && c.y === u.y && c.w === u.w && c.h === u.h;
-        });
-      if (!same && editMode) {
-        widgetsRef.current = updated;
-        persist();
-      }
-      return updated;
-    });
+    if (resettingRef.current) return;
+    const current = widgetsRef.current;
+    const byId = new Map(current.map((w) => [w.id, w]));
+    const updated: LayoutWidget[] = [];
+    for (const l of next) {
+      const w = byId.get(l.i);
+      if (!w) continue;
+      updated.push({ ...w, x: l.x, y: l.y, w: l.w, h: l.h });
+    }
+    const same =
+      updated.length === current.length &&
+      updated.every((u, i) => {
+        const c = current[i];
+        return c && c.id === u.id && c.x === u.x && c.y === u.y && c.w === u.w && c.h === u.h;
+      });
+    if (same) return;
+    widgetsRef.current = updated;
+    setWidgets(updated);
+    // Keep effects (save and live feedback) out of React state updater
+    // callbacks, which React may replay. Passive rendering never saves.
+    if (editMode) {
+      layoutDescription.current = '';
+      persist();
+    }
   }
 
   function add(type: WidgetType) {
@@ -219,12 +259,20 @@ export function DashboardGrid({
     widgetsRef.current = next;
     setWidgets(next);
     setOptimisticRenderedWidgets((rendered) => rendered.filter((entry) => entry.widget.id !== id));
+    layoutDescription.current = 'Widget entfernt.';
+    editButtonRef.current?.focus();
     persist();
   }
 
   async function reset() {
     if (resettingRef.current) return;
-    if (!confirm('Standard-Layout wiederherstellen?')) return;
+    if (
+      !(await confirmDialog('Standard-Layout wiederherstellen?', {
+        title: 'Dashboard zurücksetzen',
+        confirmLabel: 'Wiederherstellen',
+      }))
+    )
+      return;
     resettingRef.current = true;
     setResetting(true);
     setEditMode(false);
@@ -261,12 +309,14 @@ export function DashboardGrid({
       h: w.h,
       minW: def?.minW ?? 2,
       minH: def?.minH ?? 2,
+      maxW: DASHBOARD_COLUMNS,
+      maxH: DASHBOARD_MAX_HEIGHT,
     };
   });
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
+    <div className="min-w-0 space-y-3">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {editMode && (
           <button
             type="button"
@@ -280,8 +330,11 @@ export function DashboardGrid({
           </button>
         )}
         <button
+          ref={editButtonRef}
           type="button"
           onClick={() => setEditMode((v) => !v)}
+          aria-expanded={editMode}
+          disabled={resetting}
           className={editMode ? 'btn-primary text-xs' : 'btn-secondary text-xs'}
         >
           {editMode ? <Check className="h-3.5 w-3.5" /> : <Settings2 className="h-3.5 w-3.5" />}
@@ -289,10 +342,38 @@ export function DashboardGrid({
         </button>
       </div>
 
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
+
+      <p
+        role="status"
+        aria-atomic="true"
+        className={layoutStatus ? 'text-sm text-secondary' : 'sr-only'}
+      >
+        {layoutStatus}
+      </p>
 
       {editMode && (
         <AddWidgetBar widgets={widgets} enabledWidgetTypes={enabledWidgetTypes} onAdd={add} />
+      )}
+
+      {editMode && (
+        <DashboardLayoutControls
+          widgets={visible}
+          disabled={resetting}
+          onApply={applyGeometry}
+          onRemove={remove}
+        />
+      )}
+
+      {editMode && width < 640 && (
+        <p className="text-sm text-secondary">
+          Bei wenig Platz wird die Vorschau untereinander angezeigt. Position und Größe lassen sich
+          oben ändern; das gespeicherte Raster wird durch diese Vorschau nicht verändert.
+        </p>
       )}
 
       <div
@@ -303,44 +384,68 @@ export function DashboardGrid({
         }
         style={settled ? undefined : { visibility: 'hidden' }}
       >
-        {mounted && (
-          <GridLayout
-            width={width}
-            layout={rglLayout}
-            gridConfig={{ cols: 12, rowHeight: 30, margin: [16, 16], containerPadding: [0, 0] }}
-            dragConfig={{ enabled: editMode, cancel: '.widget-remove' }}
-            resizeConfig={{
-              enabled: editMode,
-              handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
-            }}
-            onLayoutChange={onLayoutChange}
-          >
-            {visible.map((w) => (
-              <div
-                key={w.id}
-                className={'relative ' + (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')}
-              >
-                {editMode && (
-                  <button
-                    type="button"
-                    onClick={() => remove(w.id)}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="widget-remove absolute -top-2 -right-2 z-10 bg-surface border border-default rounded-full p-1 shadow-sm text-disabled hover:text-red-700"
-                    title="Widget entfernen"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-                <div className="h-full widget-shell">
-                  {renderById.get(w.id) ?? (
-                    <div className="card flex h-full items-center justify-center gap-2 text-sm text-muted">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Widget wird geladen …
-                    </div>
+        {mounted && editMode && width < 640 ? (
+          <div className="space-y-4">
+            {[...visible]
+              .sort((a, b) => a.y - b.y || a.x - b.x)
+              .map((widget) => (
+                <section
+                  key={widget.id}
+                  aria-label={WIDGET_BY_TYPE[widget.type].label}
+                  className="min-w-0"
+                >
+                  <p className="mb-2 text-sm text-secondary">
+                    {WIDGET_BY_TYPE[widget.type].label}: {dashboardGeometryDescription(widget)}
+                  </p>
+                  <div className="widget-shell min-w-0">
+                    {renderById.get(widget.id) ?? (
+                      <div className="card p-4 text-sm text-muted">Widget wird geladen …</div>
+                    )}
+                  </div>
+                </section>
+              ))}
+          </div>
+        ) : (
+          mounted && (
+            <GridLayout
+              width={width}
+              layout={rglLayout}
+              gridConfig={{ cols: 12, rowHeight: 30, margin: [16, 16], containerPadding: [0, 0] }}
+              dragConfig={{ enabled: editMode, cancel: '.widget-remove' }}
+              resizeConfig={{
+                enabled: editMode,
+                handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
+              }}
+              onLayoutChange={onLayoutChange}
+            >
+              {visible.map((w) => (
+                <div
+                  key={w.id}
+                  className={'relative ' + (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')}
+                >
+                  {editMode && (
+                    <button
+                      type="button"
+                      onClick={() => remove(w.id)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="widget-remove absolute -top-2 -right-2 z-10 bg-surface border border-default rounded-full p-1 shadow-sm text-disabled hover:text-red-700"
+                      title="Widget entfernen"
+                      aria-label={`Widget entfernen: ${WIDGET_BY_TYPE[w.type].label}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   )}
+                  <div className="h-full widget-shell">
+                    {renderById.get(w.id) ?? (
+                      <div className="card flex h-full items-center justify-center gap-2 text-sm text-muted">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Widget wird geladen …
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </GridLayout>
+              ))}
+            </GridLayout>
+          )
         )}
       </div>
 

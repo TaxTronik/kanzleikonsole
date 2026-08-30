@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { THEME_BOOTSTRAP_JS } from '@/lib/theme';
 import { ThemeSync } from '@/components/theme-sync';
 import './globals.css';
+import './accessible-display.css';
 
 export const metadata: Metadata = {
   title: 'TaxTronik',

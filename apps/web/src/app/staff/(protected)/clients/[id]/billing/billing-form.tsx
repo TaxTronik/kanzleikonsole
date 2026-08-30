@@ -61,7 +61,7 @@ export function BillingForm({ clientId, totalHours }: Props) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Rechnungsnummer</label>
+          <p className="label">Rechnungsnummer</p>
           {/* iter85 (GoB): automatische lückenlose Vergabe beim Anlegen. */}
           <p className="input bg-gray-50 dark:bg-gray-900/40 text-muted select-none">
             wird automatisch vergeben

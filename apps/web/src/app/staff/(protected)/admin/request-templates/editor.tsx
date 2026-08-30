@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Save, X, FileText, Pencil } from 'lucide-react';
 import { saveRequestTemplateAction, deleteRequestTemplateAction } from './actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 type Priority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
@@ -57,8 +58,15 @@ export function RequestTemplateEditor({
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function remove(id: string) {
-    if (!confirm('Vorlage wirklich löschen?')) return;
+  async function remove(id: string) {
+    if (
+      !(await confirmDialog('Vorlage wirklich löschen?', {
+        title: 'Anforderungsvorlage löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const r = await deleteRequestTemplateAction({ id });
       if (!r.ok) setError(r.error ?? 'Fehler.');
@@ -111,6 +119,7 @@ export function RequestTemplateEditor({
                     onClick={() => remove(t.id)}
                     className="text-disabled hover:text-red-700 p-1"
                     title="Löschen"
+                    aria-label={`Anforderungsvorlage „${t.name}“ löschen`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -144,8 +153,16 @@ export function RequestTemplateEditor({
         />
       )}
 
-      {error && <div className="alert-error-sm">{error}</div>}
-      {isPending && <p className="text-xs text-muted">Verarbeite…</p>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
+      {isPending && (
+        <p className="text-xs text-muted" role="status">
+          Verarbeite…
+        </p>
+      )}
     </div>
   );
 }
@@ -203,8 +220,11 @@ function Form({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Vorlagen-Name (intern)</label>
+          <label className="label" htmlFor="request-template-name">
+            Vorlagen-Name (intern)
+          </label>
           <input
+            id="request-template-name"
             type="text"
             value={t.name}
             onChange={(e) => set('name', e.target.value)}
@@ -214,8 +234,11 @@ function Form({
           />
         </div>
         <div>
-          <label className="label">Kategorie (optional)</label>
+          <label className="label" htmlFor="request-template-category">
+            Kategorie (optional)
+          </label>
           <input
+            id="request-template-category"
             type="text"
             value={t.category ?? ''}
             onChange={(e) => set('category', e.target.value)}
@@ -227,8 +250,11 @@ function Form({
       </div>
 
       <div>
-        <label className="label">Titel der Anforderung (für den Mandant)</label>
+        <label className="label" htmlFor="request-template-title">
+          Titel der Anforderung (für den Mandant)
+        </label>
         <input
+          id="request-template-title"
           type="text"
           value={t.title}
           onChange={(e) => set('title', e.target.value)}
@@ -239,8 +265,11 @@ function Form({
       </div>
 
       <div>
-        <label className="label">Beschreibung</label>
+        <label className="label" htmlFor="request-template-description">
+          Beschreibung
+        </label>
         <textarea
+          id="request-template-description"
           value={t.description}
           onChange={(e) => set('description', e.target.value)}
           rows={5}
@@ -252,8 +281,11 @@ function Form({
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="label">Priorität</label>
+          <label className="label" htmlFor="request-template-priority">
+            Priorität
+          </label>
           <select
+            id="request-template-priority"
             value={t.priority}
             onChange={(e) => set('priority', e.target.value as Priority)}
             className="input"
@@ -266,8 +298,11 @@ function Form({
           </select>
         </div>
         <div>
-          <label className="label">Fällig nach Tagen</label>
+          <label className="label" htmlFor="request-template-due-days">
+            Fällig nach Tagen
+          </label>
           <input
+            id="request-template-due-days"
             type="number"
             min={0}
             max={365}
@@ -282,8 +317,8 @@ function Form({
             className="input"
           />
         </div>
-        <div>
-          <label className="label">Status</label>
+        <fieldset>
+          <legend className="label">Status</legend>
           <label className="flex items-center gap-2 text-sm mt-2">
             <input
               type="checkbox"
@@ -293,15 +328,19 @@ function Form({
             />
             <span>Aktiv</span>
           </label>
-        </div>
+        </fieldset>
       </div>
 
       <div>
-        <label className="label">Verknüpftes Formular (optional)</label>
+        <label className="label" htmlFor="request-template-form">
+          Verknüpftes Formular (optional)
+        </label>
         <select
+          id="request-template-form"
           value={t.formTemplateId ?? ''}
           onChange={(e) => set('formTemplateId', e.target.value || null)}
           className="input"
+          aria-describedby="request-template-form-hint"
         >
           <option value="">— kein Formular —</option>
           {formTemplates.map((f) => (
@@ -310,13 +349,17 @@ function Form({
             </option>
           ))}
         </select>
-        <p className="text-xs text-muted mt-1">
+        <p id="request-template-form-hint" className="text-xs text-muted mt-1">
           Wenn gesetzt: beim Erstellen der Anforderung wird automatisch eine Formular-Submission
           angelegt und mitgeschickt.
         </p>
       </div>
 
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">

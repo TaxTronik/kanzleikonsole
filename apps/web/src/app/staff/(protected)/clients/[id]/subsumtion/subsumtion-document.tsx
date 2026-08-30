@@ -18,7 +18,16 @@
 // =============================================================================
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Check, Loader2, Lock, ZoomIn, ZoomOut, Maximize2, Minimize2 } from 'lucide-react';
+import {
+  Check,
+  Loader2,
+  Lock,
+  Maximize2,
+  Minimize2,
+  MousePointer2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { useEditor, EditorContent, Extension, type Editor } from '@tiptap/react';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -125,6 +134,8 @@ interface Props {
   // Formatierung automatisch speichern (Review, on-the-fly, debounced). Liefert
   // das Ergebnis für die Speicher-Status-Anzeige zurück.
   onSaveFormat?: (doc: unknown) => Promise<{ ok: boolean; error?: string }>;
+  /** Kanzleiweiter Startwert für die zusätzliche Leiste direkt an der Auswahl. */
+  floatingToolbarDefault?: boolean;
   // Vollbild: Status + Umschalter. Das Layout-Overlay liegt im Workspace (er
   // besitzt Dokument + Panel); hier nur der Button im Kopf.
   expanded?: boolean;
@@ -155,6 +166,9 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
       left: number;
       placement: 'above' | 'below';
     } | null>(null);
+    const [floatingToolbarEnabled, setFloatingToolbarEnabled] = useState(
+      props.floatingToolbarDefault ?? false,
+    );
     // Markierung unter der Maus → ihre ganze Spanne wird hervorgehoben.
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     // Zoom der Lesefläche (1 = 100%).
@@ -177,6 +191,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
       onSelectMarking: props.onSelectMarking,
       onSelectionForMarking: props.onSelectionForMarking,
       onSaveFormat: props.onSaveFormat,
+      floatingToolbarEnabled,
     });
     ctxRef.current.analyzed = analyzed;
     ctxRef.current.canEdit = canEdit;
@@ -185,6 +200,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
     ctxRef.current.onSelectMarking = props.onSelectMarking;
     ctxRef.current.onSelectionForMarking = props.onSelectionForMarking;
     ctxRef.current.onSaveFormat = props.onSaveFormat;
+    ctxRef.current.floatingToolbarEnabled = floatingToolbarEnabled;
 
     // Debounce-Logik in Refs (immer frisch), damit die stabile onUpdate-Closure sie
     // ohne Stale-Capture aufrufen kann.
@@ -229,11 +245,11 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
       editorProps: {
         attributes: {
           class:
-            'tt-content text-sm focus:outline-none px-3 py-2 ' +
+            'tt-content text-sm focus:outline-none ' +
             // Review: luftigere Zeilen → Platz für die gestapelten Unterstreichungs-Spuren.
             (analyzed
-              ? 'leading-loose min-h-[12rem]'
-              : 'leading-relaxed min-h-[18rem] max-h-[60vh] overflow-y-auto'),
+              ? 'min-h-[56vh] px-6 py-5 text-[15px] leading-8'
+              : 'min-h-[64vh] p-8 text-[15px] leading-7'),
         },
         // Editor verlassen → ausstehende Formatierung sofort speichern (statt Debounce).
         handleDOMEvents: {
@@ -273,7 +289,11 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
             // Bei Maus-Auswahl erst nach dem Loslassen (mouseup-Handler) zeigen —
             // während des Ziehens ausgeblendet. Tastatur-Auswahl (kein Drag) sofort.
             const box = boxRef.current?.getBoundingClientRect();
-            setFlyover(box && !draggingRef.current ? flyoverFor(editor, box, from, to) : null);
+            setFlyover(
+              box && !draggingRef.current && c.floatingToolbarEnabled
+                ? flyoverFor(editor, box, from, to)
+                : null,
+            );
             return;
           }
         }
@@ -384,7 +404,9 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
         draggingRef.current = false;
         const { from, to, empty } = editor.state.selection;
         const box = boxRef.current?.getBoundingClientRect();
-        if (!empty && canEdit && box) setFlyover(flyoverFor(editor, box, from, to));
+        if (!empty && canEdit && ctxRef.current.floatingToolbarEnabled && box) {
+          setFlyover(flyoverFor(editor, box, from, to));
+        }
       };
       dom.addEventListener('mousedown', onDown);
       document.addEventListener('mouseup', onUp);
@@ -477,12 +499,21 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
     }
 
     const editorBox = (
-      <div ref={boxRef} className="relative rounded-md border border-default bg-surface">
-        {/* Compose: feste Leiste (beim Schreiben immer sichtbar). Review: keine feste
-          Leiste — die schwebende erscheint bei Auswahl (siehe unten). */}
-        {!analyzed && <FormatToolbar editor={editor} onReflow={canEdit ? reflow : undefined} />}
+      <div
+        ref={boxRef}
+        className={
+          analyzed
+            ? 'relative rounded-md border border-default bg-surface'
+            : 'relative min-h-[64vh] bg-surface'
+        }
+      >
+        {canEdit && (
+          <div className={analyzed ? 'sticky top-0 z-10 rounded-t-md bg-surface' : undefined}>
+            <FormatToolbar editor={editor} onReflow={!analyzed && canEdit ? reflow : undefined} />
+          </div>
+        )}
         <EditorContent editor={editor} />
-        {analyzed && canEdit && flyover && (
+        {analyzed && canEdit && floatingToolbarEnabled && flyover && (
           <div
             className="absolute z-20"
             style={{
@@ -544,6 +575,21 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
                 <ZoomIn className="h-3.5 w-3.5" />
               </button>
             </div>
+            {canEdit && (
+              <button
+                type="button"
+                aria-pressed={floatingToolbarEnabled}
+                onClick={() => {
+                  setFloatingToolbarEnabled((enabled) => !enabled);
+                  setFlyover(null);
+                }}
+                className={floatingToolbarEnabled ? 'btn-primary text-xs' : 'btn-secondary text-xs'}
+                title="Zusätzliche Formatierleiste direkt an der Textauswahl ein- oder ausschalten"
+              >
+                <MousePointer2 className="h-3.5 w-3.5" />
+                Schwebende Leiste
+              </button>
+            )}
             {/* Vollbild */}
             {props.onToggleExpand && (
               <button
@@ -582,7 +628,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
         {canEdit ? (
           <p className="mb-2 text-xs text-muted">
             <strong>Klicken</strong> = Markierung prüfen · <strong>Auswählen</strong> = formatieren
-            (Leiste erscheint) & eigene Markierung.
+            und eigene Markierung anlegen. Die feste Formatierleiste bleibt sichtbar.
           </p>
         ) : (
           <p className="mb-2 text-xs text-muted inline-flex items-center gap-1">

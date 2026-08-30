@@ -7,6 +7,7 @@ import { saveTaxFilingAction, shareTaxFilingAction, deleteTaxFilingAction } from
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
+import { confirmDialog, noticeDialog } from '@/components/ui/modal';
 const KIND_KEYS = [
   'USTA',
   'UST_JAHR',
@@ -52,22 +53,23 @@ export function FilingsSection({ clientId, filings }: { clientId: string; filing
     start(async () => {
       const r = await shareTaxFilingAction({ filingId: filing.id, clientId, share });
       setBusyId(null);
-      if (!r.ok) alert(r.error ?? 'Fehler.');
+      if (!r.ok) await noticeDialog(r.error ?? 'Fehler.', { title: 'Freigabe ändern' });
     });
   }
 
-  function remove(filing: Filing) {
+  async function remove(filing: Filing) {
     if (
-      !confirm(
+      !(await confirmDialog(
         `Erklärung ${NOTICE_KIND_LABELS[filing.kind as Kind] ?? filing.kind} ${filing.period} wirklich löschen?`,
-      )
+        { title: 'Steuererklärung löschen', confirmLabel: 'Löschen', danger: true },
+      ))
     )
       return;
     setBusyId(filing.id);
     start(async () => {
       const r = await deleteTaxFilingAction({ filingId: filing.id, clientId });
       setBusyId(null);
-      if (!r.ok) alert(r.error ?? 'Fehler.');
+      if (!r.ok) await noticeDialog(r.error ?? 'Fehler.', { title: 'Steuererklärung löschen' });
     });
   }
 
@@ -298,8 +300,11 @@ function FilingForm({
     <div className="px-5 py-4 border-b border-default bg-brand-50/30 space-y-3">
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="label">Steuerart</label>
+          <label className="label" htmlFor="tax-filing-kind">
+            Steuerart
+          </label>
           <select
+            id="tax-filing-kind"
             value={kind}
             onChange={(e) => setKind(e.target.value as Kind)}
             className="input"
@@ -313,8 +318,11 @@ function FilingForm({
           </select>
         </div>
         <div>
-          <label className="label">Zeitraum</label>
+          <label className="label" htmlFor="tax-filing-period">
+            Zeitraum
+          </label>
           <input
+            id="tax-filing-period"
             type="text"
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
@@ -325,8 +333,11 @@ function FilingForm({
           />
         </div>
         <div>
-          <label className="label">Eingereicht am</label>
+          <label className="label" htmlFor="tax-filing-date">
+            Eingereicht am
+          </label>
           <input
+            id="tax-filing-date"
             type="date"
             value={filingDate}
             onChange={(e) => setFilingDate(e.target.value)}
@@ -336,15 +347,38 @@ function FilingForm({
       </div>
 
       <div className="grid grid-cols-4 gap-3">
-        <Money label="Festgesetzte Steuer (Soll)" v={expectedAssessed} set={setExpectedAssessed} />
-        <Money label="Bisherige VZ" v={expectedPrepaid} set={setExpectedPrepaid} />
-        <Money label="Erwartete Erstattung" v={expectedRefund} set={setExpectedRefund} />
-        <Money label="Erwartete Nachzahlung" v={expectedPay} set={setExpectedPay} />
+        <Money
+          id="tax-filing-expected-assessed"
+          label="Festgesetzte Steuer (Soll)"
+          v={expectedAssessed}
+          set={setExpectedAssessed}
+        />
+        <Money
+          id="tax-filing-expected-prepaid"
+          label="Bisherige VZ"
+          v={expectedPrepaid}
+          set={setExpectedPrepaid}
+        />
+        <Money
+          id="tax-filing-expected-refund"
+          label="Erwartete Erstattung"
+          v={expectedRefund}
+          set={setExpectedRefund}
+        />
+        <Money
+          id="tax-filing-expected-pay"
+          label="Erwartete Nachzahlung"
+          v={expectedPay}
+          set={setExpectedPay}
+        />
       </div>
 
       <div>
-        <label className="label">Hinweis an den Mandanten (im Portal sichtbar bei Freigabe)</label>
+        <label className="label" htmlFor="tax-filing-client-note">
+          Hinweis an den Mandanten (im Portal sichtbar bei Freigabe)
+        </label>
         <textarea
+          id="tax-filing-client-note"
           value={clientNote}
           onChange={(e) => setClientNote(e.target.value)}
           rows={3}
@@ -355,8 +389,11 @@ function FilingForm({
       </div>
 
       <div>
-        <label className="label">Interne Anmerkung (nur Kanzlei)</label>
+        <label className="label" htmlFor="tax-filing-internal-note">
+          Interne Anmerkung (nur Kanzlei)
+        </label>
         <textarea
+          id="tax-filing-internal-note"
           value={internalNote}
           onChange={(e) => setInternalNote(e.target.value)}
           rows={2}
@@ -366,8 +403,11 @@ function FilingForm({
       </div>
 
       <div>
-        <label className="label">Berechnungs-PDF (optional, max. 10 MB)</label>
+        <label className="label" htmlFor="tax-filing-pdf">
+          Berechnungs-PDF (optional, max. 10 MB)
+        </label>
         <input
+          id="tax-filing-pdf"
           type="file"
           accept="application/pdf"
           onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
@@ -380,7 +420,11 @@ function FilingForm({
         )}
       </div>
 
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">
@@ -396,19 +440,37 @@ function FilingForm({
   );
 }
 
-function Money({ label, v, set }: { label: string; v: string; set: (s: string) => void }) {
+function Money({
+  id,
+  label,
+  v,
+  set,
+}: {
+  id: string;
+  label: string;
+  v: string;
+  set: (s: string) => void;
+}) {
   return (
     <div>
-      <label className="label-sm">{label}</label>
+      <label className="label-sm" htmlFor={id}>
+        {label}
+      </label>
       <div className="relative">
         <input
+          id={id}
           type="number"
           step="0.01"
           value={v}
           onChange={(e) => set(e.target.value)}
           className="input pr-8 text-sm"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">€</span>
+        <span
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted"
+          aria-hidden="true"
+        >
+          €
+        </span>
       </div>
     </div>
   );

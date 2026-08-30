@@ -4,6 +4,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import Link from 'next/link';
 import { useRef } from 'react';
 import { LogOut, UserRound } from 'lucide-react';
+import { useActionMenu } from './ui/use-action-menu';
 
 interface Props {
   name: string | null;
@@ -30,19 +31,21 @@ function initialsOf(name: string | null): string {
  * früheren Sidebar-Footer (User-Chip + Profil-Link) — dort bleibt nur
  * noch der Abmelden-Button.
  *
- * A11y via Radix DropdownMenu: role=menu/menuitem, Pfeiltasten-Navigation,
- * Escape/Click-outside schließt, Fokus kehrt zum Avatar-Trigger zurück.
+ * Nichtmodal: Hintergrund bleibt zugänglich. Radix übernimmt role=menu/menuitem,
+ * Pfeiltasten und Escape mit Fokus-Rückgabe. Tab/Shift+Tab verlassen das Menü
+ * entlang der nativen Tabreihenfolge; ein Außenklick behält sein eigenes Ziel.
  * Tastatur-Highlight läuft über [data-highlighted] (siehe globals.css).
  */
 export function UserMenu({ name, email, profileHref, profileLabel, logoutAction }: Props) {
   const initials = initialsOf(name);
   const logoutFormRef = useRef<HTMLFormElement>(null);
+  const { open, onOpenChange, triggerRef, onKeyDownCapture, onCloseAutoFocus } = useActionMenu();
 
   return (
     <>
-      <DropdownMenu.Root>
+      <DropdownMenu.Root open={open} onOpenChange={onOpenChange} modal={false}>
         <DropdownMenu.Trigger asChild>
-          <button type="button" className="avatar-btn" title="Konto">
+          <button ref={triggerRef} type="button" className="avatar-btn" title="Konto">
             <span className="avatar" aria-hidden>
               {initials}
             </span>
@@ -51,7 +54,14 @@ export function UserMenu({ name, email, profileHref, profileLabel, logoutAction 
         </DropdownMenu.Trigger>
 
         <DropdownMenu.Portal>
-          <DropdownMenu.Content className="user-dropdown" align="end" sideOffset={8}>
+          <DropdownMenu.Content
+            className="user-dropdown"
+            align="end"
+            sideOffset={8}
+            collisionPadding={8}
+            onKeyDownCapture={onKeyDownCapture}
+            onCloseAutoFocus={onCloseAutoFocus}
+          >
             {/* Konto-Kopf: rein informativ, kein Menüeintrag (nicht fokussierbar) */}
             <div className="ud-head">
               <span className="avatar" aria-hidden>

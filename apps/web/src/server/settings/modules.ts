@@ -45,6 +45,11 @@ export interface ModuleConfig extends BooleanTenantModules {
   risk: boolean; // Subsumtions-Workspace / TCMS (braucht zusätzlich die Risk-Engine)
   signalEngine: boolean; // Signal-Engine-Integration (externe Signale; braucht zusätzlich signalEngineConfig)
 
+  // Bedienvorgabe für den Subsumtions-Editor. Die feste Formatierleiste bleibt
+  // unabhängig davon sichtbar; diese Option steuert nur die zusätzliche Leiste
+  // direkt an einer Textauswahl.
+  subsumtionFloatingToolbarDefault: boolean;
+
   // Vollmachten-Modus
   poaMode: PoaMode;
   poaPdfTemplate: {
@@ -65,6 +70,7 @@ export interface ModuleConfig extends BooleanTenantModules {
 
 export const DEFAULT_MODULES: ModuleConfig = {
   ...DEFAULT_BOOLEAN_TENANT_MODULES,
+  subsumtionFloatingToolbarDefault: false,
   // Default: PDF_TEMPLATE (extern) — Vollmachten werden als PDF aus einer
   // externen Vorlage angebunden, nicht im Inline-Markdown-Editor verfasst.
   poaMode: 'PDF_TEMPLATE',

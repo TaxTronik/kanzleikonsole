@@ -13,7 +13,11 @@ export default async function SettingsLayout({ children }: { children: ReactNode
   return (
     <div className="p-8">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/admin" className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href="/staff/admin"
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>

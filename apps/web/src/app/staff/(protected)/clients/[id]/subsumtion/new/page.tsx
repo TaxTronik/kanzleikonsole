@@ -6,7 +6,8 @@ import { SubsumtionWorkspace } from '../subsumtion-workspace';
 
 export default async function NewSubsumtionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { ctx, staffOptions, engineConfigured } = await guardSubsumtionPage(id);
+  const { ctx, staffOptions, engineConfigured, floatingToolbarDefault } =
+    await guardSubsumtionPage(id);
   const docs = await listExtractableDocuments(ctx, id);
   const clientDocuments = docs.map((d) => ({
     id: d.id,
@@ -16,7 +17,7 @@ export default async function NewSubsumtionPage({ params }: { params: Promise<{ 
   }));
 
   return (
-    <div className="p-8 max-w-7xl">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-3 mb-6">
         <Link
           href={`/staff/clients/${id}/subsumtion`}
@@ -31,6 +32,7 @@ export default async function NewSubsumtionPage({ params }: { params: Promise<{ 
         staffOptions={staffOptions}
         clientDocuments={clientDocuments}
         engineConfigured={engineConfigured}
+        floatingToolbarDefault={floatingToolbarDefault}
         initial={null}
       />
     </div>

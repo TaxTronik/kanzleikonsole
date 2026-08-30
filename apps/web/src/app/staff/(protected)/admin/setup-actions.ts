@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { deleteTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { evidenceService } from '@/server/container';
 import { SETUP_DISMISSED_SETTING_KEY } from '@/server/setup/constants';
@@ -17,20 +18,11 @@ export async function dismissSetupChecklistAction(): Promise<void> {
 
   const dismissedAt = new Date();
   await withTenantContext(guard.ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: {
-        tenantId_key: { tenantId: guard.tenantId, key: SETUP_DISMISSED_SETTING_KEY },
-      },
-      create: {
-        tenantId: guard.tenantId,
-        key: SETUP_DISMISSED_SETTING_KEY,
-        value: { dismissed: true, dismissedAt: dismissedAt.toISOString() },
-        updatedBy: guard.staffId,
-      },
-      update: {
-        value: { dismissed: true, dismissedAt: dismissedAt.toISOString() },
-        updatedBy: guard.staffId,
-      },
+    await writeTenantSettingValue(tx, {
+      tenantId: guard.tenantId,
+      key: SETUP_DISMISSED_SETTING_KEY,
+      value: { dismissed: true, dismissedAt: dismissedAt.toISOString() },
+      updatedBy: guard.staffId,
     });
     await evidenceService.record(tx, {
       tenantId: guard.tenantId,
@@ -50,9 +42,7 @@ export async function restoreSetupChecklistAction(): Promise<void> {
   if (!guard.ok) return;
 
   await withTenantContext(guard.ctx, async (tx) => {
-    await tx.tenantSetting.deleteMany({
-      where: { tenantId: guard.tenantId, key: SETUP_DISMISSED_SETTING_KEY },
-    });
+    await deleteTenantSettingValue(tx, guard.tenantId, SETUP_DISMISSED_SETTING_KEY);
     await evidenceService.record(tx, {
       tenantId: guard.tenantId,
       actorType: 'STAFF',

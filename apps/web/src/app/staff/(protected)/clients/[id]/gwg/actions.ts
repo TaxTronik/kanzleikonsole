@@ -81,6 +81,57 @@ async function resolveGwgCheckNotificationsTx(
   });
 }
 
+interface LinkedOwnerGeneralData {
+  id: string;
+  fullName: string;
+  birthDate: Date | null;
+  birthPlace: string | null;
+  residence: string | null;
+  nationality: string | null;
+  isPep: boolean;
+}
+
+async function synchronizeLinkedRepresentativeGeneralDataTx(
+  tx: TxClient,
+  input: {
+    enabled: boolean;
+    checkId: string;
+    representatives: Array<{ id: string; linkedBeneficialOwnerId: string | null }>;
+    ownersById: Map<string, LinkedOwnerGeneralData>;
+  },
+): Promise<void> {
+  if (!input.enabled) return;
+  for (const representative of input.representatives) {
+    if (!representative.linkedBeneficialOwnerId) continue;
+    const linkedOwner = input.ownersById.get(representative.linkedBeneficialOwnerId);
+    if (!linkedOwner) {
+      throw new ActionError(
+        'Die verknüpfte wirtschaftlich berechtigte Person gehört nicht mehr zu dieser Prüfung.',
+      );
+    }
+    const synchronized = await tx.gwgRepresentative.updateMany({
+      where: {
+        id: representative.id,
+        gwgCheckId: input.checkId,
+        linkedBeneficialOwnerId: linkedOwner.id,
+      },
+      data: {
+        fullName: linkedOwner.fullName,
+        birthDate: linkedOwner.birthDate,
+        birthPlace: linkedOwner.birthPlace,
+        residence: linkedOwner.residence,
+        nationality: linkedOwner.nationality,
+        isPep: linkedOwner.isPep,
+      },
+    });
+    if (synchronized.count !== 1) {
+      throw new ActionError(
+        'Die Doppelrolle konnte nicht vollständig synchronisiert werden. Bitte erneut versuchen.',
+      );
+    }
+  }
+}
+
 const OpenSchema = z.object({
   clientId: z.string().uuid(),
   expectedLatestCheckId: z.union([z.literal(''), z.string().uuid()]).default(''),
@@ -443,7 +494,17 @@ export async function saveLegalEntityDetailsAction(
           select: { id: true, fullName: true, position: true, linkedBeneficialOwnerId: true },
           orderBy: [{ position: 'asc' }, { id: 'asc' }],
         },
-        beneficialOwners: { select: { id: true, fullName: true } },
+        beneficialOwners: {
+          select: {
+            id: true,
+            fullName: true,
+            birthDate: true,
+            birthPlace: true,
+            residence: true,
+            nationality: true,
+            isPep: true,
+          },
+        },
         ownershipStructureNotes: true,
         client: { select: { kind: true } },
       },
@@ -572,6 +633,12 @@ export async function saveLegalEntityDetailsAction(
           submittedRepresentatives,
         })
       : { invalidatedIdentityDocuments: 0, invalidatedIdentityDocumentSetIds: [] };
+    await synchronizeLinkedRepresentativeGeneralDataTx(tx, {
+      enabled: representativesChanged,
+      checkId: data.checkId,
+      representatives: submittedRepresentatives,
+      ownersById,
+    });
     const { invalidatedIdentityDocuments, invalidatedIdentityDocumentSetIds } = representativeSync;
     const invalidatedIdentitySets = await invalidatedIdentitySetRevisions(
       tx,

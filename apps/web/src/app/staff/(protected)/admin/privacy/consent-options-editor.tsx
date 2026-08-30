@@ -146,14 +146,20 @@ export function ConsentOptionsEditor({
                   {option.builtin ? (
                     <span className="font-medium text-primary">{option.label}</span>
                   ) : (
-                    <input
-                      value={option.label}
-                      onChange={(event) => patch(option.id, { label: event.target.value })}
-                      className="input min-w-[260px] flex-1"
-                      placeholder="Bezeichnung der Einwilligung *"
-                      maxLength={300}
-                      required={option.active}
-                    />
+                    <>
+                      <label className="sr-only" htmlFor={`consent-option-${option.id}-label`}>
+                        Bezeichnung der Einwilligung
+                      </label>
+                      <input
+                        id={`consent-option-${option.id}-label`}
+                        value={option.label}
+                        onChange={(event) => patch(option.id, { label: event.target.value })}
+                        className="input min-w-[260px] flex-1"
+                        placeholder="Bezeichnung der Einwilligung *"
+                        maxLength={300}
+                        required={option.active}
+                      />
+                    </>
                   )}
                   {option.builtin && <span className="badge-gray">Standard</span>}
                   {!option.active && <span className="badge-yellow">deaktiviert</span>}
@@ -161,36 +167,50 @@ export function ConsentOptionsEditor({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="label-sm">Bereich</label>
                     {option.builtin ? (
-                      <p className="text-sm text-secondary py-2">
-                        {SECTION_LABELS[option.section]}
-                      </p>
+                      <>
+                        <p className="label-sm">Bereich</p>
+                        <p className="text-sm text-secondary py-2">
+                          {SECTION_LABELS[option.section]}
+                        </p>
+                      </>
                     ) : (
-                      <select
-                        value={option.section}
-                        onChange={(event) => {
-                          const section = event.target.value as ConsentOptionSection;
-                          patch(option.id, {
-                            section,
-                            required: section === 'OTHER' ? option.required : false,
-                          });
-                        }}
-                        className="input"
-                      >
-                        {(Object.keys(SECTION_LABELS) as ConsentOptionSection[]).map((section) => (
-                          <option key={section} value={section}>
-                            {SECTION_LABELS[section]}
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <label className="label-sm" htmlFor={`consent-option-${option.id}-section`}>
+                          Bereich
+                        </label>
+                        <select
+                          id={`consent-option-${option.id}-section`}
+                          value={option.section}
+                          onChange={(event) => {
+                            const section = event.target.value as ConsentOptionSection;
+                            patch(option.id, {
+                              section,
+                              required: section === 'OTHER' ? option.required : false,
+                            });
+                          }}
+                          className="input"
+                        >
+                          {(Object.keys(SECTION_LABELS) as ConsentOptionSection[]).map(
+                            (section) => (
+                              <option key={section} value={section}>
+                                {SECTION_LABELS[section]}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </>
                     )}
                   </div>
                   <div>
-                    <label className="label-sm flex items-center gap-1">
+                    <label
+                      className="label-sm flex items-center gap-1"
+                      htmlFor={`consent-option-${option.id}-provider`}
+                    >
                       <Link2 className="h-3.5 w-3.5" /> Dienstleister (optional)
                     </label>
                     <select
+                      id={`consent-option-${option.id}-provider`}
                       value={option.serviceProviderId ?? ''}
                       onChange={(event) =>
                         patch(option.id, { serviceProviderId: event.target.value || null })
@@ -215,8 +235,11 @@ export function ConsentOptionsEditor({
 
                 {!option.builtin && (
                   <div>
-                    <label className="label-sm">Erläuterung (optional)</label>
+                    <label className="label-sm" htmlFor={`consent-option-${option.id}-description`}>
+                      Erläuterung (optional)
+                    </label>
                     <input
+                      id={`consent-option-${option.id}-description`}
                       value={option.description ?? ''}
                       onChange={(event) =>
                         patch(option.id, { description: event.target.value || null })
@@ -236,7 +259,7 @@ export function ConsentOptionsEditor({
                           type="checkbox"
                           checked={option.required}
                           onChange={(event) => patch(option.id, { required: event.target.checked })}
-                          className="mt-0.5 rounded border-strong text-brand-600"
+                          className="switch mt-0.5"
                         />
                         <span>
                           Pflicht im Portal
@@ -255,7 +278,7 @@ export function ConsentOptionsEditor({
                         onChange={(event) =>
                           patch(option.id, { recommended: event.target.checked })
                         }
-                        className="mt-0.5 rounded border-strong text-brand-600"
+                        className="switch mt-0.5"
                       />
                       <span>
                         Als Empfehlung hervorheben
@@ -282,7 +305,7 @@ export function ConsentOptionsEditor({
                             : { active: false, required: false, recommended: false },
                         )
                       }
-                      className="rounded border-strong text-brand-600"
+                      className="switch"
                     />
                     Aktiv
                   </label>
@@ -315,9 +338,15 @@ export function ConsentOptionsEditor({
         <Plus className="h-4 w-4" /> Eigene Option anlegen
       </button>
 
-      {state && !state.ok && state.error && <div className="alert-error-sm">{state.error}</div>}
+      {state && !state.ok && state.error && (
+        <div className="alert-error-sm" role="alert">
+          {state.error}
+        </div>
+      )}
       {state?.ok && (
-        <div className="alert-success-sm">Einwilligungsoptionen wurden gespeichert.</div>
+        <div className="alert-success-sm" role="status">
+          Einwilligungsoptionen wurden gespeichert.
+        </div>
       )}
 
       <div className="flex justify-end">

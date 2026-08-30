@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { updateSkillAction, deleteSkillAction } from './actions';
 import { SkillBadge } from '@/components/skill-badge';
+import { confirmDialog } from '@/components/ui/modal';
 
 interface Props {
   id: string;
@@ -29,9 +30,12 @@ export function SkillRow(p: Props) {
     });
   }
 
-  function remove() {
+  async function remove() {
     if (
-      !confirm(`„${p.label}" wirklich löschen? ${p.assignments} Zuordnungen werden mit gelöscht.`)
+      !(await confirmDialog(
+        `„${p.label}" wirklich löschen? ${p.assignments} Zuordnungen werden mit gelöscht.`,
+        { title: 'Kompetenz löschen', confirmLabel: 'Löschen', danger: true },
+      ))
     )
       return;
     start(async () => {

@@ -454,8 +454,11 @@ export function NewRequestForm({
       </div>
 
       <div>
-        <label className="label">Formular mitschicken (optional)</label>
+        <label className="label" htmlFor="request-form-template">
+          Formular mitschicken (optional)
+        </label>
         <select
+          id="request-form-template"
           value={formTemplateId}
           onChange={(e) => setFormTemplateId(e.target.value)}
           className="input"

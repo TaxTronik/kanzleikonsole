@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useRef, useEffect } from 'react';
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { KeyRound, RotateCcw, Tags } from 'lucide-react';
 import {
@@ -13,6 +13,7 @@ import {
 import { setStaffSkillsAction } from '../skills/actions';
 import { STAFF_PERMISSIONS, type StaffPermissionName } from '@/lib/staff-permissions';
 import { STAFF_PASSWORD_MAX_LENGTH, STAFF_PASSWORD_MIN_LENGTH } from '@/lib/staff-password-policy';
+import { confirmDialog, Modal } from '@/components/ui/modal';
 
 export function ToggleActiveForm({ userId, active }: { userId: string; active: boolean }) {
   const [isPending, start] = useTransition();
@@ -20,8 +21,16 @@ export function ToggleActiveForm({ userId, active }: { userId: string; active: b
     <button
       type="button"
       disabled={isPending}
-      onClick={() => {
-        if (active && !confirm('Benutzer wirklich deaktivieren?')) return;
+      onClick={async () => {
+        if (
+          active &&
+          !(await confirmDialog('Benutzer wirklich deaktivieren?', {
+            title: 'Benutzer deaktivieren',
+            confirmLabel: 'Deaktivieren',
+            danger: true,
+          }))
+        )
+          return;
         start(async () => {
           await setActiveAction({ userId, active: !active });
         });
@@ -91,8 +100,8 @@ export function SetRolesForm({
               onClick={() => toggle(r)}
               className={
                 has
-                  ? 'px-2 py-0.5 rounded text-[10px] font-medium bg-brand-600 text-white'
-                  : 'px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
+                  ? 'min-h-6 px-2 py-0.5 rounded text-[10px] font-medium bg-brand-600 text-on-brand'
+                  : 'min-h-6 px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
               }
               title={title}
             >
@@ -172,8 +181,8 @@ export function SetPermissionsForm({
               onClick={() => toggle(p.key)}
               className={
                 has
-                  ? 'px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-600 text-white'
-                  : 'px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
+                  ? 'min-h-6 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-600 text-white'
+                  : 'min-h-6 px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-secondary hover:bg-gray-200'
               }
               title={p.label}
             >
@@ -239,8 +248,15 @@ export function AccountSecurityForm({
     });
   }
 
-  function resetTotp() {
-    if (!window.confirm('2FA wirklich zurücksetzen? Der Benutzer muss sie neu einrichten.')) return;
+  async function resetTotp() {
+    if (
+      !(await confirmDialog('2FA wirklich zurücksetzen? Der Benutzer muss sie neu einrichten.', {
+        title: '2FA zurücksetzen',
+        confirmLabel: 'Zurücksetzen',
+        danger: true,
+      }))
+    )
+      return;
     setMessage(null);
     startTotp(async () => {
       const result = await resetTotpAction({ userId });
@@ -383,17 +399,6 @@ export function SetSkillsForm({
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(currentSkillIds));
   const [isPending, startTransition] = useTransition();
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (!popoverRef.current) return;
-      if (!popoverRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -412,10 +417,13 @@ export function SetSkillsForm({
   }
 
   return (
-    <div className="relative inline-block" ref={popoverRef}>
+    <div className="inline-block">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setSelected(new Set(currentSkillIds));
+          setOpen(true);
+        }}
         className="text-xs text-muted hover:text-primary p-1"
         title="Tätigkeiten zuordnen"
         aria-label="Tätigkeiten zuordnen"
@@ -423,18 +431,24 @@ export function SetSkillsForm({
         <Tags className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-72 z-20 rounded-lg shadow-lg border border-default bg-surface">
-          <div className="px-3 py-2 border-b border-default text-xs font-medium text-secondary">
-            Tätigkeiten
-          </div>
-          <div className="max-h-72 overflow-y-auto p-2 space-y-1">
+        <Modal
+          title="Tätigkeiten zuordnen"
+          onClose={() => setOpen(false)}
+          closeDisabled={isPending}
+          maxWidth="max-w-lg"
+        >
+          <h2 className="mb-1 pr-8 text-lg font-semibold text-primary">Tätigkeiten zuordnen</h2>
+          <p className="mb-4 text-sm text-muted">
+            Wählen Sie die Tätigkeitsbereiche dieser Person aus.
+          </p>
+          <div className="max-h-[55vh] space-y-1 overflow-y-auto rounded-md border border-default p-2">
             {allSkills.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-disabled">Noch keine Bereiche definiert.</p>
+              <p className="px-2 py-3 text-sm text-muted">Noch keine Bereiche definiert.</p>
             ) : (
               allSkills.map((s) => (
                 <label
                   key={s.id}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer text-sm"
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-surface-raised"
                 >
                   <input
                     type="checkbox"
@@ -447,24 +461,20 @@ export function SetSkillsForm({
               ))
             )}
           </div>
-          <div className="px-3 py-2 border-t border-default flex justify-end gap-2">
+          <div className="mt-5 flex justify-end gap-2 border-t border-default pt-4">
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-xs text-muted hover:underline"
+              disabled={isPending}
+              className="btn-secondary"
             >
               Abbrechen
             </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={isPending}
-              className="text-xs text-brand-700 hover:underline"
-            >
-              {isPending ? '…' : 'Speichern'}
+            <button type="button" onClick={save} disabled={isPending} className="btn-primary">
+              {isPending ? 'Speichert …' : 'Speichern'}
             </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

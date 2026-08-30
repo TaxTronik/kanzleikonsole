@@ -33,9 +33,7 @@ describe('domain labels', () => {
     expect(NOTICE_KIND_LABELS.GEWST_MESSBESCHEID).toBe('GewSt-Messbescheid');
     expect(NOTICE_STATUS_LABELS.ABGEHOLFEN).toBe('Einspruch abgeholfen');
     expect(NOTICE_STATUS_LABELS.KLAGE).toBe('Klage beim Finanzgericht');
-    expect(NOTICE_STATUS_LABELS.TEILEINSPRUCHSENTSCHEIDUNG).toBe(
-      'Teil-Einspruchsentscheidung',
-    );
+    expect(NOTICE_STATUS_LABELS.TEILEINSPRUCHSENTSCHEIDUNG).toBe('Teil-Einspruchsentscheidung');
     expect(NOTICE_STATUS_LABELS.BESTANDSKRAEFTIG).toBe('Bestandskräftig');
     expect(INVOICE_STATUS_LABELS.SENT).toBe('Versendet');
     expect(TAX_DEADLINE_STATUS_LABELS.REMINDED).toBe('Anforderung versendet');

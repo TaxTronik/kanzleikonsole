@@ -101,8 +101,8 @@ export default function StaffLoginPage() {
 
   function downloadBackupCodes() {
     const text =
-      'taxtronik — TOTP-Backup-Codes\n' +
-      '================================\n\n' +
+      'Mitarbeiter-Login — TOTP-Backup-Codes\n' +
+      '=======================================\n\n' +
       `Mitarbeiter: ${email}\n` +
       `Erstellt:    ${new Date().toLocaleString('de-DE')}\n\n` +
       'Diese Codes sind Einmal-Codes für den Fall, dass das Authenticator-\n' +
@@ -114,7 +114,7 @@ export default function StaffLoginPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'taxtronik-backup-codes.txt';
+    a.download = 'mitarbeiter-login-backup-codes.txt';
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -123,10 +123,9 @@ export default function StaffLoginPage() {
     <>
       {/* Card */}
       <div className="card p-8">
-        {/* Logo */}
+        {/* Das Kanzlei-Logo beziehungsweise der Kanzleiname steht im Auth-Layout. */}
         <div className="text-center mb-8">
-          <div className="text-3xl font-bold text-brand-700 mb-1">TaxTronik</div>
-          <p className="text-sm text-muted">Mitarbeiter-Login</p>
+          <h1 className="text-xl font-semibold text-primary">Mitarbeiter-Login</h1>
         </div>
 
         {/* Step: Passwort */}

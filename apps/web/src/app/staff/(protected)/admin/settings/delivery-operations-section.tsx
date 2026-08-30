@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import type { N8nRecentDeliveryView, N8nSetupStatus } from '@/server/n8n/status';
@@ -50,19 +50,7 @@ export function DeliveryOperationsSection({
   }, [failedDeliveries, status.recentDeliveries]);
 
   return (
-    <section className="space-y-4" aria-labelledby="n8n-operation-heading">
-      <div>
-        <h3
-          id="n8n-operation-heading"
-          className="inline-flex items-center gap-2 text-base font-semibold text-primary"
-        >
-          <ShieldCheck className="h-4 w-4" /> 5. Zustellung & Betrieb
-        </h3>
-        <p className="mt-1 text-xs text-muted">
-          Jedes Event und jede Zielzustellung hat eine eigene ID. Fehler eines Workflows blockieren
-          andere Abonnenten nicht.
-        </p>
-      </div>
+    <section className="space-y-4">
       {status.deliveryCounts.failed > 0 && (
         <div className="rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-950 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100">
           <p className="font-semibold">

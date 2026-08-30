@@ -34,7 +34,7 @@ export function Stepper({
           s.key !== 'master_data' &&
           (i < currentIndex || done || onboardingComplete);
         const cls = current
-          ? 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-brand-600 text-white font-medium'
+          ? 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
           : done
             ? 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
             : 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 bg-gray-100 text-muted';

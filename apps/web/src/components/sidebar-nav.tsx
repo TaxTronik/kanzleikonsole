@@ -117,13 +117,10 @@ export function SidebarNav({ items }: Props) {
           <Link
             key={item.href}
             href={item.href}
-            className={
-              active
-                ? 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium bg-brand-50 text-brand-700 transition-colors'
-                : 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:bg-gray-100 hover:text-primary transition-colors'
-            }
+            className={active ? 'nav-item active' : 'nav-item'}
+            aria-current={active ? 'page' : undefined}
           >
-            <Icon className={active ? 'h-4 w-4 text-brand-700' : 'h-4 w-4 text-muted'} />
+            <Icon className="h-4 w-4" />
             {item.label}
           </Link>
         );

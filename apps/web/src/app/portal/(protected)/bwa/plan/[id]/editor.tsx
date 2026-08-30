@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, Trash2 } from 'lucide-react';
 import { fmtEURRound, fmtTimeMedium } from '@/lib/fmt';
+import { confirmDialog } from '@/components/ui/modal';
 
 export type PlanAxis =
   | 'REVENUE'
@@ -127,8 +128,15 @@ export function PlanEditor({
     });
   }
 
-  function remove() {
-    if (!confirm('Planung wirklich löschen?')) return;
+  async function remove() {
+    if (
+      !(await confirmDialog('Planung wirklich löschen?', {
+        title: 'Planung löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const r = await onDelete({ planId });
       if (!r.ok) {
@@ -145,8 +153,11 @@ export function PlanEditor({
       <div className="card p-6 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Name</label>
+            <label className="label" htmlFor="bwa-plan-name">
+              Name
+            </label>
             <input
+              id="bwa-plan-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -155,8 +166,11 @@ export function PlanEditor({
             />
           </div>
           <div>
-            <label className="label">Status</label>
+            <label className="label" htmlFor="bwa-plan-status">
+              Status
+            </label>
             <select
+              id="bwa-plan-status"
               value={status}
               onChange={(e) => setStatus(e.target.value as 'DRAFT' | 'FINAL')}
               className="input"
@@ -167,35 +181,43 @@ export function PlanEditor({
           </div>
         </div>
 
-        <div>
-          <label className="label">Achsen</label>
+        <fieldset>
+          <legend className="label">Achsen</legend>
           <div className="space-y-2">
             {ALL_AXES.map((a) => (
               <div key={a} className="grid grid-cols-[1fr_180px_2fr] gap-2 items-center">
-                <label className="text-sm text-secondary">{AXIS_LABELS[a]}</label>
+                <label className="text-sm text-secondary" htmlFor={`bwa-axis-${a}-amount`}>
+                  {AXIS_LABELS[a]}
+                </label>
                 <div className="relative">
                   <input
+                    id={`bwa-axis-${a}-amount`}
                     type="number"
                     value={lines[a].amount}
                     onChange={(e) => setAxis(a, { amount: Number(e.target.value) || 0 })}
                     className="input pr-8 text-sm font-mono"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted">
+                  <span
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted"
+                    aria-hidden="true"
+                  >
                     €
                   </span>
                 </div>
                 <input
+                  id={`bwa-axis-${a}-note`}
                   type="text"
                   value={lines[a].note}
                   onChange={(e) => setAxis(a, { note: e.target.value })}
                   maxLength={300}
                   placeholder="Annahme / Notiz (optional)"
+                  aria-label={`Anmerkung zu ${AXIS_LABELS[a]} (optional)`}
                   className="input text-xs"
                 />
               </div>
             ))}
           </div>
-        </div>
+        </fieldset>
 
         <div className="border-t border-default pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <Total label="Erträge" value={totals.revenue} />
@@ -205,8 +227,11 @@ export function PlanEditor({
         </div>
 
         <div>
-          <label className="label">Anmerkungen</label>
+          <label className="label" htmlFor="bwa-plan-notes">
+            Anmerkungen
+          </label>
           <textarea
+            id="bwa-plan-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
@@ -215,7 +240,11 @@ export function PlanEditor({
           />
         </div>
 
-        {error && <div className="alert-error-sm">{error}</div>}
+        {error && (
+          <div className="alert-error-sm" role="alert">
+            {error}
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <button type="button" onClick={save} disabled={isPending} className="btn-primary">
@@ -228,11 +257,12 @@ export function PlanEditor({
             disabled={isPending}
             className="text-disabled hover:text-red-700 p-2 ml-auto"
             title="Planung löschen"
+            aria-label="Planung löschen"
           >
             <Trash2 className="h-4 w-4" />
           </button>
           {savedAt && (
-            <span className="text-xs text-emerald-700">
+            <span className="text-xs text-emerald-700" role="status" aria-live="polite">
               Gespeichert {fmtTimeMedium(new Date(savedAt))}
             </span>
           )}

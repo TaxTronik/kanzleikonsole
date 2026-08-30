@@ -54,7 +54,7 @@ export function TaxRegionForm({
               type="checkbox"
               name="assumptionHoliday"
               defaultChecked={initialAssumptionHoliday}
-              className="mt-0.5"
+              className="switch mt-0.5"
             />
             <span>
               Sitz-Gemeinde begeht <strong>Mariä Himmelfahrt</strong> (15.08.) als Feiertag.

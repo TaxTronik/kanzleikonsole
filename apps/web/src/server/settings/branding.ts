@@ -9,6 +9,8 @@
 import { cache } from 'react';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
+import { prismaOwner } from '@/server/db/prisma-owner';
 
 export interface BrandingInfo {
   // Anzeige-Name in der Sidebar oben (überschreibt "taxtronik")
@@ -50,20 +52,18 @@ const readBrandingCached = cache(
 
 function readBrandingByCtx(ctx: TenantContext): Promise<BrandingInfo> {
   return withTenantContext(ctx, async (tx) => {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_BRANDING } },
-    });
-    if (!row) {
+    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY_BRANDING);
+    if (value === undefined) {
       const tenant = await tx.tenant.findUnique({
         where: { id: ctx.tenantId },
         select: { name: true },
       });
       return { ...DEFAULT_BRANDING, displayName: tenant?.name ?? DEFAULT_BRANDING.displayName };
     }
-    const value = row.value as Partial<BrandingInfo>;
+    const branding = value as Partial<BrandingInfo>;
     return {
       ...DEFAULT_BRANDING,
-      ...value,
+      ...branding,
     };
   });
 }
@@ -72,20 +72,40 @@ export function readBranding(ctx: TenantContext): Promise<BrandingInfo> {
   return readBrandingCached(ctx.tenantId, ctx.actorId, ctx.actorType);
 }
 
+/**
+ * Public-safe Reader: resolved den Tenant über den Slug. Wird auf Login-Seiten
+ * verwendet, bevor eine Session existiert (Staff- und Portal-Login zeigen das
+ * Kanzlei-Branding).
+ *
+ * Bewusst über prismaOwner (kein RLS) — Tenant-Settings sind pro-Tenant strikt
+ * isoliert, weil wir explizit nach (tenantSlug, key='branding') filtern. Keine
+ * sensiblen Daten — Anzeige-Name, Akzentfarbe und Logos, die ohnehin auf jeder
+ * Seite des Tenants öffentlich sichtbar sind (Muster: readLegalForSlug).
+ */
+export async function readBrandingForSlug(slug: string): Promise<BrandingInfo> {
+  const tenant = await prismaOwner.tenant.findUnique({
+    where: { slug },
+    select: { id: true, name: true },
+  });
+  if (!tenant) return DEFAULT_BRANDING;
+  const value = await readTenantSettingValue(prismaOwner, tenant.id, KEY_BRANDING);
+  if (value === undefined) {
+    return { ...DEFAULT_BRANDING, displayName: tenant.name };
+  }
+  const branding = value as Partial<BrandingInfo>;
+  return {
+    ...DEFAULT_BRANDING,
+    ...branding,
+  };
+}
+
 export async function writeBranding(ctx: TenantContext, info: BrandingInfo): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
-    await tx.tenantSetting.upsert({
-      where: { tenantId_key: { tenantId: ctx.tenantId, key: KEY_BRANDING } },
-      create: {
-        tenantId: ctx.tenantId,
-        key: KEY_BRANDING,
-        value: info as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
-      update: {
-        value: info as object,
-        updatedBy: ctx.actorId ?? undefined,
-      },
+    await writeTenantSettingValue(tx, {
+      tenantId: ctx.tenantId,
+      key: KEY_BRANDING,
+      value: info as object,
+      updatedBy: ctx.actorId,
     });
   });
 }

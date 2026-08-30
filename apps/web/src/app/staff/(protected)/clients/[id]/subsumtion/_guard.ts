@@ -22,6 +22,7 @@ export interface SubsumtionPageContext {
   fullName: string;
   staffOptions: Array<{ id: string; fullName: string }>;
   engineConfigured: boolean;
+  floatingToolbarDefault: boolean;
   /**
    * Volle Bearbeitungsrechte: Admin/Partner oder zugeordnete:r Berufstraeger/
    * Hauptbearbeiter:in. Wer nur eine Markierung zugewiesen bekam, sieht den
@@ -91,6 +92,7 @@ export async function guardSubsumtionPage(
     fullName,
     staffOptions: geladen.staffOptions,
     engineConfigured: true,
+    floatingToolbarDefault: modules.subsumtionFloatingToolbarDefault,
     canWrite: geladen.rights.canWrite,
     rights: geladen.rights,
   };

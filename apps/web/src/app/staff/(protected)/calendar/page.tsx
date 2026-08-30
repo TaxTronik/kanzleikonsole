@@ -284,18 +284,20 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         <div className="flex items-center gap-2">
           <Link
             href={`/staff/calendar?month=${prevMonthQs}`}
+            aria-label="Vorheriger Monat"
             className="btn-secondary text-xs px-2 py-1"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft aria-hidden="true" className="h-4 w-4" />
           </Link>
           <h2 className="text-lg font-semibold text-primary min-w-[220px] text-center">
             {fmtMonthYear(new Date(Date.UTC(year, month0, 15)))}
           </h2>
           <Link
             href={`/staff/calendar?month=${nextMonthQs}`}
+            aria-label="Nächster Monat"
             className="btn-secondary text-xs px-2 py-1"
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight aria-hidden="true" className="h-4 w-4" />
           </Link>
         </div>
         <Link

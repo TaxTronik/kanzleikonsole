@@ -154,7 +154,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
               href={qs({ tage: String(t) })}
               className={
                 t === tage
-                  ? 'px-3 py-1.5 bg-brand-600 text-white'
+                  ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
                   : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
               }
             >
@@ -167,7 +167,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             href={qs({ filter: 'offen' })}
             className={
               nurOffene
-                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
                 : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
             }
           >
@@ -177,7 +177,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             href={qs({ filter: 'alle' })}
             className={
               !nurOffene
-                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
                 : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
             }
           >
@@ -189,7 +189,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             href={qs({ wer: 'alle' })}
             className={
               !nurMeine
-                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
                 : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
             }
           >
@@ -199,7 +199,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             href={qs({ wer: 'meine' })}
             className={
               nurMeine
-                ? 'px-3 py-1.5 bg-brand-600 text-white'
+                ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
                 : 'px-3 py-1.5 text-secondary hover:bg-gray-50'
             }
           >

@@ -45,6 +45,15 @@ describe('Wissensdatenbank UI', () => {
     expect(richEditor).toContain('Überschrift 2');
     expect(richEditor).toContain('setColor(event.target.value)');
     expect(richEditor).toContain('setBackgroundColor(event.target.value)');
+    expect(richEditor).toContain('role="toolbar"');
+    expect(richEditor).toContain('aria-pressed={active === undefined ? undefined : active}');
+    expect(richEditor).toContain("aria-pressed={mode === 'inline'}");
+    expect(richEditor).toContain("aria-pressed={mode === 'source'}");
+    expect(richEditor).toContain('aria-label="Artikeltext formatieren"');
+    expect(richEditor).toContain('handleToolbarKeyDown');
+    expect(richEditor).toContain('role="status"');
+    expect(editor).toContain('role="alert"');
+    expect(editor).toContain('wurde hochgeladen und eingefügt');
     expect(editorExtensions).toContain('MarkdownTextStyle');
     expect(editorExtensions).toContain('Image.configure({ allowBase64: false })');
     expect(editor).toContain("fetch('/api/staff/knowledge/attachments'");

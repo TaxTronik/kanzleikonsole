@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Save, X, Mail, Pencil, Lock } from 'lucide-react';
 import { saveEmailTemplateAction, deleteEmailTemplateAction } from './actions';
+import { confirmDialog, noticeDialog } from '@/components/ui/modal';
 
 interface Template {
   id: string;
@@ -23,12 +24,24 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function remove(id: string, slug: string | null) {
+  async function remove(id: string, slug: string | null) {
     if (slug) {
-      alert('System-Vorlagen können nicht gelöscht werden. Texte sind aber editierbar.');
+      await noticeDialog(
+        'System-Vorlagen können nicht gelöscht werden. Texte sind aber editierbar.',
+        {
+          title: 'System-Vorlage',
+        },
+      );
       return;
     }
-    if (!confirm('Vorlage wirklich löschen?')) return;
+    if (
+      !(await confirmDialog('Vorlage wirklich löschen?', {
+        title: 'E-Mail-Vorlage löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const r = await deleteEmailTemplateAction({ id });
       if (!r.ok) setError(r.error ?? 'Fehler.');
@@ -98,6 +111,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                     onClick={() => setEditing(t)}
                     className="text-muted hover:text-brand-700 p-1"
                     title="Bearbeiten"
+                    aria-label={`E-Mail-Vorlage „${t.name}“ bearbeiten`}
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -108,6 +122,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                       disabled={isPending}
                       className="text-disabled hover:text-red-700 p-1"
                       title="Löschen"
+                      aria-label={`E-Mail-Vorlage „${t.name}“ löschen`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -138,8 +153,11 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
 
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
-              <label className="label">Name (intern)</label>
+              <label className="label" htmlFor="email-template-name">
+                Name (intern)
+              </label>
               <input
+                id="email-template-name"
                 type="text"
                 className="input"
                 value={editing.name}
@@ -149,8 +167,11 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
               />
             </div>
             <div>
-              <label className="label">Kategorie</label>
+              <label className="label" htmlFor="email-template-category">
+                Kategorie
+              </label>
               <input
+                id="email-template-category"
                 type="text"
                 className="input"
                 value={editing.category ?? ''}
@@ -162,8 +183,11 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
           </div>
 
           <div>
-            <label className="label">Betreff</label>
+            <label className="label" htmlFor="email-template-subject">
+              Betreff
+            </label>
             <input
+              id="email-template-subject"
               type="text"
               className="input"
               value={editing.subject}
@@ -174,8 +198,11 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
           </div>
 
           <div>
-            <label className="label">Mail-Text (Markdown)</label>
+            <label className="label" htmlFor="email-template-body">
+              Mail-Text (Markdown)
+            </label>
             <textarea
+              id="email-template-body"
               className="input font-mono text-sm"
               rows={10}
               value={editing.bodyMd}
@@ -184,8 +211,9 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
               placeholder={
                 'Sehr geehrte Damen und Herren,\n\nbitte reichen Sie uns die Belege für …\n\nMit freundlichen Grüßen\nIhre Kanzlei'
               }
+              aria-describedby="email-template-body-hint"
             />
-            <p className="text-xs text-muted mt-1">
+            <p id="email-template-body-hint" className="text-xs text-muted mt-1">
               Platzhalter: <code>{'{{client.name}}'}</code> wird zur Laufzeit durch den
               Mandantennamen ersetzt.
             </p>
@@ -200,7 +228,11 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
             <span>Aktiv (in Vorlagen-Auswahl sichtbar)</span>
           </label>
 
-          {error && <div className="alert-error-sm">{error}</div>}
+          {error && (
+            <div className="alert-error-sm" role="alert">
+              {error}
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <button

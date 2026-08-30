@@ -74,8 +74,11 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
       {open && (
         <form action={formAction} className="p-5 space-y-4">
           <div>
-            <label className="label">Anliegen / Betreff</label>
+            <label className="label" htmlFor="appointment-request-subject">
+              Anliegen / Betreff
+            </label>
             <input
+              id="appointment-request-subject"
               type="text"
               name="subject"
               required
@@ -86,8 +89,16 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
           </div>
 
           <div>
-            <label className="label">Wunsch-Bearbeiter (optional)</label>
-            <select name="preferredStaffId" defaultValue="" className="input">
+            <label className="label" htmlFor="appointment-request-preferred-staff">
+              Wunsch-Bearbeiter (optional)
+            </label>
+            <select
+              id="appointment-request-preferred-staff"
+              name="preferredStaffId"
+              defaultValue=""
+              className="input"
+              aria-describedby="appointment-request-preferred-staff-hint"
+            >
               <option value="">— egal —</option>
               {staffOptions.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -95,13 +106,16 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-muted mt-1">
+            <p
+              id="appointment-request-preferred-staff-hint"
+              className="text-[11px] text-muted mt-1"
+            >
               Ohne Auswahl entscheidet die Kanzlei, wer den Termin übernimmt.
             </p>
           </div>
 
-          <div className="space-y-3">
-            <label className="label">Wunschtermine (bis zu 3)</label>
+          <fieldset className="space-y-3">
+            <legend className="label">Wunschtermine (bis zu 3)</legend>
             {Array.from({ length: slotCount }).map((_, i) => (
               <div
                 key={i}
@@ -164,11 +178,14 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                 Weiteren Wunschtermin hinzufügen
               </button>
             )}
-          </div>
+          </fieldset>
 
           <div>
-            <label className="label">Notiz (optional)</label>
+            <label className="label" htmlFor="appointment-request-notes">
+              Notiz (optional)
+            </label>
             <textarea
+              id="appointment-request-notes"
               name="notes"
               rows={3}
               maxLength={2000}
@@ -177,9 +194,13 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
             />
           </div>
 
-          {state && !state.ok && <p className="text-xs text-red-700">{state.error}</p>}
+          {state && !state.ok && (
+            <p className="text-xs text-red-700" role="alert">
+              {state.error}
+            </p>
+          )}
           {state && state.ok && (
-            <p className="text-xs text-emerald-700">
+            <p className="text-xs text-emerald-700" role="status" aria-live="polite">
               Anfrage verschickt — die Kanzlei meldet sich.
             </p>
           )}

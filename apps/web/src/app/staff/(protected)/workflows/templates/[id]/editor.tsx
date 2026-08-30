@@ -209,7 +209,11 @@ export function TemplateEditor({
                   <DragHandle handle={handle} />
                 </div>
                 <div className="flex-1 space-y-3">
+                  <label className="sr-only" htmlFor={`workflow-template-step-${i}-title`}>
+                    Titel von Schritt {i + 1}
+                  </label>
                   <input
+                    id={`workflow-template-step-${i}-title`}
                     type="text"
                     placeholder={'Titel — z. B. „Belege Q1 anfordern"'}
                     value={s.title}
@@ -217,7 +221,11 @@ export function TemplateEditor({
                     maxLength={200}
                     className="input font-medium"
                   />
+                  <label className="sr-only" htmlFor={`workflow-template-step-${i}-description`}>
+                    Beschreibung von Schritt {i + 1} (optional)
+                  </label>
                   <textarea
+                    id={`workflow-template-step-${i}-description`}
                     placeholder="Optionale Beschreibung / Hinweis"
                     value={s.description}
                     onChange={(e) => update(i, { description: e.target.value })}
@@ -229,8 +237,14 @@ export function TemplateEditor({
                   {/* Kind-Picker */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-muted mb-1">Schritt-Typ</label>
+                      <label
+                        className="block text-xs text-muted mb-1"
+                        htmlFor={`workflow-template-step-${i}-kind`}
+                      >
+                        Schritt-Typ
+                      </label>
                       <select
+                        id={`workflow-template-step-${i}-kind`}
                         value={s.kind}
                         onChange={(e) => changeKind(i, e.target.value as StepKind)}
                         className="input"
@@ -246,8 +260,14 @@ export function TemplateEditor({
                       </p>
                     </div>
                     <div>
-                      <label className="block text-xs text-muted mb-1">Empfohlene Tätigkeit</label>
+                      <label
+                        className="block text-xs text-muted mb-1"
+                        htmlFor={`workflow-template-step-${i}-skill`}
+                      >
+                        Empfohlene Tätigkeit
+                      </label>
                       <select
+                        id={`workflow-template-step-${i}-skill`}
                         value={s.skillId}
                         onChange={(e) => update(i, { skillId: e.target.value })}
                         className="input"
@@ -274,10 +294,14 @@ export function TemplateEditor({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-muted mb-1">
+                      <label
+                        className="block text-xs text-muted mb-1"
+                        htmlFor={`workflow-template-step-${i}-due-days`}
+                      >
                         Fällig nach (Tage ab Start)
                       </label>
                       <input
+                        id={`workflow-template-step-${i}-due-days`}
                         type="number"
                         min={0}
                         max={365}
@@ -293,10 +317,14 @@ export function TemplateEditor({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted mb-1">
+                      <label
+                        className="block text-xs text-muted mb-1"
+                        htmlFor={`workflow-template-step-${i}-n8n-event`}
+                      >
                         n8n-Event <span className="text-disabled font-normal">(optional)</span>
                       </label>
                       <input
+                        id={`workflow-template-step-${i}-n8n-event`}
                         type="text"
                         placeholder="z. B. slack-notify"
                         value={s.n8nEvent}
@@ -319,6 +347,7 @@ export function TemplateEditor({
                   onClick={() => remove(i)}
                   className="text-disabled hover:text-red-700 p-1"
                   title="Schritt entfernen"
+                  aria-label={`Schritt „${s.title || `Position ${i + 1}`}“ entfernen`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -337,12 +366,16 @@ export function TemplateEditor({
           {isPending ? 'Speichert…' : 'Vorlage speichern'}
         </button>
         {savedAt && (
-          <span className="text-xs text-emerald-700">
+          <span className="text-xs text-emerald-700" role="status">
             Gespeichert um {fmtTimeMedium(new Date(savedAt))}
           </span>
         )}
       </div>
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -374,8 +407,14 @@ function KindConfigFields({
     case 'DOCUMENT_UPLOAD':
       return (
         <div>
-          <label className="block text-xs text-muted mb-1">Erwartete Dokumenten-Klasse</label>
+          <label
+            className="block text-xs text-muted mb-1"
+            htmlFor={`workflow-template-step-${index}-document-classification`}
+          >
+            Erwartete Dokumenten-Klasse
+          </label>
           <select
+            id={`workflow-template-step-${index}-document-classification`}
             value={String(cfg['expectedClassification'] ?? 'GENERAL')}
             onChange={(e) => setConfig(index, 'expectedClassification', e.target.value)}
             className="input"
@@ -399,10 +438,14 @@ function KindConfigFields({
       return (
         <div className="space-y-2 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-900/10 p-3">
           <div>
-            <label className="block text-xs text-muted mb-1">
+            <label
+              className="block text-xs text-muted mb-1"
+              htmlFor={`workflow-template-step-${index}-request-template`}
+            >
               Anforderungs-Vorlage <span className="text-disabled">(optional)</span>
             </label>
             <select
+              id={`workflow-template-step-${index}-request-template`}
               value={requestTemplateId}
               onChange={(e) => setConfig(index, 'requestTemplateId', e.target.value || undefined)}
               className="input text-sm"
@@ -421,6 +464,7 @@ function KindConfigFields({
             </p>
           </div>
           <input
+            aria-label="Anforderungstitel"
             type="text"
             placeholder='Anforderungs-Titel (z. B. „Belege Q1 hochladen")'
             value={String(cfg['requestTitle'] ?? '')}
@@ -430,6 +474,7 @@ function KindConfigFields({
             disabled={usingTemplate}
           />
           <textarea
+            aria-label="Anforderungsbeschreibung"
             placeholder="Anforderungs-Beschreibung für den Mandanten"
             value={String(cfg['requestDescription'] ?? '')}
             onChange={(e) => setConfig(index, 'requestDescription', e.target.value)}
@@ -440,6 +485,7 @@ function KindConfigFields({
           />
           <div className="grid grid-cols-2 gap-3">
             <select
+              aria-label="Priorität der Anforderung"
               value={String(cfg['priority'] ?? 'NORMAL')}
               onChange={(e) => setConfig(index, 'priority', e.target.value)}
               className="input text-sm"
@@ -451,6 +497,7 @@ function KindConfigFields({
               <option value="URGENT">Priorität: Dringend</option>
             </select>
             <input
+              aria-label="Fälligkeit der Anforderung in Tagen"
               type="number"
               min={0}
               max={365}
@@ -475,6 +522,7 @@ function KindConfigFields({
       return (
         <div className="space-y-2 rounded-md border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/30 dark:bg-indigo-900/10 p-3">
           <select
+            aria-label="Formularvorlage"
             value={String(cfg['formTemplateId'] ?? '')}
             onChange={(e) => setConfig(index, 'formTemplateId', e.target.value)}
             className="input"
@@ -492,6 +540,7 @@ function KindConfigFields({
             </p>
           )}
           <input
+            aria-label="Titel der erzeugten Formularanforderung"
             type="text"
             placeholder="Titel der erzeugten Anforderung"
             value={String(cfg['requestTitle'] ?? 'Bitte Formular ausfüllen')}
@@ -508,10 +557,14 @@ function KindConfigFields({
       return (
         <div className="space-y-2 rounded-md border border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-900/10 p-3">
           <div>
-            <label className="block text-xs text-muted mb-1">
+            <label
+              className="block text-xs text-muted mb-1"
+              htmlFor={`workflow-template-step-${index}-email-template`}
+            >
               E-Mail-Vorlage <span className="text-disabled">(optional)</span>
             </label>
             <select
+              id={`workflow-template-step-${index}-email-template`}
               value={emailTemplateId}
               onChange={(e) => setConfig(index, 'emailTemplateId', e.target.value || undefined)}
               className="input text-sm"
@@ -530,6 +583,7 @@ function KindConfigFields({
             </p>
           </div>
           <input
+            aria-label="E-Mail-Betreff"
             type="text"
             placeholder="Betreff"
             value={String(cfg['subject'] ?? '')}
@@ -539,6 +593,7 @@ function KindConfigFields({
             disabled={usingTemplate}
           />
           <textarea
+            aria-label="E-Mail-Text"
             placeholder="Mail-Text (Markdown — geht an alle aktiven Portal-Kontakte des Mandanten)"
             value={String(cfg['bodyMd'] ?? '')}
             onChange={(e) => setConfig(index, 'bodyMd', e.target.value)}

@@ -36,7 +36,11 @@ export default async function SubsumtionListPage({ params }: { params: Promise<{
   return (
     <div className="p-8">
       <div className="flex items-start gap-4 mb-6">
-        <Link href={`/staff/clients/${id}`} className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href={`/staff/clients/${id}`}
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">

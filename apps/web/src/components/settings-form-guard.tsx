@@ -26,6 +26,8 @@
 // =============================================================================
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Check } from 'lucide-react';
+import { confirmDialog } from '@/components/ui/modal';
 
 function serialize(form: HTMLFormElement): string {
   const parts: string[] = [];
@@ -60,6 +62,7 @@ export function SettingsFormGuard({ children }: { children: ReactNode }) {
   const snapshots = useRef<WeakMap<HTMLFormElement, string>>(new WeakMap());
   const [dirtyCount, setDirtyCount] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
     const root = containerRef.current;
@@ -119,40 +122,48 @@ export function SettingsFormGuard({ children }: { children: ReactNode }) {
       }
     }
     setDirtyCount(0);
+    setJustSaved(true);
     setTimeout(() => setSaving(false), 1500);
+    setTimeout(() => setJustSaved(false), 2600);
   }
 
-  function discardAll() {
-    if (!confirm('Alle ungespeicherten Änderungen verwerfen?')) return;
+  async function discardAll() {
+    if (
+      !(await confirmDialog('Alle ungespeicherten Änderungen verwerfen?', {
+        title: 'Änderungen verwerfen',
+        confirmLabel: 'Verwerfen',
+        danger: true,
+      }))
+    )
+      return;
     window.location.reload();
   }
 
   return (
     <div ref={containerRef} className="settings-form-guard min-w-0">
       {children}
-      {dirtyCount > 0 && (
-        <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-900 shadow-lg">
-          <span className="font-medium">
-            {dirtyCount} ungespeicherte{dirtyCount === 1 ? 's' : ''} Änderung
-            {dirtyCount === 1 ? '' : 'en'}
+      {dirtyCount > 0 ? (
+        <div className="settings-pill fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-full py-2 pl-4 pr-2">
+          <span className="flex items-center gap-2 text-[13px]">
+            <span className="settings-pill-dot" aria-hidden />
+            <span className="font-medium">
+              {dirtyCount} ungespeicherte{dirtyCount === 1 ? 's' : ''} Änderung
+              {dirtyCount === 1 ? '' : 'en'}
+            </span>
           </span>
-          <button
-            type="button"
-            onClick={discardAll}
-            className="rounded-full px-2 py-1 text-yellow-800 hover:bg-yellow-100"
-          >
+          <button type="button" onClick={discardAll} className="settings-pill-ghost">
             Verwerfen
           </button>
-          <button
-            type="button"
-            onClick={saveAll}
-            disabled={saving}
-            className="rounded-full bg-yellow-500 px-3 py-1 font-medium text-white hover:bg-yellow-600 disabled:opacity-60"
-          >
+          <button type="button" onClick={saveAll} disabled={saving} className="settings-pill-save">
             {saving ? 'Speichert …' : 'Speichern'}
           </button>
         </div>
-      )}
+      ) : justSaved ? (
+        <div className="settings-pill settings-pill-success fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium">
+          <Check className="h-4 w-4" aria-hidden />
+          Gespeichert
+        </div>
+      ) : null}
     </div>
   );
 }

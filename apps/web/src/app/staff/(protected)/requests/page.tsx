@@ -203,23 +203,32 @@ export default async function RequestsOverviewPage({
         {filterStatus && <input type="hidden" name="status" value={filterStatus} />}
         <div className="flex gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[240px] relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled" />
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled"
+            />
             <input
               type="search"
               name="q"
+              aria-label="Anforderungen durchsuchen"
               className="input pl-9"
               placeholder="Titel, Mandant, DATEV- oder Addison-Nr.…"
               defaultValue={sp.q ?? ''}
             />
           </div>
-          <select name="sort" className="input w-44" defaultValue={sort}>
+          <select name="sort" aria-label="Sortierung" className="input w-44" defaultValue={sort}>
             <option value="created">Sortierung: Angelegt</option>
             <option value="due">Sortierung: Fällig</option>
             <option value="client">Sortierung: Mandant</option>
             <option value="datev">Sortierung: DATEV-Nr.</option>
             <option value="addison">Sortierung: Addison-Nr.</option>
           </select>
-          <select name="dir" className="input w-32" defaultValue={dir}>
+          <select
+            name="dir"
+            aria-label="Sortierreihenfolge"
+            className="input w-32"
+            defaultValue={dir}
+          >
             <option value="desc">Absteigend</option>
             <option value="asc">Aufsteigend</option>
           </select>
@@ -282,7 +291,7 @@ export default async function RequestsOverviewPage({
                           <input
                             type="checkbox"
                             data-bulk-id={r.id}
-                            className="rounded border-strong text-brand-600 focus:ring-brand-500"
+                            className="rounded border-strong text-brand-600 focus:ring-focus"
                             aria-label="Auswählen"
                           />
                         )}

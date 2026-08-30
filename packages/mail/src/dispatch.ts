@@ -78,6 +78,20 @@ export interface TemplateMailResult {
   uncertainFailure: boolean;
 }
 
+type ContactDispatchOptions = Omit<DispatchOptions, 'to'> & {
+  clientId: string;
+};
+
+interface ContactRecipient {
+  fullName: string;
+  email: string;
+}
+
+interface ContactProfile {
+  email: string;
+  clientId: string;
+}
+
 /**
  * System-generierte URL-Variablen (Portal-Links, Magic-Links). Diese Werte
  * stammen ausschließlich aus portalBaseUrl + App-Routen — sie dürfen NICHT
@@ -271,6 +285,98 @@ function isExplicitSmtpRejection(error: unknown): boolean {
   );
 }
 
+function profileClientIdsByEmail(profiles: ContactProfile[]): Map<string, Set<string>> {
+  const profileCountByEmail = new Map<string, Set<string>>();
+  for (const profile of profiles) {
+    const emailKey = profile.email.toLowerCase();
+    const clientIds = profileCountByEmail.get(emailKey) ?? new Set<string>();
+    clientIds.add(profile.clientId);
+    profileCountByEmail.set(emailKey, clientIds);
+  }
+  return profileCountByEmail;
+}
+
+function existingClientVars(opts: ContactDispatchOptions): Record<string, unknown> {
+  return opts.vars.client &&
+    typeof opts.vars.client === 'object' &&
+    !Array.isArray(opts.vars.client)
+    ? (opts.vars.client as Record<string, unknown>)
+    : {};
+}
+
+async function loadContactProfileContext(
+  opts: ContactDispatchOptions,
+  contacts: ContactRecipient[],
+): Promise<{
+  clientName: string | undefined;
+  profileCountByEmail: Map<string, Set<string>>;
+}> {
+  const emailKeys = Array.from(new Set(contacts.map((contact) => contact.email.toLowerCase())));
+  const [client, profilesWithSameEmail] = await Promise.all([
+    prismaOwner.client.findFirst({
+      where: { id: opts.clientId, tenantId: opts.tenantId },
+      select: { name: true },
+    }),
+    prismaOwner.clientContact.findMany({
+      where: {
+        tenantId: opts.tenantId,
+        email: { in: emailKeys },
+        active: true,
+        client: { allowActive: true, anonymizedAt: null },
+      },
+      select: { email: true, clientId: true },
+    }),
+  ]);
+  return {
+    clientName: client?.name,
+    profileCountByEmail: profileClientIdsByEmail(profilesWithSameEmail),
+  };
+}
+
+async function sendContactTemplateMails(
+  opts: ContactDispatchOptions,
+  contacts: ContactRecipient[],
+  context: Awaited<ReturnType<typeof loadContactProfileContext>>,
+): Promise<{ okCount: number; uncertainFailure: boolean }> {
+  const clientVars = existingClientVars(opts);
+  let okCount = 0;
+  let uncertainFailure = false;
+
+  for (const contact of contacts) {
+    const hasMultipleProfiles =
+      (context.profileCountByEmail.get(contact.email.toLowerCase())?.size ?? 0) > 1;
+    const result = await sendTemplateMail({
+      ...opts,
+      // Der vorgangsbezogene Side-Effect wird nach der Schleife einmalig
+      // ausgelöst; sendTemplateMail darf ihn nicht je Kontakt emittieren.
+      n8nEvent: undefined,
+      n8nPayload: undefined,
+      to: contact.email,
+      subjectSuffix: opts.subjectSuffix ?? (hasMultipleProfiles ? context.clientName : ''),
+      vars: {
+        ...opts.vars,
+        client: { ...clientVars, name: context.clientName ?? '' },
+        contact: { fullName: contact.fullName, email: contact.email },
+      },
+    });
+    if (result.ok) okCount++;
+    if (result.uncertainFailure) uncertainFailure = true;
+  }
+
+  return { okCount, uncertainFailure };
+}
+
+async function emitAggregateContactEvent(
+  opts: ContactDispatchOptions,
+  aggregateDispatch: Awaited<ReturnType<typeof readMailDispatch>> | null,
+): Promise<boolean> {
+  if (aggregateDispatch?.mode !== 'BOTH' || !opts.n8nEvent) return false;
+  await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
+    tenantId: opts.tenantId,
+  });
+  return true;
+}
+
 /**
  * Versendet eine Template-Mail an alle aktiven Kontakte eines Mandanten mit
  * eingeschaltetem `notificationsEnabled`. Pro Kontakt werden die Vars
@@ -283,9 +389,7 @@ function isExplicitSmtpRejection(error: unknown): boolean {
  * Mails gehen nicht an eine lediglich eingetragene, unbestätigte Adresse.
  */
 export async function notifyClientContacts(
-  opts: Omit<DispatchOptions, 'to'> & {
-    clientId: string;
-  },
+  opts: ContactDispatchOptions,
 ): Promise<ContactNotificationResult> {
   const contacts = await prismaOwner.clientContact.findMany({
     where: {
@@ -310,15 +414,8 @@ export async function notifyClientContacts(
         actorType: 'SYSTEM',
       })
     : null;
-  let externalSideEffectOccurred = false;
-
   if (contacts.length === 0) {
-    if (aggregateDispatch?.mode === 'BOTH' && opts.n8nEvent) {
-      await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
-        tenantId: opts.tenantId,
-      });
-      externalSideEffectOccurred = true;
-    }
+    const externalSideEffectOccurred = await emitAggregateContactEvent(opts, aggregateDispatch);
     return {
       ok: true,
       recipients: 0,
@@ -328,63 +425,9 @@ export async function notifyClientContacts(
     };
   }
 
-  const emailKeys = Array.from(new Set(contacts.map((contact) => contact.email.toLowerCase())));
-  const [client, profilesWithSameEmail] = await Promise.all([
-    prismaOwner.client.findFirst({
-      where: { id: opts.clientId, tenantId: opts.tenantId },
-      select: { name: true },
-    }),
-    prismaOwner.clientContact.findMany({
-      where: {
-        tenantId: opts.tenantId,
-        email: { in: emailKeys },
-        active: true,
-        client: { allowActive: true, anonymizedAt: null },
-      },
-      select: { email: true, clientId: true },
-    }),
-  ]);
-  const profileCountByEmail = new Map<string, Set<string>>();
-  for (const profile of profilesWithSameEmail) {
-    const emailKey = profile.email.toLowerCase();
-    const clientIds = profileCountByEmail.get(emailKey) ?? new Set<string>();
-    clientIds.add(profile.clientId);
-    profileCountByEmail.set(emailKey, clientIds);
-  }
-
-  const existingClientVars =
-    opts.vars.client && typeof opts.vars.client === 'object' && !Array.isArray(opts.vars.client)
-      ? (opts.vars.client as Record<string, unknown>)
-      : {};
-
-  let okCount = 0;
-  let uncertainFailure = false;
-  for (const c of contacts) {
-    const hasMultipleProfiles = (profileCountByEmail.get(c.email.toLowerCase())?.size ?? 0) > 1;
-    const res = await sendTemplateMail({
-      ...opts,
-      // Der vorgangsbezogene Side-Effect wird nach der Schleife einmalig
-      // ausgelöst; sendTemplateMail darf ihn nicht je Kontakt emittieren.
-      n8nEvent: undefined,
-      n8nPayload: undefined,
-      to: c.email,
-      subjectSuffix: opts.subjectSuffix ?? (hasMultipleProfiles ? client?.name : ''),
-      vars: {
-        ...opts.vars,
-        client: { ...existingClientVars, name: client?.name ?? '' },
-        contact: { fullName: c.fullName, email: c.email },
-      },
-    });
-    if (res.ok) okCount++;
-    if (res.uncertainFailure) uncertainFailure = true;
-  }
-
-  if (aggregateDispatch?.mode === 'BOTH' && opts.n8nEvent) {
-    await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
-      tenantId: opts.tenantId,
-    });
-    externalSideEffectOccurred = true;
-  }
+  const context = await loadContactProfileContext(opts, contacts);
+  const { okCount, uncertainFailure } = await sendContactTemplateMails(opts, contacts, context);
+  const externalSideEffectOccurred = await emitAggregateContactEvent(opts, aggregateDispatch);
 
   // `recipients` bleibt aus Kompatibilitaetsgruenden die Zahl der vom
   // Provider angenommenen Einzelversuche. `attempted` macht erstmals

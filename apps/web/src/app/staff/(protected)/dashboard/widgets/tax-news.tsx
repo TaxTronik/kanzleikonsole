@@ -129,7 +129,11 @@ export async function TaxNews({ tx, staffId }: RenderCtx): Promise<ReactNode> {
           können Sie Ihre Feeds sofort neu laden.
         </div>
       ) : (
-        <ul className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0">
+        <ul
+          aria-label="Steuernachrichten – scrollbare Liste"
+          tabIndex={0}
+          className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0"
+        >
           {items.map(
             (n: {
               id: string;
@@ -143,20 +147,13 @@ export async function TaxNews({ tx, staffId }: RenderCtx): Promise<ReactNode> {
               const label = feedMeta?.name ?? '?';
               const color = feedMeta?.color ?? null;
               return (
-                <li key={n.id} className="px-5 py-2.5 flex items-start gap-2">
+                <li
+                  key={n.id}
+                  className="flex items-start gap-2 px-5 py-2.5 hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex-1 min-w-0">
-                    <a
-                      href={n.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block hover:bg-gray-50 -ml-5 pl-5 -mr-2 pr-2 py-1 rounded"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-primary line-clamp-2 flex-1">
-                          {n.title}
-                        </p>
-                        <ExternalLink className="h-3 w-3 text-disabled shrink-0 mt-1" />
-                      </div>
+                    <a href={n.link} target="_blank" rel="noopener noreferrer" className="block">
+                      <p className="text-sm font-medium text-primary line-clamp-2">{n.title}</p>
                       <p className="text-xs text-muted mt-0.5">
                         <span
                           className={
@@ -172,13 +169,28 @@ export async function TaxNews({ tx, staffId }: RenderCtx): Promise<ReactNode> {
                       </p>
                     </a>
                   </div>
-                  <BookmarkButton
-                    resourceType="tax_news_item"
-                    resourceId={n.id}
-                    label={`${label}: ${n.title}`}
-                    href={n.link}
-                    initiallyBookmarked={bookmarkedIds.has(n.id)}
-                  />
+                  {/* Aktions-Cluster: Merken + Quelle öffnen — identische
+                      Icon-Buttons (icon-action-sm), gleiche Höhe. */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <BookmarkButton
+                      resourceType="tax_news_item"
+                      resourceId={n.id}
+                      label={`${label}: ${n.title}`}
+                      href={n.link}
+                      initiallyBookmarked={bookmarkedIds.has(n.id)}
+                      className="icon-action-sm"
+                    />
+                    <a
+                      href={n.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="icon-action-sm"
+                      title="Quelle öffnen"
+                      aria-label="Quelle öffnen"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
                 </li>
               );
             },

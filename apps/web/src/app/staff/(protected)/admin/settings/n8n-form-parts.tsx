@@ -74,6 +74,7 @@ export function SecretKeep({
     <label className="mt-1 inline-flex items-center gap-2 text-xs text-muted">
       <input
         type="checkbox"
+        className="switch"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
       />{' '}

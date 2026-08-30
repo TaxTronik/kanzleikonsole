@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Bookmark, BookmarkPlus, X } from 'lucide-react';
+import { promptDialog } from '@/components/ui/modal';
 
 interface SavedView {
   name: string;
@@ -56,8 +57,13 @@ export function SavedViews() {
     setViews(next);
   }
 
-  function saveCurrent() {
-    const name = window.prompt('Name für diese Ansicht?')?.trim();
+  async function saveCurrent() {
+    const name = (
+      await promptDialog('Name für diese Ansicht?', {
+        title: 'Ansicht speichern',
+        placeholder: 'Name der Ansicht',
+      })
+    )?.trim();
     if (!name) return;
     const next = [...views.filter((v) => v.name !== name), { name, query: currentQuery }];
     next.sort((a, b) => a.name.localeCompare(b.name, 'de-DE'));

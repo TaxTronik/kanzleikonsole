@@ -15,6 +15,8 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        'on-brand': 'rgb(var(--text-on-brand) / <alpha-value>)',
+        focus: 'rgb(var(--brand-focus) / <alpha-value>)',
         brand: {
           50: 'rgb(var(--brand-50) / <alpha-value>)',
           100: 'rgb(var(--brand-100) / <alpha-value>)',

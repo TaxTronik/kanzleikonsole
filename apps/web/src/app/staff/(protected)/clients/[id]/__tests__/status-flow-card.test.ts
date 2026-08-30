@@ -27,12 +27,12 @@ describe('client status flow card consolidation', () => {
   });
 
   it('keeps domain-specific confirmations and copy in their adapters', () => {
-    expect(binders).toContain("confirm('Pendelordner löschen?')");
+    expect(binders).toContain("confirmDialog('Pendelordner löschen?'");
     expect(binders).toContain('Keine aktiven Pendelordner.');
     expect(binders).toContain('überfällig');
     expect(binders).toContain('Erwartete Rückgabe');
 
-    expect(handovers).toContain("confirm('Anlieferung löschen?')");
+    expect(handovers).toContain("confirmDialog('Anlieferung löschen?'");
     expect(handovers).toContain('Der Mandant wird per E-Mail informiert.');
     expect(handovers).toContain('Keine offenen Anlieferungen.');
     expect(handovers).toContain('notifiedContactEmail');

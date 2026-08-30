@@ -85,5 +85,6 @@ test-results/.auth/
 **/test-results/.auth/
 
 # IDE-/Agent-Spuren — lokale Caches, gehören nicht ins Repo
+.codex-run/
 .claude/
 .VSCodeCounter/

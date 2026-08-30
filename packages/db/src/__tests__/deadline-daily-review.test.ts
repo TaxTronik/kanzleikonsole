@@ -254,10 +254,7 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
   });
 
   it.each([
-    [
-      'einen unbekannten Wert',
-      { kontrollart: 'RECHTSFRIST' },
-    ],
+    ['einen unbekannten Wert', { kontrollart: 'RECHTSFRIST' }],
     [
       'eine interne Risikoklassifikation für einen operativen Termin',
       { quelle: 'STEUERTERMIN', kontrollart: 'INTERNAL_RISK' },
@@ -282,9 +279,7 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           entriesSnapshot: {
             version: 1,
             reviewDate: today,
-            entries: [
-              { ...snapshotEntry('plaintext', today), ...invalidClassification },
-            ],
+            entries: [{ ...snapshotEntry('plaintext', today), ...invalidClassification }],
           },
         },
       }),

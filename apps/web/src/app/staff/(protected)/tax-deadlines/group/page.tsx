@@ -30,6 +30,25 @@ const GROUP_STATUS_LABELS: Readonly<Record<string, string>> = {
   REMINDED: 'Angefordert',
 };
 
+const GROUP_STATUS_BADGES: Readonly<Record<string, string>> = {
+  OVERDUE: 'badge-red',
+  REMINDED: 'badge-yellow',
+  PLANNED: 'badge-gray',
+  IN_PROGRESS: 'badge-yellow',
+  SUBMITTED: 'badge-green',
+  DONE: 'badge-green',
+  SKIPPED: 'badge-gray',
+};
+
+type GroupDeadlineRow = {
+  id: string;
+  status: string;
+  requestId: string | null;
+  completedAt: Date | null;
+  client: { id: string; name: string };
+  pipeline: AutoRequestPipeline;
+};
+
 const VALID_KINDS: TaxScheduleKind[] = [
   'USTA_MONATLICH',
   'USTA_QUARTAL',
@@ -226,14 +245,7 @@ function Section({
   selectable,
 }: {
   title: string;
-  rows: Array<{
-    id: string;
-    status: string;
-    requestId: string | null;
-    completedAt: Date | null;
-    client: { id: string; name: string };
-    pipeline: AutoRequestPipeline;
-  }>;
+  rows: GroupDeadlineRow[];
   accent?: 'red' | 'emerald';
   selectable?: boolean;
 }) {
@@ -259,172 +271,193 @@ function Section({
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <tbody className="divide-y divide-border-subtle">
-            {rows.map((d) => (
-              <tr key={d.id} className="hover:bg-gray-50">
-                {selectable && (
-                  <td className="pl-6 py-3 w-8">
-                    <input
-                      type="checkbox"
-                      name="ids"
-                      value={d.id}
-                      aria-label={`${d.client.name} auswählen`}
-                      className="h-4 w-4 rounded border-default text-brand-600 focus:ring-brand-500"
-                    />
-                  </td>
-                )}
-                <td className="px-6 py-3">
-                  <Link
-                    href={`/staff/clients/${d.client.id}`}
-                    className="text-primary font-medium hover:underline"
-                  >
-                    {d.client.name}
-                  </Link>
-                </td>
-                <td className="px-6 py-3">
-                  {d.status === 'OVERDUE' && (
-                    <span className="badge-red">{GROUP_STATUS_LABELS[d.status]}</span>
-                  )}
-                  {d.status === 'REMINDED' && (
-                    <span className="badge-yellow">{GROUP_STATUS_LABELS[d.status]}</span>
-                  )}
-                  {d.status === 'PLANNED' && (
-                    <span className="badge-gray">{GROUP_STATUS_LABELS[d.status]}</span>
-                  )}
-                  {d.status === 'IN_PROGRESS' && (
-                    <span className="badge-yellow">{GROUP_STATUS_LABELS[d.status]}</span>
-                  )}
-                  {d.status === 'SUBMITTED' && (
-                    <span className="badge-green">{GROUP_STATUS_LABELS[d.status]}</span>
-                  )}
-                  {d.status === 'DONE' && (
-                    <span className="badge-green">{GROUP_STATUS_LABELS[d.status]}</span>
-                  )}
-                  {d.status === 'SKIPPED' && (
-                    <span className="badge-gray">{GROUP_STATUS_LABELS[d.status]}</span>
-                  )}
-                </td>
-                <td className="px-6 py-3 text-xs text-muted">
-                  {d.completedAt ? `am ${fmtDateShort(d.completedAt)}` : ''}
-                </td>
-                <td className="px-6 py-3 text-xs">
-                  {/* Auto-Anforderungs-Pipeline: abgeleitet, kein eigener Status. */}
-                  {d.pipeline.state === 'SCHEDULED' && (
-                    <span className="text-muted">
-                      Versand am {fmtDateShort(d.pipeline.sendDate)}
-                    </span>
-                  )}
-                  {d.pipeline.state === 'WARNED' && (
-                    <span className="text-amber-700 dark:text-amber-300">
-                      Vorwarnung läuft — Versand am {fmtDateShort(d.pipeline.sendDate)}
-                    </span>
-                  )}
-                  {d.pipeline.state === 'SUPPRESSED' && (
-                    <span
-                      className="badge-gray"
-                      title="Auto-Anforderung gestoppt — Termin läuft normal weiter."
-                    >
-                      Gestoppt
-                    </span>
-                  )}
-                  {d.pipeline.state === 'REQUEST_CREATED' && (
-                    <span
-                      className={
-                        d.pipeline.notificationState === 'PROVIDER_ACCEPTED'
-                          ? 'text-emerald-700 dark:text-emerald-300'
-                          : d.pipeline.notificationState === 'QUEUED'
-                            ? 'text-muted'
-                            : 'text-amber-700 dark:text-amber-300'
-                      }
-                      title={
-                        d.pipeline.notificationState === 'PROVIDER_ACCEPTED'
-                          ? 'Der Versanddienst hat alle Einzelversuche technisch angenommen. Das ist kein Zugangs- oder Kenntnisnahmenachweis.'
-                          : 'Portal-Anforderung und externe Benachrichtigung werden getrennt geführt.'
-                      }
-                    >
-                      {d.pipeline.notificationState === 'PROVIDER_ACCEPTED'
-                        ? 'Anforderung angelegt · Provider angenommen'
-                        : d.pipeline.notificationState === 'QUEUED'
-                          ? 'Anforderung angelegt · Benachrichtigung vorgemerkt'
-                          : d.pipeline.notificationState === 'FAILED'
-                            ? `Anforderung angelegt · Versandversuch ${d.pipeline.attemptCount} fehlgeschlagen`
-                            : d.pipeline.notificationState === 'PARTIAL_FAILURE'
-                              ? 'Anforderung angelegt · teilweise benachrichtigt, Prüfung offen'
-                              : d.pipeline.notificationState === 'NO_RECIPIENT'
-                                ? 'Anforderung angelegt · kein Empfänger, Prüfung offen'
-                                : d.pipeline.notificationState === 'UNKNOWN'
-                                  ? 'Anforderung angelegt · Versandstatus unklar, Prüfung offen'
-                                  : d.pipeline.notificationState === 'ESCALATED'
-                                    ? 'Anforderung angelegt · Versand intern eskaliert'
-                                    : 'Anforderung angelegt · Benachrichtigung nicht nachgewiesen'}
-                    </span>
-                  )}
-                  {d.pipeline.state === 'ORPHANED' && (
-                    <span
-                      className="text-amber-700 dark:text-amber-300"
-                      title="Die Request-Verknüpfung wurde entfernt. Technische Versandmetadaten bleiben als Historie erhalten; es erfolgt kein automatischer Neuversand."
-                    >
-                      Request-Verknüpfung entfernt · Versandhistorie erhalten
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-3 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    {d.requestId && (
-                      <Link
-                        href={`/staff/requests/${d.requestId}`}
-                        className="text-xs text-brand-700 hover:underline"
-                      >
-                        Anforderung
-                      </Link>
-                    )}
-                    {/* Zeilen liegen im äußeren Bulk-Formular — verschachtelte
-                        Formulare sind invalide, deshalb formAction + name/value
-                        am Button (React 19 Multi-Action-Form). */}
-                    {selectable &&
-                      d.pipeline.state !== 'NONE' &&
-                      d.pipeline.state !== 'REQUEST_CREATED' &&
-                      d.pipeline.state !== 'ORPHANED' && (
-                        <>
-                          {d.pipeline.state === 'SUPPRESSED' ? (
-                            <button
-                              type="submit"
-                              formAction={unsuppressAutoRequestAction}
-                              name="id"
-                              value={d.id}
-                              className="text-xs text-muted hover:text-brand-700"
-                              title="Stopp aufheben — der nächste Tageslauf versendet die Anforderung wieder wie konfiguriert."
-                            >
-                              Stopp aufheben
-                            </button>
-                          ) : (
-                            <button
-                              type="submit"
-                              formAction={suppressAutoRequestAction}
-                              name="id"
-                              value={d.id}
-                              className="text-xs text-muted hover:text-red-700"
-                              title="Auto-Anforderung stoppen — z. B. weil die Unterlagen bereits vorliegen."
-                            >
-                              Stoppen
-                            </button>
-                          )}
-                        </>
-                      )}
-                    {!selectable && d.status !== 'DONE' && d.status !== 'SKIPPED' && (
-                      <form action={markDeadlineDoneAction} className="inline">
-                        <input type="hidden" name="id" value={d.id} />
-                        <button type="submit" className="text-xs text-muted hover:text-emerald-700">
-                          ✓ Erledigt
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                </td>
-              </tr>
+            {rows.map((row) => (
+              <DeadlineTableRow key={row.id} row={row} selectable={selectable} />
             ))}
           </tbody>
         </table>
       </div>
     </section>
+  );
+}
+
+function DeadlineStatusBadge({ status }: { status: string }) {
+  const className = GROUP_STATUS_BADGES[status];
+  if (!className) return null;
+  return <span className={className}>{GROUP_STATUS_LABELS[status]}</span>;
+}
+
+type RequestCreatedPipeline = Extract<AutoRequestPipeline, { state: 'REQUEST_CREATED' }>;
+
+function requestNotificationLabel(pipeline: RequestCreatedPipeline): string {
+  switch (pipeline.notificationState) {
+    case 'PROVIDER_ACCEPTED':
+      return 'Anforderung angelegt · Provider angenommen';
+    case 'QUEUED':
+      return 'Anforderung angelegt · Benachrichtigung vorgemerkt';
+    case 'FAILED':
+      return `Anforderung angelegt · Versandversuch ${pipeline.attemptCount} fehlgeschlagen`;
+    case 'PARTIAL_FAILURE':
+      return 'Anforderung angelegt · teilweise benachrichtigt, Prüfung offen';
+    case 'NO_RECIPIENT':
+      return 'Anforderung angelegt · kein Empfänger, Prüfung offen';
+    case 'UNKNOWN':
+      return 'Anforderung angelegt · Versandstatus unklar, Prüfung offen';
+    case 'ESCALATED':
+      return 'Anforderung angelegt · Versand intern eskaliert';
+    default:
+      return 'Anforderung angelegt · Benachrichtigung nicht nachgewiesen';
+  }
+}
+
+function RequestCreatedStatus({ pipeline }: { pipeline: RequestCreatedPipeline }) {
+  const providerAccepted = pipeline.notificationState === 'PROVIDER_ACCEPTED';
+  const className = providerAccepted
+    ? 'text-emerald-700 dark:text-emerald-300'
+    : pipeline.notificationState === 'QUEUED'
+      ? 'text-muted'
+      : 'text-amber-700 dark:text-amber-300';
+  const title = providerAccepted
+    ? 'Der Versanddienst hat alle Einzelversuche technisch angenommen. Das ist kein Zugangs- oder Kenntnisnahmenachweis.'
+    : 'Portal-Anforderung und externe Benachrichtigung werden getrennt geführt.';
+  return (
+    <span className={className} title={title}>
+      {requestNotificationLabel(pipeline)}
+    </span>
+  );
+}
+
+function AutoRequestStatus({ pipeline }: { pipeline: AutoRequestPipeline }) {
+  switch (pipeline.state) {
+    case 'SCHEDULED':
+      return <span className="text-muted">Versand am {fmtDateShort(pipeline.sendDate)}</span>;
+    case 'WARNED':
+      return (
+        <span className="text-amber-700 dark:text-amber-300">
+          Vorwarnung läuft — Versand am {fmtDateShort(pipeline.sendDate)}
+        </span>
+      );
+    case 'SUPPRESSED':
+      return (
+        <span
+          className="badge-gray"
+          title="Auto-Anforderung gestoppt — Termin läuft normal weiter."
+        >
+          Gestoppt
+        </span>
+      );
+    case 'REQUEST_CREATED':
+      return <RequestCreatedStatus pipeline={pipeline} />;
+    case 'ORPHANED':
+      return (
+        <span
+          className="text-amber-700 dark:text-amber-300"
+          title="Die Request-Verknüpfung wurde entfernt. Technische Versandmetadaten bleiben als Historie erhalten; es erfolgt kein automatischer Neuversand."
+        >
+          Request-Verknüpfung entfernt · Versandhistorie erhalten
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
+function AutoRequestControl({ row, selectable }: { row: GroupDeadlineRow; selectable?: boolean }) {
+  const controllable =
+    selectable &&
+    row.pipeline.state !== 'NONE' &&
+    row.pipeline.state !== 'REQUEST_CREATED' &&
+    row.pipeline.state !== 'ORPHANED';
+  if (!controllable) return null;
+  if (row.pipeline.state === 'SUPPRESSED') {
+    return (
+      <button
+        type="submit"
+        formAction={unsuppressAutoRequestAction}
+        name="id"
+        value={row.id}
+        className="text-xs text-muted hover:text-brand-700"
+        title="Stopp aufheben — der nächste Tageslauf versendet die Anforderung wieder wie konfiguriert."
+      >
+        Stopp aufheben
+      </button>
+    );
+  }
+  return (
+    <button
+      type="submit"
+      formAction={suppressAutoRequestAction}
+      name="id"
+      value={row.id}
+      className="text-xs text-muted hover:text-red-700"
+      title="Auto-Anforderung stoppen — z. B. weil die Unterlagen bereits vorliegen."
+    >
+      Stoppen
+    </button>
+  );
+}
+
+function DeadlineActions({ row, selectable }: { row: GroupDeadlineRow; selectable?: boolean }) {
+  return (
+    <div className="flex items-center justify-end gap-2">
+      {row.requestId && (
+        <Link
+          href={`/staff/requests/${row.requestId}`}
+          className="text-xs text-brand-700 hover:underline"
+        >
+          Anforderung
+        </Link>
+      )}
+      {/* Zeilen liegen im äußeren Bulk-Formular — verschachtelte Formulare
+          sind invalide, deshalb formAction + name/value am Button. */}
+      <AutoRequestControl row={row} selectable={selectable} />
+      {!selectable && row.status !== 'DONE' && row.status !== 'SKIPPED' && (
+        <form action={markDeadlineDoneAction} className="inline">
+          <input type="hidden" name="id" value={row.id} />
+          <button type="submit" className="text-xs text-muted hover:text-emerald-700">
+            ✓ Erledigt
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function DeadlineTableRow({ row, selectable }: { row: GroupDeadlineRow; selectable?: boolean }) {
+  return (
+    <tr className="hover:bg-gray-50">
+      {selectable && (
+        <td className="pl-6 py-3 w-8">
+          <input
+            type="checkbox"
+            name="ids"
+            value={row.id}
+            aria-label={`${row.client.name} auswählen`}
+            className="h-4 w-4 rounded border-default text-brand-600 focus:ring-focus"
+          />
+        </td>
+      )}
+      <td className="px-6 py-3">
+        <Link
+          href={`/staff/clients/${row.client.id}`}
+          className="text-primary font-medium hover:underline"
+        >
+          {row.client.name}
+        </Link>
+      </td>
+      <td className="px-6 py-3">
+        <DeadlineStatusBadge status={row.status} />
+      </td>
+      <td className="px-6 py-3 text-xs text-muted">
+        {row.completedAt ? `am ${fmtDateShort(row.completedAt)}` : ''}
+      </td>
+      <td className="px-6 py-3 text-xs">
+        {/* Auto-Anforderungs-Pipeline: abgeleitet, kein eigener Status. */}
+        <AutoRequestStatus pipeline={row.pipeline} />
+      </td>
+      <td className="px-6 py-3 text-right">
+        <DeadlineActions row={row} selectable={selectable} />
+      </td>
+    </tr>
   );
 }

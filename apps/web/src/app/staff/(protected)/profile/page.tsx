@@ -2,6 +2,7 @@ import { KeyRound, ShieldCheck, ShieldOff, UserRound } from 'lucide-react';
 import { withTenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { ChangePasswordForm } from './password-form';
+import { AccessibleDisplaySettings } from '@/components/accessible-display';
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
@@ -32,6 +33,8 @@ export default async function StaffProfilePage() {
           <p className="mt-1 text-sm text-muted">Persönliche Konto- und Zugangseinstellungen.</p>
         </div>
       </div>
+
+      <AccessibleDisplaySettings />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
         <section className="card p-6">

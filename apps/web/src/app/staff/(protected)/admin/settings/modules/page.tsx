@@ -35,7 +35,7 @@ export default async function ModulesSettingsPage() {
 
       <SectionCard
         title="Mandanten-Cockpit Layout"
-        description="In welcher Reihenfolge sollen die Karten oben im Mandanten-Cockpit angezeigt werden? Drag-and-Drop sortiert pro Kanzlei — alle Mitarbeiter sehen dieselbe Reihenfolge."
+        description="Position und Größe der Karten im Mandanten-Cockpit ändern — über beschriftete Eingabefelder oder durch Ziehen. Die Anordnung gilt für die gesamte Kanzlei."
       >
         <ClientLayoutForm initial={layout} />
       </SectionCard>

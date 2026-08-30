@@ -21,9 +21,9 @@ import { GwgIdentitySubjectsProvider } from './identity-subjects-context';
 import { GwgEditStateProvider, GwgLiveStatusBadge } from './edit-state-context';
 import { StartCheckCycleForm } from './start-check-cycle-form';
 import {
+  displaySubjectKeyForAssignment,
   identitySubjectOptions,
   selectableIdentitySubjectOptions,
-  subjectKeyForAssignment,
   type IdentitySubjectOption,
 } from '@/server/gwg/identity-subject';
 import {
@@ -1293,19 +1293,19 @@ function groupIdentityDocuments(
 
   return [...groups.values()].map((entries) => {
     const first = entries[0]!;
-    const persistedSubjectKey = subjectKeyForAssignment({
-      naturalClientSubjectId: first.naturalClientSubjectId,
-      beneficialOwnerSubjectId: first.beneficialOwnerSubjectId,
-      representativeSubjectId: first.representativeSubjectId,
-    });
+    const displaySubjectKey = displaySubjectKeyForAssignment(
+      {
+        naturalClientSubjectId: first.naturalClientSubjectId,
+        beneficialOwnerSubjectId: first.beneficialOwnerSubjectId,
+        representativeSubjectId: first.representativeSubjectId,
+      },
+      subjects,
+    );
     return {
       key: first.documentSetId,
       documentSetId: first.documentSetId,
       documents: entries,
-      subjectKey:
-        persistedSubjectKey && subjects.some((subject) => subject.key === persistedSubjectKey)
-          ? persistedSubjectKey
-          : null,
+      subjectKey: displaySubjectKey,
       revision: gwgIdentityDocumentSetRevision(entries),
     };
   });

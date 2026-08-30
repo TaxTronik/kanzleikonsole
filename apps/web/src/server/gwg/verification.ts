@@ -49,6 +49,7 @@ export interface GwgVerificationSnapshot {
   }>;
   ownershipStructureNotes: string | null;
   beneficialOwners: Array<{
+    id: string;
     fullName: string;
     birthDate: Date | null;
     birthPlace: string | null;
@@ -155,14 +156,32 @@ function personalIdSets(
   return valid;
 }
 
-function hasMultipleActivePersonalIdSets(documents: VerificationDocument[]): boolean {
+function hasMultipleActivePersonalIdSets(snapshot: GwgVerificationSnapshot): boolean {
   const setIdsBySubject = new Map<string, Set<string>>();
-  for (const document of documents) {
+  const ownerIds = new Set(snapshot.beneficialOwners.map((owner) => owner.id));
+  const representativeIdByLinkedOwnerId = new Map(
+    snapshot.representatives.flatMap((representative) =>
+      representative.gwgCheckId === snapshot.checkId &&
+      representative.linkedBeneficialOwnerId &&
+      ownerIds.has(representative.linkedBeneficialOwnerId)
+        ? [[representative.linkedBeneficialOwnerId, representative.id] as const]
+        : [],
+    ),
+  );
+
+  for (const document of snapshot.idDocuments) {
     if (document.supersededAt != null) continue;
     if (document.type !== 'PERSONALAUSWEIS' && document.type !== 'REISEPASS') continue;
+    const linkedRepresentativeId = document.beneficialOwnerSubjectId
+      ? representativeIdByLinkedOwnerId.get(document.beneficialOwnerSubjectId)
+      : undefined;
     const subjectKeys = [
       document.naturalClientSubjectId ? `client:${document.naturalClientSubjectId}` : null,
-      document.beneficialOwnerSubjectId ? `owner:${document.beneficialOwnerSubjectId}` : null,
+      document.beneficialOwnerSubjectId
+        ? linkedRepresentativeId
+          ? `representative:${linkedRepresentativeId}`
+          : `owner:${document.beneficialOwnerSubjectId}`
+        : null,
       document.representativeSubjectId
         ? `representative:${document.representativeSubjectId}`
         : null,
@@ -173,6 +192,69 @@ function hasMultipleActivePersonalIdSets(documents: VerificationDocument[]): boo
     setIdsBySubject.set(subjectKeys[0]!, setIds);
   }
   return [...setIdsBySubject.values()].some((setIds) => setIds.size > 1);
+}
+
+function hasRepresentativePersonalId(
+  snapshot: GwgVerificationSnapshot,
+  personalIds: ValidPersonalIdSet[],
+): boolean {
+  const ownerIds = new Set(snapshot.beneficialOwners.map((owner) => owner.id));
+  const currentRepresentatives = snapshot.representatives.filter(
+    (representative) => representative.gwgCheckId === snapshot.checkId,
+  );
+  const representativeIds = new Set(
+    currentRepresentatives.map((representative) => representative.id),
+  );
+  const representativeOwnerIds = new Set(
+    currentRepresentatives.flatMap((representative) =>
+      representative.linkedBeneficialOwnerId && ownerIds.has(representative.linkedBeneficialOwnerId)
+        ? [representative.linkedBeneficialOwnerId]
+        : [],
+    ),
+  );
+
+  return personalIds.some(
+    (set) =>
+      (set.representativeSubjectId !== null &&
+        representativeIds.has(set.representativeSubjectId)) ||
+      (set.beneficialOwnerSubjectId !== null &&
+        representativeOwnerIds.has(set.beneficialOwnerSubjectId)),
+  );
+}
+
+function legalEntityEvidenceErrors(snapshot: GwgVerificationSnapshot): string[] {
+  const errors: string[] = [];
+  const entityEvidence = snapshot.idDocuments.some(
+    (document) =>
+      document.supersededAt == null &&
+      (snapshot.noRegisterEntry
+        ? document.type === 'GESELLSCHAFTSVERTRAG'
+        : document.type === 'HANDELSREGISTERAUSZUG' || document.type === 'GESELLSCHAFTSVERTRAG') &&
+      hasAttachedEvidence(document, snapshot.clientId),
+  );
+  if (!entityEvidence) {
+    errors.push(
+      snapshot.noRegisterEntry
+        ? 'Bei fehlender Registerpflicht ist ein Gesellschaftsvertrag oder gleichwertiges Gründungsdokument mit Datei erforderlich (\u00a7 12 Abs. 2 GwG).'
+        : 'Registerauszug oder beweiskräftiges Gründungsdokument mit Datei ist erforderlich (\u00a7 12 Abs. 2 GwG).',
+    );
+  }
+
+  const transparencyEvidence =
+    snapshot.noRegisterEntry ||
+    snapshot.idDocuments.some(
+      (document) =>
+        document.supersededAt == null &&
+        document.type === 'TRANSPARENZREGISTER_AUSZUG' &&
+        hasAttachedEvidence(document, snapshot.clientId),
+    );
+  if (!transparencyEvidence) {
+    errors.push(
+      'Nachweis/Auszug aus dem Transparenzregister ist für den eingetragenen Rechtsträger erforderlich (\u00a7 12 Abs. 3 GwG).',
+    );
+  }
+
+  return errors;
 }
 
 /**
@@ -186,7 +268,7 @@ export function gwgVerificationErrors(
 ): string[] {
   const errors: string[] = [];
   const personalIds = personalIdSets(snapshot.idDocuments, snapshot.clientId, now);
-  if (hasMultipleActivePersonalIdSets(snapshot.idDocuments)) {
+  if (hasMultipleActivePersonalIdSets(snapshot)) {
     errors.push(
       'Für eine Person dürfen nicht mehrere aktive Ausweissätze gleichzeitig als Prüfgrundlage geführt werden. Bitte einen aktuellen Ausweis festlegen; die übrigen Sätze müssen als alte Nachweise abgelöst werden.',
     );
@@ -238,13 +320,22 @@ export function gwgVerificationErrors(
     );
   }
   snapshot.representatives.forEach((representative, index) => {
+    const linkedOwner = representative.linkedBeneficialOwnerId
+      ? (snapshot.beneficialOwners.find(
+          (owner) => owner.id === representative.linkedBeneficialOwnerId,
+        ) ?? null)
+      : null;
+    // Eine ausdrücklich verknüpfte Doppelrolle beschreibt dieselbe natürliche
+    // Person. Der Owner-Snapshot ist in diesem Fall die gemeinsame Quelle der
+    // allgemeinen Angaben; eine bloße Namensgleichheit reicht weiterhin nie.
+    const person = linkedOwner ?? representative;
     const missing: string[] = [];
-    if (!representative.fullName.trim()) missing.push('Name');
-    if (!representative.birthDate) missing.push('Geburtsdatum');
-    if (!representative.birthPlace?.trim()) missing.push('Geburtsort');
-    if (!representative.residence?.trim()) missing.push('Wohnsitz');
-    if (!representative.nationality?.trim()) missing.push('Staatsangehörigkeit');
-    if (representative.isPep == null) missing.push('PEP-Status');
+    if (!person.fullName.trim()) missing.push('Name');
+    if (!person.birthDate) missing.push('Geburtsdatum');
+    if (!person.birthPlace?.trim()) missing.push('Geburtsort');
+    if (!person.residence?.trim()) missing.push('Wohnsitz');
+    if (!person.nationality?.trim()) missing.push('Staatsangehörigkeit');
+    if (person.isPep == null) missing.push('PEP-Status');
     if (missing.length > 0) {
       errors.push(
         `Gesetzliche Vertretung ${index + 1}: ${missing.join(', ')} ${missing.length === 1 ? 'fehlt' : 'fehlen'}.`,
@@ -257,47 +348,9 @@ export function gwgVerificationErrors(
     );
   }
 
-  const entityEvidence = snapshot.idDocuments.some(
-    (document) =>
-      document.supersededAt == null &&
-      (snapshot.noRegisterEntry
-        ? document.type === 'GESELLSCHAFTSVERTRAG'
-        : document.type === 'HANDELSREGISTERAUSZUG' || document.type === 'GESELLSCHAFTSVERTRAG') &&
-      hasAttachedEvidence(document, snapshot.clientId),
-  );
-  if (!entityEvidence) {
-    errors.push(
-      snapshot.noRegisterEntry
-        ? 'Bei fehlender Registerpflicht ist ein Gesellschaftsvertrag oder gleichwertiges Gründungsdokument mit Datei erforderlich (\u00a7 12 Abs. 2 GwG).'
-        : 'Registerauszug oder beweiskräftiges Gründungsdokument mit Datei ist erforderlich (\u00a7 12 Abs. 2 GwG).',
-    );
-  }
+  errors.push(...legalEntityEvidenceErrors(snapshot));
 
-  const transparencyEvidence =
-    snapshot.noRegisterEntry ||
-    snapshot.idDocuments.some(
-      (document) =>
-        document.supersededAt == null &&
-        document.type === 'TRANSPARENZREGISTER_AUSZUG' &&
-        hasAttachedEvidence(document, snapshot.clientId),
-    );
-  if (!transparencyEvidence) {
-    errors.push(
-      'Nachweis/Auszug aus dem Transparenzregister ist für den eingetragenen Rechtsträger erforderlich (\u00a7 12 Abs. 3 GwG).',
-    );
-  }
-
-  const representativeIds = new Set(
-    snapshot.representatives
-      .filter((representative) => representative.gwgCheckId === snapshot.checkId)
-      .map((representative) => representative.id),
-  );
-  if (
-    !personalIds.some(
-      (set) =>
-        set.representativeSubjectId !== null && representativeIds.has(set.representativeSubjectId),
-    )
-  ) {
+  if (!hasRepresentativePersonalId(snapshot, personalIds)) {
     errors.push(
       'Mindestens eine auftretende vertretungsberechtigte Person muss mit gültigem Ausweis explizit zugeordnet und bestätigt sein.',
     );

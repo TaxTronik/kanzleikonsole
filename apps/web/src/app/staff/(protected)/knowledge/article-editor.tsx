@@ -48,6 +48,7 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
   const [attachments, setAttachments] = useState<KnowledgeAttachment[]>(initial?.attachments ?? []);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
   const composerRef = useRef<RichMarkdownEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,12 +75,14 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
     event.target.value = '';
     if (!file) return;
     if (uploadModeRef.current === 'image' && !file.type.startsWith('image/')) {
+      setUploadMessage(null);
       setUploadError('Bitte eine Bilddatei auswählen.');
       return;
     }
 
     setUploading(true);
     setUploadError(null);
+    setUploadMessage(null);
     try {
       const formData = new FormData();
       formData.set('file', file);
@@ -100,6 +103,7 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
       }
       setAttachments((current) => [...current, result.attachment!]);
       insertAttachment(result.attachment, uploadModeRef.current === 'image');
+      setUploadMessage(`${result.attachment.displayName} wurde hochgeladen und eingefügt.`);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Upload fehlgeschlagen.');
     } finally {
@@ -172,7 +176,14 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
       </div>
 
       {(uploadError || contentError) && (
-        <div className="mx-6 mt-4 alert-error-sm">{uploadError ?? contentError}</div>
+        <div className="mx-6 mt-4 alert-error-sm" role="alert" aria-live="assertive">
+          {uploadError ?? contentError}
+        </div>
+      )}
+      {uploadMessage && !uploadError && (
+        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {uploadMessage}
+        </div>
       )}
 
       <RichMarkdownEditor
@@ -189,7 +200,7 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
       {attachments.length > 0 && (
         <section className="border-t border-default bg-gray-50/50 px-6 py-4">
           <div className="mb-3 flex items-center gap-2">
-            <Paperclip className="h-4 w-4 text-muted" />
+            <Paperclip className="h-4 w-4 text-muted" aria-hidden="true" />
             <h2 className="text-sm font-semibold text-primary">Anhänge ({attachments.length})</h2>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -201,9 +212,9 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
                   className="inline-flex items-center gap-2 rounded-md border border-default bg-surface px-3 py-2 text-xs"
                 >
                   {image ? (
-                    <ImagePlus className="h-4 w-4 text-blue-600" />
+                    <ImagePlus className="h-4 w-4 text-blue-600" aria-hidden="true" />
                   ) : (
-                    <FileText className="h-4 w-4 text-violet-600" />
+                    <FileText className="h-4 w-4 text-violet-600" aria-hidden="true" />
                   )}
                   <span className="max-w-64 truncate text-secondary">{attachment.displayName}</span>
                   <button

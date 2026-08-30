@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, Loader2, RefreshCw, Route, Save, Workflow } from 'lucide-react';
+import { Download, Loader2, RefreshCw, Route, Save } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import type { ActionResult, N8nDiscoveredWebhookView, N8nWorkflowRow } from './n8n-actions';
@@ -59,20 +59,12 @@ export function N8nWorkflowsSection({
   saving,
 }: Props) {
   return (
-    <section className="space-y-4" aria-labelledby="n8n-workflows-heading">
-      <div>
-        <h3
-          id="n8n-workflows-heading"
-          className="inline-flex items-center gap-2 text-base font-semibold text-primary"
-        >
-          <Workflow className="h-4 w-4" /> 3. Workflows einrichten
-        </h3>
-        <p className="mt-1 text-xs text-muted">
-          Vorlagen werden nur importiert. Mit <code>credential:create</code> richtet TaxTronik den
-          Rückkanal automatisch ein; andernfalls erscheint das Token einmalig zur manuellen
-          Übergabe. Kein Workflow wird automatisch aktiviert oder überschrieben.
-        </p>
-      </div>
+    <section className="space-y-4">
+      <p className="text-xs text-muted">
+        Vorlagen werden nur importiert. Mit <code>credential:create</code> richtet TaxTronik den
+        Rückkanal automatisch ein; andernfalls erscheint das Token einmalig zur manuellen Übergabe.
+        Kein Workflow wird automatisch aktiviert oder überschrieben.
+      </p>
       <div className="rounded-lg border border-default p-4 space-y-4">
         <div className="grid gap-3 lg:grid-cols-2">
           {bundledWorkflows.map((workflow) => (
@@ -84,7 +76,7 @@ export function N8nWorkflowsSection({
                 <div className="flex items-start gap-2">
                   <input
                     type="checkbox"
-                    className="mt-1"
+                    className="switch mt-1"
                     aria-label={`${workflow.name} importieren`}
                     checked={selectedTemplates.includes(workflow.templateId)}
                     onChange={(event) =>

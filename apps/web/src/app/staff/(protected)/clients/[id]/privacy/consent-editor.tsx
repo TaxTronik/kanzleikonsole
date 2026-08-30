@@ -30,8 +30,11 @@ export function ConsentEditor({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-default pt-4">
         <div>
-          <label className="label-sm">Unterschrift / Name der erklärenden Person *</label>
+          <label className="label-sm" htmlFor="client-consent-signed-by-name">
+            Unterschrift / Name der erklärenden Person *
+          </label>
           <input
+            id="client-consent-signed-by-name"
             name="signedByName"
             required
             maxLength={300}
@@ -40,8 +43,15 @@ export function ConsentEditor({
           />
         </div>
         <div>
-          <label className="label-sm">Zugeordnete Kontaktperson (optional)</label>
-          <select name="signedByContact" className="input w-full" defaultValue="">
+          <label className="label-sm" htmlFor="client-consent-signed-by-contact">
+            Zugeordnete Kontaktperson (optional)
+          </label>
+          <select
+            id="client-consent-signed-by-contact"
+            name="signedByContact"
+            className="input w-full"
+            defaultValue=""
+          >
             <option value="">— keine —</option>
             {contacts.map((k) => (
               <option key={k.id} value={k.id}>
@@ -52,8 +62,11 @@ export function ConsentEditor({
         </div>
       </div>
       <div>
-        <label className="label-sm">Notiz (optional)</label>
+        <label className="label-sm" htmlFor="client-consent-note">
+          Notiz (optional)
+        </label>
         <input
+          id="client-consent-note"
           name="note"
           maxLength={2000}
           className="input w-full"
@@ -62,12 +75,18 @@ export function ConsentEditor({
       </div>
 
       {state && !state.ok && state.error && (
-        <div className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
+        <div
+          className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300"
+          role="alert"
+        >
           {state.error}
         </div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300">
+        <div
+          className="rounded-md bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300"
+          role="status"
+        >
           Einwilligungsstand gespeichert (neuer Nachweis-Snapshot angelegt).
         </div>
       )}

@@ -112,7 +112,7 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
             className={
               'transition-shadow ' +
               (isDragging ? 'opacity-50 ' : '') +
-              (isDropTarget ? 'ring-2 ring-brand-500 rounded-lg ' : '')
+              (isDropTarget ? 'ring-2 ring-focus rounded-lg ' : '')
             }
           >
             {renderItem(i, handle)}

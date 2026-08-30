@@ -705,9 +705,10 @@ export function BrowserView({
       {/* Rechtsklick-Menü */}
       {ctx && (
         <div
+          role="group"
+          aria-label={`Aktionen für ${ctx.e.name}`}
           className="fixed z-[120] w-48 card py-1 text-sm shadow-lg"
           style={{ top: ctx.y, left: ctx.x }}
-          onClick={(e) => e.stopPropagation()}
         >
           {ctx.e.kind === 'folder' && (
             <>

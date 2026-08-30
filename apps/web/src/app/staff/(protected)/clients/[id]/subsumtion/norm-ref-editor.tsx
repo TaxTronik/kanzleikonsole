@@ -33,6 +33,7 @@ import {
   katalogKuratierungAction,
   reviewKatalogBegriffAction,
 } from './norm-actions';
+import { confirmDialog } from '@/components/ui/modal';
 import {
   type NormRefDTO,
   type KatalogOverlay,
@@ -86,12 +87,13 @@ export function KatalogReviewControl({
   start: (cb: () => void) => void;
   flash: Flash;
 }) {
-  function review(status: 'geprüft' | 'freigegeben') {
+  async function review(status: 'geprüft' | 'freigegeben') {
     if (
       status === 'freigegeben' &&
-      !window.confirm(
+      !(await confirmDialog(
         'Begriff kanzleiweit freigeben? Der Übergang ist nur vorwärts möglich und wird in der Audit-Chain verankert.',
-      )
+        { title: 'Begriff freigeben', confirmLabel: 'Freigeben' },
+      ))
     )
       return;
     start(async () => {

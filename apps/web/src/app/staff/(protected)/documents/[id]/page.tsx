@@ -57,7 +57,11 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/documents" className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href="/staff/documents"
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1 min-w-0">

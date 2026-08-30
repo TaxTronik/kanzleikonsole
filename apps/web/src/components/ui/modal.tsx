@@ -10,10 +10,30 @@
 //     Initial-Fokus, Fokus-Rückgabe an den Auslöser (useDialogA11y)
 // =============================================================================
 
-import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { X } from 'lucide-react';
+
+/** Gemeinsamer, SSR-sicherer Portal-Ausgang für Overlays und Shell-Ebenen. */
+export function AppPortal({
+  children,
+  target,
+}: {
+  children: ReactNode;
+  target?: Element | DocumentFragment | null;
+}) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(children, target ?? document.body);
+}
 
 /** Modal-A11y: Esc schließt, Tab bleibt im Dialog gefangen, Initial-Fokus aufs
  *  erste Element (bzw. [autofocus]), beim Schließen kehrt der Fokus zum
@@ -28,17 +48,36 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
   }, [closeDisabled, onClose]);
   useEffect(() => {
     const node = ref.current;
+    if (!node) return;
     const prevFocus = document.activeElement as HTMLElement | null;
+    const backdrop = node.closest<HTMLElement>('.modal-backdrop');
+    const backgroundStates = Array.from(document.body.children)
+      .filter(
+        (element): element is HTMLElement =>
+          element instanceof HTMLElement &&
+          element !== backdrop &&
+          !element.contains(backdrop) &&
+          !['SCRIPT', 'STYLE', 'LINK'].includes(element.tagName),
+      )
+      .map((element) => ({
+        element,
+        hadInert: element.hasAttribute('inert'),
+        ariaHidden: element.getAttribute('aria-hidden'),
+      }));
+
+    for (const { element } of backgroundStates) {
+      element.setAttribute('inert', '');
+      element.setAttribute('aria-hidden', 'true');
+    }
+
     const focusables = () =>
-      node
-        ? Array.from(
-            node.querySelectorAll<HTMLElement>(
-              'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])',
-            ),
-          ).filter((el) => el.offsetParent !== null)
-        : [];
-    const auto = node?.querySelector<HTMLElement>('[autofocus]');
-    (auto ?? focusables()[0])?.focus();
+      Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),summary,[contenteditable]:not([contenteditable="false"]),[tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getClientRects().length > 0 && !element.closest('[inert]'));
+    const auto = node.querySelector<HTMLElement>('[autofocus]');
+    (auto ?? focusables()[0] ?? node).focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -47,7 +86,11 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
       }
       if (e.key !== 'Tab') return;
       const f = focusables();
-      if (f.length === 0) return;
+      if (f.length === 0) {
+        e.preventDefault();
+        node.focus();
+        return;
+      }
       const first = f[0]!,
         last = f[f.length - 1]!;
       if (e.shiftKey && document.activeElement === first) {
@@ -61,7 +104,13 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      prevFocus?.focus?.();
+      for (const { element, hadInert, ariaHidden } of backgroundStates) {
+        if (hadInert) element.setAttribute('inert', '');
+        else element.removeAttribute('inert');
+        if (ariaHidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', ariaHidden);
+      }
+      if (prevFocus?.isConnected && !prevFocus.closest('[inert]')) prevFocus?.focus?.();
     };
   }, []);
   return ref;
@@ -97,21 +146,28 @@ export function Modal({
   closeDisabled?: boolean;
 }) {
   const ref = useDialogA11y(onClose, closeDisabled);
+  const titleId = useId();
   const modal = (
+    // Der Backdrop ist nur eine zusätzliche Zeiger-Abkürzung. Escape und der
+    // benannte Schließen-Button stellen die vollständige Tastaturbedienung her.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       className={`modal-backdrop fixed inset-0 z-[130] flex items-center justify-center ${backdropClassName}`}
-      onClick={() => {
-        if (!closeDisabled) onClose();
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !closeDisabled) onClose();
       }}
     >
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
-        className={panelClassName ?? `w-full ${maxWidth} card p-6 relative`}
-        onClick={(e) => e.stopPropagation()}
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`${panelClassName ?? `w-full ${maxWidth} card p-6`} relative z-[1]`}
       >
+        <span id={titleId} className="sr-only">
+          {title}
+        </span>
         {showCloseButton && (
           <button
             type="button"
@@ -120,14 +176,14 @@ export function Modal({
             className="modal-close"
             aria-label="Schließen"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" aria-hidden="true" />
           </button>
         )}
         {children}
       </div>
     </div>
   );
-  return typeof document !== 'undefined' ? createPortal(modal, document.body) : null;
+  return <AppPortal>{modal}</AppPortal>;
 }
 
 /**
@@ -197,6 +253,7 @@ export function ConfirmModal({
 export function InputModal({
   title,
   message,
+  inputLabel = 'Eingabe',
   initialValue = '',
   placeholder,
   maxLength = 120,
@@ -207,6 +264,7 @@ export function InputModal({
 }: {
   title: string;
   message?: ReactNode;
+  inputLabel?: string;
   initialValue?: string;
   placeholder?: string;
   maxLength?: number;
@@ -218,6 +276,9 @@ export function InputModal({
   const [value, setValue] = useState(initialValue);
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
+  const inputId = useId();
+  const messageId = useId();
+  const errorId = useId();
   const submit = () => {
     const v = value.trim();
     if (!v || busy) return;
@@ -231,8 +292,16 @@ export function InputModal({
   return (
     <Modal title={title} onClose={onClose} maxWidth="max-w-sm" closeDisabled={busy}>
       <h2 className="text-base font-semibold text-primary mb-3">{title}</h2>
-      {message && <div className="text-sm text-secondary mb-3 whitespace-pre-line">{message}</div>}
+      {message && (
+        <div id={messageId} className="text-sm text-secondary mb-3 whitespace-pre-line">
+          {message}
+        </div>
+      )}
+      <label htmlFor={inputId} className="mb-1 block text-sm font-medium text-primary">
+        {inputLabel}
+      </label>
       <input
+        id={inputId}
         autoFocus
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -245,8 +314,16 @@ export function InputModal({
         placeholder={placeholder}
         className="input mb-3"
         maxLength={maxLength}
+        aria-invalid={err ? 'true' : undefined}
+        aria-describedby={
+          [message ? messageId : null, err ? errorId : null].filter(Boolean).join(' ') || undefined
+        }
       />
-      {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3">{err}</div>}
+      {err && (
+        <div id={errorId} role="alert" className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3">
+          {err}
+        </div>
+      )}
       <div className="flex gap-2">
         <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
           Abbrechen
@@ -302,6 +379,7 @@ type NoticeDialogOptions = {
 
 type PromptDialogOptions = {
   title?: string;
+  inputLabel?: string;
   initialValue?: string;
   placeholder?: string;
   maxLength?: number;
@@ -374,6 +452,7 @@ export function promptDialog(message: ReactNode, options: PromptDialogOptions = 
     <InputModal
       title={options.title ?? 'Eingabe'}
       message={message}
+      inputLabel={options.inputLabel}
       initialValue={options.initialValue}
       placeholder={options.placeholder}
       maxLength={options.maxLength}

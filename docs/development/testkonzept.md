@@ -2,7 +2,7 @@
 
 - **Dokumentstatus:** gültige interne Verfahrensbeschreibung mit ausgewiesenen
   Lücken
-- **Letzte inhaltliche Prüfung:** 2026-08-23
+- **Letzte inhaltliche Prüfung:** 2026-08-30
 
 Dieses Dokument beschreibt, **was** bei TaxTronik getestet wird, **wie** und
 **womit** — und wie die Durchführung für Dritte nachvollziehbar bleibt
@@ -27,6 +27,8 @@ Ist-Zustand; Änderungen am Testverfahren werden hier nachgezogen.
 | Dependency-/Secret-Scans          | gitleaks, `pnpm audit`                                                                                       | Secrets und verwundbare Abhängigkeiten                                                                                                              | täglich; Pull Requests; Pushes auf `main`/`develop`; Release-Aufruf      |
 | Release-Image-Scan                | Trivy gegen die gebauten Release-Images                                                                      | Image-CVEs vor der Veröffentlichung                                                                                                                 | ausschließlich im Release-Workflow                                       |
 | Strukturierte Sicherheits-Reviews | adversariale Mehrfach-Reviews mit dokumentierten Befunden                                                    | Angriffsflächen-Prüfung über automatisierte Tests hinaus                                                                                            | anlassbezogen; Ergebnisse in Commit-Historie und Befundkennungen am Code |
+| Statische A11Y-Prüfung            | `eslint-plugin-jsx-a11y` im Repository-Lint                                                                  | statisch erkennbare Barrieren bei Semantik, Namen, Labels, Rollen und Tastaturereignissen                                                           | jeder CI-Lauf im Job `quality`                                           |
+| A11Y-End-to-End                   | Playwright + Axe (`apps/e2e/tests/12-accessibility.spec.ts`)                                                 | ausgewählte öffentliche und authentifizierte Kernseiten gegen WCAG-A/AA-Tags, Dark Mode, 320-Pixel-Reflow, Skip-Link und mobile Navigation          | CI-Job `e2e-paranoid`; lokal gezielt mit `pnpm a11y:e2e`                 |
 | Manuelle Abnahme                  | Verantwortlicher Entwickler                                                                                  | Bedien-/Sichtprüfung neuer bzw. geänderter Oberflächen vor Freigabe                                                                                 | je Release                                                               |
 
 Die Anzahl erfolgreicher Testfälle ist kein dauerhafter Dokumentationswert und
@@ -36,6 +38,10 @@ Testreport abgeleitet werden. DB-gebundene Tests laufen im Job `db` gegen eine
 echte Postgres-Instanz, die übrigen Pakete im Job `quality`.
 Plattformabhängige Evidence-Tests dürfen lokal nur mit ausgewiesenem
 Skip-Grund fehlen; in CI ist die erforderliche OpenSSL-Unterstützung ein Gate.
+Die A11Y-Gates und ihre Grenzen sind in der
+[Ist-/Gap-Dokumentation zur Barrierefreiheit](../assurance/barrierefreiheit.md)
+beschrieben. Insbesondere ersetzt ein bestandener Axe-Lauf keine manuelle
+Tastatur-, Screenreader-, Reflow-, Kontrast- und Reduced-Motion-Prüfung.
 
 ## 2. Zielabdeckung und belegter Ist-Stand
 
@@ -124,3 +130,25 @@ Vollständigkeit, Abweichungen):
   konkreten Prüfungsauftrag und das zugesagte Mengengerüst erforderlich sind,
   ist risikobasiert mit dem Prüfer festzulegen; bis dahin bleiben
   Performancegrenzen unbestätigt.
+
+## 6. Barrierefreiheitsprüfung
+
+Zielniveau der Weboberflächen ist WCAG 2.2 AA. Das Ziel ist keine pauschale
+Konformitätsbehauptung. Automatisierte Prüfungen bestehen aus drei Schichten:
+
+1. `eslint-plugin-jsx-a11y` verhindert neue statisch erkennbare Muster im
+   normalen Lint-Gate;
+2. Vitest-Regressionstests sichern gemeinsame Shell-, Dialog-, Such-,
+   Formular-, Editor- und Kontrastverträge;
+3. Axe läuft mit Playwright auf einem repräsentativen Satz öffentlicher und
+   authentifizierter Seiten und hängt Befunde an den Testbericht.
+
+Für die Abnahme müssen zusätzlich die geänderten und risikobehafteten
+Bedienwege mit Tastatur und der festgelegten Screenreader-/Browser-Matrix
+geprüft werden. Dabei sind Light/Dark Mode, Forced Colors, Reduced Motion,
+200-/400-Prozent-Zoom, 320-CSS-Pixel-Reflow, dynamische Statusmeldungen und
+Whitelabel-Farben einzubeziehen. Die konkrete Durchführung wird je Release
+protokolliert; diese Verfahrensbeschreibung allein ist kein Nachweis eines
+erfolgreichen Tests. Vollständiger Ist-Stand, Routenscope und bekannte Grenzen
+stehen in der
+[Barrierefreiheitsdokumentation](../assurance/barrierefreiheit.md).

@@ -57,6 +57,7 @@ export default async function ClientBillingPage({ params }: { params: Promise<{ 
       <div className="flex items-start gap-4 mb-6">
         <Link
           href={`/staff/clients/${client.id}`}
+          aria-label="Zurück"
           className="text-disabled hover:text-secondary mt-1"
         >
           <ArrowLeft className="h-5 w-5" />

@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { UserX } from 'lucide-react';
 import { confirmClientAnonymizationAction, confirmPoaSignerAnonymizationAction } from './actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 export function ClientAnonymizeButton({
   clientId,
@@ -17,13 +18,14 @@ export function ClientAnonymizeButton({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function onClick() {
-    const ok = window.confirm(
+  async function onClick() {
+    const ok = await confirmDialog(
       `Mandanten-Stammdaten endgültig und unwiderruflich anonymisieren?\n\n${label}\n\n` +
         'Name, Adresse und Custom-Felder werden entfernt, verknüpfte Kontakte ' +
         'mit-anonymisiert. Ein Skelett-Datensatz (Vernichtungsvermerk) bleibt ' +
         'erhalten. Nur fortfahren, wenn alle gesetzlichen Aufbewahrungsfristen ' +
         '(insbesondere Handakte § 66 StBerG sowie dokumentartabhängige GoBD-/GwG-Fristen) abgelaufen sind.',
+      { title: 'Mandant anonymisieren', confirmLabel: 'Endgültig anonymisieren', danger: true },
     );
     if (!ok) return;
     setError(null);
@@ -64,12 +66,13 @@ export function PoaSignerAnonymizeButton({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function onClick() {
-    const ok = window.confirm(
+  async function onClick() {
+    const ok = await confirmDialog(
       `Personendaten aus ${poas} Vollmacht${poas === 1 ? '' : 'en'} unwiderruflich redigieren?\n\n${label}\n\n` +
         'Die Gesellschaft bleibt als Mandant vollständig erhalten. Entfernt werden nur ' +
         'Unterzeichner-, Versand-Snapshot- und Signaturmetadaten, deren längste ' +
         'Aufbewahrungsfrist abgelaufen ist.',
+      { title: 'Vollmachtsdaten redigieren', confirmLabel: 'Endgültig redigieren', danger: true },
     );
     if (!ok) return;
     setError(null);

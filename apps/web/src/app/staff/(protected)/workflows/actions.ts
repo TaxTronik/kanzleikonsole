@@ -32,7 +32,7 @@ export async function createTemplateAction(
 
   // F4: Workflow-Templates sind Tenant-weite Konfiguration (n8n-Events,
   // CLIENT_EMAIL/REQUEST/FORM-Steps). Konsistent zu email-templates,
-  // request-templates, state-machines etc. — ADMIN/PARTNER-only.
+  // request-templates etc. — ADMIN/PARTNER-only.
   return withWorkflowsStaff(
     async (tx, { tenantId, staffId }) => {
       // S7: expliziter tenantId-Filter zusätzlich zur RLS — Defense in Depth

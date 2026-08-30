@@ -76,6 +76,7 @@ code_refs:
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
   - apps/web/src/server/gwg/__tests__/verification.test.ts
+  - apps/web/src/server/gwg/__tests__/identity-subject.test.ts
   - apps/web/src/server/gwg/__tests__/representatives.test.ts
   - apps/web/src/server/gwg/__tests__/reverification.test.ts
   - apps/web/src/server/gwg/__tests__/evidence-documents.test.ts
@@ -194,8 +195,20 @@ Vertreter-Fremdschlüssel wird er nicht als Identitätsnachweis akzeptiert.
 `verification.ts` bildet das serverseitige Freigabegate. Personalausweis- und
 Reisepassdateien werden nach `documentSetId` gruppiert, auf konsistente
 Metadaten, genau eine Rollenreferenz, Bestätigung, Gültigkeit und einen sauberen
-Dateinachweis geprüft. Die Datenbank ergänzt Eindeutigkeits- und
+Dateinachweis geprüft. Bei einer ausdrücklich verknüpften Doppelrolle gilt der
+bestätigte Ausweissatz der wirtschaftlich berechtigten Person zugleich als
+Vertreternachweis; maßgeblich sind ausschließlich die stabilen Owner- und
+Vertreter-IDs desselben Prüfsnapshots. Die Datenbank ergänzt Eindeutigkeits- und
 Integritätsregeln.
+
+Die Personenansicht bildet einen weiterhin auf der Owner-ID gespeicherten
+Ausweissatz bei einer ausdrücklich verknüpften Doppelrolle auf den sichtbaren
+gemeinsamen Personen-Eintrag ab. Die persistierte Zuordnung wird dabei nicht
+umgeschrieben; die Anzeige folgt ausschließlich der gespeicherten
+`linkedBeneficialOwnerId`-Beziehung. Das Freigabegate verwendet für diese
+gemeinsame Person die vollständigen allgemeinen Owner-Angaben und akzeptiert
+denselben bestätigten Ausweissatz. Fehlende oder fremde Verknüpfungen werden
+weiterhin nicht durch Namensgleichheit ersetzt.
 
 Für Rechtsträger verlangt das Gate gespeicherte Rechtsträgerdaten und je nach
 Registerstatus einen Registerauszug oder ein beweiskräftiges
@@ -245,6 +258,11 @@ eingeklappt innerhalb desselben Unterbereichs „Personalausweis“ und nicht me
 als gleichrangiges Element neben ihm. Ein fehlender Ausweis wird erst im
 Bearbeitungsmodus neu erfasst. Der danebenliegende Unterbereich
 „Rolle(n)“ folgt derselben Trennung zwischen Lese- und Bearbeitungsmodus.
+Ein vollständiger, noch gültiger und eindeutig zugeordneter Ausweissatz kann
+über „Als geprüft markieren“ direkt im Lesemodus bestätigt werden. Der Button
+verwendet dieselbe serverseitige Datums-, Zuordnungs-, Datei-, Virenscan- und
+Revisionsprüfung wie der Bearbeitungsmodus; nach Erfolg aktualisiert die
+Oberfläche den gesamten Prüfstand ohne manuellen Seitenreload.
 Für die Aktiv-/Alt-Anzeige gelten sowohl ein nicht gesetztes
 `supersededAt`-Feld als auch `NULL` als aktiv; nur ein vorhandener Zeitstempel
 kennzeichnet einen Alt-Nachweis. Dadurch bleibt die Einordnung auch während
@@ -283,7 +301,15 @@ Die Verifikations- und Evidence-Helfer belegen das fail-closed Gate für
 Personenzuordnung, Dateiverfügbarkeit und Dokumentgruppen. Die Tests prüfen
 fremde, gelöschte, falsch klassifizierte, noch nicht sauber gescannte,
 abgelaufene und widersprüchliche Nachweise sowie stabile Vorder-/Rückseiten-
-Gruppen. Action- und Strukturtests belegen zusätzlich die zentrale Erfassung
+Gruppen. Der Gate-Test belegt außerdem die Wiederverwendung eines bestätigten
+Owner-Ausweises bei ausdrücklich verknüpfter Doppelrolle, die Nutzung der
+gemeinsamen Owner-Angaben bei einem unvollständigen älteren
+Vertretersnapshot und die fortbestehende Ablehnung einer bloßen
+Namensgleichheit. Er sichert außerdem, dass Ausweissätze auf Owner- und
+Vertreter-ID derselben Doppelrolle gemeinsam unter der Ein-Satz-pro-Person-
+Grenze ausgewertet werden. Der Identity-Subject-Test belegt die rein ID-basierte
+Zuordnung eines auf der Owner-ID gespeicherten Ausweises zum sichtbaren
+Doppelrollen-Eintrag. Action- und Strukturtests belegen zusätzlich die zentrale Erfassung
 allgemeiner Personenangaben, ihre Synchronisation bei Doppelrollen, die
 Entwertung einer Identitätsbestätigung nach identitätsrelevanten Änderungen und den atomaren Austausch
 aller aktiven Ausweissätze einer Person mit sichtbarer Alt-Zuordnung, die
@@ -291,5 +317,8 @@ Ein-Satz-pro-Person- und Zwei-Dateien-Grenze, das ausschließliche Lösen einer
 Fehlzuordnung bei Erhalt des Aktenobjekts sowie die Bedienoberfläche und deren
 getrennte Lese- und Bearbeitungsmodi. Die View-State-Tests sichern zusätzlich
 die Trennung von fehlend, abgelaufen, mehrfach und gültig sowie die
-Aktiv-Einordnung eines noch nicht projizierten Supersession-Felds. Nicht
+Aktiv-Einordnung eines noch nicht projizierten Supersession-Felds. Der
+Strukturtest belegt außerdem die direkte Bestätigungsaktion im Lesemodus und
+den anschließenden Server-Refresh; die Actiontests decken die dabei unverändert
+verwendeten fachlichen Prüfbedingungen ab. Nicht
 nachgewiesen werden Echtheit oder fachliche Eignung des Originaldokuments.

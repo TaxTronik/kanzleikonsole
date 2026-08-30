@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import { Inbox, Mail } from 'lucide-react';
 
 import { fmtDateShort } from '@/lib/fmt';
+import { confirmDialog } from '@/components/ui/modal';
 import type { ActionResult } from '@/server/actions/staff-action';
 
 import { ClientStatusFlowCard, type ClientStatusFlowDefinition } from '../status-flow-card';
@@ -66,11 +67,18 @@ export function HandoversBlock({ clientId, initial }: { clientId: string; initia
       emptyText="Keine offenen Anlieferungen."
       updateStatus={(id, status) => updateHandoverStatusAction({ id, status })}
       deleteItem={(id) => deleteHandoverAction({ id })}
-      confirmDelete={() => confirm('Anlieferung löschen?')}
+      confirmDelete={() =>
+        confirmDialog('Anlieferung löschen?', {
+          title: 'Anlieferung löschen',
+          confirmLabel: 'Löschen',
+          danger: true,
+        })
+      }
       confirmTransition={(handover, next) =>
         next !== 'READY' ||
-        confirm(
+        confirmDialog(
           `„${handover.label}" als abholbereit melden? Der Mandant wird per E-Mail informiert.`,
+          { title: 'Abholbereitschaft melden', confirmLabel: 'Melden' },
         )
       }
       renderCreateForm={(close) => (

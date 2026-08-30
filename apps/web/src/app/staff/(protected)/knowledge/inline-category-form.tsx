@@ -30,7 +30,7 @@ export function InlineCategoryForm({
     return (
       <button
         type="button"
-        className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline"
+        className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-brand-accessible underline-offset-2 hover:underline"
         onClick={() => setOpen(true)}
       >
         <Plus className="h-3.5 w-3.5" /> Kategorie anlegen
@@ -70,7 +70,7 @@ export function InlineCategoryForm({
       )}
       <button
         type="submit"
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-on-brand hover:bg-brand-600 hover:shadow-[inset_0_0_0_2px_rgb(var(--text-on-brand)/0.28)] disabled:opacity-50"
         disabled={isPending}
         aria-label={isPending ? 'Kategorie wird gespeichert' : 'Kategorie anlegen'}
         title="Kategorie anlegen"

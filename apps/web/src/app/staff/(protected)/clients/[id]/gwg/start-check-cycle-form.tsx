@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
 import { startNewCheckCycleAction, type ActionResult } from './actions';
 import { sendInviteAction } from './invite-actions';
+import { confirmFormSubmission } from '@/components/ui/modal';
 
 type TerminalStatus = 'VERIFIED' | 'REJECTED' | 'EXPIRED';
 
@@ -52,13 +53,12 @@ export function StartCheckCycleForm({
   }, [router, state]);
 
   function confirmReverification(event: FormEvent<HTMLFormElement>) {
-    if (
-      status === 'VERIFIED' &&
-      !window.confirm(
+    if (status === 'VERIFIED') {
+      confirmFormSubmission(
+        event,
         'Änderungsprüfung wirklich starten? Der bisher verifizierte Snapshot bleibt als Pflichtaufzeichnung erhalten. Der Mandant wird bis zur erneuten Berufsträger-Freigabe deaktiviert.',
-      )
-    ) {
-      event.preventDefault();
+        { title: 'Änderungsprüfung starten', confirmLabel: 'Prüfung starten' },
+      );
     }
   }
 

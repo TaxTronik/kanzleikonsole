@@ -33,7 +33,7 @@ export default async function AnalysisPage({
   params: Promise<{ id: string; analysisId: string }>;
 }) {
   const { id, analysisId } = await params;
-  const { ctx, staffId, staffOptions, engineConfigured, canWrite, rights } =
+  const { ctx, staffId, staffOptions, engineConfigured, floatingToolbarDefault, canWrite, rights } =
     await guardSubsumtionPage(id, analysisId);
 
   const analysis = await loadAnalysis(ctx, analysisId);
@@ -230,7 +230,7 @@ export default async function AnalysisPage({
   // Bewusst ohne max-w: Dokument + Panel + Recherche profitieren von der
   // vollen Breite (weniger Scrollen).
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-3 mb-6">
         <Link
           href={`/staff/clients/${id}/subsumtion`}
@@ -254,6 +254,7 @@ export default async function AnalysisPage({
         aufgaben={aufgaben}
         aktenregal={aktenregal}
         engineConfigured={engineConfigured}
+        floatingToolbarDefault={floatingToolbarDefault}
         canWrite={canWrite}
         currentStaffId={staffId}
         initial={dto}

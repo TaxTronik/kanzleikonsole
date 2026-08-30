@@ -27,27 +27,38 @@ export function AccessPolicyForm({ initial }: { initial: AccessPolicy }) {
 
   return (
     <form action={formAction} className="space-y-5">
-      <div className="space-y-2">
+      <fieldset className="space-y-2">
+        <legend className="sr-only">Zugriffsmodell für Mandanten</legend>
         {MODES.map((m) => (
-          <label key={m.value} className="flex items-start gap-3">
+          <label
+            key={m.value}
+            className="flex items-start gap-3"
+            htmlFor={`client-access-mode-${m.value}`}
+            aria-label={m.label}
+          >
             <input
+              id={`client-access-mode-${m.value}`}
               type="radio"
               name="clientAccessMode"
               value={m.value}
               defaultChecked={initial.clientAccessMode === m.value}
               className="mt-1 text-brand-600"
             />
-            <div>
-              <div className="text-sm font-medium text-primary">{m.label}</div>
-              <div className="text-xs text-muted">{m.description}</div>
-            </div>
+            <span>
+              <span className="block text-sm font-medium text-primary">{m.label}</span>
+              <span className="block text-xs text-muted">{m.description}</span>
+            </span>
           </label>
         ))}
-      </div>
+      </fieldset>
 
-      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.error && (
+        <div className="alert-error-sm" role="alert">
+          {state.error}
+        </div>
+      )}
       {state?.ok && (
-        <div className="alert-success-sm">
+        <div className="alert-success-sm" role="status">
           Zugriffsmodell gespeichert. Wirkt ab dem nächsten Seitenaufruf.
         </div>
       )}

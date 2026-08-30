@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Check, X, Calendar } from 'lucide-react';
 import { acceptAppointmentRequestAction, rejectAppointmentRequestAction } from './actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
+import { noticeDialog } from '@/components/ui/modal';
 
 interface StaffOption {
   id: string;
@@ -46,7 +47,9 @@ export function RequestDecision({
         ownerStaffId,
       });
       if (!res.ok) {
-        alert(res.error ?? 'Akzeptieren fehlgeschlagen.');
+        await noticeDialog(res.error ?? 'Akzeptieren fehlgeschlagen.', {
+          title: 'Terminanfrage akzeptieren',
+        });
         return;
       }
       router.refresh();
@@ -60,7 +63,9 @@ export function RequestDecision({
         reason: reason || undefined,
       });
       if (!res.ok) {
-        alert(res.error ?? 'Ablehnen fehlgeschlagen.');
+        await noticeDialog(res.error ?? 'Ablehnen fehlgeschlagen.', {
+          title: 'Terminanfrage ablehnen',
+        });
         return;
       }
       router.refresh();

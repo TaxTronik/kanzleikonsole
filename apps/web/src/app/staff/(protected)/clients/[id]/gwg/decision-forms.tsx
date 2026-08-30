@@ -113,14 +113,21 @@ export function GwgDecisionForms({
             {submitPending ? 'Prüft Vollständigkeit…' : 'Zur Freigabe einreichen'}
           </button>
         </form>
-        {error && <p className="alert-error-sm mt-3">{error}</p>}
+        {error && (
+          <p className="alert-error-sm mt-3" role="alert">
+            {error}
+          </p>
+        )}
       </>
     );
   }
 
   return (
     <>
-      <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+      <div
+        className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
+        role="status"
+      >
         Zur Freigabe eingereicht
         {reviewSubmittedAt ? ` am ${fmtDateTimeShort(new Date(reviewSubmittedAt))}` : ''}.
       </div>
@@ -144,7 +151,7 @@ export function GwgDecisionForms({
                 value="confirmed"
                 required
                 form="gwg-verify-form"
-                className="mt-1"
+                className="switch mt-1"
               />
               <span>
                 Ich habe den vollständigen GwG-Prüfsnapshot einschließlich Risikoanalyse,
@@ -169,7 +176,11 @@ export function GwgDecisionForms({
               <form action={rejectAction} className="flex min-w-64 flex-1 items-center gap-2">
                 <input type="hidden" name="checkId" value={checkId} />
                 <input type="hidden" name="clientId" value={clientId} />
+                <label className="sr-only" htmlFor={`gwg-reject-${checkId}-reason`}>
+                  Ablehnungsgrund
+                </label>
                 <input
+                  id={`gwg-reject-${checkId}-reason`}
                   name="reason"
                   type="text"
                   className="input flex-1"
@@ -193,7 +204,11 @@ export function GwgDecisionForms({
             Die gebundene Prüfansicht wird aktualisiert…
           </p>
         ))}
-      {error && <p className="alert-error-sm mt-3">{error}</p>}
+      {error && (
+        <p className="alert-error-sm mt-3" role="alert">
+          {error}
+        </p>
+      )}
     </>
   );
 }

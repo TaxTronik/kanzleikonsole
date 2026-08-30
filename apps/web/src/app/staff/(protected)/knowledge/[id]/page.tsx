@@ -58,7 +58,11 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
   return (
     <div className="mx-auto max-w-6xl p-8">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/knowledge" className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href="/staff/knowledge"
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">

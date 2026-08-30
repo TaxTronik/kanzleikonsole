@@ -90,13 +90,14 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           <Field label="DATEV-Nr." name="datevNo" defaultValue={client.datevNo ?? ''} />
           <Field label="Addison-Nr." name="addisonNo" defaultValue={client.addisonNo ?? ''} />
           <div>
-            <label className="label-sm">
+            <label className="label-sm" htmlFor="client-steuernummer">
               Steuernummer{' '}
               <span className="text-disabled font-normal">
                 (13-stellig, ELSTER-Bundesformat · keine neue GwG-Prüfung)
               </span>
             </label>
             <input
+              id="client-steuernummer"
               name="steuernummer"
               defaultValue={client.steuernummer ?? ''}
               maxLength={13}
@@ -114,8 +115,15 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
             defaultValue={client.invoiceEmail ?? ''}
           />
           <div>
-            <label className="label-sm">Priorität</label>
-            <select name="priority" defaultValue={client.priority ?? ''} className="input w-full">
+            <label className="label-sm" htmlFor="client-priority">
+              Priorität
+            </label>
+            <select
+              id="client-priority"
+              name="priority"
+              defaultValue={client.priority ?? ''}
+              className="input w-full"
+            >
               <option value="">— keine —</option>
               <option value="A">A — wichtigster Mandant</option>
               <option value="B">B — Standard</option>
@@ -124,11 +132,12 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           </div>
         </div>
         <div className="mt-4">
-          <label className="label-sm">
+          <label className="label-sm" htmlFor="client-internal-notes">
             Interne Akten-Notiz{' '}
             <span className="text-disabled">(nur Kanzlei, nie für Mandant sichtbar)</span>
           </label>
           <textarea
+            id="client-internal-notes"
             name="internalNotes"
             defaultValue={client.internalNotes ?? ''}
             rows={4}
@@ -138,17 +147,22 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           />
         </div>
         <div className="mt-4 border-t border-default pt-4">
-          <label className="flex items-start gap-3">
+          <label
+            className="flex items-start gap-3"
+            htmlFor="client-confidential"
+            aria-label="Vertraulicher Mandant"
+          >
             <input
+              id="client-confidential"
               type="checkbox"
               name="vertraulich"
               defaultChecked={client.vertraulich}
               disabled={!isAdmin}
               className="mt-1 rounded border-strong text-brand-600 disabled:opacity-50"
             />
-            <div>
-              <div className="text-sm font-medium text-primary">Vertraulicher Mandant</div>
-              <div className="text-xs text-muted">
+            <span>
+              <span className="block text-sm font-medium text-primary">Vertraulicher Mandant</span>
+              <span className="block text-xs text-muted">
                 Im offenen Zugriffsmodell bleibt dieser Mandant trotzdem auf Admin/Partner und die
                 zugeordneten Berufsträger/Hauptbearbeiter beschränkt (Konflikt-/
                 Geheimhaltungsfälle).
@@ -157,8 +171,8 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
                     Nur Admin/Partner kann das ändern.
                   </span>
                 )}
-              </div>
-            </div>
+              </span>
+            </span>
           </label>
         </div>
       </AdminFieldsForm>
@@ -251,8 +265,16 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
         <div className="grid grid-cols-2 gap-4">
           <Field label="Firma / Name" name="name" defaultValue={client.name} required colspan={2} />
           <div>
-            <label className="label-sm">Rechtsform</label>
-            <select name="kind" defaultValue={client.kind} className="input w-full" required>
+            <label className="label-sm" htmlFor="client-kind">
+              Rechtsform
+            </label>
+            <select
+              id="client-kind"
+              name="kind"
+              defaultValue={client.kind}
+              className="input w-full"
+              required
+            >
               {Object.entries(KIND_LABELS).map(([k, l]) => (
                 <option key={k} value={k}>
                   {l}

@@ -63,6 +63,22 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
     expect(owner).toContain('{displayValue.fullName}');
   });
 
+  // Fachkatalog: GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001,
+  // GWG-IDENTIFICATION-EVIDENCE-001
+  it('gleicht veraltete allgemeine Personenangaben ohne manuellen Seitenreload ab', () => {
+    const personGeneral = read('person-general-form.tsx');
+    const personGeneralState = read('person-general-conflict.ts');
+
+    expect(personGeneral).toContain('if (!state?.conflict || !state.latest || !state.revision)');
+    expect(personGeneral).toContain("dispatchLocal({ type: 'conflict'");
+    expect(personGeneral).toContain('router.refresh();');
+    expect(personGeneralState).toContain('rebaseGwgPersonGeneralDraft(');
+    expect(personGeneralState).toContain('revision: action.revision');
+    expect(personGeneralState).toContain('Ihre Änderungen sind erhalten');
+    expect(personGeneral).toContain("dispatchLocal({ type: 'dismiss-conflict' })");
+    expect(personGeneral).toContain('Hinweis zum automatischen Abgleich schließen');
+  });
+
   it('wechselt nach erfolgreicher Einreichung sofort live auf IN_REVIEW', () => {
     const decisionForms = read('decision-forms.tsx');
 

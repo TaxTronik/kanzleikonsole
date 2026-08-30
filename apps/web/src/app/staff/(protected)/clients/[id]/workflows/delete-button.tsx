@@ -1,9 +1,9 @@
 ﻿'use client';
 
-import { useState, useTransition, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, X, AlertTriangle } from 'lucide-react';
+import { Modal } from '@/components/ui/modal';
 import { deleteCancelledInstanceAction } from './actions';
 
 interface Props {
@@ -19,10 +19,6 @@ interface Props {
 export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
@@ -48,56 +44,55 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
   }
 
   const modal = open ? (
-    <div className="modal-overlay" onClick={() => setOpen(false)}>
-      <div
-        className="card w-full max-w-md p-5 space-y-3 border-2 border-red-300 dark:border-red-900/60"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-red-700 dark:text-red-400 inline-flex items-center gap-1.5">
-            <AlertTriangle className="h-4 w-4" />
-            Endgültig löschen
-          </h2>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="text-disabled hover:text-secondary"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="text-xs text-secondary">
-          Diese Aktion entfernt <strong>{instanceName}</strong> samt allen Schritten und Notizen
-          unwiderruflich. Der Audit-Trail bleibt erhalten, aber die Items selbst sind weg.
-        </p>
-        <p className="text-xs text-muted">
-          Geben Sie zur Bestätigung den Workflow-Namen exakt ein:
-        </p>
-        <input
-          type="text"
-          value={confirmation}
-          onChange={(e) => setConfirmation(e.target.value)}
-          placeholder={instanceName}
-          className="input text-sm"
-          autoFocus
-        />
-        {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
-        <div className="form-actions">
-          <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
-            Behalten
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={isPending || !ready}
-            className="text-sm font-medium inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {isPending ? 'Lösche…' : 'Endgültig löschen'}
-          </button>
-        </div>
+    <Modal
+      title="Endgültig löschen"
+      onClose={() => setOpen(false)}
+      panelClassName="card w-full max-w-md p-5 space-y-3 border-2 border-red-300 dark:border-red-900/60"
+      showCloseButton={false}
+      closeDisabled={isPending}
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-red-700 dark:text-red-400 inline-flex items-center gap-1.5">
+          <AlertTriangle className="h-4 w-4" />
+          Endgültig löschen
+        </h2>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-disabled hover:text-secondary"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
-    </div>
+      <p className="text-xs text-secondary">
+        Diese Aktion entfernt <strong>{instanceName}</strong> samt allen Schritten und Notizen
+        unwiderruflich. Der Audit-Trail bleibt erhalten, aber die Items selbst sind weg.
+      </p>
+      <p className="text-xs text-muted">Geben Sie zur Bestätigung den Workflow-Namen exakt ein:</p>
+      <input
+        type="text"
+        value={confirmation}
+        onChange={(e) => setConfirmation(e.target.value)}
+        placeholder={instanceName}
+        className="input text-sm"
+        autoFocus
+      />
+      {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
+      <div className="form-actions">
+        <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
+          Behalten
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={isPending || !ready}
+          className="text-sm font-medium inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          {isPending ? 'Lösche…' : 'Endgültig löschen'}
+        </button>
+      </div>
+    </Modal>
   ) : null;
 
   return (
@@ -115,7 +110,7 @@ export function DeleteWorkflowButton({ instanceId, instanceName }: Props) {
         <Trash2 className="h-3 w-3" />
         Löschen
       </button>
-      {mounted && modal ? createPortal(modal, document.body) : null}
+      {modal}
     </>
   );
 }

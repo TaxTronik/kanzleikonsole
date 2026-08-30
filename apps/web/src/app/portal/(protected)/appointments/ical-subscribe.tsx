@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { CalendarClock, Copy, Check } from 'lucide-react';
 
 export function IcalSubscribe({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
+  const linkInputId = useId();
+  const descriptionId = useId();
 
   async function copy() {
     try {
@@ -22,13 +24,18 @@ export function IcalSubscribe({ url }: { url: string }) {
         <CalendarClock className="h-4 w-4 text-brand-600" />
         Kalender abonnieren
       </h2>
-      <p className="text-xs text-muted mb-3">
+      <p id={descriptionId} className="text-xs text-muted mb-3">
         Fügen Sie diesen Link in Outlook, Apple Kalender oder Google Kalender als Abo-Kalender hinzu
         — Ihre Termine und Steuerfristen erscheinen dann automatisch und aktualisieren sich.
         Behandeln Sie den Link wie ein Passwort: Wer ihn hat, sieht Ihre Termine.
       </p>
       <div className="flex gap-2">
+        <label htmlFor={linkInputId} className="sr-only">
+          Persönlicher Kalender-Link
+        </label>
         <input
+          id={linkInputId}
+          aria-describedby={descriptionId}
           readOnly
           value={url}
           onFocus={(e) => e.currentTarget.select()}

@@ -76,7 +76,7 @@ export function TaxNewsToggle({ enabled }: { enabled: boolean }) {
         className={
           'inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors ' +
           (on
-            ? 'bg-brand-600 text-white shadow-sm hover:bg-brand-700 dark:bg-brand-600 dark:text-white dark:hover:bg-brand-500'
+            ? 'bg-brand-600 text-on-brand shadow-sm hover:bg-brand-600 dark:bg-brand-600 dark:text-on-brand dark:hover:bg-brand-600'
             : 'bg-gray-100 text-muted hover:bg-gray-200')
         }
         title={

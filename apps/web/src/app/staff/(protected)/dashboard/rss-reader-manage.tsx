@@ -10,6 +10,7 @@ import {
   resetRssFeedDefaultsAction,
   type ActionResult,
 } from './rss-feed-actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 export interface FeedRow {
   id: string;
@@ -45,8 +46,15 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
     });
   }
 
-  function remove(id: string) {
-    if (!confirm('Feed aus deinem Reader entfernen?')) return;
+  async function remove(id: string) {
+    if (
+      !(await confirmDialog('Feed aus deinem Reader entfernen?', {
+        title: 'Feed entfernen',
+        confirmLabel: 'Entfernen',
+        danger: true,
+      }))
+    )
+      return;
     startMut(async () => {
       await deleteRssFeedAction({ id });
       router.refresh();
@@ -102,7 +110,7 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
                     checked={f.active}
                     onChange={(e) => toggle(f.id, e.target.checked)}
                     disabled={isMutating}
-                    className="h-4 w-4 rounded border-strong text-brand-600 focus:ring-brand-500"
+                    className="h-4 w-4 rounded border-strong text-brand-600 focus:ring-focus"
                     title={f.active ? 'Deaktivieren' : 'Aktivieren'}
                   />
                   <div className="flex-1 min-w-0">

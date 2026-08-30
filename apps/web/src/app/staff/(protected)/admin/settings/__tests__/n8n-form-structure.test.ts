@@ -37,16 +37,17 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
 
     expect(routeEditor).toContain('id="n8n-route-editor"');
     expect(routeEditor).toContain('data-settings-no-track');
-    expect(routeEditor).toContain('4. Event-Routen');
     expect(routeEditor).toContain('enabled: false');
     expect(routeEditor).toContain('<XCircle className="h-4 w-4" /> Verwerfen');
     expect(routeEditor).toContain('<Save className="h-4 w-4" /> Speichern');
     expect(routeEditor).toContain('items-center justify-end gap-2');
     expect(routeEditor).toContain("onTestRoute(endpoint.id, false, 'taxtronik.ping')");
     expect(routeEditor).toContain('onDeleteRoute(endpoint.id)');
+    // Routen-Aktionen gebündelt im Radix-Overflow-Menü statt Button-Leiste.
+    expect(routeEditor).toContain('<OverflowMenu>');
+    expect(routeEditor).toContain('Route löschen');
 
-    expect(deliveryOperations).toContain('id="n8n-operation-heading"');
-    expect(deliveryOperations).toContain('5. Zustellung & Betrieb');
+    expect(deliveryOperations).not.toContain('id="n8n-operation-heading"');
     expect(deliveryOperations).toContain(
       'onReplayUnroutedEvent(item.id, item.event, item.occurredAt)',
     );
@@ -62,17 +63,35 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(form).not.toContain('id="n8n-credentials-heading"');
     expect(form).not.toContain('id="n8n-workflows-heading"');
 
-    expect(connectionSection).toContain('id="n8n-connection-heading"');
+    expect(connectionSection).not.toContain('id="n8n-connection-heading"');
     expect(connectionSection).toContain('Die verwaltete n8n-Instanz ist bereits verbunden.');
     expect(connectionSection).toContain("initial.kind !== 'BUNDLED'");
     expect(connectionSection).toContain('canTestN8nApi(apiBaseUrl, apiKey, keepApiKey)');
     expect(connectionSection).toContain('Ein aktuelles HMAC-Signatur-Secret ist gespeichert.');
     expect(connectionSection).toContain('Neues HMAC-Secret erzeugt, noch nicht gespeichert.');
     expect(routeEditor).toContain("'Integration aktivieren'");
-    expect(callbackSection).toContain('id="n8n-credentials-heading"');
+    expect(callbackSection).not.toContain('id="n8n-credentials-heading"');
     expect(callbackSection).toContain('Die Key-ID allein ist kein Credential.');
     expect(callbackSection).toContain('Bearer &lt;Key-ID&gt;.&lt;Callback-Token&gt;');
-    expect(workflowsSection).toContain('id="n8n-workflows-heading"');
+    expect(workflowsSection).not.toContain('id="n8n-workflows-heading"');
+  });
+
+  it('rahmtd die fünf Sektionen als geführte Stepper-Stages', () => {
+    // Jede Sektion steckt in einer Stage; die Titel wandern aus den Sektions-
+    // h3-Headern (entfernt) in das Stage-Framing des Orchestrators.
+    expect(form.match(/<Stage/g)?.length).toBe(5);
+    expect(form).toContain('title="n8n-Instanz verbinden"');
+    expect(form).toContain('title="Rückkanal n8n → TaxTronik"');
+    expect(form).toContain('title="Workflows einrichten"');
+    expect(form).toContain('title="Routen — Events an Workflows"');
+    expect(form).toContain('title="Betrieb — Zustellung & Diagnose"');
+    // Fünf Stepper-Stufen 1:1 auf die Stages (vorher 4 Pillen vs. 5 Sektionen).
+    expect(form).toContain("label: 'Verbinden'");
+    expect(form).toContain("label: 'Rückkanal'");
+    expect(form).toContain("label: 'Workflows'");
+    expect(form).toContain("label: 'Routen'");
+    expect(form).toContain("label: 'Betrieb'");
+    expect(form).toContain('withActiveStep(setupSteps)');
   });
 
   it('macht erkannte Webhook-Routen direkt an ihrer Fundstelle speicherbar', () => {
@@ -96,7 +115,7 @@ describe('n8n-Adminformular – inkrementelle Komponentenstruktur', () => {
     expect(confirmedAction).toContain('startTransition: TransitionStartFunction');
 
     const fragments = [
-      'window.confirm(message)',
+      'await confirmDialog(message)',
       'onPending?.(...args)',
       'startTransition(async () => {',
       'await action(...args)',

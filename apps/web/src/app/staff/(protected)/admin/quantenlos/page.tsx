@@ -50,7 +50,7 @@ export default async function QuantenlosPage() {
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Quantenlos — blinde Stichprobe</h1>
-        <p className="text-muted text-sm dark:text-white">
+        <p className="text-muted text-sm">
           Beweisbar blinde Review-Stichprobe — wahlweise über die Subsumtionen eines Zeitraums
           (Risk-Review) oder über die Audit-Ereignisse (Betriebs-Nachschau). Die Engine committet
           auf den ID-Rahmen, BEVOR sie zieht — die Auswahl ist nachweislich nicht steuerbar. Der
@@ -59,9 +59,9 @@ export default async function QuantenlosPage() {
       </div>
 
       {!bereit ? (
-        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 flex items-start gap-3 dark:border-yellow-900/60 dark:bg-yellow-900/20">
-          <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 dark:text-yellow-300" />
-          <div className="text-sm text-yellow-900 dark:text-yellow-100">
+        <div className="alert-warning flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 mt-0.5" />
+          <div className="text-sm">
             {!modules.risk ? (
               <p>
                 Das Subsumtions-Modul ist deaktiviert — Quantenlos setzt es voraus.{' '}

@@ -59,26 +59,32 @@ export function PortalFeaturesForm({ initial }: { initial: PortalFeatures }) {
     <form action={formAction} className="space-y-4">
       <div className="space-y-3">
         {FEATURES.map((f) => (
-          <label key={f.key} className="flex items-start gap-3">
+          <label
+            key={f.key}
+            className="flex items-start gap-3"
+            htmlFor={`portal-feature-${f.key}`}
+            aria-label={f.label}
+          >
             <input
+              id={`portal-feature-${f.key}`}
               type="checkbox"
               name={f.key}
               defaultChecked={initial[f.key]}
-              className="mt-1 rounded border-strong text-brand-600"
+              className="switch mt-1"
             />
-            <div className="flex-1">
-              <div className="text-sm font-medium text-primary">
+            <span className="flex-1">
+              <span className="block text-sm font-medium text-primary">
                 {f.label}
                 {f.dependsOn && (
                   <span className="ml-2 text-[10px] font-normal text-disabled">
                     setzt „{FEATURES.find((x) => x.key === f.dependsOn)?.label}" voraus
                   </span>
                 )}
-              </div>
-              <div className="text-xs text-secondary dark:text-disabled mt-0.5">
+              </span>
+              <span className="block text-xs text-secondary dark:text-disabled mt-0.5">
                 {f.description}
-              </div>
-            </div>
+              </span>
+            </span>
           </label>
         ))}
       </div>
@@ -93,8 +99,16 @@ export function PortalFeaturesForm({ initial }: { initial: PortalFeatures }) {
         <button type="submit" className="btn-primary" disabled={isPending}>
           {isPending ? 'Speichere…' : 'Speichern'}
         </button>
-        {state?.ok && <span className="text-sm text-emerald-700">Gespeichert.</span>}
-        {state && !state.ok && <span className="text-sm text-red-700">{state.error}</span>}
+        {state?.ok && (
+          <span className="text-sm text-emerald-700" role="status">
+            Gespeichert.
+          </span>
+        )}
+        {state && !state.ok && (
+          <span className="text-sm text-red-700" role="alert">
+            {state.error}
+          </span>
+        )}
       </div>
     </form>
   );

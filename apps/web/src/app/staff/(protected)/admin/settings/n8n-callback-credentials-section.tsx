@@ -1,6 +1,6 @@
 'use client';
 
-import { KeyRound, RefreshCw, ShieldCheck } from 'lucide-react';
+import { RefreshCw, ShieldCheck } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { CallbackCredentialResult } from './n8n-actions';
 import { N8nActionResult } from './n8n-form-result';
@@ -44,19 +44,7 @@ export function N8nCallbackCredentialsSection({
   copy,
 }: Props) {
   return (
-    <section className="space-y-4" aria-labelledby="n8n-credentials-heading">
-      <div>
-        <h3
-          id="n8n-credentials-heading"
-          className="inline-flex items-center gap-2 text-base font-semibold text-primary"
-        >
-          <KeyRound className="h-4 w-4" /> 2. Rückkanal n8n → TaxTronik
-        </h3>
-        <p className="mt-1 text-xs text-muted">
-          Separates, tenantgebundenes Bearer-Credential mit minimalen Berechtigungen. Es ist nicht
-          das Outbound-HMAC-Secret.
-        </p>
-      </div>
+    <section className="space-y-4">
       <div className="rounded-lg border border-default p-4 space-y-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
@@ -89,6 +77,7 @@ export function N8nCallbackCredentialsSection({
               <label key={scope} className="inline-flex items-center gap-2 text-xs text-primary">
                 <input
                   type="checkbox"
+                  className="switch"
                   checked={callbackScopes.includes(scope)}
                   onChange={(event) =>
                     setCallbackScopes((current) =>

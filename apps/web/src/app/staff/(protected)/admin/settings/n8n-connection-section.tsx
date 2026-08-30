@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, Link2, Loader2, Save, Settings2 } from 'lucide-react';
+import { Link2, Loader2, Save } from 'lucide-react';
 import type { Dispatch } from 'react';
 import type { ActionResult } from './n8n-actions';
 import type { N8nConnectionAction, N8nConnectionState } from './n8n-connection-state';
@@ -167,32 +167,7 @@ export function N8nConnectionSection({
   } = connection;
 
   return (
-    <section className="space-y-4" aria-labelledby="n8n-connection-heading">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3
-            id="n8n-connection-heading"
-            className="inline-flex items-center gap-2 text-base font-semibold text-primary"
-          >
-            <Settings2 className="h-4 w-4" /> 1. n8n-Instanz verbinden
-          </h3>
-          <p className="mt-1 text-xs text-muted">
-            UI, Public API und Webhook-Präfix sind verschiedene URLs. Bei einem Reverse-Proxy können
-            sie unterschiedliche öffentliche Pfade haben.
-          </p>
-        </div>
-        {uiBaseUrl && (
-          <a
-            className="btn-secondary inline-flex shrink-0 items-center gap-1.5 text-xs"
-            href={uiBaseUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            n8n öffnen <ExternalLink className="h-3 w-3" />
-          </a>
-        )}
-      </div>
-
+    <section className="space-y-4">
       <ManagedN8nProvisionNotice initial={initial} />
 
       <form action={saveAction} className="rounded-lg border border-default p-4 space-y-4">

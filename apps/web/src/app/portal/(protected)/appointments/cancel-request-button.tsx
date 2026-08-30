@@ -4,17 +4,27 @@ import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import { cancelAppointmentRequestAction } from './actions';
+import { confirmDialog, noticeDialog } from '@/components/ui/modal';
 
 export function CancelRequestButton({ id }: { id: string }) {
   const router = useRouter();
   const [isPending, start] = useTransition();
 
-  function cancel() {
-    if (!confirm('Terminanfrage zurücknehmen?')) return;
+  async function cancel() {
+    if (
+      !(await confirmDialog('Terminanfrage zurücknehmen?', {
+        title: 'Terminanfrage zurücknehmen',
+        confirmLabel: 'Zurücknehmen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const res = await cancelAppointmentRequestAction({ id });
       if (!res.ok) {
-        alert(res.error ?? 'Abbrechen fehlgeschlagen.');
+        await noticeDialog(res.error ?? 'Abbrechen fehlgeschlagen.', {
+          title: 'Terminanfrage zurücknehmen',
+        });
         return;
       }
       router.refresh();

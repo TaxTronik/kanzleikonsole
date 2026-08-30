@@ -10,12 +10,15 @@ export function BookmarkButton({
   label,
   href,
   initiallyBookmarked,
+  className,
 }: {
   resourceType: string;
   resourceId: string;
   label: string;
   href: string | null;
   initiallyBookmarked: boolean;
+  /** Optionale Basisklassen (z. B. 'icon-action-sm'); ersetzt das Default-Padding. */
+  className?: string;
 }) {
   const [bookmarked, setOptimisticBookmarked] = useOptimistic(
     initiallyBookmarked,
@@ -41,8 +44,9 @@ export function BookmarkButton({
       onClick={toggle}
       disabled={isPending}
       className={
-        'p-1 rounded transition-colors shrink-0 ' +
-        (bookmarked ? 'text-amber-500 hover:text-amber-600' : 'text-gray-300 hover:text-amber-500')
+        'shrink-0 transition-colors ' +
+        (className ?? 'p-1 rounded text-gray-300 hover:text-amber-500') +
+        (bookmarked ? ' text-amber-500 hover:text-amber-600' : '')
       }
       title={bookmarked ? 'Lesezeichen entfernen' : 'Merken'}
       aria-label={bookmarked ? 'Lesezeichen entfernen' : 'Merken'}

@@ -169,8 +169,11 @@ export function FormEditor({
     <div className="space-y-6">
       <div className="card p-6 space-y-4">
         <div>
-          <label className="label">Beschreibung (intern)</label>
+          <label className="label" htmlFor={`form-template-${templateId}-description`}>
+            Beschreibung (intern)
+          </label>
           <textarea
+            id={`form-template-${templateId}-description`}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
@@ -179,8 +182,11 @@ export function FormEditor({
           />
         </div>
         <div>
-          <label className="label">Intro für den Mandanten (Markdown, optional)</label>
+          <label className="label" htmlFor={`form-template-${templateId}-intro`}>
+            Intro für den Mandanten (Markdown, optional)
+          </label>
           <textarea
+            id={`form-template-${templateId}-intro`}
             value={introMd}
             onChange={(e) => setIntroMd(e.target.value)}
             rows={3}
@@ -208,8 +214,14 @@ export function FormEditor({
                 <div className="flex-1 space-y-3">
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-2">
-                      <label className="block text-xs text-muted mb-1">Bezeichnung</label>
+                      <label
+                        className="block text-xs text-muted mb-1"
+                        htmlFor={`form-field-${i}-label`}
+                      >
+                        Bezeichnung
+                      </label>
                       <input
+                        id={`form-field-${i}-label`}
                         type="text"
                         placeholder={
                           f.type === 'INFO_TEXT'
@@ -223,8 +235,14 @@ export function FormEditor({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted mb-1">Typ</label>
+                      <label
+                        className="block text-xs text-muted mb-1"
+                        htmlFor={`form-field-${i}-type`}
+                      >
+                        Typ
+                      </label>
                       <select
+                        id={`form-field-${i}-type`}
                         value={f.type}
                         onChange={(e) => update(i, { type: e.target.value as FieldType })}
                         className="input"
@@ -240,10 +258,14 @@ export function FormEditor({
                   {f.type !== 'INFO_TEXT' && (
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs text-muted mb-1">
+                        <label
+                          className="block text-xs text-muted mb-1"
+                          htmlFor={`form-field-${i}-key`}
+                        >
                           Schlüssel <span className="text-disabled font-normal">(autom.)</span>
                         </label>
                         <input
+                          id={`form-field-${i}-key`}
                           type="text"
                           value={f.key}
                           onChange={(e) => update(i, { key: e.target.value })}
@@ -253,8 +275,14 @@ export function FormEditor({
                         />
                       </div>
                       <div className="col-span-2">
-                        <label className="block text-xs text-muted mb-1">Hilfetext</label>
+                        <label
+                          className="block text-xs text-muted mb-1"
+                          htmlFor={`form-field-${i}-help-text`}
+                        >
+                          Hilfetext
+                        </label>
                         <input
+                          id={`form-field-${i}-help-text`}
                           type="text"
                           value={f.helpText}
                           onChange={(e) => update(i, { helpText: e.target.value })}
@@ -266,13 +294,17 @@ export function FormEditor({
                   )}
                   {(f.type === 'SELECT' || f.type === 'MULTISELECT') && (
                     <div>
-                      <label className="block text-xs text-muted mb-1">
+                      <label
+                        className="block text-xs text-muted mb-1"
+                        htmlFor={`form-field-${i}-options`}
+                      >
                         Optionen{' '}
                         <span className="text-disabled font-normal">
                           (eine pro Zeile, Format „wert" oder „wert=Anzeige")
                         </span>
                       </label>
                       <textarea
+                        id={`form-field-${i}-options`}
                         value={f.options}
                         onChange={(e) => update(i, { options: e.target.value })}
                         rows={4}
@@ -285,8 +317,14 @@ export function FormEditor({
                   {(f.type === 'NUMBER' || f.type === 'MONEY' || f.type === 'DATE') && (
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-muted mb-1">Min</label>
+                        <label
+                          className="block text-xs text-muted mb-1"
+                          htmlFor={`form-field-${i}-min`}
+                        >
+                          Min
+                        </label>
                         <input
+                          id={`form-field-${i}-min`}
                           type="text"
                           value={f.minValue}
                           onChange={(e) => update(i, { minValue: e.target.value })}
@@ -294,8 +332,14 @@ export function FormEditor({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-muted mb-1">Max</label>
+                        <label
+                          className="block text-xs text-muted mb-1"
+                          htmlFor={`form-field-${i}-max`}
+                        >
+                          Max
+                        </label>
                         <input
+                          id={`form-field-${i}-max`}
                           type="text"
                           value={f.maxValue}
                           onChange={(e) => update(i, { maxValue: e.target.value })}
@@ -321,6 +365,7 @@ export function FormEditor({
                   onClick={() => remove(i)}
                   className="text-disabled hover:text-red-700 p-1"
                   title="Feld entfernen"
+                  aria-label={`Feld „${f.label || `Position ${i + 1}`}“ entfernen`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -338,12 +383,16 @@ export function FormEditor({
           {isPending ? 'Speichert…' : 'Vorlage speichern'}
         </button>
         {savedAt && (
-          <span className="text-xs text-emerald-700">
+          <span className="text-xs text-emerald-700" role="status">
             Gespeichert um {fmtTimeMedium(new Date(savedAt))}
           </span>
         )}
       </div>
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }

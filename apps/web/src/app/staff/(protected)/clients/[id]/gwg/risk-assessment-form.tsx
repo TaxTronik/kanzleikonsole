@@ -122,8 +122,11 @@ export function RiskAssessmentForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       {factors.map((f) => (
         <div key={f.key}>
-          <label className="label">{f.label}</label>
+          <label className="label" htmlFor={`gwg-risk-${checkId}-${f.key}`}>
+            {f.label}
+          </label>
           <select
+            id={`gwg-risk-${checkId}-${f.key}`}
             className="input"
             value={answers[f.key] ?? ''}
             onChange={(e) => setAnswer(f.key, Number(e.target.value))}
@@ -145,9 +148,13 @@ export function RiskAssessmentForm({
       ))}
 
       {shownScore !== null && shownLevel !== null && (
-        <div className="rounded-md bg-gray-50 p-4 flex items-center justify-between">
+        <div
+          className="rounded-md bg-gray-50 p-4 flex items-center justify-between"
+          role="status"
+          aria-live="polite"
+        >
           <div>
-            <p className="text-xs text-muted uppercase tracking-wide">Risikobewertung</p>
+            <p className="text-xs text-secondary uppercase tracking-wide">Risikobewertung</p>
             <p className="text-sm text-secondary">
               Score: <strong>{shownScore}</strong>
             </p>
@@ -167,16 +174,23 @@ export function RiskAssessmentForm({
       )}
 
       {riskResetNotice && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+        <div
+          className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+          role="status"
+        >
           Durch die Änderung an Personen bzw. Rechtsträger-Angaben wurde die gespeicherte
           Risikobewertung zurückgesetzt (§ 10 Abs. 2 GwG — die Faktoren hängen von den erfassten
           Personen ab). Ihre Auswahl unten ist noch da: bitte prüfen und erneut speichern, bevor Sie
           zur Freigabe einreichen.
         </div>
       )}
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
       {saved && (
-        <div className="alert-success-sm">
+        <div className="alert-success-sm" role="status">
           Risikobewertung gespeichert.
           {reviewReset ? ' Die laufende Prüfung wurde zur erneuten Freigabe zurückgesetzt.' : ''}
         </div>
@@ -184,7 +198,12 @@ export function RiskAssessmentForm({
 
       {!disabled && (
         <div>
-          <button type="submit" className="btn-primary" disabled={isPending || !allAnswered}>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={isPending || !allAnswered}
+            aria-describedby={!allAnswered ? `gwg-risk-${checkId}-incomplete-hint` : undefined}
+          >
             {isPending
               ? 'Speichert…'
               : currentScore === null
@@ -192,7 +211,7 @@ export function RiskAssessmentForm({
                 : 'Bewertung aktualisieren'}
           </button>
           {!allAnswered && (
-            <p className="text-xs text-muted mt-1">
+            <p id={`gwg-risk-${checkId}-incomplete-hint`} className="text-xs text-muted mt-1">
               Bitte alle Faktoren bewerten, bevor die Bewertung berechnet wird.
             </p>
           )}

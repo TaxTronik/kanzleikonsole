@@ -25,6 +25,34 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Hinzugefügt
 
+- Der persönliche Anzeigemodus lässt sich getrennt nach Schriftgröße
+  (100/112,5/125 Prozent), Zeilenabstand, Standard-/verstärktem Kontrast und
+  Bewegungsreduktion anpassen. Die Auswahl bleibt beim Ausschalten erhalten,
+  wird profilgebunden gespeichert und kann auf die empfohlenen Werte
+  zurückgesetzt werden. Betriebssystemseitige Bewegungsreduktion bleibt
+  unabhängig davon wirksam.
+- Dashboard und Portal-Layouteditor bieten benannte Eingabefelder für
+  Position und Größe als Alternative zu Drag-and-drop. Änderungen werden erst
+  nach „Übernehmen“ über den bisherigen Speicherweg angewendet; Entwürfe,
+  Grenzwerte, Speicherstatus und Fehler sind sichtbar. Bei wenig Platz bleibt
+  eine gestapelte Vorschau bedienbar, ohne das gespeicherte Raster allein
+  durch den Ansichtswechsel zu verändern.
+- Ein persönlicher barrierearmer Anzeigemodus ist im Mitarbeiterprofil und in
+  den Portal-Einstellungen aktivierbar: größere Schrift und zentrale
+  Bedienelemente, kräftigere Kontraste, deutlichere Links/Fokusrahmen und
+  reduzierte Bewegung. Die Einstellung wird pro Mitarbeiter beziehungsweise
+  Portal-Kontakt in der Datenbank gespeichert, bereits serverseitig angewendet
+  und nicht zwischen Profilen geteilt. Die normale Ansicht behält ihre
+  grundlegenden A11Y-Funktionen; der Modus ist keine Konformitätsgarantie.
+- Eine versionierte Ist-/Gap-Dokumentation beschreibt das WCAG-2.2-AA-Ziel,
+  den tatsächlich umgesetzten A11Y-Stand, die automatisierten Nachweise, die
+  weiterhin erforderliche manuelle Prüfmatrix und bekannte Grenzen. Sie ist
+  ausdrücklich weder Konformitätserklärung noch Zertifizierung.
+- `eslint-plugin-jsx-a11y` ist Teil des normalen Repository-Lints. Eine neue
+  Axe-/Playwright-Suite prüft repräsentative Staff- und Portaloberflächen in
+  Light und Dark Mode, bei 320 CSS-Pixeln sowie das Tastaturverhalten von
+  Skip-Link und mobiler Navigation; ihre Befunde werden als Testartefakte
+  ausgegeben und die Suite ist in den paranoiden E2E-Lauf eingebunden.
 - **[Scope]** Wissensartikel besitzen jetzt einen großen Markdown-Arbeitsbereich
   mit Formatierungsleiste, direkt gerendertem Inline-Modus und Markdown-
   Quellansicht. Bilder und
@@ -54,6 +82,69 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Geändert
 
+- Die gemeinsame Staff-/Portal-Shell besitzt Skip-Links, fokussierbare
+  Hauptinhalte und semantisch isolierte mobile Navigation mit Zustand,
+  Fokusfalle, Escape und Fokus-Rückgabe. Die globale Suche bildet nun ein
+  semantisches Combobox-/Listbox-Muster mit Tastatursteuerung und
+  Live-Trefferstatus ab; Dialoge benennen ihren Inhalt, isolieren den
+  Hintergrund und führen den Fokus auch in leeren oder eingabebasierten
+  Varianten sicher.
+- Programmatische Formularbeschriftungen, Gruppenlegenden, Hilfetextbezüge und
+  angesagte Fehler-/Erfolgsmeldungen wurden über Staff-, Portal-, GwG-,
+  Datenschutz-, Kalender-, Workflow-, Bescheid-, Rechnungs- und
+  Administrationsoberflächen vereinheitlicht. Die zuvor 98 vom neuen
+  A11Y-Lint erkannten Labelverstöße wurden vollständig abgebaut.
+- Wissensdatenbank- und Subsumtionseditoren weisen ihre Werkzeugleisten,
+  Formatierungszustände, Modusumschalter und Uploadmeldungen für Tastatur und
+  Screenreader aus. Pfeil-, Home- und End-Tasten navigieren innerhalb der
+  Toolbars.
+- Whitelabel-Akzentfarben erhalten automatisch eine kontrastgerechte schwarze
+  oder weiße Inhaltsfarbe sowie einen auf hellen und dunklen Flächen geprüften
+  Fokusfarbton. Wortmarken und farbiger Brand-Text erhalten zusätzlich eigene
+  AA-konforme Vordergrundfarben für Light und Dark Mode. Zentrale und direkte
+  Brand-Flächen verwenden diese Tokens; die Branding-Vorschau erklärt die
+  konkrete Kontrastentscheidung. Muted- und bisherige
+  Disabled-Informationstexte erreichen nun auch auf vertieften Flächen den
+  normalen Textkontrast.
+- Durch den verbreiterten Axe-Routensatz wurden weitere Bedienbarrieren
+  beseitigt: Staff-Filter und der persönliche Portal-Kalenderlink besitzen
+  zugängliche Namen, Monats- und Zurück-Navigationen sind für Screenreader
+  benannt, scrollbare Dashboardlisten sind per Tastatur erreichbar und die
+  Rollen-/Berechtigungs-Chips der Benutzerverwaltung erfüllen die
+  WCAG-2.2-Zielgröße von 24 CSS-Pixeln.
+- Der Mitarbeiter-Login verwendet jetzt das hinterlegte Kanzlei-Logo
+  beziehungsweise den Kanzleinamen und zeigt TaxTronik nicht mehr als sichtbare
+  Login-Wortmarke. Auch die herunterladbare TOTP-Backup-Datei ist neutral
+  benannt.
+- Der Editor für neue Subsumtionen nutzt analog zur Wissensdatenbank eine
+  zusammenhängende, seitenfüllende Karte mit großer formatierter Schreibfläche,
+  hervorgehobenem Titelfeld sowie gebündelten Import- und Analyseaktionen. Im
+  Review bleibt die Formatierleiste dauerhaft sichtbar; die zusätzliche
+  schwebende Leiste lässt sich direkt am Editor umschalten und ihr Kanzlei-
+  Standard wird unter den Moduleinstellungen festgelegt. Dokument und
+  Markierungspanel nutzen die verfügbare Breite besser aus.
+- Kanzleiinterne Notizen in Anforderungen verwenden kontrastreiche semantische
+  Flächen und Trennlinien, damit Text, Metadaten und Eingabe im Dark Mode klar
+  lesbar bleiben. **[Scope]** Die fachliche Kanaltrennung nach
+  `REQ-INTERNAL-COMMENT-001` bleibt unverändert.
+- Die Tätigkeitszuordnung in der Benutzerverwaltung öffnet nun als fokussierter,
+  scrollbar begrenzter Dialog und wird nicht mehr von der Benutzerliste
+  abgeschnitten.
+- Der eigenständige Status-Maschinen-Builder wurde entfernt. Da seine
+  Definitionen nie an Mandanten, GwG-Prüfungen oder andere Ressourcen
+  angebunden waren, entfallen die ungenutzte Administrationsoberfläche und
+  die drei ausschließlich dafür vorgehaltenen Datenbanktabellen gemeinsam.
+- Queue-Namen, Jobverträge, Wiederholungspläne und Health-Metadaten stammen
+  jetzt aus einer gemeinsamen, runtime-leichten Definition. Die Web-App nutzt
+  dafür eine geteilte Redis-Verbindung und wiederverwendete Queue-Instanzen.
+- Dokument-Download und -Vorschau für Staff und Portal teilen sich nun einen
+  geprüften Auslieferungsbaustein; die jeweiligen Freigabe-, Zugriffs-, Audit-
+  und MIME-Regeln bleiben an den dünnen Routen explizit sichtbar. Wiederholte
+  `tenant_setting`-Lese-, Schreib- und Löschsequenzen wurden ebenfalls zentral
+  gekapselt.
+- Native Browserdialoge und verstreute Portal-Modals wurden auf die gemeinsame
+  Dialog-Infrastruktur mit Fokusfalle, Escape-/Backdrop-Verhalten und sicherer
+  Formularbestätigung konsolidiert.
 - Kategorien der Wissensdatenbank werden über „Kategorie anlegen“ direkt in
   der Kategorienleiste erfasst; der Seitenwechsel zum separaten Formular
   entfällt. Anlage und Bearbeitung von Wissensartikeln nutzen nahezu die volle
@@ -82,6 +173,19 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
   allgemeine Angaben eines Vertreters sperren die abschließende Verifikation.
 - Die Bereiche „Allgemeine Angaben“ und „Rolle(n)“ sind durch eigene Icons
   hervorgehoben; der bestehende Ausweisbereich behält sein Ausweissymbol.
+- Der automatische Abgleich parallel geänderter allgemeiner GwG-Personendaten
+  erfordert keinen manuellen Seitenreload mehr; der verbleibende Prüfhinweis
+  lässt sich über ein X schließen.
+- Die Anteilsangabe beim Ergänzen der Rolle „Wirtschaftlich berechtigt“ nutzt
+  kontrastreiche semantische Oberflächen und Texte und bleibt damit auch im
+  Dark Mode klar lesbar.
+- Bei einer ausdrücklich über stabile IDs verknüpften Doppelrolle aus
+  gesetzlicher Vertretung und wirtschaftlicher Berechtigung erkennt das
+  GwG-Freigabegate den bereits bestätigten Owner-Ausweis nun zugleich als
+  Vertreternachweis an. Eine bloße Namensgleichheit genügt weiterhin nicht.
+  Betroffen sind `GWG-BENEFICIAL-OWNERS-001`,
+  `GWG-IDENTIFICATION-EVIDENCE-001` und
+  `GWG-REPRESENTATIVE-AUTHORITY-001`.
 - Registernachweise starten eingeklappt. Das jeweilige Ersatzformular öffnet
   sich nur über den Button „Nachweis ersetzen“ und ist fest an den aufgeklappten
   Nachweistyp gebunden, sodass etwa ein Handelsregisterauszug nicht mehr als
@@ -106,6 +210,52 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Behoben
 
+- Suchtreffer bleiben bei Pfeil-/Home-/End-Navigation im eigenen Panel sichtbar.
+  Suche und Benachrichtigungsdialog passen sich an niedrige und schmale
+  Fenster an. Benachrichtigungen haben einen benannten Dialog, explizites
+  Schließen, Fokus-Rückgabe und Tab-Ausstieg; im persönlichen Modus werden
+  Titel, Text und Zeitangaben vollständig beziehungsweise größer dargestellt.
+  Toasts verschwinden dort nicht automatisch. In der Standardansicht pausiert
+  ihre Lesezeit bei Hover, Tastaturfokus oder geöffnetem Benachrichtigungsfeed.
+- **[Scope]** Eine zusätzliche Forward-Migration erhält den write-only
+  Portal-Benachrichtigungsschutz aus `main`, nachdem die ältere
+  Sicherheits-Reparaturmigration des UI-Branches ausgeführt wurde. Bereits
+  angewendete Migrationen bleiben unverändert. Der Nachweis nach
+  `ACCESS-NOTIFICATION-RECIPIENT-001` umfasst die Reihenfolge sowie einen
+  zurückgerollten Datenbank-Replay; die fachliche Freigabe bleibt offen.
+- Der Konto-Avatar bleibt im persönlichen barrierearmen Anzeigemodus innerhalb
+  seiner vergrößerten Klickfläche mittig. Konto- und gemeinsame Aktionsmenüs
+  bleiben dort auch bei geringer Bildschirmhöhe scrollbar erreichbar und
+  lassen längere Einträge umbrechen. Die gemeinsamen Menüs verstecken den
+  fokussierbaren Hintergrund nicht mehr nur per `aria-hidden`; Tab und
+  Umschalt+Tab verlassen sie auch in der normalen Ansicht sauber.
+- Dashboard-Zähler berücksichtigen neben der OS-Bewegungsreduktion auch den
+  persönlichen Anzeigemodus: Der Endwert erscheint ohne Hochzählanimation.
+  Laufende Zähler werden bei Aktivierung des Modus oder der OS-Präferenz
+  beendet; ausstehende Frames und Listener werden aufgeräumt.
+- Bei einer ausdrücklich verknüpften GwG-Doppelrolle bleiben die vollständigen
+  allgemeinen Personendaten und ein bereits dem wirtschaftlich Berechtigten
+  zugeordneter Ausweis nun auch für die gesetzliche Vertretung sichtbar und
+  freigabewirksam. Neue Rollenverknüpfungen und spätere Personenkorrekturen
+  synchronisieren sämtliche allgemeinen Angaben statt nur des Namens. Die
+  Zuordnung erfolgt weiterhin ausschließlich über stabile IDs, nicht über
+  Namensgleichheit. Betroffen sind `GWG-BENEFICIAL-OWNERS-001`,
+  `GWG-IDENTIFICATION-EVIDENCE-001` und
+  `GWG-REPRESENTATIVE-AUTHORITY-001`.
+- Vollständige, gültige Ausweissätze können in der GwG-Personenansicht nun
+  direkt über „Als geprüft markieren“ bestätigt werden. Nach der Bestätigung
+  aktualisieren sich Ausweisstatus, Prüfhinweise und Freigabegate automatisch;
+  der Umweg über „Bearbeiten“ und ein manueller Seitenreload entfallen.
+- Veraltete Formulare für allgemeine GwG-Personenangaben verlangen keinen
+  manuellen Seitenreload mehr. Der aktuelle Serverstand wird automatisch
+  nachgeladen, mit unberührten Feldern zusammengeführt und lokale Eingaben
+  bleiben zur Prüfung und zum erneuten Speichern erhalten. Betroffen sind
+  `GWG-BENEFICIAL-OWNERS-001`, `GWG-REPRESENTATIVE-AUTHORITY-001` und
+  `GWG-IDENTIFICATION-EVIDENCE-001`.
+- Die Jobs-Übersicht leitet ihre Überwachungsfenster jetzt aus den tatsächlichen
+  Scheduler-Plänen ab. Auch sehr häufige, nächtlich pausierende sowie monatliche
+  Queues werden ohne falsche Stale-Alarme überwacht; erfolgreiche und
+  fehlgeschlagene Diagnosedaten bleiben dafür bis zu 60 Tage begrenzt erhalten.
 - „Abmelden“ im Konto-Menü der oberen Leiste sendet den Logout-POST jetzt
   zuverlässig über ein dauerhaft gemountetes Formular. Das Schließen des
   Dropdowns kann den Submit nicht mehr vorzeitig abbrechen.

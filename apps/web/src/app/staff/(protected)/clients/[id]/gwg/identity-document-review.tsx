@@ -526,6 +526,7 @@ function IdentityReviewCard({
   historicalEvidence?: ReactNode;
 }) {
   const { markDraft } = useGwgEditState();
+  const router = useRouter();
   const { invalidatedIdentitySets, acknowledgeIdentitySet } = useGwgIdentitySubjects();
   const first = group.documents[0]!;
   const [expanded, setExpanded] = useState(reviewMode);
@@ -583,8 +584,12 @@ function IdentityReviewCard({
       setExpanded(true);
       setEditing(false);
       setReplacementOpen(false);
+      // Die Karte kann den eigenen Erfolgszustand lokal zeigen. Andere
+      // Bereiche der GwG-Seite (Entscheidungsgate, Status, Prüfhinweise)
+      // benötigen zusätzlich den frischen Serverstand.
+      router.refresh();
     }
-  }, [state]);
+  }, [router, state]);
   // Nach der Entscheidung (VERIFIED/REJECTED/EXPIRED) die Karten einklappen:
   // die im Review-Modus aufgeklappten 65vh-Vorschau-Frames blieben sonst nach
   // dem Verifizieren offen und erzeugten 1–2 Viewport-Höhen scheinbar leeren,
@@ -647,6 +652,17 @@ function IdentityReviewCard({
     grandfathered ||
     (!invalidated &&
       (localState.confirmedRevision === localState.revision || persistedConfirmation));
+  const canConfirmDirectly =
+    !confirmed &&
+    !expired &&
+    !hasCompetingActiveSets &&
+    attachedDocuments.length > 0 &&
+    attachedDocuments.length === group.documents.length &&
+    Boolean(selectedSubjectKey) &&
+    Boolean(fields.number.trim()) &&
+    Boolean(fields.issuedBy.trim()) &&
+    Boolean(fields.issueDate) &&
+    Boolean(fields.expiryDate);
 
   return (
     <details
@@ -788,8 +804,43 @@ function IdentityReviewCard({
                 <dd className="text-sm font-medium text-primary">{displayedOwnerName || '—'}</dd>
               </div>
             </dl>
+            {state?.error && <div className="alert-error-sm">{state.error}</div>}
             {!disabled && (
               <div className="flex flex-wrap gap-2">
+                {canConfirmDirectly && (
+                  <form
+                    action={formAction}
+                    onSubmit={() => {
+                      markSubmitted(
+                        invalidatedRevision ?? localState.revision,
+                        invalidation?.generation ?? null,
+                      );
+                    }}
+                  >
+                    <input type="hidden" name="checkId" value={checkId} />
+                    <input type="hidden" name="clientId" value={clientId} />
+                    <input type="hidden" name="documentSetId" value={group.documentSetId} />
+                    <input
+                      type="hidden"
+                      name="expectedRevision"
+                      value={invalidatedRevision ?? currentRevision}
+                    />
+                    <input type="hidden" name="type" value={fields.type} />
+                    <input type="hidden" name="subjectKey" value={selectedSubjectKey} />
+                    <input type="hidden" name="number" value={fields.number} />
+                    <input type="hidden" name="issuedBy" value={fields.issuedBy} />
+                    <input type="hidden" name="issueDate" value={fields.issueDate} />
+                    <input type="hidden" name="expiryDate" value={fields.expiryDate} />
+                    <button type="submit" className="btn-primary text-xs" disabled={isPending}>
+                      {isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileCheck className="h-3.5 w-3.5" />
+                      )}
+                      {isPending ? 'Prüft …' : 'Als geprüft markieren'}
+                    </button>
+                  </form>
+                )}
                 <button
                   type="button"
                   className="btn-secondary text-xs"

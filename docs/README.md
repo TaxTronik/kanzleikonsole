@@ -60,16 +60,17 @@ Release-Wegs. Die tatsächliche Durchführung ist jeweils separat zu belegen.
 
 ### Entwickler und übernehmende Personen
 
-| Einstieg                                                      | Typ / Status          | Wofür?                                                                  |
-| ------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------- |
-| [Aktuelle Übergabe und Einarbeitung](HANDOFF.md)              | Einstieg / Checkliste | Repository übernehmen, Leitplanken und Mindestprüfungen erfassen        |
-| [`AGENTS.md`](../AGENTS.md)                                   | Arbeitsregel          | Verbindliche Regeln für Änderungen an fachlicher Logik                  |
-| [Architektur](architecture.md)                                | Ist-Dokumentation     | Komponenten, Datenflüsse und Sicherheitsgrenzen verstehen               |
-| [Architecture Decision Records](adr/README.md)                | Entscheidungsregister | Architekturentscheidungen und ihren Status nachvollziehen               |
-| [Entwicklungsverfahren](development/entwicklungsverfahren.md) | Verfahren             | Änderung, Review, CI und Freigabe durchführen                           |
-| [Test- und Abnahmekonzept](development/testkonzept.md)        | Verfahren / Soll      | Teststufen, Scope, Nachweise und bekannte Abdeckungslücken einordnen    |
-| [Technische Modulbeschreibungen](development/module/)         | Ist-Dokumentation     | Zugriffsschutz, Archiv, Fakturierung, Audit und Backup im Detail prüfen |
-| [Workspace-Injektion](development/workspace-injection.md)     | Entwicklerhinweis     | Veraltete pnpm-Workspace-Kopien erkennen und beheben                    |
+| Einstieg                                                      | Typ / Status           | Wofür?                                                                      |
+| ------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
+| [Aktuelle Übergabe und Einarbeitung](HANDOFF.md)              | Einstieg / Checkliste  | Repository übernehmen, Leitplanken und Mindestprüfungen erfassen            |
+| [`AGENTS.md`](../AGENTS.md)                                   | Arbeitsregel           | Verbindliche Regeln für Änderungen an fachlicher Logik                      |
+| [Architektur](architecture.md)                                | Ist-Dokumentation      | Komponenten, Datenflüsse und Sicherheitsgrenzen verstehen                   |
+| [Architecture Decision Records](adr/README.md)                | Entscheidungsregister  | Architekturentscheidungen und ihren Status nachvollziehen                   |
+| [Entwicklungsverfahren](development/entwicklungsverfahren.md) | Verfahren              | Änderung, Review, CI und Freigabe durchführen                               |
+| [Test- und Abnahmekonzept](development/testkonzept.md)        | Verfahren / Soll       | Teststufen, Scope, Nachweise und bekannte Abdeckungslücken einordnen        |
+| [Barrierefreiheit](assurance/barrierefreiheit.md)             | Ist-/Gap-Dokumentation | WCAG-2.2-AA-Ziel, technische Gates, manuellen Prüfumfang und Grenzen prüfen |
+| [Technische Modulbeschreibungen](development/module/)         | Ist-Dokumentation      | Zugriffsschutz, Archiv, Fakturierung, Audit und Backup im Detail prüfen     |
+| [Workspace-Injektion](development/workspace-injection.md)     | Entwicklerhinweis      | Veraltete pnpm-Workspace-Kopien erkennen und beheben                        |
 
 Die [ERiC-Integrationsregeln](development/eric-integration.md) enthalten
 verbindliche Umgangsregeln und Architekturvorgaben, aber keine Behauptung über
@@ -90,6 +91,7 @@ ist ein zeitgebundener Reviewstand und keine aktuelle Mängelliste.
 | [Assurance-Modell](assurance/assurance-model.md)                                 | Ist-/Kontrollmodell     | Vertrauensannahmen, Kontrollschichten und Release-Gates                           |
 | [Threat Model](assurance/threat-model.md)                                        | Bedrohungsmodell        | Schutzgüter, Angreifer, Grenzen und Gegenmaßnahmen                                |
 | [Bekannte Grenzen](assurance/known-limits.md)                                    | Ist-Abgrenzung          | Nicht zugesagte Eigenschaften und verbleibende Betreiberverantwortung             |
+| [Barrierefreiheit](assurance/barrierefreiheit.md)                                | Ist-/Gap-Dokumentation  | Umgesetzte A11Y-Schichten, automatisierte Nachweise und offene manuelle Prüfungen |
 | [Prüfumgebung](assurance/pruefumgebung.md)                                       | auszufüllende Vorlage   | Release, Host, Konfiguration, Seed und Testfälle für einen Prüfauftrag einfrieren |
 | [Release-Evidence](assurance/ps880-release-evidence.md)                          | auszufüllende Vorlage   | Digests, CI-Berichte, SBOMs, Security-Befunde, Abweichungen und Freigaben binden  |
 | [Compliance-Dokumentation](compliance/README.md)                                 | Gemischter Index        | DSGVO, GoBD, GwG, eIDAS, Tenancy sowie anpassbare Vorlagen                        |

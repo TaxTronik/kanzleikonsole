@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckSquare, Square, X, Lock } from 'lucide-react';
 import { bulkCloseRequestsAction } from './bulk-actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 interface Props {
   // IDs aller Anforderungen auf der aktuellen Seite, die noch nicht
@@ -52,10 +53,15 @@ export function BulkToolbar({ closableIds }: Props) {
       .forEach((el) => (el.checked = false));
   }
 
-  function closeSelected() {
+  async function closeSelected() {
     setError(null);
     if (selected.size === 0) return;
-    if (!confirm(`${selected.size} Anforderung${selected.size === 1 ? '' : 'en'} schließen?`))
+    if (
+      !(await confirmDialog(
+        `${selected.size} Anforderung${selected.size === 1 ? '' : 'en'} schließen?`,
+        { title: 'Anforderungen schließen', confirmLabel: 'Schließen' },
+      ))
+    )
       return;
     startTransition(async () => {
       const r = await bulkCloseRequestsAction({ ids: Array.from(selected) });

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { setFormActiveAction, deleteFormTemplateAction } from './actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 export function FormRowActions({
   id,
@@ -22,7 +23,7 @@ export function FormRowActions({
       await setFormActiveAction({ id, active: !active });
     });
   }
-  function remove() {
+  async function remove() {
     setError(null);
     if (submissions > 0) {
       setError(
@@ -30,7 +31,17 @@ export function FormRowActions({
       );
       return;
     }
-    if (!confirm(`Vorlage „${name}" wirklich löschen? Alle Felder werden mit gelöscht.`)) return;
+    if (
+      !(await confirmDialog(
+        `Vorlage „${name}" wirklich löschen? Alle Felder werden mit gelöscht.`,
+        {
+          title: 'Formularvorlage löschen',
+          confirmLabel: 'Löschen',
+          danger: true,
+        },
+      ))
+    )
+      return;
     start(async () => {
       const r = await deleteFormTemplateAction({ id });
       if (!r.ok) setError(r.error ?? 'Fehler beim Löschen.');

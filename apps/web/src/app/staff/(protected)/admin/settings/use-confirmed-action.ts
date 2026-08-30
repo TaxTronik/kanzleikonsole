@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, type TransitionStartFunction } from 'react';
+import { confirmDialog } from '@/components/ui/modal';
 
 type Confirmation<TArgs extends unknown[]> = string | null | ((...args: TArgs) => string | null);
 
@@ -24,9 +25,9 @@ export function useConfirmedAction<TArgs extends unknown[], TResult>({
   onResult,
 }: ConfirmedActionOptions<TArgs, TResult>): (...args: TArgs) => void {
   return useCallback(
-    (...args: TArgs) => {
+    async (...args: TArgs) => {
       const message = typeof confirmation === 'function' ? confirmation(...args) : confirmation;
-      if (message && !window.confirm(message)) return;
+      if (message && !(await confirmDialog(message))) return;
 
       onPending?.(...args);
       startTransition(async () => {

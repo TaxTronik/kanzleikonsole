@@ -41,6 +41,8 @@ import {
   type N8nConnectionAction,
   type N8nConnectionState,
 } from './n8n-connection-state';
+import { Stage } from '@/components/stage';
+import { withActiveStep } from '@/components/stepper';
 import { DeliveryOperationsSection } from './delivery-operations-section';
 import { EMPTY_ROUTE, RouteEditorSection, type RouteDraft } from './route-editor-section';
 import { useConfirmedAction } from './use-confirmed-action';
@@ -107,13 +109,6 @@ function discoveredRouteDraft(
     testMode: false,
     events: inferredEvents,
   };
-}
-
-function focusRouteEditorForManualEventSelection(draft: RouteDraft): void {
-  if (draft.events.length > 0) return;
-  window.requestAnimationFrame(() =>
-    document.getElementById('n8n-route-editor')?.scrollIntoView({ behavior: 'smooth' }),
-  );
 }
 
 function selectedDiscoveredRouteKey(draft: RouteDraft): string | null {
@@ -219,13 +214,18 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   const apiInstanceChanged = Boolean(
     initial.hasApiKey && initialApiOrigin !== '' && urlOrigin(apiBaseUrl) !== initialApiOrigin,
   );
+  // Fünf Stufen, 1:1 auf die Stage-Karten darunter abgebildet (vorher:
+  // 4 Pillen vs. 5 nummerierte Sektionen mit verschobener Zuordnung).
+  const workflowsReady =
+    status.endpoints.some((endpoint) => endpoint.workflowId) || verifiedActiveRoutes > 0;
   const setupSteps = [
-    { label: 'Verbindung', done: Boolean(initial.connectionId) },
+    { label: 'Verbinden', done: Boolean(initial.connectionId) },
     {
-      label: 'Credentials',
+      label: 'Rückkanal',
       done: deliberatelyDisabled || initial.hasSigningSecret || callbackConfigured,
     },
-    { label: 'Workflow-Routen', done: deliberatelyDisabled || verifiedActiveRoutes > 0 },
+    { label: 'Workflows', done: deliberatelyDisabled || workflowsReady },
+    { label: 'Routen', done: deliberatelyDisabled || verifiedActiveRoutes > 0 },
     {
       label: 'Betrieb',
       done:
@@ -238,6 +238,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
           status.deliveryCounts.unrouted === 0),
     },
   ];
+  const stageStates = withActiveStep(setupSteps);
 
   function connectionFormData(): FormData {
     const data = new FormData();
@@ -337,7 +338,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     });
     setCustomEvent('');
     setRouteResult(null);
-    document.getElementById('n8n-route-editor')?.scrollIntoView({ behavior: 'smooth' });
+    // Editor ist ein Modal — öffnet automatisch über draftPrefilled.
   }
 
   function selectDiscovered(item: N8nDiscoveredWebhookView) {
@@ -345,10 +346,8 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     setRouteDraft(draft);
     setCustomEvent('');
     setRouteResult(null);
-    // Bekannte Vorlagen/Events lassen sich direkt an der Fundstelle speichern.
-    // Nur unbekannte Webhooks brauchen zuerst die manuelle Event-Auswahl im
-    // ausführlichen Editor.
-    focusRouteEditorForManualEventSelection(draft);
+    // Editor-Modal öffnet automatisch über draftPrefilled (bekannte Events
+    // vorausgewählt; unbekannte wählt man dort manuell nach).
   }
 
   function persistRouteDraft() {
@@ -522,101 +521,183 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <N8nSetupOverview initial={initial} status={status} setupSteps={setupSteps} />
 
-      <N8nConnectionSection
-        initial={initial}
-        connection={connection}
-        dispatchConnection={dispatchConnection}
-        saveAction={saveAction}
-        saving={saving}
-        busy={busy}
-        apiInstanceChanged={apiInstanceChanged}
-        generateSecret={generateSecret}
-        testApi={testApi}
-        saveState={saveState}
-        apiResult={apiResult}
-        copied={copied}
-        copy={copy}
-      />
+      <Stage
+        num={1}
+        state={stageStates[0]!.state}
+        title="n8n-Instanz verbinden"
+        sub="UI, Public API und Webhook-Präfix sind verschiedene URLs — bei einem Reverse-Proxy können sie unterschiedliche öffentliche Pfade haben."
+        badge={
+          initial.connectionId ? (
+            <span className="badge badge-green">Verbunden</span>
+          ) : (
+            <span className="badge badge-gray">Nicht verbunden</span>
+          )
+        }
+        action={
+          uiBaseUrl ? (
+            <a
+              className="btn-secondary inline-flex shrink-0 items-center gap-1.5 text-xs"
+              href={uiBaseUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              n8n öffnen <ExternalLink className="h-3 w-3" />
+            </a>
+          ) : undefined
+        }
+      >
+        <N8nConnectionSection
+          initial={initial}
+          connection={connection}
+          dispatchConnection={dispatchConnection}
+          saveAction={saveAction}
+          saving={saving}
+          busy={busy}
+          apiInstanceChanged={apiInstanceChanged}
+          generateSecret={generateSecret}
+          testApi={testApi}
+          saveState={saveState}
+          apiResult={apiResult}
+          copied={copied}
+          copy={copy}
+        />
+      </Stage>
 
-      <N8nCallbackCredentialsSection
-        initial={initial}
-        callbackBaseUrl={callbackBaseUrl}
-        callbackScopes={callbackScopes}
-        setCallbackScopes={setCallbackScopes}
-        callbackConfigured={callbackConfigured}
-        callbackResult={callbackResult}
-        setCallbackResult={setCallbackResult}
-        rotateCallback={rotateCallback}
-        busy={busy}
-        saving={saving}
-        copied={copied}
-        copy={copy}
-      />
+      <Stage
+        num={2}
+        state={stageStates[1]!.state}
+        title="Rückkanal n8n → TaxTronik"
+        sub="Separates, tenantgebundenes Bearer-Credential mit minimalen Berechtigungen — nicht das Outbound-HMAC-Secret."
+        badge={
+          callbackConfigured ? (
+            <span className="badge badge-green">Konfiguriert</span>
+          ) : (
+            <span className="badge badge-gray">Offen</span>
+          )
+        }
+      >
+        <N8nCallbackCredentialsSection
+          initial={initial}
+          callbackBaseUrl={callbackBaseUrl}
+          callbackScopes={callbackScopes}
+          setCallbackScopes={setCallbackScopes}
+          callbackConfigured={callbackConfigured}
+          callbackResult={callbackResult}
+          setCallbackResult={setCallbackResult}
+          rotateCallback={rotateCallback}
+          busy={busy}
+          saving={saving}
+          copied={copied}
+          copy={copy}
+        />
+      </Stage>
 
-      <N8nWorkflowsSection
-        initial={initial}
-        bundledWorkflows={bundledWorkflows}
-        selectedTemplates={selectedTemplates}
-        setSelectedTemplates={setSelectedTemplates}
-        n8nMailFrom={n8nMailFrom}
-        setN8nMailFrom={setN8nMailFrom}
-        gwgOfficerEmail={gwgOfficerEmail}
-        setGwgOfficerEmail={setGwgOfficerEmail}
-        workflows={workflows}
-        workflowError={workflowError}
-        discovered={discovered}
-        discoveryError={discoveryError}
-        importResult={importResult}
-        importWorkflows={importWorkflows}
-        loadWorkflows={loadWorkflows}
-        discoverWebhooks={discoverWebhooks}
-        selectDiscovered={selectDiscovered}
-        selectedDiscoveredKey={selectedDiscoveredRouteKey(routeDraft)}
-        selectedDiscoveredCanSave={discoveredRouteCanBeSaved(routeDraft)}
-        saveSelectedDiscovered={persistRouteDraft}
-        routeResult={routeResult}
-        busy={busy}
-        saving={saving}
-      />
+      <Stage
+        num={3}
+        state={stageStates[2]!.state}
+        title="Workflows einrichten"
+        sub="Vorlagen importieren oder eigene Webhooks erkennen — kein Workflow wird automatisch aktiviert oder überschrieben."
+        badge={
+          workflowsReady ? (
+            <span className="badge badge-green">Eingerichtet</span>
+          ) : (
+            <span className="badge badge-gray">Offen</span>
+          )
+        }
+      >
+        <N8nWorkflowsSection
+          initial={initial}
+          bundledWorkflows={bundledWorkflows}
+          selectedTemplates={selectedTemplates}
+          setSelectedTemplates={setSelectedTemplates}
+          n8nMailFrom={n8nMailFrom}
+          setN8nMailFrom={setN8nMailFrom}
+          gwgOfficerEmail={gwgOfficerEmail}
+          setGwgOfficerEmail={setGwgOfficerEmail}
+          workflows={workflows}
+          workflowError={workflowError}
+          discovered={discovered}
+          discoveryError={discoveryError}
+          importResult={importResult}
+          importWorkflows={importWorkflows}
+          loadWorkflows={loadWorkflows}
+          discoverWebhooks={discoverWebhooks}
+          selectDiscovered={selectDiscovered}
+          selectedDiscoveredKey={selectedDiscoveredRouteKey(routeDraft)}
+          selectedDiscoveredCanSave={discoveredRouteCanBeSaved(routeDraft)}
+          saveSelectedDiscovered={persistRouteDraft}
+          routeResult={routeResult}
+          busy={busy}
+          saving={saving}
+        />
+      </Stage>
 
-      <RouteEditorSection
-        endpoints={status.endpoints}
-        connectionActive={isExplicitConnectionActive(connection)}
-        events={events}
-        routeDraft={routeDraft}
-        setRouteDraft={setRouteDraft}
-        customEvent={customEvent}
-        setCustomEvent={setCustomEvent}
-        routeResult={routeResult}
-        testResult={testResult}
-        busy={busy}
-        saving={saving}
-        onSaveRoute={saveRoute}
-        onEditRoute={editRoute}
-        onDeleteRoute={deleteRoute}
-        onTestRoute={testRoute}
-        onToggleRoute={toggleRoute}
-      />
+      <Stage
+        num={4}
+        state={stageStates[3]!.state}
+        title="Routen — Events an Workflows"
+        sub="Ein Event darf mehrere Workflows beliefern; ein Workflow darf mehrere Events abonnieren."
+        badge={
+          verifiedActiveRoutes > 0 ? (
+            <span className="badge badge-green">{verifiedActiveRoutes} aktiv</span>
+          ) : (
+            <span className="badge badge-gray">Keine aktive</span>
+          )
+        }
+      >
+        <RouteEditorSection
+          endpoints={status.endpoints}
+          connectionActive={isExplicitConnectionActive(connection)}
+          events={events}
+          routeDraft={routeDraft}
+          setRouteDraft={setRouteDraft}
+          customEvent={customEvent}
+          setCustomEvent={setCustomEvent}
+          routeResult={routeResult}
+          testResult={testResult}
+          busy={busy}
+          saving={saving}
+          onSaveRoute={saveRoute}
+          onEditRoute={editRoute}
+          onDeleteRoute={deleteRoute}
+          onTestRoute={testRoute}
+          onToggleRoute={toggleRoute}
+        />
+      </Stage>
 
-      <DeliveryOperationsSection
-        status={status}
-        failedDeliveries={failedDeliveries}
-        failedCursor={failedCursor}
-        hasMoreFailedDeliveries={hasMoreFailedDeliveries}
-        deliveryOperationResult={deliveryOperationResult}
-        retryResult={retryResult}
-        replayResult={replayResult}
-        busy={busy}
-        saving={saving}
-        onReplayUnroutedEvent={replayUnroutedEvent}
-        onSkipUnroutedEvent={skipUnroutedEvent}
-        onRetryDelivery={retryDelivery}
-        onAcknowledgeDelivery={acknowledgeDelivery}
-        onLoadMoreFailedDeliveries={loadMoreFailedDeliveries}
-      />
+      <Stage
+        num={5}
+        state={stageStates[4]!.state}
+        title="Betrieb — Zustellung & Diagnose"
+        sub="Jedes Event und jede Zielzustellung hat eine eigene ID — Fehler eines Workflows blockieren andere Abonnenten nicht."
+        badge={
+          status.deliveryCounts.failed > 0 ? (
+            <span className="badge badge-red">{status.deliveryCounts.failed} fehlgeschlagen</span>
+          ) : (
+            <span className="badge badge-green">Ohne Befund</span>
+          )
+        }
+      >
+        <DeliveryOperationsSection
+          status={status}
+          failedDeliveries={failedDeliveries}
+          failedCursor={failedCursor}
+          hasMoreFailedDeliveries={hasMoreFailedDeliveries}
+          deliveryOperationResult={deliveryOperationResult}
+          retryResult={retryResult}
+          replayResult={replayResult}
+          busy={busy}
+          saving={saving}
+          onReplayUnroutedEvent={replayUnroutedEvent}
+          onSkipUnroutedEvent={skipUnroutedEvent}
+          onRetryDelivery={retryDelivery}
+          onAcknowledgeDelivery={acknowledgeDelivery}
+          onLoadMoreFailedDeliveries={loadMoreFailedDeliveries}
+        />
+      </Stage>
       <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
         <p className="font-medium">Eigene Workflows</p>
         <p className="mt-1">
@@ -636,14 +717,20 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
       </div>
 
       {initial.connectionId && (
-        <div className="border-t border-default pt-4">
+        <div className="danger-zone">
+          <div>
+            <div className="t">Integration deaktivieren und bereinigen</div>
+            <div className="s">
+              Entfernt Credentials und alle Routen. Zustellungen bleiben protokolliert.
+            </div>
+          </div>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-red-700"
+            className="btn-danger-outline"
             onClick={resetConnection}
             disabled={busy || saving}
           >
-            <Trash2 className="h-3.5 w-3.5" /> Deaktivieren und Credentials/Routen bereinigen
+            <Trash2 className="h-3.5 w-3.5" /> Deaktivieren
           </button>
         </div>
       )}

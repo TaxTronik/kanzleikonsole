@@ -11,6 +11,7 @@ out/
 *.tsbuildinfo
 
 .VSCodeCounter/
+.codex-run/
 coverage/
 .pytest_cache/
 playwright-report/

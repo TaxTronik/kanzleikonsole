@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  displaySubjectKeyForAssignment,
   identityAssignmentForSubject,
   identitySubjectRoleLabel,
   identitySubjectOptions,
@@ -82,6 +83,26 @@ describe('GwG-Identitaetspersonen', () => {
     expect(
       resolveIdentitySubject(linkedSource, `representative:${source.representatives[0]!.id}`),
     ).toMatchObject({ linkedBeneficialOwnerId: source.beneficialOwners[0]!.id });
+    expect(
+      displaySubjectKeyForAssignment(
+        {
+          naturalClientSubjectId: null,
+          beneficialOwnerSubjectId: source.beneficialOwners[0]!.id,
+          representativeSubjectId: null,
+        },
+        allOptions,
+      ),
+    ).toBe(`representative:${source.representatives[0]!.id}`);
+    expect(
+      displaySubjectKeyForAssignment(
+        {
+          naturalClientSubjectId: null,
+          beneficialOwnerSubjectId: source.beneficialOwners[1]!.id,
+          representativeSubjectId: null,
+        },
+        allOptions,
+      ),
+    ).toBe(`owner:${source.beneficialOwners[1]!.id}`);
   });
 
   it('bietet bei natuerlichen Personen ausschliesslich den Mandanten selbst an', () => {

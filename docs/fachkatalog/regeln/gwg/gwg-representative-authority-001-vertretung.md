@@ -19,9 +19,11 @@ implementation:
     TaxTronik speichert Vertreter mit stabiler Identität und vollständigen
     allgemeinen Personenangaben im Prüfsnapshot, unterstützt Doppelrollen mit
     wirtschaftlich Berechtigten und verlangt bei Rechtsträgern mindestens
-    einen bestätigten Vertreter-Ausweis. Die konkrete Vertretungsmacht, der
-    tatsächlich Auftretende und Vertreter natürlicher Personen werden jedoch
-    nicht vollständig strukturiert geprüft.
+    einen bestätigten Ausweis für einen Vertreter. Bei einer ausdrücklich
+    verknüpften Doppelrolle kann dies derselbe, über die Owner-ID gebundene
+    Personennachweis sein. Die konkrete Vertretungsmacht, der tatsächlich
+    Auftretende und Vertreter natürlicher Personen werden jedoch nicht
+    vollständig strukturiert geprüft.
 sources:
   - kind: official_law
     citation: § 10 Abs. 1 Nr. 1 GwG
@@ -41,6 +43,7 @@ sources:
 code_refs:
   - apps/web/src/server/gwg/representatives.ts
   - apps/web/src/server/gwg/verification.ts
+  - apps/web/src/server/gwg/identity-subject.ts
   - apps/web/src/server/gwg/revisions.ts
   - apps/web/src/server/gwg-onboarding/representative-submission.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
@@ -57,6 +60,7 @@ code_refs:
 test_refs:
   - apps/web/src/server/gwg/__tests__/representatives.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
+  - apps/web/src/server/gwg/__tests__/identity-subject.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
@@ -163,10 +167,16 @@ allgemeinen Angaben oder der Doppelrollen-Verknüpfung entwerten zugeordnete
 Identitätsdokumente. Der Self-Onboarding-Pfad verlangt für einen separaten
 Vertreter einen vollständigen Ausweissatz.
 
-Das zentrale Freigabegate akzeptiert nur eine bestätigte Ausweiszuordnung zu
-einer Vertreter-ID desselben Prüfsnapshots. Register- und Gründungsbelege können
-die manuelle Berechtigungsprüfung unterstützen, werden aber nicht semantisch
-ausgewertet.
+Das zentrale Freigabegate akzeptiert eine bestätigte Ausweiszuordnung zu einer
+Vertreter-ID desselben Prüfsnapshots. Bei einer ausdrücklich über
+`linkedBeneficialOwnerId` verknüpften Doppelrolle akzeptiert es alternativ den
+bestätigten Ausweis genau dieser Owner-ID. Die Owner-ID muss zu einem im selben
+Snapshot erfassten wirtschaftlich Berechtigten gehören; bloße Namensgleichheit
+bleibt ausgeschlossen. Die allgemeinen Personendaten werden in diesem Fall aus
+dem ausdrücklich verknüpften Owner-Snapshot bewertet. Dadurch blockiert ein
+älterer, noch unvollständiger Vertretersnapshot die gemeinsame Person nicht;
+eine fehlende oder fremde Verknüpfung bleibt fail-closed. Register- und Gründungsbelege können die manuelle
+Berechtigungsprüfung unterstützen, werden aber nicht semantisch ausgewertet.
 
 Die Staff-Oberfläche zeigt gesetzliche Vertreter als erfasste Personen im
 Bereich „Personen“. Neue Vertreter entstehen nur über „Neue Person erfassen“
@@ -181,7 +191,12 @@ Rollenänderung und stellt eine Doppelrolle über die stabile Personenreferenz
 her. Eine bereits als Vertreter erfasste Person wird ohne erneute Eingabe ihrer
 allgemeinen Angaben um die wirtschaftlich-berechtigte Rolle ergänzt; nur der
 rollenspezifische Anteil wird erfasst. Beide Rollensnapshots werden atomar
-synchronisiert, ohne die Vertreterrolle zu entfernen. Ein eigener
+synchronisiert, ohne die Vertreterrolle zu entfernen. Das Herstellen einer
+Vertreterrolle aus einem vorhandenen Owner und spätere Owner-Korrekturen
+übernehmen dabei Name, Geburtsdatum, Geburtsort, Wohnsitz, Staatsangehörigkeit
+und PEP-Status vollständig. Ein bereits auf der Owner-ID gespeicherter Ausweis
+wird in der Personenansicht über dieselbe stabile Verknüpfung beim gemeinsamen
+Doppelrollen-Eintrag angezeigt. Ein eigener
 Stammdaten-Überblick oberhalb von
 Stepper und Mandanteneinladung nennt die gesetzlichen Vertreter zusammen mit
 den zentralen Rechtsträger- und Registerangaben. Der spätere Abschnitt
@@ -219,5 +234,8 @@ Entwerten überholter Zuordnungen. Die Tests prüfen Positions- und Rollenwechse
 die gemeinsame Anlage einer Person mit Vertreter- und
 wirtschaftlich-berechtigter Rolle, die spätere atomare Ergänzung der Rolle ohne
 erneute Stammdateneingabe, die Synchronisation allgemeiner Angaben, das
-Vollständigkeitsgate, separate Ausweissätze, unbekannte Doppelrollen und den
-Schutz vor Namensheuristik. Sie belegen nicht die materielle Vertretungsmacht.
+Vollständigkeitsgate, separate Ausweissätze, die Wiederverwendung eines
+bestätigten Owner-Ausweises bei explizit verknüpfter Doppelrolle, unbekannte
+Doppelrollen, ältere unvollständige Vertretersnapshots, die gemeinsame
+Ausweisanzeige und den Schutz vor Namensheuristik. Sie belegen nicht die
+materielle Vertretungsmacht.

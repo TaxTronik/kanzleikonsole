@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useId } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, CheckCheck, X } from 'lucide-react';
@@ -26,6 +26,9 @@ import {
   notificationTimestamp,
   shouldAcknowledgeCompletionOnCurrentPage,
 } from '@/lib/notification-feed';
+import { useAccessibleDisplayEnabled } from './accessible-display';
+import { useAnchoredPanel } from './ui/use-anchored-panel';
+import { scheduleNotificationAlertDismiss } from './ui/notification-alert-timing';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -69,7 +72,14 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
   const [alertItem, setAlertItem] = useState<NotificationItem | null>(null);
   const [open, setOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  const [alertHovered, setAlertHovered] = useState(false);
+  const [alertFocused, setAlertFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+  const accessibleDisplay = useAccessibleDisplayEnabled();
+  const panelStyle = useAnchoredPanel(open, containerRef, 384, 'end');
   const visibleRef = useRef(true);
   // Zuletzt bekannter unread-Stand (race-arm gegenüber parallelen Polls) — Quelle
   // der Wahrheit für die "es kam etwas Neues"-Erkennung (Ton + Live-Refresh).
@@ -78,16 +88,22 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
   // gleichzeitig eine neue erzeugt, bleibt sie gleich. Der jüngste Zeitpunkt
   // ist deshalb die monotone zweite Signalkomponente.
   const latestUnreadAtRef = useRef(notificationTimestamp(initialLatestUnreadAt));
-  const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const now = Date.now();
 
   const showNotificationAlert = useCallback((item: NotificationItem) => {
     setAlertItem(item);
-    if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
-    alertTimerRef.current = setTimeout(() => setAlertItem(null), 8000);
   }, []);
+
+  useEffect(() => {
+    if (!alertItem) return;
+    return scheduleNotificationAlertDismiss({
+      persistent: accessibleDisplay,
+      interacting: alertHovered || alertFocused || open,
+      dismiss: () => setAlertItem(null),
+    });
+  }, [alertItem, accessibleDisplay, alertHovered, alertFocused, open]);
 
   // Bei echtem Zuwachs an ungelesenen Benachrichtigungen (serverseitig ist etwas
   // passiert, z. B. Chain-Verify-Ergebnis) die aktuelle Seite ereignisgetrieben
@@ -152,13 +168,6 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
       }
     })();
   }, [pathname, router, showNotificationAlert]);
-
-  useEffect(
-    () => () => {
-      if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
-    },
-    [],
-  );
 
   useEffect(() => {
     setSoundOn(isNotificationSoundEnabled());
@@ -274,8 +283,13 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
       if (!containerRef.current) return;
       if (!containerRef.current.contains(e.target as Node)) setOpen(false);
     }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape' && containerRef.current?.contains(event.target as Node)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
+      }
     }
     document.addEventListener('mousedown', onClick);
     document.addEventListener('keydown', onKey);
@@ -284,6 +298,15 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  useEffect(() => {
+    if (open) panelRef.current?.focus({ preventScroll: true });
+  }, [open]);
+
+  function closePanel() {
+    setOpen(false);
+    triggerRef.current?.focus({ preventScroll: true });
+  }
 
   function toggle() {
     const next = !open;
@@ -319,34 +342,55 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div
+      ref={containerRef}
+      className="relative"
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
       <button
+        ref={triggerRef}
         type="button"
         onClick={toggle}
         className="relative p-2 text-muted hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
         aria-label={unread > 0 ? `${unread} ungelesene Benachrichtigungen` : 'Benachrichtigungen'}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
+        aria-controls={open ? panelId : undefined}
         aria-expanded={open}
       >
-        <Bell className="h-5 w-5" />
+        <Bell className="h-5 w-5" aria-hidden="true" />
         {unread > 0 && (
-          <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+          <span
+            aria-hidden="true"
+            className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"
+          >
             {unread > 99 ? '99+' : unread}
           </span>
         )}
       </button>
 
-      {alertItem && (
+      {alertItem && !open && (
         <div
           role="status"
           aria-live="polite"
-          className="fixed right-4 top-16 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-brand-200 bg-surface p-4 shadow-xl dark:border-brand-800"
+          onMouseEnter={() => setAlertHovered(true)}
+          onMouseLeave={() => setAlertHovered(false)}
+          onFocusCapture={() => setAlertFocused(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setAlertFocused(false);
+          }}
+          className="fixed right-4 top-16 z-50 max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-brand-200 bg-surface p-4 shadow-xl dark:border-brand-800"
         >
           <div className="flex items-start gap-3">
-            <Bell className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+            <Bell className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-primary">Neue Benachrichtigung</p>
-              <p className="mt-0.5 truncate text-sm text-secondary">{alertItem.title}</p>
+              <p
+                className={`mt-0.5 text-sm text-secondary ${accessibleDisplay ? 'break-words' : 'truncate'}`}
+              >
+                {alertItem.title}
+              </p>
               {alertItem.href && (
                 <Link
                   href={alertItem.href}
@@ -354,7 +398,7 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
                     setAlertItem(null);
                     void handleItemClick(alertItem);
                   }}
-                  className="mt-2 inline-block text-xs text-brand-700 hover:underline dark:text-brand-500"
+                  className="mt-2 inline-block text-sm text-brand-700 hover:underline dark:text-brand-500"
                 >
                   Öffnen →
                 </Link>
@@ -362,11 +406,14 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
             </div>
             <button
               type="button"
-              onClick={() => setAlertItem(null)}
+              onClick={() => {
+                setAlertItem(null);
+                triggerRef.current?.focus({ preventScroll: true });
+              }}
               className="rounded p-1 text-muted hover:bg-gray-100 hover:text-primary"
               aria-label="Hinweis schließen"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -374,11 +421,16 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
 
       {open && (
         <div
-          role="menu"
-          className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] z-30 rounded-lg shadow-lg border border-default bg-surface overflow-hidden"
+          ref={panelRef}
+          id={panelId}
+          role="dialog"
+          aria-labelledby={`${panelId}-heading`}
+          tabIndex={-1}
+          style={panelStyle}
+          className="absolute z-30 rounded-lg shadow-lg border border-default bg-surface overflow-y-auto overscroll-contain"
         >
-          <div className="px-4 py-3 border-b border-default flex items-center justify-between">
-            <h3 className="text-sm font-medium text-primary">
+          <div className="px-4 py-3 border-b border-default flex flex-wrap items-center justify-between gap-2">
+            <h3 id={`${panelId}-heading`} className="text-sm font-medium text-primary">
               Benachrichtigungen
               {unread > 0 && <span className="ml-2 text-xs text-muted">({unread} neu)</span>}
             </h3>
@@ -388,15 +440,25 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
                 onClick={handleMarkAllRead}
                 className="text-xs text-brand-700 dark:text-brand-500 hover:underline inline-flex items-center gap-1"
               >
-                <CheckCheck className="h-3 w-3" />
+                <CheckCheck className="h-3 w-3" aria-hidden="true" />
                 Alle gelesen
               </button>
             )}
+            <button
+              type="button"
+              onClick={closePanel}
+              className="ml-auto rounded p-2 text-muted hover:bg-gray-100 hover:text-primary"
+              aria-label="Benachrichtigungen schließen"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
           </div>
 
-          <div className="max-h-96 overflow-y-auto">
+          <div>
             {items === null ? (
-              <p className="px-4 py-8 text-sm text-disabled text-center">Lade…</p>
+              <p role="status" className="px-4 py-8 text-sm text-disabled text-center">
+                Lade…
+              </p>
             ) : items.length === 0 ? (
               <p className="px-4 py-8 text-sm text-disabled text-center">
                 Keine Benachrichtigungen.
@@ -407,22 +469,36 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
                   const inner = (
                     <div className="flex items-start gap-2 px-4 py-3 hover:bg-gray-50">
                       {!n.readAt && (
-                        <span className="mt-1.5 inline-block w-2 h-2 rounded-full bg-brand-600 shrink-0" />
+                        <span
+                          aria-hidden="true"
+                          className="mt-1.5 inline-block w-2 h-2 rounded-full bg-brand-600 shrink-0"
+                        />
                       )}
                       <div className="min-w-0 flex-1">
                         <p
-                          className={
-                            n.readAt
-                              ? 'text-sm text-secondary truncate'
-                              : 'text-sm font-medium text-primary truncate'
-                          }
+                          className={`${n.readAt ? 'text-sm text-secondary' : 'text-sm font-medium text-primary'} ${accessibleDisplay ? 'break-words' : 'truncate'}`}
                         >
+                          {!n.readAt && <span className="sr-only">Ungelesen. </span>}
                           {n.title}
                         </p>
-                        {n.body && <p className="text-xs text-muted line-clamp-2">{n.body}</p>}
-                        <p className="text-[10px] text-disabled mt-0.5">
+                        {n.body && (
+                          <p
+                            className={
+                              accessibleDisplay
+                                ? 'text-sm text-muted whitespace-pre-wrap break-words'
+                                : 'text-xs text-muted line-clamp-2'
+                            }
+                          >
+                            {n.body}
+                          </p>
+                        )}
+                        <time
+                          dateTime={n.createdAt}
+                          title={fmtDateTimeShort(new Date(n.createdAt))}
+                          className={`block text-muted mt-0.5 ${accessibleDisplay ? 'text-sm' : 'text-xs'}`}
+                        >
                           {relativeTime(n.createdAt, now)}
-                        </p>
+                        </time>
                       </div>
                     </div>
                   );
@@ -448,7 +524,7 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
             )}
           </div>
 
-          <div className="border-t border-default px-4 py-2 flex items-center justify-between gap-2">
+          <div className="border-t border-default px-4 py-2 flex flex-wrap items-center justify-between gap-2">
             <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -460,7 +536,7 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
             </label>
             <Link
               href="/staff/notifications"
-              onClick={() => setOpen(false)}
+              onClick={closePanel}
               className="text-xs text-brand-700 dark:text-brand-500 hover:underline shrink-0"
             >
               Alle anzeigen →

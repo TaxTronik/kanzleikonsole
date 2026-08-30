@@ -101,7 +101,7 @@ export function WizardStepper({ step }: { step: number }) {
                 done
                   ? 'w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center'
                   : current
-                    ? 'w-8 h-8 rounded-full bg-brand-600 text-white text-sm font-bold flex items-center justify-center'
+                    ? 'w-8 h-8 rounded-full bg-brand-600 text-on-brand text-sm font-bold flex items-center justify-center'
                     : 'w-8 h-8 rounded-full bg-gray-200 text-muted text-sm font-bold flex items-center justify-center'
               }
             >
@@ -475,8 +475,11 @@ export function PrivacyStep({
           </span>
         </label>
         <div>
-          <label className="label-sm">Name der erklärenden Person *</label>
+          <label className="label-sm" htmlFor="gwg-onboarding-signed-by-name">
+            Name der erklärenden Person *
+          </label>
           <input
+            id="gwg-onboarding-signed-by-name"
             value={signedByName}
             onChange={(event) => onSignedByNameChange(event.target.value)}
             maxLength={300}

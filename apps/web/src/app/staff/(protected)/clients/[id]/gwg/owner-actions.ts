@@ -191,6 +191,17 @@ export interface SavedGwgPersonGeneral {
   isPep: boolean | null;
 }
 
+interface GwgPersonGeneralMutationPayload {
+  saved?: SavedGwgPersonGeneral;
+  latest?: SavedGwgPersonGeneral;
+  revision?: string;
+  conflict?: boolean;
+  reviewReset?: boolean;
+  invalidatedIdentitySets?: InvalidatedIdentitySet[];
+}
+
+export type GwgPersonGeneralActionResult = ActionResult & GwgPersonGeneralMutationPayload;
+
 /**
  * Speichert allgemeine Angaben einmal auf Personenebene. Bei einer Doppelrolle
  * werden die beiden bestehenden Rollensnapshots atomar synchronisiert; die
@@ -199,21 +210,14 @@ export interface SavedGwgPersonGeneral {
 export async function updateGwgPersonGeneralAction(
   _prev: ActionResult | null,
   formData: FormData,
-): Promise<
-  ActionResult & {
-    saved?: SavedGwgPersonGeneral;
-    revision?: string;
-    reviewReset?: boolean;
-    invalidatedIdentitySets?: InvalidatedIdentitySet[];
-  }
-> {
+): Promise<GwgPersonGeneralActionResult> {
   const parsed = parseFormData(UpdateGwgPersonGeneralSchema, formData, {
     errorMessage: 'Die allgemeinen Angaben sind unvollständig oder ungültig.',
   });
   if (!parsed.ok) return parsed;
   const data = parsed.data;
 
-  return withStaff(async (tx, { tenantId, staffId, session }) => {
+  const result = await withStaff(async (tx, { tenantId, staffId, session }) => {
     await assertClientAccessTx(tx, session, data.clientId);
     await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
     const check = await tx.gwgCheck.findFirst({
@@ -270,10 +274,20 @@ export async function updateGwgPersonGeneralAction(
       nationality: source.nationality,
       isPep: source.isPep,
     };
-    if (gwgPersonGeneralRevision(currentGeneral) !== data.expectedRevision) {
-      throw new ActionError(
-        'Die allgemeinen Angaben wurden zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
-      );
+    const currentRevision = gwgPersonGeneralRevision(currentGeneral);
+    if (currentRevision !== data.expectedRevision) {
+      return {
+        conflict: true,
+        latest: {
+          fullName: source.fullName,
+          birthDate: source.birthDate?.toISOString().slice(0, 10) ?? '',
+          birthPlace: source.birthPlace ?? '',
+          residence: source.residence ?? '',
+          nationality: source.nationality ?? '',
+          isPep: source.isPep,
+        },
+        revision: currentRevision,
+      };
     }
     const saved: SavedGwgPersonGeneral = {
       fullName: data.fullName,
@@ -384,6 +398,18 @@ export async function updateGwgPersonGeneralAction(
       invalidatedIdentitySets,
     };
   });
+
+  if (result.conflict && result.latest && result.revision) {
+    return {
+      ok: false,
+      conflict: true,
+      latest: result.latest,
+      revision: result.revision,
+      error:
+        'Die allgemeinen Angaben wurden zwischenzeitlich geändert. Der aktuelle Stand wurde automatisch nachgeladen; Ihre Eingabe bleibt erhalten.',
+    };
+  }
+  return result;
 }
 
 const AddOwnerSchema = z
@@ -726,14 +752,29 @@ export async function updateBeneficialOwnerAction(
     const linkedRepresentatives = (check.representatives ?? []).filter(
       (representative) => representative.linkedBeneficialOwnerId === data.ownerId,
     );
-    if (owner.fullName !== data.fullName && linkedRepresentatives.length > 0) {
-      await tx.gwgRepresentative.updateMany({
+    const generalPersonFieldsChanged = identityFieldsChanged || owner.isPep !== data.isPep;
+    if (generalPersonFieldsChanged && linkedRepresentatives.length > 0) {
+      const synchronized = await tx.gwgRepresentative.updateMany({
         where: {
           gwgCheckId: data.checkId,
           linkedBeneficialOwnerId: data.ownerId,
         },
-        data: { fullName: data.fullName },
+        data: {
+          fullName: data.fullName,
+          birthDate: new Date(data.birthDate),
+          birthPlace: data.birthPlace,
+          residence: data.residence,
+          nationality: data.nationality,
+          isPep: data.isPep,
+        },
       });
+      if (synchronized.count !== linkedRepresentatives.length) {
+        throw new ActionError(
+          'Die Doppelrolle konnte nicht vollständig synchronisiert werden. Bitte erneut versuchen.',
+        );
+      }
+    }
+    if (owner.fullName !== data.fullName && linkedRepresentatives.length > 0) {
       await tx.gwgCheck.update({
         where: { id: data.checkId },
         data: {

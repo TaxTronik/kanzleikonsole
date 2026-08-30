@@ -128,7 +128,11 @@ export function AddStepForm({
 
   return (
     <div className="px-4 py-3 border-t border-subtle bg-gray-50/50 dark:bg-gray-900/30 space-y-3">
+      <label className="sr-only" htmlFor="add-workflow-step-title">
+        Titel des neuen Schritts
+      </label>
       <input
+        id="add-workflow-step-title"
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -137,7 +141,11 @@ export function AddStepForm({
         className="input text-sm"
         autoFocus
       />
+      <label className="sr-only" htmlFor="add-workflow-step-description">
+        Beschreibung des neuen Schritts (optional)
+      </label>
       <textarea
+        id="add-workflow-step-description"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="Optionale Beschreibung"
@@ -148,8 +156,11 @@ export function AddStepForm({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-muted mb-1">Schritt-Typ</label>
+          <label className="block text-xs text-muted mb-1" htmlFor="add-workflow-step-kind">
+            Schritt-Typ
+          </label>
           <select
+            id="add-workflow-step-kind"
             value={kind}
             onChange={(e) => changeKind(e.target.value as StepKind)}
             className="input text-sm"
@@ -163,8 +174,11 @@ export function AddStepForm({
           <p className="text-[10px] text-disabled mt-1 leading-snug">{KIND_DESCRIPTIONS[kind]}</p>
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">Bearbeiter</label>
+          <label className="block text-xs text-muted mb-1" htmlFor="add-workflow-step-assignee">
+            Bearbeiter
+          </label>
           <select
+            id="add-workflow-step-assignee"
             value={assigneeStaffId}
             onChange={(e) => setAssigneeStaffId(e.target.value)}
             className="input text-sm"
@@ -191,8 +205,11 @@ export function AddStepForm({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-muted mb-1">Fälligkeit (optional)</label>
+          <label className="block text-xs text-muted mb-1" htmlFor="add-workflow-step-due-date">
+            Fälligkeit (optional)
+          </label>
           <input
+            id="add-workflow-step-due-date"
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
@@ -200,10 +217,11 @@ export function AddStepForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1">
+          <label className="block text-xs text-muted mb-1" htmlFor="add-workflow-step-n8n-event">
             n8n-Event <span className="text-disabled">(optional)</span>
           </label>
           <input
+            id="add-workflow-step-n8n-event"
             type="text"
             value={n8nEvent}
             onChange={(e) => setN8nEvent(e.target.value)}
@@ -220,7 +238,11 @@ export function AddStepForm({
         </div>
       </div>
 
-      {error && <div className="alert-error-sm text-xs p-2">{error}</div>}
+      {error && (
+        <div className="alert-error-sm text-xs p-2" role="alert">
+          {error}
+        </div>
+      )}
       <div className="flex items-center justify-end gap-2 pt-1">
         <button type="button" onClick={reset} className="text-xs text-muted hover:underline">
           Abbrechen
@@ -261,8 +283,14 @@ function KindFields({
     case 'DOCUMENT_UPLOAD':
       return (
         <div>
-          <label className="block text-xs text-muted mb-1">Erwartete Dokumenten-Klasse</label>
+          <label
+            className="block text-xs text-muted mb-1"
+            htmlFor="add-workflow-step-document-classification"
+          >
+            Erwartete Dokumenten-Klasse
+          </label>
           <select
+            id="add-workflow-step-document-classification"
             value={String(config['expectedClassification'] ?? 'GENERAL')}
             onChange={(e) => setCfg('expectedClassification', e.target.value)}
             className="input text-sm"
@@ -281,6 +309,7 @@ function KindFields({
       return (
         <div className="space-y-2 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-900/10 p-2">
           <select
+            aria-label="Anforderungsvorlage"
             value={String(config['requestTemplateId'] ?? '')}
             onChange={(e) => setCfg('requestTemplateId', e.target.value || undefined)}
             className="input text-sm"
@@ -294,6 +323,7 @@ function KindFields({
             ))}
           </select>
           <input
+            aria-label="Anforderungstitel"
             type="text"
             placeholder="Anforderungs-Titel"
             value={String(config['requestTitle'] ?? '')}
@@ -303,6 +333,7 @@ function KindFields({
             disabled={usingTpl}
           />
           <textarea
+            aria-label="Anforderungsbeschreibung"
             placeholder="Anforderungs-Beschreibung für den Mandanten"
             value={String(config['requestDescription'] ?? '')}
             onChange={(e) => setCfg('requestDescription', e.target.value)}
@@ -319,6 +350,7 @@ function KindFields({
       return (
         <div className="rounded-md border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/30 dark:bg-indigo-900/10 p-2">
           <select
+            aria-label="Formularvorlage"
             value={String(config['formTemplateId'] ?? '')}
             onChange={(e) => setCfg('formTemplateId', e.target.value)}
             className="input text-sm"
@@ -338,6 +370,7 @@ function KindFields({
       return (
         <div className="space-y-2 rounded-md border border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-900/10 p-2">
           <select
+            aria-label="E-Mail-Vorlage"
             value={String(config['emailTemplateId'] ?? '')}
             onChange={(e) => setCfg('emailTemplateId', e.target.value || undefined)}
             className="input text-sm"
@@ -351,6 +384,7 @@ function KindFields({
             ))}
           </select>
           <input
+            aria-label="E-Mail-Betreff"
             type="text"
             placeholder="Betreff"
             value={String(config['subject'] ?? '')}
@@ -360,6 +394,7 @@ function KindFields({
             disabled={usingTpl}
           />
           <textarea
+            aria-label="E-Mail-Text"
             placeholder="Mail-Text (Markdown)"
             value={String(config['bodyMd'] ?? '')}
             onChange={(e) => setCfg('bodyMd', e.target.value)}

@@ -45,7 +45,11 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/poa" className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href="/staff/poa"
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">

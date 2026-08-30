@@ -45,6 +45,17 @@
 }
 
 /*
+ * Während Drag/Resize eines Widgets: Textauswahl auf der ganzen Seite sperren.
+ * RGL setzt user-select:none nur auf dem gezogenen Item selbst — der Mauszeiger
+ * bewegt sich beim Resizen aber über den restlichen Seiteninhalt und markiert
+ * dort Text. Solange ein Item den State trägt, ist die Seite unselektierbar.
+ */
+body:has(.react-grid-item.react-draggable-dragging),
+body:has(.react-grid-item.resizing) {
+  user-select: none;
+}
+
+/*
  * Im Dashboard-Grid: kein Hover-Translate auf Cards (würde durch
  * benachbarte Items clippen). Hover-Shadow + Border-Highlight bleiben.
  *
@@ -69,7 +80,7 @@
  */
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: rgb(203 213 225) transparent;
+  scrollbar-color: rgb(var(--border-strong)) transparent;
 }
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
@@ -79,25 +90,16 @@
   background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: rgb(203 213 225);
+  background-color: rgb(var(--border-strong));
   border-radius: 9999px;
   border: 1px solid transparent;
   background-clip: padding-box;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(148 163 184);
+  background-color: rgb(var(--text-disabled));
 }
 .scrollbar-thin::-webkit-scrollbar-corner {
   background: transparent;
-}
-.dark .scrollbar-thin {
-  scrollbar-color: rgb(55 65 81) transparent;
-}
-.dark .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: rgb(55 65 81);
-}
-.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(75 85 99);
 }
 
 @layer base {
@@ -110,6 +112,28 @@
   button:not(:disabled),
   [role='button']:not(:disabled) {
     cursor: pointer;
+  }
+
+  /* Tastatur-Navigation: erst beim Fokus sichtbar und oberhalb aller App-Chromes. */
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 200;
+    transform: translateY(calc(-100% - 1rem));
+    border: 2px solid rgb(var(--brand-600));
+    border-radius: 0.5rem;
+    background-color: rgb(var(--surface-card));
+    color: rgb(var(--text-primary));
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 650;
+    box-shadow: var(--shadow-pop);
+  }
+  .skip-link:focus-visible {
+    transform: translateY(0);
+    outline: 3px solid rgb(var(--brand-500) / 0.45);
+    outline-offset: 2px;
   }
 
   /*
@@ -126,6 +150,9 @@
     --brand-600: 37 99 235; /* #2563eb */
     --brand-700: 29 78 216; /* #1d4ed8 */
     --brand-900: 30 58 138; /* #1e3a8a */
+    --brand-focus: 63 117 237; /* #3f75ed, >4.2:1 gegen Light und Dark */
+    --brand-text-light: 29 78 216; /* sicherer Default auf surface-sunken */
+    --brand-text-dark: 96 140 255; /* aufgehellt, 5.98:1 auf surface-page */
 
     /*
      * Semantic Color Tokens — Single Source of Truth für Hintergründe,
@@ -143,43 +170,63 @@
      *
      * Format wie bei brand: "R G B" für rgb(var(...) / <alpha>)-Pattern.
      */
-    --surface-page: 249 250 251; /* gray-50  */
+    --surface-page: 247 246 243; /* warmes Papier #f7f6f3 */
     --surface-card: 255 255 255; /* white    */
-    --surface-raised: 243 244 246; /* gray-100 */
-    --surface-sunken: 229 231 235; /* gray-200 */
+    --surface-raised: 240 239 236; /* #f0efec */
+    --surface-sunken: 233 231 226; /* #e9e7e2 */
+    --surface-topbar: 255 255 255; /* white    */
 
-    --border-default: 229 231 235; /* gray-200 */
-    --border-strong: 209 213 219; /* gray-300 */
-    --border-subtle: 243 244 246; /* gray-100 */
+    --border-default: 220 217 210; /* #dcd9d2 */
+    --border-strong: 199 195 186; /* #c7c3ba */
+    --border-subtle: 236 234 229; /* #eceae5 */
 
-    --text-primary: 17 24 39; /* gray-900 */
-    --text-secondary: 75 85 99; /* gray-600 */
-    --text-muted: 107 114 128; /* gray-500 */
-    --text-disabled: 156 163 175; /* gray-400 */
+    --text-primary: 28 25 23; /* Tinte #1c1917 */
+    --text-secondary: 68 64 60; /* #44403c */
+    /* Mindestens 4.5:1 auch auf der dunkelsten hellen Fläche (`sunken`). */
+    --text-muted: 108 101 96; /* #6c6560 */
+    /* Auch versehentlich als Information eingesetzter Disabled-Text bleibt
+       mit 4.5:1 lesbar; echte deaktivierte Controls nutzen zusätzlich opacity. */
+    --text-disabled: 108 101 96; /* #6c6560 */
     --text-on-brand: 255 255 255; /* white    */
+
+    /* Ink-Pill (aktiver Nav-Eintrag): solide Tinte im Light-Mode. */
+    --ink: 28 25 23;
+    --ink-text: 250 249 248;
+
+    --ring: rgb(var(--brand-focus));
+    --shadow-card: 0 1px 2px rgb(28 25 23 / 0.05), 0 2px 6px rgb(28 25 23 / 0.05);
+    --shadow-pop: 0 10px 24px rgb(28 25 23 / 0.12);
+
+    --radius-card: 12px;
+    --radius-btn: 10px;
+    --radius-item: 9px;
   }
 
   .dark {
     /*
-     * Dark-Mode-Werte für dieselben Tokens. Beachte: Card ist HELLER als
-     * Page (umgekehrte Logik zum Light), damit Karten sich abheben. Die
-     * Stufung ist großzügig — gray-950 → gray-800 → gray-700 — damit kein
-     * "verschmilzt-mit-Hintergrund"-Eindruck mehr entsteht.
+     * Dark-Mode-Werte für dieselben Tokens — warmes Anthrazit ohne
+     * Blaustich. Card ist HELLER als Page (umgekehrte Logik zum Light),
+     * damit Karten sich abheben.
      */
-    --surface-page: 3 7 18; /* gray-950 */
-    --surface-card: 31 41 55; /* gray-800 */
-    --surface-raised: 55 65 81; /* gray-700 */
-    --surface-sunken: 17 24 39; /* gray-900 */
+    --surface-page: 19 17 20; /* #131114 */
+    --surface-card: 29 27 32; /* #1d1b20 */
+    --surface-raised: 40 37 44; /* #26232a */
+    --surface-sunken: 13 11 15; /* #0d0b0f */
+    --surface-topbar: 24 22 27; /* #18161b */
 
-    --border-default: 55 65 81; /* gray-700 */
-    --border-strong: 75 85 99; /* gray-600 */
-    --border-subtle: 55 65 81; /* gray-700, mit Alpha im Pattern */
+    --border-default: 54 50 60; /* #36323c */
+    --border-strong: 74 69 82; /* #4a4552 */
+    --border-subtle: 41 38 47; /* #29262f */
 
-    --text-primary: 243 244 246; /* gray-100 */
-    --text-secondary: 209 213 219; /* gray-300 */
-    --text-muted: 156 163 175; /* gray-400 */
-    --text-disabled: 107 114 128; /* gray-500 */
+    --text-primary: 245 244 243; /* #f5f4f3 */
+    --text-secondary: 198 195 206; /* #c6c3ce */
+    --text-muted: 145 141 155; /* #918d9b */
+    --text-disabled: 145 141 155; /* #918d9b */
     --text-on-brand: 255 255 255; /* white    */
+
+    --ring: rgb(var(--brand-focus));
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45);
+    --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.55);
   }
 
   html {
@@ -190,6 +237,36 @@
   body {
     background-color: rgb(var(--surface-page));
     color: rgb(var(--text-primary));
+  }
+
+  /*
+   * Datei-Upload: der native „Durchsuchen"-Button des file-Inputs bekommt
+   * das btn-secondary-Aussehen (war bislang ungestylter Browser-Default).
+   */
+  input[type='file']::file-selector-button {
+    margin-right: 10px;
+    padding: 5px 12px;
+    border-radius: var(--radius-btn);
+    border: 1px solid rgb(var(--border-strong));
+    background-color: rgb(var(--surface-card));
+    color: rgb(var(--text-secondary));
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-card);
+    transition:
+      background-color 0.12s ease,
+      border-color 0.12s ease,
+      color 0.12s ease;
+  }
+  input[type='file']::file-selector-button:hover {
+    background-color: rgb(var(--surface-raised));
+    border-color: rgb(var(--text-disabled));
+    color: rgb(var(--text-primary));
+  }
+  input[type='file']:focus-visible::file-selector-button {
+    box-shadow: 0 0 0 3px var(--ring);
   }
 }
 
@@ -245,6 +322,9 @@
   .bg-surface-sunken {
     background-color: rgb(var(--surface-sunken));
   }
+  .bg-surface-topbar {
+    background-color: rgb(var(--surface-topbar));
+  }
 
   .border-default {
     border-color: rgb(var(--border-default));
@@ -267,6 +347,12 @@
   }
   .text-disabled {
     color: rgb(var(--text-disabled));
+  }
+  .brand-wordmark {
+    color: rgb(var(--brand-text-light));
+  }
+  .dark .brand-wordmark {
+    color: rgb(var(--brand-text-dark));
   }
 
   /* divide-color für unsere custom border-tokens. Muss exakt Tailwind v4's
@@ -450,10 +536,19 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50;
+    border-radius: var(--radius-btn);
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:pointer-events-none disabled:opacity-50 bg-brand-600 text-white hover:bg-brand-700;
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 bg-brand-600;
+    border-radius: var(--radius-btn);
+    color: rgb(var(--text-on-brand));
+  }
+  .btn-primary:hover {
+    /* Exakte geprüfte Brand-Fläche behalten; ein Stufenwechsel könnte die
+       automatisch gewählte Schwarz/Weiß-Textfarbe wieder entkontrastieren. */
+    background-color: rgb(var(--brand-600));
+    box-shadow: inset 0 0 0 2px rgb(var(--text-on-brand) / 0.28);
   }
   /*
    * .btn-secondary / .input / .label / .card: Token-Werte werden direkt als
@@ -462,16 +557,27 @@
    * zuverlässig (Cross-Layer-Auflösung). Direktes CSS umgeht das.
    */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:pointer-events-none disabled:opacity-50 border;
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border;
+    border-radius: var(--radius-btn);
     background-color: rgb(var(--surface-card));
     color: rgb(var(--text-secondary));
     border-color: rgb(var(--border-strong));
+    box-shadow: var(--shadow-card);
   }
   .btn-secondary:hover {
     background-color: rgb(var(--surface-raised));
+    border-color: rgb(var(--text-disabled));
+    color: rgb(var(--text-primary));
+  }
+  .btn:focus-visible,
+  .btn-primary:focus-visible,
+  .btn-secondary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
   }
   .input {
-    @apply w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500;
+    @apply w-full border px-3 py-2 text-sm focus:border-focus focus:outline-none focus:ring-2 focus:ring-focus;
+    border-radius: var(--radius-btn);
     background-color: rgb(var(--surface-card));
     border-color: rgb(var(--border-strong));
     color: rgb(var(--text-primary));
@@ -483,28 +589,113 @@
     @apply block text-sm font-medium mb-1;
     color: rgb(var(--text-secondary));
   }
+
+  /*
+   * Switch — Schiebebutton für Boolean-Felder. Reines CSS auf dem
+   * <input type="checkbox"> selbst (appearance:none, kein Wrapper-Markup):
+   * name/value/Form-Verhalten bleiben identisch, nur die Optik ändert sich.
+   * Track: neutral aus / Brand an; Thumb: weiß, gleitet bei :checked.
+   */
+  .switch {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex: none;
+    margin: 0;
+    border-radius: 999px;
+    border: 1px solid rgb(var(--border-strong));
+    background-color: rgb(var(--border-strong));
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+    vertical-align: middle;
+  }
+  .switch::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background-color: #fff;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+    transition: transform 0.15s ease;
+  }
+  .switch:checked {
+    background-color: rgb(var(--brand-600));
+    border-color: rgb(var(--brand-600));
+  }
+  .switch:checked::before {
+    background-color: rgb(var(--text-on-brand));
+    transform: translateX(16px);
+  }
+  .switch:hover:not(:disabled):not(:checked) {
+    background-color: rgb(var(--text-disabled));
+    border-color: rgb(var(--text-disabled));
+  }
+  .switch:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
+  }
+  .switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .switch,
+    .switch::before {
+      transition: none;
+    }
+  }
   .card {
-    @apply rounded-lg border shadow-sm dark:shadow-none;
+    @apply border;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
     background-color: rgb(var(--surface-card));
     border-color: rgb(var(--border-default));
   }
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border;
   }
+  /*
+   * Badge-Varianten mit direktem CSS (wie .badge-gray): warme Tints +
+   * 1px-Border im Light, translucent Tints im Dark (Overrides weiter
+   * unten). @apply mit dark:-Varianten vermeiden wir hier bewusst —
+   * Cross-Layer-Auflösung ist in Tailwind v4 unzuverlässig.
+   */
   .badge-green {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border;
+    background-color: #e7f6ec;
+    color: #166534;
+    border-color: #bbe3c8;
   }
   .badge-yellow {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border;
+    background-color: #fbf3e0;
+    color: #92400e;
+    border-color: #f0dfb2;
   }
   .badge-red {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border;
+    background-color: #fbeae8;
+    color: #b42318;
+    border-color: #f3cdc7;
   }
   .badge-brand {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-brand-100 text-brand-900 dark:bg-brand-700 dark:text-brand-50;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border;
+    background-color: rgb(var(--brand-50));
+    color: rgb(var(--brand-700));
+    border-color: rgb(var(--brand-100));
   }
   .badge-purple {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-900 dark:bg-purple-700 dark:text-purple-50;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border;
+    background-color: #f1eefe;
+    color: #6d28d9;
+    border-color: #ddd6fe;
   }
 
   /*
@@ -517,9 +708,10 @@
    * fast weiß → maximaler Kontrast.
    */
   .badge-gray {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
-    background-color: rgb(243 244 246); /* gray-100 */
-    color: rgb(55 65 81); /* gray-700 */
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border;
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-secondary));
+    border-color: rgb(var(--border-default));
   }
 
   /*
@@ -528,8 +720,8 @@
    * (override). Padding-Override per utility-class möglich (`.th px-4 py-2`).
    */
   .th {
-    @apply text-left px-6 py-3 text-xs font-medium uppercase tracking-wide;
-    color: rgb(var(--text-muted));
+    @apply text-left px-6 py-3 text-xs font-semibold uppercase tracking-wide;
+    color: rgb(var(--text-secondary));
   }
   .th-right {
     @apply text-right;
@@ -576,16 +768,28 @@
    * dass sie in beiden Modi gleich gut lesbar sind.
    */
   .alert-info {
-    @apply rounded-md border border-blue-200 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-sm text-blue-900 dark:text-blue-200;
+    @apply rounded-md border px-4 py-3 text-sm;
+    background-color: rgb(var(--brand-50));
+    border-color: rgb(var(--brand-100));
+    color: rgb(var(--brand-700));
   }
   .alert-error {
-    @apply rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300 px-4 py-3;
+    @apply rounded-md border px-4 py-3 text-sm;
+    background-color: #fbeae8;
+    border-color: #f3cdc7;
+    color: #b42318;
   }
   .alert-warning {
-    @apply rounded-md bg-yellow-50 dark:bg-yellow-900/20 text-sm text-yellow-800 dark:text-yellow-200 px-4 py-3;
+    @apply rounded-md border px-4 py-3 text-sm;
+    background-color: #fbf3e0;
+    border-color: #f0dfb2;
+    color: #92400e;
   }
   .alert-success {
-    @apply rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-sm text-emerald-800 dark:text-emerald-200 px-4 py-3;
+    @apply rounded-md border px-4 py-3 text-sm;
+    background-color: #e7f6ec;
+    border-color: #bbe3c8;
+    color: #166534;
   }
 
   /*
@@ -612,13 +816,22 @@
    * Andere Padding-Logik als .alert-*: hier `p-3` statt `px-4 py-3`.
    */
   .alert-error-sm {
-    @apply rounded-md bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-300;
+    @apply rounded-md border p-3 text-sm;
+    background-color: #fbeae8;
+    border-color: #f3cdc7;
+    color: #b42318;
   }
   .alert-success-sm {
-    @apply rounded-md bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-700 dark:text-green-300;
+    @apply rounded-md border p-3 text-sm;
+    background-color: #e7f6ec;
+    border-color: #bbe3c8;
+    color: #166534;
   }
   .alert-info-sm {
-    @apply rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-700 dark:text-blue-300;
+    @apply rounded-md border p-3 text-sm;
+    background-color: rgb(var(--brand-50));
+    border-color: rgb(var(--brand-100));
+    color: rgb(var(--brand-700));
   }
 
   /*
@@ -660,11 +873,21 @@
    * Modal-Schließen-Button (X-Icon, oben rechts).
    */
   .modal-close {
-    @apply absolute top-3 right-3 transition-colors;
+    @apply absolute inline-flex items-center justify-center transition-colors;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-item);
     color: rgb(var(--text-disabled));
   }
   .modal-close:hover {
+    background-color: rgb(var(--surface-raised));
     color: rgb(var(--text-secondary));
+  }
+  .modal-close:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
   }
 
   /*
@@ -678,9 +901,297 @@
   .icon-btn:hover {
     color: rgb(var(--brand-700));
   }
+  .icon-btn:focus-visible {
+    outline: none;
+    border-radius: 0.375rem;
+    box-shadow: 0 0 0 3px var(--ring);
+  }
+
+  /*
+   * Icon-Action — einheitlicher 32px-Icon-Button für die Topbar
+   * (Theme-/UI-Mode-Toggle, Mobile-Menü, Notifications).
+   */
+  .icon-action {
+    @apply inline-flex items-center justify-center transition-colors;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-item);
+    color: rgb(var(--text-muted));
+  }
+  .icon-action:hover {
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-primary));
+  }
+  .icon-action:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
+  }
+
+  /* Kompakte Variante (24px) für Aktions-Icons in Listenzeilen. */
+  .icon-action-sm {
+    @apply inline-flex items-center justify-center transition-colors;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    color: rgb(var(--text-disabled));
+  }
+  .icon-action-sm:hover {
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-primary));
+  }
+  .icon-action-sm:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
+  }
+
+  /*
+   * Sidebar-Navigations-Eintrag. Aktiv = solide Ink-Pill (Light) bzw.
+   * helle Pill (Dark) — der stärkste visuelle Anker der Shell.
+   * Icon-Farben laufen über `.nav-item svg` (lucide rendert <svg>).
+   */
+  .nav-item {
+    @apply relative flex items-center gap-2.5 px-2.5 py-[7px] mb-px text-[13px] font-medium transition-colors;
+    border-radius: var(--radius-item);
+    color: rgb(var(--text-secondary));
+  }
+  .nav-item svg {
+    color: rgb(var(--text-muted));
+  }
+  .nav-item:hover {
+    background-color: rgb(var(--surface-sunken));
+    color: rgb(var(--text-primary));
+  }
+  .nav-item:hover svg {
+    color: rgb(var(--text-secondary));
+  }
+  .nav-item.active {
+    background-color: rgb(var(--ink));
+    color: rgb(var(--ink-text));
+    font-weight: 600;
+  }
+  .nav-item.active svg {
+    color: rgb(var(--ink-text));
+  }
+  .dark .nav-item.active {
+    background-color: rgb(255 255 255 / 0.11);
+    color: rgb(var(--text-primary));
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  }
+  .dark .nav-item.active svg {
+    color: rgb(var(--brand-500));
+  }
+
+  /*
+   * Side-Action — Footer-Aktion in der Sidebar (z. B. Abmelden).
+   */
+  .side-action {
+    @apply flex w-full items-center gap-2.5 px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors;
+    border-radius: var(--radius-item);
+    color: rgb(var(--text-secondary));
+  }
+  .side-action:hover {
+    background-color: rgb(var(--surface-sunken));
+    color: rgb(var(--text-primary));
+  }
+  .side-action svg {
+    color: rgb(var(--text-muted));
+  }
+  .side-action:hover svg {
+    color: rgb(var(--text-secondary));
+  }
+  /* Abmelden: bewusst rot — klar von den übrigen Footer-Aktionen abgesetzt. */
+  .side-action-danger {
+    color: #b42318;
+  }
+  .dark .side-action-danger {
+    color: #fca5a5;
+  }
+  .side-action-danger:hover {
+    background-color: rgb(239 68 68 / 0.08);
+    color: #b42318;
+  }
+  .dark .side-action-danger:hover {
+    color: #fca5a5;
+  }
+  .side-action-danger svg {
+    color: inherit;
+  }
+
+  /*
+   * Avatar — Initialen-Kreis in Brand-Farbe (User-Menü, Topbar).
+   */
+  .avatar {
+    @apply flex shrink-0 items-center justify-center rounded-full font-semibold;
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+    background-color: rgb(var(--brand-600));
+    color: rgb(var(--text-on-brand));
+    box-shadow: inset 0 0 0 1.5px rgb(var(--brand-700));
+  }
+
+  /*
+   * User-Menü — Avatar-Button oben rechts in der Topbar mit Dropdown
+   * (Konto-Kopf, Profil-Link, Abmelden).
+   */
+  .user-menu {
+    position: relative;
+  }
+  .avatar-btn {
+    @apply inline-flex shrink-0 items-center justify-center cursor-pointer rounded-full border-0 bg-transparent p-0;
+  }
+  .avatar-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
+  }
+  .user-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    width: 232px;
+    z-index: 60;
+    background-color: rgb(var(--surface-card));
+    border: 1px solid rgb(var(--border-default));
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-pop);
+    padding: 6px;
+  }
+  .ud-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+  .ud-head .uname {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: rgb(var(--text-primary));
+  }
+  .ud-head .umail {
+    font-size: 11.5px;
+    color: rgb(var(--text-muted));
+  }
+  .ud-sep {
+    height: 1px;
+    background-color: rgb(var(--border-subtle));
+    margin: 4px 0;
+  }
+  .ud-item {
+    @apply flex w-full items-center gap-2.5 text-[13px] font-medium transition-colors;
+    padding: 8px 10px;
+    border-radius: var(--radius-item);
+    color: rgb(var(--text-secondary));
+    outline: none;
+  }
+  /* :hover = Maus, [data-highlighted] = Tastatur-Navigation (Radix) */
+  .ud-item:hover,
+  .ud-item[data-highlighted] {
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-primary));
+  }
+  .ud-item svg {
+    color: rgb(var(--text-muted));
+  }
+  .ud-item:hover svg,
+  .ud-item[data-highlighted] svg {
+    color: rgb(var(--text-primary));
+  }
+  /* Destruktiver Menüeintrag (z. B. „Route löschen"). */
+  .ud-item-danger {
+    color: #b42318;
+  }
+  .dark .ud-item-danger {
+    color: #fca5a5;
+  }
+  .ud-item-danger:hover,
+  .ud-item-danger[data-highlighted] {
+    color: #b42318;
+    background-color: rgb(239 68 68 / 0.08);
+  }
+  .dark .ud-item-danger:hover,
+  .dark .ud-item-danger[data-highlighted] {
+    color: #fca5a5;
+  }
+  .ud-item-danger svg {
+    color: inherit;
+  }
+
+  /* Vertikale Trennlinie in der Topbar (zwischen Bell und Avatar). */
+  .topbar-divider {
+    width: 1px;
+    height: 20px;
+    background-color: rgb(var(--border-default));
+    margin: 0 8px;
+  }
+
+  /*
+   * KPI-Chip — getönte Icon-Kachel (34px) für KPI-/Status-Karten.
+   * Varianten: brand/green/amber/red/gray.
+   */
+  .kpi-chip {
+    @apply flex items-center justify-center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border-radius: 10px;
+    border: 1px solid;
+  }
+  .chip-brand {
+    background-color: rgb(var(--brand-50));
+    color: rgb(var(--brand-700));
+    border-color: rgb(var(--brand-100));
+  }
+  .chip-green {
+    background-color: #e7f6ec;
+    color: #166534;
+    border-color: #bbe3c8;
+  }
+  .chip-amber {
+    background-color: #fbf3e0;
+    color: #92400e;
+    border-color: #f0dfb2;
+  }
+  .chip-red {
+    background-color: #fbeae8;
+    color: #b42318;
+    border-color: #f3cdc7;
+  }
+  .chip-gray {
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-secondary));
+    border-color: rgb(var(--border-default));
+  }
+  .dark .chip-brand {
+    background-color: rgb(var(--brand-500) / 0.15);
+    color: rgb(var(--brand-100));
+    border-color: rgb(var(--brand-500) / 0.3);
+  }
+  .dark .chip-green {
+    background-color: rgb(16 185 129 / 0.13);
+    color: #6ee7b7;
+    border-color: rgb(16 185 129 / 0.28);
+  }
+  .dark .chip-amber {
+    background-color: rgb(245 158 11 / 0.13);
+    color: #fcd34d;
+    border-color: rgb(245 158 11 / 0.28);
+  }
+  .dark .chip-red {
+    background-color: rgb(239 68 68 / 0.13);
+    color: #fca5a5;
+    border-color: rgb(239 68 68 / 0.3);
+  }
+  .dark .chip-gray {
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-secondary));
+    border-color: rgb(var(--border-default));
+  }
 
   /*
    * Stepper — geführter Fortschritt (Setup-/Prüfprozesse).
+   * Connector exakt auf Punkt-Mitte (50% der Zeile = Punktmitte,
+   * da der Punkt per align-items:center zentriert ist).
    */
   .stepper {
     display: flex;
@@ -757,7 +1268,8 @@
   }
 
   /*
-   * Stage — ein Schritt als Karte mit Nummer, Titel und Status.
+   * Stage — ein Schritt als Karte (Nummernbadge + Titel/Sub + Status/
+   * Aktion rechts; Body optional mit Trennlinie).
    */
   .stage {
     overflow: hidden;
@@ -811,6 +1323,103 @@
     padding-top: 14px;
   }
 
+  /* Mini-KPI — kompakte Status-Kachel im Fortschritts-Header. */
+  .mini-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 900px) {
+    .mini-kpis {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  .mini-kpi {
+    border: 1px solid rgb(var(--border-default));
+    border-radius: 10px;
+    background-color: rgb(var(--surface-raised));
+    padding: 10px 12px;
+  }
+  .mini-kpi .v {
+    font-size: 17px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: rgb(var(--text-primary));
+  }
+  .mini-kpi .l {
+    font-size: 11.5px;
+    color: rgb(var(--text-muted));
+    margin-top: 1px;
+  }
+
+  /* Code-Box — Read-only technischer Wert (URL, Key-ID, Hash). */
+  .code-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    border: 1px solid rgb(var(--border-default));
+    border-radius: 8px;
+    background-color: rgb(var(--surface-sunken));
+    padding: 5px 9px;
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    font-size: 12px;
+    color: rgb(var(--text-secondary));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Event-Chip — kompaktes Mono-Label für Event-Namen. */
+  .event-chip {
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 2px 7px;
+    background-color: rgb(var(--surface-sunken));
+    color: rgb(var(--text-secondary));
+    border: 1px solid rgb(var(--border-default));
+    white-space: nowrap;
+  }
+
+  /* File-Chip — gewählte Datei/Seite mit Entfernen-X. */
+  .file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgb(var(--border-default));
+    border-radius: 999px;
+    background-color: rgb(var(--surface-raised));
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgb(var(--text-secondary));
+  }
+  .file-chip .x {
+    color: rgb(var(--text-disabled));
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .file-chip .x:hover {
+    color: rgb(var(--text-primary));
+  }
+
+  /* Dashed-Add — gestrichelte „Hinzufügen"-Fläche in Karten. */
+  .dashed-add {
+    border: 1.5px dashed rgb(var(--border-strong));
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  /* Sub-Box — abgesetzte Gruppe innerhalb einer Karte. */
+  .sub-box {
+    border: 1px solid rgb(var(--border-default));
+    border-radius: 10px;
+    background-color: rgb(var(--surface-raised));
+    padding: 12px 14px;
+  }
+
   /* Details-Box — <details>/<summary> als aufklappbare Karte. */
   .details-box {
     border: 1px solid rgb(var(--border-default));
@@ -842,6 +1451,206 @@
   .details-box .details-body {
     padding: 0 14px 12px;
   }
+
+  /* Form-Grid — 2-spaltiges Formularraster. */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+  }
+  @media (max-width: 767px) {
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .form-grid .span2 {
+    grid-column: span 2;
+  }
+  @media (max-width: 767px) {
+    .form-grid .span2 {
+      grid-column: span 1;
+    }
+  }
+
+  /* Hint — kleine Erläuterung unter Feldern. */
+  .hint {
+    font-size: 11.5px;
+    color: rgb(var(--text-muted));
+    margin-top: 3px;
+  }
+
+  /* Sticky-Save — Speicherleiste am Fuß eines Editors. */
+  .sticky-save {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    margin: 12px -18px -16px;
+    padding: 10px 18px;
+    background-color: rgb(var(--surface-card) / 0.95);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-top: 1px solid rgb(var(--border-default));
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  /* Decision-Bar — finale Aktionsleiste am Seitenende (sticky). */
+  .decision-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    margin: 14px -32px -48px;
+    padding: 12px 32px;
+    background-color: rgb(var(--surface-topbar) / 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid rgb(var(--border-default));
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* Danger-Zone — klar separierter destructiver Bereich. */
+  .danger-zone {
+    border: 1px solid rgb(239 68 68 / 0.35);
+    border-radius: var(--radius-card);
+    background-color: rgb(239 68 68 / 0.04);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .danger-zone .t {
+    font-size: 13px;
+    font-weight: 650;
+    color: #b42318;
+  }
+  .dark .danger-zone .t {
+    color: #fca5a5;
+  }
+  .danger-zone .s {
+    font-size: 12px;
+    color: rgb(var(--text-muted));
+    margin-top: 1px;
+  }
+  .btn-danger-outline {
+    @apply inline-flex items-center gap-2 text-xs font-semibold transition-colors;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: var(--radius-btn);
+    border: 1px solid rgb(239 68 68 / 0.4);
+    color: #b42318;
+    background-color: rgb(var(--surface-card));
+  }
+  .dark .btn-danger-outline {
+    color: #fca5a5;
+  }
+  .btn-danger-outline:hover {
+    background-color: rgb(239 68 68 / 0.08);
+  }
+
+  /* Status-Dot — kleiner Farbpunkt für Status-Zeilen. */
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex: none;
+  }
+  .dot-green {
+    background-color: #10b981;
+  }
+  .dot-amber {
+    background-color: #f59e0b;
+  }
+  .dot-red {
+    background-color: #ef4444;
+  }
+  .dot-gray {
+    background-color: rgb(var(--text-disabled));
+  }
+
+  /*
+   * Settings-Save-Pill — schwebende Speichern-Aufforderung unten rechts
+   * (SettingsFormGuard). Light: solide Ink-Pill; Dark: Raised-Fläche mit
+   * Border. Slide-up-Entrance; Modern-Modus mit Glas.
+   */
+  .settings-pill {
+    background-color: rgb(var(--ink));
+    color: rgb(var(--ink-text));
+    box-shadow: var(--shadow-pop);
+    animation: settings-pill-in 0.2s cubic-bezier(0.21, 0.75, 0.3, 1);
+  }
+  .dark .settings-pill {
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-primary));
+    border: 1px solid rgb(var(--border-strong));
+  }
+  .settings-pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgb(245 158 11 / 0.25);
+  }
+  .settings-pill-ghost {
+    @apply rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors;
+    color: rgb(var(--ink-text) / 0.75);
+  }
+  .settings-pill-ghost:hover {
+    background-color: rgb(255 255 255 / 0.1);
+    color: rgb(var(--ink-text));
+  }
+  .dark .settings-pill-ghost {
+    color: rgb(var(--text-muted));
+  }
+  .dark .settings-pill-ghost:hover {
+    background-color: rgb(255 255 255 / 0.08);
+    color: rgb(var(--text-primary));
+  }
+  .settings-pill-save {
+    @apply rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors;
+    background-color: rgb(var(--brand-600));
+    color: rgb(var(--text-on-brand));
+  }
+  .settings-pill-save:hover {
+    background-color: rgb(var(--brand-600));
+    box-shadow: inset 0 0 0 2px rgb(var(--text-on-brand) / 0.28);
+  }
+  .settings-pill-save:disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .settings-pill-success {
+    background-color: #047857;
+    color: #fff;
+  }
+  .ui-modern .settings-pill {
+    background-color: rgb(var(--ink) / 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .ui-modern.dark .settings-pill {
+    background-color: rgb(var(--surface-raised) / 0.9);
+  }
+  @keyframes settings-pill-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .settings-pill {
+      animation: none;
+    }
+  }
+
   /*
    * Form-Action-Row — Buttons rechts am Form-Ende (z. B. "Abbrechen / Speichern").
    */
@@ -895,11 +1704,77 @@
   background-color: rgb(var(--brand-700) / 0.3);
 }
 
-/* .badge-gray im Dark: gray-600 BG (deutlich heller als Card gray-800),
- * gray-100 Text (fast weiß) — maximaler Kontrast für Status-/Kategorie-Pills. */
+/* Markenfarbe als Vordergrund: tenantabhängig auf AA-Kontrast korrigiert. */
+.text-brand-500,
+.text-brand-600,
+.text-brand-700,
+.text-brand-900,
+.text-brand-accessible {
+  color: rgb(var(--brand-text-light)) !important;
+}
+.dark .text-brand-500,
+.dark .text-brand-600,
+.dark .text-brand-700,
+.dark .text-brand-900,
+.dark .text-brand-accessible {
+  color: rgb(var(--brand-text-dark)) !important;
+}
+
+/* Badges im Dark: translucent Tints mit heller Schrift + Border. */
+.dark .badge-green {
+  background-color: rgb(16 185 129 / 0.13);
+  color: #6ee7b7;
+  border-color: rgb(16 185 129 / 0.28);
+}
+.dark .badge-yellow {
+  background-color: rgb(245 158 11 / 0.13);
+  color: #fcd34d;
+  border-color: rgb(245 158 11 / 0.28);
+}
+.dark .badge-red {
+  background-color: rgb(239 68 68 / 0.13);
+  color: #fca5a5;
+  border-color: rgb(239 68 68 / 0.3);
+}
+.dark .badge-brand {
+  background-color: rgb(var(--brand-500) / 0.15);
+  color: rgb(var(--brand-100));
+  border-color: rgb(var(--brand-500) / 0.3);
+}
+.dark .badge-purple {
+  background-color: rgb(139 92 246 / 0.15);
+  color: #c4b5fd;
+  border-color: rgb(139 92 246 / 0.3);
+}
 .dark .badge-gray {
-  background-color: rgb(75 85 99); /* gray-600 */
-  color: rgb(243 244 246); /* gray-100 */
+  background-color: rgb(var(--surface-raised));
+  color: rgb(var(--text-secondary));
+  border-color: rgb(var(--border-default));
+}
+
+/* Alerts im Dark: translucent Tints mit heller Schrift + Border. */
+.dark .alert-info,
+.dark .alert-info-sm {
+  background-color: rgb(var(--brand-500) / 0.12);
+  border-color: rgb(var(--brand-500) / 0.3);
+  color: rgb(var(--brand-100));
+}
+.dark .alert-error,
+.dark .alert-error-sm {
+  background-color: rgb(239 68 68 / 0.11);
+  border-color: rgb(239 68 68 / 0.32);
+  color: #fca5a5;
+}
+.dark .alert-warning {
+  background-color: rgb(245 158 11 / 0.11);
+  border-color: rgb(245 158 11 / 0.3);
+  color: #fcd34d;
+}
+.dark .alert-success,
+.dark .alert-success-sm {
+  background-color: rgb(16 185 129 / 0.11);
+  border-color: rgb(16 185 129 / 0.3);
+  color: #6ee7b7;
 }
 
 .dark .bg-yellow-50 {
@@ -1002,9 +1877,9 @@
 .ui-modern {
   --m-radius-input: 0.625rem;
   --m-radius-btn: 0.625rem;
-  --m-radius-card: 1rem;
-  --m-shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
-  --m-shadow-card-hover: 0 2px 6px rgb(15 23 42 / 0.07), 0 12px 28px rgb(15 23 42 / 0.12);
+  --m-radius-card: 0.875rem;
+  --m-shadow-card: 0 1px 2px rgb(28 25 23 / 0.05), 0 4px 12px rgb(28 25 23 / 0.06);
+  --m-shadow-card-hover: 0 2px 6px rgb(28 25 23 / 0.07), 0 12px 28px rgb(28 25 23 / 0.12);
   --m-ring: 0 0 0 4px rgb(var(--brand-500) / 0.16);
 }
 .ui-modern.dark {
@@ -1012,22 +1887,131 @@
   --m-shadow-card-hover: 0 2px 6px rgb(0 0 0 / 0.45), 0 12px 28px rgb(0 0 0 / 0.42);
 }
 
-/* Hintergrund-Verlauf am Body — der erste deutliche Unterschied */
+/* Damit der Body-Gradient sichtbar wird: die App-Shell (flex h-screen
+ * mit opakem bg-surface-page) wird im Modern-Modus transparent. Klassik
+ * bleibt opak — dort gibt es ohnehin keinen Gradient. */
+.ui-modern .app-shell {
+  background-color: transparent;
+}
+
+/* Hintergrund-Verlauf am Body — der erste deutliche Unterschied. Driftet
+ * langsam als „Aurora" (background-size größer als der Viewport, Position
+ * wandert im 26s-Zyklus). Nur Modern-Modus; reduced-motion friert sie ein. */
 .ui-modern body {
   background-image:
-    radial-gradient(at 12% 8%, rgb(var(--brand-100) / 0.55) 0px, transparent 50%),
-    radial-gradient(at 88% 0%, rgb(var(--brand-50) / 0.85) 0px, transparent 45%),
-    radial-gradient(at 0% 92%, rgb(var(--brand-50) / 0.65) 0px, transparent 50%);
+    radial-gradient(at 85% 0%, rgb(var(--brand-100) / 0.45) 0px, transparent 45%),
+    radial-gradient(at 0% 100%, rgb(var(--brand-50) / 0.5) 0px, transparent 45%);
   background-attachment: fixed;
+  background-size: 160% 160%;
+  animation: aurora-drift 26s ease-in-out infinite alternate;
 }
 .ui-modern.dark body {
   /* Gradient deutlich gedämpft: die Brand-Tints im Dark sollen nur eine
    * Ahnung von Farbtemperatur geben, nicht den Page-BG aufhellen. */
   background-image:
-    radial-gradient(at 12% 8%, rgb(var(--brand-900) / 0.12) 0px, transparent 45%),
-    radial-gradient(at 88% 0%, rgb(var(--brand-700) / 0.07) 0px, transparent 40%),
-    radial-gradient(at 0% 92%, rgb(var(--brand-900) / 0.1) 0px, transparent 45%);
+    radial-gradient(at 85% 0%, rgb(var(--brand-900) / 0.22) 0px, transparent 45%),
+    radial-gradient(at 0% 100%, rgb(var(--brand-900) / 0.18) 0px, transparent 45%);
   background-attachment: fixed;
+  background-size: 160% 160%;
+  animation: aurora-drift 26s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 45%;
+  }
+  100% {
+    background-position: 25% 100%;
+  }
+}
+
+/* Dashboard: Widgets fallen beim ersten Render gestaffelt herein. Die
+ * Verzögerung hängt am .react-grid-item (jedes ist ein Grid-Kind); animiert
+ * wird der innere .widget-shell, damit RGL-Transforms unberührt bleiben. */
+.ui-modern .widget-shell {
+  animation: widget-in 0.45s cubic-bezier(0.21, 0.75, 0.3, 1) both;
+}
+.ui-modern .react-grid-item:nth-child(1) .widget-shell {
+  animation-delay: 0ms;
+}
+.ui-modern .react-grid-item:nth-child(2) .widget-shell {
+  animation-delay: 40ms;
+}
+.ui-modern .react-grid-item:nth-child(3) .widget-shell {
+  animation-delay: 80ms;
+}
+.ui-modern .react-grid-item:nth-child(4) .widget-shell {
+  animation-delay: 120ms;
+}
+.ui-modern .react-grid-item:nth-child(5) .widget-shell {
+  animation-delay: 160ms;
+}
+.ui-modern .react-grid-item:nth-child(6) .widget-shell {
+  animation-delay: 200ms;
+}
+.ui-modern .react-grid-item:nth-child(7) .widget-shell {
+  animation-delay: 240ms;
+}
+.ui-modern .react-grid-item:nth-child(8) .widget-shell {
+  animation-delay: 280ms;
+}
+.ui-modern .react-grid-item:nth-child(n + 9) .widget-shell {
+  animation-delay: 320ms;
+}
+@keyframes widget-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Aktiver Nav-Eintrag: minimales Einrasten der Pill. */
+.nav-item.active {
+  animation: nav-pop 0.16s ease-out;
+}
+@keyframes nav-pop {
+  from {
+    transform: scale(0.96);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* Modals im Modern-Modus: Backdrop-Blur + kurzes Einblenden der Karte. */
+.ui-modern .modal-backdrop {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.ui-modern .modal-backdrop > [role='dialog'] {
+  animation: modal-pop 0.18s ease-out;
+}
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Theme-Cross-Fade: nur bei explizitem Umschalten (Klasse wird in
+ * setThemePref für ~350 ms gesetzt), Modus-unabhängig — auch Klassik
+ * bekommt den weichen Farbübergang, der kostet keine GPU-Effekte. */
+.theme-fade,
+.theme-fade * {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease !important;
 }
 
 /* Cards: deutlich größere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
@@ -1037,72 +2021,44 @@
     transform 0.2s ease,
     border-color 0.2s ease;
   border-radius: var(--m-radius-card) !important;
-  border-color: rgb(203 213 225 / 0.85) !important;
-  background-color: rgb(255 255 255 / 0.95) !important;
+  border-color: rgb(var(--border-default)) !important;
+  background-color: rgb(var(--surface-card) / 0.95) !important;
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   box-shadow: var(--m-shadow-card);
 }
 .ui-modern .card:hover {
-  transform: translateY(-2px);
-  border-color: rgb(148 163 184 / 0.95) !important;
+  transform: translateY(-1px);
+  border-color: rgb(var(--border-strong)) !important;
   box-shadow: var(--m-shadow-card-hover);
 }
 .ui-modern.dark .card {
-  background-color: rgb(17 24 39 / 0.85) !important;
-  border-color: rgb(75 85 99 / 0.75) !important;
+  background-color: rgb(var(--surface-card) / 0.85) !important;
   box-shadow: var(--m-shadow-card);
 }
-.ui-modern.dark .card:hover {
-  border-color: rgb(107 114 128 / 0.95) !important;
-  box-shadow: var(--m-shadow-card-hover);
-}
 
-/* Primary-Button: kräftiger Gradient + Scale-Effekt */
-.ui-modern .btn-primary {
-  background-image: linear-gradient(
-    135deg,
-    rgb(var(--brand-500)) 0%,
-    rgb(var(--brand-600)) 50%,
-    rgb(var(--brand-700)) 100%
-  );
-  box-shadow:
-    0 1px 2px rgb(var(--brand-700) / 0.3),
-    0 6px 16px rgb(var(--brand-600) / 0.35);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.2s ease;
-}
-.ui-modern .btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    0 2px 4px rgb(var(--brand-700) / 0.3),
-    0 10px 24px rgb(var(--brand-600) / 0.45);
-}
-.ui-modern .btn-primary:active {
-  transform: translateY(0);
-}
+/* Buttons bleiben auch im Modern-Modus bewusst flach (kein Gradient,
+ * kein Glow) — Tiefe entsteht nur über Flächen, nicht über Buttons. */
 
 /* Sidebar als Glas-Panel */
 .ui-modern aside.app-sidebar {
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
-  background-color: rgb(255 255 255 / 0.65) !important;
-  border-right-color: rgb(255 255 255 / 0.4) !important;
+  background-color: rgb(var(--surface-page) / 0.6) !important;
+  border-right-color: rgb(var(--border-default)) !important;
 }
 .ui-modern.dark aside.app-sidebar {
-  background-color: rgb(17 24 39 / 0.55) !important;
-  border-right-color: rgb(55 65 81 / 0.35) !important;
+  background-color: rgb(var(--surface-page) / 0.55) !important;
 }
 
 /* Topbar: ebenfalls als Glas — gilt für staff- und portal-Layout (sticky top-0) */
 .ui-modern main .sticky {
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
-  background-color: rgb(255 255 255 / 0.7) !important;
+  background-color: rgb(var(--surface-topbar) / 0.75) !important;
 }
 .ui-modern.dark main .sticky {
-  background-color: rgb(17 24 39 / 0.65) !important;
+  background-color: rgb(var(--surface-topbar) / 0.7) !important;
 }
 
 /* Inputs: weicher Focus-Ring */
@@ -1116,25 +2072,11 @@
   box-shadow: var(--m-ring);
 }
 
-/* Buttons: konsistente Rundung; Secondary bekommt denselben sanften Lift wie
- * Primary (vorher nur Primary animiert → wirkte inkonsistent). */
+/* Buttons: nur konsistente Rundung — kein Lift, keine Schatten. */
 .ui-modern .btn,
 .ui-modern .btn-primary,
 .ui-modern .btn-secondary {
   border-radius: var(--m-radius-btn);
-}
-.ui-modern .btn-secondary {
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
-}
-.ui-modern .btn-secondary:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--m-shadow-card);
-}
-.ui-modern .btn-secondary:active {
-  transform: translateY(0);
 }
 
 /* Brand-100 Tönung in Modern dezenter rückwärts — sonst zu kontrastreich */
@@ -1144,15 +2086,20 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ui-modern .card,
-  .ui-modern .btn-primary,
-  .ui-modern .btn-secondary,
   .ui-modern .input {
     transition: none;
   }
-  .ui-modern .card:hover,
-  .ui-modern .btn-primary:hover,
-  .ui-modern .btn-secondary:hover {
+  .ui-modern .card:hover {
     transform: none;
+  }
+  /* Alle Delight-Animationen stumm schalten. */
+  .ui-modern body {
+    animation: none;
+  }
+  .ui-modern .widget-shell,
+  .ui-modern .modal-backdrop > [role='dialog'],
+  .nav-item.active {
+    animation: none;
   }
 }
 
@@ -1165,10 +2112,17 @@
     bottom: 0;
     z-index: 40;
     transform: translateX(-100%);
-    transition: transform 0.2s ease-in-out;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      transform 0.2s ease-in-out,
+      visibility 0s linear 0.2s;
   }
   body.sidebar-open aside.app-sidebar {
     transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
   }
 
   /* ui-modern-Glas auf Mobile opak schalten: backdrop-filter wird auf
@@ -1178,18 +2132,32 @@
   .ui-modern aside.app-sidebar {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background-color: rgb(255 255 255 / 0.98) !important;
-  }
-  .ui-modern.dark aside.app-sidebar {
-    background-color: rgb(17 24 39 / 0.98) !important;
+    background-color: rgb(var(--surface-page) / 0.98) !important;
   }
   .ui-modern main .sticky {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background-color: rgb(255 255 255 / 0.98) !important;
+    background-color: rgb(var(--surface-topbar) / 0.98) !important;
   }
-  .ui-modern.dark main .sticky {
-    background-color: rgb(17 24 39 / 0.98) !important;
+
+  @media (prefers-reduced-motion: reduce) {
+    aside.app-sidebar {
+      transition: none;
+    }
+  }
+}
+
+/* Windows-Kontrastmodus entfernt reguläre Box-Shadows. Ein echter System-
+ * Outline hält den Tastaturfokus unabhängig von Tenant-Farben sichtbar. */
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
+  }
+
+  .skip-link {
+    border-color: ButtonText;
   }
 }
 

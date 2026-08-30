@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition, type SubmitEvent } from 'react
 import { Send, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { saveSmtpAction, sendTestMailAction, resetSmtpAction, type ActionResult } from './actions';
 import type { SmtpConfig } from '@/server/settings/smtp';
+import { confirmDialog } from '@/components/ui/modal';
 
 interface Props {
   initial: SmtpConfig | null;
@@ -71,8 +72,13 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
     });
   }
 
-  function onReset() {
-    if (!confirm('Konfiguration zurücksetzen? Mails laufen danach wieder über die ENV-Vorgabe.'))
+  async function onReset() {
+    if (
+      !(await confirmDialog(
+        'Konfiguration zurücksetzen? Mails laufen danach wieder über die ENV-Vorgabe.',
+        { title: 'SMTP-Konfiguration zurücksetzen', confirmLabel: 'Zurücksetzen', danger: true },
+      ))
+    )
       return;
     startReset(async () => {
       await resetSmtpAction();
@@ -145,6 +151,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
         <label className="inline-flex items-center gap-2 text-sm">
           <input
             type="checkbox"
+            className="switch"
             name="secure"
             checked={secure}
             onChange={(e) => setSecure(e.target.checked)}
@@ -189,6 +196,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
               <label className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted">
                 <input
                   type="checkbox"
+                  className="switch"
                   name="keepPassword"
                   checked={keepPassword}
                   onChange={(e) => {

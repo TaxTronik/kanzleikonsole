@@ -14,22 +14,29 @@ export function PrivacyConfigForm({ initial }: { initial: PrivacyConfig }) {
   return (
     <form action={formAction} className="card p-6 space-y-4">
       <div>
-        <label className="label-sm">Verantwortliche Stelle *</label>
+        <label className="label-sm" htmlFor="privacy-responsible-body">
+          Verantwortliche Stelle *
+        </label>
         <textarea
+          id="privacy-responsible-body"
           name="responsibleBody"
           rows={3}
           maxLength={2000}
           defaultValue={initial.responsibleBody}
           placeholder="Name der Kanzlei / Steuerberatungsgesellschaft, Anschrift, Telefon, E-Mail"
           className="input w-full text-sm"
+          aria-describedby="privacy-responsible-body-hint"
         />
-        <p className="text-xs text-muted mt-1">
+        <p id="privacy-responsible-body-hint" className="text-xs text-muted mt-1">
           Name, ladungsfähige Anschrift sowie E-Mail oder Telefon vollständig angeben.
         </p>
       </div>
       <div>
-        <label className="label-sm">Datenschutzbeauftragte/r</label>
+        <label className="label-sm" htmlFor="privacy-dpo-contact">
+          Datenschutzbeauftragte/r
+        </label>
         <input
+          id="privacy-dpo-contact"
           name="dpoContact"
           maxLength={1000}
           defaultValue={initial.dpoContact}
@@ -38,8 +45,11 @@ export function PrivacyConfigForm({ initial }: { initial: PrivacyConfig }) {
         />
       </div>
       <div>
-        <label className="label-sm">Zuständige Aufsichtsbehörde *</label>
+        <label className="label-sm" htmlFor="privacy-supervisory-authority">
+          Zuständige Aufsichtsbehörde *
+        </label>
         <textarea
+          id="privacy-supervisory-authority"
           name="supervisoryAuthority"
           rows={2}
           maxLength={1000}
@@ -49,8 +59,11 @@ export function PrivacyConfigForm({ initial }: { initial: PrivacyConfig }) {
         />
       </div>
       <div>
-        <label className="label-sm">Datenschutz-/Widerrufskontakt der Kanzlei *</label>
+        <label className="label-sm" htmlFor="privacy-contact">
+          Datenschutz-/Widerrufskontakt der Kanzlei *
+        </label>
         <input
+          id="privacy-contact"
           name="privacyContact"
           maxLength={1000}
           defaultValue={initial.privacyContact}
@@ -59,8 +72,11 @@ export function PrivacyConfigForm({ initial }: { initial: PrivacyConfig }) {
         />
       </div>
       <div>
-        <label className="label-sm">Dienste mit Drittlandbezug</label>
+        <label className="label-sm" htmlFor="privacy-third-country-services">
+          Dienste mit Drittlandbezug
+        </label>
         <input
+          id="privacy-third-country-services"
           name="drittlandServices"
           maxLength={2000}
           defaultValue={initial.drittlandServices}
@@ -70,12 +86,18 @@ export function PrivacyConfigForm({ initial }: { initial: PrivacyConfig }) {
       </div>
 
       {state && !state.ok && state.error && (
-        <div className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">
+        <div
+          className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300"
+          role="alert"
+        >
           {state.error}
         </div>
       )}
       {state?.ok && (
-        <div className="rounded-md bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300">
+        <div
+          className="rounded-md bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300"
+          role="status"
+        >
           Kanzlei-Datenschutzangaben gespeichert.
         </div>
       )}

@@ -749,6 +749,66 @@ describe('atomare GwG-Bearbeitung', () => {
     );
   });
 
+  // Fachkatalog: GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001,
+  // GWG-IDENTIFICATION-EVIDENCE-001
+  it('liefert bei veralteten allgemeinen Angaben den aktuellen Stand für den automatischen UI-Abgleich', async () => {
+    const ownerId = '33333333-3333-4333-8333-333333333333';
+    const current = {
+      fullName: 'Erika Serverstand',
+      birthDate: new Date('1980-01-02T00:00:00.000Z'),
+      birthPlace: 'Köln',
+      residence: 'Serverstraße 2, 50667 Köln',
+      nationality: 'deutsch',
+      isPep: true,
+    };
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          representativeNames: [],
+          beneficialOwners: [{ id: ownerId, ...current }],
+          representatives: [],
+        }),
+        updateMany: vi.fn(),
+      },
+      gwgBeneficialOwner: { update: vi.fn() },
+      gwgRepresentative: { update: vi.fn() },
+      gwgIdDocument: { findMany: vi.fn(), updateMany: vi.fn() },
+    };
+    runWithStaffOn(tx);
+    const data = formData();
+    data.set('ownerId', ownerId);
+    data.set('representativeId', '');
+    data.set('fullName', 'Erika Lokaler Entwurf');
+    data.set('birthDate', '1980-01-02');
+    data.set('birthPlace', 'Bonn');
+    data.set('residence', 'Lokale Straße 1, 53111 Bonn');
+    data.set('nationality', 'deutsch');
+    data.set('isPep', 'false');
+    data.set('expectedRevision', 'veraltete-revision');
+
+    const result = await updateGwgPersonGeneralAction(null, data);
+
+    expect(result).toEqual({
+      ok: false,
+      conflict: true,
+      latest: {
+        fullName: 'Erika Serverstand',
+        birthDate: '1980-01-02',
+        birthPlace: 'Köln',
+        residence: 'Serverstraße 2, 50667 Köln',
+        nationality: 'deutsch',
+        isPep: true,
+      },
+      revision: gwgPersonGeneralRevision(current),
+      error:
+        'Die allgemeinen Angaben wurden zwischenzeitlich geändert. Der aktuelle Stand wurde automatisch nachgeladen; Ihre Eingabe bleibt erhalten.',
+    });
+    expect(tx.gwgCheck.updateMany).not.toHaveBeenCalled();
+    expect(tx.gwgBeneficialOwner.update).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+  });
+
   it('korrigiert alle Personenangaben atomar, auditierbar und nimmt die Übergabe zurück', async () => {
     const ownerDocument = {
       ...validDocument('PERSONALAUSWEIS'),
@@ -762,6 +822,14 @@ describe('atomare GwG-Bearbeitung', () => {
       gwgCheck: {
         findFirst: vi.fn().mockResolvedValue({
           status: 'IN_REVIEW',
+          representatives: [
+            {
+              id: '44444444-4444-4444-8444-444444444444',
+              fullName: 'Erika Alt',
+              position: 0,
+              linkedBeneficialOwnerId: '33333333-3333-4333-8333-333333333333',
+            },
+          ],
           beneficialOwners: [
             {
               id: '33333333-3333-4333-8333-333333333333',
@@ -776,9 +844,13 @@ describe('atomare GwG-Bearbeitung', () => {
           ],
         }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        update: vi.fn().mockResolvedValue({}),
       },
       gwgBeneficialOwner: {
         update: vi.fn().mockResolvedValue({}),
+      },
+      gwgRepresentative: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       gwgIdDocument: {
         findMany: vi
@@ -857,6 +929,24 @@ describe('atomare GwG-Bearbeitung', () => {
         ownershipPct: 51.25,
         isPep: true,
       },
+    });
+    expect(tx.gwgRepresentative.updateMany).toHaveBeenCalledWith({
+      where: {
+        gwgCheckId: CHECK_ID,
+        linkedBeneficialOwnerId: '33333333-3333-4333-8333-333333333333',
+      },
+      data: {
+        fullName: 'Erika Muster',
+        birthDate: new Date('1981-03-04T00:00:00.000Z'),
+        birthPlace: 'Berlin',
+        residence: 'Hamburg',
+        nationality: 'deutsch',
+        isPep: true,
+      },
+    });
+    expect(tx.gwgCheck.update).toHaveBeenCalledWith({
+      where: { id: CHECK_ID },
+      data: { representativeNames: ['Erika Muster'] },
     });
     expect(tx.gwgIdDocument.updateMany).toHaveBeenCalledWith({
       where: {
@@ -2167,7 +2257,17 @@ describe('atomare GwG-Bearbeitung', () => {
           noRegisterEntry: true,
           representativeNames: ['Erika Alt'],
           representatives: [{ id: existingId, fullName: 'Erika Alt', position: 0 }],
-          beneficialOwners: [{ id: linkedOwnerId, fullName: 'Peter Eigentümer' }],
+          beneficialOwners: [
+            {
+              id: linkedOwnerId,
+              fullName: 'Peter Eigentümer',
+              birthDate: new Date('1975-06-07T00:00:00.000Z'),
+              birthPlace: 'Köln',
+              residence: 'Köln',
+              nationality: 'deutsch',
+              isPep: false,
+            },
+          ],
           ownershipStructureNotes: 'Alt',
           client: { kind: 'PERSGES' },
         }),
@@ -2187,7 +2287,7 @@ describe('atomare GwG-Bearbeitung', () => {
       },
       gwgRepresentative: {
         deleteMany: vi.fn(),
-        updateMany: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         update: vi.fn(),
         createMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
@@ -2264,6 +2364,21 @@ describe('atomare GwG-Bearbeitung', () => {
           linkedBeneficialOwnerId: linkedOwnerId,
         },
       ],
+    });
+    expect(tx.gwgRepresentative.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: newId,
+        gwgCheckId: CHECK_ID,
+        linkedBeneficialOwnerId: linkedOwnerId,
+      },
+      data: {
+        fullName: 'Peter Eigentümer',
+        birthDate: new Date('1975-06-07T00:00:00.000Z'),
+        birthPlace: 'Köln',
+        residence: 'Köln',
+        nationality: 'deutsch',
+        isPep: false,
+      },
     });
     expect(tx.gwgRepresentative.deleteMany).not.toHaveBeenCalled();
     expect(tx.gwgCheck.updateMany.mock.invocationCallOrder[0]).toBeLessThan(

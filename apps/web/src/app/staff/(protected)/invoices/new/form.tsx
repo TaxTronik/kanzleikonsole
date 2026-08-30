@@ -140,7 +140,7 @@ export function NewInvoiceForm({ clients }: Props) {
             </select>
           </div>
           <div>
-            <label className="label">Rechnungsnummer</label>
+            <p className="label">Rechnungsnummer</p>
             {/* iter85 (GoB): automatische, lückenlose Vergabe beim Anlegen —
                 keine manuelle Eingabe mehr (Nummernkreis je Jahr). */}
             <p className="input bg-gray-50 dark:bg-gray-900/40 text-muted select-none">

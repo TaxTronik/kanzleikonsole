@@ -28,7 +28,7 @@ function CalendarModeOption({
 }) {
   const className =
     active === mode
-      ? 'px-3 py-1.5 bg-brand-600 text-white'
+      ? 'px-3 py-1.5 bg-brand-600 text-on-brand'
       : 'px-3 py-1.5 text-secondary hover:bg-gray-50';
 
   if (active === mode) {

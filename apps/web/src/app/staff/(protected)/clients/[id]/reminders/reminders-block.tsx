@@ -32,6 +32,7 @@ import {
   submitResearchResultAction,
 } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
+import { confirmDialog } from '@/components/ui/modal';
 
 interface Reminder {
   id: string;
@@ -148,8 +149,15 @@ export function RemindersBlock({
       } else setSubmitError(res.error ?? 'Konnte nicht eingereicht werden.');
     });
   }
-  function remove(id: string) {
-    if (!confirm('Wiedervorlage löschen?')) return;
+  async function remove(id: string) {
+    if (
+      !(await confirmDialog('Wiedervorlage löschen?', {
+        title: 'Wiedervorlage löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     startMut(async () => {
       await deleteReminderAction({ id });
       router.refresh();

@@ -104,8 +104,11 @@ export function PlanVsProjection({
           </p>
         </div>
         <div>
-          <label className="text-xs text-muted block mb-1">Planung</label>
+          <label className="text-xs text-muted block mb-1" htmlFor="plan-vs-projection-plan">
+            Planung
+          </label>
           <select
+            id="plan-vs-projection-plan"
             value={planId}
             onChange={(e) => setPlanId(e.target.value)}
             className="input text-sm py-1.5"

@@ -29,6 +29,7 @@ import {
   ENGINE_STATUS_LABEL,
   herkunftBadge,
 } from './_ui';
+import { confirmDialog } from '@/components/ui/modal';
 
 function canDefineDelegatedMarking(canWrite: boolean, engineConfigured: boolean): boolean {
   return canWrite && engineConfigured;
@@ -114,8 +115,15 @@ export function MarkingPanel(props: {
     });
   }
 
-  function remove() {
-    if (!window.confirm('Markierung löschen?')) return;
+  async function remove() {
+    if (
+      !(await confirmDialog('Markierung löschen?', {
+        title: 'Markierung löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const r = await deleteMarkingAction({ clientId, analysisId, markingId: m.id });
       flash(r, 'Gelöscht.');

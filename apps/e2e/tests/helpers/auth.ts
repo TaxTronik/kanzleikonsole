@@ -1,8 +1,35 @@
 import { type APIResponse, type Page, expect } from '@playwright/test';
 import { generateSync } from 'otplib';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export const ADMIN_EMAIL = process.env['E2E_ADMIN_EMAIL'] ?? 'admin@taxtronik.local';
-export const ADMIN_PASSWORD = process.env['E2E_ADMIN_PASSWORD'] ?? 'dev-password-123';
+function readLocalSeedCredentials(): { email?: string; password?: string } {
+  try {
+    const path = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../../packages/db/.admin-credentials.txt',
+    );
+    const values: Record<string, string> = {};
+    for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+      const separator = line.indexOf('=');
+      if (separator <= 0) continue;
+      values[line.slice(0, separator)] = line.slice(separator + 1);
+    }
+    return { email: values['email'], password: values['password'] };
+  } catch {
+    return {};
+  }
+}
+
+// Der Dev-Seed erzeugt standardmäßig ein zufälliges Passwort. Lokale
+// Browserläufe dürfen dessen gitignored Credential-Datei verwenden, ohne den
+// Wert auszugeben; explizite E2E-Variablen (insbesondere CI) haben Vorrang.
+const localSeedCredentials = readLocalSeedCredentials();
+export const ADMIN_EMAIL =
+  process.env['E2E_ADMIN_EMAIL'] ?? localSeedCredentials.email ?? 'admin@taxtronik.local';
+export const ADMIN_PASSWORD =
+  process.env['E2E_ADMIN_PASSWORD'] ?? localSeedCredentials.password ?? 'dev-password-123';
 
 const STAFF_SESSION_COOKIE_RE = /^__(?:Host-|Secure-)?taxtronik_staff_session$/;
 const STAFF_DASHBOARD_PATH = '/staff/dashboard';

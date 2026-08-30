@@ -78,15 +78,27 @@ export function StartWorkflowForm({
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="btn-primary">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="btn-primary"
+        aria-expanded={open}
+        aria-controls={`start-workflow-${clientId}-panel`}
+      >
         <Plus className="h-4 w-4" />
         Workflow starten
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-96 z-20 rounded-lg shadow-lg border border-default bg-surface p-4 space-y-3">
+        <div
+          id={`start-workflow-${clientId}-panel`}
+          className="absolute right-0 mt-2 w-96 z-20 rounded-lg shadow-lg border border-default bg-surface p-4 space-y-3"
+        >
           <div>
-            <label className="label">Workflow</label>
+            <label className="label" htmlFor={`start-workflow-${clientId}-choice`}>
+              Workflow
+            </label>
             <select
+              id={`start-workflow-${clientId}-choice`}
               value={choice}
               onChange={(e) => {
                 setChoice(e.target.value);
@@ -119,8 +131,11 @@ export function StartWorkflowForm({
 
           {isBlank && (
             <div>
-              <label className="label">Name des Workflows</label>
+              <label className="label" htmlFor={`start-workflow-${clientId}-name`}>
+                Name des Workflows
+              </label>
               <input
+                id={`start-workflow-${clientId}-name`}
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -128,20 +143,21 @@ export function StartWorkflowForm({
                 placeholder="z. B. Klärung Kassenführung"
                 className="input"
                 autoFocus
+                aria-describedby={`start-workflow-${clientId}-name-hint`}
               />
-              <p className="text-xs text-muted mt-1">
+              <p id={`start-workflow-${clientId}-name-hint`} className="text-xs text-muted mt-1">
                 Leerer Workflow — Schritte fügst du anschließend hinzu.
               </p>
             </div>
           )}
 
           {staffOptions.length > 0 && (
-            <div>
-              <label className="label inline-flex items-center gap-1">
+            <fieldset>
+              <legend className="label inline-flex items-center gap-1">
                 <Users className="h-3 w-3 text-disabled" />
                 Team{' '}
                 <span className="text-disabled font-normal">(optional, ich bin immer dabei)</span>
-              </label>
+              </legend>
               <ul className="space-y-0.5 max-h-40 overflow-y-auto border border-default rounded p-1">
                 {staffOptions.map((s) => (
                   <li key={s.id}>
@@ -156,10 +172,14 @@ export function StartWorkflowForm({
                   </li>
                 ))}
               </ul>
-            </div>
+            </fieldset>
           )}
 
-          {error && <p className="text-xs text-red-700">{error}</p>}
+          {error && (
+            <p className="text-xs text-red-700" role="alert">
+              {error}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"

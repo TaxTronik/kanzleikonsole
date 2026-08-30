@@ -28,4 +28,10 @@ describe('users admin responsive layout', () => {
     expect(rowFormsSource).toContain('Passwort setzen');
     expect(rowFormsSource).toContain('2FA zurücksetzen');
   });
+
+  it('opens activity assignment in a portal modal outside the clipped table card', () => {
+    expect(rowFormsSource).toContain('<Modal');
+    expect(rowFormsSource).toContain('title="Tätigkeiten zuordnen"');
+    expect(rowFormsSource).not.toContain('absolute right-0 mt-2 w-72');
+  });
 });

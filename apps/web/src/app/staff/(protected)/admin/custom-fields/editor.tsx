@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2, Save, X } from 'lucide-react';
 import { saveFieldDefAction, deleteFieldDefAction } from './actions';
+import { confirmDialog } from '@/components/ui/modal';
 
 type FieldType = 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL';
 type Kind = 'NATPERS' | 'JURPERS' | 'PERSGES';
@@ -101,8 +102,15 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
     });
   }
 
-  function remove(id: string) {
-    if (!confirm('Feld wirklich löschen? Bestehende Werte gehen verloren.')) return;
+  async function remove(id: string) {
+    if (
+      !(await confirmDialog('Feld wirklich löschen? Bestehende Werte gehen verloren.', {
+        title: 'Feld löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const r = await deleteFieldDefAction({ id });
       if (!r.ok) {
@@ -152,6 +160,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
                     onClick={() => remove(f.id)}
                     className="text-disabled hover:text-red-700 p-1"
                     title="Feld löschen"
+                    aria-label={`Feld „${f.label}“ löschen`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -209,8 +218,11 @@ function FieldForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Bezeichnung</label>
+          <label className="label" htmlFor="custom-field-label">
+            Bezeichnung
+          </label>
           <input
+            id="custom-field-label"
             type="text"
             value={draft.label}
             onChange={(e) => set('label', e.target.value)}
@@ -220,13 +232,14 @@ function FieldForm({
           />
         </div>
         <div>
-          <label className="label">
+          <label className="label" htmlFor="custom-field-key">
             Schlüssel{' '}
             <span className="text-xs text-disabled font-normal">
               {isNew ? '(autom. aus Bezeichnung)' : '(unveränderlich)'}
             </span>
           </label>
           <input
+            id="custom-field-key"
             type="text"
             value={draft.key}
             onChange={(e) => set('key', e.target.value.toLowerCase())}
@@ -240,12 +253,16 @@ function FieldForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Typ</label>
+          <label className="label" htmlFor="custom-field-type">
+            Typ
+          </label>
           <select
+            id="custom-field-type"
             value={draft.type}
             onChange={(e) => set('type', e.target.value as FieldType)}
             className="input"
             disabled={!isNew}
+            aria-describedby={!isNew ? 'custom-field-type-hint' : undefined}
           >
             {(Object.keys(TYPE_LABELS) as FieldType[]).map((t) => (
               <option key={t} value={t}>
@@ -253,10 +270,14 @@ function FieldForm({
               </option>
             ))}
           </select>
-          {!isNew && <p className="text-xs text-disabled mt-1">Typ ist nach Anlage fest.</p>}
+          {!isNew && (
+            <p id="custom-field-type-hint" className="text-xs text-disabled mt-1">
+              Typ ist nach Anlage fest.
+            </p>
+          )}
         </div>
-        <div>
-          <label className="label">Status</label>
+        <fieldset>
+          <legend className="label">Status</legend>
           <label className="flex items-center gap-2 text-sm mt-2">
             <input
               type="checkbox"
@@ -266,12 +287,15 @@ function FieldForm({
             />
             <span>Aktiv (sichtbar am Mandanten)</span>
           </label>
-        </div>
+        </fieldset>
       </div>
 
       <div>
-        <label className="label">Hilfetext (optional)</label>
+        <label className="label" htmlFor="custom-field-help-text">
+          Hilfetext (optional)
+        </label>
         <input
+          id="custom-field-help-text"
           type="text"
           value={draft.helpText ?? ''}
           onChange={(e) => set('helpText', e.target.value)}
@@ -280,9 +304,11 @@ function FieldForm({
         />
       </div>
 
-      <div>
-        <label className="label">Gültig für Mandantentyp</label>
-        <p className="text-xs text-muted mb-2">Keine Auswahl = gilt für alle Typen.</p>
+      <fieldset aria-describedby="custom-field-applies-to-hint">
+        <legend className="label">Gültig für Mandantentyp</legend>
+        <p id="custom-field-applies-to-hint" className="text-xs text-muted mb-2">
+          Keine Auswahl = gilt für alle Typen.
+        </p>
         <div className="flex gap-3 flex-wrap">
           {(['NATPERS', 'JURPERS', 'PERSGES'] as Kind[]).map((k) => {
             const checked = draft.appliesTo.includes(k);
@@ -306,17 +332,18 @@ function FieldForm({
             );
           })}
         </div>
-      </div>
+      </fieldset>
 
       {draft.type === 'SELECT' && (
         <div>
-          <label className="label">
+          <label className="label" htmlFor="custom-field-options">
             Optionen{' '}
             <span className="text-xs text-disabled font-normal">
               (eine pro Zeile, Format „wert" oder „wert=Anzeige")
             </span>
           </label>
           <textarea
+            id="custom-field-options"
             value={(draft.options ?? [])
               .map((o) => (o.value === o.label ? o.value : `${o.value}=${o.label}`))
               .join('\n')}
@@ -329,7 +356,11 @@ function FieldForm({
         </div>
       )}
 
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button type="button" onClick={onSave} disabled={isPending} className="btn-primary">

@@ -219,13 +219,15 @@
         "packages/db/src/staff-client-access.ts",
         "packages/db/src/notification.ts",
         "apps/worker/src/jobs/reminders-daily.ts",
-        "packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql"
+        "packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql",
+        "packages/db/prisma/migrations/20260830234000_restore_portal_notification_write_only/migration.sql"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
         "apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts",
         "packages/db/src/__tests__/notification-client-scope-migration.test.ts",
-        "packages/db/src/__tests__/notification-client-scope-rls.test.ts"
+        "packages/db/src/__tests__/notification-client-scope-rls.test.ts",
+        "packages/db/src/__tests__/notification-write-only-forward.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
       "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001"],
@@ -1754,6 +1756,7 @@
       ],
       "code_refs": [
         "apps/web/src/server/gwg/verification.ts",
+        "apps/web/src/server/gwg/identity-subject.ts",
         "apps/web/src/server/gwg/revisions.ts",
         "apps/web/src/server/gwg-onboarding/owner-submission.ts",
         "apps/web/src/server/gwg-onboarding/submission-validation.ts",
@@ -1770,6 +1773,7 @@
       ],
       "test_refs": [
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
+        "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts"
@@ -1861,6 +1865,7 @@
       ],
       "test_refs": [
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
+        "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
         "apps/web/src/server/gwg/__tests__/representatives.test.ts",
         "apps/web/src/server/gwg/__tests__/reverification.test.ts",
         "apps/web/src/server/gwg/__tests__/evidence-documents.test.ts",
@@ -1897,7 +1902,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "TaxTronik speichert Vertreter mit stabiler Identität und vollständigen allgemeinen Personenangaben im Prüfsnapshot, unterstützt Doppelrollen mit wirtschaftlich Berechtigten und verlangt bei Rechtsträgern mindestens einen bestätigten Vertreter-Ausweis. Die konkrete Vertretungsmacht, der tatsächlich Auftretende und Vertreter natürlicher Personen werden jedoch nicht vollständig strukturiert geprüft."
+        "summary": "TaxTronik speichert Vertreter mit stabiler Identität und vollständigen allgemeinen Personenangaben im Prüfsnapshot, unterstützt Doppelrollen mit wirtschaftlich Berechtigten und verlangt bei Rechtsträgern mindestens einen bestätigten Ausweis für einen Vertreter. Bei einer ausdrücklich verknüpften Doppelrolle kann dies derselbe, über die Owner-ID gebundene Personennachweis sein. Die konkrete Vertretungsmacht, der tatsächlich Auftretende und Vertreter natürlicher Personen werden jedoch nicht vollständig strukturiert geprüft."
       },
       "sources": [
         {
@@ -1925,6 +1930,7 @@
       "code_refs": [
         "apps/web/src/server/gwg/representatives.ts",
         "apps/web/src/server/gwg/verification.ts",
+        "apps/web/src/server/gwg/identity-subject.ts",
         "apps/web/src/server/gwg/revisions.ts",
         "apps/web/src/server/gwg-onboarding/representative-submission.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
@@ -1942,6 +1948,7 @@
       "test_refs": [
         "apps/web/src/server/gwg/__tests__/representatives.test.ts",
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
+        "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts",
@@ -3031,7 +3038,8 @@
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts",
-        "apps/web/src/app/portal/(protected)/requests/[id]/__tests__/internal-comment-visibility.test.ts"
+        "apps/web/src/app/portal/(protected)/requests/[id]/__tests__/internal-comment-visibility.test.ts",
+        "apps/web/src/app/staff/(protected)/requests/[id]/__tests__/internal-comment-theme.test.ts"
       ],
       "feature_refs": ["FEATURES.md"],
       "related_rules": ["REQ-LIFECYCLE-001", "ACCESS-CLIENT-MODE-001"],

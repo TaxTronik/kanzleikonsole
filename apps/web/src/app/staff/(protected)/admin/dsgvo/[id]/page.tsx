@@ -53,7 +53,11 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
-        <Link href="/staff/admin/dsgvo" className="text-disabled hover:text-secondary mt-1">
+        <Link
+          href="/staff/admin/dsgvo"
+          aria-label="Zurück"
+          className="text-disabled hover:text-secondary mt-1"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1">
@@ -205,7 +209,7 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
                   <input
                     type="checkbox"
                     name="resultReviewConfirmed"
-                    className="mt-0.5"
+                    className="switch mt-0.5"
                     defaultChecked={req.resultReviewedAt !== null}
                   />
                   <span>
@@ -251,7 +255,7 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
               />
             </div>
             <label className="flex items-start gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-              <input type="checkbox" name="rejectionNoticeComplete" className="mt-0.5" />
+              <input type="checkbox" name="rejectionNoticeComplete" className="switch mt-0.5" />
               <span>
                 Bei Ablehnung enthält die versandte Mitteilung die Gründe sowie Hinweise auf das
                 Beschwerderecht bei einer Aufsichtsbehörde und auf einen gerichtlichen Rechtsbehelf

@@ -28,6 +28,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import { confirmDialog } from '@/components/ui/modal';
 import {
   analyzeAction,
   importDocTextAction,
@@ -133,6 +134,7 @@ interface Props {
   /** Server-gerenderter Inhalt des „Aktenregal"-Tabs (Dokumente dieses Sachverhalts). */
   aktenregal?: ReactNode;
   engineConfigured: boolean;
+  floatingToolbarDefault?: boolean;
   initial: AnalysisDTO | null;
   /**
    * Volle Bearbeitungsrechte. Ohne sie sieht der Space lesend aus; recherchiert
@@ -158,6 +160,7 @@ export function SubsumtionWorkspace({
   aufgaben,
   aktenregal,
   engineConfigured,
+  floatingToolbarDefault = false,
   initial,
 }: Props) {
   const router = useRouter();
@@ -549,12 +552,13 @@ export function SubsumtionWorkspace({
       refresh(); // deterministische Ergänzungen sofort zeigen; KI folgt automatisch
     });
   }
-  function archive() {
+  async function archive() {
     if (!initial) return;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         'Subsumtion revisionssicher archivieren? Danach ist sie schreibgeschützt (GoBD-Snapshot, Object-Lock).',
-      )
+        { title: 'Subsumtion archivieren', confirmLabel: 'Revisionssicher archivieren' },
+      ))
     )
       return;
     setError(null);
@@ -596,81 +600,93 @@ export function SubsumtionWorkspace({
         )}
         {error && <div className="alert-error-sm">{error}</div>}
         {info && <div className="text-sm text-emerald-700 dark:text-emerald-300">{info}</div>}
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Bezeichnung (optional), z. B. „Umstrukturierung M-Gruppe“"
-          className="w-full rounded-md border border-default bg-surface px-3 py-2 text-sm"
-        />
-        <p className="text-xs text-muted">
-          Sachverhalt erfassen oder aus einem Dokument importieren — formatieren, bei fragmentierten
-          Importen „Absätze zusammenführen" nutzen. Beim Analysieren zählt der reine Text.
-        </p>
-        <SubsumtionDocument
-          ref={editorRef}
-          analyzed={false}
-          canEdit
-          initialDoc={null}
-          initialText=""
-          onTextChange={setText}
-        />
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={analyze}
-            disabled={pending || !engineConfigured || !text.trim()}
-            className="btn-primary text-sm"
-          >
-            {pending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            Analysieren
-          </button>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={pending}
-            className="btn-secondary text-sm"
-          >
-            <Upload className="h-4 w-4" />
-            Aus Dokument importieren
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-            onChange={onFile}
-            className="hidden"
+        <section className="card overflow-hidden">
+          <div className="border-b border-default p-6">
+            <label className="label" htmlFor="subsumtion-title">
+              Bezeichnung
+            </label>
+            <input
+              id="subsumtion-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Optional, z. B. „Umstrukturierung M-Gruppe“"
+              className="input text-lg font-semibold"
+            />
+            <p className="mt-3 text-xs text-muted">
+              Sachverhalt direkt formatiert erfassen oder aus einem Dokument importieren. Bei
+              fragmentierten Importen hilft „Absätze zusammenführen“. Für die Analyse zählt der
+              reine Text.
+            </p>
+          </div>
+
+          <SubsumtionDocument
+            ref={editorRef}
+            analyzed={false}
+            canEdit
+            initialDoc={null}
+            initialText=""
+            onTextChange={setText}
           />
-          <span className="text-xs text-muted ml-auto">{text.length} Zeichen</span>
-        </div>
-        {clientDocuments.length > 0 && (
-          <div className="flex items-center gap-2">
-            <select
-              value={docId}
-              onChange={(e) => setDocId(e.target.value)}
-              className="rounded-md border border-default bg-surface px-2 py-1.5 text-sm max-w-[60%] truncate"
-            >
-              <option value="">Aus Mandanten-Dokument (SeaweedFS) wählen …</option>
-              {clientDocuments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.title}
-                  {d.typeName ? ` (${d.typeName})` : ''}
-                </option>
-              ))}
-            </select>
+
+          {clientDocuments.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-default bg-surface-raised px-6 py-4">
+              <select
+                value={docId}
+                onChange={(e) => setDocId(e.target.value)}
+                className="input min-w-0 flex-1 sm:max-w-xl"
+              >
+                <option value="">Aus Mandanten-Dokument wählen …</option>
+                {clientDocuments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.title}
+                    {d.typeName ? ` (${d.typeName})` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={importExisting}
+                disabled={pending || !docId}
+                className="btn-secondary text-sm"
+              >
+                <FileDown className="h-4 w-4" /> Übernehmen
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-default bg-surface px-6 py-4">
             <button
               type="button"
-              onClick={importExisting}
-              disabled={pending || !docId}
+              onClick={() => fileRef.current?.click()}
+              disabled={pending}
               className="btn-secondary text-sm"
             >
-              <FileDown className="h-4 w-4" /> Übernehmen
+              <Upload className="h-4 w-4" />
+              Aus Dokument importieren
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              onChange={onFile}
+              className="hidden"
+            />
+            <span className="text-xs text-muted sm:ml-auto">{text.length} Zeichen</span>
+            <button
+              type="button"
+              onClick={analyze}
+              disabled={pending || !engineConfigured || !text.trim()}
+              className="btn-primary text-sm"
+            >
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Analysieren
             </button>
           </div>
-        )}
+        </section>
       </div>
     );
   }
@@ -701,7 +717,7 @@ export function SubsumtionWorkspace({
           onClick={() => setView('subsumtion')}
           className={
             view === 'subsumtion'
-              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
               : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800'
           }
         >
@@ -713,7 +729,7 @@ export function SubsumtionWorkspace({
           className={
             'inline-flex items-center gap-1.5 ' +
             (view === 'recherche'
-              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
               : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
           }
         >
@@ -726,7 +742,7 @@ export function SubsumtionWorkspace({
           className={
             'inline-flex items-center gap-1.5 ' +
             (view === 'aufgaben'
-              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
               : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
           }
         >
@@ -738,7 +754,7 @@ export function SubsumtionWorkspace({
           className={
             'inline-flex items-center gap-1.5 ' +
             (view === 'aktenregal'
-              ? 'px-3 py-1.5 bg-brand-600 text-white font-medium'
+              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
               : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
           }
         >
@@ -952,8 +968,8 @@ export function SubsumtionWorkspace({
         <div
           className={
             expanded
-              ? 'fixed inset-0 z-40 overflow-auto bg-surface-page p-4 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4'
-              : 'grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4'
+              ? 'fixed inset-0 z-40 overflow-auto bg-surface-page p-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4'
+              : 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4'
           }
         >
           {/* EINE Fläche: immer formatiert + editierbar. Klicken = Markierung prüfen,
@@ -976,6 +992,7 @@ export function SubsumtionWorkspace({
             onSelectMarking={selectMarking}
             onSelectionForMarking={selectForMarking}
             onSaveFormat={saveFormat}
+            floatingToolbarDefault={floatingToolbarDefault}
             expanded={expanded}
             onToggleExpand={() => setExpanded((v) => !v)}
           />

@@ -11,6 +11,7 @@ import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import type { TxClient } from '@taxtronik/db';
 import type { BooleanTenantModules } from '@taxtronik/db/tenant-modules';
+import { CountUp } from '@/components/count-up';
 
 // Prisma-Transaktions-Client aus withTenantContext (RLS-gebunden).
 export type Tx = TxClient;
@@ -70,7 +71,11 @@ export function ListShell({
       {isEmpty ? (
         <p className="px-5 py-8 text-sm text-muted text-center flex-1">{emptyText}</p>
       ) : (
-        <ul className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0">
+        <ul
+          aria-label={`${title} – scrollbare Liste`}
+          tabIndex={0}
+          className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0"
+        >
           {children}
         </ul>
       )}
@@ -115,7 +120,9 @@ export async function kpi(
       </div>
       <div>
         <p className="text-xs font-medium text-muted uppercase tracking-wide truncate">{label}</p>
-        <p className="text-2xl font-bold text-primary">{value}</p>
+        <p className="text-2xl font-bold text-primary tabular-nums">
+          <CountUp value={value} />
+        </p>
       </div>
     </Link>
   );

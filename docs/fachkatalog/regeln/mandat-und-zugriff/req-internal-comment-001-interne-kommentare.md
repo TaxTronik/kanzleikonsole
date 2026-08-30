@@ -43,6 +43,7 @@ code_refs:
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
   - apps/web/src/app/portal/(protected)/requests/[id]/__tests__/internal-comment-visibility.test.ts
+  - apps/web/src/app/staff/(protected)/requests/[id]/__tests__/internal-comment-theme.test.ts
 feature_refs:
   - FEATURES.md
 related_rules:
@@ -138,4 +139,6 @@ Regel.
 
 Die Actiontests belegen Kommentare in RESPONDED/CLOSED, Audit und das
 Ausbleiben von Mandantenmail. Der Sichtbarkeitstest belegt, dass nur die
-Staff-Seite die interne Relation lädt.
+Staff-Seite die interne Relation lädt. Der Darstellungsnachweis prüft die
+semantischen, auch im Dark Mode kontrastreichen Oberflächenklassen des
+internen Bereichs; er verändert oder belegt keine zusätzliche Fachlogik.

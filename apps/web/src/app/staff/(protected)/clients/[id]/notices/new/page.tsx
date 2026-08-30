@@ -45,8 +45,10 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label-sm">Bescheid-Art *</label>
-            <select name="kind" required className="input w-full">
+            <label className="label-sm" htmlFor="notice-kind">
+              Bescheid-Art *
+            </label>
+            <select id="notice-kind" name="kind" required className="input w-full">
               {KIND_OPTIONS.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
@@ -55,13 +57,14 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
             </select>
           </div>
           <div>
-            <label className="label-sm">
+            <label className="label-sm" htmlFor="notice-period">
               Periode *{' '}
               <span className="text-disabled font-normal">
                 (z. B. 2025 oder 2025-Q3 oder 2025-09)
               </span>
             </label>
             <input
+              id="notice-period"
               name="period"
               required
               maxLength={20}
@@ -77,12 +80,28 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </legend>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-sm">Datum *</label>
-              <input type="date" name="noticeDate" required className="input w-full" />
+              <label className="label-sm" htmlFor="notice-date">
+                Datum *
+              </label>
+              <input
+                id="notice-date"
+                type="date"
+                name="noticeDate"
+                required
+                className="input w-full"
+              />
             </div>
             <div>
-              <label className="label-sm">Bedeutung des Datums *</label>
-              <select name="dateBasis" required className="input w-full" defaultValue="">
+              <label className="label-sm" htmlFor="notice-date-basis">
+                Bedeutung des Datums *
+              </label>
+              <select
+                id="notice-date-basis"
+                name="dateBasis"
+                required
+                className="input w-full"
+                defaultValue=""
+              >
                 <option value="" disabled>
                   Bitte auswählen
                 </option>
@@ -99,8 +118,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-sm">Nachweisstatus des Datums *</label>
+              <label className="label-sm" htmlFor="notice-delivery-evidence-status">
+                Nachweisstatus des Datums *
+              </label>
               <select
+                id="notice-delivery-evidence-status"
                 name="deliveryEvidenceStatus"
                 required
                 className="input w-full"
@@ -112,8 +134,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
               </select>
             </div>
             <div>
-              <label className="label-sm">Nachweis / Fundstelle</label>
+              <label className="label-sm" htmlFor="notice-delivery-evidence-note">
+                Nachweis / Fundstelle
+              </label>
               <input
+                id="notice-delivery-evidence-note"
                 name="deliveryEvidenceNote"
                 maxLength={2000}
                 className="input w-full"
@@ -130,14 +155,29 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
         </fieldset>
 
         <div>
-          <label className="label-sm">Aktenzeichen FA</label>
-          <input name="fileNumber" maxLength={100} className="input w-full" />
+          <label className="label-sm" htmlFor="notice-file-number">
+            Aktenzeichen FA
+          </label>
+          <input
+            id="notice-file-number"
+            name="fileNumber"
+            maxLength={100}
+            className="input w-full"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label-sm">Bekanntgabeweg *</label>
-            <select name="deliveryMethod" required className="input w-full" defaultValue="POST">
+            <label className="label-sm" htmlFor="notice-delivery-method">
+              Bekanntgabeweg *
+            </label>
+            <select
+              id="notice-delivery-method"
+              name="deliveryMethod"
+              required
+              className="input w-full"
+              defaultValue="POST"
+            >
               <option value="POST">Post (§ 122 Abs. 2 AO)</option>
               <option value="POST_ABROAD">Post ins Ausland (§ 122 Abs. 2 Nr. 2 AO)</option>
               <option value="ELECTRONIC">Elektronisch übermittelt (§ 122 Abs. 2a AO)</option>
@@ -148,8 +188,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
             </select>
           </div>
           <div>
-            <label className="label-sm">Rechtsbehelfsbelehrung *</label>
+            <label className="label-sm" htmlFor="notice-legal-remedy-instruction">
+              Rechtsbehelfsbelehrung *
+            </label>
             <select
+              id="notice-legal-remedy-instruction"
               name="legalRemedyInstruction"
               required
               className="input w-full"
@@ -162,8 +205,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </div>
         </div>
         <div>
-          <label className="label-sm">Begründung der Belehrungsprüfung *</label>
+          <label className="label-sm" htmlFor="notice-legal-remedy-instruction-note">
+            Begründung der Belehrungsprüfung *
+          </label>
           <textarea
+            id="notice-legal-remedy-instruction-note"
             name="legalRemedyInstructionNote"
             required
             minLength={3}
@@ -184,8 +230,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           title="Sitz der zuständigen Finanzbehörde für das Fristende"
         />
         <div>
-          <label className="label-sm">Kalenderquelle / Prüfnachweis *</label>
+          <label className="label-sm" htmlFor="notice-holiday-context-note">
+            Kalenderquelle / Prüfnachweis *
+          </label>
           <textarea
+            id="notice-holiday-context-note"
             name="holidayContextNote"
             required
             minLength={3}
@@ -208,13 +257,23 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
             Tatsachen.
           </p>
           <div>
-            <label className="label-sm">Erlass-/Bescheiddatum</label>
-            <input type="date" name="retrievalIssuedAt" className="input w-full" />
+            <label className="label-sm" htmlFor="notice-retrieval-issued-at">
+              Erlass-/Bescheiddatum
+            </label>
+            <input
+              id="notice-retrieval-issued-at"
+              type="date"
+              name="retrievalIssuedAt"
+              className="input w-full"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-sm">Einwilligung im Jahr 2026</label>
+              <label className="label-sm" htmlFor="notice-retrieval-consent-status">
+                Einwilligung im Jahr 2026
+              </label>
               <select
+                id="notice-retrieval-consent-status"
                 name="retrievalConsentStatus"
                 defaultValue="NOT_APPLICABLE"
                 className="input w-full"
@@ -226,8 +285,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
               </select>
             </div>
             <div>
-              <label className="label-sm">Voraussetzungen ab 2027</label>
+              <label className="label-sm" htmlFor="notice-retrieval-eligibility-2027-status">
+                Voraussetzungen ab 2027
+              </label>
               <select
+                id="notice-retrieval-eligibility-2027-status"
                 name="retrievalEligibility2027Status"
                 defaultValue="NOT_APPLICABLE"
                 className="input w-full"
@@ -241,8 +303,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-sm">Postantrag / Widerruf ab 2027</label>
+              <label className="label-sm" htmlFor="notice-retrieval-postal-request-status">
+                Postantrag / Widerruf ab 2027
+              </label>
               <select
+                id="notice-retrieval-postal-request-status"
                 name="retrievalPostalRequestStatus"
                 defaultValue="NOT_APPLICABLE"
                 className="input w-full"
@@ -254,14 +319,24 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
               </select>
             </div>
             <div>
-              <label className="label-sm">Postantrag bei Behörde eingegangen am</label>
-              <input type="date" name="retrievalPostalRequestReceivedAt" className="input w-full" />
+              <label className="label-sm" htmlFor="notice-retrieval-postal-request-received-at">
+                Postantrag bei Behörde eingegangen am
+              </label>
+              <input
+                id="notice-retrieval-postal-request-received-at"
+                type="date"
+                name="retrievalPostalRequestReceivedAt"
+                className="input w-full"
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-sm">Benachrichtigungsstatus</label>
+              <label className="label-sm" htmlFor="notice-retrieval-notification-status">
+                Benachrichtigungsstatus
+              </label>
               <select
+                id="notice-retrieval-notification-status"
                 name="retrievalNotificationStatus"
                 defaultValue="NOT_RECORDED"
                 className="input w-full"
@@ -273,8 +348,15 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
               </select>
             </div>
             <div>
-              <label className="label-sm">Benachrichtigung versandt am</label>
-              <input type="date" name="retrievalNotificationDate" className="input w-full" />
+              <label className="label-sm" htmlFor="notice-retrieval-notification-date">
+                Benachrichtigung versandt am
+              </label>
+              <input
+                id="notice-retrieval-notification-date"
+                type="date"
+                name="retrievalNotificationDate"
+                className="input w-full"
+              />
             </div>
           </div>
           <label className="flex items-start gap-2 text-sm text-secondary">
@@ -284,8 +366,15 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
             </span>
           </label>
           <div>
-            <label className="label-sm">Tatsächlich abgerufen am</label>
-            <input type="date" name="retrievedAt" className="input w-full" />
+            <label className="label-sm" htmlFor="notice-retrieved-at">
+              Tatsächlich abgerufen am
+            </label>
+            <input
+              id="notice-retrieved-at"
+              type="date"
+              name="retrievedAt"
+              className="input w-full"
+            />
             <p className="text-xs text-muted mt-1">
               Der Abruf ist grundsätzlich Kontrollinformation. Nur im markierten altrechtlichen
               Ausnahmefall kann er fristauslösend sein.
@@ -303,8 +392,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </legend>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-sm">Zugangslage *</label>
+              <label className="label-sm" htmlFor="notice-access-status">
+                Zugangslage *
+              </label>
               <select
+                id="notice-access-status"
                 name="accessStatus"
                 required
                 defaultValue="UNCONTESTED"
@@ -322,14 +414,28 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
               </select>
             </div>
             <div>
-              <label className="label-sm">Zugangstag</label>
-              <input type="date" name="receivedAt" className="input w-full" />
+              <label className="label-sm" htmlFor="notice-received-at">
+                Zugangstag
+              </label>
+              <input
+                id="notice-received-at"
+                type="date"
+                name="receivedAt"
+                className="input w-full"
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label-sm">Nachweisstatus des Zugangs</label>
-              <select name="accessEvidenceStatus" defaultValue="" className="input w-full">
+              <label className="label-sm" htmlFor="notice-access-evidence-status">
+                Nachweisstatus des Zugangs
+              </label>
+              <select
+                id="notice-access-evidence-status"
+                name="accessEvidenceStatus"
+                defaultValue=""
+                className="input w-full"
+              >
                 <option value="">nicht anwendbar</option>
                 <option value="CLAIMED">nur angegeben</option>
                 <option value="SUBSTANTIATED">durch Unterlagen belegt</option>
@@ -337,8 +443,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
               </select>
             </div>
             <div>
-              <label className="label-sm">Zugangsnachweis / Würdigung</label>
+              <label className="label-sm" htmlFor="notice-access-evidence-note">
+                Zugangsnachweis / Würdigung
+              </label>
               <input
+                id="notice-access-evidence-note"
                 name="accessEvidenceNote"
                 maxLength={2000}
                 className="input w-full"
@@ -356,37 +465,67 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label-sm">Festgesetzt (EUR)</label>
-            <input type="number" step="0.01" name="assessedAmount" className="input w-full" />
+            <label className="label-sm" htmlFor="notice-assessed-amount">
+              Festgesetzt (EUR)
+            </label>
+            <input
+              id="notice-assessed-amount"
+              type="number"
+              step="0.01"
+              name="assessedAmount"
+              className="input w-full"
+            />
           </div>
           <div>
-            <label className="label-sm">
+            <label className="label-sm" htmlFor="notice-expected-amount">
               Erwartet/Geschätzt (EUR){' '}
               <span className="text-disabled font-normal">— für Soll/Ist-Vergleich</span>
             </label>
-            <input type="number" step="0.01" name="expectedAmount" className="input w-full" />
+            <input
+              id="notice-expected-amount"
+              type="number"
+              step="0.01"
+              name="expectedAmount"
+              className="input w-full"
+            />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label-sm">Vorausgezahlt (EUR)</label>
-            <input type="number" step="0.01" name="prepaidAmount" className="input w-full" />
+            <label className="label-sm" htmlFor="notice-prepaid-amount">
+              Vorausgezahlt (EUR)
+            </label>
+            <input
+              id="notice-prepaid-amount"
+              type="number"
+              step="0.01"
+              name="prepaidAmount"
+              className="input w-full"
+            />
           </div>
           <div>
-            <label className="label-sm">
+            <label className="label-sm" htmlFor="notice-pay-amount">
               Ergebnis (EUR){' '}
               <span className="text-disabled font-normal">
                 — positiv = Nachzahlung, negativ = Erstattung
               </span>
             </label>
-            <input type="number" step="0.01" name="payAmount" className="input w-full" />
+            <input
+              id="notice-pay-amount"
+              type="number"
+              step="0.01"
+              name="payAmount"
+              className="input w-full"
+            />
           </div>
         </div>
 
         <div>
-          <label className="label-sm">Notizen / Anmerkungen</label>
-          <textarea name="reviewNotes" rows={3} className="input w-full" />
+          <label className="label-sm" htmlFor="notice-review-notes">
+            Notizen / Anmerkungen
+          </label>
+          <textarea id="notice-review-notes" name="reviewNotes" rows={3} className="input w-full" />
         </div>
 
         <div className="flex justify-end gap-2">
@@ -416,8 +555,11 @@ function HolidayLocationFields({
       <legend className="px-1 text-sm font-medium text-primary">{title}</legend>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label-sm">Empfänger / Behörde *</label>
+          <label className="label-sm" htmlFor={`notice-${prefix}-name`}>
+            Empfänger / Behörde *
+          </label>
           <input
+            id={`notice-${prefix}-name`}
             name={prefix + 'Name'}
             defaultValue={defaultName}
             required
@@ -426,8 +568,11 @@ function HolidayLocationFields({
           />
         </div>
         <div>
-          <label className="label-sm">Staat (ISO-2) *</label>
+          <label className="label-sm" htmlFor={`notice-${prefix}-country-code`}>
+            Staat (ISO-2) *
+          </label>
           <input
+            id={`notice-${prefix}-country-code`}
             name={prefix + 'CountryCode'}
             defaultValue="DE"
             required
@@ -439,14 +584,18 @@ function HolidayLocationFields({
         </div>
       </div>
       <div>
-        <label className="label-sm">Zusätzliche örtliche Feiertage</label>
+        <label className="label-sm" htmlFor={`notice-${prefix}-local-holiday-dates`}>
+          Zusätzliche örtliche Feiertage
+        </label>
         <input
+          id={`notice-${prefix}-local-holiday-dates`}
           name={prefix + 'LocalHolidayDates'}
           maxLength={1000}
           className="input w-full"
           placeholder="2026-08-08, 2026-08-17"
+          aria-describedby={`notice-${prefix}-local-holiday-dates-hint`}
         />
-        <p className="text-xs text-muted mt-1">
+        <p id={`notice-${prefix}-local-holiday-dates-hint`} className="text-xs text-muted mt-1">
           Nur gesetzliche Feiertage ergänzen, die für diesen konkreten Ort gelten und nicht bereits
           im Bundeslandkalender enthalten sind; Format JJJJ-MM-TT, getrennt durch Komma oder
           Leerzeichen.
@@ -454,8 +603,15 @@ function HolidayLocationFields({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label-sm">Bundesland</label>
-          <select name={prefix + 'Region'} defaultValue="" className="input w-full">
+          <label className="label-sm" htmlFor={`notice-${prefix}-region`}>
+            Bundesland
+          </label>
+          <select
+            id={`notice-${prefix}-region`}
+            name={prefix + 'Region'}
+            defaultValue=""
+            className="input w-full"
+          >
             <option value="">Unbekannt / nicht deutsch</option>
             {Object.entries(REGION_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
@@ -465,14 +621,24 @@ function HolidayLocationFields({
           </select>
         </div>
         <div>
-          <label className="label-sm">Ort / Gemeinde (bei bestätigtem Kalender Pflicht)</label>
-          <input name={prefix + 'Locality'} maxLength={200} className="input w-full" />
+          <label className="label-sm" htmlFor={`notice-${prefix}-locality`}>
+            Ort / Gemeinde (bei bestätigtem Kalender Pflicht)
+          </label>
+          <input
+            id={`notice-${prefix}-locality`}
+            name={prefix + 'Locality'}
+            maxLength={200}
+            className="input w-full"
+          />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label-sm">Kalenderstand *</label>
+          <label className="label-sm" htmlFor={`notice-${prefix}-holiday-context-status`}>
+            Kalenderstand *
+          </label>
           <select
+            id={`notice-${prefix}-holiday-context-status`}
             name={prefix + 'HolidayContextStatus'}
             required
             defaultValue="UNKNOWN"
@@ -488,8 +654,11 @@ function HolidayLocationFields({
           </select>
         </div>
         <div>
-          <label className="label-sm">Mariä Himmelfahrt in Bayern *</label>
+          <label className="label-sm" htmlFor={`notice-${prefix}-bavaria-assumption`}>
+            Mariä Himmelfahrt in Bayern *
+          </label>
           <select
+            id={`notice-${prefix}-bavaria-assumption`}
             name={prefix + 'BavariaAssumption'}
             required
             defaultValue="UNKNOWN"

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
 import { addNoteAction, updateNoteAction, deleteNoteAction } from './note-actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
+import { confirmDialog } from '@/components/ui/modal';
 
 interface Note {
   id: string;
@@ -60,8 +61,15 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
     });
   }
 
-  function remove(id: string) {
-    if (!confirm('Notiz löschen?')) return;
+  async function remove(id: string) {
+    if (
+      !(await confirmDialog('Notiz löschen?', {
+        title: 'Notiz löschen',
+        confirmLabel: 'Löschen',
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const r = await deleteNoteAction({ id });
       if (!r.ok) {
@@ -128,7 +136,11 @@ export function NotesEditor({ initial }: { initial: Note[] }) {
           Noch keine Notizen.
         </div>
       ) : (
-        <ul className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0">
+        <ul
+          aria-label="Notizen – scrollbare Liste"
+          tabIndex={0}
+          className="divide-y divide-border-subtle overflow-y-auto scrollbar-thin flex-1 min-h-0"
+        >
           {notes.map((n) => (
             <li key={n.id} className="px-5 py-2.5">
               {editingId === n.id ? (

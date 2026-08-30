@@ -40,6 +40,7 @@ const ModulesSchema = z.object({
   inboundMail: z.boolean(),
   risk: z.boolean(),
   signalEngine: z.boolean(),
+  subsumtionFloatingToolbarDefault: z.boolean(),
   poaMode: z.enum(['OFF', 'MARKDOWN_OTP', 'PDF_TEMPLATE']),
   poaPdfSubject: z.string().max(200).optional(),
   poaPdfBodyMd: z.string().max(5000).optional(),
@@ -71,6 +72,7 @@ export async function saveModulesAction(
     inboundMail: formData.get('enabled.inboundMail') === 'on',
     risk: formData.get('enabled.risk') === 'on',
     signalEngine: formData.get('enabled.signalEngine') === 'on',
+    subsumtionFloatingToolbarDefault: formData.get('subsumtionFloatingToolbarDefault') === 'on',
     poaMode: formData.get('poaMode'),
     poaPdfSubject: formData.get('poaPdfSubject') ?? '',
     poaPdfBodyMd: formData.get('poaPdfBodyMd') ?? '',
@@ -97,6 +99,7 @@ export async function saveModulesAction(
     inboundMail: parsed.data.inboundMail,
     risk: parsed.data.risk,
     signalEngine: parsed.data.signalEngine,
+    subsumtionFloatingToolbarDefault: parsed.data.subsumtionFloatingToolbarDefault,
     poaMode: parsed.data.poaMode,
     poaPdfTemplate:
       parsed.data.poaMode === 'PDF_TEMPLATE'

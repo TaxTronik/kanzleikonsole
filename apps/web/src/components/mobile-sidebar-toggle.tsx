@@ -1,8 +1,9 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
+import { AppPortal } from '@/components/ui/modal';
 
 /**
  * Hamburger-Toggle für die Sidebar auf <md.
@@ -12,21 +13,119 @@ import { Menu, X } from 'lucide-react';
  */
 export function MobileSidebarToggle() {
   const [open, setOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [sidebar, setSidebar] = useState<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
   const pathname = usePathname();
 
   useEffect(() => {
-    if (open) {
+    const media = window.matchMedia('(max-width: 767px)');
+    const sidebarNode = document.getElementById('app-sidebar');
+    setSidebar(sidebarNode);
+
+    const updateViewport = () => {
+      setIsMobile(media.matches);
+      if (!media.matches) setOpen(false);
+    };
+    updateViewport();
+    media.addEventListener('change', updateViewport);
+    return () => media.removeEventListener('change', updateViewport);
+  }, []);
+
+  useEffect(() => {
+    const main = document.getElementById('main-content');
+    if (!sidebar) return;
+
+    if (isMobile && !open) {
+      sidebar.setAttribute('inert', '');
+      sidebar.setAttribute('aria-hidden', 'true');
+    } else {
+      sidebar.removeAttribute('inert');
+      sidebar.removeAttribute('aria-hidden');
+    }
+
+    if (isMobile && open) {
+      sidebar.setAttribute('role', 'dialog');
+      sidebar.setAttribute('aria-modal', 'true');
+      main?.setAttribute('inert', '');
+      main?.setAttribute('aria-hidden', 'true');
       document.body.classList.add('sidebar-open');
       document.body.classList.add('overflow-hidden');
     } else {
+      sidebar.removeAttribute('role');
+      sidebar.removeAttribute('aria-modal');
+      main?.removeAttribute('inert');
+      main?.removeAttribute('aria-hidden');
       document.body.classList.remove('sidebar-open');
       document.body.classList.remove('overflow-hidden');
     }
+
     return () => {
+      sidebar.removeAttribute('inert');
+      sidebar.removeAttribute('aria-hidden');
+      sidebar.removeAttribute('role');
+      sidebar.removeAttribute('aria-modal');
+      main?.removeAttribute('inert');
+      main?.removeAttribute('aria-hidden');
       document.body.classList.remove('sidebar-open');
       document.body.classList.remove('overflow-hidden');
     };
-  }, [open]);
+  }, [isMobile, open, sidebar]);
+
+  useEffect(() => {
+    if (!isMobile || !sidebar) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    if (!open) {
+      if (wasOpenRef.current) triggerRef.current?.focus();
+      wasOpenRef.current = false;
+      return;
+    }
+
+    wasOpenRef.current = true;
+    const frame = window.requestAnimationFrame(() => closeRef.current?.focus());
+    const focusables = () =>
+      Array.from(
+        sidebar.querySelectorAll<HTMLElement>(
+          'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),summary,[tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getClientRects().length > 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const elements = focusables();
+      if (elements.length === 0) {
+        event.preventDefault();
+        closeRef.current?.focus();
+        return;
+      }
+      const first = elements[0]!;
+      const last = elements[elements.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobile, open, sidebar]);
 
   // Beim Pfadwechsel automatisch schließen
   useEffect(() => {
@@ -36,23 +135,44 @@ export function MobileSidebarToggle() {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="md:hidden p-2 -ml-2 text-muted hover:text-primary hover:bg-gray-100 rounded-md"
+        className="md:hidden icon-action -ml-2"
         aria-label={open ? 'Menü schließen' : 'Menü öffnen'}
+        aria-controls="app-sidebar"
+        aria-expanded={isMobile && open}
       >
-        {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        {open ? (
+          <X className="h-5 w-5" aria-hidden="true" />
+        ) : (
+          <Menu className="h-5 w-5" aria-hidden="true" />
+        )}
       </button>
 
-      {/* Backdrop, der die Sidebar schließt beim Klick */}
-      {open && (
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="md:hidden fixed inset-0 bg-black/40 z-30"
-          aria-label="Menü schließen"
-        />
-      )}
+      {isMobile && open ? (
+        <AppPortal>
+          <div
+            className="fixed inset-0 z-30 bg-black/40"
+            aria-hidden="true"
+            onMouseDown={() => setOpen(false)}
+          />
+        </AppPortal>
+      ) : null}
+
+      {isMobile && open && sidebar ? (
+        <AppPortal target={sidebar}>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={() => setOpen(false)}
+            className="icon-action absolute right-3 top-3 z-50"
+            aria-label="Menü schließen"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </AppPortal>
+      ) : null}
     </>
   );
 }

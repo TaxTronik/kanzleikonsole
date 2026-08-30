@@ -34,8 +34,8 @@ interface ClientStatusFlowCardProps<
   renderCompletedMeta: (item: Item) => ReactNode;
   completedSummary: (count: number) => ReactNode;
   transitionTitle?: (item: Item, next: Status, label: string) => string;
-  confirmTransition?: (item: Item, next: Status) => boolean;
-  confirmDelete: (item: Item) => boolean;
+  confirmTransition?: (item: Item, next: Status) => boolean | Promise<boolean>;
+  confirmDelete: (item: Item) => boolean | Promise<boolean>;
   updateStatus: (id: string, next: Status) => Promise<unknown>;
   deleteItem: (id: string) => Promise<unknown>;
 }
@@ -67,16 +67,16 @@ export function ClientStatusFlowCard<
   const active = items.filter((item) => item.status !== flow.terminalStatus);
   const completed = items.filter((item) => item.status === flow.terminalStatus);
 
-  function advance(item: Item, next: Status) {
-    if (confirmTransition && !confirmTransition(item, next)) return;
+  async function advance(item: Item, next: Status) {
+    if (confirmTransition && !(await confirmTransition(item, next))) return;
     startMutation(async () => {
       await updateStatus(item.id, next);
       router.refresh();
     });
   }
 
-  function remove(item: Item) {
-    if (!confirmDelete(item)) return;
+  async function remove(item: Item) {
+    if (!(await confirmDelete(item))) return;
     startMutation(async () => {
       await deleteItem(item.id);
       router.refresh();

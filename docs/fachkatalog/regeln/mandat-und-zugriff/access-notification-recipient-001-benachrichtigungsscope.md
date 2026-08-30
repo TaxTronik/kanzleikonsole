@@ -52,11 +52,13 @@ code_refs:
   - packages/db/src/notification.ts
   - apps/worker/src/jobs/reminders-daily.ts
   - packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql
+  - packages/db/prisma/migrations/20260830234000_restore_portal_notification_write_only/migration.sql
 test_refs:
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
   - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
   - packages/db/src/__tests__/notification-client-scope-migration.test.ts
   - packages/db/src/__tests__/notification-client-scope-rls.test.ts
+  - packages/db/src/__tests__/notification-write-only-forward.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
@@ -138,6 +140,14 @@ ersetzt die generische Notification-Policy durch getrennte SELECT/INSERT/
 UPDATE/DELETE-Regeln. Der Reminder-Worker sperrt die aktuelle Fachzeile und
 verwendet `filterStaffAccessClientTx` unmittelbar vor `createMany`.
 
+Eine spätere Forward-Migration stellt nach der zusammengeführten historischen
+Migrationsreihenfolge die Staff-/System-beschränkte `notification_insert`-Policy
+wieder her. Die Reparatur vom 27. August installiert noch eine ältere Policy
+mit direktem Portal-INSERT; sie darf den inzwischen geschlossenen write-only
+Portalpfad nicht wieder öffnen. Die neue Migration ändert ausschließlich diese
+INSERT-Policy. Historische Migrationsdateien, die validierende Portal-Funktion,
+ihre Ereignisliste sowie SELECT-, UPDATE- und DELETE-Rechte bleiben unverändert.
+
 ## Bekannte Abweichungen und Grenzen
 
 Der Status bleibt teilweise, weil noch kein vollständiges Inventar aller
@@ -159,3 +169,12 @@ Migrations- und DB-Tests belegen Ableitung, unbekannte Typen, Empfänger-RLS und
 sofortigen Entzug nach Vertraulichkeitsänderung. Worker-Tests belegen Locks,
 Statusrevalidierung, aktive Empfänger und den gemeinsamen Clientfilter. Die
 Nachweise sind noch kein vollständiges Producer-/Kanal-Inventar.
+
+Der zusätzliche Forward-Replaytest spielt die ältere INSERT-Policy in einer
+stets zurückgerollten Datenbanktransaktion ein und reproduziert den unerwünschten
+Raw-INSERT. Nach Einspielen der Forward-Policy muss derselbe Zugriff scheitern,
+während der validierende Portal-Upsert idempotent funktioniert. Portal-Lesen,
+-Ändern und -Löschen bleiben gesperrt; der vorhandene Staff-/Systempfad bleibt
+erhalten. Strukturtests sichern außerdem die abschließende Migrationsreihenfolge
+und die unveränderte Policy aus dem write-only Portalpfad. Diese Regression
+deckt die konkrete Merge-Reihenfolge ab, nicht das gesamte Producer-Inventar.

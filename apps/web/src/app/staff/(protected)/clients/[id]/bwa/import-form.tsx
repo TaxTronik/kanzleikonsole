@@ -81,7 +81,7 @@ export function BwaImportForm({ clientId }: { clientId: string }) {
             }}
             className={
               source === s
-                ? 'px-3 py-1.5 text-xs rounded-md bg-brand-600 text-white font-medium'
+                ? 'px-3 py-1.5 text-xs rounded-md bg-brand-600 text-on-brand font-medium'
                 : 'px-3 py-1.5 text-xs rounded-md bg-gray-100 text-secondary hover:bg-gray-200'
             }
           >
