@@ -82,6 +82,16 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Geändert
 
+- Der Integrationsabschluss zerlegt übergroße GwG-, Subsumtions- und
+  Administrationskomponenten sowie reine Action-Datenabbildungen, ohne
+  Fachentscheidungen, Sperrreihenfolge oder Auditinhalt zu ändern. Die
+  Komplexitäts- und React-Compiler-Baselines werden für tatsächlich beseitigte
+  Warnungen abgesenkt, nicht für neue Schulden erweitert. Die Abgrenzung ist
+  unter `FK-EXC-20260830-012` dokumentiert.
+- Lokale A11Y-Browserprüfungen können vorhandene Redis-Warteschlangen und
+  MailHog-Nachrichten erhalten. Der Portal-Testlogin wartet dabei auf einen
+  neuen Magic-Link zur aktuellen Anfrage; Authentisierung und Assertions
+  bleiben vollständig aktiv.
 - Die gemeinsame Staff-/Portal-Shell besitzt Skip-Links, fokussierbare
   Hauptinhalte und semantisch isolierte mobile Navigation mit Zustand,
   Fokusfalle, Escape und Fokus-Rückgabe. Die globale Suche bildet nun ein
@@ -210,6 +220,11 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Behoben
 
+- Der Initialfokus der mobilen Navigation wartet bei einer animierten
+  Sichtbarkeitsänderung auf das tatsächlich sichtbare Menü. Im persönlichen
+  Anzeigemodus konnte der erste Fokusversuch sonst zu früh stattfinden.
+  Listener werden nach Erfolg oder Schließen entfernt; ein späterer Fokus
+  wird nicht erneut übernommen.
 - Suchtreffer bleiben bei Pfeil-/Home-/End-Navigation im eigenen Panel sichtbar.
   Suche und Benachrichtigungsdialog passen sich an niedrige und schmale
   Fenster an. Benachrichtigungen haben einen benannten Dialog, explizites

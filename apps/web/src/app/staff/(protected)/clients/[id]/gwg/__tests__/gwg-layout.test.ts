@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const pageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
+const pageBodySource = pageSource.slice(0, pageSource.indexOf('\ninterface DisplayGwgDocument'));
 const identityReviewSource = readFileSync(
   new URL('../identity-document-review.tsx', import.meta.url),
   'utf8',
@@ -65,17 +66,25 @@ describe('GwG-Prüfung Seitenstruktur', () => {
   });
 
   it('zeigt Stammdaten und gesetzliche Vertreter vor Stepper und Einladung', () => {
-    const masterData = pageSource.indexOf('Stammdaten und gesetzliche Vertretung');
-    const representatives = pageSource.indexOf('Gesetzliche Vertreter');
-    const stepper = pageSource.indexOf('<Stepper steps={gwgSteps} />');
-    const invite = pageSource.indexOf('title="Einladung an den Mandanten"');
-    const register = pageSource.indexOf('title="Rechtsträger- und Registernachweise"');
+    // Fachkatalog: GWG-REPRESENTATIVE-AUTHORITY-001. Der ausgelagerte
+    // Darstellungsblock bleibt an derselben Stelle; seine Inhalte sind unverändert.
+    const masterData = pageBodySource.indexOf('<GwgMasterData client={client} check={check} />');
+    const stepper = pageBodySource.indexOf('<Stepper steps={gwgSteps} />');
+    const invite = pageBodySource.indexOf('title="Einladung an den Mandanten"');
+    const register = pageBodySource.indexOf('title="Rechtsträger- und Registernachweise"');
+    const masterComponent = pageSource.slice(
+      pageSource.indexOf('function GwgMasterData('),
+      pageSource.indexOf('function GwgMasterDataFields('),
+    );
 
     expect(masterData).toBeGreaterThan(-1);
     expect(masterData).toBeLessThan(stepper);
-    expect(representatives).toBeLessThan(invite);
+    expect(masterData).toBeLessThan(invite);
+    expect(masterComponent).toContain('Stammdaten und gesetzliche Vertretung');
+    expect(masterComponent).toContain('Gesetzliche Vertreter');
+    expect(masterComponent).toContain('<LegalEntityDetailsForm');
     expect(stepper).toBeLessThan(invite);
-    expect(pageSource.slice(register)).not.toContain('<LegalEntityDetailsForm');
+    expect(pageBodySource.slice(register)).not.toContain('<LegalEntityDetailsForm');
   });
 
   it('ordnet Personen ausschließlich untereinander über die volle Spaltenbreite an', () => {

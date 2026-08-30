@@ -217,6 +217,46 @@ function assertIdentityDatesForSubject(
   if (dateError) throw new ActionError(dateError);
 }
 
+type NewIdDocumentData = z.infer<typeof AddIdDocSchema>;
+
+// GWG-IDENTIFICATION-EVIDENCE-001: pure extraction; invocation stays after the
+// existing lifecycle, evidence and duplicate-link checks.
+function newIdentityAssignmentConfirmedAt(data: NewIdDocumentData): Date | null {
+  return isPersonalIdType(data.type) &&
+    data.number?.trim() &&
+    data.issuedBy?.trim() &&
+    data.issueDate &&
+    data.expiryDate &&
+    isDateOnOrAfterToday(data.expiryDate)
+    ? new Date()
+    : null;
+}
+
+function newIdentityDocumentSharedData(
+  data: NewIdDocumentData,
+  subject: ReturnType<typeof resolveIdentitySubject>,
+  clientName: string,
+  documentSetId: string,
+  assignment: ReturnType<typeof identityAssignmentForSubject>,
+  assignmentConfirmedAt: Date | null,
+  staffId: string,
+) {
+  return {
+    gwgCheckId: data.checkId,
+    type: data.type,
+    ownerName: isPersonalIdType(data.type) ? subject!.name : clientName,
+    number: isPersonalIdType(data.type) ? data.number || null : null,
+    issuedBy: isPersonalIdType(data.type) ? data.issuedBy || null : null,
+    issueDate: isPersonalIdType(data.type) && data.issueDate ? new Date(data.issueDate) : null,
+    expiryDate: isPersonalIdType(data.type) && data.expiryDate ? new Date(data.expiryDate) : null,
+    documentSetId,
+    ...assignment,
+    identityAssignmentConfirmedAt: assignmentConfirmedAt,
+    identityAssignmentConfirmedBy: assignmentConfirmedAt ? staffId : null,
+    verifiedAt: assignmentConfirmedAt,
+  };
+}
+
 export async function addIdDocumentAction(
   _prev: { ok: boolean; error?: string } | null,
   formData: FormData,
@@ -322,15 +362,7 @@ export async function addIdDocumentAction(
         );
       }
 
-      const assignmentConfirmedAt =
-        isPersonalIdType(data.type) &&
-        data.number?.trim() &&
-        data.issuedBy?.trim() &&
-        data.issueDate &&
-        data.expiryDate &&
-        isDateOnOrAfterToday(data.expiryDate)
-          ? new Date()
-          : null;
+      const assignmentConfirmedAt = newIdentityAssignmentConfirmedAt(data);
       const assignment = subject
         ? identityAssignmentForSubject(subject)
         : {
@@ -381,21 +413,15 @@ export async function addIdDocumentAction(
       }
 
       const documentSetId = randomUUID();
-      const sharedData = {
-        gwgCheckId: data.checkId,
-        type: data.type,
-        ownerName: isPersonalIdType(data.type) ? subject!.name : check.client.name,
-        number: isPersonalIdType(data.type) ? data.number || null : null,
-        issuedBy: isPersonalIdType(data.type) ? data.issuedBy || null : null,
-        issueDate: isPersonalIdType(data.type) && data.issueDate ? new Date(data.issueDate) : null,
-        expiryDate:
-          isPersonalIdType(data.type) && data.expiryDate ? new Date(data.expiryDate) : null,
+      const sharedData = newIdentityDocumentSharedData(
+        data,
+        subject,
+        check.client.name,
         documentSetId,
-        ...assignment,
-        identityAssignmentConfirmedAt: assignmentConfirmedAt,
-        identityAssignmentConfirmedBy: assignmentConfirmedAt ? staffId : null,
-        verifiedAt: assignmentConfirmedAt,
-      };
+        assignment,
+        assignmentConfirmedAt,
+        staffId,
+      );
       if (replacedDocuments.length > 0) {
         const superseded = await tx.gwgIdDocument.updateMany({
           where: {

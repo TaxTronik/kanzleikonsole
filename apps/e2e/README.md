@@ -107,6 +107,14 @@ Diese automatisierten Prüfungen erkennen nur einen Teil möglicher Barrieren.
 Sie ersetzen insbesondere keine manuelle Tastatur-, Screenreader-, Reflow- und
 Kontrastprüfung.
 
+Bei A11Y-Stichproben auf einem gemeinsam genutzten lokalen Dev-Stack kann
+`E2E_PRESERVE_SHARED_SERVICES=true` gesetzt werden. Dann leeren die Login-Helfer
+weder Redis (einschließlich Worker-/Signal-Warteschlangen) noch MailHog.
+Authentisierung, Seitenprüfungen und Assertions werden nicht übersprungen;
+Rate-Limits bleiben aktiv. Die Profiltests ändern weiterhin gezielt die
+Seed-Profilpräferenzen und stellen sie anschließend wieder her. Für den
+vollständigen CI-Lauf sind isolierte Services ohne diese Option vorgesehen.
+
 Lokal liest der Staff-Login zuerst explizite `E2E_ADMIN_*`-Variablen und sonst
 die vom Dev-Seed erzeugte, gitignorierte
 `packages/db/.admin-credentials.txt`. Das Passwort wird nicht in den

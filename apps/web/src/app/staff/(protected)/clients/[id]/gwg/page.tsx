@@ -1,5 +1,6 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
+import type { Client, GwgCheck, GwgRepresentative, GwgBeneficialOwner } from '@prisma/client';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, AlertTriangle, FileCheck, ChevronRight } from 'lucide-react';
@@ -424,14 +425,7 @@ export default async function GwgPage({
         );
         const ausweis = personIdentityEvidenceStatus(groups);
         const generalSource = owner ?? representative;
-        const general = {
-          fullName: generalSource?.fullName ?? subject.name,
-          birthDate: generalSource?.birthDate?.toISOString().slice(0, 10) ?? '',
-          birthPlace: generalSource?.birthPlace ?? '',
-          residence: generalSource?.residence ?? '',
-          nationality: generalSource?.nationality ?? '',
-          isPep: generalSource?.isPep ?? null,
-        };
+        const general = personGeneralData(generalSource, subject.name);
         return {
           key: subject.key,
           name: general.fullName,
@@ -485,14 +479,6 @@ export default async function GwgPage({
             : 'Ausweis fehlt';
   }
 
-  const clientAddress = [
-    client.street,
-    [client.postalCode, client.city].filter(Boolean).join(' '),
-    client.countryIso,
-  ]
-    .filter(Boolean)
-    .join(', ');
-
   // Stepper-Stufen: rein statusgetrieben (keine erfundenen Vollständigkeits-
   // regeln). „Eingereicht" friert Angaben/Dokumente ein; Risiko gilt als
   // erledigt, sobald ein Score gespeichert ist; Entscheidung = VERIFIED.
@@ -501,32 +487,8 @@ export default async function GwgPage({
   const openInvites = invites.filter(
     (i) => i.status === 'PENDING' || i.status === 'STARTED',
   ).length;
-  const gwgSteps = check
-    ? withActiveStep([
-        {
-          label: 'Einladung',
-          sub: check.reviewSubmittedAt
-            ? `eingereicht ${fmtDateShort(check.reviewSubmittedAt)}`
-            : 'offen',
-          done: eingereicht,
-        },
-        {
-          label: 'Angaben & Nachweise',
-          sub: isLegalEntity ? 'Rechtsträger & Personen' : 'Personen',
-          done: eingereicht,
-        },
-        {
-          label: 'Risikobewertung',
-          sub: check.riskLevel ?? 'offen',
-          done: check.riskScore != null,
-        },
-        {
-          label: 'Entscheidung',
-          sub: GWG_CHECK_STATUS_LABELS[check.status] ?? check.status,
-          done: check.status === 'VERIFIED',
-        },
-      ])
-    : [];
+  const gwgSteps = gwgProgressSteps(check, isLegalEntity, eingereicht);
+  const backLink = gwgBackLink(client.id, from);
 
   return (
     <GwgEditStateProvider initialStatus={check?.status ?? 'DRAFT'}>
@@ -536,14 +498,10 @@ export default async function GwgPage({
         <div className="p-8">
           <div className="flex items-start gap-4 mb-6">
             <Link
-              href={
-                from === 'onboarding'
-                  ? `/staff/clients/onboarding/${client.id}?step=gwg`
-                  : `/staff/clients/${client.id}`
-              }
+              href={backLink.href}
               className="text-disabled hover:text-secondary mt-1"
-              aria-label={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
-              title={from === 'onboarding' ? 'Zurück zum Onboarding' : 'Zurück zum Mandanten'}
+              aria-label={backLink.label}
+              title={backLink.label}
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
@@ -607,129 +565,7 @@ export default async function GwgPage({
             </details>
           )}
 
-          {isLegalEntity && (
-            <section className="card mb-6 p-5">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-primary">
-                    Stammdaten und gesetzliche Vertretung
-                  </h2>
-                  <p className="mt-1 text-xs text-muted">
-                    Die wichtigsten Angaben zum Rechtsträger auf einen Blick.
-                  </p>
-                </div>
-                <span className="badge badge-gray">
-                  {check?.representatives.length ?? 0} gesetzliche Vertretung
-                  {(check?.representatives.length ?? 0) === 1 ? '' : 'en'}
-                </span>
-              </div>
-
-              <dl className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div>
-                  <dt className="text-xs text-muted">Name / Firma</dt>
-                  <dd className="text-sm font-medium text-primary">{client.name}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Mandantenart</dt>
-                  <dd className="text-sm font-medium text-primary">
-                    {clientKindLabels[client.kind] ?? client.kind}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Adresse</dt>
-                  <dd className="text-sm font-medium text-primary">{clientAddress || '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">USt-ID</dt>
-                  <dd className="text-sm font-medium text-primary">{client.vatId ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Rechtsform</dt>
-                  <dd className="text-sm font-medium text-primary">{check?.legalForm ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Registernummer</dt>
-                  <dd className="text-sm font-medium text-primary">
-                    {check?.noRegisterEntry
-                      ? 'Kein Registereintrag'
-                      : (check?.registerNumber ?? '—')}
-                  </dd>
-                </div>
-                <div className="md:col-span-2">
-                  <dt className="text-xs text-muted">Register / Registergericht</dt>
-                  <dd className="text-sm font-medium text-primary">
-                    {check?.noRegisterEntry
-                      ? 'Nicht registerpflichtig'
-                      : (check?.registerAuthority ?? '—')}
-                  </dd>
-                </div>
-              </dl>
-
-              <div className="mt-5 border-t border-default pt-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Gesetzliche Vertreter
-                </h3>
-                {check?.representatives.length ? (
-                  <ul className="mt-2 flex flex-wrap gap-2">
-                    {check.representatives.map((representative) => (
-                      <li key={representative.id} className="badge badge-brand">
-                        {representative.fullName}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-muted">
-                    Noch keine gesetzliche Vertretung erfasst.
-                  </p>
-                )}
-              </div>
-
-              {check?.ownershipStructureNotes && (
-                <div className="mt-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Eigentums- und Kontrollstruktur
-                  </h3>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">
-                    {check.ownershipStructureNotes}
-                  </p>
-                </div>
-              )}
-
-              {check && (
-                <details className="mt-5 rounded-md border border-default bg-subtle">
-                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-primary">
-                    Stammdaten bearbeiten
-                  </summary>
-                  <div className="border-t border-default p-4">
-                    <LegalEntityDetailsForm
-                      key={gwgLegalEntityRevision(check)}
-                      checkId={check.id}
-                      clientId={client.id}
-                      current={{
-                        legalForm: check.legalForm,
-                        registerNumber: check.registerNumber,
-                        registerAuthority: check.registerAuthority,
-                        noRegisterEntry: check.noRegisterEntry,
-                        representatives: check.representatives.map((representative) => ({
-                          id: representative.id,
-                          fullName: representative.fullName,
-                          position: representative.position,
-                          linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId,
-                        })),
-                        ownershipStructureNotes: check.ownershipStructureNotes,
-                      }}
-                      currentRevision={gwgLegalEntityRevision(check)}
-                      disabled={
-                        check.status === 'VERIFIED' ||
-                        check.status === 'REJECTED' ||
-                        check.status === 'EXPIRED'
-                      }
-                    />
-                  </div>
-                </details>
-              )}
-            </section>
-          )}
+          {isLegalEntity && <GwgMasterData client={client} check={check} />}
 
           {check && (
             <div className="card mb-6">
@@ -895,22 +731,7 @@ export default async function GwgPage({
                                 ? role.replace('WB', 'Wirtschaftlich berechtigt')
                                 : role,
                           )}
-                          owner={
-                            person.owner
-                              ? {
-                                  id: person.owner.id,
-                                  fullName: person.owner.fullName,
-                                  birthDate:
-                                    person.owner.birthDate?.toISOString().slice(0, 10) ?? '',
-                                  birthPlace: person.owner.birthPlace ?? '',
-                                  residence: person.owner.residence ?? '',
-                                  nationality: person.owner.nationality ?? '',
-                                  ownershipPct: person.owner.ownershipPct?.toString() ?? '',
-                                  isPep: person.owner.isPep,
-                                  revision: gwgBeneficialOwnerRevision(person.owner),
-                                }
-                              : null
-                          }
+                          owner={ownerRoleValue(person.owner)}
                           representativeId={person.representative?.id ?? null}
                           current={{
                             legalForm: check.legalForm,
@@ -994,82 +815,7 @@ export default async function GwgPage({
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Status-Banner */}
-              {check.status === 'VERIFIED' && check.validUntil && (
-                <div className="rounded-md bg-green-50 p-4 border border-green-200">
-                  <div className="flex items-start gap-3">
-                    <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-green-900">Mandant ist verifiziert.</p>
-                      <p className="text-xs text-green-700 mt-1">
-                        Risiko: <strong>{check.riskLevel}</strong> · Gültig bis{' '}
-                        {fmtDateShort(check.validUntil)}
-                      </p>
-                      {from === 'onboarding' && (
-                        <Link
-                          href={`/staff/clients/onboarding/${client.id}?step=poa`}
-                          className="btn-primary text-xs mt-3 inline-flex"
-                        >
-                          Im Onboarding weiter
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {check.status === 'REJECTED' && (
-                <div className="rounded-md bg-red-50 p-4 border border-red-200">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-red-900">Prüfung abgelehnt.</p>
-                      {check.rejectedReason && (
-                        <p className="text-xs text-red-700 mt-1">
-                          Begründung: {check.rejectedReason}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {check.status === 'EXPIRED' && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-amber-900">Prüfung ist abgelaufen.</p>
-                      <p className="text-xs text-amber-700 mt-1">
-                        Für die erneute Freigabe ist ein aktueller Prüfsnapshot erforderlich.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {(check.status === 'VERIFIED' ||
-                check.status === 'REJECTED' ||
-                check.status === 'EXPIRED') && (
-                <section className="card p-5">
-                  <h2 className="text-sm font-semibold text-primary mb-1">
-                    {check.status === 'REJECTED' ? 'Korrekturprüfung' : 'Wiederholungsprüfung'}
-                  </h2>
-                  <p className="text-xs text-muted mb-4">
-                    Noch aufbewahrte Identifizierungsangaben werden in einen neuen, bearbeitbaren
-                    Entwurf übernommen. Gelöschte oder zur Vernichtung vorgemerkte Nachweise werden
-                    nicht erneut verknüpft. Die alte Pflichtaufzeichnung bleibt unverändert; die
-                    Risikobewertung ist erneut durchzuführen.
-                  </p>
-                  <StartCheckCycleForm
-                    clientId={client.id}
-                    checkId={check.id}
-                    status={check.status}
-                    contacts={contacts.map((contact) => ({
-                      fullName: contact.fullName,
-                      email: contact.email,
-                    }))}
-                  />
-                </section>
-              )}
+              <GwgCheckStatus clientId={client.id} check={check} from={from} contacts={contacts} />
 
               {check.status === 'IN_REVIEW' && canVerify && (
                 <div className="rounded-md border border-blue-300 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
@@ -1429,4 +1175,296 @@ function GwgDocumentList({
       ))}
     </ul>
   );
+}
+
+type GwgDisplayCheck = GwgCheck & { representatives: GwgRepresentative[] };
+
+/** Darstellung unverändert aus der Seite ausgelagert; keine neue Fachentscheidung. */
+function GwgMasterData({ client, check }: { client: Client; check: GwgDisplayCheck | null }) {
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-primary">
+            Stammdaten und gesetzliche Vertretung
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            Die wichtigsten Angaben zum Rechtsträger auf einen Blick.
+          </p>
+        </div>
+        <span className="badge badge-gray">
+          {check?.representatives.length ?? 0} gesetzliche Vertretung
+          {(check?.representatives.length ?? 0) === 1 ? '' : 'en'}
+        </span>
+      </div>
+
+      <GwgMasterDataFields client={client} check={check} />
+
+      <div className="mt-5 border-t border-default pt-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Gesetzliche Vertreter
+        </h3>
+        {check?.representatives.length ? (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {check.representatives.map((representative) => (
+              <li key={representative.id} className="badge badge-brand">
+                {representative.fullName}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted">Noch keine gesetzliche Vertretung erfasst.</p>
+        )}
+      </div>
+
+      {check?.ownershipStructureNotes && (
+        <div className="mt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Eigentums- und Kontrollstruktur
+          </h3>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">
+            {check.ownershipStructureNotes}
+          </p>
+        </div>
+      )}
+
+      {check && (
+        <details className="mt-5 rounded-md border border-default bg-subtle">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-primary">
+            Stammdaten bearbeiten
+          </summary>
+          <div className="border-t border-default p-4">
+            <LegalEntityDetailsForm
+              key={gwgLegalEntityRevision(check)}
+              checkId={check.id}
+              clientId={client.id}
+              current={{
+                legalForm: check.legalForm,
+                registerNumber: check.registerNumber,
+                registerAuthority: check.registerAuthority,
+                noRegisterEntry: check.noRegisterEntry,
+                representatives: check.representatives.map((representative) => ({
+                  id: representative.id,
+                  fullName: representative.fullName,
+                  position: representative.position,
+                  linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId,
+                })),
+                ownershipStructureNotes: check.ownershipStructureNotes,
+              }}
+              currentRevision={gwgLegalEntityRevision(check)}
+              disabled={
+                check.status === 'VERIFIED' ||
+                check.status === 'REJECTED' ||
+                check.status === 'EXPIRED'
+              }
+            />
+          </div>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function GwgMasterDataFields({ client, check }: { client: Client; check: GwgDisplayCheck | null }) {
+  const clientAddress = [
+    client.street,
+    [client.postalCode, client.city].filter(Boolean).join(' '),
+    client.countryIso,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return (
+    <dl className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div>
+        <dt className="text-xs text-muted">Name / Firma</dt>
+        <dd className="text-sm font-medium text-primary">{client.name}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Mandantenart</dt>
+        <dd className="text-sm font-medium text-primary">
+          {clientKindLabels[client.kind] ?? client.kind}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Adresse</dt>
+        <dd className="text-sm font-medium text-primary">{clientAddress || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">USt-ID</dt>
+        <dd className="text-sm font-medium text-primary">{client.vatId ?? '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Rechtsform</dt>
+        <dd className="text-sm font-medium text-primary">{check?.legalForm ?? '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Registernummer</dt>
+        <dd className="text-sm font-medium text-primary">
+          {check?.noRegisterEntry ? 'Kein Registereintrag' : (check?.registerNumber ?? '—')}
+        </dd>
+      </div>
+      <div className="md:col-span-2">
+        <dt className="text-xs text-muted">Register / Registergericht</dt>
+        <dd className="text-sm font-medium text-primary">
+          {check?.noRegisterEntry ? 'Nicht registerpflichtig' : (check?.registerAuthority ?? '—')}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+function GwgCheckStatus({
+  clientId,
+  check,
+  from,
+  contacts,
+}: {
+  clientId: string;
+  check: GwgCheck;
+  from?: string;
+  contacts: Array<{ fullName: string; email: string }>;
+}) {
+  return (
+    <>
+      {/* Status-Banner */}
+      {check.status === 'VERIFIED' && check.validUntil && (
+        <div className="rounded-md bg-green-50 p-4 border border-green-200">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="h-5 w-5 text-green-600 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-900">Mandant ist verifiziert.</p>
+              <p className="text-xs text-green-700 mt-1">
+                Risiko: <strong>{check.riskLevel}</strong> · Gültig bis{' '}
+                {fmtDateShort(check.validUntil)}
+              </p>
+              {from === 'onboarding' && (
+                <Link
+                  href={`/staff/clients/onboarding/${clientId}?step=poa`}
+                  className="btn-primary text-xs mt-3 inline-flex"
+                >
+                  Im Onboarding weiter
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {check.status === 'REJECTED' && (
+        <div className="rounded-md bg-red-50 p-4 border border-red-200">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-900">Prüfung abgelehnt.</p>
+              {check.rejectedReason && (
+                <p className="text-xs text-red-700 mt-1">Begründung: {check.rejectedReason}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {check.status === 'EXPIRED' && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">Prüfung ist abgelaufen.</p>
+              <p className="text-xs text-amber-700 mt-1">
+                Für die erneute Freigabe ist ein aktueller Prüfsnapshot erforderlich.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(check.status === 'VERIFIED' ||
+        check.status === 'REJECTED' ||
+        check.status === 'EXPIRED') && (
+        <section className="card p-5">
+          <h2 className="text-sm font-semibold text-primary mb-1">
+            {check.status === 'REJECTED' ? 'Korrekturprüfung' : 'Wiederholungsprüfung'}
+          </h2>
+          <p className="text-xs text-muted mb-4">
+            Noch aufbewahrte Identifizierungsangaben werden in einen neuen, bearbeitbaren Entwurf
+            übernommen. Gelöschte oder zur Vernichtung vorgemerkte Nachweise werden nicht erneut
+            verknüpft. Die alte Pflichtaufzeichnung bleibt unverändert; die Risikobewertung ist
+            erneut durchzuführen.
+          </p>
+          <StartCheckCycleForm
+            clientId={clientId}
+            checkId={check.id}
+            status={check.status}
+            contacts={contacts.map((contact) => ({
+              fullName: contact.fullName,
+              email: contact.email,
+            }))}
+          />
+        </section>
+      )}
+    </>
+  );
+}
+
+function personGeneralData(
+  generalSource: GwgBeneficialOwner | GwgRepresentative | null,
+  fallbackName: string,
+) {
+  return {
+    fullName: generalSource?.fullName ?? fallbackName,
+    birthDate: generalSource?.birthDate?.toISOString().slice(0, 10) ?? '',
+    birthPlace: generalSource?.birthPlace ?? '',
+    residence: generalSource?.residence ?? '',
+    nationality: generalSource?.nationality ?? '',
+    isPep: generalSource?.isPep ?? null,
+  };
+}
+
+function gwgBackLink(clientId: string, from?: string) {
+  return from === 'onboarding'
+    ? { href: `/staff/clients/onboarding/${clientId}?step=gwg`, label: 'Zurück zum Onboarding' }
+    : { href: `/staff/clients/${clientId}`, label: 'Zurück zum Mandanten' };
+}
+
+function gwgProgressSteps(check: GwgCheck | null, isLegalEntity: boolean, eingereicht: boolean) {
+  return check
+    ? withActiveStep([
+        {
+          label: 'Einladung',
+          sub: check.reviewSubmittedAt
+            ? `eingereicht ${fmtDateShort(check.reviewSubmittedAt)}`
+            : 'offen',
+          done: eingereicht,
+        },
+        {
+          label: 'Angaben & Nachweise',
+          sub: isLegalEntity ? 'Rechtsträger & Personen' : 'Personen',
+          done: eingereicht,
+        },
+        {
+          label: 'Risikobewertung',
+          sub: check.riskLevel ?? 'offen',
+          done: check.riskScore != null,
+        },
+        {
+          label: 'Entscheidung',
+          sub: GWG_CHECK_STATUS_LABELS[check.status] ?? check.status,
+          done: check.status === 'VERIFIED',
+        },
+      ])
+    : [];
+}
+
+function ownerRoleValue(owner: GwgBeneficialOwner | null) {
+  return owner
+    ? {
+        id: owner.id,
+        fullName: owner.fullName,
+        birthDate: owner.birthDate?.toISOString().slice(0, 10) ?? '',
+        birthPlace: owner.birthPlace ?? '',
+        residence: owner.residence ?? '',
+        nationality: owner.nationality ?? '',
+        ownershipPct: owner.ownershipPct?.toString() ?? '',
+        isPep: owner.isPep,
+        revision: gwgBeneficialOwnerRevision(owner),
+      }
+    : null;
 }

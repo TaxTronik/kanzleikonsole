@@ -22,6 +22,45 @@ interface Invite {
   submittedAt: string | null;
 }
 
+function CreatedInviteLink({
+  createdLink,
+  copied,
+  copyLink,
+  gwgCheckId,
+  clientId,
+}: {
+  createdLink: string;
+  copied: boolean;
+  copyLink: () => void;
+  gwgCheckId?: string;
+  clientId: string;
+}) {
+  return (
+    <div className="rounded-md bg-green-50 p-3 space-y-2" role="status" aria-live="polite">
+      <p className="text-sm text-green-800">
+        Einladung erstellt. Mandant erhält gleich eine Mail mit dem Link. Sie können den Link aber
+        auch manuell weiterleiten:
+      </p>
+      <div className="flex items-center gap-2">
+        <label className="sr-only" htmlFor={`gwg-invite-${gwgCheckId ?? clientId}-link`}>
+          Einladungslink
+        </label>
+        <input
+          id={`gwg-invite-${gwgCheckId ?? clientId}-link`}
+          readOnly
+          value={createdLink}
+          className="input text-xs font-mono bg-surface"
+          onFocus={(e) => e.currentTarget.select()}
+        />
+        <button type="button" onClick={copyLink} className="btn-secondary text-xs">
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? 'kopiert' : 'kopieren'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function InviteSection({
   clientId,
   clientName,
@@ -177,28 +216,13 @@ export function InviteSection({
             </div>
           )}
           {createdLink && (
-            <div className="rounded-md bg-green-50 p-3 space-y-2" role="status" aria-live="polite">
-              <p className="text-sm text-green-800">
-                Einladung erstellt. Mandant erhält gleich eine Mail mit dem Link. Sie können den
-                Link aber auch manuell weiterleiten:
-              </p>
-              <div className="flex items-center gap-2">
-                <label className="sr-only" htmlFor={`gwg-invite-${gwgCheckId ?? clientId}-link`}>
-                  Einladungslink
-                </label>
-                <input
-                  id={`gwg-invite-${gwgCheckId ?? clientId}-link`}
-                  readOnly
-                  value={createdLink}
-                  className="input text-xs font-mono bg-surface"
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <button type="button" onClick={copyLink} className="btn-secondary text-xs">
-                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  {copied ? 'kopiert' : 'kopieren'}
-                </button>
-              </div>
-            </div>
+            <CreatedInviteLink
+              createdLink={createdLink}
+              copied={copied}
+              copyLink={copyLink}
+              gwgCheckId={gwgCheckId}
+              clientId={clientId}
+            />
           )}
           <div className="flex justify-end">
             <button type="button" onClick={send} disabled={isPending} className="btn-primary">

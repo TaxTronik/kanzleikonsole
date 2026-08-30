@@ -5,6 +5,44 @@ import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { AppPortal } from '@/components/ui/modal';
 
+/** A reduced-motion override can turn visibility: 0s into a short transition.
+ *  The first frame may therefore still be hidden and reject focus. Retry only
+ *  for this sidebar's visibility change, and stop as soon as focus succeeds. */
+export function scheduleSidebarInitialFocus(
+  sidebar: HTMLElement,
+  getTarget: () => HTMLElement | null,
+): () => void {
+  let active = true;
+  let frame: number | null = null;
+
+  const stop = () => {
+    if (!active) return;
+    active = false;
+    if (frame !== null) window.cancelAnimationFrame(frame);
+    sidebar.removeEventListener('transitionend', onVisibilityChange);
+    sidebar.removeEventListener('transitioncancel', onVisibilityChange);
+  };
+  const focus = () => {
+    if (!active || window.getComputedStyle(sidebar).visibility !== 'visible') return;
+    const target = getTarget();
+    target?.focus();
+    if (target && document.activeElement === target) stop();
+  };
+  const onVisibilityChange = (event: Event) => {
+    if (event.target === sidebar && (event as TransitionEvent).propertyName === 'visibility') {
+      focus();
+    }
+  };
+
+  sidebar.addEventListener('transitionend', onVisibilityChange);
+  sidebar.addEventListener('transitioncancel', onVisibilityChange);
+  frame = window.requestAnimationFrame(() => {
+    frame = null;
+    focus();
+  });
+  return stop;
+}
+
 /**
  * Hamburger-Toggle für die Sidebar auf <md.
  *
@@ -87,7 +125,7 @@ export function MobileSidebarToggle() {
     }
 
     wasOpenRef.current = true;
-    const frame = window.requestAnimationFrame(() => closeRef.current?.focus());
+    const stopInitialFocus = scheduleSidebarInitialFocus(sidebar, () => closeRef.current);
     const focusables = () =>
       Array.from(
         sidebar.querySelectorAll<HTMLElement>(
@@ -122,7 +160,7 @@ export function MobileSidebarToggle() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.cancelAnimationFrame(frame);
+      stopInitialFocus();
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isMobile, open, sidebar]);

@@ -204,6 +204,19 @@ Eingabevalidierung, profilgebundene Schreibfilter, Server-Rendering und
 Farb-/CSS-Verträge. Tests verändern nur die Entwicklungsprofile und stellen
 deren ursprüngliche Anzeigepräferenz anschließend wieder her.
 
+Die Suite prüft außerdem die einzelnen Anzeigeoptionen nach Speicherung und
+Server-Rendering, ihre Erhaltung beim Ausschalten, den Rücksetzbutton und
+Fehler-Rollback mit Fokus-Erhalt. Die ergänzende
+[Layout-Suite](../../apps/e2e/tests/14-dashboard-keyboard.spec.ts) deckt Dashboard
+und Portal-Layouteditor einschließlich Tab-Erreichbarkeit bei 320 Pixeln ab.
+Speicherrequests werden dort abgefangen; echte Layoutänderungen werden nicht
+persistiert. Die
+[Panel-Suite](../../apps/e2e/tests/15-search-notifications-a11y.spec.ts) prüft lange
+Such-/Benachrichtigungslisten bei 320 × 240 Pixeln, lokale Scrollposition,
+Tab/Home/End/Escape, nichtmodales Fokusverhalten und Toast-Lesezeiten mit
+lokalen GET-Fixtures. Diese drei zusätzlichen Suiten sind ebenfalls im
+paranoiden CI-Lauf verdrahtet.
+
 Lokaler Nachweis vom 30. August 2026 für diesen Modus: 76 neue Unit-/SSR-/CSS-
 Tests und alle drei Profilmodus-E2E bestanden. Geprüft wurden auch der
 Speicherfehler mit Fokus-Erhalt, Modern-Ansicht in Light/Dark, Dokument- und
@@ -305,11 +318,13 @@ nicht aus.
    diese Gap-Dokumentation sind interne Qualitätsmaßnahmen, kein externes
    Audit und keine rechtliche Konformitätsbescheinigung.
 
-### 5.1 Sinnvolle nächste Schritte
+### 5.1 Erledigte Erweiterungen und verbleibende Arbeit
 
-Das technisch sinnvolle Maximum des persönlichen Anzeigemodus ist nicht
-erreicht. Die nächste Arbeit sollte jedoch konkrete Barrieren beheben und
-nicht alle Basiskorrekturen hinter dem Profil-Schalter verstecken.
+Die konkret identifizierten Erweiterungen des persönlichen Modus und der
+gemeinsamen Bedienkomponenten sind umgesetzt. Ein allgemeines „Maximum“ ist
+damit nicht nachgewiesen: Weitere Arbeit muss aus konkreten Bedienprüfungen
+und Rückmeldungen entstehen. Basiskorrekturen bleiben unabhängig vom
+Profil-Schalter verfügbar.
 
 - **Erledigte Lesehilfen:** Benachrichtigungstitel und -texte sind im Modus
   vollständig lesbar; Zeitangaben wachsen mit. Such-/Benachrichtigungspanels

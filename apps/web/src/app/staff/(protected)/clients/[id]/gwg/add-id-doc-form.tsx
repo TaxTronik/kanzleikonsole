@@ -165,128 +165,17 @@ export function AddIdDocumentForm({
   }
 
   const picker = pickerOpen ? (
-    <Modal
-      title="Dokument aus der Mandantenakte"
-      onClose={() => setPickerOpen(false)}
-      panelClassName="card flex max-h-[85vh] w-full max-w-3xl flex-col p-0"
-      showCloseButton={false}
-      closeDisabled={isPending}
-    >
-      <div className="flex items-center justify-between border-b border-default px-5 py-4">
-        <div>
-          <h2 className="font-semibold text-primary">Dokument aus der Mandantenakte</h2>
-          <p className="text-xs text-muted">Nur verfügbare GwG-Nachweise werden angezeigt.</p>
-        </div>
-        <button
-          type="button"
-          className="modal-close"
-          onClick={() => setPickerOpen(false)}
-          aria-label="Dokumentauswahl schließen"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-      <div className="border-b border-default p-4">
-        <label className="sr-only" htmlFor={`${variant}-document-search`}>
-          Dokumente durchsuchen
-        </label>
-        <input
-          id={`${variant}-document-search`}
-          className="input"
-          type="search"
-          placeholder="Titel durchsuchen …"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          autoFocus
-        />
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {documentSearch.documents.length === 0 ? (
-          <p className="p-6 text-center text-sm text-muted">
-            {documentSearch.pending
-              ? 'Durchsucht die gesamte Akte …'
-              : 'Kein passender GwG-Nachweis.'}
-          </p>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {documentSearch.documents.map((document) => {
-              const selected = selectedDocuments.some((entry) => entry.id === document.id);
-              return (
-                <li
-                  key={document.id}
-                  className={`rounded-md border p-3 ${selected ? 'border-brand-500 bg-brand-50/40' : 'border-default'}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-primary">{document.title}</p>
-                      <p className="text-xs text-muted">
-                        {new Intl.DateTimeFormat('de-DE').format(new Date(document.createdAt))}
-                      </p>
-                    </div>
-                    <DocumentPreviewButton
-                      documentId={document.id}
-                      documentTitle={document.title}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-secondary mt-3 w-full text-xs"
-                    onClick={() =>
-                      variant === 'identity'
-                        ? toggleIdentityDocument(document)
-                        : selectDocument(document)
-                    }
-                    disabled={
-                      isPending ||
-                      (variant === 'identity' && !selected && selectedDocuments.length >= 2)
-                    }
-                  >
-                    {variant === 'identity'
-                      ? selected
-                        ? 'Aus Satz entfernen'
-                        : 'Zum Ausweissatz hinzufügen'
-                      : 'Dieses Dokument verwenden'}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <div className="mt-3 space-y-1 text-xs text-muted">
-          {documentSearch.pending && (
-            <p className="flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gesamte Mandantenakte wird durchsucht
-              …
-            </p>
-          )}
-          {documentSearch.normalizedQuery.length < 2 && (
-            <p>
-              Gezeigt werden die neuesten Belege. Ab zwei Zeichen durchsucht die Suche die gesamte
-              Akte.
-            </p>
-          )}
-          {documentSearch.limited && (
-            <p>Mehr als 50 Treffer — bitte den Suchbegriff weiter eingrenzen.</p>
-          )}
-          {documentSearch.error && <p className="text-red-700">{documentSearch.error}</p>}
-        </div>
-      </div>
-      {variant === 'identity' && (
-        <div className="flex items-center justify-between gap-3 border-t border-default px-5 py-3">
-          <p className="text-xs text-muted">
-            {selectedDocuments.length} von maximal 2 Dateien ausgewählt
-          </p>
-          <button
-            type="button"
-            className="btn-primary text-xs"
-            onClick={() => setPickerOpen(false)}
-            disabled={selectedDocuments.length === 0}
-          >
-            Auswahl übernehmen
-          </button>
-        </div>
-      )}
-    </Modal>
+    <AddEvidencePicker
+      variant={variant}
+      isPending={isPending}
+      documentSearch={documentSearch}
+      selectedDocuments={selectedDocuments}
+      setPickerOpen={setPickerOpen}
+      query={query}
+      setQuery={setQuery}
+      toggleIdentityDocument={toggleIdentityDocument}
+      selectDocument={selectDocument}
+    />
   ) : null;
 
   return (
@@ -296,24 +185,7 @@ export function AddIdDocumentForm({
         action={formAction}
         className="space-y-4 rounded-md border border-dashed border-strong p-4"
       >
-        <div>
-          <p className="text-xs uppercase tracking-wide text-muted">
-            {replacement
-              ? variant === 'identity'
-                ? 'Ausweis ersetzen'
-                : 'Nachweis ersetzen'
-              : variant === 'identity'
-                ? 'Ausweis prüfen und zuordnen'
-                : 'Nachweis hinzufügen'}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            {replacement
-              ? 'Der bisherige Nachweis wird im bearbeitbaren Prüfsnapshot abgelöst. Das Originaldokument und seine Versionen bleiben in der Mandantenakte erhalten.'
-              : variant === 'identity'
-                ? 'Vorder- und Rückseite gemeinsam aus der Akte auswählen oder nacheinander hochladen und anschließend als einen Ausweissatz speichern.'
-                : 'Vorhandenes Dokument auswählen oder direkt hochladen — die GwG-Zuordnung wird dabei sofort mitgespeichert.'}
-          </p>
-        </div>
+        <AddEvidenceIntro variant={variant} replacement={replacement} />
         <input type="hidden" name="checkId" value={checkId} />
         <input type="hidden" name="clientId" value={clientId} />
         <input type="hidden" name="replacementMode" value={replacement?.mode ?? 'none'} />
@@ -498,18 +370,7 @@ export function AddIdDocumentForm({
           )}
         </div>
 
-        {state?.error && <div className="alert-error-sm">{state.error}</div>}
-        {state?.ok && (
-          <div className="alert-success-sm">
-            {replacement
-              ? variant === 'identity'
-                ? 'Ausweissatz wurde ersetzt und neu zugeordnet.'
-                : 'Nachweis wurde ersetzt.'
-              : variant === 'identity'
-                ? 'Ausweissatz wurde eindeutig zugeordnet.'
-                : 'Nachweis wurde direkt zugeordnet.'}
-          </div>
-        )}
+        <AddEvidenceFeedback state={state} variant={variant} replacement={replacement} />
 
         <button
           type="submit"
@@ -533,5 +394,198 @@ export function AddIdDocumentForm({
       </form>
       {picker}
     </>
+  );
+}
+
+function AddEvidenceIntro({ variant, replacement }: Pick<Props, 'variant' | 'replacement'>) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-muted">
+        {replacement
+          ? variant === 'identity'
+            ? 'Ausweis ersetzen'
+            : 'Nachweis ersetzen'
+          : variant === 'identity'
+            ? 'Ausweis prüfen und zuordnen'
+            : 'Nachweis hinzufügen'}
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        {replacement
+          ? 'Der bisherige Nachweis wird im bearbeitbaren Prüfsnapshot abgelöst. Das Originaldokument und seine Versionen bleiben in der Mandantenakte erhalten.'
+          : variant === 'identity'
+            ? 'Vorder- und Rückseite gemeinsam aus der Akte auswählen oder nacheinander hochladen und anschließend als einen Ausweissatz speichern.'
+            : 'Vorhandenes Dokument auswählen oder direkt hochladen — die GwG-Zuordnung wird dabei sofort mitgespeichert.'}
+      </p>
+    </div>
+  );
+}
+
+function AddEvidenceFeedback({
+  state,
+  variant,
+  replacement,
+}: Pick<Props, 'variant' | 'replacement'> & { state: ActionResult | null }) {
+  return (
+    <>
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.ok && (
+        <div className="alert-success-sm">
+          {replacement
+            ? variant === 'identity'
+              ? 'Ausweissatz wurde ersetzt und neu zugeordnet.'
+              : 'Nachweis wurde ersetzt.'
+            : variant === 'identity'
+              ? 'Ausweissatz wurde eindeutig zugeordnet.'
+              : 'Nachweis wurde direkt zugeordnet.'}
+        </div>
+      )}
+    </>
+  );
+}
+
+function AddEvidencePicker({
+  variant,
+  isPending,
+  documentSearch,
+  selectedDocuments,
+  setPickerOpen,
+  query,
+  setQuery,
+  toggleIdentityDocument,
+  selectDocument,
+}: {
+  variant: Props['variant'];
+  isPending: boolean;
+  documentSearch: ReturnType<typeof useUnlinkedGwgDocumentSearch>;
+  selectedDocuments: SelectableGwgDocument[];
+  setPickerOpen: (open: boolean) => void;
+  query: string;
+  setQuery: (query: string) => void;
+  toggleIdentityDocument: (document: SelectableGwgDocument) => void;
+  selectDocument: (document: SelectableGwgDocument) => void;
+}) {
+  return (
+    <Modal
+      title="Dokument aus der Mandantenakte"
+      onClose={() => setPickerOpen(false)}
+      panelClassName="card flex max-h-[85vh] w-full max-w-3xl flex-col p-0"
+      showCloseButton={false}
+      closeDisabled={isPending}
+    >
+      <div className="flex items-center justify-between border-b border-default px-5 py-4">
+        <div>
+          <h2 className="font-semibold text-primary">Dokument aus der Mandantenakte</h2>
+          <p className="text-xs text-muted">Nur verfügbare GwG-Nachweise werden angezeigt.</p>
+        </div>
+        <button
+          type="button"
+          className="modal-close"
+          onClick={() => setPickerOpen(false)}
+          aria-label="Dokumentauswahl schließen"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="border-b border-default p-4">
+        <label className="sr-only" htmlFor={`${variant}-document-search`}>
+          Dokumente durchsuchen
+        </label>
+        <input
+          id={`${variant}-document-search`}
+          className="input"
+          type="search"
+          placeholder="Titel durchsuchen …"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          autoFocus
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {documentSearch.documents.length === 0 ? (
+          <p className="p-6 text-center text-sm text-muted">
+            {documentSearch.pending
+              ? 'Durchsucht die gesamte Akte …'
+              : 'Kein passender GwG-Nachweis.'}
+          </p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {documentSearch.documents.map((document) => {
+              const selected = selectedDocuments.some((entry) => entry.id === document.id);
+              return (
+                <li
+                  key={document.id}
+                  className={`rounded-md border p-3 ${selected ? 'border-brand-500 bg-brand-50/40' : 'border-default'}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-primary">{document.title}</p>
+                      <p className="text-xs text-muted">
+                        {new Intl.DateTimeFormat('de-DE').format(new Date(document.createdAt))}
+                      </p>
+                    </div>
+                    <DocumentPreviewButton
+                      documentId={document.id}
+                      documentTitle={document.title}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary mt-3 w-full text-xs"
+                    onClick={() =>
+                      variant === 'identity'
+                        ? toggleIdentityDocument(document)
+                        : selectDocument(document)
+                    }
+                    disabled={
+                      isPending ||
+                      (variant === 'identity' && !selected && selectedDocuments.length >= 2)
+                    }
+                  >
+                    {variant === 'identity'
+                      ? selected
+                        ? 'Aus Satz entfernen'
+                        : 'Zum Ausweissatz hinzufügen'
+                      : 'Dieses Dokument verwenden'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div className="mt-3 space-y-1 text-xs text-muted">
+          {documentSearch.pending && (
+            <p className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gesamte Mandantenakte wird durchsucht
+              …
+            </p>
+          )}
+          {documentSearch.normalizedQuery.length < 2 && (
+            <p>
+              Gezeigt werden die neuesten Belege. Ab zwei Zeichen durchsucht die Suche die gesamte
+              Akte.
+            </p>
+          )}
+          {documentSearch.limited && (
+            <p>Mehr als 50 Treffer — bitte den Suchbegriff weiter eingrenzen.</p>
+          )}
+          {documentSearch.error && <p className="text-red-700">{documentSearch.error}</p>}
+        </div>
+      </div>
+      {variant === 'identity' && (
+        <div className="flex items-center justify-between gap-3 border-t border-default px-5 py-3">
+          <p className="text-xs text-muted">
+            {selectedDocuments.length} von maximal 2 Dateien ausgewählt
+          </p>
+          <button
+            type="button"
+            className="btn-primary text-xs"
+            onClick={() => setPickerOpen(false)}
+            disabled={selectedDocuments.length === 0}
+          >
+            Auswahl übernehmen
+          </button>
+        </div>
+      )}
+    </Modal>
   );
 }

@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
+import type { BackupRecord } from '@prisma/client';
 
 import Link from 'next/link';
 import {
@@ -269,175 +270,10 @@ export default async function AdminPage() {
       <StatusHero issues={issues} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Audit-Chain */}
-        <div id="audit" className="card p-6 scroll-mt-6">
-          <div className="flex items-start gap-3 mb-2">
-            <span
-              className={`kpi-chip ${
-                verifyResult?.ok
-                  ? 'chip-green'
-                  : verifyResult?.recovered
-                    ? 'chip-amber'
-                    : verifyResult
-                      ? 'chip-red'
-                      : 'chip-gray'
-              }`}
-            >
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <div className="flex-1">
-              <h2 className="text-sm font-semibold text-primary">Audit-Hash-Chain</h2>
-              {verifyResult ? (
-                verifyResult.ok ? (
-                  <>
-                    <StatusLine tone="green">
-                      Intakt — {verifyResult.checked} Einträge geprüft
-                    </StatusLine>
-                    <StatusLine tone="gray">
-                      {verifyResult.sealsChecked} Tagesversiegelungen geprüft
-                      {verifyResult.sealBreaks > 0
-                        ? `, ${verifyResult.sealBreaks} mit TSA-Problem`
-                        : ''}
-                    </StatusLine>
-                    <StatusLine tone="gray">
-                      Zuletzt geprüft: {fmtDateTimeShort(new Date(verifyResult.checkedAt))}
-                    </StatusLine>
-                  </>
-                ) : verifyResult.error ? (
-                  <>
-                    <StatusLine tone="red">Verifikationslauf fehlgeschlagen</StatusLine>
-                    <StatusLine tone="gray">{verifyResult.error}</StatusLine>
-                  </>
-                ) : (
-                  <>
-                    <StatusLine tone={verifyResult.recovered ? 'amber' : 'red'}>
-                      {verifyResult.recovered
-                        ? 'Historischer Bruch — Recovery-Checkpoint gesetzt'
-                        : 'Hash-Chain gebrochen!'}
-                    </StatusLine>
-                    {verifyResult.firstBreak && (
-                      <StatusLine tone="gray">
-                        Bei Audit-ID {String(verifyResult.firstBreak.auditId)}
-                      </StatusLine>
-                    )}
-                  </>
-                )
-              ) : (
-                <StatusLine tone="gray">
-                  Noch keine Verifikation — der tägliche Prüf-Job hat noch nicht gelaufen.
-                </StatusLine>
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-disabled">
-            CLI: <code className="text-secondary">pnpm verify:chain</code>
-          </p>
-        </div>
+        <AuditStatusCard verifyResult={verifyResult} />
+        <BackupStatusCard lastBackup={lastBackup} drill={drill} />
 
-        {/* Backup */}
-        <div id="backup" className="card p-6 scroll-mt-6">
-          <div className="flex items-start gap-3 mb-2">
-            <span
-              className={`kpi-chip ${
-                lastBackup?.status === 'SUCCESS'
-                  ? 'chip-green'
-                  : lastBackup?.status === 'FAILED'
-                    ? 'chip-red'
-                    : 'chip-gray'
-              }`}
-            >
-              <Database className="h-4 w-4" />
-            </span>
-            <div className="flex-1">
-              <h2 className="text-sm font-semibold text-primary">Letztes Backup</h2>
-              {lastBackup ? (
-                <>
-                  <StatusLine tone={lastBackup.status === 'SUCCESS' ? 'green' : 'red'}>
-                    {fmtDateTimeShort(lastBackup.startedAt)} — {lastBackup.status}
-                  </StatusLine>
-                  {lastBackup.sizeBytes && (
-                    <StatusLine tone="gray">
-                      {fmtBytes(Number(lastBackup.sizeBytes))} → {lastBackup.bucket}
-                    </StatusLine>
-                  )}
-                  {lastBackup.errorMsg && <StatusLine tone="red">{lastBackup.errorMsg}</StatusLine>}
-                </>
-              ) : (
-                <StatusLine tone="amber">Noch nie gesichert</StatusLine>
-              )}
-              {/* Restore-Drill: beweisbarer Wiederherstellungstest (monatlich) */}
-              {drill ? (
-                drill.ok ? (
-                  <StatusLine tone="green">
-                    Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))}: erfolgreich
-                    {drill.auditChecked > 0
-                      ? ` (${drill.auditChecked} Audit-Einträge verifiziert)`
-                      : ''}
-                  </StatusLine>
-                ) : (
-                  <StatusLine tone="red">
-                    Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))} fehlgeschlagen
-                    {drill.error ? ` — ${drill.error}` : ''}
-                  </StatusLine>
-                )
-              ) : (
-                <StatusLine tone="gray">
-                  Restore-Test: noch kein Lauf (monatlich am 1., 05:00 UTC)
-                </StatusLine>
-              )}
-              <div className="mt-3 flex flex-wrap items-start gap-2">
-                <BackupRunButton />
-                {lastBackup?.status === 'SUCCESS' && lastBackup.key && (
-                  <p className="basis-full text-xs text-yellow-700">
-                    Vollständige Datenbank-Backups enthalten globale Sicherheitsdaten und sind
-                    deshalb nur über den Betreiber-Host beziehungsweise den Backup-Storage abrufbar.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-          <p className="text-xs text-disabled">
-            CLI: <code className="text-secondary">./taxtronik backup</code>
-          </p>
-          <p className="text-xs text-disabled mt-1">
-            Lokale Kopie: <code className="text-secondary">backups/</code>
-          </p>
-        </div>
-
-        {/* Updates */}
-        <div id="updates" className="card p-6 scroll-mt-6">
-          <div className="flex items-start gap-3 mb-2">
-            <span
-              className={`kpi-chip ${
-                updateCheck.ok && 'hasUpdate' in updateCheck && updateCheck.hasUpdate
-                  ? 'chip-amber'
-                  : 'chip-green'
-              }`}
-            >
-              <Package className="h-4 w-4" />
-            </span>
-            <div className="flex-1">
-              <h2 className="text-sm font-semibold text-primary">Versionen / Updates</h2>
-              <StatusLine tone="gray">
-                Installiert: <strong>{APP_VERSION}</strong>
-              </StatusLine>
-              {updateCheck.ok ? (
-                'hasUpdate' in updateCheck && updateCheck.hasUpdate ? (
-                  <StatusLine tone="amber">
-                    {updateCheck.newer?.length} neuere Version
-                    {updateCheck.newer && updateCheck.newer.length === 1 ? '' : 'en'} verfügbar
-                  </StatusLine>
-                ) : (
-                  <StatusLine tone="green">Aktuell auf dem neuesten Stand.</StatusLine>
-                )
-              ) : (
-                <StatusLine tone="gray">
-                  {updateCheck.warning ?? updateCheck.error ?? 'Update-Server nicht konfiguriert.'}
-                </StatusLine>
-              )}
-            </div>
-          </div>
-        </div>
+        <UpdateStatusCard updateCheck={updateCheck} />
 
         {/* DSGVO */}
         <div id="dsgvo" className="card p-6 scroll-mt-6">
@@ -520,6 +356,192 @@ export default async function AdminPage() {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+function UpdateStatusCard({ updateCheck }: { updateCheck: CheckResult }) {
+  return (
+    <div id="updates" className="card p-6 scroll-mt-6">
+      <div className="flex items-start gap-3 mb-2">
+        <span
+          className={`kpi-chip ${
+            updateCheck.ok && 'hasUpdate' in updateCheck && updateCheck.hasUpdate
+              ? 'chip-amber'
+              : 'chip-green'
+          }`}
+        >
+          <Package className="h-4 w-4" />
+        </span>
+        <div className="flex-1">
+          <h2 className="text-sm font-semibold text-primary">Versionen / Updates</h2>
+          <StatusLine tone="gray">
+            Installiert: <strong>{APP_VERSION}</strong>
+          </StatusLine>
+          {updateCheck.ok ? (
+            'hasUpdate' in updateCheck && updateCheck.hasUpdate ? (
+              <StatusLine tone="amber">
+                {updateCheck.newer?.length} neuere Version
+                {updateCheck.newer && updateCheck.newer.length === 1 ? '' : 'en'} verfügbar
+              </StatusLine>
+            ) : (
+              <StatusLine tone="green">Aktuell auf dem neuesten Stand.</StatusLine>
+            )
+          ) : (
+            <StatusLine tone="gray">
+              {updateCheck.warning ?? updateCheck.error ?? 'Update-Server nicht konfiguriert.'}
+            </StatusLine>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** AUDIT-VERIFY-ALERT-001: only render the persisted result; never run verification here. */
+function AuditStatusCard({ verifyResult }: { verifyResult: PersistedVerifyResult | null }) {
+  return (
+    <div id="audit" className="card p-6 scroll-mt-6">
+      <div className="flex items-start gap-3 mb-2">
+        <span
+          className={`kpi-chip ${
+            verifyResult?.ok
+              ? 'chip-green'
+              : verifyResult?.recovered
+                ? 'chip-amber'
+                : verifyResult
+                  ? 'chip-red'
+                  : 'chip-gray'
+          }`}
+        >
+          <ShieldCheck className="h-4 w-4" />
+        </span>
+        <div className="flex-1">
+          <h2 className="text-sm font-semibold text-primary">Audit-Hash-Chain</h2>
+          {verifyResult ? (
+            verifyResult.ok ? (
+              <>
+                <StatusLine tone="green">
+                  Intakt — {verifyResult.checked} Einträge geprüft
+                </StatusLine>
+                <StatusLine tone="gray">
+                  {verifyResult.sealsChecked} Tagesversiegelungen geprüft
+                  {verifyResult.sealBreaks > 0
+                    ? `, ${verifyResult.sealBreaks} mit TSA-Problem`
+                    : ''}
+                </StatusLine>
+                <StatusLine tone="gray">
+                  Zuletzt geprüft: {fmtDateTimeShort(new Date(verifyResult.checkedAt))}
+                </StatusLine>
+              </>
+            ) : verifyResult.error ? (
+              <>
+                <StatusLine tone="red">Verifikationslauf fehlgeschlagen</StatusLine>
+                <StatusLine tone="gray">{verifyResult.error}</StatusLine>
+              </>
+            ) : (
+              <>
+                <StatusLine tone={verifyResult.recovered ? 'amber' : 'red'}>
+                  {verifyResult.recovered
+                    ? 'Historischer Bruch — Recovery-Checkpoint gesetzt'
+                    : 'Hash-Chain gebrochen!'}
+                </StatusLine>
+                {verifyResult.firstBreak && (
+                  <StatusLine tone="gray">
+                    Bei Audit-ID {String(verifyResult.firstBreak.auditId)}
+                  </StatusLine>
+                )}
+              </>
+            )
+          ) : (
+            <StatusLine tone="gray">
+              Noch keine Verifikation — der tägliche Prüf-Job hat noch nicht gelaufen.
+            </StatusLine>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-disabled">
+        CLI: <code className="text-secondary">pnpm verify:chain</code>
+      </p>
+    </div>
+  );
+}
+
+function BackupStatusCard({
+  lastBackup,
+  drill,
+}: {
+  lastBackup: BackupRecord | null;
+  drill: PersistedDrillResult | null;
+}) {
+  return (
+    <div id="backup" className="card p-6 scroll-mt-6">
+      <div className="flex items-start gap-3 mb-2">
+        <span
+          className={`kpi-chip ${
+            lastBackup?.status === 'SUCCESS'
+              ? 'chip-green'
+              : lastBackup?.status === 'FAILED'
+                ? 'chip-red'
+                : 'chip-gray'
+          }`}
+        >
+          <Database className="h-4 w-4" />
+        </span>
+        <div className="flex-1">
+          <h2 className="text-sm font-semibold text-primary">Letztes Backup</h2>
+          {lastBackup ? (
+            <>
+              <StatusLine tone={lastBackup.status === 'SUCCESS' ? 'green' : 'red'}>
+                {fmtDateTimeShort(lastBackup.startedAt)} — {lastBackup.status}
+              </StatusLine>
+              {lastBackup.sizeBytes && (
+                <StatusLine tone="gray">
+                  {fmtBytes(Number(lastBackup.sizeBytes))} → {lastBackup.bucket}
+                </StatusLine>
+              )}
+              {lastBackup.errorMsg && <StatusLine tone="red">{lastBackup.errorMsg}</StatusLine>}
+            </>
+          ) : (
+            <StatusLine tone="amber">Noch nie gesichert</StatusLine>
+          )}
+          {/* Restore-Drill: beweisbarer Wiederherstellungstest (monatlich) */}
+          {drill ? (
+            drill.ok ? (
+              <StatusLine tone="green">
+                Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))}: erfolgreich
+                {drill.auditChecked > 0
+                  ? ` (${drill.auditChecked} Audit-Einträge verifiziert)`
+                  : ''}
+              </StatusLine>
+            ) : (
+              <StatusLine tone="red">
+                Restore-Test {fmtDateTimeShort(new Date(drill.checkedAt))} fehlgeschlagen
+                {drill.error ? ` — ${drill.error}` : ''}
+              </StatusLine>
+            )
+          ) : (
+            <StatusLine tone="gray">
+              Restore-Test: noch kein Lauf (monatlich am 1., 05:00 UTC)
+            </StatusLine>
+          )}
+          <div className="mt-3 flex flex-wrap items-start gap-2">
+            <BackupRunButton />
+            {lastBackup?.status === 'SUCCESS' && lastBackup.key && (
+              <p className="basis-full text-xs text-yellow-700">
+                Vollständige Datenbank-Backups enthalten globale Sicherheitsdaten und sind deshalb
+                nur über den Betreiber-Host beziehungsweise den Backup-Storage abrufbar.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-disabled">
+        CLI: <code className="text-secondary">./taxtronik backup</code>
+      </p>
+      <p className="text-xs text-disabled mt-1">
+        Lokale Kopie: <code className="text-secondary">backups/</code>
+      </p>
     </div>
   );
 }

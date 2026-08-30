@@ -17,7 +17,15 @@
 // analysieren).
 // =============================================================================
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useLayoutEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 import {
   Check,
   Loader2,
@@ -142,6 +150,73 @@ interface Props {
   onToggleExpand?: () => void;
 }
 
+/** RISK-AI-SUGGESTION-001: selection only, without changing marking provenance or content. */
+export function smallestCoveringMarking<T extends { start: number; end: number }>(
+  markings: readonly T[],
+  plain: number | null,
+): T | null {
+  let best: T | null = null;
+  if (plain != null) {
+    for (const marking of markings) {
+      if (marking.start <= plain && marking.end >= plain) {
+        if (!best || marking.end - marking.start < best.end - best.start) best = marking;
+      }
+    }
+  }
+  return best;
+}
+
+function DocumentEditorSurface({
+  editor,
+  boxRef,
+  analyzed,
+  canEdit,
+  reflow,
+  floatingToolbarEnabled,
+  flyover,
+}: {
+  editor: Editor;
+  boxRef: RefObject<HTMLDivElement | null>;
+  analyzed: boolean;
+  canEdit: boolean;
+  reflow: () => void;
+  floatingToolbarEnabled: boolean;
+  flyover: ReturnType<typeof flyoverFor> | null;
+}) {
+  return (
+    <div
+      ref={boxRef}
+      className={
+        analyzed
+          ? 'relative rounded-md border border-default bg-surface'
+          : 'relative min-h-[64vh] bg-surface'
+      }
+    >
+      {canEdit && (
+        <div className={analyzed ? 'sticky top-0 z-10 rounded-t-md bg-surface' : undefined}>
+          <FormatToolbar editor={editor} onReflow={!analyzed && canEdit ? reflow : undefined} />
+        </div>
+      )}
+      <EditorContent editor={editor} />
+      {analyzed && canEdit && floatingToolbarEnabled && flyover && (
+        <div
+          className="absolute z-20"
+          style={{
+            top: flyover.top,
+            left: flyover.left,
+            transform:
+              flyover.placement === 'above' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
+          }}
+        >
+          <div className="rounded-md border border-default bg-surface shadow-lg">
+            <FormatToolbar editor={editor} bordered={false} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
   function SubsumtionDocument(props, ref) {
     const {
@@ -193,49 +268,65 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
       onSaveFormat: props.onSaveFormat,
       floatingToolbarEnabled,
     });
-    ctxRef.current.analyzed = analyzed;
-    ctxRef.current.canEdit = canEdit;
-    ctxRef.current.markings = visibleMarkings;
-    ctxRef.current.sourceText = sourceText ?? '';
-    ctxRef.current.onSelectMarking = props.onSelectMarking;
-    ctxRef.current.onSelectionForMarking = props.onSelectionForMarking;
-    ctxRef.current.onSaveFormat = props.onSaveFormat;
-    ctxRef.current.floatingToolbarEnabled = floatingToolbarEnabled;
+    // Synchronize committed props before browser/editor events, never during render.
+    useLayoutEffect(() => {
+      ctxRef.current.analyzed = analyzed;
+      ctxRef.current.canEdit = canEdit;
+      ctxRef.current.markings = visibleMarkings;
+      ctxRef.current.sourceText = sourceText ?? '';
+      ctxRef.current.onSelectMarking = props.onSelectMarking;
+      ctxRef.current.onSelectionForMarking = props.onSelectionForMarking;
+      ctxRef.current.onSaveFormat = props.onSaveFormat;
+      ctxRef.current.floatingToolbarEnabled = floatingToolbarEnabled;
+    }, [
+      analyzed,
+      canEdit,
+      visibleMarkings,
+      sourceText,
+      props.onSelectMarking,
+      props.onSelectionForMarking,
+      props.onSaveFormat,
+      floatingToolbarEnabled,
+    ]);
 
     // Debounce-Logik in Refs (immer frisch), damit die stabile onUpdate-Closure sie
     // ohne Stale-Capture aufrufen kann.
     const flushRef = useRef<() => void>(() => {});
     const scheduleRef = useRef<(doc: unknown, changed: boolean) => void>(() => {});
-    flushRef.current = async () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-      if (savingRef.current) return; // läuft schon → der nächste Lauf holt's nach
-      const doc = pendingDocRef.current;
-      const save = ctxRef.current.onSaveFormat;
-      if (doc == null || !save) return;
-      pendingDocRef.current = null;
-      savingRef.current = true;
-      setSaveState('saving');
-      const ok = await save(doc)
-        .then((r) => r.ok)
-        .catch(() => false);
-      savingRef.current = false;
-      setSaveState(ok ? 'saved' : 'error');
-      if (ok && pendingDocRef.current != null) flushRef.current(); // zwischenzeitliche Änderung
-    };
-    scheduleRef.current = (doc, changed) => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-      // Nur Formatierung auto-speichern; Textänderung → Warnung, KEIN Save (Offsets).
-      if (changed || !ctxRef.current.canEdit) return;
-      pendingDocRef.current = doc;
-      setSaveState('dirty');
-      saveTimer.current = setTimeout(() => flushRef.current(), 1000);
-    };
+    // Editor creation is deferred; its event callbacks see these initialized
+    // handlers after the layout phase. Mutable refs keep all later values fresh.
+    useLayoutEffect(() => {
+      flushRef.current = async () => {
+        if (saveTimer.current) {
+          clearTimeout(saveTimer.current);
+          saveTimer.current = null;
+        }
+        if (savingRef.current) return; // läuft schon → der nächste Lauf holt's nach
+        const doc = pendingDocRef.current;
+        const save = ctxRef.current.onSaveFormat;
+        if (doc == null || !save) return;
+        pendingDocRef.current = null;
+        savingRef.current = true;
+        setSaveState('saving');
+        const ok = await save(doc)
+          .then((r) => r.ok)
+          .catch(() => false);
+        savingRef.current = false;
+        setSaveState(ok ? 'saved' : 'error');
+        if (ok && pendingDocRef.current != null) flushRef.current(); // zwischenzeitliche Änderung
+      };
+      scheduleRef.current = (doc, changed) => {
+        if (saveTimer.current) {
+          clearTimeout(saveTimer.current);
+          saveTimer.current = null;
+        }
+        // Nur Formatierung auto-speichern; Textänderung → Warnung, KEIN Save (Offsets).
+        if (changed || !ctxRef.current.canEdit) return;
+        pendingDocRef.current = doc;
+        setSaveState('dirty');
+        saveTimer.current = setTimeout(() => flushRef.current(), 1000);
+      };
+    }, []);
 
     const editor = useEditor({
       extensions: [...baseEditorExtensions, MarkDecorations],
@@ -302,14 +393,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
         setFlyover(null);
         c.onSelectionForMarking?.(null);
         const plain = pmPosToPlain(ranges, from);
-        let best: MarkingDTO | null = null;
-        if (plain != null) {
-          for (const m of c.markings) {
-            if (m.start <= plain && m.end >= plain) {
-              if (!best || m.end - m.start < best.end - best.start) best = m;
-            }
-          }
-        }
+        const best = smallestCoveringMarking(c.markings, plain);
         c.onSelectMarking?.(best ? best.id : null);
       },
     });
@@ -356,7 +440,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
         dom.style.removeProperty('font-size');
       } else {
         dom.style.setProperty('--tt-zoom', String(zoom));
-        dom.style.fontSize = `calc(0.875rem * ${zoom})`;
+        dom.style.setProperty('font-size', `calc(0.875rem * ${zoom})`);
       }
     }, [editor, zoom]);
 
@@ -499,36 +583,15 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
     }
 
     const editorBox = (
-      <div
-        ref={boxRef}
-        className={
-          analyzed
-            ? 'relative rounded-md border border-default bg-surface'
-            : 'relative min-h-[64vh] bg-surface'
-        }
-      >
-        {canEdit && (
-          <div className={analyzed ? 'sticky top-0 z-10 rounded-t-md bg-surface' : undefined}>
-            <FormatToolbar editor={editor} onReflow={!analyzed && canEdit ? reflow : undefined} />
-          </div>
-        )}
-        <EditorContent editor={editor} />
-        {analyzed && canEdit && floatingToolbarEnabled && flyover && (
-          <div
-            className="absolute z-20"
-            style={{
-              top: flyover.top,
-              left: flyover.left,
-              transform:
-                flyover.placement === 'above' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
-            }}
-          >
-            <div className="rounded-md border border-default bg-surface shadow-lg">
-              <FormatToolbar editor={editor} bordered={false} />
-            </div>
-          </div>
-        )}
-      </div>
+      <DocumentEditorSurface
+        editor={editor}
+        boxRef={boxRef}
+        analyzed={analyzed}
+        canEdit={canEdit}
+        reflow={reflow}
+        floatingToolbarEnabled={floatingToolbarEnabled}
+        flyover={flyover}
+      />
     );
 
     // Compose: schlanke Fläche (Titel/Buttons liegen im Workspace drumherum).

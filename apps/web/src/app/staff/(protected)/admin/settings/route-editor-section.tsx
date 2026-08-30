@@ -69,6 +69,23 @@ interface RouteEditorSectionProps {
   ) => void;
 }
 
+function routeEditorPresentation(routeDraft: RouteDraft) {
+  // "Vorbefüllt" heißt: gespeicherte Route in Bearbeitung ODER aus der
+  // Webhook-Erkennung übernommen. In beiden Fällen muss ein sichtbarer Weg
+  // zurück zu einer leeren eigenen Route existieren — vorher gab es den
+  // Reset nur für gespeicherte Routen (id gesetzt), nach "Übernehmen" aus
+  // der Erkennung saß man im vorbefüllten Formular fest.
+  const draftPrefilled = Boolean(
+    routeDraft.id || routeDraft.workflowId || routeDraft.name || routeDraft.productionUrl,
+  );
+  const editorTitle = routeDraft.id
+    ? 'Route bearbeiten'
+    : routeDraft.workflowId
+      ? 'Erkannte Route übernehmen'
+      : 'Eigene Workflow-Route hinzufügen';
+  return { draftPrefilled, editorTitle };
+}
+
 export function RouteEditorSection({
   endpoints,
   connectionActive,
@@ -97,19 +114,7 @@ export function RouteEditorSection({
   const customRouteEvents = routeDraft.events.filter((event) => !staticEventNames.has(event));
   const routeRequiresTestUrl =
     requiresSeparateTestWebhook(routeDraft.events) || Boolean(customEvent.trim());
-  // "Vorbefüllt" heißt: gespeicherte Route in Bearbeitung ODER aus der
-  // Webhook-Erkennung übernommen. In beiden Fällen muss ein sichtbarer Weg
-  // zurück zu einer leeren eigenen Route existieren — vorher gab es den
-  // Reset nur für gespeicherte Routen (id gesetzt), nach "Übernehmen" aus
-  // der Erkennung saß man im vorbefüllten Formular fest.
-  const draftPrefilled = Boolean(
-    routeDraft.id || routeDraft.workflowId || routeDraft.name || routeDraft.productionUrl,
-  );
-  const editorTitle = routeDraft.id
-    ? 'Route bearbeiten'
-    : routeDraft.workflowId
-      ? 'Erkannte Route übernehmen'
-      : 'Eigene Workflow-Route hinzufügen';
+  const { draftPrefilled, editorTitle } = routeEditorPresentation(routeDraft);
   const resetDraft = () => {
     setRouteDraft(EMPTY_ROUTE);
     setCustomEvent('');

@@ -200,38 +200,16 @@ export function PersonRolesPanel({
                 value={JSON.stringify(submittedRepresentatives)}
               />
 
-              <label className="flex items-center gap-2 text-sm text-secondary">
-                <input
-                  type="checkbox"
-                  checked={Boolean(owner) || addOwnerRole}
-                  onChange={(event) => setAddOwnerRole(event.target.checked)}
-                  disabled={Boolean(owner) || pending}
-                  readOnly={Boolean(owner)}
-                />
-                Wirtschaftlich berechtigt
-              </label>
-              <label className="flex items-center gap-2 text-sm text-secondary">
-                <input
-                  type="checkbox"
-                  checked={isRepresentative}
-                  onChange={(event) => setIsRepresentative(event.target.checked)}
-                  disabled={pending || (!owner && Boolean(representativeId))}
-                />
-                Gesetzliche Vertretung
-              </label>
-              {!owner && representativeId && (
-                <p className="text-xs text-muted">
-                  Diese Person besitzt aktuell ausschließlich die Vertreterrolle. Damit sie als
-                  erfasste Person bestehen bleibt, kann die einzige Rolle hier nicht entfernt
-                  werden.
-                </p>
-              )}
-              {owner && (
-                <button type="submit" className="btn-primary text-xs" disabled={pending}>
-                  {pending ? 'Speichert…' : 'Rollen speichern'}
-                </button>
-              )}
-              {state?.error && <div className="alert-error-sm">{state.error}</div>}
+              <PersonRoleChoices
+                owner={owner}
+                addOwnerRole={addOwnerRole}
+                setAddOwnerRole={setAddOwnerRole}
+                pending={pending}
+                isRepresentative={isRepresentative}
+                setIsRepresentative={setIsRepresentative}
+                representativeId={representativeId}
+                state={state}
+              />
             </form>
 
             {!owner && representativeId && addOwnerRole && (
@@ -259,5 +237,61 @@ export function PersonRolesPanel({
         )}
       </div>
     </details>
+  );
+}
+
+function PersonRoleChoices({
+  owner,
+  addOwnerRole,
+  setAddOwnerRole,
+  pending,
+  isRepresentative,
+  setIsRepresentative,
+  representativeId,
+  state,
+}: {
+  owner: OwnerValue | null;
+  addOwnerRole: boolean;
+  setAddOwnerRole: (value: boolean) => void;
+  pending: boolean;
+  isRepresentative: boolean;
+  setIsRepresentative: (value: boolean) => void;
+  representativeId: string | null;
+  state: ActionResult | null;
+}) {
+  return (
+    <>
+      <label className="flex items-center gap-2 text-sm text-secondary">
+        <input
+          type="checkbox"
+          checked={Boolean(owner) || addOwnerRole}
+          onChange={(event) => setAddOwnerRole(event.target.checked)}
+          disabled={Boolean(owner) || pending}
+          readOnly={Boolean(owner)}
+        />
+        Wirtschaftlich berechtigt
+      </label>
+      <label className="flex items-center gap-2 text-sm text-secondary">
+        <input
+          type="checkbox"
+          checked={isRepresentative}
+          onChange={(event) => setIsRepresentative(event.target.checked)}
+          disabled={pending || (!owner && Boolean(representativeId))}
+        />
+        Gesetzliche Vertretung
+      </label>
+      {!owner && representativeId && (
+        <p className="text-xs text-muted">
+          Diese Person besitzt aktuell ausschließlich die Vertreterrolle. Damit sie als erfasste
+          Person bestehen bleibt, kann die einzige Rolle hier nicht entfernt werden.
+        </p>
+      )}
+      {owner && (
+        <button type="submit" className="btn-primary text-xs" disabled={pending}>
+          {pending ? 'Speichert…' : 'Rollen speichern'}
+        </button>
+      )}
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+    </>
   );
 }

@@ -8,8 +8,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const eslintCli = join(root, 'node_modules', 'eslint', 'bin', 'eslint.js');
 const baseline = new Map([
   ['react-hooks/purity', 9],
-  ['react-hooks/set-state-in-effect', 52],
-  ['react-hooks/refs', 10],
+  ['react-hooks/set-state-in-effect', 43],
+  ['react-hooks/refs', 7],
   ['react-hooks/immutability', 0],
   ['react-hooks/preserve-manual-memoization', 0],
   ['react-hooks/static-components', 1],
@@ -70,4 +70,4 @@ if (differences.length > 0) {
   process.exit(1);
 }
 
-console.log('[react-compiler-baseline] OK: 72 bekannte Warnungen, keine neue Schuld.');
+console.log('[react-compiler-baseline] OK: 60 bekannte Warnungen, keine neue Schuld.');

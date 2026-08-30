@@ -67,6 +67,13 @@ import {
   isVisible,
 } from './_ui';
 
+function workspaceViewClass(active: boolean, withIcon = false): string {
+  const colors = active
+    ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
+    : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800';
+  return withIcon ? 'inline-flex items-center gap-1.5 ' + colors : colors;
+}
+
 /** Skeleton im Panel, während die LLM-Phase läuft — statt eines harten Reloads:
  *  „lade, du kannst weiterarbeiten". Die fertigen Markierungen kommen automatisch. */
 function LlmDeepeningCard({
@@ -715,23 +722,14 @@ export function SubsumtionWorkspace({
         <button
           type="button"
           onClick={() => setView('subsumtion')}
-          className={
-            view === 'subsumtion'
-              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
-              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800'
-          }
+          className={workspaceViewClass(view === 'subsumtion')}
         >
           Subsumtion
         </button>
         <button
           type="button"
           onClick={() => setView('recherche')}
-          className={
-            'inline-flex items-center gap-1.5 ' +
-            (view === 'recherche'
-              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
-              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
-          }
+          className={workspaceViewClass(view === 'recherche', true)}
         >
           <Webhook className="h-3.5 w-3.5" /> Recherche
           {newResultCount > 0 && <span className="badge-yellow text-[10px]">{newResultCount}</span>}
@@ -739,24 +737,14 @@ export function SubsumtionWorkspace({
         <button
           type="button"
           onClick={() => setView('aufgaben')}
-          className={
-            'inline-flex items-center gap-1.5 ' +
-            (view === 'aufgaben'
-              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
-              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
-          }
+          className={workspaceViewClass(view === 'aufgaben', true)}
         >
           <ClipboardList className="h-3.5 w-3.5" /> Aufgaben
         </button>
         <button
           type="button"
           onClick={() => setView('aktenregal')}
-          className={
-            'inline-flex items-center gap-1.5 ' +
-            (view === 'aktenregal'
-              ? 'px-3 py-1.5 bg-brand-600 text-on-brand font-medium'
-              : 'px-3 py-1.5 text-secondary hover:bg-gray-50 dark:hover:bg-gray-800')
-          }
+          className={workspaceViewClass(view === 'aktenregal', true)}
         >
           <FolderOpen className="h-3.5 w-3.5" /> Aktenregal
         </button>

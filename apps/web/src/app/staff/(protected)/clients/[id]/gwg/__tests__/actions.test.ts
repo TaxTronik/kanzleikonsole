@@ -809,6 +809,8 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 
+  // GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001,
+  // GWG-IDENTIFICATION-EVIDENCE-001: unveränderte Abbildungen nach Helper-Extraktion.
   it('korrigiert alle Personenangaben atomar, auditierbar und nimmt die Übergabe zurück', async () => {
     const ownerDocument = {
       ...validDocument('PERSONALAUSWEIS'),
@@ -965,12 +967,25 @@ describe('atomare GwG-Bearbeitung', () => {
       expect.objectContaining({
         action: 'gwg.owner.update',
         resourceId: '33333333-3333-4333-8333-333333333333',
-        before: expect.objectContaining({ fullName: 'Erika Alt', isPep: false }),
-        after: expect.objectContaining({
+        before: {
+          fullName: 'Erika Alt',
+          birthDate: '1980-01-02',
+          birthPlace: 'Bonn',
+          residence: 'Bonn',
+          nationality: 'deutsch',
+          ownershipPct: '40.00',
+          isPep: false,
+        },
+        after: {
           fullName: 'Erika Muster',
+          birthDate: '1981-03-04',
+          birthPlace: 'Berlin',
+          residence: 'Hamburg',
+          nationality: 'deutsch',
+          ownershipPct: 51.25,
           isPep: true,
           invalidatedIdentityDocuments: 2,
-        }),
+        },
       }),
     );
   });
@@ -1332,6 +1347,7 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(tx.gwgIdDocument.create).not.toHaveBeenCalled();
   });
 
+  // GWG-IDENTIFICATION-EVIDENCE-001: unveränderte Bestätigungs- und NULL-Abbildung.
   it('verknüpft einen Upload sofort und lässt noch ungeprüfte Metadaten offen', async () => {
     const tx = {
       gwgCheck: {

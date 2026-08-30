@@ -121,6 +121,45 @@ function discoveredRouteCanBeSaved(draft: RouteDraft): boolean {
   return Boolean(draft.name && draft.productionUrl && draft.events.length > 0);
 }
 
+/** Derive only the five visible setup stages; action payloads remain in N8nForm. */
+function n8nSetupProgress(
+  initial: N8nBrowserConfig,
+  status: N8nSetupStatus,
+  callbackConfigured: boolean,
+) {
+  const deliberatelyDisabled = Boolean(
+    initial.connectionId && initial.routingMode === 'DISABLED' && !initial.enabled,
+  );
+  const verifiedActiveRoutes = status.endpoints.filter(
+    (endpoint) => endpoint.enabled && endpoint.verificationOk === true,
+  ).length;
+  // Fünf Stufen, 1:1 auf die Stage-Karten darunter abgebildet (vorher:
+  // 4 Pillen vs. 5 nummerierte Sektionen mit verschobener Zuordnung).
+  const workflowsReady =
+    status.endpoints.some((endpoint) => endpoint.workflowId) || verifiedActiveRoutes > 0;
+  const setupSteps = [
+    { label: 'Verbinden', done: Boolean(initial.connectionId) },
+    {
+      label: 'Rückkanal',
+      done: deliberatelyDisabled || initial.hasSigningSecret || callbackConfigured,
+    },
+    { label: 'Workflows', done: deliberatelyDisabled || workflowsReady },
+    { label: 'Routen', done: deliberatelyDisabled || verifiedActiveRoutes > 0 },
+    {
+      label: 'Betrieb',
+      done:
+        deliberatelyDisabled ||
+        (initial.enabled &&
+          initial.routingMode === 'EXPLICIT' &&
+          verifiedActiveRoutes > 0 &&
+          status.deliveryCounts.pending === 0 &&
+          status.deliveryCounts.failed === 0 &&
+          status.deliveryCounts.unrouted === 0),
+    },
+  ];
+  return { setupSteps, workflowsReady, verifiedActiveRoutes };
+}
+
 export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   const router = useRouter();
   const [connection, dispatchConnection] = useReducer(
@@ -201,12 +240,6 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     setHasMoreFailedDeliveries(status.hasMoreFailedDeliveries);
   }, [status.failedDeliveries, status.hasMoreFailedDeliveries]);
 
-  const deliberatelyDisabled = Boolean(
-    initial.connectionId && initial.routingMode === 'DISABLED' && !initial.enabled,
-  );
-  const verifiedActiveRoutes = status.endpoints.filter(
-    (endpoint) => endpoint.enabled && endpoint.verificationOk === true,
-  ).length;
   // Instanzwechsel nur, wenn tatsächlich eine API-URL gespeichert ist: mit
   // leerer gespeicherter URL (urlOrigin('') === '') zählte früher JEDE Eingabe
   // als Wechsel — Key-Eingabe und Test waren dann dauerhaft gesperrt.
@@ -214,30 +247,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   const apiInstanceChanged = Boolean(
     initial.hasApiKey && initialApiOrigin !== '' && urlOrigin(apiBaseUrl) !== initialApiOrigin,
   );
-  // Fünf Stufen, 1:1 auf die Stage-Karten darunter abgebildet (vorher:
-  // 4 Pillen vs. 5 nummerierte Sektionen mit verschobener Zuordnung).
-  const workflowsReady =
-    status.endpoints.some((endpoint) => endpoint.workflowId) || verifiedActiveRoutes > 0;
-  const setupSteps = [
-    { label: 'Verbinden', done: Boolean(initial.connectionId) },
-    {
-      label: 'Rückkanal',
-      done: deliberatelyDisabled || initial.hasSigningSecret || callbackConfigured,
-    },
-    { label: 'Workflows', done: deliberatelyDisabled || workflowsReady },
-    { label: 'Routen', done: deliberatelyDisabled || verifiedActiveRoutes > 0 },
-    {
-      label: 'Betrieb',
-      done:
-        deliberatelyDisabled ||
-        (initial.enabled &&
-          initial.routingMode === 'EXPLICIT' &&
-          verifiedActiveRoutes > 0 &&
-          status.deliveryCounts.pending === 0 &&
-          status.deliveryCounts.failed === 0 &&
-          status.deliveryCounts.unrouted === 0),
-    },
-  ];
+  const { setupSteps, workflowsReady, verifiedActiveRoutes } = n8nSetupProgress(
+    initial,
+    status,
+    callbackConfigured,
+  );
   const stageStates = withActiveStep(setupSteps);
 
   function connectionFormData(): FormData {

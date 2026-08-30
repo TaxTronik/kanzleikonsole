@@ -10,6 +10,9 @@ function parseRedisUrl(): { host: string; port: number } {
 }
 
 export async function flushRedisDb(): Promise<void> {
+  // Die A11Y-Stichprobe darf auf einem gemeinsam genutzten Dev-Stack keine
+  // Worker-/Signal-Jobs oder fremde Sitzungsdaten pauschal entfernen.
+  if (process.env['E2E_PRESERVE_SHARED_SERVICES'] === 'true') return;
   const { host, port } = parseRedisUrl();
 
   await new Promise<void>((resolve, reject) => {

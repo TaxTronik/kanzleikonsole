@@ -14,6 +14,7 @@ export async function loginAsMandant(page: Page, request: APIRequestContext): Pr
   // Alte Mails vor dem Request entfernen, damit wir sicher den neuen Token
   // greifen. Nicht in fetchMagicLink löschen: dort wäre die Mail schon erzeugt.
   await clearMailhogMessages(request);
+  const previousMailIds = await existingMailIds(request);
 
   // Schritt 1: Magic-Link anfordern
   await page.goto('/portal/login', { waitUntil: 'networkidle' });
@@ -22,7 +23,16 @@ export async function loginAsMandant(page: Page, request: APIRequestContext): Pr
   await expect(page.getByText(/Login-Link verschickt/i)).toBeVisible({ timeout: 5000 });
 
   // Schritt 2: Magic-Link aus MailHog holen (via APIRequestContext)
-  const link = await fetchMagicLink(request, PORTAL_EMAIL);
+  let link: string | null = null;
+  await expect
+    .poll(
+      async () => {
+        link = await fetchMagicLink(request, PORTAL_EMAIL, previousMailIds);
+        return link !== null;
+      },
+      { message: 'Neuer Magic-Link muss nach der aktuellen Login-Anfrage eintreffen' },
+    )
+    .toBe(true);
   if (!link) throw new Error('Magic-Link nicht in MailHog gefunden.');
 
   // Schritt 3: Link folgen -> Login
@@ -70,6 +80,9 @@ export async function expectPortalDashboardReady(page: Page, timeout = 20_000): 
 }
 
 export async function clearMailhogMessages(request: APIRequestContext): Promise<void> {
+  // Gemeinsame lokale Testmails bleiben bei reinen UI-Stichproben erhalten.
+  // CI nutzt weiterhin seine isolierten, vor jedem Login geleerten Services.
+  if (process.env['E2E_PRESERVE_SHARED_SERVICES'] === 'true') return;
   try {
     await request.delete(`${MAILHOG_URL}/api/v1/messages`);
   } catch {
@@ -77,17 +90,31 @@ export async function clearMailhogMessages(request: APIRequestContext): Promise<
   }
 }
 
-async function fetchMagicLink(request: APIRequestContext, email: string): Promise<string | null> {
-  const res = await request.get(`${MAILHOG_URL}/api/v2/messages?limit=5`);
+async function existingMailIds(request: APIRequestContext): Promise<Set<string>> {
+  if (process.env['E2E_PRESERVE_SHARED_SERVICES'] !== 'true') return new Set();
+  const response = await request.get(`${MAILHOG_URL}/api/v2/messages?limit=50`);
+  if (!response.ok()) throw new Error('Vorhandene lokale Testmails konnten nicht gelesen werden.');
+  const data = await response.json();
+  return new Set((data.items ?? []).map((item: { ID: string }) => item.ID));
+}
+
+async function fetchMagicLink(
+  request: APIRequestContext,
+  email: string,
+  previousMailIds: ReadonlySet<string> = new Set(),
+): Promise<string | null> {
+  const res = await request.get(`${MAILHOG_URL}/api/v2/messages?limit=50`);
   if (!res.ok()) return null;
   const data = await res.json();
   const items: Array<{
+    ID: string;
     Content?: { Headers?: Record<string, string[]>; Body?: string };
     MIME?: { Parts?: Array<{ Body?: string }> };
   }> = data.items ?? [];
 
   // Sort by newest first using item index (higher index = newer in reversed array)
   for (const msg of items) {
+    if (previousMailIds.has(msg.ID)) continue;
     const headers = msg.Content?.Headers ?? {};
     const to = Array.isArray(headers['To']) ? headers['To'].join(' ') : (headers['To'] ?? '');
     if (!to.includes(email)) continue;

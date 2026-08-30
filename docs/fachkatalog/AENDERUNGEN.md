@@ -1,5 +1,65 @@
 ---
 exceptions:
+  - id: FK-EXC-20260830-012
+    date: '2026-08-30'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-id-doc-form.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-document-review.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/person-roles-panel.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/invite-section.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-document.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-workspace.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/document-selection.test.ts
+    rule_ids:
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-REPRESENTATIVE-AUTHORITY-001
+      - GWG-SELF-ONBOARDING-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - RISK-AI-SUGGESTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+    reason: >-
+      Der Integrationsabschluss extrahiert unveränderte JSX-Abschnitte,
+      Statusanzeigen, Vergleiche und Datenabbildungen in kleine lokale
+      Komponenten und Helfer. Rollen, Ausweiszuordnung, Datumsprüfung,
+      Revisionsvergleich, Transaktions- und Sperrreihenfolge, Auditinhalt,
+      Editorbefehle, Snapshot und Persistenz bleiben unverändert. Die
+      Ref-Synchronisierung des Editors erfolgt vor Browserereignissen in
+      Layout-Effects statt während des Renderns; bestehende Speicher- und
+      Markierungsbefehle bleiben erhalten. Die
+      Komplexitätsbaseline wird nur nach unten korrigiert; neue oder höhere
+      Warnungen werden nicht durch eine gelockerte Grenze akzeptiert.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/ui-state.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/guards-tx.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/document-selection.test.ts
+      - apps/web/src/components/__tests__/presentation-extraction.test.ts
+      - apps/e2e/tests/12-accessibility.spec.ts
+    reviewer: Codex (technischer Strukturabgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20260830-011
+    date: '2026-08-30'
+    paths:
+      - apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx
+    rule_ids:
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-CONTROL-STATUS-001
+    reason: >-
+      Nach Integration des main-Refactorings verbleibt ausschließlich der
+      Wechsel vom Markenfarb-Fokusring auf den gemeinsamen kontrastgeprüften
+      Fokus-Token an der Auswahlcheckbox. Auswahlwerte, zugänglicher Name,
+      Filter, Fristen, Zuständigkeit, Actions und Persistenz bleiben unverändert.
+    tests:
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/lib/__tests__/brand-palette.test.ts
+    reviewer: Codex (technischer UI-Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20260830-010
     date: '2026-08-30'
     paths:
@@ -525,6 +585,11 @@ Löschung.
 
 ## Einträge
 
+- `FK-EXC-20260830-012` — verhaltensneutrale Komponenten- und
+  Helferextraktionen zum Integrationsabschluss; Fachprüfungen und
+  Speicherreihenfolge bleiben unverändert.
+- `FK-EXC-20260830-011` — kontrastgeprüfter Fokus-Token für die
+  Gruppen-Fristenauswahl bei unveränderter Fachlogik.
 - `FK-EXC-20260830-010` — einzeln speicherbare Optionen für Schriftgröße,
   Zeilenabstand, Kontrast und Bewegungsreduktion ohne fachliche Regelwirkung.
 - `FK-EXC-20260830-009` — persönliche Anzeigepräferenzen an bestehenden

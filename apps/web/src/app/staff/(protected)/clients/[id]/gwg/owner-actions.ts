@@ -1,6 +1,7 @@
 'use server';
 
 import { randomUUID } from 'node:crypto';
+import type { GwgBeneficialOwner } from '@prisma/client';
 import { z } from 'zod';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
@@ -642,6 +643,95 @@ const UpdateOwnerSchema = z
     }
   });
 
+type UpdatedOwnerInput = z.infer<typeof UpdateOwnerSchema>;
+type StoredOwnerSnapshot = Pick<
+  GwgBeneficialOwner,
+  | 'id'
+  | 'fullName'
+  | 'birthDate'
+  | 'birthPlace'
+  | 'residence'
+  | 'nationality'
+  | 'ownershipPct'
+  | 'isPep'
+>;
+
+// GWG-BENEFICIAL-OWNERS-001 / GWG-IDENTIFICATION-EVIDENCE-001: these pure
+// comparisons/mappings leave the transaction, CAS, synchronization and audit
+// sequence in the action unchanged.
+function ownerIdentityFieldsChanged(owner: StoredOwnerSnapshot, data: UpdatedOwnerInput): boolean {
+  return (
+    owner.fullName !== data.fullName ||
+    owner.birthDate?.toISOString().slice(0, 10) !== data.birthDate ||
+    (owner.birthPlace ?? '') !== data.birthPlace ||
+    (owner.residence ?? '') !== data.residence ||
+    (owner.nationality ?? '') !== data.nationality
+  );
+}
+
+function savedBeneficialOwner(data: UpdatedOwnerInput): SavedBeneficialOwner {
+  return {
+    id: data.ownerId,
+    fullName: data.fullName,
+    birthDate: data.birthDate,
+    birthPlace: data.birthPlace,
+    residence: data.residence,
+    nationality: data.nationality,
+    ownershipPct: data.ownershipPct === undefined ? '' : String(data.ownershipPct),
+    isPep: data.isPep,
+  };
+}
+
+function updatedOwnerColumns(data: UpdatedOwnerInput) {
+  return {
+    fullName: data.fullName,
+    birthDate: data.birthDate ? new Date(data.birthDate) : null,
+    birthPlace: data.birthPlace || null,
+    residence: data.residence || null,
+    nationality: data.nationality || null,
+    ownershipPct: data.ownershipPct ?? null,
+    isPep: data.isPep,
+  };
+}
+
+function ownerAuditBefore(owner: StoredOwnerSnapshot) {
+  return {
+    fullName: owner.fullName,
+    birthDate: owner.birthDate?.toISOString().slice(0, 10) ?? null,
+    birthPlace: owner.birthPlace,
+    residence: owner.residence,
+    nationality: owner.nationality,
+    ownershipPct: owner.ownershipPct?.toString() ?? null,
+    isPep: owner.isPep,
+  };
+}
+
+function ownerAuditAfter(data: UpdatedOwnerInput, invalidatedIdentityDocuments: number) {
+  return {
+    fullName: data.fullName,
+    birthDate: data.birthDate || null,
+    birthPlace: data.birthPlace || null,
+    residence: data.residence || null,
+    nationality: data.nationality || null,
+    ownershipPct: data.ownershipPct ?? null,
+    isPep: data.isPep,
+    invalidatedIdentityDocuments,
+  };
+}
+
+function updatedOwnerRevision(data: UpdatedOwnerInput): string {
+  return gwgBeneficialOwnerRevision({
+    id: data.ownerId,
+    fullName: data.fullName,
+    birthDate: data.birthDate,
+    birthPlace: data.birthPlace || null,
+    residence: data.residence || null,
+    nationality: data.nationality || null,
+    ownershipPct: data.ownershipPct ?? null,
+    isPep: data.isPep,
+  });
+}
+
 /**
  * Korrigiert die Angaben eines vorhandenen wirtschaftlich Berechtigten. Die
  * Check-Zeile wird zuerst per Status-CAS beansprucht; eine zeitgleiche Freigabe
@@ -710,12 +800,7 @@ export async function updateBeneficialOwnerAction(
         'Die Personendaten wurden zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
       );
     }
-    const identityFieldsChanged =
-      owner.fullName !== data.fullName ||
-      owner.birthDate?.toISOString().slice(0, 10) !== data.birthDate ||
-      (owner.birthPlace ?? '') !== data.birthPlace ||
-      (owner.residence ?? '') !== data.residence ||
-      (owner.nationality ?? '') !== data.nationality;
+    const identityFieldsChanged = ownerIdentityFieldsChanged(owner, data);
     const ownershipBefore = owner.ownershipPct === null ? null : Number(owner.ownershipPct);
     const ownershipAfter = data.ownershipPct ?? null;
     const contentChanged =
@@ -730,16 +815,7 @@ export async function updateBeneficialOwnerAction(
       return {
         reviewReset: false,
         revision: gwgBeneficialOwnerRevision(owner),
-        saved: {
-          id: data.ownerId,
-          fullName: data.fullName,
-          birthDate: data.birthDate,
-          birthPlace: data.birthPlace,
-          residence: data.residence,
-          nationality: data.nationality,
-          ownershipPct: data.ownershipPct === undefined ? '' : String(data.ownershipPct),
-          isPep: data.isPep,
-        },
+        saved: savedBeneficialOwner(data),
       };
     }
 
@@ -824,15 +900,7 @@ export async function updateBeneficialOwnerAction(
     }
     await tx.gwgBeneficialOwner.update({
       where: { id: data.ownerId },
-      data: {
-        fullName: data.fullName,
-        birthDate: data.birthDate ? new Date(data.birthDate) : null,
-        birthPlace: data.birthPlace || null,
-        residence: data.residence || null,
-        nationality: data.nationality || null,
-        ownershipPct: data.ownershipPct ?? null,
-        isPep: data.isPep,
-      },
+      data: updatedOwnerColumns(data),
     });
     const invalidatedIdentitySets = await invalidatedIdentitySetRevisions(
       tx,
@@ -846,49 +914,14 @@ export async function updateBeneficialOwnerAction(
       action: 'gwg.owner.update',
       resourceType: 'gwg_beneficial_owner',
       resourceId: data.ownerId,
-      before: {
-        fullName: owner.fullName,
-        birthDate: owner.birthDate?.toISOString().slice(0, 10) ?? null,
-        birthPlace: owner.birthPlace,
-        residence: owner.residence,
-        nationality: owner.nationality,
-        ownershipPct: owner.ownershipPct?.toString() ?? null,
-        isPep: owner.isPep,
-      },
-      after: {
-        fullName: data.fullName,
-        birthDate: data.birthDate || null,
-        birthPlace: data.birthPlace || null,
-        residence: data.residence || null,
-        nationality: data.nationality || null,
-        ownershipPct: data.ownershipPct ?? null,
-        isPep: data.isPep,
-        invalidatedIdentityDocuments,
-      },
+      before: ownerAuditBefore(owner),
+      after: ownerAuditAfter(data, invalidatedIdentityDocuments),
     });
     return {
       reviewReset: check.status === 'IN_REVIEW',
       ...(invalidatedIdentitySets.length > 0 ? { invalidatedIdentitySets } : {}),
-      revision: gwgBeneficialOwnerRevision({
-        id: data.ownerId,
-        fullName: data.fullName,
-        birthDate: data.birthDate,
-        birthPlace: data.birthPlace || null,
-        residence: data.residence || null,
-        nationality: data.nationality || null,
-        ownershipPct: data.ownershipPct ?? null,
-        isPep: data.isPep,
-      }),
-      saved: {
-        id: data.ownerId,
-        fullName: data.fullName,
-        birthDate: data.birthDate,
-        birthPlace: data.birthPlace,
-        residence: data.residence,
-        nationality: data.nationality,
-        ownershipPct: data.ownershipPct === undefined ? '' : String(data.ownershipPct),
-        isPep: data.isPep,
-      },
+      revision: updatedOwnerRevision(data),
+      saved: savedBeneficialOwner(data),
     };
   });
 }

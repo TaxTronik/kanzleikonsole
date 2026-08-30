@@ -500,6 +500,339 @@ function IdentitySetFileManager({
   );
 }
 
+function IdentityReviewSummary({
+  confirmed,
+  grandfathered,
+  expired,
+  displayedType,
+  displayedOwnerName,
+  displayedNumber,
+  attachedDocuments,
+  expanded,
+}: {
+  confirmed: boolean;
+  grandfathered: boolean;
+  expired: boolean;
+  displayedType: IdentityReviewDocument['type'];
+  displayedOwnerName: string;
+  displayedNumber: string;
+  attachedDocuments: readonly unknown[];
+  expanded: boolean;
+}) {
+  return (
+    <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+      <FileCheck className={confirmed ? 'h-5 w-5 text-green-600' : 'h-5 w-5 text-amber-600'} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-primary">{typeLabels[displayedType]}</span>
+          <span className={confirmed ? 'badge-green' : 'badge-yellow'}>
+            {grandfathered
+              ? 'Bestandsnachweis'
+              : confirmed
+                ? 'Angaben bestätigt'
+                : expired
+                  ? 'Ausweis abgelaufen'
+                  : 'Prüfung offen'}
+          </span>
+        </div>
+        <p className="truncate text-xs text-muted">
+          {displayedOwnerName || 'Person noch nicht zugeordnet'}
+          {displayedNumber ? ` · Nr. ${displayedNumber}` : ''} · {attachedDocuments.length}{' '}
+          {attachedDocuments.length === 1 ? 'Datei' : 'Dateien'}
+        </p>
+      </div>
+      <span className="text-xs text-brand-700">{expanded ? 'Zuklappen' : 'Ausweis prüfen'}</span>
+      <ChevronDown className="h-4 w-4 text-muted transition-transform group-open:rotate-180" />
+    </summary>
+  );
+}
+
+function IdentityReviewNotices({
+  grandfathered,
+  invalidated,
+  editing,
+  disabled,
+  hasCompetingActiveSets,
+  attachedDocuments,
+  group,
+  checkId,
+  clientId,
+}: {
+  grandfathered: boolean;
+  invalidated: boolean;
+  editing: boolean;
+  disabled: boolean;
+  hasCompetingActiveSets: boolean;
+  attachedDocuments: readonly unknown[];
+  group: IdentityReviewGroup;
+  checkId: string;
+  clientId: string;
+}) {
+  return (
+    <>
+      {grandfathered && (
+        <div className="alert-info-sm">
+          Dieser verifizierte Bestandsnachweis stammt aus der Zeit vor der technischen
+          1:1-Personenzuordnung. Er bleibt für die abgeschlossene Altprüfung gültig; bei der
+          nächsten Prüfung wird die konkrete Person verbindlich neu zugeordnet.
+        </div>
+      )}
+      {invalidated && (
+        <div className="alert-info-sm">
+          Die zugeordnete Person wurde geändert. Die Ausweisdaten bleiben sichtbar, müssen aber mit
+          der aktuellen Person erneut bestätigt werden.
+        </div>
+      )}
+      {editing && !disabled && hasCompetingActiveSets && (
+        <div className="alert-error-sm space-y-2">
+          <p>
+            Für diese Person sind mehrere Ausweissätze aktiv. Wählen Sie den tatsächlich aktuellen
+            Ausweis; die übrigen bleiben anschließend unter „Alte Ausweise“ einsehbar.
+          </p>
+          <SelectCurrentIdentitySetButton
+            checkId={checkId}
+            clientId={clientId}
+            documentSetId={group.documentSetId}
+          />
+        </div>
+      )}
+      {attachedDocuments.length < group.documents.length && (
+        <div className="alert-error-sm space-y-2">
+          <p>
+            Mindestens eine Datei dieses Ausweissatzes ist nicht mehr verfügbar. Bitte einen neuen
+            vollständigen Ausweissatz zuordnen.
+          </p>
+          {editing &&
+            !disabled &&
+            group.documents
+              .filter((entry) => !entry.document)
+              .map((entry) => (
+                <div key={entry.id} className="flex items-center gap-2">
+                  <span className="text-xs">Nicht verfügbare Zuordnung</span>
+                  <RemoveEvidenceLinkButton
+                    checkId={checkId}
+                    clientId={clientId}
+                    gwgIdDocumentId={entry.id}
+                  />
+                </div>
+              ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function IdentityReviewMetadata({
+  displayedType,
+  displayedNumber,
+  fields,
+  displayedExpiryDate,
+  displayedOwnerName,
+}: {
+  displayedType: IdentityReviewDocument['type'];
+  displayedNumber: string;
+  fields: IdentityReviewLocalState['fields'];
+  displayedExpiryDate: string;
+  displayedOwnerName: string;
+}) {
+  return (
+    <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div>
+        <dt className="text-xs text-muted">Ausweistyp</dt>
+        <dd className="text-sm font-medium text-primary">{typeLabels[displayedType]}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Ausweisnummer</dt>
+        <dd className="text-sm font-medium text-primary">{displayedNumber || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Ausstellende Behörde</dt>
+        <dd className="text-sm font-medium text-primary">{fields.issuedBy || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Ausgestellt am</dt>
+        <dd className="text-sm font-medium text-primary">{fields.issueDate || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Gültig bis</dt>
+        <dd className="text-sm font-medium text-primary">{displayedExpiryDate || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-muted">Zugeordnete Person</dt>
+        <dd className="text-sm font-medium text-primary">{displayedOwnerName || '—'}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function IdentityReviewFields({
+  group,
+  first,
+  fields,
+  patchFields,
+  disabled,
+  isPending,
+  subjectOptions,
+  selectedSubjectKey,
+  selectSubject,
+  duplicateRoleNames,
+}: {
+  group: IdentityReviewGroup;
+  first: IdentityReviewDocument;
+  fields: IdentityReviewLocalState['fields'];
+  patchFields: (patch: Partial<IdentityReviewLocalState['fields']>) => void;
+  disabled: boolean;
+  isPending: boolean;
+  subjectOptions: IdentitySubjectOption[];
+  selectedSubjectKey: string;
+  selectSubject: (key: string) => void;
+  duplicateRoleNames: Set<string>;
+}) {
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor={`identity-type-${group.key}`}>
+            Ausweistyp
+          </label>
+          <select
+            id={`identity-type-${group.key}`}
+            name="type"
+            className="input"
+            value={fields.type}
+            onChange={(event) =>
+              patchFields({
+                type: event.target.value as 'PERSONALAUSWEIS' | 'REISEPASS',
+              })
+            }
+            disabled={disabled || isPending}
+          >
+            <option value="PERSONALAUSWEIS">Personalausweis</option>
+            <option value="REISEPASS">Reisepass</option>
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor={`identity-subject-${group.key}`}>
+            Identifizierte Person
+          </label>
+          <select
+            id={`identity-subject-${group.key}`}
+            name="subjectKey"
+            className="input"
+            value={selectedSubjectKey}
+            onChange={(event) => selectSubject(event.target.value)}
+            required
+            disabled={disabled || isPending}
+          >
+            <option value="" disabled>
+              — erfasste Person auswählen —
+            </option>
+            {subjectOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.name} — {identitySubjectRoleLabel(option)}
+              </option>
+            ))}
+          </select>
+          {!selectedSubjectKey && (
+            <p className="mt-1 text-xs text-amber-700">
+              Der bisherige Anzeigewert „{first.ownerName}“ besitzt noch keine bestätigte
+              1:1-Zuordnung. Bitte die konkrete Person auswählen.
+            </p>
+          )}
+          {duplicateRoleNames.size > 0 && (
+            <p className="mt-1 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+              Gleichnamige Einträge in verschiedenen Rollen sind nicht automatisch zwei Personen.
+              Wählen Sie bewusst die Rollen-Zuordnung: Für den Vertretungsnachweis muss der Eintrag
+              „vertretungsberechtigt“ gewählt werden; Geburtsdatum und Eintragsnummer unterscheiden
+              echte Namensdopplungen.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className="label" htmlFor={`identity-number-${group.key}`}>
+            Ausweisnummer
+          </label>
+          <input
+            id={`identity-number-${group.key}`}
+            name="number"
+            className="input"
+            value={fields.number}
+            onChange={(event) => patchFields({ number: event.target.value })}
+            required
+            maxLength={100}
+            disabled={disabled || isPending}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor={`identity-issue-date-${group.key}`}>
+            Ausgestellt am
+          </label>
+          <input
+            id={`identity-issue-date-${group.key}`}
+            name="issueDate"
+            type="date"
+            className="input"
+            value={fields.issueDate}
+            onChange={(event) => patchFields({ issueDate: event.target.value })}
+            required
+            disabled={disabled || isPending}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor={`identity-expiry-date-${group.key}`}>
+            Gültig bis
+          </label>
+          <input
+            id={`identity-expiry-date-${group.key}`}
+            name="expiryDate"
+            type="date"
+            className="input"
+            value={fields.expiryDate}
+            onChange={(event) => patchFields({ expiryDate: event.target.value })}
+            required
+            disabled={disabled || isPending}
+          />
+        </div>
+      </div>
+      <div>
+        <label className="label" htmlFor={`identity-issued-by-${group.key}`}>
+          Ausstellende Behörde
+        </label>
+        <input
+          id={`identity-issued-by-${group.key}`}
+          name="issuedBy"
+          className="input"
+          value={fields.issuedBy}
+          onChange={(event) => patchFields({ issuedBy: event.target.value })}
+          required
+          maxLength={200}
+          disabled={disabled || isPending}
+        />
+      </div>
+    </>
+  );
+}
+
+function IdentityReviewFeedback({
+  state,
+  invalidated,
+}: {
+  state: ActionResult | null;
+  invalidated: boolean;
+}) {
+  return (
+    <>
+      {state?.error && <div className="alert-error-sm">{state.error}</div>}
+      {state?.ok && !invalidated && (
+        <div className="alert-success-sm">Ausweisangaben wurden bestätigt.</div>
+      )}
+    </>
+  );
+}
+
 function IdentityReviewCard({
   checkId,
   clientId,
@@ -672,80 +1005,29 @@ function IdentityReviewCard({
         setExpanded(event.currentTarget.open);
       }}
     >
-      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
-        <FileCheck className={confirmed ? 'h-5 w-5 text-green-600' : 'h-5 w-5 text-amber-600'} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-primary">{typeLabels[displayedType]}</span>
-            <span className={confirmed ? 'badge-green' : 'badge-yellow'}>
-              {grandfathered
-                ? 'Bestandsnachweis'
-                : confirmed
-                  ? 'Angaben bestätigt'
-                  : expired
-                    ? 'Ausweis abgelaufen'
-                    : 'Prüfung offen'}
-            </span>
-          </div>
-          <p className="truncate text-xs text-muted">
-            {displayedOwnerName || 'Person noch nicht zugeordnet'}
-            {displayedNumber ? ` · Nr. ${displayedNumber}` : ''} · {attachedDocuments.length}{' '}
-            {attachedDocuments.length === 1 ? 'Datei' : 'Dateien'}
-          </p>
-        </div>
-        <span className="text-xs text-brand-700">{expanded ? 'Zuklappen' : 'Ausweis prüfen'}</span>
-        <ChevronDown className="h-4 w-4 text-muted transition-transform group-open:rotate-180" />
-      </summary>
+      <IdentityReviewSummary
+        confirmed={confirmed}
+        grandfathered={grandfathered}
+        expired={expired}
+        displayedType={displayedType}
+        displayedOwnerName={displayedOwnerName}
+        displayedNumber={displayedNumber}
+        attachedDocuments={attachedDocuments}
+        expanded={expanded}
+      />
 
       <div className="space-y-5 border-t border-default p-4">
-        {grandfathered && (
-          <div className="alert-info-sm">
-            Dieser verifizierte Bestandsnachweis stammt aus der Zeit vor der technischen
-            1:1-Personenzuordnung. Er bleibt für die abgeschlossene Altprüfung gültig; bei der
-            nächsten Prüfung wird die konkrete Person verbindlich neu zugeordnet.
-          </div>
-        )}
-        {invalidated && (
-          <div className="alert-info-sm">
-            Die zugeordnete Person wurde geändert. Die Ausweisdaten bleiben sichtbar, müssen aber
-            mit der aktuellen Person erneut bestätigt werden.
-          </div>
-        )}
-        {editing && !disabled && hasCompetingActiveSets && (
-          <div className="alert-error-sm space-y-2">
-            <p>
-              Für diese Person sind mehrere Ausweissätze aktiv. Wählen Sie den tatsächlich aktuellen
-              Ausweis; die übrigen bleiben anschließend unter „Alte Ausweise“ einsehbar.
-            </p>
-            <SelectCurrentIdentitySetButton
-              checkId={checkId}
-              clientId={clientId}
-              documentSetId={group.documentSetId}
-            />
-          </div>
-        )}
-        {attachedDocuments.length < group.documents.length && (
-          <div className="alert-error-sm space-y-2">
-            <p>
-              Mindestens eine Datei dieses Ausweissatzes ist nicht mehr verfügbar. Bitte einen neuen
-              vollständigen Ausweissatz zuordnen.
-            </p>
-            {editing &&
-              !disabled &&
-              group.documents
-                .filter((entry) => !entry.document)
-                .map((entry) => (
-                  <div key={entry.id} className="flex items-center gap-2">
-                    <span className="text-xs">Nicht verfügbare Zuordnung</span>
-                    <RemoveEvidenceLinkButton
-                      checkId={checkId}
-                      clientId={clientId}
-                      gwgIdDocumentId={entry.id}
-                    />
-                  </div>
-                ))}
-          </div>
-        )}
+        <IdentityReviewNotices
+          grandfathered={grandfathered}
+          invalidated={invalidated}
+          editing={editing}
+          disabled={disabled}
+          hasCompetingActiveSets={hasCompetingActiveSets}
+          attachedDocuments={attachedDocuments}
+          group={group}
+          checkId={checkId}
+          clientId={clientId}
+        />
         {attachedDocuments.length > 0 ? (
           <div className={`grid gap-4 ${attachedDocuments.length > 1 ? 'xl:grid-cols-2' : ''}`}>
             {attachedDocuments.map((entry) => (
@@ -778,32 +1060,13 @@ function IdentityReviewCard({
 
         {!editing && (
           <div className="space-y-4">
-            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <dt className="text-xs text-muted">Ausweistyp</dt>
-                <dd className="text-sm font-medium text-primary">{typeLabels[displayedType]}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Ausweisnummer</dt>
-                <dd className="text-sm font-medium text-primary">{displayedNumber || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Ausstellende Behörde</dt>
-                <dd className="text-sm font-medium text-primary">{fields.issuedBy || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Ausgestellt am</dt>
-                <dd className="text-sm font-medium text-primary">{fields.issueDate || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Gültig bis</dt>
-                <dd className="text-sm font-medium text-primary">{displayedExpiryDate || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Zugeordnete Person</dt>
-                <dd className="text-sm font-medium text-primary">{displayedOwnerName || '—'}</dd>
-              </div>
-            </dl>
+            <IdentityReviewMetadata
+              displayedType={displayedType}
+              displayedNumber={displayedNumber}
+              fields={fields}
+              displayedExpiryDate={displayedExpiryDate}
+              displayedOwnerName={displayedOwnerName}
+            />
             {state?.error && <div className="alert-error-sm">{state.error}</div>}
             {!disabled && (
               <div className="flex flex-wrap gap-2">
@@ -921,133 +1184,20 @@ function IdentityReviewCard({
               value={invalidatedRevision ?? currentRevision}
             />
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor={`identity-type-${group.key}`}>
-                  Ausweistyp
-                </label>
-                <select
-                  id={`identity-type-${group.key}`}
-                  name="type"
-                  className="input"
-                  value={fields.type}
-                  onChange={(event) =>
-                    patchFields({
-                      type: event.target.value as 'PERSONALAUSWEIS' | 'REISEPASS',
-                    })
-                  }
-                  disabled={disabled || isPending}
-                >
-                  <option value="PERSONALAUSWEIS">Personalausweis</option>
-                  <option value="REISEPASS">Reisepass</option>
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor={`identity-subject-${group.key}`}>
-                  Identifizierte Person
-                </label>
-                <select
-                  id={`identity-subject-${group.key}`}
-                  name="subjectKey"
-                  className="input"
-                  value={selectedSubjectKey}
-                  onChange={(event) => selectSubject(event.target.value)}
-                  required
-                  disabled={disabled || isPending}
-                >
-                  <option value="" disabled>
-                    — erfasste Person auswählen —
-                  </option>
-                  {subjectOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.name} — {identitySubjectRoleLabel(option)}
-                    </option>
-                  ))}
-                </select>
-                {!selectedSubjectKey && (
-                  <p className="mt-1 text-xs text-amber-700">
-                    Der bisherige Anzeigewert „{first.ownerName}“ besitzt noch keine bestätigte
-                    1:1-Zuordnung. Bitte die konkrete Person auswählen.
-                  </p>
-                )}
-                {duplicateRoleNames.size > 0 && (
-                  <p className="mt-1 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
-                    Gleichnamige Einträge in verschiedenen Rollen sind nicht automatisch zwei
-                    Personen. Wählen Sie bewusst die Rollen-Zuordnung: Für den Vertretungsnachweis
-                    muss der Eintrag „vertretungsberechtigt“ gewählt werden; Geburtsdatum und
-                    Eintragsnummer unterscheiden echte Namensdopplungen.
-                  </p>
-                )}
-              </div>
-            </div>
+            <IdentityReviewFields
+              group={group}
+              first={first}
+              fields={fields}
+              patchFields={patchFields}
+              disabled={disabled}
+              isPending={isPending}
+              subjectOptions={subjectOptions}
+              selectedSubjectKey={selectedSubjectKey}
+              selectSubject={selectSubject}
+              duplicateRoleNames={duplicateRoleNames}
+            />
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className="label" htmlFor={`identity-number-${group.key}`}>
-                  Ausweisnummer
-                </label>
-                <input
-                  id={`identity-number-${group.key}`}
-                  name="number"
-                  className="input"
-                  value={fields.number}
-                  onChange={(event) => patchFields({ number: event.target.value })}
-                  required
-                  maxLength={100}
-                  disabled={disabled || isPending}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor={`identity-issue-date-${group.key}`}>
-                  Ausgestellt am
-                </label>
-                <input
-                  id={`identity-issue-date-${group.key}`}
-                  name="issueDate"
-                  type="date"
-                  className="input"
-                  value={fields.issueDate}
-                  onChange={(event) => patchFields({ issueDate: event.target.value })}
-                  required
-                  disabled={disabled || isPending}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor={`identity-expiry-date-${group.key}`}>
-                  Gültig bis
-                </label>
-                <input
-                  id={`identity-expiry-date-${group.key}`}
-                  name="expiryDate"
-                  type="date"
-                  className="input"
-                  value={fields.expiryDate}
-                  onChange={(event) => patchFields({ expiryDate: event.target.value })}
-                  required
-                  disabled={disabled || isPending}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="label" htmlFor={`identity-issued-by-${group.key}`}>
-                Ausstellende Behörde
-              </label>
-              <input
-                id={`identity-issued-by-${group.key}`}
-                name="issuedBy"
-                className="input"
-                value={fields.issuedBy}
-                onChange={(event) => patchFields({ issuedBy: event.target.value })}
-                required
-                maxLength={200}
-                disabled={disabled || isPending}
-              />
-            </div>
-
-            {state?.error && <div className="alert-error-sm">{state.error}</div>}
-            {state?.ok && !invalidated && (
-              <div className="alert-success-sm">Ausweisangaben wurden bestätigt.</div>
-            )}
+            <IdentityReviewFeedback state={state} invalidated={invalidated} />
             {!disabled && (
               <div className="flex flex-wrap gap-2">
                 <button
