@@ -5,8 +5,9 @@
 // "an alle Mitarbeiter" (UI filtert dann auf staffId IS NULL OR staffId = me).
 //
 // Idempotenz-Schutz: pro (tenantId, kind, resourceType, resourceId, staffId)
-// wird nur EINE ungelesene Notification angelegt — Folge-Events updaten den
-// Timestamp statt neu zu inserten.
+// wird nur EINE ungelesene Notification angelegt. Staff-/System-Folgeereignisse
+// aktualisieren sie; der write-only Portalpfad bleibt bei einem Treffer ohne
+// Änderung, weil der Schlüssel allein keine Portal-Provenienz beweist.
 // =============================================================================
 
 import type { NotificationKind } from '@prisma/client';

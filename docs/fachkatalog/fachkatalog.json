@@ -176,7 +176,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Die neue Notification-Scope-Migration bindet bekannte Fachressourcen fail-closed an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den aktuellen Empfänger- und Clientzugriff. Reminder revalidieren Empfänger vor dem Insert; ein vollständiges Inventar aller Producer sowie Mail- und n8n-Austritte bleibt als Härtungsnachweis offen."
+        "summary": "Die Notification-Scope-Migration bindet bekannte Fachressourcen fail-closed an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den aktuellen Empfänger- und Clientzugriff. Portal-Kontakte erzeugen die vier klassifizierten Staff-Ereignisse über einen write-only DB-Upsert, ohne SELECT-Freigabe auf interne Hinweise. Reminder revalidieren Empfänger vor dem Insert; ein vollständiges Inventar aller Producer sowie Mail- und n8n-Austritte bleibt als Härtungsnachweis offen."
       },
       "sources": [
         {
@@ -218,8 +218,10 @@
       "code_refs": [
         "packages/db/src/staff-client-access.ts",
         "packages/db/src/notification.ts",
+        "apps/web/src/server/notifications/service.ts",
         "apps/worker/src/jobs/reminders-daily.ts",
         "packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql",
+        "packages/db/prisma/migrations/20260824030000_notification_client_contact_insert/migration.sql",
         "packages/db/prisma/migrations/20260830234000_restore_portal_notification_write_only/migration.sql"
       ],
       "test_refs": [

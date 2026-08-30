@@ -56,6 +56,37 @@ export function sanitizeNotificationText(value: string): string {
   );
 }
 
+async function persistClientContactNotificationIfApplicable(
+  tx: TxClient,
+  input: NotificationUpsertInput,
+  title: string,
+  body: string | null,
+): Promise<boolean> {
+  const [actorContext] = await tx.$queryRaw<Array<{ actorType: string | null }>>`
+    SELECT app.current_actor_type() AS "actorType"
+  `;
+  if (actorContext?.actorType !== 'CLIENT_CONTACT') return false;
+
+  // Fachkatalog: ACCESS-NOTIFICATION-RECIPIENT-001,
+  // ACCESS-TENANT-RLS-001. Portal-Kontakte dürfen interne Staff-Hinweise
+  // nicht SELECTen. Die DB-Funktion hält den Upsert deshalb write-only und
+  // gibt weder Notification-ID noch Inhalt an den Portal-Kontext zurück.
+  await tx.$queryRaw`
+    SELECT app.upsert_client_contact_notification(
+      ${input.tenantId}::uuid,
+      ${input.clientId ?? null}::uuid,
+      ${input.staffId ?? null}::uuid,
+      ${input.kind}::public.notification_kind,
+      ${title}::text,
+      ${body}::text,
+      ${input.href ?? null}::text,
+      ${input.resourceType ?? null}::text,
+      ${input.resourceId ?? null}::text
+    )
+  `;
+  return true;
+}
+
 /**
  * Shared advisory-lock protected notification upsert. The lock closes the
  * find-first/create race without serializing unrelated notification keys.
@@ -67,6 +98,8 @@ export async function upsertNotificationTx(
 ): Promise<void> {
   const title = sanitizeNotificationText(input.title);
   const body = input.body != null ? sanitizeNotificationText(input.body) : null;
+  if (await persistClientContactNotificationIfApplicable(tx, input, title, body)) return;
+
   const where = {
     tenantId: input.tenantId,
     ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),

@@ -525,6 +525,8 @@ Löschung.
 
 ## Einträge
 
+- `FK-EXC-20260830-010` — einzeln speicherbare Optionen für Schriftgröße,
+  Zeilenabstand, Kontrast und Bewegungsreduktion ohne fachliche Regelwirkung.
 - `FK-EXC-20260830-009` — persönliche Anzeigepräferenzen an bestehenden
   Benutzerprofilen; Tenant-Isolation und fachliche Entscheidungen unverändert.
 - `FK-EXC-20260830-008` — zugängliche Symbol-Links und korrekte Semantik für
