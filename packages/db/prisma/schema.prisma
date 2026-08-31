@@ -56,6 +56,8 @@ model Tenant {
   formTemplates                  FormTemplate[]
   gwgChecks                      GwgCheck[]
   gwgInvites                     GwgOnboardingInvite[]
+  gwgPersonAnchors                GwgPersonAnchor[]
+  gwgPersonLinks                  GwgPersonLink[]
   invoices                       Invoice[]
   invoiceCategories              InvoiceCategory[]
   invoiceNumberSeqs              InvoiceNumberSeq[]
@@ -92,6 +94,7 @@ model Tenant {
   taxFilings                     TaxFiling[]
   taxNotices                     TaxNotice[]
   taxScheduleConfigs             TaxScheduleConfig[]
+  taxRegistrations               ClientTaxRegistration[]
   settings                       TenantSetting[]
   workflowInstances              WorkflowInstance[]
   workflowN8nDispatches          WorkflowN8nDispatch[]
@@ -126,6 +129,9 @@ model StaffUser {
   totpSetupStartedAt            DateTime?                   @map("totp_setup_started_at")
   totpBackupCodes               Json?                       @map("totp_backup_codes")
   active                        Boolean                     @default(true)
+  isProfessional                Boolean                     @default(false) @map("is_professional")
+  datevAdvisorNumber            String?                     @map("datev_advisor_number") @db.VarChar(40)
+  professionalQualificationSource String?                   @map("professional_qualification_source") @db.VarChar(10)
   lockedUntil                   DateTime?                   @map("locked_until")
   lastLoginAt                   DateTime?                   @map("last_login_at")
   createdAt                     DateTime                    @default(now()) @map("created_at")
@@ -291,6 +297,7 @@ model GwgIdDocument {
   representativeSubjectId       String?             @map("representative_subject_id") @db.Uuid
   identityAssignmentConfirmedAt DateTime?           @map("identity_assignment_confirmed_at") @db.Timestamptz(6)
   identityAssignmentConfirmedBy String?             @map("identity_assignment_confirmed_by") @db.Uuid
+  viewports                     Json?
   number                        String?
   issuedBy                      String?             @map("issued_by")
   issueDate                     DateTime?           @map("issue_date") @db.Date
@@ -342,6 +349,8 @@ model GwgRepresentative {
   /// Explizite Rollenidentität: derselbe Mensch kann Vertreter und zugleich
   /// wirtschaftlich Berechtigter sein. Keine heuristische Namensverknüpfung.
   linkedBeneficialOwnerId String?             @map("linked_beneficial_owner_id") @db.Uuid
+  personAnchorId          String?             @map("person_anchor_id") @db.Uuid
+  personAnchor            GwgPersonAnchor?    @relation(fields: [personAnchorId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   check                   GwgCheck            @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -354,6 +363,7 @@ model GwgRepresentative {
   @@unique([gwgCheckId, linkedBeneficialOwnerId], map: "gwg_representative_owner_identity_uq")
   @@index([gwgCheckId])
   @@index([linkedBeneficialOwnerId])
+  @@index([personAnchorId])
   @@map("gwg_representative")
 }
 
@@ -368,13 +378,54 @@ model GwgBeneficialOwner {
   ownershipPct        Decimal?            @map("ownership_pct") @db.Decimal(5, 2)
   isPep               Boolean             @default(false) @map("is_pep")
   notes               String?
+  personAnchorId      String?             @map("person_anchor_id") @db.Uuid
+  personAnchor        GwgPersonAnchor?    @relation(fields: [personAnchorId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   createdAt           DateTime            @default(now()) @map("created_at")
   check               GwgCheck            @relation(fields: [gwgCheckId], references: [id], onDelete: Cascade)
   idDocuments         GwgIdDocument[]
   representativeRoles GwgRepresentative[] @relation("gwg_owner_representative_identity")
 
   @@index([gwgCheckId])
+  @@index([personAnchorId])
   @@map("gwg_beneficial_owner")
+}
+
+/// Technische Personenidentität innerhalb eines Mandats. Keine gemeinsamen
+/// Stammdaten, Ausweise oder Freigaben; Rollen- und Prüfsnapshots bleiben lokal.
+model GwgPersonAnchor {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String               @map("tenant_id") @db.Uuid
+  clientId         String               @map("client_id") @db.Uuid
+  naturalClientId  String?              @unique @map("natural_client_id") @db.Uuid
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client           Client               @relation("gwg_person_client", fields: [clientId], references: [id], onDelete: Cascade)
+  naturalClient    Client?              @relation("gwg_person_natural_client", fields: [naturalClientId], references: [id], onDelete: Cascade)
+  beneficialOwners GwgBeneficialOwner[]
+  representatives  GwgRepresentative[]
+  linksFrom        GwgPersonLink[]      @relation("gwg_person_link_from")
+  linksTo          GwgPersonLink[]      @relation("gwg_person_link_to")
+
+  @@index([tenantId, clientId])
+  @@map("gwg_person_anchor")
+}
+
+/// Ausdrücklich bestätigte Verbindung zweier mandatslokaler Personenanker.
+model GwgPersonLink {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String          @map("tenant_id") @db.Uuid
+  fromAnchorId String          @map("from_anchor_id") @db.Uuid
+  toAnchorId   String          @map("to_anchor_id") @db.Uuid
+  createdBy    String          @map("created_by") @db.Uuid
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromAnchor   GwgPersonAnchor @relation("gwg_person_link_from", fields: [fromAnchorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  toAnchor     GwgPersonAnchor @relation("gwg_person_link_to", fields: [toAnchorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([fromAnchorId, toAnchorId])
+  @@index([tenantId])
+  @@index([toAnchorId])
+  @@map("gwg_person_link")
 }
 
 model ServiceProvider {
@@ -1075,6 +1126,28 @@ model Notification {
   @@map("notification")
 }
 
+model ClientTaxRegistration {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  clientId      String   @map("client_id") @db.Uuid
+  label         String
+  stateCode     String?  @map("state_code")
+  numberElster  String?  @map("number_elster")
+  taxOfficeName String   @default("") @map("tax_office_name")
+  taxOfficeCode String?  @map("tax_office_code")
+  isPrimary     Boolean  @default(false) @map("is_primary")
+  archivedAt    DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client        Client   @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade, onUpdate: NoAction)
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  elsterQueries ElsterKontoabfrage[]
+
+  @@unique([tenantId, clientId, id])
+  @@index([tenantId, clientId])
+  @@map("client_tax_registration")
+}
+
 model Client {
   id                      String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                String                      @map("tenant_id") @db.Uuid
@@ -1094,10 +1167,10 @@ model Client {
   city                    String?
   countryIso              String?                     @map("country_iso")
   vatId                   String?                     @map("vat_id")
-  /// Steuernummer im 13-stelligen ELSTER-Bundesformat — Basis der ELSTER-
-  /// Kontoabfrage (Soll-/Iststellungen). EINE pro Mandant: Tochtergesellschaften/
-  /// Betriebsstätten mit eigener StNr sind eigene Mandanten.
+  /// Legacy-Migrationswert; aktive Steuerdaten/ELSTER nutzen taxRegistrations.
+  /// Keine parallele Bearbeitung. Wird bei NATPERS-Anonymisierung gelöscht.
   steuernummer            String?                     @map("steuernummer")
+  taxRegistrations        ClientTaxRegistration[]
   invoiceEmail            String?                     @map("invoice_email") @db.Citext
   addisonNo               String?                     @map("addison_no")
   priority                ClientPriority?             @map("priority")
@@ -1143,6 +1216,8 @@ model Client {
   gwgChecks               GwgCheck[]
   gwgIdentityDocuments    GwgIdDocument[]             @relation("gwg_natural_client_subject")
   gwgInvites              GwgOnboardingInvite[]
+  gwgPersonAnchors        GwgPersonAnchor[]           @relation("gwg_person_client")
+  gwgNaturalPersonAnchor  GwgPersonAnchor?            @relation("gwg_person_natural_client")
   invoices                Invoice[]
   notifications           Notification[]
   pendingBinders          PendingBinder[]
@@ -1157,6 +1232,7 @@ model Client {
   workflowInstances       WorkflowInstance[]
 
   @@unique([tenantId, datevNo])
+  @@unique([tenantId, id], map: "client_tenant_id_id_key")
   @@index([tenantId])
   @@index([tenantId, onboardingCompletedAt], map: "client_tenant_onboarding_completed_idx")
   @@index([tenantId, priority], map: "client_tenant_priority_idx")
@@ -2248,6 +2324,8 @@ model ElsterKontoabfrage {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String   @map("tenant_id") @db.Uuid
   clientId        String   @map("client_id") @db.Uuid
+  taxRegistrationId String? @map("tax_registration_id") @db.Uuid
+  taxNumberSnapshot String? @map("tax_number_snapshot")
   /// I = Istbuchungen, O = offene Beträge, ZS = Sollstellungen.
   art             String
   /// Steuerart (ESt/KSt/USt/…) — null bei O-Abfrage.
@@ -2267,6 +2345,7 @@ model ElsterKontoabfrage {
   createdAt       DateTime @default(now()) @map("created_at")
   client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_client_fkey")
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_tenant_fkey")
+  taxRegistration ClientTaxRegistration? @relation(fields: [tenantId, clientId, taxRegistrationId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction, map: "elster_kontoabfrage_tax_registration_fkey")
 
   @@index([tenantId, clientId, createdAt])
   @@map("elster_kontoabfrage")
@@ -2664,6 +2743,7 @@ model GwgOnboardingInvite {
   createdByStaff      String          @map("created_by_staff") @db.Uuid
   cancelledByStaff    String?         @map("cancelled_by_staff") @db.Uuid
   cancelledAt         DateTime?       @map("cancelled_at")
+  cancellationReason  String?         @map("cancellation_reason")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
   client              Client          @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_client_fkey")

@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { TxClient } from '@taxtronik/db';
+import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
+import { distinctIdentityViews } from '@/lib/gwg/identity-viewport';
+import { validateIdentityViewportsTx } from '@/server/gwg/identity-source';
+import { lockCleanGwgEvidenceDocumentsTx } from '@/server/gwg/evidence-documents';
 
 export class OnboardingIdentitySetConflictError extends Error {}
 
@@ -12,6 +16,8 @@ export interface ExistingOnboardingDocument {
 
 export interface OnboardingIdentitySetInput {
   documentIds: readonly [string, string];
+  viewports?: readonly [IdentityViewport | undefined, IdentityViewport | undefined];
+  sourceScope?: { tenantId: string; clientId: string };
   type: 'PERSONALAUSWEIS' | 'REISEPASS';
   ownerName: string;
   number: string | null;
@@ -23,12 +29,57 @@ export interface OnboardingIdentitySetInput {
   notePrefix?: string;
 }
 
+async function validateOnboardingDocumentViews(
+  tx: TxClient,
+  input: OnboardingIdentitySetInput,
+  documentId: string,
+) {
+  const views = (input.viewports ?? []).flatMap((view, index) =>
+    view && input.documentIds[index] === documentId ? [view] : [],
+  );
+  if (!views.length) return views;
+  if (!input.sourceScope) throw new OnboardingIdentitySetConflictError();
+  if (
+    !(await lockCleanGwgEvidenceDocumentsTx(tx, {
+      ...input.sourceScope,
+      documentIds: [documentId],
+    }))
+  ) {
+    throw new OnboardingIdentitySetConflictError();
+  }
+  try {
+    await validateIdentityViewportsTx(tx, { ...input.sourceScope, documentId, views });
+  } catch {
+    throw new OnboardingIdentitySetConflictError();
+  }
+  return views;
+}
+
+function assertOnboardingSourceBindings(input: OnboardingIdentitySetInput): void {
+  if (
+    !input.sourceScope ||
+    !input.viewports?.[0] ||
+    !input.viewports[1] ||
+    input.viewports[0].side !== 'front' ||
+    input.viewports[1].side !== 'back'
+  ) {
+    throw new OnboardingIdentitySetConflictError();
+  }
+  if (
+    input.documentIds[0] === input.documentIds[1] &&
+    !distinctIdentityViews(input.viewports?.[0], input.viewports?.[1])
+  ) {
+    throw new OnboardingIdentitySetConflictError();
+  }
+}
+
 export async function persistOnboardingIdentitySetTx(
   tx: TxClient,
   checkId: string,
   existingDocumentById: ReadonlyMap<string, ExistingOnboardingDocument>,
   input: OnboardingIdentitySetInput,
 ): Promise<void> {
+  assertOnboardingSourceBindings(input);
   const existingRows = input.documentIds.flatMap((documentId) => {
     const row = existingDocumentById.get(documentId);
     return row && (row.type === 'PERSONALAUSWEIS' || row.type === 'REISEPASS') ? [row] : [];
@@ -42,13 +93,15 @@ export async function persistOnboardingIdentitySetTx(
 
   const documentSetId = existingRows[0]?.documentSetId ?? randomUUID();
   const missingRows = [];
-  for (const [side, documentId] of input.documentIds.entries()) {
+  for (const [side, documentId] of [...new Set(input.documentIds)].entries()) {
+    const views = await validateOnboardingDocumentViews(tx, input, documentId);
     const data = {
       gwgCheckId: checkId,
       documentSetId,
       type: input.type,
       ownerName: input.ownerName,
       documentId,
+      viewports: views,
       number: input.number,
       issuedBy: input.issuedBy,
       issueDate: input.issueDate,

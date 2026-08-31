@@ -50,6 +50,11 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/use-identity-review-state.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-subjects-context.tsx
+  - apps/web/src/server/gwg/identity-source.ts
+  - apps/web/src/components/gwg/identity-capture.tsx
+  - apps/web/src/lib/gwg/identity-viewport.ts
   - apps/web/src/server/gwg/verification.ts
   - apps/web/src/server/gwg/evidence-documents.ts
   - apps/web/src/server/gwg/identity-subject.ts
@@ -75,6 +80,10 @@ code_refs:
   - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts
+  - apps/web/src/server/gwg/__tests__/identity-source.test.ts
+  - apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts
+  - apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg/__tests__/identity-subject.test.ts
   - apps/web/src/server/gwg/__tests__/representatives.test.ts
@@ -89,6 +98,7 @@ feature_refs:
   - docs/compliance/gwg.md
   - docs/anwenderdoku/dokumente.md
 related_rules:
+  - GWG-OCR-ASSIST-001
   - GWG-ACTIVATION-GATE-001
   - GWG-REPRESENTATIVE-AUTHORITY-001
   - GWG-BENEFICIAL-OWNERS-001
@@ -191,6 +201,15 @@ gleichlautenden Namens einem Vertreter zugeordnet. Ohne bestätigten
 Vertreter-Fremdschlüssel wird er nicht als Identitätsnachweis akzeptiert.
 
 ## Umsetzung in TaxTronik
+
+Seit der Erweiterung vom 31. August 2026 setzen weder OCR-Übernahme noch
+Speichern eine Prüfbestätigung. „Als geprüft markieren“ ist eine gesonderte
+Mitarbeiteraktion für den bereits gespeicherten, revisionsgebundenen Stand.
+Eine geänderte oder veraltete Originalversion verhindert die Bestätigung.
+Der Ausschnitt verändert das Original nicht: gespeichert werden Version,
+PDF-Seite, Koordinaten und Drehung. Ein Original kann beide Ausweisseiten
+enthalten; die Höchstgrenze bezieht sich auf zwei Originaldateien. Die fachliche
+Freigabe bleibt ein nachfolgender Schritt gemäß GWG-RISK-REVIEW-001.
 
 `verification.ts` bildet das serverseitige Freigabegate. Personalausweis- und
 Reisepassdateien werden nach `documentSetId` gruppiert, auf konsistente

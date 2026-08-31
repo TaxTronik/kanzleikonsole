@@ -39,11 +39,11 @@ export interface GwgSummaryClient {
   postalCode: string | null;
   city: string | null;
   countryIso: string | null;
-  vatId: string | null;
   allowActive?: boolean;
 }
 
 export interface GwgSummaryInvite {
+  cancellationReason?: string | null;
   inviteName: string;
   inviteEmail: string;
   status: string;
@@ -137,6 +137,12 @@ export function GwgSubmissionSummary({
           />
           <Field label="Gültig bis" value={fmtMaybeDateTime(data.invite.expiresAt)} />
           <Field label="Übermittelt" value={fmtMaybeDateTime(data.invite.submittedAt)} />
+          {data.invite.cancellationReason && (
+            <Field
+              label="Hinweis zur abgebrochenen Einladung"
+              value={data.invite.cancellationReason}
+            />
+          )}
         </dl>
       )}
 
@@ -146,7 +152,6 @@ export function GwgSubmissionSummary({
           <Field label="Name / Firma" value={data.client.name} />
           <Field label="Rechtsform / Art" value={data.client.kind ?? null} />
           <Field label="Adresse" value={address(data.client)} />
-          <Field label="USt-ID" value={data.client.vatId} />
         </dl>
       </div>
 

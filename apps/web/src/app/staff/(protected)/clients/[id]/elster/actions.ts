@@ -33,6 +33,7 @@ const STEUERARTEN = ['ESt', 'KSt', 'USt', 'LSt', 'GewSt', 'ZaSt', 'KapESt'] as c
 
 const Schema = z.object({
   clientId: z.string().uuid(),
+  taxRegistrationId: z.string().uuid(),
   art: z.enum(['I', 'O', 'ZS']),
   steuerart: z.enum(STEUERARTEN).optional().or(z.literal('')),
   /** ZS: vierstelliges Jahr. */
@@ -83,6 +84,7 @@ export async function kontoabfrageAction(
 
   const parsed = Schema.safeParse({
     clientId: formData.get('clientId'),
+    taxRegistrationId: formData.get('taxRegistrationId'),
     art: formData.get('art'),
     steuerart: formData.get('steuerart') ?? '',
     jahr: formData.get('jahr') ?? '',
@@ -112,16 +114,28 @@ export async function kontoabfrageAction(
     await assertClientAccessTx(tx, session, d.clientId);
     const client = await tx.client.findUnique({
       where: { id: d.clientId },
-      select: { steuernummer: true, name: true },
+      select: { name: true },
     });
     if (!client) return null;
+    const registration = await tx.clientTaxRegistration.findFirst({
+      where: { id: d.taxRegistrationId, tenantId, clientId: d.clientId, archivedAt: null },
+    });
+    if (!registration) return null;
     const tenant = await tx.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true },
     });
-    return { steuernummer: client.steuernummer, kanzlei: tenant?.name ?? 'Kanzlei' };
+    return {
+      steuernummer: registration.numberElster,
+      taxRegistrationId: registration.id,
+      kanzlei: tenant?.name ?? 'Kanzlei',
+    };
   });
-  if (!stammdaten) return { ok: false, error: 'Mandant nicht gefunden.' };
+  if (!stammdaten)
+    return {
+      ok: false,
+      error: 'Mandant oder aktive Steuerverbindung nicht gefunden. Bitte Auswahl neu laden.',
+    };
   if (!stammdaten.steuernummer) {
     return {
       ok: false,
@@ -192,6 +206,8 @@ export async function kontoabfrageAction(
       data: {
         tenantId,
         clientId: d.clientId,
+        taxRegistrationId: stammdaten.taxRegistrationId,
+        taxNumberSnapshot: stammdaten.steuernummer,
         art: d.art,
         steuerart: d.art === 'O' ? null : d.steuerart || (d.art === 'I' ? 'alle' : null),
         zeitraum: d.art === 'ZS' ? d.jahr! : d.art === 'I' ? d.wertstellungsdatum! : null,
@@ -215,6 +231,7 @@ export async function kontoabfrageAction(
       resourceId: row.id,
       after: {
         clientId: d.clientId,
+        taxRegistrationId: stammdaten.taxRegistrationId,
         art: d.art,
         steuerart: teil.art === 'O' ? null : teil.steuerart,
         zeitraum: row.zeitraum,

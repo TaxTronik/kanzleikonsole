@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { IdentityViewportSchema, distinctIdentityViews } from '@/lib/gwg/identity-viewport';
 import { validateIdentityDates } from '@/server/gwg/identity-date-validation';
 
 /**
@@ -25,8 +26,22 @@ export const GwgOnboardingOwnerSchema = z
     idExpiryDate: z.string().date(),
     idFrontDocumentId: z.string().uuid(),
     idBackDocumentId: z.string().uuid(),
+    idFrontViewport: IdentityViewportSchema,
+    idBackViewport: IdentityViewportSchema,
   })
   .superRefine((owner, ctx) => {
+    if (
+      (owner.idFrontViewport && owner.idFrontViewport.side !== 'front') ||
+      (owner.idBackViewport && owner.idBackViewport.side !== 'back') ||
+      (owner.idFrontDocumentId === owner.idBackDocumentId &&
+        !distinctIdentityViews(owner.idFrontViewport, owner.idBackViewport))
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['idBackViewport'],
+        message: 'Bitte zwei unterschiedliche Ausweisseiten mit gültigem Quellbezug auswählen.',
+      });
+    }
     for (const issue of validateIdentityDates({
       birthDate: owner.birthDate,
       issueDate: owner.idIssueDate,

@@ -94,6 +94,17 @@ function source(scanStatus: string, scanCompletedAt: Date | null): GwgInviteDraf
 }
 
 describe('GwG-Invite-DRAFT-Revision', () => {
+  it('GWG-SELF-ONBOARDING-001: Ausschnittänderungen invalidieren die Einladung', () => {
+    const initial = source('CLEAN', new Date());
+    const cropped = source('CLEAN', new Date());
+    cropped.idDocuments[0]!.viewports = { front: { page: 1, rotation: 90 } };
+    expect(gwgInviteDraftRevisionHash(cropped)).not.toBe(gwgInviteDraftRevisionHash(initial));
+  });
+  it('GWG-SELF-ONBOARDING-001: reine Steueränderungen beeinflussen die v2-Bindung nicht', () => {
+    const initial = source('CLEAN', new Date());
+    const taxChange = { ...initial, client: { ...initial.client, vatId: 'DE999999999' } };
+    expect(gwgInviteDraftRevisionHash(taxChange)).toBe(gwgInviteDraftRevisionHash(initial));
+  });
   it('bleibt bei PENDING → CLEAN derselben Dateiversion stabil', () => {
     const pending = source('PENDING', null);
     const clean = source('CLEAN', new Date('2026-07-16T12:00:00.000Z'));

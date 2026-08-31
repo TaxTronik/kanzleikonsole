@@ -168,6 +168,7 @@ export function GwgDecisionForms({
                 <input type="hidden" name="checkId" value={checkId} />
                 <input type="hidden" name="clientId" value={clientId} />
                 <input type="hidden" name="reviewSnapshotHash" value={reviewSnapshotHash ?? ''} />
+                <input type="hidden" name="reviewSnapshotVersion" value="2" />
                 <button type="submit" className="btn-primary" disabled={verifyPending}>
                   <ShieldCheck className="h-4 w-4" />
                   {verifyPending ? 'Verifiziere…' : 'Verifizieren und Mandant aktivieren'}

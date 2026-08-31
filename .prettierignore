@@ -5,6 +5,7 @@ node_modules/
 .turbo/
 # Von `next build`/`next dev` erzeugt und laut Datei-Header nicht zu editieren.
 apps/web/next-env.d.ts
+apps/web/public/identity-assets/
 dist/
 build/
 out/

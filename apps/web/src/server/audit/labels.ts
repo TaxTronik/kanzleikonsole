@@ -8,6 +8,12 @@
 // =============================================================================
 
 export const ACTION_LABELS: Record<string, string> = {
+  'staff.professional_profile.update': 'Berufsträgerqualifikation / DATEV-Beraternummer geändert',
+  'client.tax_master_data.update': 'Steuerliche Stammdaten geändert',
+  'gwg.control.export.xlsx': 'GwG-Kontrollliste exportiert (Excel)',
+  'gwg.invite.migration.cancel': 'Veraltete GwG-Einladung durch Migration widerrufen',
+  'gwg.person.link.add': 'GwG-Person mandantenübergreifend verknüpft',
+  'gwg.person.link.remove': 'Mandantenübergreifende GwG-Personenverknüpfung gelöst',
   // Mandanten
   'client.created': 'Mandant angelegt',
   'client.update.administrative': 'Mandanten-Verwaltungsdaten geändert',
@@ -311,6 +317,8 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // GwG-Onboarding (Mandanten-Selbstidentifizierung)
   'gwg.onboarding.invite': 'GwG-Onboarding eingeladen',
+  'gwg.onboarding.manual.start': 'GwG-Erfassung durch Kanzlei übernommen',
+  'gwg.identity.source.view': 'Originalnachweis zur Ausweiserfassung angezeigt',
   'gwg.onboarding.cancel': 'GwG-Onboarding abgebrochen',
   'gwg.onboarding.upload.id': 'GwG-Onboarding: Ausweis hochgeladen',
   'gwg.onboarding.upload.extra': 'GwG-Onboarding: Zusatzdokument hochgeladen',

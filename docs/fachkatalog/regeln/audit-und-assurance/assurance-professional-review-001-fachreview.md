@@ -115,6 +115,12 @@ Inhaltshash, trennt Implementierungs- von Reviewmetadaten und verwirft stale
 Hashes. `cli.mjs` kann den prüfbaren Hash ausgeben und weist ausdrücklich auf
 die fehlende Identitätswirkung hin. CI prüft Struktur und Drift des Katalogs.
 
+Amtliche Quellen werden je Quellenart anhand ausdrücklich zugelassener Hosts
+geprüft. Dazu gehört für `official_guidance` die Finanzverwaltungsplattform
+`elster.de`, insbesondere ihre veröffentlichte Steuernummerntabelle. Ähnlich
+benannte Fremddomains werden nicht akzeptiert. Ein zugelassener Host bestätigt
+nicht automatisch die fachliche Aussage einer konkreten Quelle.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die technische Trennung und Stale-Hash-Erkennung sind implementiert, eine

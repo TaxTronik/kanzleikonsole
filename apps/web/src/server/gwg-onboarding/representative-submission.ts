@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { IdentityViewportSchema, distinctIdentityViews } from '@/lib/gwg/identity-viewport';
 import { validateIdentityDates } from '@/server/gwg/identity-date-validation';
 
 export const GwgOnboardingLocalPersonIdSchema = z.string().min(1).max(100);
@@ -15,9 +16,24 @@ export const GwgOnboardingRepresentativeSchema = z
     idExpiryDate: z.string().date().optional().or(z.literal('')),
     idFrontDocumentId: z.string().uuid().nullable(),
     idBackDocumentId: z.string().uuid().nullable(),
+    idFrontViewport: IdentityViewportSchema.optional(),
+    idBackViewport: IdentityViewportSchema.optional(),
   })
   .superRefine((representative, ctx) => {
     if (representative.linkedOwnerLocalId) return;
+    if (
+      (representative.idFrontViewport && representative.idFrontViewport.side !== 'front') ||
+      (representative.idBackViewport && representative.idBackViewport.side !== 'back') ||
+      (representative.idFrontDocumentId &&
+        representative.idFrontDocumentId === representative.idBackDocumentId &&
+        !distinctIdentityViews(representative.idFrontViewport, representative.idBackViewport))
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['idBackViewport'],
+        message: 'Bitte zwei unterschiedliche Ausweisseiten mit gültigem Quellbezug auswählen.',
+      });
+    }
     for (const [field, label] of [
       ['idNumber', 'Ausweisnummer'],
       ['idIssuedBy', 'ausstellende Behörde'],
@@ -25,6 +41,8 @@ export const GwgOnboardingRepresentativeSchema = z
       ['idExpiryDate', 'Gültigkeitsdatum'],
       ['idFrontDocumentId', 'Ausweis-Vorderseite'],
       ['idBackDocumentId', 'Ausweis-Rückseite'],
+      ['idFrontViewport', 'Quellversion der Ausweis-Vorderseite'],
+      ['idBackViewport', 'Quellversion der Ausweis-Rückseite'],
     ] as const) {
       if (!representative[field]) {
         ctx.addIssue({

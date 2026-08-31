@@ -13,7 +13,7 @@ export interface CurrentOnboardingClientMasterData {
   postalCode: string | null;
   city: string | null;
   countryIso: string | null;
-  vatId: string | null;
+  vatId?: string | null;
 }
 
 export interface OnboardingClientMasterSnapshot {
@@ -22,7 +22,6 @@ export interface OnboardingClientMasterSnapshot {
   postalCode: string;
   city: string;
   countryIso: string;
-  vatId: string | null;
 }
 
 export interface OnboardingClientMasterChange {
@@ -42,7 +41,6 @@ export function buildOnboardingClientMasterChange(
     postalCode: current.postalCode,
     city: current.city,
     countryIso: current.countryIso,
-    vatId: current.vatId,
   };
   const after = {
     name: submitted.companyName.trim(),
@@ -50,10 +48,9 @@ export function buildOnboardingClientMasterChange(
     postalCode: submitted.postalCode.trim(),
     city: submitted.city.trim(),
     countryIso: submitted.countryIso.trim(),
-    vatId: submitted.vatId?.trim() || null,
   };
   const changedFields: Array<keyof OnboardingClientMasterSnapshot> = [];
-  for (const field of ['name', 'street', 'postalCode', 'city', 'countryIso', 'vatId'] as const) {
+  for (const field of ['name', 'street', 'postalCode', 'city', 'countryIso'] as const) {
     if (before[field] !== after[field]) changedFields.push(field);
   }
   return { before, after, changedFields };

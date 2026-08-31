@@ -3,7 +3,7 @@
 //
 // Stammdaten-Änderungsanfragen des Mandanten genehmigen oder ablehnen.
 // Genehmigung schreibt die Felder atomar auf den Client; sind GwG-relevante
-// Felder (Name, Adresse, USt-ID) betroffen, wird der GwG-Check auf
+// Felder (Name, Adresse) betroffen, wird der GwG-Check auf
 // IN_REVIEW zurückgesetzt — analog zur Staff-Edit-Logik.
 // =============================================================================
 
@@ -14,6 +14,10 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ChangeRequestRow } from './row';
 import { fmtDateTimeShort } from '@/lib/fmt';
+import { summarizeTaxMasterData } from '@/lib/tax-registration';
+import { loadTaxMasterDataTx } from '@/server/tax-master-data/service';
+import { TaxChangeRequestSchema } from '@/server/tax-master-data/schema';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 
 const FIELD_LABELS: Record<string, string> = {
   name: 'Name',
@@ -37,6 +41,7 @@ export default async function ClientChangeRequestsPage({
   const result = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const client = await tx.client.findUnique({
         where: { id: clientId },
         select: {
@@ -59,11 +64,11 @@ export default async function ClientChangeRequestsPage({
         },
         take: 50,
       });
-      return { client, requests };
+      return { client, requests, taxData: await loadTaxMasterDataTx(tx, tenantId, clientId) };
     },
   );
   if (!result) notFound();
-  const { client, requests } = result;
+  const { client, requests, taxData } = result;
 
   return (
     <div className="p-8 max-w-4xl">
@@ -81,14 +86,24 @@ export default async function ClientChangeRequestsPage({
       ) : (
         <ul className="space-y-3">
           {requests.map((r) => {
-            const fields = (r.fields ?? {}) as Record<string, string>;
+            const fields = (r.fields ?? {}) as Record<string, unknown>;
+            const taxRequest = TaxChangeRequestSchema.safeParse(fields.taxData);
             const current = client as unknown as Record<string, string | null>;
-            const rows = Object.entries(fields).map(([k, newVal]) => ({
-              key: k,
-              label: FIELD_LABELS[k] ?? k,
-              before: current[k] ?? '',
-              after: newVal,
-            }));
+            const rows = taxRequest.success
+              ? [
+                  {
+                    key: 'taxData',
+                    label: 'Steuerliche Stammdaten',
+                    before: summarizeTaxMasterData(taxData.draft),
+                    after: summarizeTaxMasterData(taxRequest.data.draft),
+                  },
+                ]
+              : Object.entries(fields).map(([k, newVal]) => ({
+                  key: k,
+                  label: FIELD_LABELS[k] ?? k,
+                  before: current[k] ?? '',
+                  after: typeof newVal === 'string' ? newVal : 'Ungültiger Vorschlag',
+                }));
             return (
               <li key={r.id} className="card p-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -109,7 +124,7 @@ export default async function ClientChangeRequestsPage({
                   <thead>
                     <tr className="text-xs text-muted">
                       <th className="text-left py-1 font-normal">Feld</th>
-                      <th className="text-left py-1 font-normal">Bisher</th>
+                      <th className="text-left py-1 font-normal">Aktueller Stand</th>
                       <th className="text-left py-1 font-normal">Neu</th>
                     </tr>
                   </thead>
@@ -117,8 +132,12 @@ export default async function ClientChangeRequestsPage({
                     {rows.map((row) => (
                       <tr key={row.key} className="border-t border-gray-50">
                         <td className="py-1 text-secondary">{row.label}</td>
-                        <td className="py-1 text-disabled">{row.before || '—'}</td>
-                        <td className="py-1 font-medium text-primary">{row.after}</td>
+                        <td className="py-1 text-disabled whitespace-pre-line">
+                          {row.before || '—'}
+                        </td>
+                        <td className="py-1 font-medium text-primary whitespace-pre-line">
+                          {row.after}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -197,7 +197,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         kind: 'ID_DOCUMENT',
         personName: 'Erika Muster',
       }),
-    ).resolves.toEqual({ ok: true, documentId: 'document-pending' });
+    ).resolves.toEqual({ ok: true, documentId: 'document-pending', versionId: 'version-pending' });
 
     expect(m.ensureGwgPersonFolder).toHaveBeenCalledWith(
       expect.anything(),
@@ -356,7 +356,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         base64: 'YQ==',
         kind: 'ID_DOCUMENT',
       }),
-    ).resolves.toEqual({ ok: true, documentId: 'document-pending' });
+    ).resolves.toEqual({ ok: true, documentId: 'document-pending', versionId: 'version-pending' });
     expect(m.findVersion).toHaveBeenCalledOnce();
     expect(m.deleteObjectVersion).not.toHaveBeenCalled();
     expect(m.deleteDocument).not.toHaveBeenCalled();

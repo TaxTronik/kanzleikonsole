@@ -2,6 +2,15 @@
 
 ## Zweck
 
+Berufsträgerqualifikation und optionale DATEV-Beraternummer werden unabhängig
+von technischen Rollen gepflegt. Die Qualifikation erhöht keine Admin-, Audit-
+oder Abrechnungsrechte. Bei GwG-Entscheidungen werden aktives Konto, Qualifikation
+und ausdrückliche Mandatszuordnung frisch aus der Datenbank geprüft. Ein Entzug
+lässt historische Freigaben und Zuordnungen erhalten; die Benutzerverwaltung
+zeigt dadurch unbesetzte Mandate. Migrationswerte aus vorhandenen ausdrücklichen
+Berufsträgerzuordnungen bleiben bis zur manuellen Bestätigung als Altzuordnung
+erkennbar. Die Beraternummer ist optionaler Text ohne DATEV-Synchronisation.
+
 Zwei strikt getrennte Anmeldekontexte (Kanzlei/Staff und Mandanten/Portal),
 rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 (App-Guards + Postgres-RLS) und vollständige Anmelde-Protokollierung.

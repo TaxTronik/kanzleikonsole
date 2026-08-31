@@ -45,9 +45,13 @@ code_refs:
   - packages/db/src/tenant-context.ts
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260623000000_iter42_force_rls/migration.sql
+  - packages/db/prisma/migrations/20260831100000_tax_registrations/migration.sql
+  - packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql
   - packages/db/scripts/verify-rls.ts
 test_refs:
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
+  - packages/db/src/__tests__/tax-master-data.test.ts
+  - packages/db/src/__tests__/gwg-person-links.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -126,6 +130,13 @@ keine behauptete Abdeckung für diese Tabelle.
 serialisiert Queries auf der Verbindung. Die Migration aktiviert und erzwingt
 RLS. `verify-rls.ts` inventarisiert Tabellen, RLS-Flags und Policies; der
 Cross-Tenant-Test verwendet getrennte App-Sessions für Lesen und Mutieren.
+
+Steuerverbindungen und lokale GwG-Personenanker sind Teil derselben
+Tabelleninventur. Beide führen den zentralen Tenant-/Client-Paartrigger
+zusätzlich zu ihren Fremdschlüsseln. Steuerverbindungs-Policies prüfen außerdem
+aktive Portalzugehörigkeit beziehungsweise den aktuellen Mitarbeiterzugriff
+einschließlich eingeschränkter und vertraulicher Mandate; Portalakteure dürfen
+keine kanonischen Steuerdaten ändern.
 
 ## Bekannte Abweichungen und Grenzen
 

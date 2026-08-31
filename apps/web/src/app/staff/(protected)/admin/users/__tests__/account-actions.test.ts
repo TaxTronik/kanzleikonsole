@@ -43,6 +43,7 @@ import {
   resetTotpAction,
   setActiveAction,
   setRolesAction,
+  setProfessionalProfileAction,
 } from '../actions';
 
 function guardFor(roles: string[], staffId = ADMIN_ID) {
@@ -60,6 +61,121 @@ beforeEach(() => {
   mocks.staffActionGuard.mockResolvedValue(guardFor(['ADMIN']));
   mocks.hash.mockResolvedValue('new-password-hash');
   mocks.revokeAllSessions.mockResolvedValue(undefined);
+});
+
+describe('ACCESS-STAFF-PERMISSION-001 / GWG-RISK-REVIEW-001: professional profile', () => {
+  function transaction() {
+    const tx = {
+      staffUser: {
+        findFirst: vi.fn().mockResolvedValue({
+          isProfessional: true,
+          datevAdvisorNumber: '00123',
+          professionalQualificationSource: 'legacy',
+          roles: [{ role: 'EMPLOYEE' }],
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      client: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'client-1', name: 'Mandat ohne Nachfolger' }]),
+      },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (value: typeof tx) => unknown) => fn(tx),
+    );
+    return tx;
+  }
+  it('requires admin management permission before reading or changing qualification', async () => {
+    mocks.staffActionGuard.mockResolvedValueOnce({ ok: false, error: 'Nur ADMIN/PARTNER.' });
+    const result = await setProfessionalProfileAction({
+      userId: USER_ID,
+      isProfessional: true,
+      datevAdvisorNumber: '',
+    });
+    expect(result.ok).toBe(false);
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+  });
+  it('retains leading zeroes and does not add roles when confirming a legacy qualification', async () => {
+    const tx = transaction();
+    const result = await setProfessionalProfileAction({
+      userId: USER_ID,
+      isProfessional: true,
+      datevAdvisorNumber: ' 00123 ',
+    });
+    expect(result).toEqual({ ok: true, assignmentGaps: [] });
+    expect(tx.staffUser.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          isProfessional: true,
+          datevAdvisorNumber: '00123',
+          professionalQualificationSource: 'manual',
+        },
+      }),
+    );
+    expect(mocks.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'staff.professional_profile.update',
+        after: {
+          isProfessional: true,
+          datevAdvisorNumber: '00123',
+          professionalQualificationSource: 'manual',
+        },
+      }),
+    );
+    expect(mocks.revokeAllSessions).not.toHaveBeenCalled();
+  });
+  it('revokes sessions before qualification removal and reports gaps without deleting assignments or historical approvals', async () => {
+    const tx = transaction();
+    const result = await setProfessionalProfileAction({
+      userId: USER_ID,
+      isProfessional: false,
+      datevAdvisorNumber: '',
+    });
+    expect(result).toEqual({
+      ok: true,
+      assignmentGaps: [{ id: 'client-1', name: 'Mandat ohne Nachfolger' }],
+    });
+    expect(mocks.revokeAllSessions).toHaveBeenCalledWith('staff', USER_ID);
+    expect(mocks.revokeAllSessions.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.staffUser.updateMany.mock.invocationCallOrder[0]!,
+    );
+    expect(tx.client.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: TENANT_ID, AND: expect.any(Array) }),
+      }),
+    );
+  });
+  it('rejects a stale update and does not write an audit success', async () => {
+    const tx = transaction();
+    tx.staffUser.updateMany.mockResolvedValueOnce({ count: 0 });
+    const result = await setProfessionalProfileAction({
+      userId: USER_ID,
+      isProfessional: true,
+      datevAdvisorNumber: '44',
+    });
+    expect(result.ok).toBe(false);
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+  it('keeps partner restrictions on management of admin accounts', async () => {
+    const tx = transaction();
+    mocks.staffActionGuard.mockResolvedValueOnce(guardFor(['PARTNER']));
+    tx.staffUser.findFirst.mockResolvedValueOnce({
+      isProfessional: true,
+      datevAdvisorNumber: '00123',
+      professionalQualificationSource: 'legacy',
+      roles: [{ role: 'ADMIN' }],
+    });
+    expect(
+      (
+        await setProfessionalProfileAction({
+          userId: USER_ID,
+          isProfessional: false,
+          datevAdvisorNumber: '',
+        })
+      ).ok,
+    ).toBe(false);
+    expect(tx.staffUser.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('resetPasswordAction', () => {

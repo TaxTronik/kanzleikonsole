@@ -24,6 +24,7 @@ import {
   prismaOwner,
 } from '@/server/gwg-onboarding/service';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
+import { loadIdentitySourceTx, readIdentitySourceBytes } from '@/server/gwg/identity-source';
 import { log } from '@/server/logger';
 import { PortalConsentSelectionsSchema } from '@/server/privacy/consent';
 import {
@@ -62,6 +63,7 @@ export interface ActionResult {
   ok: boolean;
   error?: string;
   documentId?: string;
+  versionId?: string;
 }
 
 class InviteUploadStateChangedError extends Error {}
@@ -441,7 +443,7 @@ export async function uploadIdImageAction(input: {
             },
             'GwG onboarding upload recovered after ambiguous database commit response',
           );
-          return { ok: true, documentId: pendingDocumentId };
+          return { ok: true, documentId: pendingDocumentId, versionId: pendingVersionId! };
         }
 
         storedObjectCanBeDeleted = recovery === 'DELETE_OBJECT';
@@ -551,7 +553,93 @@ export async function uploadIdImageAction(input: {
     return toAnonymousActionError(e);
   }
 
-  return { ok: true, documentId };
+  return { ok: true, documentId, versionId: pendingVersionId! };
+}
+
+/** GWG-SELF-ONBOARDING-001: only sources bound to this still-current invite. */
+export async function loadOnboardingIdentitySourceAction(input: {
+  token: string;
+  documentId: string;
+}): Promise<
+  { ok: true; base64: string; mimeType: string; versionId: string } | { ok: false; error: string }
+> {
+  const parsed = z
+    .object({ token: z.string().min(10).max(500), documentId: z.string().uuid() })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: GENERIC_TOKEN_ERROR };
+  const ipLimit = await checkIpOrGlobalLimit(
+    'gwg-source-ip',
+    getClientIp(await headers()),
+    { max: 60, windowSec: 600 },
+    { max: 200, windowSec: 600 },
+  );
+  if (!ipLimit.ok) return { ok: false, error: 'Zu viele Abrufe. Bitte später erneut versuchen.' };
+  const tokenHash = hashInviteToken(parsed.data.token);
+  const limit = await checkRateLimit(`gwg-source-token:${tokenHash.slice(0, 16)}`, {
+    max: 60,
+    windowSec: 600,
+  });
+  if (!limit.ok) return { ok: false, error: 'Zu viele Abrufe. Bitte später erneut versuchen.' };
+  try {
+    const invite = await loadInviteForWrite(parsed.data.token);
+    return await withSystemContext(invite.tenantId, async (tx) => {
+      if (
+        !(await revalidateOpenGwgInviteRevisionTx(tx, {
+          tenantId: invite.tenantId,
+          clientId: invite.clientId,
+          inviteId: invite.id,
+          tokenHash,
+          now: new Date(),
+        }))
+      )
+        return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+      const current = await tx.gwgOnboardingInvite.findFirst({
+        where: { id: invite.id, tenantId: invite.tenantId, tokenHash },
+        select: {
+          uploadedDocumentIds: true,
+          gwgCheck: { select: { idDocuments: { select: { documentId: true } } } },
+        },
+      });
+      const allowed = new Set([
+        ...(Array.isArray(current?.uploadedDocumentIds)
+          ? current.uploadedDocumentIds.filter((id): id is string => typeof id === 'string')
+          : []),
+        ...(current?.gwgCheck?.idDocuments.flatMap((entry) =>
+          entry.documentId ? [entry.documentId] : [],
+        ) ?? []),
+      ]);
+      if (!allowed.has(parsed.data.documentId))
+        return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+      const source = await loadIdentitySourceTx(tx, {
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
+        documentId: parsed.data.documentId,
+      });
+      if (!source) return { ok: false as const, error: GENERIC_TOKEN_ERROR };
+      const bytes = await readIdentitySourceBytes(source);
+      await evidenceService.record(tx, {
+        tenantId: invite.tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: null,
+        action: 'gwg.identity.source.view',
+        resourceType: 'document',
+        resourceId: source.documentId,
+        after: { clientId: invite.clientId, inviteId: invite.id, versionId: source.version.id },
+      });
+      return {
+        ok: true as const,
+        base64: bytes.toString('base64'),
+        mimeType: source.mimeType,
+        versionId: source.version.id,
+      };
+    });
+  } catch {
+    return {
+      ok: false,
+      error:
+        'Die Datei ist nicht verfügbar. Bitte manuell weiterarbeiten oder die Einladung neu laden.',
+    };
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -753,7 +841,6 @@ const SubmitSchema = z.object({
     postalCode: z.string().min(1).max(20),
     city: z.string().min(1).max(100),
     countryIso: z.string().min(2).max(10),
-    vatId: z.string().max(20).optional().or(z.literal('')),
   }),
   legalEntity: GwgOnboardingLegalEntityDeclarationSchema,
   owners: z

@@ -13,6 +13,8 @@ export default [
       '**/dist/**',
       '**/build/**',
       '**/out/**',
+      // Reproducibly copied third-party workers/WASM loaders; source stays in node_modules.
+      'apps/web/public/identity-assets/**',
       '**/*.tsbuildinfo',
       '**/coverage/**',
       '**/playwright-report/**',

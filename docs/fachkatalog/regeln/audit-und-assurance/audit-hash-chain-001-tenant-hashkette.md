@@ -28,13 +28,18 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/admin/audit/page.tsx
   - packages/evidence/src/service.ts
   - packages/evidence/src/chain.ts
   - packages/evidence/src/canonical-json.ts
+  - apps/web/src/server/audit/query.ts
+  - apps/web/src/app/api/staff/admin/audit/export/route.ts
 test_refs:
   - packages/evidence/src/__tests__/service-record.test.ts
   - packages/evidence/src/__tests__/hash-chain.test.ts
   - packages/evidence/src/__tests__/canonical-json.property.test.ts
+  - apps/web/src/server/audit/__tests__/query.test.ts
+  - apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
   - docs/adr/0004-evidence-chain-mit-rfc3161.md
@@ -113,6 +118,16 @@ eine lineare Vorgängerfolge entsteht.
 den Audit-Datensatz. `canonical-json.ts` normalisiert den Ereignisinhalt;
 `chain.ts` berechnet Genesis- und Folgewerte. Die Verifikation rekonstruiert
 dieselbe Ereignisform aus den gespeicherten Spalten.
+
+Die zentrale ADMIN/PARTNER-Ansicht und ihr CSV-Export können die unveränderten
+Ereignisse nach fachlichen Bereichen filtern und in auf- oder absteigender
+Audit-ID-Folge anzeigen. Die Bereiche sind eine Leseprojektion der bekannten
+Aktionskennungen; unbekannte historische Kennungen bleiben unter „Sonstige“
+sichtbar. Ein GwG-Filter ist keine Behauptung, alle rechtlich relevanten Vorgänge
+zu erfassen, insbesondere nicht generische Dokumentzugriffe. Anzeige und Export
+verwenden denselben Filter und Berliner Tagesgrenzen, mit exklusiver oberer
+Mitternachtsgrenze. Der Prüfstatus betrifft weiterhin die vollständige
+Kanzleikette; ein gefilterter CSV-Auszug ist kein lückenloses Kettenarchiv.
 
 ## Bekannte Abweichungen und Grenzen
 

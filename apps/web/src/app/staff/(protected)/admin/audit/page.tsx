@@ -27,8 +27,16 @@ import { AuditAnchorAutoRefresh } from './audit-anchor-auto-refresh';
 import { AuditNotificationAcknowledger } from './audit-notification-acknowledger';
 import { signAuditToken, AUDIT_TOKEN_TTL_DAYS } from '@/server/audit-access/token';
 import { CopyField } from '@/components/copy-field';
-import type { Prisma } from '@prisma/client';
-import { fmtDateTimeSeconds, berlinDayStartUtc, berlinDayEndUtc } from '@/lib/fmt';
+import { fmtDateTimeSeconds } from '@/lib/fmt';
+import {
+  AUDIT_CATEGORIES,
+  AuditQuerySchema,
+  auditCategory,
+  auditPageWhere,
+  auditQueryString,
+  auditWhere,
+} from '@/server/audit/query';
+import { auditDisplayStatus } from '@/server/audit/status';
 
 const PAGE_SIZE = 50;
 
@@ -43,6 +51,8 @@ interface SearchParams {
   action?: string;
   actorType?: string;
   resourceType?: string;
+  category?: string;
+  sort?: string;
   from?: string;
   to?: string;
   verify?: string;
@@ -94,7 +104,7 @@ function hasPendingAnchors(count: number): boolean {
 }
 
 function auditOkResultKey(result: PersistedVerifyResult | null): string | null {
-  if (!result?.ok) return null;
+  if (!result?.ok || result.error) return null;
   return `${result.checkedAt}:${result.requestId ?? ''}`;
 }
 
@@ -108,32 +118,24 @@ export default async function AuditLogPage({
   const sp = await searchParams;
   const { tenantId, staffId } = session.user;
 
-  const where: Prisma.AuditLogWhereInput = {};
-  if (sp.action) where.action = { contains: sp.action, mode: 'insensitive' };
-  if (sp.actorType && ['STAFF', 'CLIENT_CONTACT', 'SYSTEM'].includes(sp.actorType)) {
-    where.actorType = sp.actorType as 'STAFF' | 'CLIENT_CONTACT' | 'SYSTEM';
-  }
-  if (sp.resourceType) where.resourceType = sp.resourceType;
-  if (sp.from || sp.to) {
-    where.occurredAt = {};
-    // Tagesgrenzen in Europe/Berlin (nicht UTC/server-lokal), passend zur
-    // Anzeige — sonst erscheinen Einträge von 00:00–02:00 Berlin im Vortag.
-    const gte = sp.from ? berlinDayStartUtc(sp.from) : null;
-    const lte = sp.to ? berlinDayEndUtc(sp.to) : null;
-    if (gte) where.occurredAt.gte = gte;
-    if (lte) where.occurredAt.lte = lte;
-  }
-  if (sp.cursor) {
-    try {
-      where.id = { lt: BigInt(sp.cursor) };
-    } catch {
-      // ignore
-    }
-  }
+  const parsed = AuditQuerySchema.safeParse(
+    Object.fromEntries(Object.entries(sp).map(([key, value]) => [key, value || undefined])),
+  );
+  const query = parsed.success ? parsed.data : AuditQuerySchema.parse({});
+  const where = parsed.success ? auditPageWhere(query, sp.cursor) : { id: 0n };
 
   // P-1: aktive Filter? Nur dann ist ein exakter COUNT vertretbar; bei leerem
   // Filter wäre das ein Scan über den GANZEN Log → reltuples-Schätzung.
-  const hasFilter = Boolean(sp.action || sp.actorType || sp.resourceType || sp.from || sp.to);
+  const hasFilter =
+    !parsed.success ||
+    Boolean(
+      query.action ||
+      query.actorType ||
+      query.resourceType ||
+      query.category ||
+      query.from ||
+      query.to,
+    );
 
   const [
     entries,
@@ -147,7 +149,7 @@ export default async function AuditLogPage({
     Promise.all([
       tx.auditLog.findMany({
         where,
-        orderBy: { id: 'desc' },
+        orderBy: { id: query.sort === 'oldest' ? 'asc' : 'desc' },
         take: PAGE_SIZE + 1,
       }),
       // P-1: Chain-Verifikation läuft NICHT mehr im Render-Pfad (SHA-256 über
@@ -181,7 +183,7 @@ export default async function AuditLogPage({
         orderBy: { resourceType: 'asc' },
       }),
       hasFilter
-        ? tx.auditLog.count({ where })
+        ? tx.auditLog.count({ where: parsed.success ? auditWhere(query) : { id: 0n } })
         : // pg_class-reltuples-Schätzung statt COUNT(*) über den ganzen Log.
           tx.$queryRaw<{ estimate: bigint }[]>`
               SELECT reltuples::bigint AS estimate
@@ -217,19 +219,8 @@ export default async function AuditLogPage({
   // Checkpoint. Der Worker berechnet die Teilkette bewusst nicht (als
   // fehleranfällig verworfen); der Checkpoint ist die Admin-Abgrenzung.
 
-  // Headline-Schweregrad: ein gesetzter Recovery-Checkpoint ist das harte
-  // Kill-Signal für den Break-Alarm — sobald gesetzt, zeigt die Seite bernstein
-  // („historisch, abgegrenzt") statt rot. Reines Rot nur ohne Checkpoint. Der
-  // Worker feuert in diesem Fall ebenfalls keine SYSTEM_AUDIT_BREAK-Notification
-  // mehr und persists recovered=true.
-  const recoveryIntact = !!checkpoint;
-  const chainStatus: 'none' | 'ok' | 'amber' | 'red' = !verifyResult
-    ? 'none'
-    : verifyResult.ok
-      ? 'ok'
-      : recoveryIntact
-        ? 'amber'
-        : 'red';
+  const chainStatus = auditDisplayStatus(verifyResult, checkpoint);
+  const recoveryIntact = chainStatus === 'amber';
 
   const hasNext = entries.length > PAGE_SIZE;
   const visibleEntries = entries.slice(0, PAGE_SIZE);
@@ -243,12 +234,7 @@ export default async function AuditLogPage({
   })();
 
   // Filter-Query-String für Pagination-Links
-  const baseQs = new URLSearchParams();
-  if (sp.action) baseQs.set('action', sp.action);
-  if (sp.actorType) baseQs.set('actorType', sp.actorType);
-  if (sp.resourceType) baseQs.set('resourceType', sp.resourceType);
-  if (sp.from) baseQs.set('from', sp.from);
-  if (sp.to) baseQs.set('to', sp.to);
+  const baseQs = auditQueryString(query);
   const nextQs = new URLSearchParams(baseQs);
   if (nextCursor) nextQs.set('cursor', nextCursor);
 
@@ -265,7 +251,8 @@ export default async function AuditLogPage({
           </p>
         </div>
         <a
-          href={`/api/staff/admin/audit/export${baseQs.toString() ? '?' + baseQs.toString() : ''}`}
+          href={parsed.success ? `/api/staff/admin/audit/export?${baseQs.toString()}` : undefined}
+          aria-disabled={!parsed.success}
           className="btn-secondary"
         >
           <FileDown className="h-4 w-4" />
@@ -329,7 +316,7 @@ export default async function AuditLogPage({
                 Noch kein Prüfergebnis — der tägliche Integritäts-Job ist noch nicht gelaufen.
                 „Jetzt prüfen" stößt eine Verifikation an.
               </p>
-            ) : verifyResult.ok ? (
+            ) : chainStatus === 'ok' ? (
               <>
                 <p className="text-sm font-medium text-green-900 dark:text-green-100">
                   Hash-Chain intakt — {verifyResult.checked.toLocaleString('de-DE')} Einträge
@@ -375,7 +362,7 @@ export default async function AuditLogPage({
             ) : recoveryIntact ? (
               <>
                 <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                  Historischer Chain-Befund — ab Recovery-Checkpoint fortlaufend geprüft
+                  Historischer Chain-Befund — Recovery-Checkpoint dokumentiert
                 </p>
                 {verifyResult.firstBreak && (
                   <p className="text-xs text-yellow-800 mt-1 font-mono dark:text-yellow-100">
@@ -471,11 +458,47 @@ export default async function AuditLogPage({
       </div>
 
       {/* Filter */}
+      {!parsed.success && (
+        <p role="alert" className="alert-error-sm mb-4">
+          Ungültige Filter: {parsed.error.issues.map((issue) => issue.message).join(' ')}
+        </p>
+      )}
+      <p className="text-xs text-muted mb-3">
+        Filter betreffen nur die Anzeige und den CSV-Auszug. Der Prüfstatus gilt für die
+        vollständige Kanzlei-Kette; ein gefilterter Auszug ist kein lückenloses Kettenarchiv.
+      </p>
       <form
         action="/staff/admin/audit"
         method="get"
         className="card p-4 mb-6 grid grid-cols-2 md:grid-cols-5 gap-3"
       >
+        <div>
+          <label className="label" htmlFor="category">
+            Bereich
+          </label>
+          <select
+            id="category"
+            name="category"
+            className="input text-xs"
+            defaultValue={sp.category ?? ''}
+          >
+            <option value="">Alle Bereiche</option>
+            {Object.entries(AUDIT_CATEGORIES).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="sort">
+            Kettenfolge
+          </label>
+          <select id="sort" name="sort" className="input text-xs" defaultValue={query.sort}>
+            <option value="newest">Neueste zuerst</option>
+            <option value="oldest">Älteste zuerst</option>
+          </select>
+        </div>
         <div>
           <label className="label" htmlFor="action">
             Action
@@ -613,7 +636,10 @@ export default async function AuditLogPage({
                   <td className="px-6 py-2 text-secondary whitespace-nowrap">
                     {actorTypeLabels[e.actorType] ?? e.actorType}
                   </td>
-                  <td className="px-6 py-2 font-mono text-primary whitespace-nowrap">{e.action}</td>
+                  <td className="px-6 py-2 text-primary">
+                    <span className="block font-mono whitespace-nowrap">{e.action}</span>
+                    <span className="text-muted">{AUDIT_CATEGORIES[auditCategory(e.action)]}</span>
+                  </td>
                   <td className="px-6 py-2 text-secondary font-mono whitespace-nowrap">
                     {e.resourceType}
                     {e.resourceId && (
@@ -646,7 +672,7 @@ export default async function AuditLogPage({
               href={`/staff/admin/audit?${nextQs.toString()}`}
               className="text-brand-700 hover:underline flex items-center gap-1"
             >
-              Ältere Einträge
+              {query.sort === 'oldest' ? 'Neuere Einträge' : 'Ältere Einträge'}
               <ChevronRight className="h-3 w-3" />
             </Link>
           ) : (

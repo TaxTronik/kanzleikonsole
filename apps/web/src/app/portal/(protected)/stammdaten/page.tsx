@@ -4,6 +4,9 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { StammdatenForm } from './form';
+import { TaxMasterDataForm } from '@/components/tax-master-data-form';
+import { loadTaxMasterDataTx } from '@/server/tax-master-data/service';
+import { submitTaxChangeAction } from './tax-actions';
 import { fmtDateNumeric, fmtDateTimeShort } from '@/lib/fmt';
 
 export default async function PortalStammdatenPage() {
@@ -17,10 +20,11 @@ export default async function PortalStammdatenPage() {
   });
   if (!features.stammdatenSelfService) redirect('/portal/dashboard');
 
-  const [client, requests] = await withTenantContext(
+  const [taxData, client, requests] = await withTenantContext(
     { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
     async (tx) =>
       Promise.all([
+        loadTaxMasterDataTx(tx, tenantId, clientId),
         tx.client.findUnique({
           where: { id: clientId },
           select: {
@@ -76,9 +80,18 @@ export default async function PortalStammdatenPage() {
           postalCode: client.postalCode ?? '',
           city: client.city ?? '',
           countryIso: client.countryIso ?? 'DE',
-          vatId: client.vatId ?? '',
           invoiceEmail: client.invoiceEmail ?? '',
         }}
+        disabled={Boolean(pending)}
+      />
+
+      <TaxMasterDataForm
+        key={taxData.revision}
+        clientId={client.id}
+        initial={taxData.draft}
+        revision={taxData.revision}
+        action={submitTaxChangeAction}
+        portal
         disabled={Boolean(pending)}
       />
 
@@ -138,6 +151,7 @@ const FIELD_LABELS: Record<string, string> = {
   city: 'Ort',
   countryIso: 'Land',
   vatId: 'USt-ID',
+  taxData: 'Steuerliche Stammdaten',
   invoiceEmail: 'Rechnungs-Mail',
 };
 

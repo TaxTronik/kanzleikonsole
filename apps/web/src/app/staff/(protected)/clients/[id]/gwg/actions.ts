@@ -1,5 +1,7 @@
 'use server';
 
+import { lockStaffGwgReviewerTx } from '@/server/gwg/professional-review';
+
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
@@ -690,6 +692,7 @@ const CheckDecisionSchema = z.object({
 });
 
 const VerifyDecisionSchema = CheckDecisionSchema.extend({
+  reviewSnapshotVersion: z.literal('2'),
   reviewSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/),
   professionalAttestation: z.literal('confirmed'),
 });
@@ -762,7 +765,7 @@ export async function submitCheckForReviewAction(
         where: {
           clientId,
           role: 'BERUFSTRAEGER',
-          staff: { tenantId, active: true, roles: { some: {} } },
+          staff: { tenantId, active: true, isProfessional: true, roles: { some: {} } },
         },
         select: { staffId: true },
       });
@@ -837,6 +840,14 @@ export async function verifyCheckAction(
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
+  if (formData.get('reviewSnapshotVersion') !== '2') {
+    return {
+      ok: false,
+      error:
+        'Der Prüfsnapshot verwendet eine ältere Fassung. Bitte Seite neu laden und alle Angaben erneut prüfen.',
+    };
+  }
+
   const parsed = parseFormData(VerifyDecisionSchema, formData);
   if (!parsed.ok) {
     return {
@@ -851,24 +862,16 @@ export async function verifyCheckAction(
 
   try {
     await withTenantContext(ctx, async (tx) => {
-      // Defense in Depth: Zuordnung, Tenant, aktives Konto und mindestens eine
-      // weiterhin gültige Staff-Rolle werden zum Entscheidungszeitpunkt geprüft.
-      const isBerufstraeger = await tx.clientResponsibility.findFirst({
-        where: {
-          clientId,
-          staffId,
-          role: 'BERUFSTRAEGER',
-          staff: { tenantId, active: true, roles: { some: {} } },
-        },
-        select: { id: true },
-      });
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
+      // Stable ordering: mandate lifecycle, staff, assignment, staff roles.
+      // A concurrent revoke waits until the decision commits or wins before the recheck.
+      const isBerufstraeger = await lockStaffGwgReviewerTx(tx, { tenantId, clientId, staffId });
       if (!isBerufstraeger) {
         throw new ActionError(
           'Nur der für diesen Mandanten zugeordnete Berufsträger darf die GwG-Prüfung verifizieren.',
         );
       }
 
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
       const check = await tx.gwgCheck.findFirst({
         where: { id: checkId, clientId },
         include: {
@@ -881,7 +884,6 @@ export async function verifyCheckAction(
               postalCode: true,
               city: true,
               countryIso: true,
-              vatId: true,
             },
           },
           beneficialOwners: true,
@@ -1026,6 +1028,7 @@ export async function verifyCheckAction(
           validUntil: validUntil.toISOString(),
           professionalAttestation: true,
           reviewSnapshotHash: currentReviewSnapshotHash,
+          reviewSnapshotVersion: 2,
           reviewSubmittedAt: check.reviewSubmittedAt?.toISOString() ?? null,
           reviewSubmittedBy: check.reviewSubmittedBy,
         },
@@ -1101,21 +1104,13 @@ export async function rejectCheckAction(
   try {
     await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, clientId);
-      const isBerufstraeger = await tx.clientResponsibility.findFirst({
-        where: {
-          clientId,
-          staffId,
-          role: 'BERUFSTRAEGER',
-          staff: { tenantId, active: true, roles: { some: {} } },
-        },
-        select: { id: true },
-      });
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
+      const isBerufstraeger = await lockStaffGwgReviewerTx(tx, { tenantId, clientId, staffId });
       if (!isBerufstraeger) {
         throw new ActionError(
           'Nur der für diesen Mandanten zugeordnete Berufsträger darf die GwG-Prüfung ablehnen.',
         );
       }
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
       await assertLatestCheckForDecision(tx, { clientId, checkId });
       contactIds = (
         await tx.clientContact.findMany({

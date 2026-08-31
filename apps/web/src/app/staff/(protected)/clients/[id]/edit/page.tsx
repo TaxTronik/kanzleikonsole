@@ -4,7 +4,7 @@
 // Zwei klar getrennte Sektionen:
 //   1. Verwaltungsdaten (frei änderbar): DATEV/Addison-Nr, Notizen, Mails,
 //      Bearbeiter-Zuordnung
-//   2. GwG-relevante Daten: Name, Adresse, USt-ID, Rechtsform.
+//   2. GwG-relevante Daten: Name, Adresse, Rechtsform.
 //      Änderungen lösen fail-closed eine GwG-Re-Verifikation aus: Ein
 //      bearbeitbarer Entwurf wird geöffnet und der Mandant bis zur erneuten
 //      Berufsträger-Freigabe deaktiviert.
@@ -17,6 +17,10 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { CustomFieldsForm } from './custom-fields-form';
+import { TaxMasterDataForm } from '@/components/tax-master-data-form';
+import { loadTaxMasterDataTx } from '@/server/tax-master-data/service';
+import { saveTaxMasterDataAction } from './tax-actions';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
   AdminFieldsForm,
   ResponsibilitiesForm,
@@ -38,6 +42,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      await assertClientAccessTx(tx, session, id);
       const client = await tx.client.findUnique({
         where: { id },
         include: { responsibilities: true },
@@ -45,9 +50,9 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
       if (!client) return null;
       const [staff, customDefs, customValues] = await Promise.all([
         tx.staffUser.findMany({
-          where: { active: true },
+          where: { active: true, roles: { some: {} } },
           orderBy: { fullName: 'asc' },
-          select: { id: true, fullName: true, email: true },
+          select: { id: true, fullName: true, email: true, isProfessional: true },
         }),
         tx.clientCustomFieldDef.findMany({
           where: { active: true },
@@ -57,11 +62,17 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           where: { clientId: id },
         }),
       ]);
-      return { client, staff, customDefs, customValues };
+      return {
+        client,
+        staff,
+        customDefs,
+        customValues,
+        taxData: await loadTaxMasterDataTx(tx, tenantId, id),
+      };
     },
   );
   if (!data) notFound();
-  const { client, staff, customDefs, customValues } = data;
+  const { client, staff, customDefs, customValues, taxData } = data;
   const isAdmin = isStaffAdmin(session);
 
   const customDefsForKind = customDefs.filter(
@@ -89,25 +100,6 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
         <div className="grid grid-cols-2 gap-4">
           <Field label="DATEV-Nr." name="datevNo" defaultValue={client.datevNo ?? ''} />
           <Field label="Addison-Nr." name="addisonNo" defaultValue={client.addisonNo ?? ''} />
-          <div>
-            <label className="label-sm" htmlFor="client-steuernummer">
-              Steuernummer{' '}
-              <span className="text-disabled font-normal">
-                (13-stellig, ELSTER-Bundesformat · keine neue GwG-Prüfung)
-              </span>
-            </label>
-            <input
-              id="client-steuernummer"
-              name="steuernummer"
-              defaultValue={client.steuernummer ?? ''}
-              maxLength={13}
-              pattern="[0-9]{13}"
-              inputMode="numeric"
-              placeholder="z. B. 9198011310010"
-              className="input w-full font-mono"
-              title="13 Ziffern — Basis der ELSTER-Kontoabfrage (Steuerkonto)"
-            />
-          </div>
           <Field
             label="Rechnungs-E-Mail"
             name="invoiceEmail"
@@ -177,26 +169,51 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
         </div>
       </AdminFieldsForm>
 
+      {taxData.anonymized ? (
+        <p className="text-sm text-muted">
+          Die steuerlichen Stammdaten dieses Mandanten wurden anonymisiert.
+        </p>
+      ) : (
+        <TaxMasterDataForm
+          key={taxData.revision}
+          clientId={client.id}
+          initial={taxData.draft}
+          revision={taxData.revision}
+          action={saveTaxMasterDataAction}
+        />
+      )}
+
       {/* Bearbeiter-Zuordnung */}
       <ResponsibilitiesForm clientId={client.id}>
+        {Array.from(berufstraegerIds).some(
+          (assignedId) =>
+            !staff.some((person) => person.id === assignedId && person.isProfessional),
+        ) && (
+          <p role="alert" className="mb-3 text-sm text-amber-700">
+            Eine bestehende Berufsträgerzuordnung ist nicht mehr aktiv oder qualifiziert. Bitte
+            einen verfügbaren Berufsträger auswählen; Speichern ersetzt die ungültigen Zuordnungen.
+          </p>
+        )}
         <div className="mb-4">
           <p className="text-xs font-medium text-secondary mb-2">
             Berufsträger (mind. einer; Mehrfachauswahl bei geteilten Mandaten)
           </p>
           <div className="space-y-2">
-            {staff.map((s) => (
-              <label key={s.id} className="flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  name="berufstraegerIds"
-                  value={s.id}
-                  defaultChecked={berufstraegerIds.has(s.id)}
-                  className="rounded border-strong text-brand-600"
-                />
-                <span className="text-primary">{s.fullName}</span>
-                <span className="text-xs text-muted">{s.email}</span>
-              </label>
-            ))}
+            {staff
+              .filter((s) => s.isProfessional)
+              .map((s) => (
+                <label key={s.id} className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    name="berufstraegerIds"
+                    value={s.id}
+                    defaultChecked={berufstraegerIds.has(s.id)}
+                    className="rounded border-strong text-brand-600"
+                  />
+                  <span className="text-primary">{s.fullName}</span>
+                  <span className="text-xs text-muted">{s.email}</span>
+                </label>
+              ))}
           </div>
         </div>
         <div>
@@ -256,7 +273,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           <div>
             <h2 className="text-sm font-medium text-primary">GwG-relevante Stammdaten</h2>
             <p className="text-xs text-amber-700 mt-1">
-              Änderungen an Name, Adresse, USt-ID oder Rechtsform setzen den GwG-Status auf{' '}
+              Änderungen an Name, Adresse oder Rechtsform setzen den GwG-Status auf{' '}
               <strong>IN_REVIEW</strong> — der Mandant muss erneut identifiziert werden (§§ 10 ff.
               GwG).
             </p>
@@ -282,12 +299,6 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
               ))}
             </select>
           </div>
-          <Field
-            label="USt-ID"
-            name="vatId"
-            defaultValue={client.vatId ?? ''}
-            placeholder="DE123456789"
-          />
           <Field label="Straße" name="street" defaultValue={client.street ?? ''} colspan={2} />
           <Field label="PLZ" name="postalCode" defaultValue={client.postalCode ?? ''} />
           <Field label="Ort" name="city" defaultValue={client.city ?? ''} />

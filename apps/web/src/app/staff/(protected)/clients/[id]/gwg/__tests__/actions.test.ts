@@ -20,6 +20,7 @@ const m = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
+vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/auth/rbac', () => ({
   isStaffAdmin: m.isStaffAdmin,
@@ -199,6 +200,7 @@ function formData() {
 function verificationFormData(check = completeCheck()) {
   const data = formData();
   data.set('professionalAttestation', 'confirmed');
+  data.set('reviewSnapshotVersion', '2');
   data.set('reviewSnapshotHash', gwgProfessionalReviewSnapshotHash(check));
   return data;
 }
@@ -1227,7 +1229,7 @@ describe('atomare GwG-Bearbeitung', () => {
     );
   });
 
-  it('ordnet einen Ausweis nur einer aktuell erfassten Person zu', async () => {
+  it('GWG-IDENTIFICATION-EVIDENCE-001: ordnet einen neuen Ausweis zu, ohne ihn automatisch zu bestätigen', async () => {
     const tx = {
       gwgCheck: {
         findFirst: vi.fn().mockResolvedValue({
@@ -1269,7 +1271,9 @@ describe('atomare GwG-Bearbeitung', () => {
         type: 'PERSONALAUSWEIS',
         ownerName: 'Rey Koxha',
         documentId: '55555555-5555-4555-8555-555555555555',
-        verifiedAt: expect.any(Date),
+        verifiedAt: null,
+        identityAssignmentConfirmedAt: null,
+        identityAssignmentConfirmedBy: null,
       }),
     });
     expect(m.organizeGwgDocuments).toHaveBeenCalledWith(expect.anything(), {
@@ -2009,7 +2013,7 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(m.lockCleanGwgDocuments).not.toHaveBeenCalled();
   });
 
-  it('korrigiert und bestätigt Vorder- und Rückseite als einen Ausweissatz', async () => {
+  it('GWG-IDENTIFICATION-EVIDENCE-001: speichert Korrekturen unbestätigt und bestätigt erst danach den exakten gespeicherten Ausweissatz', async () => {
     const frontId = '77777777-7777-4777-8777-777777777777';
     const backId = '88888888-8888-4888-8888-888888888888';
     const documentSetId = '99999999-9999-4999-8999-999999999999';
@@ -2070,10 +2074,20 @@ describe('atomare GwG-Bearbeitung', () => {
       gwgIdentityDocumentSetRevision([oldDocument(frontId), oldDocument(backId)]),
     );
 
+    data.set('intent', 'confirm');
+    const unsavedConfirmation = await updateIdDocumentsAction(null, data);
+    expect(unsavedConfirmation).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('zuerst speichern'),
+    });
+    expect(tx.gwgIdDocument.updateMany).not.toHaveBeenCalled();
+
+    data.set('intent', 'save');
     const result = await updateIdDocumentsAction(null, data);
 
     expect(result).toEqual({
       ok: true,
+      verified: false,
       reviewReset: true,
       saved: {
         type: 'PERSONALAUSWEIS',
@@ -2102,6 +2116,40 @@ describe('atomare GwG-Bearbeitung', () => {
         naturalClientSubjectId: null,
         beneficialOwnerSubjectId: null,
         representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+        identityAssignmentConfirmedAt: null,
+        identityAssignmentConfirmedBy: null,
+        verifiedAt: null,
+      }),
+    });
+
+    const savedDocuments = [oldDocument(frontId), oldDocument(backId)].map((document) => ({
+      ...document,
+      number: 'NEU-123',
+      issuedBy: 'Stadt Berlin',
+      issueDate: new Date('2025-01-01'),
+      expiryDate: new Date('2035-01-01'),
+      representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+    }));
+    tx.gwgCheck.findFirst.mockResolvedValue({
+      status: 'DRAFT',
+      representativeNames: ['Rey Koxha'],
+      representatives: [
+        { id: '33333333-3333-4333-8333-333333333333', fullName: 'Rey Koxha', position: 0 },
+      ],
+      client: { id: CLIENT_ID, name: 'Muster GbR', kind: 'PERSGES' },
+      beneficialOwners: [],
+      idDocuments: savedDocuments,
+    });
+    data.set('intent', 'confirm');
+    data.set('expectedRevision', gwgIdentityDocumentSetRevision(savedDocuments));
+    expect(await updateIdDocumentsAction(null, data)).toMatchObject({
+      ok: true,
+      verified: true,
+      reviewReset: false,
+    });
+    expect(tx.gwgIdDocument.updateMany).toHaveBeenLastCalledWith({
+      where: { documentSetId, gwgCheckId: CHECK_ID, supersededAt: null },
+      data: expect.objectContaining({
         identityAssignmentConfirmedAt: expect.any(Date),
         identityAssignmentConfirmedBy: 'staff-1',
         verifiedAt: expect.any(Date),
@@ -2679,7 +2727,7 @@ describe('submitCheckForReviewAction', () => {
       where: {
         clientId: CLIENT_ID,
         role: 'BERUFSTRAEGER',
-        staff: { tenantId: 'tenant-1', active: true, roles: { some: {} } },
+        staff: { tenantId: 'tenant-1', active: true, isProfessional: true, roles: { some: {} } },
       },
       select: { staffId: true },
     });
@@ -2720,6 +2768,44 @@ describe('submitCheckForReviewAction', () => {
 });
 
 describe('verifyCheckAction – Rechtsträger-Gate', () => {
+  it.each(['verify', 'reject'])(
+    'GWG-RISK-REVIEW-001: %s holds lifecycle and reviewer locks before denying a revoked qualification',
+    async (decision) => {
+      const check = completeCheck();
+      const tx = makeTx(check);
+      tx.clientResponsibility.findFirst.mockResolvedValue(null);
+      m.withTenantContext.mockImplementation(
+        async (_ctx: unknown, work: (transaction: typeof tx) => unknown) => work(tx),
+      );
+      const data = verificationFormData(check);
+      data.set('reason', 'Ausführliche Begründung der Ablehnung.');
+      const result = await (decision === 'verify' ? verifyCheckAction : rejectCheckAction)(
+        null,
+        data,
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        error: expect.stringContaining('zugeordnete Berufsträger'),
+      });
+      expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.$queryRaw.mock.invocationCallOrder[0]!,
+      );
+      expect(tx.$queryRaw.mock.invocationCallOrder[2]).toBeLessThan(
+        tx.clientResponsibility.findFirst.mock.invocationCallOrder[0]!,
+      );
+      expect(tx.gwgCheck.findFirst).not.toHaveBeenCalled();
+      expect(tx.gwgCheck.updateMany).not.toHaveBeenCalled();
+      expect(m.evidenceRecord).not.toHaveBeenCalled();
+    },
+  );
+  it('GWG-REVERIFICATION-VALIDITY-001 weist v1-Formulare ohne Statusänderung zum Neuladen zurück', async () => {
+    const data = verificationFormData();
+    data.delete('reviewSnapshotVersion');
+    const result = await verifyCheckAction(null, data);
+    expect(result).toEqual({ ok: false, error: expect.stringContaining('Seite neu laden') });
+    expect(m.withTenantContext).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+  });
   it('materialisiert bei einem Legacy-IN_REVIEW keine fehlende Übergabe nachträglich', async () => {
     const check = completeCheck({ reviewSubmittedAt: null, reviewSubmittedBy: null });
     const tx = makeTx(check);
@@ -2767,6 +2853,16 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
     const result = await verifyCheckAction(null, verificationFormData(check));
 
     expect(result).toEqual({ ok: true });
+    expect(m.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'gwg.check.verify',
+        after: expect.objectContaining({
+          reviewSnapshotVersion: 2,
+          reviewSnapshotHash: gwgProfessionalReviewSnapshotHash(check),
+        }),
+      }),
+    );
     expect(tx.gwgCheck.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: CHECK_ID, clientId: CLIENT_ID, status: 'IN_REVIEW' },
@@ -2794,10 +2890,11 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
     });
     expect(tx.clientResponsibility.findFirst).toHaveBeenCalledWith({
       where: {
+        tenantId: 'tenant-1',
         clientId: CLIENT_ID,
         staffId: 'staff-1',
         role: 'BERUFSTRAEGER',
-        staff: { tenantId: 'tenant-1', active: true, roles: { some: {} } },
+        staff: { tenantId: 'tenant-1', active: true, isProfessional: true, roles: { some: {} } },
       },
       select: { id: true },
     });
@@ -2878,7 +2975,8 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('zugeordnete Berufsträger');
-    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(tx.gwgCheck.updateMany).not.toHaveBeenCalled();
     expect(tx.client.update).not.toHaveBeenCalled();
   });
@@ -2927,6 +3025,7 @@ describe('rejectCheckAction – aktueller Snapshot', () => {
   it('lehnt den stale Review A nach einem neuen Invite-Snapshot B nicht mehr ab', async () => {
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'locked-reviewer-row' }]),
       clientResponsibility: {
         findFirst: vi.fn().mockResolvedValue({ id: 'resp-1' }),
       },

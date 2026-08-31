@@ -95,6 +95,27 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
         <span className="text-xs text-muted">(EMPLOYEE wird automatisch vergeben.)</span>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="isProfessional" />
+          Berufsträgerqualifikation
+        </label>
+        <div>
+          <label className="label" htmlFor="user-advisor-number">
+            DATEV-Beraternummer (intern, optional)
+          </label>
+          <input
+            id="user-advisor-number"
+            name="datevAdvisorNumber"
+            maxLength={40}
+            className="input"
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted">
+        Die Qualifikation vergibt keine Admin-, Audit- oder Abrechnungsrechte. Eine GwG-Freigabe
+        erfordert zusätzlich die Zuordnung zum Mandanten. Kein automatischer DATEV-Abgleich.
+      </p>
       {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && <div className="alert-success-sm">Benutzer angelegt.</div>}
 

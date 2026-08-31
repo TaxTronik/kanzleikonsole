@@ -39,10 +39,14 @@ code_refs:
   - apps/web/src/server/auth/rbac.ts
   - apps/web/src/server/actions/staff-action.ts
   - apps/web/src/lib/staff-permissions.ts
+  - apps/web/src/app/staff/(protected)/admin/users/actions.ts
+  - apps/web/src/server/gwg/professional-review.ts
 test_refs:
   - apps/web/src/server/auth/__tests__/rbac.test.ts
   - apps/web/src/server/actions/__tests__/staff-action.test.ts
   - apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts
+  - apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts
+  - apps/web/src/server/gwg/__tests__/professional-review.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
@@ -97,6 +101,12 @@ vollständige Berechtigungsmatrix. Ein Grant sagt nichts über fachliche
 Qualifikation, interne Zeichnungsbefugnis oder Vier-Augen-Anforderungen aus.
 ADMIN/PARTNER können nicht nach Einzelrechten eingeschränkt werden.
 
+Die separat gepflegte Berufsträgerqualifikation (`isProfessional`) vergibt keine
+ADMIN-/PARTNER-Rolle, kein Einzelrecht und keinen Zugang zum zentralen Audit-Log.
+Die optionale DATEV-Beraternummer ist Text für die interne Zuordnung (führende
+Nullen bleiben erhalten); sie ist kein Befugnisnachweis und wird nicht mit DATEV
+synchronisiert. Doppelte Nummern sind zulässig.
+
 ## Beispiele
 
 ### Normalfall
@@ -117,6 +127,19 @@ vertraulichen Mandanten. Das Einzelrecht ersetzt das Objekt-Gate nicht.
 `staffActionGuard` kombiniert Session, optionale Adminanforderung,
 Einzelrecht und Modulstatus; mandantengebundene Actions müssen anschließend
 zusätzlich das Client-Gate aufrufen.
+
+ADMIN/PARTNER pflegen Qualifikation und Beraternummer in der Benutzerverwaltung;
+die bestehende Einschränkung für PARTNER bei ADMIN-Zielkonten gilt weiter.
+Ein Entzug widerruft Sitzungen, lässt bestehende Mandatszuordnungen und frühere
+Freigaben erhalten und zeigt Mandate ohne verfügbaren qualifizierten Berufsträger.
+Neue Berufsträgerzuordnungen verlangen einen aktiven qualifizierten Mitarbeiter
+mit gültiger Staff-Rolle. Die GwG-Entscheidung liest diese Voraussetzungen samt
+Mandatszuordnung erneut aus der Datenbank; eine alte Session genügt nicht.
+
+Bei der Migration wird die Qualifikation ausschließlich aus bereits ausdrücklich
+als `BERUFSTRAEGER` gespeicherten Mandatszuordnungen übernommen, auch bei inaktiven
+Konten, ohne diese zu aktivieren. Die Herkunft `legacy` bleibt sichtbar bis zur
+manuellen Bestätigung. Dies ist keine berufliche Zulassungsprüfung.
 
 ## Bekannte Abweichungen und Grenzen
 

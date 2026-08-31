@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 import {
   onboardingLegalEntityStepError,
   onboardingOwnersStepError,
@@ -24,13 +25,27 @@ function owner(overrides: Partial<WizardOwnerInput> = {}): WizardOwnerInput {
     idIssuedBy: 'Berlin',
     idIssueDate: '2024-01-01',
     idExpiryDate: '2030-01-01',
-    idFront: { documentId: '00000000-0000-4000-8000-000000000001' },
-    idBack: { documentId: '00000000-0000-4000-8000-000000000002' },
+    idFront: {
+      documentId: '00000000-0000-4000-8000-000000000001',
+      viewport: fullIdentityViewport('00000000-0000-4000-8000-000000000011', 'front'),
+    },
+    idBack: {
+      documentId: '00000000-0000-4000-8000-000000000002',
+      viewport: fullIdentityViewport('00000000-0000-4000-8000-000000000012', 'back'),
+    },
     ...overrides,
   };
 }
 
 describe('wizard validation', () => {
+  it('GWG-SELF-ONBOARDING-001 keeps manual full-original capture valid and explains a missing binding', () => {
+    expect(onboardingOwnersStepError([owner()])).toBeNull();
+    expect(
+      onboardingOwnersStepError([
+        owner({ idFront: { documentId: '00000000-0000-4000-8000-000000000001' } }),
+      ]),
+    ).toContain('Quellversion');
+  });
   it('uses the submit owner schema for § 11 data', () => {
     expect(onboardingOwnersStepError([owner({ birthPlace: '' })])).toContain('Geburtsort');
     expect(onboardingOwnersStepError([owner()])).toBeNull();

@@ -14,6 +14,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { isElsterConfigured } from '@taxtronik/elster';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { KontoabfrageForm } from './kontoabfrage-form';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 
 const ART_LABELS: Record<string, string> = {
   ZS: 'Sollstellungen',
@@ -29,9 +30,17 @@ export default async function ElsterPage({ params }: { params: Promise<{ id: str
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
+      await assertClientAccessTx(tx, session, clientId);
       const client = await tx.client.findUnique({
         where: { id: clientId },
-        select: { id: true, name: true, steuernummer: true },
+        select: {
+          id: true,
+          name: true,
+          taxRegistrations: {
+            where: { archivedAt: null },
+            orderBy: [{ isPrimary: 'desc' }, { label: 'asc' }],
+          },
+        },
       });
       if (!client) return null;
       const abfragen = await tx.elsterKontoabfrage.findMany({
@@ -58,11 +67,8 @@ export default async function ElsterPage({ params }: { params: Promise<{ id: str
           <h1 className="text-2xl font-bold text-primary mb-1">Steuerkonto (ELSTER)</h1>
           <p className="text-muted text-sm">
             {client.name}
-            {client.steuernummer ? (
-              <>
-                {' '}
-                · StNr <span className="font-mono">{client.steuernummer}</span>
-              </>
+            {client.taxRegistrations.length > 0 ? (
+              <> · {client.taxRegistrations.length} Steuerverbindung(en)</>
             ) : null}
           </p>
         </div>
@@ -74,7 +80,7 @@ export default async function ElsterPage({ params }: { params: Promise<{ id: str
           <code>ELSTER_BRIDGE_TOKEN</code>). Ohne Bridge bleibt das Steuerkonto inaktiv — Deployment
           siehe eric-bridge-Doku.
         </div>
-      ) : !client.steuernummer ? (
+      ) : client.taxRegistrations.length === 0 ? (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/40 p-4 text-sm text-yellow-800 dark:text-yellow-300">
           Für diesen Mandanten ist keine Steuernummer hinterlegt.{' '}
           <Link href={`/staff/clients/${clientId}/edit`} className="underline font-medium">
@@ -83,7 +89,7 @@ export default async function ElsterPage({ params }: { params: Promise<{ id: str
           (13-stelliges ELSTER-Bundesformat).
         </div>
       ) : (
-        <KontoabfrageForm clientId={clientId} />
+        <KontoabfrageForm clientId={clientId} registrations={client.taxRegistrations} />
       )}
 
       <h2 className="text-sm font-semibold text-primary mt-8 mb-3">
@@ -98,6 +104,9 @@ export default async function ElsterPage({ params }: { params: Promise<{ id: str
               <tr className="bg-surface-raised border-b border-default">
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
                   Zeitpunkt
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
+                  Steuernummer beim Abruf
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">
                   Art
@@ -120,6 +129,9 @@ export default async function ElsterPage({ params }: { params: Promise<{ id: str
               {abfragen.map((a) => (
                 <tr key={a.id}>
                   <td className="px-4 py-3 text-secondary">{fmtDateTimeShort(a.createdAt)}</td>
+                  <td className="px-4 py-3 text-secondary font-mono">
+                    {a.taxNumberSnapshot ?? 'Altbestand: nicht aufgezeichnet'}
+                  </td>
                   <td className="px-4 py-3 text-primary">{ART_LABELS[a.art] ?? a.art}</td>
                   <td className="px-4 py-3 text-secondary">{a.steuerart ?? '—'}</td>
                   <td className="px-4 py-3 text-secondary font-mono">{a.zeitraum ?? '—'}</td>

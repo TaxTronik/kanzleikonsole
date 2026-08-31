@@ -36,6 +36,7 @@ interface ReviewDocument {
   identityAssignmentConfirmedAt: Date | string | null;
   identityAssignmentConfirmedBy: string | null;
   notes?: string | null;
+  viewports?: unknown;
   document: {
     id?: string;
     clientId: string | null;
@@ -126,7 +127,6 @@ export function gwgProfessionalReviewSnapshotHash(source: GwgProfessionalReviewS
       postalCode: source.client.postalCode ?? null,
       city: source.client.city ?? null,
       countryIso: source.client.countryIso ?? null,
-      vatId: source.client.vatId ?? null,
     },
     changeScope: source.changeScope ?? 'INITIAL',
     predecessorCheckId: source.predecessorCheckId ?? null,
@@ -182,6 +182,7 @@ export function gwgProfessionalReviewSnapshotHash(source: GwgProfessionalReviewS
         identityAssignmentConfirmedAt: instant(document.identityAssignmentConfirmedAt),
         identityAssignmentConfirmedBy: document.identityAssignmentConfirmedBy,
         notes: document.notes ?? null,
+        viewports: document.viewports ?? null,
         evidence: document.document
           ? {
               id: document.document.id ?? document.documentId,
@@ -202,6 +203,6 @@ export function gwgProfessionalReviewSnapshotHash(source: GwgProfessionalReviewS
   };
 
   return createHash('sha256')
-    .update(JSON.stringify(normalized(snapshot)), 'utf8')
+    .update(`gwg-professional-review:v2:${JSON.stringify(normalized(snapshot))}`, 'utf8')
     .digest('hex');
 }

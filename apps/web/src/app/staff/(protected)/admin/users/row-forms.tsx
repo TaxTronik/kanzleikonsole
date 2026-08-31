@@ -9,6 +9,7 @@ import {
   setActiveAction,
   setRolesAction,
   setPermissionsAction,
+  setProfessionalProfileAction,
 } from './actions';
 import { setStaffSkillsAction } from '../skills/actions';
 import { STAFF_PERMISSIONS, type StaffPermissionName } from '@/lib/staff-permissions';
@@ -45,6 +46,112 @@ export function ToggleActiveForm({ userId, active }: { userId: string; active: b
 }
 
 const ROLE_OPTIONS = ['EMPLOYEE', 'PARTNER', 'ADMIN'] as const;
+
+export function ProfessionalProfileForm({
+  userId,
+  isProfessional,
+  advisorNumber,
+  source,
+  disabled,
+}: {
+  userId: string;
+  isProfessional: boolean;
+  advisorNumber: string | null;
+  source: string | null;
+  disabled?: boolean;
+}) {
+  const [qualified, setQualified] = useState(isProfessional);
+  const [number, setNumber] = useState(advisorNumber ?? '');
+  const [pending, start] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [gaps, setGaps] = useState<Array<{ id: string; name: string }>>([]);
+  return (
+    <form
+      className="mt-3 space-y-2 border-t border-default pt-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        start(async () => {
+          if (
+            isProfessional &&
+            !qualified &&
+            !(await confirmDialog(
+              'Qualifikation entziehen? Bestehende Zuordnungen und frühere Freigaben bleiben erhalten; neue GwG-Freigaben werden gesperrt.',
+              {
+                title: 'Berufsträgerqualifikation entziehen',
+                confirmLabel: 'Entziehen',
+                danger: true,
+              },
+            ))
+          )
+            return;
+          const result = await setProfessionalProfileAction({
+            userId,
+            isProfessional: qualified,
+            datevAdvisorNumber: number,
+          });
+          setMessage(result.ok ? 'Gespeichert.' : (result.error ?? 'Speichern fehlgeschlagen.'));
+          setGaps(result.assignmentGaps ?? []);
+        });
+      }}
+    >
+      <label className="flex items-center gap-2 text-xs">
+        <input
+          type="checkbox"
+          checked={qualified}
+          disabled={disabled || pending}
+          onChange={(event) => setQualified(event.target.checked)}
+        />
+        Berufsträger
+      </label>
+      {source === 'legacy' && (
+        <p className="text-xs text-amber-700">
+          Aus bestehender Mandatszuordnung übernommen; bitte fachlich bestätigen.
+        </p>
+      )}
+      <label className="block text-xs text-muted" htmlFor={`advisor-${userId}`}>
+        DATEV-Beraternummer (intern)
+      </label>
+      <input
+        id={`advisor-${userId}`}
+        value={number}
+        onChange={(event) => setNumber(event.target.value)}
+        maxLength={40}
+        className="input w-full text-xs"
+        disabled={disabled || pending}
+      />
+      <button
+        type="submit"
+        disabled={disabled || pending}
+        className="text-xs text-brand-700 hover:underline"
+      >
+        {pending
+          ? 'Speichert…'
+          : source === 'legacy'
+            ? 'Speichern / Qualifikation bestätigen'
+            : 'Speichern'}
+      </button>
+      {message && (
+        <p role="status" className="text-xs text-secondary">
+          {message}
+        </p>
+      )}
+      {gaps.length > 0 && (
+        <div role="alert" className="text-xs text-amber-700">
+          <p>{gaps.length} Mandat(e) ohne aktiven qualifizierten Berufsträger:</p>
+          <ul>
+            {gaps.map((client) => (
+              <li key={client.id}>
+                <Link className="underline" href={`/staff/clients/${client.id}/edit`}>
+                  {client.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </form>
+  );
+}
 type Role = (typeof ROLE_OPTIONS)[number];
 
 export function SetRolesForm({

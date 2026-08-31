@@ -113,9 +113,10 @@ describe('parseFormData-Migrationsrest', () => {
     // Der interne Anforderungskommentar und die neue tägliche
     // Fristenabschlusskontrolle sowie die fünf neuen GwG-Personen- und
     // Nachweisaktionen nutzen dagegen den gemeinsamen, strikt schema-basierten
-    // parseFormData-Helfer.
+    // parseFormData-Helfer. GWG-SELF-ONBOARDING-001: Auch der Start der
+    // kanzleiinternen Erfassung verwendet diesen gemeinsamen Parser.
     expect(direct).toHaveLength(55);
     expect(direct.filter((call) => !call.exact)).toHaveLength(49);
-    expect(shared).toBe(38);
+    expect(shared).toBe(39);
   });
 });

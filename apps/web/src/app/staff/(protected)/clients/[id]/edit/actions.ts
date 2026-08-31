@@ -1,5 +1,7 @@
 'use server';
 
+import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-review';
+
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
@@ -22,13 +24,6 @@ const AdminSchema = z.object({
   clientId: z.string().uuid(),
   datevNo: z.string().max(50).optional().nullable(),
   addisonNo: z.string().max(50).optional().nullable(),
-  // 13-stelliges ELSTER-Bundesformat (Basis der Kontoabfrage); leer = keine.
-  steuernummer: z
-    .string()
-    .regex(/^[0-9]{13}$/, 'Steuernummer: 13 Ziffern (ELSTER-Bundesformat) erwartet.')
-    .optional()
-    .nullable()
-    .or(z.literal('')),
   invoiceEmail: z.string().email().max(255).optional().nullable().or(z.literal('')),
   priority: z.enum(['A', 'B', 'C']).nullable().optional().or(z.literal('')),
   internalNotes: z.string().max(10_000).optional().nullable(),
@@ -54,7 +49,6 @@ export async function saveAdminFieldsAction(
     clientId: formData.get('clientId'),
     datevNo: formData.get('datevNo'),
     addisonNo: formData.get('addisonNo'),
-    steuernummer: formData.get('steuernummer'),
     invoiceEmail: formData.get('invoiceEmail'),
     priority: formData.get('priority'),
     internalNotes: formData.get('internalNotes'),
@@ -73,7 +67,6 @@ export async function saveAdminFieldsAction(
         select: {
           datevNo: true,
           addisonNo: true,
-          steuernummer: true,
           invoiceEmail: true,
           priority: true,
           internalNotes: true,
@@ -86,7 +79,6 @@ export async function saveAdminFieldsAction(
       const after = {
         datevNo: emptyToNull(parsed.data.datevNo),
         addisonNo: emptyToNull(parsed.data.addisonNo),
-        steuernummer: emptyToNull(parsed.data.steuernummer),
         invoiceEmail: emptyToNull(parsed.data.invoiceEmail),
         priority: prio === 'A' || prio === 'B' || prio === 'C' ? prio : null,
         internalNotes: emptyToNull(parsed.data.internalNotes),
@@ -131,7 +123,6 @@ const GwgSchema = z.object({
   clientId: z.string().uuid(),
   name: z.string().min(1).max(255),
   kind: z.enum(GWG_KINDS),
-  vatId: z.string().max(20).optional().nullable(),
   street: z.string().max(255).optional().nullable(),
   postalCode: z.string().max(20).optional().nullable(),
   city: z.string().max(100).optional().nullable(),
@@ -150,7 +141,6 @@ export async function saveGwgFieldsAction(
     clientId: formData.get('clientId'),
     name: formData.get('name'),
     kind: formData.get('kind'),
-    vatId: formData.get('vatId'),
     street: formData.get('street'),
     postalCode: formData.get('postalCode'),
     city: formData.get('city'),
@@ -168,7 +158,6 @@ export async function saveGwgFieldsAction(
         select: {
           name: true,
           kind: true,
-          vatId: true,
           street: true,
           postalCode: true,
           city: true,
@@ -180,7 +169,6 @@ export async function saveGwgFieldsAction(
       const after = {
         name: parsed.data.name.trim(),
         kind: parsed.data.kind,
-        vatId: emptyToNull(parsed.data.vatId),
         street: emptyToNull(parsed.data.street),
         postalCode: emptyToNull(parsed.data.postalCode),
         city: emptyToNull(parsed.data.city),
@@ -189,15 +177,7 @@ export async function saveGwgFieldsAction(
 
       // Diff: Was hat sich tatsächlich geändert? Wenn nichts → kein Re-Trigger.
       const changed: string[] = [];
-      for (const k of [
-        'name',
-        'kind',
-        'vatId',
-        'street',
-        'postalCode',
-        'city',
-        'countryIso',
-      ] as const) {
+      for (const k of ['name', 'kind', 'street', 'postalCode', 'city', 'countryIso'] as const) {
         if (before[k] !== after[k]) changed.push(k);
       }
 
@@ -299,6 +279,11 @@ export async function setResponsibilitiesAction(
       if (eligibleStaffCount !== assignedStaffIds.length) {
         throw new ActionError(
           'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
+        );
+      }
+      if (!(await areProfessionalAssigneesEligibleTx(tx, tenantId, berufIds))) {
+        throw new ActionError(
+          'Als Berufsträger sind nur aktive, als Berufsträger qualifizierte Mitarbeiter zulässig.',
         );
       }
       const before = await tx.clientResponsibility.findMany({ where: { clientId } });

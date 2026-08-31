@@ -29,9 +29,9 @@ export default async function OnboardingStartPage({
     readModules({ tenantId, actorId: staffId, actorType: 'STAFF' }),
     withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
       tx.staffUser.findMany({
-        where: { active: true },
+        where: { active: true, roles: { some: {} } },
         orderBy: { fullName: 'asc' },
-        select: { id: true, fullName: true, email: true },
+        select: { id: true, fullName: true, email: true, isProfessional: true },
       }),
     ),
   ]);
@@ -88,19 +88,6 @@ export default async function OnboardingStartPage({
                 Addison-Nummer
               </label>
               <input id="addisonNo" name="addisonNo" type="text" maxLength={40} className="input" />
-            </div>
-            <div>
-              <label className="label" htmlFor="vatId">
-                USt-ID
-              </label>
-              <input
-                id="vatId"
-                name="vatId"
-                type="text"
-                maxLength={50}
-                className="input"
-                placeholder="DE123456789"
-              />
             </div>
             <div className="col-span-2">
               <label className="label" htmlFor="street">

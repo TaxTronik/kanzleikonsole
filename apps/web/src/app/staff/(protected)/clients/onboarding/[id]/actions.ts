@@ -16,7 +16,9 @@ import { prepareGwgInviteBindingTx } from '@/server/gwg-onboarding/invite-bindin
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { parseFormData } from '@/server/actions/form-data';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
+import { startManualGwgCaptureTx } from '@/server/gwg-onboarding/manual-capture';
 
 export interface WizardResult {
   ok: boolean;
@@ -271,6 +273,25 @@ export async function onboardingSendGwgAction(formData: FormData) {
 // ---------------------------------------------------------------------------
 // Skip-Action: zum nächsten Schritt springen (für optionale Schritte)
 // ---------------------------------------------------------------------------
+
+export async function onboardingCaptureGwgInOfficeAction(formData: FormData): Promise<void> {
+  const guard = await staffActionGuard();
+  if (!guard.ok) throw new ActionError(guard.error);
+  const parsed = parseFormData(z.object({ clientId: z.string().uuid() }), formData);
+  if (!parsed.ok) throw new ActionError('Ungültiger Mandant.');
+  const { clientId } = parsed.data;
+  await withTenantContext(guard.ctx, async (tx) => {
+    await assertClientAccessTx(tx, guard.session, clientId);
+    await startManualGwgCaptureTx(tx, {
+      tenantId: guard.tenantId,
+      clientId,
+      staffId: guard.staffId,
+    });
+  });
+  revalidatePath(`/staff/clients/onboarding/${clientId}`);
+  revalidatePath(`/staff/clients/${clientId}/gwg`);
+  redirect(`/staff/clients/${clientId}/gwg?from=onboarding`);
+}
 
 export async function onboardingSkipAction(formData: FormData) {
   const g = await staffActionGuard();

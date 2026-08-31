@@ -4,6 +4,11 @@ import { useActionState, useEffect, useReducer } from 'react';
 import { useRouter } from 'next/navigation';
 import { ContactRound, Pencil, X } from 'lucide-react';
 import {
+  IDENTITY_FIELD_LABELS,
+  type IdentityField,
+  type IdentitySuggestions,
+} from '@/lib/gwg/identity-ocr';
+import {
   updateGwgPersonGeneralAction,
   type GwgPersonGeneralActionResult,
   type SavedGwgPersonGeneral,
@@ -14,6 +19,70 @@ import {
   gwgPersonGeneralStateReducer,
   initialGwgPersonGeneralState,
 } from './person-general-conflict';
+
+function personSuggestionKey(
+  ownerId: string | null,
+  representativeId: string | null,
+  clientId: string,
+): string {
+  if (representativeId) return `representative:${representativeId}`;
+  return ownerId ? `owner:${ownerId}` : `client:${clientId}`;
+}
+
+function PersonSuggestions({
+  suggestions,
+  pending,
+  onApply,
+  onDiscard,
+}: {
+  suggestions: IdentitySuggestions | undefined;
+  pending: boolean;
+  onApply: (patch: Partial<SavedGwgPersonGeneral>) => void;
+  onDiscard: () => void;
+}) {
+  if (!suggestions) return null;
+  const entries = Object.entries(suggestions).filter(([key]) => !key.startsWith('id'));
+  if (!entries.length) return null;
+  const completeAddress = Boolean(suggestions.street && suggestions.postalCode && suggestions.city);
+  const hasAddress = Boolean(suggestions.street || suggestions.postalCode || suggestions.city);
+  return (
+    <div className="rounded border border-blue-200 p-3 space-y-2">
+      <p className="text-xs font-medium">
+        Aus der Ausweishilfe ausgewählte Personenangaben (noch nicht gespeichert):
+      </p>
+      {entries.map(([key, value]) => (
+        <p className="text-xs" key={key}>
+          {IDENTITY_FIELD_LABELS[key as IdentityField]}: {value}
+        </p>
+      ))}
+      <button
+        type="button"
+        className="btn-secondary text-xs"
+        disabled={pending}
+        onClick={() => {
+          const patch: Partial<SavedGwgPersonGeneral> = {};
+          for (const key of ['fullName', 'birthDate', 'birthPlace', 'nationality'] as const) {
+            if (suggestions[key] !== undefined) patch[key] = suggestions[key];
+          }
+          if (completeAddress)
+            patch.residence = `${suggestions.street}, ${suggestions.postalCode} ${suggestions.city}`;
+          onApply(patch);
+        }}
+      >
+        In allgemeine Angaben übernehmen und prüfen
+      </button>
+      {hasAddress && !completeAddress && (
+        <p className="text-xs text-amber-700">
+          Die Anschrift ist unvollständig. Bitte die angezeigten Angaben manuell in den vorhandenen
+          Wohnsitz einarbeiten; dieser wird nicht ersetzt.
+        </p>
+      )}
+      <button type="button" className="btn-secondary text-xs" onClick={onDiscard}>
+        Verwerfen
+      </button>
+    </div>
+  );
+}
 
 export function PersonGeneralForm({
   ownerId,
@@ -33,7 +102,10 @@ export function PersonGeneralForm({
   disabled: boolean;
 }) {
   const router = useRouter();
-  const { registerIdentityInvalidations } = useGwgIdentitySubjects();
+  const { registerIdentityInvalidations, personSuggestions, clearPersonSuggestions } =
+    useGwgIdentitySubjects();
+  const suggestionKey = personSuggestionKey(ownerId, representativeId, clientId);
+  const suggestions = personSuggestions[suggestionKey];
   const { markDraft, markRiskInvalidated } = useGwgEditState();
   const [local, dispatchLocal] = useReducer(
     gwgPersonGeneralStateReducer,
@@ -78,6 +150,18 @@ export function PersonGeneralForm({
         {displayValue.isPep === true && <span className="badge badge-red">PEP</span>}
       </summary>
       <div className="details-body space-y-4">
+        {!disabled && (
+          <PersonSuggestions
+            suggestions={suggestions}
+            pending={pending}
+            onApply={(patch) => {
+              if (!editing) dispatchLocal({ type: 'start-editing' });
+              dispatchLocal({ type: 'patch-draft', patch });
+              clearPersonSuggestions(suggestionKey);
+            }}
+            onDiscard={() => clearPersonSuggestions(suggestionKey)}
+          />
+        )}
         {!editing ? (
           <>
             <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

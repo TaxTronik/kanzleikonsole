@@ -37,6 +37,7 @@ export type IdentityReviewMachineAction =
       saved: IdentityReviewSavedState;
       revision: string;
       submittedRevision: string | null;
+      verified: boolean;
     }
   | { type: 'server-state'; incoming: IdentityReviewLocalState }
   | { type: 'reconcile-subjects'; subjectKeys: string[] };
@@ -44,6 +45,7 @@ export type IdentityReviewMachineAction =
 export function applyIdentityReviewSave(
   saved: IdentityReviewSavedState,
   revision: string,
+  verified = false,
 ): IdentityReviewLocalState {
   return {
     revision,
@@ -56,7 +58,7 @@ export function applyIdentityReviewSave(
     },
     selectedSubjectKey: saved.subjectKey,
     ownerName: saved.ownerName,
-    confirmedRevision: revision,
+    confirmedRevision: verified ? revision : null,
   };
 }
 
@@ -92,7 +94,7 @@ export function identityReviewStateReducer(
     case 'save-succeeded':
       return {
         ...state,
-        local: applyIdentityReviewSave(action.saved, action.revision),
+        local: applyIdentityReviewSave(action.saved, action.revision, action.verified),
         supersededRevisions: rememberRevisions(state.supersededRevisions, [
           action.submittedRevision,
           state.local.revision,
@@ -132,6 +134,7 @@ interface IdentityReviewActionState {
   reviewReset?: boolean;
   revision?: string;
   saved?: IdentityReviewSavedState;
+  verified?: boolean;
 }
 
 export function useIdentityReviewState(options: {
@@ -164,6 +167,7 @@ export function useIdentityReviewState(options: {
         saved: actionState.saved,
         revision: actionState.revision,
         submittedRevision: submitted.current?.revision ?? null,
+        verified: actionState.verified === true,
       });
     }
     if (submitted.current?.invalidationGeneration !== null && submitted.current) {

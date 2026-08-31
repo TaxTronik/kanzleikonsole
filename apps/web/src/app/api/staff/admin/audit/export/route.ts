@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { z } from 'zod';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
@@ -13,18 +12,12 @@ import {
   MAX_EXPORT_ROWS,
   type CsvColumn,
 } from '@/server/export/csv';
-import type { Prisma } from '@prisma/client';
-
-// Befund 11: Query-Parameter validieren statt `new Date(sp.get('from')!)` —
-// ein kaputter Wert ergab Invalid Date → Prisma-Fehler → 500. Leere Strings
-// (z. B. `?action=`) zählen wie „nicht gesetzt" (Verhalten wie vorher).
-const QuerySchema = z.object({
-  action: z.string().max(200).optional(),
-  actorType: z.enum(['STAFF', 'CLIENT_CONTACT', 'SYSTEM']).optional(),
-  resourceType: z.string().max(200).optional(),
-  from: z.string().date().optional(),
-  to: z.string().date().optional(),
-});
+import {
+  AUDIT_CATEGORIES,
+  AuditQuerySchema,
+  auditCategory,
+  auditWhere,
+} from '@/server/audit/query';
 
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
@@ -43,10 +36,12 @@ export async function GET(req: NextRequest) {
   }
 
   const sp = req.nextUrl.searchParams;
-  const parsed = QuerySchema.safeParse({
+  const parsed = AuditQuerySchema.safeParse({
     action: sp.get('action') || undefined,
     actorType: sp.get('actorType') || undefined,
     resourceType: sp.get('resourceType') || undefined,
+    category: sp.get('category') || undefined,
+    sort: sp.get('sort') || undefined,
     from: sp.get('from') || undefined,
     to: sp.get('to') || undefined,
   });
@@ -55,19 +50,7 @@ export async function GET(req: NextRequest) {
   }
   const q = parsed.data;
 
-  const where: Prisma.AuditLogWhereInput = {};
-  if (q.action) where.action = { contains: q.action, mode: 'insensitive' };
-  if (q.actorType) where.actorType = q.actorType;
-  if (q.resourceType) where.resourceType = q.resourceType;
-  if (q.from || q.to) {
-    where.occurredAt = {};
-    if (q.from) where.occurredAt.gte = new Date(q.from);
-    if (q.to) {
-      const to = new Date(q.to);
-      to.setHours(23, 59, 59, 999);
-      where.occurredAt.lte = to;
-    }
-  }
+  const where = auditWhere(q);
 
   const { rows, truncated } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -75,7 +58,7 @@ export async function GET(req: NextRequest) {
       // +1 lesen, um Trunkierung zu ERKENNEN (kein Extra-count nötig).
       const list = await tx.auditLog.findMany({
         where,
-        orderBy: { id: 'desc' },
+        orderBy: { id: q.sort === 'oldest' ? 'asc' : 'desc' },
         take: MAX_EXPORT_ROWS + 1,
       });
       const { rows: out, truncated } = applyRowCap(list);
@@ -105,6 +88,11 @@ export async function GET(req: NextRequest) {
     { key: 'actorType', label: 'Akteur-Typ', accessor: (r) => r.actorType },
     { key: 'actorId', label: 'Akteur-ID', accessor: (r) => r.actorId ?? '' },
     { key: 'action', label: 'Action', accessor: (r) => r.action },
+    {
+      key: 'category',
+      label: 'Bereich',
+      accessor: (r) => AUDIT_CATEGORIES[auditCategory(r.action)],
+    },
     { key: 'resourceType', label: 'Ressource', accessor: (r) => r.resourceType },
     { key: 'resourceId', label: 'Ressourcen-ID', accessor: (r) => r.resourceId ?? '' },
     { key: 'ip', label: 'IP', accessor: (r) => r.ip ?? '' },

@@ -18,6 +18,9 @@ import {
 } from './use-gwg-document-search';
 import { useGwgIdentitySubjects } from './identity-subjects-context';
 import { Modal } from '@/components/ui/modal';
+import { IdentityCapture } from '@/components/gwg/identity-capture';
+import type { IdentitySourceView } from '@/lib/gwg/identity-viewport';
+import type { IdentitySuggestions } from '@/lib/gwg/identity-ocr';
 
 const identityTypes = [
   { value: 'PERSONALAUSWEIS', label: 'Personalausweis' },
@@ -33,6 +36,17 @@ const entityTypes = [
 ] as const;
 
 const EMPTY_SUBJECT_OPTIONS: IdentitySubjectOption[] = [];
+
+function initialDocumentType(types: readonly { value: string }[], preferred?: string): string {
+  return preferred && types.some((entry) => entry.value === preferred)
+    ? preferred
+    : types[0]!.value;
+}
+
+function initialIdentitySubject(options: IdentitySubjectOption[], preferred?: string): string {
+  if (preferred && options.some((option) => option.key === preferred)) return preferred;
+  return options.length === 1 ? options[0]!.key : '';
+}
 
 interface Props {
   checkId: string;
@@ -62,7 +76,10 @@ export function AddIdDocumentForm({
   lockType = false,
   replacement,
 }: Props) {
-  const { subjectOptions: allSubjects } = useGwgIdentitySubjects(subjectOptions);
+  const { subjectOptions: allSubjects, suggestPersonFields } =
+    useGwgIdentitySubjects(subjectOptions);
+  const [views, setViews] = useState<IdentitySourceView[]>([]);
+  const [ocrValues, setOcrValues] = useState<IdentitySuggestions>({});
   const availableSubjects = useMemo(
     () => selectableIdentitySubjectOptions(allSubjects),
     [allSubjects],
@@ -71,19 +88,14 @@ export function AddIdDocumentForm({
   const primaryDocumentIdRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   const types = variant === 'identity' ? identityTypes : entityTypes;
-  const [type, setType] = useState<string>(
-    defaultType && types.some((t) => t.value === defaultType) ? defaultType : types[0].value,
-  );
+  const initialType = initialDocumentType(types, defaultType);
+  const [type, setType] = useState<string>(initialType);
   const typeLabel = types.find((entry) => entry.value === type)?.label ?? type;
   const [selectedDocuments, setSelectedDocuments] = useState<SelectableGwgDocument[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedSubjectKey, setSelectedSubjectKey] = useState(
-    defaultSubjectKey && availableSubjects.some((option) => option.key === defaultSubjectKey)
-      ? defaultSubjectKey
-      : availableSubjects.length === 1
-        ? availableSubjects[0]!.key
-        : '',
+    initialIdentitySubject(availableSubjects, defaultSubjectKey),
   );
   const router = useRouter();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
@@ -95,24 +107,20 @@ export function AddIdDocumentForm({
     setSelectedSubjectKey((current) =>
       availableSubjects.some((option) => option.key === current)
         ? current
-        : defaultSubjectKey && availableSubjects.some((option) => option.key === defaultSubjectKey)
-          ? defaultSubjectKey
-          : availableSubjects.length === 1
-            ? availableSubjects[0]!.key
-            : '',
+        : initialIdentitySubject(availableSubjects, defaultSubjectKey),
     );
   }, [availableSubjects, defaultSubjectKey]);
   useEffect(() => {
     if (!state?.ok) return;
     formRef.current?.reset();
-    setType(
-      defaultType && types.some((t) => t.value === defaultType) ? defaultType : types[0].value,
-    );
+    setType(initialType);
     setSelectedDocuments([]);
+    setViews([]);
+    setOcrValues({});
     // Refresh außerhalb der Form-Transition (Action revalidiert die aktuelle
     // Route nicht mehr — sonst hing die Transition bis zum nächsten Klick).
     router.refresh();
-  }, [router, state, types]);
+  }, [initialType, router, state]);
   useEffect(() => {
     if (!isPending) submittingRef.current = false;
   }, [isPending]);
@@ -188,6 +196,15 @@ export function AddIdDocumentForm({
         <AddEvidenceIntro variant={variant} replacement={replacement} />
         <input type="hidden" name="checkId" value={checkId} />
         <input type="hidden" name="clientId" value={clientId} />
+        <input
+          type="hidden"
+          name="viewports"
+          value={JSON.stringify(
+            views.filter((view) =>
+              selectedDocuments.some((document) => document.id === view.documentId),
+            ),
+          )}
+        />
         <input type="hidden" name="replacementMode" value={replacement?.mode ?? 'none'} />
         {replacement?.mode === 'set' && (
           <input type="hidden" name="replaceDocumentSetId" value={replacement.documentSetId} />
@@ -269,26 +286,58 @@ export function AddIdDocumentForm({
                 <label className="label" htmlFor="id-number">
                   Ausweisnummer
                 </label>
-                <input id="id-number" name="number" className="input" maxLength={100} />
+                <input
+                  id="id-number"
+                  name="number"
+                  className="input"
+                  maxLength={100}
+                  onChange={(event) =>
+                    setOcrValues((current) => ({ ...current, idNumber: event.target.value }))
+                  }
+                />
               </div>
               <div>
                 <label className="label" htmlFor="id-issueDate">
                   Ausgestellt am
                 </label>
-                <input id="id-issueDate" name="issueDate" type="date" className="input" />
+                <input
+                  id="id-issueDate"
+                  name="issueDate"
+                  type="date"
+                  className="input"
+                  onChange={(event) =>
+                    setOcrValues((current) => ({ ...current, idIssueDate: event.target.value }))
+                  }
+                />
               </div>
               <div>
                 <label className="label" htmlFor="id-expiryDate">
                   Gültig bis
                 </label>
-                <input id="id-expiryDate" name="expiryDate" type="date" className="input" />
+                <input
+                  id="id-expiryDate"
+                  name="expiryDate"
+                  type="date"
+                  className="input"
+                  onChange={(event) =>
+                    setOcrValues((current) => ({ ...current, idExpiryDate: event.target.value }))
+                  }
+                />
               </div>
             </div>
             <div>
               <label className="label" htmlFor="id-issuedBy">
                 Ausstellende Behörde
               </label>
-              <input id="id-issuedBy" name="issuedBy" className="input" maxLength={200} />
+              <input
+                id="id-issuedBy"
+                name="issuedBy"
+                className="input"
+                maxLength={200}
+                onChange={(event) =>
+                  setOcrValues((current) => ({ ...current, idIssuedBy: event.target.value }))
+                }
+              />
             </div>
             <p className="text-xs text-muted">
               Nummer, Ausstellungsdatum, Behörde und Gültigkeit können Sie nach dem Zuordnen direkt
@@ -370,6 +419,59 @@ export function AddIdDocumentForm({
           )}
         </div>
 
+        {variant === 'identity' && type === 'PERSONALAUSWEIS' && selectedSubjectKey && (
+          <IdentityCapture
+            key={selectedSubjectKey}
+            sources={selectedDocuments.map((document) => ({
+              id: document.id,
+              label: document.title,
+              async load() {
+                const params = new URLSearchParams({ checkId, clientId, documentId: document.id });
+                const response = await fetch(`/api/staff/gwg/identity-source?${params}`, {
+                  cache: 'no-store',
+                });
+                const versionId = response.headers.get('X-Identity-Version');
+                if (!response.ok || !versionId)
+                  throw new Error('Ausweisdatei ist nicht verfügbar. Bitte Auswahl erneuern.');
+                return { blob: await response.blob(), versionId };
+              },
+            }))}
+            current={{
+              fullName: availableSubjects.find((entry) => entry.key === selectedSubjectKey)?.name,
+              ...ocrValues,
+            }}
+            initialViews={views}
+            onViewChange={(view) =>
+              setViews((previous) => [
+                ...previous.filter((entry) => entry.side !== view.side),
+                view,
+              ])
+            }
+            onApply={(fields) => {
+              const mapping = {
+                idNumber: 'number',
+                idIssuedBy: 'issuedBy',
+                idIssueDate: 'issueDate',
+                idExpiryDate: 'expiryDate',
+              } as const;
+              for (const [source, target] of Object.entries(mapping)) {
+                const value = fields[source as keyof typeof mapping];
+                const element = formRef.current?.elements.namedItem(target);
+                if (value !== undefined && element instanceof HTMLInputElement)
+                  element.value = value;
+              }
+              setOcrValues((current) => ({ ...current, ...fields }));
+              suggestPersonFields(selectedSubjectKey, fields);
+            }}
+          />
+        )}
+        {views.length > 0 && (
+          <p className="text-xs text-muted">
+            Gespeicherte Ausschnitte:{' '}
+            {views.map((view) => (view.side === 'front' ? 'Vorderseite' : 'Rückseite')).join(', ')}.
+            Die Originale bleiben erhalten.
+          </p>
+        )}
         <AddEvidenceFeedback state={state} variant={variant} replacement={replacement} />
 
         <button

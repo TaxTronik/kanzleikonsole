@@ -80,6 +80,30 @@ function snapshot() {
 }
 
 describe('GwG-Berufsträger-Snapshot', () => {
+  it('GWG-REVERIFICATION-VALIDITY-001: USt-ID ist nicht Teil der v2-Prüfgrundlage', () => {
+    const source = snapshot();
+    expect(
+      gwgProfessionalReviewSnapshotHash({
+        ...source,
+        client: { ...source.client, vatId: 'DE999999999' },
+      }),
+    ).toBe(gwgProfessionalReviewSnapshotHash(source));
+  });
+  it('GWG-RISK-REVIEW-001: eine geänderte Ansicht bindet eine neue Bestätigung', () => {
+    const source = snapshot();
+    const cropped = {
+      ...source,
+      idDocuments: source.idDocuments.map((document) => ({
+        ...document,
+        viewports: {
+          front: { page: 1, rotation: 90, crop: { x: 0.1, y: 0.2, width: 0.8, height: 0.6 } },
+        },
+      })),
+    };
+    expect(gwgProfessionalReviewSnapshotHash(cropped)).not.toBe(
+      gwgProfessionalReviewSnapshotHash(source),
+    );
+  });
   it('ist stabil und reagiert auf jede haftungsrelevante Änderung', () => {
     const source = snapshot();
     const first = gwgProfessionalReviewSnapshotHash(source);

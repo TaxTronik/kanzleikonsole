@@ -11,7 +11,6 @@ export const GWG_INVITE_CLIENT_SELECT = {
   postalCode: true,
   city: true,
   countryIso: true,
-  vatId: true,
 } as const satisfies Prisma.ClientSelect;
 
 export const GWG_INVITE_DRAFT_INCLUDE = {
@@ -37,6 +36,9 @@ export const GWG_INVITE_DRAFT_INCLUDE = {
               versionNo: true,
               sha256: true,
               sizeBytes: true,
+              scanStatus: true,
+              scanCompletedAt: true,
+              storageVersionId: true,
             },
           },
         },
@@ -83,7 +85,7 @@ function normalized(value: unknown): unknown {
 
 function digest(kind: 'check' | 'client', snapshot: unknown): string {
   return createHash('sha256')
-    .update(`${kind}:v1:${JSON.stringify(normalized(snapshot))}`, 'utf8')
+    .update(`${kind}:v2:${JSON.stringify(normalized(snapshot))}`, 'utf8')
     .digest('hex');
 }
 
@@ -97,7 +99,6 @@ function clientSnapshot(source: GwgInviteClientRevisionSource) {
     postalCode: source.postalCode,
     city: source.city,
     countryIso: source.countryIso,
-    vatId: source.vatId,
   };
 }
 
@@ -174,6 +175,7 @@ export function gwgInviteDraftRevisionHash(source: GwgInviteDraftRevisionSource)
         identityAssignmentConfirmedAt: date(document.identityAssignmentConfirmedAt),
         identityAssignmentConfirmedBy: document.identityAssignmentConfirmedBy,
         notes: document.notes,
+        viewports: document.viewports ?? null,
         evidence: document.document
           ? {
               id: document.document.id,

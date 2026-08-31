@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 import {
   GwgOnboardingRepresentativeSchema,
   onboardingRepresentativeRoleError,
@@ -18,10 +19,26 @@ function separateRepresentative() {
     idExpiryDate: '2030-01-01',
     idFrontDocumentId: DOCUMENT_FRONT,
     idBackDocumentId: DOCUMENT_BACK,
+    idFrontViewport: fullIdentityViewport(DOCUMENT_FRONT, 'front'),
+    idBackViewport: fullIdentityViewport(DOCUMENT_BACK, 'back'),
   };
 }
 
 describe('öffentliche GwG-Vertretererfassung', () => {
+  it('GWG-SELF-ONBOARDING-001 rejects a separate representative without source bindings', () => {
+    expect(
+      GwgOnboardingRepresentativeSchema.safeParse({
+        ...separateRepresentative(),
+        idFrontViewport: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      GwgOnboardingRepresentativeSchema.safeParse({
+        ...separateRepresentative(),
+        idBackViewport: undefined,
+      }).success,
+    ).toBe(false);
+  });
   it('verlangt für eine separate Vertretung einen vollständigen Ausweissatz', () => {
     expect(
       GwgOnboardingRepresentativeSchema.safeParse({

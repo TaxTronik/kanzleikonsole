@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { consentForNewDeclaration } from '@/server/privacy/consent';
+import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 
 const m = vi.hoisted(() => ({
   inviteFindFirst: vi.fn(),
@@ -12,6 +13,7 @@ const m = vi.hoisted(() => ({
   notifyMany: vi.fn(),
   ensureGwgRootFolder: vi.fn(),
   ensureGwgPersonFolder: vi.fn(),
+  lockEvidence: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
@@ -57,6 +59,9 @@ vi.mock('@/server/privacy/consent-display', () => ({
 }));
 vi.mock('@/server/privacy/service', () => ({ renderNoticeForTenantTx: m.renderNotice }));
 vi.mock('@/server/gwg/reverification', () => ({ startFreshGwgReviewTx: vi.fn() }));
+vi.mock('@/server/gwg/evidence-documents', () => ({
+  lockCleanGwgEvidenceDocumentsTx: m.lockEvidence,
+}));
 vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
   claimCurrentGwgInviteSubmitTx: m.claimInvite,
   revalidateOpenGwgInviteRevisionTx: vi.fn(),
@@ -86,6 +91,7 @@ const DOCUMENT_IDS = [
   '56666666-6666-4666-8666-666666666666',
   '57777777-7777-4777-8777-777777777777',
 ] as const;
+const versionFor = (documentId: string) => documentId.replace(/^5/, '9');
 
 function owner(
   localId: string,
@@ -113,6 +119,8 @@ function owner(
     idExpiryDate: '2035-01-01',
     idFrontDocumentId: front,
     idBackDocumentId: back,
+    idFrontViewport: fullIdentityViewport(versionFor(front), 'front'),
+    idBackViewport: fullIdentityViewport(versionFor(back), 'back'),
   };
 }
 
@@ -131,6 +139,7 @@ describe('gebundener GwG-DRAFT Submit', () => {
     m.notifyMany.mockResolvedValue(undefined);
     m.ensureGwgRootFolder.mockResolvedValue('gwg-root');
     m.ensureGwgPersonFolder.mockResolvedValue('gwg-person');
+    m.lockEvidence.mockResolvedValue(true);
   });
 
   it('erhält bei unverändertem Submit zwei Owner-/Vertreter-IDs und Dokument-FKs', async () => {
@@ -189,7 +198,26 @@ describe('gebundener GwG-DRAFT Submit', () => {
         deleteMany: vi.fn(),
       },
       gwgOnboardingInvite: { update: vi.fn() },
-      document: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      document: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findFirst: vi.fn().mockImplementation(async ({ where }) => ({
+          id: where.id,
+          title: 'Ausweis',
+          mimeType: 'image/png',
+          versions: [
+            {
+              id: versionFor(where.id),
+              scanStatus: 'CLEAN',
+              scanCompletedAt: new Date(),
+              storageVersionId: 'storage-version',
+              storageBucket: 'test',
+              storageKey: where.id,
+              sha256: Buffer.alloc(32),
+              sizeBytes: 42n,
+            },
+          ],
+        })),
+      },
       clientResponsibility: { findMany: vi.fn().mockResolvedValue([]) },
     };
     m.withSystemContext.mockImplementation(async (_tenantId, callback) => callback(tx));
@@ -223,7 +251,6 @@ describe('gebundener GwG-DRAFT Submit', () => {
         postalCode: '10115',
         city: 'Berlin',
         countryIso: 'DE',
-        vatId: '',
       },
       legalEntity: { noRegisterEntry: true },
       owners: [
@@ -254,6 +281,8 @@ describe('gebundener GwG-DRAFT Submit', () => {
           idExpiryDate: '2035-01-01',
           idFrontDocumentId: DOCUMENT_IDS[4],
           idBackDocumentId: DOCUMENT_IDS[5],
+          idFrontViewport: fullIdentityViewport(versionFor(DOCUMENT_IDS[4]), 'front'),
+          idBackViewport: fullIdentityViewport(versionFor(DOCUMENT_IDS[5]), 'back'),
         },
       ],
       extraDocuments: [{ documentId: DOCUMENT_IDS[6], type: 'GESELLSCHAFTSVERTRAG' }],
@@ -266,6 +295,14 @@ describe('gebundener GwG-DRAFT Submit', () => {
     });
 
     expect(result).toEqual({ ok: true });
+    expect(m.lockEvidence).toHaveBeenCalledTimes(6);
+    expect(tx.document.findFirst).toHaveBeenCalledTimes(6);
+    for (const call of tx.gwgIdDocument.updateMany.mock.calls) {
+      if (call[0]?.data?.type === 'PERSONALAUSWEIS' || call[0]?.data?.type === 'REISEPASS') {
+        expect(call[0]?.data?.viewports).toHaveLength(1);
+        expect(call[0]?.data?.verifiedAt).toBeNull();
+      }
+    }
     expect(tx.gwgBeneficialOwner.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({ id: OWNER_ONE }),

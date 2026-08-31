@@ -46,6 +46,7 @@ type NavConfig = NavItem & { moduleKey?: ModuleKey };
 const allNavItems: NavConfig[] = [
   { href: '/staff/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
   { href: '/staff/clients', label: 'Mandanten', icon: 'Users' },
+  { href: '/staff/gwg', label: 'GwG-Kontrollliste', icon: 'IdCard' },
   { href: '/staff/requests', label: 'Anforderungen', icon: 'Inbox' },
   {
     href: '/staff/workflows',

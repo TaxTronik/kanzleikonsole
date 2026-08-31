@@ -60,6 +60,7 @@ export async function cancelOpenGwgInvitesTx(
     clientId: string;
     cancelledByStaff: string | null;
     exceptInviteId?: string;
+    cancellationReason?: string;
   },
 ): Promise<number> {
   const cancelledAt = new Date();
@@ -74,6 +75,7 @@ export async function cancelOpenGwgInvitesTx(
       status: 'CANCELLED',
       cancelledAt,
       cancelledByStaff: input.cancelledByStaff,
+      ...(input.cancellationReason ? { cancellationReason: input.cancellationReason } : {}),
       tokenHash: '',
     },
   });

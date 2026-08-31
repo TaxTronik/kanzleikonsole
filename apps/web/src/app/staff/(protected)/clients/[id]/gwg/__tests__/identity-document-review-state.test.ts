@@ -39,10 +39,10 @@ function saved(sequence: number): IdentityReviewSavedState {
   };
 }
 
-describe('IdentityReviewCard revision state', () => {
+describe('GWG-IDENTIFICATION-EVIDENCE-001 IdentityReviewCard revision state', () => {
   it('trägt zwei Saves vollständig und mit der jeweiligen Nachfolger-Revision fort', () => {
     const initial = localState('revision-0');
-    const afterFirstSave = applyIdentityReviewSave(saved(1), 'revision-1');
+    const afterFirstSave = applyIdentityReviewSave(saved(1), 'revision-1', true);
 
     expect(afterFirstSave).toEqual({
       revision: 'revision-1',
@@ -59,7 +59,7 @@ describe('IdentityReviewCard revision state', () => {
     });
 
     const superseded = new Set([initial.revision, afterFirstSave.revision]);
-    const afterSecondSave = applyIdentityReviewSave(saved(2), 'revision-2');
+    const afterSecondSave = applyIdentityReviewSave(saved(2), 'revision-2', true);
 
     expect(afterSecondSave.revision).toBe('revision-2');
     expect(afterSecondSave.fields).toEqual({
@@ -132,8 +132,10 @@ describe('IdentityReviewCard revision state', () => {
       saved: saved(1),
       revision: 'revision-1',
       submittedRevision: 'revision-0',
+      verified: false,
     });
     expect(afterSave.local.revision).toBe('revision-1');
+    expect(afterSave.local.confirmedRevision).toBeNull();
     expect(afterSave.supersededRevisions).toContain('revision-0');
 
     const delayed = identityReviewStateReducer(afterSave, {
@@ -141,5 +143,22 @@ describe('IdentityReviewCard revision state', () => {
       incoming: localState('revision-0'),
     });
     expect(delayed.local).toBe(afterSave.local);
+  });
+
+  it('bestätigt nur eine explizit geprüfte Serverantwort und entfernt die Bestätigung beim Speichern', () => {
+    const reviewed = applyIdentityReviewSave(saved(1), 'revision-reviewed', true);
+    expect(reviewed.confirmedRevision).toBe('revision-reviewed');
+    const savedOnly = identityReviewStateReducer(
+      { local: reviewed, lastServerRevision: reviewed.revision, supersededRevisions: [] },
+      {
+        type: 'save-succeeded',
+        saved: saved(2),
+        revision: 'revision-saved',
+        submittedRevision: reviewed.revision,
+        verified: false,
+      },
+    );
+    expect(savedOnly.local.confirmedRevision).toBeNull();
+    expect(applyIdentityReviewSave(saved(2), 'legacy-response').confirmedRevision).toBeNull();
   });
 });

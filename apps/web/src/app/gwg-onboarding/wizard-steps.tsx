@@ -4,6 +4,10 @@ import { ArrowLeft, ArrowRight, Check, Loader, Plus, Trash2, Upload } from 'luci
 import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
 import type { ConsentSelections, ResolvedConsentOption } from '@/server/privacy/consent';
+import { IdentityCapture } from '@/components/gwg/identity-capture';
+import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
+import type { IdentitySuggestions } from '@/lib/gwg/identity-ocr';
+import { loadOnboardingIdentitySourceAction } from './actions';
 
 export const MAX_UPLOAD_LABEL = '7 MB';
 
@@ -17,6 +21,13 @@ export const ONBOARDING_STEPS = [
 
 export type OnboardingClientKind = 'NATPERS' | 'JURPERS' | 'PERSGES';
 export type IdentitySide = 'front' | 'back';
+export interface OnboardingIdentityFile {
+  documentId: string;
+  fileName: string;
+  versionId?: string;
+  viewport?: IdentityViewport;
+  localFile?: File;
+}
 
 export interface BeneficialOwner {
   id: string;
@@ -35,8 +46,8 @@ export interface BeneficialOwner {
   idIssuedBy: string;
   idIssueDate: string;
   idExpiryDate: string;
-  idFront: { documentId: string; fileName: string } | null;
-  idBack: { documentId: string; fileName: string } | null;
+  idFront: OnboardingIdentityFile | null;
+  idBack: OnboardingIdentityFile | null;
 }
 
 export interface Representative {
@@ -48,8 +59,8 @@ export interface Representative {
   idIssuedBy: string;
   idIssueDate: string;
   idExpiryDate: string;
-  idFront: { documentId: string; fileName: string } | null;
-  idBack: { documentId: string; fileName: string } | null;
+  idFront: OnboardingIdentityFile | null;
+  idBack: OnboardingIdentityFile | null;
 }
 
 export type EntityEvidenceType =
@@ -130,13 +141,11 @@ interface MasterDataStepProps {
   postalCode: string;
   city: string;
   countryIso: string;
-  vatId: string;
   onCompanyNameChange: (value: string) => void;
   onStreetChange: (value: string) => void;
   onPostalCodeChange: (value: string) => void;
   onCityChange: (value: string) => void;
   onCountryIsoChange: (value: string) => void;
-  onVatIdChange: (value: string) => void;
 }
 
 export function MasterDataStep({
@@ -145,13 +154,11 @@ export function MasterDataStep({
   postalCode,
   city,
   countryIso,
-  vatId,
   onCompanyNameChange,
   onStreetChange,
   onPostalCodeChange,
   onCityChange,
   onCountryIsoChange,
-  onVatIdChange,
 }: MasterDataStepProps) {
   return (
     <div className="card p-6 space-y-4">
@@ -162,7 +169,6 @@ export function MasterDataStep({
       <Field label="Firma / Name" value={companyName} onChange={onCompanyNameChange} required />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Straße + Hausnr." value={street} onChange={onStreetChange} required />
-        <Field label="USt-ID" value={vatId} onChange={onVatIdChange} placeholder="DE123456789" />
       </div>
       <div className="grid grid-cols-3 gap-3">
         <Field label="PLZ" value={postalCode} onChange={onPostalCodeChange} required />
@@ -174,6 +180,7 @@ export function MasterDataStep({
 }
 
 interface OwnersStepProps {
+  token: string;
   clientKind: OnboardingClientKind;
   owners: BeneficialOwner[];
   representatives: Representative[];
@@ -196,6 +203,7 @@ interface OwnersStepProps {
 }
 
 export function OwnersStep({
+  token,
   clientKind,
   owners,
   representatives,
@@ -224,6 +232,7 @@ export function OwnersStep({
       </div>
       {owners.map((owner, index) => (
         <OwnerCard
+          token={token}
           key={owner.id}
           index={index}
           owner={owner}
@@ -251,6 +260,7 @@ export function OwnersStep({
           </div>
           {representatives.map((representative, index) => (
             <RepresentativeCard
+              token={token}
               key={representative.id}
               index={index}
               representative={representative}
@@ -498,7 +508,6 @@ interface SubmitStepProps {
   postalCode: string;
   city: string;
   countryIso: string;
-  vatId: string;
   clientKind: OnboardingClientKind;
   owners: BeneficialOwner[];
   representatives: Representative[];
@@ -515,7 +524,6 @@ export function SubmitStep({
   postalCode,
   city,
   countryIso,
-  vatId,
   clientKind,
   owners,
   representatives,
@@ -535,7 +543,6 @@ export function SubmitStep({
       <dl className="space-y-2 text-sm">
         <SummaryRow label="Firma" value={companyName} />
         <SummaryRow label="Adresse" value={`${street}, ${postalCode} ${city}, ${countryIso}`} />
-        {vatId && <SummaryRow label="USt-ID" value={vatId} />}
         <SummaryRow
           label="Wirtschaftlich Berechtigte"
           value={`${owners.length} Person${owners.length === 1 ? '' : 'en'}`}
@@ -648,6 +655,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 function OwnerCard({
+  token,
   index,
   owner,
   onPatch,
@@ -658,6 +666,7 @@ function OwnerCard({
   frontError,
   backError,
 }: {
+  token: string;
   index: number;
   owner: BeneficialOwner;
   onPatch: (patch: Partial<BeneficialOwner>) => void;
@@ -827,11 +836,13 @@ function OwnerCard({
           error={backError}
         />
       </div>
+      <OnboardingIdentityCapture token={token} person={owner} onPatch={onPatch} />
     </div>
   );
 }
 
 function RepresentativeCard({
+  token,
   index,
   representative,
   owners,
@@ -843,6 +854,7 @@ function RepresentativeCard({
   frontError,
   backError,
 }: {
+  token: string;
   index: number;
   representative: Representative;
   owners: BeneficialOwner[];
@@ -983,8 +995,89 @@ function RepresentativeCard({
               error={backError}
             />
           </div>
+          <OnboardingIdentityCapture token={token} person={representative} onPatch={onPatch} />
         </>
       )}
+    </div>
+  );
+}
+
+function OnboardingIdentityCapture({
+  token,
+  person,
+  onPatch,
+}: {
+  token: string;
+  person: Pick<BeneficialOwner, 'idType' | 'idFront' | 'idBack'> & IdentitySuggestions;
+  onPatch: (
+    patch: IdentitySuggestions & {
+      idFront?: OnboardingIdentityFile;
+      idBack?: OnboardingIdentityFile;
+    },
+  ) => void;
+}) {
+  const files = [person.idFront, person.idBack].filter(
+    (file): file is OnboardingIdentityFile => !!file,
+  );
+  const unique = [...new Map(files.map((file) => [file.documentId, file])).values()];
+  if (person.idType !== 'PERSONALAUSWEIS' || !unique.length) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted">
+        Die Angaben können ohne Erkennung manuell erfasst werden. Ohne Ausschnitt bleibt die
+        unveränderte Originaldatei zugeordnet; eine nicht lesbare PDF-Vorschau verhindert die
+        manuelle Erfassung nicht.
+      </p>
+      <p className="text-sm text-muted">
+        Eine PDF genügt für beide Seiten. In der Ausweishilfe jeweils die Seite oder den Ausschnitt
+        wählen und ausdrücklich zuordnen. Originaldateien bleiben unverändert.
+      </p>
+      <IdentityCapture
+        sources={unique.map((file) => ({
+          id: file.documentId,
+          label: file.fileName,
+          async load() {
+            if (file.localFile && file.versionId)
+              return { blob: file.localFile, versionId: file.versionId };
+            const result = await loadOnboardingIdentitySourceAction({
+              token,
+              documentId: file.documentId,
+            });
+            if (!result.ok) throw new Error(result.error);
+            const binary = atob(result.base64);
+            return {
+              blob: new Blob([Uint8Array.from(binary, (character) => character.charCodeAt(0))], {
+                type: result.mimeType,
+              }),
+              versionId: result.versionId,
+            };
+          },
+        }))}
+        current={person}
+        initialViews={files.flatMap((file) =>
+          file.viewport ? [{ ...file.viewport, documentId: file.documentId }] : [],
+        )}
+        onApply={onPatch}
+        onViewChange={(view) => {
+          const file = unique.find((entry) => entry.documentId === view.documentId);
+          if (file)
+            onPatch({
+              [view.side === 'front' ? 'idFront' : 'idBack']: {
+                ...file,
+                versionId: view.versionId,
+                viewport: view,
+              },
+            });
+        }}
+      />
+      {files
+        .filter((file) => file.viewport)
+        .map((file) => (
+          <p key={file.viewport!.side} className="text-xs text-muted">
+            {file.viewport!.side === 'front' ? 'Vorderseite' : 'Rückseite'}: {file.fileName}, Seite{' '}
+            {file.viewport!.page}, Drehung {file.viewport!.rotation}°
+          </p>
+        ))}
     </div>
   );
 }

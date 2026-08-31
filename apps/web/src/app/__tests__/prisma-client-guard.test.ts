@@ -82,6 +82,12 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Test-DB, damit auch direkte SQL-Umgehungsversuche geprüft werden.
   'packages/db/src/__tests__/gwg-identity-assignment.test.ts',
   'packages/db/src/__tests__/tax-notice-evidence.test.ts',
+  // TAX-MASTER-DATA-001: isolierte DB-Fixtures plus echte App-RLS-Grenzen.
+  'packages/db/src/__tests__/tax-master-data.test.ts',
+  // GWG-RISK-REVIEW-001: echte PostgreSQL-Reviewer-Locks mit isolierten Fixtures.
+  'packages/db/src/__tests__/gwg-professional-lock.test.ts',
+  // GWG-PERSON-LINKS-001: Owner-Fixtures beweisen Anchor-Constraints und Retention.
+  'packages/db/src/__tests__/gwg-person-links.test.ts',
   // Neue Migrations-/RLS-Regressionen laufen gegen isolierte Wegwerf-DBs:
   // Owner legt die gezielten Race-/Legacy-Fixtures an, die App-Rolle beweist
   // anschließend die tatsächlichen CLIENT_CONTACT-/STAFF-Grenzen.
@@ -211,6 +217,9 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // StorageOrphan-Recoverydatensatz; er liest oder liefert keine Mandantendaten.
   'apps/web/src/server/documents/storage-compensation.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/gwg-onboarding/service.ts <- @/server/db/prisma-owner',
+  // Einmaliger Operator-Cutover: SQL-Migrationsmarker tenantübergreifend lesen
+  // und idempotent auditieren. Kein Request-Import, keine externen Nachrichten.
+  'apps/web/src/server/gwg-onboarding/migrate-invite-v2-audit.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/license/state.ts <- @/server/db/prisma-owner',
   // Externe n8n-Callbacks haben vor der Credential-Pruefung noch keinen
   // vertrauenswuerdigen Tenant-Kontext. Der Owner-Lookup bindet Key-ID an

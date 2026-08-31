@@ -56,13 +56,21 @@ Audit · Backups & DR · Update-Mechanik & Lizenz · ELSTER-Anbindung
   Klick aufs Badge springt direkt in den Wizard zurück
 - **A/B/C-Mandant-Priorität** — farbiges Circle-Badge (A rot, B amber, C grau)
   vor dem Namen, im Edit-Formular pflegbar, in der Liste sichtbar
-- Stammdaten-Bearbeitung in zwei Sektionen
+- Getrennte allgemeine und steuerliche Stammdaten
   - **Verwaltung** (frei änderbar): DATEV-Nr, Addison-Nr, Rechnungs-E-Mail,
     Priorität A/B/C, **interne Akten-Notiz** (Markdown, nur Kanzlei sieht es),
     **Vertraulich-Flag** (Admin/Partner-only; schirmt den Mandanten auch im
     offenen Zugriffsmodell auf Zugeordnete ab)
-  - **GwG-relevant** (Name, Rechtsform, Adresse, USt-ID) — Änderung setzt
-    bestehenden VERIFIED-GwG-Check auf IN_REVIEW zurück
+  - **GwG-relevant** (Name, Rechtsform, Adresse) — Änderungen lösen die
+    bestehende Wiederholungsprüfung aus; reine USt-ID-Änderungen nicht
+  - **Steuerliche Stammdaten**: eine USt-ID und mehrere Steuerverbindungen mit
+    Zweck, Steuernummer, Bundesland, Finanzamt und optionaler Finanzamtsnummer;
+    aktive ELSTER-Standardverbindung und Archivierung
+  - Landesformat aller 16 Bundesländer und 13-stelliges ELSTER-Format werden
+    normalisiert; führende Nullen bleiben erhalten. Keine Bestätigung einer
+    vergebenen Nummer und keine automatische Finanzamtzuständigkeit
+  - Mandanten schlagen Steueränderungen im Portal vor; die Kanzlei übernimmt
+    sie nach Prüfung, zwischenzeitliche Änderungen werden als Konflikt gezeigt
 - Bearbeiter-Zuordnung mit zwei Rollen
   - Verantwortlicher Berufsträger (§ 32 StBerG, Single-Select)
   - Bearbeiter (Mehrfachauswahl) — wirkt als „Meine Mandanten"-Filter
@@ -108,12 +116,13 @@ Mandanten.
 - Einstieg über „Onboarding starten"-Button in der Mandantenliste oder
   Empty-State; alternativ „Schnell anlegen" für reine Stammdaten-Anlage
 - **6 Schritte** mit Pille-Stepper (current/done/pending visualisiert):
-  1. **Stammdaten** (Pflicht) — Name + Kind + DATEV/Addison + USt-ID +
+  1. **Stammdaten** (Pflicht) — Name + Kind + DATEV/Addison +
      Adresse → erzeugt Client, weiter zu Schritt 2
   2. **Ansprechpartner + Portal-Zugang** (optional) — `ClientContact`
      anlegen mit Default-Checkbox „Magic-Link jetzt versenden"
-  3. **GwG-Onboarding** (Pflicht) — versendet `GwgOnboardingInvite` per
-     n8n-Mail; zeigt „bereits gesendet"-Banner wenn vorhanden
+  3. **GwG-Onboarding** (Pflicht) — gleichwertige Einstiege „Mandant per Link
+     einladen“ und „In der Kanzlei erfassen“. Kanzleierfassung öffnet den Entwurf
+     und widerruft offene Links kontrolliert; Kontakte und Freigabegates bleiben
   4. **Vollmacht** (optional, modul-gated über `poaMode !== 'OFF'`) —
      verlinkt zur bestehenden `/staff/poa/new` mit Pre-Selektion
   5. **Erste Anforderung** (optional) — verlinkt zu
@@ -143,9 +152,27 @@ Mandanten.
 - Personalausweis-Ablauf-Check (60 Tage vor Expiry: Notification an
   Bearbeiter + Auto-Anforderung an Mandant, idempotent)
 - Re-Verifikation nur bei GwG-relevanten Stammdaten-Änderungen (sowohl bei
-  Staff-Edit als auch bei genehmigten Self-Service-Änderungen); eine neue
-  Steuernummer allein löst keine erneute GwG-Prüfung aus
-- **GwG-Onboarding-Einladung** — Mandant identifiziert sich selbst, ohne
+  Staff-Edit als auch bei genehmigten Self-Service-Änderungen); reine
+  Steuernummer- und USt-ID-Änderungen lösen keine erneute GwG-Prüfung aus
+- **Lokale Ausweishilfe** für deutsche Personalausweise in Kanzlei und Wizard:
+  JPG/PNG/PDF, Seitenauswahl, Drehung, Ausschnitt und bewusst ausgewählte
+  OCR-Vorschläge. Tesseract, Sprachmodelle und PDF-Runtime sind selbst gehostet;
+  keine externen OCR-Aufrufe und keine Speicherung von OCR-Rohtext
+- Originale bleiben unverändert; zwei Seiten dürfen aus derselben PDF stammen.
+  Quellversion und Personenbindung werden serverseitig geprüft. Manuelle
+  Erfassung bleibt bei Erkennungsfehlern und unlesbaren PDFs möglich
+- Speichern bestätigt keine Identität. „Ausweis geprüft“ ist eine gesonderte
+  Mitarbeiteraktion; GwG-Freigabe verlangt zusätzlich einen aktiven,
+  qualifizierten und ausdrücklich dem Mandanten zugeordneten Berufsträger
+- **GwG-Kontrollliste** (`/staff/gwg`): Suche, Prüf-/Nachweis-/Ablauffilter und
+  bewusst verknüpfte Personen über sichtbare Mandate. Unternehmenszuordnungen
+  behalten eigene Angaben, Ausweise und Prüfstände; keine automatische Zusammenführung
+- **XLSX-Export** mit „Personenübersicht“ und „Nachweisdetails“, gemeinsamen
+  exportlokalen Personenkennungen, vollständigen Ausweisnummern als Text und
+  getrennten Angaben zu Identitätsprüfung und GwG-Freigabe. Über 10.000
+  Detailzeilen ist eine Eingrenzung erforderlich; verborgene Mandate erscheinen
+  auch nicht in Zählern oder Verbindungswegen
+- **GwG-Onboarding-Einladung** — Mandant erfasst Daten und Nachweise, ohne
   Portal-Account
   - Magic-Link mit 14-Tage-Token, hash-gespeichert (analog PoA-Sign)
   - 4-Schritt-Wizard: Stammdaten → wirtschaftlich Berechtigte →
@@ -154,7 +181,7 @@ Mandanten.
     versehentlich ausgewählte Dateien können vor dem Absenden verworfen werden
     und werden dann weder fachlich gespeichert noch archiviert
   - Beim Submit: Mandant-Stammdaten werden aktualisiert (mit GwG-relevant-
-    Audit), bestehender Check geht auf IN_REVIEW oder neuer Check entsteht
+    Audit); ein bearbeitbarer DRAFT wird gespeichert, ohne Prüfbestätigung
   - Wirtschaftlich Berechtigte + Ausweis-Dokumente werden als
     `gwg_beneficial_owner` + `gwg_id_document` (Vorder + Rückseite) angelegt
   - Ablage nach Person unter `GwG/<Name der Person>`; optionale allgemeine
@@ -1194,6 +1221,11 @@ Kanzlei nicht.
   bei unbekannter E-Mail — Anti-Enumeration)
 - Audit-Log-Viewer (ADMIN/PARTNER) mit Filter, CSV-Export, Detail-Seite
   mit JSON-Diff vs. Vorgänger
+  - Kombinierbare fachliche Kategorien und „Neueste/Älteste zuerst“; Ansicht
+    und CSV verwenden dieselben Filter einschließlich Berliner Tagesgrenzen
+  - Kategorien werden abgeleitet, unbekannte Ereignisse bleiben unter „Sonstige“.
+    Hashreihenfolge und Gesamtverifikation bleiben unverändert; gefilterte
+    Auszüge sind kein vollständiges Kettenarchiv
 - Cross-Tenant-RLS-Tests (sequentiell, Vitest, in `packages/db`)
 - Hash-Chain-, canonical-json- und RFC-3161-Verifikations-Tests in
   `packages/evidence/src/__tests__/`
@@ -1317,9 +1349,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   strukturierte Kontoabfrage inkl. Sollstellungen (Stufe 2)
 - **Steuerkonto-UI** im Mandanten-Detail (`/staff/clients/[id]/elster`,
   bridge-gated): Abruf von Sollstellungen (Jahr), offenen Beträgen und
-  Istbuchungen (ab Datum) je Steuerart; Basis ist die **Steuernummer am
-  Mandanten** (13-stelliges ELSTER-Format, eine pro Mandant — Tochter-
-  gesellschaften sind eigene Mandanten). Jeder Abruf wird als Vorgang
+  Istbuchungen (ab Datum) je Steuerart; die **Steuerverbindung** ist auswählbar,
+  mit vorausgewähltem Standard. Verbindung und tatsächlich verwendete Nummer
+  werden beim Abruf unveränderlich festgehalten. Alte Abrufe erhalten keine
+  nachträglich erfundene Verbindung. Jeder Abruf wird als Vorgang
   persistiert (append-only Historie, RLS) mit Evidence-Record; die
   Zertifikats-PIN wird durchgereicht, nie gespeichert
 - Datenteil, TransferHeader und Hersteller-ID entstehen ausschließlich
@@ -1341,6 +1374,11 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - Anlegen seeded automatisch BMF + BFH als RSS-Feeds für den neuen User
 - Aktivieren/Deaktivieren
 - Rollen-Pflege (EMPLOYEE / PARTNER / ADMIN) inline
+- Zusätzliches Merkmal „Berufsträger“, unabhängig von den Rollen. Historische
+  ausdrückliche Zuordnungen werden mit Herkunftsvermerk übernommen; Entzug
+  sperrt neue GwG-Freigaben und zeigt erforderliche Neuzuordnungen
+- Optionale manuelle Beraternummer als internes Textfeld mit führenden Nullen;
+  keine DATEV-Synchronisation, automatische Abrechnungszuordnung oder Portalausgabe
 - Self-Lockout-Schutz (eigene Rollen nicht änderbar, eigener Account nicht
   deaktivierbar)
 - Übersicht: Name, E-Mail, Rollen, 2FA-Status, letzter Login

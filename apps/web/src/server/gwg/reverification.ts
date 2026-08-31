@@ -79,10 +79,12 @@ export type GwgSnapshotCopySource = Pick<
       | 'ownershipPct'
       | 'isPep'
       | 'notes'
-    >
+    > & { personAnchorId?: string | null }
   >;
   representatives: Array<
-    Pick<GwgSnapshotRepresentative, 'id' | 'fullName' | 'position' | 'linkedBeneficialOwnerId'>
+    Pick<GwgSnapshotRepresentative, 'id' | 'fullName' | 'position' | 'linkedBeneficialOwnerId'> & {
+      personAnchorId?: string | null;
+    }
   >;
   idDocuments: Array<
     Pick<
@@ -97,6 +99,7 @@ export type GwgSnapshotCopySource = Pick<
       | 'expiryDate'
       | 'notes'
     > & {
+      viewports?: Prisma.JsonValue | null;
       document: Pick<
         GwgSnapshotEvidence,
         | 'id'
@@ -174,6 +177,7 @@ export async function copyGwgSnapshotTx(
         // neuen Checks dieselbe, frisch erzeugte Gruppen-ID.
         documentSetId: copiedDocumentSetId,
         notes: document.notes,
+        ...(reusableDocumentId && document.viewports ? { viewports: document.viewports } : {}),
       };
     });
 
@@ -202,6 +206,7 @@ export async function copyGwgSnapshotTx(
         ownershipPct: owner.ownershipPct,
         isPep: owner.isPep,
         notes: owner.notes,
+        personAnchorId: owner.personAnchorId ?? null,
       })),
     });
   }
@@ -210,6 +215,7 @@ export async function copyGwgSnapshotTx(
       data: source.representatives.map((representative) => ({
         gwgCheckId: input.targetCheckId,
         fullName: representative.fullName,
+        personAnchorId: representative.personAnchorId ?? null,
         position: representative.position,
         linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId
           ? (copiedOwnerIds.get(representative.linkedBeneficialOwnerId) ?? null)

@@ -430,6 +430,24 @@ test('akzeptiert amtliche Landesverwaltungsvorschriften vom freigegebenen Host',
   }
 });
 
+test('TAX-MASTER-DATA-001 akzeptiert die amtliche ELSTER-Hilfe, aber keine ähnlich benannte Fremddomain', () => {
+  const root = makeRoot();
+  try {
+    const source = ruleSource()
+      .replace('kind: product_documentation', 'kind: official_guidance')
+      .replace(
+        'path: FEATURES.md',
+        'url: https://www.elster.de/eportal/helpGlobal?themaGlobal=wo_ist_meine_steuernummer',
+      );
+    writeRule(root, source);
+    assert.doesNotThrow(() => loadCatalog(root));
+    writeRule(root, source.replace('www.elster.de', 'elster.de.evil.example'));
+    assert.throws(() => loadCatalog(root), /keine freigegebene amtliche Domain/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('verlangt bei Freigabe eine zum Regeltyp passende Primärquelle', () => {
   const root = makeRoot();
   try {

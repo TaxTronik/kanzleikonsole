@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { IdentitySubjectOption } from '@/server/gwg/identity-subject';
+import type { IdentitySuggestions } from '@/lib/gwg/identity-ocr';
 import type { InvalidatedIdentitySet } from './actions';
 import {
   acknowledgeIdentityInvalidation,
@@ -25,6 +26,9 @@ export interface EditableRepresentative {
 }
 
 interface IdentitySubjectsContextValue {
+  personSuggestions: Record<string, IdentitySuggestions>;
+  suggestPersonFields: (key: string, fields: IdentitySuggestions) => void;
+  clearPersonSuggestions: (key: string) => void;
   subjectOptions: IdentitySubjectOption[];
   invalidatedIdentitySets: Readonly<IdentityInvalidationState>;
   replaceRepresentatives: (representatives: EditableRepresentative[]) => void;
@@ -55,6 +59,19 @@ export function GwgIdentitySubjectsProvider({
   children: ReactNode;
 }) {
   const [subjectOptions, setSubjectOptions] = useState(initialOptions);
+  const [personSuggestions, setPersonSuggestions] = useState<Record<string, IdentitySuggestions>>(
+    {},
+  );
+  const suggestPersonFields = useCallback((key: string, fields: IdentitySuggestions) => {
+    setPersonSuggestions((previous) => ({ ...previous, [key]: fields }));
+  }, []);
+  const clearPersonSuggestions = useCallback((key: string) => {
+    setPersonSuggestions((previous) => {
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+  }, []);
   const invalidationGeneration = useRef(0);
   const [invalidatedIdentitySets, setInvalidatedIdentitySets] = useState<IdentityInvalidationState>(
     {},
@@ -174,6 +191,9 @@ export function GwgIdentitySubjectsProvider({
 
   const value = useMemo(
     () => ({
+      personSuggestions,
+      suggestPersonFields,
+      clearPersonSuggestions,
       subjectOptions,
       invalidatedIdentitySets,
       replaceRepresentatives,
@@ -183,6 +203,9 @@ export function GwgIdentitySubjectsProvider({
       acknowledgeIdentitySet,
     }),
     [
+      personSuggestions,
+      suggestPersonFields,
+      clearPersonSuggestions,
       acknowledgeIdentitySet,
       invalidatedIdentitySets,
       registerIdentityInvalidations,
@@ -204,6 +227,9 @@ export function useGwgIdentitySubjects(
   const value = useContext(IdentitySubjectsContext);
   return (
     value ?? {
+      personSuggestions: {},
+      suggestPersonFields: () => undefined,
+      clearPersonSuggestions: () => undefined,
       subjectOptions: fallback,
       invalidatedIdentitySets: {},
       replaceRepresentatives: () => undefined,

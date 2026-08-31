@@ -17,7 +17,6 @@ const FieldsSchema = z
     postalCode: z.string().max(20).optional(),
     city: z.string().max(100).optional(),
     countryIso: z.string().length(2).optional().or(z.literal('')),
-    vatId: z.string().max(20).optional(),
     invoiceEmail: z.string().email().max(255).optional().or(z.literal('')),
   })
   .strict();
@@ -58,6 +57,7 @@ export async function submitMasterChangeAction(
 
   try {
     await withTenantContext(ctx, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM client WHERE id = ${clientId}::uuid AND tenant_id = ${tenantId}::uuid FOR UPDATE`;
       const existing = await tx.clientMasterChangeRequest.findFirst({
         where: { clientId, status: 'PENDING' },
       });

@@ -17,6 +17,8 @@ import {
   lockCleanGwgEvidenceDocumentsTx,
 } from '@/server/gwg/evidence-documents';
 import { gwgIdentityDocumentSetRevision } from '@/server/gwg/revisions';
+import { IdentitySourceViewsSchema, identityViewports } from '@/lib/gwg/identity-viewport';
+import { validateIdentityViewportsTx } from '@/server/gwg/identity-source';
 import {
   firstIdentityDateError,
   validateIdentityDates,
@@ -54,6 +56,7 @@ const AddIdDocSchema = z
     expiryDate: z.string().date().optional().or(z.literal('')),
     replacementMode: z.enum(['none', 'set', 'subject', 'type']).default('none'),
     replaceDocumentSetId: z.string().uuid().optional().or(z.literal('')),
+    viewports: IdentitySourceViewsSchema.default([]),
     documentIds: z
       .array(z.string().uuid())
       .min(1, 'Mindestens ein Aktenbeleg ist erforderlich.')
@@ -222,14 +225,9 @@ type NewIdDocumentData = z.infer<typeof AddIdDocSchema>;
 // GWG-IDENTIFICATION-EVIDENCE-001: pure extraction; invocation stays after the
 // existing lifecycle, evidence and duplicate-link checks.
 function newIdentityAssignmentConfirmedAt(data: NewIdDocumentData): Date | null {
-  return isPersonalIdType(data.type) &&
-    data.number?.trim() &&
-    data.issuedBy?.trim() &&
-    data.issueDate &&
-    data.expiryDate &&
-    isDateOnOrAfterToday(data.expiryDate)
-    ? new Date()
-    : null;
+  // Complete metadata (including OCR) is not a human identity confirmation.
+  void data;
+  return null;
 }
 
 function newIdentityDocumentSharedData(
@@ -257,6 +255,38 @@ function newIdentityDocumentSharedData(
   };
 }
 
+async function validateNewIdentityViews(
+  tx: Parameters<typeof validateIdentityViewportsTx>[0],
+  tenantId: string,
+  data: NewIdDocumentData,
+) {
+  if (data.viewports.some((view) => !data.documentIds.includes(view.documentId))) {
+    throw new ActionError('Der Ausschnitt gehört nicht zur ausgewählten Ausweisdatei.');
+  }
+  const viewsByDocument = new Map<
+    string,
+    Awaited<ReturnType<typeof validateIdentityViewportsTx>>
+  >();
+  for (const documentId of data.documentIds) {
+    try {
+      const views = await validateIdentityViewportsTx(tx, {
+        tenantId,
+        clientId: data.clientId,
+        documentId,
+        views: data.viewports
+          .filter((view) => view.documentId === documentId)
+          .map(({ documentId: _documentId, ...view }) => view),
+      });
+      viewsByDocument.set(documentId, views);
+    } catch (error) {
+      throw new ActionError(
+        error instanceof Error ? error.message : 'Ausweisausschnitt konnte nicht geprüft werden.',
+      );
+    }
+  }
+  return viewsByDocument;
+}
+
 export async function addIdDocumentAction(
   _prev: { ok: boolean; error?: string } | null,
   formData: FormData,
@@ -270,7 +300,14 @@ export async function addIdDocumentAction(
       selectedDocumentIds.push(legacyDocumentId);
     }
   }
+  let viewports: unknown;
+  try {
+    viewports = JSON.parse(String(formData.get('viewports') || '[]'));
+  } catch {
+    return { ok: false as const, error: 'Ungültiger Ausweisausschnitt.' };
+  }
   const parsed = AddIdDocSchema.safeParse({
+    viewports,
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
     type: formData.get('type'),
@@ -413,6 +450,7 @@ export async function addIdDocumentAction(
       }
 
       const documentSetId = randomUUID();
+      const viewsByDocument = await validateNewIdentityViews(tx, tenantId, data);
       const sharedData = newIdentityDocumentSharedData(
         data,
         subject,
@@ -440,12 +478,20 @@ export async function addIdDocumentAction(
       let resourceId: string = documentSetId;
       if (data.documentIds.length === 1) {
         const idDoc = await tx.gwgIdDocument.create({
-          data: { ...sharedData, documentId: data.documentIds[0]! },
+          data: {
+            ...sharedData,
+            documentId: data.documentIds[0]!,
+            viewports: viewsByDocument.get(data.documentIds[0]!),
+          },
         });
         resourceId = idDoc.id;
       } else {
         await tx.gwgIdDocument.createMany({
-          data: data.documentIds.map((documentId) => ({ ...sharedData, documentId })),
+          data: data.documentIds.map((documentId) => ({
+            ...sharedData,
+            documentId,
+            viewports: viewsByDocument.get(documentId),
+          })),
         });
       }
       await organizeGwgDocumentsTx(tx, {
@@ -786,6 +832,7 @@ export async function extendIdentityDocumentSetAction(
 
 const UpdateIdDocumentsSchema = z
   .object({
+    intent: z.enum(['save', 'confirm']).default('save'),
     checkId: z.string().uuid(),
     clientId: z.string().uuid(),
     documentSetId: z.string().uuid(),
@@ -816,6 +863,7 @@ export async function updateIdDocumentsAction(
   formData: FormData,
 ): Promise<
   ActionResult & {
+    verified?: boolean;
     reviewReset?: boolean;
     saved?: {
       type: 'PERSONALAUSWEIS' | 'REISEPASS';
@@ -830,6 +878,7 @@ export async function updateIdDocumentsAction(
   }
 > {
   const parsed = UpdateIdDocumentsSchema.safeParse({
+    intent: formData.get('intent') ?? 'save',
     checkId: formData.get('checkId'),
     clientId: formData.get('clientId'),
     documentSetId: formData.get('documentSetId'),
@@ -878,6 +927,7 @@ export async function updateIdDocumentsAction(
             issueDate: true,
             expiryDate: true,
             verifiedAt: true,
+            viewports: true,
             documentSetId: true,
             naturalClientSubjectId: true,
             beneficialOwnerSubjectId: true,
@@ -931,7 +981,7 @@ export async function updateIdDocumentsAction(
         'Mindestens eine Datei dieses Ausweissatzes ist nicht mehr als GwG-Nachweis verfügbar.',
       );
     }
-    if (!isDateOnOrAfterToday(data.expiryDate)) {
+    if (data.intent === 'confirm' && !isDateOnOrAfterToday(data.expiryDate)) {
       throw new ActionError(
         'Der Ausweis ist abgelaufen. Bitte ein gültiges Ablaufdatum oder einen neuen Ausweis erfassen.',
       );
@@ -968,7 +1018,41 @@ export async function updateIdDocumentsAction(
         'Mindestens eine Datei dieses Ausweissatzes besitzt keine vollständig geprüfte, saubere neueste Dateiversion.',
       );
     }
-    const verifiedAt = new Date();
+    if (data.intent === 'confirm') {
+      const currentAssignment = identityAssignmentForSubject(subject);
+      if (
+        check.idDocuments.some(
+          (entry) =>
+            entry.type !== data.type ||
+            entry.number !== data.number ||
+            entry.issuedBy !== data.issuedBy ||
+            entry.issueDate?.toISOString().slice(0, 10) !== data.issueDate ||
+            entry.expiryDate?.toISOString().slice(0, 10) !== data.expiryDate ||
+            Object.entries(currentAssignment).some(
+              ([key, value]) => entry[key as keyof typeof entry] !== value,
+            ),
+        )
+      ) {
+        throw new ActionError(
+          'Bitte geänderte Angaben zuerst speichern und anschließend den gespeicherten Ausweis prüfen.',
+        );
+      }
+      for (const entry of check.idDocuments) {
+        try {
+          await validateIdentityViewportsTx(tx, {
+            tenantId,
+            clientId: data.clientId,
+            documentId: entry.document!.id,
+            views: identityViewports(entry.viewports),
+          });
+        } catch {
+          throw new ActionError(
+            'Die gespeicherte Ausweisansicht passt nicht mehr zur Quelle. Bitte den Nachweis neu erfassen.',
+          );
+        }
+      }
+    }
+    const verifiedAt = data.intent === 'confirm' ? new Date() : null;
     const assignment = identityAssignmentForSubject(subject);
     const update = await tx.gwgIdDocument.updateMany({
       where: {
@@ -985,7 +1069,7 @@ export async function updateIdDocumentsAction(
         expiryDate: new Date(data.expiryDate),
         ...assignment,
         identityAssignmentConfirmedAt: verifiedAt,
-        identityAssignmentConfirmedBy: staffId,
+        identityAssignmentConfirmedBy: verifiedAt ? staffId : null,
         verifiedAt,
       },
     });
@@ -1003,13 +1087,14 @@ export async function updateIdDocumentsAction(
         personName: subject.name,
       })),
     });
-    await resolveNotificationsTx(tx, {
-      tenantId,
-      resources: check.idDocuments.map((document) => ({
-        resourceType: 'gwg_id_document',
-        resourceId: document.id,
-      })),
-    });
+    if (verifiedAt)
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: check.idDocuments.map((document) => ({
+          resourceType: 'gwg_id_document',
+          resourceId: document.id,
+        })),
+      });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -1028,10 +1113,12 @@ export async function updateIdDocumentsAction(
         issuedBy: data.issuedBy,
         issueDate: data.issueDate,
         expiryDate: data.expiryDate,
-        verifiedAt: verifiedAt.toISOString(),
+        verifiedAt: verifiedAt?.toISOString() ?? null,
+        intent: data.intent,
       },
     });
     return {
+      verified: verifiedAt !== null,
       reviewReset: check.status === 'IN_REVIEW',
       saved: {
         type: data.type,
@@ -1053,7 +1140,7 @@ export async function updateIdDocumentsAction(
           expiryDate: data.expiryDate,
           ...assignment,
           identityAssignmentConfirmedAt: verifiedAt,
-          identityAssignmentConfirmedBy: staffId,
+          identityAssignmentConfirmedBy: verifiedAt ? staffId : null,
           verifiedAt,
         })),
       ),

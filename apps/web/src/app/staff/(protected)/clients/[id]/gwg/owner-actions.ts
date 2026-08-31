@@ -250,6 +250,7 @@ export async function updateGwgPersonGeneralAction(
             isPep: true,
             position: true,
             linkedBeneficialOwnerId: true,
+            personAnchorId: true,
           },
         },
       },
@@ -465,6 +466,7 @@ export async function addBeneficialOwnerRoleAction(
           where: { id: data.representativeId },
           select: {
             id: true,
+            personAnchorId: true,
             fullName: true,
             birthDate: true,
             birthPlace: true,
@@ -510,6 +512,7 @@ export async function addBeneficialOwnerRoleAction(
       data: {
         gwgCheckId: data.checkId,
         fullName: representative.fullName,
+        personAnchorId: representative.personAnchorId,
         birthDate: representative.birthDate,
         birthPlace: representative.birthPlace,
         residence: representative.residence,

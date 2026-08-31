@@ -19,6 +19,7 @@ import {
   SetRolesForm,
   SetPermissionsForm,
   SetSkillsForm,
+  ProfessionalProfileForm,
 } from './row-forms';
 import { SkillBadge } from '@/components/skill-badge';
 
@@ -48,7 +49,7 @@ export default async function UsersAdminPage() {
   const { tenantId, staffId } = session.user;
   const actorIsAdmin = session.user.roles.includes('ADMIN');
 
-  const [users, allSkills] = await withTenantContext(
+  const [users, allSkills, uncoveredClients] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) =>
       Promise.all([
@@ -62,6 +63,18 @@ export default async function UsersAdminPage() {
         }),
         tx.staffSkill.findMany({
           orderBy: [{ isSystem: 'desc' }, { sortOrder: 'asc' }, { label: 'asc' }],
+        }),
+        tx.client.findMany({
+          where: {
+            responsibilities: {
+              none: {
+                role: 'BERUFSTRAEGER',
+                staff: { active: true, isProfessional: true, roles: { some: {} } },
+              },
+            },
+          },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
         }),
       ]),
   );
@@ -96,6 +109,26 @@ export default async function UsersAdminPage() {
       </details>
 
       <div className="card overflow-hidden">
+        {uncoveredClients.length > 0 && (
+          <div role="alert" className="border-b border-default p-4 text-sm text-amber-700">
+            <p>
+              {uncoveredClients.length} Mandat(e) ohne aktiven qualifizierten Berufsträger.
+              Bestehende Nachweise bleiben erhalten; neue Freigaben sind gesperrt.
+            </p>
+            <details className="mt-2">
+              <summary className="cursor-pointer">Zuordnungen prüfen</summary>
+              <ul>
+                {uncoveredClients.map((client) => (
+                  <li key={client.id}>
+                    <Link className="underline" href={`/staff/clients/${client.id}/edit`}>
+                      {client.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        )}
         <table className="block w-full text-sm xl:table xl:table-fixed">
           <colgroup className="hidden xl:table-column-group">
             <col className="w-[15%]" />
@@ -176,6 +209,13 @@ export default async function UsersAdminPage() {
                           ? 'ADMIN-Konten können nur durch einen ADMIN verwaltet werden'
                           : undefined
                       }
+                    />
+                    <ProfessionalProfileForm
+                      userId={u.id}
+                      isProfessional={u.isProfessional}
+                      advisorNumber={u.datevAdvisorNumber}
+                      source={u.professionalQualificationSource}
+                      disabled={partnerBlockedFromAdmin}
                     />
                   </td>
                   <td className="min-w-0 align-top xl:px-3 xl:py-3">

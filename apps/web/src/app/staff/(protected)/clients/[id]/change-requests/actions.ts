@@ -7,6 +7,8 @@ import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 import { lockGwgCheckLifecycleTx, requireGwgReverificationTx } from '@/server/gwg/reverification';
+import { TaxChangeRequestSchema } from '@/server/tax-master-data/schema';
+import { saveTaxMasterDataTx } from '@/server/tax-master-data/service';
 
 const InputSchema = z.object({
   requestId: z.string().uuid(),
@@ -24,7 +26,7 @@ const ALLOWED_FIELDS = [
   'vatId',
   'invoiceEmail',
 ] as const;
-const GWG_FIELDS = new Set(['name', 'street', 'postalCode', 'city', 'countryIso', 'vatId']);
+const GWG_FIELDS = new Set(['name', 'street', 'postalCode', 'city', 'countryIso']);
 
 type ClientField = (typeof ALLOWED_FIELDS)[number];
 
@@ -63,6 +65,28 @@ export async function decideChangeRequestAction(
       });
 
       const fields = (req.fields ?? {}) as Record<string, unknown>;
+      if (approve && 'taxData' in fields) {
+        const taxRequest = TaxChangeRequestSchema.safeParse(fields.taxData);
+        if (!taxRequest.success || Object.keys(fields).length !== 1)
+          throw new ActionError('Ungültiger Steuerdatenvorschlag.');
+        await saveTaxMasterDataTx(tx, {
+          tenantId,
+          clientId,
+          staffId,
+          expectedRevision: taxRequest.data.expectedRevision,
+          draft: taxRequest.data.draft,
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'client_master_change.approve',
+          resourceType: 'client_master_change_request',
+          resourceId: requestId,
+          after: { fieldGroup: 'taxData', _gwgReverificationTriggered: false },
+        });
+        return;
+      }
       const applicable: Partial<Record<ClientField, string | null>> = {};
       for (const k of ALLOWED_FIELDS) {
         if (k in fields) {
@@ -141,6 +165,7 @@ export async function decideChangeRequestAction(
         `/staff/clients/${clientId}/change-requests`,
         `/staff/clients/${clientId}`,
         `/staff/clients/${clientId}/edit`,
+        `/staff/clients/${clientId}/elster`,
         `/staff/clients/${clientId}/gwg`,
         '/portal/stammdaten',
       ],

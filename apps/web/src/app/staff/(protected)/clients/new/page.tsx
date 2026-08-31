@@ -20,9 +20,9 @@ export default async function NewClientPage({
   const { tenantId, staffId } = session.user;
   const staff = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
     tx.staffUser.findMany({
-      where: { active: true },
+      where: { active: true, roles: { some: {} } },
       orderBy: { fullName: 'asc' },
-      select: { id: true, fullName: true, email: true },
+      select: { id: true, fullName: true, email: true, isProfessional: true },
     }),
   );
 
@@ -122,33 +122,6 @@ export default async function NewClientPage({
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label" htmlFor="vatId">
-                  USt-ID (optional)
-                </label>
-                <input
-                  id="vatId"
-                  name="vatId"
-                  type="text"
-                  className="input"
-                  maxLength={50}
-                  placeholder="DE123456789"
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="steuernummer">
-                  Steuernummer (optional)
-                </label>
-                <input
-                  id="steuernummer"
-                  name="steuernummer"
-                  type="text"
-                  className="input"
-                  inputMode="numeric"
-                  maxLength={13}
-                  placeholder="13-stellig (ELSTER)"
-                />
-              </div>
               <div>
                 <label className="label" htmlFor="invoiceEmail">
                   Rechnungs-E-Mail

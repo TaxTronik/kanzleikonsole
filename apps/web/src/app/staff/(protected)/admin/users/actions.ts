@@ -74,6 +74,8 @@ const CreateSchema = z
     confirmPassword: z.string(),
     partner: z.boolean(),
     admin: z.boolean(),
+    isProfessional: z.boolean(),
+    datevAdvisorNumber: z.string().trim().max(40),
   })
   .superRefine((data, ctx) => {
     const error = validateStaffPasswordPair(data.password, data.confirmPassword);
@@ -96,6 +98,8 @@ export async function createUserAction(
     confirmPassword: formData.get('confirmPassword'),
     partner: formData.get('role.PARTNER') === 'on',
     admin: formData.get('role.ADMIN') === 'on',
+    isProfessional: formData.get('isProfessional') === 'on',
+    datevAdvisorNumber: String(formData.get('datevAdvisorNumber') ?? ''),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
@@ -125,6 +129,9 @@ export async function createUserAction(
           fullName: parsed.data.fullName,
           passwordHash,
           active: true,
+          isProfessional: parsed.data.isProfessional,
+          datevAdvisorNumber: parsed.data.datevAdvisorNumber || null,
+          professionalQualificationSource: 'manual',
           roles: { create: roles.map((r) => ({ role: r })) },
         },
       });
@@ -136,7 +143,14 @@ export async function createUserAction(
         action: 'staff.create',
         resourceType: 'staff_user',
         resourceId: created.id,
-        after: { fullName: parsed.data.fullName, email: parsed.data.email, roles },
+        after: {
+          fullName: parsed.data.fullName,
+          email: parsed.data.email,
+          roles,
+          isProfessional: parsed.data.isProfessional,
+          datevAdvisorNumber: parsed.data.datevAdvisorNumber || null,
+          professionalQualificationSource: 'manual',
+        },
       });
 
       await seedDefaultRssFeeds(tx, tenantId, created.id);
@@ -152,6 +166,110 @@ export async function createUserAction(
 // ----------------------------------------------------------------------------
 // Kontozugang zurücksetzen
 // ----------------------------------------------------------------------------
+
+export async function setProfessionalProfileAction(input: {
+  userId: string;
+  isProfessional: boolean;
+  datevAdvisorNumber: string;
+}): Promise<ActionResult & { assignmentGaps?: Array<{ id: string; name: string }> }> {
+  const guard = await staffActionGuard({ requireAdmin: true });
+  if (!guard.ok) return guard;
+  const { tenantId, staffId, ctx, session } = guard;
+  const parsed = z
+    .object({
+      userId: z.string().uuid(),
+      isProfessional: z.boolean(),
+      datevAdvisorNumber: z.string().trim().max(40),
+    })
+    .safeParse(input);
+  if (!parsed.success)
+    return {
+      ok: false,
+      error: 'Beraternummer: maximal 40 Zeichen; Benutzer und Qualifikation prüfen.',
+    };
+  try {
+    const assignmentGaps = await withTenantContext(ctx, async (tx) => {
+      const before = await tx.staffUser.findFirst({
+        where: { id: parsed.data.userId, tenantId },
+        select: {
+          isProfessional: true,
+          datevAdvisorNumber: true,
+          professionalQualificationSource: true,
+          roles: { select: { role: true } },
+        },
+      });
+      if (!before) throw new ActionError('Benutzer nicht gefunden.');
+      assertPartnerCannotManageAdmin(session.user.roles, roleNames(before));
+      const after = {
+        isProfessional: parsed.data.isProfessional,
+        datevAdvisorNumber: parsed.data.datevAdvisorNumber || null,
+        professionalQualificationSource: 'manual',
+      };
+      if (before.isProfessional && !after.isProfessional)
+        await revokeAllSessions('staff', parsed.data.userId);
+      const updated = await tx.staffUser.updateMany({
+        where: {
+          id: parsed.data.userId,
+          tenantId,
+          isProfessional: before.isProfessional,
+          datevAdvisorNumber: before.datevAdvisorNumber,
+          professionalQualificationSource: before.professionalQualificationSource,
+          ...(!isActualAdmin(session.user.roles)
+            ? { roles: { none: { role: 'ADMIN' as const } } }
+            : {}),
+        },
+        data: after,
+      });
+      if (updated.count !== 1)
+        throw new ActionError('Benutzer wurde parallel geändert. Bitte neu laden.');
+      const changed =
+        before.isProfessional !== after.isProfessional ||
+        before.datevAdvisorNumber !== after.datevAdvisorNumber ||
+        before.professionalQualificationSource !== 'manual';
+      if (changed)
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'staff.professional_profile.update',
+          resourceType: 'staff_user',
+          resourceId: parsed.data.userId,
+          before: {
+            isProfessional: before.isProfessional,
+            datevAdvisorNumber: before.datevAdvisorNumber,
+            professionalQualificationSource: before.professionalQualificationSource,
+          },
+          after,
+        });
+      if (after.isProfessional) return [];
+      return tx.client.findMany({
+        where: {
+          tenantId,
+          AND: [
+            { responsibilities: { some: { staffId: parsed.data.userId, role: 'BERUFSTRAEGER' } } },
+            {
+              responsibilities: {
+                none: {
+                  role: 'BERUFSTRAEGER',
+                  staff: { active: true, isProfessional: true, roles: { some: {} } },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+    });
+    revalidatePath(LIST);
+    revalidatePath('/staff/clients/new');
+    revalidatePath('/staff/clients/onboarding/new');
+    for (const client of assignmentGaps) revalidatePath(`/staff/clients/${client.id}/gwg`);
+    return { ok: true, assignmentGaps };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
 
 export async function resetPasswordAction(input: {
   userId: string;

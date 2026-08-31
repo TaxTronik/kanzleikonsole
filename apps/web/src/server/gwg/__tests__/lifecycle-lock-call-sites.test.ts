@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 function source(relativePath: string): string {
-  return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+  return readFileSync(new URL(relativePath, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
 function section(contents: string, start: string, end?: string): string {
@@ -58,6 +58,7 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
     expectOrdered(
       section(staffActions, 'export async function verifyCheckAction', 'const RejectSchema'),
       'lockGwgCheckLifecycleTx(',
+      'lockStaffGwgReviewerTx(',
       'tx.gwgCheck.findFirst(',
       'assertLatestCheckForDecision(',
       'tx.gwgCheck.updateMany(',
@@ -66,6 +67,7 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
     expectOrdered(
       section(staffActions, 'export async function rejectCheckAction'),
       'lockGwgCheckLifecycleTx(',
+      'lockStaffGwgReviewerTx(',
       'assertLatestCheckForDecision(',
       'tx.gwgCheck.updateMany(',
       'tx.client.updateMany(',
@@ -138,9 +140,10 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
       'const RespSchema',
     );
 
-    expect(administrativeSection).toContain('steuernummer:');
+    expect(administrativeSection).not.toContain('steuernummer:');
     expect(administrativeSection).toContain('_gwgReverificationTriggered: false');
     expect(administrativeSection).not.toContain('requireGwgReverificationTx(');
     expect(gwgSection).not.toContain('steuernummer');
+    expect(gwgSection).not.toContain('vatId');
   });
 });

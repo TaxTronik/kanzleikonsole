@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 
 const m = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -30,6 +31,14 @@ vi.mock('../invite-lifecycle', () => ({
 }));
 
 import { GENERIC_TOKEN_ERROR, loadInviteByRawToken } from '../service';
+
+async function loadBoundDraft(bound: unknown) {
+  m.findFirst.mockResolvedValueOnce(bound).mockResolvedValueOnce(bound);
+  const result = await loadInviteByRawToken('valid-looking-raw-token');
+  expect(result.ok).toBe(true);
+  if (!result.ok || !result.invite.draft) throw new Error('Expected an accessible bound draft');
+  return result.invite.draft;
+}
 
 const activeInvite = {
   id: 'invite-1',
@@ -137,7 +146,19 @@ describe('GwG-Onboarding-Tokenstatus', () => {
       beneficialOwnerSubjectId: subject.owner ?? null,
       representativeSubjectId: subject.representative ?? null,
       notes,
-      document: { id, title: `${notes}.pdf` },
+      viewports: null as unknown,
+      document: {
+        id,
+        title: `${notes}.pdf`,
+        versions: [
+          {
+            id,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            storageVersionId: `version-${id}`,
+          },
+        ],
+      },
     });
     const bound = {
       ...activeInvite,
@@ -219,29 +240,42 @@ describe('GwG-Onboarding-Tokenstatus', () => {
         ],
       },
     };
-    m.findFirst.mockResolvedValueOnce(bound).mockResolvedValueOnce(bound);
-
-    const result = await loadInviteByRawToken('valid-looking-raw-token');
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.invite.draft?.owners.map((owner) => owner.id)).toEqual([ownerOne, ownerTwo]);
-    expect(result.invite.draft?.representatives).toEqual(
+    const draft = await loadBoundDraft(bound);
+    expect(draft.owners.map((owner) => owner.id)).toEqual([ownerOne, ownerTwo]);
+    expect(draft.representatives).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: representativeOne, linkedOwnerId: ownerOne }),
         expect.objectContaining({ id: representativeTwo, linkedOwnerId: null }),
       ]),
     );
-    expect(result.invite.draft?.owners[0]?.idFront?.documentId).toBe(
-      '66666666-6666-4666-8666-666666666661',
+    expect(draft.owners[0]?.idFront?.documentId).toBe('66666666-6666-4666-8666-666666666661');
+    expect(draft.owners[1]?.idFront?.documentId).toBe('77777777-7777-4777-8777-777777777772');
+    expect(draft.owners[1]?.idBack?.documentId).toBe('77777777-7777-4777-8777-777777777771');
+    expect(draft.owners[1]?.idType).toBe('REISEPASS');
+    expect(draft.owners[0]?.idFront?.viewport).toEqual(
+      fullIdentityViewport('66666666-6666-4666-8666-666666666661', 'front'),
     );
-    expect(result.invite.draft?.owners[1]?.idFront?.documentId).toBe(
-      '77777777-7777-4777-8777-777777777772',
+    expect(draft.owners[0]?.idBack?.viewport).toEqual(
+      fullIdentityViewport('66666666-6666-4666-8666-666666666662', 'back'),
     );
-    expect(result.invite.draft?.owners[1]?.idBack?.documentId).toBe(
-      '77777777-7777-4777-8777-777777777771',
-    );
-    expect(result.invite.draft?.owners[1]?.idType).toBe('REISEPASS');
+
+    // GWG-SELF-ONBOARDING-001: one original with two saved PDF pages survives reload.
+    const front = bound.gwgCheck.idDocuments[0]!;
+    front.viewports = [
+      fullIdentityViewport(front.documentId, 'front'),
+      { ...fullIdentityViewport(front.documentId, 'back'), page: 2, rotation: 90 },
+    ];
+    bound.gwgCheck.idDocuments.splice(1, 1);
+    const twoPages = await loadBoundDraft(bound);
+    expect(twoPages.owners[0]?.idBack).toMatchObject({
+      documentId: front.documentId,
+      viewport: { page: 2, rotation: 90, side: 'back' },
+    });
+
+    // A newer source may never silently take over an older saved crop/version.
+    front.document.versions[0]!.id = '99999999-9999-4999-8999-999999999999';
+    const stale = await loadBoundDraft(bound);
+    expect(stale.owners[0]).toMatchObject({ idFront: null, idBack: null });
   });
 
   it('mischt Doppelrollen-Sets nicht und lehnt mehr als zwei Seiten fail-closed ab', async () => {

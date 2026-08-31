@@ -25,6 +25,37 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
 
 ### Hinzugefügt
 
+- **[Scope]** Lokale Ausweishilfe für Kanzlei und Einladungswizard mit unveränderten
+  Originalen, versionierten PDF-Seiten/Ausschnitten und ausdrücklich ausgewählten
+  OCR-Vorschlägen. Speichern bestätigt keine Identität; „Als geprüft markieren“
+  bleibt ein eigener Schritt (GWG-OCR-ASSIST-001, GWG-IDENTIFICATION-EVIDENCE-001,
+  GWG-SELF-ONBOARDING-001).
+- **[Scope]** Gleichwertige GwG-Erfassung per Einladungslink oder direkt in der
+  Kanzlei. Der Wechsel öffnet vorhandene Entwürfe und widerruft offene Links
+  kontrolliert; Kontaktanforderungen und Freigabebedingungen bleiben erhalten
+  (GWG-SELF-ONBOARDING-001).
+- **[Scope]** GwG-Kontrollliste mit mandatslokalen Personenankern, bewussten
+  Verknüpfungen und zwei zusammengehörigen XLSX-Blättern ausschließlich aus
+  zugänglichen Mandaten (GWG-PERSON-LINKS-001, GWG-CONTROL-EXPORT-001).
+- **[Scope]** Eigenständige steuerliche Stammdaten mit mehreren Steuerverbindungen,
+  kontrollierten Portalanfragen und unveränderlichen ELSTER-Abrufreferenzen.
+  USt-ID ist kein GwG-Änderungsauslöser mehr; neue Prüfprojektionen sind versioniert
+  (TAX-MASTER-DATA-001, GWG-REVERIFICATION-VALIDITY-001).
+- **[Scope]** Zusätzliches Berufsträgermerkmal und interne Beraternummer;
+  GwG-Freigaben verlangen einen aktiven Mitarbeiter mit Berufsträgermerkmal und
+  konkreter Zuordnung. Zentrale
+  Auditansicht und CSV erhalten gemeinsame Kategorie-/Sortierfilter ohne Änderung
+  der Hashkette (ACCESS-STAFF-PERMISSION-001, GWG-RISK-REVIEW-001,
+  AUDIT-HASH-CHAIN-001, AUDIT-VERIFY-ALERT-001). Neue Fachregeln bleiben ungeprüft.
+- **[Scope]** Vier Datenbankmigrationen übernehmen bestehende Steuernummern,
+  ausdrückliche Berufsträgerzuordnungen und getrennte Personenanker. Historische
+  Prüfhashes bleiben erhalten; alte offene Einladungen werden zur manuellen
+  Neuausstellung widerrufen, ohne automatisch Ersatzlinks zu versenden. Die
+  [Umstellungsschritte](docs/development/gwg-erfassung-steuerdaten.md#koordinierter-versionswechsel)
+  verlangen ein gemeinsames Wartungsfenster für alte und neue Schreibprozesse
+  (TAX-MASTER-DATA-001, GWG-RISK-REVIEW-001, GWG-SELF-ONBOARDING-001,
+  GWG-PERSON-LINKS-001).
+
 - Der persönliche Anzeigemodus lässt sich getrennt nach Schriftgröße
   (100/112,5/125 Prozent), Zeilenabstand, Standard-/verstärktem Kontrast und
   Bewegungsreduktion anpassen. Die Auswahl bleibt beim Ausschalten erhalten,

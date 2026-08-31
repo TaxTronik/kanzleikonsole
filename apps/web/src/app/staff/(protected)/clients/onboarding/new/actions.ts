@@ -1,5 +1,7 @@
 'use server';
 
+import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-review';
+
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { isStaffAdmin } from '@/server/auth/rbac';
@@ -20,7 +22,6 @@ const Schema = z.object({
   postalCode: z.string().max(20).optional().or(z.literal('')),
   city: z.string().max(100).optional().or(z.literal('')),
   countryIso: z.string().length(2).optional().or(z.literal('')),
-  vatId: z.string().max(50).optional().or(z.literal('')),
   invoiceEmail: z.string().email().max(255).optional().or(z.literal('')),
   berufstraegerIds: z.array(z.string().uuid()).min(1, 'Mindestens ein Berufsträger ist Pflicht.'),
   hauptbearbeiterIds: z.array(z.string().uuid()),
@@ -45,7 +46,6 @@ export async function createOnboardingClientAction(formData: FormData) {
     postalCode: formData.get('postalCode') ?? '',
     city: formData.get('city') ?? '',
     countryIso: ((formData.get('countryIso') as string) ?? '').toUpperCase(),
-    vatId: formData.get('vatId') ?? '',
     invoiceEmail: formData.get('invoiceEmail') ?? '',
     berufstraegerIds: formData.getAll('berufstraegerIds').map(String),
     hauptbearbeiterIds: formData.getAll('hauptbearbeiterIds').map(String),
@@ -73,6 +73,11 @@ export async function createOnboardingClientAction(formData: FormData) {
           'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
         );
       }
+      if (!(await areProfessionalAssigneesEligibleTx(tx, tenantId, berufstraegerIds))) {
+        throw new ActionError(
+          'Als Berufsträger sind nur aktive, als Berufsträger qualifizierte Mitarbeiter zulässig.',
+        );
+      }
 
       const client = await tx.client.create({
         data: {
@@ -86,7 +91,6 @@ export async function createOnboardingClientAction(formData: FormData) {
           postalCode: parsed.data.postalCode || null,
           city: parsed.data.city || null,
           countryIso: parsed.data.countryIso || null,
-          vatId: parsed.data.vatId || null,
           invoiceEmail: parsed.data.invoiceEmail || null,
         },
       });

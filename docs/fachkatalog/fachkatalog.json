@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:1a13d7ee2ddafcc267c0c4ef2a7af298d508b61c56c62b504642e70905e83bf9",
-    "expected_active_rule_count": 59,
+    "definition_sha256": "sha256:87f5c8daa8567a4e39d3909a082972b746cb951c3dc95aee269354c2560e8039",
+    "expected_active_rule_count": 63,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -37,7 +37,10 @@
       "GOBD-VERFAHRENSDOKU-001",
       "GWG-ACTIVATION-GATE-001",
       "GWG-BENEFICIAL-OWNERS-001",
+      "GWG-CONTROL-EXPORT-001",
       "GWG-IDENTIFICATION-EVIDENCE-001",
+      "GWG-OCR-ASSIST-001",
+      "GWG-PERSON-LINKS-001",
       "GWG-REPRESENTATIVE-AUTHORITY-001",
       "GWG-RETENTION-DESTRUCTION-001",
       "GWG-REVERIFICATION-VALIDITY-001",
@@ -64,6 +67,7 @@
       "TAX-CONTROL-STATUS-001",
       "TAX-DEADLINE-AUTOREQUEST-001",
       "TAX-DEADLINE-WORKDAY-001",
+      "TAX-MASTER-DATA-001",
       "TAX-NOTICE-APPEAL-001",
       "TAX-NOTICE-DATARETRIEVAL-001",
       "TCMS-SAMPLE-PROOF-001"
@@ -80,8 +84,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 59,
-  "active_rule_count": 59,
+  "rule_count": 63,
+  "active_rule_count": 63,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -281,12 +285,16 @@
       "code_refs": [
         "apps/web/src/server/auth/rbac.ts",
         "apps/web/src/server/actions/staff-action.ts",
-        "apps/web/src/lib/staff-permissions.ts"
+        "apps/web/src/lib/staff-permissions.ts",
+        "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
+        "apps/web/src/server/gwg/professional-review.ts"
       ],
       "test_refs": [
         "apps/web/src/server/auth/__tests__/rbac.test.ts",
         "apps/web/src/server/actions/__tests__/staff-action.test.ts",
-        "apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts"
+        "apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts",
+        "apps/web/src/server/gwg/__tests__/professional-review.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
       "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001"],
@@ -346,9 +354,15 @@
         "packages/db/src/tenant-context.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260623000000_iter42_force_rls/migration.sql",
+        "packages/db/prisma/migrations/20260831100000_tax_registrations/migration.sql",
+        "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql",
         "packages/db/scripts/verify-rls.ts"
       ],
-      "test_refs": ["packages/db/src/__tests__/rls-cross-tenant.test.ts"],
+      "test_refs": [
+        "packages/db/src/__tests__/rls-cross-tenant.test.ts",
+        "packages/db/src/__tests__/tax-master-data.test.ts",
+        "packages/db/src/__tests__/gwg-person-links.test.ts"
+      ],
       "feature_refs": [
         "docs/architecture.md",
         "docs/adr/0002-rls-und-app-level-tenancy.md",
@@ -557,14 +571,19 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/admin/audit/page.tsx",
         "packages/evidence/src/service.ts",
         "packages/evidence/src/chain.ts",
-        "packages/evidence/src/canonical-json.ts"
+        "packages/evidence/src/canonical-json.ts",
+        "apps/web/src/server/audit/query.ts",
+        "apps/web/src/app/api/staff/admin/audit/export/route.ts"
       ],
       "test_refs": [
         "packages/evidence/src/__tests__/service-record.test.ts",
         "packages/evidence/src/__tests__/hash-chain.test.ts",
-        "packages/evidence/src/__tests__/canonical-json.property.test.ts"
+        "packages/evidence/src/__tests__/canonical-json.property.test.ts",
+        "apps/web/src/server/audit/__tests__/query.test.ts",
+        "apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -652,8 +671,8 @@
         "reviewed_content_hash": null
       },
       "implementation": {
-        "status": "implemented",
-        "summary": "Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker- und Policy-Fehler und benachrichtigt zuständige interne Rollen."
+        "status": "partial",
+        "summary": "Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker- und Policy-Fehler. Die Anzeige hält neue negative Ergebnisse trotz altem Checkpoint sichtbar; Recovery-Abgrenzung und monotone Spitzenpersistenz haben noch bekannte Grenzen."
       },
       "sources": [
         {
@@ -673,11 +692,13 @@
       ],
       "code_refs": [
         "apps/worker/src/jobs/audit-verify-check.ts",
-        "apps/web/src/app/staff/(protected)/admin/audit/actions.ts"
+        "apps/web/src/app/staff/(protected)/admin/audit/actions.ts",
+        "apps/web/src/server/audit/status.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/audit-verify-check.test.ts",
-        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts"
+        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts",
+        "apps/web/src/server/audit/__tests__/status.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -1366,10 +1387,16 @@
       "test_refs": [
         "apps/web/src/server/dsgvo/__tests__/client-retention.test.ts",
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/poa-signer-actions.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts",
+        "apps/web/src/server/tax-master-data/__tests__/service.test.ts",
         "packages/db/src/__tests__/poa-signing-integrity.test.ts"
       ],
       "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
-      "related_rules": ["DSGVO-OPERATIONAL-RETENTION-001", "DOC-RETENTION-CLASS-001"],
+      "related_rules": [
+        "DSGVO-OPERATIONAL-RETENTION-001",
+        "DOC-RETENTION-CLASS-001",
+        "TAX-MASTER-DATA-001"
+      ],
       "tags": ["anonymisierung", "mandatsende", "handakte"],
       "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-mandate-anonymization-001-mandatsende.md",
       "summary": "TaxTronik stellt personenbezogene Mandatsdaten nicht automatisch frei zur Anonymisierung. Für natürliche Personen erscheint nach dem dokumentierten Mandatsende und einem pauschalen Zehnjahresfenster ab Jahresende ein Prüfvorschlag; die Ausführung bleibt ein manueller Admin-/Partner-Schritt. Dieser Vorschlag ersetzt weder die aktenbezogene Prüfung des § 66 StBerG noch weitere Aufbewahrungs-, Herausgabe-, Anspruchs- oder Beweisgründe."
@@ -1792,6 +1819,57 @@
       "summary": "Bei Rechtsträgern muss geklärt werden, welche natürlichen Personen letztlich Eigentum oder Kontrolle ausüben beziehungsweise auf wessen Veranlassung die Geschäftsbeziehung begründet wird. TaxTronik erfasst diese Personen, ihre Risikodaten sowie eine freie Beschreibung der Eigentums- und Kontrollstruktur und verlangt vor der Freigabe mindestens einen Datensatz."
     },
     {
+      "id": "GWG-CONTROL-EXPORT-001",
+      "title": "Aktuelle GwG-Kontrollliste auf sichtbare Mandate begrenzen und als Excel exportieren",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Die aktuelle Kontrollliste bündelt ausdrücklich verbundene Personen mit getrennten Mandatsnachweisen. Excel enthält Personenübersicht und Nachweisdetails mit denselben Gruppennummern, vollständigen Ausweisnummern und einer harten Grenze von 10.000 Detailzeilen. Sie ist kein vollständiges GwG-Dossier."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Produktumfang der GwG-Kontrollliste und des Excel-Exports",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/gwg/control-list.ts",
+        "apps/web/src/server/gwg/control-list-model.ts",
+        "apps/web/src/server/gwg/control-xlsx.ts",
+        "apps/web/src/app/staff/(protected)/gwg/page.tsx",
+        "apps/web/src/app/api/staff/gwg/export/route.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg/__tests__/control-list-model.test.ts",
+        "apps/web/src/server/gwg/__tests__/control-list.test.ts",
+        "apps/web/src/server/gwg/__tests__/control-xlsx.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md"],
+      "related_rules": [
+        "GWG-PERSON-LINKS-001",
+        "ACCESS-CLIENT-MODE-001",
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-RISK-REVIEW-001",
+        "GWG-RETENTION-DESTRUCTION-001"
+      ],
+      "tags": ["kontrollliste", "excel-export", "ausweisnummer"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-control-export-001-kontrollliste.md",
+      "summary": "Die interne Liste und der Excel-Export zeigen je sichtbarem Mandanten dessen neuesten nicht vernichteten Prüfstand mit aktuellen Ausweissätzen. Eine Personengruppe bündelt Unternehmenszuordnungen; Ausweise und Entscheidungen bleiben je Mandat getrennt. Vollständige Ausweisnummern sind für Mitarbeiter mit bestehendem Mandantenzugriff sichtbar und exportierbar."
+    },
+    {
       "id": "GWG-IDENTIFICATION-EVIDENCE-001",
       "title": "Identitätsangaben erheben und mit zugeordnetem Nachweis prüfen",
       "domain": "gwg",
@@ -1840,6 +1918,11 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/use-identity-review-state.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-subjects-context.tsx",
+        "apps/web/src/server/gwg/identity-source.ts",
+        "apps/web/src/components/gwg/identity-capture.tsx",
+        "apps/web/src/lib/gwg/identity-viewport.ts",
         "apps/web/src/server/gwg/verification.ts",
         "apps/web/src/server/gwg/evidence-documents.ts",
         "apps/web/src/server/gwg/identity-subject.ts",
@@ -1866,6 +1949,10 @@
         "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts",
+        "apps/web/src/server/gwg/__tests__/identity-source.test.ts",
+        "apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts",
+        "apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts",
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
         "apps/web/src/server/gwg/__tests__/representatives.test.ts",
@@ -1878,6 +1965,7 @@
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
       "related_rules": [
+        "GWG-OCR-ASSIST-001",
         "GWG-ACTIVATION-GATE-001",
         "GWG-REPRESENTATIVE-AUTHORITY-001",
         "GWG-BENEFICIAL-OWNERS-001",
@@ -1887,6 +1975,122 @@
       "tags": ["identifizierung", "identitaetsnachweis", "ausweis", "register"],
       "path": "docs/fachkatalog/regeln/gwg/gwg-identification-evidence-001-identitaet-und-nachweis.md",
       "summary": "Vor der Produktfreigabe müssen die für den Mandantentyp vorgesehenen Identitätsangaben gespeichert und mit einem konkreten Nachweis verbunden sein. Bei natürlichen Personen akzeptiert das aktuelle Gate einen gültigen Personalausweis oder Reisepass; bei Rechtsträgern werden Rechtsform, Registerdaten beziehungsweise Registerlosigkeit und ein Register- oder Gründungsnachweis verlangt."
+    },
+    {
+      "id": "GWG-OCR-ASSIST-001",
+      "title": "Lokale Ausweiserkennung liefert ausschließlich ungeprüfte Vorschläge",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Umsetzung und Betriebsgrenzen der GwG-Erweiterung",
+          "path": "docs/development/gwg-erfassung-steuerdaten.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/components/gwg/identity-capture.tsx",
+        "apps/web/src/lib/gwg/identity-image.ts",
+        "apps/web/src/lib/gwg/identity-ocr-worker.ts",
+        "apps/web/src/lib/gwg/identity-ocr.ts",
+        "apps/web/src/lib/gwg/identity-viewport.ts",
+        "apps/web/src/server/gwg/identity-source.ts",
+        "apps/web/src/server/gwg-onboarding/identity-persistence.ts",
+        "apps/web/src/app/gwg-onboarding/actions.ts",
+        "apps/web/src/app/api/staff/gwg/identity-source/route.ts",
+        "apps/web/scripts/prepare-identity-assets.mjs",
+        "packages/db/prisma/migrations/20260831103000_gwg_identity_viewports/migration.sql"
+      ],
+      "test_refs": [
+        "apps/e2e/tests/16-identity-local.spec.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts",
+        "apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts",
+        "apps/web/src/server/gwg/__tests__/identity-source.test.ts",
+        "apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["docs/development/gwg-erfassung-steuerdaten.md"],
+      "related_rules": [
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-SELF-ONBOARDING-001",
+        "GWG-RISK-REVIEW-001"
+      ],
+      "tags": ["lokale-ocr", "ungepruefte-vorschlaege", "originalerhalt"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-ocr-assist-001-lokale-ausweishilfe.md",
+      "summary": "Die Ausweishilfe unterstützt das Abtippen deutscher Personalausweise. Sie ist keine Echtheits-, Identitäts- oder Qualifikationsprüfung. Der Nutzer vergleicht Vorschläge mit dem Original und entscheidet feldweise über die Übernahme."
+    },
+    {
+      "id": "GWG-PERSON-LINKS-001",
+      "title": "Personen nur ausdrücklich und ohne gemeinsame Fachdaten mandatsübergreifend verbinden",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Technische mandatslokale Personenanker und ausdrücklich bestätigte Paarverknüpfungen bündeln sichtbare Unternehmenszuordnungen. Stammdaten, Ausweise und Freigaben bleiben in den jeweiligen Mandatsprüfungen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Produktumfang der Personenübersicht",
+          "path": "FEATURES.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql",
+        "apps/web/src/server/gwg/person-links.ts",
+        "apps/web/src/server/gwg/control-list-model.ts",
+        "apps/web/src/server/gwg/control-list.ts",
+        "apps/web/src/server/gwg/reverification.ts",
+        "apps/web/src/server/gwg-onboarding/submission-transaction.ts",
+        "apps/web/src/app/staff/(protected)/gwg/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/gwg/__tests__/person-links.test.ts",
+        "apps/web/src/server/gwg/__tests__/control-list-model.test.ts",
+        "apps/web/src/server/gwg/__tests__/control-list.test.ts",
+        "apps/web/src/server/gwg/__tests__/snapshot-copy.test.ts",
+        "packages/db/src/__tests__/gwg-person-links.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md"],
+      "related_rules": [
+        "ACCESS-CLIENT-MODE-001",
+        "ACCESS-TENANT-RLS-001",
+        "GWG-IDENTIFICATION-EVIDENCE-001",
+        "GWG-REVERIFICATION-VALIDITY-001",
+        "GWG-RETENTION-DESTRUCTION-001",
+        "GWG-CONTROL-EXPORT-001"
+      ],
+      "tags": ["personenverknuepfung", "mandantenzugriff", "keine-gemeinsamen-stammdaten"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-person-links-001-mandatsuebergreifende-personenuebersicht.md",
+      "summary": "Ein Mitarbeiter kann zwei bekannte Personen aus unterschiedlichen sichtbaren Mandanten ausdrücklich als dieselbe Person verbinden. Ein Personenanker trägt nur technische Zuordnungsdaten. Namen, Anschriften, Ausweisnummern und Freigaben werden weder zentral gespeichert noch zwischen Mandaten übernommen. Die Verbindung ist eine organisatorische Anzeigehilfe, keine Identitätsprüfung."
     },
     {
       "id": "GWG-REPRESENTATIVE-AUTHORITY-001",
@@ -2002,11 +2206,13 @@
         "packages/storage/src/service.ts",
         "packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql",
         "packages/db/prisma/migrations/20260823170000_gwg_open_first_check_retention/migration.sql",
-        "packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql"
+        "packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql",
+        "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
         "packages/db/src/__tests__/gwg-destruction.test.ts",
+        "packages/db/src/__tests__/gwg-person-links.test.ts",
         "apps/web/src/server/gwg/__tests__/retention.test.ts",
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts"
@@ -2015,7 +2221,8 @@
       "related_rules": [
         "GWG-IDENTIFICATION-EVIDENCE-001",
         "GWG-BENEFICIAL-OWNERS-001",
-        "GWG-SELF-ONBOARDING-001"
+        "GWG-SELF-ONBOARDING-001",
+        "GWG-PERSON-LINKS-001"
       ],
       "tags": ["aufbewahrung", "vernichtung", "zehnjahresgrenze", "object-lock"],
       "path": "docs/fachkatalog/regeln/gwg/gwg-retention-destruction-001-aufbewahrung-und-vernichtung.md",
@@ -2037,7 +2244,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "TaxTronik befristet HIGH-Prüfungen auf 365 Tage und andere Stufen auf 1095 Tage, warnt 90 und 30 Tage vor Ablauf und deaktiviert bei Ablauf ohne neueren gültigen Check. Änderungen definierter GwG-Stammdaten erzeugen einen neuen oder zurückgesetzten Entwurf und entwerten frühere Bestätigungen."
+        "summary": "TaxTronik befristet HIGH-Prüfungen auf 365 Tage und andere Stufen auf 1095 Tage, warnt 90 und 30 Tage vor Ablauf und deaktiviert bei Ablauf ohne neueren gültigen Check. Änderungen definierter GwG-Stammdaten erzeugen einen neuen oder zurückgesetzten Entwurf und entwerten frühere Bestätigungen. Rein steuerliche Stammdaten sind hiervon ausgenommen; die v2-Prüfgrundlage enthält keine USt-ID."
       },
       "sources": [
         {
@@ -2065,6 +2272,9 @@
       "code_refs": [
         "apps/web/src/server/gwg/reverification.ts",
         "apps/web/src/server/gwg/risk-score.ts",
+        "apps/web/src/server/gwg/review-snapshot.ts",
+        "apps/web/src/server/gwg-onboarding/invite-draft-revision.ts",
+        "apps/web/src/server/tax-master-data/service.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/change-requests/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
@@ -2072,6 +2282,9 @@
       ],
       "test_refs": [
         "apps/web/src/server/gwg/__tests__/reverification.test.ts",
+        "apps/web/src/server/gwg/__tests__/review-snapshot.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/invite-draft-revision.test.ts",
+        "apps/web/src/server/tax-master-data/__tests__/service.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts"
       ],
@@ -2079,7 +2292,8 @@
       "related_rules": [
         "GWG-ACTIVATION-GATE-001",
         "GWG-IDENTIFICATION-EVIDENCE-001",
-        "GWG-RISK-REVIEW-001"
+        "GWG-RISK-REVIEW-001",
+        "TAX-MASTER-DATA-001"
       ],
       "tags": ["wiederholungspruefung", "ablauf", "stammdaten", "aktualisierung"],
       "path": "docs/fachkatalog/regeln/gwg/gwg-reverification-validity-001-wiederholungspruefung.md",
@@ -2134,6 +2348,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx",
+        "packages/db/prisma/migrations/20260831102000_staff_professional/migration.sql",
         "apps/web/src/server/gwg/risk-score.ts",
         "apps/web/src/server/gwg/verification.ts",
         "apps/web/src/server/gwg/professional-review.ts",
@@ -2144,6 +2360,8 @@
         "apps/web/src/server/gwg/__tests__/risk-score.test.ts",
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
         "apps/web/src/server/gwg/__tests__/professional-review.test.ts",
+        "apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts",
+        "packages/db/src/__tests__/gwg-professional-lock.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
@@ -2198,6 +2416,18 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
+        "apps/web/src/app/gwg-onboarding/wizard.tsx",
+        "apps/web/src/server/gwg-onboarding/invite-lifecycle.ts",
+        "apps/web/src/server/gwg-onboarding/owner-submission.ts",
+        "apps/web/src/server/gwg-onboarding/representative-submission.ts",
+        "apps/web/src/server/gwg-onboarding/service.ts",
+        "apps/web/src/server/gwg-onboarding/submission-master-data.ts",
+        "apps/web/src/server/gwg-onboarding/wizard-validation.ts",
+        "apps/web/src/server/gwg-onboarding/migrate-invite-v2-audit.ts",
+        "apps/web/src/server/gwg-onboarding/manual-capture.ts",
+        "apps/web/src/server/gwg-onboarding/identity-persistence.ts",
+        "apps/web/src/lib/gwg/identity-viewport.ts",
         "apps/web/src/app/gwg-onboarding/actions.ts",
         "apps/web/src/server/gwg-onboarding/invite-binding.ts",
         "apps/web/src/server/gwg-onboarding/submission-validation.ts",
@@ -2207,6 +2437,16 @@
         "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/service.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/wizard-validation.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/invite-lifecycle.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/submission-master-data.test.ts",
+        "apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/manual-capture.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/submission-transaction-structure.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
@@ -2218,6 +2458,7 @@
         "docs/anwenderdoku/erste-schritte.md"
       ],
       "related_rules": [
+        "GWG-OCR-ASSIST-001",
         "GWG-ACTIVATION-GATE-001",
         "GWG-IDENTIFICATION-EVIDENCE-001",
         "GWG-REPRESENTATIVE-AUTHORITY-001",
@@ -3597,6 +3838,69 @@
       "tags": ["fristende", "feiertag", "werktag"],
       "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-deadline-workday-001-werktagsverschiebung.md",
       "summary": "TaxTronik darf ein Datum nur dann nach § 108 Abs. 3 AO verschieben, wenn es das Ende einer Frist ist und keine gesetzliche Ausnahme greift. Fällt dieses Fristende auf einen Sonnabend, Sonntag oder einen am rechtlich maßgeblichen Ort geltenden gesetzlichen Feiertag, endet die Frist mit Ablauf des nächstfolgenden Werktags."
+    },
+    {
+      "id": "TAX-MASTER-DATA-001",
+      "title": "Steuerliche Stammdaten mit mehreren Steuerverbindungen getrennt vom GwG führen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Steuerrecht und Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Eine USt-ID und mehrere Steuerverbindungen gehören zum Mandanten. Genau eine aktive Verbindung ist Standard. Länderformate werden strukturell in das ELSTER-Bundesformat umgerechnet; Finanzamtszuständigkeit und Erteilung werden nicht automatisch bestätigt. Portaländerungen benötigen die Entscheidung der Kanzlei und einen unveränderten Ausgangsstand."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Steuerliche Stammdaten, Mehrfachverbindungen und Freigabe von Portalvorschlägen",
+          "path": "docs/fachkatalog/SCOPE.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "ELSTER Hilfe, Steuernummer und Tabelle Länderformat/Bundesschema",
+          "url": "https://www.elster.de/eportal/helpGlobal?themaGlobal=wo_ist_meine_steuernummer",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/change-requests/page.tsx",
+        "apps/web/src/lib/tax-registration.ts",
+        "apps/web/src/server/tax-master-data/schema.ts",
+        "apps/web/src/server/tax-master-data/service.ts",
+        "apps/web/src/app/portal/(protected)/stammdaten/tax-actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts",
+        "packages/db/prisma/migrations/20260831100000_tax_registrations/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/app/portal/(protected)/stammdaten/__tests__/tax-actions.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/elster/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts",
+        "apps/web/src/lib/__tests__/tax-registration.test.ts",
+        "apps/web/src/server/tax-master-data/__tests__/schema.test.ts",
+        "apps/web/src/server/tax-master-data/__tests__/service.test.ts",
+        "packages/db/src/__tests__/tax-master-data.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md"],
+      "related_rules": [
+        "GWG-REVERIFICATION-VALIDITY-001",
+        "ACCESS-CLIENT-MODE-001",
+        "ACCESS-TENANT-RLS-001",
+        "DSGVO-MANDATE-ANONYMIZATION-001"
+      ],
+      "tags": ["stammdaten", "steuernummer", "elster", "portal"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/tax-master-data-001-steuerverbindungen.md",
+      "summary": "Steuerdaten werden in einer eigenen Sektion geführt. Die USt-ID bleibt einmal am Mandanten gespeichert; mehrere Steuernummern mit Bezeichnung und Finanzamt werden als getrennte Steuerverbindungen geführt. Eine reine Steuerdatenänderung löst keinen neuen GwG-Prüfzyklus aus. Diese Trennung ist eine ungeprüfte Produktregel, keine vollständige Aussage über gesetzliche Aktualisierungspflichten."
     },
     {
       "id": "TAX-NOTICE-APPEAL-001",

@@ -1,5 +1,7 @@
 'use server';
 
+import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-review';
+
 import { redirect } from 'next/navigation';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
@@ -20,13 +22,6 @@ const createClientSchema = z
     postalCode: z.string().max(20).optional().or(z.literal('')),
     city: z.string().max(100).optional().or(z.literal('')),
     countryIso: z.string().length(2).optional().or(z.literal('')),
-    vatId: z.string().max(50).optional().or(z.literal('')),
-    // 13-stelliges ELSTER-Bundesformat (konsistent zur Edit-Action/@taxtronik/elster).
-    steuernummer: z
-      .string()
-      .regex(/^[0-9]{13}$/, 'Steuernummer: 13 Ziffern (ELSTER-Format).')
-      .optional()
-      .or(z.literal('')),
     invoiceEmail: z.string().email().max(255).optional().or(z.literal('')),
     berufstraegerIds: z.array(z.string().uuid()).min(1, 'Mindestens ein Berufsträger ist Pflicht.'),
     hauptbearbeiterIds: z.array(z.string().uuid()),
@@ -40,13 +35,6 @@ const createClientSchema = z
           code: 'custom',
           path: ['postalCode'],
           message: 'PLZ (DE): genau 5 Ziffern.',
-        });
-      }
-      if (d.vatId && !/^DE\d{9}$/.test(d.vatId)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['vatId'],
-          message: 'USt-IdNr (DE): Format DE + 9 Ziffern.',
         });
       }
     }
@@ -72,8 +60,6 @@ export async function createClientAction(formData: FormData) {
     postalCode: formData.get('postalCode') ?? '',
     city: formData.get('city') ?? '',
     countryIso: ((formData.get('countryIso') as string) ?? '').toUpperCase(),
-    vatId: formData.get('vatId') ?? '',
-    steuernummer: formData.get('steuernummer') ?? '',
     invoiceEmail: formData.get('invoiceEmail') ?? '',
     berufstraegerIds: formData.getAll('berufstraegerIds').map(String),
     hauptbearbeiterIds: formData.getAll('hauptbearbeiterIds').map(String),
@@ -91,8 +77,6 @@ export async function createClientAction(formData: FormData) {
     postalCode,
     city,
     countryIso,
-    vatId,
-    steuernummer,
     invoiceEmail,
     berufstraegerIds,
     hauptbearbeiterIds,
@@ -117,6 +101,11 @@ export async function createClientAction(formData: FormData) {
       if (activeStaffCount !== assignedStaffIds.length) {
         throw new ActionError(
           'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
+        );
+      }
+      if (!(await areProfessionalAssigneesEligibleTx(tx, tenantId, uniqueBerufstraegerIds))) {
+        throw new ActionError(
+          'Als Berufsträger sind nur aktive, als Berufsträger qualifizierte Mitarbeiter zulässig.',
         );
       }
 
@@ -156,8 +145,6 @@ export async function createClientAction(formData: FormData) {
           postalCode: postalCode || null,
           city: city || null,
           countryIso: countryIso || null,
-          vatId: vatId || null,
-          steuernummer: steuernummer || null,
           invoiceEmail: invoiceEmail || null,
         },
       });

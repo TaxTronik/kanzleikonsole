@@ -9,7 +9,6 @@ interface Stammdaten {
   postalCode: string;
   city: string;
   countryIso: string;
-  vatId: string;
   invoiceEmail: string;
 }
 
@@ -70,7 +69,6 @@ export function StammdatenForm({
     ['postalCode', 'PLZ'],
     ['city', 'Ort'],
     ['countryIso', 'Land (ISO-2)'],
-    ['vatId', 'USt-ID'],
     ['invoiceEmail', 'Rechnungs-Mail'],
   ];
 

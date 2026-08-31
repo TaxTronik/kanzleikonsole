@@ -12,6 +12,7 @@ import { AddIdDocumentForm } from './add-id-doc-form';
 import { InviteSection } from './invite-section';
 import { GwgDecisionForms } from './decision-forms';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { identityViewports } from '@/lib/gwg/identity-viewport';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import type { GwgSubmissionSummaryData } from '@/components/gwg-submission-summary';
 import { LegalEntityDetailsForm } from './legal-entity-details-form';
@@ -186,7 +187,7 @@ export default async function GwgPage({
               clientId,
               staffId,
               role: 'BERUFSTRAEGER',
-              staff: { tenantId, active: true, roles: { some: {} } },
+              staff: { tenantId, active: true, isProfessional: true, roles: { some: {} } },
             },
             select: { id: true },
           }),
@@ -340,7 +341,6 @@ export default async function GwgPage({
       postalCode: client.postalCode,
       city: client.city,
       countryIso: client.countryIso,
-      vatId: client.vatId,
       allowActive: client.allowActive,
     },
     invite: latestInvite
@@ -351,6 +351,7 @@ export default async function GwgPage({
           createdAt: latestInvite.createdAt.toISOString(),
           expiresAt: latestInvite.expiresAt.toISOString(),
           submittedAt: latestInvite.submittedAt?.toISOString() ?? null,
+          cancellationReason: latestInvite.cancellationReason,
         }
       : null,
     owners:
@@ -1000,6 +1001,7 @@ interface IdentityDocumentSource {
   identityAssignmentConfirmedAt: Date | null;
   identityAssignmentConfirmedBy: string | null;
   notes: string | null;
+  viewports?: unknown;
   document: { id: string; title: string; createdAt: string } | null;
 }
 
@@ -1032,6 +1034,7 @@ function groupIdentityDocuments(
       identityAssignmentConfirmedAt: document.identityAssignmentConfirmedAt?.toISOString() ?? null,
       identityAssignmentConfirmedBy: document.identityAssignmentConfirmedBy,
       notes: document.notes,
+      viewports: identityViewports(document.viewports),
       document: document.document,
     });
     groups.set(groupingKey, current);
@@ -1052,7 +1055,10 @@ function groupIdentityDocuments(
       documentSetId: first.documentSetId,
       documents: entries,
       subjectKey: displaySubjectKey,
-      revision: gwgIdentityDocumentSetRevision(entries),
+      // Bind CAS to the stored values; rendering normalizes legacy null views to [].
+      revision: gwgIdentityDocumentSetRevision(
+        documents.filter((document) => document.documentSetId === first.documentSetId),
+      ),
     };
   });
 }
@@ -1288,10 +1294,6 @@ function GwgMasterDataFields({ client, check }: { client: Client; check: GwgDisp
       <div>
         <dt className="text-xs text-muted">Adresse</dt>
         <dd className="text-sm font-medium text-primary">{clientAddress || '—'}</dd>
-      </div>
-      <div>
-        <dt className="text-xs text-muted">USt-ID</dt>
-        <dd className="text-sm font-medium text-primary">{client.vatId ?? '—'}</dd>
       </div>
       <div>
         <dt className="text-xs text-muted">Rechtsform</dt>

@@ -36,9 +36,11 @@ code_refs:
   - packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql
   - packages/db/prisma/migrations/20260823170000_gwg_open_first_check_retention/migration.sql
   - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
+  - packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - packages/db/src/__tests__/gwg-destruction.test.ts
+  - packages/db/src/__tests__/gwg-person-links.test.ts
   - apps/web/src/server/gwg/__tests__/retention.test.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
@@ -50,6 +52,7 @@ related_rules:
   - GWG-IDENTIFICATION-EVIDENCE-001
   - GWG-BENEFICIAL-OWNERS-001
   - GWG-SELF-ONBOARDING-001
+  - GWG-PERSON-LINKS-001
 tags:
   - aufbewahrung
   - vernichtung
@@ -164,6 +167,13 @@ als historische `GwgIdDocument`-Zeile erhalten. Das Lösen einer irrtümlichen
 Zuordnung entfernt dagegen nur diese Verknüpfungszeile; das Dokument und seine
 Object-Store-Versionen verbleiben bis zum kontrollierten Vernichtungspfad in
 der Mandantenakte.
+
+Technische mandatsübergreifende Personenverbindungen werden bei Anonymisierung
+des Mandanten getrennt. Beim Abschluss der kontrollierten GwG-Vernichtung
+entfallen Verbindungen zu lokalen Personenankern ohne lebende Prüfreferenz;
+vollständig unreferenzierte Anker werden gelöscht. Noch aufzubewahrende
+Fachsnapshots werden allein durch diese Bereinigung nicht verändert. Die
+Verbindungen speichern keine gemeinsamen Namen, Ausweise oder Freigaben.
 
 ## Bekannte Abweichungen und Grenzen
 

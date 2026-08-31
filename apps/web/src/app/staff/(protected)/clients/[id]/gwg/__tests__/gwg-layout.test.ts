@@ -144,7 +144,8 @@ describe('GwG-Prüfung Seitenstruktur', () => {
     expect(identityReviewSource).toContain("'Als geprüft markieren'");
     expect(identityReviewSource).toContain('action={formAction}');
     expect(identityReviewSource).toContain('router.refresh();');
-    expect(identityReviewSource).toContain('!hasCompetingActiveSets');
+    expect(identityReviewSource).toContain('const canConfirmDirectly = canConfirmIdentityReview(');
+    expect(identityReviewSource).toContain('!input.hasCompetingActiveSets');
   });
 
   // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001

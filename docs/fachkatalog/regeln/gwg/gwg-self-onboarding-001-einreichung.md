@@ -38,6 +38,18 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
+  - apps/web/src/app/gwg-onboarding/wizard.tsx
+  - apps/web/src/server/gwg-onboarding/invite-lifecycle.ts
+  - apps/web/src/server/gwg-onboarding/owner-submission.ts
+  - apps/web/src/server/gwg-onboarding/representative-submission.ts
+  - apps/web/src/server/gwg-onboarding/service.ts
+  - apps/web/src/server/gwg-onboarding/submission-master-data.ts
+  - apps/web/src/server/gwg-onboarding/wizard-validation.ts
+  - apps/web/src/server/gwg-onboarding/migrate-invite-v2-audit.ts
+  - apps/web/src/server/gwg-onboarding/manual-capture.ts
+  - apps/web/src/server/gwg-onboarding/identity-persistence.ts
+  - apps/web/src/lib/gwg/identity-viewport.ts
   - apps/web/src/app/gwg-onboarding/actions.ts
   - apps/web/src/server/gwg-onboarding/invite-binding.ts
   - apps/web/src/server/gwg-onboarding/submission-validation.ts
@@ -46,6 +58,16 @@ code_refs:
   - packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql
   - packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql
 test_refs:
+  - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/service.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/wizard-validation.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/invite-lifecycle.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/submission-master-data.test.ts
+  - apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts
+  - apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/manual-capture.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-transaction-structure.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
   - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
@@ -55,6 +77,7 @@ feature_refs:
   - docs/compliance/gwg.md
   - docs/anwenderdoku/erste-schritte.md
 related_rules:
+  - GWG-OCR-ASSIST-001
   - GWG-ACTIVATION-GATE-001
   - GWG-IDENTIFICATION-EVIDENCE-001
   - GWG-REPRESENTATIVE-AUTHORITY-001
@@ -149,6 +172,25 @@ Beim Submit stimmt der gebundene Revisionshash nicht mehr. TaxTronik lehnt die
 Einreichung ab und überschreibt weder Personen noch Dokumentzuordnungen.
 
 ## Umsetzung in TaxTronik
+
+Einladung und „In der Kanzlei erfassen“ sind gleichwertige Einstiege. Der
+Kanzleiweg öffnet einen vorhandenen DRAFT-/IN_REVIEW-Stand unverändert oder
+legt nach einem abgeschlossenen Stand einen neuen Entwurf an. Offene Links
+werden unter dem Mandanten-Lifecycle-Lock mit Grund widerrufen und auditiert;
+Kontakte, Aktivierungsbedingungen und Berufsträgerfreigabe werden nicht
+übersprungen. Es erfolgt kein automatischer Versand eines Ersatzlinks.
+
+Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
+Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und
+unterschiedliche Seiten/Ausschnitte gültig sind. Personenfremde oder mehrfach
+verwendete Originale bleiben verboten. Öffentliche Einreichungen speichern
+keine Identitätsbestätigung. Auch ohne OCR trägt jede Ausweisseite zwingend die
+aktuelle saubere Quellversion. Vollständige manuelle Originalansichten benötigen
+keine PDF-Dekodierung; explizite PDF-Seiten, Ausschnitte und Drehungen werden am
+Original validiert. Ein veralteter Seitenverweis wird niemals still ersetzt.
+Der koordinierte Versionswechsel widerruft alte
+offene Einladungen; bereits eingereichte Daten und historische Hashes bleiben
+erhalten. Details stehen in der Betriebsdokumentation zur Erweiterung.
 
 Einladungsausgabe und -nutzung verwenden gehashte Tokens, Ablaufstatus,
 Rate-Limits und einen Mandanten-Lifecycle-Lock. Uploads werden vor der

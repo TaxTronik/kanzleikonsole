@@ -20,6 +20,8 @@ implementation:
     Tage, warnt 90 und 30 Tage vor Ablauf und deaktiviert bei Ablauf ohne
     neueren gültigen Check. Änderungen definierter GwG-Stammdaten erzeugen einen
     neuen oder zurückgesetzten Entwurf und entwerten frühere Bestätigungen.
+    Rein steuerliche Stammdaten sind hiervon ausgenommen; die v2-Prüfgrundlage
+    enthält keine USt-ID.
 sources:
   - kind: product_documentation
     citation: GwG-Pflichten und technische Umsetzung in TaxTronik
@@ -39,12 +41,18 @@ sources:
 code_refs:
   - apps/web/src/server/gwg/reverification.ts
   - apps/web/src/server/gwg/risk-score.ts
+  - apps/web/src/server/gwg/review-snapshot.ts
+  - apps/web/src/server/gwg-onboarding/invite-draft-revision.ts
+  - apps/web/src/server/tax-master-data/service.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/change-requests/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
   - apps/worker/src/jobs/gwg-expiry-check.ts
 test_refs:
   - apps/web/src/server/gwg/__tests__/reverification.test.ts
+  - apps/web/src/server/gwg/__tests__/review-snapshot.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/invite-draft-revision.test.ts
+  - apps/web/src/server/tax-master-data/__tests__/service.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
 feature_refs:
@@ -54,6 +62,7 @@ related_rules:
   - GWG-ACTIVATION-GATE-001
   - GWG-IDENTIFICATION-EVIDENCE-001
   - GWG-RISK-REVIEW-001
+  - TAX-MASTER-DATA-001
 tags:
   - wiederholungspruefung
   - ablauf
@@ -78,10 +87,16 @@ risikoorientierten Aktualisierungsabstands.
 ## Wann gilt die Regel?
 
 Die Regel gilt nach jeder erfolgreichen Produktfreigabe und bei Änderungen an
-Name, Mandantentyp, Umsatzsteuer-ID, Straße, Postleitzahl, Ort oder Ländercode
+Name, Mandantentyp, Straße, Postleitzahl, Ort oder Ländercode
 über die Staff-Stammdatenmaske. Im Portal beantragte und von Staff übernommene
-Änderungen an Name, Anschrift, Land oder Umsatzsteuer-ID lösen dieselbe
+Änderungen an Name, Anschrift oder Land lösen dieselbe
 Re-Verifikation aus.
+
+USt-ID, Steuernummer, Finanzamt und die Auswahl einer Standard-Steuerverbindung
+sind rein steuerliche Stammdaten. Ihre Änderung löst allein weder einen neuen
+GwG-Zyklus noch die Entwertung einer Prüfung oder Einladung aus. Diese bewusste
+Produktentscheidung ist keine Aussage, dass steuerliche Sachverhalte bei einer
+individuellen Risikobeurteilung niemals relevant sein können.
 
 Sie gilt außerdem für ausdrücklich gestartete neue Prüfzyklen und für neue
 Self-Onboarding-Submits. Änderungen, die außerhalb dieser Pfade oder Felder
@@ -109,6 +124,7 @@ stattfinden, werden nicht automatisch erkannt.
 | `validUntil` ist erreicht                   | Check auf `EXPIRED`; ohne neueren gültigen Check Mandant deaktivieren                  | Freigabe nicht über Ablauf hinaus verwenden     |
 | Neuerer gültiger `VERIFIED`-Check existiert | Nur alten Check terminalisieren; Mandant aktiv lassen                                  | Aktuelle Freigabe trägt weiter                  |
 | Definiertes GwG-Stammdatum ändert sich      | Gültige Checks entwerten, Mandant deaktivieren und bearbeitbaren Entwurf bereitstellen | Grundlage hat sich geändert                     |
+| Nur steuerliche Stammdaten ändern sich      | Steuerdaten separat auditieren; GwG-Status und Freigabe unverändert lassen             | Eigener Steuerdatenbereich                      |
 | Alter Snapshot wird kopiert                 | Nur Arbeitsdaten übernehmen; Risiko und Identitätsbestätigungen nicht übernehmen       | Neue Prüfung muss eigenständig bestätigt werden |
 | Ausweis läuft innerhalb von 60 Tagen ab     | Staff warnen; bei aktivem Mandanten idempotente Anforderung vorbereiten                | Dokumentaktualisierung                          |
 
@@ -155,6 +171,24 @@ gültige Checks auf `EXPIRED`, deaktiviert den Mandanten und erstellt oder
 reaktiviert einen `DRAFT`. Vorgängerbezug und Änderungsanlass bleiben erhalten;
 übernommene persönliche Arbeitsdaten verlieren ihre Bestätigung.
 
+Die technische Umstellung auf Hashversion 2 entfernt die USt-ID aus Review-
+und Einladungsprojektionen und bindet gespeicherte Ausweisausschnitte ein.
+Historische Freigaben, Prüfungen und Audit-Hashes werden nicht umgeschrieben.
+Bereits eingereichte `IN_REVIEW`-Prüfungen behalten ihren Status und ihre
+Einreichungsdaten: da kein Einreichungshash gespeichert war, besteht keine
+zu migrierende Hashinvariante. Ein altes Entscheidungsformular wird abgewiesen;
+nach Neuladen muss der Berufsträger den neu angezeigten v2-Snapshot ausdrücklich
+bestätigen. Der Freigabenachweis speichert Hash und Version gemeinsam.
+
+Alte offene Einladungen mit v1-Bindung werden dagegen sichtbar widerrufen,
+nicht neu gebunden. Eine SQL-Migrationsmarkierung hält betroffene IDs und den
+tatsächlichen Umstellungszeitpunkt fest. Der idempotente Nachweislauf
+`migrate-invite-v2-audit.ts --apply` ergänzt anschließend wahrheitsgemäße
+SYSTEM-Ereignisse über die reguläre Hashkette; er legt offen, dass diese nach
+dem SQL-Schritt erfasst wurden. Der Rollout stoppt alte Writer und führt den
+Nachweislauf vor Wiederöffnung durch. Es werden keine E-Mails automatisch
+erneut versandt.
+
 ## Bekannte Abweichungen und Grenzen
 
 Innerhalb der beschriebenen Produktpolicy sind keine bekannten technischen
@@ -190,3 +224,8 @@ Vorgängerlinie und das Kopieren ohne Bestätigungen. Worker-Tests prüfen
 90-/30-Tage-Stufen, Ablauf, neueren Check, Ausweisdatum und idempotente
 Anforderungen. Diese Tests bestätigen die Produktpolicy, nicht die fachliche
 Angemessenheit des Zeitabstands.
+
+Zusätzliche Regressionen belegen die USt-ID-unabhängigen v2-Hashes, die Bindung
+geänderter Dokumentansichten und das Speichern rein steuerlicher Änderungen
+ohne GwG-Statuswechsel. Sie ersetzen keine fachliche Prüfung des neuen
+Prüfumfangs durch einen Berufsträger.

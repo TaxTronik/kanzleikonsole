@@ -44,12 +44,15 @@ code_refs:
 test_refs:
   - apps/web/src/server/dsgvo/__tests__/client-retention.test.ts
   - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/poa-signer-actions.test.ts
+  - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts
+  - apps/web/src/server/tax-master-data/__tests__/service.test.ts
   - packages/db/src/__tests__/poa-signing-integrity.test.ts
 feature_refs:
   - docs/compliance/dsgvo-konzept.md
 related_rules:
   - DSGVO-OPERATIONAL-RETENTION-001
   - DOC-RETENTION-CLASS-001
+  - TAX-MASTER-DATA-001
 tags:
   - anonymisierung
   - mandatsende
@@ -130,6 +133,19 @@ personenbezogene Felder in Stammdaten, Kontakten, Vollmachten, Formularen,
 Terminen, Wiedervorlagen, Übergaben und Risikoanalysen. Die Admin-Actions
 sperren den Mandanten, revalidieren Fälligkeit und GwG-Vorbedingungen,
 widerrufen Sitzungen und schreiben nur Zähler in den Auditnachweis.
+
+Der NATPERS-Pfad leert außerdem USt-ID und die nur noch zur Migration vorhandene
+`Client.steuernummer`. Er redigiert alle aktiven und archivierten
+Steuerverbindungen (Nummer, Landeskennung, Finanzamtsname/-code und freie
+Bezeichnung) und archiviert ihre leeren Beziehungsdatensätze. Diese IDs bleiben
+für separat aufbewahrte ELSTER-Abfragen bestehen; deren Nummernsnapshot wird
+hier nicht verändert. Steuerdatenvorschläge werden mit den übrigen
+Stammdatenanträgen gelöscht. Der Steuerdaten-Service verweigert eine erneute
+Befüllung bereits anonymisierter Mandanten.
+
+Die Migration übernimmt keine Legacy-Steuernummer bereits anonymisierter
+NATPERS und entfernt diese dort verbliebenen Legacy-Werte. Sie schreibt keine
+historischen Audit- oder ELSTER-Nachweise um.
 
 ## Bekannte Abweichungen und Grenzen
 

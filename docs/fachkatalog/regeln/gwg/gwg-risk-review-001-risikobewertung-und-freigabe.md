@@ -43,6 +43,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx
+  - packages/db/prisma/migrations/20260831102000_staff_professional/migration.sql
   - apps/web/src/server/gwg/risk-score.ts
   - apps/web/src/server/gwg/verification.ts
   - apps/web/src/server/gwg/professional-review.ts
@@ -52,6 +54,8 @@ test_refs:
   - apps/web/src/server/gwg/__tests__/risk-score.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg/__tests__/professional-review.test.ts
+  - apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts
+  - packages/db/src/__tests__/gwg-professional-lock.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
 feature_refs:
   - FEATURES.md
@@ -101,7 +105,7 @@ dieser Score- und Freigaberegel.
 - vollständiger Identitäts-, Vertretungs- und Berechtigten-Snapshot
 - PEP-Angabe je wirtschaftlich Berechtigtem
 - Mitarbeiter der Vorbereitung und Zeitpunkt der Einreichung
-- zugeordneter aktiver Berufsträger
+- zugeordneter aktiver Mitarbeiter mit ausdrücklich gepflegter Berufsträgerqualifikation
 - Hash des vollständig angezeigten Review-Snapshots
 - ausdrückliche Berufsträgerbestätigung
 
@@ -160,7 +164,19 @@ Aufschlüsselung. Jede inhaltliche Änderung setzt eine laufende Einreichung auf
 
 Das einheitliche Entscheidungsgate prüft Risiko und Identifikation sowohl bei
 der Einreichung als auch bei der finalen Entscheidung. Verifizieren darf nur
-ein aktiver, dem Mandanten als `BERUFSTRAEGER` zugeordneter Mitarbeiter. Status,
+ein aktiver, als `isProfessional` qualifizierter und dem Mandanten als
+`BERUFSTRAEGER` zugeordneter Mitarbeiter mit gültiger Staff-Rolle. Diese Angaben
+werden bei Freigabe und Ablehnung frisch aus der Datenbank gelesen. Vorher gilt
+die Sperrreihenfolge Mandanten-Lifecycle, Mitarbeiterzeile, Berufsträgerzuordnung,
+Staff-Rollenzeilen. Die Zeilen werden mit `FOR SHARE` bis zum Transaktionsende
+gehalten. Ein paralleler Qualifikationsentzug, eine Deaktivierung oder Löschung
+der Zuordnung beziehungsweise letzten Rolle wird damit vor oder nach der
+Entscheidung wirksam, nicht zwischen Berechtigungsprüfung und Commit.
+Fehlt eine zu sperrende Zeile, wird die Entscheidung abgewiesen. Reine
+UI-Leseprüfungen erwerben diese Sperren nicht. ADMIN/PARTNER oder eine veraltete
+Session ersetzen keine der Voraussetzungen. Auch die
+Empfängerauswahl bei Einreichung und neue Zuordnungen beachten die Qualifikation.
+Ein Entzug sperrt neue Entscheidungen, ändert aber keine früheren Freigaben. Status,
 Übergabe, neuester Prüfzyklus, Snapshot-Hash und ausdrückliche Bestätigung werden
 im selben Entscheidungspfad geprüft und auditiert.
 
@@ -179,6 +195,9 @@ Grenzen:
   Führungsebenenentscheidung und FIU-Meldung werden nicht abgearbeitet.
 - Die allgemeine Risikoanalyse der Kanzlei und interne Sicherungsmaßnahmen sind
   ausdrücklich nicht implementiert.
+- Die Qualifikation ist eine interne Kanzleifestlegung, kein amtlicher
+  Zulassungsabgleich. Aus früheren ausdrücklichen Mandatszuordnungen migrierte
+  Qualifikationen tragen sichtbar die Herkunft `legacy` bis zur manuellen Bestätigung.
 
 ## Fachliche Prüffragen
 
@@ -195,5 +214,7 @@ Grenzen:
 Score- und Verifikationstests belegen Schwellen, PEP-Override, vollständige
 Antworten, Widerspruchskontrollen und das einheitliche Entscheidungsgate. Die
 Action-Tests prüfen Zuordnung, Übergabe, Snapshot-CAS, Statusrennen und Audit.
+PostgreSQL-Tests prüfen konkurrierenden Merkmalsentzug und Zuordnungs-/Rollenlöschung
+gegen die tatsächlich verwendeten Lesesperren, ohne fachliche Freigaben zu erzeugen.
 Kein Test belegt die fachliche Eignung der Risikomatrix oder die Erfüllung
 verstärkter Sorgfaltspflichten.

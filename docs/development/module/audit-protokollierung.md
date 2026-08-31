@@ -57,6 +57,19 @@ Tagesversiegelung und unveränderlicher Langzeit-Archivierung.
 
 ## Traceability
 
+Die zentrale Ansicht und ihr CSV-Export teilen Kategorien, Sortierung nach
+Audit-ID und Datumsfilter in `server/audit/query.ts`. Kategorien sind rein
+abgeleitet; historische Ereignisse und Hashes werden nicht umgeschrieben.
+Unbekannte Actions bleiben unter „Sonstige“ sichtbar. Berliner Tagesgrenzen
+werden inklusive Beginn und exklusiv bis zur nächsten Mitternacht ausgewertet,
+auch an Zeitumstellungstagen. Der CSV-Auszug ist bei Filtern keine vollständige
+Hash-Kette. Die Berechtigung bleibt auf ADMIN/PARTNER begrenzt.
+
+Die historische Einordnung der Statuskarte verlangt den persistierten
+`recovered`-Wert; ein Checkpoint allein verdeckt keinen neu gemeldeten Fehler.
+Bekannte Grenzen des Worker-Recovery-Verfahrens und widersprüchliche frühere
+Prüfzusagen sind in `AUDIT-VERIFY-ALERT-001` ausdrücklich dokumentiert.
+
 | Anforderung                                                                | Implementierung                 | Test                                                                        |
 | -------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
 | Ketten-Integrität + Bruch-Erkennung                                        | chain/service                   | `hash-chain.test.ts`, `service-verifychain.test.ts`                         |

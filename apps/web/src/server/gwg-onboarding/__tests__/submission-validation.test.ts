@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 
 import {
   validateOnboardingSubmission,
@@ -25,6 +26,8 @@ function owner(overrides: Partial<OnboardingSubmissionOwner> = {}): OnboardingSu
     idExpiryDate: '2030-01-01',
     idFrontDocumentId: '00000000-0000-4000-8000-000000000001',
     idBackDocumentId: '00000000-0000-4000-8000-000000000002',
+    idFrontViewport: fullIdentityViewport('00000000-0000-4000-8000-000000000011', 'front'),
+    idBackViewport: fullIdentityViewport('00000000-0000-4000-8000-000000000012', 'back'),
     ...overrides,
   };
 }
@@ -100,6 +103,32 @@ describe('onboarding submission preflight', () => {
       legalEntity: null,
     });
 
-    expect(result).toEqual({ ok: false, error: 'Ein Dokument darf nur einmal zugeordnet werden.' });
+    expect(result).toEqual({
+      ok: false,
+      error: 'Vorder- und Rückseite benötigen unterschiedliche Seiten oder Ausschnitte.',
+    });
+  });
+  it('GWG-SELF-ONBOARDING-001 permits one PDF for one person but rejects sharing across people', () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    const version = '00000000-0000-4000-8000-000000000010';
+    const person = owner({
+      idFrontDocumentId: id,
+      idBackDocumentId: id,
+      idFrontViewport: fullIdentityViewport(version, 'front'),
+      idBackViewport: { ...fullIdentityViewport(version, 'back'), page: 2 },
+    });
+    const input = {
+      clientKind: 'NATPERS' as const,
+      uploadedDocumentIds: [id],
+      existingCheckDocumentIds: [],
+      owners: [person],
+      representatives: [],
+      extraDocuments: [],
+      legalEntity: null,
+    };
+    expect(validateOnboardingSubmission(input).ok).toBe(true);
+    expect(
+      validateOnboardingSubmission({ ...input, owners: [person, { ...person, localId: 'other' }] }),
+    ).toMatchObject({ ok: false });
   });
 });

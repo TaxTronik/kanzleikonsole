@@ -11,7 +11,18 @@ import { kontoabfrageAction } from './actions';
 
 const STEUERARTEN = ['ESt', 'KSt', 'USt', 'LSt', 'GewSt', 'ZaSt', 'KapESt'] as const;
 
-export function KontoabfrageForm({ clientId }: { clientId: string }) {
+export function KontoabfrageForm({
+  clientId,
+  registrations,
+}: {
+  clientId: string;
+  registrations: Array<{
+    id: string;
+    label: string;
+    numberElster: string | null;
+    isPrimary: boolean;
+  }>;
+}) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     kontoabfrageAction,
     null,
@@ -22,6 +33,26 @@ export function KontoabfrageForm({ clientId }: { clientId: string }) {
   return (
     <form action={formAction} className="card p-6 space-y-4">
       <input type="hidden" name="clientId" value={clientId} />
+      <div>
+        <label className="label-sm" htmlFor="elster-tax-registration">
+          Steuerverbindung *
+        </label>
+        <select
+          id="elster-tax-registration"
+          name="taxRegistrationId"
+          className="input w-full"
+          required
+          defaultValue={registrations.find((row) => row.isPrimary && row.numberElster)?.id ?? ''}
+        >
+          <option value="">Bitte wählen</option>
+          {registrations.map((row) => (
+            <option key={row.id} value={row.id} disabled={!row.numberElster}>
+              {row.label} · {row.numberElster ?? 'Keine Nummer'}
+              {row.isPrimary ? ' (Standard)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>

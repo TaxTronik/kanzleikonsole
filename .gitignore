@@ -10,6 +10,7 @@ dist/
 build/
 out/
 *.tsbuildinfo
+/apps/web/public/identity-assets/
 
 # ENV — niemals committen, nur .env.example
 .env

@@ -15,6 +15,8 @@ import {
 } from '@/server/gwg/identity-subject';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
+import { SavedIdentityViews } from '@/components/gwg/saved-identity-views';
+import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
 import { Modal } from '@/components/ui/modal';
 import {
   useUnlinkedGwgDocumentSearch,
@@ -57,6 +59,7 @@ export interface IdentityReviewDocument {
   identityAssignmentConfirmedAt: string | null;
   identityAssignmentConfirmedBy: string | null;
   notes: string | null;
+  viewports?: IdentityViewport[];
   document: { id: string; title: string; createdAt: string } | null;
 }
 
@@ -84,12 +87,19 @@ function InlineEvidence({
   label,
   active,
   removeControl,
+  clientId,
+  checkId,
+  views = [],
 }: {
   document: NonNullable<IdentityReviewDocument['document']>;
   label: string | null;
   active: boolean;
   removeControl?: ReactNode;
+  clientId: string;
+  checkId: string;
+  views?: IdentityViewport[];
 }) {
+  const hasSavedViews = views.length > 0;
   const [url, setUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -114,7 +124,7 @@ function InlineEvidence({
   }, [active]);
 
   useEffect(() => {
-    if (!active || !inViewport || url || error) return;
+    if (!active || !inViewport || url || error || hasSavedViews) return;
     let cancelled = false;
     setLoading(true);
     void fetch(`/api/staff/documents/${document.id}/preview-url`)
@@ -136,7 +146,7 @@ function InlineEvidence({
     return () => {
       cancelled = true;
     };
-  }, [active, document.id, error, inViewport, url]);
+  }, [active, document.id, error, hasSavedViews, inViewport, url]);
 
   const isImage = mimeType?.startsWith('image/');
   const isPdf = mimeType === 'application/pdf' || mimeType?.endsWith('pdf');
@@ -156,45 +166,66 @@ function InlineEvidence({
         <a
           href={`/api/staff/documents/${document.id}/download`}
           className="p-1 text-muted hover:text-primary"
-          title="Dokument herunterladen"
+          title="Unverändertes Original herunterladen"
         >
           <Download className="h-4 w-4" />
+          <span className="sr-only">Unverändertes Original herunterladen</span>
         </a>
         {removeControl}
       </div>
       <div className="flex min-h-72 items-center justify-center lg:min-h-96">
-        {loading && <Loader2 className="h-6 w-6 animate-spin text-disabled" />}
-        {error && (
-          <div className="space-y-2 p-4 text-center text-xs text-red-700">
-            <p>{error}</p>
-            <button type="button" className="btn-secondary text-xs" onClick={() => setError(null)}>
-              Vorschau erneut laden
-            </button>
-          </div>
-        )}
-        {url && isImage && (
-          // eslint-disable-next-line @next/next/no-img-element -- authenticated, short-lived evidence preview URL
-          <img
-            src={url}
-            alt={document.title}
-            loading="lazy"
-            className="max-h-[65vh] w-full object-contain"
-            onError={() => {
-              setUrl(null);
-              setError('Die Vorschau-URL ist abgelaufen oder nicht mehr erreichbar.');
-            }}
+        {hasSavedViews ? (
+          <SavedIdentityViews
+            clientId={clientId}
+            checkId={checkId}
+            documentId={document.id}
+            views={views}
+            active={active && inViewport}
           />
-        )}
-        {url && isPdf && (
-          <iframe src={url} title={document.title} className="h-[65vh] min-h-96 w-full border-0" />
-        )}
-        {url && !isImage && !isPdf && (
-          <a
-            href={`/api/staff/documents/${document.id}/download`}
-            className="btn-secondary text-xs"
-          >
-            Vorschau nicht verfügbar — herunterladen
-          </a>
+        ) : (
+          <>
+            {loading && <Loader2 className="h-6 w-6 animate-spin text-disabled" />}
+            {error && (
+              <div className="space-y-2 p-4 text-center text-xs text-red-700">
+                <p>{error}</p>
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => setError(null)}
+                >
+                  Vorschau erneut laden
+                </button>
+              </div>
+            )}
+            {url && isImage && (
+              // eslint-disable-next-line @next/next/no-img-element -- authenticated, short-lived evidence preview URL
+              <img
+                src={url}
+                alt={document.title}
+                loading="lazy"
+                className="max-h-[65vh] w-full object-contain"
+                onError={() => {
+                  setUrl(null);
+                  setError('Die Vorschau-URL ist abgelaufen oder nicht mehr erreichbar.');
+                }}
+              />
+            )}
+            {url && isPdf && (
+              <iframe
+                src={url}
+                title={document.title}
+                className="h-[65vh] min-h-96 w-full border-0"
+              />
+            )}
+            {url && !isImage && !isPdf && (
+              <a
+                href={`/api/staff/documents/${document.id}/download`}
+                className="btn-secondary text-xs"
+              >
+                Vorschau nicht verfügbar — herunterladen
+              </a>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -820,16 +851,64 @@ function IdentityReviewFeedback({
   state,
   invalidated,
 }: {
-  state: ActionResult | null;
+  state: (ActionResult & { verified?: boolean }) | null;
   invalidated: boolean;
 }) {
   return (
     <>
       {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && !invalidated && (
-        <div className="alert-success-sm">Ausweisangaben wurden bestätigt.</div>
+        <div className="alert-success-sm">
+          {state.verified
+            ? 'Ausweisangaben wurden als geprüft markiert.'
+            : 'Ausweisangaben wurden gespeichert. Die Prüfung muss separat bestätigt werden.'}
+        </div>
       )}
     </>
+  );
+}
+
+function identityReviewHasUnsavedChanges(
+  local: IdentityReviewLocalState,
+  server: IdentityReviewLocalState,
+  state: (ActionResult & { revision?: string; saved?: IdentityReviewSavedState }) | null,
+) {
+  const acknowledged =
+    state?.ok && state.revision === local.revision && state.saved
+      ? state.saved
+      : { ...server.fields, subjectKey: server.selectedSubjectKey };
+  return (
+    local.fields.type !== acknowledged.type ||
+    local.fields.number !== acknowledged.number ||
+    local.fields.issuedBy !== acknowledged.issuedBy ||
+    local.fields.issueDate !== acknowledged.issueDate ||
+    local.fields.expiryDate !== acknowledged.expiryDate ||
+    local.selectedSubjectKey !== acknowledged.subjectKey
+  );
+}
+
+function canConfirmIdentityReview(input: {
+  hasUnsavedChanges: boolean;
+  confirmed: boolean;
+  expired: boolean;
+  hasCompetingActiveSets: boolean;
+  attachedCount: number;
+  totalCount: number;
+  selectedSubjectKey: string;
+  fields: IdentityReviewLocalState['fields'];
+}) {
+  return (
+    !input.hasUnsavedChanges &&
+    !input.confirmed &&
+    !input.expired &&
+    !input.hasCompetingActiveSets &&
+    input.attachedCount > 0 &&
+    input.attachedCount === input.totalCount &&
+    Boolean(input.selectedSubjectKey) &&
+    Boolean(input.fields.number.trim()) &&
+    Boolean(input.fields.issuedBy.trim()) &&
+    Boolean(input.fields.issueDate) &&
+    Boolean(input.fields.expiryDate)
   );
 }
 
@@ -870,6 +949,7 @@ function IdentityReviewCard({
         reviewReset?: boolean;
         revision?: string;
         saved?: IdentityReviewSavedState;
+        verified?: boolean;
       })
     | null,
     FormData
@@ -959,10 +1039,12 @@ function IdentityReviewCard({
   const displayedOwnerName = invalidated ? (currentSubject?.name ?? '') : localState.ownerName;
   const displayedNumber = fields.number;
   const displayedExpiryDate = fields.expiryDate;
+  const hasUnsavedChanges = identityReviewHasUnsavedChanges(localState, serverState, state);
   const expired = Boolean(
     displayedExpiryDate && displayedExpiryDate < new Date().toISOString().slice(0, 10),
   );
   const persistedConfirmation =
+    currentRevision === group.revision &&
     !expired &&
     group.subjectKey !== null &&
     attachedDocuments.length === group.documents.length &&
@@ -984,18 +1066,18 @@ function IdentityReviewCard({
   const confirmed =
     grandfathered ||
     (!invalidated &&
+      !hasUnsavedChanges &&
       (localState.confirmedRevision === localState.revision || persistedConfirmation));
-  const canConfirmDirectly =
-    !confirmed &&
-    !expired &&
-    !hasCompetingActiveSets &&
-    attachedDocuments.length > 0 &&
-    attachedDocuments.length === group.documents.length &&
-    Boolean(selectedSubjectKey) &&
-    Boolean(fields.number.trim()) &&
-    Boolean(fields.issuedBy.trim()) &&
-    Boolean(fields.issueDate) &&
-    Boolean(fields.expiryDate);
+  const canConfirmDirectly = canConfirmIdentityReview({
+    hasUnsavedChanges,
+    confirmed,
+    expired,
+    hasCompetingActiveSets,
+    attachedCount: attachedDocuments.length,
+    totalCount: group.documents.length,
+    selectedSubjectKey,
+    fields,
+  });
 
   return (
     <details
@@ -1034,6 +1116,9 @@ function IdentityReviewCard({
               <InlineEvidence
                 key={entry.document.id}
                 document={entry.document}
+                clientId={clientId}
+                checkId={checkId}
+                views={entry.viewports}
                 label={
                   entry.notes?.startsWith('Vorderseite')
                     ? 'Vorderseite'
@@ -1067,7 +1152,12 @@ function IdentityReviewCard({
               displayedExpiryDate={displayedExpiryDate}
               displayedOwnerName={displayedOwnerName}
             />
-            {state?.error && <div className="alert-error-sm">{state.error}</div>}
+            <IdentityReviewFeedback state={state} invalidated={invalidated || hasUnsavedChanges} />
+            {hasUnsavedChanges && (
+              <p className="text-xs text-amber-700">
+                Ungespeicherte Änderungen: Bitte die Angaben zuerst unter „Bearbeiten“ speichern.
+              </p>
+            )}
             {!disabled && (
               <div className="flex flex-wrap gap-2">
                 {canConfirmDirectly && (
@@ -1083,6 +1173,7 @@ function IdentityReviewCard({
                     <input type="hidden" name="checkId" value={checkId} />
                     <input type="hidden" name="clientId" value={clientId} />
                     <input type="hidden" name="documentSetId" value={group.documentSetId} />
+                    <input type="hidden" name="intent" value="confirm" />
                     <input
                       type="hidden"
                       name="expectedRevision"
@@ -1178,6 +1269,7 @@ function IdentityReviewCard({
             <input type="hidden" name="checkId" value={checkId} />
             <input type="hidden" name="clientId" value={clientId} />
             <input type="hidden" name="documentSetId" value={group.documentSetId} />
+            <input type="hidden" name="intent" value="save" />
             <input
               type="hidden"
               name="expectedRevision"
@@ -1209,11 +1301,7 @@ function IdentityReviewCard({
                     subjectOptions.length === 0
                   }
                 >
-                  {isPending
-                    ? 'Speichert…'
-                    : confirmed
-                      ? 'Änderungen speichern und bestätigen'
-                      : 'Angaben übernehmen und bestätigen'}
+                  {isPending ? 'Speichert…' : 'Angaben speichern'}
                 </button>
                 <button
                   type="button"

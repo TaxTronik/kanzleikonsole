@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   emitN8nEvent: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
+  manualCapture: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
@@ -15,6 +16,9 @@ vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
+vi.mock('@/server/gwg-onboarding/manual-capture', () => ({
+  startManualGwgCaptureTx: mocks.manualCapture,
+}));
 vi.mock('@/server/auth/magic-link', () => ({ requestMagicLink: vi.fn() }));
 vi.mock('@/server/mail/dispatch', () => ({ sendTemplateMail: vi.fn() }));
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: vi.fn() }));
@@ -29,7 +33,10 @@ vi.mock('@/server/actions/staff-action', () => ({
   staffActionGuard: mocks.staffActionGuard,
 }));
 
-import { onboardingCompleteAction } from '@/app/staff/(protected)/clients/onboarding/[id]/actions';
+import {
+  onboardingCompleteAction,
+  onboardingCaptureGwgInOfficeAction,
+} from '@/app/staff/(protected)/clients/onboarding/[id]/actions';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const CHECK_ID = '22222222-2222-4222-8222-222222222222';
@@ -153,5 +160,38 @@ describe('Onboarding-Abschluss', () => {
 
     expect(tx.client.updateMany).toHaveBeenCalledOnce();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('GWG-SELF-ONBOARDING-001: manual collection action', () => {
+  it('checks client access before switching channel and redirects to the existing GwG editor', async () => {
+    const tx = makeTx();
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (value: typeof tx) => unknown) => fn(tx),
+    );
+    await expect(onboardingCaptureGwgInOfficeAction(formData())).rejects.toThrow('NEXT_REDIRECT');
+    expect(mocks.assertClientAccessTx).toHaveBeenCalledWith(tx, expect.anything(), CLIENT_ID);
+    expect(mocks.manualCapture).toHaveBeenCalledWith(tx, {
+      tenantId: 'tenant-1',
+      clientId: CLIENT_ID,
+      staffId: 'staff-1',
+    });
+    expect(mocks.assertClientAccessTx.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.manualCapture.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.redirect).toHaveBeenCalledWith(`/staff/clients/${CLIENT_ID}/gwg?from=onboarding`);
+    expect(tx.client.updateMany).not.toHaveBeenCalled();
+  });
+  it('cannot be used without a staff session or with denied client access', async () => {
+    mocks.staffActionGuard.mockResolvedValueOnce({ ok: false, error: 'unauthorized' });
+    await expect(onboardingCaptureGwgInOfficeAction(formData())).rejects.toThrow('unauthorized');
+    expect(mocks.manualCapture).not.toHaveBeenCalled();
+    const tx = makeTx();
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (value: typeof tx) => unknown) => fn(tx),
+    );
+    mocks.assertClientAccessTx.mockRejectedValueOnce(new Error('forbidden'));
+    await expect(onboardingCaptureGwgInOfficeAction(formData())).rejects.toThrow('forbidden');
+    expect(mocks.manualCapture).not.toHaveBeenCalled();
   });
 });

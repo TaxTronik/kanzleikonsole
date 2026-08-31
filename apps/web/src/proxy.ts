@@ -341,6 +341,6 @@ export const config = {
      * - favicon.ico, robots.txt
      * - öffentliche Dateien mit Extension
      */
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|identity-assets/|favicon.ico|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

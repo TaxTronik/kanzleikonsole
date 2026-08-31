@@ -4,7 +4,7 @@ Inventurstand: 2026-08-24
 Technischer Bezugspunkt: Arbeitsbaum auf `31a3d82feddc`
 Status: ungeprüfte Scope-Inventur, keine fachliche Freigabe
 
-<!-- fachkatalog-scope: version=1; active=59; reserved=8 -->
+<!-- fachkatalog-scope: version=1; active=63; reserved=8 -->
 
 ## Zweck und belastbare Vollständigkeitsgrenze
 
@@ -32,20 +32,20 @@ jedoch in scope.
 
 ### Umfang des vollständigen Produkt-Scope-Exports
 
-| Regelbereich                            | Atomare Regeln | Einordnung                                        |
-| --------------------------------------- | -------------: | ------------------------------------------------- |
-| Fristen und Bescheide                   |              5 | bestehender, in diesem Ausbau ergänzter Bestand   |
-| Geldwäschegesetz                        |              8 | eigener GwG-Inventurblock                         |
-| Datenschutz und Betroffenenrechte       |              6 | Abschnitt 1                                       |
-| Dokumente und Aufbewahrung              |              6 | Abschnitt 2                                       |
-| Mandat, Zugriff und Anforderungen       |              8 | Abschnitt 3                                       |
-| Vollmachten und Signaturen              |              4 | Abschnitt 4                                       |
-| Audit und Software-Assurance            |              6 | Abschnitt 5                                       |
-| Rechnungslogik                          |              8 | Abschnitt 6, davon drei bestehende Regeln         |
-| BWA, Subsumtion und TCMS-Produktgrenzen |              8 | Abschnitt 7                                       |
-| **Gesamt**                              |         **59** | vollständiger Export der definierten Produktlogik |
+| Regelbereich                            | Atomare Regeln | Einordnung                                          |
+| --------------------------------------- | -------------: | --------------------------------------------------- |
+| Fristen und Bescheide                   |              5 | bestehender, in diesem Ausbau ergänzter Bestand     |
+| Geldwäschegesetz                        |             11 | eigener GwG-Inventurblock mit OCR und Kontrollliste |
+| Datenschutz und Betroffenenrechte       |              6 | Abschnitt 1                                         |
+| Dokumente und Aufbewahrung              |              6 | Abschnitt 2                                         |
+| Mandat, Zugriff und Anforderungen       |              9 | Abschnitt 3 einschließlich Steuerverbindungen       |
+| Vollmachten und Signaturen              |              4 | Abschnitt 4                                         |
+| Audit und Software-Assurance            |              6 | Abschnitt 5                                         |
+| Rechnungslogik                          |              8 | Abschnitt 6, davon drei bestehende Regeln           |
+| BWA, Subsumtion und TCMS-Produktgrenzen |              8 | Abschnitt 7                                         |
+| **Gesamt**                              |         **63** | vollständiger Export der definierten Produktlogik   |
 
-Die acht reservierten IDs in Abschnitt 8 zählen nicht zu diesen 59 Regeln.
+Die acht reservierten IDs in Abschnitt 8 zählen nicht zu diesen 63 Regeln.
 Sie kennzeichnen bewusst nicht behauptete Rechts- oder Organisationsabdeckung.
 
 ### Separat inventarisierte Regelblöcke
@@ -68,6 +68,10 @@ Abschnitten 1 bis 7 aber nicht erneut fachlich beschrieben:
 | Geldwäschegesetz      | `GWG-SELF-ONBOARDING-001`          |
 | Geldwäschegesetz      | `GWG-REVERIFICATION-VALIDITY-001`  |
 | Geldwäschegesetz      | `GWG-RETENTION-DESTRUCTION-001`    |
+| Geldwäschegesetz      | `GWG-OCR-ASSIST-001`               |
+| Geldwäschegesetz      | `GWG-PERSON-LINKS-001`             |
+| Geldwäschegesetz      | `GWG-CONTROL-EXPORT-001`           |
+| Mandat und Zugriff    | `TAX-MASTER-DATA-001`              |
 
 ## Aussageklassen
 

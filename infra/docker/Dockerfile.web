@@ -62,8 +62,9 @@ RUN cd packages/db && \
     PRISMA=$(find /repo -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -1) && \
     test -n "$PRISMA" && node "$PRISMA" generate
 
-# Safety-Net: leeres public/ anlegen, damit COPY in der runner-Stage nicht knallt.
-RUN mkdir -p apps/web/public
+# Der direkte Next-Aufruf unten umgeht package.json-Buildskripte. Deshalb
+# OCR-/PDF-Worker und Sprachmodelle hier explizit fuer das Runtime-public kopieren.
+RUN node apps/web/scripts/prepare-identity-assets.mjs
 
 # NODE_OPTIONS begrenzt den Hauptprozess zusaetzlich. Der eigentliche Host-
 # Schutz liegt im cgroup-Limit von build_images: Next/Turbopack kann weitere

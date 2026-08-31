@@ -122,12 +122,27 @@ export async function confirmClientAnonymizationAction(input: {
         city: null,
         countryIso: null,
         vatId: null,
+        steuernummer: null,
         invoiceEmail: null,
         internalNotes: null,
         datevNo: null,
         addisonNo: null,
         allowActive: false,
         anonymizedAt,
+      },
+    });
+    // TAX-MASTER-DATA-001 / DSGVO-MANDATE-ANONYMIZATION-001: retain relation
+    // skeletons for separately retained ELSTER evidence, redact active AND archived tax data.
+    const taxRegistrationsRedacted = await tx.clientTaxRegistration.updateMany({
+      where: { tenantId, clientId },
+      data: {
+        label: 'Anonymisiert',
+        stateCode: null,
+        numberElster: null,
+        taxOfficeName: '',
+        taxOfficeCode: null,
+        isPrimary: false,
+        archivedAt: anonymizedAt,
       },
     });
     // Custom-Feld-Werte sind freie personenbezogene Stammdaten → löschen.
@@ -181,6 +196,7 @@ export async function confirmClientAnonymizationAction(input: {
         contactsAnonymized: anonymizedContactIds.length,
         customFieldValuesDeleted: deletedCustomValues.count,
         masterChangeRequestsDeleted: deletedChangeRequests.count,
+        taxRegistrationsRedacted: taxRegistrationsRedacted.count,
         ...sideTables,
       },
     });

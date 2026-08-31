@@ -1,4 +1,5 @@
 import { GwgOnboardingOwnerSchema } from './owner-submission';
+import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
 import {
   GwgOnboardingRepresentativeSchema,
   onboardingRepresentativeRoleError,
@@ -8,6 +9,7 @@ import { legalEntityEvidenceError } from './legal-entity-submission';
 
 interface WizardDocumentRef {
   documentId: string;
+  viewport?: IdentityViewport;
 }
 
 export interface WizardOwnerInput {
@@ -61,6 +63,8 @@ const OWNER_FIELD_LABELS: Readonly<Record<string, string>> = {
   idExpiryDate: 'Gültigkeitsdatum des Ausweises',
   idFrontDocumentId: 'Ausweis Vorderseite',
   idBackDocumentId: 'Ausweis Rückseite',
+  idFrontViewport: 'Quellversion der Ausweis Vorderseite (bitte Datei neu auswählen)',
+  idBackViewport: 'Quellversion der Ausweis Rückseite (bitte Datei neu auswählen)',
 };
 
 const REPRESENTATIVE_FIELD_LABELS: Readonly<Record<string, string>> = {
@@ -71,6 +75,8 @@ const REPRESENTATIVE_FIELD_LABELS: Readonly<Record<string, string>> = {
   idExpiryDate: 'Gültigkeitsdatum des Ausweises',
   idFrontDocumentId: 'Ausweis Vorderseite',
   idBackDocumentId: 'Ausweis Rückseite',
+  idFrontViewport: 'Quellversion der Ausweis Vorderseite (bitte Datei neu auswählen)',
+  idBackViewport: 'Quellversion der Ausweis Rückseite (bitte Datei neu auswählen)',
 };
 
 function fieldError(prefix: string, path: PropertyKey[], labels: Readonly<Record<string, string>>) {
@@ -86,6 +92,8 @@ export function onboardingOwnersStepError(owners: WizardOwnerInput[]): string | 
       ...owner,
       idFrontDocumentId: owner.idFront?.documentId,
       idBackDocumentId: owner.idBack?.documentId,
+      idFrontViewport: owner.idFront?.viewport,
+      idBackViewport: owner.idBack?.viewport,
     });
     if (!parsed.success) {
       return fieldError(
@@ -132,6 +140,8 @@ export function onboardingRepresentativesStepError(
       idExpiryDate: representative.idExpiryDate,
       idFrontDocumentId: representative.idFront?.documentId ?? null,
       idBackDocumentId: representative.idBack?.documentId ?? null,
+      idFrontViewport: representative.idFront?.viewport,
+      idBackViewport: representative.idBack?.viewport,
     });
     if (!parsed.success) {
       return fieldError(prefix, parsed.error.issues[0]?.path ?? [], REPRESENTATIVE_FIELD_LABELS);

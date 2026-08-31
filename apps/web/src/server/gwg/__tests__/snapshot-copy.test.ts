@@ -53,6 +53,25 @@ function makeTx() {
 }
 
 describe('copyGwgSnapshotTx', () => {
+  it('GWG-PERSON-LINKS-001 carries local anchors through actual role copies without inherited verification', async () => {
+    const tx = makeTx();
+    const original = source();
+    original.beneficialOwners[0]!.personAnchorId = '77777777-7777-4777-8777-777777777777';
+    original.representatives[0]!.personAnchorId = original.beneficialOwners[0]!.personAnchorId;
+    await copyGwgSnapshotTx(tx as unknown as TxClient, {
+      tenantId: TENANT_ID,
+      clientId: CLIENT_ID,
+      targetCheckId: TARGET_CHECK_ID,
+      source: original,
+    });
+    const owner = tx.gwgBeneficialOwner.createMany.mock.calls[0]![0].data[0]!;
+    const representative = tx.gwgRepresentative.createMany.mock.calls[0]![0].data[0]!;
+    expect(owner.id).not.toBe(original.beneficialOwners[0]!.id);
+    expect(owner.personAnchorId).toBe(original.beneficialOwners[0]!.personAnchorId);
+    expect(representative.personAnchorId).toBe(owner.personAnchorId);
+    expect(representative.linkedBeneficialOwnerId).toBe(owner.id);
+    expect(owner).not.toHaveProperty('verifiedAt');
+  });
   it('kopiert nur die Identifizierungsgrundlage mit neuen Owner- und Dokumentset-IDs', async () => {
     const tx = makeTx();
     const front = {

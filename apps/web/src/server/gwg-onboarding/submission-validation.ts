@@ -1,4 +1,5 @@
 import type { ClientKind } from '@prisma/client';
+import { distinctIdentityViews } from '@/lib/gwg/identity-viewport';
 
 import {
   legalEntityEvidenceError,
@@ -59,12 +60,37 @@ export function validateOnboardingSubmission(input: {
       : []),
     ...input.existingCheckDocumentIds.filter((id): id is string => id !== null),
   ]);
+  const people = [
+    ...input.owners,
+    ...input.representatives.filter((person) => !person.linkedOwnerLocalId),
+  ];
+  if (people.some((person) => !person.idFrontViewport || !person.idBackViewport)) {
+    return {
+      ok: false,
+      error:
+        'Jede Ausweisseite benötigt eine gebundene Quellversion. Bitte die Datei neu auswählen.',
+    };
+  }
+  if (
+    people.some(
+      (person) =>
+        person.idFrontDocumentId === person.idBackDocumentId &&
+        !distinctIdentityViews(person.idFrontViewport, person.idBackViewport),
+    )
+  ) {
+    return {
+      ok: false,
+      error: 'Vorder- und Rückseite benötigen unterschiedliche Seiten oder Ausschnitte.',
+    };
+  }
   const referencedDocumentIds = [
-    ...input.owners.flatMap((owner) => [owner.idFrontDocumentId, owner.idBackDocumentId]),
+    ...input.owners.flatMap((owner) => [
+      ...new Set([owner.idFrontDocumentId, owner.idBackDocumentId]),
+    ]),
     ...input.representatives.flatMap((representative) =>
       representative.linkedOwnerLocalId
         ? []
-        : [representative.idFrontDocumentId, representative.idBackDocumentId].filter(
+        : [...new Set([representative.idFrontDocumentId, representative.idBackDocumentId])].filter(
             (id): id is string => id !== null,
           ),
     ),

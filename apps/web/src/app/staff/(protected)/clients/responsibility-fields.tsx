@@ -6,6 +6,7 @@ interface StaffOption {
   id: string;
   fullName: string;
   email: string;
+  isProfessional: boolean;
 }
 
 export function ResponsibilityFields({ staff }: { staff: StaffOption[] }) {
@@ -51,19 +52,27 @@ export function ResponsibilityFields({ staff }: { staff: StaffOption[] }) {
           onInput={(e) => e.currentTarget.setCustomValidity('')}
         />
         <div className="max-h-48 overflow-auto rounded-md border border-default divide-y divide-border-subtle">
-          {staff.map((s) => (
-            <label key={s.id} className="flex items-center gap-3 text-sm px-3 py-2">
-              <input
-                type="checkbox"
-                name="berufstraegerIds"
-                value={s.id}
-                onChange={onBerufstraegerChange}
-                className="rounded border-strong text-brand-600"
-              />
-              <span className="text-primary">{s.fullName}</span>
-              <span className="text-xs text-muted truncate">{s.email}</span>
-            </label>
-          ))}
+          {staff
+            .filter((s) => s.isProfessional)
+            .map((s) => (
+              <label key={s.id} className="flex items-center gap-3 text-sm px-3 py-2">
+                <input
+                  type="checkbox"
+                  name="berufstraegerIds"
+                  value={s.id}
+                  onChange={onBerufstraegerChange}
+                  className="rounded border-strong text-brand-600"
+                />
+                <span className="text-primary">{s.fullName}</span>
+                <span className="text-xs text-muted truncate">{s.email}</span>
+              </label>
+            ))}
+          {!staff.some((s) => s.isProfessional) && (
+            <p className="p-3 text-xs text-amber-700">
+              Keine aktiven Berufsträger verfügbar. Bitte zuerst in der Benutzerverwaltung
+              qualifizieren.
+            </p>
+          )}
         </div>
       </div>
 

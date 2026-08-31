@@ -13,6 +13,7 @@ import {
   type ResolvedConsentOption,
 } from '@/server/privacy/consent';
 import type { LoadedInviteDraft } from '@/server/gwg-onboarding/service';
+import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 import {
   onboardingLegalEntityStepError,
   onboardingOwnersStepError,
@@ -61,7 +62,9 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-type OnboardingUploadResult = { ok: true; documentId: string } | { ok: false; error: string };
+type OnboardingUploadResult =
+  | { ok: true; documentId: string; versionId?: string }
+  | { ok: false; error: string };
 
 async function uploadOnboardingFile(
   token: string,
@@ -85,7 +88,7 @@ async function uploadOnboardingFile(
     if (!result.ok || !result.documentId) {
       return { ok: false, error: result.error ?? 'Upload fehlgeschlagen.' };
     }
-    return { ok: true, documentId: result.documentId };
+    return { ok: true, documentId: result.documentId, versionId: result.versionId };
   } catch {
     return {
       ok: false,
@@ -121,7 +124,6 @@ interface ClientShape {
   postalCode: string | null;
   city: string | null;
   countryIso: string | null;
-  vatId: string | null;
 }
 
 export function OnboardingWizard({
@@ -158,7 +160,6 @@ export function OnboardingWizard({
   const [postalCode, setPostalCode] = useState(client.postalCode ?? '');
   const [city, setCity] = useState(client.city ?? '');
   const [countryIso, setCountryIso] = useState(client.countryIso ?? 'DE');
-  const [vatId, setVatId] = useState(client.vatId ?? '');
 
   // Wirtschaftlich Berechtigte
   const [owners, setOwners] = useState<BeneficialOwner[]>(() =>
@@ -297,6 +298,16 @@ export function OnboardingWizard({
       setIdError(subjectId, side, result.error);
       return;
     }
+    if (!result.versionId) {
+      setIdError(
+        subjectId,
+        side,
+        'Die Quellversion konnte nicht gebunden werden. Bitte die Datei erneut hochladen.',
+      );
+      return;
+    }
+    // Manual entry needs no OCR/canvas: bind the untouched original immediately.
+    const viewport = fullIdentityViewport(result.versionId, side);
     setSubjects((current) =>
       current.map((subject) =>
         subject.id === subjectId
@@ -305,6 +316,9 @@ export function OnboardingWizard({
               [side === 'front' ? 'idFront' : 'idBack']: {
                 documentId: result.documentId,
                 fileName: file.name,
+                localFile: file,
+                versionId: result.versionId,
+                viewport,
               },
             } as T)
           : subject,
@@ -319,7 +333,10 @@ export function OnboardingWizard({
     setSubjects: Dispatch<SetStateAction<T[]>>,
   ) {
     setIdError(subjectId, side, null);
-    const discardError = await discardDocuments([documentId]);
+    const person = [...owners, ...representatives].find((entry) => entry.id === subjectId);
+    const otherSide = side === 'front' ? person?.idBack : person?.idFront;
+    const discardError =
+      otherSide?.documentId === documentId ? null : await discardDocuments([documentId]);
     if (discardError) {
       setIdError(subjectId, side, discardError);
       return;
@@ -411,7 +428,10 @@ export function OnboardingWizard({
 
   function submit() {
     setSubmitError(null);
-    const err = validateStep();
+    const err =
+      validateStep() ??
+      onboardingOwnersStepError(owners) ??
+      onboardingRepresentativesStepError(client.kind, owners, representatives);
     if (err) {
       setSubmitError(err);
       return;
@@ -419,7 +439,7 @@ export function OnboardingWizard({
     start(async () => {
       const r = await submitOnboardingAction({
         token,
-        master: { companyName, street, postalCode, city, countryIso, vatId },
+        master: { companyName, street, postalCode, city, countryIso },
         legalEntity: client.kind === 'NATPERS' ? null : { noRegisterEntry: noRegisterEntry! },
         owners: owners.map((o) => ({
           localId: o.id,
@@ -440,6 +460,8 @@ export function OnboardingWizard({
           idExpiryDate: o.idExpiryDate,
           idFrontDocumentId: o.idFront!.documentId,
           idBackDocumentId: o.idBack!.documentId,
+          idFrontViewport: o.idFront!.viewport!,
+          idBackViewport: o.idBack!.viewport!,
         })),
         representatives: representatives.map((representative) => ({
           localId: representative.id,
@@ -454,6 +476,8 @@ export function OnboardingWizard({
           idExpiryDate: representative.idExpiryDate,
           idFrontDocumentId: representative.idFront?.documentId ?? null,
           idBackDocumentId: representative.idBack?.documentId ?? null,
+          idFrontViewport: representative.idFront?.viewport,
+          idBackViewport: representative.idBack?.viewport,
         })),
         extraDocuments: extraDocs.map((document) => ({
           documentId: document.documentId,
@@ -487,18 +511,17 @@ export function OnboardingWizard({
           postalCode={postalCode}
           city={city}
           countryIso={countryIso}
-          vatId={vatId}
           onCompanyNameChange={setCompanyName}
           onStreetChange={setStreet}
           onPostalCodeChange={setPostalCode}
           onCityChange={setCity}
           onCountryIsoChange={setCountryIso}
-          onVatIdChange={setVatId}
         />
       )}
 
       {step === 1 && (
         <OwnersStep
+          token={token}
           clientKind={client.kind}
           owners={owners}
           representatives={representatives}
@@ -568,7 +591,6 @@ export function OnboardingWizard({
           postalCode={postalCode}
           city={city}
           countryIso={countryIso}
-          vatId={vatId}
           clientKind={client.kind}
           owners={owners}
           representatives={representatives}

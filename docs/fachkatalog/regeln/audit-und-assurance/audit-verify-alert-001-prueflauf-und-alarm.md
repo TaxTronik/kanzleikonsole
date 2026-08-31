@@ -14,8 +14,8 @@ professional_review:
   reviewed_at: null
   reviewed_content_hash: null
 implementation:
-  status: implemented
-  summary: Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker- und Policy-Fehler und benachrichtigt zuständige interne Rollen.
+  status: partial
+  summary: Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker- und Policy-Fehler. Die Anzeige hält neue negative Ergebnisse trotz altem Checkpoint sichtbar; Recovery-Abgrenzung und monotone Spitzenpersistenz haben noch bekannte Grenzen.
 sources:
   - kind: product_documentation
     citation: Technische Modulbeschreibung Audit-Protokollierung, Worker und Admin-Oberfläche
@@ -30,9 +30,11 @@ sources:
 code_refs:
   - apps/worker/src/jobs/audit-verify-check.ts
   - apps/web/src/app/staff/(protected)/admin/audit/actions.ts
+  - apps/web/src/server/audit/status.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/audit-verify-check.test.ts
   - apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts
+  - apps/web/src/server/audit/__tests__/status.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
   - docs/assurance/assurance-model.md
@@ -115,10 +117,27 @@ externe Maximal-IDs monoton und schreibt Status sowie Notifications.
 `actions.ts` startet manuelle Läufe und dokumentiert Recovery-Checkpoints als
 eigene Audit-Aktionen.
 
+Die zentrale Audit-Anzeige wertet für die bernsteinfarbene historische Einordnung
+den persistierten `recovered`-Wert zusammen mit dem Checkpoint aus. Ein alter
+Checkpoint allein färbt neue Verkürzungsbefunde oder Lauf-Exceptions nicht um;
+Exceptions werden mit Fehlerdetails rot dargestellt. Dies ändert keine
+Workerentscheidung und behauptet keine separate Prüfung einer Recovery-Teilkette.
+
 ## Bekannte Abweichungen und Grenzen
 
-Die Regel ist innerhalb des technischen Prüflauf-Scopes umgesetzt. Sie belegt
-weder die rechtzeitige menschliche Kenntnisnahme noch eine fachgerechte
+Die Implementierung erfüllt die oben beschriebene Recovery- und
+Monotonie-Sollregel noch nicht vollständig: Bei negativem `verifyChain` genügt
+dem Worker derzeit ein vorhandener Checkpoint zur Alarmunterdrückung, ohne neue
+von historischen Hash-/Seal-/Policy-Befunden zu trennen. Die separate
+Recovery-Teilkettenprüfung ist abgeschaltet; ältere Typkommentare und bereits
+geschriebene Checkpoint-Audittexte behaupten sie dennoch. Die normale
+Ergebnispersistenz übernimmt außerdem die neu gemessene Spitze auch nach einer
+erkannten Verkürzung; nur der Exception-Pfad erhält den Vorwert. Der
+Exception-Pfad persistiert den Fehler, erzeugt aber selbst keine Notification.
+Diese Konflikte erfordern eine gesonderte Korrektur des Recovery-Verfahrens;
+die begrenzte Anzeigekorrektur löst sie nicht.
+
+Die technische Prüfung belegt weder die rechtzeitige menschliche Kenntnisnahme noch eine fachgerechte
 Bearbeitung und Schließung des Befunds. Scheduler-, Queue-, Datenbank- oder
 Notification-Ausfälle können die Ausführung beziehungsweise Zustellung
 verzögern und müssen separat überwacht werden.
@@ -134,7 +153,8 @@ verzögern und müssen separat überwacht werden.
 
 ## Technische Nachweise
 
-Worker-Tests prüfen erfolgreichen Lauf, Kettenfehler, lokale und externe
-Spitzenverkürzung, Fehlerpersistenz, monotone Vergleichswerte und idempotente
-Meldungen. Der UI-Test belegt, dass ein angestoßener Prüflauf seinen Status
+Die vorhandenen Worker-Tests prüfen die reinen Funktionen zur lokalen und
+externen Spitzenverkürzung, nicht die vollständige Orchestrierung,
+Spitzenpersistenz oder Notification-Abwicklung. Die Statusmatrix prüft die
+Anzeige neuer Fehler trotz altem Checkpoint. Der UI-Test belegt, dass ein angestoßener Prüflauf seinen Status
 ohne vollständigen Chain-Walk im Renderpfad aktualisieren kann.

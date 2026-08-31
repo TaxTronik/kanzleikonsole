@@ -30,6 +30,7 @@ import {
   onboardingSendGwgAction,
   onboardingSkipAction,
   onboardingCompleteAction,
+  onboardingCaptureGwgInOfficeAction,
 } from './actions';
 import {
   GwgSubmissionSummary,
@@ -83,7 +84,6 @@ export default async function OnboardingStepPage({
           postalCode: true,
           city: true,
           countryIso: true,
-          vatId: true,
           allowActive: true,
           onboardingCompletedAt: true,
         },
@@ -99,6 +99,7 @@ export default async function OnboardingStepPage({
               id: true,
               inviteEmail: true,
               inviteName: true,
+              cancellationReason: true,
               status: true,
               createdAt: true,
               expiresAt: true,
@@ -180,7 +181,6 @@ export default async function OnboardingStepPage({
       postalCode: client.postalCode,
       city: client.city,
       countryIso: client.countryIso,
-      vatId: client.vatId,
       allowActive: client.allowActive,
     },
     invite: gwgInvite
@@ -191,6 +191,7 @@ export default async function OnboardingStepPage({
           createdAt: gwgInvite.createdAt.toISOString(),
           expiresAt: gwgInvite.expiresAt.toISOString(),
           submittedAt: gwgInvite.submittedAt?.toISOString() ?? null,
+          cancellationReason: gwgInvite.cancellationReason,
         }
       : null,
     owners:
@@ -476,6 +477,26 @@ function GwgStep({
         Der Mandant erhält per Mail einen Link zum Self-Service-GwG-Formular. Erst nach
         verifizierter Identitätsprüfung wird der Mandant intern auf <em>aktiv</em> geschaltet.
       </p>
+      {!professionallyReviewed && (
+        <form
+          action={onboardingCaptureGwgInOfficeAction}
+          className="mb-4 rounded-md border border-default p-4"
+        >
+          <input type="hidden" name="clientId" value={clientId} />
+          <p className="mb-2 text-sm font-medium text-primary">
+            Alternativ: Kanzlei erfasst selbst
+          </p>
+          <p className="mb-3 text-xs text-muted">
+            Zum Beispiel bei einem persönlichen Termin mit gescanntem Ausweis. Offene
+            Einladungslinks werden widerrufen; vorhandene Entwürfe, Einreichungen und Dateien
+            bleiben erhalten. Identifizierung, Risiko- und Berufsträgerprüfung sowie der
+            Ansprechpartner bleiben erforderlich.
+          </p>
+          <button type="submit" className="btn-secondary text-sm">
+            In der Kanzlei erfassen
+          </button>
+        </form>
+      )}
 
       {existingInvite && (
         <div className="mb-4 p-3 rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 text-xs text-emerald-800 dark:text-emerald-200">

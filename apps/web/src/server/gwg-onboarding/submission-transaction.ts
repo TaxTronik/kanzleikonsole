@@ -144,7 +144,6 @@ async function loadSubmissionClientTx(
       postalCode: true,
       city: true,
       countryIso: true,
-      vatId: true,
     },
   });
   if (!client || client.kind !== invite.clientKind) {
@@ -203,20 +202,23 @@ async function replaceSubmittedPeopleTx(
   const existingOwners = input.reuseBoundDraft
     ? await tx.gwgBeneficialOwner.findMany({
         where: { gwgCheckId: input.checkId },
-        select: { id: true, notes: true },
+        select: { id: true, notes: true, personAnchorId: true },
       })
     : [];
   const existingOwnerIds = new Set(existingOwners.map((entry) => entry.id));
   const existingOwnerNotes = new Map(existingOwners.map((entry) => [entry.id, entry.notes]));
-  const existingRepresentativeIds = new Set(
-    input.reuseBoundDraft
-      ? (
-          await tx.gwgRepresentative.findMany({
-            where: { gwgCheckId: input.checkId },
-            select: { id: true },
-          })
-        ).map((entry) => entry.id)
-      : [],
+  const existingOwnerAnchors = new Map(
+    existingOwners.map((entry) => [entry.id, entry.personAnchorId]),
+  );
+  const existingRepresentatives = input.reuseBoundDraft
+    ? await tx.gwgRepresentative.findMany({
+        where: { gwgCheckId: input.checkId },
+        select: { id: true, personAnchorId: true },
+      })
+    : [];
+  const existingRepresentativeIds = new Set(existingRepresentatives.map((entry) => entry.id));
+  const existingRepresentativeAnchors = new Map(
+    existingRepresentatives.map((entry) => [entry.id, entry.personAnchorId]),
   );
   const existingCheckDocuments = input.reuseBoundDraft
     ? await tx.gwgIdDocument.findMany({
@@ -251,6 +253,13 @@ async function replaceSubmittedPeopleTx(
         gwgCheckId: input.checkId,
         ...snapshot,
         notes: existingOwnerNotes.get(owner.localId) ?? snapshot.notes,
+        personAnchorId:
+          existingOwnerAnchors.get(owner.localId) ??
+          existingRepresentativeAnchors.get(
+            input.representatives.find((person) => person.linkedOwnerLocalId === owner.localId)
+              ?.localId ?? '',
+          ) ??
+          null,
       };
     }),
   });
@@ -265,6 +274,7 @@ async function replaceSubmittedPeopleTx(
     await tx.gwgRepresentative.createMany({
       data: input.representatives.map((representative, position) => ({
         id: representativeDbIds.get(representative.localId)!,
+        personAnchorId: existingRepresentativeAnchors.get(representative.localId) ?? null,
         gwgCheckId: input.checkId,
         fullName: representative.linkedOwnerLocalId
           ? input.owners.find((owner) => owner.localId === representative.linkedOwnerLocalId)!
@@ -316,6 +326,7 @@ async function persistSubmittedIdentitySetsTx(
   tx: TxClient,
   input: {
     checkId: string;
+    sourceScope: { tenantId: string; clientId: string };
     owners: OnboardingSubmissionOwner[];
     representatives: GwgOnboardingRepresentativeInput[];
     people: SubmittedPeoplePhase;
@@ -329,6 +340,8 @@ async function persistSubmittedIdentitySetsTx(
       : input.people.ownerDbIds.get(owner.localId)!;
     await persistOnboardingIdentitySetTx(tx, input.checkId, input.people.existingDocumentById, {
       documentIds: [owner.idFrontDocumentId, owner.idBackDocumentId],
+      viewports: [owner.idFrontViewport, owner.idBackViewport],
+      sourceScope: input.sourceScope,
       type: owner.idType,
       ownerName: owner.fullName.trim(),
       number: owner.idNumber?.trim() || null,
@@ -344,6 +357,8 @@ async function persistSubmittedIdentitySetsTx(
     if (representative.linkedOwnerLocalId) continue;
     await persistOnboardingIdentitySetTx(tx, input.checkId, input.people.existingDocumentById, {
       documentIds: [representative.idFrontDocumentId!, representative.idBackDocumentId!],
+      viewports: [representative.idFrontViewport, representative.idBackViewport],
+      sourceScope: input.sourceScope,
       type: representative.idType,
       ownerName: representative.fullName.trim(),
       number: representative.idNumber?.trim() || null,
@@ -675,6 +690,7 @@ export async function runOnboardingSubmissionTransactionTx(
     extraDocuments: submission.extraDocuments,
   });
   await persistSubmittedIdentitySetsTx(tx, {
+    sourceScope: { tenantId: submission.invite.tenantId, clientId: submission.invite.clientId },
     checkId: review.checkId,
     owners: submission.owners,
     representatives: submission.representatives,

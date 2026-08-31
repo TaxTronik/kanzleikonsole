@@ -46,7 +46,7 @@
 ### [AUDIT-VERIFY-ALERT-001 — Audit-Ketten regelmäßig prüfen und Abweichungen alarmieren](regeln/audit-und-assurance/audit-verify-alert-001-prueflauf-und-alarm.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
-- Umsetzung: **Umgesetzt und getestet**
+- Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet.
 
@@ -214,12 +214,33 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Bei Rechtsträgern muss geklärt werden, welche natürlichen Personen letztlich Eigentum oder Kontrolle ausüben beziehungsweise auf wessen Veranlassung die Geschäftsbeziehung begründet wird. TaxTronik erfasst diese Personen, ihre Risikodaten sowie eine freie Beschreibung der Eigentums- und Kontrollstruktur und verlangt vor der Freigabe mindestens einen Datensatz.
 
+### [GWG-CONTROL-EXPORT-001 — Aktuelle GwG-Kontrollliste auf sichtbare Mandate begrenzen und als Excel exportieren](regeln/gwg/gwg-control-export-001-kontrollliste.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Umgesetzt und getestet**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Die interne Liste und der Excel-Export zeigen je sichtbarem Mandanten dessen neuesten nicht vernichteten Prüfstand mit aktuellen Ausweissätzen. Eine Personengruppe bündelt Unternehmenszuordnungen; Ausweise und Entscheidungen bleiben je Mandat getrennt. Vollständige Ausweisnummern sind für Mitarbeiter mit bestehendem Mandantenzugriff sichtbar und exportierbar.
+
 ### [GWG-IDENTIFICATION-EVIDENCE-001 — Identitätsangaben erheben und mit zugeordnetem Nachweis prüfen](regeln/gwg/gwg-identification-evidence-001-identitaet-und-nachweis.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Vor der Produktfreigabe müssen die für den Mandantentyp vorgesehenen Identitätsangaben gespeichert und mit einem konkreten Nachweis verbunden sein. Bei natürlichen Personen akzeptiert das aktuelle Gate einen gültigen Personalausweis oder Reisepass; bei Rechtsträgern werden Rechtsform, Registerdaten beziehungsweise Registerlosigkeit und ein Register- oder Gründungsnachweis verlangt.
+
+### [GWG-OCR-ASSIST-001 — Lokale Ausweiserkennung liefert ausschließlich ungeprüfte Vorschläge](regeln/gwg/gwg-ocr-assist-001-lokale-ausweishilfe.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Umgesetzt und getestet**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Die Ausweishilfe unterstützt das Abtippen deutscher Personalausweise. Sie ist keine Echtheits-, Identitäts- oder Qualifikationsprüfung. Der Nutzer vergleicht Vorschläge mit dem Original und entscheidet feldweise über die Übernahme.
+
+### [GWG-PERSON-LINKS-001 — Personen nur ausdrücklich und ohne gemeinsame Fachdaten mandatsübergreifend verbinden](regeln/gwg/gwg-person-links-001-mandatsuebergreifende-personenuebersicht.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Umgesetzt und getestet**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Ein Mitarbeiter kann zwei bekannte Personen aus unterschiedlichen sichtbaren Mandanten ausdrücklich als dieselbe Person verbinden. Ein Personenanker trägt nur technische Zuordnungsdaten. Namen, Anschriften, Ausweisnummern und Freigaben werden weder zentral gespeichert noch zwischen Mandaten übernommen. Die Verbindung ist eine organisatorische Anzeigehilfe, keine Identitätsprüfung.
 
 ### [GWG-REPRESENTATIVE-AUTHORITY-001 — Auftretende Person identifizieren und Vertretungsberechtigung prüfen](regeln/gwg/gwg-representative-authority-001-vertretung.md)
 
@@ -313,6 +334,13 @@
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Eine mandantensichtbare Antwort oder Formularabgabe ist nur möglich, solange die Anforderung OPEN oder INPROGRESS ist. Eine erfolgreiche Mandantenantwort führt zu RESPONDED; Kanzleimitarbeiter können den Vorgang schließen oder aus RESPONDED/CLOSED wieder öffnen. Interne Kommentare folgen einer getrennten Regel.
+
+### [TAX-MASTER-DATA-001 — Steuerliche Stammdaten mit mehreren Steuerverbindungen getrennt vom GwG führen](regeln/mandat-und-zugriff/tax-master-data-001-steuerverbindungen.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Umgesetzt und getestet**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Steuerdaten werden in einer eigenen Sektion geführt. Die USt-ID bleibt einmal am Mandanten gespeichert; mehrere Steuernummern mit Bezeichnung und Finanzamt werden als getrennte Steuerverbindungen geführt. Eine reine Steuerdatenänderung löst keinen neuen GwG-Prüfzyklus aus. Diese Trennung ist eine ungeprüfte Produktregel, keine vollständige Aussage über gesetzliche Aktualisierungspflichten.
 
 ## Rechnungen
 

@@ -119,6 +119,7 @@ export function gwgPersonGeneralRevision(source: {
 }
 
 export interface IdentityDocumentRevisionSource {
+  viewports?: unknown;
   id: string;
   gwgCheckId?: string;
   documentSetId: string;
@@ -148,6 +149,7 @@ export function gwgIdentityDocumentSetRevision(
         gwgCheckId: document.gwgCheckId ?? null,
         documentSetId: document.documentSetId,
         documentId: document.documentId ?? null,
+        viewports: document.viewports ?? null,
         type: document.type,
         ownerName: document.ownerName,
         number: document.number,

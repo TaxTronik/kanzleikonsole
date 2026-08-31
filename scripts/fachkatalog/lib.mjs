@@ -87,6 +87,7 @@ const AUTHORITATIVE_SOURCE_HOSTS = {
     'bund.de',
     'bundesfinanzministerium.de',
     'bundesanzeiger.de',
+    'elster.de',
     'bravors.brandenburg.de',
     'verwaltungsvorschriften-im-internet.de',
   ],

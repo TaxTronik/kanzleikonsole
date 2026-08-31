@@ -14,6 +14,7 @@
 // =============================================================================
 
 import { createHash, randomBytes } from 'node:crypto';
+import { fullIdentityViewport, identityViewports } from '@/lib/gwg/identity-viewport';
 import { type Client, type GwgIdDocumentType, type Tenant } from '@prisma/client';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { revalidateOpenGwgInviteRevisionTx } from './invite-lifecycle';
@@ -58,10 +59,7 @@ export interface LoadedInvite {
   inviteEmail: string;
   status: 'PENDING' | 'STARTED' | 'SUBMITTED' | 'EXPIRED' | 'CANCELLED';
   expiresAt: Date;
-  client: Pick<
-    Client,
-    'id' | 'name' | 'kind' | 'street' | 'postalCode' | 'city' | 'countryIso' | 'vatId'
-  >;
+  client: Pick<Client, 'id' | 'name' | 'kind' | 'street' | 'postalCode' | 'city' | 'countryIso'>;
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>;
   draft: LoadedInviteDraft | null;
 }
@@ -69,6 +67,8 @@ export interface LoadedInvite {
 interface LoadedInviteFile {
   documentId: string;
   fileName: string;
+  versionId?: string;
+  viewport?: import('@/lib/gwg/identity-viewport').IdentityViewport;
 }
 
 export interface LoadedInviteDraftOwner {
@@ -143,21 +143,64 @@ function splitResidence(value: string | null): {
   };
 }
 
-function filesForSubject(
-  documents: Array<{
+interface SubjectIdentityDocument {
+  id: string;
+  type: GwgIdDocumentType;
+  documentId: string | null;
+  documentSetId: string;
+  notes: string | null;
+  viewports?: unknown;
+  number: string | null;
+  issuedBy: string | null;
+  issueDate: Date | null;
+  expiryDate: Date | null;
+  beneficialOwnerSubjectId: string | null;
+  representativeSubjectId: string | null;
+  document: {
     id: string;
-    type: GwgIdDocumentType;
-    documentId: string | null;
-    documentSetId: string;
-    notes: string | null;
-    number: string | null;
-    issuedBy: string | null;
-    issueDate: Date | null;
-    expiryDate: Date | null;
-    beneficialOwnerSubjectId: string | null;
-    representativeSubjectId: string | null;
-    document: { id: string; title: string } | null;
-  }>,
+    title: string;
+    versions: Array<{
+      id: string;
+      scanStatus: string;
+      scanCompletedAt: Date | null;
+      storageVersionId: string | null;
+    }>;
+  } | null;
+}
+
+function loadedIdentityFile(
+  entry: SubjectIdentityDocument | undefined,
+  side: 'front' | 'back',
+): LoadedInviteFile | null {
+  if (!entry?.documentId || !entry.document) return null;
+  const version = entry.document.versions[0];
+  if (
+    !version ||
+    version.scanStatus !== 'CLEAN' ||
+    !version.scanCompletedAt ||
+    !version.storageVersionId
+  )
+    return null;
+  const stored = identityViewports(entry.viewports);
+  if (
+    entry.viewports != null &&
+    (!Array.isArray(entry.viewports) || entry.viewports.length !== stored.length)
+  )
+    return null;
+  const saved = stored.find((view) => view.side === side);
+  if ((stored.length && !saved) || (saved && saved.versionId !== version.id)) return null;
+  // Legacy distinct originals get a source binding without requiring OCR.
+  const viewport = saved ?? fullIdentityViewport(version.id, side);
+  return {
+    documentId: entry.documentId,
+    fileName: entry.document.title,
+    versionId: version.id,
+    viewport,
+  };
+}
+
+function filesForSubject(
+  documents: SubjectIdentityDocument[],
   subject: { ownerId?: string; representativeId?: string },
 ) {
   const assigned = documents
@@ -178,14 +221,16 @@ function filesForSubject(
   if (new Set(assigned.map((entry) => entry.type)).size > 1) {
     throw new Error('GWG_BOUND_DRAFT_MIXED_IDENTITY_TYPES');
   }
-  const explicitFront = assigned.find((entry) => entry.notes?.toLowerCase().includes('vorder'));
-  const explicitBack = assigned.find((entry) => entry.notes?.toLowerCase().includes('rück'));
+  const explicitFront =
+    assigned.find((entry) =>
+      identityViewports(entry.viewports).some((view) => view.side === 'front'),
+    ) ?? assigned.find((entry) => entry.notes?.toLowerCase().includes('vorder'));
+  const explicitBack =
+    assigned.find((entry) =>
+      identityViewports(entry.viewports).some((view) => view.side === 'back'),
+    ) ?? assigned.find((entry) => entry.notes?.toLowerCase().includes('rück'));
   const front = explicitFront ?? assigned.find((entry) => entry.id !== explicitBack?.id);
   const back = explicitBack ?? assigned.find((entry) => entry.id !== front?.id);
-  const file = (entry: (typeof assigned)[number] | undefined): LoadedInviteFile | null =>
-    entry?.documentId && entry.document
-      ? { documentId: entry.documentId, fileName: entry.document.title }
-      : null;
   const details = assigned[0];
   const idType: 'PERSONALAUSWEIS' | 'REISEPASS' =
     assigned[0]?.type === 'REISEPASS' ? 'REISEPASS' : 'PERSONALAUSWEIS';
@@ -195,8 +240,8 @@ function filesForSubject(
     idIssuedBy: details?.issuedBy ?? '',
     idIssueDate: dateOnly(details?.issueDate ?? null),
     idExpiryDate: dateOnly(details?.expiryDate ?? null),
-    idFront: file(front),
-    idBack: file(back),
+    idFront: loadedIdentityFile(front, 'front'),
+    idBack: loadedIdentityFile(back, 'back'),
   };
 }
 
@@ -337,7 +382,6 @@ export async function loadInviteByRawToken(
             postalCode: true,
             city: true,
             countryIso: true,
-            vatId: true,
           },
         },
         tenant: { select: { id: true, name: true, slug: true } },
