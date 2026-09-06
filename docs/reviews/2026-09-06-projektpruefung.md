@@ -285,10 +285,18 @@ keine Freigabe der steuerlichen Umsetzung.
 - Vollständige Typprüfung und beide unverändert strengen Lint-Gates bestanden.
 - Format- und Dokumentationsprüfung bestanden; Fachkatalog-Check mit 33 Tests
   und Diff-Zuordnung für 207 Fachpfadänderungen erfolgreich.
+  Nach dem Merge des entfernten Dependency-Commits bestätigt das Gate auch
+  den vollständigen Push gegenüber `2c09b1f1`: 289 Fachpfadänderungen zugeordnet.
 - 226 Migrationen auf einer isolierten PostgreSQL-18-Instanz angewendet;
   Migrationsledger konsistent, 138 RLS-Tabellen geprüft. Ein frischer Aufbau
   einer zusätzlichen Shadow-Datenbank zeigt keine Schemaabweichung.
 - `pnpm audit --audit-level=high`: keine bekannten Schwachstellen gemeldet.
+- 103 Operator-Tests unter WSL/Ubuntu sowie 18 Migrationsledger- und vier
+  Deploy-Recovery-Tests bestanden. Git Bash erreicht bei Operatorpfaden
+  erwartungsgemäß andere Host-/Pfaddarstellungen; der maßgebliche Gesamtlauf
+  erfolgte deshalb unter Linux. Der Scanner für vertrauliche ERiC-Artefakte
+  überspringt bereits ausgeschlossene Abhängigkeits-/Buildverzeichnisse nun
+  vor dem Durchlaufen; die bestehenden Inhaltsfilter bleiben zusätzlich aktiv.
 - Browser-Smoke-Tests konnten nicht gestartet werden: Die automatische
   Freigabeprüfung blockierte den lokalen Testserver auch bei ausschließlicher
   Bindung an 127.0.0.1 mit „blocked by policy“ ohne weitere Begründung.
