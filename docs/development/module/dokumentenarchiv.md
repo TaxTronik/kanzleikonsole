@@ -57,3 +57,12 @@ GwG-Onboarding (anonym per Token, GWG-Bucket), Rechnungs-PDFs
   Schlägt zusätzlich das Journalisieren fehl, bleibt nur das strukturierte Log
   für einen manuellen Abgleich. Kein Streaming-Multipart (RAM-Puffer bis Cap).
 - GwG-Frühvernichtung vor Lock-Ablauf (GOVERNANCE-Bypass) nicht implementiert.
+
+## Fortschritt trotz fehlerhafter Orphans
+
+DOC-UPLOAD-JOURNAL-001 / DSGVO-OPERATIONAL-RETENTION-001: Der Orphan-Worker
+sortiert nach bisheriger Versuchszahl, Erstellungszeit und ID. Ein Batch
+dauerhaft fehlender/mehrdeutiger Objekte blockiert damit keine späteren
+bereinigungsfähigen Objekte. Ab fünf Fehlern wird ein manueller
+Untersuchungsbedarf geloggt. Referenzprüfung, Retention und eindeutige
+Storage-Version bleiben unveränderte Löschvoraussetzungen.

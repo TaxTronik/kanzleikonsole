@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useRef, useCallback, useId } from 'react';
+import { useEffect, useState, useRef, useCallback, useId, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, CheckCheck, X } from 'lucide-react';
@@ -66,12 +66,26 @@ function relativeTime(iso: string, now: number): string {
   return fmtDateTimeShort(new Date(t));
 }
 
+const SOUND_EVENT = 'taxtronik:notification-sound';
+function subscribeSoundPreference(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  window.addEventListener(SOUND_EVENT, onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener(SOUND_EVENT, onChange);
+  };
+}
+
 export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Props) {
   const [unread, setUnread] = useState(initialUnread);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
   const [alertItem, setAlertItem] = useState<NotificationItem | null>(null);
   const [open, setOpen] = useState(false);
-  const [soundOn, setSoundOn] = useState(true);
+  const soundOn = useSyncExternalStore(
+    subscribeSoundPreference,
+    isNotificationSoundEnabled,
+    () => true,
+  );
   const [alertHovered, setAlertHovered] = useState(false);
   const [alertFocused, setAlertFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -90,7 +104,23 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
   const latestUnreadAtRef = useRef(notificationTimestamp(initialLatestUnreadAt));
   const pathname = usePathname();
   const router = useRouter();
-  const now = Date.now();
+  const [now, setNow] = useState(Date.now);
+  const [previousServerCount, setPreviousServerCount] = useState({
+    initialUnread,
+    initialLatestUnreadAt,
+  });
+  if (
+    previousServerCount.initialUnread !== initialUnread ||
+    previousServerCount.initialLatestUnreadAt !== initialLatestUnreadAt
+  ) {
+    setPreviousServerCount({ initialUnread, initialLatestUnreadAt });
+    setUnread(initialUnread);
+  }
+  const [previousPathname, setPreviousPathname] = useState(pathname);
+  if (previousPathname !== pathname) {
+    setPreviousPathname(pathname);
+    setOpen(false);
+  }
 
   const showNotificationAlert = useCallback((item: NotificationItem) => {
     setAlertItem(item);
@@ -124,6 +154,7 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
         const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
         if (!res.ok) throw new Error('NOTIFICATION_RECENT_FETCH_FAILED');
         const data = (await res.json()) as RecentResponse;
+        setNow(Date.now());
         const newestUnread = data.items.find((item) => item.readAt === null);
         if (
           newestUnread &&
@@ -169,10 +200,6 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
     })();
   }, [pathname, router, showNotificationAlert]);
 
-  useEffect(() => {
-    setSoundOn(isNotificationSoundEnabled());
-  }, []);
-
   // Server-Refreshes (z. B. Formular auf /staff/notifications) liefern einen
   // neuen Initialwert. Auch dieser Pfad muss einen Alert auslösen können: Eine
   // eigene Server-Action refresht die Route oft schneller als der Poller.
@@ -188,14 +215,13 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
       latestUnreadAtRef.current,
       notificationTimestamp(initialLatestUnreadAt),
     );
-    setUnread(initialUnread);
     if (grew) onUnreadGrew();
   }, [initialUnread, initialLatestUnreadAt, onUnreadGrew]);
 
   function toggleSound() {
     const next = !soundOn;
-    setSoundOn(next);
     setNotificationSoundEnabled(next);
+    window.dispatchEvent(new Event(SOUND_EVENT));
     // Beim Aktivieren einmal probe-Play (gibt Nutzer:in direktes Feedback +
     // löst ggf. die Autoplay-Sperre durch die Nutzerinteraktion).
     if (next) playNotificationSound();
@@ -210,6 +236,7 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
           unread: number;
           latestUnreadAt: string | null;
         };
+        setNow(Date.now());
         const latestUnreadAt = notificationTimestamp(data.latestUnreadAt);
         // Ein höherer Zeitstempel erkennt auch einen Austausch 1 offen → 1
         // offen. Genau dieser Fall ging beim reinen Unread-Zähler verloren.
@@ -235,6 +262,7 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
         const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
         if (!res.ok) return;
         const data = (await res.json()) as RecentResponse;
+        setNow(Date.now());
         setItems(data.items);
         const latestUnreadAt = notificationTimestamp(data.latestUnreadAt);
         const grew = hasNewUnreadNotification({
@@ -273,7 +301,6 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
 
   useEffect(() => {
     refreshCount();
-    setOpen(false);
   }, [pathname, refreshCount]);
 
   // Klick außerhalb schließt das Dropdown
@@ -310,6 +337,7 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
 
   function toggle() {
     const next = !open;
+    setNow(Date.now());
     setOpen(next);
     if (next) refreshRecent();
   }

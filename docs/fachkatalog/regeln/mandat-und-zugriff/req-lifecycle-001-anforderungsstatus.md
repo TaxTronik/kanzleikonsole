@@ -27,15 +27,19 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - apps/web/src/app/portal/(protected)/requests/page.tsx
   - apps/web/src/app/portal/(protected)/requests/[id]/actions.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/requests/new/form.tsx
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
 feature_refs:
   - FEATURES.md
 related_rules:
+  - TAX-NOTICE-DECISION-001
+  - CLIENT-FEEDBACK-001
   - REQ-INTERNAL-COMMENT-001
   - FORM-PRESUBMIT-UPLOAD-001
   - ACCESS-CLIENT-MODE-001
@@ -88,6 +92,15 @@ zulässig und hält den Status `IN_PROGRESS`. Ein bereits `SUBMITTED` oder
 `REVIEWED` markiertes Formular wird durch Reopen nicht zurückgesetzt. Alte
 Bestände ohne eindeutigen Formular-Rücklink werden fail-closed über alle
 gefundenen verknüpften Requests geprüft.
+
+Persönliche Bescheid- und Feedbackanfragen verwenden einen gesonderten,
+kontaktgebundenen Antwortkanal. Der generische Portalpfad leitet dorthin weiter
+und darf keine Antwortrechte anderer Kontakte eröffnen. Eine geschlossene
+Anforderung sperrt auch diese persönliche Antwort; eine generische Wiederöffnung
+setzt eine bereits abgegebene oder widerrufene Interaktion nicht zurück.
+Sichtung beziehungsweise Widerruf schließen nur den Request, niemals eine
+Rechtsfrist. Umsetzung und Nachweise: `docs/development/module/workflow-expansion.md`,
+`packages/db/src/__tests__/workflow-expansion.test.ts`.
 
 ## Beispiele
 

@@ -27,19 +27,33 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - apps/worker/src/jobs/storage-orphan-cleanup.ts
   - apps/web/src/server/documents/resumable-upload.ts
   - apps/web/src/server/documents/upload-helpers.ts
   - apps/web/src/server/documents/storage-compensation.ts
   - apps/web/src/app/gwg-onboarding/actions.ts
+  - apps/web/src/server/inbox/staging-upload.ts
+  - apps/web/src/server/inbox/accept-attachment.ts
+  - apps/worker/src/jobs/portal-inbox-cleanup.ts
+  - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
+  - packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql
+  - packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql
 test_refs:
   - apps/web/src/server/documents/__tests__/resumable-upload.test.ts
   - apps/web/src/server/documents/__tests__/upload-helpers.test.ts
   - apps/web/src/server/documents/__tests__/storage-compensation.test.ts
+  - packages/db/src/__tests__/portal-inbox-rls.test.ts
+  - apps/web/src/server/inbox/__tests__/staging-upload.test.ts
+  - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
+  - apps/web/src/server/inbox/__tests__/rejection.test.ts
+  - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
+  - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
 feature_refs:
   - docs/development/module/dokumentenarchiv.md
 related_rules:
   - DOC-OBJECT-LOCK-001
   - DOC-VERSION-IMMUTABILITY-001
+  - PORTAL-INBOX-SUBMISSION-001
 tags:
   - upload
   - journal
@@ -112,11 +126,36 @@ Gewinnerentscheid.
 
 ## Umsetzung in TaxTronik
 
+Der gemeinsame Orphan-Worker priorisiert die geringste Zahl bisheriger
+Bereinigungsversuche, danach Alter und ID. So blockiert ein voller Batch
+dauerhaft fehlender oder mehrdeutiger Speicheridentitäten keine späteren
+bereinigungsfähigen Objekte. Die Schutz-, Referenz- und Versionsprüfungen
+bleiben Voraussetzung jeder physischen Löschung. Ab dem fünften gescheiterten
+Versuch erscheint zusätzlich ein Betriebswarnhinweis zur manuellen Klärung.
+Der Regressionstest führt mehrere Läufe mit 100 dauerhaft fehlerhaften
+Objekten und einem jüngeren löschbaren Objekt aus.
+
 `upload-helpers.ts` erzeugt und finalisiert die unveränderliche PENDING-Zeile.
 `resumable-upload.ts` orchestriert Prepare, Journal, Commit, Recovery und CAS-
 Finalize unter Tenant- und Fachguards. Der GwG-Onboarding-Pfad nutzt denselben
 PENDING-Grundmechanismus. `storage-compensation.ts` führt für direkte
 Store-first-Pfade eine nachgelagerte, ownerseitige Orphan-Reconciliation.
+
+Der Mandantenposteingang persistiert für jede Anlage zuerst eine PENDING-
+Staging-Identität mit unveränderlichem Bucket, Key, Hash, Größe, MIME-Typ,
+Originalname und Position. Erst nach Object-Write und sauberem Scan wird sie
+finalisiert; Submit bindet das kanonische Mehrdatei-Manifest atomar an die
+Nachricht. Dieser Pfad erzeugt vor einer Staff-Annahme bewusst noch kein
+`Document`.
+
+Beginnt Staff die ausdrückliche Annahme, wird das neu erzeugte PENDING-
+Dokument als Resume-Reservierung an die Anlage gebunden. Der letzte
+Attachment-Guard und Object-Commit laufen für diesen widerrufbaren Fachzustand
+unter demselben Row-Lock wie die CLEAN-/ACCEPTED-Finalisierung. Eine danach
+gewählte Ablehnung darf nur die nachweislich unvollständige Ein-Version-
+Reservierung desselben Tenant-/Mandanten-/Hash-Scope lösen. Die feste finale
+Storage-Identität wird vor dem Entfernen von Version und leerem Dokument
+atomar als `StorageOrphan` journalisiert.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -125,6 +164,28 @@ Vorab-Journalisierung gilt nicht für alle geschützten Uploadpfade. Insbesonder
 direkte Staff-Uploads, neue Versionen und mehrere intern erzeugte Archive
 committen vor ihrer Fachtransaktion in den Store. Deren nachgelagertes
 Orphan-Journal reduziert, schließt aber das Crash-Fenster nicht vollständig.
+
+Abgelaufene oder verworfene Inbox-Drafts werden durch einen eigenen Worker
+erfasst. Er löscht Bytes nicht unjournalisiert, sondern übergibt die feste
+Storage-Identität idempotent an den gemeinsamen Orphan-Kompensationspfad.
+Das gilt auch für bereits `CLEAN` finalisierte, aber nie abgesendete
+`PENDING_REVIEW`-Anlagen eines mindestens 24 Stunden alten `EXPIRED`- oder
+`DISCARDED`-Batches. `message_id IS NULL` und der terminale Batchstatus bilden
+dabei gemeinsam die Abgrenzung zu abgesendeten Eingängen.
+Ein dauerhafter Orphan-Eintrag schließt dieselbe Identität unabhängig von
+seinem späteren Bereinigungsstatus aus weiteren Cleanup-Batches aus. Findet die
+eindeutige Storage-Recovery bei einem mindestens 24 Stunden alten, terminalen
+PENDING-Draft keine Bytes, entfernt der Worker ausschließlich den nie
+abgesendeten Intent und koppelt dies atomar an einen inhaltsfreien Auditnachweis.
+Offene, bereits abgesendete `PENDING_REVIEW`-Eingänge werden davon bewusst
+nicht erfasst.
+
+Fehlt einem Orphan-Journal aus einem unterbrochenen Commit noch die konkrete
+Storage-Version, löscht der gemeinsame Worker nicht über einen bloßen
+Delete-Marker. Er recoveriert zuerst genau eine Hash-/Größen-identische
+Objektversion, bindet deren ID dauerhaft am Journal und löscht anschließend
+versionsgenau. Abwesenheit, Mehrdeutigkeit oder ein Bindungskonflikt bleiben als
+wiederholbarer Fehler offen.
 
 ## Fachliche Prüffragen
 
@@ -138,5 +199,18 @@ Orphan-Journal reduziert, schließt aber das Crash-Fenster nicht vollständig.
 Die resumierbaren Tests belegen Reihenfolge, Tenantgrenze, Recovery,
 Idempotenz und CAS-Finalisierung. Helper-Tests prüfen die persistierte
 Speicheridentität. Kompensationstests belegen Orphan-Upsert und den sichtbaren
-`LOG_ONLY`-Fall. Die Tests zeigen zugleich nicht, dass jeder Aufrufer den
+`LOG_ONLY`-Fall. Inbox-DB- und Worker-Tests belegen den atomaren Abbruch der
+PENDING-Reservierung, Scope-/Hash-/Mehrversions-Rollback und die
+versionsgenaue Recovery vor physischer Löschung. Die Tests zeigen zugleich
+nicht, dass jeder Aufrufer den
 zweiphasigen Helper verwendet.
+
+### Ergänzung: Mandanten-Assistenten
+
+Die revisionsgebundenen Ausgaben nach `CLIENT-ASSISTANCE-001` nutzen denselben
+zweiphasigen Helper. Die Ausgabe reserviert eine feste Revision/Format/Generator-
+Identität und bindet ihre PENDING-Dokumentversion in der Journaltransaktion.
+Feste PDF-/DOCX-Zeitstempel erlauben identische Wiederaufnahmebytes. Die übrigen
+oben beschriebenen Grenzen anderer Uploadwege bleiben unverändert. Nachweise:
+`apps/web/src/server/client-assistance/__tests__/outputs.test.ts` und
+`apps/web/src/server/client-assistance/__tests__/snapshot.test.ts`.

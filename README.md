@@ -11,8 +11,9 @@
 TaxTronik verbindet Kanzlei-Workflows, Mandantenportal, Dokumentenablage,
 Compliance und Hintergrund-Jobs in einem lokalen Deploy. Die Software ist auf
 steuerliche Berufsgeheimnisse und revisionsnahe Anforderungen ausgelegt:
-Postgres-RLS, App-Level-Tenant-Filter, TOTP für Mitarbeiter, Magic-Link für
-Mandanten, S3-kompatibler Object-Store ohne öffentliche Direktlinks, ClamAV,
+Postgres-RLS, App-Level-Tenant-Filter, Passwort plus TOTP oder optional nur
+physische FIDO2-Sicherheitsschlüssel für Mitarbeiter, Magic-Link für Mandanten,
+S3-kompatibler Object-Store ohne öffentliche Direktlinks, ClamAV,
 Audit-Hash-Chain und externe RFC-3161-Zeitstempel. Produktion verwendet einen
 externen RFC-3161-Dienst; ob ein **qualifizierter** eIDAS-Dienst erforderlich
 ist, entscheidet die Kanzlei anhand ihres konkreten Nachweisbedarfs.
@@ -26,16 +27,16 @@ Architektur: [docs/architecture.md](docs/architecture.md).
 
 ## Tech-Stack
 
-| Schicht     | Wahl                                                                    |
-| ----------- | ----------------------------------------------------------------------- |
-| Web/App     | Next.js 16 App Router, React 19, TypeScript                             |
-| Auth        | Auth.js v5, Mitarbeiter mit Passwort + TOTP, Mandanten mit Magic-Link   |
-| Datenbank   | Postgres 18, Prisma, Row-Level Security                                 |
-| Storage     | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit                   |
-| Jobs        | BullMQ Worker, Redis                                                    |
-| Workflows   | BullMQ für Kernkontrollen; n8n optional für Kommunikation/Integrationen |
-| Risk / TCMS | optionales on-prem Signal (`/v1/*`, historische `RISK_LAYER_*`-Namen)   |
-| Deploy      | Docker Compose, On-Premise, Reverse Proxy davor                         |
+| Schicht     | Wahl                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| Web/App     | Next.js 16 App Router, React 19, TypeScript                                                    |
+| Auth        | Auth.js v5; Staff mit Passwort + TOTP oder nur FIDO2-Hardwareschlüsseln; Portal mit Magic-Link |
+| Datenbank   | Postgres 18, Prisma, Row-Level Security                                                        |
+| Storage     | SeaweedFS S3-API, Object-Lock, ClamAV-Scan vor Commit                                          |
+| Jobs        | BullMQ Worker, Redis                                                                           |
+| Workflows   | BullMQ für Kernkontrollen; n8n optional für Kommunikation/Integrationen                        |
+| Risk / TCMS | optionales on-prem Signal (`/v1/*`, historische `RISK_LAYER_*`-Namen)                          |
+| Deploy      | Docker Compose, On-Premise, Reverse Proxy davor                                                |
 
 ## Entwicklung
 
@@ -82,6 +83,60 @@ App: <http://localhost:3000/staff/login>
 Der Dev-Seed erzeugt `admin@taxtronik.local`; das einmalige Passwort steht in
 der Seed-Ausgabe und in `packages/db/.admin-credentials.txt`. Beim ersten Login
 wird TOTP eingerichtet. Danach die Credentials-Datei löschen.
+
+Mitarbeiter können sich bewusst für den Anmeldemodus **„Nur physische
+FIDO2-Sicherheitsschlüssel“** entscheiden. Er lässt sich erst nach Registrierung
+von mindestens zwei geeigneten Schlüsseln aktivieren. Danach sind Passwort,
+TOTP und Backup-Codes keine zulässigen Staff-Anmeldewege mehr. Die Schlüssel
+müssen WebAuthn-Benutzerverifikation (`userVerification: required`), die
+plattformübergreifende Authenticator-Bindung (`cross-platform`), den Gerätetyp
+`singleDevice`, weder Backup-Eignung noch Backup-Status und mindestens einen der
+Hardware-Transporte USB, NFC, BLE oder Smartcard erfüllen. Die
+Wiederherstellung folgt der bestehenden Rollen-Hierarchie, bei ADMIN-Konten der
+Administrations-CLI, und widerruft bestehende Sitzungen. Vor einem Web-Reset
+bestätigt ein Akteur im Passwortmodus seine Identität mit aktuellem Passwort
+und einem frischen TOTP; ein Backup-Code ist dafür unzulässig. Ein
+Hardware-only-Akteur bestätigt mit seinem eigenen Sicherheitsschlüssel, wobei
+die Einmal-Challenge an Akteur, Zielkonto und Auth-Revision gebunden ist. Die
+hierarchisch autorisierten Datenbankänderungen und das Audit erfolgen atomar.
+Kein Staff-Akteur kann eine ADMIN-Rolle entziehen; PARTNER-Entzug erfordert
+einen aktiven ADMIN desselben Tenants. Auch normale Passwort-/TOTP-Resets sind
+an die Actor-Auth-Revision gebunden und widerrufen noch aktive, bislang nur
+vorregistrierte Hardware-Credentials. Der Magic-Link-Zugang des
+Mandantenportals bleibt davon unberührt.
+
+Für Enrollment und jede spätere Hardware-Assertion muss
+`WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST` nichtleer sein. Die Registrierung fordert
+`attestation: direct`, akzeptiert ausschließlich eine vollständige `packed`-
+Attestation und prüft die freigegebene AAGUID gegen den FIDO Metadata Service
+im Modus `strict`. Login und Moduswechsel prüfen aktuelle Allowlist und
+MDS-Statement erneut und lehnen bei leerer Liste, fehlenden Metadaten oder
+MDS-/Netzfehlern fail-closed ab. Die positive
+`WEBAUTHN_HARDWARE_POLICY_REVISION` bindet Aktivstatus und kanonischen
+Allowlist-Hash clusterweit. Bei jeder Policy- oder Allowlist-Änderung muss sie
+erhöht werden: Eine höhere Revision verdrängt alte Replicas, dieselbe Revision
+mit anderem Hash wird abgewiesen, und eine leere Allowlist mit höherer Revision
+deaktiviert Hardware-Zugänge global. Der Produktionsstart bindet diese Policy
+nur an die Datenbank und führt keinen MDS-Netzzugriff aus. Nach
+kryptografischer BLOB-Prüfung wird dessen signierte Seriennummer vor der
+lokalen Modellfilterung zentral übernommen; Hardware-Commits sind anschließend
+exakt an Serie, Policy-Revision und Hash gebunden (`MDS -> Staff`-Lockfolge).
+
+Die ADMIN-Owner-CLI schreibt das Recovery-Passwort ausschließlich in eine mit
+`O_EXCL` und No-follow-Schutz neu angelegte Credential-Datei, nie ins Terminal
+oder in Logs. Bei einem Ausgabefehler entfernt sie ihre Teildatei; Datei und
+POSIX-Elternverzeichnis werden vor dem Datenbank-Commit synchronisiert.
+Scheitert erst der Commit, kann eine sicher geschriebene, aber unwirksame Datei
+zurückbleiben und muss verworfen werden.
+
+Die Attestation belegt die Zuordnung zu einer freigegebenen Modellfamilie,
+nicht zu einer eindeutigen physischen Instanz: Eine AAGUID ist weder
+Seriennummer noch Geräteinventar. Auch zwei registrierte Credentials beweisen
+daher **nicht kryptografisch zwei unterschiedliche physische Geräte**. Beim
+Opt-in wird einer der registrierten Schlüssel frisch bestätigt; der zweite muss
+aktiv und policykonform hinterlegt sein, wird in diesem Schritt aber nur
+gezählt. MDS-Netz-, Refresh- und Datenschutzbetrieb beschreibt das
+[FIDO-MDS-Runbook](docs/operations/fido-mds.md).
 
 Nützliche lokale Dienste:
 
@@ -275,6 +330,10 @@ UPDATE_MANIFEST_URL=https://git.hirschmann-koxha.de/TaxTronik/updates/raw/branch
 UPDATE_PUBLIC_KEY=NE1YtBNNPFM545o1VqoBNTcKIPmZP0rmvLq22YyqKaU=
 
 NEXTAUTH_URL=https://kanzlei.example.de
+# Für Hardware-Zugang zwingend: geprüfte AAGUIDs zugelassener Modellfamilien
+WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+# Bei jeder Änderung der Hardware-Policy/Allowlist monoton erhöhen
+WEBAUTHN_HARDWARE_POLICY_REVISION=1
 PORTAL_PUBLIC_URL=https://mandanten.example.de
 STAFF_COOKIE_DOMAIN=kanzlei.example.de
 PORTAL_COOKIE_DOMAIN=mandanten.example.de
@@ -406,6 +465,7 @@ Weitere Betriebsrunbooks:
 - [Secret-Rotation](docs/operations/secret-rotation.md)
 - [Release-Rehearsal](docs/operations/release-rehearsal.md)
 - [Disaster Recovery](docs/operations/disaster-recovery.md)
+- [FIDO-MDS und Hardware-Attestation](docs/operations/fido-mds.md)
 
 Weitere Operator-Kommandos (docker-compose-Passthrough):
 

@@ -1,4 +1,5 @@
-// Fachkatalog: DOC-UPLOAD-JOURNAL-001
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001, DOC-VERSION-IMMUTABILITY-001,
+// PORTAL-INBOX-SUBMISSION-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
@@ -161,6 +162,48 @@ describe('persistResumableDocumentUpload', () => {
     expect(m.commitPreparedBytes.mock.invocationCallOrder[0]).toBeLessThan(
       m.finalizePendingDocumentVersion.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('haelt bei widerrufbaren Fachzustaenden Guard, PUT und Finalisierung in derselben Transaktion', async () => {
+    let openTransactions = 0;
+    m.withTenantContext.mockImplementation(
+      async (_context: unknown, run: (client: typeof tx) => unknown) => {
+        openTransactions += 1;
+        try {
+          return await run(tx);
+        } finally {
+          openTransactions -= 1;
+        }
+      },
+    );
+    m.commitPreparedBytes.mockImplementation(async () => {
+      expect(openTransactions).toBe(1);
+      return COMMITTED;
+    });
+    m.finalizePendingDocumentVersion.mockImplementation(async () => {
+      expect(openTransactions).toBe(1);
+    });
+    const recordCompleteTx = vi.fn().mockImplementation(async () => {
+      expect(openTransactions).toBe(1);
+    });
+    const options = makeOptions({
+      commitWithinGuardTransaction: true,
+      recordCompleteTx,
+    });
+
+    await expect(persistResumableDocumentUpload(options)).resolves.toMatchObject({
+      documentId: 'document-1',
+      source: 'created',
+    });
+
+    expect(options.guardMutationTx).toHaveBeenCalledTimes(2);
+    expect(m.commitPreparedBytes.mock.invocationCallOrder[0]).toBeLessThan(
+      m.finalizePendingDocumentVersion.mock.invocationCallOrder[0]!,
+    );
+    expect(m.finalizePendingDocumentVersion.mock.invocationCallOrder[0]).toBeLessThan(
+      recordCompleteTx.mock.invocationCallOrder[0]!,
+    );
+    expect(openTransactions).toBe(0);
   });
 
   it('recoveriert einen PENDING-Intent unter Tenant-Lock ohne zweiten PUT', async () => {

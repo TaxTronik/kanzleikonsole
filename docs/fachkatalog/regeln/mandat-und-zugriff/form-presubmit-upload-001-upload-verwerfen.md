@@ -20,6 +20,8 @@ implementation:
     gebundenen PENDING-/DRAFT-Upload verwerfen, solange der zugehörige Request
     offen ist. Datenbanklöschung und Cleanup-Journal werden atomar geschrieben;
     die physische Löschung erfolgt sofort oder durch den Orphan-Worker.
+    Nach einer Kampagnenrückfrage werden historisch gebundene Dateien nur
+    aus der aktuellen Antwort gelöst und bei Ersatz als neue Version ergänzt.
 sources:
   - kind: product_documentation
     citation: Fachkatalog-Inventur, Self-Service vor Formularabgabe
@@ -33,6 +35,7 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
+  - apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx
   - packages/db/prisma/migrations/20260823160000_form_upload_relation/migration.sql
 test_refs:
   - packages/db/src/__tests__/form-upload-discard-rls.test.ts
@@ -40,6 +43,8 @@ test_refs:
 feature_refs:
   - FEATURES.md
 related_rules:
+  - FORM-SCHEMA-SNAPSHOT-001
+  - YEAR-END-CAMPAIGN-001
   - REQ-LIFECYCLE-001
   - ACCESS-TENANT-RLS-001
 tags:
@@ -93,6 +98,14 @@ Rollback des für den Mandanten bereits konsistent verworfenen Drafts. Für
 Legacy-Antworten wurde nur bei eindeutigem Auditnachweis zurückverknüpft; nicht
 eindeutige Altdateien sind bewusst nicht über diesen Pfad löschbar.
 
+Bei einer kontrollierten Kampagnenrückfrage (YEAR-END-CAMPAIGN-001) bleibt eine
+in FormSubmissionRevisionFile gebundene Quelle erhalten. „Aus Formular entfernen“
+löst hier nur die aktuelle Antwortreferenz und schreibt einen entsprechenden
+Audit-Hinweis; weder Dokument noch Storage-Version werden gelöscht. Eine
+anschließende Ersatzdatei wird als weitere Version desselben gebundenen Dokuments
+angefügt. Die aktuelle Dateiliste ignoriert ausdrücklich gelöste historische
+Referenzen; ein staler Browser darf weiterhin keinen aktiven Upload übergehen.
+
 ## Beispiele
 
 ### Normalfall
@@ -114,6 +127,13 @@ journalisiert den Storage-Cleanup über eine eng gebundene
 SECURITY-DEFINER-Funktion und löscht danach die Dokumentzeile. Bucket und Key
 werden ausschließlich aus persistierten Daten übernommen. Der Orphan-Worker
 schließt fehlgeschlagene physische Deletes später ab.
+
+Für neue Vorgänge stammen FILE-Felddefinition und Validierungsgrenzen aus dem
+unveränderlichen Submission-Snapshot (FORM-SCHEMA-SNAPSHOT-001). Legacy-Vorgänge
+ohne Snapshot verwenden ausdrücklich weiter die aktuelle Vorlage; ein vorhandener
+ungültiger Snapshot wird nicht still durch diese ersetzt. Der Nachweis steht in
+`apps/web/src/server/forms/__tests__/schema-snapshot.test.ts` und die gemeinsame
+Umsetzungsbeschreibung in `docs/development/module/workflow-expansion.md`.
 
 ## Bekannte Abweichungen und Grenzen
 

@@ -26,7 +26,9 @@ import {
   ensureDefaultDocumentTypes as ensureDocTypes,
   ensureDevSeedVerifiedGwgCheck,
   generateAdminPassword,
+  resetExistingDevAdminAuth,
 } from './lib';
+import { ensureExpansionE2eFixtures } from './expansion-e2e';
 
 if (process.env['NODE_ENV'] === 'production') {
   console.error('[seed] FATAL: Dev-Seed darf NICHT in Produktion laufen.');
@@ -78,19 +80,17 @@ async function main() {
     where: { tenantId: tenant.id, email: 'admin@taxtronik.local' },
   });
 
-  let admin;
+  let admin: { id: string; email: string };
   if (existingAdmin) {
-    admin = await prisma.staffUser.update({
-      where: { id: existingAdmin.id },
-      data: {
-        passwordHash,
-        active: true,
-        totpSecretEnc: null,
-        totpEnrolledAt: null,
-        totpSetupStartedAt: null,
-      },
+    const reset = await resetExistingDevAdminAuth(prisma, {
+      staffUserId: existingAdmin.id,
+      passwordHash,
     });
+    admin = reset.admin;
     console.log(`[seed] Admin-User aktualisiert: ${admin.email}`);
+    console.log(
+      `[seed] Hardware-only deaktiviert; ${reset.revokedHardwareKeys} Sicherheitsschluessel gesperrt.`,
+    );
   } else {
     admin = await prisma.staffUser.create({
       data: {
@@ -127,6 +127,41 @@ async function main() {
     update: {},
     create: { staffUserId: admin.id, role: 'ADMIN' },
   });
+
+  // E2E-/Dev-Fixture: Der sichere Mandantenposteingang ist bewusst opt-in.
+  // Ein fehlender Key bleibt im Produkt fail-closed; nur der synthetische
+  // Testtenant aktiviert ihn explizit, damit Browsertests Navigation, Liste
+  // und Neuanlage ohne produktweiten Defaultwechsel nachweisen koennen.
+  await prisma.tenantSetting.upsert({
+    where: { tenantId_key: { tenantId: tenant.id, key: 'portal.features' } },
+    update: {
+      value: {
+        appointmentRequests: true,
+        bwaView: true,
+        bwaPlanning: true,
+        documentUpload: true,
+        clientInbox: true,
+        stammdatenSelfService: true,
+        handoversView: true,
+      },
+      updatedBy: admin.id,
+    },
+    create: {
+      tenantId: tenant.id,
+      key: 'portal.features',
+      value: {
+        appointmentRequests: true,
+        bwaView: true,
+        bwaPlanning: true,
+        documentUpload: true,
+        clientInbox: true,
+        stammdatenSelfService: true,
+        handoversView: true,
+      },
+      updatedBy: admin.id,
+    },
+  });
+  console.log('[seed] Portal-Feature: sicherer Mandantenposteingang aktiviert (Testtenant)');
 
   // 3. Testmandant. Aktivierung (allow_active=true) erfordert einen
   //    verifizierten gwg_check — sowohl der INSERT- als auch der UPDATE-Trigger
@@ -223,6 +258,9 @@ async function main() {
     });
     console.log(`[seed] Anforderung: ${req.title}`);
   }
+
+  await ensureExpansionE2eFixtures(prisma, { tenantId: tenant.id, adminId: admin.id });
+  console.log('[seed] Expansion-E2E-Fixtures: Module, Mandate und Workflows bereit.');
 
   console.log('\n[seed] Fertig.');
   console.log('  Mitarbeiter-Login: admin@taxtronik.local');

@@ -51,7 +51,7 @@ async function findEligiblePortalProfilesByEmailTx(
       tenantId: input.tenantId,
       email: input.email.toLowerCase(),
       active: true,
-      client: { allowActive: true, anonymizedAt: null },
+      client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
     },
     select: profileSelect,
     orderBy: [{ client: { name: 'asc' } }, { createdAt: 'asc' }],
@@ -92,7 +92,7 @@ async function findPortalProfilesForContactTx(
       id: input.contactId,
       tenantId: input.tenantId,
       active: true,
-      client: { allowActive: true, anonymizedAt: null },
+      client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
     },
     select: { email: true },
   });

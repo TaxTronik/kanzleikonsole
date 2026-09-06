@@ -3,6 +3,8 @@
 import { useActionState } from 'react';
 import { savePortalFeaturesAction, type ActionResult } from './actions';
 import type { PortalFeatures } from '@/server/settings/portal-features';
+import type { PortalInboxRetentionConfig } from '@/server/inbox/retention-settings';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 
 const FEATURES: Array<{
   key: keyof PortalFeatures;
@@ -36,6 +38,12 @@ const FEATURES: Array<{
       'Mandant darf eigene Dokumente ins Portal hochladen (Belege, Verträge, …). Ohne dieses Recht kann er nur antworten und ansehen.',
   },
   {
+    key: 'clientInbox',
+    label: 'Sicheres Nachrichtenfach',
+    description:
+      'Aktiviert die mandantenweit sichtbare Mandantenpost. Anlagen setzen zusätzlich „Dokumente hochladen“ voraus.',
+  },
+  {
     key: 'stammdatenSelfService',
     label: 'Stammdaten-Änderungen vorschlagen',
     description:
@@ -49,7 +57,13 @@ const FEATURES: Array<{
   },
 ];
 
-export function PortalFeaturesForm({ initial }: { initial: PortalFeatures }) {
+export function PortalFeaturesForm({
+  initial,
+  initialRetention,
+}: {
+  initial: PortalFeatures;
+  initialRetention: PortalInboxRetentionConfig;
+}) {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     savePortalFeaturesAction,
     null,
@@ -89,6 +103,47 @@ export function PortalFeaturesForm({ initial }: { initial: PortalFeatures }) {
         ))}
       </div>
 
+      <fieldset className="space-y-3 rounded-md border border-default p-4">
+        <legend className="px-1 text-sm font-medium text-primary">Nachrichtenretention</legend>
+        <label className="block text-sm" htmlFor="portal-inbox-retention-days">
+          <span className="label">Organisatorischer Aufbewahrungswert in Tagen</span>
+          <input
+            id="portal-inbox-retention-days"
+            className="input w-40"
+            type="number"
+            min={30}
+            max={3650}
+            name="messageRetentionDays"
+            defaultValue={initialRetention.messageRetentionDays}
+            {...fieldErrorProps('messageRetentionDays', state?.fieldErrors)}
+          />
+          <FieldError
+            name="messageRetentionDays"
+            errors={state?.fieldErrors?.messageRetentionDays}
+          />
+        </label>
+        <label className="flex items-start gap-3" htmlFor="portal-inbox-retention-documented">
+          <input
+            id="portal-inbox-retention-documented"
+            type="checkbox"
+            name="retentionDocumented"
+            defaultChecked={initialRetention.organizationallyDocumented}
+            className="switch mt-1"
+            {...fieldErrorProps('retentionDocumented', state?.fieldErrors)}
+          />
+          <span>
+            <span className="block text-sm font-medium text-primary">
+              Organisatorische Regelung ist dokumentiert
+            </span>
+            <span className="block text-xs text-muted">
+              Der Wert ist ein betrieblicher Default und keine gesetzliche Frist. Ohne diese
+              Bestätigung lässt sich clientInbox nicht aktivieren.
+            </span>
+          </span>
+        </label>
+        <FieldError name="retentionDocumented" errors={state?.fieldErrors?.retentionDocumented} />
+      </fieldset>
+
       <p className="text-xs text-muted pt-3 border-t border-subtle">
         Diese Einstellungen wirken zusätzlich zu den Tenant-weiten Modul-Toggles. Wenn z. B. das
         BWA-Modul global deaktiviert ist, sind alle BWA-bezogenen Portal-Features automatisch
@@ -105,9 +160,7 @@ export function PortalFeaturesForm({ initial }: { initial: PortalFeatures }) {
           </span>
         )}
         {state && !state.ok && (
-          <span className="text-sm text-red-700" role="alert">
-            {state.error}
-          </span>
+          <FormErrorSummary error={state.error} fieldErrors={state.fieldErrors} />
         )}
       </div>
     </form>

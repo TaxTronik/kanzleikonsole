@@ -108,6 +108,7 @@ function mockTx(updateCount = 1) {
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
     },
+    formSubmissionRevisionFile: { findFirst: vi.fn().mockResolvedValue(null) },
     storageOrphan: {
       upsert: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -167,6 +168,35 @@ describe('Formular-Lifecycle', () => {
         },
       }),
     );
+  });
+  it('YEAR-END-CAMPAIGN-001 detaches an archived source from the current draft without deleting its historical bytes', async () => {
+    const tx = mockTx();
+    const documentId = '22222222-2222-4222-8222-222222222222';
+    tx.formSubmission.findUnique.mockResolvedValue(
+      fileSubmission({ beleg: { documentId, fileName: 'old.pdf' } }),
+    );
+    tx.document.findFirst.mockResolvedValue({
+      id: documentId,
+      title: 'old.pdf',
+      versions: [{ id: 'old-version' }, { id: 'later-version' }],
+    } as never);
+    tx.formSubmissionRevisionFile.findFirst.mockResolvedValue({ id: 'frozen-file' } as never);
+    const result = await discardFormFileAction({
+      submissionId: SUBMISSION_ID,
+      fieldKey: 'beleg',
+      documentId,
+    });
+    expect(result).toEqual({ ok: true });
+    expect(tx.formSubmission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { answers: { beleg: null } } }),
+    );
+    expect(h.deleteObject).not.toHaveBeenCalled();
+    expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(
+      tx.$queryRaw.mock.calls.some((call) =>
+        (call[0] as TemplateStringsArray).join('?').includes('journal_open_form_upload_discard'),
+      ),
+    ).toBe(false);
   });
 
   it('emittiert bei verlorenem Submit-Claim weder Evidenz noch Event', async () => {
@@ -382,6 +412,76 @@ describe('Formular-Lifecycle', () => {
     expect(h.compensateStorageCommit).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: 'tenant-1', source: 'portal.form.file' }),
     );
+  });
+  it.each([null, undefined])(
+    'YEAR-END-CAMPAIGN-001 appends replacement bytes after explicitly detaching a historical source (%s)',
+    async (value) => {
+      const tx = mockTx();
+      tx.formSubmission.findUnique.mockResolvedValue(
+        fileSubmission(value === null ? { beleg: null } : {}),
+      );
+      tx.document.findFirst.mockResolvedValue({ id: 'document-existing' });
+      tx.formSubmissionRevisionFile.findFirst.mockResolvedValue({ id: 'archived-file' } as never);
+      const update = vi.fn().mockResolvedValue({ id: 'document-existing' });
+      const create = vi.fn();
+      const findUnique = vi.fn().mockResolvedValue({
+        id: 'document-existing',
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        formSubmissionId: SUBMISSION_ID,
+        formFieldKey: 'beleg',
+        classification: 'GENERAL',
+        deletedAt: null,
+        sharedWithClientAt: new Date(),
+        versions: [{ versionNo: 2 }],
+      });
+      Object.assign(tx.document, { update, create, findUnique });
+      const versionCreate = vi.fn().mockResolvedValue({});
+      Object.assign(tx, { documentVersion: { create: versionCreate } });
+      expect(
+        await uploadFormFileAction({
+          submissionId: SUBMISSION_ID,
+          fieldKey: 'beleg',
+          fileName: 'correction.pdf',
+          mimeType: 'application/pdf',
+          base64: Buffer.from('test').toString('base64'),
+        }),
+      ).toEqual({ ok: true, documentId: 'document-existing' });
+      expect(create).not.toHaveBeenCalled();
+      expect(versionCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          documentId: 'document-existing',
+          versionNo: 3,
+          storageVersionId: 'version-1',
+        }),
+      });
+      expect(tx.formSubmission.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            status: 'DRAFT',
+            answers: { beleg: { documentId: 'document-existing', fileName: 'correction.pdf' } },
+          },
+        }),
+      );
+      expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    },
+  );
+  it('YEAR-END-CAMPAIGN-001 allows an explicitly detached optional historical file to stay absent, while retaining the source', async () => {
+    const tx = mockTx();
+    tx.formSubmission.findUnique.mockResolvedValue(fileSubmission({ beleg: null }));
+    const result = await saveSubmissionDraftAction({ submissionId: SUBMISSION_ID, answers: {} });
+    expect(result).toEqual({ ok: true });
+    expect(tx.document.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { id: { in: [] } },
+            { versions: { none: { formSubmissionRevisionFiles: { some: {} } } } },
+          ],
+        }),
+      }),
+    );
+    expect(h.deleteObjectVersion).not.toHaveBeenCalled();
   });
 
   it('serialisiert parallele Uploads desselben Felds auf genau ein Dokument', async () => {

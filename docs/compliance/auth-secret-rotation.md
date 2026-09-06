@@ -1,6 +1,6 @@
 # AUTH_SECRET-Rotation und bekannte Schlüssel-Abhängigkeiten
 
-Stand: 2026-08-23
+Stand: 2026-09-03
 
 `AUTH_SECRET` ist die Schlüsselwurzel für Sessions und TOTP. Frische
 Installationen erzeugen zusätzlich einen unabhängigen `SECRET_BOX_KEY` für
@@ -22,6 +22,12 @@ kompromittiert ein Leak von `AUTH_SECRET` die Secret-box-Werte nicht mehr.
 | `@taxtronik/crypto` v2 secret-box (M-1)              | `hkdfSync('sha256', SECRET_BOX_KEY ?? AUTH_SECRET, salt, info='taxtronik-secret-box-v2', 32)` | `tenant_setting.value`-Felder (SMTP-Passwörter, n8n-HMAC-Secrets, n8n-API-Keys) |
 | TOTP-Encryption (`apps/web/src/server/auth/totp.ts`) | `hkdfSync('sha256', AUTH_SECRET, salt=tenantId, info='taxtronik-totp-key', 32)`               | `staff_user.totp_secret_enc`                                                    |
 
+WebAuthn-Credential-IDs, öffentliche Schlüssel, Signaturzähler und Metadaten in
+`staff_webauthn_credential` werden nicht aus `AUTH_SECRET` abgeleitet. Der
+private Schlüssel verlässt den Authentikator nicht. Eine `AUTH_SECRET`-Rotation
+invalidiert die JWE-Sitzung eines Hardware-only-Kontos, nicht dessen
+registrierte Sicherheitsschlüssel.
+
 ## Was bei Leak passiert
 
 1. **JWE-Fälschung und -Entschlüsselung**: Ein Angreifer kann Session-Claims
@@ -36,6 +42,11 @@ kompromittiert ein Leak von `AUTH_SECRET` die Secret-box-Werte nicht mehr.
    die TOTP-Seeds und kann gültige Codes generieren. Backup-Codes-Hashes
    sind bcrypt-gehasht — nicht decrypt-bar, aber pro Code in vertretbarer
    Zeit knackbar mit hochwertigen GPUs.
+
+Hardware-only schützt nicht gegen einen bekannten `AUTH_SECRET`: Ein Angreifer
+mit dieser Schlüsselwurzel kann Staff-JWEs fälschen. Der Modus verhindert nur,
+dass das gespeicherte Passwort, TOTP oder ein Backup-Code als regulärer Login-
+Fallback für dieses Konto verwendet wird.
 
 ## Rotation — manuelles Verfahren
 
@@ -87,14 +98,24 @@ SQL-Migration durchgeführt werden. Zwei belastbare Betriebswege:
    Benutzerverwaltung zurück. ADMIN-Konten werden mit der
    `reset-admin-password`-CLI im Workspace `@taxtronik/db` zurückgesetzt;
    `ADMIN_EMAIL` und `TENANT_SLUG` identifizieren dabei genau ein Konto. Die
-   CLI startet zugleich das TOTP-Onboarding neu. Einen globalen Web- oder
-   Batch-Reset gibt es nicht. Beim nächsten Login richtet die betroffene Person
-   TOTP neu ein; vorhandene Backupcodes werden ersetzt.
+   CLI startet zugleich das TOTP-Onboarding neu und koppelt Reset,
+   Schlüsselwiderruf sowie ein tenantgebundenes `SYSTEM`-Audit-Ereignis in
+   derselben Transaktion. Einen globalen Web- oder Batch-Reset gibt es nicht.
+   Beim nächsten Login richtet die betroffene Person TOTP neu ein; vorhandene
+   Backupcodes werden ersetzt.
 2. **Geplantes Offline-Rewrap:** Ein transaktionales Wartungswerkzeug muss je
    Datensatz erst Entschlüsselung mit Alt-Key, Authentizitätsprüfung und
    Verschlüsselung mit Neu-Key durchführen, anschließend Stichproben prüfen und
    erst danach den Dienst auf den neuen Schlüssel umschalten. Bis dieses Tool
    existiert, ist dieser Weg nicht als Operatorverfahren freigegeben.
+
+Konten mit aktivem Hardware-only-Modus benötigen für das TOTP-Rewrap keinen
+Hardware-Reset: Nach der globalen Session-Invalidierung können sie sich mit
+ihren registrierten Schlüsseln neu anmelden, sofern die nichtleere AAGUID-
+Allowlist wiederhergestellt ist und das aktuelle FIDO-MDS-Statement
+fail-closed bestätigt wird. Die ADMIN-Recovery-CLI darf für solche Konten nur
+als bewusster Break-glass-Pfad verwendet werden, weil sie den Modus deaktiviert,
+alle Schlüssel sperrt und ein neues Passwort/TOTP-Onboarding erzwingt.
 
 ### Schritt 4 — Session-Auswirkung einplanen
 

@@ -419,8 +419,8 @@ function FileUploadField({
               onClick={onRemove}
               disabled={removing}
               className="text-disabled hover:text-red-700 p-1 disabled:opacity-50"
-              title="Datei endgültig entfernen"
-              aria-label={`${value.fileName} endgültig entfernen`}
+              title="Datei aus Formular entfernen"
+              aria-label={`${value.fileName} aus Formular entfernen`}
             >
               <X className="h-4 w-4" />
             </button>

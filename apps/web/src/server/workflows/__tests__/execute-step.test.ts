@@ -84,7 +84,7 @@ function emailItem() {
     n8nEvent: 'email.sent' as string | null,
     doneAt: null as Date | null,
     startedAt: null as Date | null,
-    instance: { clientId: 'client-1', name: 'Workflow' },
+    instance: { clientId: 'client-1', name: 'Workflow', status: 'ACTIVE' },
   };
 }
 
@@ -125,6 +125,7 @@ function makeTx(
   let dispatch: Dispatch | null = null;
 
   const tx = {
+    $queryRaw: vi.fn(async () => []),
     workflowItem: {
       findUnique: vi.fn().mockImplementation(async () => ({ ...item })),
       updateMany: vi.fn().mockImplementation(async (args: WorkflowItemUpdateArgs) => {
@@ -286,6 +287,20 @@ describe('executeWorkflowStep consistency', () => {
     expect(tx.workflowItem.findUnique).not.toHaveBeenCalled();
   });
 
+  it.each(['PAUSED', 'CANCELLED'])(
+    'WORKFLOW-LIFECYCLE-001 starts no external action in %s',
+    async (status) => {
+      const original = emailItem();
+      const { tx } = makeTx({ item: { ...original, instance: { ...original.instance, status } } });
+      await expect(
+        executeWorkflowStep({ tenantId: 'tenant-1', staffId: 'staff-1', itemId: 'item-1' }),
+      ).resolves.toMatchObject({ ok: false, error: expect.stringContaining('fortsetzen') });
+      expect(tx.workflowItem.updateMany).not.toHaveBeenCalled();
+      expect(h.sendMail).not.toHaveBeenCalled();
+      expect(h.emitN8nEvent).not.toHaveBeenCalled();
+    },
+  );
+
   it('beansprucht keinen CLIENT_FORM-Schritt, wenn Formulare deaktiviert sind', async () => {
     const { tx } = makeTx({ item: { ...emailItem(), kind: 'CLIENT_FORM' } });
     h.readBooleanTenantModules.mockResolvedValue({ workflows: true, forms: false });
@@ -443,6 +458,7 @@ describe('executeWorkflowStep consistency', () => {
     const item = {
       ...emailItem(),
       kind: 'CLIENT_REQUEST',
+      wikiArticleIds: ['article-snapshot-1'],
       config: { requestTitle: 'Unterlagen', requestDescription: 'Bitte senden' },
       n8nEvent: null,
     };
@@ -453,6 +469,8 @@ describe('executeWorkflowStep consistency', () => {
     ]);
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ wikiArticleIds: ['article-snapshot-1'] });
     expect(h.evidenceRecord).toHaveBeenCalledOnce();
   });
 });
+// Fachkatalog: KNOWLEDGE-CONTEXT-001

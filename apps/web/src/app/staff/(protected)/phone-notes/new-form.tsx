@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useActionState, useRef, useEffect, useState, useId } from 'react';
+import { useActionState, useRef, useState, useId } from 'react';
 import { createPhoneNoteAction, type ActionResult } from './actions';
 
 interface Caller {
@@ -23,18 +23,18 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
   const [callerPhone, setCallerPhone] = useState('');
   const [clientId, setClientId] = useState('');
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    createPhoneNoteAction,
+    async (previous, data) => {
+      const result = await createPhoneNoteAction(previous, data);
+      if (result.ok) {
+        formRef.current?.reset();
+        setCallerName('');
+        setCallerPhone('');
+        setClientId('');
+      }
+      return result;
+    },
     null,
   );
-
-  useEffect(() => {
-    if (state?.ok) {
-      formRef.current?.reset();
-      setCallerName('');
-      setCallerPhone('');
-      setClientId('');
-    }
-  }, [state]);
 
   function onCallerNameChange(value: string) {
     setCallerName(value);

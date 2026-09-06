@@ -1,4 +1,5 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { GwgStructurePanel } from '@/server/mandate-expansion/gwg-structure-panel';
 import { withTenantContext } from '@taxtronik/db';
 import type { Client, GwgCheck, GwgRepresentative, GwgBeneficialOwner } from '@prisma/client';
 import { notFound } from 'next/navigation';
@@ -567,6 +568,7 @@ export default async function GwgPage({
           )}
 
           {isLegalEntity && <GwgMasterData client={client} check={check} />}
+          <GwgStructurePanel session={session} clientId={clientId} />
 
           {check && (
             <div className="card mb-6">

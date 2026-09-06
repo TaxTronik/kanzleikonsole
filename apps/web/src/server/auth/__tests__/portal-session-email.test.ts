@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001
 
 const m = vi.hoisted(() => ({
   config: null as unknown,
@@ -67,6 +68,7 @@ function token(email?: string) {
     clientId: CLIENT_ID,
     fullName: 'Rey Koxha',
     iat: Math.floor(Date.now() / 1000) - 60,
+    sessionIssuedAt: Math.floor(Date.now() / 1000) - 60,
     exp: Math.floor(Date.now() / 1000) + 3600,
   };
 }
@@ -85,6 +87,17 @@ beforeEach(() => {
 });
 
 describe('Portal-Session bindet die aktuelle Kontakt-E-Mail', () => {
+  it('verwirft bestehende Sessions nach dem wirksamen Mandatsende', async () => {
+    m.decode.mockResolvedValue(token('bob@example.test'));
+    m.findUnique.mockResolvedValue({
+      active: true,
+      email: 'bob@example.test',
+      tenantId: 'tenant-1',
+      clientId: CLIENT_ID,
+      client: { allowActive: true, anonymizedAt: null, mandateEndedAt: new Date() },
+    });
+    await expect(portalAuth()).resolves.toBeNull();
+  });
   it('liest den signierten Logout-Subject ohne DB-Hydration', async () => {
     m.decode.mockResolvedValue(token('alice@example.test'));
 

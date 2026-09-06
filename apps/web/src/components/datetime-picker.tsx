@@ -38,6 +38,8 @@ export function DateTimePicker({
   minDate,
   disabled = false,
   output = 'local',
+  ariaInvalid = false,
+  ariaDescribedBy,
 }: {
   id?: string;
   /** FormData-Key — versteckter Input mit ISO-Wert (YYYY-MM-DDTHH:MM) */
@@ -55,6 +57,8 @@ export function DateTimePicker({
   disabled?: boolean;
   /** UTC liefert einen vollständigen ISO-Zeitstempel für z.string().datetime(). */
   output?: 'local' | 'utc';
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
 }) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
@@ -89,6 +93,8 @@ export function DateTimePicker({
         disabled={disabled}
         required={required}
         aria-required={required ? 'true' : undefined}
+        ariaInvalid={ariaInvalid ? 'true' : undefined}
+        ariaDescribedBy={ariaDescribedBy}
         // wrapperClassName sorgt dafür, dass der DatePicker volle Breite einnimmt
         popperClassName="taxtronik-datetime-popper"
         calendarClassName="taxtronik-datetime-calendar"

@@ -1,28 +1,28 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { applyTheme, readThemePref, setThemePref, THEME_EVENT, type ThemePref } from '@/lib/theme';
 
+function subscribeTheme(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  window.addEventListener(THEME_EVENT, onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener(THEME_EVENT, onChange);
+  };
+}
+
 export function ThemeToggle() {
-  const [pref, setPref] = useState<ThemePref>('system');
-  const [mounted, setMounted] = useState(false);
+  const storedPref = useSyncExternalStore(subscribeTheme, readThemePref, () => null);
+  const [localChoice, setLocalChoice] = useState<{ stored: ThemePref; value: ThemePref } | null>(
+    null,
+  );
+  const pref = localChoice?.stored === storedPref ? localChoice.value : (storedPref ?? 'system');
 
   useEffect(() => {
-    setPref(readThemePref());
-    setMounted(true);
-    function sync() {
-      const next = readThemePref();
-      setPref(next);
-      applyTheme(next);
-    }
-    window.addEventListener('storage', sync);
-    window.addEventListener(THEME_EVENT, sync);
-    return () => {
-      window.removeEventListener('storage', sync);
-      window.removeEventListener(THEME_EVENT, sync);
-    };
-  }, []);
+    if (storedPref !== null) applyTheme(pref);
+  }, [pref, storedPref]);
 
   // Bei "system" auf Änderungen der OS-Einstellung reagieren
   useEffect(() => {
@@ -36,8 +36,9 @@ export function ThemeToggle() {
   }, [pref]);
 
   function setAndPersist(next: ThemePref) {
-    setPref(next);
     setThemePref(next);
+    // Retain an explicit choice for this tab even if persistence is unavailable.
+    setLocalChoice({ stored: readThemePref(), value: next });
   }
 
   function cycle() {
@@ -48,7 +49,7 @@ export function ThemeToggle() {
   }
 
   // Vor Mount: invisible Placeholder (gleicher Slot, kein Layout-Shift)
-  if (!mounted) {
+  if (storedPref === null) {
     return <div className="w-8 h-8" aria-hidden />;
   }
 

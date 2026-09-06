@@ -66,6 +66,10 @@ function trend(curr: number | null, prev: number | null): 'up' | 'down' | 'flat'
   return delta > 0 ? 'up' : 'down';
 }
 
+function shareOfRevenue(value: number | null, revenue: number | null): number | null {
+  return revenue && revenue > 0 && value !== null ? (value / revenue) * 100 : null;
+}
+
 /**
  * Liefert Liquiditäts-Indikatoren für eine Referenz-Periode + Vergleich
  * zur gleichartigen Vorperiode (Jahr/Quartal/Monat).
@@ -80,27 +84,15 @@ export function computeLiquidity(
 
   const cashflowProxy = currKpi.result !== null ? currKpi.result + currDep : null;
   const cashflowMonthly = cashflowProxy !== null && months > 0 ? cashflowProxy / months : null;
-  const marginPct =
-    currKpi.revenue && currKpi.revenue > 0 && currKpi.result !== null
-      ? (currKpi.result / currKpi.revenue) * 100
-      : null;
-  const personnelRatioPct =
-    currKpi.revenue && currKpi.revenue > 0 && currKpi.personnelCost !== null
-      ? (currKpi.personnelCost / currKpi.revenue) * 100
-      : null;
+  const marginPct = shareOfRevenue(currKpi.result, currKpi.revenue);
+  const personnelRatioPct = shareOfRevenue(currKpi.personnelCost, currKpi.revenue);
 
   let marginTrend: LiquidityKpis['marginTrend'] = null;
   let personnelTrend: LiquidityKpis['personnelTrend'] = null;
   if (previous) {
     const prevKpi = computeBwaKpis(previous.positions);
-    const prevMarginPct =
-      prevKpi.revenue && prevKpi.revenue > 0 && prevKpi.result !== null
-        ? (prevKpi.result / prevKpi.revenue) * 100
-        : null;
-    const prevPersonnel =
-      prevKpi.revenue && prevKpi.revenue > 0 && prevKpi.personnelCost !== null
-        ? (prevKpi.personnelCost / prevKpi.revenue) * 100
-        : null;
+    const prevMarginPct = shareOfRevenue(prevKpi.result, prevKpi.revenue);
+    const prevPersonnel = shareOfRevenue(prevKpi.personnelCost, prevKpi.revenue);
     marginTrend = trend(marginPct, prevMarginPct);
     personnelTrend = trend(personnelRatioPct, prevPersonnel);
   }

@@ -84,6 +84,26 @@ In der Mandantenakte unter **Abrechnung**: offene, abrechenbare
 Zeiteinträge werden als eine Sammelposition oder je Eintrag einzeln in eine
 neue Entwurfs-Rechnung übernommen; die Einträge sind danach mit der Rechnung
 verknüpft und können nicht mehr gelöscht werden.
+Der Leistungszeitraum enthält den ersten und letzten betroffenen Kalendertag
+in der Zeitzone Europe/Berlin. Die abrechenbaren Stunden ergeben sich aus der
+tatsächlich verstrichenen Zeit, auch bei Sommer-/Winterzeitwechseln
+(Fachkatalog `INV-TIME-ENTRY-CLAIM-001`).
+
+### StBVV-Kalkulation übernehmen
+
+Bei aktiviertem Gebührenrechner lässt sich eine gespeicherte Kalkulation im
+In-App-Modus als neue XRechnung übernehmen. Die Rechnung bleibt zunächst
+Entwurf; wiederholtes Übernehmen öffnet dieselbe Rechnung. Vor dem Versand
+sind insbesondere Leistungszeitraum und weitere Rechnungsangaben zu prüfen.
+Der normale Versand erstellt die XML-Datei und das PDF-Archiv
+(Fachkatalog `STBVV-CALCULATION-001`).
+War eine ältere Übernahme als PDF-Entwurf ohne Rechnungsdatei stehengeblieben,
+korrigiert die erneute Übernahme das Format. Bereits ausgestellte Rechnungen
+und vorhandene Archivdateien bleiben unverändert.
+
+Eine Stornierung erzeugt einen negativen Korrekturbeleg mit Bezug auf die
+ursprüngliche Rechnung. Bereits ausgestellte Archivdateien bleiben erhalten
+(Fachkatalog `INV-STORNO-REFERENCE-001`).
 
 ## 3. Extern-Modus: PDF-Rechnung hochladen
 
@@ -97,9 +117,12 @@ mit Benachrichtigungs-Opt-in erhalten eine E-Mail mit dem PDF im Anhang.
 
 ## 4. Rechnungen im Mandanten-Portal
 
-Mandanten sehen unter **Rechnungen** alle Rechnungen außer Entwürfen
-(inklusive stornierter, als „Storniert" gekennzeichnet) mit Nummer, Betreff,
-Beträgen, Fälligkeit und Status. Je Rechnung stehen zwei Schaltflächen: das
+Mandanten sehen unter **Rechnungen** ausgestellte Rechnungen mit Nummer,
+Betreff, Beträgen, Fälligkeit und Status. Ein später stornierter, zuvor
+versendeter Beleg bleibt als historischer Nachweis sichtbar und ist als
+„Storniert" gekennzeichnet. Entwürfe und vor dem Versand stornierte Entwürfe
+bleiben ausschließlich kanzleiintern (Fachkatalog `INV-PORTAL-SHARING-001`).
+Je Rechnung stehen zwei Schaltflächen: das
 **Auge** zeigt das Rechnungs-PDF direkt im Browser, der **Pfeil** lädt es
 herunter (die archivierte ZUGFeRD-Datei bzw. das hochgeladene externe PDF).
 

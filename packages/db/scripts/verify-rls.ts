@@ -20,10 +20,13 @@ import { createPostgresAdapter, optionalDatabaseUrl } from '../src/prisma-adapte
 // `_prisma_migrations` — Prisma-Intern, keine Mandantendaten.
 // `tax_news_item`       — Globaler BMF/BFH-RSS-Cache, mandanten-übergreifend
 //                         (siehe Schema-Kommentar @ TaxNewsItem).
+// `fido_mds_trust_state` — Globaler, owner-only Monotonie-Anker für den
+//                          signierten FIDO-MDS-BLOB; der App-Rolle vollständig
+//                          entzogen, ohne Tenant- oder Personendaten.
 //
 // Jeder Eintrag hier muss einen dokumentierten Grund haben. Ohne Grund → RLS.
 // ---------------------------------------------------------------------------
-const RLS_EXEMPT = new Set<string>(['_prisma_migrations', 'tax_news_item']);
+const RLS_EXEMPT = new Set<string>(['_prisma_migrations', 'tax_news_item', 'fido_mds_trust_state']);
 
 interface TableInfo {
   table: string;

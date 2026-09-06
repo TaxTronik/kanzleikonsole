@@ -909,6 +909,7 @@ jobs:
       DEV_SKIP_TOTP: 'true'
       E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION: 'true'
       E2E_BASE_URL: http://localhost:3000
+      E2E_IDENTITY_FIXTURE_URL: http://127.0.0.1:4319
       E2E_MAILHOG_URL: http://127.0.0.1:8025
       CLAMAV_HOST: localhost
       CLAMAV_PORT: '3310'
@@ -1123,6 +1124,21 @@ jobs:
           cat web.log
           exit 1
 
+      - name: Start synthetic identity fixture
+        run: |
+          node apps/web/scripts/identity-smoke-server.mjs > identity-fixture.log 2>&1 &
+          echo $! > identity-fixture.pid
+
+          for i in {1..60}; do
+            if curl -sf "$E2E_IDENTITY_FIXTURE_URL" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          cat identity-fixture.log
+          exit 1
+
       - name: Flush Redis rate-limit state
         run: |
           if command -v redis-cli >/dev/null 2>&1; then
@@ -1130,7 +1146,7 @@ jobs:
           fi
 
       - name: Run E2E paranoid tests
-        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts tests/11-upload-fuzz.spec.ts tests/12-accessibility.spec.ts tests/13-accessible-display.spec.ts tests/14-dashboard-keyboard.spec.ts tests/15-search-notifications-a11y.spec.ts
+        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts tests/11-upload-fuzz.spec.ts tests/12-accessibility.spec.ts tests/13-accessible-display.spec.ts tests/14-dashboard-keyboard.spec.ts tests/15-search-notifications-a11y.spec.ts tests/16-identity-local.spec.ts tests/17-expansion.spec.ts tests/18-portal-inbox.spec.ts
 
       - name: Upload Playwright report
         if: always()
@@ -1143,7 +1159,9 @@ jobs:
 
       - name: Stop SeaweedFS
         if: always()
-        run: docker rm -f seaweedfs-ci >/dev/null 2>&1 || true
+        run: |
+          if [ -f identity-fixture.pid ]; then kill "$(cat identity-fixture.pid)" >/dev/null 2>&1 || true; fi
+          docker rm -f seaweedfs-ci >/dev/null 2>&1 || true
 
   # ===========================================================================
   # E-Rechnung-Konformität: erzeugt Referenz-XRechnungen für Mischsätze,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Plus, Check } from 'lucide-react';
 import { addManualMarkingAction } from './actions';
 
@@ -24,9 +24,12 @@ export function NewMarkingPanel(props: {
   const selStart = props.selection?.start;
   const selEnd = props.selection?.end;
   const selectedText = props.selection?.text ?? null;
-  useEffect(() => {
+  const selectionKey = JSON.stringify([selStart, selEnd, selectedText]);
+  const [previousSelection, setPreviousSelection] = useState<string | null>(null);
+  if (previousSelection !== selectionKey) {
+    setPreviousSelection(selectionKey);
     if (selectedText) setBegriff(selectedText.trim().replace(/\s+/g, ' '));
-  }, [selStart, selEnd, selectedText]);
+  }
 
   function submit() {
     const sel = props.selection;

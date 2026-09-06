@@ -4,12 +4,13 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:87f5c8daa8567a4e39d3909a082972b746cb951c3dc95aee269354c2560e8039",
-    "expected_active_rule_count": 63,
+    "definition_sha256": "sha256:186627afd0abb00874b9be0740d229627c6fd6e8d285887fe258f3bcda7b147e",
+    "expected_active_rule_count": 80,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
       "ACCESS-NOTIFICATION-RECIPIENT-001",
+      "ACCESS-SEARCH-SCOPE-001",
       "ACCESS-STAFF-PERMISSION-001",
       "ACCESS-TENANT-RLS-001",
       "ASSURANCE-PROFESSIONAL-REVIEW-001",
@@ -21,7 +22,10 @@
       "BWA-IMPORT-MAPPING-001",
       "BWA-PROJECTION-001",
       "BWA-TAX-ESTIMATE-001",
+      "CLIENT-ASSISTANCE-001",
+      "CLIENT-FEEDBACK-001",
       "CLIENT-MANDATE-LIFECYCLE-001",
+      "CLIENT-OFFBOARDING-001",
       "DOC-OBJECT-LOCK-001",
       "DOC-PORTAL-SHARING-001",
       "DOC-RETENTION-CLASS-001",
@@ -34,6 +38,7 @@
       "DSGVO-REQUEST-DEADLINE-001",
       "DSGVO-REQUEST-EVIDENCE-001",
       "FORM-PRESUBMIT-UPLOAD-001",
+      "FORM-SCHEMA-SNAPSHOT-001",
       "GOBD-VERFAHRENSDOKU-001",
       "GWG-ACTIVATION-GATE-001",
       "GWG-BENEFICIAL-OWNERS-001",
@@ -45,6 +50,7 @@
       "GWG-RETENTION-DESTRUCTION-001",
       "GWG-REVERIFICATION-VALIDITY-001",
       "GWG-RISK-REVIEW-001",
+      "GWG-SCREENING-001",
       "GWG-SELF-ONBOARDING-001",
       "INV-ARCHIVE-EINVOICE-001",
       "INV-DUE-OVERDUE-001",
@@ -54,23 +60,34 @@
       "INV-STORNO-REFERENCE-001",
       "INV-TIME-ENTRY-CLAIM-001",
       "INV-VAT-TOTALS-001",
+      "KNOWLEDGE-CONTEXT-001",
+      "MAIL-INBOX-001",
+      "MANDATE-STRUCTURE-001",
+      "PAYROLL-INTAKE-001",
       "POA-LIFECYCLE-001",
       "POA-SIGNER-RETENTION-001",
       "POA-SIGNING-CONFIRMATION-001",
       "POA-SIGNING-SNAPSHOT-001",
+      "PORTAL-INBOX-SUBMISSION-001",
       "REQ-INTERNAL-COMMENT-001",
       "REQ-LIFECYCLE-001",
       "RISK-AI-SUGGESTION-001",
       "RISK-ARCHIVE-SNAPSHOT-001",
       "RISK-CATALOG-FOUR-EYES-001",
       "RISK-EXTERNAL-ANONYMIZATION-001",
+      "STBVV-CALCULATION-001",
       "TAX-CONTROL-STATUS-001",
       "TAX-DEADLINE-AUTOREQUEST-001",
       "TAX-DEADLINE-WORKDAY-001",
       "TAX-MASTER-DATA-001",
       "TAX-NOTICE-APPEAL-001",
       "TAX-NOTICE-DATARETRIEVAL-001",
-      "TCMS-SAMPLE-PROOF-001"
+      "TAX-NOTICE-DECISION-001",
+      "TCMS-SAMPLE-PROOF-001",
+      "VDB-PREPARATION-001",
+      "WORKFLOW-DEPENDENCY-001",
+      "WORKFLOW-LIFECYCLE-001",
+      "YEAR-END-CAMPAIGN-001"
     ],
     "reserved_rule_ids": [
       "DOC-COMPLETE-GOBD-CLASSIFICATION-001",
@@ -84,8 +101,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 63,
-  "active_rule_count": 63,
+  "rule_count": 80,
+  "active_rule_count": 80,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -180,7 +197,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Die Notification-Scope-Migration bindet bekannte Fachressourcen fail-closed an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den aktuellen Empfänger- und Clientzugriff. Portal-Kontakte erzeugen die vier klassifizierten Staff-Ereignisse über einen write-only DB-Upsert, ohne SELECT-Freigabe auf interne Hinweise. Reminder revalidieren Empfänger vor dem Insert; ein vollständiges Inventar aller Producer sowie Mail- und n8n-Austritte bleibt als Härtungsnachweis offen."
+        "summary": "Die Notification-Scope-Migration bindet bekannte Fachressourcen fail-closed an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den aktuellen Empfänger- und Clientzugriff. Portal-Kontakte erzeugen klassifizierte Staff-Ereignisse über enge write-only DB-Pfade, ohne SELECT-Freigabe auf interne Hinweise. Reminder revalidieren Empfänger vor dem Insert; ein vollständiges Inventar aller Producer sowie Mail- und n8n-Austritte bleibt als Härtungsnachweis offen."
       },
       "sources": [
         {
@@ -226,20 +243,101 @@
         "apps/worker/src/jobs/reminders-daily.ts",
         "packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql",
         "packages/db/prisma/migrations/20260824030000_notification_client_contact_insert/migration.sql",
-        "packages/db/prisma/migrations/20260830234000_restore_portal_notification_write_only/migration.sql"
+        "packages/db/prisma/migrations/20260830234000_restore_portal_notification_write_only/migration.sql",
+        "packages/db/prisma/migrations/20260831270000_workflow_dependency_period/migration.sql",
+        "packages/db/prisma/migrations/20260901002000_portal_inbox_notifications/migration.sql",
+        "packages/db/prisma/migrations/20260901004000_portal_inbox_scope_forward/migration.sql",
+        "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
+        "apps/web/src/server/inbox/client-notification.ts",
+        "packages/mail/src/dispatch.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
         "apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts",
         "packages/db/src/__tests__/notification-client-scope-migration.test.ts",
         "packages/db/src/__tests__/notification-client-scope-rls.test.ts",
-        "packages/db/src/__tests__/notification-write-only-forward.test.ts"
+        "packages/db/src/__tests__/notification-write-only-forward.test.ts",
+        "packages/db/src/__tests__/workflow-dependencies.test.ts",
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "apps/web/src/server/inbox/__tests__/client-notification.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
-      "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001"],
+      "related_rules": [
+        "TAX-NOTICE-DECISION-001",
+        "CLIENT-FEEDBACK-001",
+        "ACCESS-CLIENT-MODE-001",
+        "ACCESS-TENANT-RLS-001",
+        "PORTAL-INBOX-SUBMISSION-001"
+      ],
       "tags": ["notification", "empfänger", "vertraulichkeit"],
       "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-notification-recipient-001-benachrichtigungsscope.md",
       "summary": "Eine alte Zuständigkeit darf nicht dauerhaft Zugang zu einem später vertraulichen oder RESTRICTED-Mandanten vermitteln. Mandantenbezogene Notifications werden daher an eine bekannte Fachressource und deren Mandanten gebunden; Anzeige und Mutation verlangen den aktuellen Clientzugriff. Technisch globale oder persönliche Systemmeldungen bleiben ein getrennter Scope."
+    },
+    {
+      "id": "ACCESS-SEARCH-SCOPE-001",
+      "title": "Suche auf aktuell autorisierte Metadaten begrenzen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Datenschutzverantwortliche Kanzlei",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Inbox-Listen und -Suche verwenden denselben Tenant-, Mandanten-, Kontakt-, Feature- und Staff-Permission-Scope wie der direkte Objektzugriff und suchen nur freigegebene Metadaten. Im Portal sind dies Betreff und der bereits sichtbare Mandantenname; interne DATEV-/Addison-Nummern bleiben Staff-only. Ein vollständiger automatisierter Nachweis für alle Suchoberflächen und den anschließenden Deep-Link-Zugriff steht aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Zugriffsschutz, autorisierungsidentische Suche",
+          "path": "docs/development/module/zugriffsschutz.md",
+          "checked_at": "2026-09-01",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Sicherer Mandantenposteingang, Metadatensuche",
+          "path": "docs/development/module/portal-inbox.md",
+          "checked_at": "2026-09-01",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/inbox/access.ts",
+        "apps/web/src/server/inbox/queries.ts",
+        "apps/web/src/server/inbox/search.ts",
+        "apps/web/src/app/portal/(protected)/requests/page.tsx",
+        "apps/web/src/app/api/staff/search/route.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "packages/db/src/__tests__/rls-cross-tenant.test.ts",
+        "apps/web/src/app/api/staff/search/__tests__/route.test.ts",
+        "apps/web/src/app/portal/(protected)/__tests__/list-ux.test.ts",
+        "apps/web/src/server/inbox/__tests__/queries.test.ts",
+        "apps/web/src/server/portal/__tests__/list-query.test.ts"
+      ],
+      "feature_refs": [
+        "docs/development/module/zugriffsschutz.md",
+        "docs/development/module/portal-inbox.md"
+      ],
+      "related_rules": [
+        "ACCESS-TENANT-RLS-001",
+        "ACCESS-STAFF-PERMISSION-001",
+        "ACCESS-CLIENT-MODE-001",
+        "CLIENT-MANDATE-LIFECYCLE-001",
+        "PORTAL-INBOX-SUBMISSION-001"
+      ],
+      "tags": ["suche", "metadaten", "least-privilege", "portal"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-search-scope-001-autorisierungsidentische-suche.md",
+      "summary": "Ein Suchtreffer darf nie mehr verraten als der aktuelle Akteur beim direkten Öffnen des Objekts sehen dürfte. Suche, Filter, Trefferzähler, Sortierung und Deep-Link verwenden deshalb denselben Tenant-, Mandanten-, Rollen-, Einzelrechte-, Kontakt-, Feature- und Lebenszyklus-Scope wie das Zielobjekt."
     },
     {
       "id": "ACCESS-STAFF-PERMISSION-001",
@@ -286,18 +384,28 @@
         "apps/web/src/server/auth/rbac.ts",
         "apps/web/src/server/actions/staff-action.ts",
         "apps/web/src/lib/staff-permissions.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260901000000_portal_inbox_enums/migration.sql",
+        "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql",
+        "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
         "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
         "apps/web/src/server/gwg/professional-review.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/documents/__tests__/delivery.test.ts",
         "apps/web/src/server/auth/__tests__/rbac.test.ts",
         "apps/web/src/server/actions/__tests__/staff-action.test.ts",
         "apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts",
         "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts",
-        "apps/web/src/server/gwg/__tests__/professional-review.test.ts"
+        "apps/web/src/server/gwg/__tests__/professional-review.test.ts",
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
-      "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001"],
+      "related_rules": [
+        "ACCESS-CLIENT-MODE-001",
+        "ACCESS-TENANT-RLS-001",
+        "PORTAL-INBOX-SUBMISSION-001"
+      ],
       "tags": ["rbac", "einzelrechte", "least-privilege"],
       "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-staff-permission-001-einzelrechte.md",
       "summary": "Ein sichtbarer Mandant allein berechtigt nicht automatisch zu jeder Aktion. TaxTronik prüft für die dafür eingerichteten Funktionen zusätzlich ein Einzelrecht. ADMIN und PARTNER haben diese Rechte implizit; andere Mitarbeiter benötigen einen expliziten Grant."
@@ -351,27 +459,80 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/auth/staff.ts",
+        "apps/web/src/server/auth/portal.ts",
+        "apps/web/src/server/auth/session-issued-at.ts",
+        "apps/web/src/server/auth/revocation.ts",
         "packages/db/src/tenant-context.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260623000000_iter42_force_rls/migration.sql",
         "packages/db/prisma/migrations/20260831100000_tax_registrations/migration.sql",
         "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql",
+        "packages/db/prisma/migrations/20260831150000_smart_mailbox/migration.sql",
+        "packages/db/prisma/migrations/20260831160000_payroll_intake/migration.sql",
+        "packages/db/prisma/migrations/20260831190000_document_payroll_access/migration.sql",
+        "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
+        "packages/db/prisma/migrations/20260901004000_portal_inbox_scope_forward/migration.sql",
+        "packages/db/prisma/migrations/20260901005000_expansion_tenant_client_pair_guards/migration.sql",
+        "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql",
+        "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
+        "packages/db/prisma/migrations/20260903000000_staff_hardware_only_access/migration.sql",
+        "packages/db/prisma/migrations/20260903001000_staff_webauthn_least_privilege/migration.sql",
+        "packages/db/prisma/migrations/20260903002000_staff_webauthn_hardening/migration.sql",
+        "packages/db/prisma/migrations/20260903003000_staff_webauthn_recovery_hierarchy/migration.sql",
+        "packages/db/prisma/migrations/20260903004000_staff_webauthn_recovery_procedure/migration.sql",
+        "packages/db/prisma/migrations/20260903005000_staff_webauthn_authenticator_version/migration.sql",
+        "packages/db/prisma/migrations/20260903006000_fido_mds_trust_state/migration.sql",
+        "packages/db/prisma/migrations/20260903007000_fido_mds_commit_guard/migration.sql",
+        "packages/db/prisma/migrations/20260903008000_fido_mds_policy_binding/migration.sql",
+        "packages/db/prisma/migrations/20260903009000_staff_recovery_role_floor/migration.sql",
+        "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql",
+        "apps/web/src/instrumentation.ts",
+        "apps/web/src/server/auth/staff-account-recovery-lock.ts",
+        "apps/web/src/server/auth/webauthn.ts",
+        "apps/web/src/server/auth/admin-break-glass.ts",
+        "apps/web/scripts/reset-admin-password.ts",
+        "packages/db/seeds/lib.ts",
+        "scripts/check-pnpm-supply-chain.sh",
+        "apps/web/src/app/staff/(protected)/profile/actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
         "packages/db/scripts/verify-rls.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "packages/db/src/__tests__/tax-master-data.test.ts",
-        "packages/db/src/__tests__/gwg-person-links.test.ts"
+        "packages/db/src/__tests__/gwg-person-links.test.ts",
+        "packages/db/src/__tests__/mailbox-rls.test.ts",
+        "packages/db/src/__tests__/payroll-intake.test.ts",
+        "packages/db/src/__tests__/workflow-expansion.test.ts",
+        "packages/db/src/__tests__/mandate-assistance-expansion.test.ts",
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "packages/db/src/__tests__/staff-webauthn-migration.test.ts",
+        "packages/db/src/__tests__/staff-webauthn-rls.test.ts",
+        "apps/web/src/server/auth/__tests__/webauthn.test.ts",
+        "apps/web/src/server/auth/__tests__/admin-break-glass.test.ts",
+        "apps/web/src/server/auth/__tests__/staff-auth-state.test.ts",
+        "apps/web/src/server/auth/__tests__/staff-session-auth-binding.test.ts",
+        "packages/config/src/__tests__/env-webauthn.test.ts",
+        "packages/db/src/__tests__/dev-seed-auth-reset.test.ts",
+        "apps/web/src/server/auth/__tests__/simplewebauthn-crl-hardening.test.ts",
+        "apps/web/src/lib/__tests__/webauthn-browser-error.test.ts",
+        "apps/web/src/app/staff/(protected)/profile/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",
         "docs/adr/0002-rls-und-app-level-tenancy.md",
-        "docs/development/module/zugriffsschutz.md"
+        "docs/development/module/zugriffsschutz.md",
+        "docs/operations/fido-mds.md"
       ],
       "related_rules": [
         "ACCESS-CLIENT-MODE-001",
         "ACCESS-STAFF-PERMISSION-001",
-        "ACCESS-NOTIFICATION-RECIPIENT-001"
+        "ACCESS-NOTIFICATION-RECIPIENT-001",
+        "ACCESS-SEARCH-SCOPE-001",
+        "PORTAL-INBOX-SUBMISSION-001"
       ],
       "tags": ["rls", "tenant-isolation", "defense-in-depth"],
       "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-tenant-rls-001-tenant-isolation.md",
@@ -576,20 +737,41 @@
         "packages/evidence/src/chain.ts",
         "packages/evidence/src/canonical-json.ts",
         "apps/web/src/server/audit/query.ts",
-        "apps/web/src/app/api/staff/admin/audit/export/route.ts"
+        "apps/web/src/app/api/staff/admin/audit/export/route.ts",
+        "apps/worker/src/jobs/portal-inbox-cleanup.ts",
+        "apps/web/src/server/inbox/attachment-delivery.ts",
+        "apps/web/src/server/inbox/client-notification.ts",
+        "apps/web/src/server/auth/webauthn.ts",
+        "apps/web/src/server/auth/admin-break-glass.ts",
+        "apps/web/scripts/reset-admin-password.ts",
+        "apps/web/src/app/staff/(protected)/profile/actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
+        "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql"
       ],
       "test_refs": [
         "packages/evidence/src/__tests__/service-record.test.ts",
         "packages/evidence/src/__tests__/hash-chain.test.ts",
         "packages/evidence/src/__tests__/canonical-json.property.test.ts",
         "apps/web/src/server/audit/__tests__/query.test.ts",
-        "apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts"
+        "apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts",
+        "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
+        "apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts",
+        "apps/web/src/server/inbox/__tests__/client-notification.test.ts",
+        "apps/web/src/app/staff/(protected)/profile/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts",
+        "apps/web/src/server/auth/__tests__/webauthn.test.ts",
+        "apps/web/src/server/auth/__tests__/admin-break-glass.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
         "docs/adr/0004-evidence-chain-mit-rfc3161.md"
       ],
-      "related_rules": ["AUDIT-RFC3161-ANCHOR-001", "AUDIT-VERIFY-ALERT-001", "AUDIT-ARCHIVE-001"],
+      "related_rules": [
+        "AUDIT-RFC3161-ANCHOR-001",
+        "AUDIT-VERIFY-ALERT-001",
+        "AUDIT-ARCHIVE-001",
+        "PORTAL-INBOX-SUBMISSION-001"
+      ],
       "tags": ["audit", "hashkette", "manipulationsevidenz"],
       "path": "docs/fachkatalog/regeln/audit-und-assurance/audit-hash-chain-001-tenant-hashkette.md",
       "summary": "TaxTronik schreibt über den Evidence-Service Audit-Ereignisse in eine eigene Kette je Kanzlei-Tenant. Jeder Kettenwert bindet den Vorgänger und eine deterministisch kanonisierte Darstellung von Zeitpunkt, Tenant, Akteur, Aktion, Ressource sowie Vorher- und Nachherzustand. Schreiben und spätere Prüfung verwenden dieselbe Hash-Abbildung."
@@ -671,8 +853,8 @@
         "reviewed_content_hash": null
       },
       "implementation": {
-        "status": "partial",
-        "summary": "Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker- und Policy-Fehler. Die Anzeige hält neue negative Ergebnisse trotz altem Checkpoint sichtbar; Recovery-Abgrenzung und monotone Spitzenpersistenz haben noch bekannte Grenzen."
+        "status": "implemented",
+        "summary": "Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker-, Policy- und Laufzeitfehler. Checkpoints grenzen nur den konkret dokumentierten Altbefund ab; neue Fehler bleiben alarmiert und einmal beobachtete Spitzen werden monoton erhalten."
       },
       "sources": [
         {
@@ -747,7 +929,10 @@
         "apps/web/src/server/bwa/datev-parser.ts",
         "apps/web/src/server/bwa/addison-parser.ts"
       ],
-      "test_refs": ["apps/web/src/server/bwa/__tests__/datev-parser.test.ts"],
+      "test_refs": [
+        "apps/web/src/server/bwa/__tests__/datev-parser.test.ts",
+        "apps/web/src/server/bwa/__tests__/addison-parser.test.ts"
+      ],
       "feature_refs": ["docs/anwenderdoku/bwa-planung.md"],
       "related_rules": ["BWA-PROJECTION-001", "BWA-TAX-ESTIMATE-001"],
       "tags": ["bwa", "datev", "addison", "import", "mapping"],
@@ -769,8 +954,8 @@
         "reviewed_content_hash": null
       },
       "implementation": {
-        "status": "deviates",
-        "summary": "Die lineare Run-rate ist als begrenztes Rechenmodell umgesetzt. Die Trendregression filtert jedoch nicht auf Jahre vor dem Zieljahr und kann deshalb Ziel- oder Zukunftsjahre einbeziehen; damit weicht sie von der beschriebenen Vorjahresregel ab."
+        "status": "implemented",
+        "summary": "Die lineare Run-rate und die begrenzte Trendregression sind als Szenariorechnungen umgesetzt. Die Regression verwendet ausschließlich vollständige Jahresperioden vor dem Zieljahr; Ziel- und Zukunftsjahre werden durch Code und Regressionstest ausgeschlossen."
       },
       "sources": [
         {
@@ -895,6 +1080,119 @@
       "summary": "TaxTronik berechnet eine unverbindliche Orientierung aus einem vorläufigen BWA-Ergebnis. Einzelne gesetzliche Parameter sind für 2025 und 2026 im Code hinterlegt; die erforderlichen steuerlichen Bemessungsgrundlagen werden aber nicht aus einem vollständigen Steuerfall ermittelt. Deshalb ist der Stand nur teilweise umgesetzt und ungeprüft. Ein Disclaimer, die Bezeichnung „Beta“ oder eine plausible Zahl macht eine sachlich unvollständige Berechnung nicht richtig."
     },
     {
+      "id": "CLIENT-ASSISTANCE-001",
+      "title": "Mandantenangaben und externe Word-Fassungen getrennt dokumentieren",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Belegprüfung und Verfahrensdokumentation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Angaben, Vorlagenstände, Prüfung und Ausgaben sind versioniert und technisch gebunden. Steuerliche Anerkennung, Vollständigkeit und gelebte Verfahren werden nicht automatisch entschieden."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Modulbeschreibung Belegassistenten und mandantenbezogene Verfahrensdokumentation",
+          "path": "docs/development/module/client-assistance.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/client-assistance/service.ts",
+        "apps/web/src/server/client-assistance/snapshot.ts",
+        "apps/web/src/server/client-assistance/outputs.ts",
+        "apps/web/src/server/client-assistance/download.ts",
+        "apps/web/src/server/client-assistance/report.ts",
+        "apps/web/src/server/documents/pdf-fonts.ts",
+        "packages/db/prisma/migrations/20260831140000_client_assistance/migration.sql",
+        "packages/db/prisma/migrations/20260831170000_assistance_outputs/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/client-assistance/__tests__/snapshot.test.ts",
+        "apps/web/src/server/client-assistance/__tests__/service.test.ts",
+        "apps/web/src/server/client-assistance/__tests__/outputs.test.ts",
+        "apps/web/src/server/documents/__tests__/pdf-fonts.test.ts",
+        "packages/db/src/__tests__/mandate-assistance-expansion.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/client-assistance.md"],
+      "related_rules": [
+        "DOC-UPLOAD-JOURNAL-001",
+        "DOC-RETENTION-CLASS-001",
+        "DOC-PORTAL-SHARING-001",
+        "GOBD-VERFAHRENSDOKU-001"
+      ],
+      "tags": ["eigenbeleg", "bewirtung", "verfahrensdokumentation", "menschliche-pruefung"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/client-assistance-001-versionierte-mandantenangaben.md",
+      "summary": "Assistenten dokumentieren Tatsachenangaben für Bewirtungsergänzungen, Eigenbelege und Mandantenverfahren. Einreichung, Kanzleiprüfung, Archivierung und externe Word-Bearbeitung bleiben getrennt. Keine technische Handlung stellt automatisch steuerliche Anerkennung, Vorsteuerabzug oder GoBD-Konformität fest."
+    },
+    {
+      "id": "CLIENT-FEEDBACK-001",
+      "title": "Freiwillige Service-Rückmeldungen begrenzt und persönlich einholen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der beschriebene Produktumfang ist implementiert. Die fachliche Freigabe und eine produktionsnahe Datenbank- und Bedienabnahme stehen noch aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Workflow-Erweiterungen und Abnahmegrenzen",
+          "path": "docs/development/module/workflow-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/db/src/workflow-feedback.ts",
+        "packages/db/src/workflow-lifecycle.ts",
+        "packages/db/prisma/migrations/20260906170251_workflow_lifecycle/migration.sql",
+        "apps/worker/src/jobs/workflow-feedback.ts",
+        "apps/web/src/server/workflows/interactions.ts",
+        "apps/web/src/server/workflows/interaction-policy.ts",
+        "apps/web/src/server/workflows/dashboard-policy.ts",
+        "apps/web/src/app/staff/(protected)/interactions/page.tsx",
+        "apps/web/src/app/staff/(protected)/interactions/actions.ts",
+        "apps/web/src/app/portal/(protected)/interactions/actions.ts",
+        "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts",
+        "packages/db/src/__tests__/workflow-lifecycle.test.ts",
+        "apps/web/src/server/workflows/__tests__/interaction-policy.test.ts",
+        "apps/web/src/server/workflows/__tests__/dashboard-policy.test.ts",
+        "packages/db/src/__tests__/workflow-expansion.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/workflow-expansion.md"],
+      "related_rules": [
+        "WORKFLOW-LIFECYCLE-001",
+        "ACCESS-NOTIFICATION-RECIPIENT-001",
+        "REQ-LIFECYCLE-001",
+        "DSGVO-MANDATE-ANONYMIZATION-001"
+      ],
+      "tags": ["workflow", "mandantenportal", "ungeprueft"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/client-feedback-001-freiwillige-service-rueckmeldung.md",
+      "summary": "Bei aktiviertem feedbackSurveys kann eine berechtigte Kanzleiperson einen aktiven Mandantenkontakt für einen Workflow auswählen. Ein abgeschlossener Workflow erzeugt die Einladung sofort; bei ACTIVE oder PAUSED wird der Kontakt für den bestehenden Abschlussübergang vorgemerkt."
+    },
+    {
       "id": "CLIENT-MANDATE-LIFECYCLE-001",
       "title": "Mandatsende auditieren und als nachgelagerten Workflow-Anker verwenden",
       "domain": "mandat-und-zugriff",
@@ -910,7 +1208,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "ADMIN/PARTNER können das aktuelle Mandatsende setzen oder zurücknehmen; beide Änderungen werden auditiert und steuern GwG-/DSGVO-Queues sowie einzelne Neuanlage-Gates. Ein einheitlicher Schreib-, Portal- und Wiederaufnahme-Backstop für alle Module fehlt."
+        "summary": "ADMIN/PARTNER können das aktuelle Mandatsende setzen oder zurücknehmen; beide Änderungen werden auditiert und steuern GwG-/DSGVO-Queues sowie einzelne Neuanlage-Gates. Portal-Sessions und Profilwechsel prüfen nun zusätzlich das wirksame Mandatsende. Ein einheitlicher Schreib- und Wiederaufnahme-Backstop für sämtliche Fachmodule bleibt außerhalb dieses Gates."
       },
       "sources": [
         {
@@ -936,24 +1234,91 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/api/portal/ical/[token]/route.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts",
         "apps/web/src/server/dsgvo/client-retention.ts",
+        "apps/web/src/server/auth/portal.ts",
+        "apps/web/src/server/auth/portal-profiles.ts",
         "apps/web/src/app/staff/(protected)/poa/actions.ts",
+        "apps/web/src/server/inbox/access.ts",
+        "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
         "packages/db/prisma/migrations/20260723000000_iter73_client_mandate_ended_at/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/api/portal/ical/[token]/__tests__/route.test.ts",
+        "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
+        "apps/web/src/server/auth/__tests__/portal-session-email.test.ts",
+        "apps/web/src/server/auth/__tests__/portal-profiles.test.ts",
         "apps/web/src/server/dsgvo/__tests__/client-retention.test.ts",
-        "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts"
+        "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/dsgvo-konzept.md"],
       "related_rules": [
+        "CLIENT-OFFBOARDING-001",
         "DSGVO-MANDATE-ANONYMIZATION-001",
         "GWG-RETENTION-DESTRUCTION-001",
-        "POA-SIGNER-RETENTION-001"
+        "POA-SIGNER-RETENTION-001",
+        "PORTAL-INBOX-SUBMISSION-001"
       ],
       "tags": ["mandatsende", "wiederaufnahme", "retention"],
       "path": "docs/fachkatalog/regeln/mandat-und-zugriff/client-mandate-lifecycle-001-mandatsende.md",
       "summary": "TaxTronik speichert ein Mandatsende am Mandanten, protokolliert Setzen und Zurücknehmen und nutzt den Zeitpunkt als Anker für Aufbewahrungs- und Anonymisierungsvorschläge. Eine Wiederaufnahme setzt den Wert auf null. Das Feld ist derzeit kein einheitlicher terminaler Status für alle Fachmodule."
+    },
+    {
+      "id": "CLIENT-OFFBOARDING-001",
+      "title": "Mandatsübergabe vorbereiten und Mandatsende getrennt bestätigen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die abgegrenzte Produktfunktion ist implementiert; eine fachliche Freigabe und weitergehende materielle oder externe Vollständigkeitszusagen fehlen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Modulbeschreibung Mandatsorganisation und Erweiterungsgrenzen",
+          "path": "docs/development/module/mandate-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/mandate-expansion/offboarding.ts",
+        "apps/web/src/server/mandate-expansion/artifacts.ts",
+        "apps/web/src/server/mandate-expansion/pdf.ts",
+        "apps/web/src/server/documents/pdf-fonts.ts",
+        "packages/db/prisma/migrations/20260831120000_mandate_expansion/migration.sql",
+        "packages/db/prisma/migrations/20260831180000_mandate_artifacts/migration.sql",
+        "packages/db/prisma/migrations/20260831200000_mandate_history_integrity/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/mandate-expansion/__tests__/model.test.ts",
+        "apps/web/src/server/mandate-expansion/__tests__/service.test.ts",
+        "apps/web/src/server/mandate-expansion/__tests__/pdf.test.ts",
+        "apps/web/src/server/mandate-expansion/__tests__/artifacts.test.ts",
+        "apps/web/src/server/documents/__tests__/pdf-fonts.test.ts",
+        "packages/db/src/__tests__/mandate-assistance-expansion.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/mandate-expansion.md"],
+      "related_rules": [
+        "CLIENT-MANDATE-LIFECYCLE-001",
+        "DOC-RETENTION-CLASS-001",
+        "GWG-RETENTION-DESTRUCTION-001",
+        "DSGVO-MANDATE-ANONYMIZATION-001"
+      ],
+      "tags": ["mandatsorganisation", "arbeitsstand", "menschliche-pruefung"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/client-offboarding-001-gepruefte-uebergabe.md",
+      "summary": "ADMIN/PARTNER bereitet einen überprüfbaren Übergabeumfang vor und bestätigt das Mandatsende anschließend gesondert. Die Vorbereitung sammelt offene Steuertermine, Bescheid-/Einspruchskontrollen, Anforderungen, aktive Portal-Kontakte und nicht vernichtete GwG-Prüfungen. Der Abschluss setzt das tatsächliche Mandatsende und sperrt Portalzugänge über den aktuellen Mandatsstatus."
     },
     {
       "id": "DOC-OBJECT-LOCK-001",
@@ -1051,18 +1416,32 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/documents/delivery.ts",
+        "packages/db/prisma/migrations/20260831190000_document_payroll_access/migration.sql",
         "apps/web/src/app/api/portal/documents/[id]/download/route.ts",
         "apps/web/src/app/api/portal/documents/[id]/preview-url/route.ts",
         "apps/web/src/app/staff/(protected)/documents/actions.ts",
-        "apps/web/src/server/storage/preview-mime.ts"
+        "apps/web/src/server/storage/preview-mime.ts",
+        "apps/web/src/server/inbox/accept-attachment.ts",
+        "apps/web/src/server/inbox/attachment-delivery.ts",
+        "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
+        "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/server/documents/__tests__/delivery.test.ts",
         "apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts",
         "apps/web/src/server/storage/__tests__/preview-mime.test.ts",
-        "apps/web/src/components/__tests__/document-preview-security.test.ts"
+        "apps/web/src/components/__tests__/document-preview-security.test.ts",
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts",
+        "apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/dokumente.md"],
-      "related_rules": ["DOC-VERSION-IMMUTABILITY-001"],
+      "related_rules": [
+        "ACCESS-STAFF-PERMISSION-001",
+        "DOC-VERSION-IMMUTABILITY-001",
+        "PORTAL-INBOX-SUBMISSION-001"
+      ],
       "tags": ["portal", "freigabe", "dokumentzugriff"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-portal-sharing-001-mandantenfreigabe.md",
       "summary": "Ein von Mitarbeitern geführtes Dokument ist im Mandantenportal nur sichtbar und abrufbar, wenn es dem Session-Mandanten gehört, nicht soft-gelöscht ist und ausdrücklich freigegeben wurde. Download und Vorschau erzwingen dieselben Filter. Die technische Freigabe entscheidet nicht, ob eine Herausgabe fachlich, berufsrechtlich oder datenschutzrechtlich zulässig ist."
@@ -1118,17 +1497,20 @@
       "code_refs": [
         "packages/storage/src/service.ts",
         "apps/web/src/server/storage/document-type.ts",
+        "apps/web/src/server/inbox/accept-attachment.ts",
         "packages/db/prisma/migrations/20260801003520_document_type_retention_years/migration.sql"
       ],
       "test_refs": [
         "packages/storage/src/__tests__/retention.test.ts",
-        "apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts"
+        "apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts",
+        "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/dokumente.md", "docs/compliance/gobd.md"],
       "related_rules": [
         "DOC-OBJECT-LOCK-001",
         "DOC-VERSION-IMMUTABILITY-001",
-        "DSGVO-OPERATIONAL-RETENTION-001"
+        "DSGVO-OPERATIONAL-RETENTION-001",
+        "PORTAL-INBOX-SUBMISSION-001"
       ],
       "tags": ["aufbewahrung", "dokumenttyp", "klassifikation"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-retention-class-001-aufbewahrungsklasse.md",
@@ -1162,18 +1544,35 @@
         }
       ],
       "code_refs": [
+        "apps/worker/src/jobs/storage-orphan-cleanup.ts",
         "apps/web/src/server/documents/resumable-upload.ts",
         "apps/web/src/server/documents/upload-helpers.ts",
         "apps/web/src/server/documents/storage-compensation.ts",
-        "apps/web/src/app/gwg-onboarding/actions.ts"
+        "apps/web/src/app/gwg-onboarding/actions.ts",
+        "apps/web/src/server/inbox/staging-upload.ts",
+        "apps/web/src/server/inbox/accept-attachment.ts",
+        "apps/worker/src/jobs/portal-inbox-cleanup.ts",
+        "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
+        "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql",
+        "packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/documents/__tests__/resumable-upload.test.ts",
         "apps/web/src/server/documents/__tests__/upload-helpers.test.ts",
-        "apps/web/src/server/documents/__tests__/storage-compensation.test.ts"
+        "apps/web/src/server/documents/__tests__/storage-compensation.test.ts",
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "apps/web/src/server/inbox/__tests__/staging-upload.test.ts",
+        "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts",
+        "apps/web/src/server/inbox/__tests__/rejection.test.ts",
+        "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts"
       ],
       "feature_refs": ["docs/development/module/dokumentenarchiv.md"],
-      "related_rules": ["DOC-OBJECT-LOCK-001", "DOC-VERSION-IMMUTABILITY-001"],
+      "related_rules": [
+        "DOC-OBJECT-LOCK-001",
+        "DOC-VERSION-IMMUTABILITY-001",
+        "PORTAL-INBOX-SUBMISSION-001"
+      ],
       "tags": ["upload", "journal", "recovery"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-upload-journal-001-zweiphasiger-upload.md",
       "summary": "Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese Vorab-Journalisierung ist derzeit nicht einheitlich auf allen geschützten Uploadwegen eingesetzt."
@@ -1222,18 +1621,34 @@
       "code_refs": [
         "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts",
         "apps/web/src/server/storage/retag-policy.ts",
-        "apps/web/src/app/staff/(protected)/documents/actions.ts"
+        "apps/web/src/app/staff/(protected)/documents/actions.ts",
+        "apps/web/src/server/forms/revision-download.ts",
+        "packages/db/prisma/migrations/20260831280000_form_submission_revisions/migration.sql",
+        "packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql",
+        "packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql",
+        "apps/web/src/server/inbox/accept-attachment.ts",
+        "apps/web/src/server/inbox/staff-mutations.ts",
+        "apps/worker/src/jobs/storage-orphan-cleanup.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts",
         "apps/web/src/server/storage/__tests__/retag-policy.test.ts",
-        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts"
+        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts",
+        "packages/db/src/__tests__/workflow-expansion.test.ts",
+        "apps/web/src/server/forms/__tests__/revision-download.test.ts",
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "apps/web/src/server/inbox/__tests__/rejection.test.ts",
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts"
       ],
       "feature_refs": [
         "docs/anwenderdoku/dokumente.md",
         "docs/development/module/dokumentenarchiv.md"
       ],
-      "related_rules": ["DOC-OBJECT-LOCK-001", "DOC-RETENTION-CLASS-001"],
+      "related_rules": [
+        "DOC-OBJECT-LOCK-001",
+        "DOC-RETENTION-CLASS-001",
+        "FORM-SCHEMA-SNAPSHOT-001"
+      ],
       "tags": ["versionierung", "unveraenderlichkeit", "retagging"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-version-immutability-001-geschuetzte-versionen.md",
       "summary": "TaxTronik überschreibt bei einem normalen Versionsupload keine bestehenden Bytes, sondern legt eine weitere nummerierte Dokumentversion an. Eine bereits geschützte Version wird auch beim Retagging nicht auf eine neue Speicheridentität umgebogen; die höher geschützte Kopie wird angefügt. Schutzstufen und gesetzte Retention dürfen nicht nachträglich abgesenkt werden."
@@ -1436,16 +1851,25 @@
         }
       ],
       "code_refs": [
+        "apps/worker/src/jobs/storage-orphan-cleanup.ts",
         "apps/worker/src/jobs/dsgvo-retention.ts",
         "apps/worker/src/jobs/n8n-retention.ts",
-        "apps/worker/src/jobs/magic-link-cleanup.ts"
+        "apps/worker/src/jobs/magic-link-cleanup.ts",
+        "apps/worker/src/jobs/portal-inbox-cleanup.ts",
+        "apps/web/src/server/inbox/retention-settings.ts"
       ],
       "test_refs": [
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
         "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",
-        "apps/worker/src/jobs/__tests__/n8n-retention.test.ts"
+        "apps/worker/src/jobs/__tests__/n8n-retention.test.ts",
+        "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts"
       ],
       "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
-      "related_rules": ["DSGVO-MANDATE-ANONYMIZATION-001", "DOC-RETENTION-CLASS-001"],
+      "related_rules": [
+        "DSGVO-MANDATE-ANONYMIZATION-001",
+        "DOC-RETENTION-CLASS-001",
+        "PORTAL-INBOX-SUBMISSION-001"
+      ],
       "tags": ["loeschung", "retention", "kanzleipolicy"],
       "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-operational-retention-001-technische-loeschfristen.md",
       "summary": "TaxTronik setzt für ausdrücklich benannte Betriebsdaten feste technische Lösch- oder Neutralisierungsfristen durch. Diese Werte sind Kanzlei-/Produkt- Defaults, keine aus Art. 5 oder Art. 17 DSGVO unmittelbar ableitbaren Einzelfristen. Die Kanzlei muss Zweck, Rechtsgrundlage, Aufbewahrungspflicht und Sperrbedarf je Datenklasse prüfen."
@@ -1560,7 +1984,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Ein Portal-Kontakt kann genau seinen eigenen, eindeutig an ein FILE-Feld gebundenen PENDING-/DRAFT-Upload verwerfen, solange der zugehörige Request offen ist. Datenbanklöschung und Cleanup-Journal werden atomar geschrieben; die physische Löschung erfolgt sofort oder durch den Orphan-Worker."
+        "summary": "Ein Portal-Kontakt kann genau seinen eigenen, eindeutig an ein FILE-Feld gebundenen PENDING-/DRAFT-Upload verwerfen, solange der zugehörige Request offen ist. Datenbanklöschung und Cleanup-Journal werden atomar geschrieben; die physische Löschung erfolgt sofort oder durch den Orphan-Worker. Nach einer Kampagnenrückfrage werden historisch gebundene Dateien nur aus der aktuellen Antwort gelöst und bei Ersatz als neue Version ergänzt."
       },
       "sources": [
         {
@@ -1580,6 +2004,7 @@
       ],
       "code_refs": [
         "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx",
         "packages/db/prisma/migrations/20260823160000_form_upload_relation/migration.sql"
       ],
       "test_refs": [
@@ -1587,10 +2012,66 @@
         "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts"
       ],
       "feature_refs": ["FEATURES.md"],
-      "related_rules": ["REQ-LIFECYCLE-001", "ACCESS-TENANT-RLS-001"],
+      "related_rules": [
+        "FORM-SCHEMA-SNAPSHOT-001",
+        "YEAR-END-CAMPAIGN-001",
+        "REQ-LIFECYCLE-001",
+        "ACCESS-TENANT-RLS-001"
+      ],
       "tags": ["formular", "upload", "self-service"],
       "path": "docs/fachkatalog/regeln/mandat-und-zugriff/form-presubmit-upload-001-upload-verwerfen.md",
       "summary": "Ein Mandant darf einen eigenen Formularupload vor dem Absenden wieder entfernen. Die Datei muss eindeutig zu seiner Submission und dem konkreten FILE-Feld gehören; Submission und gebundene Anforderung müssen noch offen sein. Nach Submit oder Request-Abschluss verweigern App und Datenbank den Pfad."
+    },
+    {
+      "id": "FORM-SCHEMA-SNAPSHOT-001",
+      "title": "Neue Formularvorgänge an einen unveränderlichen Vorlagenstand binden",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der beschriebene Produktumfang ist implementiert. Die fachliche Freigabe und eine produktionsnahe Datenbank- und Bedienabnahme stehen noch aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Workflow-Erweiterungen und Abnahmegrenzen",
+          "path": "docs/development/module/workflow-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/forms/schema-snapshot.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/page.tsx",
+        "apps/web/src/server/forms/revision-download.ts",
+        "apps/web/src/components/form-revision-history.tsx",
+        "apps/web/src/server/workflows/year-end-return.ts",
+        "apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx",
+        "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql",
+        "packages/db/prisma/migrations/20260831280000_form_submission_revisions/migration.sql",
+        "packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/forms/__tests__/schema-snapshot.test.ts",
+        "apps/web/src/server/forms/__tests__/revision-download.test.ts",
+        "apps/web/src/server/workflows/__tests__/year-end-return.test.ts",
+        "packages/db/src/__tests__/workflow-expansion.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/workflow-expansion.md"],
+      "related_rules": ["FORM-PRESUBMIT-UPLOAD-001", "REQ-LIFECYCLE-001"],
+      "tags": ["workflow", "mandantenportal", "ungeprueft"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/form-schema-snapshot-001-eingefrorene-formulare.md",
+      "summary": "Jede neu angelegte FormSubmission erhält in der Datenbank einen Snapshot aus Name, Beschreibung, Einleitung und sämtlichen Felddefinitionen einschließlich Pflichtfeldern, Optionen und Grenzen. Anzeige, Validierung und Dateifeldbindung verwenden denselben gespeicherten Stand. Schema und Vorlagen-ID können nach Anlage nicht geändert werden."
     },
     {
       "id": "GOBD-VERFAHRENSDOKU-001",
@@ -1784,6 +2265,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/mandate-expansion/gwg-structure.ts",
+        "apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx",
         "apps/web/src/server/gwg/verification.ts",
         "apps/web/src/server/gwg/identity-subject.ts",
         "apps/web/src/server/gwg/revisions.ts",
@@ -1801,6 +2284,7 @@
         "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts",
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts",
@@ -1809,6 +2293,7 @@
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
       "related_rules": [
+        "MANDATE-STRUCTURE-001",
         "GWG-IDENTIFICATION-EVIDENCE-001",
         "GWG-REPRESENTATIVE-AUTHORITY-001",
         "GWG-RISK-REVIEW-001",
@@ -2199,6 +2684,7 @@
         }
       ],
       "code_refs": [
+        "packages/db/prisma/migrations/20260831260000_gwg_structure_binding/migration.sql",
         "apps/web/src/server/gwg/retention.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts",
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts",
@@ -2210,6 +2696,7 @@
         "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
         "packages/db/src/__tests__/gwg-destruction.test.ts",
         "packages/db/src/__tests__/gwg-person-links.test.ts",
@@ -2219,6 +2706,7 @@
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
       "related_rules": [
+        "MANDATE-STRUCTURE-001",
         "GWG-IDENTIFICATION-EVIDENCE-001",
         "GWG-BENEFICIAL-OWNERS-001",
         "GWG-SELF-ONBOARDING-001",
@@ -2348,6 +2836,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/mandate-expansion/gwg-structure.ts",
+        "apps/web/src/server/screening/gwg-gate.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx",
         "packages/db/prisma/migrations/20260831102000_staff_professional/migration.sql",
         "apps/web/src/server/gwg/risk-score.ts",
@@ -2357,6 +2847,8 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts",
+        "apps/web/src/server/screening/__tests__/gwg-gate.test.ts",
         "apps/web/src/server/gwg/__tests__/risk-score.test.ts",
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
         "apps/web/src/server/gwg/__tests__/professional-review.test.ts",
@@ -2366,6 +2858,8 @@
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
       "related_rules": [
+        "MANDATE-STRUCTURE-001",
+        "GWG-SCREENING-001",
         "GWG-ACTIVATION-GATE-001",
         "GWG-BENEFICIAL-OWNERS-001",
         "GWG-REVERIFICATION-VALIDITY-001"
@@ -2373,6 +2867,65 @@
       "tags": ["risiko", "pep", "berufstraeger", "vier-augen-prinzip"],
       "path": "docs/fachkatalog/regeln/gwg/gwg-risk-review-001-risikobewertung-und-freigabe.md",
       "summary": "TaxTronik erzeugt aus sechs manuell beantworteten Risikofaktoren einen reproduzierbaren Vorschlag für LOW, MEDIUM oder HIGH. Eine PEP-Angabe erzwingt unabhängig vom Summenscore HIGH. Erst nach vollständiger Identifizierungs- und Risikoprüfung kann der Entwurf eingereicht und durch den dem Mandanten zugeordneten Berufsträger ausdrücklich freigegeben werden."
+    },
+    {
+      "id": "GWG-SCREENING-001",
+      "title": "Lokale EU-Namenshinweise und manuelle PEP-Nachweise von GwG-Freigaben trennen",
+      "domain": "gwg",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Geldwäscheprävention",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Lokale EU-Liste und dokumentierte PEP-Recherchen erzeugen unveränderliche Nachweise. Bei aktiviertem Modul ist eine neue GwG-Freigabe an aktuelle Quelle, aktuelle GwG-Fassung und vollständig geklärte personenbezogene Nachweise gebunden. Bestehende Freigaben bleiben unverändert."
+      },
+      "sources": [
+        {
+          "kind": "official_guidance",
+          "citation": "Europäische Kommission: konsolidierte Liste der Personen, Gruppen und Organisationen unter EU-Finanzsanktionen",
+          "url": "https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions?locale=en",
+          "checked_at": "2026-08-31",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung und Betriebsgrenzen",
+          "path": "docs/development/module/screening.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/tax/package.json",
+        "packages/tax/src/screening/core.ts",
+        "packages/tax/src/screening/source.ts",
+        "packages/tax/src/screening/persistence.ts",
+        "apps/web/src/server/screening/service.ts",
+        "apps/web/src/server/screening/gwg-gate.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/screening/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
+        "apps/worker/src/jobs/sanctions-refresh.ts",
+        "packages/db/prisma/migrations/20260831130000_screening_fees/migration.sql"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/screening-fees-rls.test.ts",
+        "packages/tax/src/screening/screening.test.ts",
+        "packages/tax/src/screening/persistence.test.ts",
+        "apps/web/src/server/screening/__tests__/gwg-gate.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/screening.md"],
+      "related_rules": ["GWG-RISK-REVIEW-001", "ACCESS-TENANT-RLS-001", "ACCESS-CLIENT-MODE-001"],
+      "tags": ["feature-erweiterung", "ungepruefter-entwurf"],
+      "path": "docs/fachkatalog/regeln/gwg/gwg-screening-001-lokaler-abgleich.md",
+      "summary": "Ein Namensabgleich ist keine rechtliche Feststellung einer Sanktionsbetroffenheit. Die lokale EU-Liste liefert Kandidaten; PEP-Recherchen werden manuell belegt. Prüfläufe und Beurteilungen werden angehängt, nicht überschrieben."
     },
     {
       "id": "GWG-SELF-ONBOARDING-001",
@@ -2702,8 +3255,8 @@
         "reviewed_content_hash": null
       },
       "implementation": {
-        "status": "deviates",
-        "summary": "Dokumente nie versendeter Storni bleiben intern, die Portal-Liste zeigt solche CANCELLED-Datensätze derzeit jedoch ohne Versandnachweis an."
+        "status": "implemented",
+        "summary": "Portal-Liste und Dokumentpfad verwenden dieselbe Positivregel; ein stornierter Beleg bleibt nur mit tatsächlichem Versandnachweis sichtbar, nie versendete Storni bleiben vollständig intern."
       },
       "sources": [
         {
@@ -2723,10 +3276,12 @@
       ],
       "code_refs": [
         "apps/web/src/app/portal/(protected)/invoices/page.tsx",
+        "apps/web/src/server/invoicing/portal-visibility.ts",
         "apps/web/src/server/invoicing/archive.ts",
         "apps/web/src/server/invoicing/draft-archive.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/invoicing/__tests__/portal-visibility.test.ts",
         "apps/web/src/server/invoicing/__tests__/archive.test.ts",
         "apps/web/src/server/invoicing/__tests__/draft-archive.test.ts"
       ],
@@ -2756,9 +3311,16 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Für ausgelieferte In-App-Rechnungen erzeugt TaxTronik einen nummerierten negativen Korrekturbeleg mit TypeCode 381 und Referenz auf das Original."
+        "summary": "Für ausgelieferte In-App-Rechnungen erzeugt TaxTronik einen nummerierten negativen Korrekturbeleg mit TypeCode 384 und Referenz auf das Original; bestehende ausgestellte Archivfassungen bleiben unverändert."
       },
       "sources": [
+        {
+          "kind": "official_guidance",
+          "citation": "E-Rechnung in der Bundesverwaltung, FAQ zu Gutschriften und Rechnungskorrekturen; BT-3 384 für Korrektur und Storno",
+          "url": "https://e-rechnung-bund.de/faq/wie-sind-gutschriften-und-rechnungskorrekturen-anzugeben/",
+          "checked_at": "2026-09-06",
+          "primary": true
+        },
         {
           "kind": "official_law",
           "citation": "§ 17 UStG, Berichtigung bei Änderung der Bemessungsgrundlage und Rückgängigmachung",
@@ -2784,11 +3346,13 @@
       "code_refs": [
         "apps/web/src/server/invoicing/storno.ts",
         "apps/web/src/server/invoicing/xrechnung.ts",
+        "apps/web/src/server/invoicing/sample-fixture.ts",
         "apps/web/src/app/staff/(protected)/invoices/actions.ts"
       ],
       "test_refs": [
         "apps/web/src/server/invoicing/__tests__/storno.test.ts",
-        "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts"
+        "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts",
+        "apps/web/src/server/invoicing/__tests__/archive.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/fakturierung.md",
@@ -2802,7 +3366,7 @@
       ],
       "tags": ["rechnung", "storno", "korrekturbeleg", "xrechnung"],
       "path": "docs/fachkatalog/regeln/rechnungen/inv-storno-reference-001-korrekturbeleg.md",
-      "summary": "Eine bereits ausgelieferte In-App-Rechnung wird nicht inhaltlich geändert. TaxTronik erzeugt stattdessen einen neuen Korrekturbeleg mit eigener Nummer, invertierten Positions- und Gesamtbeträgen, XRechnung-TypeCode 381 und Referenz auf die ursprüngliche Rechnungsnummer. Erst wenn der Korrekturbeleg archiviert und auf SENT festgeschrieben ist, wird das Original atomar auf CANCELLED gesetzt."
+      "summary": "Eine bereits ausgelieferte In-App-Rechnung wird nicht inhaltlich geändert. TaxTronik erzeugt stattdessen einen neuen Korrekturbeleg mit eigener Nummer, invertierten Positions- und Gesamtbeträgen, XRechnung-TypeCode 384 und Referenz auf die ursprüngliche Rechnungsnummer. Erst wenn der Korrekturbeleg archiviert und auf SENT festgeschrieben ist, wird das Original atomar auf CANCELLED gesetzt."
     },
     {
       "id": "INV-TIME-ENTRY-CLAIM-001",
@@ -2820,7 +3384,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Abrechenbare freie Zeiteinträge werden in derselben Transaktion vollständig geclaimt; verliert der Lauf auch nur einen Claim, rollen Rechnung und Nummernvergabe zurück."
+        "summary": "Abrechenbare freie Zeiteinträge werden in derselben Transaktion vollständig geclaimt; verliert der Lauf auch nur einen Claim, rollen Rechnung und Nummernvergabe zurück. Der Leistungszeitraum verwendet die Berlin-Kalendertage der frühesten Start- und spätesten Endzeit."
       },
       "sources": [
         {
@@ -2844,6 +3408,7 @@
       ],
       "test_refs": [
         "apps/web/src/server/invoicing/__tests__/time-billing.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/billing/__tests__/actions.test.ts",
         "packages/db/src/__tests__/invoice-festschreibung.test.ts"
       ],
       "feature_refs": [
@@ -2930,6 +3495,231 @@
       "tags": ["rechnung", "umsatzsteuer", "summen", "xrechnung"],
       "path": "docs/fachkatalog/regeln/rechnungen/inv-vat-totals-001-steuersummen.md",
       "summary": "TaxTronik berechnet In-App-Rechnungsbeträge serverseitig aus den Positionen. Nettobeträge werden nach Umsatzsteuersatz gruppiert, die Steuer wird einmal je Gruppe auf zwei Dezimalstellen gerundet und die Kopfwerte werden aus den Gruppensummen gebildet. Für E-Rechnungen werden technische Kategorien für steuerpflichtige, nullbesteuerte, befreite und Reverse-Charge-Positionen abgeleitet."
+    },
+    {
+      "id": "KNOWLEDGE-CONTEXT-001",
+      "title": "Interne Kanzleileitfäden kontextbezogen anzeigen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der beschriebene Produktumfang ist implementiert. Die fachliche Freigabe und eine produktionsnahe Datenbank- und Bedienabnahme stehen noch aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Workflow-Erweiterungen und Abnahmegrenzen",
+          "path": "docs/development/module/workflow-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/knowledge/context/actions.ts",
+        "apps/web/src/components/knowledge-context.tsx",
+        "apps/web/src/app/staff/(protected)/requests/[id]/page.tsx",
+        "apps/web/src/server/workflows/execute-step.ts",
+        "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql"
+      ],
+      "test_refs": ["apps/web/src/server/workflows/__tests__/execute-step.test.ts"],
+      "feature_refs": ["docs/development/module/workflow-expansion.md"],
+      "related_rules": ["ACCESS-CLIENT-MODE-001", "REQ-INTERNAL-COMMENT-001"],
+      "tags": ["workflow", "mandantenportal", "ungeprueft"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/knowledge-context-001-interne-leitfaeden.md",
+      "summary": "ADMIN/PARTNER verknüpft höchstens zehn veröffentlichte Wissensartikel mit einem Workflow-Schritt oder einer Anforderungsvorlage. Die neuen Funktionen verlangen knowledgeContext und knowledge; Workflowbezüge zusätzlich workflows. Alle Verweise müssen innerhalb desselben Tenants liegen."
+    },
+    {
+      "id": "MAIL-INBOX-001",
+      "title": "Unbestätigte Posteingänge prüfen und bewusst einem Mandat zuordnen",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Opt-in-IMAP-Eingang mit dauerhafter Deduplizierung, Microsoft OAuth/PKCE, gesperrten ungeprüften Anhängen und ausdrücklich bestätigter Archivablage. Reale Microsoft-365-Abnahme und die organisatorische Aufbewahrungsentscheidung für den Eingangskorb stehen aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Smart-Mailbox, Technik und Pilotgrenzen",
+          "path": "docs/development/module/smart-mailbox.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        },
+        {
+          "kind": "technical_standard",
+          "citation": "Microsoft, Authenticate an IMAP application using OAuth",
+          "url": "https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth",
+          "checked_at": "2026-08-31",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/mail/src/imap.ts",
+        "packages/mail/src/attachments.ts",
+        "apps/web/next.config.mjs",
+        "apps/web/scripts/verify-standalone-trace.mjs",
+        "apps/web/src/app/staff/(protected)/mailbox/actions.ts",
+        "apps/web/src/app/api/staff/mailbox/oauth/route.ts",
+        "apps/web/src/server/mailbox/oauth-cache.ts",
+        "packages/db/prisma/migrations/20260831150000_smart_mailbox/migration.sql",
+        "packages/db/prisma/migrations/20260831290000_mailbox_receipt_delete_guard/migration.sql"
+      ],
+      "test_refs": [
+        "packages/mail/src/__tests__/imap.test.ts",
+        "packages/mail/src/__tests__/microsoft-cache.test.ts",
+        "packages/mail/src/__tests__/attachments.test.ts",
+        "packages/mail/src/__tests__/attachment-resource-limits.test.ts",
+        "apps/web/src/server/mailbox/__tests__/oauth-cache.test.ts",
+        "packages/db/src/__tests__/mailbox-oauth-cache.test.ts",
+        "packages/db/src/__tests__/mailbox-rls.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/smart-mailbox.md"],
+      "related_rules": ["ACCESS-TENANT-RLS-001", "ACCESS-STAFF-PERMISSION-001"],
+      "tags": ["imap", "oauth", "virenpruefung", "originaldatei"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/mail-inbox-001-bestaetigte-ablage.md",
+      "summary": "E-Mail-Absender und Aliase sind unbestätigte Hinweise. Sie erteilen keinen Portalzugriff und bestätigen keine Mandantenantwort. Eingänge bleiben zunächst im internen Postfachbestand. Ein Archivdokument entsteht ausschließlich durch eine berechtigte, ausdrückliche Zuordnung."
+    },
+    {
+      "id": "MANDATE-STRUCTURE-001",
+      "title": "Explizite Mandanten- und Beteiligungsstrukturen getrennt von GwG-Entscheidungen versionieren",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die abgegrenzte Produktfunktion ist implementiert; eine fachliche Freigabe und weitergehende materielle oder externe Vollständigkeitszusagen fehlen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Modulbeschreibung Mandatsorganisation und Erweiterungsgrenzen",
+          "path": "docs/development/module/mandate-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/mandate-expansion/service.ts",
+        "apps/web/src/server/mandate-expansion/gwg-structure.ts",
+        "apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx",
+        "apps/web/src/server/mandate-expansion/artifacts.ts",
+        "apps/web/src/server/mandate-expansion/pdf.ts",
+        "apps/web/src/server/documents/pdf-fonts.ts",
+        "packages/db/prisma/migrations/20260831120000_mandate_expansion/migration.sql",
+        "packages/db/prisma/migrations/20260831180000_mandate_artifacts/migration.sql",
+        "packages/db/prisma/migrations/20260831200000_mandate_history_integrity/migration.sql",
+        "packages/db/prisma/migrations/20260831260000_gwg_structure_binding/migration.sql",
+        "packages/db/prisma/migrations/20260831260100_structure_version_seal/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/mandate-expansion/__tests__/service.test.ts",
+        "apps/web/src/server/mandate-expansion/__tests__/artifacts.test.ts",
+        "apps/web/src/server/mandate-expansion/__tests__/pdf.test.ts",
+        "apps/web/src/server/documents/__tests__/pdf-fonts.test.ts",
+        "packages/db/src/__tests__/mandate-assistance-expansion.test.ts",
+        "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/mandate-expansion.md"],
+      "related_rules": [
+        "GWG-BENEFICIAL-OWNERS-001",
+        "GWG-PERSON-LINKS-001",
+        "ACCESS-CLIENT-MODE-001"
+      ],
+      "tags": ["mandatsorganisation", "arbeitsstand", "menschliche-pruefung"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/mandate-structure-001-versionierte-struktur.md",
+      "summary": "Eine interne Arbeitsstruktur verbindet ausdrücklich gewählte Mandanten sowie manuell erfasste Personen und externe Organisationen. Kanten beschreiben direkte Kapitalanteile, Stimmrechte oder sonstige Kontrolle. Das Speichern erzeugt eine neue Version; frühere Versionen werden nicht ersetzt. Eine Struktur ist weder Identitätsprüfung noch automatische Feststellung wirtschaftlich Berechtigter oder steuerlicher Organschaft."
+    },
+    {
+      "id": "PAYROLL-INTAKE-001",
+      "title": "Personalfragebogen mit getrennten Angaben und gesperrtem DATEV-Importgate",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Lohn und Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Getrennte Erfassung, private Revisionen, Lohnanlagen und Prüfexporte sind implementiert. DATEV-Import ist mangels installierter Feldspezifikation und realer Importprobe gesperrt. Fachliche Freigabe und produktionsnahe Bedienabnahme stehen aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Personalfragebogen mit getrennten Zugängen und Abnahmegrenzen",
+          "path": "docs/development/module/payroll-intake.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/payroll/definition.ts",
+        "apps/web/src/server/payroll/capability.ts",
+        "apps/web/src/server/payroll/service.ts",
+        "apps/web/src/server/payroll/storage.ts",
+        "apps/web/src/server/payroll/export.ts",
+        "apps/web/src/server/payroll/pdf.ts",
+        "apps/web/src/server/documents/pdf-fonts.ts",
+        "apps/web/src/server/payroll/download.ts",
+        "apps/web/src/app/staff/(protected)/payroll/actions.ts",
+        "apps/web/src/app/portal/(protected)/payroll/actions.ts",
+        "apps/web/src/app/payroll/employee/actions.ts",
+        "packages/db/prisma/migrations/20260831160000_payroll_intake/migration.sql",
+        "packages/db/prisma/migrations/20260831210000_payroll_intake_guards/migration.sql",
+        "packages/db/prisma/migrations/20260831220000_payroll_external_evidence/migration.sql",
+        "packages/db/prisma/migrations/20260831230000_payroll_submission_guards/migration.sql",
+        "packages/db/prisma/migrations/20260831240000_payroll_pending_sources/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/payroll/__tests__/definition.test.ts",
+        "apps/web/src/server/payroll/__tests__/pdf.test.ts",
+        "apps/web/src/server/payroll/__tests__/storage.test.ts",
+        "apps/web/src/server/payroll/__tests__/export.test.ts",
+        "apps/web/src/server/payroll/__tests__/capability.test.ts",
+        "apps/web/src/server/documents/__tests__/pdf-fonts.test.ts",
+        "packages/db/src/__tests__/payroll-intake.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/payroll-intake.md"],
+      "related_rules": [
+        "DOC-UPLOAD-JOURNAL-001",
+        "DOC-VERSION-IMMUTABILITY-001",
+        "DOC-PORTAL-SHARING-001",
+        "DOC-RETENTION-CLASS-001",
+        "FORM-PRESUBMIT-UPLOAD-001"
+      ],
+      "tags": ["lohn", "mandantenportal", "datenschutz", "ungeprueft"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/payroll-intake-001-getrennter-personalfragebogen.md",
+      "summary": "Ein standardmäßig deaktiviertes Modul bereitet einzelne Mitarbeiterneuanlagen für DATEV Lohn und Gehalt vor. Arbeitgeber und Arbeitnehmer geben getrennte Daten ab; nur berechtigte Lohnbearbeiter sehen den vollständigen Prüfstand. Das DATEV-Importgate bleibt mangels konkreter Formatspezifikation und realer Importprobe gesperrt."
     },
     {
       "id": "POA-LIFECYCLE-001",
@@ -3233,6 +4023,90 @@
       "summary": "Vor dem Versand friert TaxTronik die konkret angezeigte Vollmachtsfassung ein. Bei einer Textvollmacht enthält der Snapshot den vollständigen Text, bei einer PDF-Vollmacht die konkrete Dokumentversions-ID und deren SHA-256. Der öffentliche Bestätigungsprozess zeigt und verarbeitet danach nur noch diese Fassung."
     },
     {
+      "id": "PORTAL-INBOX-SUBMISSION-001",
+      "title": "Mandantenpost technisch entgegennehmen und erst nach Kanzleientscheidung ablegen",
+      "domain": "dokumente-und-aufbewahrung",
+      "rule_type": "product_rule",
+      "jurisdiction": "EU/DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der opt-in Mandantenposteingang trennt private Uploadentwürfe, technisch abgesendete Nachrichten, gescannte Staging-Anlagen und eine spätere Kanzleientscheidung. Vor ausdrücklicher Annahme entsteht kein Document; die Annahme klassifiziert und teilt das fertige Dokument mandantenweit. Die Nachrichtenretention ist organisatorisch zu dokumentieren; eine fachliche oder rechtliche Freigabe steht weiterhin aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Sicherer Mandantenposteingang, Technik und offene Betriebsentscheidungen",
+          "path": "docs/development/module/portal-inbox.md",
+          "checked_at": "2026-09-01",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260901000000_portal_inbox_enums/migration.sql",
+        "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
+        "packages/db/prisma/migrations/20260901002000_portal_inbox_notifications/migration.sql",
+        "packages/db/prisma/migrations/20260901003000_portal_inbox_receipts/migration.sql",
+        "packages/db/prisma/migrations/20260901004000_portal_inbox_scope_forward/migration.sql",
+        "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql",
+        "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
+        "packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql",
+        "apps/web/src/server/settings/portal-features.ts",
+        "apps/web/src/server/inbox/access.ts",
+        "apps/web/src/server/inbox/portal-mutations.ts",
+        "apps/web/src/server/inbox/queries.ts",
+        "apps/web/src/server/inbox/search.ts",
+        "apps/web/src/server/inbox/staging-upload.ts",
+        "apps/web/src/server/inbox/accept-attachment.ts",
+        "apps/web/src/server/inbox/attachment-delivery.ts",
+        "apps/web/src/server/inbox/client-notification.ts",
+        "apps/web/src/app/portal/(protected)/inbox/actions.ts",
+        "apps/web/src/app/staff/(protected)/inbox/actions.ts",
+        "apps/worker/src/jobs/portal-inbox-cleanup.ts"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "packages/db/src/__tests__/rls-cross-tenant.test.ts",
+        "apps/web/src/server/settings/__tests__/portal-features.test.ts",
+        "apps/web/src/app/__tests__/prisma-client-guard.test.ts",
+        "apps/web/src/server/inbox/__tests__/idempotency.test.ts",
+        "apps/web/src/server/inbox/__tests__/constants.test.ts",
+        "apps/web/src/server/inbox/__tests__/staging-upload.test.ts",
+        "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts",
+        "apps/web/src/server/inbox/__tests__/rejection.test.ts",
+        "apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts",
+        "apps/web/src/server/inbox/__tests__/client-notification.test.ts",
+        "apps/web/src/server/inbox/__tests__/queries.test.ts",
+        "apps/web/src/app/portal/(protected)/inbox/__tests__/actions.test.ts",
+        "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
+        "apps/e2e/tests/18-portal-inbox.spec.ts"
+      ],
+      "feature_refs": ["docs/development/module/portal-inbox.md"],
+      "related_rules": [
+        "ACCESS-TENANT-RLS-001",
+        "ACCESS-STAFF-PERMISSION-001",
+        "ACCESS-NOTIFICATION-RECIPIENT-001",
+        "ACCESS-SEARCH-SCOPE-001",
+        "CLIENT-MANDATE-LIFECYCLE-001",
+        "DOC-PORTAL-SHARING-001",
+        "DOC-UPLOAD-JOURNAL-001",
+        "DSGVO-OPERATIONAL-RETENTION-001",
+        "AUDIT-HASH-CHAIN-001"
+      ],
+      "tags": ["portal", "posteingang", "staging", "virenpruefung", "mandantenkommunikation"],
+      "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/portal-inbox-submission-001-technischer-eingang.md",
+      "summary": "Eine abgesendete Portalnachricht ist ein technischer Eingang, keine fachliche Annahme, Fristbestätigung, Vollständigkeitsbestätigung oder Erledigung einer Anforderung. Anlagen bleiben bis zur ausdrücklichen Entscheidung einer berechtigten Kanzleiperson in einem getrennten Staging-Bestand. Erst eine Annahme darf ein zugeordnetes Document erzeugen. Diese ausdrückliche Staff-Entscheidung klassifiziert das Dokument und gibt es nach vollständig erfolgreicher Persistierung auf Mandantenebene frei; bis dahin bleibt es privat."
+    },
+    {
       "id": "REQ-INTERNAL-COMMENT-001",
       "title": "Interne Anforderungskommentare vom Mandantenkanal trennen",
       "domain": "mandat-und-zugriff",
@@ -3318,9 +4192,11 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/portal/(protected)/requests/page.tsx",
         "apps/web/src/app/portal/(protected)/requests/[id]/actions.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/requests/new/form.tsx"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts",
@@ -3328,6 +4204,8 @@
       ],
       "feature_refs": ["FEATURES.md"],
       "related_rules": [
+        "TAX-NOTICE-DECISION-001",
+        "CLIENT-FEEDBACK-001",
         "REQ-INTERNAL-COMMENT-001",
         "FORM-PRESUBMIT-UPLOAD-001",
         "ACCESS-CLIENT-MODE-001"
@@ -3563,6 +4441,77 @@
       "tags": ["anonymisierung", "n8n", "recherche", "verschwiegenheit", "datenschutz"],
       "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/risk-external-anonymization-001-rechercheversand.md",
       "summary": "TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer. Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird nicht in den Outbound-Payload aufgenommen. Unverändert mitgesendete Normanker können allerdings Freitext enthalten. Die Heuristik ist unvollständig; deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server erzwingt oder bindet diese Vorschauprüfung aktuell nicht."
+    },
+    {
+      "id": "STBVV-CALCULATION-001",
+      "title": "Aktuellen StBVV-Katalog nachvollziehbar kalkulieren und als Entwurf übernehmen",
+      "domain": "rechnungen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Vergütung und Rechnungswesen",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Vollständiger aktueller StBVV-Gebührenkatalog mit Tabellen A–D, Gebührenrahmen, Zeit-/Betragsgebühren, dokumentierten manuellen Verweisen und enger VV-7000-Unterstützung. Kalkulationen sind unveränderliche Entwürfe; eine Übernahme erstellt idempotent eine neue XRECHNUNG im Status DRAFT für den regulären Archiv- und Versandpfad."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "StBVV § 17 in Verbindung mit RVG Anlage 1, VV 7000 Dokumentenpauschale",
+          "url": "https://www.gesetze-im-internet.de/rvg/anlage_1.html",
+          "checked_at": "2026-08-31",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "StBVV, konsolidierte Fassung, zuletzt geändert durch Art. 5 V vom 19.12.2025, BGBl. 2025 I Nr. 372; Anlagen 1 bis 4",
+          "url": "https://www.gesetze-im-internet.de/stbgebv/BJNR014420981.html",
+          "checked_at": "2026-08-31",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung und Betriebsgrenzen",
+          "path": "docs/development/module/stbvv.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/tax/src/stbvv/catalog.ts",
+        "packages/tax/src/stbvv/calculator.ts",
+        "packages/tax/src/stbvv/tables.json",
+        "packages/tax/scripts/import-stbvv-tables.py",
+        "apps/web/src/server/stbvv/service.ts",
+        "apps/web/src/server/stbvv/lock.ts",
+        "apps/web/src/server/invoicing/archive-lock.ts",
+        "apps/web/src/server/invoicing/zugferd.ts",
+        "apps/web/src/app/staff/(protected)/stbvv/actions.ts",
+        "packages/db/prisma/migrations/20260831130000_screening_fees/migration.sql"
+      ],
+      "test_refs": [
+        "packages/tax/src/stbvv/calculator.test.ts",
+        "apps/web/src/server/stbvv/__tests__/service.test.ts",
+        "apps/web/src/server/invoicing/__tests__/archive.test.ts",
+        "apps/web/src/server/invoicing/__tests__/zugferd.test.ts",
+        "packages/db/src/__tests__/screening-fees-rls.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/stbvv.md"],
+      "related_rules": [
+        "INV-VAT-TOTALS-001",
+        "INV-LIFECYCLE-FREEZE-001",
+        "INV-ARCHIVE-EINVOICE-001",
+        "ACCESS-STAFF-PERMISSION-001"
+      ],
+      "tags": ["feature-erweiterung", "ungepruefter-entwurf"],
+      "path": "docs/fachkatalog/regeln/rechnungen/stbvv-calculation-001-gebuehrenkatalog.md",
+      "summary": "Der Katalog enthält alle aktiven Gebührenpositionen der aktuellen StBVV. Das Programm berechnet überprüfbare Beträge, entscheidet jedoch nicht über Gebührenanspruch, angemessenen Satz oder Wirksamkeit einer Vereinbarung."
     },
     {
       "id": "TAX-CONTROL-STATUS-001",
@@ -4159,6 +5108,56 @@
       "summary": "Ein nach § 122a AO zum Datenabruf bereitgestellter Verwaltungsakt gilt grundsätzlich am vierten Tag nach seiner Bereitstellung als bekannt gegeben. Fällt dieser Tag auf einen Sonnabend, Sonntag oder am regelmäßig maßgeblichen Empfängerort geltenden gesetzlichen Feiertag, ist § 108 Abs. 3 AO zu prüfen."
     },
     {
+      "id": "TAX-NOTICE-DECISION-001",
+      "title": "Bescheid-Rückmeldungen an Kontakt und Dokumentstand binden",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der beschriebene Produktumfang ist implementiert. Die fachliche Freigabe und eine produktionsnahe Datenbank- und Bedienabnahme stehen noch aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Workflow-Erweiterungen und Abnahmegrenzen",
+          "path": "docs/development/module/workflow-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/portal/(protected)/requests/[id]/page.tsx",
+        "apps/web/src/app/staff/(protected)/interactions/actions.ts",
+        "apps/web/src/app/portal/(protected)/interactions/actions.ts",
+        "apps/web/src/app/api/portal/interactions/[id]/document/route.ts",
+        "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/workflows/__tests__/interaction-policy.test.ts",
+        "packages/db/src/__tests__/workflow-expansion.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/workflow-expansion.md"],
+      "related_rules": [
+        "TAX-NOTICE-APPEAL-001",
+        "TAX-CONTROL-STATUS-001",
+        "DOC-PORTAL-SHARING-001",
+        "ACCESS-NOTIFICATION-RECIPIENT-001",
+        "REQ-LIFECYCLE-001"
+      ],
+      "tags": ["workflow", "mandantenportal", "ungeprueft"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-notice-decision-001-persoenliche-rueckmeldung.md",
+      "summary": "Eine berechtigte Kanzleiperson erstellt zu einem GEPRUEFT-Bescheid mit berechnetem Fristvorschlag ohne offenen manuellen Prüfbedarf eine persönliche Rückfrage. Erforderlich sind eine Erklärung, ein aktiver Mandantenkontakt, eine bereits geteilte saubere Dokumentfassung und eine künftige Antwortfrist, die den gespeicherten Einspruchsfristtag nicht überschreitet."
+    },
+    {
       "id": "TCMS-SAMPLE-PROOF-001",
       "title": "Stichprobennachweis nur auf den deklarierten Rahmen und die konkrete Ziehung beziehen",
       "domain": "subsumtion-und-tcms",
@@ -4213,6 +5212,206 @@
       "tags": ["tcms", "stichprobe", "quantenlos", "commitment", "audit"],
       "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-sample-proof-001-rahmenbindung.md",
       "summary": "TaxTronik erstellt für einen gewählten Zeitraum einen sortierten Rahmen aus Subsumtions- oder Audit-IDs und übergibt nur diese opaken IDs an den Risk-Layer. Nachweis, Rahmen, Backend-Metadaten und Treffer werden gemeinsam im Audit gespeichert und können später gegen genau diesen gespeicherten Rahmen geprüft werden. Damit ist die Ziehung nachvollziehbar, nicht aber die Vollständigkeit oder fachliche Eignung der Grundgesamtheit und Nachschau."
+    },
+    {
+      "id": "VDB-PREPARATION-001",
+      "title": "VDB-Vorbereitung und extern belegte Meldeschritte unabhängig vom Signaturstatus dokumentieren",
+      "domain": "vollmachten-und-signaturen",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die abgegrenzte Produktfunktion ist implementiert; eine fachliche Freigabe und weitergehende materielle oder externe Vollständigkeitszusagen fehlen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Modulbeschreibung Mandatsorganisation und Erweiterungsgrenzen",
+          "path": "docs/development/module/mandate-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/mandate-expansion/vdb.ts",
+        "packages/db/prisma/migrations/20260831120000_mandate_expansion/migration.sql",
+        "packages/db/prisma/migrations/20260831200000_mandate_history_integrity/migration.sql"
+      ],
+      "test_refs": ["apps/web/src/server/mandate-expansion/__tests__/service.test.ts"],
+      "feature_refs": ["docs/development/module/mandate-expansion.md"],
+      "related_rules": [
+        "POA-LIFECYCLE-001",
+        "POA-SIGNING-CONFIRMATION-001",
+        "POA-SIGNING-SNAPSHOT-001"
+      ],
+      "tags": ["mandatsorganisation", "arbeitsstand", "menschliche-pruefung"],
+      "path": "docs/fachkatalog/regeln/vollmachten-und-signaturen/vdb-preparation-001-externe-nachweise.md",
+      "summary": "Das Modul dokumentiert eine interne Vorbereitung und nachgewiesene externe Meldeschritte. Es erzeugt keine als VDB-kompatibel ausgegebenen Importdateien und besitzt keine aktive Übermittlungsschnittstelle. Ein manuell dokumentierter Status wird nicht als automatisch verifizierte Behördenbestätigung dargestellt."
+    },
+    {
+      "id": "WORKFLOW-DEPENDENCY-001",
+      "title": "Mandatsübergreifende Workflow-Bereitschaft aus ausdrücklich verbundenen Vorgängern anzeigen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die abgegrenzte Produktfunktion ist implementiert; eine fachliche Freigabe und weitergehende materielle oder externe Vollständigkeitszusagen fehlen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Modulbeschreibung Mandatsorganisation und Erweiterungsgrenzen",
+          "path": "docs/development/module/mandate-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/db/prisma/migrations/20260906170251_workflow_lifecycle/migration.sql",
+        "apps/web/src/server/mandate-expansion/service.ts",
+        "apps/web/src/server/mandate-expansion/dependencies.ts",
+        "apps/web/src/app/staff/(protected)/mandate-expansion/dependencies/page.tsx",
+        "packages/db/prisma/migrations/20260831120000_mandate_expansion/migration.sql",
+        "packages/db/prisma/migrations/20260831270000_workflow_dependency_period/migration.sql"
+      ],
+      "test_refs": [
+        "packages/db/src/__tests__/workflow-lifecycle.test.ts",
+        "apps/web/src/server/mandate-expansion/__tests__/model.test.ts",
+        "packages/db/src/__tests__/workflow-dependencies.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/mandate-expansion.md"],
+      "related_rules": ["WORKFLOW-LIFECYCLE-001", "ACCESS-CLIENT-MODE-001", "REQ-LIFECYCLE-001"],
+      "tags": ["mandatsorganisation", "arbeitsstand", "menschliche-pruefung"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/workflow-dependency-001-mandatsuebergreifende-bereitschaft.md",
+      "summary": "Die Kanzlei kann Schritte verschiedener Mandanten ausdrücklich miteinander verbinden. Die Arbeitsübersicht zeigt einen abhängigen Schritt als bereit, wenn sämtliche dokumentierten Vorgänger erledigt und deren Vorgänge weder pausiert noch abgebrochen sind. Es werden keine Steuerfristen, Workflows oder Mandantenantworten automatisch abgeschlossen."
+    },
+    {
+      "id": "WORKFLOW-LIFECYCLE-001",
+      "title": "Workflow-Abschluss aus erledigten Schritten atomar ableiten und explizite Pausen erhalten",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Technischer Abschluss und Wiederöffnung sind für manuelle, externe und datenbankseitige Schritterledigungen serialisiert. Fachliche Freigabe und produktionsnahe organisatorische Abnahme stehen aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Workflow-Erweiterungen und Abschlussgrenzen",
+          "path": "docs/development/module/workflow-expansion.md",
+          "checked_at": "2026-09-06",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/db/src/workflow-lifecycle.ts",
+        "packages/db/src/workflow-feedback.ts",
+        "packages/db/prisma/migrations/20260906170251_workflow_lifecycle/migration.sql",
+        "apps/web/src/server/workflows/execute-step.ts",
+        "apps/web/src/server/workflows/auto-resume.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts",
+        "apps/web/src/app/staff/(protected)/interactions/actions.ts",
+        "apps/worker/src/jobs/workflow-feedback.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts",
+        "packages/db/src/__tests__/workflow-lifecycle.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/workflows/__tests__/actions-lifecycle.test.ts",
+        "apps/web/src/server/workflows/__tests__/execute-step.test.ts",
+        "apps/web/src/server/workflows/__tests__/auto-resume.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/development/module/workflow-expansion.md"],
+      "related_rules": ["CLIENT-FEEDBACK-001", "WORKFLOW-DEPENDENCY-001", "REQ-LIFECYCLE-001"],
+      "tags": ["workflow", "parallelitaet", "ungeprueft"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/workflow-lifecycle-001-konsistenter-abschluss.md",
+      "summary": "Ein aktiver Workflow mit mindestens einem Schritt wird genau dann technisch abgeschlossen, wenn sämtliche vorhandenen Schritte erledigt sind. Der Abschluss betrifft den Arbeitsvorgang und trifft keine Aussage zur materiellen Vollständigkeit, Rechtsfrist oder fachlichen Freigabe."
+    },
+    {
+      "id": "YEAR-END-CAMPAIGN-001",
+      "title": "Jahreswechsel-Checklisten nachvollziehbar und idempotent ausrollen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der beschriebene Produktumfang ist implementiert. Die fachliche Freigabe und eine produktionsnahe Datenbank- und Bedienabnahme stehen noch aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Workflow-Erweiterungen und Abnahmegrenzen",
+          "path": "docs/development/module/workflow-expansion.md",
+          "checked_at": "2026-08-31",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/year-end/actions.ts",
+        "apps/web/src/app/staff/(protected)/year-end/page.tsx",
+        "apps/web/src/server/workflows/dashboard-policy.ts",
+        "apps/web/src/server/workflows/year-end-return.ts",
+        "apps/web/src/server/forms/revision-download.ts",
+        "apps/web/src/components/form-revision-history.tsx",
+        "apps/web/src/app/api/staff/form-revision-files/[id]/route.ts",
+        "apps/web/src/app/api/portal/form-revision-files/[id]/route.ts",
+        "apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx",
+        "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/page.tsx",
+        "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql",
+        "packages/db/prisma/migrations/20260831280000_form_submission_revisions/migration.sql",
+        "packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/forms/__tests__/schema-snapshot.test.ts",
+        "apps/web/src/server/workflows/__tests__/dashboard-policy.test.ts",
+        "apps/web/src/server/workflows/__tests__/year-end-return.test.ts",
+        "apps/web/src/server/forms/__tests__/revision-download.test.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts",
+        "packages/db/src/__tests__/workflow-expansion.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/workflow-expansion.md"],
+      "related_rules": [
+        "FORM-SCHEMA-SNAPSHOT-001",
+        "REQ-LIFECYCLE-001",
+        "FORM-PRESUBMIT-UPLOAD-001"
+      ],
+      "tags": ["workflow", "mandantenportal", "ungeprueft"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/year-end-campaign-001-checklisten-rollout.md",
+      "summary": "ADMIN/PARTNER legt eine Kampagne mit Name, Jahr, aktivem Formular und internem Zieltermin an. Der vollständige Formularstand wird dabei eingefroren. Vor dem Ausrollen wählt die Person ausdrücklich maximal 200 zugängliche aktive Mandate mit freigeschaltetem Portal aus."
     }
   ]
 }

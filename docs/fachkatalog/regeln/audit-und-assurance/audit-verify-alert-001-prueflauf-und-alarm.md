@@ -14,8 +14,8 @@ professional_review:
   reviewed_at: null
   reviewed_content_hash: null
 implementation:
-  status: partial
-  summary: Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker- und Policy-Fehler. Die Anzeige hält neue negative Ergebnisse trotz altem Checkpoint sichtbar; Recovery-Abgrenzung und monotone Spitzenpersistenz haben noch bekannte Grenzen.
+  status: implemented
+  summary: Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker-, Policy- und Laufzeitfehler. Checkpoints grenzen nur den konkret dokumentierten Altbefund ab; neue Fehler bleiben alarmiert und einmal beobachtete Spitzen werden monoton erhalten.
 sources:
   - kind: product_documentation
     citation: Technische Modulbeschreibung Audit-Protokollierung, Worker und Admin-Oberfläche
@@ -125,17 +125,11 @@ Workerentscheidung und behauptet keine separate Prüfung einer Recovery-Teilkett
 
 ## Bekannte Abweichungen und Grenzen
 
-Die Implementierung erfüllt die oben beschriebene Recovery- und
-Monotonie-Sollregel noch nicht vollständig: Bei negativem `verifyChain` genügt
-dem Worker derzeit ein vorhandener Checkpoint zur Alarmunterdrückung, ohne neue
-von historischen Hash-/Seal-/Policy-Befunden zu trennen. Die separate
-Recovery-Teilkettenprüfung ist abgeschaltet; ältere Typkommentare und bereits
-geschriebene Checkpoint-Audittexte behaupten sie dennoch. Die normale
-Ergebnispersistenz übernimmt außerdem die neu gemessene Spitze auch nach einer
-erkannten Verkürzung; nur der Exception-Pfad erhält den Vorwert. Der
-Exception-Pfad persistiert den Fehler, erzeugt aber selbst keine Notification.
-Diese Konflikte erfordern eine gesonderte Korrektur des Recovery-Verfahrens;
-die begrenzte Anzeigekorrektur löst sie nicht.
+Die Recovery-Teilkettenprüfung ist wieder aktiv. Ein Checkpoint grenzt nur
+einen davor dokumentierten Hash-/Link- oder Tail-Befund ab; Lauf-Exceptions,
+neue Brüche und neue Spitzenverkürzungen bleiben negativ und erzeugen eine
+Admin-/Partner-Warnung. Persistierte Audit-, Anchor- und anchored-Audit-Spitzen
+werden nach einem negativen Lauf nicht abgesenkt.
 
 Die technische Prüfung belegt weder die rechtzeitige menschliche Kenntnisnahme noch eine fachgerechte
 Bearbeitung und Schließung des Befunds. Scheduler-, Queue-, Datenbank- oder
@@ -153,8 +147,8 @@ verzögern und müssen separat überwacht werden.
 
 ## Technische Nachweise
 
-Die vorhandenen Worker-Tests prüfen die reinen Funktionen zur lokalen und
-externen Spitzenverkürzung, nicht die vollständige Orchestrierung,
-Spitzenpersistenz oder Notification-Abwicklung. Die Statusmatrix prüft die
-Anzeige neuer Fehler trotz altem Checkpoint. Der UI-Test belegt, dass ein angestoßener Prüflauf seinen Status
-ohne vollständigen Chain-Walk im Renderpfad aktualisieren kann.
+Die Worker-Tests prüfen lokale und externe Spitzenverkürzung, monotone
+Persistenz, die zeitliche Checkpoint-Abgrenzung und den Ausschluss von
+Lauf-Exceptions aus Recovery. Die Statusmatrix prüft die Anzeige neuer Fehler
+trotz altem Checkpoint. Der UI-Test belegt, dass ein angestoßener Prüflauf
+seinen Status ohne vollständigen Chain-Walk im Renderpfad aktualisieren kann.

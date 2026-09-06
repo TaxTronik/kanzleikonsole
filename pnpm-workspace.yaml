@@ -2,6 +2,12 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# SimpleWebAuthn 13.3.3 behandelt CRL-Netzwerk-/Parsefehler upstream als
+# "nicht gesperrt". Für Hardware-only muss die Attestationskette fail-closed
+# bleiben; der versionsgebundene Patch wird im Lockfile gehasht.
+patchedDependencies:
+  '@simplewebauthn/server@13.3.3': patches/@simplewebauthn__server@13.3.3.patch
+
 # pnpm 11 reads project settings from pnpm-workspace.yaml instead of
 # package.json#pnpm or non-auth .npmrc entries.
 nodeLinker: hoisted
@@ -16,7 +22,6 @@ minimumReleaseAgeExclude:
   # Version-scoped security hotfix exceptions; keep this list short.
   - nodemailer@9.0.1
   - undici@8.9.0
-  - fast-uri@3.1.5
   - postcss@8.5.23
   - nanoid@3.3.18
   - deepmerge-ts@8.0.0
@@ -58,6 +63,10 @@ peerDependencyRules:
   allowedVersions:
     eslint: '10'
     nodemailer: '9'
+    # Auth.js' optional, experimenteller WebAuthn-Provider ist unbenutzt und
+    # deklariert noch v9. Die Kanzleikonsole nutzt SimpleWebAuthn v13 direkt.
+    '@simplewebauthn/browser': '13'
+    '@simplewebauthn/server': '13'
 
 overrides:
   # Runtime und Typoberfläche müssen dieselbe LTS-Linie verwenden. Ohne Override
@@ -89,10 +98,26 @@ overrides:
   # ausgeführt.
   deepmerge-ts: '8.0.0'
   uuid: '^11.1.1'
-  # fast-uri <3.1.5 ist verwundbar (mehrere Host-Confusion-Advisories);
+  # fast-uri <3.1.6 ist verwundbar (mehrere Host-Confusion-/SSRF-Advisories);
   # transitiv via Prisma -> @prisma/streams-local -> ajv. 3.x-Zweig halten,
   # ajv erwartet ^3.
-  fast-uri: '3.1.5'
+  fast-uri: '3.1.6'
+  # browserslist <=4.28.6 kann durch nicht vertrauenswuerdige Custom-Stats
+  # abstuerzen oder unbeschraenkt Speicher belegen (GHSA-73wf-gq98-2v4g,
+  # GHSA-c83g-rgw3-j3cx). Den kleinsten gepatchten 4.x-Stand erzwingen.
+  browserslist: '4.28.7'
+  # Prisma zieht mysql2 nur transitiv ein. Versionen <3.22.0 akzeptieren einen
+  # unsicheren Auth-Plugin-Downgrade; bis 3.23.0 ist ausserdem ein DoS durch
+  # komprimierte Protokolldaten moeglich (GHSA-3f6p-5ww8-9rcr,
+  # GHSA-rgwj-5xj2-c3m3).
+  mysql2: '3.23.1'
+  # @xmldom/xmldom <=0.8.14 erlaubt beim Serialisieren ungueltiger Entity-
+  # Referenzen XML-Fragment-Injection (GHSA-6gmq-8vp8-gcm6).
+  '@xmldom/xmldom': '0.8.15'
+  # Tiptap 3.30.5 benoetigt diese ProseMirror-Patchstaende. Eine zweite,
+  # aeltere Kopie erzeugt inkompatible nominale Node-/View-Typen im Editor.
+  prosemirror-model: '1.25.11'
+  prosemirror-view: '1.42.3'
   # sharp <0.35.0 erbt libvips-CVEs (GHSA-f88m-g3jw-g9cj); next fordert ^0.34.5.
   sharp: '^0.35.3'
   # brace-expansion zweig-genau pinnen: minimatch@3 braucht die Callable-API

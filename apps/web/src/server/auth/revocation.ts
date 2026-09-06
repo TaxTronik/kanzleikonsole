@@ -7,7 +7,9 @@
 // ungültig werden — Warten bis 24h-Ablauf ist nicht akzeptabel.
 //
 // Ansatz: pro (Surface, UserId) wird in Redis ein Timestamp gespeichert. Tokens,
-// die VOR diesem Timestamp ausgestellt wurden (`token.iat`), gelten als revoked.
+// deren ursprünglicher Anmeldezeitpunkt (`sessionIssuedAt`) VOR diesem
+// Timestamp liegt, gelten als revoked. Cookie-Erneuerungen
+// dürfen diesen Vergleichszeitpunkt nicht verschieben.
 // Granularität: "logout all sessions for user" — kein Per-Token-Revoke.
 //
 // Lese- und Schreibpfade sind fail-closed: Ist Redis nicht belastbar

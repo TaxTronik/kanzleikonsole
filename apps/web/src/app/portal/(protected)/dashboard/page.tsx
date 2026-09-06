@@ -1,12 +1,22 @@
 import type { ComponentType } from 'react';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Inbox, FileText, Clock, ClipboardList, CheckCircle2, Receipt } from 'lucide-react';
+import {
+  Inbox,
+  FileText,
+  ClipboardList,
+  CheckCircle2,
+  MessageSquarePlus,
+  MessagesSquare,
+  Receipt,
+} from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { readModules } from '@/server/settings/modules';
 import { portalDashboardVisibility } from '@/server/dashboard/portal-visibility';
+import { readPortalFeatures } from '@/server/settings/portal-features';
+import { countPortalInboxNeedsClientTx } from '@/server/inbox/queries';
 
 export default async function PortalDashboardPage() {
   const session = await portalAuth();
@@ -14,60 +24,83 @@ export default async function PortalDashboardPage() {
 
   const { tenantId, contactId, clientId } = session.user;
   const ctx = { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' as const };
-  const visibility = portalDashboardVisibility(await readModules(ctx));
+  const [visibility, portalFeatures] = await Promise.all([
+    readModules(ctx).then(portalDashboardVisibility),
+    readPortalFeatures(ctx),
+  ]);
 
-  const [openRequestCount, documentCount, recentRequests, todoRequests, todoForms, openInvoices] =
-    await withTenantContext(ctx, async (tx) =>
-      Promise.all([
-        tx.request.count({
-          where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
-        }),
-        // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
-        tx.document.count({
-          where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } },
-        }),
-        tx.request.findMany({
-          where: { clientId },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-          select: { id: true, title: true, status: true, dueAt: true },
-        }),
-        // „Das brauchen wir von Ihnen": offene Anforderungen + offene Formulare.
-        tx.request.findMany({
-          where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
-          select: { id: true, title: true, dueAt: true },
-          orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
-          take: 10,
-        }),
-        visibility.forms
-          ? tx.formSubmission.findMany({
-              where: { clientId, status: { in: ['PENDING', 'DRAFT'] } },
-              select: { id: true, template: { select: { name: true } } },
-              orderBy: { createdAt: 'desc' },
-              take: 10,
-            })
-          : Promise.resolve([]),
-        // Offene Rechnungen (versendet / überfällig) — Mandant sieht sie im
-        // Portal; hier als Überblick auf der Startseite.
-        visibility.invoices
-          ? tx.invoice.findMany({
-              where: { clientId, status: { in: ['SENT', 'OVERDUE'] } },
-              select: { id: true, number: true, dueDate: true, totalAmount: true, status: true },
-              orderBy: { dueDate: 'asc' },
-              take: 5,
-            })
-          : Promise.resolve([]),
-      ]),
-    );
+  const [
+    openRequestCount,
+    documentCount,
+    recentRequests,
+    todoRequests,
+    todoForms,
+    openInvoices,
+    inboxNeedsClientCount,
+  ] = await withTenantContext(ctx, async (tx) =>
+    Promise.all([
+      tx.request.count({
+        where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      }),
+      // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
+      tx.document.count({
+        where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } },
+      }),
+      tx.request.findMany({
+        where: { clientId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: { id: true, title: true, status: true, dueAt: true },
+      }),
+      // „Das brauchen wir von Ihnen": offene Anforderungen + offene Formulare.
+      tx.request.findMany({
+        where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        select: { id: true, title: true, dueAt: true },
+        orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
+        take: 10,
+      }),
+      visibility.forms
+        ? tx.formSubmission.findMany({
+            where: { clientId, status: { in: ['PENDING', 'DRAFT'] } },
+            select: { id: true, template: { select: { name: true } } },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      // Offene Rechnungen (versendet / überfällig) — Mandant sieht sie im
+      // Portal; hier als Überblick auf der Startseite.
+      visibility.invoices
+        ? tx.invoice.findMany({
+            where: { clientId, status: { in: ['SENT', 'OVERDUE'] } },
+            select: { id: true, number: true, dueDate: true, totalAmount: true, status: true },
+            orderBy: { dueDate: 'asc' },
+            take: 5,
+          })
+        : Promise.resolve([]),
+      portalFeatures.clientInbox
+        ? countPortalInboxNeedsClientTx(tx, { tenantId, clientId, contactId })
+        : Promise.resolve(0),
+    ]),
+  );
 
   const todoCount = todoRequests.length + todoForms.length;
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-primary mb-1">
-        Hallo {session.user.fullName?.split(' ')[0] ?? ''}
-      </h1>
-      <p className="text-muted text-sm mb-8">Übersicht über offene Anforderungen Ihrer Kanzlei.</p>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="mb-1 text-2xl font-bold text-primary">
+            Hallo {session.user.fullName?.split(' ')[0] ?? ''}
+          </h1>
+          <p className="text-sm text-muted">Übersicht über offene Anforderungen Ihrer Kanzlei.</p>
+        </div>
+        {portalFeatures.clientInbox ? (
+          <Link href="/portal/inbox/new" className="btn-primary inline-flex items-center gap-2">
+            <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+            Nachricht an Kanzlei
+          </Link>
+        ) : null}
+      </div>
 
       {/* Das brauchen wir von Ihnen — alle offenen To-Dos gebündelt */}
       <div className="card overflow-hidden mb-8">
@@ -117,7 +150,7 @@ export default async function PortalDashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
           icon={Inbox}
           label="Offene Anforderungen"
@@ -125,13 +158,15 @@ export default async function PortalDashboardPage() {
           accent={openRequestCount > 0 ? 'yellow' : 'gray'}
         />
         <KpiCard icon={FileText} label="Dokumente" value={documentCount} accent="gray" />
-        <KpiCard
-          icon={Clock}
-          label="Letzter Login"
-          value={session.user.email ? '—' : '—'}
-          accent="gray"
-          large={false}
-        />
+        {portalFeatures.clientInbox ? (
+          <KpiCard
+            icon={MessagesSquare}
+            label="Antwort von Ihnen benötigt"
+            value={inboxNeedsClientCount}
+            accent={inboxNeedsClientCount > 0 ? 'yellow' : 'gray'}
+            href="/portal/inbox?attention=CLIENT&status=OPEN"
+          />
+        ) : null}
       </div>
 
       {visibility.invoices && (
@@ -211,14 +246,16 @@ function KpiCard({
   value,
   accent,
   large = true,
+  href,
 }: {
   icon: ComponentType<{ className?: string }>;
   label: string;
   value: number | string;
   accent: 'yellow' | 'gray';
   large?: boolean;
+  href?: string;
 }) {
-  return (
+  const card = (
     <div className="card p-6">
       <div className="flex items-center gap-3 mb-2">
         <Icon
@@ -232,5 +269,15 @@ function KpiCard({
         {value}
       </p>
     </div>
+  );
+  return href ? (
+    <Link
+      href={href}
+      className="rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+    >
+      {card}
+    </Link>
+  ) : (
+    card
   );
 }

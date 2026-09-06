@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
 import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
 import { startInstanceAction } from '../clients/[id]/workflows/actions';
+import { assertModuleEnabled } from '@/server/settings/modules';
 import {
   withStaffModule,
   ActionError,
@@ -135,6 +136,7 @@ const SaveStepsSchema = z.object({
     .array(
       z.object({
         title: z.string().min(1).max(200),
+        wikiArticleIds: z.array(z.string().uuid()).max(10).optional(),
         description: z.string().max(1000).optional(),
         dueAfterDays: z.number().int().min(0).max(365).nullable(),
         skillId: z.string().uuid().nullable(),
@@ -154,6 +156,11 @@ export async function saveTemplateAction(
 
   const r = await withWorkflowsStaff(
     async (tx, { tenantId, staffId }) => {
+      if (parsed.data.steps.some((s) => (s.wikiArticleIds?.length ?? 0) > 0)) {
+        const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+        await assertModuleEnabled(ctx, 'knowledgeContext');
+        await assertModuleEnabled(ctx, 'knowledge');
+      }
       await tx.workflowTemplate.update({
         where: { id: parsed.data.templateId },
         data: {
@@ -175,6 +182,7 @@ export async function saveTemplateAction(
             templateId: parsed.data.templateId,
             position: i,
             title: s.title,
+            wikiArticleIds: s.wikiArticleIds ?? [],
             description: s.description?.trim() || null,
             dueAfterDays: s.dueAfterDays,
             skillId: s.skillId,

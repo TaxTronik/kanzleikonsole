@@ -218,6 +218,74 @@ function drawLine(ctx: PageContext, y: number, color = rgb(0.7, 0.7, 0.7)): void
   });
 }
 
+async function embedInvoiceLogo(
+  doc: PDFDocument,
+  logoDataUrl: string | null | undefined,
+): Promise<PDFImage | null> {
+  // Optional: Kanzlei-Logo (PNG/JPEG aus dem Tenant-Branding). WebP wird von
+  // pdf-lib nicht unterstützt → dann kein Logo statt eines Fehlers.
+  let logoImg: PDFImage | null = null;
+  if (logoDataUrl) {
+    try {
+      const m = /^data:image\/(png|jpe?g);base64,(.+)$/i.exec(logoDataUrl);
+      if (m) {
+        const bytes = Buffer.from(m[2]!, 'base64');
+        const isPng = m[1]!.toLowerCase() === 'png';
+        logoImg = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      }
+    } catch {
+      logoImg = null;
+    }
+  }
+  return logoImg;
+}
+
+function drawInvoiceBuyer(ctx: PageContext, buyer: XRechnungBuyer): void {
+  // Empfänger-Block (links, größer)
+  ctx.y -= 30;
+  drawText(ctx, buyer.name, ctx.margin, ctx.y, { bold: true });
+  ctx.y -= 12;
+  if (buyer.street) {
+    drawText(ctx, buyer.street, ctx.margin, ctx.y);
+    ctx.y -= 11;
+  }
+  if (buyer.postalCode || buyer.city) {
+    drawText(ctx, `${buyer.postalCode ?? ''} ${buyer.city ?? ''}`.trim(), ctx.margin, ctx.y);
+    ctx.y -= 11;
+  }
+  if (buyer.countryIso && buyer.countryIso !== 'DE') {
+    drawText(ctx, buyer.countryIso, ctx.margin, ctx.y);
+    ctx.y -= 11;
+  }
+}
+
+/** Preserve the full fee description, including long source URLs, inside
+ * the description column. No truncation or overlap with amounts. */
+function wrapInvoiceDescription(font: PDFFont, text: string, width: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split(/\r?\n/)) {
+    let line = '';
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, FONT_SIZE_NORMAL) <= width) {
+        line = candidate;
+        continue;
+      }
+      if (line) lines.push(line);
+      line = '';
+      for (const character of word) {
+        if (font.widthOfTextAtSize(line + character, FONT_SIZE_NORMAL) > width) {
+          lines.push(line);
+          line = '';
+        }
+        line += character;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
 export async function generateZugferdPdf(
   invoice: XRechnungInvoice,
   seller: SellerInfo,
@@ -229,21 +297,7 @@ export async function generateZugferdPdf(
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  // Optional: Kanzlei-Logo (PNG/JPEG aus dem Tenant-Branding). WebP wird von
-  // pdf-lib nicht unterstützt → dann kein Logo statt eines Fehlers.
-  let logoImg: PDFImage | null = null;
-  if (presentation.logoDataUrl) {
-    try {
-      const m = /^data:image\/(png|jpe?g);base64,(.+)$/i.exec(presentation.logoDataUrl);
-      if (m) {
-        const bytes = Buffer.from(m[2]!, 'base64');
-        const isPng = m[1]!.toLowerCase() === 'png';
-        logoImg = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      }
-    } catch {
-      logoImg = null;
-    }
-  }
+  const logoImg = await embedInvoiceLogo(doc, presentation.logoDataUrl);
 
   // A4
   const pageWidth = 595;
@@ -276,22 +330,7 @@ export async function generateZugferdPdf(
   }
   drawLetterheadSender(ctx, letterheadLayout);
 
-  // Empfänger-Block (links, größer)
-  ctx.y -= 30;
-  drawText(ctx, buyer.name, margin, ctx.y, { bold: true });
-  ctx.y -= 12;
-  if (buyer.street) {
-    drawText(ctx, buyer.street, margin, ctx.y);
-    ctx.y -= 11;
-  }
-  if (buyer.postalCode || buyer.city) {
-    drawText(ctx, `${buyer.postalCode ?? ''} ${buyer.city ?? ''}`.trim(), margin, ctx.y);
-    ctx.y -= 11;
-  }
-  if (buyer.countryIso && buyer.countryIso !== 'DE') {
-    drawText(ctx, buyer.countryIso, margin, ctx.y);
-    ctx.y -= 11;
-  }
+  drawInvoiceBuyer(ctx, buyer);
 
   // Datum + Nummer (rechts)
   const rightCol = pageWidth - margin - 200;
@@ -377,11 +416,16 @@ export async function generateZugferdPdf(
   for (const p of invoice.positions) {
     newPageIfNeeded(ctx, 24);
     drawText(ctx, String(p.position), colPos, ctx.y);
-    drawText(ctx, p.description, colDesc, ctx.y);
     drawText(ctx, `${fmtNum(p.quantity)} ${p.unit}`, colQty - 30, ctx.y);
     drawText(ctx, fmtEUR(p.unitPrice), colPrice - 60, ctx.y);
     drawText(ctx, fmtEUR(p.netAmount), colNet - 50, ctx.y);
-    ctx.y -= 16;
+    const descriptionLines = wrapInvoiceDescription(ctx.font, p.description, colQty - 38 - colDesc);
+    for (const line of descriptionLines) {
+      newPageIfNeeded(ctx, 12);
+      drawText(ctx, line, colDesc, ctx.y);
+      ctx.y -= 12;
+    }
+    ctx.y -= 4;
   }
 
   ctx.y -= 5;

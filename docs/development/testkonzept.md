@@ -51,13 +51,13 @@ gilt folgende Zielabdeckung. Die Tabelle ist ein **Freigabe-Soll**, keine
 pauschale Behauptung, jede einzelne Exportfunktion sei bereits direkt
 Action-level getestet:
 
-| Modul                 | Mindestabdeckung                                                                                                                                                                                                                                                       |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fakturierung          | jede Server-Action (Anlage, Änderung, Statusübergänge, Storno), Rechnungsnummern-Vergabe inkl. Eindeutigkeit/Lückenverhalten, Festschreibungs-Schutz (Negativtest: Änderung nach Versand), XRechnung-/ZUGFeRD-Erzeugung gegen Erwartungswerte, GoBD-Archivierungsfluss |
-| Dokumentenarchiv      | Upload-Validierungen (Größe, Magic-Bytes), Virenscan-Verhalten inkl. Fehlerpfad (infiziert/Scanner down = fail-closed), Schutzstufen/Retention-Zuordnung, Freigabe-Erzwingung serverseitig, Download-/Preview-Autorisierung (IDOR-Negativtests)                        |
-| Audit-Protokollierung | Hash-Chain-Mechanik (Verkettung, Bruch-Erkennung), Versiegelung inkl. TSA-Fehlerpfad, Archiv-Rotation, Verify-Ergebnis-Persistenz                                                                                                                                      |
-| Zugriffsschutz        | Login-Flows beidseitig (TOTP, Magic-Link inkl. Einmaligkeit/Ablauf/Replay), Rollen-Guards, Lockout-Verhalten, Session-Revalidierung, RLS-Cross-Tenant                                                                                                                  |
-| Backup/Restore        | Roundtrip mit Integritäts-Assertions (CI je Lauf), Restore-Drill-Logik, Hash-Verifikation des Backup-Objekts                                                                                                                                                           |
+| Modul                 | Mindestabdeckung                                                                                                                                                                                                                                                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fakturierung          | jede Server-Action (Anlage, Änderung, Statusübergänge, Storno), Rechnungsnummern-Vergabe inkl. Eindeutigkeit/Lückenverhalten, Festschreibungs-Schutz (Negativtest: Änderung nach Versand), XRechnung-/ZUGFeRD-Erzeugung gegen Erwartungswerte, GoBD-Archivierungsfluss                                                                              |
+| Dokumentenarchiv      | Upload-Validierungen (Größe, Magic-Bytes), Virenscan-Verhalten inkl. Fehlerpfad (infiziert/Scanner down = fail-closed), Schutzstufen/Retention-Zuordnung, Freigabe-Erzwingung serverseitig, Download-/Preview-Autorisierung (IDOR-Negativtests)                                                                                                     |
+| Audit-Protokollierung | Hash-Chain-Mechanik (Verkettung, Bruch-Erkennung), Versiegelung inkl. TSA-Fehlerpfad, Archiv-Rotation, Verify-Ergebnis-Persistenz                                                                                                                                                                                                                   |
+| Zugriffsschutz        | Login-Flows beidseitig (Passwort/TOTP, optionaler FIDO2-Hardware-only-Modus, Magic-Link inkl. Einmaligkeit/Ablauf/Replay), WebAuthn-Policy samt direkter vollständiger Attestation/AAGUID-Allowlist/FIDO-MDS-Fail-close und kein Software-Fallback, Modus-/Session-Revision, hierarchisches Recovery, Rollen-Guards, Lockout, Credential-/Daten-RLS |
+| Backup/Restore        | Roundtrip mit Integritäts-Assertions (CI je Lauf), Restore-Drill-Logik, Hash-Verifikation des Backup-Objekts                                                                                                                                                                                                                                        |
 
 Für eine **formale PS-880-Scope-Freigabe** müssen die zugehörigen Tests
 vorliegen; Fehlerbehebungen erfordern einen Regressionstest (siehe
@@ -77,6 +77,69 @@ derzeit kein eigener Action-Level-Test. Die bereits existierende Version
 Die Lücke darf in einem Prüfbericht nicht als abgedeckt ausgewiesen werden und
 ist vor einer entsprechenden formalen Freigabe durch direkte Tests zu
 schließen.
+
+Für den optionalen Hardware-only-Zugang belegen
+`apps/web/src/server/auth/__tests__/webauthn.test.ts` die Challenge-, RP-,
+Origin-, User-Verification-, Geräte-/Backup- und Transportpolicy, direkte
+vollständige `packed`-Attestation, AAGUID-Allowlist und FIDO MDS `strict` samt
+selbst verifiziertem Gesamt-BLOB, enger Signer-/Intermediate-Bindung,
+positiver Zertifizierungsstatus-Policy, `sunsetDate`, attestierter Firmware-
+Version und deren Metadata-Mindestwerten sowie Fail-close bei fehlenden,
+widerrufenen, veralteten oder nicht vertrauenswürdigen Metadaten. Der Test
+umfasst auch die verpflichtende Zertifikat-AAGUID, Registration-/x5c-/BLOB-
+Größenlimits, Abbruch der Registration-Verifikation, Modellisolation, den
+maximal einstündigen Snapshot, die zentrale Serienübernahme vor der lokalen
+Modellfilterung und die exakte Bindung an BLOB-Serie, Policy-Revision und
+Policy-Hash. Getestet werden außerdem DB-only-Startup ohne MDS-Abruf, globale
+Deaktivierung durch eine leere Allowlist sowie Rolling Deployments: höhere
+Revisionen verdrängen alte Replicas, gleiche Revisionen mit anderem Hash und
+niedrigere Revisionen werden abgewiesen. Der
+direkte `simplewebauthn-crl-hardening.test.ts` belegt Abbruchweitergabe,
+URL- und Größengrenzen, Chain-before-fetch, kritische CA-BasicConstraints,
+`keyCertSign`, `cRLSign` und Pfadlänge sowie Fail-close bei Netzwerk-, HTTP-,
+Parse-, Signatur-, Issuer-, AKI- und Freshness-Fehlern. Er prüft außerdem
+gemischte RSA-Hashalgorithmen von Issuer-Zertifikat und CRL sowie die
+fail-closed Ablehnung mehrerer/partitionierter Distribution Points,
+Reason-/Issuer-Scope, Zertifikat-seitiger Freshest-CRL-Verweise sowie
+Delta-/IDP-/Freshest- und unbekannter kritischer CRL-Extensions. Der
+Supply-Chain-Guard bindet dafür Paketversion, Patchdatei, die zentralen
+Semantikmarker in ESM/CommonJS und den Lockfile-Hash.
+`webauthn-browser-error.test.ts` belegt die Abbrucherkennung auch für den von
+SimpleWebAuthn umschlossenen Browserfehler; der Ops-Test prüft, dass die
+AAGUID-Allowlist im produktiven Compose-Stack an den App-Container
+weitergereicht wird.
+`packages/config/src/__tests__/env-webauthn.test.ts` belegt fehlende oder leere
+Allowlist als `[]`, UUID-Normalisierung, Deduplizierung, Parsergrenzen sowie die
+positive Ganzzahl-Policy für `WEBAUTHN_HARDWARE_POLICY_REVISION`.
+`packages/db/src/__tests__/staff-webauthn-migration.test.ts` und
+`staff-webauthn-rls.test.ts` die Tenantgrenze, Least Privilege sowie die
+race-sichere Mindestzahl von zwei Schlüsseln. Die Tests prüfen außerdem
+Singleton-/Positivitätsconstraints, den vollständigen Tabellenrechteentzug der
+App-Rolle sowie den eng gewährten Exact-State-Share-Lock für BLOB-Serie,
+Policy-Revision und Policy-Hash; ein paralleler MDS-Refresh wartet bis zum
+WebAuthn-Commit, die Lock-Reihenfolge bleibt `MDS -> Staff` und ein
+abweichender Stand wird abgewiesen. Dieselben DB-Tests decken den
+Recovery-Rollenboden und den authRevision-gebundenen Widerruf auch ruhender
+Hardware-Credentials bei Passwort-/TOTP-Sicherheitsresets ab.
+`staff-auth-state.test.ts`, der
+Login-Enrollment-Test und die Staff-Action-Tests prüfen Software-Fallback-
+Sperre, Modus-/Session-Revision, Recovery-Hierarchie, Audit und
+Session-Widerruf. Der Admin-Action-Test prüft zusätzlich aktuelles Passwort plus
+frisch konsumierten TOTP ohne Backup-Code-Fallback, den eigenen Schlüssel eines
+Hardware-only-Akteurs, die Challenge-Bindung an Actor, Ziel und Auth-Revision
+sowie Rollback bei geänderter Actor-Revision und den fehlenden vorgelagerten
+Redis-Logout bei DB-Rollback. Die Action-Tests prüfen zusätzlich, dass eine
+eigene Passwortänderung aktive Hardware-Vorabregistrierungen widerruft und
+dass Staff-Akteure keine ADMIN-Rolle beziehungsweise nur aktive ADMIN eine
+PARTNER-Rolle entziehen können. Der Owner-CLI-Test belegt die exklusive
+`O_EXCL`-/No-follow-Credential-Ausgabe ohne Klartext auf Terminal oder in Logs,
+gezieltes Partial-Cleanup, POSIX-`0600`, Datei- und Elternverzeichnis-`fsync`
+vor dem Commit sowie den Rollback bei Ausgabefehlern. Ein Fehler erst beim
+Datenbank-Commit darf entsprechend der dokumentierten Grenze eine sicher
+geschriebene, aber unwirksame Datei hinterlassen. Diese automatisierten Tests
+ersetzen keine reale Browser-/Schlüsselmatrix. Die Attestation belegt eine
+freigegebene Modellfamilie; sie beweist weder eine individuelle Geräteinstanz
+noch, dass zwei Credentials von zwei verschiedenen physischen Geräten stammen.
 
 ## 3. Testumgebungen
 

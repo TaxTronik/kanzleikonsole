@@ -31,18 +31,30 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/documents/delivery.ts
+  - packages/db/prisma/migrations/20260831190000_document_payroll_access/migration.sql
   - apps/web/src/app/api/portal/documents/[id]/download/route.ts
   - apps/web/src/app/api/portal/documents/[id]/preview-url/route.ts
   - apps/web/src/app/staff/(protected)/documents/actions.ts
   - apps/web/src/server/storage/preview-mime.ts
+  - apps/web/src/server/inbox/accept-attachment.ts
+  - apps/web/src/server/inbox/attachment-delivery.ts
+  - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
+  - packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql
 test_refs:
+  - apps/web/src/server/documents/__tests__/delivery.test.ts
   - apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts
   - apps/web/src/server/storage/__tests__/preview-mime.test.ts
   - apps/web/src/components/__tests__/document-preview-security.test.ts
+  - packages/db/src/__tests__/portal-inbox-rls.test.ts
+  - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
+  - apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
 related_rules:
+  - ACCESS-STAFF-PERMISSION-001
   - DOC-VERSION-IMMUTABILITY-001
+  - PORTAL-INBOX-SUBMISSION-001
 tags:
   - portal
   - freigabe
@@ -117,6 +129,24 @@ Beide Portal-Routen filtern in der tenantgebundenen Transaktion auf
 Action erlaubt die Freigabe nur nach aktuellem Mandantenzugriff und auditiert
 Freigabe sowie Entzug. `preview-mime.ts` normalisiert Typen, begrenzt Inline-
 Rendering auf eine Positivliste und setzt sichere Disposition-/CSP-Header.
+
+Neue personalbezogene Archivartefakte können zusätzlich requiresPayrollAccess
+tragen. Dieses Merkmal ist nicht nachträglich herabsetzbar. Die allgemeine
+Portalfreigabe ist dafür gesperrt; auch Dokumentversionen, Suche und direkte
+Dokumentbenachrichtigungen unterliegen der zusätzlichen Datenbankpolicy.
+Der allgemeine Download verlangt aktuelle PAYROLL_MANAGE-Rechte. Bestehende
+Archive werden nicht rückwirkend umklassifiziert. Eigene Arbeitnehmer- und
+Arbeitgeberausgaben verwenden ihre gesonderten Lohnzugänge.
+
+Eine Inbox-Staging-Anlage ist vor der ausdrücklichen Annahme kein `Document`.
+Bei Annahme prüft die Datenbank Tenant, Mandant, Hash, Scannerstatus und
+Dokumentversion. Die Annahme selbst ist die ausdrückliche Staff-Entscheidung:
+Sie verlangt Titel und aktiven Dokumenttyp, leitet Schutzstufe, Storage und
+Retention ausschließlich daraus ab und gibt das vollständig persistierte
+Dokument anschließend auf Mandantenebene frei. Vor Abschluss der Übernahme
+bleibt es privat; abgelehnte oder blockierte Staging-Bytes sind kein
+Portal-Dokument und bleiben nicht downloadbar. Zusätzliche Schutzregeln des
+gewählten Dokumenttyps, insbesondere für Personalunterlagen, bleiben wirksam.
 
 ## Bekannte Abweichungen und Grenzen
 

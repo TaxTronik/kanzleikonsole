@@ -3,7 +3,11 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { KeyRound, RotateCcw, Tags } from 'lucide-react';
+import { startAuthentication } from '@simplewebauthn/browser';
+import { isWebAuthnNotAllowedError } from '@/lib/webauthn-browser-error';
 import {
+  beginHardwareRecoveryStepUpAction,
+  recoverHardwareAccessAction,
   resetPasswordAction,
   resetTotpAction,
   setActiveAction,
@@ -313,11 +317,219 @@ export function SetPermissionsForm({
   );
 }
 
+function HardwareAccessRecoveryForm({
+  userId,
+  hardwareKeyCount,
+  actorHardwareOnly,
+}: {
+  userId: string;
+  hardwareKeyCount: number;
+  actorHardwareOnly: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [actorPassword, setActorPassword] = useState('');
+  const [actorTotpCode, setActorTotpCode] = useState('');
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pending, startRecovery] = useTransition();
+  const recoveryFormId = `hardware-recovery-${userId}`;
+
+  async function submitRecovery(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      !(await confirmDialog(
+        'Alle registrierten Sicherheitsschlüssel werden gelöscht, der reine Hardware-Zugang wird deaktiviert und alle Sitzungen werden beendet. Die Person meldet sich mit dem neuen Passwort an und richtet 2FA erneut ein.',
+        {
+          title: 'Hardware-Zugang wiederherstellen',
+          confirmLabel: 'Zugang zurücksetzen',
+          danger: true,
+        },
+      ))
+    ) {
+      return;
+    }
+
+    setMessage(null);
+    startRecovery(async () => {
+      try {
+        let hardwareProof: {
+          ceremonyId?: string;
+          response?: Awaited<ReturnType<typeof startAuthentication>>;
+        } = {};
+        if (actorHardwareOnly) {
+          const begin = await beginHardwareRecoveryStepUpAction({ targetUserId: userId });
+          if ('error' in begin) {
+            setMessage({ ok: false, text: begin.error });
+            return;
+          }
+          hardwareProof = {
+            ceremonyId: begin.ceremonyId,
+            response: await startAuthentication({ optionsJSON: begin.options }),
+          };
+        }
+
+        const result = await recoverHardwareAccessAction({
+          targetUserId: userId,
+          newPassword: password,
+          confirmPassword: confirmation,
+          actorPassword: actorHardwareOnly ? undefined : actorPassword,
+          actorTotpCode: actorHardwareOnly ? undefined : actorTotpCode,
+          ...hardwareProof,
+        });
+        if (!result.ok) {
+          setMessage({
+            ok: false,
+            text: result.error ?? 'Der Hardware-Zugang konnte nicht wiederhergestellt werden.',
+          });
+          return;
+        }
+        setPassword('');
+        setConfirmation('');
+        setActorPassword('');
+        setActorTotpCode('');
+        setOpen(false);
+        setMessage({
+          ok: true,
+          text: 'Hardware-Zugang zurückgesetzt; alle Sitzungen wurden abgemeldet.',
+        });
+      } catch (caught) {
+        setMessage({
+          ok: false,
+          text: isWebAuthnNotAllowedError(caught)
+            ? 'Die Bestätigung mit dem Sicherheitsschlüssel wurde abgebrochen oder ist abgelaufen.'
+            : 'Die zusätzliche Identitätsbestätigung ist fehlgeschlagen. Bitte erneut versuchen.',
+        });
+      }
+    });
+  }
+
+  return (
+    <div className="min-w-0 space-y-2">
+      <p className="text-xs text-secondary">
+        Nur Sicherheitsschlüssel ({hardwareKeyCount} registriert)
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((current) => !current);
+          setMessage(null);
+        }}
+        className="inline-flex items-center gap-1 text-xs text-red-700 hover:underline"
+        aria-expanded={open}
+        aria-controls={recoveryFormId}
+      >
+        <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+        Hardware-Zugang wiederherstellen
+      </button>
+
+      {open && (
+        <form
+          id={recoveryFormId}
+          onSubmit={submitRecovery}
+          className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3"
+        >
+          <p className="text-[11px] text-red-800">
+            Löscht alle Sicherheitsschlüssel und beendet alle Sitzungen. Beim nächsten Login muss
+            2FA neu eingerichtet werden.
+          </p>
+          {actorHardwareOnly ? (
+            <p className="text-[11px] font-medium text-red-900">
+              Bestätigen Sie den Vorgang anschließend mit Ihrem eigenen Sicherheitsschlüssel.
+            </p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block text-[11px] text-muted">
+                Ihr aktuelles Passwort
+                <input
+                  type="password"
+                  value={actorPassword}
+                  onChange={(event) => setActorPassword(event.target.value)}
+                  autoComplete="current-password"
+                  className="input mt-1"
+                  required
+                  maxLength={4096}
+                />
+              </label>
+              <label className="block text-[11px] text-muted">
+                Ihr aktueller 2FA-Code
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  value={actorTotpCode}
+                  onChange={(event) => setActorTotpCode(event.target.value.replace(/\D/g, ''))}
+                  autoComplete="one-time-code"
+                  className="input mt-1"
+                  required
+                  minLength={6}
+                  maxLength={6}
+                />
+              </label>
+            </div>
+          )}
+          <label className="block text-[11px] text-muted">
+            Neues Initial-Passwort
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              className="input mt-1"
+              required
+              minLength={STAFF_PASSWORD_MIN_LENGTH}
+              maxLength={STAFF_PASSWORD_MAX_LENGTH}
+            />
+          </label>
+          <label className="block text-[11px] text-muted">
+            Initial-Passwort wiederholen
+            <input
+              type="password"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              autoComplete="new-password"
+              className="input mt-1"
+              required
+              minLength={STAFF_PASSWORD_MIN_LENGTH}
+              maxLength={STAFF_PASSWORD_MAX_LENGTH}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="submit" disabled={pending} className="btn-primary px-2 py-1 text-xs">
+              {pending ? 'Setzt zurück…' : 'Zugang zurücksetzen'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+              className="text-xs text-muted hover:underline"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      )}
+
+      {message && (
+        <p
+          role={message.ok ? 'status' : 'alert'}
+          className={message.ok ? 'text-xs text-emerald-700' : 'text-xs text-red-700'}
+        >
+          {message.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AccountSecurityForm({
   userId,
   isSelf,
   isAdminAccount,
   blockedReason,
+  hardwareOnly,
+  hardwareKeyCount,
+  actorHardwareOnly,
   totpEnrolled,
   totpConfigured,
 }: {
@@ -325,6 +537,9 @@ export function AccountSecurityForm({
   isSelf: boolean;
   isAdminAccount: boolean;
   blockedReason?: string;
+  hardwareOnly: boolean;
+  hardwareKeyCount: number;
+  actorHardwareOnly: boolean;
   totpEnrolled: boolean;
   totpConfigured: boolean;
 }) {
@@ -383,12 +598,18 @@ export function AccountSecurityForm({
           className="inline-flex items-center gap-1 text-brand-700 hover:underline"
         >
           <KeyRound className="h-3.5 w-3.5" />
-          Eigenes Passwort ändern
+          Eigenen Zugang verwalten
         </Link>
         <p className="text-disabled">
-          {isAdminAccount
-            ? 'Eigene 2FA: Reset ausschließlich per Administrations-CLI.'
-            : 'Eigene 2FA: Reset durch eine übergeordnete Rolle.'}
+          {hardwareOnly
+            ? `Nur Sicherheitsschlüssel (${hardwareKeyCount}). Recovery ${
+                isAdminAccount
+                  ? 'ausschließlich per Administrations-CLI.'
+                  : 'durch eine übergeordnete Rolle.'
+              }`
+            : isAdminAccount
+              ? 'Eigene 2FA: Reset ausschließlich per Administrations-CLI.'
+              : 'Eigene 2FA: Reset durch eine übergeordnete Rolle.'}
         </p>
       </div>
     );
@@ -396,6 +617,16 @@ export function AccountSecurityForm({
 
   if (blockedReason) {
     return <p className="text-xs text-disabled">{blockedReason}</p>;
+  }
+
+  if (hardwareOnly) {
+    return (
+      <HardwareAccessRecoveryForm
+        userId={userId}
+        hardwareKeyCount={hardwareKeyCount}
+        actorHardwareOnly={actorHardwareOnly}
+      />
+    );
   }
 
   return (

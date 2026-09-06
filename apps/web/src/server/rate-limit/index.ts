@@ -59,6 +59,16 @@ export async function checkPortalWriteLimit(contactId: string): Promise<RateLimi
   return checkRateLimit(`portal-write:${contactId}`, { max: 60, windowSec: 600 });
 }
 
+/** Eigenes enges Kontingent fuer neue Mandantenpost-Verlaeufe. */
+export async function checkPortalInboxThreadLimit(contactId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`portal-inbox-thread:${contactId}`, { max: 5, windowSec: 60 * 60 });
+}
+
+/** Uploads belasten Virenscanner und Storage zusaetzlich zum globalen Write-Limit. */
+export async function checkPortalInboxUploadLimit(contactId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`portal-inbox-upload:${contactId}`, { max: 20, windowSec: 10 * 60 });
+}
+
 /**
  * Audit 2026-06 Befund 6: leichtes Read-Limit für Portal-Download/Preview.
  * Jeder Abruf schreibt einen Audit-Eintrag (evidenceService) — ohne Limit

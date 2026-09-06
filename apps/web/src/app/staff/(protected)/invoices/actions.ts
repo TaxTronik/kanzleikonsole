@@ -114,6 +114,16 @@ const CreateSchema = z.object({
   positions: z.array(PositionSchema).min(1).max(200),
 });
 
+function servicePeriodError(start: string | null, end: string | null): string | null {
+  if ((start === null) !== (end === null)) {
+    return 'Leistungszeitraum braucht Start UND Ende (oder beides leer).';
+  }
+  if (start && end && start > end) {
+    return 'Leistungszeitraum: Start liegt nach dem Ende.';
+  }
+  return null;
+}
+
 export async function createInvoiceAction(input: {
   clientId: string;
   subject: string;
@@ -153,12 +163,8 @@ export async function createInvoiceAction(input: {
   // Leistungszeitraum: entweder beide leer oder beide gesetzt, Start ≤ Ende.
   const periodStart = data.servicePeriodStart || null;
   const periodEnd = data.servicePeriodEnd || null;
-  if ((periodStart === null) !== (periodEnd === null)) {
-    return { ok: false, error: 'Leistungszeitraum braucht Start UND Ende (oder beides leer).' };
-  }
-  if (periodStart && periodEnd && periodStart > periodEnd) {
-    return { ok: false, error: 'Leistungszeitraum: Start liegt nach dem Ende.' };
-  }
+  const periodError = servicePeriodError(periodStart, periodEnd);
+  if (periodError) return { ok: false, error: periodError };
 
   // § 14 Abs. 4 Nr. 8 UStG: 0 %-Umsätze brauchen einen Befreiungshinweis.
   const exemptionReason = data.vatExemptionReason || null;
@@ -444,6 +450,68 @@ function markSentCasResult(result: NonSentInvoiceResult): ActionResult {
   }
 }
 
+async function notifyInvoiceRecipients(
+  ctx: TenantContext,
+  tenantId: string,
+  sent: Extract<Awaited<ReturnType<typeof finalizeInvoiceSendTx>>, { outcome: 'sent' }>['invoice'],
+): Promise<void> {
+  // Mandant über den Versand informieren. Template-Slug 'invoice-sent' — falls
+  // im ACP keines definiert ist, greift der Fallback (hartcodiert). Fire-and-
+  // forget: ein Mail-Versand-Fehler scheitert nicht den Rechnungs-Versand.
+  const client = await withTenantContext(ctx, (tx) =>
+    tx.client.findUnique({
+      where: { id: sent.clientId },
+      select: {
+        name: true,
+        invoiceEmail: true,
+        contacts: {
+          where: { active: true, notificationsEnabled: true },
+          select: { email: true, fullName: true },
+        },
+      },
+    }),
+  );
+  const recipients = new Map<string, { email: string; fullName: string }>();
+  if (client?.invoiceEmail) {
+    recipients.set(client.invoiceEmail.toLowerCase(), {
+      email: client.invoiceEmail,
+      fullName: client.name,
+    });
+  }
+  for (const contact of client?.contacts ?? []) {
+    recipients.set(contact.email.toLowerCase(), contact);
+  }
+  for (const recipient of recipients.values()) {
+    fireAndForget(
+      'sendTemplateMail (invoice-sent)',
+      sendTemplateMail({
+        tenantId,
+        clientId: sent.clientId,
+        slug: 'invoice-sent',
+        to: recipient.email,
+        vars: {
+          contact: { fullName: recipient.fullName, email: recipient.email },
+          client: { name: client?.name ?? 'Mandant' },
+          invoice: {
+            number: sent.number,
+            total: fmtEUR(Number(sent.totalAmount.toString())),
+            dueDate: sent.dueDate ? fmtDateShort(sent.dueDate) : '—',
+          },
+          link: `${portalBaseUrl}/portal/invoices`,
+        },
+        fallback: {
+          subject: 'Neue Rechnung {{invoice.number}}',
+          bodyMd:
+            'Sehr geehrte/r {{contact.fullName}},\n\n' +
+            'eine neue Rechnung ({{invoice.number}}) über {{invoice.total}} steht in Ihrem Mandantenportal bereit.\n' +
+            'Fälligkeit: {{invoice.dueDate}}\n\n' +
+            'Zur Übersicht: {{link}}',
+        },
+      }),
+    );
+  }
+}
+
 export async function markSentAction(
   _prev: ActionResult | null,
   formData: FormData,
@@ -539,61 +607,7 @@ export async function markSentAction(
   if (sendResult.outcome !== 'sent') return markSentCasResult(sendResult);
   const sent = sendResult.invoice;
 
-  // Mandant über den Versand informieren. Template-Slug 'invoice-sent' — falls
-  // im ACP keines definiert ist, greift der Fallback (hartcodiert). Fire-and-
-  // forget: ein Mail-Versand-Fehler scheitert nicht den Rechnungs-Versand.
-  const client = await withTenantContext(ctx, (tx) =>
-    tx.client.findUnique({
-      where: { id: sent.clientId },
-      select: {
-        name: true,
-        invoiceEmail: true,
-        contacts: {
-          where: { active: true, notificationsEnabled: true },
-          select: { email: true, fullName: true },
-        },
-      },
-    }),
-  );
-  const recipients = new Map<string, { email: string; fullName: string }>();
-  if (client?.invoiceEmail) {
-    recipients.set(client.invoiceEmail.toLowerCase(), {
-      email: client.invoiceEmail,
-      fullName: client.name,
-    });
-  }
-  for (const contact of client?.contacts ?? []) {
-    recipients.set(contact.email.toLowerCase(), contact);
-  }
-  for (const recipient of recipients.values()) {
-    fireAndForget(
-      'sendTemplateMail (invoice-sent)',
-      sendTemplateMail({
-        tenantId,
-        clientId: sent.clientId,
-        slug: 'invoice-sent',
-        to: recipient.email,
-        vars: {
-          contact: { fullName: recipient.fullName, email: recipient.email },
-          client: { name: client?.name ?? 'Mandant' },
-          invoice: {
-            number: sent.number,
-            total: fmtEUR(Number(sent.totalAmount.toString())),
-            dueDate: sent.dueDate ? fmtDateShort(sent.dueDate) : '—',
-          },
-          link: `${portalBaseUrl}/portal/invoices`,
-        },
-        fallback: {
-          subject: 'Neue Rechnung {{invoice.number}}',
-          bodyMd:
-            'Sehr geehrte/r {{contact.fullName}},\n\n' +
-            'eine neue Rechnung ({{invoice.number}}) über {{invoice.total}} steht in Ihrem Mandantenportal bereit.\n' +
-            'Fälligkeit: {{invoice.dueDate}}\n\n' +
-            'Zur Übersicht: {{link}}',
-        },
-      }),
-    );
-  }
+  await notifyInvoiceRecipients(ctx, tenantId, sent);
 
   // Korrekturbelege dürfen niemals den normalen Fälligkeits-/Mahnworkflow
   // starten. finalizeInvoiceSendTx hat das Original bereits atomar storniert.

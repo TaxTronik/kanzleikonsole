@@ -19,16 +19,22 @@ import { evidenceService } from '@/server/container';
  */
 export async function autoResumePausedWorkflows(tenantId: string, staffId: string): Promise<void> {
   await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+    const now = new Date();
     const ready = await tx.workflowInstance.findMany({
-      where: { status: 'PAUSED', pausedUntil: { not: null, lte: new Date() } },
+      where: { status: 'PAUSED', pausedUntil: { not: null, lte: now } },
       select: { id: true },
     });
     if (ready.length === 0) return;
-    await tx.workflowInstance.updateMany({
-      where: { id: { in: ready.map((r) => r.id) } },
-      data: { status: 'ACTIVE', pausedUntil: null },
-    });
     for (const r of ready) {
+      const resumed = await tx.workflowInstance.updateMany({
+        where: { id: r.id, status: 'PAUSED', pausedUntil: { not: null, lte: now } },
+        data: { status: 'ACTIVE', pausedUntil: null },
+      });
+      if (resumed.count !== 1) continue;
+      const after = await tx.workflowInstance.findUniqueOrThrow({
+        where: { id: r.id },
+        select: { status: true, completedAt: true },
+      });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'SYSTEM',
@@ -36,7 +42,7 @@ export async function autoResumePausedWorkflows(tenantId: string, staffId: strin
         action: 'workflow.instance.auto_resume',
         resourceType: 'workflow_instance',
         resourceId: r.id,
-        after: { status: 'ACTIVE' },
+        after,
       });
     }
   });

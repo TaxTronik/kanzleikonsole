@@ -26,6 +26,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default async function PortalAppointmentsPage() {
+  const now = new Date();
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
 
@@ -44,7 +45,7 @@ export default async function PortalAppointmentsPage() {
           where: {
             clientId,
             status: { not: 'CANCELLED' },
-            endsAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+            endsAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
           },
           orderBy: { startsAt: 'asc' },
           include: { owner: { select: { fullName: true } } },
@@ -101,7 +102,7 @@ export default async function PortalAppointmentsPage() {
         ) : (
           <ul className="divide-y divide-border-subtle">
             {data.appointments.map((a) => {
-              const past = a.endsAt.getTime() < Date.now();
+              const past = a.endsAt.getTime() < now.getTime();
               return (
                 <li key={a.id} className={'px-6 py-3 ' + (past ? 'opacity-60' : '')}>
                   <p className="text-sm font-medium text-primary">{a.title}</p>

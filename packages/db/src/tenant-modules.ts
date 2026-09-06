@@ -16,6 +16,20 @@ export const BOOLEAN_MODULE_KEYS = [
   'inboundMail',
   'risk',
   'signalEngine',
+  'knowledgeContext',
+  'yearEndCampaigns',
+  'noticeDecisions',
+  'smartMailbox',
+  'payrollIntake',
+  'expenseAssistance',
+  'clientProcedures',
+  'feedbackSurveys',
+  'mandateStructure',
+  'workflowDependencies',
+  'mandateOffboarding',
+  'vdbPreparation',
+  'sanctionsScreening',
+  'feeCalculator',
 ] as const;
 
 export type BooleanTenantModuleKey = (typeof BOOLEAN_MODULE_KEYS)[number];
@@ -37,6 +51,20 @@ export const DEFAULT_BOOLEAN_TENANT_MODULES: BooleanTenantModules = {
   inboundMail: false,
   risk: false,
   signalEngine: false,
+  knowledgeContext: false,
+  yearEndCampaigns: false,
+  noticeDecisions: false,
+  smartMailbox: false,
+  payrollIntake: false,
+  expenseAssistance: false,
+  clientProcedures: false,
+  feedbackSurveys: false,
+  mandateStructure: false,
+  workflowDependencies: false,
+  mandateOffboarding: false,
+  vdbPreparation: false,
+  sanctionsScreening: false,
+  feeCalculator: false,
 };
 
 export function parseBooleanTenantModules(value: unknown): BooleanTenantModules {

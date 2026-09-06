@@ -69,17 +69,20 @@ export function RemindersBlock({
   currentStaffId: string;
 }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    createReminderAction,
+    async (previous, data) => {
+      const result = await createReminderAction(previous, data);
+      if (result.ok) setOpen(false);
+      return result;
+    },
     null,
   );
   const [isMutating, startMut] = useTransition();
-  const [open, setOpen] = useState(false);
   // Nach dem Anlegen schliessen + neu laden. `revalidatePath` allein liess die
   // Liste stehen; der explizite Refresh macht das Ergebnis sofort sichtbar.
   useEffect(() => {
     if (state?.ok) {
-      setOpen(false);
       router.refresh();
     }
   }, [state, router]);
@@ -114,7 +117,11 @@ export function RemindersBlock({
 
   useEffect(() => onNotificationsGrew(() => void reload(), { clientId }), [reload, clientId]);
   // Neue Server-Props (revalidatePath/refresh) gewinnen wieder.
-  useEffect(() => setLive(null), [initial]);
+  const [previousInitial, setPreviousInitial] = useState(initial);
+  if (previousInitial !== initial) {
+    setPreviousInitial(initial);
+    setLive(null);
+  }
 
   function markDone(id: string, subject: string) {
     startMut(async () => {
@@ -283,7 +290,6 @@ export function RemindersBlock({
             const delegiert = r.researchMarkingId != null;
             const anMich = delegiert && r.assigneeStaffIds.includes(currentStaffId);
             const vonMir = delegiert && r.createdByStaff === currentStaffId && !anMich;
-            const ctx = delegiert ? parseDelegationNotes(r.notes) : null;
             return (
               <li
                 key={r.id}
@@ -320,22 +326,12 @@ export function RemindersBlock({
                         delegiert an {r.assigneeNames.join(', ')}
                       </span>
                     )}
-                    {PRIORITY_BADGE[r.priority] && (
-                      <span className={`${PRIORITY_BADGE[r.priority]} text-[11px]`}>
-                        {PRIORITY_LABEL[r.priority]}
-                      </span>
-                    )}
-                    {r.createdByStaff === currentStaffId && naechsteStufe(r.priority) && (
-                      <button
-                        type="button"
-                        onClick={() => bump(r.id, naechsteStufe(r.priority)!)}
-                        disabled={isMutating}
-                        title={`Priorität auf „${PRIORITY_LABEL[naechsteStufe(r.priority)!]}" anheben`}
-                        className="text-disabled hover:text-red-600 disabled:opacity-40"
-                      >
-                        <ChevronUp className="h-3.5 w-3.5" />
-                      </button>
-                    )}
+                    <ReminderPriorityControls
+                      reminder={r}
+                      currentStaffId={currentStaffId}
+                      isMutating={isMutating}
+                      bump={bump}
+                    />
                   </div>
                   <p
                     className={overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'}
@@ -350,48 +346,7 @@ export function RemindersBlock({
                     )}
                   </p>
 
-                  {ctx ? (
-                    <div className="mt-1.5 space-y-1.5">
-                      {(ctx.begriff || ctx.normAnker.length > 0) && (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {ctx.begriff && (
-                            <span className="badge-yellow text-[11px]">{ctx.begriff}</span>
-                          )}
-                          {ctx.normAnker.map((n) => (
-                            <span key={n} className="badge-gray text-[11px] font-mono">
-                              {n}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {ctx.fundstelle && (
-                        <blockquote className="flex gap-1.5 rounded border-l-2 border-strong bg-surface-raised px-2 py-1 text-xs text-secondary italic">
-                          <Quote className="h-3 w-3 shrink-0 mt-0.5 text-disabled" />
-                          <span className="min-w-0 break-words">{ctx.fundstelle}</span>
-                        </blockquote>
-                      )}
-                      {ctx.auftrag && (
-                        <p className="text-xs text-secondary whitespace-pre-wrap">{ctx.auftrag}</p>
-                      )}
-                      {ctx.rest.length > 0 && (
-                        <p className="text-xs text-secondary whitespace-pre-wrap">
-                          {ctx.rest.join('\n')}
-                        </p>
-                      )}
-                      {r.researchAnalysisId && (
-                        <Link
-                          href={`/staff/clients/${clientId}/subsumtion/${r.researchAnalysisId}?marking=${r.researchMarkingId}`}
-                          className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1"
-                        >
-                          Markierung im Subsumtions-Space öffnen
-                        </Link>
-                      )}
-                    </div>
-                  ) : (
-                    r.notes && (
-                      <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{r.notes}</p>
-                    )
-                  )}
+                  <ReminderContext reminder={r} clientId={clientId} />
                   {r.researchMarkingId &&
                     (submitFor === r.id ? (
                       <div className="mt-2 space-y-1.5">
@@ -500,4 +455,83 @@ const UNDO_WINDOW_MS = 10_000;
 /** Naechsthoehere Stufe oder null (bereits „Dringend"). */
 function naechsteStufe(p: ReminderPriority): ReminderPriority | null {
   return REMINDER_PRIORITIES[REMINDER_PRIORITIES.indexOf(p) + 1] ?? null;
+}
+
+function ReminderContext({ reminder: r, clientId }: { reminder: Reminder; clientId: string }) {
+  const ctx = r.researchMarkingId != null ? parseDelegationNotes(r.notes) : null;
+  return (
+    <>
+      {' '}
+      {ctx ? (
+        <div className="mt-1.5 space-y-1.5">
+          {(ctx.begriff || ctx.normAnker.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {ctx.begriff && <span className="badge-yellow text-[11px]">{ctx.begriff}</span>}
+              {ctx.normAnker.map((n) => (
+                <span key={n} className="badge-gray text-[11px] font-mono">
+                  {n}
+                </span>
+              ))}
+            </div>
+          )}
+          {ctx.fundstelle && (
+            <blockquote className="flex gap-1.5 rounded border-l-2 border-strong bg-surface-raised px-2 py-1 text-xs text-secondary italic">
+              <Quote className="h-3 w-3 shrink-0 mt-0.5 text-disabled" />
+              <span className="min-w-0 break-words">{ctx.fundstelle}</span>
+            </blockquote>
+          )}
+          {ctx.auftrag && (
+            <p className="text-xs text-secondary whitespace-pre-wrap">{ctx.auftrag}</p>
+          )}
+          {ctx.rest.length > 0 && (
+            <p className="text-xs text-secondary whitespace-pre-wrap">{ctx.rest.join('\n')}</p>
+          )}
+          {r.researchAnalysisId && (
+            <Link
+              href={`/staff/clients/${clientId}/subsumtion/${r.researchAnalysisId}?marking=${r.researchMarkingId}`}
+              className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1"
+            >
+              Markierung im Subsumtions-Space öffnen
+            </Link>
+          )}
+        </div>
+      ) : (
+        r.notes && <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">{r.notes}</p>
+      )}
+    </>
+  );
+}
+
+function ReminderPriorityControls({
+  reminder: r,
+  currentStaffId,
+  isMutating,
+  bump,
+}: {
+  reminder: Reminder;
+  currentStaffId: string;
+  isMutating: boolean;
+  bump: (id: string, priority: ReminderPriority) => void;
+}) {
+  return (
+    <>
+      {' '}
+      {PRIORITY_BADGE[r.priority] && (
+        <span className={`${PRIORITY_BADGE[r.priority]} text-[11px]`}>
+          {PRIORITY_LABEL[r.priority]}
+        </span>
+      )}
+      {r.createdByStaff === currentStaffId && naechsteStufe(r.priority) && (
+        <button
+          type="button"
+          onClick={() => bump(r.id, naechsteStufe(r.priority)!)}
+          disabled={isMutating}
+          title={`Priorität auf „${PRIORITY_LABEL[naechsteStufe(r.priority)!]}" anheben`}
+          className="text-disabled hover:text-red-600 disabled:opacity-40"
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </>
+  );
 }

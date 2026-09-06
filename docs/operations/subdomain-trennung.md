@@ -77,6 +77,9 @@ portal.kanzlei.example.de {
 # Staff-Subdomain als Haupt-URL
 NEXTAUTH_URL=https://staff.kanzlei.example.de
 
+# Nur für Hardware-Zugang: geprüfte AAGUIDs zugelassener Modellfamilien
+WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+
 # Mandanten-Links (Portal-Login, GwG-Onboarding, PoA-Signatur)
 PORTAL_PUBLIC_URL=https://portal.kanzlei.example.de
 
@@ -84,6 +87,20 @@ PORTAL_PUBLIC_URL=https://portal.kanzlei.example.de
 STAFF_COOKIE_DOMAIN=staff.kanzlei.example.de
 PORTAL_COOKIE_DOMAIN=portal.kanzlei.example.de
 ```
+
+`NEXTAUTH_URL` legt zugleich Origin und Relying Party ID der Staff-WebAuthn-
+Zeremonien fest. Physische Sicherheitsschlüssel werden an diese RP ID gebunden;
+eine Registrierung über eine andere Origin wird abgelehnt. Einen produktiven
+Hostname- oder Protokollwechsel deshalb vorab mit einer repräsentativen
+Browser-/Schlüsselmatrix testen und den Verlustfall in der Recovery-Planung
+berücksichtigen. In Produktion ist HTTPS Pflicht.
+
+Der Hardware-Zugang setzt außerdem eine nichtleere Modell-AAGUID-Allowlist und
+HTTPS-Egress zum FIDO Metadata Service voraus. Enrollment fordert direkte
+vollständige `packed`-Attestation; jede Assertion prüft Allowlist und aktuelles
+MDS-Statement fail-closed. DNS-, TLS-, Zeit- oder MDS-Ausfälle blockieren den
+Hardware-Pfad ohne Passwort-/TOTP-Fallback. Details stehen im
+[FIDO-MDS-Runbook](fido-mds.md).
 
 > **Wichtig:** Trage NIEMALS die übergeordnete Domain (z. B.
 > `.kanzlei.example.de`) in beide ein. Sonst werden beide Cookies an

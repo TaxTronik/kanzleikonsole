@@ -27,7 +27,12 @@ vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: vi.fn() }));
 vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { detectAnchorTailTruncation, detectTailTruncation } from '../audit-verify-check';
+import {
+  acceptsPreviousTailRecovery,
+  detectAnchorTailTruncation,
+  detectTailTruncation,
+  preserveMonotonicId,
+} from '../audit-verify-check';
 
 /** Minimaler Vorbefund; nur `lastAuditId` ist für die Monotonie relevant. */
 function prevWith(lastAuditId: string | null) {
@@ -93,5 +98,49 @@ describe('detectAnchorTailTruncation', () => {
     expect(detectAnchorTailTruncation(previous('12'), 12n)).toBeNull();
     expect(detectAnchorTailTruncation(previous('12'), 13n)).toBeNull();
     expect(detectAnchorTailTruncation(previous(null), null)).toBeNull();
+  });
+});
+
+describe('AUDIT-VERIFY-ALERT-001: persistierte Monotonie und Recovery', () => {
+  it('senkt einen einmal beobachteten Audit-/Anchor-Endpunkt nie ab', () => {
+    expect(preserveMonotonicId('100', '90')).toBe('100');
+    expect(preserveMonotonicId('100', null)).toBe('100');
+    expect(preserveMonotonicId('100', '101')).toBe('101');
+    expect(preserveMonotonicId(null, '5')).toBe('5');
+  });
+
+  it('akzeptiert nur einen neuen Checkpoint nach dem dokumentierten Tail-Befund', () => {
+    const previous = {
+      ok: false,
+      error: null,
+      checkedAt: '2026-09-01T08:00:00.000Z',
+      policyBreaks: ['Höchste Audit-ID gesunken (Tail-Truncation).'],
+    } as never;
+    expect(
+      acceptsPreviousTailRecovery(previous, {
+        auditId: '101',
+        createdAt: '2026-09-01T08:05:00.000Z',
+      } as never),
+    ).toBe(true);
+    expect(
+      acceptsPreviousTailRecovery(previous, {
+        auditId: '80',
+        createdAt: '2026-08-31T08:00:00.000Z',
+      } as never),
+    ).toBe(false);
+  });
+
+  it('grenzt Lauf-Exceptions nicht per Checkpoint als Recovery ab', () => {
+    expect(
+      acceptsPreviousTailRecovery(
+        {
+          ok: false,
+          error: 'database unavailable',
+          checkedAt: '2026-09-01T08:00:00.000Z',
+          policyBreaks: ['Tail-Truncation'],
+        } as never,
+        { auditId: '101', createdAt: '2026-09-01T08:05:00.000Z' } as never,
+      ),
+    ).toBe(false);
   });
 });

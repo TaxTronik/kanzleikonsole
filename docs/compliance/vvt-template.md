@@ -25,16 +25,16 @@
 
 ### V1 — Mandantenverwaltung
 
-| Feld                   | Inhalt                                                                                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Zweck                  | Stammdatenpflege, Korrespondenz, Auftragsabwicklung                                                                                   |
-| Rechtsgrundlage        | Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung)                                                                                        |
-| Datenkategorien        | Name, Anschrift, Telefon, E-Mail, USt-ID, Steuer-Nr., DATEV-Nr., Bankverbindung                                                       |
-| Betroffene Personen    | Mandanten und deren Ansprechpartner                                                                                                   |
-| Empfänger              | Intern: Mitarbeiter; extern: keine                                                                                                    |
-| Drittlandsübermittlung | Keine                                                                                                                                 |
-| Aufbewahrung           | je Datenklasse festzulegen; Handakten regelmäßig 10 Jahre nach § 66 StBerG, daneben konkrete Steuer-, Handels- und GwG-Fristen prüfen |
-| TOM                    | RBAC, RLS, TLS, AES-256 verschlüsselte TOTP-Secrets                                                                                   |
+| Feld                   | Inhalt                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zweck                  | Stammdatenpflege, Korrespondenz, Auftragsabwicklung                                                                                                                                                                                               |
+| Rechtsgrundlage        | Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung)                                                                                                                                                                                                    |
+| Datenkategorien        | Name, Anschrift, Telefon, E-Mail, USt-ID, Steuer-Nr., DATEV-Nr., Bankverbindung                                                                                                                                                                   |
+| Betroffene Personen    | Mandanten und deren Ansprechpartner                                                                                                                                                                                                               |
+| Empfänger              | Intern: Mitarbeiter; extern: keine                                                                                                                                                                                                                |
+| Drittlandsübermittlung | Keine                                                                                                                                                                                                                                             |
+| Aufbewahrung           | je Datenklasse festzulegen; Handakten regelmäßig 10 Jahre nach § 66 StBerG, daneben konkrete Steuer-, Handels- und GwG-Fristen prüfen                                                                                                             |
+| TOM                    | RBAC, RLS, TLS; Staff mit Passwort + verschlüsseltem TOTP oder optional nur attestierten FIDO2-Schlüsseln; direkte vollständige `packed`-Attestation, nichtleere Modell-AAGUID-Allowlist und FIDO MDS `strict`; Portal unverändert per Magic-Link |
 
 ### V2 — Belegarchivierung (GoBD)
 
@@ -140,15 +140,30 @@
 | Aufbewahrung           | 90 Tage rolling                                                                           |
 | TOM                    | SHA-256-Integritätsprüfung; verschlüsselte, unveränderbare Off-Site-Kopie durch Betreiber |
 
+### V10 — Staff-Zugangsverwaltung
+
+| Feld                   | Inhalt                                                                                                                                                                                                                                                                                                         |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zweck                  | Mitarbeiterkonten authentisieren, Zugänge schützen und Sicherheitsereignisse nachvollziehen                                                                                                                                                                                                                    |
+| Rechtsgrundlage        | Beschäftigtenkontext und berechtigtes Sicherheitsinteresse deploymentbezogen nach § 26 BDSG beziehungsweise Art. 6 Abs. 1 lit. f DSGVO prüfen                                                                                                                                                                  |
+| Datenkategorien        | E-Mail, Name, Passwort-Hash, verschlüsseltes TOTP; bei Hardware-only Credential-ID, Public Key, Zähler, AAGUID, Geräte-/Transportangaben, Attestationsformat, Prüfzeitpunkt und attestierte Authenticator-/Firmware-Version                                                                                    |
+| Betroffene Personen    | Kanzleimitarbeiter                                                                                                                                                                                                                                                                                             |
+| Empfänger              | Intern: berechtigte ADMIN/PARTNER; beim MDS-Gesamt-BLOB- und CA-CRL-Abruf keine Staff-/Credential-ID oder AAGUID als Anwendungsparameter, aber Server-Verbindungsdaten bei den externen Betreibern                                                                                                             |
+| Drittlandsübermittlung | Für FIDO-MDS-/CA-CRL-Verbindungsdaten und tatsächliches Hosting deploymentbezogen prüfen                                                                                                                                                                                                                       |
+| Aufbewahrung           | Kontolaufzeit und Fristen für gesperrte Credentials durch die Kanzlei festlegen; der aktuelle Anwendungspfad speichert keine rohe Attestation-Zertifikatskette                                                                                                                                                 |
+| TOM                    | Passwort/TOTP oder ohne Software-Fallback attestierter Hardware-Zugang; `direct` + vollständige `packed`-Attestation samt Zertifikat-AAGUID, nichtleere Modell-AAGUID-Allowlist, FIDO MDS `strict`, spätestens stündlicher Snapshot mit persistentem Serienanker, authentisierte CRLs, hierarchisches Recovery |
+
 ---
 
 ## Auftragsverarbeiter (Art. 28)
 
-| Dienstleister                                            | Zweck                                            | DSGVO-Vertrag                                                     |
-| -------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------- |
-| SMTP-Provider (z. B. Hosteurope, …)                      | E-Mail-Versand für Magic-Links und Notifications | erforderlich                                                      |
-| RFC-3161-TSA (z. B. D-Trust)                             | Tagesversiegelung der Audit-Chain                | erforderlich (Hash, kein Personenbezug → ggf. nicht erforderlich) |
-| Hosting-Anbieter (sofern nicht in eigener Infrastruktur) | Server-Bereitstellung                            | erforderlich                                                      |
+| Dienstleister                                             | Zweck                                             | DSGVO-Vertrag                                                                                               |
+| --------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| SMTP-Provider (z. B. Hosteurope, …)                       | E-Mail-Versand für Magic-Links und Notifications  | erforderlich                                                                                                |
+| RFC-3161-TSA (z. B. D-Trust)                              | Tagesversiegelung der Audit-Chain                 | erforderlich (Hash, kein Personenbezug → ggf. nicht erforderlich)                                           |
+| FIDO Metadata Service (bei aktiviertem Hardware-only)     | signierten Metadaten-BLOB für Attestationsprüfung | Providerrolle, Verbindungsdaten, Vertragslage, Region und Drittlandsbezug deploymentbezogen prüfen          |
+| Zertifizierungsstellen-/CRL-Betreiber (bei Hardware-only) | Zertifikatswiderruf prüfen                        | tatsächliche Betreiber, Verbindungsdaten, Vertragslage, Region und Drittlandsbezug deploymentbezogen prüfen |
+| Hosting-Anbieter (sofern nicht in eigener Infrastruktur)  | Server-Bereitstellung                             | erforderlich                                                                                                |
 
 Pflege im System unter `/staff/service-providers`.
 

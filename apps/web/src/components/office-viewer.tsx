@@ -15,6 +15,10 @@ import { formatXlsxCell } from '@/lib/xlsx/format-cell';
  * Der Reader wird dynamisch geladen (kein Bundle-Bloat im Hauptpfad).
  */
 export function OfficeViewer({ url }: { url: string }) {
+  return <OfficeDocument key={url} url={url} />;
+}
+
+function OfficeDocument({ url }: { url: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sheets, setSheets] = useState<XlsxSheet[]>([]);
@@ -22,8 +26,6 @@ export function OfficeViewer({ url }: { url: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     (async () => {
       try {

@@ -25,7 +25,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
       tenantId: true,
       clientId: true,
       icalTokenVersion: true,
-      client: { select: { name: true, allowActive: true, anonymizedAt: true } },
+      client: {
+        select: { name: true, allowActive: true, anonymizedAt: true, mandateEndedAt: true },
+      },
     },
   });
   // Versions-Check (Audit 2026-06 Befund 3): Token trägt die Version, mit der
@@ -36,7 +38,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     !contact ||
     contact.icalTokenVersion !== verified.version ||
     !contact.client.allowActive ||
-    contact.client.anonymizedAt !== null
+    contact.client.anonymizedAt !== null ||
+    contact.client.mandateEndedAt != null
   ) {
     return new Response('Not Found', { status: 404 });
   }

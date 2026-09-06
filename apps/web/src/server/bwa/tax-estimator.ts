@@ -124,6 +124,25 @@ export function einkommensteuerGrundtarif(taxYear: number, zvE: number): number 
   return Math.floor(tax);
 }
 
+function estimateVat(
+  input: TaxEstimationInput,
+  disclaimers: string[],
+): Pick<TaxEstimationResult, 'ustZahllast' | 'ustOffenerSaldo'> {
+  // USt
+  let ustZahllast: number | null = null;
+  let ustOffenerSaldo: number | null = null;
+  if (input.revenue !== null) {
+    const ustErhoben = Math.round(input.revenue * USt_RATE);
+    const vorsteuer = input.inputVat ?? 0;
+    ustZahllast = ustErhoben - Math.round(vorsteuer);
+    if (input.vatPaid !== null) {
+      ustOffenerSaldo = ustZahllast - Math.round(input.vatPaid);
+    }
+    disclaimers.push('USt-Schätzung: Annahme Regelsteuersatz 19 % auf alle Erlöse.');
+  }
+  return { ustZahllast, ustOffenerSaldo };
+}
+
 export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
   const disclaimers: string[] = [
     'Diese Schätzung ist eine grobe Orientierung und ersetzt keine fachliche Beurteilung.',
@@ -174,18 +193,7 @@ export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
     solidaritaetszuschlag = Math.round(koerperschaftsteuer * SOLZ_RATE);
   }
 
-  // USt
-  let ustZahllast: number | null = null;
-  let ustOffenerSaldo: number | null = null;
-  if (input.revenue !== null) {
-    const ustErhoben = Math.round(input.revenue * USt_RATE);
-    const vorsteuer = input.inputVat ?? 0;
-    ustZahllast = ustErhoben - Math.round(vorsteuer);
-    if (input.vatPaid !== null) {
-      ustOffenerSaldo = ustZahllast - Math.round(input.vatPaid);
-    }
-    disclaimers.push('USt-Schätzung: Annahme Regelsteuersatz 19 % auf alle Erlöse.');
-  }
+  const { ustZahllast, ustOffenerSaldo } = estimateVat(input, disclaimers);
 
   // ESt (nur Einzelunternehmen — bei PG wäre individuelle Aufteilung nötig)
   let einkommensteuerSchaetzung: number | null = null;

@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { generateXRechnungCii, toXRechnungInvoice } from '../xrechnung';
+import { toStornoPosition } from '../storno';
 // Geteilte Fixture (Mischsätze 19/7/0 %) — auch Input der KoSIT-Validierung
 // im CI-Job `e-rechnung` (cli/generate-sample.ts).
-import { SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER } from '../sample-fixture';
+import {
+  SAMPLE_INVOICE,
+  SAMPLE_SELLER,
+  SAMPLE_BUYER,
+  SAMPLE_STORNO_INVOICE,
+} from '../sample-fixture';
 
 describe('generateXRechnungCii — USt je Position (iter86)', () => {
   const xml = generateXRechnungCii(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER);
@@ -99,16 +105,21 @@ describe('generateXRechnungCii — Reverse-Charge (iter107, Kategorie AE/§ 13b)
   });
 });
 
-describe('generateXRechnungCii — Storno (iter100, TypeCode 381)', () => {
+// Fachkatalog: INV-STORNO-REFERENCE-001
+// Unabhängige Vorgabe: XRechnung 3.0.2 Kap. 13.1 / E-Rechnung-Bund FAQ:
+// negative Rechnungskorrektur = BT-3 384, Referenz BG-3, positive Preise.
+describe('generateXRechnungCii — Storno (TypeCode 384)', () => {
   const storno = generateXRechnungCii(
-    { ...SAMPLE_INVOICE, typeCode: '381', precedingInvoiceNumber: '2026-0041' },
+    { ...SAMPLE_STORNO_INVOICE, precedingInvoiceNumber: '2026-0041' },
     SAMPLE_SELLER,
     SAMPLE_BUYER,
   );
 
-  it('setzt TypeCode 381 statt 380', () => {
-    expect(storno).toContain('<ram:TypeCode>381</ram:TypeCode>');
+  it('kennzeichnet negative Beträge als Korrekturrechnung ohne doppelte Vorzeichenumkehr', () => {
+    expect(storno).toContain('<ram:TypeCode>384</ram:TypeCode>');
+    expect(storno).not.toContain('<ram:TypeCode>381</ram:TypeCode>');
     expect(storno).not.toContain('<ram:TypeCode>380</ram:TypeCode>');
+    expect(storno).toContain('<ram:GrandTotalAmount>-119.00</ram:GrandTotalAmount>');
   });
 
   it('referenziert die stornierte Rechnung (BG-3/BT-25)', () => {
@@ -126,7 +137,7 @@ describe('generateXRechnungCii — Storno (iter100, TypeCode 381)', () => {
     const correction = generateXRechnungCii(
       {
         ...SAMPLE_INVOICE,
-        typeCode: '381',
+        typeCode: '384',
         precedingInvoiceNumber: '2026-0041',
         netAmount: -100,
         vatAmount: -19,
@@ -183,7 +194,7 @@ describe('toXRechnungInvoice — einheitliche Route-/Archiv-Abbildung', () => {
 
     expect(mapped).toMatchObject({
       reverseCharge: true,
-      typeCode: '381',
+      typeCode: '384',
       precedingInvoiceNumber: '2026-0041',
       servicePeriodStart: start,
       servicePeriodEnd: end,
@@ -193,8 +204,41 @@ describe('toXRechnungInvoice — einheitliche Route-/Archiv-Abbildung', () => {
       vatId: 'DE123456789',
     });
     expect(xml).toContain('<ram:CategoryCode>AE</ram:CategoryCode>');
-    expect(xml).toContain('<ram:TypeCode>381</ram:TypeCode>');
+    expect(xml).toContain('<ram:TypeCode>384</ram:TypeCode>');
     expect(xml).toContain('<ram:IssuerAssignedID>2026-0041</ram:IssuerAssignedID>');
+  });
+
+  it('führt Originalpositionen über den Storno-Mapper bis zum CII-Korrekturbeleg', () => {
+    const original = {
+      position: 1,
+      description: 'Beratung',
+      quantity: 1,
+      unit: 'Stunde',
+      unitPrice: 100,
+      netAmount: 100,
+      vatRate: 19,
+    };
+    const correction = toXRechnungInvoice({
+      ...SAMPLE_INVOICE,
+      servicePeriodStart: null,
+      servicePeriodEnd: null,
+      vatExemptionReason: null,
+      reverseCharge: false,
+      stornoOfId: 'original',
+      stornoOf: { number: '2026-0041' },
+      netAmount: -100,
+      vatAmount: -19,
+      totalAmount: -119,
+      positions: [toStornoPosition(original)],
+    });
+    const xml = generateXRechnungCii(correction, SAMPLE_SELLER, SAMPLE_BUYER);
+    expect(xml).toContain('<ram:TypeCode>384</ram:TypeCode>');
+    expect(xml).not.toContain('<ram:TypeCode>381</ram:TypeCode>');
+    expect(xml).toContain('<ram:BilledQuantity unitCode="HUR">-1.00</ram:BilledQuantity>');
+    expect(xml).toContain('<ram:ChargeAmount>100.00</ram:ChargeAmount>');
+    expect(xml).toContain('<ram:LineTotalAmount>-100.00</ram:LineTotalAmount>');
+    expect(xml).toContain('<ram:CalculatedAmount>-19.00</ram:CalculatedAmount>');
+    expect(xml).toContain('<ram:DuePayableAmount>-119.00</ram:DuePayableAmount>');
   });
 });
 

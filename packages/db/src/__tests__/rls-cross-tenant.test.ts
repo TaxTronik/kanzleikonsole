@@ -26,15 +26,32 @@ if (process.env['CI'] === 'true' && !hasDatabase) {
 
 const describeWithDatabase = hasDatabase ? describe : describe.skip;
 
+const EXPANSION_TENANT_CLIENT_PAIR_TABLES = [
+  'client_assistance_case',
+  'client_interaction',
+  'gwg_structure_binding',
+  'mandate_artifact',
+  'mandate_offboarding',
+  'mandate_structure_version',
+  'payroll_intake',
+  'screening_review',
+  'screening_run',
+  'stbvv_quote',
+  'vdb_record',
+  'year_end_campaign_entry',
+] as const;
+
 const TENANT_CLIENT_PAIR_TABLES = [
   'appointment',
   'appointment_request',
   'bwa_period',
   'bwa_plan',
+  'client_assistance_case',
   'client_consent',
   'client_contact',
   'client_custom_field_value',
   'client_handover',
+  'client_interaction',
   'client_master_change_request',
   'client_reminder',
   'client_responsibility',
@@ -46,19 +63,34 @@ const TENANT_CLIENT_PAIR_TABLES = [
   'gwg_check',
   'gwg_onboarding_invite',
   'gwg_person_anchor',
+  'gwg_structure_binding',
   'invoice',
+  'mandate_artifact',
+  'mandate_offboarding',
+  'mandate_structure_version',
   'notification',
+  'payroll_intake',
   'pending_binder',
   'phone_note',
+  'portal_inbox_attachment',
+  'portal_inbox_message',
+  'portal_inbox_read',
+  'portal_inbox_thread',
+  'portal_inbox_upload_batch',
   'power_of_attorney',
   'request',
   'risk_analysis',
+  'screening_review',
+  'screening_run',
+  'stbvv_quote',
   'tax_deadline',
   'tax_filing',
   'tax_notice',
   'tax_schedule_config',
   'time_entry',
+  'vdb_record',
   'workflow_instance',
+  'year_end_campaign_entry',
 ] as const;
 
 // Owner-Client für Test-Setup (BYPASSRLS)
@@ -444,6 +476,25 @@ describeWithDatabase('Cross-Tenant RLS', () => {
     expect(coverage.filter((row) => row.guard_count !== 1n || row.enabled_count !== 1n)).toEqual(
       [],
     );
+  });
+
+  it('Test 23a: ACCESS-TENANT-RLS-001 blockiert Cross-Tenant-Paare in allen Ausbauaggregaten', async () => {
+    for (const tableName of EXPANSION_TENANT_CLIENT_PAIR_TABLES) {
+      // Tabellenname stammt aus der statischen Test-Allowlist; Werte sind die
+      // frisch erzeugten UUIDs der beiden isolierten Test-Tenants. Nur ein
+      // Fehler des zentralen Paar-Triggers zaehlt: NOT-NULL/FK-Folgefehler
+      // duerfen einen fehlenden Guard nicht als false positive maskieren.
+      await expect(
+        owner.$executeRawUnsafe(
+          `INSERT INTO public."${tableName}" ("tenant_id", "client_id") VALUES ('${tenantAId}'::uuid, '${clientBId}'::uuid)`,
+        ),
+        tableName,
+      ).rejects.toThrow(
+        new RegExp(
+          `tenant_id und client_id gehören nicht zum selben Mandanten-Scope \\(${tableName}\\)`,
+        ),
+      );
+    }
   });
 
   it('Test 24: App-Role blockiert Cross-Tenant-Paarung bei INSERT auf zuvor ungeschützten Tabellen', async () => {

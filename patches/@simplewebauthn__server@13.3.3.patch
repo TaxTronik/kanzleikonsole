@@ -1,0 +1,1461 @@
+diff --git a/esm/helpers/fetch.d.ts b/esm/helpers/fetch.d.ts
+index ee4f94663f07066ca34023cda92eee4b07c1bd06..7cae844189f75a37e90635e6df07d32330b352d7 100644
+--- a/esm/helpers/fetch.d.ts
++++ b/esm/helpers/fetch.d.ts
+@@ -2,12 +2,12 @@
+  * A simple method for requesting data via standard `fetch`. Should work
+  * across multiple runtimes.
+  */
+-export declare function fetch(url: string): Promise<Response>;
++export declare function fetch(url: string, init?: RequestInit): Promise<Response>;
+ /**
+  * Make it possible to stub the return value during testing
+  * @ignore Don't include this in docs output
+  */
+ export declare const _fetchInternals: {
+-    stubThis: (url: string) => Promise<Response>;
++    stubThis: (url: string, init?: RequestInit) => Promise<Response>;
+ };
+ //# sourceMappingURL=fetch.d.ts.map
+\ No newline at end of file
+diff --git a/esm/helpers/fetch.js b/esm/helpers/fetch.js
+index 363518fbc382113efd59384efd4b82da42cc6f5c..e0b4828cc21ae6badf9045e07c9d71d0f122c488 100644
+--- a/esm/helpers/fetch.js
++++ b/esm/helpers/fetch.js
+@@ -2,13 +2,13 @@
+  * A simple method for requesting data via standard `fetch`. Should work
+  * across multiple runtimes.
+  */
+-export function fetch(url) {
+-    return _fetchInternals.stubThis(url);
++export function fetch(url, init) {
++    return _fetchInternals.stubThis(url, init);
+ }
+ /**
+  * Make it possible to stub the return value during testing
+  * @ignore Don't include this in docs output
+  */
+ export const _fetchInternals = {
+-    stubThis: (url) => globalThis.fetch(url),
++    stubThis: (url, init) => globalThis.fetch(url, init),
+ };
+diff --git a/esm/helpers/isCertRevoked.d.ts b/esm/helpers/isCertRevoked.d.ts
+index 2d1c2bf3957acba59c9f0332d0d65e00ab4e7d9e..8b8531d3ecda7195f6de4d8867295f54a450af2b 100644
+--- a/esm/helpers/isCertRevoked.d.ts
++++ b/esm/helpers/isCertRevoked.d.ts
+@@ -5,5 +5,8 @@ import { type X509Certificate } from '@peculiar/x509';
+  *
+  * CRL certificate structure referenced from https://tools.ietf.org/html/rfc5280#page-117
+  */
+-export declare function isCertRevoked(cert: X509Certificate): Promise<boolean>;
++export declare function isCertRevoked(cert: X509Certificate, options?: {
++    signal?: AbortSignal;
++    issuer?: X509Certificate;
++}): Promise<boolean>;
+ //# sourceMappingURL=isCertRevoked.d.ts.map
+diff --git a/esm/helpers/isCertRevoked.js b/esm/helpers/isCertRevoked.js
+index dde0264d1b4368df07e5fdae6a5e8581392c349d..53116d5ef78e8669686cb34dab1d46ca09dad264 100644
+--- a/esm/helpers/isCertRevoked.js
++++ b/esm/helpers/isCertRevoked.js
+@@ -1,96 +1,211 @@
+-import { AuthorityKeyIdentifierExtension, CRLDistributionPointsExtension, SubjectKeyIdentifierExtension, X509Crl, } from '@peculiar/x509';
++import {
++    AuthorityKeyIdentifierExtension,
++    CRLDistributionPointsExtension,
++    KeyUsageFlags,
++    KeyUsagesExtension,
++    SubjectKeyIdentifierExtension,
++    X509Crl,
++} from '@peculiar/x509';
+ import { fetch } from './fetch.js';
+-const cacheRevokedCerts = {};
+-/**
+- * A method to pull a CRL from a certificate and compare its serial number to the list of revoked
+- * certificate serial numbers within the CRL.
+- *
+- * CRL certificate structure referenced from https://tools.ietf.org/html/rfc5280#page-117
+- */
+-export async function isCertRevoked(cert) {
+-    const { extensions } = cert;
+-    if (!extensions) {
+-        return false;
++const cacheRevocationStatus = new Map();
++const MAX_CACHE_ENTRIES = 256;
++const MAX_CRL_BYTES = 5 * 1024 * 1024;
++const DELTA_CRL_INDICATOR_OID = '2.5.29.27';
++const ISSUING_DISTRIBUTION_POINT_OID = '2.5.29.28';
++const FRESHEST_CRL_OID = '2.5.29.46';
++function toHex(value) {
++    return Array.from(new Uint8Array(value), (byte) => byte.toString(16).padStart(2, '0')).join('');
++}
++async function revocationCacheKey(cert, issuer, crlURL) {
++    const issuerThumbprint = await issuer.getThumbprint('SHA-256');
++    return `${toHex(issuerThumbprint)}:${cert.serialNumber}:${crlURL}`;
++}
++function rememberRevocationStatus(key, revoked, nextUpdate) {
++    cacheRevocationStatus.delete(key);
++    cacheRevocationStatus.set(key, { revoked, nextUpdate });
++    while (cacheRevocationStatus.size > MAX_CACHE_ENTRIES) {
++        const oldest = cacheRevocationStatus.keys().next().value;
++        if (oldest === undefined)
++            break;
++        cacheRevocationStatus.delete(oldest);
++    }
++}
++function parseCRLURL(value) {
++    let parsed;
++    try {
++        parsed = new URL(value);
++    }
++    catch (error) {
++        throw new Error('Certificate revocation list URL is invalid', { cause: error });
+     }
+-    let extAuthorityKeyID;
+-    let extSubjectKeyID;
+-    let extCRLDistributionPoints;
+-    extensions.forEach((ext) => {
+-        if (ext instanceof AuthorityKeyIdentifierExtension) {
+-            extAuthorityKeyID = ext;
++    if (!['http:', 'https:'].includes(parsed.protocol) ||
++        parsed.username ||
++        parsed.password ||
++        (parsed.port && !['80', '443'].includes(parsed.port))) {
++        throw new Error('Certificate revocation list URL is not permitted');
++    }
++    return parsed.toString();
++}
++function extractCRLURL(cert) {
++    const certificateExtensions = cert.extensions ?? [];
++    if (certificateExtensions.some((extension) => extension.type === FRESHEST_CRL_OID)) {
++        throw new Error('Certificate freshest CRL distribution is unsupported');
++    }
++    const extensions = certificateExtensions.filter((ext) => ext instanceof CRLDistributionPointsExtension);
++    if (extensions.length === 0) {
++        return undefined;
++    }
++    if (extensions.length !== 1) {
++        throw new Error('Certificate revocation list distribution is unsupported');
++    }
++    const distributionPoints = extensions[0].distributionPoints;
++    if (distributionPoints.length !== 1) {
++        throw new Error('Certificate revocation list distribution is unsupported');
++    }
++    const point = distributionPoints[0];
++    const pointName = point.distributionPoint;
++    const fullName = pointName?.fullName;
++    if (!pointName ||
++        pointName.nameRelativeToCRLIssuer !== undefined ||
++        point.reasons !== undefined ||
++        point.cRLIssuer !== undefined ||
++        !fullName ||
++        fullName.length !== 1 ||
++        typeof fullName[0].uniformResourceIdentifier !== 'string' ||
++        !fullName[0].uniformResourceIdentifier) {
++        throw new Error('Certificate revocation list distribution is unsupported');
++    }
++    return fullName[0].uniformResourceIdentifier;
++}
++function assertSupportedCRLExtensions(data) {
++    for (const extension of data.extensions ?? []) {
++        if (extension.critical ||
++            extension.type === DELTA_CRL_INDICATOR_OID ||
++            extension.type === ISSUING_DISTRIBUTION_POINT_OID ||
++            extension.type === FRESHEST_CRL_OID) {
++            throw new Error('Certificate revocation list contains unsupported extensions');
+         }
+-        else if (ext instanceof SubjectKeyIdentifierExtension) {
+-            extSubjectKeyID = ext;
++    }
++}
++async function assertCRLAuthenticAndFresh(data, issuer) {
++    const now = new Date();
++    assertSupportedCRLExtensions(data);
++    if (data.issuer !== issuer.subject) {
++        throw new Error('Certificate revocation list issuer does not match certificate issuer');
++    }
++    if (!(data.thisUpdate instanceof Date) ||
++        !Number.isFinite(data.thisUpdate.getTime()) ||
++        data.thisUpdate > now ||
++        !(data.nextUpdate instanceof Date) ||
++        !Number.isFinite(data.nextUpdate.getTime()) ||
++        data.nextUpdate <= now) {
++        throw new Error('Certificate revocation list is not currently valid');
++    }
++    const crlAuthorityKeyID = data.getExtension(AuthorityKeyIdentifierExtension)?.keyId;
++    const issuerSubjectKeyID = issuer.getExtension(SubjectKeyIdentifierExtension)?.keyId;
++    if (crlAuthorityKeyID &&
++        issuerSubjectKeyID &&
++        crlAuthorityKeyID.toLowerCase() !== issuerSubjectKeyID.toLowerCase()) {
++        throw new Error('Certificate revocation list authority key does not match issuer');
++    }
++    const issuerKeyUsage = issuer.getExtension(KeyUsagesExtension);
++    if (issuerKeyUsage && (issuerKeyUsage.usages & KeyUsageFlags.cRLSign) === 0) {
++        throw new Error('Certificate issuer is not permitted to sign revocation lists');
++    }
++    if (!(await data.verify({ publicKey: issuer.publicKey }))) {
++        throw new Error('Certificate revocation list signature is invalid');
++    }
++}
++async function readCRLBytes(response) {
++    const contentLength = response.headers.get('content-length');
++    if (contentLength !== null) {
++        const declaredLength = Number(contentLength);
++        if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_CRL_BYTES) {
++            throw new Error('Certificate revocation list exceeds the size limit');
+         }
+-        else if (ext instanceof CRLDistributionPointsExtension) {
+-            extCRLDistributionPoints = ext;
++    }
++    if (!response.body) {
++        const bytes = await response.arrayBuffer();
++        if (bytes.byteLength > MAX_CRL_BYTES) {
++            throw new Error('Certificate revocation list exceeds the size limit');
+         }
+-    });
+-    // Check to see if we've got cached info for the cert's CA
+-    let keyIdentifier = undefined;
+-    if (extAuthorityKeyID && extAuthorityKeyID.keyId) {
+-        keyIdentifier = extAuthorityKeyID.keyId;
+-    }
+-    else if (extSubjectKeyID) {
+-        /**
+-         * We might be dealing with a self-signed root certificate. Check the
+-         * Subject key Identifier extension next.
+-         */
+-        keyIdentifier = extSubjectKeyID.keyId;
+-    }
+-    if (keyIdentifier) {
+-        const cached = cacheRevokedCerts[keyIdentifier];
+-        if (cached) {
+-            const now = new Date();
+-            // If there's a nextUpdate then make sure we're before it
+-            if (!cached.nextUpdate || cached.nextUpdate > now) {
+-                return cached.revokedCerts.indexOf(cert.serialNumber) >= 0;
++        return bytes;
++    }
++    const reader = response.body.getReader();
++    const chunks = [];
++    let total = 0;
++    try {
++        while (true) {
++            const { done, value } = await reader.read();
++            if (done)
++                break;
++            total += value.byteLength;
++            if (total > MAX_CRL_BYTES) {
++                await reader.cancel();
++                throw new Error('Certificate revocation list exceeds the size limit');
+             }
++            chunks.push(value);
+         }
+     }
+-    const crlURL = extCRLDistributionPoints?.distributionPoints?.[0].distributionPoint?.fullName?.[0]
+-        .uniformResourceIdentifier;
++    finally {
++        reader.releaseLock();
++    }
++    const bytes = new Uint8Array(total);
++    let offset = 0;
++    for (const chunk of chunks) {
++        bytes.set(chunk, offset);
++        offset += chunk.byteLength;
++    }
++    return bytes.buffer;
++}
++/**
++ * A method to pull a CRL from a certificate and compare its serial number to the list of revoked
++ * certificate serial numbers within the CRL.
++ *
++ * CRL certificate structure referenced from https://tools.ietf.org/html/rfc5280#page-117
++ */
++export async function isCertRevoked(cert, options = {}) {
++    const rawCRLURL = extractCRLURL(cert);
+     // If no URL is provided then we have nothing to check
+-    if (!crlURL) {
++    if (!rawCRLURL) {
+         return false;
+     }
+-    // Download and read the CRL
++    if (!options.issuer) {
++        throw new Error('Certificate issuer is required to verify its revocation list');
++    }
++    const crlURL = parseCRLURL(rawCRLURL);
++    const cacheKey = await revocationCacheKey(cert, options.issuer, crlURL);
++    const cached = cacheRevocationStatus.get(cacheKey);
++    if (cached && cached.nextUpdate > new Date()) {
++        return cached.revoked;
++    }
++    cacheRevocationStatus.delete(cacheKey);
++    // Download and read the CRL only after the caller has built a trusted certificate path.
+     let certListBytes;
+     try {
+-        const respCRL = await fetch(crlURL);
+-        certListBytes = await respCRL.arrayBuffer();
++        const respCRL = await fetch(crlURL, { signal: options.signal, redirect: 'error' });
++        if (!respCRL.ok) {
++            throw new Error(`CRL endpoint responded with HTTP ${respCRL.status}`);
++        }
++        certListBytes = await readCRLBytes(respCRL);
+     }
+-    catch (_err) {
+-        return false;
++    catch (error) {
++        throw new Error('Certificate revocation list could not be downloaded', { cause: error });
+     }
+     let data;
+     try {
+         data = new X509Crl(certListBytes);
+     }
+-    catch (_err) {
+-        // Something was malformed with the CRL, so pass
+-        return false;
++    catch (error) {
++        throw new Error('Certificate revocation list could not be parsed', { cause: error });
+     }
+-    const newCached = {
+-        revokedCerts: [],
+-        nextUpdate: undefined,
+-    };
+-    // nextUpdate
+-    if (data.nextUpdate) {
+-        newCached.nextUpdate = data.nextUpdate;
+-    }
+-    // revokedCertificates
+-    const revokedCerts = data.entries;
+-    if (revokedCerts) {
+-        for (const cert of revokedCerts) {
+-            const revokedHex = cert.serialNumber;
+-            newCached.revokedCerts.push(revokedHex);
+-        }
+-        // Cache the results
+-        if (keyIdentifier) {
+-            cacheRevokedCerts[keyIdentifier] = newCached;
+-        }
+-        return newCached.revokedCerts.indexOf(cert.serialNumber) >= 0;
++    try {
++        await assertCRLAuthenticAndFresh(data, options.issuer);
++    }
++    catch (error) {
++        throw new Error('Certificate revocation list could not be verified', { cause: error });
+     }
+-    return false;
++    const revoked = Boolean(data.findRevoked(cert));
++    rememberRevocationStatus(cacheKey, revoked, data.nextUpdate);
++    return revoked;
+ }
+diff --git a/esm/helpers/validateCertificatePath.d.ts b/esm/helpers/validateCertificatePath.d.ts
+index a9bcf6a9d38ff8cd44463f6f617a26682f5dd9df..b3a122d477e1d51285b4f371abf7a266b9a159fc 100644
+--- a/esm/helpers/validateCertificatePath.d.ts
++++ b/esm/helpers/validateCertificatePath.d.ts
+@@ -3,5 +3,7 @@
+  * @param x5cCertsPEM Typically the result of `x5c.map(convertASN1toPEM)`
+  * @param trustAnchorsPEM PEM-formatted certs that an attestation statement x5c may chain back to
+  */
+-export declare function validateCertificatePath(x5cCertsPEM: string[], trustAnchorsPEM?: string[]): Promise<boolean>;
++export declare function validateCertificatePath(x5cCertsPEM: string[], trustAnchorsPEM?: string[], options?: {
++    signal?: AbortSignal;
++}): Promise<boolean>;
+ //# sourceMappingURL=validateCertificatePath.d.ts.map
+\ No newline at end of file
+diff --git a/esm/helpers/validateCertificatePath.js b/esm/helpers/validateCertificatePath.js
+index 7976fddaf6b4a3e0fba3699df52bb3c5d9c5482c..ba5ad9743d95e3b59584e631d49bc5843504d924 100644
+--- a/esm/helpers/validateCertificatePath.js
++++ b/esm/helpers/validateCertificatePath.js
+@@ -1,32 +1,37 @@
+-import { X509Certificate, X509ChainBuilder } from '@peculiar/x509';
++import {
++    BasicConstraintsExtension,
++    KeyUsageFlags,
++    KeyUsagesExtension,
++    X509Certificate,
++    X509ChainBuilder,
++} from '@peculiar/x509';
+ import { isCertRevoked } from './isCertRevoked.js';
++const SUPPORTED_CRITICAL_EXTENSION_OIDS = new Set(['2.5.29.15', '2.5.29.19']);
++const UNSUPPORTED_PATH_CONSTRAINT_OIDS = new Set(['2.5.29.30', '2.5.29.36', '2.5.29.54']);
+ /**
+  * Traverse an array of PEM certificates and ensure they form a proper chain
+  * @param x5cCertsPEM Typically the result of `x5c.map(convertASN1toPEM)`
+  * @param trustAnchorsPEM PEM-formatted certs that an attestation statement x5c may chain back to
+  */
+-export async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = []) {
++export async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = [], options = {}) {
+     if (trustAnchorsPEM.length === 0) {
+         // We have no trust anchors to chain back to, so skip path validation
+         return true;
+     }
+-    // Prepare to work with x5c certs
++    if (x5cCertsPEM.length === 0 || x5cCertsPEM.length > 5 || trustAnchorsPEM.length > 64) {
++        throw new InvalidCertificatePath('Certificate path has an invalid number of certificates');
++    }
++    // Parse and time-check untrusted x5c certificates without performing any network requests.
+     const x5cCertsParsed = x5cCertsPEM.map((certPEM) => new X509Certificate(certPEM));
+-    // Check for any expired or temporally invalid certs in x5c
+     for (let i = 0; i < x5cCertsParsed.length; i++) {
+         const cert = x5cCertsParsed[i];
+         const certPEM = x5cCertsPEM[i];
+-        try {
+-            await assertCertNotRevoked(cert);
+-        }
+-        catch (_err) {
+-            throw new Error(`Found revoked certificate in x5c:\n${certPEM}`);
+-        }
+         try {
+             assertCertIsWithinValidTimeWindow(cert.notBefore, cert.notAfter);
++            assertNoUnsupportedCriticalExtensions(cert);
+         }
+-        catch (_err) {
+-            throw new Error(`Found certificate out of validity period in x5c:\n${certPEM}`);
++        catch (error) {
++            throw new Error(`Found invalid certificate in x5c:\n${certPEM}`, { cause: error });
+         }
+     }
+     // Prepare to work with trust anchor certs
+@@ -39,31 +44,21 @@ export async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = [])
+             throw new Error(`Could not parse trust anchor certificate:\n${certPEM}`, { cause: _err });
+         }
+     });
+-    // Filter out any expired or temporally invalid trust anchors certs
+-    const validTrustAnchors = [];
+-    for (let i = 0; i < trustAnchorsParsed.length; i++) {
+-        const cert = trustAnchorsParsed[i];
+-        try {
+-            await assertCertNotRevoked(cert);
+-        }
+-        catch (_err) {
+-            // Continue processing the other certs
+-            continue;
+-        }
++    const validTrustAnchors = trustAnchorsParsed.filter((cert) => {
+         try {
+             assertCertIsWithinValidTimeWindow(cert.notBefore, cert.notAfter);
++            assertNoUnsupportedCriticalExtensions(cert);
++            return true;
+         }
+-        catch (_err) {
+-            // Continue processing the other certs
+-            continue;
++        catch {
++            return false;
+         }
+-        validTrustAnchors.push(cert);
+-    }
++    });
+     if (validTrustAnchors.length === 0) {
+         throw new Error('No specified trust anchor was valid for verifying x5c');
+     }
+-    // Try to verify x5c with each valid trust anchor
+-    let invalidCertificateChain = true;
++    let lastError;
++    // Build and constrain a trusted path before dereferencing any certificate-controlled CRL URL.
+     for (const anchor of validTrustAnchors) {
+         try {
+             const x5cWithTrustAnchor = x5cCertsParsed.concat([anchor]);
+@@ -71,47 +66,65 @@ export async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = [])
+             if (numUniqueCerts !== x5cWithTrustAnchor.length) {
+                 throw new Error('Invalid certificate path: found duplicate certificates');
+             }
+-            // Break apart x5c to try and build a valid cert chain
+             const x5cLeafCert = x5cCertsParsed[0];
+-            let x5cIntermediates = [];
+-            if (x5cCertsParsed.length > 1) {
+-                x5cIntermediates = x5cCertsParsed.slice(1);
+-            }
+-            // Order of certs doesn't matter here but for readability
++            const x5cIntermediates = x5cCertsParsed.slice(1);
+             const chainBuilder = new X509ChainBuilder({ certificates: [...x5cIntermediates, anchor] });
+             // Cert chain should be, from index 0: leaf cert -> ...intermediates -> trust anchor
+             const chain = await chainBuilder.build(x5cLeafCert);
+-            // Check if the chain contains (all of the certs in x5c) + (the trust anchor)
+-            if (chain.length < numUniqueCerts) {
+-                // Invalid cert chain, try the next trust anchor
+-                continue;
++            if (chain.length !== numUniqueCerts ||
++                chain[chain.length - 1].toString('pem') !== anchor.toString('pem')) {
++                throw new Error('Certificate path did not terminate at the selected trust anchor');
+             }
+-            // Check if the chain is to the trust anchor
+-            if (chain[chain.length - 1].subject !== anchor.subject) {
+-                // Invalid cert chain, try the next trust anchor
+-                continue;
++            assertCertificateAuthorityConstraints(chain);
++            // Roots are trusted out-of-band. Every non-root certificate is checked against a CRL
++            // signed by its actual issuer in the now-validated path.
++            for (let i = 0; i < chain.length - 1; i++) {
++                await assertCertNotRevoked(chain[i], chain[i + 1], options);
+             }
+-            // If we successfully validated a path then there's no need to continue. Reset any existing
+-            // errors that were thrown by earlier trust anchors
+-            invalidCertificateChain = false;
+-            break;
++            return true;
+         }
+-        catch (err) {
+-            throw new Error('Unexpected error while validating certificate path', { cause: err });
++        catch (error) {
++            lastError = error;
++        }
++    }
++    throw new InvalidCertificatePath(undefined, lastError);
++}
++function assertNoUnsupportedCriticalExtensions(certificate) {
++    for (const extension of certificate.extensions ?? []) {
++        if (UNSUPPORTED_PATH_CONSTRAINT_OIDS.has(extension.type)) {
++            throw new Error(`Unsupported certificate path constraint ${extension.type}`);
++        }
++        if (extension.critical && !SUPPORTED_CRITICAL_EXTENSION_OIDS.has(extension.type)) {
++            throw new Error(`Unsupported critical certificate extension ${extension.type}`);
+         }
+     }
+-    // We tried multiple trust anchors and none of them worked
+-    if (invalidCertificateChain) {
+-        throw new InvalidCertificatePath();
++}
++function assertCertificateAuthorityConstraints(chain) {
++    for (let i = 1; i < chain.length; i++) {
++        const certificate = chain[i];
++        const basicConstraints = certificate.getExtension(BasicConstraintsExtension);
++        if (!basicConstraints?.ca || !basicConstraints.critical) {
++            throw new Error('Certificate issuer is not an authorized certificate authority');
++        }
++        const keyUsage = certificate.getExtension(KeyUsagesExtension);
++        if (!keyUsage || (keyUsage.usages & KeyUsageFlags.keyCertSign) === 0) {
++            throw new Error('Certificate issuer is not permitted to sign certificates');
++        }
++        const subordinateCACount = i - 1;
++        if (basicConstraints.pathLength !== undefined &&
++            basicConstraints.pathLength < subordinateCACount) {
++            throw new Error('Certificate path exceeds a path length constraint');
++        }
+     }
+-    return true;
+ }
+ /**
+  * Check if the certificate is revoked or not. If it is, raise an error
+  */
+-async function assertCertNotRevoked(certificate) {
+-    // Check for certificate revocation
+-    const subjectCertRevoked = await isCertRevoked(certificate);
++async function assertCertNotRevoked(certificate, issuer, options) {
++    const subjectCertRevoked = await isCertRevoked(certificate, {
++        ...options,
++        issuer,
++    });
+     if (subjectCertRevoked) {
+         throw new Error('Found revoked certificate in certificate path');
+     }
+@@ -126,9 +139,8 @@ function assertCertIsWithinValidTimeWindow(certNotBefore, certNotAfter) {
+     }
+ }
+ class InvalidCertificatePath extends Error {
+-    constructor() {
+-        const message = 'x5c could not be chained to any specified trust anchor';
+-        super(message);
++    constructor(message = 'x5c could not be chained to any specified trust anchor', cause) {
++        super(message, cause === undefined ? undefined : { cause });
+         this.name = 'InvalidX5CChain';
+     }
+ }
+diff --git a/esm/helpers/validateExtFIDOGenCEAAGUID.js b/esm/helpers/validateExtFIDOGenCEAAGUID.js
+index f2160423cb89b82e77b33142552c743054736914..670df31dc07e41c9fb733113ed8afcc555beb266 100644
+--- a/esm/helpers/validateExtFIDOGenCEAAGUID.js
++++ b/esm/helpers/validateExtFIDOGenCEAAGUID.js
+@@ -11,14 +11,19 @@ const id_fido_gen_ce_aaguid = '1.3.6.1.4.1.45724.1.1.4';
+  * the attestation statement AAGUID.
+  */
+ export function validateExtFIDOGenCEAAGUID(certExtensions, aaguid) {
+-    // The certificate had no extensions so there's nothing to validate
++    // A hardware-attestation policy cannot bind a claimed AAGUID to a model
++    // when the attestation leaf omits the certificate extension.
+     if (!certExtensions) {
+-        return true;
++        throw new Error(`Certificate extension id-fido-gen-ce-aaguid (${id_fido_gen_ce_aaguid}) was missing`);
+     }
+     const extFIDOGenCEAAGUID = certExtensions.find((ext) => ext.extnID === id_fido_gen_ce_aaguid);
+-    // The extension isn't present so there's nothing to validate
++    // Require the extension so a certificate under a root shared by several
++    // authenticator models cannot substitute an AAGUID from authenticatorData.
+     if (!extFIDOGenCEAAGUID) {
+-        return true;
++        throw new Error(`Certificate extension id-fido-gen-ce-aaguid (${id_fido_gen_ce_aaguid}) was missing`);
++    }
++    if (extFIDOGenCEAAGUID.critical) {
++        throw new Error(`Certificate extension id-fido-gen-ce-aaguid (${id_fido_gen_ce_aaguid}) must not be critical`);
+     }
+     // Parse the extension value
+     const parsedExtFIDOGenCEAAGUID = AsnParser.parse(extFIDOGenCEAAGUID.extnValue, OctetString);
+diff --git a/esm/metadata/verifyAttestationWithMetadata.d.ts b/esm/metadata/verifyAttestationWithMetadata.d.ts
+index c6589ef440f9231a13400535297a7305e5f9cedd..bd5b62d0a485e6a8250712f60443268af475749c 100644
+--- a/esm/metadata/verifyAttestationWithMetadata.d.ts
++++ b/esm/metadata/verifyAttestationWithMetadata.d.ts
+@@ -6,11 +6,12 @@ import type { Uint8Array_ } from '../types/index.js';
+  * Match properties of the authenticator's attestation statement against expected values as
+  * registered with the FIDO Alliance Metadata Service
+  */
+-export declare function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, }: {
++export declare function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, signal, }: {
+     statement: MetadataStatement;
+     credentialPublicKey: Uint8Array_;
+     x5c: Uint8Array_[] | Base64URLString[];
+     attestationStatementAlg?: number;
++    signal?: AbortSignal;
+ }): Promise<boolean>;
+ type COSEInfo = {
+     kty: COSEKTY;
+diff --git a/esm/metadata/verifyAttestationWithMetadata.js b/esm/metadata/verifyAttestationWithMetadata.js
+index 49d82a3c866a37b85579c531e277cac316fc03ad..2df0a5ea90b02aff56bc37c645bbb3095585f166 100644
+--- a/esm/metadata/verifyAttestationWithMetadata.js
++++ b/esm/metadata/verifyAttestationWithMetadata.js
+@@ -6,7 +6,7 @@ import { COSEKEYS, COSEKTY, isCOSEPublicKeyEC2, } from '../helpers/cose.js';
+  * Match properties of the authenticator's attestation statement against expected values as
+  * registered with the FIDO Alliance Metadata Service
+  */
+-export async function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, }) {
++export async function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, signal, }) {
+     const { authenticationAlgorithms, authenticatorGetInfo, attestationRootCertificates, } = statement;
+     // Make sure the alg in the attestation statement matches one of the ones specified in metadata
+     const keypairCOSEAlgs = new Set();
+@@ -107,7 +107,7 @@ export async function verifyAttestationWithMetadata({ statement, credentialPubli
+     }
+     if (!authenticatorIsSelfReferencing) {
+         try {
+-            await validateCertificatePath(authenticatorCerts, statementRootCerts);
++            await validateCertificatePath(authenticatorCerts, statementRootCerts, { signal });
+         }
+         catch (err) {
+             const _err = err;
+diff --git a/esm/metadata/verifyMDSBlob.d.ts b/esm/metadata/verifyMDSBlob.d.ts
+index 11f42802ae7a15720ca0176f11fc5b5baa3536aa..18e06e9be8c84e958b0066152453000e5dfe4bb8 100644
+--- a/esm/metadata/verifyMDSBlob.d.ts
++++ b/esm/metadata/verifyMDSBlob.d.ts
+@@ -7,7 +7,9 @@ import type { MDSJWTPayload, MetadataStatement } from './mdsTypes.js';
+  *
+  * @param blob - A JWT downloaded from an MDS server (e.g. https://mds3.fidoalliance.org)
+  */
+-export declare function verifyMDSBlob(blob: string): Promise<{
++export declare function verifyMDSBlob(blob: string, options?: {
++    signal?: AbortSignal;
++}): Promise<{
+     /** MetadataStatement entries within the verified blob */
+     statements: MetadataStatement[];
+     /** A JS `Date` instance of the verified blob's `payload.nextUpdate` string */
+diff --git a/esm/metadata/verifyMDSBlob.js b/esm/metadata/verifyMDSBlob.js
+index 6e710c5ab83865a268fc5da3d2e259a1fa9e38d4..2d83704940c4fcf2731f63f1c3eabd3531857d80 100644
+--- a/esm/metadata/verifyMDSBlob.js
++++ b/esm/metadata/verifyMDSBlob.js
+@@ -12,7 +12,7 @@ import { SettingsService } from '../services/settingsService.js';
+  *
+  * @param blob - A JWT downloaded from an MDS server (e.g. https://mds3.fidoalliance.org)
+  */
+-export async function verifyMDSBlob(blob) {
++export async function verifyMDSBlob(blob, options = {}) {
+     // Parse the JWT
+     const parsedJWT = parseJWT(blob);
+     const header = parsedJWT[0];
+@@ -23,7 +23,7 @@ export async function verifyMDSBlob(blob) {
+         const rootCerts = SettingsService.getRootCertificates({
+             identifier: 'mds',
+         });
+-        await validateCertificatePath(headerCertsPEM, rootCerts);
++        await validateCertificatePath(headerCertsPEM, rootCerts, options);
+     }
+     catch (error) {
+         const _error = error;
+diff --git a/esm/registration/verifications/verifyAttestationPacked.js b/esm/registration/verifications/verifyAttestationPacked.js
+index c31c37bf9e45c640e1c6caeb1d0dc0153683dd54..9e13d84dffe26739b2025d898887aac9092fbed7 100644
+--- a/esm/registration/verifications/verifyAttestationPacked.js
++++ b/esm/registration/verifications/verifyAttestationPacked.js
+@@ -11,7 +11,7 @@ import { verifyAttestationWithMetadata } from '../../metadata/verifyAttestationW
+  * Verify an attestation response with fmt 'packed'
+  */
+ export async function verifyAttestationPacked(options) {
+-    const { attStmt, clientDataHash, authData, credentialPublicKey, aaguid, rootCertificates, } = options;
++    const { attStmt, clientDataHash, authData, credentialPublicKey, aaguid, rootCertificates, signal, } = options;
+     const sig = attStmt.get('sig');
+     const x5c = attStmt.get('x5c');
+     const alg = attStmt.get('alg');
+@@ -77,6 +77,7 @@ export async function verifyAttestationPacked(options) {
+                     credentialPublicKey,
+                     x5c,
+                     attestationStatementAlg: alg,
++                    signal,
+                 });
+             }
+             catch (err) {
+@@ -87,7 +88,7 @@ export async function verifyAttestationPacked(options) {
+         else {
+             try {
+                 // Try validating the certificate path using the root certificates set via SettingsService
+-                await validateCertificatePath(x5c.map(convertCertBufferToPEM), rootCertificates);
++                await validateCertificatePath(x5c.map(convertCertBufferToPEM), rootCertificates, { signal });
+             }
+             catch (err) {
+                 const _err = err;
+diff --git a/esm/registration/verifyRegistrationResponse.d.ts b/esm/registration/verifyRegistrationResponse.d.ts
+index 3460d16c90dc23bee4fdef46ebb8bed6f3249094..2a397046969e66f85d5306db4d2c830ac3bab3d9 100644
+--- a/esm/registration/verifyRegistrationResponse.d.ts
++++ b/esm/registration/verifyRegistrationResponse.d.ts
+@@ -30,6 +30,7 @@ export declare function verifyRegistrationResponse(options: {
+     requireUserVerification?: boolean;
+     supportedAlgorithmIDs?: COSEAlgorithmIdentifier[];
+     attestationSafetyNetEnforceCTSCheck?: boolean;
++    signal?: AbortSignal;
+ }): Promise<VerifiedRegistrationResponse>;
+ /**
+  * Result of registration verification
+@@ -90,5 +91,6 @@ export type AttestationFormatVerifierOpts = {
+     rpIdHash: Uint8Array_;
+     verifyTimestampMS?: boolean;
+     attestationSafetyNetEnforceCTSCheck?: boolean;
++    signal?: AbortSignal;
+ };
+ //# sourceMappingURL=verifyRegistrationResponse.d.ts.map
+diff --git a/esm/registration/verifyRegistrationResponse.js b/esm/registration/verifyRegistrationResponse.js
+index c43811509bae5d7d608f210227ce1507ed296d61..28ecb3136cb5cf9854140fccc4e127f3d586e59d 100644
+--- a/esm/registration/verifyRegistrationResponse.js
++++ b/esm/registration/verifyRegistrationResponse.js
+@@ -32,7 +32,7 @@ import { verifyAttestationApple } from './verifications/verifyAttestationApple.j
+  * @param attestationSafetyNetEnforceCTSCheck **(Optional)** - Require that an Android device's system integrity has not been tampered with if it uses SafetyNet attestation. Defaults to `true`
+  */
+ export async function verifyRegistrationResponse(options) {
+-    const { response, expectedChallenge, expectedOrigin, expectedRPID, expectedType, requireUserPresence = true, requireUserVerification = true, supportedAlgorithmIDs = supportedCOSEAlgorithmIdentifiers, attestationSafetyNetEnforceCTSCheck = true, } = options;
++    const { response, expectedChallenge, expectedOrigin, expectedRPID, expectedType, requireUserPresence = true, requireUserVerification = true, supportedAlgorithmIDs = supportedCOSEAlgorithmIdentifiers, attestationSafetyNetEnforceCTSCheck = true, signal, } = options;
+     const { id, rawId, type: credentialType, response: attestationResponse } = response;
+     // Ensure credential specified an ID
+     if (!id) {
+@@ -152,6 +152,7 @@ export async function verifyRegistrationResponse(options) {
+         rootCertificates,
+         rpIdHash,
+         attestationSafetyNetEnforceCTSCheck,
++        signal,
+     };
+     /**
+      * Verification can only be performed when attestation = 'direct'
+diff --git a/script/helpers/fetch.d.ts b/script/helpers/fetch.d.ts
+index ee4f94663f07066ca34023cda92eee4b07c1bd06..7cae844189f75a37e90635e6df07d32330b352d7 100644
+--- a/script/helpers/fetch.d.ts
++++ b/script/helpers/fetch.d.ts
+@@ -2,12 +2,12 @@
+  * A simple method for requesting data via standard `fetch`. Should work
+  * across multiple runtimes.
+  */
+-export declare function fetch(url: string): Promise<Response>;
++export declare function fetch(url: string, init?: RequestInit): Promise<Response>;
+ /**
+  * Make it possible to stub the return value during testing
+  * @ignore Don't include this in docs output
+  */
+ export declare const _fetchInternals: {
+-    stubThis: (url: string) => Promise<Response>;
++    stubThis: (url: string, init?: RequestInit) => Promise<Response>;
+ };
+ //# sourceMappingURL=fetch.d.ts.map
+\ No newline at end of file
+diff --git a/script/helpers/fetch.js b/script/helpers/fetch.js
+index a753c0d038db4d59f4a4b66e197094515e010a5a..ab9d97975dcc4c9b79963dd04750ecd91ef01add 100644
+--- a/script/helpers/fetch.js
++++ b/script/helpers/fetch.js
+@@ -6,13 +6,13 @@ exports.fetch = fetch;
+  * A simple method for requesting data via standard `fetch`. Should work
+  * across multiple runtimes.
+  */
+-function fetch(url) {
+-    return exports._fetchInternals.stubThis(url);
++function fetch(url, init) {
++    return exports._fetchInternals.stubThis(url, init);
+ }
+ /**
+  * Make it possible to stub the return value during testing
+  * @ignore Don't include this in docs output
+  */
+ exports._fetchInternals = {
+-    stubThis: (url) => globalThis.fetch(url),
++    stubThis: (url, init) => globalThis.fetch(url, init),
+ };
+diff --git a/script/helpers/isCertRevoked.d.ts b/script/helpers/isCertRevoked.d.ts
+index 2d1c2bf3957acba59c9f0332d0d65e00ab4e7d9e..8b8531d3ecda7195f6de4d8867295f54a450af2b 100644
+--- a/script/helpers/isCertRevoked.d.ts
++++ b/script/helpers/isCertRevoked.d.ts
+@@ -5,5 +5,8 @@ import { type X509Certificate } from '@peculiar/x509';
+  *
+  * CRL certificate structure referenced from https://tools.ietf.org/html/rfc5280#page-117
+  */
+-export declare function isCertRevoked(cert: X509Certificate): Promise<boolean>;
++export declare function isCertRevoked(cert: X509Certificate, options?: {
++    signal?: AbortSignal;
++    issuer?: X509Certificate;
++}): Promise<boolean>;
+ //# sourceMappingURL=isCertRevoked.d.ts.map
+diff --git a/script/helpers/isCertRevoked.js b/script/helpers/isCertRevoked.js
+index e7d59fd1dc642fb7dcda4782e65c37b6f1db5bd5..63a82d009b05748b4fd1e185110b73575ca8decf 100644
+--- a/script/helpers/isCertRevoked.js
++++ b/script/helpers/isCertRevoked.js
+@@ -3,97 +3,203 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.isCertRevoked = isCertRevoked;
+ const x509_1 = require("@peculiar/x509");
+ const fetch_js_1 = require("./fetch.js");
+-const cacheRevokedCerts = {};
++const cacheRevocationStatus = new Map();
++const MAX_CACHE_ENTRIES = 256;
++const MAX_CRL_BYTES = 5 * 1024 * 1024;
++const DELTA_CRL_INDICATOR_OID = '2.5.29.27';
++const ISSUING_DISTRIBUTION_POINT_OID = '2.5.29.28';
++const FRESHEST_CRL_OID = '2.5.29.46';
++function toHex(value) {
++    return Array.from(new Uint8Array(value), (byte) => byte.toString(16).padStart(2, '0')).join('');
++}
++async function revocationCacheKey(cert, issuer, crlURL) {
++    const issuerThumbprint = await issuer.getThumbprint('SHA-256');
++    return `${toHex(issuerThumbprint)}:${cert.serialNumber}:${crlURL}`;
++}
++function rememberRevocationStatus(key, revoked, nextUpdate) {
++    cacheRevocationStatus.delete(key);
++    cacheRevocationStatus.set(key, { revoked, nextUpdate });
++    while (cacheRevocationStatus.size > MAX_CACHE_ENTRIES) {
++        const oldest = cacheRevocationStatus.keys().next().value;
++        if (oldest === undefined)
++            break;
++        cacheRevocationStatus.delete(oldest);
++    }
++}
++function parseCRLURL(value) {
++    let parsed;
++    try {
++        parsed = new URL(value);
++    }
++    catch (error) {
++        throw new Error('Certificate revocation list URL is invalid', { cause: error });
++    }
++    if (!['http:', 'https:'].includes(parsed.protocol) ||
++        parsed.username ||
++        parsed.password ||
++        (parsed.port && !['80', '443'].includes(parsed.port))) {
++        throw new Error('Certificate revocation list URL is not permitted');
++    }
++    return parsed.toString();
++}
++function extractCRLURL(cert) {
++    const certificateExtensions = cert.extensions ?? [];
++    if (certificateExtensions.some((extension) => extension.type === FRESHEST_CRL_OID)) {
++        throw new Error('Certificate freshest CRL distribution is unsupported');
++    }
++    const extensions = certificateExtensions.filter((ext) => ext instanceof x509_1.CRLDistributionPointsExtension);
++    if (extensions.length === 0) {
++        return undefined;
++    }
++    if (extensions.length !== 1) {
++        throw new Error('Certificate revocation list distribution is unsupported');
++    }
++    const distributionPoints = extensions[0].distributionPoints;
++    if (distributionPoints.length !== 1) {
++        throw new Error('Certificate revocation list distribution is unsupported');
++    }
++    const point = distributionPoints[0];
++    const pointName = point.distributionPoint;
++    const fullName = pointName?.fullName;
++    if (!pointName ||
++        pointName.nameRelativeToCRLIssuer !== undefined ||
++        point.reasons !== undefined ||
++        point.cRLIssuer !== undefined ||
++        !fullName ||
++        fullName.length !== 1 ||
++        typeof fullName[0].uniformResourceIdentifier !== 'string' ||
++        !fullName[0].uniformResourceIdentifier) {
++        throw new Error('Certificate revocation list distribution is unsupported');
++    }
++    return fullName[0].uniformResourceIdentifier;
++}
++function assertSupportedCRLExtensions(data) {
++    for (const extension of data.extensions ?? []) {
++        if (extension.critical ||
++            extension.type === DELTA_CRL_INDICATOR_OID ||
++            extension.type === ISSUING_DISTRIBUTION_POINT_OID ||
++            extension.type === FRESHEST_CRL_OID) {
++            throw new Error('Certificate revocation list contains unsupported extensions');
++        }
++    }
++}
++async function assertCRLAuthenticAndFresh(data, issuer) {
++    const now = new Date();
++    assertSupportedCRLExtensions(data);
++    if (data.issuer !== issuer.subject) {
++        throw new Error('Certificate revocation list issuer does not match certificate issuer');
++    }
++    if (!(data.thisUpdate instanceof Date) ||
++        !Number.isFinite(data.thisUpdate.getTime()) ||
++        data.thisUpdate > now ||
++        !(data.nextUpdate instanceof Date) ||
++        !Number.isFinite(data.nextUpdate.getTime()) ||
++        data.nextUpdate <= now) {
++        throw new Error('Certificate revocation list is not currently valid');
++    }
++    const crlAuthorityKeyID = data.getExtension(x509_1.AuthorityKeyIdentifierExtension)?.keyId;
++    const issuerSubjectKeyID = issuer.getExtension(x509_1.SubjectKeyIdentifierExtension)?.keyId;
++    if (crlAuthorityKeyID &&
++        issuerSubjectKeyID &&
++        crlAuthorityKeyID.toLowerCase() !== issuerSubjectKeyID.toLowerCase()) {
++        throw new Error('Certificate revocation list authority key does not match issuer');
++    }
++    const issuerKeyUsage = issuer.getExtension(x509_1.KeyUsagesExtension);
++    if (issuerKeyUsage && (issuerKeyUsage.usages & x509_1.KeyUsageFlags.cRLSign) === 0) {
++        throw new Error('Certificate issuer is not permitted to sign revocation lists');
++    }
++    if (!(await data.verify({ publicKey: issuer.publicKey }))) {
++        throw new Error('Certificate revocation list signature is invalid');
++    }
++}
++async function readCRLBytes(response) {
++    const contentLength = response.headers.get('content-length');
++    if (contentLength !== null) {
++        const declaredLength = Number(contentLength);
++        if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_CRL_BYTES) {
++            throw new Error('Certificate revocation list exceeds the size limit');
++        }
++    }
++    if (!response.body) {
++        const bytes = await response.arrayBuffer();
++        if (bytes.byteLength > MAX_CRL_BYTES) {
++            throw new Error('Certificate revocation list exceeds the size limit');
++        }
++        return bytes;
++    }
++    const reader = response.body.getReader();
++    const chunks = [];
++    let total = 0;
++    try {
++        while (true) {
++            const { done, value } = await reader.read();
++            if (done)
++                break;
++            total += value.byteLength;
++            if (total > MAX_CRL_BYTES) {
++                await reader.cancel();
++                throw new Error('Certificate revocation list exceeds the size limit');
++            }
++            chunks.push(value);
++        }
++    }
++    finally {
++        reader.releaseLock();
++    }
++    const bytes = new Uint8Array(total);
++    let offset = 0;
++    for (const chunk of chunks) {
++        bytes.set(chunk, offset);
++        offset += chunk.byteLength;
++    }
++    return bytes.buffer;
++}
+ /**
+  * A method to pull a CRL from a certificate and compare its serial number to the list of revoked
+  * certificate serial numbers within the CRL.
+  *
+  * CRL certificate structure referenced from https://tools.ietf.org/html/rfc5280#page-117
+  */
+-async function isCertRevoked(cert) {
+-    const { extensions } = cert;
+-    if (!extensions) {
++async function isCertRevoked(cert, options = {}) {
++    const rawCRLURL = extractCRLURL(cert);
++    if (!rawCRLURL) {
+         return false;
+     }
+-    let extAuthorityKeyID;
+-    let extSubjectKeyID;
+-    let extCRLDistributionPoints;
+-    extensions.forEach((ext) => {
+-        if (ext instanceof x509_1.AuthorityKeyIdentifierExtension) {
+-            extAuthorityKeyID = ext;
+-        }
+-        else if (ext instanceof x509_1.SubjectKeyIdentifierExtension) {
+-            extSubjectKeyID = ext;
+-        }
+-        else if (ext instanceof x509_1.CRLDistributionPointsExtension) {
+-            extCRLDistributionPoints = ext;
+-        }
+-    });
+-    // Check to see if we've got cached info for the cert's CA
+-    let keyIdentifier = undefined;
+-    if (extAuthorityKeyID && extAuthorityKeyID.keyId) {
+-        keyIdentifier = extAuthorityKeyID.keyId;
+-    }
+-    else if (extSubjectKeyID) {
+-        /**
+-         * We might be dealing with a self-signed root certificate. Check the
+-         * Subject key Identifier extension next.
+-         */
+-        keyIdentifier = extSubjectKeyID.keyId;
+-    }
+-    if (keyIdentifier) {
+-        const cached = cacheRevokedCerts[keyIdentifier];
+-        if (cached) {
+-            const now = new Date();
+-            // If there's a nextUpdate then make sure we're before it
+-            if (!cached.nextUpdate || cached.nextUpdate > now) {
+-                return cached.revokedCerts.indexOf(cert.serialNumber) >= 0;
+-            }
+-        }
++    if (!options.issuer) {
++        throw new Error('Certificate issuer is required to verify its revocation list');
+     }
+-    const crlURL = extCRLDistributionPoints?.distributionPoints?.[0].distributionPoint?.fullName?.[0]
+-        .uniformResourceIdentifier;
+-    // If no URL is provided then we have nothing to check
+-    if (!crlURL) {
+-        return false;
++    const crlURL = parseCRLURL(rawCRLURL);
++    const cacheKey = await revocationCacheKey(cert, options.issuer, crlURL);
++    const cached = cacheRevocationStatus.get(cacheKey);
++    if (cached && cached.nextUpdate > new Date()) {
++        return cached.revoked;
+     }
+-    // Download and read the CRL
++    cacheRevocationStatus.delete(cacheKey);
+     let certListBytes;
+     try {
+-        const respCRL = await (0, fetch_js_1.fetch)(crlURL);
+-        certListBytes = await respCRL.arrayBuffer();
++        const respCRL = await (0, fetch_js_1.fetch)(crlURL, { signal: options.signal, redirect: 'error' });
++        if (!respCRL.ok) {
++            throw new Error(`CRL endpoint responded with HTTP ${respCRL.status}`);
++        }
++        certListBytes = await readCRLBytes(respCRL);
+     }
+-    catch (_err) {
+-        return false;
++    catch (error) {
++        throw new Error('Certificate revocation list could not be downloaded', { cause: error });
+     }
+     let data;
+     try {
+         data = new x509_1.X509Crl(certListBytes);
+     }
+-    catch (_err) {
+-        // Something was malformed with the CRL, so pass
+-        return false;
++    catch (error) {
++        throw new Error('Certificate revocation list could not be parsed', { cause: error });
+     }
+-    const newCached = {
+-        revokedCerts: [],
+-        nextUpdate: undefined,
+-    };
+-    // nextUpdate
+-    if (data.nextUpdate) {
+-        newCached.nextUpdate = data.nextUpdate;
+-    }
+-    // revokedCertificates
+-    const revokedCerts = data.entries;
+-    if (revokedCerts) {
+-        for (const cert of revokedCerts) {
+-            const revokedHex = cert.serialNumber;
+-            newCached.revokedCerts.push(revokedHex);
+-        }
+-        // Cache the results
+-        if (keyIdentifier) {
+-            cacheRevokedCerts[keyIdentifier] = newCached;
+-        }
+-        return newCached.revokedCerts.indexOf(cert.serialNumber) >= 0;
++    try {
++        await assertCRLAuthenticAndFresh(data, options.issuer);
++    }
++    catch (error) {
++        throw new Error('Certificate revocation list could not be verified', { cause: error });
+     }
+-    return false;
++    const revoked = Boolean(data.findRevoked(cert));
++    rememberRevocationStatus(cacheKey, revoked, data.nextUpdate);
++    return revoked;
+ }
+diff --git a/script/helpers/validateCertificatePath.d.ts b/script/helpers/validateCertificatePath.d.ts
+index a9bcf6a9d38ff8cd44463f6f617a26682f5dd9df..b3a122d477e1d51285b4f371abf7a266b9a159fc 100644
+--- a/script/helpers/validateCertificatePath.d.ts
++++ b/script/helpers/validateCertificatePath.d.ts
+@@ -3,5 +3,7 @@
+  * @param x5cCertsPEM Typically the result of `x5c.map(convertASN1toPEM)`
+  * @param trustAnchorsPEM PEM-formatted certs that an attestation statement x5c may chain back to
+  */
+-export declare function validateCertificatePath(x5cCertsPEM: string[], trustAnchorsPEM?: string[]): Promise<boolean>;
++export declare function validateCertificatePath(x5cCertsPEM: string[], trustAnchorsPEM?: string[], options?: {
++    signal?: AbortSignal;
++}): Promise<boolean>;
+ //# sourceMappingURL=validateCertificatePath.d.ts.map
+\ No newline at end of file
+diff --git a/script/helpers/validateCertificatePath.js b/script/helpers/validateCertificatePath.js
+index 561571508f6d97ea9cb314561aabda48b5f843f0..b78f0e9150b9507d93eb09e9d03d74134fe3a573 100644
+--- a/script/helpers/validateCertificatePath.js
++++ b/script/helpers/validateCertificatePath.js
+@@ -3,70 +3,55 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.validateCertificatePath = validateCertificatePath;
+ const x509_1 = require("@peculiar/x509");
+ const isCertRevoked_js_1 = require("./isCertRevoked.js");
++const SUPPORTED_CRITICAL_EXTENSION_OIDS = new Set(['2.5.29.15', '2.5.29.19']);
++const UNSUPPORTED_PATH_CONSTRAINT_OIDS = new Set(['2.5.29.30', '2.5.29.36', '2.5.29.54']);
+ /**
+  * Traverse an array of PEM certificates and ensure they form a proper chain
+- * @param x5cCertsPEM Typically the result of `x5c.map(convertASN1toPEM)`
++ * @param x5cCertsPEM Typically the result of x5c.map(convertASN1toPEM)
+  * @param trustAnchorsPEM PEM-formatted certs that an attestation statement x5c may chain back to
+  */
+-async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = []) {
++async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = [], options = {}) {
+     if (trustAnchorsPEM.length === 0) {
+-        // We have no trust anchors to chain back to, so skip path validation
+         return true;
+     }
+-    // Prepare to work with x5c certs
++    if (x5cCertsPEM.length === 0 || x5cCertsPEM.length > 5 || trustAnchorsPEM.length > 64) {
++        throw new InvalidCertificatePath('Certificate path has an invalid number of certificates');
++    }
+     const x5cCertsParsed = x5cCertsPEM.map((certPEM) => new x509_1.X509Certificate(certPEM));
+-    // Check for any expired or temporally invalid certs in x5c
+     for (let i = 0; i < x5cCertsParsed.length; i++) {
+         const cert = x5cCertsParsed[i];
+         const certPEM = x5cCertsPEM[i];
+-        try {
+-            await assertCertNotRevoked(cert);
+-        }
+-        catch (_err) {
+-            throw new Error(`Found revoked certificate in x5c:\n${certPEM}`);
+-        }
+         try {
+             assertCertIsWithinValidTimeWindow(cert.notBefore, cert.notAfter);
++            assertNoUnsupportedCriticalExtensions(cert);
+         }
+-        catch (_err) {
+-            throw new Error(`Found certificate out of validity period in x5c:\n${certPEM}`);
++        catch (error) {
++            throw new Error('Found invalid certificate in x5c:\n' + certPEM, { cause: error });
+         }
+     }
+-    // Prepare to work with trust anchor certs
+     const trustAnchorsParsed = trustAnchorsPEM.map((certPEM) => {
+         try {
+             return new x509_1.X509Certificate(certPEM);
+         }
+         catch (err) {
+             const _err = err;
+-            throw new Error(`Could not parse trust anchor certificate:\n${certPEM}`, { cause: _err });
++            throw new Error('Could not parse trust anchor certificate:\n' + certPEM, { cause: _err });
+         }
+     });
+-    // Filter out any expired or temporally invalid trust anchors certs
+-    const validTrustAnchors = [];
+-    for (let i = 0; i < trustAnchorsParsed.length; i++) {
+-        const cert = trustAnchorsParsed[i];
+-        try {
+-            await assertCertNotRevoked(cert);
+-        }
+-        catch (_err) {
+-            // Continue processing the other certs
+-            continue;
+-        }
++    const validTrustAnchors = trustAnchorsParsed.filter((cert) => {
+         try {
+             assertCertIsWithinValidTimeWindow(cert.notBefore, cert.notAfter);
++            assertNoUnsupportedCriticalExtensions(cert);
++            return true;
+         }
+-        catch (_err) {
+-            // Continue processing the other certs
+-            continue;
++        catch {
++            return false;
+         }
+-        validTrustAnchors.push(cert);
+-    }
++    });
+     if (validTrustAnchors.length === 0) {
+         throw new Error('No specified trust anchor was valid for verifying x5c');
+     }
+-    // Try to verify x5c with each valid trust anchor
+-    let invalidCertificateChain = true;
++    let lastError;
+     for (const anchor of validTrustAnchors) {
+         try {
+             const x5cWithTrustAnchor = x5cCertsParsed.concat([anchor]);
+@@ -74,54 +59,63 @@ async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = []) {
+             if (numUniqueCerts !== x5cWithTrustAnchor.length) {
+                 throw new Error('Invalid certificate path: found duplicate certificates');
+             }
+-            // Break apart x5c to try and build a valid cert chain
+             const x5cLeafCert = x5cCertsParsed[0];
+-            let x5cIntermediates = [];
+-            if (x5cCertsParsed.length > 1) {
+-                x5cIntermediates = x5cCertsParsed.slice(1);
+-            }
+-            // Order of certs doesn't matter here but for readability
++            const x5cIntermediates = x5cCertsParsed.slice(1);
+             const chainBuilder = new x509_1.X509ChainBuilder({ certificates: [...x5cIntermediates, anchor] });
+-            // Cert chain should be, from index 0: leaf cert -> ...intermediates -> trust anchor
+             const chain = await chainBuilder.build(x5cLeafCert);
+-            // Check if the chain contains (all of the certs in x5c) + (the trust anchor)
+-            if (chain.length < numUniqueCerts) {
+-                // Invalid cert chain, try the next trust anchor
+-                continue;
++            if (chain.length !== numUniqueCerts ||
++                chain[chain.length - 1].toString('pem') !== anchor.toString('pem')) {
++                throw new Error('Certificate path did not terminate at the selected trust anchor');
+             }
+-            // Check if the chain is to the trust anchor
+-            if (chain[chain.length - 1].subject !== anchor.subject) {
+-                // Invalid cert chain, try the next trust anchor
+-                continue;
++            assertCertificateAuthorityConstraints(chain);
++            for (let i = 0; i < chain.length - 1; i++) {
++                await assertCertNotRevoked(chain[i], chain[i + 1], options);
+             }
+-            // If we successfully validated a path then there's no need to continue. Reset any existing
+-            // errors that were thrown by earlier trust anchors
+-            invalidCertificateChain = false;
+-            break;
++            return true;
+         }
+-        catch (err) {
+-            throw new Error('Unexpected error while validating certificate path', { cause: err });
++        catch (error) {
++            lastError = error;
++        }
++    }
++    throw new InvalidCertificatePath(undefined, lastError);
++}
++function assertNoUnsupportedCriticalExtensions(certificate) {
++    for (const extension of certificate.extensions ?? []) {
++        if (UNSUPPORTED_PATH_CONSTRAINT_OIDS.has(extension.type)) {
++            throw new Error('Unsupported certificate path constraint ' + extension.type);
++        }
++        if (extension.critical && !SUPPORTED_CRITICAL_EXTENSION_OIDS.has(extension.type)) {
++            throw new Error('Unsupported critical certificate extension ' + extension.type);
+         }
+     }
+-    // We tried multiple trust anchors and none of them worked
+-    if (invalidCertificateChain) {
+-        throw new InvalidCertificatePath();
++}
++function assertCertificateAuthorityConstraints(chain) {
++    for (let i = 1; i < chain.length; i++) {
++        const certificate = chain[i];
++        const basicConstraints = certificate.getExtension(x509_1.BasicConstraintsExtension);
++        if (!basicConstraints?.ca || !basicConstraints.critical) {
++            throw new Error('Certificate issuer is not an authorized certificate authority');
++        }
++        const keyUsage = certificate.getExtension(x509_1.KeyUsagesExtension);
++        if (!keyUsage || (keyUsage.usages & x509_1.KeyUsageFlags.keyCertSign) === 0) {
++            throw new Error('Certificate issuer is not permitted to sign certificates');
++        }
++        const subordinateCACount = i - 1;
++        if (basicConstraints.pathLength !== undefined &&
++            basicConstraints.pathLength < subordinateCACount) {
++            throw new Error('Certificate path exceeds a path length constraint');
++        }
+     }
+-    return true;
+ }
+-/**
+- * Check if the certificate is revoked or not. If it is, raise an error
+- */
+-async function assertCertNotRevoked(certificate) {
+-    // Check for certificate revocation
+-    const subjectCertRevoked = await (0, isCertRevoked_js_1.isCertRevoked)(certificate);
++async function assertCertNotRevoked(certificate, issuer, options) {
++    const subjectCertRevoked = await (0, isCertRevoked_js_1.isCertRevoked)(certificate, {
++        ...options,
++        issuer,
++    });
+     if (subjectCertRevoked) {
+         throw new Error('Found revoked certificate in certificate path');
+     }
+ }
+-/**
+- * Require the cert to be within its notBefore and notAfter time window
+- */
+ function assertCertIsWithinValidTimeWindow(certNotBefore, certNotAfter) {
+     const now = new Date(Date.now());
+     if (certNotBefore > now || certNotAfter < now) {
+@@ -129,9 +123,8 @@ function assertCertIsWithinValidTimeWindow(certNotBefore, certNotAfter) {
+     }
+ }
+ class InvalidCertificatePath extends Error {
+-    constructor() {
+-        const message = 'x5c could not be chained to any specified trust anchor';
+-        super(message);
++    constructor(message = 'x5c could not be chained to any specified trust anchor', cause) {
++        super(message, cause === undefined ? undefined : { cause });
+         this.name = 'InvalidX5CChain';
+     }
+ }
+diff --git a/script/helpers/validateExtFIDOGenCEAAGUID.js b/script/helpers/validateExtFIDOGenCEAAGUID.js
+index 25928b13f0fe3ec47d4ac502662e68d79a122642..2e189cbecf2cc266c18c0ed5add60e128dcf9310 100644
+--- a/script/helpers/validateExtFIDOGenCEAAGUID.js
++++ b/script/helpers/validateExtFIDOGenCEAAGUID.js
+@@ -14,14 +14,19 @@ const id_fido_gen_ce_aaguid = '1.3.6.1.4.1.45724.1.1.4';
+  * the attestation statement AAGUID.
+  */
+ function validateExtFIDOGenCEAAGUID(certExtensions, aaguid) {
+-    // The certificate had no extensions so there's nothing to validate
++    // A hardware-attestation policy cannot bind a claimed AAGUID to a model
++    // when the attestation leaf omits the certificate extension.
+     if (!certExtensions) {
+-        return true;
++        throw new Error(`Certificate extension id-fido-gen-ce-aaguid (${id_fido_gen_ce_aaguid}) was missing`);
+     }
+     const extFIDOGenCEAAGUID = certExtensions.find((ext) => ext.extnID === id_fido_gen_ce_aaguid);
+-    // The extension isn't present so there's nothing to validate
++    // Require the extension so a certificate under a root shared by several
++    // authenticator models cannot substitute an AAGUID from authenticatorData.
+     if (!extFIDOGenCEAAGUID) {
+-        return true;
++        throw new Error(`Certificate extension id-fido-gen-ce-aaguid (${id_fido_gen_ce_aaguid}) was missing`);
++    }
++    if (extFIDOGenCEAAGUID.critical) {
++        throw new Error(`Certificate extension id-fido-gen-ce-aaguid (${id_fido_gen_ce_aaguid}) must not be critical`);
+     }
+     // Parse the extension value
+     const parsedExtFIDOGenCEAAGUID = asn1_schema_1.AsnParser.parse(extFIDOGenCEAAGUID.extnValue, asn1_schema_1.OctetString);
+diff --git a/script/metadata/verifyAttestationWithMetadata.d.ts b/script/metadata/verifyAttestationWithMetadata.d.ts
+index c6589ef440f9231a13400535297a7305e5f9cedd..bd5b62d0a485e6a8250712f60443268af475749c 100644
+--- a/script/metadata/verifyAttestationWithMetadata.d.ts
++++ b/script/metadata/verifyAttestationWithMetadata.d.ts
+@@ -6,11 +6,12 @@ import type { Uint8Array_ } from '../types/index.js';
+  * Match properties of the authenticator's attestation statement against expected values as
+  * registered with the FIDO Alliance Metadata Service
+  */
+-export declare function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, }: {
++export declare function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, signal, }: {
+     statement: MetadataStatement;
+     credentialPublicKey: Uint8Array_;
+     x5c: Uint8Array_[] | Base64URLString[];
+     attestationStatementAlg?: number;
++    signal?: AbortSignal;
+ }): Promise<boolean>;
+ type COSEInfo = {
+     kty: COSEKTY;
+diff --git a/script/metadata/verifyAttestationWithMetadata.js b/script/metadata/verifyAttestationWithMetadata.js
+index 1306c286adf2dbfc82fb1a572ee5b632bc86ae3f..03e18562ea7bd10634506fb8ea5a671314c5996d 100644
+--- a/script/metadata/verifyAttestationWithMetadata.js
++++ b/script/metadata/verifyAttestationWithMetadata.js
+@@ -10,7 +10,7 @@ const cose_js_1 = require("../helpers/cose.js");
+  * Match properties of the authenticator's attestation statement against expected values as
+  * registered with the FIDO Alliance Metadata Service
+  */
+-async function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, }) {
++async function verifyAttestationWithMetadata({ statement, credentialPublicKey, x5c, attestationStatementAlg, signal, }) {
+     const { authenticationAlgorithms, authenticatorGetInfo, attestationRootCertificates, } = statement;
+     // Make sure the alg in the attestation statement matches one of the ones specified in metadata
+     const keypairCOSEAlgs = new Set();
+@@ -111,7 +111,7 @@ async function verifyAttestationWithMetadata({ statement, credentialPublicKey, x
+     }
+     if (!authenticatorIsSelfReferencing) {
+         try {
+-            await (0, validateCertificatePath_js_1.validateCertificatePath)(authenticatorCerts, statementRootCerts);
++            await (0, validateCertificatePath_js_1.validateCertificatePath)(authenticatorCerts, statementRootCerts, { signal });
+         }
+         catch (err) {
+             const _err = err;
+diff --git a/script/metadata/verifyMDSBlob.d.ts b/script/metadata/verifyMDSBlob.d.ts
+index 11f42802ae7a15720ca0176f11fc5b5baa3536aa..18e06e9be8c84e958b0066152453000e5dfe4bb8 100644
+--- a/script/metadata/verifyMDSBlob.d.ts
++++ b/script/metadata/verifyMDSBlob.d.ts
+@@ -7,7 +7,9 @@ import type { MDSJWTPayload, MetadataStatement } from './mdsTypes.js';
+  *
+  * @param blob - A JWT downloaded from an MDS server (e.g. https://mds3.fidoalliance.org)
+  */
+-export declare function verifyMDSBlob(blob: string): Promise<{
++export declare function verifyMDSBlob(blob: string, options?: {
++    signal?: AbortSignal;
++}): Promise<{
+     /** MetadataStatement entries within the verified blob */
+     statements: MetadataStatement[];
+     /** A JS `Date` instance of the verified blob's `payload.nextUpdate` string */
+diff --git a/script/metadata/verifyMDSBlob.js b/script/metadata/verifyMDSBlob.js
+index 282e52d3a3eb29a68be421e516eb5e2bb2f4ad94..41fc195bceba3bf88dfae93e3d2707d0c4f928ae 100644
+--- a/script/metadata/verifyMDSBlob.js
++++ b/script/metadata/verifyMDSBlob.js
+@@ -15,7 +15,7 @@ const settingsService_js_1 = require("../services/settingsService.js");
+  *
+  * @param blob - A JWT downloaded from an MDS server (e.g. https://mds3.fidoalliance.org)
+  */
+-async function verifyMDSBlob(blob) {
++async function verifyMDSBlob(blob, options = {}) {
+     // Parse the JWT
+     const parsedJWT = (0, parseJWT_js_1.parseJWT)(blob);
+     const header = parsedJWT[0];
+@@ -26,7 +26,7 @@ async function verifyMDSBlob(blob) {
+         const rootCerts = settingsService_js_1.SettingsService.getRootCertificates({
+             identifier: 'mds',
+         });
+-        await (0, validateCertificatePath_js_1.validateCertificatePath)(headerCertsPEM, rootCerts);
++        await (0, validateCertificatePath_js_1.validateCertificatePath)(headerCertsPEM, rootCerts, options);
+     }
+     catch (error) {
+         const _error = error;
+diff --git a/script/registration/verifications/verifyAttestationPacked.js b/script/registration/verifications/verifyAttestationPacked.js
+index cb9ca872f8121382c34ec85f2270381a54ffe073..b9891a1166455a190011226e28c515b1ec1500a8 100644
+--- a/script/registration/verifications/verifyAttestationPacked.js
++++ b/script/registration/verifications/verifyAttestationPacked.js
+@@ -14,7 +14,7 @@ const verifyAttestationWithMetadata_js_1 = require("../../metadata/verifyAttesta
+  * Verify an attestation response with fmt 'packed'
+  */
+ async function verifyAttestationPacked(options) {
+-    const { attStmt, clientDataHash, authData, credentialPublicKey, aaguid, rootCertificates, } = options;
++    const { attStmt, clientDataHash, authData, credentialPublicKey, aaguid, rootCertificates, signal, } = options;
+     const sig = attStmt.get('sig');
+     const x5c = attStmt.get('x5c');
+     const alg = attStmt.get('alg');
+@@ -80,6 +80,7 @@ async function verifyAttestationPacked(options) {
+                     credentialPublicKey,
+                     x5c,
+                     attestationStatementAlg: alg,
++                    signal,
+                 });
+             }
+             catch (err) {
+@@ -90,7 +91,7 @@ async function verifyAttestationPacked(options) {
+         else {
+             try {
+                 // Try validating the certificate path using the root certificates set via SettingsService
+-                await (0, validateCertificatePath_js_1.validateCertificatePath)(x5c.map(convertCertBufferToPEM_js_1.convertCertBufferToPEM), rootCertificates);
++                await (0, validateCertificatePath_js_1.validateCertificatePath)(x5c.map(convertCertBufferToPEM_js_1.convertCertBufferToPEM), rootCertificates, { signal });
+             }
+             catch (err) {
+                 const _err = err;
+diff --git a/script/registration/verifyRegistrationResponse.d.ts b/script/registration/verifyRegistrationResponse.d.ts
+index 3460d16c90dc23bee4fdef46ebb8bed6f3249094..2a397046969e66f85d5306db4d2c830ac3bab3d9 100644
+--- a/script/registration/verifyRegistrationResponse.d.ts
++++ b/script/registration/verifyRegistrationResponse.d.ts
+@@ -30,6 +30,7 @@ export declare function verifyRegistrationResponse(options: {
+     requireUserVerification?: boolean;
+     supportedAlgorithmIDs?: COSEAlgorithmIdentifier[];
+     attestationSafetyNetEnforceCTSCheck?: boolean;
++    signal?: AbortSignal;
+ }): Promise<VerifiedRegistrationResponse>;
+ /**
+  * Result of registration verification
+@@ -90,5 +91,6 @@ export type AttestationFormatVerifierOpts = {
+     rpIdHash: Uint8Array_;
+     verifyTimestampMS?: boolean;
+     attestationSafetyNetEnforceCTSCheck?: boolean;
++    signal?: AbortSignal;
+ };
+ //# sourceMappingURL=verifyRegistrationResponse.d.ts.map
+diff --git a/script/registration/verifyRegistrationResponse.js b/script/registration/verifyRegistrationResponse.js
+index a275bdb6d58676f23ed019754ccddfc93537b05e..d978192297d5aa46992f9ba1a164f55406b022c9 100644
+--- a/script/registration/verifyRegistrationResponse.js
++++ b/script/registration/verifyRegistrationResponse.js
+@@ -35,7 +35,7 @@ const verifyAttestationApple_js_1 = require("./verifications/verifyAttestationAp
+  * @param attestationSafetyNetEnforceCTSCheck **(Optional)** - Require that an Android device's system integrity has not been tampered with if it uses SafetyNet attestation. Defaults to `true`
+  */
+ async function verifyRegistrationResponse(options) {
+-    const { response, expectedChallenge, expectedOrigin, expectedRPID, expectedType, requireUserPresence = true, requireUserVerification = true, supportedAlgorithmIDs = generateRegistrationOptions_js_1.supportedCOSEAlgorithmIdentifiers, attestationSafetyNetEnforceCTSCheck = true, } = options;
++    const { response, expectedChallenge, expectedOrigin, expectedRPID, expectedType, requireUserPresence = true, requireUserVerification = true, supportedAlgorithmIDs = generateRegistrationOptions_js_1.supportedCOSEAlgorithmIdentifiers, attestationSafetyNetEnforceCTSCheck = true, signal, } = options;
+     const { id, rawId, type: credentialType, response: attestationResponse } = response;
+     // Ensure credential specified an ID
+     if (!id) {
+@@ -155,6 +155,7 @@ async function verifyRegistrationResponse(options) {
+         rootCertificates,
+         rpIdHash,
+         attestationSafetyNetEnforceCTSCheck,
++        signal,
+     };
+     /**
+      * Verification can only be performed when attestation = 'direct'

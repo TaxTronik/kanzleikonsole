@@ -37,6 +37,24 @@ const BERLIN = 'Europe/Berlin';
  * the operations page and by the scheduler registration log.
  */
 export const JOB_QUEUES = {
+  mailboxPoll: {
+    name: 'mailbox-poll',
+    schedule: {
+      schedulerId: 'periodic-mailbox-poll',
+      repeat: { every: 5 * MINUTE },
+      expectedMaxGapMs: 5 * MINUTE,
+      logLabel: 'mailbox-poll @ every 5 min',
+    },
+  },
+  sanctionsRefresh: {
+    name: 'sanctions-refresh',
+    schedule: {
+      schedulerId: 'daily-sanctions-refresh',
+      repeat: { pattern: '15 5 * * *', tz: BERLIN },
+      expectedMaxGapMs: DAY,
+      logLabel: 'sanctions-refresh @ 05:15 Berlin daily',
+    },
+  },
   auditAnchor: {
     name: 'audit-anchor',
     schedule: {
@@ -193,6 +211,15 @@ export const JOB_QUEUES = {
       logLabel: 'workflow-n8n-dispatch @ every 1 min',
     },
   },
+  workflowFeedback: {
+    name: 'workflow-feedback',
+    schedule: {
+      schedulerId: 'workflow-feedback',
+      repeat: { every: MINUTE },
+      expectedMaxGapMs: MINUTE,
+      logLabel: 'workflow-feedback @ every 1 min',
+    },
+  },
   storageOrphanCleanup: {
     name: 'storage-orphan-cleanup',
     schedule: {
@@ -200,6 +227,15 @@ export const JOB_QUEUES = {
       repeat: { every: 6 * HOUR },
       expectedMaxGapMs: 6 * HOUR,
       logLabel: 'storage-orphan-cleanup @ every 6 h',
+    },
+  },
+  portalInboxCleanup: {
+    name: 'portal-inbox-cleanup',
+    schedule: {
+      schedulerId: 'portal-inbox-cleanup',
+      repeat: { every: 6 * HOUR },
+      expectedMaxGapMs: 6 * HOUR,
+      logLabel: 'portal-inbox-cleanup @ every 6 h',
     },
   },
   n8nRetention: {
@@ -262,6 +298,8 @@ type EmptyJob = Record<string, never>;
 
 /** Compile-time mapping used by typed producer/consumer factories. */
 export type QueueJobDataByName = {
+  [JOB_QUEUES.mailboxPoll.name]: ChecksJob;
+  [JOB_QUEUES.sanctionsRefresh.name]: ChecksJob;
   [JOB_QUEUES.auditAnchor.name]: AuditAnchorJob;
   [JOB_QUEUES.evidenceSeal.name]: EvidenceSealJob;
   [JOB_QUEUES.auditVerify.name]: ChecksJob;
@@ -280,7 +318,9 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.n8nDeliver.name]: N8nDeliverJob;
   [JOB_QUEUES.n8nOutboxReconcile.name]: EmptyJob;
   [JOB_QUEUES.workflowN8nDispatch.name]: EmptyJob;
+  [JOB_QUEUES.workflowFeedback.name]: EmptyJob;
   [JOB_QUEUES.storageOrphanCleanup.name]: EmptyJob;
+  [JOB_QUEUES.portalInboxCleanup.name]: EmptyJob;
   [JOB_QUEUES.n8nRetention.name]: EmptyJob;
   [JOB_QUEUES.riskAnalyseLlm.name]: RiskAnalyseLlmJob;
   [JOB_QUEUES.reminderDoneNotify.name]: ReminderDoneNotifyJob;

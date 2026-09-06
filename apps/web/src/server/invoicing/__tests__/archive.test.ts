@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Fachkatalog: INV-ARCHIVE-EINVOICE-001
 // Fachkatalog: INV-PORTAL-SHARING-001
+// Fachkatalog: INV-STORNO-REFERENCE-001, STBVV-CALCULATION-001
 
 // IO-Abhängigkeiten mocken (DB/Storage/Generatoren) — wir testen die
 // Idempotenz-/Race-/Validierungs-Logik von ensureZugferdArchive, nicht die
@@ -13,6 +14,10 @@ vi.mock('@taxtronik/storage', () => ({
 }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (b: unknown) => b }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
+vi.mock('@/server/actions/staff-action', () => ({ ActionError: class extends Error {} }));
+vi.mock('@/server/invoicing/number', () => ({
+  allocateInvoiceNumber: vi.fn(async () => '2026-0001'),
+}));
 vi.mock('@/server/invoicing/xrechnung', () => ({
   generateXRechnungCii: vi.fn(() => '<cii/>'),
   toXRechnungInvoice: vi.fn((invoice: unknown) => invoice),
@@ -44,6 +49,9 @@ import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { evidenceService } from '@/server/container';
 import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+import { createFeeInvoice, validateFeeCalculation } from '@/server/stbvv/service';
+import { STBVV_VERSION } from '@taxtronik/tax';
+import { generateXRechnungCii } from '../xrechnung';
 
 const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' as const };
 const RETENTION_UNTIL = new Date('2035-01-01T00:00:00.000Z');
@@ -134,6 +142,100 @@ beforeEach(() => {
 });
 
 describe('ensureZugferdArchive', () => {
+  it('archiviert einen tatsächlich aus StBVV erzeugten In-App-Entwurf vor der Festschreibung', async () => {
+    const { input, result } = validateFeeCalculation({
+      lawVersion: STBVV_VERSION,
+      currentLawConfirmed: true,
+      matterReviewConfirmed: true,
+      lines: [
+        {
+          id: 'line',
+          feeId: '24-1-1',
+          matter: 'Erklärung 2026',
+          rate: 1,
+          rawValue: 10000,
+          justification: 'Synthetische geprüfte Testeingabe.',
+        },
+      ],
+      expenses: [],
+      vatRate: 19,
+    });
+    tx.stbvvQuote = {
+      findFirst: vi.fn(async () => ({
+        id: 'quote',
+        title: 'Honorar',
+        lawVersion: STBVV_VERSION,
+        inputs: input,
+        result,
+        invoiceExport: null,
+      })),
+    };
+    tx.client = { findFirst: vi.fn(async () => ({ id: 'c1' })) };
+    tx.stbvvQuoteExport = { create: vi.fn(async () => ({})) };
+    tx.invoice.create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      const saved = baseInvoice({
+        ...data,
+        positions: (data.positions as { create: unknown[] }).create,
+        status: 'DRAFT',
+        sentAt: null,
+      });
+      tx.invoice.findFirst.mockResolvedValue(saved);
+      return saved;
+    });
+
+    const exported = await createFeeInvoice(
+      tx,
+      't1',
+      's1',
+      'c1',
+      'quote',
+      '2026-09-06',
+      '2026-09-20',
+    );
+    expect(exported).toEqual({ invoiceId: 'inv1', existing: false });
+    const archive = await ensureZugferdArchive(ctx, exported.invoiceId, { purpose: 'ISSUE' });
+    expect(archive).toEqual({ ok: true, bucket: 'gobd', key: 'k-new', number: '2026-0001' });
+    expect(generateZugferdPdf).toHaveBeenCalledOnce();
+    expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
+    expect(tx.invoice.update).toHaveBeenCalledWith({
+      where: { id: 'inv1' },
+      data: { documentId: 'pdf-doc-new', xrechnungDocumentId: 'xml-doc-new' },
+    });
+  });
+
+  it('belässt ein bereits ausgestelltes Stornoarchiv auch nach dem Wechsel auf BT-3 384 byte-stabil', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      baseInvoice({
+        stornoOfId: 'original',
+        stornoOf: { number: '2026-0041' },
+        netAmount: dec('-100'),
+        vatAmount: dec('-19'),
+        totalAmount: dec('-119'),
+        documentId: 'old-381-pdf',
+        xrechnungDocumentId: 'old-381-xml',
+        document: {
+          sharedWithClientAt: new Date(),
+          versions: [{ storageBucket: 'gobd', storageKey: 'old-381-pdf-key' }],
+        },
+        xrechnungDocument: {
+          id: 'old-381-xml',
+          sharedWithClientAt: new Date(),
+          versions: [{ storageBucket: 'gobd', storageKey: 'old-381-xml-key' }],
+        },
+      }),
+    );
+    expect(await ensureZugferdArchive(ctx, 'inv1')).toEqual({
+      ok: true,
+      bucket: 'gobd',
+      key: 'old-381-pdf-key',
+      number: 'R-001',
+    });
+    expect(generateXRechnungCii).not.toHaveBeenCalled();
+    expect(generateZugferdPdf).not.toHaveBeenCalled();
+    expect(commitBytesWithTier).not.toHaveBeenCalled();
+    expect(tx.invoice.update).not.toHaveBeenCalled();
+  });
+
   it('idempotent: vorhandenes Archiv → dieselben Bytes, KEINE Neugenerierung', async () => {
     tx.invoice.findFirst.mockResolvedValueOnce(
       baseInvoice({

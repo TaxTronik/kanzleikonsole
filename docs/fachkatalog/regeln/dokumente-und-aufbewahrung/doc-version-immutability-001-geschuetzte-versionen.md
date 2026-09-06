@@ -40,16 +40,29 @@ code_refs:
   - apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts
   - apps/web/src/server/storage/retag-policy.ts
   - apps/web/src/app/staff/(protected)/documents/actions.ts
+  - apps/web/src/server/forms/revision-download.ts
+  - packages/db/prisma/migrations/20260831280000_form_submission_revisions/migration.sql
+  - packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql
+  - packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql
+  - apps/web/src/server/inbox/accept-attachment.ts
+  - apps/web/src/server/inbox/staff-mutations.ts
+  - apps/worker/src/jobs/storage-orphan-cleanup.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
   - apps/web/src/server/storage/__tests__/retag-policy.test.ts
   - apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts
+  - packages/db/src/__tests__/workflow-expansion.test.ts
+  - apps/web/src/server/forms/__tests__/revision-download.test.ts
+  - packages/db/src/__tests__/portal-inbox-rls.test.ts
+  - apps/web/src/server/inbox/__tests__/rejection.test.ts
+  - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
   - docs/development/module/dokumentenarchiv.md
 related_rules:
   - DOC-OBJECT-LOCK-001
   - DOC-RETENTION-CLASS-001
+  - FORM-SCHEMA-SNAPSHOT-001
 tags:
   - versionierung
   - unveraenderlichkeit
@@ -127,6 +140,25 @@ der Commit-Transaktion und fügt die Version an. `retag-policy.ts` entscheidet
 Dokument und Zieltyp per Lock; bei einem bereits unveränderlichen Ausgang
 erzeugt sie eine neue Version statt eines Updates.
 
+Eine an FormSubmissionRevisionFile gebundene frühere Einreichung behält ihre
+Versions- und Storage-Identität auch dann, wenn der allgemeine Beleg ursprünglich
+mutable war. Ein enger Datenbanktrigger sperrt Updates von Identität, Inhaltshash,
+Größe und ursprünglichen Erstellungsangaben; der Fremdschlüssel verhindert das
+Löschen der gebundenen Version. Allgemeines Retagging, das diese Zeile auf neue
+Bytes umbiegen würde, scheitert und kompensiert seinen neuen Storage-Commit.
+Scanstatusänderungen bleiben möglich, damit eine spätere Quarantäne auch den
+historischen Download sperrt. Neue Korrekturbytes können als weitere Version
+hinzukommen. Daraus entsteht keine neue gesetzliche Aufbewahrungsfrist.
+
+Eine besondere Löschfreigabe gilt ausschließlich für die noch nicht
+finalisierte Resume-Reservierung einer Inbox-Annahme: genau eine Version,
+`PENDING`, ohne Storage-Version, ungeteilt, mandantengleich und mit demselben
+Hash wie die weiterhin `PENDING_REVIEW`-gebundene Anlage. Nur die enge
+SECURITY-DEFINER-Funktion darf diese Version nach atomarem Orphan-Journal
+entfernen und die Anlage ablehnen. CLEAN-, Mehrversions-, Scope- oder
+Hashabweichungen öffnen diese Ausnahme nicht. Ein Journal ohne konkrete
+Storage-Version muss sie vor physischer Löschung eindeutig recovern und binden.
+
 ## Bekannte Abweichungen und Grenzen
 
 Keine bekannte technische Abweichung innerhalb des Scopes geschützter
@@ -149,4 +181,7 @@ Retag-Race-Tests belegen den Abbruch bei Versionsdrift und das Anfügen statt
 Update einer geschützten Version. Policy-Tests prüfen Höherstufung,
 Herabstufung, GwG-Tierwechsel und Fristverkürzung. Der PoA-/GwG-Routentest
 belegt ausgewählte Snapshot-Sperren; er ist kein Vollständigkeitsnachweis aller
-fachlichen Bindungen.
+fachlichen Bindungen. Der Inbox-Integrationstest belegt zusätzlich, dass nur
+die unvollständige Resume-Reservierung atomar abgebrochen wird und parallele
+Annahme, abweichender Hash, fremder Scope oder eine zweite Version fail-closed
+bleiben.

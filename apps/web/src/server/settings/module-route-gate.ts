@@ -19,6 +19,25 @@ interface RouteRule extends ModuleRouteRequirement {
 }
 
 const STAFF_RULES: RouteRule[] = [
+  { pattern: /^\/staff\/interactions(?:\/|$)/, any: ['noticeDecisions', 'feedbackSurveys'] },
+  { pattern: /^\/staff\/knowledge\/context(?:\/|$)/, all: ['knowledge', 'knowledgeContext'] },
+  { pattern: /^\/staff\/mailbox(?:\/|$)/, all: ['smartMailbox'] },
+  { pattern: /^\/staff\/payroll(?:\/|$)/, all: ['payrollIntake'] },
+  {
+    pattern: /^\/staff\/client-assistance(?:\/|$)/,
+    any: ['expenseAssistance', 'clientProcedures'],
+  },
+  { pattern: /^\/staff\/year-end(?:\/|$)/, all: ['yearEndCampaigns'] },
+  { pattern: /^\/staff\/feedback(?:\/|$)/, all: ['feedbackSurveys'] },
+  {
+    pattern: /^\/staff\/mandate-expansion(?:\/|$)/,
+    any: ['mandateStructure', 'workflowDependencies', 'mandateOffboarding', 'vdbPreparation'],
+  },
+  {
+    pattern: /^\/staff\/(?:clients\/[^/]+\/|admin\/)?screening(?:\/|$)/,
+    all: ['sanctionsScreening'],
+  },
+  { pattern: /^\/staff\/(?:clients\/[^/]+\/)?stbvv(?:\/|$)/, all: ['feeCalculator'] },
   { pattern: /^\/staff\/clients\/[^/]+\/bwa(?:\/|$)/, all: ['bwa'] },
   { pattern: /^\/staff\/reports(?:\/|$)/, all: ['bwa'] },
   { pattern: /^\/staff\/knowledge(?:\/|$)/, all: ['knowledge'] },
@@ -47,6 +66,13 @@ const STAFF_RULES: RouteRule[] = [
 ];
 
 const PORTAL_RULES: RouteRule[] = [
+  { pattern: /^\/portal\/interactions(?:\/|$)/, any: ['noticeDecisions', 'feedbackSurveys'] },
+  { pattern: /^\/portal\/payroll(?:\/|$)/, all: ['payrollIntake'] },
+  {
+    pattern: /^\/portal\/client-assistance(?:\/|$)/,
+    any: ['expenseAssistance', 'clientProcedures'],
+  },
+  { pattern: /^\/portal\/feedback(?:\/|$)/, all: ['feedbackSurveys'] },
   { pattern: /^\/portal\/bwa(?:\/|$)/, all: ['bwa'] },
   { pattern: /^\/portal\/forms(?:\/|$)/, all: ['forms'] },
   { pattern: /^\/portal\/appointments(?:\/|$)/, all: ['appointments'] },

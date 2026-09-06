@@ -7,6 +7,8 @@
 // =============================================================================
 
 import {
+  mailboxPollQueue,
+  sanctionsRefreshQueue,
   evidenceSealQueue,
   auditAnchorQueue,
   gwgExpiryQueue,
@@ -25,7 +27,9 @@ import {
   backupRunQueue,
   healthAlertQueue,
   workflowN8nDispatchQueue,
+  workflowFeedbackQueue,
   storageOrphanCleanupQueue,
+  portalInboxCleanupQueue,
 } from './queues';
 import { JOB_QUEUES, SCHEDULE_LOG_LABELS } from '@taxtronik/config/job-queues';
 import { log } from './logger';
@@ -42,6 +46,16 @@ const DAILY_RETRY = {
 } as const;
 
 export async function setupSchedules(): Promise<void> {
+  await mailboxPollQueue.upsertJobScheduler(
+    JOB_QUEUES.mailboxPoll.schedule.schedulerId,
+    JOB_QUEUES.mailboxPoll.schedule.repeat,
+    { name: JOB_QUEUES.mailboxPoll.name, data: {} },
+  );
+  await sanctionsRefreshQueue.upsertJobScheduler(
+    JOB_QUEUES.sanctionsRefresh.schedule.schedulerId,
+    JOB_QUEUES.sanctionsRefresh.schedule.repeat,
+    { name: JOB_QUEUES.sanctionsRefresh.name, data: {}, opts: DAILY_RETRY },
+  );
   // Rolling dual stamp: frequent reconciliation, but no TSA call in the
   // business transaction. A tick coalesces bursts by timestamping only the
   // latest committed chain tip per tenant.
@@ -119,10 +133,20 @@ export async function setupSchedules(): Promise<void> {
     JOB_QUEUES.workflowN8nDispatch.schedule.repeat,
     { name: JOB_QUEUES.workflowN8nDispatch.name, data: {} },
   );
+  await workflowFeedbackQueue.upsertJobScheduler(
+    JOB_QUEUES.workflowFeedback.schedule.schedulerId,
+    JOB_QUEUES.workflowFeedback.schedule.repeat,
+    { name: JOB_QUEUES.workflowFeedback.name, data: {} },
+  );
   await storageOrphanCleanupQueue.upsertJobScheduler(
     JOB_QUEUES.storageOrphanCleanup.schedule.schedulerId,
     JOB_QUEUES.storageOrphanCleanup.schedule.repeat,
     { name: JOB_QUEUES.storageOrphanCleanup.name, data: {}, opts: DAILY_RETRY },
+  );
+  await portalInboxCleanupQueue.upsertJobScheduler(
+    JOB_QUEUES.portalInboxCleanup.schedule.schedulerId,
+    JOB_QUEUES.portalInboxCleanup.schedule.repeat,
+    { name: JOB_QUEUES.portalInboxCleanup.name, data: {}, opts: DAILY_RETRY },
   );
   // Begrenzte n8n-Historie: normale Terminal-Events 90 Tage, Fehler/Partial
   // 180 Tage. Der Worker löscht nur weiterhin terminale Reihen in Batches.

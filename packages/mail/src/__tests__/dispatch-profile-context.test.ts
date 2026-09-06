@@ -1,4 +1,4 @@
-// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001
+// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001, ACCESS-NOTIFICATION-RECIPIENT-001
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -55,7 +55,7 @@ describe('Mandantenkontext im Mail-Betreff', () => {
         active: true,
         notificationsEnabled: true,
         lastLoginAt: { not: null },
-        client: { allowActive: true, anonymizedAt: null },
+        client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
       },
       select: { fullName: true, email: true },
     });

@@ -13,7 +13,12 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { berlinWallClockToUtc } from '@/lib/fmt';
 import { toActionError, assertClientAccessTx, accessibleClientsWhereFor } from '@/server/auth/rbac';
-import { staffActionGuard, ActionError, parseFormData } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  ActionError,
+  parseFormData,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 
 const CreateSchema = z.object({
   requestId: z.string().uuid(),
@@ -50,14 +55,11 @@ export interface RequestClientSearchResult {
   limited?: boolean;
 }
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-  fieldErrors?: Record<string, string>;
+export type RequestActionResult = ActionResult & {
   requestId?: string;
   clientId?: string;
   nextRequestId?: string;
-}
+};
 
 const ACTIVE_GWG_REQUEST_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESPONDED'] as const;
 
@@ -132,29 +134,13 @@ export async function searchRequestClientsAction(
   }
 }
 
-async function createRequestCore(formData: FormData): Promise<ActionResult> {
+async function createRequestCore(formData: FormData): Promise<RequestActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
-  const parsed = CreateSchema.safeParse({
-    requestId: formData.get('requestId'),
-    clientId: formData.get('clientId'),
-    title: formData.get('title'),
-    description: formData.get('description'),
-    priority: formData.get('priority') ?? 'NORMAL',
-    dueAt: formData.get('dueAt') || undefined,
-    templateId: formData.get('templateId') ?? '',
-    formTemplateId: formData.get('formTemplateId') ?? '',
-  });
-
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      fieldErrors[issue.path.join('.')] = issue.message;
-    }
-    return { ok: false, error: 'Validierungsfehler.', fieldErrors };
-  }
+  const parsed = parseFormData(CreateSchema, formData);
+  if (!parsed.ok) return parsed;
 
   const data = parsed.data;
 
@@ -233,6 +219,7 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
         return { id: replay.id, created: false };
       }
 
+      let wikiArticleIds: string[] = [];
       if (data.templateId) {
         const requestTemplate = await tx.requestTemplate.findFirst({
           where: {
@@ -241,13 +228,14 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
             active: true,
             OR: [{ formTemplateId: null }, { formTemplate: { active: true } }],
           },
-          select: { id: true },
+          select: { id: true, wikiArticleIds: true },
         });
         if (!requestTemplate) {
           throw new ActionError(
             'Die ausgewählte Anforderungsvorlage ist nicht mehr aktiv. Bitte Auswahl aktualisieren.',
           );
         }
+        wikiArticleIds = requestTemplate.wikiArticleIds;
       }
 
       // Optional: Formular-Submission vorab anlegen — die Submission ist
@@ -282,6 +270,7 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
           tenantId,
           clientId: data.clientId,
           title: data.title,
+          wikiArticleIds,
           description: data.description,
           priority: data.priority,
           dueAt: data.dueAt ? berlinWallClockToUtc(data.dueAt) : null,
@@ -354,18 +343,18 @@ async function createRequestCore(formData: FormData): Promise<ActionResult> {
  * ist damit identisch zur vollständigen Formularseite.
  */
 export async function createQuickRequestAction(
-  _prev: ActionResult | null,
+  _prev: RequestActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<RequestActionResult> {
   const result = await createRequestCore(formData);
   return result.ok ? { ...result, nextRequestId: randomUUID() } : result;
 }
 
 /** Bestehender Vollseiten-Flow: nach erfolgreicher Erstellung zur Akte. */
 export async function createRequestAction(
-  _prev: ActionResult | null,
+  _prev: RequestActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<RequestActionResult> {
   const result = await createRequestCore(formData);
   if (!result.ok) return result;
   redirect(`/staff/clients/${result.clientId}`); // wirft (never) — NACH dem Create-Core
@@ -528,7 +517,7 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = parseFormData(StaffResponseSchema, formData);
-  if (!parsed.ok) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.ok) return parsed;
   const { requestId, message } = parsed.data;
 
   let reqInfo: { clientId: string; title: string } | null;
@@ -623,7 +612,7 @@ export async function addRequestInternalCommentAction(formData: FormData): Promi
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = parseFormData(InternalCommentSchema, formData);
-  if (!parsed.ok) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.ok) return parsed;
   const { requestId, body } = parsed.data;
 
   try {

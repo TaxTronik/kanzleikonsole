@@ -192,7 +192,16 @@ export function trendRegressionProjection(
 ): YearProjection | null {
   const fullYears = periods
     // Nur echte volle Jahre (12 Monate) — Fallback-Ranges nicht als Jahr werten.
-    .filter((p) => p.periodType === 'YEAR' && monthsCovered(p) === 12)
+    // Fachkatalog BWA-PROJECTION-001: Ziel- und Zukunftsjahre duerfen die
+    // Regression nicht beeinflussen. `toDate` statt nur `fromDate` stellt
+    // sicher, dass auch jahresuebergreifende 12-Monats-Perioden vollstaendig
+    // vor dem Zieljahr enden.
+    .filter(
+      (p) =>
+        p.periodType === 'YEAR' &&
+        monthsCovered(p) === 12 &&
+        p.toDate.getUTCFullYear() < targetYear,
+    )
     .sort((a, b) => a.fromDate.getUTCFullYear() - b.fromDate.getUTCFullYear());
   if (fullYears.length < 2) return null;
 

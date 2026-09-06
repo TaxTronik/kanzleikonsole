@@ -20,6 +20,9 @@ einen Hinweis druckt. Echter Lauf via `pnpm e2e` (Root) oder
 
 - Dev-Stack läuft auf <http://localhost:3000> (`pnpm dev` im Repo-Root)
 - Postgres geseedet (`pnpm db:seed`)
+- Synthetische lokale Ausweis-Fixture läuft via
+  `node apps/web/scripts/identity-smoke-server.mjs` auf
+  <http://127.0.0.1:4319>. Sie verwendet weder Kanzlei- noch Mandantendaten.
 
 ## Setup
 
@@ -58,12 +61,13 @@ Wenn nicht gesetzt, muss lokal `DEV_SKIP_TOTP=true` aktiv sein.
 
 ## Konfiguration via ENV
 
-| Variable             | Default                                               |
-| -------------------- | ----------------------------------------------------- |
-| `E2E_BASE_URL`       | `http://localhost:3000`                               |
-| `E2E_ADMIN_EMAIL`    | `admin@taxtronik.local`                               |
-| `E2E_ADMIN_PASSWORD` | `dev-password-123`                                    |
-| `E2E_TOTP_SECRET`    | (leer, wenn `DEV_SKIP_TOTP=true`; sonst erforderlich) |
+| Variable                   | Default                                               |
+| -------------------------- | ----------------------------------------------------- |
+| `E2E_BASE_URL`             | `http://localhost:3000`                               |
+| `E2E_ADMIN_EMAIL`          | `admin@taxtronik.local`                               |
+| `E2E_ADMIN_PASSWORD`       | `dev-password-123`                                    |
+| `E2E_TOTP_SECRET`          | (leer, wenn `DEV_SKIP_TOTP=true`; sonst erforderlich) |
+| `E2E_IDENTITY_FIXTURE_URL` | `http://127.0.0.1:4319`                               |
 
 ## CI-Guard
 

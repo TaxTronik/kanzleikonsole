@@ -31,17 +31,23 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/worker/src/jobs/storage-orphan-cleanup.ts
   - apps/worker/src/jobs/dsgvo-retention.ts
   - apps/worker/src/jobs/n8n-retention.ts
   - apps/worker/src/jobs/magic-link-cleanup.ts
+  - apps/worker/src/jobs/portal-inbox-cleanup.ts
+  - apps/web/src/server/inbox/retention-settings.ts
 test_refs:
+  - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
   - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
   - apps/worker/src/jobs/__tests__/n8n-retention.test.ts
+  - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
 feature_refs:
   - docs/compliance/dsgvo-konzept.md
 related_rules:
   - DSGVO-MANDATE-ANONYMIZATION-001
   - DOC-RETENTION-CLASS-001
+  - PORTAL-INBOX-SUBMISSION-001
 tags:
   - loeschung
   - retention
@@ -86,6 +92,8 @@ Dokumente, Auditdaten oder externe Systeme.
 | n8n-Routinehistorie                               | nach 90 Tagen löschen                                    | Betriebs-Default                      |
 | n8n-Ausnahmehistorie und Callback-Belege          | nach 180 Tagen löschen                                   | Betriebs-/Diagnose-Default            |
 | aktive n8n-Zustellung                             | nicht löschen                                            | laufende Verarbeitung schützen        |
+| offener Inbox-Uploadentwurf                       | nach 24 Stunden als abgelaufen behandeln                 | Produktdefault, keine Rechtsfrist     |
+| abgelehnte oder blockierte Inbox-Bytes            | nach sieben Tagen über das Orphan-Journal löschen        | Quarantäne-Default, keine Rechtsfrist |
 
 ## Ausnahmen und Grenzfälle
 
@@ -113,11 +121,43 @@ bekannter Rechtsstreit wird dagegen nicht automatisch erkannt.
 
 ## Umsetzung in TaxTronik
 
+Der gemeinsame Orphan-Worker priorisiert die geringste Zahl bisheriger
+Bereinigungsversuche, danach Alter und ID. So blockiert ein voller Batch
+dauerhaft fehlender oder mehrdeutiger Speicheridentitäten keine späteren
+bereinigungsfähigen Objekte. Die Schutz-, Referenz- und Versionsprüfungen
+bleiben Voraussetzung jeder physischen Löschung. Ab dem fünften gescheiterten
+Versuch erscheint zusätzlich ein Betriebswarnhinweis zur manuellen Klärung.
+Der Regressionstest führt mehrere Läufe mit 100 dauerhaft fehlerhaften
+Objekten und einem jüngeren löschbaren Objekt aus.
+
 Der DSGVO-Worker berechnet tenantbezogene Cutoffs, löscht beziehungsweise
 nullt die definierten Klassen und schreibt nur bei tatsächlichen Änderungen
 einen zusammenfassenden Audit-Eintrag. Der Request-Purge arbeitet in Batches,
 revalidiert unter Sperren und neutralisiert Referenzen. Der n8n-Worker trennt
 Routine-, Ausnahme- und Callbackfristen und lässt aktive Zustellungen bestehen.
+
+Anforderungen mit persönlicher Bescheidentscheidung/Feedback oder einer
+Jahreskampagnenzuordnung sind vom pauschalen Request-Purge ausgeschlossen.
+Die neuen unveränderlichen Fachnachweise dürfen nicht durch das Auflösen
+eines Fremdschlüssels unbemerkt entfernt werden. Eine eigene fachlich geprüfte
+Fachfalllöschung und deren Nachweisführung bleiben erforderlich; daraus wird
+keine neue pauschale Aufbewahrungsdauer abgeleitet.
+
+Der sichere Mandantenposteingang ergänzt Nachrichten-, Staging-, Scan-,
+Entscheidungs- und Lesedaten. Offene Uploadentwürfe besitzen einen
+24-Stunden-Produktdefault. Abgelehnte oder blockierte Bytes verbleiben sieben
+Tage in technischer Quarantäne und werden danach ausschließlich über das
+idempotente Storage-Orphan-Journal zur Löschung vorgemerkt. Angenommene
+Staging-Bytes dürfen nach der hash-erhaltenden Archivübernahme ebenfalls über
+diesen Journalpfad bereinigt werden. Bereits journalisierte Identitäten werden
+auch nach abgeschlossener Object-Store-Bereinigung nicht erneut selektiert.
+Fehlen bei einem mindestens 24 Stunden alten, verworfenen oder abgelaufenen
+PENDING-Intent nach eindeutiger Recovery-Prüfung die Bytes, werden ausschließlich
+die kontaktprivate Intent-Zeile und ein inhaltsfreier Auditnachweis atomar im
+Tenant-`SYSTEM`-Kontext geschrieben. Für abgesendete Threads wird keine stille
+Löschung ausgeführt; ihr konfigurierbarer Kanzleiwert muss vor Aktivierung
+organisatorisch dokumentiert sein. Legal Hold und die fachliche Angemessenheit
+dieser Defaults bleiben vor dem Produktivpilot zu entscheiden.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -127,6 +167,17 @@ fallbezogene Rechtsprüfung. Es fehlen ein allgemeines Legal-Hold-Modell,
 konfigurierbare Freigaben je Kanzlei, vollständige Abdeckung aller
 personenbezogenen Tabellen sowie der Nachweis einer Löschung in angebundenen
 externen Systemen.
+
+Der Inbox-Cleanup löscht Object-Store-Daten nicht direkt, sondern erzeugt
+nachweisbare, idempotente Orphan-Einträge. Die anschließende allgemeine
+Orphan-Bereinigung bleibt der gemeinsame Löschpfad. Dies umfasst auch saubere,
+noch nicht fachlich entschiedene Anlagen aus mindestens 24 Stunden alten,
+terminalen Uploadentwürfen, solange sie an keine Nachricht gebunden sind;
+abgesendete `PENDING_REVIEW`-Eingänge werden nicht erfasst. Nur ein nie
+abgesendeter PENDING-Intent ohne auffindbare Bytes wird nach dem
+24-Stunden-Default samt gekoppeltem Auditnachweis aus dem
+Staging-Metadatenbestand entfernt. Nicht umgesetzt sind eine automatische
+Nachrichtenlöschung und ein allgemeines Legal-Hold-Modell.
 
 ## Fachliche Prüffragen
 

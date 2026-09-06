@@ -59,7 +59,7 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
     expect(editState).toContain("const markDraft = useCallback(() => setStatus('DRAFT')");
     expect(editState).toContain('if (lastServerStatus.current === initialStatus) return;');
     expect(editState).toContain("const markInReview = useCallback(() => setStatus('IN_REVIEW')");
-    expect(owner).toContain('setDisplayValue(state.saved)');
+    expect(owner).toContain('setDisplayValue(result.saved)');
     expect(owner).toContain('{displayValue.fullName}');
   });
 

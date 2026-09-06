@@ -5,6 +5,7 @@
 // früheren settings/actions.ts-God-Datei herausgelöst.
 
 import { z } from 'zod';
+import { EXPANSION_MODULES } from '@/lib/expansion-modules';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
@@ -18,13 +19,15 @@ import {
   type ClientBlockKey,
   type ClientGridItem,
 } from '@/server/settings/client-layout';
-import { writePortalFeatures, type PortalFeatures } from '@/server/settings/portal-features';
+import { writePortalFeaturesTx, type PortalFeatures } from '@/server/settings/portal-features';
+import { writePortalInboxRetentionTx } from '@/server/inbox/retention-settings';
 
 // ----------------------------------------------------------------------------
 // Module + Vollmachten-Modus
 // ----------------------------------------------------------------------------
 
 const ModulesSchema = z.object({
+  ...Object.fromEntries(EXPANSION_MODULES.map(({ key }) => [key, z.boolean()])),
   bwa: z.boolean(),
   knowledge: z.boolean(),
   timeTracking: z.boolean(),
@@ -57,6 +60,9 @@ export async function saveModulesAction(
   if (!g.ok) return g;
 
   const parsed = ModulesSchema.safeParse({
+    ...Object.fromEntries(
+      EXPANSION_MODULES.map(({ key }) => [key, formData.get(`enabled.${key}`) === 'on']),
+    ),
     bwa: formData.get('enabled.bwa') === 'on',
     knowledge: formData.get('enabled.knowledge') === 'on',
     timeTracking: formData.get('enabled.timeTracking') === 'on',
@@ -84,6 +90,20 @@ export async function saveModulesAction(
 
   const { tenantId, staffId, ctx } = g;
   const cfg: ModuleConfig = {
+    knowledgeContext: formData.get('enabled.knowledgeContext') === 'on',
+    yearEndCampaigns: formData.get('enabled.yearEndCampaigns') === 'on',
+    noticeDecisions: formData.get('enabled.noticeDecisions') === 'on',
+    smartMailbox: formData.get('enabled.smartMailbox') === 'on',
+    payrollIntake: formData.get('enabled.payrollIntake') === 'on',
+    expenseAssistance: formData.get('enabled.expenseAssistance') === 'on',
+    clientProcedures: formData.get('enabled.clientProcedures') === 'on',
+    feedbackSurveys: formData.get('enabled.feedbackSurveys') === 'on',
+    mandateStructure: formData.get('enabled.mandateStructure') === 'on',
+    workflowDependencies: formData.get('enabled.workflowDependencies') === 'on',
+    mandateOffboarding: formData.get('enabled.mandateOffboarding') === 'on',
+    vdbPreparation: formData.get('enabled.vdbPreparation') === 'on',
+    sanctionsScreening: formData.get('enabled.sanctionsScreening') === 'on',
+    feeCalculator: formData.get('enabled.feeCalculator') === 'on',
     bwa: parsed.data.bwa,
     knowledge: parsed.data.knowledge,
     timeTracking: parsed.data.timeTracking,
@@ -256,8 +276,11 @@ const PortalFeaturesSchema = z.object({
   bwaView: z.boolean(),
   bwaPlanning: z.boolean(),
   documentUpload: z.boolean(),
+  clientInbox: z.boolean(),
   stammdatenSelfService: z.boolean(),
   handoversView: z.boolean(),
+  messageRetentionDays: z.number().int().min(30).max(3650),
+  retentionDocumented: z.boolean(),
 });
 
 export async function savePortalFeaturesAction(
@@ -271,16 +294,51 @@ export async function savePortalFeaturesAction(
     bwaView: formData.get('bwaView') === 'on',
     bwaPlanning: formData.get('bwaPlanning') === 'on',
     documentUpload: formData.get('documentUpload') === 'on',
+    clientInbox: formData.get('clientInbox') === 'on',
     stammdatenSelfService: formData.get('stammdatenSelfService') === 'on',
     handoversView: formData.get('handoversView') === 'on',
+    messageRetentionDays: Number(formData.get('messageRetentionDays') ?? 365),
+    retentionDocumented: formData.get('retentionDocumented') === 'on',
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: Object.fromEntries(
+        Object.entries(parsed.error.flatten().fieldErrors).map(([key, messages]) => [
+          key,
+          messages,
+        ]),
+      ),
+    };
+  }
+  if (parsed.data.clientInbox && !parsed.data.retentionDocumented) {
+    return {
+      ok: false,
+      error:
+        'Vor der Aktivierung muss die organisatorische Nachrichtenretention dokumentiert sein.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: {
+        retentionDocumented: [
+          'Bestätigen Sie die dokumentierte organisatorische Retention oder lassen Sie das Nachrichtenfach deaktiviert.',
+        ],
+      },
+    };
+  }
 
   const { tenantId, staffId, ctx } = g;
-  const cfg: PortalFeatures = parsed.data;
-  await writePortalFeatures(ctx, cfg);
-
+  const { messageRetentionDays, retentionDocumented, ...portalFeatureData } = parsed.data;
+  const cfg: PortalFeatures = portalFeatureData;
   await withTenantContext(ctx, async (tx) => {
+    // Flag, organisatorischer Retention-Nachweis und Audit bilden eine
+    // Transaktion. So kann ein Teilfehler kein weiterhin aktives Inbox-Flag
+    // mit gleichzeitig zurückgenommener Dokumentation hinterlassen.
+    await writePortalInboxRetentionTx(tx, tenantId, staffId, {
+      messageRetentionDays,
+      organizationallyDocumented: retentionDocumented,
+    });
+    await writePortalFeaturesTx(tx, tenantId, staffId, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -288,7 +346,11 @@ export async function savePortalFeaturesAction(
       action: 'tenant.settings.portal_features.update',
       resourceType: 'tenant_setting',
       resourceId: 'portal.features',
-      after: cfg,
+      after: {
+        ...cfg,
+        inboxRetentionConfigured: retentionDocumented,
+        inboxMessageRetentionDays: messageRetentionDays,
+      },
     });
   });
   revalidatePath('/staff/admin/settings/portal');

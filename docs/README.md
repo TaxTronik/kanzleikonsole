@@ -50,6 +50,7 @@ eingerichtet oder fachlich freigegeben ist.
 | [Day-2 Operations](operations/day-2-operations.md)     | Runbook             | Überwachung, Fehlerdiagnose und Routinebetrieb           |
 | [Release und Update](operations/release.md)            | Runbook             | Versionierte Images, Freigabe, Update und Rollback       |
 | [Disaster Recovery](operations/disaster-recovery.md)   | Runbook             | Backup-Vertrag, Wiederherstellung und Restore-Drill      |
+| [FIDO-MDS und Attestation](operations/fido-mds.md)     | Runbook             | Hardware-Allowlist, MDS-Netz/Refresh und Datenschutz     |
 | [Secret-Rotation](operations/secret-rotation.md)       | Runbook             | Betriebliche Secrets kontrolliert wechseln               |
 | [Subdomain-Trennung](operations/subdomain-trennung.md) | Runbook             | Staff-, Portal- und n8n-Domains sicher trennen           |
 | [Lizenzschlüssel-Verifikation](operations/lizenz.md)   | Betriebsdoku        | Lizenzprüfung und Ausfallverhalten einordnen             |

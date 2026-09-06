@@ -18,8 +18,8 @@ implementation:
   summary: >-
     Die Notification-Scope-Migration bindet bekannte Fachressourcen fail-closed
     an einen Mandanten und erzwingt bei Staff-Lesen/-Mutieren den aktuellen
-    Empfänger- und Clientzugriff. Portal-Kontakte erzeugen die vier
-    klassifizierten Staff-Ereignisse über einen write-only DB-Upsert, ohne
+    Empfänger- und Clientzugriff. Portal-Kontakte erzeugen klassifizierte
+    Staff-Ereignisse über enge write-only DB-Pfade, ohne
     SELECT-Freigabe auf interne Hinweise. Reminder revalidieren Empfänger vor
     dem Insert; ein vollständiges Inventar aller Producer sowie Mail- und
     n8n-Austritte bleibt als Härtungsnachweis offen.
@@ -57,18 +57,30 @@ code_refs:
   - packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql
   - packages/db/prisma/migrations/20260824030000_notification_client_contact_insert/migration.sql
   - packages/db/prisma/migrations/20260830234000_restore_portal_notification_write_only/migration.sql
+  - packages/db/prisma/migrations/20260831270000_workflow_dependency_period/migration.sql
+  - packages/db/prisma/migrations/20260901002000_portal_inbox_notifications/migration.sql
+  - packages/db/prisma/migrations/20260901004000_portal_inbox_scope_forward/migration.sql
+  - packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql
+  - apps/web/src/server/inbox/client-notification.ts
+  - packages/mail/src/dispatch.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
   - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
   - packages/db/src/__tests__/notification-client-scope-migration.test.ts
   - packages/db/src/__tests__/notification-client-scope-rls.test.ts
   - packages/db/src/__tests__/notification-write-only-forward.test.ts
+  - packages/db/src/__tests__/workflow-dependencies.test.ts
+  - packages/db/src/__tests__/portal-inbox-rls.test.ts
+  - apps/web/src/server/inbox/__tests__/client-notification.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
 related_rules:
+  - TAX-NOTICE-DECISION-001
+  - CLIENT-FEEDBACK-001
   - ACCESS-CLIENT-MODE-001
   - ACCESS-TENANT-RLS-001
+  - PORTAL-INBOX-SUBMISSION-001
 tags:
   - notification
   - empfänger
@@ -103,16 +115,17 @@ Kommunikationskanäle außerhalb des Notification-Modells.
 
 ## Entscheidungslogik
 
-| Wenn                                           | Dann                                                                      | Begründung                         |
-| ---------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------- |
-| bekannte mandantenbezogene Ressource           | `clientId` aus tenantgleicher Fachzeile ableiten                          | keine frei behauptete Zuordnung    |
-| Ressourcentyp unbekannt oder Link halb gesetzt | Insert/Update verweigern                                                  | fail-closed Klassifikation         |
-| gezielte Staff-Notification                    | nur dem aktuellen Empfänger zeigen                                        | persönliche Zustellung             |
-| kanzleiweite mandantenbezogene Notification    | nur aktuell clientberechtigten Staff zeigen                               | Broadcast ohne Zugriffsaufweitung  |
-| Empfänger verliert Zugriff                     | Lesen, Aktualisieren und Löschen sofort verweigern                        | aktueller statt historischer Scope |
-| neutraler technischer Typ                      | nur in der expliziten Neutral-Allowlist ohne Client zulassen              | getrennte Systemdomäne             |
-| Portal-Kontakt erzeugt Staff-Hinweis           | nur klassifiziert und write-only upserten; keinen SELECT-Zugriff eröffnen | interne Inhalte bleiben intern     |
-| Reminder wird erzeugt                          | Fachzeile sperren und Status, Empfängeraktivität sowie Zugriff neu prüfen | Race- und Zuständigkeitskontrolle  |
+| Wenn                                           | Dann                                                                      | Begründung                          |
+| ---------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------- |
+| bekannte mandantenbezogene Ressource           | `clientId` aus tenantgleicher Fachzeile ableiten                          | keine frei behauptete Zuordnung     |
+| Ressourcentyp unbekannt oder Link halb gesetzt | Insert/Update verweigern                                                  | fail-closed Klassifikation          |
+| gezielte Staff-Notification                    | nur dem aktuellen Empfänger zeigen                                        | persönliche Zustellung              |
+| kanzleiweite mandantenbezogene Notification    | nur aktuell clientberechtigten Staff zeigen                               | Broadcast ohne Zugriffsaufweitung   |
+| Empfänger verliert Zugriff                     | Lesen, Aktualisieren und Löschen sofort verweigern                        | aktueller statt historischer Scope  |
+| neutraler technischer Typ                      | nur in der expliziten Neutral-Allowlist ohne Client zulassen              | getrennte Systemdomäne              |
+| Portal-Kontakt erzeugt Staff-Hinweis           | nur klassifiziert und write-only upserten; keinen SELECT-Zugriff eröffnen | interne Inhalte bleiben intern      |
+| Portal-Inbox-Aktivität wird gemeldet           | Titel, Link, Ressource und Empfänger serverseitig ableiten                | keine Portal-Freitexte einschleusen |
+| Reminder wird erzeugt                          | Fachzeile sperren und Status, Empfängeraktivität sowie Zugriff neu prüfen | Race- und Zuständigkeitskontrolle   |
 
 ## Ausnahmen und Grenzfälle
 
@@ -153,6 +166,27 @@ bereits vorhandenen ungelesenen Hinweis bleibt sie ohne Änderung, weil der
 Schlüssel allein dessen Portal-Provenienz nicht belegt. Die allgemeine
 INSERT-Policy ist für Portal-Kontakte geschlossen.
 
+Für den sicheren Mandantenposteingang besteht ein zusätzlicher dedizierter
+write-only Pfad `app.notify_portal_inbox_activity`. Er leitet Thread, Mandant,
+Empfänger, festen Titel und Link in der Datenbank ab; Betreff, Nachrichtentext,
+Dateiname und Ablehnungsgrund gelangen nicht in die Notification. Die
+ressourcentypabhängige RLS verlangt beim Lesen weiterhin
+`PORTAL_INBOX_MANAGE` und aktuellen Mandantenzugriff. Ein separater
+Ableitungstrigger hält diese neue Ressourcenart aus der älteren geschlossenen
+Ressourcenfunktion heraus.
+
+Kanzleiantworten verwenden nach dem Nachrichten-Commit einen neutralen
+E-Mail-Pfad. Er adressiert ausschließlich aktive, bestätigte Kontakte des
+aktiven Mandanten mit eingeschalteten Benachrichtigungen. Templatevariablen
+enthalten nur den serverseitigen Portallink; Betreff, Nachrichtentext und
+Dateiname werden weder übergeben noch protokolliert. Totalfehler ohne mögliche
+Providerannahme bleiben sichtbar und sicher wiederholbar, eine mögliche
+Teilzustellung sperrt automatischen Neuversand. Vor dem externen Versand wird
+unter einem nachrichtenbezogenen Advisory-Lock ein dauerhafter Audit-Claim
+committed. Parallele Replays sehen diesen Claim und versenden nicht erneut; ein
+nach Providerannahme abgestürzter Prozess bleibt deshalb bewusst als manuell zu
+klärender, nicht automatisch wiederholbarer Zustand stehen.
+
 Eine spätere Forward-Migration stellt nach der zusammengeführten historischen
 Migrationsreihenfolge die Staff-/System-beschränkte `notification_insert`-Policy
 wieder her. Die Reparatur vom 27. August installiert noch eine ältere Policy
@@ -163,6 +197,23 @@ ihre Ereignisliste sowie SELECT-, UPDATE- und DELETE-Rechte bleiben unverändert
 
 ## Bekannte Abweichungen und Grenzen
 
+Wiedergeöffnete Workflow-Vorleistungen erzeugen bei aktivem Abhängigkeitsmodul
+einen generischen Hinweis an den aktiven, aktuell zugänglichen Bearbeiter des
+Nachfolgers, hilfsweise dessen Ersteller. Der nicht öffentlich ausführbare
+DB-Trigger prüft Empfängerrechte erneut und bindet die Nachricht ausschließlich
+an den Nachfolgermandanten. Verdeckte Vorgängernamen und Kennungen werden nicht
+in Titel oder Text aufgenommen. Die vorhandene Notification-RLS schützt den
+späteren Abruf auch nach einem Rechteentzug.
+
+Persönliche Bescheidantworten und Feedback mit ein bis zwei Sternen verwenden
+den bestehenden write-only Typ REQUEST_RESPONDED mit der gebundenen Anforderung.
+Eine eng gebundene DB-Funktion liefert nur für den adressierten aktiven Kontakt
+aktuell zugängliche interne Empfänger: Hauptbearbeiter, hilfsweise Ersteller,
+danach Admin/Partner. Nachrichtentext und Bewertung stehen nicht im Hinweis.
+Der neue Kanal ist in `docs/development/module/workflow-expansion.md` und der
+Migration `20260831110000_workflow_expansion` beschrieben; die Datenbankabnahme
+dieser Erweiterung bleibt gesondert nachzuweisen.
+
 Der Status bleibt teilweise, weil noch kein vollständiges Inventar aller
 heutigen Producer sowie Mail-/n8n-Austritte vorliegt. Die Migration und ihre
 Replay-/DB-Regressionen sind technisch nachgewiesen. Die RLS-Schicht
@@ -172,6 +223,10 @@ ist derzeit absichtlich auf `APPOINTMENT_REQUESTED`, `REQUEST_RESPONDED`,
 `CLIENT_MASTER_CHANGE_REQUEST` und `GWG_ONBOARDING_SUBMITTED` mit ihren jeweils
 festen Ressourcentypen begrenzt; ein neuer Portal-Producer braucht eine
 bewusste Migration und einen DB-Nachweis.
+
+`PORTAL_INBOX_ACTIVITY` erweitert diese allgemeine Liste nicht. Der Typ besitzt
+einen eigenen, inhaltsneutralen DB-Einstieg und ein zusätzliches Permission-
+Gate. Damit bleibt die ältere Positivliste unverändert geschlossen.
 
 ## Fachliche Prüffragen
 

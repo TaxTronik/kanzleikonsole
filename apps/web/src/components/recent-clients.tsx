@@ -9,7 +9,8 @@
 // keine Auswertung — daher auch DSGVO-/Überwachungs-neutral.
 // =============================================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { readBrowserStorage, useBrowserStorage, writeBrowserStorage } from './use-browser-storage';
 import Link from 'next/link';
 import { Clock } from 'lucide-react';
 
@@ -21,9 +22,8 @@ interface RecentClient {
   name: string;
 }
 
-function readRecent(): RecentClient[] {
+function readRecent(raw: string | null): RecentClient[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -41,9 +41,9 @@ function readRecent(): RecentClient[] {
 export function RecordClientVisit({ id, name }: RecentClient): null {
   useEffect(() => {
     try {
-      const current = readRecent().filter((e) => e.id !== id);
+      const current = readRecent(readBrowserStorage(STORAGE_KEY)).filter((e) => e.id !== id);
       const next = [{ id, name }, ...current].slice(0, MAX_RECENT);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      writeBrowserStorage(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // localStorage nicht verfügbar (Privacy-Modus) → einfach ignorieren.
     }
@@ -53,11 +53,7 @@ export function RecordClientVisit({ id, name }: RecentClient): null {
 
 /** Chip-Leiste der zuletzt besuchten Mandanten (ohne den aktuell offenen). */
 export function RecentClients({ excludeId }: { excludeId?: string }) {
-  const [recent, setRecent] = useState<RecentClient[]>([]);
-
-  useEffect(() => {
-    setRecent(readRecent());
-  }, []);
+  const recent = readRecent(useBrowserStorage(STORAGE_KEY));
 
   const shown = recent.filter((c) => c.id !== excludeId);
   if (shown.length === 0) return null;

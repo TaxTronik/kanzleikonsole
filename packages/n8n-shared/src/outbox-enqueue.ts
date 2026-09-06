@@ -141,6 +141,121 @@ async function readExistingDedupeResult(
   };
 }
 
+async function readRoutingConnectionTx(tx: Prisma.TransactionClient, tenantId: string | null) {
+  return tenantId
+    ? await tx.n8nConnection.findUnique({
+        where: { tenantId },
+        select: {
+          id: true,
+          name: true,
+          enabled: true,
+          routingMode: true,
+          webhookBaseUrl: true,
+          signingSecretEncrypted: true,
+        },
+      })
+    : null;
+}
+
+async function planExplicitDeliveriesTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string;
+    event: N8nEventName;
+    connection: NonNullable<Awaited<ReturnType<typeof readRoutingConnectionTx>>>;
+    outboxId: string;
+  },
+  markWithoutDelivery: (
+    status: 'UNROUTED' | 'SKIPPED',
+    reason: string,
+    createSkippedDelivery?: boolean,
+  ) => Promise<RoutingPlan>,
+): Promise<RoutingPlan> {
+  const { tenantId, event, connection, outboxId } = input;
+  const subscriptions = await tx.n8nEventSubscription.findMany({
+    where: {
+      tenantId,
+      event,
+      enabled: true,
+      endpoint: { connectionId: connection.id, enabled: true },
+    },
+    select: {
+      endpoint: {
+        select: { id: true, name: true, productionUrl: true, testUrl: true, testMode: true },
+      },
+    },
+  });
+  if (subscriptions.length === 0) {
+    const configuredSubscriptions = await tx.n8nEventSubscription.count({
+      where: {
+        tenantId,
+        event,
+        endpoint: { connectionId: connection.id },
+      },
+    });
+    if (configuredSubscriptions === 0) {
+      return markWithoutDelivery(
+        'SKIPPED',
+        `Event '${event}' ist für n8n nicht abonniert; Webhook-Route speichern und aktivieren`,
+      );
+    }
+    return markWithoutDelivery(
+      'UNROUTED',
+      `Konfigurierte n8n-Route für Event '${event}' ist nicht aktiv`,
+    );
+  }
+
+  // Sobald eine normalisierte Connection existiert, ist sie alleinige
+  // Secret-Quelle. Ein stiller Fallback auf tenant_setting/ENV würde ein
+  // bewusst gelöschtes oder rotiertes Secret wieder aktivieren.
+  const secretConfigured = Boolean(connection.signingSecretEncrypted);
+  const deliveryIds: string[] = [];
+  let pending = 0;
+  for (const { endpoint } of subscriptions) {
+    // Test-Ziel entweder global (N8N_DELIVERY_MODE=test) oder pro Route
+    // über den Debug-Schalter testMode — beides liefert an /webhook-test.
+    const useTestUrl = n8nDeliveryMode === 'test' || endpoint.testMode;
+    const targetUrl = useTestUrl ? endpoint.testUrl : endpoint.productionUrl;
+    const skipReason = !secretConfigured
+      ? 'n8n-Signatur-Secret fehlt'
+      : useTestUrl && !targetUrl
+        ? 'Kein sicherer n8n-Test-Webhook für diesen Endpoint konfiguriert'
+        : null;
+    const delivery = await tx.n8nDelivery.create({
+      data: {
+        tenantId,
+        outboxId,
+        endpointId: endpoint.id,
+        connectionIdSnapshot: connection.id,
+        endpointNameSnapshot: endpoint.name,
+        targetUrl: targetUrl ?? null,
+        status: skipReason ? 'SKIPPED' : 'PENDING',
+        lastError: skipReason,
+      },
+      select: { id: true },
+    });
+    if (!skipReason) {
+      pending += 1;
+      deliveryIds.push(delivery.id);
+    }
+  }
+
+  const allSkipped = pending === 0;
+  if (allSkipped) {
+    await tx.n8nOutbox.update({
+      where: { id: outboxId },
+      data: { status: 'SKIPPED', lastError: 'Alle n8n-Zustellungen wurden übersprungen' },
+    });
+  }
+  return {
+    outboxId,
+    status: allSkipped ? 'SKIPPED' : 'PENDING',
+    deliveryCount: subscriptions.length,
+    deliveryIds,
+    ...(allSkipped ? { error: 'Alle n8n-Zustellungen wurden übersprungen' } : {}),
+  } satisfies RoutingPlan;
+}
+
 export async function enqueueN8nEventCore(
   deps: OutboxEnqueueDeps,
   event: N8nEventName,
@@ -178,19 +293,7 @@ export async function enqueueN8nEventCore(
         data: { tenantId, event, payload: payload as object, dedupeKey },
         select: { id: true },
       });
-      const connection = tenantId
-        ? await tx.n8nConnection.findUnique({
-            where: { tenantId },
-            select: {
-              id: true,
-              name: true,
-              enabled: true,
-              routingMode: true,
-              webhookBaseUrl: true,
-              signingSecretEncrypted: true,
-            },
-          })
-        : null;
+      const connection = await readRoutingConnectionTx(tx, tenantId);
       // Legacy-Konfiguration wird nur gelesen, wenn noch keine normalisierte
       // Connection existiert. So kann weder eine alte Tenant-Einstellung noch
       // ENV eine unvollständige/rotierte Connection unbemerkt ergänzen.
@@ -233,89 +336,11 @@ export async function enqueueN8nEventCore(
 
       if (connection?.routingMode === 'EXPLICIT') {
         // Eine Connection kann nur bei vorhandenem Tenant geladen werden.
-        const explicitTenantId = tenantId as string;
-        const subscriptions = await tx.n8nEventSubscription.findMany({
-          where: {
-            tenantId: explicitTenantId,
-            event,
-            enabled: true,
-            endpoint: { connectionId: connection.id, enabled: true },
-          },
-          select: {
-            endpoint: {
-              select: { id: true, name: true, productionUrl: true, testUrl: true, testMode: true },
-            },
-          },
-        });
-        if (subscriptions.length === 0) {
-          const configuredSubscriptions = await tx.n8nEventSubscription.count({
-            where: {
-              tenantId: explicitTenantId,
-              event,
-              endpoint: { connectionId: connection.id },
-            },
-          });
-          if (configuredSubscriptions === 0) {
-            return markWithoutDelivery(
-              'SKIPPED',
-              `Event '${event}' ist für n8n nicht abonniert; Webhook-Route speichern und aktivieren`,
-            );
-          }
-          return markWithoutDelivery(
-            'UNROUTED',
-            `Konfigurierte n8n-Route für Event '${event}' ist nicht aktiv`,
-          );
-        }
-
-        // Sobald eine normalisierte Connection existiert, ist sie alleinige
-        // Secret-Quelle. Ein stiller Fallback auf tenant_setting/ENV würde ein
-        // bewusst gelöschtes oder rotiertes Secret wieder aktivieren.
-        const secretConfigured = Boolean(connection.signingSecretEncrypted);
-        const deliveryIds: string[] = [];
-        let pending = 0;
-        for (const { endpoint } of subscriptions) {
-          // Test-Ziel entweder global (N8N_DELIVERY_MODE=test) oder pro Route
-          // über den Debug-Schalter testMode — beides liefert an /webhook-test.
-          const useTestUrl = n8nDeliveryMode === 'test' || endpoint.testMode;
-          const targetUrl = useTestUrl ? endpoint.testUrl : endpoint.productionUrl;
-          const skipReason = !secretConfigured
-            ? 'n8n-Signatur-Secret fehlt'
-            : useTestUrl && !targetUrl
-              ? 'Kein sicherer n8n-Test-Webhook für diesen Endpoint konfiguriert'
-              : null;
-          const delivery = await tx.n8nDelivery.create({
-            data: {
-              tenantId,
-              outboxId: outbox.id,
-              endpointId: endpoint.id,
-              connectionIdSnapshot: connection.id,
-              endpointNameSnapshot: endpoint.name,
-              targetUrl: targetUrl ?? null,
-              status: skipReason ? 'SKIPPED' : 'PENDING',
-              lastError: skipReason,
-            },
-            select: { id: true },
-          });
-          if (!skipReason) {
-            pending += 1;
-            deliveryIds.push(delivery.id);
-          }
-        }
-
-        const allSkipped = pending === 0;
-        if (allSkipped) {
-          await tx.n8nOutbox.update({
-            where: { id: outbox.id },
-            data: { status: 'SKIPPED', lastError: 'Alle n8n-Zustellungen wurden übersprungen' },
-          });
-        }
-        return {
-          outboxId: outbox.id,
-          status: allSkipped ? 'SKIPPED' : 'PENDING',
-          deliveryCount: subscriptions.length,
-          deliveryIds,
-          ...(allSkipped ? { error: 'Alle n8n-Zustellungen wurden übersprungen' } : {}),
-        } satisfies RoutingPlan;
+        return planExplicitDeliveriesTx(
+          tx,
+          { tenantId: tenantId as string, event, connection, outboxId: outbox.id },
+          markWithoutDelivery,
+        );
       }
 
       // Eine normalisierte LEGACY-Connection verwendet ebenfalls ausschließlich

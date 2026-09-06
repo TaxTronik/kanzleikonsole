@@ -11,7 +11,7 @@
 // auswählen.
 // =============================================================================
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { fmtIsoDate } from '@/lib/fmt';
 import {
   consentForNewDeclaration,
@@ -98,16 +98,10 @@ export function ConsentFields({
       providerMissing: false,
     }));
   const [c, setInner] = useState<ConsentSelections>(initial ?? consentForNewDeclaration());
-  // Ref-Spiegel des aktuellen Stands: `onChange` (Parent-setState) darf NICHT
-  // aus einem setState-Updater laufen — das aktualisiert die Elternkomponente
-  // während des Renders („Cannot update a component while rendering …") und
-  // feuert unter StrictMode doppelt. `next` daher aus dem Ref berechnen und
-  // beide Seiteneffekte außerhalb des Updaters ausführen.
-  const cRef = useRef(c);
-  cRef.current = c;
+  // Jeder Bedienhandler erzeugt genau eine Änderung. Den Parent außerhalb
+  // eines React-State-Updaters informieren, damit StrictMode sie nicht wiederholt.
   const setC = (updater: ConsentSelections | ((s: ConsentSelections) => ConsentSelections)) => {
-    const next = typeof updater === 'function' ? updater(cRef.current) : updater;
-    cRef.current = next;
+    const next = typeof updater === 'function' ? updater(c) : updater;
     setInner(next);
     onChange?.(next);
   };
@@ -140,9 +134,8 @@ export function ConsentFields({
   const allOptions = [...configuredOptions, ...historicalOptions];
 
   function isSelected(option: ResolvedConsentOption): boolean {
-    if (isBuiltinConsentOptionId(option.id))
-      return isBuiltinConsentSelected(cRef.current, option.id);
-    return cRef.current.optionSelections.some((selection) => selection.optionId === option.id);
+    if (isBuiltinConsentOptionId(option.id)) return isBuiltinConsentSelected(c, option.id);
+    return c.optionSelections.some((selection) => selection.optionId === option.id);
   }
 
   function optionHint(option: ResolvedConsentOption): string | null {

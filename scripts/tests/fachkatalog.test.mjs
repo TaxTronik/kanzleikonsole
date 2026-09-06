@@ -486,6 +486,42 @@ test('verlangt bei Freigabe eine zum Regeltyp passende Primärquelle', () => {
   }
 });
 
+test('GWG-SCREENING-001 akzeptiert den amtlichen EU-Datenkatalog ohne ähnlich benannte Fremddomains', () => {
+  const root = makeRoot();
+  try {
+    const source = ruleSource()
+      .replace('kind: product_documentation', 'kind: official_guidance')
+      .replace(
+        'path: FEATURES.md',
+        'url: https://data.europa.eu/data/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions',
+      );
+    writeRule(root, source);
+    assert.doesNotThrow(() => loadCatalog(root));
+    writeRule(root, source.replace('data.europa.eu', 'data.europa.eu.evil.example'));
+    assert.throws(() => loadCatalog(root), /keine freigegebene amtliche Domain/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('INV-STORNO-REFERENCE-001 akzeptiert die BeschA-FAQ und verwirft ähnlich benannte Fremddomains', () => {
+  const root = makeRoot();
+  try {
+    const source = ruleSource()
+      .replace('kind: product_documentation', 'kind: official_guidance')
+      .replace(
+        'path: FEATURES.md',
+        'url: https://e-rechnung-bund.de/faq/wie-sind-gutschriften-und-rechnungskorrekturen-anzugeben/',
+      );
+    writeRule(root, source);
+    assert.doesNotThrow(() => loadCatalog(root));
+    writeRule(root, source.replace('e-rechnung-bund.de', 'e-rechnung-bund.de.evil.example'));
+    assert.throws(() => loadCatalog(root), /keine freigegebene amtliche Domain/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('weist Dokumente als Code- oder Testnachweis zurück', () => {
   const root = makeRoot();
   try {
@@ -531,6 +567,26 @@ test('akzeptiert ausführbare Skripte, Skripttests und Forgejo-Workflows als Nac
       }),
     );
     assert.doesNotThrow(() => loadCatalog(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('STBVV-CALCULATION-001 akzeptiert die konkrete Laufzeittabelle und Paketkonfiguration, keine beliebigen JSON-Nachweise', () => {
+  const root = makeRoot();
+  try {
+    for (const ref of [
+      'packages/tax/package.json',
+      'packages/tax/src/stbvv/tables.json',
+      'packages/tax/src/stbvv/unreviewed.json',
+    ]) {
+      mkdirSync(join(root, ref, '..'), { recursive: true });
+      writeFileSync(join(root, ref), '{}');
+      writeRule(root, ruleSource({ codeRef: ref }));
+      if (ref.endsWith('unreviewed.json'))
+        assert.throws(() => loadCatalog(root), /ausführungsnahe Software/);
+      else assert.doesNotThrow(() => loadCatalog(root));
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

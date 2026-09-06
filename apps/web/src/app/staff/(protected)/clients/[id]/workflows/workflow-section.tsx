@@ -149,6 +149,7 @@ export function WorkflowSection({
                         id={it.id}
                         clientId={clientId}
                         title={it.title}
+                        hasKnowledgeContext={it.wikiArticleIds.length > 0}
                         description={it.description}
                         kind={it.kind}
                         config={(it.config ?? {}) as Record<string, unknown>}

@@ -5,10 +5,17 @@ import { DateTimePicker } from '@/components/datetime-picker';
 import { useActionState, useEffect, useId, useState } from 'react';
 import { FileText, LoaderCircle, Sparkles } from 'lucide-react';
 import {
+  FieldError,
+  FormErrorSummary,
+  fieldErrorId,
+  fieldErrorProps,
+  type FieldErrors,
+} from '@/components/form-errors';
+import {
   createQuickRequestAction,
   createRequestAction,
   searchRequestClientsAction,
-  type ActionResult,
+  type RequestActionResult,
 } from '../actions';
 
 export type RequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
@@ -49,7 +56,7 @@ interface Props {
   autoFocus?: boolean;
   onPendingChange?: (pending: boolean) => void;
   onCreated?: (
-    result: Required<Pick<ActionResult, 'requestId' | 'clientId' | 'nextRequestId'>>,
+    result: Required<Pick<RequestActionResult, 'requestId' | 'clientId' | 'nextRequestId'>>,
   ) => void;
 }
 
@@ -57,6 +64,18 @@ function isoLocalForDate(d: Date): string {
   // Liefert den lokalen Picker-Wert im Format YYYY-MM-DDTHH:mm.
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function RequestFieldError({ name, fieldErrors }: { name: string; fieldErrors?: FieldErrors }) {
+  return <FieldError name={name} errors={fieldErrors?.[name]} />;
+}
+
+function requestFieldInvalid(name: string, fieldErrors?: FieldErrors): boolean {
+  return Boolean(fieldErrors?.[name]?.length);
+}
+
+function requestFieldDescription(name: string, fieldErrors?: FieldErrors): string | undefined {
+  return requestFieldInvalid(name, fieldErrors) ? fieldErrorId(name) : undefined;
 }
 
 export function NewRequestForm({
@@ -73,10 +92,12 @@ export function NewRequestForm({
   onCreated,
 }: Props) {
   const submitAction = mode === 'quick' ? createQuickRequestAction : createRequestAction;
-  const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
+  const [state, formAction, isPending] = useActionState<RequestActionResult | null, FormData>(
     submitAction,
     null,
   );
+  const fieldErrors = state?.fieldErrors;
+  const actionError = state?.error;
 
   const idPrefix = useId();
   const [clientSearch, setClientSearch] = useState('');
@@ -184,6 +205,18 @@ export function NewRequestForm({
       aria-busy={isPending}
     >
       <input type="hidden" name="requestId" value={requestId} />
+      <FormErrorSummary
+        error={actionError}
+        fieldErrors={fieldErrors}
+        fieldIds={{
+          clientId: `${idPrefix}-client-search`,
+          title: 'title',
+          description: 'description',
+          priority: 'priority',
+          dueAt: 'dueAt',
+          formTemplateId: 'request-form-template',
+        }}
+      />
       {clientId ? (
         <input type="hidden" name="clientId" value={clientId} />
       ) : (
@@ -222,6 +255,7 @@ export function NewRequestForm({
                 autoComplete="off"
                 autoFocus={autoFocus}
                 disabled={disabled || isPending}
+                {...fieldErrorProps('clientId', fieldErrors)}
               />
               {clientSearchPending && (
                 <LoaderCircle
@@ -329,9 +363,7 @@ export function NewRequestForm({
               Mandanten mit ausstehender GwG-Prüfung werden angezeigt, können aber noch keine
               Portal-Anforderung erhalten.
             </p>
-            {state?.fieldErrors?.['clientId'] && (
-              <p className="text-xs text-red-600 mt-1">{state.fieldErrors['clientId']}</p>
-            )}
+            <RequestFieldError name="clientId" fieldErrors={fieldErrors} />
           </div>
         </div>
       )}
@@ -387,10 +419,9 @@ export function NewRequestForm({
           maxLength={200}
           autoFocus={autoFocus && Boolean(clientId)}
           disabled={disabled || isPending}
+          {...fieldErrorProps('title', fieldErrors)}
         />
-        {state?.fieldErrors?.['title'] && (
-          <p className="text-xs text-red-600 mt-1">{state.fieldErrors['title']}</p>
-        )}
+        <RequestFieldError name="title" fieldErrors={fieldErrors} />
       </div>
 
       <div>
@@ -409,10 +440,9 @@ export function NewRequestForm({
           minLength={2}
           maxLength={5000}
           disabled={disabled || isPending}
+          {...fieldErrorProps('description', fieldErrors)}
         />
-        {state?.fieldErrors?.['description'] && (
-          <p className="text-xs text-red-600 mt-1">{state.fieldErrors['description']}</p>
-        )}
+        <RequestFieldError name="description" fieldErrors={fieldErrors} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -427,12 +457,14 @@ export function NewRequestForm({
             onChange={(e) => setPriority(e.target.value as RequestPriority)}
             className="input"
             disabled={disabled || isPending}
+            {...fieldErrorProps('priority', fieldErrors)}
           >
             <option value="LOW">Niedrig</option>
             <option value="NORMAL">Normal</option>
             <option value="HIGH">Hoch</option>
             <option value="URGENT">Dringend</option>
           </select>
+          <RequestFieldError name="priority" fieldErrors={fieldErrors} />
         </div>
 
         <div>
@@ -449,7 +481,10 @@ export function NewRequestForm({
             value={dueAt}
             onChange={setDueAt}
             disabled={disabled || isPending}
+            ariaInvalid={requestFieldInvalid('dueAt', fieldErrors)}
+            ariaDescribedBy={requestFieldDescription('dueAt', fieldErrors)}
           />
+          <RequestFieldError name="dueAt" fieldErrors={fieldErrors} />
         </div>
       </div>
 
@@ -463,6 +498,7 @@ export function NewRequestForm({
           onChange={(e) => setFormTemplateId(e.target.value)}
           className="input"
           disabled={disabled || isPending}
+          {...fieldErrorProps('formTemplateId', fieldErrors)}
         >
           <option value="">— kein Formular —</option>
           {formTemplates.map((f) => (
@@ -483,13 +519,8 @@ export function NewRequestForm({
             Der Mandant bekommt das Formular in seinem Portal angezeigt.
           </p>
         )}
+        <RequestFieldError name="formTemplateId" fieldErrors={fieldErrors} />
       </div>
-
-      {state?.error && (
-        <div role="alert" className="alert-error-sm">
-          {state.error}
-        </div>
-      )}
 
       <div className="flex justify-end">
         <button

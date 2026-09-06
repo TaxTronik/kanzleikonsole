@@ -78,6 +78,7 @@ export default async function ClientDetailPage({
   searchParams: Promise<ClientDetailSearchParams>;
 }) {
   const session = await requireStaffPage();
+  const now = new Date();
 
   const [{ id }, search] = await Promise.all([params, searchParams]);
   const documentsPage = parseClientDocumentsPage(search.docsPage);
@@ -165,11 +166,11 @@ export default async function ClientDetailPage({
               <span className="badge-yellow">GwG ausstehend</span>
             )}
           </div>
-          <p className="text-muted text-sm">
-            {kindLabels[client.kind] ?? client.kind}
-            {client.datevNo ? ` · DATEV ${client.datevNo}` : ''}
-            {client.addisonNo ? ` · Addison ${client.addisonNo}` : ''}
-          </p>
+          <ClientAccountingLabels
+            kind={client.kind}
+            datevNo={client.datevNo}
+            addisonNo={client.addisonNo}
+          />
           {(() => {
             const berufstraeger = client.responsibilities.filter((r) => r.role === 'BERUFSTRAEGER');
             const bearbeiter = client.responsibilities.filter((r) => r.role === 'HAUPTBEARBEITER');
@@ -178,9 +179,7 @@ export default async function ClientDetailPage({
               <div className="text-xs text-muted mt-1 space-y-0.5">
                 {berufstraeger.length > 0 && (
                   <p>
-                    <span className="font-medium text-secondary">
-                      {berufstraeger.length === 1 ? 'Berufsträger:' : 'Berufsträger:'}
-                    </span>{' '}
+                    <span className="font-medium text-secondary">Berufsträger:</span>{' '}
                     {berufstraeger.map((r) => r.staff.fullName).join(', ')}
                   </p>
                 )}
@@ -446,7 +445,7 @@ export default async function ClientDetailPage({
                     {rows.map((r) => {
                       if (r.kind === 'tax') {
                         const daysLeft = Math.ceil(
-                          (r.date.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+                          (r.date.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
                         );
                         return (
                           <li
@@ -533,7 +532,7 @@ export default async function ClientDetailPage({
                     const done = inst.items.filter((it) => it.doneAt).length;
                     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
                     const overdue = inst.items.some(
-                      (it) => !it.doneAt && it.dueDate && it.dueDate.getTime() < Date.now(),
+                      (it) => !it.doneAt && it.dueDate && it.dueDate.getTime() < now.getTime(),
                     );
                     return (
                       <li key={inst.id}>
@@ -743,7 +742,7 @@ export default async function ClientDetailPage({
                 }
                 const isExpiring =
                   latest.validUntil &&
-                  latest.validUntil.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
+                  latest.validUntil.getTime() - now.getTime() < 30 * 24 * 60 * 60 * 1000;
                 return (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -888,5 +887,23 @@ export default async function ClientDetailPage({
         );
       })()}
     </div>
+  );
+}
+
+function ClientAccountingLabels({
+  kind,
+  datevNo,
+  addisonNo,
+}: {
+  kind: string;
+  datevNo: string | null;
+  addisonNo: string | null;
+}) {
+  return (
+    <p className="text-muted text-sm">
+      {kindLabels[kind] ?? kind}
+      {datevNo ? ` · DATEV ${datevNo}` : ''}
+      {addisonNo ? ` · Addison ${addisonNo}` : ''}
+    </p>
   );
 }

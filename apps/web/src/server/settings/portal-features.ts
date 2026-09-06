@@ -11,11 +11,12 @@
 //   - portal.bwaPlanning = false    → Mandant darf aber keine eigene Planung
 //                                     anlegen
 //
-// Liegt in `tenant_setting.portal.features`. Default für alle Flags: true
-// (rückwärtskompatibel — keine bestehende Kanzlei verliert Features).
+// Liegt in `tenant_setting.portal.features`. Bestehende Flags bleiben per
+// Default true (rückwärtskompatibel); neue sicherheitsrelevante Opt-in-Module
+// wie `clientInbox` sind bei fehlendem Schlüssel ausdrücklich false.
 // =============================================================================
 
-import type { TenantContext } from '@taxtronik/db';
+import type { TenantContext, TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 
@@ -28,6 +29,8 @@ export interface PortalFeatures {
   bwaPlanning: boolean;
   /** Mandant darf eigene Dokumente hochladen */
   documentUpload: boolean;
+  /** Mandant darf den sicheren Nachrichten-/Dateieingang verwenden */
+  clientInbox: boolean;
   /** Mandant darf Stammdaten-Änderungen vorschlagen */
   stammdatenSelfService: boolean;
   /** Mandant sieht den Status seiner hinterlegten Unterlagen */
@@ -39,6 +42,7 @@ export const DEFAULT_PORTAL_FEATURES: PortalFeatures = {
   bwaView: true,
   bwaPlanning: true,
   documentUpload: true,
+  clientInbox: false,
   stammdatenSelfService: true,
   handoversView: true,
 };
@@ -52,6 +56,7 @@ function normalize(value: unknown): PortalFeatures {
     bwaView: v.bwaView !== false,
     bwaPlanning: v.bwaPlanning !== false,
     documentUpload: v.documentUpload !== false,
+    clientInbox: v.clientInbox === true,
     stammdatenSelfService: v.stammdatenSelfService !== false,
     handoversView: v.handoversView !== false,
   };
@@ -65,14 +70,20 @@ export async function readPortalFeatures(ctx: TenantContext): Promise<PortalFeat
 }
 
 export async function writePortalFeatures(ctx: TenantContext, cfg: PortalFeatures): Promise<void> {
-  const stored = normalize(cfg);
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY,
-      value: stored as object,
-      updatedBy: ctx.actorId,
-    });
+  await withTenantContext(ctx, (tx) => writePortalFeaturesTx(tx, ctx.tenantId, ctx.actorId, cfg));
+}
+
+export async function writePortalFeaturesTx(
+  tx: TxClient,
+  tenantId: string,
+  updatedBy: string | null,
+  cfg: PortalFeatures,
+): Promise<void> {
+  await writeTenantSettingValue(tx, {
+    tenantId,
+    key: KEY,
+    value: normalize(cfg) as object,
+    updatedBy,
   });
 }
 

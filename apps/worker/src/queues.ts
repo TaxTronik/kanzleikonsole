@@ -53,6 +53,15 @@ const defaultJobOptions = {
   removeOnFail: { age: QUEUE_STATUS_HISTORY_RETENTION_SECONDS, count: 500 },
 } as const;
 
+export const mailboxPollQueue = new Queue<ChecksJob, void, string>(JOB_QUEUES.mailboxPoll.name, {
+  connection,
+  defaultJobOptions,
+});
+export const sanctionsRefreshQueue = new Queue<ChecksJob, void, string>(
+  JOB_QUEUES.sanctionsRefresh.name,
+  { connection, defaultJobOptions },
+);
+
 export const evidenceSealQueue = new Queue<EvidenceSealJob, void, string>(
   JOB_QUEUES.evidenceSeal.name,
   { connection, defaultJobOptions },
@@ -111,8 +120,16 @@ export const workflowN8nDispatchQueue = new Queue<Record<string, never>, void, s
   JOB_QUEUES.workflowN8nDispatch.name,
   { connection, defaultJobOptions },
 );
+export const workflowFeedbackQueue = new Queue<Record<string, never>, void, string>(
+  JOB_QUEUES.workflowFeedback.name,
+  { connection, defaultJobOptions },
+);
 export const storageOrphanCleanupQueue = new Queue<Record<string, never>, void, string>(
   JOB_QUEUES.storageOrphanCleanup.name,
+  { connection, defaultJobOptions },
+);
+export const portalInboxCleanupQueue = new Queue<Record<string, never>, void, string>(
+  JOB_QUEUES.portalInboxCleanup.name,
   { connection, defaultJobOptions },
 );
 export const magicLinkCleanupQueue = new Queue<ChecksJob, void, string>(

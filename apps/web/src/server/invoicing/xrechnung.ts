@@ -9,7 +9,7 @@
 //
 // Hinweise:
 // - Beträge werden mit 2 Nachkommastellen ausgegeben (Währung EUR).
-// - Dokumenttyp 380 = Handelsrechnung. Stornorechnung wäre 381.
+// - Dokumenttyp 380 = Handelsrechnung, 384 = negative Korrekturrechnung/Storno.
 // - VAT category code "S" = Standard rate. Andere: "Z" (zero), "E" (exempt),
 //   "AE" (Reverse Charge).
 // - Die Buyer Reference nutzt vorrangig die hinterlegte Leitweg-ID/Referenz und
@@ -38,9 +38,11 @@ export interface XRechnungInvoice {
   // (BT-73/BT-74). NULL → Konvention „Leistungsdatum = Rechnungsdatum" (BT-72).
   servicePeriodStart?: Date | null;
   servicePeriodEnd?: Date | null;
-  // iter100: Dokumenttyp (380 Rechnung, 381 Storno/Korrekturbeleg) + Referenz
+  // INV-STORNO-REFERENCE-001: 384 berichtigt mit invertierten Mengen/Beträgen.
+  // 381 (Credit Note) würde diese Beträge als Gutschrift nochmals umkehren.
+  // Dokumenttyp (380 Rechnung, 384 Storno/Korrekturbeleg) + Referenz
   // auf die stornierte Rechnung (BG-3/BT-25).
-  typeCode?: '380' | '381';
+  typeCode?: '380' | '384';
   precedingInvoiceNumber?: string | null;
   // iter101: Befreiungsgrund für 0 %-Umsätze (BT-120, Kategorie „E").
   vatExemptionReason?: string | null;
@@ -123,7 +125,7 @@ export function toXRechnungInvoice(invoice: StoredInvoiceForXRechnung): XRechnun
     reverseCharge: invoice.reverseCharge,
     ...(invoice.stornoOfId
       ? {
-          typeCode: '381' as const,
+          typeCode: '384' as const,
           precedingInvoiceNumber: invoice.stornoOf?.number ?? null,
         }
       : {}),
@@ -180,6 +182,83 @@ const UDT = 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100';
 // falscher Namespace-URI), was die CII-Schema-Validierung ablehnt.
 function dateTime(parent: XMLBuilder, date: Date): void {
   parent.ele(UDT, 'udt:DateTimeString', { format: '102' }).txt(fmtDate(date));
+}
+
+function appendHeaderAgreement(sct: XMLBuilder, seller: SellerInfo, buyer: XRechnungBuyer): void {
+  // -------------------------------------------------------------------------
+  // Header — Agreement (Seller + Buyer)
+  // -------------------------------------------------------------------------
+  const agreement = sct.ele(RAM, 'ram:ApplicableHeaderTradeAgreement');
+
+  // BT-10 Käuferreferenz (BR-DE-15 Pflicht, KoSIT 2026-06). MUSS als erstes
+  // Kind des Agreements stehen (CII-Elementreihenfolge).
+  agreement.ele(RAM, 'ram:BuyerReference').txt(buyer.reference || buyer.email || buyer.name);
+
+  // Seller
+  const sellerEl = agreement.ele(RAM, 'ram:SellerTradeParty');
+  sellerEl.ele(RAM, 'ram:Name').txt(seller.name);
+
+  // BG-6 Verkäufer-Kontakt (BR-DE-2 Pflicht, KoSIT 2026-06). CII-Reihenfolge:
+  // DefinedTradeContact VOR PostalTradeAddress.
+  const contact = sellerEl.ele(RAM, 'ram:DefinedTradeContact');
+  contact.ele(RAM, 'ram:PersonName').txt(seller.name);
+  if (seller.phone) {
+    contact
+      .ele(RAM, 'ram:TelephoneUniversalCommunication')
+      .ele(RAM, 'ram:CompleteNumber')
+      .txt(seller.phone);
+  }
+  if (seller.email) {
+    contact.ele(RAM, 'ram:EmailURIUniversalCommunication').ele(RAM, 'ram:URIID').txt(seller.email);
+  }
+
+  const sellerAddr = sellerEl.ele(RAM, 'ram:PostalTradeAddress');
+  if (seller.postalCode) sellerAddr.ele(RAM, 'ram:PostcodeCode').txt(seller.postalCode);
+  if (seller.street) sellerAddr.ele(RAM, 'ram:LineOne').txt(seller.street);
+  if (seller.city) sellerAddr.ele(RAM, 'ram:CityName').txt(seller.city);
+  sellerAddr.ele(RAM, 'ram:CountryID').txt(seller.countryIso);
+
+  if (seller.email) {
+    sellerEl
+      .ele(RAM, 'ram:URIUniversalCommunication')
+      .ele(RAM, 'ram:URIID', { schemeID: 'EM' })
+      .txt(seller.email);
+  }
+  if (seller.vatId) {
+    sellerEl
+      .ele(RAM, 'ram:SpecifiedTaxRegistration')
+      .ele(RAM, 'ram:ID', { schemeID: 'VA' })
+      .txt(seller.vatId);
+  }
+  if (seller.taxNumber) {
+    sellerEl
+      .ele(RAM, 'ram:SpecifiedTaxRegistration')
+      .ele(RAM, 'ram:ID', { schemeID: 'FC' })
+      .txt(seller.taxNumber);
+  }
+
+  // Buyer
+  const buyerEl = agreement.ele(RAM, 'ram:BuyerTradeParty');
+  buyerEl.ele(RAM, 'ram:Name').txt(buyer.name);
+
+  const buyerAddr = buyerEl.ele(RAM, 'ram:PostalTradeAddress');
+  if (buyer.postalCode) buyerAddr.ele(RAM, 'ram:PostcodeCode').txt(buyer.postalCode);
+  if (buyer.street) buyerAddr.ele(RAM, 'ram:LineOne').txt(buyer.street);
+  if (buyer.city) buyerAddr.ele(RAM, 'ram:CityName').txt(buyer.city);
+  buyerAddr.ele(RAM, 'ram:CountryID').txt(buyer.countryIso);
+
+  if (buyer.email) {
+    buyerEl
+      .ele(RAM, 'ram:URIUniversalCommunication')
+      .ele(RAM, 'ram:URIID', { schemeID: 'EM' })
+      .txt(buyer.email);
+  }
+  if (buyer.vatId) {
+    buyerEl
+      .ele(RAM, 'ram:SpecifiedTaxRegistration')
+      .ele(RAM, 'ram:ID', { schemeID: 'VA' })
+      .txt(buyer.vatId);
+  }
 }
 
 export function generateXRechnungCii(
@@ -264,80 +343,7 @@ export function generateXRechnungCii(
       .txt(fmtAmount(pos.netAmount));
   }
 
-  // -------------------------------------------------------------------------
-  // Header — Agreement (Seller + Buyer)
-  // -------------------------------------------------------------------------
-  const agreement = sct.ele(RAM, 'ram:ApplicableHeaderTradeAgreement');
-
-  // BT-10 Käuferreferenz (BR-DE-15 Pflicht, KoSIT 2026-06). MUSS als erstes
-  // Kind des Agreements stehen (CII-Elementreihenfolge).
-  agreement.ele(RAM, 'ram:BuyerReference').txt(buyer.reference || buyer.email || buyer.name);
-
-  // Seller
-  const sellerEl = agreement.ele(RAM, 'ram:SellerTradeParty');
-  sellerEl.ele(RAM, 'ram:Name').txt(seller.name);
-
-  // BG-6 Verkäufer-Kontakt (BR-DE-2 Pflicht, KoSIT 2026-06). CII-Reihenfolge:
-  // DefinedTradeContact VOR PostalTradeAddress.
-  const contact = sellerEl.ele(RAM, 'ram:DefinedTradeContact');
-  contact.ele(RAM, 'ram:PersonName').txt(seller.name);
-  if (seller.phone) {
-    contact
-      .ele(RAM, 'ram:TelephoneUniversalCommunication')
-      .ele(RAM, 'ram:CompleteNumber')
-      .txt(seller.phone);
-  }
-  if (seller.email) {
-    contact.ele(RAM, 'ram:EmailURIUniversalCommunication').ele(RAM, 'ram:URIID').txt(seller.email);
-  }
-
-  const sellerAddr = sellerEl.ele(RAM, 'ram:PostalTradeAddress');
-  if (seller.postalCode) sellerAddr.ele(RAM, 'ram:PostcodeCode').txt(seller.postalCode);
-  if (seller.street) sellerAddr.ele(RAM, 'ram:LineOne').txt(seller.street);
-  if (seller.city) sellerAddr.ele(RAM, 'ram:CityName').txt(seller.city);
-  sellerAddr.ele(RAM, 'ram:CountryID').txt(seller.countryIso);
-
-  if (seller.email) {
-    sellerEl
-      .ele(RAM, 'ram:URIUniversalCommunication')
-      .ele(RAM, 'ram:URIID', { schemeID: 'EM' })
-      .txt(seller.email);
-  }
-  if (seller.vatId) {
-    sellerEl
-      .ele(RAM, 'ram:SpecifiedTaxRegistration')
-      .ele(RAM, 'ram:ID', { schemeID: 'VA' })
-      .txt(seller.vatId);
-  }
-  if (seller.taxNumber) {
-    sellerEl
-      .ele(RAM, 'ram:SpecifiedTaxRegistration')
-      .ele(RAM, 'ram:ID', { schemeID: 'FC' })
-      .txt(seller.taxNumber);
-  }
-
-  // Buyer
-  const buyerEl = agreement.ele(RAM, 'ram:BuyerTradeParty');
-  buyerEl.ele(RAM, 'ram:Name').txt(buyer.name);
-
-  const buyerAddr = buyerEl.ele(RAM, 'ram:PostalTradeAddress');
-  if (buyer.postalCode) buyerAddr.ele(RAM, 'ram:PostcodeCode').txt(buyer.postalCode);
-  if (buyer.street) buyerAddr.ele(RAM, 'ram:LineOne').txt(buyer.street);
-  if (buyer.city) buyerAddr.ele(RAM, 'ram:CityName').txt(buyer.city);
-  buyerAddr.ele(RAM, 'ram:CountryID').txt(buyer.countryIso);
-
-  if (buyer.email) {
-    buyerEl
-      .ele(RAM, 'ram:URIUniversalCommunication')
-      .ele(RAM, 'ram:URIID', { schemeID: 'EM' })
-      .txt(buyer.email);
-  }
-  if (buyer.vatId) {
-    buyerEl
-      .ele(RAM, 'ram:SpecifiedTaxRegistration')
-      .ele(RAM, 'ram:ID', { schemeID: 'VA' })
-      .txt(buyer.vatId);
-  }
+  appendHeaderAgreement(sct, seller, buyer);
 
   // -------------------------------------------------------------------------
   // Header — Delivery. BT-72 Leistungsdatum: ist ein Leistungszeitraum erfasst,

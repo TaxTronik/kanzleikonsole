@@ -12,12 +12,13 @@ interface Props {
 
 export function BillingForm({ clientId, totalHours }: Props) {
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
-  const inThirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [initialDate] = useState(() => new Date());
 
-  const [subject, setSubject] = useState(`Beratungsleistungen ${fmtMonthYear(new Date())}`);
-  const [issueDate, setIssueDate] = useState(today);
-  const [dueDate, setDueDate] = useState(inThirtyDays);
+  const [subject, setSubject] = useState(() => `Beratungsleistungen ${fmtMonthYear(initialDate)}`);
+  const [issueDate, setIssueDate] = useState(() => initialDate.toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(() =>
+    new Date(initialDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+  );
   const [vatRate, setVatRate] = useState(19);
   const [hourlyRate, setHourlyRate] = useState(120);
   const [strategy, setStrategy] = useState<'one-line' | 'per-entry'>('one-line');

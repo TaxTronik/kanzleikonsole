@@ -113,6 +113,30 @@ export interface MaterializeStats {
 // negativem Offset in mandantengerichteten Anforderungstexten den Vortag zeigen.
 const dateFormatter = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin' });
 
+async function readDeadlineCalendar(db: MaterializeDb, tenantId: string) {
+  // 0. Bundesland der Kanzlei (tenant_setting `tax_region`) für die
+  //    Werktagsverschiebung.
+  const regionRow = await db.tenantSetting.findUnique({
+    where: { tenantId_key: { tenantId, key: 'tax_region' } },
+  });
+  const regionValue =
+    (regionRow?.value as { region?: string; assumptionHoliday?: boolean } | null) ?? null;
+  const region = (regionValue?.region ?? null) as GermanRegion | null;
+  // Mariä Himmelfahrt ist in Bayern gemeindeabhängig (Art. 1 Abs. 1 BayFTG).
+  // Default an; nur wenn der Tenant explizit deaktiviert (protestantisch
+  // geprägte Sitz-Gemeinde), werden DE-BY-Fälligkeiten am 15.08. nicht
+  // verschoben. Nur in DE-BY wirksam (DE-SL bleibt landesweit gesetzlich).
+  const bavariaAssumption = regionValue?.assumptionHoliday !== false;
+  return { region, bavariaAssumption };
+}
+
+function warningLeadElapsed(staffLeadDays: number, staffNotifiedAt: Date | null, today: Date) {
+  return (
+    staffLeadDays === 0 ||
+    (staffNotifiedAt !== null && berlinCalendarDate(staffNotifiedAt).getTime() < today.getTime())
+  );
+}
+
 export async function materializeTenantTaxDeadlines(
   deps: MaterializeDeps,
   params: MaterializeParams,
@@ -132,19 +156,7 @@ export async function materializeTenantTaxDeadlines(
     staffWarned: 0,
   };
 
-  // 0. Bundesland der Kanzlei (tenant_setting `tax_region`) für die
-  //    Werktagsverschiebung.
-  const regionRow = await db.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: 'tax_region' } },
-  });
-  const regionValue =
-    (regionRow?.value as { region?: string; assumptionHoliday?: boolean } | null) ?? null;
-  const region = (regionValue?.region ?? null) as GermanRegion | null;
-  // Mariä Himmelfahrt ist in Bayern gemeindeabhängig (Art. 1 Abs. 1 BayFTG).
-  // Default an; nur wenn der Tenant explizit deaktiviert (protestantisch
-  // geprägte Sitz-Gemeinde), werden DE-BY-Fälligkeiten am 15.08. nicht
-  // verschoben. Nur in DE-BY wirksam (DE-SL bleibt landesweit gesetzlich).
-  const bavariaAssumption = regionValue?.assumptionHoliday !== false;
+  const { region, bavariaAssumption } = await readDeadlineCalendar(db, tenantId);
 
   // 1. Aktive Configs laden
   const configs = await db.taxScheduleConfig.findMany({
@@ -329,10 +341,7 @@ export async function materializeTenantTaxDeadlines(
 
     // (3b) Versand — Stopp-Fenster von mindestens einem vollen Tageslauf.
     if (sendFrom.getTime() > today.getTime()) continue;
-    const warnSatisfied =
-      cfg.staffLeadDays === 0 ||
-      (dl.staffNotifiedAt !== null &&
-        berlinCalendarDate(dl.staffNotifiedAt).getTime() < today.getTime());
+    const warnSatisfied = warningLeadElapsed(cfg.staffLeadDays, dl.staffNotifiedAt, today);
     if (!warnSatisfied) continue;
 
     // Request + Deadline-Update + Audit-Eintrag atomar — ein Crash dazwischen

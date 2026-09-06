@@ -141,8 +141,11 @@ Dritten für den konkreten Prüfungsumfang organisieren.
 
 ## 5. Schnittstellen / Datensicherheit
 
-- Authentifizierung: Staff mit Passwort + TOTP-Pflicht; Mandanten mit
-  Magic-Link (Single-Use, kein zweiter Faktor im Portal).
+- Authentifizierung: Staff standardmäßig mit Passwort + TOTP oder nach
+  persönlichem Opt-in ausschließlich mit mindestens zwei registrierten
+  physischen FIDO2-Sicherheitsschlüsseln ohne Passwort-/TOTP-/Backup-Fallback;
+  Mandanten unverändert mit Magic-Link (Single-Use, kein zweiter Faktor im
+  Portal).
 - Backups: täglicher Postgres-Dump in den S3-Backup-Bucket durch den Worker
   sowie eine zusätzliche lokale Operator-Kopie bei `./taxtronik backup` via
   [`backup/runner.ts`](../../apps/web/src/server/backup/runner.ts)

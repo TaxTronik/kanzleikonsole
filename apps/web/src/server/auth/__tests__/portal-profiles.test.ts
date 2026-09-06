@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001
 
 const m = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -53,7 +54,7 @@ describe('Portal-Mehrfachprofile', () => {
           tenantId: 'tenant-1',
           email: 'rey@example.test',
           active: true,
-          client: { allowActive: true, anonymizedAt: null },
+          client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
         },
       }),
     );
@@ -80,7 +81,7 @@ describe('Portal-Mehrfachprofile', () => {
         id: CONTACT.id,
         tenantId: 'tenant-1',
         active: true,
-        client: { allowActive: true, anonymizedAt: null },
+        client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
       },
       select: { email: true },
     });

@@ -70,6 +70,9 @@ services:
       REDIS_URL: redis://redis:6379
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET nicht gesetzt}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      # Optionaler Hardware-only-Zugang; leer hält das Feature bewusst gesperrt.
+      WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST: ${WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST:-}
+      WEBAUTHN_HARDWARE_POLICY_REVISION: ${WEBAUTHN_HARDWARE_POLICY_REVISION:-1}
       # Auth.js-Pflicht: true; der Reverse-Proxy muss Host-Header kanonisch pinnen.
       NEXTAUTH_TRUST_HOST: ${NEXTAUTH_TRUST_HOST:?NEXTAUTH_TRUST_HOST muss explizit true sein}
       # Mandanten-facing Links (Magic-Link, GwG, Portal-Forms). Leer →

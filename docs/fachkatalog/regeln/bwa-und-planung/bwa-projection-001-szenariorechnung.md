@@ -14,12 +14,12 @@ professional_review:
   reviewed_at: null
   reviewed_content_hash: null
 implementation:
-  status: deviates
+  status: implemented
   summary: >-
-    Die lineare Run-rate ist als begrenztes Rechenmodell umgesetzt. Die
-    Trendregression filtert jedoch nicht auf Jahre vor dem Zieljahr und kann
-    deshalb Ziel- oder Zukunftsjahre einbeziehen; damit weicht sie von der
-    beschriebenen Vorjahresregel ab.
+    Die lineare Run-rate und die begrenzte Trendregression sind als
+    Szenariorechnungen umgesetzt. Die Regression verwendet ausschließlich
+    vollständige Jahresperioden vor dem Zieljahr; Ziel- und Zukunftsjahre
+    werden durch Code und Regressionstest ausgeschlossen.
 sources:
   - kind: product_documentation
     citation: Anwenderdokumentation BWA und Planung, Abschnitt Hochrechnung und Grenzen
@@ -59,7 +59,7 @@ Die lineare Hochrechnung gilt nur, wenn im Zieljahr eine Periode mit weniger
 als zwölf abgedeckten Monaten vorhanden ist. Die Trendregression soll nur bei
 mindestens zwei als `YEAR` erfassten Perioden gelten, die rechnerisch zwölf
 Monate umfassen und vor dem Zieljahr liegen. Der aktuelle Code erzwingt die
-zeitliche Lage vor dem Zieljahr nicht. Eingaben müssen zuvor nach
+zeitliche Lage vor dem Zieljahr ausdrücklich. Eingaben müssen zuvor nach
 `BWA-IMPORT-MAPPING-001` fachlich geprüft worden sein.
 
 Die Regel beschreibt ein Produkt-Rechenmodell. Sie ist keine fachliche
@@ -125,18 +125,18 @@ Zieljahrs, zählt UTC-Kalendermonate und rechnet jede vorhandene Kennzahl linear
 hoch. `trendRegressionProjection` verwendet vollständige Jahresperioden und
 berechnet je Achse Steigung, Achsenabschnitt und Residuenstreuung. Beide Pfade
 nutzen das Ergebnis vor Ertragsteuern und geben `estimate`, `low` und `high`
-aus. Bei der Regression fehlt aktuell der Filter `Periodenjahr < Zieljahr`.
+aus. Die Regression filtert vor der Mindestmengenprüfung auf
+`Periodenjahr < Zieljahr`.
 
 ## Bekannte Abweichungen und Grenzen
 
-Die Umsetzung weicht bei der Trendregression von der beschriebenen Regel ab:
-Sie nimmt alle rechnerisch zwölfmonatigen `YEAR`-Perioden und kann dadurch auch
-das Zieljahr oder spätere Jahre einbeziehen. Darüber hinaus bestehen keine
-echte Saisonalität, keine Kausal- oder Treibermodelle, keine
+Die zeitliche Vorjahresauswahl ist umgesetzt. Unverändert bestehen keine echte
+Saisonalität, keine Kausal- oder Treibermodelle, keine
 Strukturbrucherkennung, keine Wahrscheinlichkeitskalibrierung, keine
 Liquiditätsrechnung und keine belastbare Steuerprognose. Der vorhandene Test
-fokussiert die lineare Vorsteuerbasis und den Schutz vor doppeltem Steuerabzug;
-die Regression und ihre Bandbreite werden darin nicht nachgewiesen.
+belegt neben der linearen Vorsteuerbasis und dem Schutz vor doppeltem
+Steuerabzug auch, dass Ziel- und Zukunftsjahre aus der Regression ausgeschlossen
+werden.
 
 ## Fachliche Prüffragen
 
@@ -151,7 +151,7 @@ die Regression und ihre Bandbreite werden darin nicht nachgewiesen.
 ## Technische Nachweise
 
 Der referenzierte Test belegt für synthetische DATEV-Werte, dass die
-Vorsteuerposition projiziert und die Steuerpauschale nur einmal abgezogen
-wird. Er bestätigt weder die zeitliche Auswahl noch die Berechnung der
-Regression und auch nicht Prognosegüte, Saisonalität, Steuerbelastung oder
+Vorsteuerposition projiziert, die Steuerpauschale nur einmal abgezogen und die
+Trendbasis strikt auf Jahre vor dem Zieljahr begrenzt wird. Er bestätigt weder
+Prognosegüte, Saisonalität, tatsächliche Steuerbelastung noch
 Liquiditätswirkung eines realen Mandats.

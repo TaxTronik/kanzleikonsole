@@ -32,13 +32,16 @@ export function OffsetPagination({ basePath, baseQs, page, pageSize, totalCount 
   const end = Math.min(safe * pageSize, totalCount);
 
   return (
-    <div className="card-footer">
+    <nav
+      className="card-footer flex-col items-start gap-2 sm:flex-row sm:items-center"
+      aria-label="Seitennavigation"
+    >
       <span>
         {totalCount === 0
           ? '0 Treffer'
           : `${start.toLocaleString('de-DE')}–${end.toLocaleString('de-DE')} von ${totalCount.toLocaleString('de-DE')}`}
       </span>
-      <div className="flex items-center gap-3">
+      <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
         {hasPrev ? (
           <Link
             href={link(safe - 1)}
@@ -71,6 +74,6 @@ export function OffsetPagination({ basePath, baseQs, page, pageSize, totalCount 
           </span>
         )}
       </div>
-    </div>
+    </nav>
   );
 }

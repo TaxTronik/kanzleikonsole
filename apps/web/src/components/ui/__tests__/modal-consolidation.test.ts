@@ -27,7 +27,7 @@ describe('gemeinsame Dialog-Infrastruktur', () => {
       .flatMap((path) => {
         const source = readFileSync(path, 'utf8');
         const reasons = [
-          source.includes('createPortal') ? 'createPortal' : null,
+          /\bcreatePortal\b/.test(source) ? 'createPortal' : null,
           /(?:window\.)?(?:confirm|alert|prompt)\s*\(/.test(source) ? 'Browserdialog' : null,
         ].filter(Boolean);
         return reasons.map((reason) => `${path}: ${reason}`);

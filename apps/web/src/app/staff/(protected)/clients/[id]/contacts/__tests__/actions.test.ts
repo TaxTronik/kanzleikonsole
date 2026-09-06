@@ -95,9 +95,13 @@ describe('rotateIcalTokenAction — Autorisierung & Validierung', () => {
     expect(m.withTenantContext).not.toHaveBeenCalled();
   });
 
-  it('ungültige UUIDs → Validierungsfehler ohne Tx', async () => {
+  it('ungültige UUIDs → typisierter Validierungsfehler ohne Tx', async () => {
     const res = await rotateIcalTokenAction({ contactId: 'nicht-uuid', clientId: CLIENT_ID });
-    expect(res).toEqual({ ok: false, error: 'Validierungsfehler.' });
+    expect(res).toEqual({
+      ok: false,
+      error: 'Ungültiger Kontakt.',
+      errorCode: 'VALIDATION_ERROR',
+    });
     expect(m.withTenantContext).not.toHaveBeenCalled();
   });
 });

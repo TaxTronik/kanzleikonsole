@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
 import { addGwgPersonAction } from './owner-actions';
@@ -15,20 +15,20 @@ export function NewGwgPersonForm({ checkId, clientId }: { checkId: string; clien
   const [isBeneficialOwner, setIsBeneficialOwner] = useState(false);
   const [isRepresentative, setIsRepresentative] = useState(true);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(
-    addGwgPersonAction,
+    async (previous, data) => {
+      const result = await addGwgPersonAction(previous, data);
+      if (!result?.ok) return result;
+      formRef.current?.reset();
+      setIsBeneficialOwner(false);
+      setIsRepresentative(true);
+      setOpen(false);
+      markDraft();
+      markRiskInvalidated();
+      router.refresh();
+      return result;
+    },
     null,
   );
-
-  useEffect(() => {
-    if (!state?.ok) return;
-    formRef.current?.reset();
-    setIsBeneficialOwner(false);
-    setIsRepresentative(true);
-    setOpen(false);
-    markDraft();
-    markRiskInvalidated();
-    router.refresh();
-  }, [markDraft, markRiskInvalidated, router, state]);
 
   if (!open) {
     return (

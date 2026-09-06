@@ -16,6 +16,11 @@ describe('users admin responsive layout', () => {
     expect(pageSource).toContain('xl:hidden');
   });
 
+  it('marks inactive rows without lowering the contrast of all descendants', () => {
+    expect(pageSource).toContain("u.active ? 'xl:hover:bg-gray-50' : 'bg-surface-page'");
+    expect(pageSource).not.toContain("u.active ? 'xl:hover:bg-gray-50' : 'opacity-60'");
+  });
+
   it('allows role and permission controls to wrap within their cells', () => {
     expect(rowFormsSource).toContain('flex min-w-0 flex-wrap items-center gap-2');
     expect(rowFormsSource).toContain('flex min-w-0 flex-wrap gap-1');

@@ -9,6 +9,8 @@ import { ArrowLeft, FileText } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import type { FormFieldType } from '@prisma/client';
+import { readFormSchema } from '@/server/forms/schema-snapshot';
+import { FormRevisionHistory } from '@/components/form-revision-history';
 import { ReviewForm } from './review-form';
 import { fmtDateShort, fmtDateTimeMedium, fmtEUR } from '@/lib/fmt';
 import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
@@ -78,6 +80,7 @@ export default async function SubmissionDetailPage({
     tx.formSubmission.findUnique({
       where: { id },
       include: {
+        revisions: { include: { files: true }, orderBy: { sequence: 'desc' } },
         client: { select: { id: true, name: true } },
         template: {
           include: { fields: { orderBy: { position: 'asc' } } },
@@ -86,6 +89,7 @@ export default async function SubmissionDetailPage({
     }),
   );
   if (!sub) notFound();
+  const formSchema = readFormSchema(sub.schemaSnapshot, sub.template);
 
   const answers = (sub.answers as Record<string, unknown>) ?? {};
 
@@ -118,8 +122,13 @@ export default async function SubmissionDetailPage({
       </div>
 
       <div className="card overflow-hidden">
+        {!sub.schemaSnapshot && (
+          <p className="p-4 text-sm text-muted">
+            Altbestand: Kein historischer Vorlagenstand gespeichert.
+          </p>
+        )}
         <dl className="divide-y divide-border-subtle">
-          {sub.template.fields.map((f) => {
+          {formSchema.fields.map((f) => {
             if (f.type === 'INFO_TEXT') {
               return (
                 <div key={f.id} className="px-6 py-3 bg-gray-50">
@@ -151,6 +160,7 @@ export default async function SubmissionDetailPage({
           <p className="text-sm text-secondary whitespace-pre-wrap">{sub.reviewNotes}</p>
         </div>
       )}
+      <FormRevisionHistory rows={sub.revisions} surface="staff" />
     </div>
   );
 }

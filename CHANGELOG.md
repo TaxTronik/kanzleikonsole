@@ -20,10 +20,126 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
-Dieser Abschnitt beschreibt den Arbeitsstand nach `v0.2.1`. Er ist noch kein
-Release und keine fachliche oder PS-880-bezogene Freigabe.
+### Behoben
+
+- **[Scope]** Sitzungswiderruf vor der Cookie-Erneuerung und unveränderlicher
+  Anmeldezeitpunkt; bestehende Staff-/Portal-Sitzungen müssen sich nach dem
+  Update einmalig neu anmelden. Kalenderabonnements prüfen das Mandatsende
+  (`ACCESS-TENANT-RLS-001`, `CLIENT-MANDATE-LIFECYCLE-001`).
+- **[Scope]** Storno-XRechnungen verwenden Typ 384 mit Vorgängerreferenz;
+  StBVV-Übernahmen erzeugen archivierbare XRechnungsentwürfe und reparieren eng
+  begrenzt bisherige dokumentlose PDF-Entwürfe. Gebührenbeschreibungen werden
+  vollständig im PDF umbrochen; Leistungsdaten aus Zeiterfassung verwenden
+  Europe/Berlin (`INV-STORNO-REFERENCE-001`, `STBVV-CALCULATION-001`,
+  `INV-TIME-ENTRY-CLAIM-001`).
+- **[Scope]** IMAP-Anhänge über dem Ressourcenlimit blockieren die einzelne
+  Nachricht statt den gesamten Import. Wiederholte Speicherlöschfehler
+  verdrängen keine späteren Orphans mehr (`MAIL-INBOX-001`,
+  `DOC-UPLOAD-JOURNAL-001`, `DSGVO-OPERATIONAL-RETENTION-001`).
+- Workflow-Abschluss aus manuellen, automatischen und Datenbank-Schritten wird
+  atomar abgeleitet; pausierte und abgebrochene Vorgänge bleiben geschützt.
+  Feedback wird dauerhaft vorgemerkt und einmalig verarbeitet
+  (`WORKFLOW-LIFECYCLE-001`, `CLIENT-FEEDBACK-001`).
+- React-Zustands-/Effektwarnungen und Formatfehler bereinigt; komplexe Rechnungs-,
+  BWA-, Workflow- und UI-Funktionen in kleinere Einheiten aufgeteilt.
 
 ### Hinzugefügt
+
+- Optionaler Staff-Anmeldemodus **„Nur physische FIDO2-Sicherheitsschlüssel“**:
+  Das persönliche Opt-in ist erst ab zwei registrierten Schlüsseln möglich und
+  schließt danach Passwort, TOTP und Backup-Codes als Anmeldewege aus. WebAuthn
+  verlangt Benutzerverifikation, `cross-platform`-Authentikatoren,
+  `singleDevice`-Credentials ohne Backup-Eignung oder -Status sowie die
+  Hardware-Transporte USB, NFC, BLE oder Smartcard. Recovery folgt der
+  bestehenden ADMIN-/PARTNER-Hierarchie einschließlich CLI-Recovery für
+  ADMIN-Konten und widerruft laufende Sitzungen. Der Web-Reset verlangt als
+  Step-up im Passwortmodus aktuelles Passwort plus frischen TOTP ohne
+  Backup-Code; Hardware-only-Akteure bestätigen mit dem eigenen Schlüssel und
+  einer an Akteur, Zielkonto und Auth-Revision gebundenen Challenge. Die
+  Recovery-Mutationen und das Audit erfolgen datenbankseitig atomar; der
+  Portal-Magic-Link bleibt unverändert. Ein DB-gestützter Rollenboden
+  verhindert den Entzug von ADMIN durch Staff und erlaubt den PARTNER-Entzug
+  nur aktiven ADMIN desselben Tenants. Auch reguläre Passwort-/TOTP-Resets sind
+  an die Actor-Auth-Revision gebunden und widerrufen ruhende aktive Hardware-
+  Credentials; eine eigene Passwortänderung widerruft die eigenen
+  Vorabregistrierungen.
+  Enrollment verlangt nun `direct` + vollständige `packed`-Attestation, eine
+  nichtleere `WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST` und FIDO MDS `strict`.
+  Die Zertifikat-AAGUID muss zur signierten Authenticator-AAGUID passen;
+  Registration, Attestation-Ketten und externe Abrufe haben harte Größen- und
+  Zeitgrenzen. Zertifikatsketten werden vor CRL-Abrufen strikt an Root,
+  CA-Constraints und Pfadlänge gebunden; CRLs müssen frisch und vom
+  tatsächlichen Issuer signiert sein. Mehrere/partitionierte Distribution
+  Points, Zertifikat-seitige Freshest-CRL-Verweise,
+  Delta-/IDP-/Freshest-CRLs und unbekannte kritische CRL-Extensions werden bis
+  zu vollständiger Scope-Unterstützung fail-closed abgewiesen.
+  Aktuelle Allowlist und MDS-Statement werden bei jeder Hardware-Assertion
+  fail-closed geprüft. `WEBAUTHN_HARDWARE_POLICY_REVISION` und ein kanonischer
+  Hash binden aktive wie leere Allowlists clusterweit: Eine höhere Revision
+  verdrängt alte Replicas, gleiche Revisionen mit anderem Hash werden
+  abgewiesen. Der Produktionsstart beansprucht diesen Policy-Anker DB-only und
+  ohne MDS-Netzzugriff. Der MDS-Snapshot wird spätestens stündlich erneuert;
+  seine höchste kryptografisch verifizierte BLOB-Seriennummer wird vor dem
+  lokalen Modellfilter clusterweit in einer Tabelle ohne App-Tabellenrechte
+  verankert. Ein transaktionaler Exact-State-Lock auf Serie, Revision und Hash
+  in der Reihenfolge `MDS -> Staff` verhindert Commits mit einem parallel
+  überholten Zustand. Die ADMIN-CLI schreibt das Klartextpasswort nur in eine
+  exklusive, symlinksichere Credential-Datei, nie in Terminal oder Logs.
+  Ausgabefehler entfernen die eigene Teildatei und rollen Reset samt Audit
+  zurück; Datei und POSIX-Elternverzeichnis werden vor dem Commit
+  synchronisiert. Scheitert erst der DB-Commit, kann eine sichere, aber
+  unwirksame Datei zurückbleiben. Die AAGUID belegt nur eine
+  freigegebene Modellfamilie, nicht eine eindeutige Geräteinstanz: Beim Opt-in
+  wird ein Schlüssel frisch bestätigt; der zweite aktive, policykonforme
+  Schlüssel wird nur gezählt und beweist kein zweites physisches Gerät.
+  Technische Nachweise werden `ACCESS-TENANT-RLS-001` (Credential-RLS) und
+  `AUDIT-HASH-CHAIN-001` (auditierte Schlüssel-, Modus- und Recovery-Aktionen)
+  zugeordnet; als allgemeine Auth-Härtung entsteht gemäß Fachkatalog-Scope
+  keine neue Fachregel.
+
+## [0.3.0] - 2026-09-01
+
+Version 0.3.0 bündelt den Ausbau nach `v0.2.1`. Die Versionsnummer ist keine
+fachliche, rechtliche oder PS-880-bezogene Freigabe; ungeprüfte Fachregeln und
+offene organisatorische Pilotentscheidungen bleiben ausdrücklich als solche
+gekennzeichnet.
+
+### Hinzugefügt
+
+- **[Scope]** Separater, opt-in Mandantenposteingang (`clientInbox`, Default
+  `false`) mit mandantenweit sichtbaren, unveränderlichen Nachrichten,
+  kontaktprivaten Uploadentwürfen, RLS-gesichertem Staging, Magic-Byte- und
+  Virenscan, idempotenten Mutationen, neutralem Themenrouting und sicher
+  wiederaufnehmbarer Dokumentübernahme erst nach ausdrücklicher
+  Kanzleientscheidung (`PORTAL-INBOX-SUBMISSION-001`).
+- **[Scope]** Arbeitskorb unter `/staff/work` mit „Meine Arbeit“ und „Team“,
+  Termin-Gruppierung und quellenspezifischen Deep-Links/Aktionen für
+  Mandantenpost, Workflows, Wiedervorlagen, Termine und Telefonzettel.
+- Gemeinsame serverseitige Navigationsregistry für Staff, Portal, mobile
+  Navigation und Befehlspalette sowie mobile Karten, URL-stabile Suche,
+  Filter und 25er-Pagination in den zentralen Portallisten.
+- Zentraler rückwärtskompatibler `ActionResult`-Vertrag samt
+  Fehlerzusammenfassung, Feldzuordnung, Fokusführung und Repository-Guard gegen
+  neue lokale Vertragskopien oder pauschale Validierungsfehler.
+
+- **[Scope]** Vierzehn einzeln zuschaltbare Ausbaupakete, standardmäßig deaktiviert:
+  interne Wiki-Hilfe, Jahresendkampagnen, Bescheidrückmeldungen, Smart-Mailbox,
+  Personalaufnahme, Bewirtungs-/Eigenbelege, Mandanten-Verfahrensdokumentation,
+  Feedback, Beteiligungsstrukturen, Workflow-Abhängigkeiten, Offboarding,
+  VDB-Vorbereitung, lokales EU-Screening/PEP-Dokumentation und StBVV-Vorschläge.
+  Bestehende Anforderungs-, Formular-, Archiv-, Benachrichtigungs- und Workerwege
+  bleiben die gemeinsame Grundlage. Fragen, Antworten und Ausgaben binden
+  konkrete Fassungen; Legacy-Formularen wird keine historische Fassung unterstellt.
+- **[Scope]** Getrennte Arbeitnehmer-Capabilities, ausdrückliche Lohnkontakte,
+  zusätzliche Rechte `PAYROLL_MANAGE`/`INBOUND_MAIL_MANAGE`, geschützte
+  Archivkopien und Mandatsende-Sperren. Berechtigungen gelten auch für
+  Ausgaben und Hintergrundverarbeitung. Alle Migrationen sind additiv.
+- **[Scope]** DATEV-LuG und VDB bleiben bis zur belegten Formatspezifikation und
+  tatsächlichen Importabnahme gesperrt. Export ist keine externe Verarbeitung;
+  Rückmeldungen, Einspruchsauftrag, Sofortmeldung und Fristerledigung bleiben getrennt.
+  Neue Fachkatalogregeln bleiben ungeprüft; reale M365-, Ausgabe- und Fachabnahmen
+  sind Teil der einzeln zu dokumentierenden Pilotierung. Umfang, Regel-IDs und
+  verbleibende Abnahmen: [Ausbauintegration](docs/development/expansion-integration.md).
 
 - **[Scope]** Lokale Ausweishilfe für Kanzlei und Einladungswizard mit unveränderten
   Originalen, versionierten PDF-Seiten/Ausschnitten und ausdrücklich ausgewählten
@@ -112,6 +228,13 @@ Release und keine fachliche oder PS-880-bezogene Freigabe.
   Release-Evidence ordnen die Nachweise nach Zielgruppe und Dokumenttyp.
 
 ### Geändert
+
+- **[Scope]** Audit-Verifikation unterdrückt neue Kettenfehler nicht mehr über
+  alte Recovery-Checkpoints; BWA-Projektionen verwenden nur Jahre vor dem
+  Zieljahr; stornierte, nie versandte Rechnungen bleiben im Portal unsichtbar.
+- Staff-Suche, Expansion-Hubs und Navigation beachten Modulmodi, Featureflags,
+  Einzelrechte und Mandantenzugriff je Quelle. Optimistische „Mein Tag“-Aktionen
+  rollen bei Serverfehlern auf den bestätigten Zustand zurück.
 
 - Der Integrationsabschluss zerlegt übergroße GwG-, Subsumtions- und
   Administrationskomponenten sowie reine Action-Datenabbildungen, ohne

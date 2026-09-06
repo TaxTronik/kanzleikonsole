@@ -12,6 +12,7 @@ import {
   staffActionGuard,
   ActionError,
   parseFormData,
+  type ActionResult,
 } from '@/server/actions/staff-action';
 
 const InviteSchema = z.object({
@@ -23,12 +24,6 @@ const InviteSchema = z.object({
   sendInvite: z.enum(['1', 'on', 'true']).optional(),
 });
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-  fieldErrors?: Record<string, string>;
-}
-
 export async function inviteContactAction(
   _prev: ActionResult | null,
   formData: FormData,
@@ -39,21 +34,8 @@ export async function inviteContactAction(
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
-  const parsed = InviteSchema.safeParse({
-    clientId: formData.get('clientId'),
-    email: formData.get('email'),
-    fullName: formData.get('fullName'),
-    phone: (formData.get('phone') as string | null) || undefined,
-    role: (formData.get('role') as string | null) || undefined,
-    sendInvite: formData.get('sendInvite') ?? undefined,
-  });
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      fieldErrors[issue.path.join('.')] = issue.message;
-    }
-    return { ok: false, error: 'Validierungsfehler.', fieldErrors };
-  }
+  const parsed = parseFormData(InviteSchema, formData);
+  if (!parsed.ok) return parsed;
 
   const { clientId, email, fullName, phone, role, sendInvite } = parsed.data;
   const phoneClean = phone?.trim() || null;
@@ -132,7 +114,19 @@ export async function updateContactAction(
   input: z.infer<typeof UpdateSchema>,
 ): Promise<ActionResult> {
   const parsed = UpdateSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string[]> = {};
+    for (const issue of parsed.error.issues) {
+      const field = issue.path.join('.') || '_form';
+      (fieldErrors[field] ??= []).push(issue.message);
+    }
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors,
+    };
+  }
   const { contactId, clientId, fullName } = parsed.data;
   const email = parsed.data.email.toLowerCase();
   const phone = parsed.data.phone?.trim() || null;
@@ -214,7 +208,8 @@ export async function rotateIcalTokenAction(
   const { ctx, session } = g;
 
   const parsed = RotateIcalSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: 'Ungültiger Kontakt.', errorCode: 'VALIDATION_ERROR' };
   const { contactId, clientId } = parsed.data;
 
   try {

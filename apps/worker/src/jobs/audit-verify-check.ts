@@ -15,6 +15,7 @@ import {
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   toPersistedVerifyResult,
+  type PersistedRecoveryCheckpoint,
   type PersistedVerifyResult,
   type VerificationResult,
 } from '@taxtronik/evidence';
@@ -92,38 +93,106 @@ export function detectAnchorTailTruncation(
 
 function detectMonotonicityBreaks(
   previous: PersistedVerifyResult | null,
-  result: Pick<VerificationResult, 'ok' | 'lastAuditId' | 'lastAnchorId'>,
+  result: Pick<VerificationResult, 'firstBreak' | 'lastAuditId' | 'lastAnchorId'>,
 ): string[] {
-  if (!result.ok) return [];
+  // Ein Hash-/Link-Bruch beendet den Walk vorzeitig; lastAuditId ist dann nur
+  // die letzte GUTE ID und kein Ketten-Endpunkt. Seal-, Anchor- oder
+  // Policy-Fehler entstehen dagegen nach einem vollstaendigen Audit-Walk und
+  // duerfen die Monotoniepruefung nicht blind schalten.
+  if (result.firstBreak) return [];
   return [
     detectTailTruncation(previous, result.lastAuditId),
     detectAnchorTailTruncation(previous, result.lastAnchorId),
   ].filter((reason): reason is string => !!reason);
 }
 
-function monotonicityOutcome(
-  previous: PersistedVerifyResult | null,
-  result: Pick<VerificationResult, 'ok' | 'lastAuditId' | 'lastAnchorId'>,
-  recovered: boolean,
-) {
-  const breaks = detectMonotonicityBreaks(previous, result);
-  const reason = breaks[0] ?? null;
-  return {
-    breaks,
-    reason,
-    effectiveOk: result.ok && !reason,
-    suppressAlarm: recovered && !reason,
-  };
+/** AUDIT-VERIFY-ALERT-001: einmal beobachtete Spitzen nie zuruecksetzen. */
+export function preserveMonotonicId(
+  previous: string | null | undefined,
+  measured: string | null | undefined,
+): string | null {
+  if (!previous) return measured ?? null;
+  if (!measured) return previous;
+  return BigInt(previous) >= BigInt(measured) ? previous : measured;
 }
 
 function auditBreakBody(
-  result: Pick<VerificationResult, 'firstBreak'>,
+  result: Pick<VerificationResult, 'firstBreak' | 'sealBreaks' | 'anchorBreaks' | 'policyBreaks'>,
   monotonicityReason: string | null,
 ): string {
   if (result.firstBreak) {
     return `Erster Bruch bei Audit-ID ${result.firstBreak.auditId} (${new Date(result.firstBreak.occurredAt).toISOString()})`;
   }
-  return monotonicityReason ?? 'Verifikation fehlgeschlagen.';
+  return (
+    monotonicityReason ??
+    result.sealBreaks[0]?.reason ??
+    result.anchorBreaks[0]?.reason ??
+    result.policyBreaks[0] ??
+    'Verifikation fehlgeschlagen.'
+  );
+}
+
+function isTailTruncation(reason: string): boolean {
+  return reason.includes('Tail-Truncation') || reason.includes('Spitzen-Einträge gelöscht');
+}
+
+/**
+ * Ein Checkpoint darf nur den konkret davor dokumentierten historischen
+ * Befund abgrenzen. Ein alter Checkpoint allein ist niemals Freifahrtschein
+ * fuer einen neuen Fehler.
+ */
+export function acceptsPreviousTailRecovery(
+  previous: PersistedVerifyResult | null,
+  checkpoint: PersistedRecoveryCheckpoint | null,
+): boolean {
+  if (!previous || !checkpoint || previous.ok || previous.error) return false;
+  if (!previous.policyBreaks.some(isTailTruncation)) return false;
+  return Date.parse(checkpoint.createdAt) >= Date.parse(previous.checkedAt);
+}
+
+async function notifyAuditBreak(
+  tenantId: string,
+  input: { title?: string; body: string; resourceId: string | null },
+): Promise<void> {
+  await withWorkerTenantContext(tenantId, async (tx) => {
+    const recipients = await tx.staffUser.findMany({
+      where: {
+        tenantId,
+        active: true,
+        roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+      },
+      select: { id: true },
+    });
+    for (const rec of recipients) {
+      const existing = await tx.notification.findFirst({
+        where: {
+          tenantId,
+          staffId: rec.id,
+          kind: 'SYSTEM_AUDIT_BREAK',
+          resourceType: 'audit_log',
+          readAt: null,
+        },
+      });
+      const data = {
+        tenantId,
+        staffId: rec.id,
+        kind: 'SYSTEM_AUDIT_BREAK' as const,
+        title: input.title ?? `⚠ Audit-Hash-Chain gebrochen!`,
+        body: input.body,
+        href: `/staff/admin/audit`,
+        resourceType: 'audit_log',
+        resourceId: input.resourceId,
+      };
+      if (existing) {
+        await tx.notification.update({
+          where: { id: existing.id },
+          data: { ...data, createdAt: new Date() },
+        });
+      } else {
+        await tx.notification.create({ data });
+      }
+    }
+  });
 }
 
 // M7: Tenant-Pagination. Bei vielen Tenants würde `findMany({})` ohne
@@ -152,231 +221,308 @@ async function loadTenantIdsChunked(): Promise<AsyncGenerator<string[]>> {
   return gen();
 }
 
+interface AuditVerifyEntry {
+  tenantId: string;
+  ok: boolean;
+  broken?: string;
+}
+
+interface TenantVerificationRun {
+  checkedAt: Date;
+  result: VerificationResult;
+  recoveryResult: VerificationResult | null;
+  recovered: boolean;
+}
+
+interface TenantVerificationOutcome {
+  persisted: PersistedVerifyResult;
+  freshFailure: boolean;
+  recovered: boolean;
+  monotonicityReason: string | null;
+  failureResult: VerificationResult;
+}
+
+async function loadPreviousVerifyResult(tenantId: string): Promise<PersistedVerifyResult | null> {
+  const value = await withWorkerTenantContext(tenantId, (tx) =>
+    readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
+  );
+  return (value ?? null) as PersistedVerifyResult | null;
+}
+
+async function verifyTenantChain(
+  tenantId: string,
+  previous: PersistedVerifyResult | null,
+  checkedAt: Date,
+): Promise<TenantVerificationRun> {
+  const timestampPort = await timestampPortFor(tenantId);
+  const evidenceService = new EvidenceService(timestampPort);
+  const result = await prismaOwner.$transaction(
+    async (tx) => evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
+    VERIFY_TX_OPTIONS,
+  );
+  const checkpointValue = await withWorkerTenantContext(tenantId, (tx) =>
+    readTenantSettingValue(tx, tenantId, AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY),
+  );
+  const checkpoint = (checkpointValue ?? null) as PersistedRecoveryCheckpoint | null;
+
+  // AUDIT-VERIFY-ALERT-001: Ein Checkpoint allein unterdrueckt keinen Alarm.
+  // Die konkrete Teilkette ab dem Checkpoint muss technisch intakt sein.
+  let recoveryResult: VerificationResult | null = null;
+  let recovered = false;
+  if (checkpoint && result.firstBreak && result.firstBreak.auditId < BigInt(checkpoint.auditId)) {
+    recoveryResult = await prismaOwner.$transaction(
+      (tx) =>
+        evidenceService.verifyRecoverySegment(tx, tenantId, BigInt(checkpoint.auditId), {
+          requireExternalTsa,
+        }),
+      VERIFY_TX_OPTIONS,
+    );
+    recovered = recoveryResult.ok;
+  } else if (checkpoint && result.ok) {
+    recovered = previous?.recovered === true || acceptsPreviousTailRecovery(previous, checkpoint);
+  }
+  return { checkedAt, result, recoveryResult, recovered };
+}
+
+function evaluateTenantVerification(
+  previous: PersistedVerifyResult | null,
+  run: TenantVerificationRun,
+  requestId: string | null,
+): TenantVerificationOutcome {
+  const endpoint = run.recoveryResult
+    ? {
+        firstBreak: run.recoveryResult.firstBreak,
+        lastAuditId: run.recoveryResult.lastAuditId,
+        lastAnchorId: run.result.lastAnchorId,
+      }
+    : run.result;
+  const monotonicityBreaks = detectMonotonicityBreaks(previous, endpoint);
+  const monotonicityReason = monotonicityBreaks[0] ?? null;
+  const recovered = monotonicityBreaks.length > 0 ? false : run.recovered;
+  const freshFailure = monotonicityBreaks.length > 0 || (!run.result.ok && !recovered);
+  const persistedOk = run.result.ok && monotonicityBreaks.length === 0 && !recovered;
+  const failureResult =
+    run.recoveryResult && !run.recoveryResult.ok ? run.recoveryResult : run.result;
+  const base = toPersistedVerifyResult(failureResult, run.checkedAt);
+  const carriedHistoricalBreaks = recovered ? (previous?.policyBreaks ?? []) : [];
+  const measuredLastAuditId = endpoint.lastAuditId === null ? null : String(endpoint.lastAuditId);
+
+  return {
+    freshFailure,
+    recovered,
+    monotonicityReason,
+    failureResult,
+    persisted: {
+      ...base,
+      ok: persistedOk,
+      checked: run.recoveryResult ? run.recoveryResult.checked : base.checked,
+      // Ein negativer Lauf darf die gespeicherten Monotonie-Anker nie senken.
+      lastAuditId: preserveMonotonicId(previous?.lastAuditId, measuredLastAuditId),
+      lastAnchorId: preserveMonotonicId(
+        previous?.lastAnchorId,
+        run.result.lastAnchorId === null ? null : String(run.result.lastAnchorId),
+      ),
+      lastAnchoredAuditId: preserveMonotonicId(
+        previous?.lastAnchoredAuditId,
+        run.result.lastAnchoredAuditId === null ? null : String(run.result.lastAnchoredAuditId),
+      ),
+      policyBreaks: [
+        ...new Set([...carriedHistoricalBreaks, ...base.policyBreaks, ...monotonicityBreaks]),
+      ],
+      requestId,
+      recovered,
+    },
+  };
+}
+
+async function clearBreakAndNotifySuccess(input: {
+  tenantId: string;
+  manualSingleTenant: boolean;
+  requestedByStaffId: string | null;
+  recovered: boolean;
+  result: VerificationResult;
+}): Promise<void> {
+  await withWorkerTenantContext(input.tenantId, async (tx) => {
+    await tx.notification.updateMany({
+      where: { tenantId: input.tenantId, kind: 'SYSTEM_AUDIT_BREAK', readAt: null },
+      data: { readAt: new Date() },
+    });
+    if (!input.manualSingleTenant) return;
+
+    let recipients = input.requestedByStaffId
+      ? await tx.staffUser.findMany({
+          where: { tenantId: input.tenantId, id: input.requestedByStaffId, active: true },
+          select: { id: true },
+        })
+      : await tx.staffUser.findMany({
+          where: {
+            tenantId: input.tenantId,
+            active: true,
+            roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+          },
+          select: { id: true },
+        });
+    if (recipients.length === 0) {
+      recipients = await tx.staffUser.findMany({
+        where: {
+          tenantId: input.tenantId,
+          active: true,
+          roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+        },
+        select: { id: true },
+      });
+    }
+    for (const recipient of recipients) {
+      const existing = await tx.notification.findFirst({
+        where: {
+          tenantId: input.tenantId,
+          staffId: recipient.id,
+          kind: 'SYSTEM_AUDIT_OK',
+          resourceType: 'audit_log',
+          readAt: null,
+        },
+      });
+      const data = {
+        tenantId: input.tenantId,
+        staffId: recipient.id,
+        kind: 'SYSTEM_AUDIT_OK' as const,
+        title: input.recovered
+          ? 'Audit-Chain mit Recovery-Checkpoint geprueft'
+          : 'Audit-Chain intakt',
+        body: input.recovered
+          ? `Manuelle Pruefung abgeschlossen: historischer Bruch bleibt abgegrenzt, ${input.result.checked} Audit-Eintraege geprueft.`
+          : `Manuelle Pruefung abgeschlossen: ${input.result.checked} Audit-Eintraege und ${input.result.sealsChecked} Siegel geprueft.`,
+        href: '/staff/admin/audit',
+        resourceType: 'audit_log',
+        resourceId: null,
+      };
+      if (existing) {
+        await tx.notification.update({
+          where: { id: existing.id },
+          data: { ...data, createdAt: new Date() },
+        });
+      } else {
+        await tx.notification.create({ data });
+      }
+    }
+  }).catch((error) =>
+    log.warn(
+      { tenantId: input.tenantId, err: (error as Error).message },
+      'audit-verify: clear-notification failed',
+    ),
+  );
+}
+
+async function handleTenantVerifyError(input: {
+  tenantId: string;
+  requestId: string | null;
+  previous: PersistedVerifyResult | null;
+  error: unknown;
+}): Promise<AuditVerifyEntry> {
+  const errorMessage = input.error instanceof Error ? input.error.message : String(input.error);
+  log.error({ tenantId: input.tenantId, err: errorMessage }, 'audit-verify: tenant failed');
+  await persistVerifyResult(input.tenantId, {
+    checkedAt: new Date().toISOString(),
+    requestId: input.requestId,
+    ok: false,
+    checked: 0,
+    lastAuditId: input.previous?.lastAuditId ?? null,
+    lastAnchorId: input.previous?.lastAnchorId ?? null,
+    lastAnchoredAuditId: input.previous?.lastAnchoredAuditId ?? null,
+    sealsChecked: 0,
+    sealBreaks: 0,
+    policyBreaks: [],
+    firstBreak: null,
+    error: errorMessage,
+    recovered: false,
+  }).catch((error) =>
+    log.warn(
+      { tenantId: input.tenantId, err: (error as Error).message },
+      'audit-verify: persist failed',
+    ),
+  );
+  await notifyAuditBreak(input.tenantId, {
+    title: '⚠ Audit-Prüflauf fehlgeschlagen!',
+    body: `Audit-Prueflauf fehlgeschlagen: ${errorMessage}`,
+    resourceId: null,
+  }).catch((error) =>
+    log.warn(
+      { tenantId: input.tenantId, err: (error as Error).message },
+      'audit-verify: notify failed',
+    ),
+  );
+  return { tenantId: input.tenantId, ok: false, broken: 'verify-error' };
+}
+
+async function processAuditVerifyTenant(input: {
+  tenantId: string;
+  requestId: string | null;
+  manualSingleTenant: boolean;
+  requestedByStaffId: string | null;
+}): Promise<AuditVerifyEntry> {
+  let previous: PersistedVerifyResult | null = null;
+  try {
+    const checkedAt = new Date();
+    previous = await loadPreviousVerifyResult(input.tenantId);
+    const run = await verifyTenantChain(input.tenantId, previous, checkedAt);
+    const outcome = evaluateTenantVerification(previous, run, input.requestId);
+    await persistVerifyResult(input.tenantId, outcome.persisted);
+
+    if (outcome.freshFailure) {
+      await notifyAuditBreak(input.tenantId, {
+        body: auditBreakBody(outcome.failureResult, outcome.monotonicityReason),
+        resourceId: outcome.failureResult.firstBreak
+          ? String(outcome.failureResult.firstBreak.auditId)
+          : null,
+      });
+      return {
+        tenantId: input.tenantId,
+        ok: false,
+        broken: outcome.failureResult.firstBreak
+          ? String(outcome.failureResult.firstBreak.auditId)
+          : 'unknown',
+      };
+    }
+
+    await clearBreakAndNotifySuccess({
+      tenantId: input.tenantId,
+      manualSingleTenant: input.manualSingleTenant,
+      requestedByStaffId: input.requestedByStaffId,
+      recovered: outcome.recovered,
+      result: run.result,
+    });
+    return { tenantId: input.tenantId, ok: true };
+  } catch (error) {
+    return handleTenantVerifyError({ ...input, previous, error });
+  }
+}
+
+async function* singleTenantBatch(tenantId: string): AsyncGenerator<string[]> {
+  yield [tenantId];
+}
+
+async function tenantBatchesFor(tenantId: string | undefined): Promise<AsyncGenerator<string[]>> {
+  if (tenantId) return singleTenantBatch(tenantId);
+  return loadTenantIdsChunked();
+}
+
 export const auditVerifyWorker = new Worker<ChecksJob>(
   JOB_QUEUES.auditVerify.name,
   async (job) => {
-    const results: Array<{ tenantId: string; ok: boolean; broken?: string }> = [];
-    const manualSingleTenant = !!job.data.tenantId;
-    const tenantBatches: AsyncGenerator<string[]> = job.data.tenantId
-      ? (async function* () {
-          yield [job.data.tenantId!];
-        })()
-      : await loadTenantIdsChunked();
-
-    for await (const tenantIds of tenantBatches)
+    const results: AuditVerifyEntry[] = [];
+    const tenantBatches = await tenantBatchesFor(job.data.tenantId);
+    for await (const tenantIds of tenantBatches) {
       for (const tenantId of tenantIds) {
-        // Ausserhalb des try: der Fehlerpfad unten muss den Monotonie-Anker
-        // weiterreichen können.
-        let prev: PersistedVerifyResult | null = null;
-        try {
-          const checkedAt = new Date();
-          // Vorergebnis VOR dem neuen Lauf lesen — liefert den Monotonie-Anker
-          // (lastAuditId) für die Tail-Truncation-Erkennung unten.
-          const prevValue = await withWorkerTenantContext(tenantId, (tx) =>
-            readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
-          );
-          prev = (prevValue ?? null) as PersistedVerifyResult | null;
-
-          const timestampPort = await timestampPortFor(tenantId);
-          const evidenceService = new EvidenceService(timestampPort);
-          const r = await prismaOwner.$transaction(
-            async (tx) =>
-              evidenceService.verifyChain(tx, tenantId, {
-                requireExternalTsa,
-              }),
-            VERIFY_TX_OPTIONS,
-          );
-
-          // M-2/N-3: Monotonie-Anker gegen Tail-Truncation der UNVERSIEGELTEN
-          // Spitze. Der Seal-Check oben fängt nur das Löschen VERSIEGELTER Einträge;
-          // die neuesten, noch nicht tagesversiegelten Einträge (oder eine komplett
-          // geleerte Kette) hinterlassen sonst eine konsistente Kette (ok=true).
-          // Nur bei ok=true auswerten: bei einem Bruch ist lastAuditId die letzte
-          // GUTE ID (früher Abbruch), kein echter Ketten-Endpunkt.
-          // Recovery-Checkpoint = bewusste Abgrenzung durch den Admin. Er ist das
-          // harte Kill-Signal für den Break-Alarm: sobald gesetzt, gilt der
-          // historische Bruch als versorgt (recovered) — keine neue
-          // SYSTEM_AUDIT_BREAK-Notification, und die bestehende wird als gelesen
-          // markiert. Eine Teilketten-Verifikation (verifyRecoverySegment) hat
-          // sich hier als fehleranfällig erwiesen (TSA-/Segment-Probleme) und das
-          // Alarm-Verhalten unzuverlässig gemacht; der Checkpoint ist die
-          // ausdrückliche Admin-Anweisung "Break versorgt". Ein FRISCHER
-          // Schrumpf-Befund wird davon NICHT abgedeckt — das ist neue Manipulation.
-          let recovered = false;
-          if (!r.ok) {
-            const checkpointValue = await withWorkerTenantContext(tenantId, (tx) =>
-              readTenantSettingValue(tx, tenantId, AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY),
-            );
-            recovered = !!checkpointValue;
-          }
-
-          const monotonicity = monotonicityOutcome(prev, r, recovered);
-          const base = toPersistedVerifyResult(r, checkedAt);
-          await persistVerifyResult(tenantId, {
-            ...base,
-            ok: monotonicity.effectiveOk,
-            policyBreaks: [...base.policyBreaks, ...monotonicity.breaks],
+        results.push(
+          await processAuditVerifyTenant({
+            tenantId,
             requestId: job.data.requestId ?? null,
-            recovered,
-          });
-
-          if (!monotonicity.effectiveOk && !monotonicity.suppressAlarm) {
-            // P-8: Notifications werden jetzt in einer Tenant-Context-Transaktion
-            // geschrieben — auch wenn prismaOwner BYPASSRLS hat. Setzt die
-            // app.current_*-Session-Variablen, sodass Audit-Trigger und etwaige
-            // zukünftige RLS-Policies konsistent greifen. Symmetrisch zum
-            // Web-App-Pattern (notify(tx, ...) innerhalb withTenantContext).
-            await withWorkerTenantContext(tenantId, async (tx) => {
-              const recipients = await tx.staffUser.findMany({
-                where: {
-                  tenantId,
-                  active: true,
-                  roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
-                },
-                select: { id: true },
-              });
-              for (const rec of recipients) {
-                const existing = await tx.notification.findFirst({
-                  where: {
-                    tenantId,
-                    staffId: rec.id,
-                    kind: 'SYSTEM_AUDIT_BREAK',
-                    resourceType: 'audit_log',
-                    readAt: null,
-                  },
-                });
-                const data = {
-                  tenantId,
-                  staffId: rec.id,
-                  kind: 'SYSTEM_AUDIT_BREAK' as const,
-                  title: `⚠ Audit-Hash-Chain gebrochen!`,
-                  body: auditBreakBody(r, monotonicity.reason),
-                  href: `/staff/admin/audit`,
-                  resourceType: 'audit_log',
-                  resourceId: r.firstBreak ? String(r.firstBreak.auditId) : null,
-                };
-                if (existing) {
-                  await tx.notification.update({
-                    where: { id: existing.id },
-                    data: { ...data, createdAt: new Date() },
-                  });
-                } else {
-                  await tx.notification.create({ data });
-                }
-              }
-            });
-            results.push({
-              tenantId,
-              ok: false,
-              broken: r.firstBreak ? String(r.firstBreak.auditId) : 'unknown',
-            });
-          } else {
-            // Chain intakt ODER historischer Bruch durch Checkpoint abgegrenzt
-            // (recovered): eine noch offene SYSTEM_AUDIT_BREAK-Notification als
-            // gelesen markieren, damit Bell/Counter nicht weiter auf einen Bruch
-            // hinweist, der bereits versorgt ist. (User-Feedback: „nach Checkpoint
-            // keine Break-Meldung/Notification mehr".)
-            await withWorkerTenantContext(tenantId, async (tx) => {
-              await tx.notification.updateMany({
-                where: { tenantId, kind: 'SYSTEM_AUDIT_BREAK', readAt: null },
-                data: { readAt: new Date() },
-              });
-              if (manualSingleTenant) {
-                let recipients = job.data.requestedByStaffId
-                  ? await tx.staffUser.findMany({
-                      where: { tenantId, id: job.data.requestedByStaffId, active: true },
-                      select: { id: true },
-                    })
-                  : await tx.staffUser.findMany({
-                      where: {
-                        tenantId,
-                        active: true,
-                        roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
-                      },
-                      select: { id: true },
-                    });
-                if (recipients.length === 0) {
-                  recipients = await tx.staffUser.findMany({
-                    where: {
-                      tenantId,
-                      active: true,
-                      roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
-                    },
-                    select: { id: true },
-                  });
-                }
-                for (const rec of recipients) {
-                  const existing = await tx.notification.findFirst({
-                    where: {
-                      tenantId,
-                      staffId: rec.id,
-                      kind: 'SYSTEM_AUDIT_OK',
-                      resourceType: 'audit_log',
-                      readAt: null,
-                    },
-                  });
-                  const data = {
-                    tenantId,
-                    staffId: rec.id,
-                    kind: 'SYSTEM_AUDIT_OK' as const,
-                    title: recovered
-                      ? 'Audit-Chain mit Recovery-Checkpoint geprueft'
-                      : 'Audit-Chain intakt',
-                    body: recovered
-                      ? `Manuelle Pruefung abgeschlossen: historischer Bruch bleibt abgegrenzt, ${r.checked} Audit-Eintraege geprueft.`
-                      : `Manuelle Pruefung abgeschlossen: ${r.checked} Audit-Eintraege und ${r.sealsChecked} Siegel geprueft.`,
-                    href: '/staff/admin/audit',
-                    resourceType: 'audit_log',
-                    resourceId: null,
-                  };
-                  if (existing) {
-                    await tx.notification.update({
-                      where: { id: existing.id },
-                      data: { ...data, createdAt: new Date() },
-                    });
-                  } else {
-                    await tx.notification.create({ data });
-                  }
-                }
-              }
-            }).catch((e) =>
-              log.warn(
-                { tenantId, err: (e as Error).message },
-                'audit-verify: clear-notification failed',
-              ),
-            );
-            results.push({ tenantId, ok: true });
-          }
-        } catch (err) {
-          log.error({ tenantId, err: (err as Error).message }, 'audit-verify: tenant failed');
-          results.push({ tenantId, ok: false, broken: 'verify-error' });
-          // Auch Lauf-Fehler persistieren — die Admin-Seite soll nicht ewig ein
-          // veraltetes „intakt" zeigen, wenn der Check selbst kaputt ist.
-          await persistVerifyResult(tenantId, {
-            checkedAt: new Date().toISOString(),
-            requestId: job.data.requestId ?? null,
-            ok: false,
-            checked: 0,
-            // Anker ERHALTEN, nicht auf null zurücksetzen: `detectTailTruncation`
-            // steigt bei fehlendem Vor-Anker kommentarlos aus. Ein einziger
-            // fehlgeschlagener Lauf hätte die Tail-Truncation-Erkennung sonst
-            // dauerhaft blind gestellt — genau das Fenster, in dem gelöschte
-            // Spitzen-Einträge unbemerkt blieben.
-            lastAuditId: prev?.lastAuditId ?? null,
-            lastAnchorId: prev?.lastAnchorId ?? null,
-            lastAnchoredAuditId: prev?.lastAnchoredAuditId ?? null,
-            sealsChecked: 0,
-            sealBreaks: 0,
-            policyBreaks: [],
-            firstBreak: null,
-            error: (err as Error).message,
-            recovered: false,
-          }).catch((e) =>
-            log.warn({ tenantId, err: (e as Error).message }, 'audit-verify: persist failed'),
-          );
-        }
+            manualSingleTenant: Boolean(job.data.tenantId),
+            requestedByStaffId: job.data.requestedByStaffId ?? null,
+          }),
+        );
       }
-
+    }
     log.info({ results }, 'audit-verify: done');
     return { results };
   },

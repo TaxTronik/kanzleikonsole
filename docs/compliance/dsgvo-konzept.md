@@ -1,6 +1,6 @@
 # DSGVO — Lösch-, Aufbewahrungs- und Verarbeitungskonzept
 
-Stand: 2026-06-10. Dieses Dokument beschreibt für taxtronik:
+Stand: 2026-09-03. Dieses Dokument beschreibt für taxtronik:
 
 - Welche personenbezogenen Daten verarbeitet werden
 - Welche Aufbewahrungsfristen gelten
@@ -16,14 +16,27 @@ Stand: 2026-06-10. Dieses Dokument beschreibt für taxtronik:
 
 ### 1.1 Mitarbeiter der Kanzlei (`staff_user`)
 
-| Feld                | Zweck                  | Rechtsgrundlage              |
-| ------------------- | ---------------------- | ---------------------------- |
-| `email`, `fullName` | Login + Identifikation | Art. 6 (1) b DSGVO (Vertrag) |
-| `passwordHash`      | Authentifizierung      | Art. 6 (1) b                 |
-| `totpSecretEnc`     | 2FA-Pflicht            | Art. 6 (1) c (§ 32 DSGVO)    |
-| `roles`             | Zugriffssteuerung      | Art. 6 (1) b                 |
-| `lastLoginAt`       | Sicherheits-Monitoring | Art. 6 (1) f                 |
-| `lockedUntil`       | Brute-Force-Schutz     | Art. 6 (1) f                 |
+| Feld                                                                                                                                                                               | Zweck                                                             | Rechtsgrundlage              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------- |
+| `email`, `fullName`                                                                                                                                                                | Login + Identifikation                                            | Art. 6 (1) b DSGVO (Vertrag) |
+| `passwordHash`, `totpSecretEnc`, `totpBackupCodes`                                                                                                                                 | Standard-Authentifizierung mit Passwort + TOTP                    | Art. 6 (1) b                 |
+| `hardwareOnlyEnabledAt`, `authRevision`                                                                                                                                            | Anmeldemodus und Session-Invalidierung                            | Art. 6 (1) f                 |
+| `staff_webauthn_credential` (Credential-ID, Public Key, Zähler, AAGUID, Geräte-/Transportdaten, Attestationsformat, Prüfzeitpunkt und attestierte Authenticator-/Firmware-Version) | optionale Authentifizierung mit attestiertem Sicherheitsschlüssel | Art. 6 (1) f                 |
+| `roles`                                                                                                                                                                            | Zugriffssteuerung                                                 | Art. 6 (1) b                 |
+| `lastLoginAt`                                                                                                                                                                      | Sicherheits-Monitoring                                            | Art. 6 (1) f                 |
+| `lockedUntil`                                                                                                                                                                      | Brute-Force-Schutz                                                | Art. 6 (1) f                 |
+
+Bei WebAuthn verbleibt der private Schlüssel auf dem Authentikator. Die
+Anwendung speichert den öffentlichen Credential-Anteil und technische
+Metadaten. Beim Enrollment wird eine vollständige `packed`-Attestation samt
+Zertifikatskette geprüft; der aktuelle Anwendungspfad persistiert die rohe
+Kette nicht, sondern AAGUID, Format, Prüfzeitpunkt und attestierte
+Authenticator-/Firmware-Version. Die AAGUID kann die Modellfamilie offenlegen,
+ist aber keine Seriennummer oder individuelle Gerätekennung. Ob und wie die
+konkrete Kanzlei diese Daten sowie die
+alternative Authentisierung in Informationspflichten, VVT, DSFA und
+Löschkonzept abbildet, bleibt von ihr zu prüfen; diese Tabelle ersetzt keine
+Einzelfallbewertung der Rechtsgrundlage.
 
 ### 1.2 Mandanten (`client`)
 
@@ -105,8 +118,11 @@ tätigkeiten (Art. 30 DSGVO) entsprechend ausweisen.
 **Audit-Log-Inhalts-Hygiene (B-3):** Der Audit-Log speichert pro Eintrag
 optionale `before`/`after`-JSON-Felder. Die `evidenceService.record()`-
 Aufrufe MÜSSEN sicherstellen, dass keine sensitiven Felder (passwordHash,
-TOTP-Secret, OTP-Hash, Cookie-Token, Session-Token) in den Audit-Log
-durchgereicht werden. Pre-Pen-Test-Pflicht-Check: alle Aufrufer von
+TOTP-Secret, OTP-Hash, Cookie-Token, Session-Token, WebAuthn-Challenge oder
+rohe Registrierungs-/Assertion-Antwort) in den Audit-Log durchgereicht werden.
+Credential-ID und Public Key sollen dort ebenfalls nicht dupliziert werden;
+für Schlüsselereignisse genügen interne Ressourcen-ID, Label, Modus und
+Gerätetyp. Pre-Pen-Test-Pflicht-Check: alle Aufrufer von
 `evidenceService.record({ before, after })` auf sensitive Felder durch-
 sehen — siehe [pen-test-vorbereitung.md](./pen-test-vorbereitung.md). Die
 Bescheid-Ereignisse `tax_notice.create` und `tax_notice.status` speichern
@@ -348,14 +364,16 @@ Daraus folgt für die DSGVO-Löschung:
 
 Innerhalb von taxtronik werden folgende Auftragsverarbeiter eingesetzt:
 
-| Anbieter                                       | Zweck                                                                               | AV-Vertrag                                                                                                                                                                                                                                                                                                                        |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hosting-Provider (durch Kanzlei gewählt)       | Server-Betrieb                                                                      | individuell                                                                                                                                                                                                                                                                                                                       |
-| ClamAV (lokaler Container)                     | Virus-Scan                                                                          | kein externer Drittanbieter                                                                                                                                                                                                                                                                                                       |
-| RFC-3161-TSA (z. B. D-Trust)                   | Audit-Versiegelung                                                                  | Adapter konfigurierbar                                                                                                                                                                                                                                                                                                            |
-| n8n (lokaler Container)                        | Workflow-Automatisierung                                                            | kein externer Drittanbieter — **Achtung**: Sobald die Kanzlei n8n.cloud oder einen externen n8n-Server nutzt, wird n8n zum Auftragsverarbeiter (Art. 28 DSGVO) und ein AVV ist Pflicht. taxtronik gibt das Compose-Setup für lokales n8n vor; die Kanzlei muss eine bewusste Entscheidung treffen, wenn sie davon abweicht (B-4). |
-| Externer eIDAS-QES-Provider (nicht integriert) | qualifizierte Signaturen, falls die Kanzlei hierfür einen separaten Dienst einsetzt | derzeit kein TaxTronik-Adapter; vor einer künftigen Anbindung Rollen, Vertrag und Datenflüsse gesondert bewerten                                                                                                                                                                                                                  |
-| Mandanten-eigene Auftragsverarbeiter           | im Verzeichnis `/staff/service-providers`                                           |
+| Anbieter                                                  | Zweck                                                                               | AV-Vertrag                                                                                                                                                                                                                                                                                                                        |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hosting-Provider (durch Kanzlei gewählt)                  | Server-Betrieb                                                                      | individuell                                                                                                                                                                                                                                                                                                                       |
+| ClamAV (lokaler Container)                                | Virus-Scan                                                                          | kein externer Drittanbieter                                                                                                                                                                                                                                                                                                       |
+| RFC-3161-TSA (z. B. D-Trust)                              | Audit-Versiegelung                                                                  | Adapter konfigurierbar                                                                                                                                                                                                                                                                                                            |
+| FIDO Metadata Service (bei Hardware-only)                 | signierten MDS-BLOB für Attestations- und Modellstatusprüfung beziehen              | Der aktuelle Abruf übermittelt keine Staff-/Credential-ID oder AAGUID als Anwendungsparameter, erzeugt aber Server-IP-/Zeit-Verbindungsdaten; Providerrolle, Bedingungen, Region und Drittlandsbezug sind deploymentbezogen zu prüfen.                                                                                            |
+| Zertifizierungsstellen-/CRL-Endpunkte (bei Hardware-only) | Widerrufsstatus bereits vertrauenswürdig aufgebauter Zertifikatsketten prüfen       | Der Abruf übermittelt keine Staff-/Credential-ID als Anwendungsparameter, erzeugt aber Server-IP-/Zeit- und Ziel-Verbindungsdaten; tatsächliche Betreiber, Bedingungen, Region und Drittlandsbezug sind deploymentbezogen zu prüfen.                                                                                              |
+| n8n (lokaler Container)                                   | Workflow-Automatisierung                                                            | kein externer Drittanbieter — **Achtung**: Sobald die Kanzlei n8n.cloud oder einen externen n8n-Server nutzt, wird n8n zum Auftragsverarbeiter (Art. 28 DSGVO) und ein AVV ist Pflicht. taxtronik gibt das Compose-Setup für lokales n8n vor; die Kanzlei muss eine bewusste Entscheidung treffen, wenn sie davon abweicht (B-4). |
+| Externer eIDAS-QES-Provider (nicht integriert)            | qualifizierte Signaturen, falls die Kanzlei hierfür einen separaten Dienst einsetzt | derzeit kein TaxTronik-Adapter; vor einer künftigen Anbindung Rollen, Vertrag und Datenflüsse gesondert bewerten                                                                                                                                                                                                                  |
+| Mandanten-eigene Auftragsverarbeiter                      | im Verzeichnis `/staff/service-providers`                                           |
 
 **Verzeichnis nach Art. 30 DSGVO** wird im Modul „Dienstleister (AVV)"
 gepflegt.
@@ -367,7 +385,11 @@ gepflegt.
 ### Vertraulichkeit
 
 - Ende-zu-Ende-TLS (durch Reverse-Proxy)
-- TOTP-Pflicht für alle Mitarbeiter
+- Staff standardmäßig mit Passwort + TOTP; optionales persönliches Opt-in nur
+  für physische FIDO2-Sicherheitsschlüssel ab zwei registrierten Schlüsseln,
+  dann ohne Passwort-, TOTP- oder Backup-Code-Fallback; direkte vollständige
+  `packed`-Attestation, nichtleere Modell-AAGUID-Allowlist und FIDO MDS
+  `strict`, bei MDS-/Netzfehlern fail-closed
 - Magic-Link (Single-Use, 30 min Gültigkeit) für Mandanten
 - Postgres-RLS pro Tenant (Defense in Depth gegen App-Bugs)
 - Cookie-Trennung Staff/Portal (kein Cross-Surface-Login)
@@ -432,3 +454,47 @@ individuell durchgeführt mit Vorlagen aus dem Bereich „Steuerberater
 | Mandant deaktiviert (GwG abgelaufen)             | `client.allowActive = false`                                                                                                                                                                                                                                                                                                                                                                                           | `gwg.expired` (Worker)          |
 | GwG-Datei-Beleg vernichtet (§ 8 (4))             | `document` + `document_version` gelöscht, Bytes vernichtet                                                                                                                                                                                                                                                                                                                                                             | `gwg.evidence.destroy`          |
 | GwG-Aufzeichnungen vernichtet (§ 8 (4))          | `gwg_beneficial_owner` gelöscht, `gwg_id_document` genullt, `gwg_check` anonymisiert + `destroyedAt`                                                                                                                                                                                                                                                                                                                   | `gwg.check.destroy`             |
+
+# Ergänzung: deaktivierte Ausbau-Module (2026-08-31)
+
+Persönliche Interaktions- und Jahreskampagnennachweise besitzen eigene feste
+Fassungen. Ihre Anforderungen sind vom allgemeinen Request-Purge ausgenommen,
+bis ein geprüfter Fachfallprozess über Nachweis und zugehörige Anforderung
+gemeinsam entscheidet. Das ist kein allgemeines Legal-Hold-Modell und keine
+neue gesetzliche Frist. Neue Posteingangs-, Personal-, Beleg-/Verfahrens-,
+Struktur-, Screening- und Gebührenfassungen werden nicht durch das bloße
+Aktivieren der Module einer erfundenen Standard-Löschfrist zugeordnet.
+Die Kanzlei muss die zusätzlichen Datenklassen vor dem Produktivpilot in
+Verarbeitungsverzeichnis und Aufbewahrungsorganisation aufnehmen. Bestehende
+GwG-, Dokument- und DSGVO-Prüfungen laufen unverändert weiter.
+
+## Ergänzung: sicherer Mandantenposteingang (2026-09-01)
+
+Das standardmäßig deaktivierte Inbox-Modul ergänzt folgende Datenklassen:
+
+- Thread-Metadaten und freie Nachrichtentexte,
+- kontaktprivate Uploadentwürfe,
+- Originaldateinamen, MIME-Typen, Größen, Hash-/Storageidentitäten,
+- Scanner- und Kanzleientscheidungsstatus,
+- kontaktbezogene Lesestände und interne Staff-Notifications.
+
+Der 24-Stunden-Default gilt ausschließlich für noch offene Uploadentwürfe und
+ist keine behauptete gesetzliche Frist. Für abgesendete Nachrichten,
+abgelehnte oder blockierte Staging-Anlagen, Storagebytes und Lesestände wird
+hier bewusst keine neue Aufbewahrungsdauer festgelegt. Vor dem Produktivpilot
+müssen Zweck, Rechtsgrundlage, Löschereignis, mögliche Sperren und
+Nachweisorganisation je Datenklasse im kanzleieigenen Verzeichnis und
+Löschkonzept entschieden werden.
+
+Vor ausdrücklicher Staff-Annahme entsteht kein `Document`. Eine angenommene
+Anlage fällt erst nach getrennter Klassifikation unter die bestehenden
+Dokument-/Object-Lock-Regeln und wird nicht automatisch portalgeteilt.
+Abgelehnte Anlagen dürfen im Portal ausschließlich mit neutralem Reason-Code
+und ungefährlichen Metadaten erscheinen; `REJECTED` und `BLOCKED` bleiben für
+Downloads gesperrt, Scanner- und Storageinterna werden nicht offengelegt.
+
+Die Inbox-Suche indexiert keinen Nachrichtentext und keinen Anlageninhalt.
+Audit und Notifications sollen keine Betreffe, Nachrichtentexte,
+Originaldateinamen, Mandantennamen, Suchbegriffe oder freien Ablehnungstexte
+duplizieren. Die technischen Grenzen und offenen Betriebsentscheidungen sind in
+`docs/development/module/portal-inbox.md` beschrieben.

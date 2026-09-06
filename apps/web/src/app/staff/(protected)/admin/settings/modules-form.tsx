@@ -3,8 +3,10 @@
 import { useActionState } from 'react';
 import { saveModulesAction, type ActionResult } from './actions';
 import type { ModuleConfig } from '@/server/settings/modules';
+import { EXPANSION_MODULES } from '@/lib/expansion-modules';
 
 const MODULES: Array<{ key: keyof ModuleConfig; label: string; description: string }> = [
+  ...EXPANSION_MODULES,
   { key: 'bwa', label: 'BWA & Auswertungen', description: 'Mandanten-BWA-Importe und KPI-Reports' },
   {
     key: 'knowledge',

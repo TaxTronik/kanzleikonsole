@@ -38,6 +38,19 @@ const validatesKnowledgeStaffActionGuard = (source: string): boolean =>
   ) && /staffActionGuard\s*\(\s*\{\s*module:\s*['"]knowledge['"]\s*\}\s*\)/.test(source);
 
 const ALTERNATIVE_AUTH: Record<string, AlternativeAuth> = {
+  'api/staff/mandate-expansion/export/route.ts': {
+    reason:
+      'staffActionGuard erzwingt Staff-Session, konkretes Struktur-/Offboardingmodul und ADMIN/PARTNER bei Herausgabepaketen; Exportdienst prüft zusätzlich Mandant und Versionen',
+    validate: (source) =>
+      /import\s+\{[^}]*\bstaffActionGuard\b[^}]*\}\s+from\s+['"]@\/server\/actions\/staff-action['"]/.test(
+        source,
+      ) &&
+      /await\s+staffActionGuard\s*\(/.test(source) &&
+      /requireAdmin\s*:/.test(source) &&
+      source.includes('mandateOffboarding') &&
+      source.includes('mandateStructure') &&
+      /if\s*\(\s*!guard\.ok\s*\)/.test(source),
+  },
   // Die Wissens-Anhangsrouten brauchen neben der Staff-Session zugleich die
   // Modulfreigabe und nutzen deshalb den zentralen Guard, der beides koppelt.
   'api/staff/knowledge/attachments/route.ts': {

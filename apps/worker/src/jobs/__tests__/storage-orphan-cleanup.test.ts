@@ -4,8 +4,8 @@ const h = vi.hoisted(() => ({
   findMany: vi.fn(),
   updateMany: vi.fn(),
   documentVersionFindFirst: vi.fn(),
-  deleteObject: vi.fn(),
   deleteObjectVersion: vi.fn(),
+  recoverPreparedBytesCommit: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -19,8 +19,8 @@ vi.mock('../../prisma-owner', () => ({
 }));
 vi.mock('../../logger', () => ({ log: h.log }));
 vi.mock('@taxtronik/storage', () => ({
-  deleteObject: h.deleteObject,
   deleteObjectVersion: h.deleteObjectVersion,
+  recoverPreparedBytesCommit: h.recoverPreparedBytesCommit,
 }));
 
 import { runStorageOrphanCleanup } from '../storage-orphan-cleanup';
@@ -33,8 +33,67 @@ describe('storage orphan cleanup', () => {
     h.findMany.mockResolvedValue([]);
     h.updateMany.mockResolvedValue({ count: 1 });
     h.documentVersionFindFirst.mockResolvedValue(null);
-    h.deleteObject.mockResolvedValue(undefined);
     h.deleteObjectVersion.mockResolvedValue(undefined);
+    h.recoverPreparedBytesCommit.mockResolvedValue(null);
+  });
+
+  it('DOC-UPLOAD-JOURNAL-001 lets later recoverable objects progress past a full batch of permanent errors', async () => {
+    const rows = Array.from({ length: 101 }, (_, i) => ({
+      id: `orphan-${i}`,
+      tenantId: 't-1',
+      storageBucket: 'general',
+      storageKey: `tenants/t-1/${i}`,
+      storageVersionId: i === 100 ? 'healthy-version' : '',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: false,
+      retentionUntil: null,
+      createdAt: new Date(NOW.getTime() - 3_600_000 + i),
+      cleanedAt: null as Date | null,
+      cleanupClaimedAt: null as Date | null,
+      cleanupAttempts: 0,
+    }));
+    h.findMany.mockImplementation(
+      async ({
+        orderBy,
+        take,
+      }: {
+        orderBy: Record<string, 'asc' | 'desc'> | Array<Record<string, 'asc' | 'desc'>>;
+        take: number;
+      }) =>
+        rows
+          .filter((r) => !r.cleanedAt)
+          .sort((a, b) => {
+            for (const clause of Array.isArray(orderBy) ? orderBy : [orderBy]) {
+              const [key, direction] = Object.entries(clause)[0]!;
+              const left = a[key as 'cleanupAttempts'];
+              const right = b[key as 'cleanupAttempts'];
+              const order = left < right ? -1 : left > right ? 1 : 0;
+              if (order) return direction === 'asc' ? order : -order;
+            }
+            return 0;
+          })
+          .slice(0, take),
+    );
+    h.updateMany.mockImplementation(
+      async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const row = rows.find((r) => r.id === where.id)!;
+        const { cleanupAttempts, ...fields } = data;
+        Object.assign(row, fields);
+        if (cleanupAttempts)
+          row.cleanupAttempts += (cleanupAttempts as { increment: number }).increment;
+        return { count: 1 };
+      },
+    );
+    expect((await runStorageOrphanCleanup(NOW)).failed).toBe(100);
+    expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    expect((await runStorageOrphanCleanup(NOW)).deleted).toBe(1);
+    expect(h.deleteObjectVersion).toHaveBeenCalledWith(
+      'general',
+      'tenants/t-1/100',
+      'healthy-version',
+    );
+    expect(rows[100]!.cleanedAt).not.toBeNull();
   });
 
   it('selektiert Object-Lock-Orphans erst nach Retention und löscht versionsgenau', async () => {
@@ -115,9 +174,23 @@ describe('storage orphan cleanup', () => {
         storageBucket: 'general',
         storageKey: 'tenants/t-1/general/key',
         storageVersionId: '',
+        sha256: Buffer.alloc(32, 0x31),
+        sizeBytes: 123n,
+        immutable: false,
+        retentionUntil: null,
       },
     ]);
-    h.deleteObject.mockRejectedValue(new Error('object lock still active'));
+    h.recoverPreparedBytesCommit.mockResolvedValue({
+      targetBucket: 'general',
+      targetKey: 'tenants/t-1/general/key',
+      storageVersionId: 'recovered-version-1',
+      sha256: Buffer.alloc(32, 0x31),
+      sizeBytes: 123n,
+      immutable: false,
+      retentionUntil: null,
+      detectedMime: null,
+    });
+    h.deleteObjectVersion.mockRejectedValue(new Error('object lock still active'));
 
     await expect(runStorageOrphanCleanup(NOW)).resolves.toEqual({
       claimed: 1,
@@ -134,6 +207,11 @@ describe('storage orphan cleanup', () => {
           cleanupError: 'object lock still active',
         },
       }),
+    );
+    expect(h.deleteObjectVersion).toHaveBeenCalledWith(
+      'general',
+      'tenants/t-1/general/key',
+      'recovered-version-1',
     );
   });
 
@@ -156,7 +234,6 @@ describe('storage orphan cleanup', () => {
       incidents: 0,
       failed: 0,
     });
-    expect(h.deleteObject).not.toHaveBeenCalled();
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenCalledOnce();
   });
@@ -192,7 +269,6 @@ describe('storage orphan cleanup', () => {
       },
       select: { id: true, document: { select: { tenantId: true } } },
     });
-    expect(h.deleteObject).not.toHaveBeenCalled();
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -220,7 +296,6 @@ describe('storage orphan cleanup', () => {
       incidents: 0,
       failed: 1,
     });
-    expect(h.deleteObject).not.toHaveBeenCalled();
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -254,7 +329,6 @@ describe('storage orphan cleanup', () => {
       incidents: 1,
       failed: 0,
     });
-    expect(h.deleteObject).not.toHaveBeenCalled();
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -295,6 +369,95 @@ describe('storage orphan cleanup', () => {
         data: expect.objectContaining({
           resolution: 'INTEGRITY_INCIDENT',
           cleanupError: 'INTEGRITY_TENANT_KEY_PREFIX_MISMATCH',
+        }),
+      }),
+    );
+  });
+
+  it('DOC-UPLOAD-JOURNAL-001 bindet eine eindeutig recoverte Version vor der physischen Löschung', async () => {
+    const sha256 = Buffer.alloc(32, 0x41);
+    h.findMany.mockResolvedValue([
+      {
+        id: 'orphan-resume',
+        tenantId: 't-1',
+        storageBucket: 'gobd',
+        storageKey: 'tenants/t-1/gobd/pending.bin',
+        storageVersionId: '',
+        sha256,
+        sizeBytes: 456n,
+        immutable: true,
+        retentionUntil: new Date('2026-08-01T00:00:00.000Z'),
+      },
+    ]);
+    h.recoverPreparedBytesCommit.mockResolvedValue({
+      targetBucket: 'gobd',
+      targetKey: 'tenants/t-1/gobd/pending.bin',
+      storageVersionId: 'recovered-version-2',
+      sha256,
+      sizeBytes: 456n,
+      immutable: true,
+      retentionUntil: new Date('2026-08-01T00:00:00.000Z'),
+      detectedMime: null,
+    });
+
+    await expect(runStorageOrphanCleanup(NOW)).resolves.toEqual({
+      claimed: 1,
+      deleted: 1,
+      referenced: 0,
+      incidents: 0,
+      failed: 0,
+    });
+
+    expect(h.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'orphan-resume',
+          storageVersionId: '',
+        }),
+        data: { storageVersionId: 'recovered-version-2' },
+      }),
+    );
+    expect(h.deleteObjectVersion).toHaveBeenCalledWith(
+      'gobd',
+      'tenants/t-1/gobd/pending.bin',
+      'recovered-version-2',
+    );
+    expect(h.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ resolution: 'DELETED' }),
+      }),
+    );
+  });
+
+  it('DOC-VERSION-IMMUTABILITY-001 löscht bei mehrdeutiger Recovery keine Version', async () => {
+    h.findMany.mockResolvedValue([
+      {
+        id: 'orphan-ambiguous',
+        tenantId: 't-1',
+        storageBucket: 'gobd',
+        storageKey: 'tenants/t-1/gobd/ambiguous.bin',
+        storageVersionId: '',
+        sha256: Buffer.alloc(32, 0x51),
+        sizeBytes: 789n,
+        immutable: true,
+        retentionUntil: new Date('2026-08-01T00:00:00.000Z'),
+      },
+    ]);
+    h.recoverPreparedBytesCommit.mockRejectedValue(new Error('PREPARED_UPLOAD_MULTIPLE_VERSIONS'));
+
+    await expect(runStorageOrphanCleanup(NOW)).resolves.toEqual({
+      claimed: 1,
+      deleted: 0,
+      referenced: 0,
+      incidents: 0,
+      failed: 1,
+    });
+    expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(h.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cleanupClaimedAt: null,
+          cleanupError: 'PREPARED_UPLOAD_MULTIPLE_VERSIONS',
         }),
       }),
     );

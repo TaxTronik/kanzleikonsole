@@ -1,7 +1,9 @@
 import { KeyRound, ShieldCheck, ShieldOff, UserRound } from 'lucide-react';
 import { withTenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { isHardwareAccessConfigured } from '@/server/auth/webauthn';
 import { ChangePasswordForm } from './password-form';
+import { HardwareKeySettings } from './hardware-key-settings';
 import { AccessibleDisplaySettings } from '@/components/accessible-display';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -18,9 +20,34 @@ export default async function StaffProfilePage() {
     (tx) =>
       tx.staffUser.findUnique({
         where: { id: staffId },
-        select: { fullName: true, email: true, totpEnrolledAt: true },
+        select: {
+          fullName: true,
+          email: true,
+          totpEnrolledAt: true,
+          hardwareOnlyEnabledAt: true,
+          hardwareCredentials: {
+            where: { revokedAt: null },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              label: true,
+              createdAt: true,
+              lastUsedAt: true,
+              transports: true,
+            },
+          },
+        },
       }),
   );
+  const hardwareOnly = Boolean(account?.hardwareOnlyEnabledAt);
+  const hardwareAccessConfigured = isHardwareAccessConfigured();
+  const hardwareKeys = (account?.hardwareCredentials ?? []).map((key) => ({
+    id: key.id,
+    label: key.label,
+    createdAt: key.createdAt.toISOString(),
+    lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
+    transports: key.transports,
+  }));
 
   return (
     <div className="max-w-5xl p-8">
@@ -36,18 +63,45 @@ export default async function StaffProfilePage() {
 
       <AccessibleDisplaySettings />
 
+      {hardwareAccessConfigured ? (
+        <HardwareKeySettings
+          hardwareOnly={hardwareOnly}
+          keys={hardwareKeys}
+          isAdmin={session.user.roles.includes('ADMIN')}
+        />
+      ) : hardwareOnly ? (
+        <section className="card mb-6 border-amber-300 p-6" role="alert">
+          <h2 className="font-semibold text-primary">Hardware-Zugang nicht betriebsbereit</h2>
+          <p className="mt-2 text-sm text-amber-700">
+            Die zentrale Hardware-Vertrauenspolicy ist derzeit nicht konfiguriert. Wenden Sie sich
+            für eine kontrollierte Wiederherstellung an die Administration.
+          </p>
+        </section>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
         <section className="card p-6">
           <div className="mb-5 flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-brand-700" />
             <div>
-              <h2 className="font-semibold text-primary">Passwort ändern</h2>
+              <h2 className="font-semibold text-primary">
+                {hardwareOnly ? 'Passwortanmeldung deaktiviert' : 'Passwort ändern'}
+              </h2>
               <p className="text-xs text-muted">
-                Das aktuelle Passwort wird zur Bestätigung benötigt.
+                {hardwareOnly
+                  ? 'Dieses Konto akzeptiert ausschließlich registrierte Sicherheitsschlüssel.'
+                  : 'Das aktuelle Passwort wird zur Bestätigung benötigt.'}
               </p>
             </div>
           </div>
-          <ChangePasswordForm />
+          {hardwareOnly ? (
+            <p className="text-sm text-secondary">
+              Deaktivieren Sie zuerst den Hardware-Zugang mit einem registrierten Schlüssel, wenn
+              Sie wieder Passwort und Authenticator-App verwenden möchten.
+            </p>
+          ) : (
+            <ChangePasswordForm />
+          )}
         </section>
 
         <div className="space-y-6">
@@ -75,7 +129,7 @@ export default async function StaffProfilePage() {
 
           <section className="card p-6">
             <div className="mb-2 flex items-center gap-2">
-              {account?.totpEnrolledAt ? (
+              {account?.totpEnrolledAt && !hardwareOnly ? (
                 <ShieldCheck className="h-5 w-5 text-emerald-600" />
               ) : (
                 <ShieldOff className="h-5 w-5 text-amber-600" />
@@ -83,14 +137,19 @@ export default async function StaffProfilePage() {
               <h2 className="font-semibold text-primary">Zwei-Faktor-Authentisierung</h2>
             </div>
             <p className="text-sm text-secondary">
-              {account?.totpEnrolledAt
-                ? '2FA ist für dieses Konto aktiv.'
-                : '2FA wird bei der nächsten Anmeldung eingerichtet.'}
+              {hardwareOnly
+                ? 'Authenticator-App und Wiederherstellungscodes sind für die Anmeldung deaktiviert.'
+                : account?.totpEnrolledAt
+                  ? '2FA ist für dieses Konto aktiv.'
+                  : '2FA wird bei der nächsten Anmeldung eingerichtet.'}
             </p>
-            <p className="mt-3 text-xs text-muted">
-              Falls Authenticator und Backup-Codes verloren gehen, kann ein Admin die 2FA-Zuordnung
-              im Menü „Benutzer“ zurücksetzen.
-            </p>
+            {!hardwareOnly && (
+              <p className="mt-3 text-xs text-muted">
+                {
+                  'Falls Authenticator und Backup-Codes verloren gehen, kann ein Admin die 2FA-Zuordnung im Menü „Benutzer“ zurücksetzen.'
+                }
+              </p>
+            )}
           </section>
         </div>
       </div>

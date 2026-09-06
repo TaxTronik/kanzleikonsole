@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { BadgeCheck, Pencil, X } from 'lucide-react';
 import {
@@ -98,25 +98,18 @@ export function PersonRolesPanel({
       })
     | null,
     FormData
-  >(saveLegalEntityDetailsAction, null);
-
-  useEffect(() => {
-    if (!state?.ok || !state.representatives) return;
-    replaceRepresentatives(state.representatives);
-    registerIdentityInvalidations(state.invalidatedIdentitySets ?? []);
-    if (state.revision) setSavedRevision(state.revision);
-    if (state.reviewReset) markDraft();
+  >(async (previous, data) => {
+    const result = await saveLegalEntityDetailsAction(previous, data);
+    if (!result?.ok || !result.representatives) return result;
+    replaceRepresentatives(result.representatives);
+    registerIdentityInvalidations(result.invalidatedIdentitySets ?? []);
+    if (result.revision) setSavedRevision(result.revision);
+    if (result.reviewReset) markDraft();
     markRiskInvalidated();
     setEditing(false);
     router.refresh();
-  }, [
-    markDraft,
-    markRiskInvalidated,
-    registerIdentityInvalidations,
-    replaceRepresentatives,
-    router,
-    state,
-  ]);
+    return result;
+  }, null);
 
   return (
     <details className="details-box">

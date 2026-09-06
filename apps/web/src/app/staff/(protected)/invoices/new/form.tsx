@@ -18,9 +18,8 @@ interface Position {
 
 // Stabile React-Keys für Positionszeilen (Add/Remove) — kein key={index}.
 type PositionRow = Position & { id: string };
-let posIdSeq = 0;
-const newPosition = (): PositionRow => ({
-  id: `pos-${++posIdSeq}`,
+const newPosition = (id: string): PositionRow => ({
+  id,
   description: '',
   quantity: 1,
   unitPrice: 0,
@@ -34,20 +33,21 @@ interface Props {
 
 export function NewInvoiceForm({ clients }: Props) {
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
-  const inThirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [initialDate] = useState(() => new Date());
 
   const [clientId, setClientId] = useState(clients[0]?.id ?? '');
   const [subject, setSubject] = useState('');
-  const [issueDate, setIssueDate] = useState(today);
-  const [dueDate, setDueDate] = useState(inThirtyDays);
+  const [issueDate, setIssueDate] = useState(() => initialDate.toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(() =>
+    new Date(initialDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+  );
   const [format, setFormat] = useState<'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
   const [servicePeriodStart, setServicePeriodStart] = useState('');
   const [servicePeriodEnd, setServicePeriodEnd] = useState('');
   const [vatExemptionReason, setVatExemptionReason] = useState('');
   const [reverseCharge, setReverseCharge] = useState(false);
   const [notes, setNotes] = useState('');
-  const [positions, setPositions] = useState<PositionRow[]>([newPosition()]);
+  const [positions, setPositions] = useState<PositionRow[]>(() => [newPosition('initial')]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -56,7 +56,8 @@ export function NewInvoiceForm({ clients }: Props) {
   }
 
   function addPosition() {
-    setPositions((ps) => [...ps, newPosition()]);
+    const position = newPosition(crypto.randomUUID());
+    setPositions((ps) => [...ps, position]);
   }
 
   function removePosition(idx: number) {

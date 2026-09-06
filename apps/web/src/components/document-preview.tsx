@@ -36,31 +36,39 @@ type ApiPrefix = '/api/staff' | '/api/portal';
  *                                      im privilegierten App-DOM)
  *  - sonst                            → Download-Fallback
  */
-export function DocumentPreviewModal({
-  documentId,
-  documentTitle,
-  apiPrefix = '/api/staff',
-  onClose,
-}: {
+interface DocumentPreviewProps {
   documentId: string;
   documentTitle: string;
   apiPrefix?: ApiPrefix;
   onClose: () => void;
-}) {
+}
+
+export function DocumentPreviewModal(props: DocumentPreviewProps) {
+  return (
+    <DocumentPreviewContent
+      key={`${props.apiPrefix ?? '/api/staff'}:${props.documentId}`}
+      {...props}
+    />
+  );
+}
+
+function DocumentPreviewContent({
+  documentId,
+  documentTitle,
+  apiPrefix = '/api/staff',
+  onClose,
+}: DocumentPreviewProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
   // Gespeicherter Dokumenttyp — nur fuer die Wahl des eigenen Viewers. Der
   // Transport-Typ oben bleibt sanitisiert (Inline-Whitelist), damit XLSX nicht
   // ueber diesen Weg doch vom Browser gerendert wird.
   const [documentMimeType, setDocumentMimeType] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setUrl(null);
     (async () => {
       try {
         const res = await fetch(`${apiPrefix}/documents/${documentId}/preview-url`);
@@ -95,7 +103,6 @@ export function DocumentPreviewModal({
   useEffect(() => {
     if (!isMarkdown || !url) return;
     let cancelled = false;
-    setMdText(null);
     fetch(url)
       .then((res) => (res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((text) => {

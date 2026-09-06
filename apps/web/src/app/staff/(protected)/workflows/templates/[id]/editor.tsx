@@ -21,6 +21,7 @@ type StepKind =
   | 'N8N_TRIGGER';
 
 interface StepDraft {
+  wikiArticleIds?: string[];
   title: string;
   description: string;
   dueAfterDays: number | null;
@@ -141,6 +142,7 @@ export function TemplateEditor({
         description: description.trim() || null,
         defaultSkillId: defaultSkillId || null,
         steps: cleaned.map((s) => ({
+          wikiArticleIds: s.wikiArticleIds ?? [],
           title: s.title,
           description: s.description.trim() || undefined,
           dueAfterDays: s.dueAfterDays,

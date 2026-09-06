@@ -14,7 +14,7 @@
  * bekommt einen blauen Top-Border-Indikator.
  */
 
-import { useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { GripVertical } from 'lucide-react';
 
 interface Props {
@@ -34,27 +34,19 @@ export interface DragHandleProps {
 }
 
 export function SortableList({ count, onReorder, renderItem, className }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [draggingFrom, setDraggingFrom] = useState<number | null>(null);
   const [hoverTarget, setHoverTarget] = useState<number | null>(null);
-  // Spiegel der aktuellen Drag-Positionen in Refs: `onReorder` (ein Seiteneffekt)
-  // darf NICHT aus einem setState-Updater heraus laufen — Updater müssen rein
-  // sein und werden unter StrictMode doppelt aufgerufen (→ doppeltes Reorder).
-  const draggingFromRef = useRef<number | null>(null);
-  const hoverTargetRef = useRef<number | null>(null);
 
   function startDrag(index: number, e: ReactPointerEvent) {
-    draggingFromRef.current = index;
-    hoverTargetRef.current = index;
+    const container = e.currentTarget.closest('[data-sortable-list]');
+    if (!container) return;
+    let currentTarget = index;
     setDraggingFrom(index);
     setHoverTarget(index);
     (e.target as Element).setPointerCapture?.(e.pointerId);
 
     function onMove(ev: globalThis.PointerEvent) {
-      if (!containerRef.current) return;
-      const items = Array.from(
-        containerRef.current.querySelectorAll<HTMLElement>('[data-sortable-index]'),
-      );
+      const items = Array.from(container!.querySelectorAll<HTMLElement>('[data-sortable-index]'));
       let target = index;
       for (const el of items) {
         const r = el.getBoundingClientRect();
@@ -68,22 +60,18 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
       const last = items[items.length - 1];
       if (first && ev.clientY < first.getBoundingClientRect().top) target = 0;
       if (last && ev.clientY > last.getBoundingClientRect().bottom) target = items.length - 1;
-      hoverTargetRef.current = target;
+      currentTarget = target;
       setHoverTarget(target);
     }
 
     function onUp(ev: globalThis.PointerEvent) {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
-      const from = draggingFromRef.current;
-      const to = hoverTargetRef.current;
-      draggingFromRef.current = null;
-      hoverTargetRef.current = null;
       setDraggingFrom(null);
       setHoverTarget(null);
       // Seiteneffekt AUSSERHALB jeder setState-Updater-Funktion.
-      if (from !== null && to !== null && from !== to) {
-        onReorder(from, to);
+      if (index !== currentTarget) {
+        onReorder(index, currentTarget);
       }
       void ev;
     }
@@ -93,7 +81,7 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
   }
 
   return (
-    <div ref={containerRef} className={className ?? 'space-y-3'}>
+    <div data-sortable-list className={className ?? 'space-y-3'}>
       {Array.from({ length: count }, (_, i) => i).map((i) => {
         const isDragging = draggingFrom === i;
         const isDropTarget = draggingFrom !== null && hoverTarget === i && draggingFrom !== i;

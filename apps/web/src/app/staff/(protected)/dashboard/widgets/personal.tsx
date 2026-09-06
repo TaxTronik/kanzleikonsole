@@ -260,6 +260,11 @@ export async function MyDay({
       title="Mein Tag"
       isEmpty={items.length === 0}
       emptyText="Keine offenen Aufgaben oder anstehenden Termine für Sie."
+      footer={
+        <Link href="/staff/work" className="font-medium text-brand hover:underline">
+          Vollständigen Arbeitskorb öffnen
+        </Link>
+      }
     >
       {items.map((item) => (
         <li key={`${item.kind}-${item.id}`} className="px-5 py-2.5 flex items-start gap-3">

@@ -156,7 +156,8 @@ export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Prom
 // --- GwG läuft bald aus -------------------------------------------------------
 
 export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
-  const cutoff = new Date(Date.now() + GWG_EXPIRY_WINDOW_MS);
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + GWG_EXPIRY_WINDOW_MS);
   const checks = await tx.gwgCheck.findMany({
     where: { status: 'VERIFIED', validUntil: { lte: cutoff }, ...notDeniedClient(deniedClientIds) },
     orderBy: { validUntil: 'asc' },

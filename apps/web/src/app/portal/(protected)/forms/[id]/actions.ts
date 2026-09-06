@@ -14,6 +14,7 @@ import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, ActionError, type ActionResult } from '@/server/actions/portal-action';
 import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 import { validateFormAnswers } from '@/server/forms/validate-answers';
+import { readFormSchema } from '@/server/forms/schema-snapshot';
 
 const Schema = z.object({
   submissionId: z.string().uuid(),
@@ -83,7 +84,7 @@ async function loadSubmissionAndCheckTx(tx: TxClient, submissionId: string, clie
     }
     linkedRequests.push(fresh);
   }
-  return { ...sub, linkedRequests };
+  return { ...sub, template: readFormSchema(sub.schemaSnapshot, sub.template), linkedRequests };
 }
 
 async function validateAnswersTx(
@@ -105,12 +106,26 @@ async function validateAnswersTx(
   // Alle lebenden Uploads dieser Submission müssen exakt 1:1 (Feld, UUID und
   // kanonischer Dateiname) im Payload vorkommen. Entfernen ist ausschließlich
   // über discardFormFileAction erlaubt.
+  const currentReferences = Object.values(answerRecord(sub.answers)).flatMap((value) =>
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    typeof value['documentId'] === 'string'
+      ? [value['documentId']]
+      : [],
+  );
   const documents = await tx.document.findMany({
     where: {
       tenantId: sub.tenantId,
       clientId,
       deletedAt: null,
       formSubmissionId: sub.id,
+      // A source explicitly detached after a question stays in the archive,
+      // but no longer belongs to the current draft's required file set.
+      OR: [
+        { id: { in: currentReferences } },
+        { versions: { none: { formSubmissionRevisionFiles: { some: {} } } } },
+      ],
     },
     select: { id: true, title: true, formFieldKey: true },
   });
@@ -390,32 +405,70 @@ export async function uploadFormFileAction(input: {
         },
         select: { id: true },
       });
+      let nextVersionNo = 1;
+      let doc: { id: string };
       if (existingFieldUpload) {
-        throw new ActionError(
-          'Für dieses Feld wurde bereits eine Datei hochgeladen. Bitte entfernen Sie diese zuerst.',
-        );
-      }
-      const doc = await tx.document.create({
-        data: {
-          tenantId,
-          clientId,
-          title: parsed.data.fileName,
-          classification: 'GENERAL',
-          // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-          mimeType: committed.detectedMime ?? parsed.data.mimeType,
-          // Mandant-originierter Formular-Upload: wie beim allgemeinen
-          // Portal-Upload automatisch für denselben Mandanten freigeben,
-          // damit der unmittelbar gerenderte Download-Link nicht 404 liefert.
-          // sharedByStaff bleibt bewusst null.
-          sharedWithClientAt: new Date(),
-          formSubmissionId: currentSub.id,
-          formFieldKey: currentField.key,
-        },
-      });
+        const currentValue = answerRecord(currentSub.answers)[currentField.key];
+        const archived =
+          (currentValue === null || currentValue === undefined) &&
+          (await tx.formSubmissionRevisionFile.findFirst({
+            where: { documentVersion: { documentId: existingFieldUpload.id } },
+            select: { id: true },
+          }));
+        if (!archived)
+          throw new ActionError(
+            'Für dieses Feld wurde bereits eine Datei hochgeladen. Bitte entfernen Sie diese zuerst.',
+          );
+        // The unique field binding remains. Replacement after an explicit
+        // detach appends bytes; every earlier captured version stays intact.
+        await tx.$queryRaw`SELECT id FROM document WHERE id=${existingFieldUpload.id}::uuid FOR UPDATE`;
+        const existing = await tx.document.findUnique({
+          where: { id: existingFieldUpload.id },
+          include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+        });
+        if (
+          !existing ||
+          existing.deletedAt ||
+          existing.classification !== 'GENERAL' ||
+          existing.tenantId !== tenantId ||
+          existing.clientId !== clientId ||
+          existing.formSubmissionId !== currentSub.id ||
+          existing.formFieldKey !== currentField.key ||
+          !existing.sharedWithClientAt ||
+          !existing.versions[0]
+        )
+          throw new ActionError('Dateistand wurde geändert. Bitte neu laden.');
+        nextVersionNo = existing.versions[0].versionNo + 1;
+        doc = await tx.document.update({
+          where: { id: existing.id },
+          data: {
+            title: parsed.data.fileName,
+            mimeType: committed.detectedMime ?? parsed.data.mimeType,
+          },
+          select: { id: true },
+        });
+      } else
+        doc = await tx.document.create({
+          data: {
+            tenantId,
+            clientId,
+            title: parsed.data.fileName,
+            classification: 'GENERAL',
+            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+            mimeType: committed.detectedMime ?? parsed.data.mimeType,
+            // Mandant-originierter Formular-Upload: wie beim allgemeinen
+            // Portal-Upload automatisch für denselben Mandanten freigeben,
+            // damit der unmittelbar gerenderte Download-Link nicht 404 liefert.
+            // sharedByStaff bleibt bewusst null.
+            sharedWithClientAt: new Date(),
+            formSubmissionId: currentSub.id,
+            formFieldKey: currentField.key,
+          },
+        });
       await tx.documentVersion.create({
         data: {
           documentId: doc.id,
-          versionNo: 1,
+          versionNo: nextVersionNo,
           storageBucket: committed.targetBucket,
           storageKey: committed.targetKey,
           storageVersionId: committed.storageVersionId,
@@ -504,6 +557,18 @@ function answerRecord(value: Prisma.JsonValue): Record<string, Prisma.JsonValue>
     : {};
 }
 
+function answerReferencesDocument(
+  value: Prisma.JsonValue | undefined,
+  documentId: string,
+): boolean {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    value['documentId'] === documentId
+  );
+}
+
 async function discardOpenFormUploadTx(
   tx: TxClient,
   input: {
@@ -534,6 +599,38 @@ async function discardOpenFormUploadTx(
   // Idempotent und ohne Existenz-Leak: Ein bereits vollständig verworfener
   // oder fremder Beleg wird nicht unterschieden und keinesfalls angefasst.
   if (!document) return { outcome: 'ALREADY_DISCARDED', storage: null };
+  // YEAR-END-CAMPAIGN-001: a submitted historical source may be detached from
+  // the current draft, but its exact DB/storage version must remain available.
+  const archivedSource = await tx.formSubmissionRevisionFile.findFirst({
+    where: { documentVersionId: { in: document.versions.map((v) => v.id) } },
+    select: { id: true },
+  });
+  if (archivedSource) {
+    const current = answerRecord(sub.answers);
+    const value = current[input.fieldKey];
+    if (answerReferencesDocument(value, document.id)) {
+      const detached = await tx.formSubmission.updateMany({
+        where: { id: sub.id, clientId: input.clientId, status: { in: ['PENDING', 'DRAFT'] } },
+        data: { answers: { ...current, [input.fieldKey]: null } as Prisma.InputJsonValue },
+      });
+      if (detached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
+      await evidenceService.record(tx, {
+        tenantId: input.tenantId,
+        actorType: 'CLIENT_CONTACT',
+        actorId: input.contactId,
+        action: 'form.submission.upload.discard',
+        resourceType: 'document',
+        resourceId: document.id,
+        after: {
+          submissionId: sub.id,
+          fieldKey: field.key,
+          detached: true,
+          retainedSubmittedRevision: true,
+        },
+      });
+    }
+    return { outcome: 'DISCARDED', storage: null };
+  }
   if (document.versions.length !== 1) {
     throw new ActionError('Datei besitzt keinen eindeutig löschbaren Speicherstand.');
   }
@@ -544,12 +641,7 @@ async function discardOpenFormUploadTx(
 
   const currentAnswers = answerRecord(sub.answers);
   const currentFieldAnswer = currentAnswers[input.fieldKey];
-  if (
-    currentFieldAnswer &&
-    typeof currentFieldAnswer === 'object' &&
-    !Array.isArray(currentFieldAnswer) &&
-    currentFieldAnswer['documentId'] === input.documentId
-  ) {
+  if (answerReferencesDocument(currentFieldAnswer, input.documentId)) {
     const detached = await tx.formSubmission.updateMany({
       where: { id: sub.id, clientId: input.clientId, status: { in: ['PENDING', 'DRAFT'] } },
       data: {

@@ -38,6 +38,16 @@ const tierHint = (type: DocType): string =>
       ? `GoBD · ${type.retentionYears ?? '?'} Jahre COMPLIANCE-Lock`
       : 'GwG · GOVERNANCE-Schutz; Löschfrist wird fachlich geprüft';
 
+function defaultDocumentType(types: DocType[], classification: string): string {
+  return (
+    (
+      types.find((type) => type.classificationKey === classification) ??
+      types.find((type) => type.classificationKey === 'GENERAL') ??
+      types[0]
+    )?.id ?? ''
+  );
+}
+
 export function DocumentUploadButton({
   clientId,
   folderId,
@@ -55,7 +65,8 @@ export function DocumentUploadButton({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [types, setTypes] = useState<DocType[]>([]);
-  const [typeId, setTypeId] = useState<string>('');
+  const [selectedTypeId, setTypeId] = useState<string>('');
+  const typeId = selectedTypeId || defaultDocumentType(types, defaultClassification);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<'idle' | 'presign' | 'upload' | 'commit'>('idle');
   const [isPending, startTransition] = useTransition();
@@ -82,17 +93,6 @@ export function DocumentUploadButton({
       cancelled = true;
     };
   }, [open, requiredTier, types.length]);
-
-  // Vorauswahl setzen, sobald Typen da sind und nichts gewählt ist
-  // (greift auch beim Wieder-Öffnen nach reset()).
-  useEffect(() => {
-    if (!open || typeId || types.length === 0) return;
-    const preset =
-      types.find((t) => t.classificationKey === defaultClassification) ??
-      types.find((t) => t.classificationKey === 'GENERAL') ??
-      types[0];
-    if (preset) setTypeId(preset.id);
-  }, [open, typeId, types, defaultClassification]);
 
   function reset() {
     setFile(null);

@@ -1,8 +1,18 @@
 ﻿'use client';
 
-import { useState, useTransition, type SubmitEvent } from 'react';
+import { useEffect, useState, useSyncExternalStore, useTransition, type SubmitEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { checkPasswordAction, confirmTotpEnrollmentAction, loginAction } from './actions';
+import { KeyRound } from 'lucide-react';
+import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
+import { isWebAuthnNotAllowedError } from '@/lib/webauthn-browser-error';
+import {
+  beginHardwareLoginAction,
+  checkPasswordAction,
+  confirmTotpEnrollmentAction,
+  hardwareLoginAvailabilityAction,
+  loginAction,
+  loginHardwareAction,
+} from './actions';
 
 /**
  * V-4: returnTo aus den Query-Params validieren, bevor wir nach Login dorthin
@@ -23,6 +33,19 @@ function safeStaffReturnTo(raw: string | null): string {
 
 type Step = 'password' | 'totp' | 'setup' | 'setup-confirm' | 'backup-codes';
 
+function subscribeToWebAuthnSupport(): () => void {
+  return () => undefined;
+}
+
+function getWebAuthnSupport(): boolean {
+  return window.isSecureContext && browserSupportsWebAuthn();
+}
+
+function getServerWebAuthnSupport(): boolean {
+  // Ohne Hydrierung kann der Button keine Browser-Zeremonie starten.
+  return false;
+}
+
 export default function StaffLoginPage() {
   const [step, setStep] = useState<Step>('password');
   const [email, setEmail] = useState('');
@@ -35,12 +58,74 @@ export default function StaffLoginPage() {
   // erneuter Server-Roundtrip.
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [hardwarePending, setHardwarePending] = useState(false);
+  const [hardwareAvailable, setHardwareAvailable] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const hardwareSupported = useSyncExternalStore(
+    subscribeToWebAuthnSupport,
+    getWebAuthnSupport,
+    getServerWebAuthnSupport,
+  );
 
   const searchParams = useSearchParams();
   const returnTo = safeStaffReturnTo(searchParams.get('returnTo'));
 
   const tenantSlug = 'default';
+
+  useEffect(() => {
+    let active = true;
+    void hardwareLoginAvailabilityAction()
+      .then(({ available }) => {
+        if (active) setHardwareAvailable(available);
+      })
+      .catch(() => {
+        if (active) setHardwareAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function submitHardwareLogin() {
+    if (hardwarePending || isPending || hardwareSupported === false) return;
+    setError(null);
+    setHardwarePending(true);
+    try {
+      const begin = await beginHardwareLoginAction();
+      if ('error' in begin) {
+        setError(begin.error);
+        return;
+      }
+
+      const response = await startAuthentication({ optionsJSON: begin.options });
+      const result = await loginHardwareAction({
+        ceremonyId: begin.ceremonyId,
+        response,
+        returnTo,
+      });
+      if (result?.error) setError(result.error);
+    } catch (caught) {
+      // Erfolgreiche Server-Action-Redirects müssen Next.js erreichen. Browser-
+      // Abbruch und Timeout liefern beide NotAllowedError und erhalten bewusst
+      // dieselbe, nicht kontobezogene Meldung.
+      if (
+        caught &&
+        typeof caught === 'object' &&
+        'digest' in caught &&
+        typeof caught.digest === 'string' &&
+        caught.digest.startsWith('NEXT_REDIRECT')
+      ) {
+        throw caught;
+      }
+      setError(
+        isWebAuthnNotAllowedError(caught)
+          ? 'Die Anmeldung mit Sicherheitsschlüssel wurde abgebrochen oder ist abgelaufen.'
+          : 'Die Anmeldung mit Sicherheitsschlüssel ist fehlgeschlagen. Bitte erneut versuchen.',
+      );
+    } finally {
+      setHardwarePending(false);
+    }
+  }
 
   function submitPasswordStep() {
     if (isPending) return;
@@ -130,49 +215,99 @@ export default function StaffLoginPage() {
 
         {/* Step: Passwort */}
         {step === 'password' && (
-          <form
-            onSubmit={handlePasswordSubmit}
-            method="post"
-            action={`/staff/login/password?returnTo=${encodeURIComponent(returnTo)}`}
-            className="space-y-4"
-          >
-            <input type="hidden" name="tenantSlug" value={tenantSlug} />
-            <div>
-              <label className="label" htmlFor="email">
-                E-Mail
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                placeholder="max@kanzlei.de"
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="password">
-                Passwort
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-            {error && <div className="alert-error-sm">{error}</div>}
-            <button type="submit" className="btn-primary w-full" disabled={isPending}>
-              {isPending ? 'Wird geprüft…' : 'Weiter'}
-            </button>
-          </form>
+          <div className="space-y-4">
+            {error && (
+              <div role="alert" className="alert-error-sm">
+                {error}
+              </div>
+            )}
+            {hardwareAvailable && (
+              <>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    className="btn-primary flex w-full items-center justify-center gap-2"
+                    disabled={hardwarePending || isPending || hardwareSupported === false}
+                    onClick={submitHardwareLogin}
+                    aria-describedby={
+                      hardwareSupported === false ? 'hardware-login-support' : undefined
+                    }
+                  >
+                    <KeyRound className="h-4 w-4" aria-hidden />
+                    {hardwarePending
+                      ? 'Sicherheitsschlüssel wird geprüft…'
+                      : 'Mit Sicherheitsschlüssel anmelden'}
+                  </button>
+                  {hardwarePending && (
+                    <p role="status" className="text-center text-xs text-muted">
+                      Folgen Sie dem Hinweis Ihres Browsers und berühren Sie Ihren Schlüssel.
+                    </p>
+                  )}
+                  {hardwareSupported === false && (
+                    <p id="hardware-login-support" className="text-center text-xs text-amber-700">
+                      Sicherheitsschlüssel erfordern JavaScript und einen unterstützten Browser über
+                      HTTPS.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3" aria-hidden>
+                  <span className="h-px flex-1 bg-gray-200" />
+                  <span className="text-xs text-muted">
+                    oder mit Passwort und Authenticator-App
+                  </span>
+                  <span className="h-px flex-1 bg-gray-200" />
+                </div>
+              </>
+            )}
+
+            <form
+              onSubmit={handlePasswordSubmit}
+              method="post"
+              action={`/staff/login/password?returnTo=${encodeURIComponent(returnTo)}`}
+              className="space-y-4"
+            >
+              <input type="hidden" name="tenantSlug" value={tenantSlug} />
+              <div>
+                <label className="label" htmlFor="email">
+                  E-Mail
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  className="input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  placeholder="max@kanzlei.de"
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="password">
+                  Passwort
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  className="input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn-secondary w-full"
+                disabled={isPending || hardwarePending}
+              >
+                {isPending ? 'Wird geprüft…' : 'Weiter'}
+              </button>
+            </form>
+          </div>
         )}
 
         {/* Step: TOTP-Code eingeben */}

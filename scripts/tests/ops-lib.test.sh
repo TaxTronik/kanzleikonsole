@@ -536,6 +536,7 @@ test_interrupted_one_click_deploy_still_rejects_foreign_containers() {
     STATE="$TMP_DIR/interrupted-foreign.no-completed-state"
     MIGRATION_PENDING="$TMP_DIR/interrupted-foreign.no-migration-state"
     DB_RESTORE_AUTHORIZATION="$TMP_DIR/interrupted-foreign.no-restore-state"
+    uname() { printf 'Linux\n'; }
     deployment_method() { printf 'traefik'; }
     docker_cli_available() { return 0; }
     one_click_public_ports_in_use() { return 1; }
@@ -1194,6 +1195,18 @@ test_signal_embedding_compose_contract_is_self_contained_and_offline() {
   assert_not_contains "$service" "/data/katalog"
   assert_not_contains "$service" "/data/corpus"
   pass "Signal Compose contract stays self-contained, persistent and offline"
+}
+
+# Fachkatalog: ACCESS-TENANT-RLS-001
+test_hardware_aaguid_allowlist_is_forwarded_to_app() {
+  local service="$TMP_DIR/app-compose-service.yml"
+  sed -n '/^  app:/,/^  worker:/p' \
+    "$REPO_ROOT/infra/compose/docker-compose.app.yml" >"$service"
+  assert_contains "$service" \
+    'WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST: ${WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST:-}'
+  assert_contains "$service" \
+    'WEBAUTHN_HARDWARE_POLICY_REVISION: ${WEBAUTHN_HARDWARE_POLICY_REVISION:-1}'
+  pass "Hardware AAGUID allowlist is forwarded to the production app container"
 }
 
 test_windows_signal_dev_start_provisions_embedding_operator() {
@@ -3074,6 +3087,7 @@ test_managed_signal_source_build_accepts_fresh_no_checkout_clone
 test_managed_signal_source_update_skips_unchanged_image_unless_requested
 test_managed_signal_source_update_honors_interactive_rebuild_choice
 test_signal_embedding_compose_contract_is_self_contained_and_offline
+test_hardware_aaguid_allowlist_is_forwarded_to_app
 test_windows_signal_dev_start_provisions_embedding_operator
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled

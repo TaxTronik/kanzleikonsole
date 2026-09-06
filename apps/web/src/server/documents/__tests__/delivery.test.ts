@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// Fachkatalog: DOC-PORTAL-SHARING-001
+// Fachkatalog: ACCESS-STAFF-PERMISSION-001
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +23,7 @@ import { loadDocumentDelivery } from '../delivery';
 
 function transaction() {
   return {
+    $queryRaw: vi.fn().mockResolvedValue([{ allowed: false }]),
     document: {
       findFirst: vi.fn().mockResolvedValue({
         id: 'document-1',
@@ -53,6 +56,26 @@ beforeEach(() => {
 });
 
 describe('document delivery pipeline', () => {
+  it('requires fresh payroll rights even when a generic document lookup returned the artifact', async () => {
+    const tx = transaction();
+    tx.document.findFirst.mockResolvedValue({
+      id: 'document-1',
+      title: 'Personal',
+      mimeType: 'application/pdf',
+      classification: 'PERSONNEL',
+      clientId: 'client-1',
+      requiresPayrollAccess: true,
+      versions: [{ storageBucket: 'documents', storageKey: 'restricted' }],
+    } as never);
+    mocks.withTenantContext.mockImplementation(async (_ctx, callback) => callback(tx));
+    await expect(loadDocumentDelivery(options())).resolves.toBeNull();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+    tx.$queryRaw.mockResolvedValue([{ allowed: true }]);
+    await expect(loadDocumentDelivery(options())).resolves.toMatchObject({ title: 'Personal' });
+    await expect(
+      loadDocumentDelivery({ ...options(), actorType: 'CLIENT_CONTACT' }),
+    ).resolves.toBeNull();
+  });
   it('verweigert vor Audit und PoA-Lookup, wenn das Surface-Gate ablehnt', async () => {
     const tx = transaction();
     mocks.withTenantContext.mockImplementation(

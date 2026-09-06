@@ -75,6 +75,7 @@ export async function loadDocumentDelivery(
         title: true,
         mimeType: true,
         classification: true,
+        requiresPayrollAccess: true,
         clientId: true,
         versions: {
           orderBy: { versionNo: 'desc' },
@@ -85,6 +86,13 @@ export async function loadDocumentDelivery(
     });
     const version = candidate?.versions[0];
     if (!candidate || !version) return null;
+    if (candidate.requiresPayrollAccess) {
+      if (options.actorType !== 'STAFF') return null;
+      const allowed = await tx.$queryRaw<
+        Array<{ allowed: boolean }>
+      >`SELECT app.expansion_staff_permission(${options.tenantId}::uuid,${options.actorId}::uuid,'PAYROLL_MANAGE') AS allowed`;
+      if (allowed[0]?.allowed !== true) return null;
+    }
     if (options.authorize && !(await options.authorize(tx, candidate))) return null;
 
     if (!ignoreAuditFailure) await recordAccess(tx, options);

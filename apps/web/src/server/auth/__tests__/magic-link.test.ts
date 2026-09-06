@@ -314,7 +314,7 @@ describe('requestMagicLink — Happy Path', () => {
         tenantId: 'tenant-1',
         email: 'mandant@example.de',
         active: true,
-        client: { allowActive: true, anonymizedAt: null },
+        client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
       },
       select: {
         id: true,

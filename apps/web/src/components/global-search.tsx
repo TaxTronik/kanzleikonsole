@@ -41,7 +41,13 @@ const ICON: Record<SearchResult['type'], ComponentType<{ className?: string }>> 
   nav: ArrowRight,
 };
 
-export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; href: string }[] }) {
+interface SearchNavItem {
+  label: string;
+  href: string;
+  aliases?: readonly string[];
+}
+
+export function GlobalSearch({ navItems = [] }: { navItems?: SearchNavItem[] }) {
   const pathname = usePathname();
   // Das persistente Staff-Layout behält sonst Query und auch browserseitig
   // autofillte DOM-Werte über Seitenwechsel hinweg. Ein Pfadwechsel montiert
@@ -49,7 +55,7 @@ export function GlobalSearch({ navItems = [] }: { navItems?: { label: string; hr
   return <GlobalSearchForPath key={pathname} navItems={navItems} />;
 }
 
-function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: string }[] }) {
+function GlobalSearchForPath({ navItems }: { navItems: SearchNavItem[] }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,7 +79,11 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return navItems
-      .filter((n) => n.label.toLowerCase().includes(q))
+      .filter(
+        (n) =>
+          n.label.toLowerCase().includes(q) ||
+          n.aliases?.some((alias) => alias.toLowerCase().includes(q)),
+      )
       .slice(0, 6)
       .map((n) => ({
         type: 'nav' as const,
@@ -111,18 +121,19 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
     return () => window.removeEventListener('mousedown', onClick);
   }, []);
 
+  const [previousQuery, setPreviousQuery] = useState(query);
+  if (previousQuery !== query) {
+    setPreviousQuery(query);
+    setLoading(query.trim().length >= 2);
+    setError(null);
+    if (query.trim().length < 2) setResults([]);
+  }
+
   // Debounced search (API erst ab 2 Zeichen)
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
-      setResults([]);
-      setLoading(false);
-      setError(null);
-      return;
-    }
+    if (q.length < 2) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/staff/search?q=${encodeURIComponent(q)}`);
@@ -151,10 +162,12 @@ function GlobalSearchForPath({ navItems }: { navItems: { label: string; href: st
     };
   }, [query]);
 
-  // activeIdx zurücksetzen, wenn sich die Trefferliste ändert
-  useEffect(() => {
+  // Keep keyboard selection aligned before rendering a changed result list.
+  const [previousSelection, setPreviousSelection] = useState({ query, count: items.length });
+  if (previousSelection.query !== query || previousSelection.count !== items.length) {
+    setPreviousSelection({ query, count: items.length });
     setActiveIdx(0);
-  }, [items.length, query]);
+  }
 
   useEffect(() => {
     if (!showPanel || !panelRef.current) return;

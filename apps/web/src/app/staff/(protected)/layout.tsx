@@ -5,7 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { STAFF_SESSION_COOKIE } from '@/server/auth/session-cookie';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { LogOut } from 'lucide-react';
-import { SidebarNav, type NavItem } from '@/components/sidebar-nav';
+import { GroupedSidebarNav } from '@/components/sidebar-nav';
 import { GlobalSearch } from '@/components/global-search';
 import { NotificationsBellServer } from '@/components/notifications-bell-server';
 import { MobileSidebarToggle } from '@/components/mobile-sidebar-toggle';
@@ -14,10 +14,12 @@ import { UiModeToggle } from '@/components/ui-mode-toggle';
 import { UserMenu } from '@/components/user-menu';
 import { readBranding } from '@/server/settings/branding';
 import { readModules } from '@/server/settings/modules';
+import { readPortalFeatures } from '@/server/settings/portal-features';
 import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
+import { resolveStaffNavigation } from '@/lib/navigation-registry';
 import { AccessibleDisplayProvider } from '@/components/accessible-display';
 import {
   readAccessibleDisplay,
@@ -27,90 +29,6 @@ import {
   saveStaffAccessibleDisplayAction,
   saveStaffAccessibleDisplayOptionsAction,
 } from '@/server/actions/accessible-display';
-
-// Vollständige Liste — wird im Layout pro Tenant gefiltert (Module-Toggles).
-type ModuleKey =
-  | 'bwa'
-  | 'knowledge'
-  | 'timeTracking'
-  | 'phoneNotes'
-  | 'taxNotices'
-  | 'workflows'
-  | 'forms'
-  | 'poa'
-  | 'reminders'
-  | 'invoices';
-
-type NavConfig = NavItem & { moduleKey?: ModuleKey };
-
-const allNavItems: NavConfig[] = [
-  { href: '/staff/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-  { href: '/staff/clients', label: 'Mandanten', icon: 'Users' },
-  { href: '/staff/gwg', label: 'GwG-Kontrollliste', icon: 'IdCard' },
-  { href: '/staff/requests', label: 'Anforderungen', icon: 'Inbox' },
-  {
-    href: '/staff/workflows',
-    label: 'Workflows',
-    icon: 'Workflow',
-    exact: true,
-    moduleKey: 'workflows',
-  },
-  {
-    href: '/staff/calendar',
-    label: 'Kanzleikalender',
-    icon: 'CalendarDays',
-    moduleKey: 'taxNotices',
-    altPaths: ['/staff/tax-deadlines'],
-  },
-  {
-    href: '/staff/reminders',
-    label: 'Wiedervorlagen',
-    icon: 'CalendarClock',
-    moduleKey: 'reminders',
-  },
-  { href: '/staff/fristen', label: 'Fristen', icon: 'AlarmClock' },
-  { href: '/staff/invoices', label: 'Rechnungen', icon: 'Receipt', moduleKey: 'invoices' },
-  { href: '/staff/poa', label: 'Vollmachten', icon: 'ScrollText', moduleKey: 'poa' },
-  { href: '/staff/documents', label: 'Dokumente', icon: 'FileText' },
-  { href: '/staff/time', label: 'Zeiterfassung', icon: 'Clock', moduleKey: 'timeTracking' },
-  { href: '/staff/absences', label: 'Abwesenheiten', icon: 'Plane' },
-  { href: '/staff/phone-notes', label: 'Telefonzettel', icon: 'Phone', moduleKey: 'phoneNotes' },
-  { href: '/staff/knowledge', label: 'Wissen', icon: 'BookOpen', moduleKey: 'knowledge' },
-  { href: '/staff/reports', label: 'Auswertungen', icon: 'BarChart3', moduleKey: 'bwa' },
-];
-
-type AdminNavConfig = NavItem & { moduleKey?: 'workflows' | 'forms' | 'risk' | 'invoices' };
-
-const allAdminNavItems: AdminNavConfig[] = [
-  { href: '/staff/admin', label: 'Übersicht', icon: 'Shield', exact: true },
-  { href: '/staff/admin/users', label: 'Benutzer', icon: 'Users' },
-  { href: '/staff/admin/skills', label: 'Tätigkeiten', icon: 'Tags' },
-  {
-    href: '/staff/workflows/templates',
-    label: 'Workflow-Vorlagen',
-    icon: 'Workflow',
-    moduleKey: 'workflows',
-  },
-  { href: '/staff/forms', label: 'Formular-Vorlagen', icon: 'ClipboardList', moduleKey: 'forms' },
-  { href: '/staff/admin/request-templates', label: 'Anforderungs-Vorlagen', icon: 'Inbox' },
-  { href: '/staff/admin/email-templates', label: 'E-Mail-Vorlagen', icon: 'Mail' },
-  {
-    href: '/staff/admin/invoice-categories',
-    label: 'Rechnungstypen',
-    icon: 'Receipt',
-    moduleKey: 'invoices',
-  },
-  { href: '/staff/admin/audit', label: 'Audit-Log', icon: 'Shield' },
-  { href: '/staff/admin/quantenlos', label: 'Quantenlos', icon: 'Dices', moduleKey: 'risk' },
-  { href: '/staff/admin/archive', label: 'Audit-Archiv', icon: 'Archive' },
-  {
-    href: '/staff/admin/privacy',
-    label: 'Datenschutz',
-    icon: 'Shield',
-    altPaths: ['/staff/admin/dsgvo', '/staff/admin/dsgvo-retention', '/staff/service-providers'],
-  },
-  { href: '/staff/admin/settings', label: 'Einstellungen', icon: 'Settings' },
-];
 
 export default async function StaffLayout({ children }: { children: ReactNode }) {
   const session = await staffAuth();
@@ -131,43 +49,23 @@ export default async function StaffLayout({ children }: { children: ReactNode })
     actorId: session.user.staffId,
     actorType: 'STAFF' as const,
   };
-  const [branding, modules, accessibleDisplay, accessibleDisplayOptions] = await Promise.all([
-    readBranding(ctx),
-    readModules(ctx),
-    readAccessibleDisplay(ctx),
-    readAccessibleDisplayOptions(ctx),
-  ]);
+  const [branding, modules, portalFeatures, accessibleDisplay, accessibleDisplayOptions] =
+    await Promise.all([
+      readBranding(ctx),
+      readModules(ctx),
+      readPortalFeatures(ctx),
+      readAccessibleDisplay(ctx),
+      readAccessibleDisplayOptions(ctx),
+    ]);
   const pathname = (await headers()).get('x-taxtronik-pathname') ?? '';
   if (!isModuleRouteEnabled(modules, 'staff', pathname)) notFound();
 
-  const navItems: NavItem[] = allNavItems
-    .filter((it) => {
-      if (!it.moduleKey) return true;
-      if (it.moduleKey === 'poa') return modules.poaMode !== 'OFF';
-      if (it.moduleKey === 'invoices') return modules.invoiceMode !== 'OFF';
-      return modules[it.moduleKey];
-    })
-    .map((it) => ({
-      href: it.href,
-      label: it.label,
-      icon: it.icon,
-      exact: it.exact,
-      altPaths: it.altPaths,
-    }));
-
-  const adminNavItems: NavItem[] = allAdminNavItems
-    .filter(
-      (it) =>
-        !it.moduleKey ||
-        (it.moduleKey === 'invoices' ? modules.invoiceMode !== 'OFF' : modules[it.moduleKey]),
-    )
-    .map((it) => ({
-      href: it.href,
-      label: it.label,
-      icon: it.icon,
-      exact: it.exact,
-      altPaths: it.altPaths,
-    }));
+  const navGroups = resolveStaffNavigation({
+    modules,
+    isAdmin,
+    permissions: session.user.permissions,
+    portalFeatures,
+  });
 
   return (
     <AccessibleDisplayProvider
@@ -220,16 +118,7 @@ export default async function StaffLayout({ children }: { children: ReactNode })
 
           {/* Navigation */}
           <nav aria-label="Hauptnavigation" className="flex-1 px-3 py-4 overflow-y-auto">
-            <SidebarNav items={navItems} />
-
-            {isAdmin && (
-              <div className="pt-3 mt-3 border-t border-default">
-                <p className="px-3 text-xs font-medium text-disabled uppercase tracking-wide mb-1">
-                  Administration
-                </p>
-                <SidebarNav items={adminNavItems} />
-              </div>
-            )}
+            <GroupedSidebarNav groups={navGroups} />
           </nav>
 
           {/* Sidebar-Footer: nur Abmelden — Konto/Profil lebt im User-Menü
@@ -255,10 +144,13 @@ export default async function StaffLayout({ children }: { children: ReactNode })
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <MobileSidebarToggle />
               <GlobalSearch
-                navItems={[...navItems, ...(isAdmin ? adminNavItems : [])].map((it) => ({
-                  label: it.label,
-                  href: it.href,
-                }))}
+                navItems={navGroups
+                  .flatMap((group) => group.items)
+                  .map((it) => ({
+                    label: it.label,
+                    href: it.href,
+                    aliases: it.searchAliases,
+                  }))}
               />
             </div>
             <div className="flex items-center gap-1">

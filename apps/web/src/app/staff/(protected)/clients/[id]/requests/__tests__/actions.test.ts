@@ -50,7 +50,20 @@ vi.mock('@/server/actions/staff-action', () => ({
     formData: FormData,
   ) => {
     const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
-    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, error: parsed.error };
+    if (parsed.success) return { ok: true, data: parsed.data };
+    const fieldErrors: Record<string, string[]> = {};
+    for (const issue of (
+      parsed.error as { issues: Array<{ path: PropertyKey[]; message: string }> }
+    ).issues) {
+      const key = issue.path.join('.') || '_form';
+      (fieldErrors[key] ??= []).push(issue.message);
+    }
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors,
+    };
   },
 }));
 

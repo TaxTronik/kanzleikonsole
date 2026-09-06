@@ -28,7 +28,10 @@ import { backupDrillWorker } from './jobs/backup-drill';
 import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
 import { workflowN8nDispatchWorker } from './jobs/workflow-n8n-dispatch';
+import { workflowFeedbackWorker } from './jobs/workflow-feedback';
 import { storageOrphanCleanupWorker } from './jobs/storage-orphan-cleanup';
+import { portalInboxCleanupWorker } from './jobs/portal-inbox-cleanup';
+import { mailboxPollWorker, sanctionsRefreshWorker } from './jobs/expansion';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
 import { prismaOwner } from './prisma-owner';
@@ -39,6 +42,8 @@ import { log } from './logger';
 // auseinander (backup-run fehlte zeitweise im Ready-Log). Ready-Log und
 // Shutdown leiten sich jetzt aus DIESEM Array ab; `.name` ist der Queue-Name.
 const ALL_WORKERS = [
+  mailboxPollWorker,
+  sanctionsRefreshWorker,
   auditAnchorWorker,
   evidenceSealWorker,
   gwgExpiryWorker,
@@ -60,7 +65,9 @@ const ALL_WORKERS = [
   backupRunWorker,
   healthAlertWorker,
   workflowN8nDispatchWorker,
+  workflowFeedbackWorker,
   storageOrphanCleanupWorker,
+  portalInboxCleanupWorker,
 ] as const;
 
 // Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s ins

@@ -82,6 +82,22 @@ const typeLabels = {
   REISEPASS: 'Reisepass',
 } as const;
 
+function isPreviewWaiting({
+  active,
+  inViewport,
+  url,
+  error,
+  hasSavedViews,
+}: {
+  active: boolean;
+  inViewport: boolean;
+  url: string | null;
+  error: string | null;
+  hasSavedViews: boolean;
+}) {
+  return active && inViewport && !url && !error && !hasSavedViews;
+}
+
 function InlineEvidence({
   document,
   label,
@@ -102,7 +118,6 @@ function InlineEvidence({
   const hasSavedViews = views.length > 0;
   const [url, setUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inViewport, setInViewport] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -126,7 +141,6 @@ function InlineEvidence({
   useEffect(() => {
     if (!active || !inViewport || url || error || hasSavedViews) return;
     let cancelled = false;
-    setLoading(true);
     void fetch(`/api/staff/documents/${document.id}/preview-url`)
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -139,15 +153,13 @@ function InlineEvidence({
       })
       .catch(() => {
         if (!cancelled) setError('Vorschau konnte nicht geladen werden.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [active, document.id, error, hasSavedViews, inViewport, url]);
 
+  const loading = isPreviewWaiting({ active, inViewport, url, error, hasSavedViews });
   const isImage = mimeType?.startsWith('image/');
   const isPdf = mimeType === 'application/pdf' || mimeType?.endsWith('pdf');
 
@@ -255,7 +267,14 @@ function IdentitySetFileManager({
   const [state, formAction, isPending] = useActionState<
     (ActionResult & { reviewReset?: boolean }) | null,
     FormData
-  >(extendIdentityDocumentSetAction, null);
+  >(async (previous, data) => {
+    const result = await extendIdentityDocumentSetAction(previous, data);
+    if (result.ok) {
+      setSelectedCandidates([]);
+      setPickerOpen(false);
+    }
+    return result;
+  }, null);
   const remaining = Math.max(0, 2 - currentDocumentCount);
   const documentSearch = useUnlinkedGwgDocumentSearch({
     checkId,
@@ -267,8 +286,6 @@ function IdentitySetFileManager({
 
   useEffect(() => {
     if (!state?.ok) return;
-    setSelectedCandidates([]);
-    setPickerOpen(false);
     // Refresh außerhalb der Form-Transition (Action revalidiert die aktuelle
     // Route nicht mehr — sonst hing die Transition bis zum nächsten Klick).
     router.refresh();
@@ -912,6 +929,16 @@ function canConfirmIdentityReview(input: {
   );
 }
 
+function useReviewExpansion(reviewMode: boolean, disabled: boolean) {
+  const [expanded, setExpanded] = useState(reviewMode && !disabled);
+  const [previousDisabled, setPreviousDisabled] = useState(disabled);
+  if (previousDisabled !== disabled) {
+    setPreviousDisabled(disabled);
+    if (disabled) setExpanded(false);
+  }
+  return [expanded, setExpanded] as const;
+}
+
 function IdentityReviewCard({
   checkId,
   clientId,
@@ -941,7 +968,7 @@ function IdentityReviewCard({
   const router = useRouter();
   const { invalidatedIdentitySets, acknowledgeIdentitySet } = useGwgIdentitySubjects();
   const first = group.documents[0]!;
-  const [expanded, setExpanded] = useState(reviewMode);
+  const [expanded, setExpanded] = useReviewExpansion(reviewMode, disabled);
   const [editing, setEditing] = useState(false);
   const [replacementOpen, setReplacementOpen] = useState(false);
   const [state, formAction, isPending] = useActionState<
@@ -953,7 +980,15 @@ function IdentityReviewCard({
       })
     | null,
     FormData
-  >(updateIdDocumentsAction, null);
+  >(async (previous, data) => {
+    const result = await updateIdDocumentsAction(previous, data);
+    if (result.ok) {
+      setExpanded(true);
+      setEditing(false);
+      setReplacementOpen(false);
+    }
+    return result;
+  }, null);
   const serverState = useMemo<IdentityReviewLocalState>(
     () => ({
       revision: group.revision,
@@ -994,9 +1029,6 @@ function IdentityReviewCard({
   });
   useEffect(() => {
     if (state?.ok) {
-      setExpanded(true);
-      setEditing(false);
-      setReplacementOpen(false);
       // Die Karte kann den eigenen Erfolgszustand lokal zeigen. Andere
       // Bereiche der GwG-Seite (Entscheidungsgate, Status, Prüfhinweise)
       // benötigen zusätzlich den frischen Serverstand.
@@ -1007,9 +1039,6 @@ function IdentityReviewCard({
   // die im Review-Modus aufgeklappten 65vh-Vorschau-Frames blieben sonst nach
   // dem Verifizieren offen und erzeugten 1–2 Viewport-Höhen scheinbar leeren,
   // scrollbaren Raum am Seitenende.
-  useEffect(() => {
-    if (disabled) setExpanded(false);
-  }, [disabled]);
   const attachedDocuments = group.documents.filter(
     (
       entry,

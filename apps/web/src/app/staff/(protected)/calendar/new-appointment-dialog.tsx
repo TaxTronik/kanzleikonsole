@@ -1,10 +1,16 @@
 ﻿'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
+import {
+  FieldError,
+  FormErrorSummary,
+  fieldErrorProps,
+  type FieldErrors,
+} from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
-import { createAppointmentAction, type ActionResult } from './actions';
+import { createAppointmentAction, type AppointmentActionResult } from './actions';
 
 interface StaffOption {
   id: string;
@@ -13,6 +19,10 @@ interface StaffOption {
 interface ClientOption {
   id: string;
   name: string;
+}
+
+function AppointmentFieldError({ name, fieldErrors }: { name: string; fieldErrors?: FieldErrors }) {
+  return <FieldError name={name} errors={fieldErrors?.[name]} />;
 }
 
 export function NewAppointmentDialog({
@@ -28,21 +38,19 @@ export function NewAppointmentDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    createAppointmentAction,
+  const [state, formAction, isPending] = useActionState<AppointmentActionResult | null, FormData>(
+    async (previous, data) => {
+      const result = await createAppointmentAction(previous, data);
+      if (result.ok) {
+        setOpen(false);
+        router.refresh();
+      }
+      return result;
+    },
     null,
   );
-
-  // Nach erfolgreichem Submit: Dialog schließen + refresh. Bewusst in
-  // useEffect, NICHT im Render-Body — im Render-Body würde state.ok bei JEDEM
-  // Re-Render erneut router.refresh() feuern (Refresh-Schleife) und das
-  // erneute Öffnen des Dialogs sofort wieder schließen.
-  useEffect(() => {
-    if (state?.ok) {
-      setOpen(false);
-      router.refresh();
-    }
-  }, [state, router]);
+  const fieldErrors = state?.fieldErrors;
+  const actionError = state?.error;
 
   const nowLocal = (() => {
     const d = new Date();
@@ -80,7 +88,21 @@ export function NewAppointmentDialog({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <form action={formAction} className="p-5 space-y-3">
+          <form action={formAction} className="p-5 space-y-3" aria-busy={isPending}>
+            <FormErrorSummary
+              error={actionError}
+              fieldErrors={fieldErrors}
+              fieldIds={{
+                title: 'new-appointment-title',
+                kind: 'new-appointment-kind',
+                ownerStaffId: 'new-appointment-owner',
+                clientId: 'new-appointment-client',
+                startsAt: 'new-appointment-start',
+                endsAt: 'new-appointment-end',
+                location: 'new-appointment-location',
+                notes: 'new-appointment-notes',
+              }}
+            />
             <div>
               <label className="label" htmlFor="new-appointment-title">
                 Titel
@@ -93,9 +115,11 @@ export function NewAppointmentDialog({
                 maxLength={200}
                 className="input"
                 placeholder='z. B. „Bilanzbesprechung Müller GmbH"'
+                {...fieldErrorProps('title', fieldErrors)}
               />
+              <AppointmentFieldError name="title" fieldErrors={fieldErrors} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="label" htmlFor="new-appointment-kind">
                   Art
@@ -105,11 +129,13 @@ export function NewAppointmentDialog({
                   name="kind"
                   defaultValue="CLIENT_MEETING"
                   className="input"
+                  {...fieldErrorProps('kind', fieldErrors)}
                 >
                   <option value="CLIENT_MEETING">Mandantentermin</option>
                   <option value="INTERNAL">Intern</option>
                   <option value="PRIVATE">Privat / blocken</option>
                 </select>
+                <AppointmentFieldError name="kind" fieldErrors={fieldErrors} />
               </div>
               <div>
                 <label className="label" htmlFor="new-appointment-owner">
@@ -121,6 +147,7 @@ export function NewAppointmentDialog({
                   defaultValue={currentStaffId}
                   required
                   className="input"
+                  {...fieldErrorProps('ownerStaffId', fieldErrors)}
                 >
                   {staffOptions.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -128,13 +155,20 @@ export function NewAppointmentDialog({
                     </option>
                   ))}
                 </select>
+                <AppointmentFieldError name="ownerStaffId" fieldErrors={fieldErrors} />
               </div>
             </div>
             <div>
               <label className="label" htmlFor="new-appointment-client">
                 Mandant (optional)
               </label>
-              <select id="new-appointment-client" name="clientId" defaultValue="" className="input">
+              <select
+                id="new-appointment-client"
+                name="clientId"
+                defaultValue=""
+                className="input"
+                {...fieldErrorProps('clientId', fieldErrors)}
+              >
                 <option value="">— ohne Mandantenbezug —</option>
                 {clientOptions.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -142,8 +176,9 @@ export function NewAppointmentDialog({
                   </option>
                 ))}
               </select>
+              <AppointmentFieldError name="clientId" fieldErrors={fieldErrors} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="label" htmlFor="new-appointment-start">
                   Start
@@ -155,7 +190,9 @@ export function NewAppointmentDialog({
                   defaultValue={defaultStart ?? nowLocal}
                   required
                   className="input"
+                  {...fieldErrorProps('startsAt', fieldErrors)}
                 />
+                <AppointmentFieldError name="startsAt" fieldErrors={fieldErrors} />
               </div>
               <div>
                 <label className="label" htmlFor="new-appointment-end">
@@ -167,7 +204,9 @@ export function NewAppointmentDialog({
                   name="endsAt"
                   required
                   className="input"
+                  {...fieldErrorProps('endsAt', fieldErrors)}
                 />
+                <AppointmentFieldError name="endsAt" fieldErrors={fieldErrors} />
               </div>
             </div>
             <div>
@@ -181,7 +220,9 @@ export function NewAppointmentDialog({
                 maxLength={200}
                 className="input"
                 placeholder="Büro, Video-Call, Telefon, …"
+                {...fieldErrorProps('location', fieldErrors)}
               />
+              <AppointmentFieldError name="location" fieldErrors={fieldErrors} />
             </div>
             <div>
               <label className="label" htmlFor="new-appointment-notes">
@@ -193,13 +234,10 @@ export function NewAppointmentDialog({
                 rows={3}
                 maxLength={4000}
                 className="input"
+                {...fieldErrorProps('notes', fieldErrors)}
               />
+              <AppointmentFieldError name="notes" fieldErrors={fieldErrors} />
             </div>
-            {state && !state.ok && (
-              <p className="text-xs text-red-700" role="alert">
-                {state.error}
-              </p>
-            )}
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"

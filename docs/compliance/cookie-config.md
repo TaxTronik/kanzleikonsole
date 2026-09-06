@@ -1,6 +1,6 @@
 # Cookie-Konfiguration der Auth-Surfaces
 
-Stand: 2026-08-23
+Stand: 2026-09-03
 
 Übersicht aller von taxtronik gesetzten Cookies — für Datenschutz-Auditoren
 und Pen-Tester. Jeder Cookie ist mit Flags, Lebenszeit und Inhalt
@@ -54,10 +54,12 @@ In diesem Fall ist die Secret-Rotation die entscheidende Eindämmungsmaßnahme.
 
 ## Auth.js-Helper-Cookies
 
-Auth.js setzt während des OAuth-Flow weitere Cookies (`__Host-next-auth.*`).
-taxtronik nutzt aber AUSSCHLIESSLICH den Credentials-Provider (Passwort + TOTP
-für Staff, Magic-Link für Portal). Diese Helper-Cookies werden in der Praxis
-nicht gesetzt.
+Auth.js setzt während eines OAuth-Flows weitere Cookies (`__Host-next-auth.*`).
+taxtronik nutzt aber ausschließlich Credentials-Provider: Passwort + TOTP oder
+physischer Sicherheitsschlüssel für Staff, Magic-Link für Portal. Diese
+OAuth-Helper-Cookies werden in der Praxis nicht gesetzt. WebAuthn-Challenges
+liegen kurzlebig und einmalig in Redis, nicht in einem zusätzlichen
+Browser-Cookie.
 
 ## Sonstige Cookies
 
@@ -92,6 +94,13 @@ curl -i -X POST https://kanzlei.example.com/api/auth/staff/callback/credentials 
 # Set-Cookie: __Host-taxtronik_staff_session=<compact-JWE>; Path=/; HttpOnly; Secure; SameSite=Lax
 ```
 
+Der Befehl prüft den Standardmodus. Der Hardware-only-Flow benötigt die
+WebAuthn-API eines Browsers, einen attestiert registrierten Schlüssel, eine
+nichtleere AAGUID-Allowlist und ein aktuell vertrauenswürdiges FIDO-MDS-
+Statement; nach erfolgreicher Assertion gelten dieselben Session-Cookie-Flags.
+Allowlist-/MDS-/Netzfehler lehnen die Assertion fail-closed ab. Ein
+Hardware-only-Konto muss den obigen Passwort/TOTP-Callback weiterhin ablehnen.
+
 In Browser-DevTools → Application → Cookies sollten **nur** die zwei
 Session-Cookies sichtbar sein, beide mit den oben dokumentierten Flags.
 
@@ -104,3 +113,5 @@ Session-Cookies sichtbar sein, beide mit den oben dokumentierten Flags.
 - [ ] Max-Age 24 h durchgesetzt (W-1).
 - [ ] Logout invalidiert via Server-Revocation (S11), nicht nur via
       `Set-Cookie: ...; Max-Age=0`.
+- [ ] Hardware-only erzeugt dasselbe Staff-Cookie, akzeptiert aber keine
+      Passwort-/TOTP-/Backup-Code-Session und bleibt vom Portal-Cookie getrennt.

@@ -117,9 +117,16 @@ die fehlende Identitätswirkung hin. CI prüft Struktur und Drift des Katalogs.
 
 Amtliche Quellen werden je Quellenart anhand ausdrücklich zugelassener Hosts
 geprüft. Dazu gehört für `official_guidance` die Finanzverwaltungsplattform
-`elster.de`, insbesondere ihre veröffentlichte Steuernummerntabelle. Ähnlich
-benannte Fremddomains werden nicht akzeptiert. Ein zugelassener Host bestätigt
+`elster.de`, insbesondere ihre veröffentlichte Steuernummerntabelle.
+Für den konsolidierten EU-Sanktionsdatenbestand ist außerdem der amtliche
+EU-Datenkatalog `data.europa.eu` ausdrücklich zugelassen. Ähnlich benannte
+Fremddomains werden nicht akzeptiert. Ein zugelassener Host bestätigt
 nicht automatisch die fachliche Aussage einer konkreten Quelle.
+
+Die konkret zur Laufzeit verwendete StBVV-Tabelle
+`packages/tax/src/stbvv/tables.json` und die zugehörige Paketkonfiguration
+`packages/tax/package.json` sind als ausführungsnahe Nachweise zugelassen.
+Andere JSON-Dokumente werden dadurch nicht als Implementierung akzeptiert.
 
 ## Bekannte Abweichungen und Grenzen
 

@@ -372,8 +372,21 @@ Mindestens vierteljährlich auf einem vollständig isolierten Zielhost:
 3. TaxTronik- und n8n-Dump in eine frische Postgres-Instanz einspielen.
 4. Exakt die im Manifest gebundene Release-Version starten.
 5. `pnpm verify:chain`, Health und Deploy-Readiness ausführen.
-6. Manueller Login, n8n-Credential-Test, Dokument-Download sowie
-   VersionId-/Retention-/Delete-Marker-Stichprobe durchführen.
+6. Manuellen Passwort/TOTP-Login und, sofern eingesetzt, einen Hardware-only-
+   Login mit beiden getrennt verwahrten Testschlüsseln durchführen. Dabei
+   prüfen, dass `NEXTAUTH_URL` weiterhin zur registrierten WebAuthn-RP-ID und
+   Origin passt, die nichtleere `WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST`
+   wiederhergestellt ist und DNS/TLS-Egress zum FIDO Metadata Service sowie zu
+   den benötigten CA-CRL-Endpunkten samt bedarfsgetriebenem Refresh
+   funktioniert. Die restaurierte BLOB-Seriennummer in der Tabelle
+   `fido_mds_trust_state` ohne App-Tabellenrechte gegen den letzten extern
+   dokumentierten Stand prüfen und die Migration des transaktionalen
+   Exact-Serial-Guards verifizieren.
+   Ein vollständiges DB-Rollback kann auch diesen lokalen Monotonie-Anker
+   zurücksetzen; deshalb muss der erste Hardwaretest einen aktuellen MDS-BLOB
+   erfolgreich neu verifizieren. Anschließend n8n-Credential-Test,
+   Dokument-Download sowie VersionId-/Retention-/Delete-Marker-Stichprobe
+   durchführen.
 7. Gemessene RTO, Recovery-Point-Zeit, Abweichungen und Verantwortliche in der
    DSGVO-/GoBD-Verfahrensdokumentation ablegen.
 8. Entschlüsseltes Staging und Drill-Secrets nach Freigabe sicher beseitigen.
@@ -456,7 +469,11 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
 - [ ] SeaweedFS-Cold-Snapshot gestartet; Byte-Export nur als Notfallalternative
 - [ ] `pnpm verify:chain` läuft sauber durch
 - [ ] App + Worker starten: `pnpm dev` (oder Production-Setup)
-- [ ] Manueller Login + Test der wichtigsten Module
+- [ ] Manueller Passwort/TOTP-Login und ggf. Hardware-only-Login mit passender
+      RP-ID/Origin, wiederhergestellter AAGUID-Allowlist und erfolgreichem
+      FIDO-MDS-/CA-CRL-Egress und aktuellem MDS-Refresh; restaurierter
+      `fido_mds_trust_state` gegen externen Stand geprüft; beide Testschlüssel
+      einzeln geprüft; Exact-Serial-Guard aus der App-Transaktion funktionsfähig
 - [ ] Wiederherstellung in DSGVO-Verarbeitungsverzeichnis vermerken
 
 ## 9. Rollback auf eine vorherige Version

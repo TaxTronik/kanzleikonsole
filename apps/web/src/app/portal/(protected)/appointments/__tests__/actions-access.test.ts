@@ -111,4 +111,16 @@ describe('Portal-Terminanfrage: serverseitige Zielprüfung', () => {
       expect.objectContaining({ staffId: STAFF_ID, resourceId: 'request-1' }),
     );
   });
+
+  it('liefert Feldfehler im zentralen ActionResult-Vertrag vor jedem DB-Zugriff', async () => {
+    const invalid = formData();
+    invalid.set('subject', '');
+
+    await expect(createAppointmentRequestAction(null, invalid)).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { subject: expect.arrayContaining([expect.any(String)]) },
+    });
+    expect(h.withTenantContext).not.toHaveBeenCalled();
+  });
 });

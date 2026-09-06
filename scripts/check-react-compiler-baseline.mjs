@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const eslintCli = join(root, 'node_modules', 'eslint', 'bin', 'eslint.js');
 const baseline = new Map([
-  ['react-hooks/purity', 9],
-  ['react-hooks/set-state-in-effect', 43],
-  ['react-hooks/refs', 7],
+  ['react-hooks/purity', 0],
+  ['react-hooks/set-state-in-effect', 0],
+  ['react-hooks/refs', 0],
   ['react-hooks/immutability', 0],
   ['react-hooks/preserve-manual-memoization', 0],
-  ['react-hooks/static-components', 1],
+  ['react-hooks/static-components', 0],
 ]);
 
 const lint = spawnSync(process.execPath, [eslintCli, 'apps/web', '--format', 'json'], {
@@ -70,4 +70,4 @@ if (differences.length > 0) {
   process.exit(1);
 }
 
-console.log('[react-compiler-baseline] OK: 60 bekannte Warnungen, keine neue Schuld.');
+console.log('[react-compiler-baseline] OK: keine React-Compiler-Warnungen.');

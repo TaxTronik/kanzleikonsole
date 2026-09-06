@@ -29,6 +29,26 @@ const RedisUrl = z
 
 const Secret32 = z.string().min(32, 'Secret muss mindestens 32 Zeichen lang sein');
 
+const HardwareAaguidAllowlist = z.preprocess(
+  (value) => {
+    if (value === undefined || value === '') return [];
+    if (typeof value !== 'string') return value;
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  },
+  z
+    .array(
+      z
+        .string()
+        .uuid()
+        .transform((value) => value.toLowerCase()),
+    )
+    .max(128, 'WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST darf höchstens 128 Einträge enthalten')
+    .transform((values) => Array.from(new Set(values))),
+);
+
 const envSchema = z.object({
   NODE_ENV: NodeEnv.default('development'),
 
@@ -52,6 +72,18 @@ const envSchema = z.object({
   // Bestands-Secrets (kein Key-Ring im Drahtformat).
   SECRET_BOX_KEY: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
   NEXTAUTH_URL: z.string().url(),
+  // Explizit freigegebene FIDO-MDS-Modellkennungen für den Hardware-only-
+  // Modus. Die globale Config darf leer bleiben, damit Installationen ohne
+  // Hardware-Feature starten. Das Feature-Gate lehnt bei leerer Liste sowohl
+  // Enrollment als auch jede Assertion fail-closed ab.
+  WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST: HardwareAaguidAllowlist,
+  // Bei jeder fachlichen Aenderung der Hardware-Vertrauenspolicy (insbesondere
+  // der Allowlist) monoton erhoehen. Die Datenbank bindet Commits an Revision
+  // und kanonischen Policy-Hash, sodass alte Replicas fail-closed auslaufen.
+  WEBAUTHN_HARDWARE_POLICY_REVISION: z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.coerce.number().int().positive().default(1),
+  ),
   // Public-URL der Mandanten-Subdomain. Alle an Mandanten versendeten Links
   // (Magic-Link, GwG-Onboarding, Portal-Formular) müssen auf diese Domain
   // zeigen, nicht auf die Staff-Domain in NEXTAUTH_URL — sonst landet der

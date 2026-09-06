@@ -1,28 +1,30 @@
 # ADR 0003 — Zwei Auth-Surfaces (Mitarbeiter vs Mandant)
 
-**Status**: Kernentscheidung akzeptiert; Cookie-/Provider-Details am 2026-08-23 abgelöst
-**Datum**: 2026-05-10 · aktualisiert 2026-08-23
+**Status**: Kernentscheidung akzeptiert; Cookie-/Provider-Details am 2026-09-03 aktualisiert
+**Datum**: 2026-05-10 · aktualisiert 2026-09-03
 
 > **Aktueller Stand:** Die Trennung in Staff- und Portal-Identitäten sowie zwei
 > Auth.js-Konfigurationen gilt weiter. Die ursprünglichen Cookie-, Provider-
 > und Middleware-Details unten sind historisch: Beide Session-Cookies verwenden
 > `Path=/`, `SameSite=Lax` und getrennte Namen; in Produktion greifen
 > `__Host-` beziehungsweise bei expliziter Domain `__Secure-`. Staff und Portal
-> verwenden getrennte Credentials-Provider, wobei der Portal-Provider einen
-> eigenen gehashten One-Time-Magic-Link verifiziert. Der pfadbasierte
+> verwenden getrennte Auth.js-Konfigurationen. Staff besitzt getrennte
+> Credentials-Provider für Passwort/TOTP und den optionalen reinen
+> Sicherheitsschlüssel-Zugang; der Portal-Provider verifiziert weiterhin
+> ausschließlich einen eigenen gehashten One-Time-Magic-Link. Der pfadbasierte
 > Vorschutz liegt in `apps/web/src/proxy.ts`, nicht in `middleware.ts`.
 
 ## Kontext
 
 taxtronik hat zwei sehr unterschiedliche Identitätstypen:
 
-|                   | Mitarbeiter (Staff)                | Mandant (Client Contact)               |
-| ----------------- | ---------------------------------- | -------------------------------------- |
-| Login-Methode     | E-Mail + Passwort + TOTP (Pflicht) | gehashter Einmal-Magic-Link per E-Mail |
-| Häufigkeit        | Tägliche Nutzung                   | Sporadisch (Alle paar Wochen)          |
-| Compliance-Klasse | Personalakte                       | § 203 StGB Mandantendaten              |
-| Routing           | `/staff/*`                         | `/portal/*`                            |
-| Datenzugriff      | Eigener Kanzlei-Mandant            | Nur die ihm zugeordneten Daten         |
+|                   | Mitarbeiter (Staff)                                             | Mandant (Client Contact)               |
+| ----------------- | --------------------------------------------------------------- | -------------------------------------- |
+| Login-Methode     | Passwort + TOTP oder nach Opt-in nur physischer FIDO2-Schlüssel | gehashter Einmal-Magic-Link per E-Mail |
+| Häufigkeit        | Tägliche Nutzung                                                | Sporadisch (Alle paar Wochen)          |
+| Compliance-Klasse | Personalakte                                                    | § 203 StGB Mandantendaten              |
+| Routing           | `/staff/*`                                                      | `/portal/*`                            |
+| Datenzugriff      | Eigener Kanzlei-Mandant                                         | Nur die ihm zugeordneten Daten         |
 
 Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
 
@@ -56,14 +58,18 @@ Eine gemeinsame `users`-Tabelle mit `role`-Discriminator wäre möglich, aber:
 
 - Strukturell sicher gegen Cookie-/Token-Verwechslung.
 - Audit-Log-Spalten `actor_type ∈ {STAFF, CLIENT_CONTACT, SYSTEM}` sind klar.
-- Auth.js-Konfigurationen können unabhängig erweitert werden (z. B. Passkeys
-  für Staff, ohne Portal-Flow zu beeinflussen).
+- Auth.js-Konfigurationen können unabhängig erweitert werden. Der optionale
+  Staff-Modus „Nur physische FIDO2-Sicherheitsschlüssel“ beeinflusst weder
+  Portal-Identitäten noch Magic-Link-Token oder Portal-Sessions.
 
 **Negativ**
 
 - Mehr Boilerplate als ein Single-Auth-Setup.
 - "Unified Login" (selbe E-Mail in beiden Welten) ist NICHT vorgesehen —
   bei Bedarf später als explizites Feature mit Verknüpfungstabelle.
+- Der optionale Staff-Hardwarepfad besitzt mit Deployment-AAGUID-Allowlist und
+  FIDO MDS eine zusätzliche externe Trust-/Verfügbarkeitsgrenze. Sein
+  fail-closed Ausfall beeinflusst den getrennten Portal-Magic-Link nicht.
 
 ## Alternativen
 
@@ -79,3 +85,10 @@ Die Trennung wird durch Auth-/E2E-Tests verifiziert:
 2. Mit Staff-Cookie auf `/portal/*` → Redirect zu `/portal/login`.
 3. Mit Portal-Cookie auf `/staff/*` → Redirect zu `/staff/login`.
 4. Magic-Link-Token mit `aud: 'portal'` darf keinen Staff-Login erzeugen.
+5. Hardware-only akzeptiert nur den Staff-Sicherheitsschlüssel-Provider;
+   Passwort, TOTP und Backup-Code bleiben für dieses Konto gesperrt.
+6. Aktivierung, Deaktivierung und Recovery eines Staff-Hardwarezugangs ändern
+   keinen Portal-Loginpfad und widerrufen keine Portal-Sitzung.
+7. Leere Hardware-AAGUID-Allowlist, nicht vertrauenswürdiges MDS-Statement oder
+   MDS-/Netzausfall blockieren Staff-Hardware-Assertions, nicht aber
+   Passwort/TOTP-Konten oder Portal-Magic-Links.

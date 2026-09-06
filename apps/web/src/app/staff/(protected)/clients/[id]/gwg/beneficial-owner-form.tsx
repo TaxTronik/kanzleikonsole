@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
 import { removeBeneficialOwnerAction, updateBeneficialOwnerAction } from './owner-actions';
@@ -54,7 +54,21 @@ export function BeneficialOwnerForm({
       })
     | null,
     FormData
-  >(updateBeneficialOwnerAction, null);
+  >(async (previous, data) => {
+    const result = await updateBeneficialOwnerAction(previous, data);
+    if (!result?.ok || !result.saved) return result;
+    updateBeneficialOwner(result.saved);
+    setDisplayValue(result.saved);
+    setDraftValue(result.saved);
+    if (result.revision) setCurrentRevision(result.revision);
+    registerIdentityInvalidations(result.invalidatedIdentitySets ?? []);
+    // Die Server-Action setzt die Risikobewertung zurück (invalidateRisk) —
+    // das Risiko-Formular muss seine CAS-Revision sofort nachziehen.
+    markRiskInvalidated();
+    if (result.reviewReset) markDraft();
+    router.refresh();
+    return result;
+  }, null);
   const [removeState, removeAction, removePending] = useActionState<
     | (ActionResult & {
         removedOwnerId?: string;
@@ -63,45 +77,17 @@ export function BeneficialOwnerForm({
       })
     | null,
     FormData
-  >(removeBeneficialOwnerAction, null);
+  >(async (previous, data) => {
+    const result = await removeBeneficialOwnerAction(previous, data);
+    if (!result?.ok || !result.removedOwnerId) return result;
+    removeBeneficialOwner(result.removedOwnerId);
+    registerIdentityInvalidations(result.invalidatedIdentitySets ?? []);
+    markRiskInvalidated();
+    if (result.reviewReset) markDraft();
+    router.refresh();
+    return result;
+  }, null);
   const id = (field: string) => `owner-${ownerId}-${field}`;
-
-  useEffect(() => {
-    if (!state?.ok || !state.saved) return;
-    updateBeneficialOwner(state.saved);
-    setDisplayValue(state.saved);
-    setDraftValue(state.saved);
-    if (state.revision) setCurrentRevision(state.revision);
-    registerIdentityInvalidations(state.invalidatedIdentitySets ?? []);
-    // Die Server-Action setzt die Risikobewertung zurück (invalidateRisk) —
-    // das Risiko-Formular muss seine CAS-Revision sofort nachziehen.
-    markRiskInvalidated();
-    if (state.reviewReset) markDraft();
-    router.refresh();
-  }, [
-    markDraft,
-    markRiskInvalidated,
-    registerIdentityInvalidations,
-    router,
-    state,
-    updateBeneficialOwner,
-  ]);
-
-  useEffect(() => {
-    if (!removeState?.ok || !removeState.removedOwnerId) return;
-    removeBeneficialOwner(removeState.removedOwnerId);
-    registerIdentityInvalidations(removeState.invalidatedIdentitySets ?? []);
-    markRiskInvalidated();
-    if (removeState.reviewReset) markDraft();
-    router.refresh();
-  }, [
-    markDraft,
-    markRiskInvalidated,
-    registerIdentityInvalidations,
-    removeBeneficialOwner,
-    removeState,
-    router,
-  ]);
 
   if (removeState?.ok && removeState.removedOwnerId === ownerId) {
     return (

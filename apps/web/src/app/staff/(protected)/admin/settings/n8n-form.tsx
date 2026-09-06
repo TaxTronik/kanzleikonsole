@@ -234,11 +234,16 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     return () => window.clearTimeout(timeout);
   }, [callbackResult]);
 
-  useEffect(() => {
+  const [previousDeliveryStatus, setPreviousDeliveryStatus] = useState(status);
+  if (
+    previousDeliveryStatus.failedDeliveries !== status.failedDeliveries ||
+    previousDeliveryStatus.hasMoreFailedDeliveries !== status.hasMoreFailedDeliveries
+  ) {
+    setPreviousDeliveryStatus(status);
     setFailedDeliveries(status.failedDeliveries);
     setFailedCursor(status.failedDeliveries.at(-1)?.id ?? null);
     setHasMoreFailedDeliveries(status.hasMoreFailedDeliveries);
-  }, [status.failedDeliveries, status.hasMoreFailedDeliveries]);
+  }
 
   // Instanzwechsel nur, wenn tatsächlich eine API-URL gespeichert ist: mit
   // leerer gespeicherter URL (urlOrigin('') === '') zählte früher JEDE Eingabe

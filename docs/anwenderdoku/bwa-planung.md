@@ -31,11 +31,10 @@ TaxTronik stellt zwei Rechenwege nebeneinander dar:
   `12 / erfasste Monate` auf das Gesamtjahr fortgeschrieben. Die Spanne wird
   mit zunehmender Datenabdeckung enger; eine Saisongewichtung findet nicht
   statt.
-- **Vorjahrestrend (derzeit abweichend):** Die Regression soll mindestens zwei
-  vollständige Vorjahre verwenden. Der aktuelle Code filtert zwölfmonatige
-  `YEAR`-Perioden jedoch nicht auf Jahre vor dem Zieljahr; vor Verwendung muss
-  deshalb manuell ausgeschlossen werden, dass Ziel- oder Zukunftsjahre in die
-  Datenbasis gelangt sind.
+- **Vorjahrestrend:** Die Regression verwendet mindestens zwei rechnerisch
+  zwölfmonatige `YEAR`-Perioden, die vollständig vor dem Zieljahr enden.
+  Zieljahr, Zukunftsjahre und jahresübergreifende Perioden, die erst im
+  Zieljahr enden, werden nach `BWA-PROJECTION-001` ausgeschlossen.
 
 Abweichende Ergebnisse sind kein technischer Fehler, sondern zeigen die
 unterschiedlichen Annahmen. Die Oberfläche weist die Datenbasis als Zahl der

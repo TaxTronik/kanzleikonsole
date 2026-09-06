@@ -3,6 +3,7 @@ import {
   commitPreparedBytes,
   prepareBytesCommitWithTier,
   recoverPreparedBytesCommit,
+  type CommitDocumentResult,
   type PreparedBytesCommit,
   type ProtectionTier,
 } from '@taxtronik/storage';
@@ -79,6 +80,13 @@ export interface ResumableDocumentUploadOptions {
     tx: TxClient,
     upload: { documentId: string; versionId: string },
   ) => Promise<unknown>;
+  /**
+   * Hält den fachlichen Guard-Lock über Object-Recovery/PUT und Finalisierung.
+   * Das ist für Zustände nötig, die parallel widerrufen werden können: Der
+   * Widerruf gewinnt dann entweder vor dem PUT oder erst nach CLEAN, niemals
+   * in einem unjournalisierten Zwischenfenster.
+   */
+  commitWithinGuardTransaction?: boolean;
 }
 
 export interface ResumableDocumentUpload {
@@ -281,16 +289,33 @@ async function commitAndFinalize(
   upload: ResumedUpload,
   initialBytes?: Buffer,
 ): Promise<ResumableDocumentUpload> {
-  let committed;
-  try {
-    committed =
-      upload.source === 'resumed-pending'
-        ? await recoverPreparedBytesCommit(upload.prepared!)
-        : null;
-    if (!committed) {
-      const fileData = initialBytes ?? (await options.readBytes());
-      committed = await commitPreparedBytes({ fileData, prepared: upload.prepared! });
+  if (options.commitWithinGuardTransaction) {
+    let phase: 'commit' | 'finalize' = 'commit';
+    try {
+      await withTenantContext(options.context, async (tx) => {
+        // Der aufruferspezifische Guard muss seinen Fachdatensatz sperren.
+        // Die Transaktion bleibt absichtlich bis nach Object-Commit und
+        // finalem Fachstatus offen, damit ein paralleler Abbruch nicht
+        // zwischen letzter Prüfung und PUT committed werden kann.
+        await options.guardMutationTx(tx);
+        const committed = await recoverOrCommit(options, upload, initialBytes);
+        phase = 'finalize';
+        await finalizePendingDocumentVersion(tx, {
+          documentId: upload.documentId,
+          versionId: upload.versionId,
+          commit: committed,
+        });
+        await options.recordCompleteTx?.(tx, upload);
+      });
+    } catch (cause) {
+      throw new ResumableDocumentUploadError(phase, cause, upload.documentId);
     }
+    return uploadResult(upload);
+  }
+
+  let committed: CommitDocumentResult;
+  try {
+    committed = await recoverOrCommit(options, upload, initialBytes);
   } catch (cause) {
     throw new ResumableDocumentUploadError('commit', cause, upload.documentId);
   }
@@ -309,4 +334,16 @@ async function commitAndFinalize(
   }
 
   return uploadResult(upload);
+}
+
+async function recoverOrCommit(
+  options: ResumableDocumentUploadOptions,
+  upload: ResumedUpload,
+  initialBytes?: Buffer,
+): Promise<CommitDocumentResult> {
+  const recovered =
+    upload.source === 'resumed-pending' ? await recoverPreparedBytesCommit(upload.prepared!) : null;
+  if (recovered) return recovered;
+  const fileData = initialBytes ?? (await options.readBytes());
+  return commitPreparedBytes({ fileData, prepared: upload.prepared! });
 }

@@ -56,7 +56,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
   const staffUser = tenant
     ? await prismaOwner.staffUser.findFirst({
-        where: { tenantId: tenant.id, email: email.toLowerCase(), active: true },
+        where: {
+          tenantId: tenant.id,
+          email: email.toLowerCase(),
+          active: true,
+          hardwareOnlyEnabledAt: null,
+        },
         include: { roles: true, permissions: true },
       })
     : null;
@@ -98,6 +103,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       fullName: staffUser.fullName,
       roles: staffUser.roles.map((r) => r.role as string),
       permissions: staffUser.permissions.map((p) => p.permission as string),
+      authMethod: 'dev_skip_totp',
+      authRevision: staffUser.authRevision,
     },
   });
 

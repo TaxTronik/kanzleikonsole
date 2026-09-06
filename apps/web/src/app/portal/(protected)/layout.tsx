@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { LogOut } from 'lucide-react';
-import { SidebarNav, type NavItem } from '@/components/sidebar-nav';
+import { GroupedSidebarNav } from '@/components/sidebar-nav';
 import { MobileSidebarToggle } from '@/components/mobile-sidebar-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UiModeToggle } from '@/components/ui-mode-toggle';
@@ -12,12 +12,13 @@ import { UserMenu } from '@/components/user-menu';
 import { readBranding } from '@/server/settings/branding';
 import { readModules } from '@/server/settings/modules';
 import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
-import { readPortalFeatures, type PortalFeatures } from '@/server/settings/portal-features';
+import { readPortalFeatures } from '@/server/settings/portal-features';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { findPortalProfilesForContact } from '@/server/auth/portal-profiles';
 import { PortalProfileSwitcher } from './profile-switcher';
+import { resolvePortalNavigation } from '@/lib/navigation-registry';
 import { AccessibleDisplayProvider } from '@/components/accessible-display';
 import {
   readAccessibleDisplay,
@@ -27,58 +28,6 @@ import {
   savePortalAccessibleDisplayAction,
   savePortalAccessibleDisplayOptionsAction,
 } from '@/server/actions/accessible-display';
-
-// Tenant-weite Module-Toggles steuern, ob das gesamte Feature aktiv ist
-// (Staff + Portal). Portal-Feature-Toggles erlauben darüber hinaus, einzelne
-// Bereiche speziell im Mandantenportal auszublenden — z. B. BWA-Ansicht
-// behalten, aber Mandanten-Planung sperren.
-type PortalModuleKey = 'forms' | 'appointments' | 'handovers' | 'bwa' | 'taxNotices' | 'invoices';
-
-type PortalNavConfig = NavItem & {
-  moduleKey?: PortalModuleKey;
-  portalFeature?: keyof PortalFeatures;
-};
-
-const allPortalNavItems: PortalNavConfig[] = [
-  { href: '/portal/dashboard', label: 'Übersicht', icon: 'LayoutDashboard' },
-  { href: '/portal/requests', label: 'Anforderungen', icon: 'Inbox' },
-  { href: '/portal/forms', label: 'Formulare', icon: 'ClipboardList', moduleKey: 'forms' },
-  {
-    href: '/portal/appointments',
-    label: 'Termine',
-    icon: 'CalendarDays',
-    moduleKey: 'appointments',
-  },
-  {
-    href: '/portal/handovers',
-    label: 'Hinterlegt',
-    icon: 'Inbox',
-    moduleKey: 'handovers',
-    portalFeature: 'handoversView',
-  },
-  {
-    href: '/portal/bwa',
-    label: 'Auswertungen',
-    icon: 'BarChart3',
-    moduleKey: 'bwa',
-    portalFeature: 'bwaView',
-  },
-  {
-    href: '/portal/steuer',
-    label: 'Steuererklärungen',
-    icon: 'ScrollText',
-    moduleKey: 'taxNotices',
-  },
-  { href: '/portal/invoices', label: 'Rechnungen', icon: 'Receipt', moduleKey: 'invoices' },
-  { href: '/portal/documents', label: 'Dokumente', icon: 'FileText' },
-  {
-    href: '/portal/stammdaten',
-    label: 'Stammdaten',
-    icon: 'IdCard',
-    portalFeature: 'stammdatenSelfService',
-  },
-  { href: '/portal/settings', label: 'Einstellungen', icon: 'Settings' },
-];
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const session = await portalAuth();
@@ -108,15 +57,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     readAccessibleDisplayOptions({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
   ]);
 
-  const navItems: NavItem[] = allPortalNavItems
-    .filter((it) => {
-      const moduleEnabled =
-        !it.moduleKey ||
-        (it.moduleKey === 'invoices' ? modules.invoiceMode !== 'OFF' : modules[it.moduleKey]);
-      const portalFeatureEnabled = !it.portalFeature || portalFeatures[it.portalFeature];
-      return moduleEnabled && portalFeatureEnabled;
-    })
-    .map((it) => ({ href: it.href, label: it.label, icon: it.icon, exact: it.exact }));
+  const navGroups = resolvePortalNavigation({ modules, portalFeatures });
 
   const pathname = (await headers()).get('x-taxtronik-pathname') ?? '';
   if (!isModuleRouteEnabled(modules, 'portal', pathname)) notFound();
@@ -166,8 +107,8 @@ export default async function PortalLayout({ children }: { children: ReactNode }
             <PortalProfileSwitcher currentContactId={contactId} profiles={profiles} />
           </div>
 
-          <nav aria-label="Hauptnavigation" className="flex-1 px-3 py-4">
-            <SidebarNav items={navItems} />
+          <nav aria-label="Hauptnavigation" className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+            <GroupedSidebarNav groups={navGroups} />
           </nav>
 
           {/* Sidebar-Footer: nur Abmelden — Darstellung sitzt in der Topbar,

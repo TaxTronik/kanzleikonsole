@@ -1,14 +1,15 @@
 ﻿'use client';
 
-import { useActionState, useState, useRef, useEffect, useTransition } from 'react';
+import { useActionState, useState, useRef, useTransition } from 'react';
 import { Mail, Phone, UserX, Pencil, Plus, X, CalendarOff } from 'lucide-react';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 import { ConfirmModal } from '@/components/ui/modal';
+import type { ActionResult } from '@/server/actions/types';
 import {
   inviteContactAction,
   deactivateContactAction,
   updateContactAction,
   rotateIcalTokenAction,
-  type ActionResult,
 } from '@/app/staff/(protected)/clients/[id]/contacts/actions';
 
 interface Contact {
@@ -30,16 +31,16 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    inviteContactAction,
+    async (previous, data) => {
+      const result = await inviteContactAction(previous, data);
+      if (result.ok) {
+        formRef.current?.reset();
+        setShowForm(false);
+      }
+      return result;
+    },
     null,
   );
-
-  useEffect(() => {
-    if (state?.ok) {
-      formRef.current?.reset();
-      setShowForm(false);
-    }
-  }, [state]);
 
   return (
     <div className="card overflow-hidden mb-6">
@@ -63,9 +64,19 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
 
       {showForm && (
         <div className="px-5 py-4 border-b border-default bg-gray-50/60">
-          <form ref={formRef} action={formAction} className="space-y-3">
+          <form ref={formRef} action={formAction} className="space-y-3" aria-busy={isPending}>
             <input type="hidden" name="clientId" value={clientId} />
-            <div className="grid grid-cols-2 gap-3">
+            <FormErrorSummary
+              error={state?.error}
+              fieldErrors={state?.fieldErrors}
+              fieldIds={{
+                fullName: 'contact-fullName',
+                role: 'contact-role',
+                email: 'contact-email',
+                phone: 'contact-phone',
+              }}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="label" htmlFor="contact-fullName">
                   Name
@@ -78,7 +89,9 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
                   required
                   minLength={2}
                   maxLength={200}
+                  {...fieldErrorProps('fullName', state?.fieldErrors)}
                 />
+                <FieldError name="fullName" errors={state?.fieldErrors?.fullName} />
               </div>
               <div>
                 <label className="label" htmlFor="contact-role">
@@ -91,13 +104,24 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
                   className="input"
                   maxLength={80}
                   placeholder="z. B. Geschäftsführer"
+                  {...fieldErrorProps('role', state?.fieldErrors)}
                 />
+                <FieldError name="role" errors={state?.fieldErrors?.role} />
               </div>
               <div>
                 <label className="label" htmlFor="contact-email">
                   E-Mail
                 </label>
-                <input id="contact-email" name="email" type="email" className="input" required />
+                <input
+                  id="contact-email"
+                  name="email"
+                  type="email"
+                  className="input"
+                  required
+                  maxLength={255}
+                  {...fieldErrorProps('email', state?.fieldErrors)}
+                />
+                <FieldError name="email" errors={state?.fieldErrors?.email} />
               </div>
               <div>
                 <label className="label" htmlFor="contact-phone">
@@ -109,14 +133,15 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
                   type="tel"
                   className="input"
                   maxLength={50}
+                  {...fieldErrorProps('phone', state?.fieldErrors)}
                 />
+                <FieldError name="phone" errors={state?.fieldErrors?.phone} />
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm text-secondary">
               <input type="checkbox" name="sendInvite" value="1" defaultChecked />
               Login-Link per E-Mail senden
             </label>
-            {state?.error && <div className="alert-error-sm">{state.error}</div>}
             <button type="submit" className="btn-primary text-sm" disabled={isPending}>
               {isPending ? 'Speichert…' : 'Anlegen'}
             </button>
@@ -247,11 +272,11 @@ function EditRow({
   const [email, setEmail] = useState(contact.email);
   const [role, setRole] = useState(contact.role ?? '');
   const [phone, setPhone] = useState(contact.phone ?? '');
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ActionResult | null>(null);
   const [isPending, start] = useTransition();
 
   function save() {
-    setError(null);
+    setResult(null);
     start(async () => {
       const r = await updateContactAction({
         contactId: contact.id,
@@ -262,7 +287,7 @@ function EditRow({
         role: role.trim() || null,
       });
       if (!r.ok) {
-        setError(r.error ?? 'Fehler.');
+        setResult(r);
         return;
       }
       onDone();
@@ -271,44 +296,85 @@ function EditRow({
 
   return (
     <li className="px-5 py-3 bg-brand-50/30">
-      <div className="grid grid-cols-2 gap-3 mb-2">
-        <input
-          type="text"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          className="input text-sm"
-          placeholder="Name"
-        />
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="input text-sm"
-          placeholder="E-Mail"
-          maxLength={255}
-        />
-        <input
-          type="text"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          className="input text-sm"
-          placeholder="Rolle"
-          maxLength={80}
-        />
-        <input
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          className="input text-sm"
-          placeholder="Telefon"
-          maxLength={50}
-        />
+      <FormErrorSummary
+        error={result?.error}
+        fieldErrors={result?.fieldErrors}
+        fieldIds={{
+          fullName: `edit-contact-${contact.id}-fullName`,
+          email: `edit-contact-${contact.id}-email`,
+          role: `edit-contact-${contact.id}-role`,
+          phone: `edit-contact-${contact.id}-phone`,
+        }}
+      />
+      <div className="grid grid-cols-1 gap-3 mb-2 sm:grid-cols-2">
+        <div>
+          <label className="sr-only" htmlFor={`edit-contact-${contact.id}-fullName`}>
+            Name
+          </label>
+          <input
+            id={`edit-contact-${contact.id}-fullName`}
+            type="text"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            className="input text-sm"
+            placeholder="Name"
+            {...fieldErrorProps('fullName', result?.fieldErrors, { prefix: contact.id })}
+          />
+          <FieldError name="fullName" errors={result?.fieldErrors?.fullName} prefix={contact.id} />
+        </div>
+        <div>
+          <label className="sr-only" htmlFor={`edit-contact-${contact.id}-email`}>
+            E-Mail
+          </label>
+          <input
+            id={`edit-contact-${contact.id}-email`}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input text-sm"
+            placeholder="E-Mail"
+            maxLength={255}
+            {...fieldErrorProps('email', result?.fieldErrors, { prefix: contact.id })}
+          />
+          <FieldError name="email" errors={result?.fieldErrors?.email} prefix={contact.id} />
+        </div>
+        <div>
+          <label className="sr-only" htmlFor={`edit-contact-${contact.id}-role`}>
+            Rolle
+          </label>
+          <input
+            id={`edit-contact-${contact.id}-role`}
+            type="text"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="input text-sm"
+            placeholder="Rolle"
+            maxLength={80}
+            {...fieldErrorProps('role', result?.fieldErrors, { prefix: contact.id })}
+          />
+          <FieldError name="role" errors={result?.fieldErrors?.role} prefix={contact.id} />
+        </div>
+        <div>
+          <label className="sr-only" htmlFor={`edit-contact-${contact.id}-phone`}>
+            Telefon
+          </label>
+          <input
+            id={`edit-contact-${contact.id}-phone`}
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="input text-sm"
+            placeholder="Telefon"
+            maxLength={50}
+            {...fieldErrorProps('phone', result?.fieldErrors, { prefix: contact.id })}
+          />
+          <FieldError name="phone" errors={result?.fieldErrors?.phone} prefix={contact.id} />
+        </div>
       </div>
       <p className="text-xs text-muted mb-2">
         Die E-Mail ist die Portal-Login-Identität — eine Änderung wirkt sich auf künftige
         Magic-Link-Anmeldungen aus.
       </p>
-      {error && <div className="rounded-md bg-red-50 p-2 text-xs text-red-700 mb-2">{error}</div>}
       <div className="flex items-center gap-2">
         <button
           type="button"

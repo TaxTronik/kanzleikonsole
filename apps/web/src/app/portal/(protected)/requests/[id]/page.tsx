@@ -7,6 +7,7 @@ import { AutoProfileSwitch } from './auto-profile-switch';
 import { withTenantContext } from '@taxtronik/db';
 import { PortalResponseForm } from './response-form';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { isUuid } from '@/lib/uuid';
 
 const statusLabels: Record<string, string> = {
   OPEN: 'Offen',
@@ -25,7 +26,18 @@ export default async function PortalRequestDetailPage({
   if (!session?.user) redirect('/portal/login');
 
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const { tenantId, contactId, clientId } = session.user;
+  const managedInteraction = await withTenantContext(
+    { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
+    async (tx) => {
+      const [result] = await tx.$queryRaw<
+        Array<{ managed: boolean }>
+      >`SELECT app.interaction_request(${id}::uuid) AS managed`;
+      return result?.managed ?? false;
+    },
+  );
+  if (managedInteraction) redirect('/portal/interactions');
 
   const reqRow = await withTenantContext(
     { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },

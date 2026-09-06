@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { berlinCalendarDate } from '@taxtronik/tax';
 import { evidenceService } from '@/server/container';
 import { round2 } from '@/lib/fmt';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
@@ -116,11 +117,14 @@ export async function createInvoiceFromTimeEntriesAction(
       // aufsteigend sortiert und oben als non-empty geprüft; endedAt ist per
       // where-Filter garantiert non-null.
       const firstEntry = entries[0]!;
-      const servicePeriodStart = firstEntry.startedAt;
-      const servicePeriodEnd = entries.reduce(
+      // INV-TIME-ENTRY-CLAIM-001: @db.Date speichert Kalendertage. Die
+      // UTC-Zeitpunkte zuerst auf den Berlin-Tag abbilden, auch nachts/DST.
+      const servicePeriodStart = berlinCalendarDate(firstEntry.startedAt);
+      const lastEntryEnd = entries.reduce(
         (max, e) => (e.endedAt! > max ? e.endedAt! : max),
         firstEntry.endedAt!,
       );
+      const servicePeriodEnd = berlinCalendarDate(lastEntryEnd);
 
       // 2. Stundenwerte berechnen
       const entriesWithMinutes = entries.map((e) => {

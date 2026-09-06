@@ -18,6 +18,17 @@ export interface StaffPermissionMeta {
 }
 
 export const STAFF_PERMISSIONS = [
+  { key: 'PAYROLL_MANAGE', label: 'Geschützte Personalfragebögen bearbeiten', short: 'Lohn' },
+  {
+    key: 'INBOUND_MAIL_MANAGE',
+    label: 'Unzugeordnete E-Mail-Eingänge bearbeiten',
+    short: 'Posteingang',
+  },
+  {
+    key: 'PORTAL_INBOX_MANAGE',
+    label: 'Sicheren Mandantenposteingang bearbeiten',
+    short: 'Mandantenpost',
+  },
   {
     key: 'CLIENT_CREATE',
     label: 'Mandanten anlegen (Schnellanlage und Onboarding)',

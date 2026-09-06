@@ -44,10 +44,12 @@ sources:
 code_refs:
   - packages/storage/src/service.ts
   - apps/web/src/server/storage/document-type.ts
+  - apps/web/src/server/inbox/accept-attachment.ts
   - packages/db/prisma/migrations/20260801003520_document_type_retention_years/migration.sql
 test_refs:
   - packages/storage/src/__tests__/retention.test.ts
   - apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts
+  - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
   - docs/compliance/gobd.md
@@ -55,6 +57,7 @@ related_rules:
   - DOC-OBJECT-LOCK-001
   - DOC-VERSION-IMMUTABILITY-001
   - DSGVO-OPERATIONAL-RETENTION-001
+  - PORTAL-INBOX-SUBMISSION-001
 tags:
   - aufbewahrung
   - dokumenttyp
@@ -155,3 +158,9 @@ Die Retention-Tests belegen die 6/8/10-Zuordnung, Jahresende-Arithmetik,
 konservativen Default und unzulässige Intervalle. Der Route-Test belegt, dass
 Typ und Frist zwischen Prüfung und Commit stabilisiert werden. Kein Test liest
 oder klassifiziert den fachlichen Inhalt einer Datei.
+
+Inbox-Staging-Anlagen erhalten vor einer ausdrücklichen Kanzleiannahme keine
+Dokumentklasse und keine daraus abgeleitete Aufbewahrungsfrist. Ein Portal-
+Kontakt kann weder Schutzstufe noch bindende Dokumentart festlegen. Erst der
+getrennte Annahmepfad darf ein klassifiziertes Dokument erzeugen; dessen
+fachliche Einordnung bleibt von einer berechtigten Kanzleiperson zu prüfen.

@@ -9,6 +9,7 @@ import { decryptTotpSecret, verifyTotpCode } from './totp';
 import { resetFailedLogin } from './lockout';
 import { recordFailedLoginAudited, auditIp } from './login-audit';
 import { isTokenRevoked } from './revocation';
+import { getSessionIssuedAt } from './session-issued-at';
 import {
   STAFF_SESSION_COOKIE,
   STAFF_SESSION_COOKIE_BASE,
@@ -30,6 +31,8 @@ import {
   resetRateLimit,
   staffPasswordAccountRateLimitKey,
 } from '@/server/rate-limit';
+import { authenticateStaffHardwareCredential } from './webauthn';
+import { staffTokenMatchesCurrentAuthState, type StaffAuthMethod } from './staff-auth-state';
 
 // DEV-/E2E-only: TOTP-Bypass fuer lokale Entwicklung und den lokalen CI-E2E-
 // Lauf. In echter Produktion bleibt der Bypass aus; der CI-Sonderfall braucht
@@ -69,6 +72,11 @@ export type StaffSession = Session & {
     // iter87: granulare Einzelrechte (StaffPermissionName-Werte). ADMIN/PARTNER
     // brauchen keine — hasStaffPermission (rbac.ts) gibt ihnen implizit alles.
     permissions: string[];
+    // Aus dem signierten Token übernehmen, nicht aus dem frischen DB-Snapshot:
+    // laufende Actions müssen an genau die authentisierte Revision gebunden
+    // bleiben und dürfen eine parallel erhöhte Revision nicht adoptieren.
+    authMethod?: StaffAuthMethod;
+    authRevision?: number;
   };
 };
 
@@ -80,6 +88,10 @@ interface StaffTokenPayload {
   // Optional: Tokens von vor iter87 tragen das Feld nicht — sie bleiben
   // gültig (kein Massen-Logout beim Update); die Session lädt ohnehin frisch.
   permissions?: string[];
+  // Legacy-Tokens ohne diese Felder bleiben nur solange gültig, wie das Konto
+  // noch authRevision=0 hat und NICHT auf Hardware-only umgestellt wurde.
+  authMethod?: StaffAuthMethod;
+  authRevision?: number;
 }
 
 function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
@@ -92,7 +104,14 @@ function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
     Array.isArray(o['roles']) &&
     o['roles'].every((r) => typeof r === 'string') &&
     (o['permissions'] === undefined ||
-      (Array.isArray(o['permissions']) && o['permissions'].every((p) => typeof p === 'string')))
+      (Array.isArray(o['permissions']) && o['permissions'].every((p) => typeof p === 'string'))) &&
+    (o['authMethod'] === undefined ||
+      o['authMethod'] === 'totp' ||
+      o['authMethod'] === 'backup_code' ||
+      o['authMethod'] === 'dev_skip_totp' ||
+      o['authMethod'] === 'security_key') &&
+    (o['authRevision'] === undefined ||
+      (typeof o['authRevision'] === 'number' && Number.isSafeInteger(o['authRevision'])))
   );
 }
 
@@ -153,7 +172,8 @@ function hasStaffSessionFields(session: Session | null): session is StaffSession
 async function hydrateStaffSessionFromToken(session: Session, token: unknown): Promise<Session> {
   if (!isStaffTokenPayload(token)) return session;
 
-  const tokenIat = (token as { iat?: number }).iat;
+  const tokenIat = getSessionIssuedAt(token);
+  if (tokenIat === undefined) return session;
   if (await isTokenRevoked('staff', token.staffId, tokenIat)) {
     return session;
   }
@@ -166,11 +186,18 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
       select: {
         active: true,
         tenantId: true,
+        authRevision: true,
+        hardwareOnlyEnabledAt: true,
         roles: { select: { role: true } },
         permissions: { select: { permission: true } },
       },
     });
-    if (!u || !u.active || u.tenantId !== token.tenantId) {
+    if (
+      !u ||
+      !u.active ||
+      u.tenantId !== token.tenantId ||
+      !staffTokenMatchesCurrentAuthState(token, u)
+    ) {
       log.warn(
         { staffId: token.staffId, tokenTenant: token.tenantId },
         'staff-auth: Session ohne gueltigen User/Tenant - invalidiert (Re-Login erzwungen)',
@@ -192,7 +219,19 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
   session.user.fullName = token.fullName;
   session.user.roles = freshRoles;
   session.user.permissions = freshPermissions;
+  session.user.authMethod = token.authMethod;
+  session.user.authRevision = token.authRevision;
   return session;
+}
+
+function passwordAuthenticationBlocked(account: {
+  hardwareOnlyEnabledAt: Date | null;
+  lockedUntil: Date | null;
+}): boolean {
+  return (
+    Boolean(account.hardwareOnlyEnabledAt) ||
+    Boolean(account.lockedUntil && account.lockedUntil > new Date())
+  );
 }
 
 const staffConfig: NextAuthConfig = {
@@ -259,8 +298,9 @@ const staffConfig: NextAuthConfig = {
         });
         if (!staffUser || !staffUser.active) return null;
 
-        // Konto gesperrt?
-        if (staffUser.lockedUntil && staffUser.lockedUntil > new Date()) return null;
+        // Hardware-only ist eine serverseitige Kontoeigenschaft. Weder das
+        // Passwort noch DEV_SKIP_TOTP dürfen als versteckter Fallback dienen.
+        if (passwordAuthenticationBlocked(staffUser)) return null;
 
         // Passwort prüfen
         const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
@@ -316,6 +356,8 @@ const staffConfig: NextAuthConfig = {
             fullName: staffUser.fullName,
             roles: staffUser.roles.map((r) => r.role as string),
             permissions: staffUser.permissions.map((p) => p.permission as string),
+            authMethod: 'dev_skip_totp' as const,
+            authRevision: staffUser.authRevision,
           };
         }
 
@@ -487,7 +529,48 @@ const staffConfig: NextAuthConfig = {
           // iter87: Einzelrechte MÜSSEN auch im Produktions-Login ins Token,
           // damit alte und neue JWT-Schemata sauber unterschieden werden.
           permissions: staffUser.permissions.map((p) => p.permission as string),
+          authMethod: (totpValid ? 'totp' : 'backup_code') as StaffAuthMethod,
+          authRevision: staffUser.authRevision,
         };
+      },
+    }),
+    Credentials({
+      id: 'hardware-key',
+      name: 'Physischer Sicherheitsschlüssel',
+      credentials: {
+        ceremonyId: { label: 'Zeremonie', type: 'text' },
+        responseJson: { label: 'WebAuthn-Antwort', type: 'text' },
+      },
+      async authorize(credentials, request) {
+        const ceremonyId = credentials?.ceremonyId as string | undefined;
+        const responseJson = credentials?.responseJson as string | undefined;
+        if (!ceremonyId || !responseJson) return null;
+        const ip = (() => {
+          try {
+            return request?.headers ? getClientIp(request.headers) : null;
+          } catch {
+            return null;
+          }
+        })();
+        const rateKey = ip ? `staff-hardware-login:${ip}` : 'staff-hardware-login:global';
+        const rate = await checkIpOrGlobalLimit(
+          'staff-hardware-login',
+          ip,
+          { max: 10, windowSec: 300 },
+          { max: 200, windowSec: 300 },
+        );
+        if (!rate.ok) return null;
+        try {
+          const user = await authenticateStaffHardwareCredential({ ceremonyId, responseJson, ip });
+          if (user) await resetRateLimit(rateKey);
+          return user;
+        } catch (error) {
+          log.warn(
+            { component: 'staff-webauthn', name: (error as Error).name },
+            'Hardware-Login abgewiesen',
+          );
+          return null;
+        }
       },
     }),
   ],
@@ -525,7 +608,7 @@ const staffConfig: NextAuthConfig = {
   },
 
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         const u = user as StaffTokenPayload;
         token.staffId = u.staffId;
@@ -533,78 +616,24 @@ const staffConfig: NextAuthConfig = {
         token.fullName = u.fullName;
         token.roles = u.roles;
         token.permissions = u.permissions ?? [];
+        token.authMethod = u.authMethod;
+        token.authRevision = u.authRevision;
+        token.sessionIssuedAt = Math.floor(Date.now() / 1000);
+        return token;
       }
-      return token;
+      // ACCESS-TENANT-RLS-001: Reject before Auth.js issues another cookie.
+      // Preserve the original time even if revocation races with this refresh.
+      const issuedAt = getSessionIssuedAt(token);
+      if (issuedAt === undefined || !hasValidJwtLifetime(token)) return null;
+      const session = await hydrateStaffSessionFromToken(
+        { user: {}, expires: sessionExpires(token) } as Session,
+        token,
+      );
+      if (!hasStaffSessionFields(session)) return null;
+      return { ...token, sessionIssuedAt: issuedAt };
     },
     async session({ session, token }) {
-      // Runtime-Check statt blindem Cast (Q9): wenn das Token nicht die
-      // erwartete Form hat (JWT-Manipulation, Schema-Drift nach Update,
-      // Sessions vor Code-Change), liefern wir die Default-Session ohne
-      // Staff-Felder zurück. Aufrufer sehen dann nur das anonyme Session-
-      // Schema und werden von der Middleware/Action zum Login geschickt.
-      if (!isStaffTokenPayload(token)) return session;
-
-      // S11: Revocation-Check. `token.iat` (Sekunden seit Epoch) wird von
-      // NextAuth automatisch gesetzt; revokeAllSessions schreibt einen
-      // ms-Timestamp pro Account. Tokens davor sind ungültig.
-      const tokenIat = (token as { iat?: number }).iat;
-      if (await isTokenRevoked('staff', token.staffId, tokenIat)) {
-        // Keine Staff-Felder schreiben → staffAuth-Wrapper liefert null.
-        return session;
-      }
-
-      // Härtung: Die Session MUSS zu einem existierenden, aktiven Staff-User
-      // gehören, dessen Tenant mit dem Token übereinstimmt. Verhindert
-      // „Geister-Sessions" — ein JWT aus einem früheren DB-Stand (z. B. nach
-      // Re-Seed/Reset) trägt eine Tenant-/User-ID, die nicht mehr existiert.
-      // Ohne diese Prüfung würde die App eine solche Session stillschweigend
-      // akzeptieren und überall einen leeren, kaputten Zustand zeigen, statt
-      // zum Login zu zwingen.
-      // F3: Rollen aus DIESEM frischen DB-Stand übernehmen (nicht aus dem bis zu
-      // 24 h alten JWT). Der Roundtrip ist für die Ghost-Session-Prüfung ohnehin
-      // bezahlt → eine Rollen-Reduktion (z. B. ADMIN entzogen) wirkt sofort, ohne
-      // auf revokeAllSessions oder den JWT-Ablauf zu warten. Bei transientem
-      // DB-Fehler bleibt die Session bewusst ohne Staff-Felder (fail-closed).
-      let freshRoles: string[];
-      // iter87: Berechtigungen hängen am selben frischen DB-Stand wie die
-      // Rollen — ein Entzug (z. B. INVOICE_SEND) wirkt damit sofort, nicht
-      // erst nach JWT-Ablauf.
-      let freshPermissions: string[];
-      try {
-        const u = await prismaOwner.staffUser.findUnique({
-          where: { id: token.staffId },
-          select: {
-            active: true,
-            tenantId: true,
-            roles: { select: { role: true } },
-            permissions: { select: { permission: true } },
-          },
-        });
-        if (!u || !u.active || u.tenantId !== token.tenantId) {
-          log.warn(
-            { staffId: token.staffId, tokenTenant: token.tenantId },
-            'staff-auth: Session ohne gültigen User/Tenant — invalidiert (Re-Login erzwungen)',
-          );
-          return session; // keine Staff-Felder → staffAuth liefert null
-        }
-        freshRoles = u.roles.map((r) => r.role as string);
-        freshPermissions = u.permissions.map((p) => p.permission as string);
-      } catch (err) {
-        // Fail-closed: keine Rollen/Berechtigungen aus einem alten JWT nutzen,
-        // wenn der frische DB-Stand nicht verifiziert werden kann.
-        log.warn(
-          { err: (err as Error).message },
-          'staff-auth: Session-Existenzprüfung fehlgeschlagen — invalidiert (Re-Login erzwungen)',
-        );
-        return session; // keine Staff-Felder → staffAuth liefert null
-      }
-
-      session.user.staffId = token.staffId;
-      session.user.tenantId = token.tenantId;
-      session.user.fullName = token.fullName;
-      session.user.roles = freshRoles;
-      session.user.permissions = freshPermissions;
-      return session;
+      return hydrateStaffSessionFromToken(session, token);
     },
   },
 

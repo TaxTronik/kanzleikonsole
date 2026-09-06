@@ -14,6 +14,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { SkillBadge } from '@/components/skill-badge';
+import { KnowledgeContext } from '@/components/knowledge-context';
 import {
   toggleItemDoneAction,
   setItemAssigneeAction,
@@ -78,6 +79,176 @@ interface Props {
   triggeredRequestId: string | null;
   comments: { id: string; authorName: string; body: string; createdAt: string }[];
   documents: { id: string; title: string; createdAt: string }[];
+  hasKnowledgeContext?: boolean;
+}
+
+function ItemKnowledgeContext({ visible, id }: { visible: boolean; id: string }) {
+  if (!visible) return null;
+  return <KnowledgeContext type="ITEM" id={id} />;
+}
+
+function ItemCompletionButton({
+  done,
+  isTaskLike,
+  isPending,
+  onToggle,
+}: {
+  done: boolean;
+  isTaskLike: boolean;
+  isPending: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      {/* Linke Spalte: Status-Anzeige */}
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={isPending || (!isTaskLike && !done)}
+        className={
+          done
+            ? 'mt-0.5 w-5 h-5 rounded border-2 border-emerald-600 bg-emerald-600 text-white flex items-center justify-center shrink-0'
+            : 'mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-brand-600 shrink-0 disabled:cursor-not-allowed disabled:opacity-50'
+        }
+        aria-label={done ? 'Erledigt — klicken zum Zurücksetzen' : 'Als erledigt markieren'}
+        title={
+          isTaskLike
+            ? 'Manuelle Aufgabe — direkt abhaken'
+            : done
+              ? 'Erledigt — zum Zurücksetzen klicken'
+              : 'Diese Art Schritt wird über den Button rechts angestoßen'
+        }
+      >
+        {done && <Check className="h-3 w-3" />}
+      </button>
+    </>
+  );
+}
+
+function WorkflowItemDetails({
+  item: p,
+  done,
+  waitsForExternal,
+  triggeredRequestId,
+  error,
+}: {
+  item: Props;
+  done: boolean;
+  waitsForExternal: boolean;
+  triggeredRequestId: string | null;
+  error: string | null;
+}) {
+  const [, start] = useTransition();
+  const isTaskLike = p.kind === 'TASK';
+  const [observedAt] = useState(Date.now);
+  const [dueDateIso, setDueDateIso] = useState(p.dueDate ? p.dueDate.slice(0, 10) : '');
+  const [editingDue, setEditingDue] = useState(false);
+  const dueDateObj = dueDateIso ? new Date(dueDateIso + 'T00:00:00') : null;
+  const overdue = !done && dueDateObj && dueDateObj.getTime() < observedAt;
+  const KindIcon = KIND_ICON[p.kind];
+
+  function saveDue(value: string) {
+    const next = value || null;
+    setDueDateIso(value);
+    setEditingDue(false);
+    start(async () => {
+      await setItemDueDateAction({ id: p.id, dueDate: next });
+    });
+  }
+
+  return (
+    <div className="flex-1 min-w-0">
+      <ItemKnowledgeContext visible={p.hasKnowledgeContext === true} id={p.id} />
+      <div className="flex items-center gap-2 flex-wrap">
+        <KindIcon className="h-3.5 w-3.5 text-disabled shrink-0" />
+        <p
+          className={
+            done ? 'text-sm text-disabled line-through' : 'text-sm font-medium text-primary'
+          }
+        >
+          {p.title}
+        </p>
+        {!isTaskLike && (
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted bg-gray-100 rounded px-1.5 py-0.5">
+            {KIND_LABEL[p.kind]}
+          </span>
+        )}
+        {p.n8nEvent && (
+          <span className="text-[10px] font-medium uppercase tracking-wide text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 rounded px-1.5 py-0.5 inline-flex items-center gap-0.5">
+            <Zap className="h-2.5 w-2.5" />
+            {p.n8nEvent}
+          </span>
+        )}
+        {p.skill && <SkillBadge label={p.skill.label} color={p.skill.color} />}
+        {/* Fälligkeit — Klick öffnet Datum-Picker (Inline-Override pro Item) */}
+        {editingDue ? (
+          <input
+            type="date"
+            value={dueDateIso}
+            onChange={(e) => saveDue(e.target.value)}
+            onBlur={() => setEditingDue(false)}
+            autoFocus
+            className="text-xs border border-default rounded px-1.5 py-0.5 bg-surface"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingDue(true)}
+            className={
+              overdue
+                ? 'text-xs text-red-700 font-medium hover:underline cursor-pointer'
+                : 'text-xs text-muted hover:text-secondary hover:underline cursor-pointer'
+            }
+            title="Klicken, um Frist zu ändern"
+          >
+            {dueDateObj ? `fällig ${fmtDateShort(dueDateObj)}` : '+ Frist setzen'}
+          </button>
+        )}
+      </div>
+      {p.description && !done && <p className="text-xs text-muted mt-1">{p.description}</p>}
+      {waitsForExternal && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 inline-flex items-center gap-1">
+          wartet —
+          {triggeredRequestId && (
+            <Link
+              href={`/staff/requests/${triggeredRequestId}`}
+              className="hover:underline inline-flex items-center gap-0.5"
+            >
+              Anforderung öffnen <ExternalLink className="h-3 w-3" />
+            </Link>
+          )}
+          {!triggeredRequestId && p.kind === 'DOCUMENT_UPLOAD' && (
+            <span>Dokument-Upload offen</span>
+          )}
+        </p>
+      )}
+      {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
+      {p.documents.length > 0 && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[10px] uppercase tracking-wide text-disabled">
+            Hochgeladene Dateien ({p.documents.length})
+          </p>
+          <ul className="space-y-0.5">
+            {p.documents.map((d) => (
+              <li key={d.id} className="flex items-center gap-2 text-xs">
+                <FileText className="h-3 w-3 text-disabled shrink-0" />
+                <Link
+                  href={`/staff/documents/${d.id}`}
+                  className="text-brand-700 dark:text-brand-300 hover:underline truncate flex-1"
+                >
+                  {d.title}
+                </Link>
+                <span className="text-[10px] text-disabled shrink-0">
+                  {fmtDateTimeShort(new Date(d.createdAt))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <WorkflowItemComments itemId={p.id} initial={p.comments} />
+    </div>
+  );
 }
 
 export function WorkflowItemRow(p: Props) {
@@ -88,12 +259,15 @@ export function WorkflowItemRow(p: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
 
-  function toggle() {
+  function markDone(next: boolean) {
     setError(null);
-    const next = !done;
     setDone(next);
     start(async () => {
-      await toggleItemDoneAction({ id: p.id, done: next });
+      const result = await toggleItemDoneAction({ id: p.id, done: next });
+      if (!result.ok) {
+        setDone(!next);
+        setError(result.error ?? 'Änderung fehlgeschlagen.');
+      }
     });
   }
 
@@ -118,21 +292,6 @@ export function WorkflowItemRow(p: Props) {
     });
   }
 
-  const [dueDateIso, setDueDateIso] = useState(p.dueDate ? p.dueDate.slice(0, 10) : '');
-  const [editingDue, setEditingDue] = useState(false);
-  const dueDateObj = dueDateIso ? new Date(dueDateIso + 'T00:00:00') : null;
-  const overdue = !done && dueDateObj && dueDateObj.getTime() < Date.now();
-  const KindIcon = KIND_ICON[p.kind];
-
-  function saveDue(value: string) {
-    const next = value || null;
-    setDueDateIso(value);
-    setEditingDue(false);
-    start(async () => {
-      await setItemDueDateAction({ id: p.id, dueDate: next });
-    });
-  }
-
   // Wann zeigen wir den Häkchen-Checkmark vs. einen Action-Button?
   const isTaskLike = p.kind === 'TASK';
   const isUpload = p.kind === 'DOCUMENT_UPLOAD';
@@ -146,118 +305,20 @@ export function WorkflowItemRow(p: Props) {
 
   return (
     <li className="px-4 py-3 flex items-start gap-3">
-      {/* Linke Spalte: Status-Anzeige */}
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={isPending || (!isTaskLike && !done)}
-        className={
-          done
-            ? 'mt-0.5 w-5 h-5 rounded border-2 border-emerald-600 bg-emerald-600 text-white flex items-center justify-center shrink-0'
-            : 'mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-brand-600 shrink-0 disabled:cursor-not-allowed disabled:opacity-50'
-        }
-        aria-label={done ? 'Erledigt — klicken zum Zurücksetzen' : 'Als erledigt markieren'}
-        title={
-          isTaskLike
-            ? 'Manuelle Aufgabe — direkt abhaken'
-            : done
-              ? 'Erledigt — zum Zurücksetzen klicken'
-              : 'Diese Art Schritt wird über den Button rechts angestoßen'
-        }
-      >
-        {done && <Check className="h-3 w-3" />}
-      </button>
+      <ItemCompletionButton
+        done={done}
+        isTaskLike={isTaskLike}
+        isPending={isPending}
+        onToggle={() => markDone(!done)}
+      />
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <KindIcon className="h-3.5 w-3.5 text-disabled shrink-0" />
-          <p
-            className={
-              done ? 'text-sm text-disabled line-through' : 'text-sm font-medium text-primary'
-            }
-          >
-            {p.title}
-          </p>
-          {!isTaskLike && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-muted bg-gray-100 rounded px-1.5 py-0.5">
-              {KIND_LABEL[p.kind]}
-            </span>
-          )}
-          {p.n8nEvent && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 rounded px-1.5 py-0.5 inline-flex items-center gap-0.5">
-              <Zap className="h-2.5 w-2.5" />
-              {p.n8nEvent}
-            </span>
-          )}
-          {p.skill && <SkillBadge label={p.skill.label} color={p.skill.color} />}
-          {/* Fälligkeit — Klick öffnet Datum-Picker (Inline-Override pro Item) */}
-          {editingDue ? (
-            <input
-              type="date"
-              value={dueDateIso}
-              onChange={(e) => saveDue(e.target.value)}
-              onBlur={() => setEditingDue(false)}
-              autoFocus
-              className="text-xs border border-default rounded px-1.5 py-0.5 bg-surface"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditingDue(true)}
-              className={
-                overdue
-                  ? 'text-xs text-red-700 font-medium hover:underline cursor-pointer'
-                  : 'text-xs text-muted hover:text-secondary hover:underline cursor-pointer'
-              }
-              title="Klicken, um Frist zu ändern"
-            >
-              {dueDateObj ? `fällig ${fmtDateShort(dueDateObj)}` : '+ Frist setzen'}
-            </button>
-          )}
-        </div>
-        {p.description && !done && <p className="text-xs text-muted mt-1">{p.description}</p>}
-        {waitsForExternal && (
-          <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 inline-flex items-center gap-1">
-            wartet —
-            {triggeredRequestId && (
-              <Link
-                href={`/staff/requests/${triggeredRequestId}`}
-                className="hover:underline inline-flex items-center gap-0.5"
-              >
-                Anforderung öffnen <ExternalLink className="h-3 w-3" />
-              </Link>
-            )}
-            {!triggeredRequestId && p.kind === 'DOCUMENT_UPLOAD' && (
-              <span>Dokument-Upload offen</span>
-            )}
-          </p>
-        )}
-        {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
-        {p.documents.length > 0 && (
-          <div className="mt-2 space-y-1">
-            <p className="text-[10px] uppercase tracking-wide text-disabled">
-              Hochgeladene Dateien ({p.documents.length})
-            </p>
-            <ul className="space-y-0.5">
-              {p.documents.map((d) => (
-                <li key={d.id} className="flex items-center gap-2 text-xs">
-                  <FileText className="h-3 w-3 text-disabled shrink-0" />
-                  <Link
-                    href={`/staff/documents/${d.id}`}
-                    className="text-brand-700 dark:text-brand-300 hover:underline truncate flex-1"
-                  >
-                    {d.title}
-                  </Link>
-                  <span className="text-[10px] text-disabled shrink-0">
-                    {fmtDateTimeShort(new Date(d.createdAt))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <WorkflowItemComments itemId={p.id} initial={p.comments} />
-      </div>
+      <WorkflowItemDetails
+        item={p}
+        done={done}
+        waitsForExternal={waitsForExternal}
+        triggeredRequestId={triggeredRequestId}
+        error={error}
+      />
 
       {/* Rechte Spalte: Action-Button + Assignee */}
       <div className="shrink-0 flex items-center gap-2">
@@ -280,13 +341,7 @@ export function WorkflowItemRow(p: Props) {
             itemTitle={p.title}
             expectedClassification={String(p.config['expectedClassification'] ?? 'GENERAL')}
             onUploaded={() => {
-              if (!done) {
-                setDone(true);
-                // Item als erledigt markieren — idempotent, mehrfacher Aufruf schadet nicht
-                start(async () => {
-                  await toggleItemDoneAction({ id: p.id, done: true });
-                });
-              }
+              if (!done) markDone(true);
             }}
             buttonLabel={p.documents.length === 0 ? 'Hochladen' : 'Weitere Datei'}
           />

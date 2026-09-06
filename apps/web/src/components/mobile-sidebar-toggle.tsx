@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { AppPortal } from '@/components/ui/modal';
@@ -49,28 +49,33 @@ export function scheduleSidebarInitialFocus(
  * Steuert die Sichtbarkeit der `<aside>` über Body-Class `sidebar-open`.
  * CSS in globals.css übernimmt das Verstecken/Anzeigen via media-query.
  */
+const MOBILE_QUERY = '(max-width: 767px)';
+function subscribeViewport(onChange: () => void) {
+  const media = window.matchMedia(MOBILE_QUERY);
+  media.addEventListener('change', onChange);
+  return () => media.removeEventListener('change', onChange);
+}
+function readMobileViewport() {
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+// The sidebar belongs to the persistent layout and is available after hydration.
+const subscribeSidebar = () => () => {};
+const readSidebar = () => document.getElementById('app-sidebar');
+
 export function MobileSidebarToggle() {
   const [open, setOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const [sidebar, setSidebar] = useState<HTMLElement | null>(null);
+  const isMobile = useSyncExternalStore(subscribeViewport, readMobileViewport, () => false);
+  const sidebar = useSyncExternalStore(subscribeSidebar, readSidebar, () => null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
   const pathname = usePathname();
 
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 767px)');
-    const sidebarNode = document.getElementById('app-sidebar');
-    setSidebar(sidebarNode);
-
-    const updateViewport = () => {
-      setIsMobile(media.matches);
-      if (!media.matches) setOpen(false);
-    };
-    updateViewport();
-    media.addEventListener('change', updateViewport);
-    return () => media.removeEventListener('change', updateViewport);
-  }, []);
+  const [previousLocation, setPreviousLocation] = useState({ pathname, isMobile });
+  if (previousLocation.pathname !== pathname || previousLocation.isMobile !== isMobile) {
+    setPreviousLocation({ pathname, isMobile });
+    if (previousLocation.pathname !== pathname || !isMobile) setOpen(false);
+  }
 
   useEffect(() => {
     const main = document.getElementById('main-content');
@@ -164,11 +169,6 @@ export function MobileSidebarToggle() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isMobile, open, sidebar]);
-
-  // Beim Pfadwechsel automatisch schließen
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
 
   return (
     <>

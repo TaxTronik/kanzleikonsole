@@ -1,9 +1,8 @@
 // Fachkatalog: GWG-OCR-ASSIST-001, GWG-IDENTIFICATION-EVIDENCE-001
 import { test, expect } from '@playwright/test';
 
-const fixture = process.env['E2E_IDENTITY_FIXTURE_URL'];
+const fixture = process.env['E2E_IDENTITY_FIXTURE_URL'] ?? 'http://127.0.0.1:4319';
 test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
-  test.skip(!fixture, 'Separaten identity-smoke-server starten; keine Kanzleidaten verwenden.');
   test.setTimeout(120_000);
 
   for (const format of ['pdf', 'png', 'jpg']) {
@@ -13,7 +12,7 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
     }) => {
       const requests: string[] = [];
       context.on('request', (request) => requests.push(request.url()));
-      await page.goto(fixture!);
+      await page.goto(fixture);
       await page.getByRole('combobox', { name: 'Testformat' }).selectOption(format);
       await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
       await page.getByRole('button', { name: 'Daten erkennen', exact: true }).click();
@@ -29,7 +28,7 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
         '{"fullName":"Vorhandener Name","birthDate":"1964-08-12"}',
       );
       const remote = requests.filter(
-        (url) => /^https?:/.test(url) && new URL(url).origin !== new URL(fixture!).origin,
+        (url) => /^https?:/.test(url) && new URL(url).origin !== new URL(fixture).origin,
       );
       expect(remote).toEqual([]);
       expect(requests.some((url) => url.includes('/identity-assets/ocr-worker.js'))).toBe(true);
@@ -39,7 +38,7 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
   test('zwei PDF-Seiten binden dieselbe Quelle mit eigener Drehung und Ausschnitt', async ({
     page,
   }) => {
-    await page.goto(fixture!);
+    await page.goto(fixture);
     await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
     await page.getByRole('button', { name: 'Ausschnitt als Vorderseite übernehmen' }).click();
     await page.getByRole('combobox', { name: 'Ausweisseite', exact: true }).selectOption('back');
@@ -56,7 +55,7 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
   });
 
   test('Abbruch während Initialisierung gibt die manuelle Weiterarbeit frei', async ({ page }) => {
-    await page.goto(fixture!);
+    await page.goto(fixture);
     await page.getByRole('combobox', { name: 'Testformat' }).selectOption('png');
     await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
     await page.getByRole('button', { name: 'Daten erkennen', exact: true }).click();
@@ -72,7 +71,7 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
   test('unlesbare PDF lässt vorhandene Eingaben unverändert und blockiert keinen neuen Versuch', async ({
     page,
   }) => {
-    await page.goto(fixture!);
+    await page.goto(fixture);
     await page.getByRole('combobox', { name: 'Testformat' }).selectOption('broken');
     await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
     await expect(page.getByRole('alert')).toBeVisible();

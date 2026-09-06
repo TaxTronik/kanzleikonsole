@@ -46,7 +46,7 @@
 ### [AUDIT-VERIFY-ALERT-001 — Audit-Ketten regelmäßig prüfen und Abweichungen alarmieren](regeln/audit-und-assurance/audit-verify-alert-001-prueflauf-und-alarm.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
-- Umsetzung: **Teilweise umgesetzt**
+- Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet.
 
@@ -62,7 +62,7 @@
 ### [BWA-PROJECTION-001 — BWA-Hochrechnungen nur als bandbreitenbehaftete Szenarien ausweisen](regeln/bwa-und-planung/bwa-projection-001-szenariorechnung.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
-- Umsetzung: **Weicht ab**
+- Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: TaxTronik stellt zwei bewusst einfache Szenarien bereit: eine lineare Jahres-Run-rate aus der jüngsten unterjährigen Periode und eine lineare Regression aus mindestens zwei vollständigen Vorjahren. Beide zeigen einen Schätzwert und eine heuristische Spanne. Die Werte sind keine Garantie für Ergebnis, Steuer, Liquidität oder Saisonalität.
 
@@ -119,6 +119,13 @@
 
 ## Dokumente und Aufbewahrung
 
+### [CLIENT-ASSISTANCE-001 — Mandantenangaben und externe Word-Fassungen getrennt dokumentieren](regeln/dokumente-und-aufbewahrung/client-assistance-001-versionierte-mandantenangaben.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Assistenten dokumentieren Tatsachenangaben für Bewirtungsergänzungen, Eigenbelege und Mandantenverfahren. Einreichung, Kanzleiprüfung, Archivierung und externe Word-Bearbeitung bleiben getrennt. Keine technische Handlung stellt automatisch steuerliche Anerkennung, Vorsteuerabzug oder GoBD-Konformität fest.
+
 ### [DOC-OBJECT-LOCK-001 — Geschützte Dokumentbytes mit passendem Object Lock speichern](regeln/dokumente-und-aufbewahrung/doc-object-lock-001-speicherschutz.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
@@ -161,6 +168,20 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: TaxTronik kann einen datierten Markdown-Baustein aus dem aktuell erfassten Systemzustand und versionierten Herstellertexten erzeugen. Er enthält unter anderem Version, Module, Mengengerüst, Backup-/Drillstatus, Auditprüfung und TSA-Konfiguration. Nach GoBD muss die Verfahrensdokumentation jedoch das tatsächlich eingesetzte organisatorische und technische Verfahren vollständig, schlüssig, verständlich, aktuell und historisch nachvollziehbar beschreiben; der Generator allein erfüllt das nicht.
 
+### [MAIL-INBOX-001 — Unbestätigte Posteingänge prüfen und bewusst einem Mandat zuordnen](regeln/dokumente-und-aufbewahrung/mail-inbox-001-bestaetigte-ablage.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: E-Mail-Absender und Aliase sind unbestätigte Hinweise. Sie erteilen keinen Portalzugriff und bestätigen keine Mandantenantwort. Eingänge bleiben zunächst im internen Postfachbestand. Ein Archivdokument entsteht ausschließlich durch eine berechtigte, ausdrückliche Zuordnung.
+
+### [PORTAL-INBOX-SUBMISSION-001 — Mandantenpost technisch entgegennehmen und erst nach Kanzleientscheidung ablegen](regeln/dokumente-und-aufbewahrung/portal-inbox-submission-001-technischer-eingang.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Eine abgesendete Portalnachricht ist ein technischer Eingang, keine fachliche Annahme, Fristbestätigung, Vollständigkeitsbestätigung oder Erledigung einer Anforderung. Anlagen bleiben bis zur ausdrücklichen Entscheidung einer berechtigten Kanzleiperson in einem getrennten Staging-Bestand. Erst eine Annahme darf ein zugeordnetes Document erzeugen. Diese ausdrückliche Staff-Entscheidung klassifiziert das Dokument und gibt es nach vollständig erfolgreicher Persistierung auf Mandantenebene frei; bis dahin bleibt es privat.
+
 ## Fristen und Bescheide
 
 ### [TAX-CONTROL-STATUS-001 — Offene und erledigte Fristen beweisorientiert aus dem Quellvorgang ableiten](regeln/fristen-und-bescheide/tax-control-status-001-fristenkontrollbuch.md)
@@ -197,6 +218,13 @@
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: ab 2026-01-01
 - Kurzfassung: Ein nach § 122a AO zum Datenabruf bereitgestellter Verwaltungsakt gilt grundsätzlich am vierten Tag nach seiner Bereitstellung als bekannt gegeben. Fällt dieser Tag auf einen Sonnabend, Sonntag oder am regelmäßig maßgeblichen Empfängerort geltenden gesetzlichen Feiertag, ist § 108 Abs. 3 AO zu prüfen.
+
+### [TAX-NOTICE-DECISION-001 — Bescheid-Rückmeldungen an Kontakt und Dokumentstand binden](regeln/fristen-und-bescheide/tax-notice-decision-001-persoenliche-rueckmeldung.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Eine berechtigte Kanzleiperson erstellt zu einem GEPRUEFT-Bescheid mit berechnetem Fristvorschlag ohne offenen manuellen Prüfbedarf eine persönliche Rückfrage. Erforderlich sind eine Erklärung, ein aktiver Mandantenkontakt, eine bereits geteilte saubere Dokumentfassung und eine künftige Antwortfrist, die den gespeicherten Einspruchsfristtag nicht überschreitet.
 
 ## Geldwäschegesetz
 
@@ -270,6 +298,13 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: TaxTronik erzeugt aus sechs manuell beantworteten Risikofaktoren einen reproduzierbaren Vorschlag für LOW, MEDIUM oder HIGH. Eine PEP-Angabe erzwingt unabhängig vom Summenscore HIGH. Erst nach vollständiger Identifizierungs- und Risikoprüfung kann der Entwurf eingereicht und durch den dem Mandanten zugeordneten Berufsträger ausdrücklich freigegeben werden.
 
+### [GWG-SCREENING-001 — Lokale EU-Namenshinweise und manuelle PEP-Nachweise von GwG-Freigaben trennen](regeln/gwg/gwg-screening-001-lokaler-abgleich.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Ein Namensabgleich ist keine rechtliche Feststellung einer Sanktionsbetroffenheit. Die lokale EU-Liste liefert Kandidaten; PEP-Recherchen werden manuell belegt. Prüfläufe und Beurteilungen werden angehängt, nicht überschrieben.
+
 ### [GWG-SELF-ONBOARDING-001 — Mandantendaten per gebundener Einladung nur als Prüfentwurf einreichen](regeln/gwg/gwg-self-onboarding-001-einreichung.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
@@ -293,6 +328,13 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Eine alte Zuständigkeit darf nicht dauerhaft Zugang zu einem später vertraulichen oder RESTRICTED-Mandanten vermitteln. Mandantenbezogene Notifications werden daher an eine bekannte Fachressource und deren Mandanten gebunden; Anzeige und Mutation verlangen den aktuellen Clientzugriff. Technisch globale oder persönliche Systemmeldungen bleiben ein getrennter Scope.
 
+### [ACCESS-SEARCH-SCOPE-001 — Suche auf aktuell autorisierte Metadaten begrenzen](regeln/mandat-und-zugriff/access-search-scope-001-autorisierungsidentische-suche.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Ein Suchtreffer darf nie mehr verraten als der aktuelle Akteur beim direkten Öffnen des Objekts sehen dürfte. Suche, Filter, Trefferzähler, Sortierung und Deep-Link verwenden deshalb denselben Tenant-, Mandanten-, Rollen-, Einzelrechte-, Kontakt-, Feature- und Lebenszyklus-Scope wie das Zielobjekt.
+
 ### [ACCESS-STAFF-PERMISSION-001 — Aktionsrechte getrennt vom Mandantenzugriff prüfen](regeln/mandat-und-zugriff/access-staff-permission-001-einzelrechte.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
@@ -307,6 +349,13 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Anwendungszugriffe auf Tenantdaten laufen in einer Transaktion mit gesetztem Tenant-, Akteur- und Akteurtyp-Kontext. PostgreSQL erzwingt auf den erfassten Tabellen Row-Level-Security auch für den Tabellenowner der App-Rolle. Die Schicht ist ein technischer Backstop gegen Cross-Tenant-Zugriffe, kein Ersatz für Objektberechtigungen innerhalb einer Kanzlei.
 
+### [CLIENT-FEEDBACK-001 — Freiwillige Service-Rückmeldungen begrenzt und persönlich einholen](regeln/mandat-und-zugriff/client-feedback-001-freiwillige-service-rueckmeldung.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Bei aktiviertem feedbackSurveys kann eine berechtigte Kanzleiperson einen aktiven Mandantenkontakt für einen Workflow auswählen. Ein abgeschlossener Workflow erzeugt die Einladung sofort; bei ACTIVE oder PAUSED wird der Kontakt für den bestehenden Abschlussübergang vorgemerkt.
+
 ### [CLIENT-MANDATE-LIFECYCLE-001 — Mandatsende auditieren und als nachgelagerten Workflow-Anker verwenden](regeln/mandat-und-zugriff/client-mandate-lifecycle-001-mandatsende.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
@@ -314,12 +363,47 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: TaxTronik speichert ein Mandatsende am Mandanten, protokolliert Setzen und Zurücknehmen und nutzt den Zeitpunkt als Anker für Aufbewahrungs- und Anonymisierungsvorschläge. Eine Wiederaufnahme setzt den Wert auf null. Das Feld ist derzeit kein einheitlicher terminaler Status für alle Fachmodule.
 
+### [CLIENT-OFFBOARDING-001 — Mandatsübergabe vorbereiten und Mandatsende getrennt bestätigen](regeln/mandat-und-zugriff/client-offboarding-001-gepruefte-uebergabe.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: ADMIN/PARTNER bereitet einen überprüfbaren Übergabeumfang vor und bestätigt das Mandatsende anschließend gesondert. Die Vorbereitung sammelt offene Steuertermine, Bescheid-/Einspruchskontrollen, Anforderungen, aktive Portal-Kontakte und nicht vernichtete GwG-Prüfungen. Der Abschluss setzt das tatsächliche Mandatsende und sperrt Portalzugänge über den aktuellen Mandatsstatus.
+
 ### [FORM-PRESUBMIT-UPLOAD-001 — Eigene Formularuploads nur vor der Abgabe kontrolliert verwerfen](regeln/mandat-und-zugriff/form-presubmit-upload-001-upload-verwerfen.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Ein Mandant darf einen eigenen Formularupload vor dem Absenden wieder entfernen. Die Datei muss eindeutig zu seiner Submission und dem konkreten FILE-Feld gehören; Submission und gebundene Anforderung müssen noch offen sein. Nach Submit oder Request-Abschluss verweigern App und Datenbank den Pfad.
+
+### [FORM-SCHEMA-SNAPSHOT-001 — Neue Formularvorgänge an einen unveränderlichen Vorlagenstand binden](regeln/mandat-und-zugriff/form-schema-snapshot-001-eingefrorene-formulare.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Jede neu angelegte FormSubmission erhält in der Datenbank einen Snapshot aus Name, Beschreibung, Einleitung und sämtlichen Felddefinitionen einschließlich Pflichtfeldern, Optionen und Grenzen. Anzeige, Validierung und Dateifeldbindung verwenden denselben gespeicherten Stand. Schema und Vorlagen-ID können nach Anlage nicht geändert werden.
+
+### [KNOWLEDGE-CONTEXT-001 — Interne Kanzleileitfäden kontextbezogen anzeigen](regeln/mandat-und-zugriff/knowledge-context-001-interne-leitfaeden.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: ADMIN/PARTNER verknüpft höchstens zehn veröffentlichte Wissensartikel mit einem Workflow-Schritt oder einer Anforderungsvorlage. Die neuen Funktionen verlangen knowledgeContext und knowledge; Workflowbezüge zusätzlich workflows. Alle Verweise müssen innerhalb desselben Tenants liegen.
+
+### [MANDATE-STRUCTURE-001 — Explizite Mandanten- und Beteiligungsstrukturen getrennt von GwG-Entscheidungen versionieren](regeln/mandat-und-zugriff/mandate-structure-001-versionierte-struktur.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Eine interne Arbeitsstruktur verbindet ausdrücklich gewählte Mandanten sowie manuell erfasste Personen und externe Organisationen. Kanten beschreiben direkte Kapitalanteile, Stimmrechte oder sonstige Kontrolle. Das Speichern erzeugt eine neue Version; frühere Versionen werden nicht ersetzt. Eine Struktur ist weder Identitätsprüfung noch automatische Feststellung wirtschaftlich Berechtigter oder steuerlicher Organschaft.
+
+### [PAYROLL-INTAKE-001 — Personalfragebogen mit getrennten Angaben und gesperrtem DATEV-Importgate](regeln/mandat-und-zugriff/payroll-intake-001-getrennter-personalfragebogen.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Ein standardmäßig deaktiviertes Modul bereitet einzelne Mitarbeiterneuanlagen für DATEV Lohn und Gehalt vor. Arbeitgeber und Arbeitnehmer geben getrennte Daten ab; nur berechtigte Lohnbearbeiter sehen den vollständigen Prüfstand. Das DATEV-Importgate bleibt mangels konkreter Formatspezifikation und realer Importprobe gesperrt.
 
 ### [REQ-INTERNAL-COMMENT-001 — Interne Anforderungskommentare vom Mandantenkanal trennen](regeln/mandat-und-zugriff/req-internal-comment-001-interne-kommentare.md)
 
@@ -341,6 +425,27 @@
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Steuerdaten werden in einer eigenen Sektion geführt. Die USt-ID bleibt einmal am Mandanten gespeichert; mehrere Steuernummern mit Bezeichnung und Finanzamt werden als getrennte Steuerverbindungen geführt. Eine reine Steuerdatenänderung löst keinen neuen GwG-Prüfzyklus aus. Diese Trennung ist eine ungeprüfte Produktregel, keine vollständige Aussage über gesetzliche Aktualisierungspflichten.
+
+### [WORKFLOW-DEPENDENCY-001 — Mandatsübergreifende Workflow-Bereitschaft aus ausdrücklich verbundenen Vorgängern anzeigen](regeln/mandat-und-zugriff/workflow-dependency-001-mandatsuebergreifende-bereitschaft.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Die Kanzlei kann Schritte verschiedener Mandanten ausdrücklich miteinander verbinden. Die Arbeitsübersicht zeigt einen abhängigen Schritt als bereit, wenn sämtliche dokumentierten Vorgänger erledigt und deren Vorgänge weder pausiert noch abgebrochen sind. Es werden keine Steuerfristen, Workflows oder Mandantenantworten automatisch abgeschlossen.
+
+### [WORKFLOW-LIFECYCLE-001 — Workflow-Abschluss aus erledigten Schritten atomar ableiten und explizite Pausen erhalten](regeln/mandat-und-zugriff/workflow-lifecycle-001-konsistenter-abschluss.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Ein aktiver Workflow mit mindestens einem Schritt wird genau dann technisch abgeschlossen, wenn sämtliche vorhandenen Schritte erledigt sind. Der Abschluss betrifft den Arbeitsvorgang und trifft keine Aussage zur materiellen Vollständigkeit, Rechtsfrist oder fachlichen Freigabe.
+
+### [YEAR-END-CAMPAIGN-001 — Jahreswechsel-Checklisten nachvollziehbar und idempotent ausrollen](regeln/mandat-und-zugriff/year-end-campaign-001-checklisten-rollout.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: ADMIN/PARTNER legt eine Kampagne mit Name, Jahr, aktivem Formular und internem Zieltermin an. Der vollständige Formularstand wird dabei eingefroren. Vor dem Ausrollen wählt die Person ausdrücklich maximal 200 zugängliche aktive Mandate mit freigeschaltetem Portal aus.
 
 ## Rechnungen
 
@@ -375,7 +480,7 @@
 ### [INV-PORTAL-SHARING-001 — Rechnungen erst nach Ausstellung im Mandantenportal zeigen](regeln/rechnungen/inv-portal-sharing-001-mandantensicht.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
-- Umsetzung: **Weicht ab**
+- Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Ein Rechnungsentwurf ist ausschließlich kanzleiintern und darf dem Mandanten nicht als Rechnung angezeigt oder als Archivbeleg geteilt werden. Wurde eine Rechnung bereits versendet, bleibt sie auch nach einem späteren Storno als historischer Beleg im Portal sichtbar. Ein nie versendeter stornierter Entwurf bleibt dagegen intern.
 
@@ -384,7 +489,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
-- Kurzfassung: Eine bereits ausgelieferte In-App-Rechnung wird nicht inhaltlich geändert. TaxTronik erzeugt stattdessen einen neuen Korrekturbeleg mit eigener Nummer, invertierten Positions- und Gesamtbeträgen, XRechnung-TypeCode 381 und Referenz auf die ursprüngliche Rechnungsnummer. Erst wenn der Korrekturbeleg archiviert und auf SENT festgeschrieben ist, wird das Original atomar auf CANCELLED gesetzt.
+- Kurzfassung: Eine bereits ausgelieferte In-App-Rechnung wird nicht inhaltlich geändert. TaxTronik erzeugt stattdessen einen neuen Korrekturbeleg mit eigener Nummer, invertierten Positions- und Gesamtbeträgen, XRechnung-TypeCode 384 und Referenz auf die ursprüngliche Rechnungsnummer. Erst wenn der Korrekturbeleg archiviert und auf SENT festgeschrieben ist, wird das Original atomar auf CANCELLED gesetzt.
 
 ### [INV-TIME-ENTRY-CLAIM-001 — Zeiteinträge atomar genau einem Rechnungsentwurf zuordnen](regeln/rechnungen/inv-time-entry-claim-001-zeiteintraege.md)
 
@@ -399,6 +504,13 @@
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: TaxTronik berechnet In-App-Rechnungsbeträge serverseitig aus den Positionen. Nettobeträge werden nach Umsatzsteuersatz gruppiert, die Steuer wird einmal je Gruppe auf zwei Dezimalstellen gerundet und die Kopfwerte werden aus den Gruppensummen gebildet. Für E-Rechnungen werden technische Kategorien für steuerpflichtige, nullbesteuerte, befreite und Reverse-Charge-Positionen abgeleitet.
+
+### [STBVV-CALCULATION-001 — Aktuellen StBVV-Katalog nachvollziehbar kalkulieren und als Entwurf übernehmen](regeln/rechnungen/stbvv-calculation-001-gebuehrenkatalog.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Der Katalog enthält alle aktiven Gebührenpositionen der aktuellen StBVV. Das Programm berechnet überprüfbare Beträge, entscheidet jedoch nicht über Gebührenanspruch, angemessenen Satz oder Wirksamkeit einer Vereinbarung.
 
 ## Subsumtion und TCMS-Produktgrenzen
 
@@ -466,3 +578,10 @@
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Vor dem Versand friert TaxTronik die konkret angezeigte Vollmachtsfassung ein. Bei einer Textvollmacht enthält der Snapshot den vollständigen Text, bei einer PDF-Vollmacht die konkrete Dokumentversions-ID und deren SHA-256. Der öffentliche Bestätigungsprozess zeigt und verarbeitet danach nur noch diese Fassung.
+
+### [VDB-PREPARATION-001 — VDB-Vorbereitung und extern belegte Meldeschritte unabhängig vom Signaturstatus dokumentieren](regeln/vollmachten-und-signaturen/vdb-preparation-001-externe-nachweise.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Das Modul dokumentiert eine interne Vorbereitung und nachgewiesene externe Meldeschritte. Es erzeugt keine als VDB-kompatibel ausgegebenen Importdateien und besitzt keine aktive Übermittlungsschnittstelle. Ein manuell dokumentierter Status wird nicht als automatisch verifizierte Behördenbestätigung dargestellt.

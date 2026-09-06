@@ -1,10 +1,16 @@
 ﻿'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X, CalendarPlus, Trash2 } from 'lucide-react';
 import { DateTimePicker } from '@/components/datetime-picker';
-import { createAppointmentRequestAction, type ActionResult } from './actions';
+import {
+  FieldError,
+  FormErrorSummary,
+  fieldErrorId,
+  fieldErrorProps,
+} from '@/components/form-errors';
+import { createAppointmentRequestAction, type AppointmentRequestActionResult } from './actions';
 
 interface StaffOption {
   id: string;
@@ -36,21 +42,18 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
   const router = useRouter();
   const [slotCount, setSlotCount] = useState(1);
   const [open, setOpen] = useState(false);
-  const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    createAppointmentRequestAction,
-    null,
-  );
-
-  // Nach erfolgreichem Submit: Formular schließen + refresh. Bewusst in
-  // useEffect, NICHT im Render-Body — sonst gibt es eine
-  // „setState while rendering a different component"-Warnung.
-  useEffect(() => {
-    if (state?.ok) {
+  const [state, formAction, isPending] = useActionState<
+    AppointmentRequestActionResult | null,
+    FormData
+  >(async (previous, data) => {
+    const result = await createAppointmentRequestAction(previous, data);
+    if (result.ok) {
       setOpen(false);
       setSlotCount(1);
       router.refresh();
     }
-  }, [state, router]);
+    return result;
+  }, null);
 
   return (
     <div className="card overflow-hidden">
@@ -72,7 +75,22 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
       </div>
 
       {open && (
-        <form action={formAction} className="p-5 space-y-4">
+        <form action={formAction} className="p-5 space-y-4" aria-busy={isPending}>
+          <FormErrorSummary
+            error={state?.error}
+            fieldErrors={state?.fieldErrors}
+            fieldIds={{
+              subject: 'appointment-request-subject',
+              preferredStaffId: 'appointment-request-preferred-staff',
+              notes: 'appointment-request-notes',
+              ...Object.fromEntries(
+                Array.from({ length: slotCount }).flatMap((_, index) => [
+                  [`slot${index}_starts`, `appointment-slot-${index}-starts`],
+                  [`slot${index}_ends`, `appointment-slot-${index}-ends`],
+                ]),
+              ),
+            }}
+          />
           <div>
             <label className="label" htmlFor="appointment-request-subject">
               Anliegen / Betreff
@@ -85,7 +103,9 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
               maxLength={200}
               className="input"
               placeholder='z. B. „Bilanzbesprechung", „Beratung Existenzgründung"'
+              {...fieldErrorProps('subject', state?.fieldErrors)}
             />
+            <FieldError name="subject" errors={state?.fieldErrors?.subject} />
           </div>
 
           <div>
@@ -97,7 +117,9 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
               name="preferredStaffId"
               defaultValue=""
               className="input"
-              aria-describedby="appointment-request-preferred-staff-hint"
+              {...fieldErrorProps('preferredStaffId', state?.fieldErrors, {
+                describedBy: 'appointment-request-preferred-staff-hint',
+              })}
             >
               <option value="">— egal —</option>
               {staffOptions.map((s) => (
@@ -112,6 +134,7 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
             >
               Ohne Auswahl entscheidet die Kanzlei, wer den Termin übernimmt.
             </p>
+            <FieldError name="preferredStaffId" errors={state?.fieldErrors?.preferredStaffId} />
           </div>
 
           <fieldset className="space-y-3">
@@ -148,6 +171,16 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                       defaultValue={defaultStartFor(i)}
                       required
                       minDate={new Date()}
+                      ariaInvalid={Boolean(state?.fieldErrors?.[`slot${i}_starts`]?.length)}
+                      ariaDescribedBy={
+                        state?.fieldErrors?.[`slot${i}_starts`]?.length
+                          ? fieldErrorId(`slot${i}_starts`)
+                          : undefined
+                      }
+                    />
+                    <FieldError
+                      name={`slot${i}_starts`}
+                      errors={state?.fieldErrors?.[`slot${i}_starts`]}
                     />
                   </div>
                   <div>
@@ -163,6 +196,16 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                       defaultValue={defaultEndFor(i)}
                       required
                       minDate={new Date()}
+                      ariaInvalid={Boolean(state?.fieldErrors?.[`slot${i}_ends`]?.length)}
+                      ariaDescribedBy={
+                        state?.fieldErrors?.[`slot${i}_ends`]?.length
+                          ? fieldErrorId(`slot${i}_ends`)
+                          : undefined
+                      }
+                    />
+                    <FieldError
+                      name={`slot${i}_ends`}
+                      errors={state?.fieldErrors?.[`slot${i}_ends`]}
                     />
                   </div>
                 </div>
@@ -191,14 +234,10 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
               maxLength={2000}
               className="input"
               placeholder="Worum geht es? Wer ist dabei? Online oder vor Ort?"
+              {...fieldErrorProps('notes', state?.fieldErrors)}
             />
+            <FieldError name="notes" errors={state?.fieldErrors?.notes} />
           </div>
-
-          {state && !state.ok && (
-            <p className="text-xs text-red-700" role="alert">
-              {state.error}
-            </p>
-          )}
           {state && state.ok && (
             <p className="text-xs text-emerald-700" role="status" aria-live="polite">
               Anfrage verschickt — die Kanzlei meldet sich.

@@ -25,6 +25,8 @@ declare module 'next-auth' {
       staffId?: string;
       roles?: string[];
       permissions?: string[];
+      authMethod?: 'totp' | 'backup_code' | 'dev_skip_totp' | 'security_key';
+      authRevision?: number;
       // Portal-Surface
       contactId?: string;
       clientId?: string;
@@ -39,6 +41,8 @@ declare module 'next-auth/jwt' {
     staffId?: string;
     roles?: string[];
     permissions?: string[];
+    authMethod?: 'totp' | 'backup_code' | 'dev_skip_totp' | 'security_key';
+    authRevision?: number;
     contactId?: string;
     clientId?: string;
   }

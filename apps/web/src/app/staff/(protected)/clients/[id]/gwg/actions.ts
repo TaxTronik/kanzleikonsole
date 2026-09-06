@@ -26,6 +26,7 @@ import {
 import { notifyMany } from '@/server/notifications/service';
 import { gwgLegalEntityRevision, gwgRiskRevision } from '@/server/gwg/revisions';
 import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
+import { assertGwgScreeningReadyTx } from '@/server/screening/gwg-gate';
 import { syncGwgRepresentativesTx } from '@/server/gwg/representatives';
 import { cancelOpenGwgInvitesTx } from '@/server/gwg-onboarding/invite-lifecycle';
 import { organizeGwgDocumentsTx } from '@/server/gwg-onboarding/document-folders';
@@ -938,6 +939,9 @@ export async function verifyCheckAction(
       );
       if (decisionErrors.length > 0) throw new ActionError(decisionErrors.join(' '));
       if (check.riskLevel === null) throw new ActionError('Risikobewertung fehlt.');
+      // GWG-SCREENING-001: only the current, fully bound source/person evidence
+      // may support a new decision when the optional module is enabled.
+      await assertGwgScreeningReadyTx(tx, tenantId, check);
 
       // Die Begrüßung gehört ausschließlich zur ersten erfolgreichen
       // GwG-Freigabe. Bei einer Wiederholungsprüfung bleibt am Vorgänger der

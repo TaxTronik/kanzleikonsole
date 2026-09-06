@@ -174,15 +174,20 @@ export function NormRefList({
   // Katalog-Overlay (GET /v1/katalog/kuratierung): best-effort: zeigt, welche
   // Normen katalogweit (kanzlei) kuratiert sind — getrennt vom per-Fall-Zustand.
   // Scheitert der Call (Endpoint noch nicht live), bleibt das Overlay einfach leer.
-  const [overlay, setOverlay] = useState<KatalogOverlay | null>(null);
+  const [overlayResult, setOverlayResult] = useState<{
+    clientId: string;
+    katalogId: string;
+    value: KatalogOverlay;
+  } | null>(null);
+  const overlay =
+    overlayResult?.clientId === clientId && overlayResult.katalogId === katalogId
+      ? overlayResult.value
+      : null;
   const fetchOverlay = useCallback(() => {
-    if (!katalogId) {
-      setOverlay(null);
-      return;
-    }
+    if (!katalogId) return;
     katalogKuratierungAction({ clientId, katalogId })
       .then((r) => {
-        if (r.ok) setOverlay(buildKatalogOverlay(r));
+        if (r.ok) setOverlayResult({ clientId, katalogId, value: buildKatalogOverlay(r) });
       })
       .catch(() => {
         /* best-effort — kein Overlay */

@@ -104,24 +104,28 @@ export async function GET(req: NextRequest) {
         take: 5,
         orderBy: { createdAt: 'desc' },
       }),
-      tx.invoice.findMany({
-        where: {
-          ...clientNotDenied,
-          OR: [
-            { number: { contains: likeTerm, mode: 'insensitive' } },
-            { subject: { contains: likeTerm, mode: 'insensitive' } },
-          ],
-        },
-        select: {
-          id: true,
-          number: true,
-          subject: true,
-          status: true,
-          client: { select: { name: true } },
-        },
-        take: 5,
-        orderBy: { issueDate: 'desc' },
-      }),
+      // Das API ist selbst eine Datenoberflaeche und darf ein im Layout
+      // deaktiviertes Rechnungsmodul nicht durch Nummer/Betreff leaken.
+      modules.invoiceMode !== 'OFF'
+        ? tx.invoice.findMany({
+            where: {
+              ...clientNotDenied,
+              OR: [
+                { number: { contains: likeTerm, mode: 'insensitive' } },
+                { subject: { contains: likeTerm, mode: 'insensitive' } },
+              ],
+            },
+            select: {
+              id: true,
+              number: true,
+              subject: true,
+              status: true,
+              client: { select: { name: true } },
+            },
+            take: 5,
+            orderBy: { issueDate: 'desc' },
+          })
+        : Promise.resolve([]),
       // KB via FTS
       modules.knowledge
         ? tx.$queryRaw<Array<{ id: string; title: string; category_name: string | null }>>`

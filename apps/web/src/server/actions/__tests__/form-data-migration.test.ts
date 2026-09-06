@@ -107,16 +107,13 @@ describe('parseFormData-Migrationsrest', () => {
   it('misst den verbleibenden transformierten Rest und die gemeinsame Nutzung', () => {
     const { direct, shared } = inventory();
 
-    // Der Bescheid-Parser transformiert inzwischen zusaetzliche Abrufdaten und
-    // ist deshalb korrekt im transformierten Rest statt bei den exakten
-    // Feld-zu-Feld-Parses. Die Gesamtzahl der direkten Parses bleibt gleich;
-    // Der interne Anforderungskommentar und die neue tägliche
-    // Fristenabschlusskontrolle sowie die fünf neuen GwG-Personen- und
-    // Nachweisaktionen nutzen dagegen den gemeinsamen, strikt schema-basierten
-    // parseFormData-Helfer. GWG-SELF-ONBOARDING-001: Auch der Start der
-    // kanzleiinternen Erfassung verwendet diesen gemeinsamen Parser.
-    expect(direct).toHaveLength(55);
-    expect(direct.filter((call) => !call.exact)).toHaveLength(49);
-    expect(shared).toBe(39);
+    // Die 0.3.0-Formularmigration hat vier weitere transformierte Direkt-Parses
+    // durch den gemeinsamen, strikt schema-basierten parseFormData-Helfer
+    // ersetzt. Neue Inbox- und Expansion-Actions nutzen denselben Vertrag von
+    // Beginn an. Die Direkt-Restbaseline wird deshalb ausschließlich abgesenkt;
+    // die sechs bewusst klassifizierten exakten Sonderfälle bleiben unverändert.
+    expect(direct).toHaveLength(51);
+    expect(direct.filter((call) => !call.exact)).toHaveLength(45);
+    expect(shared).toBe(56);
   });
 });

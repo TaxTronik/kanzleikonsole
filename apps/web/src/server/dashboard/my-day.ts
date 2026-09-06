@@ -1,6 +1,6 @@
 import type { TxClient } from '@taxtronik/db';
 
-const MY_DAY_LIMIT = 20;
+const DEFAULT_MY_DAY_LIMIT = 20;
 
 export type MyDayEntry =
   | {
@@ -72,7 +72,9 @@ export async function loadMyDayEntries(
   deniedClientIds?: string[],
   now = new Date(),
   sources: MyDaySources = ALL_MY_DAY_SOURCES,
+  limit = DEFAULT_MY_DAY_LIMIT,
 ): Promise<MyDayEntry[]> {
+  const queryLimit = Math.max(1, Math.min(200, Math.trunc(limit)));
   const reminderAssignment = {
     OR: [
       { assignees: { some: { staffId } } },
@@ -93,7 +95,7 @@ export async function loadMyDayEntries(
             },
           },
           orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
-          take: MY_DAY_LIMIT,
+          take: queryLimit,
           select: {
             id: true,
             title: true,
@@ -113,7 +115,7 @@ export async function loadMyDayEntries(
               : reminderAssignment),
           },
           orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
-          take: MY_DAY_LIMIT,
+          take: queryLimit,
           select: {
             id: true,
             subject: true,
@@ -131,7 +133,7 @@ export async function loadMyDayEntries(
             ...nullableClientVisibility(deniedClientIds),
           },
           orderBy: { startsAt: 'asc' },
-          take: MY_DAY_LIMIT,
+          take: queryLimit,
           select: {
             id: true,
             title: true,
@@ -150,7 +152,7 @@ export async function loadMyDayEntries(
             ...nullableClientVisibility(deniedClientIds),
           },
           orderBy: { createdAt: 'asc' },
-          take: MY_DAY_LIMIT,
+          take: queryLimit,
           select: {
             id: true,
             subject: true,
@@ -209,5 +211,5 @@ export async function loadMyDayEntries(
       const byDate = a.sortAt.getTime() - b.sortAt.getTime();
       return byDate || a.title.localeCompare(b.title, 'de');
     })
-    .slice(0, MY_DAY_LIMIT);
+    .slice(0, queryLimit);
 }

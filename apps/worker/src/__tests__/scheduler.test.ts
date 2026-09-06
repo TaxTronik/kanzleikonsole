@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const queue = () => ({ upsertJobScheduler: vi.fn().mockResolvedValue(undefined) });
   return {
+    mailboxPollQueue: queue(),
+    sanctionsRefreshQueue: queue(),
     auditAnchorQueue: queue(),
     evidenceSealQueue: queue(),
     auditVerifyQueue: queue(),
@@ -14,7 +16,9 @@ const mocks = vi.hoisted(() => {
     remindersDailyQueue: queue(),
     n8nOutboxReconcileQueue: queue(),
     workflowN8nDispatchQueue: queue(),
+    workflowFeedbackQueue: queue(),
     storageOrphanCleanupQueue: queue(),
+    portalInboxCleanupQueue: queue(),
     n8nRetentionQueue: queue(),
     magicLinkCleanupQueue: queue(),
     dsgvoRetentionQueue: queue(),
@@ -27,6 +31,8 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('../queues', () => ({
+  mailboxPollQueue: mocks.mailboxPollQueue,
+  sanctionsRefreshQueue: mocks.sanctionsRefreshQueue,
   auditAnchorQueue: mocks.auditAnchorQueue,
   evidenceSealQueue: mocks.evidenceSealQueue,
   auditVerifyQueue: mocks.auditVerifyQueue,
@@ -38,7 +44,9 @@ vi.mock('../queues', () => ({
   remindersDailyQueue: mocks.remindersDailyQueue,
   n8nOutboxReconcileQueue: mocks.n8nOutboxReconcileQueue,
   workflowN8nDispatchQueue: mocks.workflowN8nDispatchQueue,
+  workflowFeedbackQueue: mocks.workflowFeedbackQueue,
   storageOrphanCleanupQueue: mocks.storageOrphanCleanupQueue,
+  portalInboxCleanupQueue: mocks.portalInboxCleanupQueue,
   n8nRetentionQueue: mocks.n8nRetentionQueue,
   magicLinkCleanupQueue: mocks.magicLinkCleanupQueue,
   dsgvoRetentionQueue: mocks.dsgvoRetentionQueue,
@@ -62,6 +70,16 @@ describe('worker schedule metadata', () => {
 
   it('registers drift-prone schedules from the shared definitions', async () => {
     await setupSchedules();
+    expect(mocks.mailboxPollQueue.upsertJobScheduler).toHaveBeenCalledWith(
+      JOB_QUEUES.mailboxPoll.schedule.schedulerId,
+      JOB_QUEUES.mailboxPoll.schedule.repeat,
+      expect.objectContaining({ name: JOB_QUEUES.mailboxPoll.name }),
+    );
+    expect(mocks.sanctionsRefreshQueue.upsertJobScheduler).toHaveBeenCalledWith(
+      JOB_QUEUES.sanctionsRefresh.schedule.schedulerId,
+      JOB_QUEUES.sanctionsRefresh.schedule.repeat,
+      expect.objectContaining({ name: JOB_QUEUES.sanctionsRefresh.name }),
+    );
 
     expect(mocks.auditAnchorQueue.upsertJobScheduler).toHaveBeenCalledWith(
       JOB_QUEUES.auditAnchor.schedule.schedulerId,
@@ -77,6 +95,16 @@ describe('worker schedule metadata', () => {
       JOB_QUEUES.n8nOutboxReconcile.schedule.schedulerId,
       JOB_QUEUES.n8nOutboxReconcile.schedule.repeat,
       { name: JOB_QUEUES.n8nOutboxReconcile.name, data: {} },
+    );
+    expect(mocks.workflowFeedbackQueue.upsertJobScheduler).toHaveBeenCalledWith(
+      JOB_QUEUES.workflowFeedback.schedule.schedulerId,
+      JOB_QUEUES.workflowFeedback.schedule.repeat,
+      { name: JOB_QUEUES.workflowFeedback.name, data: {} },
+    );
+    expect(mocks.portalInboxCleanupQueue.upsertJobScheduler).toHaveBeenCalledWith(
+      JOB_QUEUES.portalInboxCleanup.schedule.schedulerId,
+      JOB_QUEUES.portalInboxCleanup.schedule.repeat,
+      expect.objectContaining({ name: JOB_QUEUES.portalInboxCleanup.name, data: {} }),
     );
     expect(mocks.logInfo).toHaveBeenCalledWith(
       { schedules: SCHEDULE_LOG_LABELS },

@@ -1,6 +1,6 @@
 # taxtronik — Funktionsumfang
 
-Stand: 2026-08-27. Die mit ⚙ markierten Module sind pro Kanzlei in den
+Stand: 2026-09-03. Die mit ⚙ markierten Module sind pro Kanzlei in den
 Einstellungen ein- bzw. ausschaltbar (Boolean-Toggle unter Admin →
 Einstellungen → Module). Rechnungen und Vollmachten sind keine Toggles,
 sondern Modus-Schalter (`invoiceMode` / `poaMode`) mit `OFF`-Option —
@@ -33,13 +33,28 @@ Tätigkeitsbereiche/Skills · Kanzlei-Einstellungen
 
 **Mandanten-Portal** — Login · Anforderungen · Formulare · Dokumente ·
 Stammdaten-Self-Service · Steuererklärungen · Termine · Auswertungen ·
-Rechnungen · Anlieferungen · GwG-Onboarding
+Rechnungen · Anlieferungen · GwG-Onboarding · Mandantenpost ⚙
 
 **Querschnitt** — Globale Suche · Benachrichtigungen · DSGVO · Compliance &
 Audit · Backups & DR · Update-Mechanik & Lizenz · ELSTER-Anbindung
 (Vorstufe) · UI (Dark/Modern) · Sicherheit · Architektur
 
 ---
+
+## Ausbaupakete im deaktivierten Pilotstand ⚙
+
+Vierzehn zusätzliche Module sind einzeln freischaltbar. Sie umfassen interne
+Wiki-Hilfe, Jahresendkampagnen, persönliche Bescheidentscheidungen, IMAP/M365-
+Eingangskorb, Personalaufnahme mit getrennten Zugängen, Bewirtungs-/Eigenbelege,
+mandantenbezogene Verfahrensdokumentation, Feedback, Beteiligungsstrukturen,
+explizite Workflow-Abhängigkeiten, geführtes Offboarding, VDB-Vorbereitung,
+lokales EU-Sanktionsscreening mit manueller PEP-Dokumentation und StBVV-Vorschläge.
+
+Die neuen Fachregeln sind ungeprüft. DATEV-LuG- und VDB-Dateierzeugung ist bis
+zur nachgewiesenen Spezifikation und echten Importprobe gesperrt. Kein Modul
+bestätigt automatisch steuerliche Anerkennung, GoBD-Konformität, wirtschaftliche
+Berechtigung, externe Übermittlung oder Fristerledigung. Details und Abnahmen
+stehen in der [Ausbauintegration](docs/development/expansion-integration.md).
 
 ## Mandanten-CRM
 
@@ -1097,6 +1112,28 @@ Kanzlei nicht.
 - Postgres-Volltext-Suche (deutsche Stemmer)
 - Markdown-Editor
 
+## Arbeitskorb & Mandantenpost ⚙
+
+- Gemeinsamer Arbeitskorb unter `/staff/work` mit den Ansichten „Meine Arbeit“
+  und „Team“, Quellenfilter sowie den Gruppen „Überfällig“, „Heute“, „Später“
+  und „Ohne Termin“
+- Zusammenführung von Mandantenpost, Workflows, Wiedervorlagen, Terminen und
+  Telefonzetteln; Aktionen bleiben quellenspezifisch, sonst führen stabile
+  Deep-Links zum Ursprungsdatensatz
+- Separater asynchroner Mandantenposteingang, standardmäßig pro Kanzlei
+  deaktiviert (`clientInbox: false`), mit neutralen Themen und automatischer
+  Zuweisung nur bei genau einem berechtigten Hauptbearbeiter
+- Mandantenweit sichtbare abgesendete Threads bei kontaktprivaten
+  Uploadentwürfen; deutlicher Hinweis vor dem Senden, dass alle aktiven
+  Portal-Kontakte des Mandanten Nachrichten und Anlagen sehen
+- Sichere Anlagenannahme mit 10 Dateien, 25 MiB je Datei und 100 MiB je
+  Nachricht, Magic-Byte-Prüfung, Virenscan und resumierbarem Staging
+- Kein Archivdokument, OCR, Inhaltsindex, Frist- oder Workfloweffekt vor der
+  ausdrücklichen Staff-Entscheidung; Titel und aktiver Dokumenttyp bestimmen
+  serverseitig Schutzstufe, Storage und Retention
+- Neutrale, inhaltsfreie Aktivitätshinweise; Betreff, Nachrichtentext und
+  Dateinamen gelangen weder in E-Mail noch Notification oder gewöhnliche Logs
+
 ## Mandanten-Portal
 
 - Magic-Link-Login (E-Mail), separate Auth-Surface mit eigenem Cookie
@@ -1106,6 +1143,9 @@ Kanzlei nicht.
   prominent verlinkt
 - Formulare ausfüllen mit echtem Datei-Upload für FILE-Felder
 - Dokumenten-Übersicht (eigene + von Kanzlei freigegebene)
+- **Nachrichtenfach** (`/portal/inbox`): Metadatensuche, Themen-/Statusfilter,
+  stabile 25er-Pagination, mobile Karten, Lesestand und schreibgeschützte
+  erledigte Verläufe; kein Nachrichtenvolltext- oder Dateinamensindex
 - **Stammdaten-Self-Service** (`/portal/stammdaten`): Mandant schlägt
   Änderungen vor, Verlauf mit Status (PENDING/APPROVED/REJECTED)
 - **Steuererklärungen** (`/portal/steuer`): freigegebene Erklärungen mit
@@ -1367,10 +1407,40 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 ## Benutzer-Verwaltung (ADMIN/PARTNER)
 
 - Anlegen mit Initial-Passwort (TOTP wird beim ersten Login eingerichtet)
+- Optionaler persönlicher Staff-Anmeldemodus **„Nur physische
+  FIDO2-Sicherheitsschlüssel“**. Das Opt-in wird erst mit mindestens zwei
+  registrierten geeigneten Schlüsseln freigegeben; anschließend akzeptiert die
+  Staff-Anmeldung weder Passwort noch TOTP oder Backup-Codes
+- Die WebAuthn-Registrierung und -Anmeldung verlangt Benutzerverifikation
+  (`userVerification: required`) und `cross-platform`-Authentikatoren. Für den
+  Hardwaremodus werden nur `singleDevice`-Credentials akzeptiert, die weder
+  backup-eligible noch backed-up sind und USB, NFC, BLE oder Smartcard als
+  Hardware-Transport ausweisen
+- Die Wiederherstellung des Hardwaremodus folgt der vorhandenen Hierarchie
+  ADMIN → PARTNER/EMPLOYEE und PARTNER → EMPLOYEE; ADMIN-Konten bleiben der
+  Administrations-CLI vorbehalten. Der wiederherstellende Akteur muss im
+  Passwortmodus sein aktuelles Passwort und einen frischen echten TOTP
+  bestätigen; Backup-Codes sind kein Step-up. Ein Hardware-only-Akteur nutzt
+  den eigenen WebAuthn-Schlüssel mit einer an Akteur, Zielkonto und
+  Auth-Revision gebundenen Challenge. Jede Wiederherstellung widerruft
+  laufende Sitzungen; Credential-Widerruf, Kontowechsel und Audit werden
+  datenbankseitig atomar ausgeführt. Der Magic-Link-Login des Mandantenportals
+  bleibt unverändert
+- Enrollment fordert `direct` und akzeptiert nur eine vollständige `packed`-
+  Attestation. Eine nichtleere Deployment-AAGUID-Allowlist und ein im Modus
+  `strict` verifiziertes FIDO-MDS-Statement sind für Enrollment und jede
+  Hardware-Assertion zwingend; fehlende oder nicht mehr vertrauenswürdige
+  Metadaten werden fail-closed abgelehnt
+- Die AAGUID bezeichnet eine Modellfamilie, keine eindeutige Geräteinstanz.
+  Zwei Credentials beweisen deshalb nicht kryptografisch zwei unterschiedliche
+  physische Schlüssel. Bei der Aktivierung wird ein Schlüssel frisch bestätigt,
+  während der zweite aktive, policykonforme Schlüssel nur gezählt wird
 - Die ADMIN-Rolle kann ausschließlich von einem bestehenden ADMIN vergeben
   oder verändert werden; PARTNER können ADMIN-Konten auch nicht deaktivieren
-- Persönliches Benutzerprofil für alle Rollen: Passwortänderung mit bisherigem
-  Passwort, Wiederholung und anschließendem Logout auf allen Geräten
+- Persönliches Benutzerprofil für alle Rollen: Im Standardmodus
+  Passwortänderung mit bisherigem Passwort, Wiederholung und anschließendem
+  Logout auf allen Geräten; im Hardware-only-Modus ist die Passwortänderung
+  gesperrt
 - Anlegen seeded automatisch BMF + BFH als RSS-Feeds für den neuen User
 - Aktivieren/Deaktivieren
 - Rollen-Pflege (EMPLOYEE / PARTNER / ADMIN) inline
@@ -1381,7 +1451,7 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   keine DATEV-Synchronisation, automatische Abrechnungszuordnung oder Portalausgabe
 - Self-Lockout-Schutz (eigene Rollen nicht änderbar, eigener Account nicht
   deaktivierbar)
-- Übersicht: Name, E-Mail, Rollen, 2FA-Status, letzter Login
+- Übersicht: Name, E-Mail, Rollen, Anmeldemodus/2FA-Status, letzter Login
 - Hierarchischer Reset für fremde Passwörter und verlorene 2FA-Zuordnungen:
   ADMIN → PARTNER/EMPLOYEE, PARTNER → EMPLOYEE. ADMIN-Konten werden
   ausschließlich über die Administrations-CLI wiederhergestellt; E-Mail und
@@ -1510,7 +1580,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
 - **React 19**
 - **Auth.js v5** (zwei separate Configs `/staff/*` und `/portal/*`,
   getrennte Cookies, keine Cross-Surface-Sessions)
-- TOTP-Pflicht für Mitarbeiter (Aktivierung beim ersten Login)
+- Passwort plus TOTP für Mitarbeiter (Aktivierung beim ersten Login) oder nach
+  persönlichem Opt-in ausschließlich physische FIDO2-Sicherheitsschlüssel
 - Magic-Link für Portal-Kontakte
 - Token-basierte Public-Pfade ohne Auth: `/poa/sign`, `/gwg-onboarding`
 - Auth-Route-Group-Layouts (`(auth)/layout.tsx`) für Staff + Portal mit
@@ -1627,10 +1698,22 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   spätestens nach 10 J. ist zu vernichten; deshalb GOVERNANCE-Lock plus
   fachliche Löschprüfung), `general` / `staff-private` (kein Object-Lock);
   Retain-Until-Logik nach Kalenderjahres-Schluss (Jahresende + N + 1 Tag)
-- **TOTP-Pflicht für Staff** mit lokal generiertem QR-Code (kein Drittanbieter-
-  Roundtrip), 8 Backup-Codes als One-Time-Use mit Row-Lock-Konsumption,
-  TOTP-Replay-Schutz via Redis-Nonce-Set, Account-Lockout an 5 _distinkten_
-  IPs (kein Single-IP-Lockout-DoS)
+- **Staff-Authentisierung** standardmäßig mit Passwort und TOTP, lokal
+  generiertem QR-Code (kein Drittanbieter-Roundtrip), 8 Backup-Codes als
+  One-Time-Use mit Row-Lock-Konsumption, TOTP-Replay-Schutz via Redis-Nonce-Set
+  und Account-Lockout an 5 _distinkten_ IPs (kein Single-IP-Lockout-DoS).
+  Optional ersetzt der Modus „Nur physische FIDO2-Sicherheitsschlüssel“ nach
+  Registrierung von mindestens zwei geeigneten Schlüsseln alle drei
+  bisherigen Staff-Anmeldewege
+- **Hardwaregebundene WebAuthn-Policy** für diesen Opt-in-Modus:
+  `userVerification: required`, Authenticator-Attachment `cross-platform`,
+  Credential-Gerätetyp `singleDevice`, `backupEligible: false`,
+  `backedUp: false` und Hardware-Transport USB, NFC, BLE oder Smartcard.
+  Enrollment verlangt `direct` + vollständige `packed`-Attestation, eine
+  nichtleere AAGUID-Allowlist und FIDO MDS `strict`; jede Assertion bewertet
+  Allowlist und MDS-Statement erneut und scheitert bei Nichtverfügbarkeit
+  fail-closed. Eine AAGUID identifiziert nur die Modellfamilie, nicht ein
+  individuelles physisches Gerät
 - **Session-Cookie-Präfixe** (`session-cookie.ts`): in Production
   `__Host-taxtronik_*_session` (ohne konfigurierte Cookie-Domain; Browser
   erzwingen Secure + `Path=/` + kein Domain-Attribut — kein Überschreiben

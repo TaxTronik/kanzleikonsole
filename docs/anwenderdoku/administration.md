@@ -6,14 +6,16 @@ beschriebenen Bereiche erfordern die Rolle ADMIN oder PARTNER.
 ## 1. Benutzerverwaltung (Kanzlei-Mitarbeiter)
 
 **Administration → Benutzer:** Tabelle aller Mitarbeiter-Konten mit Rollen,
-Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
+Tätigkeitsbereichen, Anmeldemodus/2FA-Status, letztem Login und Aktiv-Status.
 
 - **Anlegen:** Name, E-Mail, Startpasswort (mindestens 12 Zeichen). Rollen:
   _Mitarbeiter_ (immer), optional _Partner_ und/oder _Admin_ (beide erreichen
   den Administrationsbereich). Nur ein bestehender ADMIN kann die ADMIN-Rolle
-  vergeben oder verändern; PARTNER können ADMIN-Konten auch nicht
-  deaktivieren. Mindestens eine Rolle ist Pflicht; die eigenen Rollen und der
-  eigene Aktiv-Status sind nicht änderbar (Selbstschutz).
+  vergeben; kein angemeldeter Staff-Akteur kann eine bestehende ADMIN-Rolle
+  entziehen. Eine PARTNER-Rolle kann nur ein aktiver ADMIN derselben Kanzlei
+  entziehen. PARTNER können ADMIN-Konten auch nicht deaktivieren. Mindestens
+  eine Rolle ist Pflicht; die eigenen Rollen und der eigene Aktiv-Status sind
+  nicht änderbar (Selbstschutz).
 - **Berechtigungen (Einzelrechte):** Für Mitarbeiter ohne Admin-/Partner-
   Rolle steuern drei Schalter, was sie zusätzlich dürfen: _Rechnungen
   anlegen/bearbeiten_, _Rechnungen versenden_ (löst die unveränderliche
@@ -28,27 +30,112 @@ Tätigkeitsbereichen, 2FA-Status, letztem Login und Aktiv-Status.
   wird die Änderung nicht als erfolgreich gemeldet. Auch die Sessionprüfung
   lehnt bei einem Redis-Lesefehler fail-closed ab. Erweiterungen werden bei der
   nächsten Sessionprüfung aus der Datenbank wirksam, ohne zwingend auszuloggen.
-- **Zwei-Faktor (TOTP) ist Pflicht:** Beim ersten Login richtet jede Person
-  ihre Authenticator-App selbst ein (QR-Code wird lokal erzeugt, kein
+- **Standardanmeldung mit Passwort + TOTP:** Beim ersten Login richtet jede
+  Person ihre Authenticator-App selbst ein (QR-Code wird lokal erzeugt, kein
   externer Dienst) und erhält **einmalig acht Backup-Codes** — sicher
   verwahren! Das Einrichtungsfenster beträgt 60 Minuten.
+- **Optional nur physische Sicherheitsschlüssel:** Im eigenen Profil kann eine
+  Person bis zu zehn geeignete FIDO2-Schlüssel registrieren. Erst mit zwei
+  aktiven und aktuell MDS-vertrauenswürdigen Schlüsseln lässt sich „Nur
+  Sicherheitsschlüssel“ einschalten; die
+  Aktivierung muss mit einem registrierten Schlüssel bestätigt werden. Danach
+  funktionieren Passwort, Authenticator-App und Backup-Codes ausdrücklich
+  **nicht** als Login-Fallback. Schlüssel können im aktiven Modus weder
+  hinzugefügt noch entfernt werden; auch die Rückkehr zu Passwort + TOTP muss
+  mit einem registrierten Schlüssel bestätigt werden. Den zweiten Schlüssel
+  getrennt und sicher verwahren.
+- **Geeignete Schlüssel:** TaxTronik verlangt WebAuthn-Benutzerverifikation,
+  einen `cross-platform`-Authenticator, ein gerätegebundenes `singleDevice`-
+  Credential ohne Backup-Eignung oder -Status und einen gemeldeten
+  Hardware-Transport über USB, NFC, BLE oder Smartcard. Integrierte
+  Plattform-Authentikatoren sowie `hybrid`/`cable` werden abgewiesen.
+- **Attestierte Modellfreigabe:** Vor der Nutzung muss der Betreiber
+  `WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST` mit mindestens einer geprüften
+  Modell-AAGUID sowie die dazugehörige
+  `WEBAUTHN_HARDWARE_POLICY_REVISION` konfigurieren. Bei jeder Änderung der
+  Allowlist oder Vertrauenspolicy muss die Revision erhöht werden; eine leere
+  Allowlist mit höherer Revision deaktiviert den Zugang clusterweit. Enrollment
+  fordert eine direkte, vollständige `packed`-Attestation und prüft sie mit
+  FIDO MDS im Modus `strict`. Login und Moduswechsel prüfen die aktuelle
+  Allowlist, den signierten MDS-Eintrag und dessen positiven
+  `FIDO_CERTIFIED*`-Status erneut. Widerrufene,
+  nichtzertifizierte, selbstdeklarierte, unbekannte oder kompromittierte
+  Statusdaten, eine leere Liste oder ein MDS-/Netzausfall blockieren die
+  Hardware-Assertion; es gibt keinen Passwort-/TOTP-Fallback.
+- **Keine Aussage über zwei Geräte:** Die AAGUID bezeichnet eine Modellfamilie,
+  nicht die Seriennummer oder eine individuelle Schlüsselinstanz. Auch zwei
+  registrierte Credentials beweisen deshalb nicht kryptografisch, dass zwei
+  verschiedene physische Geräte vorliegen. Bei der Aktivierung wird ein
+  Schlüssel frisch bestätigt; der zweite muss aktiv sein und die aktuelle
+  Allowlist-/MDS-Prüfung ebenfalls bestehen, wird in diesem Schritt aber nicht
+  erneut kryptografisch präsentiert. Beide Schlüssel
+  vor dem Opt-in einzeln testen, kennzeichnen und getrennt verwahren.
+- **Betrieb und Datenschutz:** Der App-Container benötigt HTTPS-Zugriff auf den
+  FIDO Metadata Service; Cache und Refresh laufen bedarfsgetrieben und nicht
+  als eigener periodischer Job. Beim Produktionsstart wird nur die Policy an
+  die Datenbank gebunden; der MDS-Netzzugriff beginnt erst mit einer
+  Hardware-Zeremonie. TaxTronik speichert AAGUID,
+  Attestationsformat und Prüfzeitpunkt, nicht die rohe Zertifikatskette. Der
+  externe Abruf erzeugt Server-Verbindungsdaten. Allowlist-Änderungen,
+  Monitoring, Ausfall und Datenschutz sind vor dem Rollout nach dem
+  [FIDO-MDS-Runbook](../operations/fido-mds.md) zu planen.
 - **Deaktivieren** beendet sofort alle aktiven Sitzungen der Person; ebenso
   erzwingt jede Rollenänderung eine Neuanmeldung. Bei Redis-Ausfall schlägt die
   Aktion sichtbar fehl, statt einen nicht durchgesetzten Widerruf zu melden.
 - **Kontowiederherstellung:** ADMIN können Passwort und TOTP von
   PARTNER-/Mitarbeiterkonten zurücksetzen; PARTNER dürfen dies ausschließlich
-  für Mitarbeiterkonten. Dabei werden alle laufenden Sitzungen beendet und der
-  Vorgang wird protokolliert. ADMIN-Konten sind von diesen Web-Aktionen
-  ausgenommen und werden bei Passwort- oder TOTP-Verlust ausschließlich über
+  für Mitarbeiterkonten. Der Reset wird an die aktuelle Auth-Revision der
+  handelnden Person gebunden und widerruft auch Hardware-Credentials, die das
+  Zielkonto bereits im Passwortmodus registriert, aber noch nicht für
+  Hardware-only aktiviert hatte. Eine eigene Passwortänderung widerruft
+  entsprechend die eigenen noch aktiven Vorabregistrierungen. Für ein Konto im
+  Modus „Nur Sicherheitsschlüssel“
+  sind die normalen Passwort-/TOTP-Resets absichtlich gesperrt. Stattdessen
+  sperrt **Hardware-Zugang wiederherstellen** alle registrierten Schlüssel,
+  deaktiviert den Modus, setzt ein neues Startpasswort und erzwingt beim
+  nächsten Login ein neues TOTP-Setup. Der Reset folgt derselben Hierarchie.
+  Vor der Freigabe muss die handelnde Person ihre Identität erneut bestätigen:
+  Im Standardmodus sind das das aktuelle eigene Passwort und ein frischer
+  sechsstelliger TOTP aus der Authenticator-App; ein Backup-Code ist hier
+  ausdrücklich nicht zulässig. Nutzt die handelnde Person selbst
+  Hardware-only, bestätigt sie mit ihrem eigenen registrierten Schlüssel. Die
+  dafür erzeugte Einmal-Anfrage ist an handelnde Person, Zielkonto und aktuelle
+  Auth-Revision gebunden.
+
+  Schlüsselwiderruf, Rückkehr in den Passwort-/TOTP-Modus, Erhöhung der
+  Auth-Revision und Prüfprotokoll-Eintrag werden unter den Datenbanklocks
+  gemeinsam ausgeführt. Die Auth-Revision macht alle vorherigen Hardware-
+  Sessions beim nächsten Request ungültig. Parallel geänderte Rollen oder
+  Anmeldezustände brechen die Recovery ohne Teiländerung ab; insbesondere wird
+  davor kein separater Redis-Widerruf ausgeführt, der trotz DB-Rollback als
+  Logout bestehen bleiben könnte.
+  ADMIN-Konten sind von allen Web-Recovery-Aktionen ausgenommen und werden bei
+  Verlust von Passwort, TOTP oder Sicherheitsschlüsseln ausschließlich über
   `ADMIN_EMAIL=… TENANT_SLUG=… pnpm --filter @taxtronik/db reset-admin-password`
-  wiederhergestellt. Beide Auswahlwerte sind Pflicht. Gibt es keinen oder
-  wider Erwarten mehrere Treffer, bricht die CLI ohne Änderung ab; sie setzt
-  niemals mehrere Admin-Konten gesammelt zurück.
+  wiederhergestellt. Die CLI deaktiviert Hardware-only, sperrt registrierte
+  Schlüssel, erhöht die Auth-Revision und startet Passwort/TOTP-Onboarding
+  neu. Reset, Schlüsselwiderruf und ein `SYSTEM`-Eintrag im Prüfprotokoll
+  werden gemeinsam abgeschlossen. Das Klartextpasswort erscheint
+  ausschließlich in der gewählten Credential-Datei, niemals im Terminal oder
+  in Logs. Die CLI legt die Datei exklusiv (`O_EXCL`) mit No-follow-Schutz neu
+  an (POSIX: `0600`) und committet den Reset erst nach vollständigem
+  Datei-`fsync` und anschließendem `fsync` des POSIX-Elternverzeichnisses. Eine
+  vorhandene Datei oder ein Symlink wird nicht überschrieben; ein Ausgabefehler
+  lässt den Reset zurückrollen und entfernt nur eine in diesem Versuch
+  entstandene Teildatei. Scheitert erst der Datenbank-Commit, kann die bereits
+  geschriebene, aber unwirksame Datei zurückbleiben; sie muss anhand des
+  CLI-Fehlers verworfen werden. Beide Auswahlwerte sind Pflicht. Gibt es keinen
+  oder wider Erwarten
+  mehrere Treffer, bricht sie ohne Änderung ab; sie setzt niemals mehrere
+  Admin-Konten gesammelt zurück.
+
 - **Fehlversuche:** Wiederholte Fehlanmeldungen werden begrenzt
   (Wartezeiten); ein Konto wird erst gesperrt, wenn Fehlversuche von
   mehreren verschiedenen Quelladressen kommen — eine einzelne Person kann
-  fremde Konten nicht aussperren. Alle Anmeldevorgänge stehen im
-  Prüfprotokoll.
+  fremde Konten nicht aussperren. Fehlversuche mit einem bekannten
+  Hardware-Credential stehen tenantgebunden und ohne Schlüssel-ID, E-Mail oder
+  internes Prüfdetail im Prüfprotokoll. Unbekannte Konten oder Credentials
+  erzeugen bewusst keinen tenantlosen Eintrag.
 
 **Mandanten-Zugänge (Portal):** werden in der jeweiligen Mandantenakte
 unter _Kontakte_ gepflegt (einladen, bearbeiten, deaktivieren — letzteres

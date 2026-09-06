@@ -28,6 +28,7 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - packages/db/prisma/migrations/20260831260000_gwg_structure_binding/migration.sql
   - apps/web/src/server/gwg/retention.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
@@ -38,6 +39,7 @@ code_refs:
   - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
   - packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql
 test_refs:
+  - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - packages/db/src/__tests__/gwg-destruction.test.ts
   - packages/db/src/__tests__/gwg-person-links.test.ts
@@ -49,6 +51,7 @@ feature_refs:
   - docs/compliance/gwg.md
   - docs/anwenderdoku/dokumente.md
 related_rules:
+  - MANDATE-STRUCTURE-001
   - GWG-IDENTIFICATION-EVIDENCE-001
   - GWG-BENEFICIAL-OWNERS-001
   - GWG-SELF-ONBOARDING-001
@@ -214,3 +217,7 @@ DB-Test bestätigt dabei auch, dass der kontrollierte
 Vertreterdatensätze entfernt. Nicht technisch nachgewiesen ist, dass die
 verbleibenden Minimal- und Auditdaten fachlich über die absolute Grenze hinaus
 gespeichert werden dürfen.
+
+### Ergänzung: GwG-Bindung einer allgemeinen Mandatsstruktur
+
+Beim bestehenden kontrollierten destroyed_at-Übergang des GwG-Checks löst ein Trigger die Referenz auf die separat geführte allgemeine Strukturversion und entfernt den gebundenen Hash und Übernahmevermerk. Der minimale Bindungsnachweis behält Prüfreferenz, Übernahmerevision, handelnde Person sowie Erstellungs- und Vernichtungszeit; deren weitere Aufbewahrung bleibt Teil der oben beschriebenen offenen Skelett-/Auditfrage. Es entsteht kein neuer Löschscheduler, keine Wiederherstellung gelöschter Bindungsinhalte und keine pauschale Vernichtung der eigenständig geführten allgemeinen Mandatsstruktur.

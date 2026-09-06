@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
 import { REMINDER_PRIORITIES, PRIORITY_LABEL } from '@/lib/reminder-priority';
@@ -21,23 +21,21 @@ export function NewReminderForm({
   clients: Array<{ id: string; name: string }>;
   staffOptions: Array<{ id: string; fullName: string }>;
 }) {
-  const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    createReminderAction,
-    null,
-  );
   const [open, setOpen] = useState(false);
   const [staffIds, setStaffIds] = useState<string[]>([]);
   const router = useRouter();
-
-  // Nach dem Anlegen schliessen + neu laden — sonst bliebe die Liste bis zum
-  // manuellen Reload unveraendert stehen.
-  useEffect(() => {
-    if (state?.ok) {
-      setOpen(false);
-      setStaffIds([]);
-      router.refresh();
-    }
-  }, [state, router]);
+  const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
+    async (previous, data) => {
+      const result = await createReminderAction(previous, data);
+      if (result.ok) {
+        setOpen(false);
+        setStaffIds([]);
+        router.refresh();
+      }
+      return result;
+    },
+    null,
+  );
 
   if (!open) {
     return (

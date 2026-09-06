@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, extname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,6 +60,14 @@ function regularFilesBelow(root) {
 }
 
 const standaloneRoot = resolve(webRoot, '.next/standalone');
+const standaloneAppRoot = resolve(standaloneRoot, relative(repoRoot, webRoot));
+const standaloneRequire = createRequire(resolve(standaloneAppRoot, 'server.js'));
+// A successful build must not silently resolve the isolated PDF worker's parser
+// from the host checkout. It must remain available after deployment of standalone/.
+const pdfParserPath = standaloneRequire.resolve('pdf-lib');
+if (!isInside(realpathSync(pdfParserPath), realpathSync(standaloneRoot))) {
+  throw new Error('[standalone-trace] Der PDF-Worker-Parser fehlt im Standalone-Paket.');
+}
 const forbiddenStandaloneFiles = [
   ...regularFilesBelow(resolve(standaloneRoot, 'backups')),
   ...regularFilesBelow(resolve(standaloneRoot, 'apps/web/src')).filter((path) =>

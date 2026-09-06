@@ -86,6 +86,114 @@ export function idDocumentExpiryTitleSuffix(daysLeft: number): string {
   return `läuft in ${daysLeft} Tagen ab`;
 }
 
+async function processExpiringIdDocuments(
+  tenantId: string,
+  now: Date,
+  adminPartners: Array<{ id: string }>,
+  systemStaff: { id: string },
+): Promise<{ idDocReminders: number; idDocRequests: number }> {
+  let idDocReminders = 0;
+  let idDocRequests = 0;
+  const berlinToday = berlinTodayUtcMidnight(now);
+  const idDocCutoff = new Date(berlinToday.getTime() + ID_DOC_WARN_DAYS * 24 * 60 * 60 * 1000);
+  const expiringDocs = await prismaOwner.gwgIdDocument.findMany({
+    where: {
+      expiryDate: { not: null, lte: idDocCutoff },
+      check: {
+        tenantId,
+        status: { in: ['VERIFIED', 'IN_REVIEW'] },
+      },
+    },
+    include: {
+      check: {
+        select: {
+          clientId: true,
+          client: {
+            select: {
+              name: true,
+              allowActive: true,
+              responsibilities: {
+                where: { role: { in: ['HAUPTBEARBEITER', 'BERUFSTRAEGER'] } },
+                select: { staffId: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const existingIdDocRequests = expiringDocs.length
+    ? await prismaOwner.request.findMany({
+        where: {
+          tenantId,
+          status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
+          linkedGwgIdDocumentId: { in: expiringDocs.map((doc) => doc.id) },
+        },
+        select: { linkedGwgIdDocumentId: true },
+      })
+    : [];
+  const requestedIdDocumentIds = new Set(
+    existingIdDocRequests.flatMap((request) =>
+      request.linkedGwgIdDocumentId ? [request.linkedGwgIdDocumentId] : [],
+    ),
+  );
+
+  for (const doc of expiringDocs) {
+    if (!doc.expiryDate) continue;
+    // expiry_date ist ein fachliches DATE und gilt einschließlich seines
+    // Berliner Kalendertags. Ein Ausweis mit Ablaufdatum heute ist daher
+    // noch nicht abgelaufen, unabhängig von UTC-Uhrzeit und Sommerzeit.
+    const daysLeft = wholeDaysBetween(berlinToday, doc.expiryDate);
+    const isExpired = daysLeft < 0;
+
+    // Notification an Bearbeiter (auch ADMIN/PARTNER als Fallback)
+    const respIds = doc.check.client.responsibilities.map((r) => r.staffId);
+    const recipients = respIds.length > 0 ? respIds : adminPartners.map((s) => s.id);
+    const titleSuffix = idDocumentExpiryTitleSuffix(daysLeft);
+    await resolveIdDocumentWarning(tenantId, doc.id, isExpired);
+    for (const staffId of recipients) {
+      await upsertNotification(tenantId, staffId, {
+        kind: (isExpired ? 'GWG_ID_EXPIRED' : 'GWG_ID_EXPIRY_SOON') as NotificationKind,
+        title: `Ausweis von ${doc.ownerName} ${titleSuffix} — ${doc.check.client.name}`,
+        body: `${idDocTypeLabel(doc.type)}, gültig bis ${dateFmt(doc.expiryDate)}.`,
+        href: `/staff/clients/${doc.check.clientId}/gwg`,
+        resourceType: 'gwg_id_document',
+        resourceId: doc.id,
+      });
+    }
+    idDocReminders += recipients.length;
+
+    // Auto-Anforderung an Mandant — U-5: exakter Idempotenz-Match per FK
+    // statt Titel-Substring. Vorher: zwei BeneficialOwners „Müller" und
+    // „Müller-Schmidt" teilten den `contains: ownerName`-Match — der
+    // zweite Auto-Request wurde nie angelegt.
+    if (!requestedIdDocumentIds.has(doc.id) && doc.check.client.allowActive) {
+      const created = await prismaOwner.request.createMany({
+        data: [
+          {
+            tenantId,
+            clientId: doc.check.clientId,
+            title: `Neuer ${idDocTypeLabel(doc.type)} von ${doc.ownerName} erforderlich`,
+            description: `Der ${idDocTypeLabel(doc.type)} läuft am ${dateFmt(
+              doc.expiryDate,
+            )} ab. Bitte stellen Sie eine aktuelle Kopie (Vorder- und Rückseite) zur Verfügung.`,
+            priority: isExpired ? 'HIGH' : 'NORMAL',
+            createdByStaff: systemStaff.id,
+            dueAt: isExpired ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) : doc.expiryDate,
+            linkedGwgIdDocumentId: doc.id,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      requestedIdDocumentIds.add(doc.id);
+      idDocRequests += created.count;
+    }
+  }
+
+  return { idDocReminders, idDocRequests };
+}
+
 export const gwgExpiryWorker = new Worker<ChecksJob>(
   JOB_QUEUES.gwgExpiry.name,
   async (job) => {
@@ -275,104 +383,14 @@ export const gwgExpiryWorker = new Worker<ChecksJob>(
       // ----------------------------------------------------------------------
       // 2. Personalausweis-Ablauf
       // ----------------------------------------------------------------------
-      const berlinToday = berlinTodayUtcMidnight(now);
-      const idDocCutoff = new Date(berlinToday.getTime() + ID_DOC_WARN_DAYS * 24 * 60 * 60 * 1000);
-      const expiringDocs = await prismaOwner.gwgIdDocument.findMany({
-        where: {
-          expiryDate: { not: null, lte: idDocCutoff },
-          check: {
-            tenantId,
-            status: { in: ['VERIFIED', 'IN_REVIEW'] },
-          },
-        },
-        include: {
-          check: {
-            select: {
-              clientId: true,
-              client: {
-                select: {
-                  name: true,
-                  allowActive: true,
-                  responsibilities: {
-                    where: { role: { in: ['HAUPTBEARBEITER', 'BERUFSTRAEGER'] } },
-                    select: { staffId: true },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      const existingIdDocRequests = expiringDocs.length
-        ? await prismaOwner.request.findMany({
-            where: {
-              tenantId,
-              status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
-              linkedGwgIdDocumentId: { in: expiringDocs.map((doc) => doc.id) },
-            },
-            select: { linkedGwgIdDocumentId: true },
-          })
-        : [];
-      const requestedIdDocumentIds = new Set(
-        existingIdDocRequests.flatMap((request) =>
-          request.linkedGwgIdDocumentId ? [request.linkedGwgIdDocumentId] : [],
-        ),
+      const idDocuments = await processExpiringIdDocuments(
+        tenantId,
+        now,
+        adminPartners,
+        systemStaff,
       );
-
-      for (const doc of expiringDocs) {
-        if (!doc.expiryDate) continue;
-        // expiry_date ist ein fachliches DATE und gilt einschließlich seines
-        // Berliner Kalendertags. Ein Ausweis mit Ablaufdatum heute ist daher
-        // noch nicht abgelaufen, unabhängig von UTC-Uhrzeit und Sommerzeit.
-        const daysLeft = wholeDaysBetween(berlinToday, doc.expiryDate);
-        const isExpired = daysLeft < 0;
-
-        // Notification an Bearbeiter (auch ADMIN/PARTNER als Fallback)
-        const respIds = doc.check.client.responsibilities.map((r) => r.staffId);
-        const recipients = respIds.length > 0 ? respIds : adminPartners.map((s) => s.id);
-        const titleSuffix = idDocumentExpiryTitleSuffix(daysLeft);
-        await resolveIdDocumentWarning(tenantId, doc.id, isExpired);
-        for (const staffId of recipients) {
-          await upsertNotification(tenantId, staffId, {
-            kind: (isExpired ? 'GWG_ID_EXPIRED' : 'GWG_ID_EXPIRY_SOON') as NotificationKind,
-            title: `Ausweis von ${doc.ownerName} ${titleSuffix} — ${doc.check.client.name}`,
-            body: `${idDocTypeLabel(doc.type)}, gültig bis ${dateFmt(doc.expiryDate)}.`,
-            href: `/staff/clients/${doc.check.clientId}/gwg`,
-            resourceType: 'gwg_id_document',
-            resourceId: doc.id,
-          });
-        }
-        idDocReminders += recipients.length;
-
-        // Auto-Anforderung an Mandant — U-5: exakter Idempotenz-Match per FK
-        // statt Titel-Substring. Vorher: zwei BeneficialOwners „Müller" und
-        // „Müller-Schmidt" teilten den `contains: ownerName`-Match — der
-        // zweite Auto-Request wurde nie angelegt.
-        if (!requestedIdDocumentIds.has(doc.id) && doc.check.client.allowActive) {
-          const created = await prismaOwner.request.createMany({
-            data: [
-              {
-                tenantId,
-                clientId: doc.check.clientId,
-                title: `Neuer ${idDocTypeLabel(doc.type)} von ${doc.ownerName} erforderlich`,
-                description: `Der ${idDocTypeLabel(doc.type)} läuft am ${dateFmt(
-                  doc.expiryDate,
-                )} ab. Bitte stellen Sie eine aktuelle Kopie (Vorder- und Rückseite) zur Verfügung.`,
-                priority: isExpired ? 'HIGH' : 'NORMAL',
-                createdByStaff: systemStaff.id,
-                dueAt: isExpired
-                  ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-                  : doc.expiryDate,
-                linkedGwgIdDocumentId: doc.id,
-              },
-            ],
-            skipDuplicates: true,
-          });
-          requestedIdDocumentIds.add(doc.id);
-          idDocRequests += created.count;
-        }
-      }
+      idDocReminders += idDocuments.idDocReminders;
+      idDocRequests += idDocuments.idDocRequests;
 
       // ----------------------------------------------------------------------
       // 3. GwG-Lösch-Queue (§ 8 Abs. 1 und 4, DSGVO-Speicherbegrenzung) — tägliche Notification an

@@ -63,13 +63,15 @@ async function readLegacyStored(tenantId: string | null): Promise<LegacyStored |
   return stored === undefined ? null : (stored as LegacyStored);
 }
 
-async function resolveSigningState(tenantId: string | null): Promise<{
+interface SigningState {
   secret: string;
   disabled: boolean;
   connectionId: string | null;
   legacyBaseUrl: string;
   routingMode: 'DISABLED' | 'LEGACY' | 'EXPLICIT' | null;
-}> {
+}
+
+async function resolveSigningState(tenantId: string | null): Promise<SigningState> {
   const connectionRow = tenantId
     ? await prismaOwner.n8nConnection.findUnique({
         where: { tenantId },
@@ -84,19 +86,23 @@ async function resolveSigningState(tenantId: string | null): Promise<{
     : null;
   // Normalisierte Connection = alleinige Secret-/URL-Quelle. Legacy und ENV
   // gelten nur für Tenants, die noch gar keine Connection-Reihe besitzen.
-  const stored = connectionRow ? null : await readLegacyStored(tenantId);
-  const connectionSecret = decryptIfUsable(connectionRow?.signingSecretEncrypted);
-  const legacySecret = decryptIfUsable(stored?.hmacEncrypted) || stored?.hmacSecret || '';
+  if (connectionRow) {
+    return {
+      secret: decryptIfUsable(connectionRow.signingSecretEncrypted),
+      connectionId: connectionRow.id,
+      routingMode: connectionRow.routingMode,
+      disabled: !connectionRow.enabled || connectionRow.routingMode === 'DISABLED',
+      legacyBaseUrl: connectionRow.webhookBaseUrl?.trim() || '',
+    };
+  }
+  const stored = await readLegacyStored(tenantId);
   return {
-    secret: connectionRow ? connectionSecret : legacySecret || env.N8N_HMAC_SECRET || '',
-    connectionId: connectionRow?.id ?? null,
-    routingMode: connectionRow?.routingMode ?? null,
-    disabled: Boolean(
-      connectionRow && (!connectionRow.enabled || connectionRow.routingMode === 'DISABLED'),
-    ),
-    legacyBaseUrl: connectionRow
-      ? connectionRow.webhookBaseUrl?.trim() || ''
-      : stored?.webhookBaseUrl?.trim() || env.N8N_WEBHOOK_BASE_URL || '',
+    secret:
+      decryptIfUsable(stored?.hmacEncrypted) || stored?.hmacSecret || env.N8N_HMAC_SECRET || '',
+    connectionId: null,
+    routingMode: null,
+    disabled: false,
+    legacyBaseUrl: stored?.webhookBaseUrl?.trim() || env.N8N_WEBHOOK_BASE_URL || '',
   };
 }
 
@@ -401,8 +407,8 @@ async function sendSignedDelivery(input: {
   }
 }
 
-async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
-  const delivery = await prismaOwner.n8nDelivery.findUnique({
+async function readDelivery(deliveryId: string) {
+  return prismaOwner.n8nDelivery.findUnique({
     where: { id: deliveryId },
     include: {
       outbox: true,
@@ -421,6 +427,55 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
       },
     },
   });
+}
+
+type PlannedDelivery = NonNullable<Awaited<ReturnType<typeof readDelivery>>>;
+
+function routeChanges(delivery: PlannedDelivery, state: SigningState) {
+  // Exakter Snapshot-Abgleich in beide Richtungen. Auch eine alte Legacy-
+  // Delivery (null) darf nach dem Anlegen einer Connection nicht plötzlich
+  // mit deren neuem Secret zugestellt werden.
+  const plannedConnectionMissing = delivery.connectionIdSnapshot !== state.connectionId;
+  // Spiegelt die Zielwahl aus der Outbox-Planung: global test ODER
+  // Route-Debug-Schalter testMode → Test-URL, sonst Produktions-URL.
+  const expectedExplicitTarget =
+    n8nDeliveryMode === 'test' || delivery.endpoint?.testMode
+      ? delivery.endpoint?.testUrl
+      : delivery.endpoint?.productionUrl;
+  const explicitRouteChanged = delivery.endpoint
+    ? !delivery.endpoint.enabled ||
+      delivery.endpoint.connectionId !== state.connectionId ||
+      expectedExplicitTarget !== delivery.targetUrl ||
+      !delivery.endpoint.subscriptions.some(
+        (subscription) => subscription.event === delivery.outbox.event,
+      )
+    : state.routingMode === 'EXPLICIT';
+  const legacyRouteChanged =
+    !delivery.endpoint &&
+    state.routingMode !== 'EXPLICIT' &&
+    (!state.legacyBaseUrl ||
+      delivery.targetUrl !== legacyTargetUrl(state.legacyBaseUrl, delivery.outbox.event));
+  return { plannedConnectionMissing, explicitRouteChanged, legacyRouteChanged };
+}
+
+function deliveryTarget(
+  delivery: PlannedDelivery,
+  state: SigningState,
+): { ok: true; targetUrl: string } | { ok: false; reason: string } {
+  const changes = routeChanges(delivery, state);
+  if (state.disabled) return { ok: false, reason: 'n8n-Integration bewusst deaktiviert' };
+  if (changes.plannedConnectionMissing)
+    return { ok: false, reason: 'n8n-Connection der geplanten Route wurde entfernt oder ersetzt' };
+  if (changes.explicitRouteChanged)
+    return { ok: false, reason: 'n8n-Route, Ziel-URL oder Event-Zuordnung wurde geändert' };
+  if (changes.legacyRouteChanged) return { ok: false, reason: 'n8n-Legacy-Ziel wurde geändert' };
+  if (!delivery.targetUrl) return { ok: false, reason: 'n8n-Ziel-URL fehlt' };
+  if (!state.secret) return { ok: false, reason: 'n8n-Signatur-Secret fehlt' };
+  return { ok: true, targetUrl: delivery.targetUrl };
+}
+
+async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
+  const delivery = await readDelivery(deliveryId);
   if (!delivery) {
     log.warn({ deliveryId }, 'n8n-deliver: delivery not found, skipping');
     return;
@@ -445,47 +500,10 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
   }
 
   const state = await resolveSigningState(outbox.tenantId);
-  // Exakter Snapshot-Abgleich in beide Richtungen. Auch eine alte Legacy-
-  // Delivery (null) darf nach dem Anlegen einer Connection nicht plötzlich
-  // mit deren neuem Secret zugestellt werden.
-  const plannedConnectionMissing = delivery.connectionIdSnapshot !== state.connectionId;
-  // Spiegelt die Zielwahl aus der Outbox-Planung: global test ODER
-  // Route-Debug-Schalter testMode → Test-URL, sonst Produktions-URL.
-  const expectedExplicitTarget =
-    n8nDeliveryMode === 'test' || delivery.endpoint?.testMode
-      ? delivery.endpoint?.testUrl
-      : delivery.endpoint?.productionUrl;
-  const explicitRouteChanged = delivery.endpoint
-    ? !delivery.endpoint.enabled ||
-      delivery.endpoint.connectionId !== state.connectionId ||
-      expectedExplicitTarget !== delivery.targetUrl ||
-      !delivery.endpoint.subscriptions.some((subscription) => subscription.event === outbox.event)
-    : state.routingMode === 'EXPLICIT';
-  const legacyRouteChanged =
-    !delivery.endpoint &&
-    state.routingMode !== 'EXPLICIT' &&
-    (!state.legacyBaseUrl ||
-      delivery.targetUrl !== legacyTargetUrl(state.legacyBaseUrl, outbox.event));
-  if (
-    state.disabled ||
-    plannedConnectionMissing ||
-    explicitRouteChanged ||
-    legacyRouteChanged ||
-    !delivery.targetUrl ||
-    !state.secret
-  ) {
+  const target = deliveryTarget(delivery, state);
+  if (!target.ok) {
     await markDeliveryTerminal(delivery.id, outbox.id, leaseToken, 'SKIPPED', {
-      lastError: state.disabled
-        ? 'n8n-Integration bewusst deaktiviert'
-        : plannedConnectionMissing
-          ? 'n8n-Connection der geplanten Route wurde entfernt oder ersetzt'
-          : explicitRouteChanged
-            ? 'n8n-Route, Ziel-URL oder Event-Zuordnung wurde geändert'
-            : legacyRouteChanged
-              ? 'n8n-Legacy-Ziel wurde geändert'
-              : !delivery.targetUrl
-                ? 'n8n-Ziel-URL fehlt'
-                : 'n8n-Signatur-Secret fehlt',
+      lastError: target.reason,
     });
     return;
   }
@@ -536,7 +554,7 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
     deliveryId: delivery.id,
     outboxId: outbox.id,
     event: outbox.event,
-    targetUrl: delivery.targetUrl,
+    targetUrl: target.targetUrl,
     testMode: n8nDeliveryMode === 'test' || delivery.endpoint?.testMode === true,
     leaseToken,
     signature,

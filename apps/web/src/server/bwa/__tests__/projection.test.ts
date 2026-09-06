@@ -1,7 +1,11 @@
 // Fachkatalog: BWA-PROJECTION-001
 import { describe, it, expect } from 'vitest';
 import { computeBwaKpis } from '../addison-parser';
-import { linearSeasonalProjection, type PeriodInput } from '../projection';
+import {
+  linearSeasonalProjection,
+  trendRegressionProjection,
+  type PeriodInput,
+} from '../projection';
 
 // DATEV-BWA-Zeilen: 1051 Gesamtleistung, 1100 Personal, 1345 Ergebnis VOR
 // Steuern, 1380 vorläufiges Ergebnis NACH Steuern. Addison-Kompaktform: 1990
@@ -55,5 +59,57 @@ describe('linearSeasonalProjection — keine Doppelbesteuerung (Regression #9)',
     expect(proj!.taxes!.estimate).toBe(60_000);
     // Nach-Steuer = Vor-Steuer − Steuer, EINMAL abgezogen.
     expect(proj!.resultAfterTax!.estimate).toBe(140_000);
+  });
+});
+
+function yearPeriod(year: number, revenue: number): PeriodInput {
+  return {
+    periodKey: String(year),
+    periodType: 'YEAR',
+    fromDate: new Date(Date.UTC(year, 0, 1)),
+    toDate: new Date(Date.UTC(year, 11, 31)),
+    positions: [{ number: 1051, amount: revenue }],
+  };
+}
+
+describe('trendRegressionProjection — nur volle Vorjahre', () => {
+  it('ignoriert Ziel- und Zukunftsjahre (Fachkatalog BWA-PROJECTION-001)', () => {
+    const projection = trendRegressionProjection(
+      [
+        yearPeriod(2022, 100_000),
+        yearPeriod(2023, 200_000),
+        yearPeriod(2024, 9_000_000),
+        yearPeriod(2025, -4_000_000),
+      ],
+      2024,
+    );
+
+    expect(projection?.revenue?.estimate).toBeCloseTo(300_000);
+    expect(projection?.basis).toBe('Trend aus 2 Jahren (2022–2023)');
+  });
+
+  it('liefert ohne mindestens zwei volle Vorjahre kein Trendszenario', () => {
+    expect(
+      trendRegressionProjection(
+        [yearPeriod(2023, 100_000), yearPeriod(2024, 200_000), yearPeriod(2025, 300_000)],
+        2024,
+      ),
+    ).toBeNull();
+  });
+
+  it('schliesst eine 12-Monats-Periode aus, die erst im Zieljahr endet', () => {
+    const spanning: PeriodInput = {
+      periodKey: '2023/2024',
+      periodType: 'YEAR',
+      fromDate: new Date(Date.UTC(2023, 6, 1)),
+      toDate: new Date(Date.UTC(2024, 5, 30)),
+      positions: [{ number: 1051, amount: 500_000 }],
+    };
+    expect(
+      trendRegressionProjection(
+        [yearPeriod(2022, 100_000), spanning, yearPeriod(2024, 200_000)],
+        2024,
+      ),
+    ).toBeNull();
   });
 });

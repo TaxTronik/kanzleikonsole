@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Sparkles, Square } from 'lucide-react';
 
 type UiMode = 'classic' | 'modern';
@@ -55,33 +55,28 @@ function syncUiModeCookie(mode: UiMode): void {
  * Persistenz via localStorage; bootstrap-Script im RootLayout wendet
  * die Klasse VOR dem ersten Paint an, um Flicker zu vermeiden.
  */
+function subscribeUiMode(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  window.addEventListener(UI_MODE_EVENT, onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener(UI_MODE_EVENT, onChange);
+  };
+}
+
 export function UiModeToggle() {
-  const [mode, setMode] = useState<UiMode>('classic');
-  const [mounted, setMounted] = useState(false);
+  const storedMode = useSyncExternalStore(subscribeUiMode, readPref, () => null);
+  const [localChoice, setLocalChoice] = useState<{ stored: UiMode; value: UiMode } | null>(null);
+  const mode = localChoice?.stored === storedMode ? localChoice.value : (storedMode ?? 'classic');
 
   useEffect(() => {
-    const initial = readPref();
-    setMode(initial);
-    applyMode(initial);
-    syncUiModeCookie(initial);
-    setMounted(true);
-    function sync() {
-      const next = readPref();
-      setMode(next);
-      applyMode(next);
-      syncUiModeCookie(next);
-    }
-    window.addEventListener('storage', sync);
-    window.addEventListener(UI_MODE_EVENT, sync);
-    return () => {
-      window.removeEventListener('storage', sync);
-      window.removeEventListener(UI_MODE_EVENT, sync);
-    };
-  }, []);
+    if (storedMode === null) return;
+    applyMode(mode);
+    syncUiModeCookie(mode);
+  }, [mode, storedMode]);
 
   function toggle() {
     const next: UiMode = mode === 'modern' ? 'classic' : 'modern';
-    setMode(next);
     try {
       if (next === 'classic') localStorage.removeItem('ui_mode');
       else localStorage.setItem('ui_mode', next);
@@ -90,10 +85,11 @@ export function UiModeToggle() {
     }
     syncUiModeCookie(next);
     applyMode(next);
+    setLocalChoice({ stored: readPref(), value: next });
     window.dispatchEvent(new Event(UI_MODE_EVENT));
   }
 
-  if (!mounted) return <div className="w-8 h-8" aria-hidden />;
+  if (storedMode === null) return <div className="w-8 h-8" aria-hidden />;
 
   const Icon = mode === 'modern' ? Sparkles : Square;
   const title =

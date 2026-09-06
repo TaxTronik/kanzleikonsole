@@ -37,6 +37,7 @@ code_refs:
   - apps/web/src/server/bwa/addison-parser.ts
 test_refs:
   - apps/web/src/server/bwa/__tests__/datev-parser.test.ts
+  - apps/web/src/server/bwa/__tests__/addison-parser.test.ts
 feature_refs:
   - docs/anwenderdoku/bwa-planung.md
 related_rules:
@@ -140,8 +141,10 @@ Steuern sowie Personalaufwand ab.
 Die Umsetzung ist teilweise. Es gibt keine automatische Prüfung auf
 Vollständigkeit, richtige Auswertungsart, Kontenrahmen, Saldengleichheit,
 Vorzeichen, Periodenabgrenzung oder fachliche Plausibilität. Der referenzierte
-Unit-Test belegt den DATEV-Pfad; ein gleichwertiger direkter Testnachweis für
-die Addison-Parser ist in diesem Regelblock nicht vorhanden. Zusätzlich sind
+Unit-Test belegt den DATEV-Pfad; der direkte Addison-Kompakt-Test prüft
+bekannte Spalten, deutsche Beträge und Quartalsgrenzen anhand synthetischer
+Daten. Ein gleichwertiger direkter Nachweis für die Addison-Langform fehlt.
+Zusätzlich sind
 die internen Feldnamen beziehungsweise Fallbacks fachlich zu weit: 1051 wird
 als `revenue` und 1300 ersatzweise als `resultBeforeTax` behandelt. Manuelle
 Prüfung ist daher auch bei technisch erfolgreichem Import erforderlich.
@@ -159,5 +162,9 @@ Prüfung ist daher auch bei technisch erfolgreichem Import erforderlich.
 
 Der DATEV-Test belegt Header- und Datumsfindung, Hauptpositionsimport und
 Warnungen für synthetische Dateien. Er prüft weder die fachliche Trennung der
-Ergebnispositionen noch Vollständigkeit realer Exporte, Addison-Abdeckung oder
+Ergebnispositionen noch Vollständigkeit realer Exporte oder
 die fachliche Richtigkeit eines fremden Schemas.
+Der direkte Addison-Kompakt-Test hält die bekannte Spaltenzuordnung,
+Quartalsgrenzen, negative deutsche Beträge, fehlende Werte und die Warnung
+bei unbekannten Spalten fest. Die Aufteilung des Parsers in Hilfsfunktionen
+ändert weder Zuordnungen noch Periodenregeln.

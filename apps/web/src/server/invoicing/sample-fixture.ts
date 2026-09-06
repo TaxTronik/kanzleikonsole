@@ -110,12 +110,12 @@ export const SAMPLE_RC_BUYER: XRechnungBuyer = {
   vatId: 'DE987654321',
 };
 
-// Korrekturrechnung/Storno (TypeCode 381): EN-16931-konform mit negativer
+// INV-STORNO-REFERENCE-001: Korrekturrechnung/Storno (TypeCode 384) mit negativer
 // Menge und positivem Einzelpreis (BR-27). Dritter KoSIT-Validierungsfall.
 export const SAMPLE_STORNO_INVOICE: XRechnungInvoice = {
   ...SAMPLE_INVOICE,
   number: '2026-0044',
-  typeCode: '381',
+  typeCode: '384',
   precedingInvoiceNumber: SAMPLE_INVOICE.number,
   subject: `Korrektur zu ${SAMPLE_INVOICE.number}`,
   netAmount: -100,

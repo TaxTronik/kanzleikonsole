@@ -18,6 +18,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
+import { getSessionIssuedAt } from './session-issued-at';
 import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
 import {
   PORTAL_SESSION_COOKIE,
@@ -110,7 +111,8 @@ function hasPortalSessionFields(session: Session | null): session is PortalSessi
 async function hydratePortalSessionFromToken(session: Session, token: unknown): Promise<Session> {
   if (!isPortalTokenPayload(token)) return session;
 
-  const tokenIat = (token as { iat?: number }).iat;
+  const tokenIat = getSessionIssuedAt(token);
+  if (tokenIat === undefined) return session;
   if (await isTokenRevoked('portal', token.contactId, tokenIat)) {
     return session;
   }
@@ -123,7 +125,7 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
         email: true,
         tenantId: true,
         clientId: true,
-        client: { select: { allowActive: true, anonymizedAt: true } },
+        client: { select: { allowActive: true, anonymizedAt: true, mandateEndedAt: true } },
       },
     });
     if (
@@ -133,7 +135,8 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
       c.tenantId !== token.tenantId ||
       c.clientId !== token.clientId ||
       !c.client.allowActive ||
-      c.client.anonymizedAt !== null
+      c.client.anonymizedAt !== null ||
+      c.client.mandateEndedAt != null
     ) {
       log.warn(
         { contactId: token.contactId, tokenTenant: token.tenantId },
@@ -255,7 +258,7 @@ const portalConfig: NextAuthConfig = {
   },
 
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         const u = user as PortalTokenPayload;
         token.contactId = u.contactId;
@@ -263,71 +266,22 @@ const portalConfig: NextAuthConfig = {
         token.clientId = u.clientId;
         token.fullName = u.fullName;
         token.email = normalizePortalEmail(u.email) ?? '';
+        token.sessionIssuedAt = Math.floor(Date.now() / 1000);
+        return token;
       }
-      return token;
+      // ACCESS-TENANT-RLS-001: Reject before Auth.js issues another cookie.
+      // Preserve the original time even if revocation races with this refresh.
+      const issuedAt = getSessionIssuedAt(token);
+      if (issuedAt === undefined || !hasValidJwtLifetime(token)) return null;
+      const session = await hydratePortalSessionFromToken(
+        { user: {}, expires: sessionExpires(token) } as Session,
+        token,
+      );
+      if (!hasPortalSessionFields(session)) return null;
+      return { ...token, sessionIssuedAt: issuedAt };
     },
     async session({ session, token }) {
-      // Runtime-Check (Q9) — siehe Begründung in staff.ts
-      if (!isPortalTokenPayload(token)) return session;
-
-      // S11: Revocation-Check.
-      const tokenIat = (token as { iat?: number }).iat;
-      if (await isTokenRevoked('portal', token.contactId, tokenIat)) {
-        return session;
-      }
-
-      // Härtung (analog staff.ts): die Session MUSS zu einem existierenden,
-      // AKTIVEN Kontakt gehören, dessen Tenant + Mandant mit dem Token
-      // übereinstimmen. Der Login (verifyMagicLink) prüft `active: true` —
-      // ohne laufende Revalidierung könnte ein deaktivierter Kontakt bis zum
-      // JWT-Ablauf (24 h) bzw. bis zur Revocation weiterarbeiten. prismaOwner
-      // (BYPASSRLS) ist nötig, weil der Callback außerhalb eines Tenant-Kontexts
-      // läuft; die Tenant/Mandant-Gleichheit wird gegen das Token erzwungen.
-      // GwG-Schranke (§ 11 GwG): zusätzlich MUSS der Parent-Mandant aktiv
-      // (allowActive) und nicht anonymisiert sein — bei GwG-Ablauf/-Ablehnung
-      // wird allowActive=false gesetzt, das Portal ist dann gesperrt. Läuft im
-      // selben Lookup mit (kein zusätzlicher Round-Trip).
-      // Fail-closed: bei unbestätigtem DB-Stand keine alte Portal-Session
-      // weiterreichen.
-      try {
-        const c = await prismaOwner.clientContact.findUnique({
-          where: { id: token.contactId },
-          select: {
-            active: true,
-            email: true,
-            tenantId: true,
-            clientId: true,
-            client: { select: { allowActive: true, anonymizedAt: true } },
-          },
-        });
-        if (
-          !c ||
-          !c.active ||
-          normalizePortalEmail(c.email) !== normalizePortalEmail(token.email) ||
-          c.tenantId !== token.tenantId ||
-          c.clientId !== token.clientId ||
-          !c.client.allowActive ||
-          c.client.anonymizedAt !== null
-        ) {
-          log.warn(
-            { contactId: token.contactId, tokenTenant: token.tenantId },
-            'portal-auth: Session ohne gültigen/aktiven Kontakt oder Mandant gesperrt/anonymisiert — invalidiert (Re-Login erzwungen)',
-          );
-          return session; // keine Portal-Felder → portalAuth liefert null
-        }
-      } catch (err) {
-        log.warn(
-          { err: (err as Error).message },
-          'portal-auth: Session-Existenzprüfung fehlgeschlagen — invalidiert (Re-Login erzwungen)',
-        );
-        return session; // keine Portal-Felder → portalAuth liefert null
-      }
-
-      session.user.contactId = token.contactId;
-      session.user.tenantId = token.tenantId;
-      session.user.clientId = token.clientId;
-      session.user.fullName = token.fullName;
-      return session;
+      return hydratePortalSessionFromToken(session, token);
     },
   },
 

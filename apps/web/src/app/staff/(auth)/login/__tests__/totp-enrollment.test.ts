@@ -1,3 +1,4 @@
+// Fachkatalog: ACCESS-TENANT-RLS-001
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
@@ -54,7 +55,7 @@ vi.mock('@/server/rate-limit', () => ({
   staffPasswordAccountRateLimitKey: (id: string) => `staff-pw-account:${id}`,
 }));
 
-import { confirmTotpEnrollmentAction } from '../actions';
+import { checkPasswordAction, confirmTotpEnrollmentAction } from '../actions';
 
 const NOW = new Date('2026-07-12T12:00:00.000Z');
 const STAFF_ID = '11111111-1111-4111-8111-111111111111';
@@ -70,6 +71,7 @@ function staff(overrides: Record<string, unknown> = {}) {
     totpSecretEnc: 'encrypted-secret',
     totpEnrolledAt: null,
     totpSetupStartedAt: new Date(NOW.getTime() - 5 * 60 * 1000),
+    hardwareOnlyEnabledAt: null,
     ...overrides,
   };
 }
@@ -172,6 +174,7 @@ describe('confirmTotpEnrollmentAction security gates', () => {
         totpEnrolledAt: NOW,
         totpSetupStartedAt: null,
         totpBackupCodes: Array(8).fill('backup-code-hash'),
+        authRevision: { increment: 1 },
       },
     });
     expect(m.evidenceRecord).toHaveBeenCalledTimes(1);
@@ -179,6 +182,20 @@ describe('confirmTotpEnrollmentAction security gates', () => {
     expect(m.resetRateLimit).toHaveBeenCalledWith(`staff-pw-account:${STAFF_ID}`);
     expect(m.resetRateLimit).toHaveBeenCalledWith('staff-totp-enroll:203.0.113.7');
     expect(m.resetRateLimit).toHaveBeenCalledWith(`staff-totp-enroll-account:${STAFF_ID}`);
+  });
+
+  it('bietet Hardware-only-Konten keinen Passwort-/TOTP-Enrollment-Fallback an', async () => {
+    m.staffFindFirst.mockResolvedValue(staff({ hardwareOnlyEnabledAt: NOW }));
+
+    const result = await confirmTotpEnrollmentAction(
+      'admin@example.test',
+      'correct-password',
+      '123456',
+    );
+
+    expect(result).toEqual({ ok: false, error: 'Ungültige Daten.' });
+    expect(m.compare).not.toHaveBeenCalled();
+    expect(m.transaction).not.toHaveBeenCalled();
   });
 
   it('loses a concurrent conditional claim without issuing backup codes', async () => {
@@ -196,5 +213,17 @@ describe('confirmTotpEnrollmentAction security gates', () => {
     });
     expect(m.evidenceRecord).not.toHaveBeenCalled();
     expect(m.resetRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe('Hardware-only Passwort-Fallback', () => {
+  it('weist bereits den Passwort-Vorschritt generisch und vor bcrypt ab', async () => {
+    m.staffFindFirst.mockResolvedValue(staff({ hardwareOnlyEnabledAt: NOW }));
+
+    const result = await checkPasswordAction('admin@example.test', 'correct-password');
+
+    expect(result).toEqual({ ok: false, error: 'Ungültige Anmeldedaten.' });
+    expect(m.compare).not.toHaveBeenCalled();
+    expect(m.resetFailedLogin).not.toHaveBeenCalled();
   });
 });

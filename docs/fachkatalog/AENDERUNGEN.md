@@ -1,5 +1,67 @@
 ---
 exceptions:
+  - id: FK-EXC-20260906-001
+    date: '2026-09-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/ui-state.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-id-doc-form.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-document-review.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/legal-entity-details-form.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/use-gwg-document-search.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/new-marking-panel.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/norm-ref-editor.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-workspace.tsx
+      - apps/web/src/app/staff/(protected)/invoices/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/new/form.tsx
+    rule_ids:
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - RISK-AI-SUGGESTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - INV-VAT-TOTALS-001
+      - INV-LIFECYCLE-FREEZE-001
+    reason: >-
+      Rein technische React-Zustandsbereinigung und Extraktion bestehender
+      Ansichten. Auswahlentwürfe werden an ihre Eingabe gebunden, Suchantworten
+      gegen überholte Anfragen geschützt, URL-Ansichten über Browsersubscriptions
+      synchronisiert und Ereignis-Refs nach dem Render aktualisiert. Fachliche
+      Eingaben, Berechnungen, Normvorschläge, Prüfentscheidungen, Server-Actions,
+      Autorisierung und Archivierung werden dadurch nicht geändert. Die
+      Rechnungsdetailansicht verwendet einen gemeinsamen Zeitpunkt pro Request;
+      das neue Rechnungsformular initialisiert denselben Datumsdefault einmalig.
+      Fachliche Rechnungsänderungen sind separat in den betroffenen Regeln erfasst.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/ui-state.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/document-selection.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/katalog-overlay.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive-lock-call-sites.test.ts
+    reviewer: Codex (technischer Strukturabgleich, keine fachliche Freigabe)
+  - id: FK-EXC-20260906-002
+    date: '2026-09-06'
+    paths:
+      - apps/web/src/server/bwa/liquidity.ts
+      - apps/web/src/server/bwa/tax-estimator.ts
+      - apps/web/src/server/bwa/__tests__/liquidity.test.ts
+      - packages/tax/src/materialize.ts
+    rule_ids:
+      - BWA-TAX-ESTIMATE-001
+      - BWA-PROJECTION-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-DEADLINE-WORKDAY-001
+    reason: >-
+      Bestehende Berechnungsschritte, Optionsdefaults und Datensatzabbildungen
+      werden unverändert in benannte Helfer aufgeteilt. Formeln, Tarifwerte,
+      Vorzeichen, Rundungen, Terminregeln, Anspruchs- und Anforderungsauswahl,
+      Tenantfilter und Transaktionsgrenzen bleiben erhalten. Der zusätzliche
+      Liquiditätstest fixiert die bereits bestehende Berechnung; die laufenden
+      Steuer- und Materialisierungstests prüfen Ergebnisse und Nebenwirkungen.
+    tests:
+      - apps/web/src/server/bwa/__tests__/liquidity.test.ts
+      - apps/web/src/server/bwa/__tests__/tax-estimator.test.ts
+      - packages/tax/src/__tests__/materialize.test.ts
+    reviewer: Codex (technischer Strukturabgleich, keine fachliche Freigabe)
   - id: FK-EXC-20260830-012
     date: '2026-08-30'
     paths:

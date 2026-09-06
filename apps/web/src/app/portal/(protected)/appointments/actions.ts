@@ -10,17 +10,20 @@ import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
 import { toActionError } from '@/server/auth/rbac';
-import { portalActionGuard, withPortalModule, ActionError } from '@/server/actions/portal-action';
+import {
+  portalActionGuard,
+  withPortalModule,
+  ActionError,
+  type ActionResult,
+} from '@/server/actions/portal-action';
 import { assertAppointmentStaffOptionTx } from './staff-options';
 
 const withAppointmentsPortal = withPortalModule('appointments');
 import { berlinWallClockToUtc } from '@/lib/fmt';
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
+export type AppointmentRequestActionResult = ActionResult & {
   id?: string;
-}
+};
 
 const SlotSchema = z.object({
   startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
@@ -28,16 +31,77 @@ const SlotSchema = z.object({
 });
 
 const CreateSchema = z.object({
-  subject: z.string().min(1).max(200),
-  notes: z.string().max(2000).optional().or(z.literal('')),
+  subject: z.string().trim().min(1, 'Bitte geben Sie ein Anliegen an.').max(200),
+  notes: z.string().max(2000, 'Die Notiz darf höchstens 2.000 Zeichen enthalten.').optional(),
   preferredStaffId: z.string().uuid().nullable().optional(),
   slots: z.array(SlotSchema).min(1).max(3),
 });
 
+function portalAppointmentFieldName(path: PropertyKey[]): string {
+  const [root, index, slotField] = path;
+  if (root !== 'slots') return typeof root === 'string' ? root : '_form';
+  if (typeof index !== 'number') return 'slot0_starts';
+  return slotField === 'endsAt' ? `slot${index}_ends` : `slot${index}_starts`;
+}
+
+function portalAppointmentValidationError(error: z.ZodError): AppointmentRequestActionResult {
+  const fieldErrors: Record<string, string[]> = {};
+  for (const issue of error.issues) {
+    const field = portalAppointmentFieldName(issue.path);
+    (fieldErrors[field] ??= []).push(issue.message);
+  }
+  return {
+    ok: false,
+    error: 'Bitte prüfen Sie die markierten Angaben.',
+    errorCode: 'VALIDATION_ERROR',
+    fieldErrors,
+  };
+}
+
+function portalAppointmentFieldError(
+  field: string,
+  message: string,
+): AppointmentRequestActionResult {
+  return {
+    ok: false,
+    error: 'Bitte prüfen Sie die markierten Angaben.',
+    errorCode: 'VALIDATION_ERROR',
+    fieldErrors: { [field]: [message] },
+  };
+}
+
+function portalAppointmentSlotError(
+  slots: Array<{ startsAt: string; endsAt: string }>,
+): AppointmentRequestActionResult | null {
+  for (const [index, slot] of slots.entries()) {
+    const start = berlinWallClockToUtc(slot.startsAt) ?? new Date(NaN);
+    const end = berlinWallClockToUtc(slot.endsAt) ?? new Date(NaN);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return portalAppointmentFieldError(
+        `slot${index}_starts`,
+        'Bitte wählen Sie einen gültigen Zeitpunkt.',
+      );
+    }
+    if (end.getTime() <= start.getTime()) {
+      return portalAppointmentFieldError(
+        `slot${index}_ends`,
+        'Das Ende muss nach dem Beginn liegen.',
+      );
+    }
+    if (start.getTime() < Date.now()) {
+      return portalAppointmentFieldError(
+        `slot${index}_starts`,
+        'Der Wunschtermin muss in der Zukunft liegen.',
+      );
+    }
+  }
+  return null;
+}
+
 export async function createAppointmentRequestAction(
-  _prev: ActionResult | null,
+  _prev: AppointmentRequestActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<AppointmentRequestActionResult> {
   const g = await portalActionGuard({ module: 'appointments' });
   if (!g.ok) return g;
   const { tenantId, contactId, clientId, ctx } = g;
@@ -59,6 +123,7 @@ export async function createAppointmentRequestAction(
     return {
       ok: false,
       error: `Zu viele Termin-Anfragen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+      errorCode: 'RATE_LIMITED',
     };
   }
 
@@ -78,24 +143,9 @@ export async function createAppointmentRequestAction(
     preferredStaffId: formData.get('preferredStaffId') || null,
     slots,
   });
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-
-  for (const s of parsed.data.slots) {
-    // Zeitzonenlose Berlin-Wanduhr-Strings — als Berlin→UTC prüfen, damit der
-    // Zukunfts-Check auf einem UTC-Container nicht um den Offset danebenliegt.
-    const start = berlinWallClockToUtc(s.startsAt) ?? new Date(NaN);
-    const end = berlinWallClockToUtc(s.endsAt) ?? new Date(NaN);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      return { ok: false, error: 'Ungültiger Zeitstempel.' };
-    }
-    if (end.getTime() <= start.getTime()) {
-      return { ok: false, error: 'Ende muss nach dem Start liegen.' };
-    }
-    if (start.getTime() < Date.now()) {
-      return { ok: false, error: 'Wunschtermin muss in der Zukunft liegen.' };
-    }
-  }
+  if (!parsed.success) return portalAppointmentValidationError(parsed.error);
+  const slotError = portalAppointmentSlotError(parsed.data.slots);
+  if (slotError) return slotError;
 
   let createdId = '';
   try {
@@ -174,9 +224,16 @@ export async function createAppointmentRequestAction(
   return { ok: true, id: createdId };
 }
 
-export async function cancelAppointmentRequestAction(input: { id: string }): Promise<ActionResult> {
+export async function cancelAppointmentRequestAction(input: {
+  id: string;
+}): Promise<AppointmentRequestActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success)
+    return {
+      ok: false,
+      error: 'Ungültige Terminanfrage.',
+      errorCode: 'VALIDATION_ERROR',
+    };
 
   return withAppointmentsPortal(
     async (tx, { tenantId, contactId, clientId }) => {

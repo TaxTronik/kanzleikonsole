@@ -3,7 +3,7 @@
 // (provision.ts) — strukturelle Grundausstattung, KEINE Demodaten.
 // =============================================================================
 
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -29,6 +29,41 @@ export function writeAdminCredentials(email: string, password: string): string {
   const credPath = adminCredentialsPath();
   writeFileSync(credPath, `email=${email}\npassword=${password}\n`, { mode: 0o600 });
   return credPath;
+}
+
+/**
+ * Bringt ein bereits vorhandenes lokales Dev-Admin-Konto in denselben
+ * Passwort-plus-TOTP-Onboarding-Zustand wie eine Neuanlage.
+ *
+ * Fachkatalog: ACCESS-TENANT-RLS-001
+ */
+export async function resetExistingDevAdminAuth(
+  prisma: PrismaClient,
+  input: { staffUserId: string; passwordHash: string; now?: Date },
+): Promise<{ admin: { id: string; email: string }; revokedHardwareKeys: number }> {
+  return prisma.$transaction(async (tx) => {
+    const admin = await tx.staffUser.update({
+      where: { id: input.staffUserId },
+      data: {
+        passwordHash: input.passwordHash,
+        active: true,
+        lockedUntil: null,
+        failedLoginCount: 0,
+        hardwareOnlyEnabledAt: null,
+        authRevision: { increment: 1 },
+        totpSecretEnc: null,
+        totpEnrolledAt: null,
+        totpSetupStartedAt: null,
+        totpBackupCodes: Prisma.DbNull,
+      },
+      select: { id: true, email: true },
+    });
+    const revoked = await tx.staffWebAuthnCredential.updateMany({
+      where: { staffUserId: input.staffUserId, revokedAt: null },
+      data: { revokedAt: input.now ?? new Date() },
+    });
+    return { admin, revokedHardwareKeys: revoked.count };
+  });
 }
 
 /**

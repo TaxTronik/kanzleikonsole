@@ -11,7 +11,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { Dispatch, FormEventHandler, SetStateAction } from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { OverflowItem, OverflowMenu, OverflowSeparator } from '@/components/overflow-menu';
 import { Modal } from '@/components/ui/modal';
 import { requiresSeparateTestWebhook, type N8nEventCatalogEntry } from '@taxtronik/n8n-shared';
@@ -86,6 +86,16 @@ function routeEditorPresentation(routeDraft: RouteDraft) {
   return { draftPrefilled, editorTitle };
 }
 
+function groupRouteEvents(events: readonly N8nEventCatalogEntry[]) {
+  const groupedEvents = new Map<string, N8nEventCatalogEntry[]>();
+  for (const event of events) {
+    const list = groupedEvents.get(event.categoryLabel) ?? [];
+    list.push(event);
+    groupedEvents.set(event.categoryLabel, list);
+  }
+  return groupedEvents;
+}
+
 export function RouteEditorSection({
   endpoints,
   connectionActive,
@@ -104,12 +114,7 @@ export function RouteEditorSection({
   onTestRoute,
   onToggleRoute,
 }: RouteEditorSectionProps) {
-  const groupedEvents = new Map<string, N8nEventCatalogEntry[]>();
-  for (const event of events) {
-    const list = groupedEvents.get(event.categoryLabel) ?? [];
-    list.push(event);
-    groupedEvents.set(event.categoryLabel, list);
-  }
+  const groupedEvents = groupRouteEvents(events);
   const staticEventNames = new Set<string>(events.map((event) => event.name));
   const customRouteEvents = routeDraft.events.filter((event) => !staticEventNames.has(event));
   const routeRequiresTestUrl =
@@ -129,9 +134,11 @@ export function RouteEditorSection({
     setManualOpen(false);
     resetDraft();
   };
-  useEffect(() => {
+  const [previousRouteResult, setPreviousRouteResult] = useState(routeResult);
+  if (previousRouteResult !== routeResult) {
+    setPreviousRouteResult(routeResult);
     if (routeResult?.ok) setManualOpen(false);
-  }, [routeResult]);
+  }
 
   return (
     <section className="space-y-4">

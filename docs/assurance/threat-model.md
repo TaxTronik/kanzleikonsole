@@ -40,12 +40,16 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 ### 2.3 Authentifizierung & Berechtigungen
 
-| ID       | Was muss niemals passieren                                  | Schicht                             | Test                                                  |
-| -------- | ----------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------- |
-| T-AUTH-1 | Ein nicht-eingeloggter User erreicht eine geschützte Action | `staffActionGuard` / Session-Cookie | `server-action-authz.test.ts`, E2E 09                 |
-| T-AUTH-2 | Ein Nicht-Admin führt Admin-Aktionen aus                    | `decideStaffGuard`                  | `staff-action-policy.property.test.ts`, E2E 07 (11.2) |
-| T-AUTH-3 | Eine Session bleibt nach Logout aktiv                       | Cookie-Clearing, Revocation         | E2E 07 (6.2), `revocation.ts`                         |
-| T-AUTH-4 | TOTP wird umgangen (außer DEV_SKIP_TOTP in CI)              | `authorize` Callback                | `staff.ts` DEV_SKIP_TOTP double-gate                  |
+| ID       | Was muss niemals passieren                                                                          | Schicht                                                                            | Test                                                     |
+| -------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| T-AUTH-1 | Ein nicht-eingeloggter User erreicht eine geschützte Action                                         | `staffActionGuard` / Session-Cookie                                                | `server-action-authz.test.ts`, E2E 09                    |
+| T-AUTH-2 | Ein Nicht-Admin führt Admin-Aktionen aus                                                            | `decideStaffGuard`                                                                 | `staff-action-policy.property.test.ts`, E2E 07 (11.2)    |
+| T-AUTH-3 | Eine Session bleibt nach Logout aktiv                                                               | Cookie-Clearing, Revocation                                                        | E2E 07 (6.2), `revocation.ts`                            |
+| T-AUTH-4 | Der für das Staff-Konto gewählte Anmeldemodus wird umgangen                                         | Provider + Modus-/Revisionsbindung                                                 | `staff.ts`, `webauthn.test.ts`, Login-/Action-Tests      |
+| T-AUTH-5 | Ein ungeeigneter/replayed WebAuthn-Schlüssel wird akzeptiert                                        | RP/Origin/Challenge/UV/Key-Policy                                                  | `webauthn.test.ts`, `staff-webauthn-rls.test.ts`         |
+| T-AUTH-6 | Attestation löst untrusted/partiellen CRL-Zugriff oder Cache-Poisoning aus                          | Chain-first, vollständige CRL-Scope-Policy, Signatur/Issuer, URL- und Cachegrenzen | `simplewebauthn-crl-hardening.test.ts`                   |
+| T-AUTH-7 | Rollenrennen umgeht Recovery-Hierarchie oder ein ruhender Schlüssel überlebt einen Sicherheitsreset | DB-Rollenboden, Actor-`authRevision`, Staff-Locks und Credential-Widerruf          | Admin-/Profil-Action-Tests, `staff-webauthn-rls.test.ts` |
+| T-AUTH-8 | Die Owner-CLI legt ein Recovery-Passwort im Terminal, Log oder in einer fremden Datei offen         | Exklusive No-follow-Datei, gezieltes Partial-Cleanup, Datei-/Verzeichnis-`fsync`   | `admin-break-glass.test.ts`                              |
 
 ### 2.4 Daten-Integrität
 
@@ -71,25 +75,30 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 ## 3. Angriffsvektoren
 
-| Vektor                   | Beispiel                                           | Gegenmaßnahme                                                                                     |
-| ------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **Direct DB Access**     | Angreifer umgeht App, greift direkt auf DB zu      | RLS (FORCE + Policy), `taxtronik_app` Role                                                        |
-| **TOCTOU Race**          | Berechtigung gilt beim Precheck, nicht beim Commit | Advisory Locks, `$transaction`                                                                    |
-| **Mass Assignment**      | Angreifer sendet versteckte Felder mit             | Zod-Schemas pro Action, `decideStaffGuard`                                                        |
-| **CSRF**                 | Angreifer forciert POST aus fremdem Origin         | SameSite=Lax, Origin-/Fetch-Metadata-Checks, Auth.js/Next.js-Schutz                               |
-| **XSS**                  | Angreifer injiziert Script in Mandantendaten       | React-Default-Escaping, CSP, E2E 07 (9.1)                                                         |
-| **SQL Injection**        | Angreifer injiziert SQL in Search/Filter           | Prisma-Parameterized-Queries, E2E 07 (9.2)                                                        |
-| **File Upload Malware**  | EICAR-Testdatei, Double-Extension                  | ClamAV, MIME-Check, E2E 07 (10.1-10.3)                                                            |
-| **Brute Force**          | Passwort- oder TOTP-Brute-Force                    | IP-RL + Account-Lockout, E2E 04                                                                   |
-| **SSRF / DNS-Rebinding** | Admin-konfigurierte URLs zeigen auf interne Netze  | `safeFetch`, gepinnter Lookup; Infrastruktur-Allowlist gilt nicht für tenantkonfigurierbare Ziele |
-| **Webhook Replay**       | alter n8n-Callback wird erneut gesendet            | v1: einmalige Request-ID im fail-closed Redis-Store; Legacy: HMAC + Timestamp + Nonce             |
-| **Dev-Config in Prod**   | Mailhog oder Dev-Secrets gelangen in Production    | ENV-Denylist, Compose-Pflichtvariablen, `doctor`                                                  |
+| Vektor                   | Beispiel                                                                   | Gegenmaßnahme                                                                                                                                                                                                                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Direct DB Access**     | Angreifer umgeht App, greift direkt auf DB zu                              | RLS (FORCE + Policy), `taxtronik_app` Role                                                                                                                                                                                                                                                                 |
+| **TOCTOU Race**          | Berechtigung gilt beim Precheck, nicht beim Commit                         | Advisory Locks, `$transaction`                                                                                                                                                                                                                                                                             |
+| **Mass Assignment**      | Angreifer sendet versteckte Felder mit                                     | Zod-Schemas pro Action, `decideStaffGuard`                                                                                                                                                                                                                                                                 |
+| **CSRF**                 | Angreifer forciert POST aus fremdem Origin                                 | SameSite=Lax, Origin-/Fetch-Metadata-Checks, Auth.js/Next.js-Schutz                                                                                                                                                                                                                                        |
+| **XSS**                  | Angreifer injiziert Script in Mandantendaten                               | React-Default-Escaping, CSP, E2E 07 (9.1)                                                                                                                                                                                                                                                                  |
+| **SQL Injection**        | Angreifer injiziert SQL in Search/Filter                                   | Prisma-Parameterized-Queries, E2E 07 (9.2)                                                                                                                                                                                                                                                                 |
+| **File Upload Malware**  | EICAR-Testdatei, Double-Extension                                          | ClamAV, MIME-Check, E2E 07 (10.1-10.3)                                                                                                                                                                                                                                                                     |
+| **Brute Force**          | Passwort-, TOTP- oder WebAuthn-Versuchssturm                               | schrittspezifische IP-/Global-Limits + Account-Lockout, E2E 04                                                                                                                                                                                                                                             |
+| **WebAuthn Downgrade**   | Hardware-only fällt auf Passwort/OTP zurück                                | Modus-/`authRevision`-Bindung; ausschließlich `security_key`; kein Software-Fallback                                                                                                                                                                                                                       |
+| **WebAuthn Replay**      | Challenge oder Assertion wird erneut verwendet                             | atomarer Redis-Consume, Purpose-/RP-/Origin-Bindung, Signaturzähler                                                                                                                                                                                                                                        |
+| **WebAuthn Trust Drift** | entferntes oder kompromittiertes Modell bleibt aktiv                       | vollständige `packed`-Attestation samt Zertifikat-AAGUID; FIDO MDS `strict`; signierte BLOB-Serie vor lokalem Modellfilter; zentral gebundene Policy-Revision samt Hash; Exact-State-Lock je Commit in Reihenfolge `MDS -> Staff`; bei MDS-/Netzfehler fail-closed                                         |
+| **Attestation-CRL-SSRF** | ein untrusted Zertifikat dereferenziert interne oder umgeleitete CRL-Ziele | Kette und CA-Constraints vor Fetch; nur eine unpartitionierte Voll-CRL-URI über HTTP(S)-Standardports ohne Credentials/Redirect; Delta/IDP/Reasons und unbekannte kritische Extensions fail-closed; authentisierter, begrenzter Cache. CRL-URLs bereits vertrauenswürdiger CAs bleiben Egress-Abhängigkeit |
+| **SSRF / DNS-Rebinding** | Admin-konfigurierte URLs zeigen auf interne Netze                          | `safeFetch`, gepinnter Lookup; Infrastruktur-Allowlist gilt nicht für tenantkonfigurierbare Ziele                                                                                                                                                                                                          |
+| **Webhook Replay**       | alter n8n-Callback wird erneut gesendet                                    | v1: einmalige Request-ID im fail-closed Redis-Store; Legacy: HMAC + Timestamp + Nonce                                                                                                                                                                                                                      |
+| **Dev-Config in Prod**   | Mailhog oder Dev-Secrets gelangen in Production                            | ENV-Denylist, Compose-Pflichtvariablen, `doctor`                                                                                                                                                                                                                                                           |
 
 ## 4. Vertrauensgrenzen (Trust Boundaries)
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │ Internet (Null-Trust)                                │
+│  ├── Staff-User (Passwort/TOTP oder FIDO2-Schlüssel) │
 │  ├── Portal-User (Magic-Link)                        │
 │  └── Angreifer                                        │
 ├─────────── Proxy (`proxy.ts`) ──────────────────────┤
@@ -112,9 +121,54 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 └─────────────────────────────────────────────────────┘
 ```
 
+Der externe FIDO Metadata Service ist eine zusätzliche Vertrauens- und
+Verfügbarkeitsgrenze des optionalen Hardware-Zugangs. TaxTronik lädt dessen
+signierten Gesamt-BLOB über HTTPS, prüft die Metadaten im Modus `strict` und
+sendet dabei keine Staff-/Credential-ID oder AAGUID als Anwendungsparameter.
+Benötigte CRLs werden erst nach einem vertrauenswürdigen Kettenaufbau geladen
+und kryptografisch an den Issuer gebunden. Mehrere oder gescopte Distribution
+Points sowie Delta-/indirekte CRLs werden nicht unvollständig ausgewertet,
+sondern blockieren fail-closed. Ihre Betreiber sehen dennoch die
+üblichen Verbindungsdaten des App-Servers; die Ziele einer bereits
+vertrauenswürdigen CA bleiben eine kontrolliert zuzulassende externe
+Egress-Fläche. DNS, TLS, Systemzeit, Egress und MDS-/CRL-Verfügbarkeit können
+Hardware-Assertions fail-closed blockieren. Die AAGUID identifiziert eine
+Modellfamilie, nicht eine individuelle Schlüsselinstanz; zwei Credentials sind
+kein kryptografischer Zwei-Geräte-Nachweis.
+
+Der Produktionsstart bindet ausschließlich die lokale Hardware-Policy an die
+Datenbank und kontaktiert weder MDS noch CRL-Endpunkte. Eine leere Allowlist
+bildet dabei einen zentral deaktivierten Zustand. Stable Replicas benötigen
+dieselbe `WEBAUTHN_HARDWARE_POLICY_REVISION` und denselben kanonischen Hash;
+eine höhere Revision verdrängt alte Replicas, während dieselbe Revision mit
+abweichendem Hash oder eine niedrigere Revision fail-closed abgewiesen wird.
+
+Die signierte Seriennummer eines kryptografisch gültigen MDS-BLOBs wird vor
+dem lokalen Allowlist-/Modellfilter monoton übernommen. Deshalb verdrängt auch
+ein gültiger neuer BLOB ohne lokal nutzbare Modelle ältere Snapshots, bevor der
+aktuelle Hardware-Vorgang scheitert. Der prozesslokale Snapshot ist bei jeder
+erfolgreichen WebAuthn-Mutation über die exakte Bindung an BLOB-Serie,
+Policy-Revision und Policy-Hash sowie einen bis zum Datenbank-Commit gehaltenen
+Share-Lock abgesichert. Der MDS-Lock wird vor den Staff-Locks genommen. Ein
+Cluster-Knoten kann dadurch nach einem parallel übernommenen neueren MDS- oder
+Policy-Stand nicht mehr mit dem älteren Zustand committen.
+
+Für Wiederherstellung und Rollenpflege schützt ein Datenbank-Rollenboden die
+Hierarchie: Staff-Akteure können keine ADMIN-Rolle entziehen; eine
+PARTNER-Rolle darf nur ein aktiver ADMIN desselben Tenants entziehen. Passwort-
+und TOTP-Sicherheitsresets prüfen die Actor-`authRevision` unter den Locks und
+widerrufen auch ruhende, noch aktive Hardware-Credentials. Die Owner-CLI gibt
+das Klartextpasswort nur in eine exklusiv und ohne Symlink-Folge angelegte Datei
+aus, nie in Terminal oder Logs; Teildateien werden bei Ausgabefehlern gezielt
+entfernt und Datei sowie POSIX-Elternverzeichnis vor dem DB-Commit
+synchronisiert. Scheitert erst dieser Commit, kann eine unwirksame, aber sicher
+geschriebene Datei zurückbleiben und muss verworfen werden.
+
 ## 5. Referenzen
 
 - ADR 0002: RLS und App-Level-Tenancy
+- ADR 0003: getrennte Staff-/Portal-Auth-Surfaces
+- ADR 0010: JWT-Sessions, Modusbindung und Widerruf
 - ADR 0012: Schema-Drift-Detection
 - `docs/compliance/tenancy-model.md`
 - `docs/compliance/gobd.md`

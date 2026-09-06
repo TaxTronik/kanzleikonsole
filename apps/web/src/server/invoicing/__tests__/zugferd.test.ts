@@ -5,6 +5,36 @@ import { SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER } from '../sample-fixture';
 import { extractText, getDocumentProxy } from 'unpdf';
 
 describe('generateZugferdPdf — Factur-X-Hybrid (iter/P2-8)', () => {
+  it('INV-ARCHIVE-EINVOICE-001: preserves long multi-page descriptions inside their column', async () => {
+    const description = Array.from(
+      { length: 80 },
+      (_, index) =>
+        `Nachweis ${index + 1}: vollständige Leistungsbeschreibung https://example.test/eine-besonders-lange-ungestueckte-quellenadresse-${index}`,
+    ).join('\n');
+    const invoice = {
+      ...SAMPLE_INVOICE,
+      positions: [{ ...SAMPLE_INVOICE.positions[0]!, description }],
+    };
+    const xml = generateXRechnungCii(invoice, SAMPLE_SELLER, SAMPLE_BUYER);
+    const bytes = await generateZugferdPdf(invoice, SAMPLE_SELLER, SAMPLE_BUYER, xml);
+    const pdf = await getDocumentProxy(bytes);
+    expect(pdf.numPages).toBeGreaterThan(1);
+    const { text } = await extractText(pdf, { mergePages: true });
+    // Headers and page footers may occur between description lines.
+    for (let index = 1; index <= 80; index++) expect(text).toContain(`Nachweis ${index}:`);
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      for (const item of content.items) {
+        if (!('str' in item) || item.transform[4] !== 75) continue;
+        // The adjacent quantity column begins at x = 295; pdf.js and
+        // pdf-lib differ slightly in kerning/width measurement.
+        expect(item.transform[4] + item.width).toBeLessThan(295);
+        expect(item.transform[5]).toBeGreaterThan(60);
+      }
+    }
+  });
+
   it('bettet die XML als „Alternative" ein und trägt den Factur-X-XMP-Block', async () => {
     const cii = generateXRechnungCii(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER);
     const pdfBytes = await generateZugferdPdf(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER, cii);

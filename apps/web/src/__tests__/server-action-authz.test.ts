@@ -48,6 +48,33 @@ const TRUSTED_MODULE_WRAPPER_FACTORIES = new Map<string, ReadonlySet<string>>([
   ['@/server/actions/portal-action', new Set(['withPortalModule'])],
 ]);
 
+// Payroll uses a separate, narrowly scoped capability session. Trust the
+// reviewed exports only when imported from the canonical capability module.
+function payrollCapabilityImports(src: ts.SourceFile): Set<string> {
+  const names = new Set<string>();
+  const trusted = new Set([
+    'guardPayrollEmployeeEntry',
+    'guardPayrollEmployee',
+    'guardPayrollEmployeeLogout',
+  ]);
+  src.forEachChild((node) => {
+    if (
+      !ts.isImportDeclaration(node) ||
+      !ts.isStringLiteral(node.moduleSpecifier) ||
+      node.moduleSpecifier.text !== '@/server/payroll/capability' ||
+      node.importClause?.isTypeOnly
+    )
+      return;
+    const bindings = node.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) return;
+    for (const binding of bindings.elements) {
+      if (!binding.isTypeOnly && trusted.has(binding.propertyName?.text ?? binding.name.text))
+        names.add(binding.name.text);
+    }
+  });
+  return names;
+}
+
 // Delegation: ruft die Action eine ANDERE *Action auf, ist die Autorisierung dort
 // garantiert (jene Action wird von diesem Guardrail selbst geprüft → Transitivität).
 // Zählt NUR, wenn das Ziel in der Menge der gesammelten exportierten Action-Namen
@@ -202,6 +229,7 @@ function authCarryingFns(file: string, seen: Set<string> = new Set()): Set<strin
   const auth = new Set<string>([
     ...fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name),
     ...boundModuleAuthWrappers(src),
+    ...payrollCapabilityImports(src),
   ]);
   for (const [spec, names] of importedFnsBySource(src)) {
     const target = resolveRelative(file, spec);
@@ -245,6 +273,27 @@ function delegatesToKnownAction(body: string, self: string): boolean {
 }
 
 describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
+  it('recognizes only canonical payroll capability imports, including aliases', () => {
+    const parse = (source: string) =>
+      ts.createSourceFile('fixture.ts', source, ts.ScriptTarget.Latest, true);
+    expect([
+      ...payrollCapabilityImports(
+        parse("import { guardPayrollEmployee as guard } from '@/server/payroll/capability';"),
+      ),
+    ]).toEqual(['guard']);
+    expect([
+      ...payrollCapabilityImports(
+        parse(
+          "import { guardPayrollEmployee } from './untrusted'; const guardPayrollEmployeeLogout = () => {};",
+        ),
+      ),
+    ]).toEqual([]);
+    expect([
+      ...payrollCapabilityImports(
+        parse("import type { guardPayrollEmployee } from '@/server/payroll/capability';"),
+      ),
+    ]).toEqual([]);
+  });
   it('findet die Server-Action-Fläche', () => {
     expect(files.length).toBeGreaterThan(40);
   });

@@ -63,7 +63,9 @@ const nextConfig = {
 
   // pdfkit lädt seine Standard-Font-Metriken (.afm) zur Laufzeit aus
   // node_modules — darf NICHT gebündelt werden, sonst fehlen die Fonts.
-  serverExternalPackages: ['pdfkit'],
+  // The bounded PDF preflight worker resolves pdf-lib as a real Node module.
+  // A bundled-only copy cannot be loaded inside that isolated worker thread.
+  serverExternalPackages: ['pdfkit', 'pdf-lib'],
 
   // Reaktivität strenger.
   reactStrictMode: true,

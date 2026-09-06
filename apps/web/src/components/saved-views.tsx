@@ -6,7 +6,7 @@
 // persönliche Bequemlichkeit pro Browser, keine Auswertung.
 // =============================================================================
 
-import { useEffect, useState } from 'react';
+import { readBrowserStorage, useBrowserStorage, writeBrowserStorage } from './use-browser-storage';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Bookmark, BookmarkPlus, X } from 'lucide-react';
 import { promptDialog } from '@/components/ui/modal';
@@ -18,9 +18,8 @@ interface SavedView {
 
 const KEY = 'taxtronik:saved-views';
 
-function readAll(): Record<string, SavedView[]> {
+function readAll(raw: string | null): Record<string, SavedView[]> {
   try {
-    const raw = localStorage.getItem(KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, SavedView[]>) : {};
@@ -31,7 +30,7 @@ function readAll(): Record<string, SavedView[]> {
 
 function writeAll(data: Record<string, SavedView[]>): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(data));
+    writeBrowserStorage(KEY, JSON.stringify(data));
   } catch {
     // localStorage nicht verfügbar → ignorieren.
   }
@@ -41,20 +40,15 @@ export function SavedViews() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [views, setViews] = useState<SavedView[]>([]);
-
-  useEffect(() => {
-    setViews(readAll()[pathname] ?? []);
-  }, [pathname]);
+  const views = readAll(useBrowserStorage(KEY))[pathname] ?? [];
 
   const currentQuery = searchParams.toString();
 
   function persist(next: SavedView[]) {
-    const all = readAll();
+    const all = readAll(readBrowserStorage(KEY));
     if (next.length === 0) delete all[pathname];
     else all[pathname] = next;
     writeAll(all);
-    setViews(next);
   }
 
   async function saveCurrent() {

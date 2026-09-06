@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { searchUnlinkedGwgDocumentsAction } from './id-document-actions';
 
 export interface SelectableGwgDocument {
@@ -11,7 +11,7 @@ export interface SelectableGwgDocument {
 
 /**
  * Verbindet die kleine initiale Trefferliste mit einer entprellten Suche über
- * die komplette Mandantenakte. Eine Sequenznummer verhindert, dass langsame
+ * die komplette Mandantenakte. Ein Abbruchmarker verhindert, dass langsame
  * Antworten eine inzwischen neuere Eingabe überschreiben.
  */
 export function useUnlinkedGwgDocumentSearch({
@@ -28,24 +28,27 @@ export function useUnlinkedGwgDocumentSearch({
   enabled: boolean;
 }) {
   const [remoteDocuments, setRemoteDocuments] = useState<SelectableGwgDocument[]>([]);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState(enabled && query.trim().length >= 2);
   const [error, setError] = useState<string | null>(null);
   const [limited, setLimited] = useState(false);
-  const requestSequence = useRef(0);
   const normalizedQuery = query.trim();
 
-  useEffect(() => {
-    const sequence = ++requestSequence.current;
-    if (!enabled || normalizedQuery.length < 2) {
-      setRemoteDocuments([]);
-      setPending(false);
-      setError(null);
-      setLimited(false);
-      return;
-    }
-
-    setPending(true);
+  const requestKey = JSON.stringify([checkId, clientId, enabled, normalizedQuery]);
+  const [previousRequestKey, setPreviousRequestKey] = useState(requestKey);
+  const shouldSearch = enabled && normalizedQuery.length >= 2;
+  if (previousRequestKey !== requestKey) {
+    setPreviousRequestKey(requestKey);
+    setPending(shouldSearch);
     setError(null);
+    if (!shouldSearch) {
+      setRemoteDocuments([]);
+      setLimited(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!enabled || normalizedQuery.length < 2) return;
+    let cancelled = false;
     const timeout = window.setTimeout(() => {
       void searchUnlinkedGwgDocumentsAction({
         checkId,
@@ -53,7 +56,7 @@ export function useUnlinkedGwgDocumentSearch({
         query: normalizedQuery,
       })
         .then((result) => {
-          if (sequence !== requestSequence.current) return;
+          if (cancelled) return;
           if (!result.ok) {
             setRemoteDocuments([]);
             setLimited(false);
@@ -64,17 +67,20 @@ export function useUnlinkedGwgDocumentSearch({
           setLimited(Boolean(result.limited));
         })
         .catch(() => {
-          if (sequence !== requestSequence.current) return;
+          if (cancelled) return;
           setRemoteDocuments([]);
           setLimited(false);
           setError('Dokumentsuche fehlgeschlagen.');
         })
         .finally(() => {
-          if (sequence === requestSequence.current) setPending(false);
+          if (!cancelled) setPending(false);
         });
     }, 250);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
   }, [checkId, clientId, enabled, normalizedQuery]);
 
   const documents = useMemo(() => {

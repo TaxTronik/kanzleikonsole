@@ -15,14 +15,15 @@ export async function CalendarWidget({
   deniedClientIds,
   modules,
 }: RenderCtx): Promise<ReactNode> {
-  const horizon = new Date();
+  const now = new Date();
+  const horizon = new Date(now);
   horizon.setDate(horizon.getDate() + 30);
   const [appts, deadlines] = await Promise.all([
     modules.appointments
       ? tx.appointment.findMany({
           where: {
             status: { not: 'CANCELLED' },
-            endsAt: { gte: new Date() },
+            endsAt: { gte: now },
             startsAt: { lte: horizon },
             // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
             ...(deniedClientIds?.length
@@ -47,7 +48,7 @@ export async function CalendarWidget({
       ? tx.taxDeadline.findMany({
           where: {
             status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-            dueDate: { gte: new Date(Date.now() - CALENDAR_PAST_MS), lte: horizon },
+            dueDate: { gte: new Date(now.getTime() - CALENDAR_PAST_MS), lte: horizon },
             ...notDeniedClient(deniedClientIds),
           },
           orderBy: { dueDate: 'asc' },

@@ -203,6 +203,34 @@ const DATEV_RESULT_BEFORE_TAX = 1345; // Ergebnis vor Steuern
 const DATEV_PERSONNEL = 1100;
 const DATEV_OPERATING_RESULT = 1300; // Betriebsergebnis (vor Ertragsteuern)
 
+function compactColumnMapping(
+  headerCols: string[],
+): Array<{ col: number; number: number; label: string }> {
+  // Spalten-Mapping per Bezeichnung → BWA-Nummer (analog Lang-CSV)
+  const colToNumber: Array<{ col: number; number: number; label: string }> = [];
+  for (let i = 0; i < headerCols.length; i++) {
+    const raw = (headerCols[i] ?? '').toLowerCase();
+    const norm = raw
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+      .replace(/[^a-z]/g, '');
+    if (norm.includes('summeerl'))
+      colToNumber.push({ col: i, number: ADDISON_REVENUE, label: 'Summe Erlöse' });
+    else if (norm.includes('betriebseinnahmen'))
+      colToNumber.push({ col: i, number: 2995, label: 'Betriebseinnahmen' });
+    else if (norm.includes('summepersonalkosten'))
+      colToNumber.push({ col: i, number: ADDISON_PERSONNEL, label: 'Personalkosten' });
+    else if (norm.includes('summederkosten'))
+      colToNumber.push({ col: i, number: ADDISON_COSTS, label: 'Summe der Kosten' });
+    else if (norm.includes('vorlaeufigesergebnis') || norm.includes('vorlergebnis')) {
+      colToNumber.push({ col: i, number: ADDISON_RESULT, label: 'Vorläufiges Ergebnis' });
+    }
+  }
+  return colToNumber;
+}
+
 /**
  * Parst die Addison-Kompakt-CSV (`s*.csv`). Beispiel:
  *
@@ -234,28 +262,7 @@ export function parseAddisonBwaCompactCsv(csv: string): ParsedBwa {
   }
 
   const headerCols = (lines[headerIdx] ?? '').split(';');
-  // Spalten-Mapping per Bezeichnung → BWA-Nummer (analog Lang-CSV)
-  const colToNumber: Array<{ col: number; number: number; label: string }> = [];
-  for (let i = 0; i < headerCols.length; i++) {
-    const raw = (headerCols[i] ?? '').toLowerCase();
-    const norm = raw
-      .replace(/ä/g, 'ae')
-      .replace(/ö/g, 'oe')
-      .replace(/ü/g, 'ue')
-      .replace(/ß/g, 'ss')
-      .replace(/[^a-z]/g, '');
-    if (norm.includes('summeerl'))
-      colToNumber.push({ col: i, number: ADDISON_REVENUE, label: 'Summe Erlöse' });
-    else if (norm.includes('betriebseinnahmen'))
-      colToNumber.push({ col: i, number: 2995, label: 'Betriebseinnahmen' });
-    else if (norm.includes('summepersonalkosten'))
-      colToNumber.push({ col: i, number: ADDISON_PERSONNEL, label: 'Personalkosten' });
-    else if (norm.includes('summederkosten'))
-      colToNumber.push({ col: i, number: ADDISON_COSTS, label: 'Summe der Kosten' });
-    else if (norm.includes('vorlaeufigesergebnis') || norm.includes('vorlergebnis')) {
-      colToNumber.push({ col: i, number: ADDISON_RESULT, label: 'Vorläufiges Ergebnis' });
-    }
-  }
+  const colToNumber = compactColumnMapping(headerCols);
   if (colToNumber.length === 0) {
     return {
       periods: [],

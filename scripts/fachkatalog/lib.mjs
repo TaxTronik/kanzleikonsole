@@ -84,7 +84,12 @@ const AUTHORITATIVE_SOURCE_HOSTS = {
     'recht.nrw.de',
   ],
   official_guidance: [
+    // Official EU open-data catalogue: consolidated financial-sanctions source.
+    'data.europa.eu',
     'bund.de',
+    // Herausgeber Beschaffungsamt des BMI, geprüft am 2026-09-06:
+    // https://e-rechnung-bund.de/impressum/
+    'e-rechnung-bund.de',
     'bundesfinanzministerium.de',
     'bundesanzeiger.de',
     'elster.de',
@@ -105,7 +110,7 @@ const REQUIRED_PRIMARY_KIND = {
   technical_standard: 'technical_standard',
 };
 const CODE_REFERENCE_PATTERN =
-  /^(?:(?:apps|packages|scripts)\/.+\.(?:[cm]?[jt]sx?|sql|prisma|sh|py)|\.forgejo\/workflows\/.+\.ya?ml)$/;
+  /^(?:(?:apps|packages|scripts)\/.+\.(?:[cm]?[jt]sx?|sql|prisma|sh|py)|\.forgejo\/workflows\/.+\.ya?ml|packages\/tax\/(?:package\.json|src\/stbvv\/tables\.json))$/;
 const TEST_REFERENCE_PATTERN =
   /^(?:apps|packages|scripts)\/.+(?:\/__tests__\/[^/]+|\.(?:test|spec))\.(?:[cm]?[jt]sx?)$/;
 

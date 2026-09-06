@@ -38,7 +38,7 @@ Tagesversiegelung und unveränderlicher Langzeit-Archivierung.
 - Worker: `audit-anchor` (alle 2 Sekunden, Rechnung/GwG bevorzugt, Backoff),
   `evidence-seal` (02:30 UTC), `audit-verify-check` (02:45 UTC,
   persistiert Ergebnis als `tenant_setting`, Notification an Admins bei
-  Bruch), `audit-rotate` (So 03:00 UTC). HARD-Mode (DB-Kürzung) bewusst
+  Bruch **und bei einer Exception des Prüflaufs**), `audit-rotate` (So 03:00 UTC). HARD-Mode (DB-Kürzung) bewusst
   nicht implementiert.
 - Admin-UI: getrennte Status-Karten für lokalen Verify und externen
   Anchor-Rückstand (Auto-Refresh; kein Chain-Walk im
@@ -67,8 +67,11 @@ Hash-Kette. Die Berechtigung bleibt auf ADMIN/PARTNER begrenzt.
 
 Die historische Einordnung der Statuskarte verlangt den persistierten
 `recovered`-Wert; ein Checkpoint allein verdeckt keinen neu gemeldeten Fehler.
-Bekannte Grenzen des Worker-Recovery-Verfahrens und widersprüchliche frühere
-Prüfzusagen sind in `AUDIT-VERIFY-ALERT-001` ausdrücklich dokumentiert.
+Bei einem historischen Hash-/Link-Bruch verifiziert der Worker die Teilkette
+ab dem konkreten Checkpoint. Bei einer Tail-Truncation gilt nur ein nach dem
+negativen Ergebnis auditierter Checkpoint als neue Vergleichsbasis. Einmal
+beobachtete lokale und externe Spitzen-IDs werden auch bei Schrumpf, frühem
+Kettenabbruch oder Lauf-Exception monoton erhalten (`AUDIT-VERIFY-ALERT-001`).
 
 | Anforderung                                                                | Implementierung                 | Test                                                                        |
 | -------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
@@ -80,6 +83,7 @@ Prüfzusagen sind in `AUDIT-VERIFY-ALERT-001` ausdrücklich dokumentiert.
 | Archiv-Segmente unveränderlich; TSA-Token geprüft oder fehlend ausgewiesen | audit-rotate + verify:chain     | `archive.test.ts`, `audit-rotate.test.ts`                                   |
 | Jede record-Action hat ein Label                                           | labels.ts                       | `audit-label-coverage.test.ts` (AST-Guard)                                  |
 | Restore-Beweis auf wiederhergestellter DB                                  | backup-drill + restore-selftest | CI-Job `restore` + Drill-E2E (verifiziert 2026-06-10)                       |
+| Monotone Spitzen, Recovery-Abgrenzung und Exception-Alarm                  | audit-verify-check              | `audit-verify-check.test.ts` (`AUDIT-VERIFY-ALERT-001`)                     |
 
 ## Bekannte Grenzen
 

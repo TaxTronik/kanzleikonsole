@@ -16,16 +16,28 @@ fachliche Konfiguration.
 > [Betriebsdoku, Release/Update §2.1](../operations/release.md)). Sie haben
 > die Zugangsdaten des Admin-Kontos erhalten.
 
-## 1. Erster Login und Zwei-Faktor (≈ 5 min)
+## 1. Erster Login und Anmeldeschutz (≈ 5 min)
 
 Melden Sie sich unter `/staff/login` an (E-Mail, Passwort, Kanzlei-Kürzel
-aus der Provisionierung). Beim ersten Login richten Sie verpflichtend die
-Zwei-Faktor-Authentisierung ein: QR-Code mit einer Authenticator-App
-scannen, Code bestätigen, **die acht Backup-Codes sicher verwahren**
-(es gibt keinen Self-Service-Reset — siehe
-[Administration](administration.md)). Danach: initiales Passwort beim
-Betreiber als verbraucht melden bzw. die `.admin-credentials.txt` auf dem
-Server löschen lassen.
+aus der Provisionierung). Beim ersten Login richten Sie im Standardmodus
+verpflichtend die Zwei-Faktor-Authentisierung ein: QR-Code mit einer
+Authenticator-App scannen, Code bestätigen, **die acht Backup-Codes sicher
+verwahren** (es gibt keinen Self-Service-Reset — siehe
+[Administration](administration.md)). Danach: initiales Passwort beim Betreiber
+als verbraucht melden bzw. die `.admin-credentials.txt` auf dem Server löschen
+lassen.
+
+Wer ausschließlich physische FIDO2-Sicherheitsschlüssel verwenden möchte,
+registriert anschließend im eigenen Profil mindestens zwei geeignete Schlüssel
+und aktiviert den Modus dort ausdrücklich mit einem dieser Schlüssel. Ab dann
+sind Passwort, TOTP und Backup-Codes kein Login-Fallback. Der zweite Schlüssel
+ist getrennt zu verwahren; der Verlust aller Schlüssel erfordert die
+hierarchische Kontowiederherstellung. Zuvor muss der Betreiber eine nichtleere
+Liste geprüfter Modell-AAGUIDs und den FIDO-MDS-Zugriff eingerichtet haben;
+ansonsten sperrt TaxTronik den Hardware-Pfad fail-closed. Die Attestation weist
+eine Modellfamilie nach, nicht zwei unterschiedliche physische Geräte.
+Anforderungen und Grenzen stehen unter
+[Administration](administration.md#1-benutzerverwaltung-kanzlei-mitarbeiter).
 
 ## 2. Die Checkliste durchgehen (≈ 15 min)
 
@@ -66,7 +78,9 @@ direkt verlinkt:
 ## 3. Team einrichten (≈ 10 min)
 
 Unter **Administration → Benutzer**: Konten für die Mitarbeiter anlegen
-(jede Person richtet ihre Zwei-Faktor-Anmeldung selbst ein). Für
+(jede Person richtet zunächst ihre Zwei-Faktor-Anmeldung selbst ein und kann
+danach optional auf mindestens zwei physische Sicherheitsschlüssel umstellen).
+Für
 Mitarbeiter ohne Admin-/Partner-Rolle die **Berechtigungen** setzen —
 _Rechnungen anlegen/bearbeiten_, _Rechnungen versenden_ und _Urlaub
 entscheiden_ sind Einzelrechte; neue Konten starten ohne

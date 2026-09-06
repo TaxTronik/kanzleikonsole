@@ -39,20 +39,27 @@ code_refs:
   - apps/web/src/server/auth/rbac.ts
   - apps/web/src/server/actions/staff-action.ts
   - apps/web/src/lib/staff-permissions.ts
+  - packages/db/prisma/schema.prisma
+  - packages/db/prisma/migrations/20260901000000_portal_inbox_enums/migration.sql
+  - packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql
+  - packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - apps/web/src/server/gwg/professional-review.ts
 test_refs:
+  - apps/web/src/server/documents/__tests__/delivery.test.ts
   - apps/web/src/server/auth/__tests__/rbac.test.ts
   - apps/web/src/server/actions/__tests__/staff-action.test.ts
   - apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts
   - apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts
   - apps/web/src/server/gwg/__tests__/professional-review.test.ts
+  - packages/db/src/__tests__/portal-inbox-rls.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
 related_rules:
   - ACCESS-CLIENT-MODE-001
   - ACCESS-TENANT-RLS-001
+  - PORTAL-INBOX-SUBMISSION-001
 tags:
   - rbac
   - einzelrechte
@@ -72,7 +79,8 @@ benötigen einen expliziten Grant.
 
 Die Regel gilt nur für Actions, die über `staffActionGuard` oder `withStaff`
 ein `requirePermission` verlangen. Der aktuelle Katalog umfasst
-`CLIENT_CREATE`, `INVOICE_MANAGE`, `INVOICE_SEND` und `ABSENCE_DECIDE`. Andere
+`CLIENT_CREATE`, `INVOICE_MANAGE`, `INVOICE_SEND`, `ABSENCE_DECIDE`,
+`PAYROLL_MANAGE`, `INBOUND_MAIL_MANAGE` und `PORTAL_INBOX_MANAGE`. Andere
 Funktionen folgen Rollen-, Mandanten- oder modulspezifischen Gates.
 
 ## Benötigte Angaben
@@ -122,7 +130,7 @@ vertraulichen Mandanten. Das Einzelrecht ersetzt das Objekt-Gate nicht.
 
 ## Umsetzung in TaxTronik
 
-`staff-permissions.ts` ist die typisierte Liste der vier Rechte.
+`staff-permissions.ts` ist die typisierte Liste der sieben Rechte.
 `hasStaffPermission` implementiert den Rollen-Override und den Grant-Check.
 `staffActionGuard` kombiniert Session, optionale Adminanforderung,
 Einzelrecht und Modulstatus; mandantengebundene Actions müssen anschließend
@@ -141,12 +149,17 @@ als `BERUFSTRAEGER` gespeicherten Mandatszuordnungen übernommen, auch bei inakt
 Konten, ohne diese zu aktivieren. Die Herkunft `legacy` bleibt sichtbar bis zur
 manuellen Bestätigung. Dies ist keine berufliche Zulassungsprüfung.
 
+Der sichere Mandantenposteingang verlangt `PORTAL_INBOX_MANAGE` zusätzlich zum
+aktuellen Mandantenzugriff. Das Recht schützt Liste, Detail, Zuweisung,
+Antworten, Entscheidungen und Downloads. Es wird Bestandsmitarbeitern nicht
+automatisch erteilt; ADMIN/PARTNER erfüllen es im bestehenden Rollenmodell
+implizit. Ein Entzug blendet auch vorhandene Inbox-Notifications sofort aus.
+
 ## Bekannte Abweichungen und Grenzen
 
-Die Implementierung ist im definierten Modell konsistent. Die aktuelle
-Moduldokumentation nennt in ihrer Aufzählung jedoch nur die drei älteren
-Rechte und lässt `CLIENT_CREATE` aus; Code und Katalog führen den tatsächlich
-verfügbaren vierten Wert. Die Tests belegen die Guard-Logik, nicht die
+Die Implementierung ist im definierten Modell konsistent. Neue
+Rechte werden Bestandsmitarbeitern nicht automatisch zugewiesen. Die Tests
+belegen die Guard-Logik, nicht die
 fachliche Angemessenheit jeder Rechtezuordnung oder die Vollständigkeit aller
 Call-Sites.
 

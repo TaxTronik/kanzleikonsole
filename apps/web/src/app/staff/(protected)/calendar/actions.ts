@@ -12,13 +12,14 @@ import { assertClientAccessTx, canOtherStaffAccessClientTx } from '@/server/auth
 import {
   withStaffModule,
   ActionError,
+  parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { fmtDateTimeShort, fmtDateTimeMedium, berlinWallClockToUtc } from '@/lib/fmt';
 
 const withAppointmentsStaff = withStaffModule('appointments');
 
-export interface ActionResult extends BaseActionResult {
+export interface AppointmentActionResult extends BaseActionResult {
   id?: string;
 }
 
@@ -28,10 +29,13 @@ const StatusEnum = z.enum(['PLANNED', 'CONFIRMED', 'CANCELLED', 'DONE']);
 const isoLocal = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'YYYY-MM-DDTHH:MM');
 
 const CreateSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().trim().min(1, 'Bitte geben Sie einen Titel an.').max(200),
   ownerStaffId: z.string().uuid(),
-  clientId: z.string().uuid().nullable().optional(),
-  kind: KindEnum,
+  clientId: z.preprocess(
+    (value) => (value === '' ? null : value),
+    z.string().uuid().nullable().optional(),
+  ),
+  kind: KindEnum.default('CLIENT_MEETING'),
   startsAt: isoLocal,
   endsAt: isoLocal,
   location: z.string().max(200).optional().or(z.literal('')),
@@ -47,25 +51,29 @@ function parseLocal(s: string): Date {
 }
 
 export async function createAppointmentAction(
-  _prev: ActionResult | null,
+  _prev: AppointmentActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
-  const parsed = CreateSchema.safeParse({
-    title: formData.get('title'),
-    ownerStaffId: formData.get('ownerStaffId'),
-    clientId: formData.get('clientId') || null,
-    kind: formData.get('kind') ?? 'CLIENT_MEETING',
-    startsAt: formData.get('startsAt'),
-    endsAt: formData.get('endsAt'),
-    location: formData.get('location') ?? '',
-    notes: formData.get('notes') ?? '',
-  });
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+): Promise<AppointmentActionResult> {
+  const parsed = parseFormData(CreateSchema, formData);
+  if (!parsed.ok) return parsed;
   const startsAt = parseLocal(parsed.data.startsAt);
   const endsAt = parseLocal(parsed.data.endsAt);
-  if (endsAt.getTime() <= startsAt.getTime())
-    return { ok: false, error: 'Ende muss nach dem Start liegen.' };
+  if (Number.isNaN(startsAt.getTime())) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { startsAt: ['Bitte wählen Sie einen gültigen Startzeitpunkt.'] },
+    };
+  }
+  if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() <= startsAt.getTime()) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { endsAt: ['Das Ende muss nach dem Start liegen.'] },
+    };
+  }
 
   return withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -136,11 +144,14 @@ export async function createAppointmentAction(
 
 const UpdateSchema = z.object({
   id: z.string().uuid(),
-  title: z.string().min(1).max(200),
+  title: z.string().trim().min(1, 'Bitte geben Sie einen Titel an.').max(200),
   ownerStaffId: z.string().uuid(),
-  clientId: z.string().uuid().nullable().optional(),
-  kind: KindEnum,
-  status: StatusEnum,
+  clientId: z.preprocess(
+    (value) => (value === '' ? null : value),
+    z.string().uuid().nullable().optional(),
+  ),
+  kind: KindEnum.default('CLIENT_MEETING'),
+  status: StatusEnum.default('PLANNED'),
   startsAt: isoLocal,
   endsAt: isoLocal,
   location: z.string().max(200).optional().or(z.literal('')),
@@ -148,27 +159,29 @@ const UpdateSchema = z.object({
 });
 
 export async function updateAppointmentAction(
-  _prev: ActionResult | null,
+  _prev: AppointmentActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
-  const parsed = UpdateSchema.safeParse({
-    id: formData.get('id'),
-    title: formData.get('title'),
-    ownerStaffId: formData.get('ownerStaffId'),
-    clientId: formData.get('clientId') || null,
-    kind: formData.get('kind') ?? 'CLIENT_MEETING',
-    status: formData.get('status') ?? 'PLANNED',
-    startsAt: formData.get('startsAt'),
-    endsAt: formData.get('endsAt'),
-    location: formData.get('location') ?? '',
-    notes: formData.get('notes') ?? '',
-  });
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+): Promise<AppointmentActionResult> {
+  const parsed = parseFormData(UpdateSchema, formData);
+  if (!parsed.ok) return parsed;
   const startsAt = parseLocal(parsed.data.startsAt);
   const endsAt = parseLocal(parsed.data.endsAt);
-  if (endsAt.getTime() <= startsAt.getTime())
-    return { ok: false, error: 'Ende muss nach dem Start liegen.' };
+  if (Number.isNaN(startsAt.getTime())) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { startsAt: ['Bitte wählen Sie einen gültigen Startzeitpunkt.'] },
+    };
+  }
+  if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() <= startsAt.getTime()) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { endsAt: ['Das Ende muss nach dem Start liegen.'] },
+    };
+  }
 
   return withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -274,9 +287,12 @@ export async function updateAppointmentAction(
   );
 }
 
-export async function deleteAppointmentAction(input: { id: string }): Promise<ActionResult> {
+export async function deleteAppointmentAction(input: {
+  id: string;
+}): Promise<AppointmentActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: 'Ungültige Termin-ID.', errorCode: 'VALIDATION_ERROR' };
 
   return withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -318,9 +334,10 @@ export async function acceptAppointmentRequestAction(input: {
   requestId: string;
   slotIndex: number;
   ownerStaffId: string;
-}): Promise<ActionResult> {
+}): Promise<AppointmentActionResult> {
   const parsed = AcceptSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: 'Ungültige Terminauswahl.', errorCode: 'VALIDATION_ERROR' };
 
   // Befund 4: SMTP-Versand nicht innerhalb der Tx (Timeout-/Doppelversand-
   // Risiko bei Rollback nach Versand). Mail-Parameter in der Tx einsammeln,
@@ -495,9 +512,10 @@ const RejectSchema = z.object({
 export async function rejectAppointmentRequestAction(input: {
   requestId: string;
   reason?: string;
-}): Promise<ActionResult> {
+}): Promise<AppointmentActionResult> {
   const parsed = RejectSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success)
+    return { ok: false, error: 'Ungültige Ablehnung.', errorCode: 'VALIDATION_ERROR' };
 
   // Befund 4: Mail-Parameter in der Tx einsammeln, Versand nach dem Commit.
   let rejectMail: DispatchOptions | null = null;

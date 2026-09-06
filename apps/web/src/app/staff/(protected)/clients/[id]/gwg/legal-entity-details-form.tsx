@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { saveLegalEntityDetailsAction, type ActionResult } from './actions';
 import type { EditableRepresentative } from './identity-subjects-context';
 import { useGwgEditState } from './edit-state-context';
@@ -20,6 +20,16 @@ interface Props {
   disabled: boolean;
 }
 
+function editableLegalDetails(current: Props['current']) {
+  return {
+    legalForm: current.legalForm ?? '',
+    registerNumber: current.registerNumber ?? '',
+    registerAuthority: current.registerAuthority ?? '',
+    noRegisterEntry: current.noRegisterEntry,
+    ownershipStructureNotes: current.ownershipStructureNotes ?? '',
+  };
+}
+
 export function LegalEntityDetailsForm({
   checkId,
   clientId,
@@ -28,13 +38,7 @@ export function LegalEntityDetailsForm({
   disabled,
 }: Props) {
   const { markDraft, markRiskInvalidated } = useGwgEditState();
-  const [details, setDetails] = useState({
-    legalForm: current.legalForm ?? '',
-    registerNumber: current.registerNumber ?? '',
-    registerAuthority: current.registerAuthority ?? '',
-    noRegisterEntry: current.noRegisterEntry,
-    ownershipStructureNotes: current.ownershipStructureNotes ?? '',
-  });
+  const [details, setDetails] = useState(() => editableLegalDetails(current));
   const [savedRevision, setSavedRevision] = useState(currentRevision);
   const [state, action, pending] = useActionState<
     | (ActionResult & {
@@ -51,25 +55,25 @@ export function LegalEntityDetailsForm({
       })
     | null,
     FormData
-  >(saveLegalEntityDetailsAction, null);
-
-  useEffect(() => {
-    if (!state?.ok) return;
-    if (state.details) {
+  >(async (previous, data) => {
+    const result = await saveLegalEntityDetailsAction(previous, data);
+    if (!result?.ok) return result;
+    if (result.details) {
       setDetails({
-        legalForm: state.details.legalForm,
-        registerNumber: state.details.registerNumber ?? '',
-        registerAuthority: state.details.registerAuthority ?? '',
-        noRegisterEntry: state.details.noRegisterEntry,
-        ownershipStructureNotes: state.details.ownershipStructureNotes,
+        legalForm: result.details.legalForm,
+        registerNumber: result.details.registerNumber ?? '',
+        registerAuthority: result.details.registerAuthority ?? '',
+        noRegisterEntry: result.details.noRegisterEntry,
+        ownershipStructureNotes: result.details.ownershipStructureNotes,
       });
     }
-    if (state.revision) setSavedRevision(state.revision);
+    if (result.revision) setSavedRevision(result.revision);
     // Die Server-Action nullt die Risikofelder beim Speichern — das
     // Risiko-Formular muss seine CAS-Revision sofort nachziehen.
     markRiskInvalidated();
-    if (state.reviewReset) markDraft();
-  }, [markDraft, markRiskInvalidated, state]);
+    if (result.reviewReset) markDraft();
+    return result;
+  }, null);
 
   return (
     <form action={action} className="space-y-4">

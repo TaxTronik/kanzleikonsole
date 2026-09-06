@@ -36,6 +36,7 @@ fi
 # --- 2) Inhalte: API-Symbole und Schema-Namespace ----------------------------
 CONTENT_PATTERN='(Eric(Mt)?(Initialisiere|InstanzErzeugen|BearbeiteVorgang|Beende)|elster\.de/elsterxml|ElsterBasisSchema|EricGetHandleToCertificate)'
 CONTENT_HITS="$(grep -rEn "$CONTENT_PATTERN" \
+  --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist --exclude-dir=.turbo \
   --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' \
   --include='*.cjs' --include='*.json' --include='*.md' --include='*.sql' \
   --include='*.txt' --include='*.yml' --include='*.yaml' --include='*.prisma' \

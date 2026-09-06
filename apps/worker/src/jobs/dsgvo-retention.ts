@@ -109,6 +109,11 @@ const GOBD_TEN_YEAR_LINKED: Prisma.RequestWhereInput = linkedDocument({
 
 function terminalRequestAndResponsesBefore(cutoff: Date): Prisma.RequestWhereInput {
   return {
+    // DSGVO-OPERATIONAL-RETENTION-001: these new evidentiary aggregates need
+    // their own reviewed retention decision; a generic request purge must not
+    // silently delete, detach or reset a personal answer or campaign snapshot.
+    clientInteraction: { is: null },
+    yearEndCampaignEntry: { is: null },
     status: { in: ['CLOSED', 'CANCELLED'] },
     OR: [
       { closedAt: { lt: cutoff } },

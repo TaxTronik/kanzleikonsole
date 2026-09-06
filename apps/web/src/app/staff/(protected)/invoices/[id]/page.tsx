@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type InvoiceStatus } from '@taxtronik/db';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { MarkSentForm } from './mark-sent-form';
 import { DocumentActions } from '@/components/document-actions';
@@ -20,6 +20,14 @@ const formatLabels: Record<string, string> = {
   // strikt validiertes PDF/A-3 (nicht eingebettete Standard-Fonts).
   XRECHNUNG: 'XRechnung (XML) — führend',
   ZUGFERD: 'ZUGFeRD/Factur-X (Hybrid-PDF, EN 16931)',
+};
+
+const statusBadges: Record<InvoiceStatus, string> = {
+  DRAFT: 'badge-gray',
+  SENT: 'badge-yellow',
+  PAID: 'badge-green',
+  OVERDUE: 'badge-red',
+  CANCELLED: 'badge-gray',
 };
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -104,21 +112,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-primary">Rechnung {inv.number}</h1>
-            {inv.status === 'DRAFT' && (
-              <span className="badge-gray">{INVOICE_STATUS_LABELS[inv.status]}</span>
-            )}
-            {inv.status === 'SENT' && (
-              <span className="badge-yellow">{INVOICE_STATUS_LABELS[inv.status]}</span>
-            )}
-            {inv.status === 'PAID' && (
-              <span className="badge-green">{INVOICE_STATUS_LABELS[inv.status]}</span>
-            )}
-            {inv.status === 'OVERDUE' && (
-              <span className="badge-red">{INVOICE_STATUS_LABELS[inv.status]}</span>
-            )}
-            {inv.status === 'CANCELLED' && (
-              <span className="badge-gray">{INVOICE_STATUS_LABELS[inv.status]}</span>
-            )}
+            <span className={statusBadges[inv.status]}>{INVOICE_STATUS_LABELS[inv.status]}</span>
             {inv.stornoOfId && <span className="badge-red">Stornorechnung</span>}
             {inv.reverseCharge && <span className="badge-gray">Reverse-Charge § 13b</span>}
           </div>

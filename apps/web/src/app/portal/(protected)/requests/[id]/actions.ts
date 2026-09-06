@@ -44,6 +44,11 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
       // Sicherheits-Check: gehört der Request wirklich diesem Mandanten?
       const req = await tx.request.findFirst({ where: { id: requestId, clientId } });
       if (!req) throw new ActionError('Anforderung nicht gefunden.');
+      const [managed] = await tx.$queryRaw<
+        Array<{ managed: boolean }>
+      >`SELECT app.interaction_request(${requestId}::uuid) AS managed`;
+      if (managed?.managed)
+        throw new ActionError('Bitte antworten Sie im Portalbereich Rückmeldungen.');
       if (req.status !== 'OPEN' && req.status !== 'IN_PROGRESS') {
         throw new ActionError('Diese Anforderung ist bereits abgeschlossen.');
       }

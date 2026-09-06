@@ -180,15 +180,11 @@ async function releaseRequestId(reservation: N8nCallbackReservation): Promise<bo
   }
 }
 
-/**
- * Authentifiziert einen versionierten Callback. Die Request-ID wird hier
- * bewusst noch NICHT reserviert: Query/Body muessen zuerst validiert werden.
- */
-export async function authenticateN8nCallback(
-  request: NextRequest,
-  /** null = reiner Credential-Check ohne Scope-Anforderung (Ping-Endpunkt). */
-  requiredScope: N8nCallbackScope | null,
-): Promise<N8nCallbackAuthResult> {
+function readCallbackCredential(request: NextRequest): {
+  callbackKeyId: string;
+  token: string;
+  requestId: string;
+} {
   let callbackKeyId = request.headers.get('x-taxtronik-key-id')?.trim() ?? '';
   const authorization = request.headers.get('authorization')?.trim() ?? '';
   const requestId = request.headers.get('x-taxtronik-request-id')?.trim() ?? '';
@@ -215,6 +211,19 @@ export async function authenticateN8nCallback(
       token = combined[2]!;
     }
   }
+  return { callbackKeyId, token, requestId };
+}
+
+/**
+ * Authentifiziert einen versionierten Callback. Die Request-ID wird hier
+ * bewusst noch NICHT reserviert: Query/Body muessen zuerst validiert werden.
+ */
+export async function authenticateN8nCallback(
+  request: NextRequest,
+  /** null = reiner Credential-Check ohne Scope-Anforderung (Ping-Endpunkt). */
+  requiredScope: N8nCallbackScope | null,
+): Promise<N8nCallbackAuthResult> {
+  const { callbackKeyId, token, requestId } = readCallbackCredential(request);
 
   if (!UUID_RE.test(callbackKeyId)) {
     return reject(401, 'unauthorized', 'missing or invalid x-taxtronik-key-id');

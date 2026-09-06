@@ -99,24 +99,26 @@ export function AddIdDocumentForm({
   );
   const router = useRouter();
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    addIdDocumentAction,
+    async (previous, data) => {
+      const result = await addIdDocumentAction(previous, data);
+      if (result.ok) {
+        formRef.current?.reset();
+        setType(initialType);
+        setSelectedDocuments([]);
+        setViews([]);
+        setOcrValues({});
+      }
+      return result;
+    },
     null,
   );
 
-  useEffect(() => {
-    setSelectedSubjectKey((current) =>
-      availableSubjects.some((option) => option.key === current)
-        ? current
-        : initialIdentitySubject(availableSubjects, defaultSubjectKey),
-    );
-  }, [availableSubjects, defaultSubjectKey]);
+  if (!availableSubjects.some((option) => option.key === selectedSubjectKey)) {
+    const nextSubjectKey = initialIdentitySubject(availableSubjects, defaultSubjectKey);
+    if (nextSubjectKey !== selectedSubjectKey) setSelectedSubjectKey(nextSubjectKey);
+  }
   useEffect(() => {
     if (!state?.ok) return;
-    formRef.current?.reset();
-    setType(initialType);
-    setSelectedDocuments([]);
-    setViews([]);
-    setOcrValues({});
     // Refresh außerhalb der Form-Transition (Action revalidiert die aktuelle
     // Route nicht mehr — sonst hing die Transition bis zum nächsten Klick).
     router.refresh();
@@ -474,25 +476,13 @@ export function AddIdDocumentForm({
         )}
         <AddEvidenceFeedback state={state} variant={variant} replacement={replacement} />
 
-        <button
-          type="submit"
-          className="btn-primary text-sm"
-          disabled={
-            isPending ||
-            selectedDocuments.length === 0 ||
-            (variant === 'identity' && !availableSubjects.length)
-          }
-        >
-          {isPending
-            ? 'Speichert…'
-            : variant === 'identity'
-              ? replacement
-                ? 'Ausweissatz ersetzen'
-                : 'Ausweissatz speichern'
-              : replacement
-                ? 'Nachweis ersetzen'
-                : 'Auswahl speichern'}
-        </button>
+        <AddEvidenceSubmit
+          isPending={isPending}
+          selectionCount={selectedDocuments.length}
+          subjectCount={availableSubjects.length}
+          variant={variant}
+          replacement={replacement}
+        />
       </form>
       {picker}
     </>
@@ -689,5 +679,35 @@ function AddEvidencePicker({
         </div>
       )}
     </Modal>
+  );
+}
+
+function AddEvidenceSubmit({
+  isPending,
+  selectionCount,
+  subjectCount,
+  variant,
+  replacement,
+}: Pick<Props, 'variant' | 'replacement'> & {
+  isPending: boolean;
+  selectionCount: number;
+  subjectCount: number;
+}) {
+  return (
+    <button
+      type="submit"
+      className="btn-primary text-sm"
+      disabled={isPending || selectionCount === 0 || (variant === 'identity' && !subjectCount)}
+    >
+      {isPending
+        ? 'Speichert…'
+        : variant === 'identity'
+          ? replacement
+            ? 'Ausweissatz ersetzen'
+            : 'Ausweissatz speichern'
+          : replacement
+            ? 'Nachweis ersetzen'
+            : 'Auswahl speichern'}
+    </button>
   );
 }

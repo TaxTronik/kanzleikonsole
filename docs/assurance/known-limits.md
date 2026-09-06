@@ -163,7 +163,152 @@ Empfängerpostfach.
 
 Schreiben und Lesen des benutzerbezogenen Session-Widerrufszeitpunkts sind
 fail-closed. Bei Redis-Ausfall werden betroffene Sessionprüfungen abgelehnt und
-sicherheitskritische Widerrufsaktionen nicht als erfolgreich gemeldet. Das
-verhindert die Nutzung eines Tokens ohne belastbare Widerrufsprüfung, kann aber
-Authentifizierung und bestehende Sitzungen bis zur Redis-Wiederherstellung
-vorübergehend blockieren.
+Aktionen mit ausdrücklich benötigtem Redis-Widerruf nicht als erfolgreich
+gemeldet. Das verhindert die Nutzung eines Tokens ohne belastbare
+Widerrufsprüfung, kann aber Authentifizierung und bestehende Sitzungen bis zur
+Redis-Wiederherstellung vorübergehend blockieren. Staff-Passwortänderungen,
+Passwort-/TOTP-Sicherheitsresets sowie Hardware-Moduswechsel und -Recovery
+verwenden zusätzlich beziehungsweise statt eines neuen Redis-Zeitstempels die
+transaktional erhöhte `authRevision`; ihr bereits eingelöster Session-Guard
+bleibt dennoch von der fail-closed Redis-Leseprüfung abhängig.
+
+## 16. Hardware-Attestation identifiziert keine individuelle Geräteinstanz
+
+Der optionale Staff-Modus akzeptiert erst nach persönlichem Opt-in und zwei
+registrierten Credentials ausschließlich physische FIDO2-Sicherheitsschlüssel;
+Passwort, TOTP und Backup-Codes sind dann keine Anmelde-Fallbacks. TaxTronik
+erzwingt User Verification, `cross-platform`, `singleDevice`, einen nicht
+gesicherten Credential-Status und gemeldete Hardware-Transporte. Integrierte,
+hybride und Multi-Device-Credentials werden abgewiesen.
+
+Enrollment ist nur mit nichtleerer Deployment-AAGUID-Allowlist möglich,
+fordert `attestation: direct` und akzeptiert eine vollständige `packed`-
+Attestation mit Zertifikatskette. Die Zertifikat-AAGUID muss vorhanden,
+nichtkritisch und identisch mit den signierten Authenticator-Daten sein;
+Größen- und 30-Sekunden-Grenzen beschränken die Registration-Verifikation.
+TaxTronik initialisiert FIDO MDS `strict` und
+fordert ein aktuelles Metadata Statement mit vertrauenswürdiger Root,
+`basic_full`, Hardware- oder Secure-Element-Schlüsselschutz und externer
+Authentikator-Klassifizierung. Der selbst verifizierte signierte Gesamt-BLOB
+muss außerdem einen aktuell wirksamen `FIDO_CERTIFIED*`-Status enthalten;
+außer `UPDATE_AVAILABLE` werden alle anderen, unbekannten oder fehlenden
+Statuswerte abgewiesen. Die aktuelle Allowlist, der vollständige MDS-Eintrag
+und das Statement werden vor jeder späteren Hardware-Assertion erneut geprüft.
+Zusätzlich bindet die Anwendung den geschützten MDS-Header eng an die erwartete
+Signer-/Intermediate-Identität. Die bei Registrierung aus dem
+Attestationszertifikat gelesene Firmware-Version muss die aktuellen
+MDS-Mindestwerte erfüllen und wird unveränderlich gespeichert.
+
+Dieser Nachweis ordnet das Credential einer freigegebenen Modellfamilie zu.
+Die AAGUID ist keine Seriennummer und identifiziert kein einzelnes physisches
+Gerät. Auch mehrere Credential-IDs mit derselben oder verschiedenen AAGUIDs
+beweisen nicht kryptografisch, dass sie von unterschiedlichen physischen
+Instanzen stammen. `authenticatorAttachment` und `response.transports` bleiben
+nicht attestierte Clientangaben und damit nur zusätzliche Produktfilter.
+
+Bei der Modusaktivierung wird die frische Assertion eines einzigen
+registrierten Schlüssels geprüft. Der zweite Schlüssel muss aktiv sein und die
+aktuelle Allowlist-/MDS-/Provenienzprüfung ebenfalls bestehen, wird bei dieser
+Aktivierung aber nicht erneut angefordert. Die Kanzlei muss
+deshalb die getrennte Funktionsprüfung beider Schlüssel organisatorisch
+sicherstellen.
+
+Die Richtlinie schafft zugleich eine externe Verfügbarkeitsabhängigkeit: Eine
+leere Allowlist, MDS-/DNS-/TLS-/Egress-Ausfall, fehlende Metadaten oder ein
+abgewiesener Modellstatus blockieren Enrollment und jede Hardware-Assertion
+fail-closed. Der Produktionsstart bindet die konfigurierte Hardware-Policy nur
+an die Datenbank und führt dabei keinen MDS-Netzzugriff aus; die externe
+Abhängigkeit beginnt erst mit einer Hardware-Zeremonie. Das gilt auch bei
+nicht erreichbaren CA-Sperrlisten: Sie werden
+erst nach einem vertrauenswürdigen Kettenaufbau geladen, müssen frisch und vom
+tatsächlichen Issuer signiert sein und folgen keiner Umleitung. Akzeptiert wird
+nur genau eine unpartitionierte Voll-CRL-URI; mehrere Distribution Points oder
+Namen, Reason-/Issuer-Scope, Zertifikat-seitige `freshestCRL`-Verweise sowie
+Delta-/`issuingDistributionPoint`-/`freshestCRL`-Extensions und unbekannte
+kritische Extensions in der CRL blockieren bewusst fail-closed. Der
+MDS-Snapshot ist prozesslokal und wird spätestens stündlich oder zum früheren
+`nextUpdate` bedarfsgetrieben aktualisiert. Seine signierte Seriennummer wird
+nach kryptografischer BLOB-Prüfung und noch vor der lokalen Allowlist-/
+Modellfilterung monoton übernommen. Ein gültiger neuer BLOB ohne lokal
+nutzbares Modell kann die zentrale Serie daher fortschreiben, während der
+Hardware-Vorgang fail-closed scheitert. Die Tabelle ohne App-Tabellenrechte
+bindet zusätzlich `WEBAUTHN_HARDWARE_POLICY_REVISION` und den kanonischen Hash
+aus Aktivstatus und sortierter Allowlist, nicht den BLOB selbst. Eine schmale
+SECURITY-DEFINER-Funktion vergleicht und share-lockt das exakte Tripel aus
+Serie, Policy-Revision und Policy-Hash bis zum WebAuthn-Commit; der MDS-Lock
+wird vor Staff-Locks genommen. Damit kann ein inzwischen überholter
+Prozess-Snapshot nicht mehr committen. Eine höhere Revision verdrängt alte
+Replicas; dieselbe Revision mit anderem Hash oder eine niedrigere Revision
+wird abgewiesen. Auch die globale Deaktivierung über eine leere Allowlist
+erfordert daher eine höhere Revision. Eine fehlerhaft koordinierte Revision
+kann Hardware-Zugänge während eines Rolling Deployments bewusst fail-closed
+blockieren. Es gibt derzeit keinen eigenen periodischen Refresh-Job oder
+persistenten Offline-Cache. BLOB- und CRL-Abrufe hinterlassen bei den externen
+Diensten Server-Verbindungsdaten. Details zu Monitoring, Refresh,
+Allowlist-Änderungen und Datenschutz stehen im
+[FIDO-MDS-Runbook](../operations/fido-mds.md).
+
+Ein neuer MDS-Modellstatus wird ohne Push-Kanal daher spätestens nach einer
+Stunde übernommen; ein bereits authentisierter CRL-Cacheeintrag kann bis zum
+signierten `nextUpdate` der CA gelten. Die verpflichtende Zertifikat-AAGUID und
+die strikten CA-Constraints können ältere oder abweichend ausgestellte
+Schlüssel trotz grundsätzlich vorhandener FIDO2-Funktionalität ausschließen.
+Das ist vor Beschaffung und Freigabe mit der konkreten Modell-/Firmware-Serie
+zu testen. Das 30-Sekunden-Limit schützt die Verfügbarkeit, kann aber bei
+anhaltend langsamen MDS-/CRL-Verbindungen ebenfalls Enrollment verhindern.
+
+Die bewusst nicht unterstützten partitionierten, indirekten und Delta-CRL-
+Formen können Schlüsselmodelle trotz grundsätzlich gültiger Attestation
+ausschließen. Vor einer AAGUID-Freigabe ist deshalb die konkrete
+Zertifikats-/CRL-Struktur des Herstellers zu testen; Unterstützung darf erst
+mit vollständiger Merge-, Scope- und Cache-Semantik erweitert werden.
+
+Die gespeicherte Firmware-Version ist kein laufender Gerätekanal: Assertions
+liefern kein neues Attestationszertifikat. Ein nachträgliches Upgrade oder
+Downgrade wird daher nicht unmittelbar erkannt. Steigt die MDS-Mindestversion
+über den gespeicherten Wert, wird das Credential vorsorglich gesperrt und muss
+mit aktueller Attestation neu registriert werden. Ein legitimer Wechsel der
+MDS-Signeridentität oder des fest gebundenen Intermediates blockiert ebenfalls
+bis zu einem geprüften Software-Release; das ist ein bewusster
+Verfügbarkeits-Trade-off der engen Vertrauensbindung.
+
+Der zweite Schlüssel ist deshalb getrennt aufzubewahren. Nach Verlust aller
+Schlüssel gibt es keinen Passwort-/OTP-Bypass: Eine berechtigte übergeordnete
+Rolle muss den auditierten Break-glass-Reset ausführen; für ADMIN-Konten bleibt
+die Owner-CLI erforderlich. Dabei werden Sitzungen ungültig, alle registrierten
+Schlüssel gesperrt und Passwort plus TOTP neu eingerichtet. Der Web-Reset
+verlangt einen Step-up des Akteurs: aktuelles Passwort plus frischen TOTP ohne
+Backup-Code oder, bei eigenem Hardware-only-Modus, den eigenen Schlüssel mit
+Actor-/Ziel-/Auth-Revision-Bindung. Credential-Widerruf, Moduswechsel,
+`authRevision`-Erhöhung und Audit sind datenbanktransaktional; die neue
+Revision ist der autoritative Cutoff für vorherige Staff-Sessions. Dadurch
+bleibt bei einem unter den DB-Locks abgewiesenen Rollen- oder Zustandsrennen
+kein vorgelagerter Redis-Logout zurück. Ein Hostname- oder Originwechsel kann
+wegen der WebAuthn-RP-/Origin-Bindung ebenfalls Recovery-Aufwand auslösen und
+muss vor der Umstellung getestet werden.
+
+Der Recovery-Rollenboden ist absichtlich enger als die allgemeinen
+Web-Administrationsrechte: Kein Staff-Akteur kann eine ADMIN-Rolle entziehen;
+eine PARTNER-Rolle kann nur ein aktiver ADMIN desselben Tenants entziehen.
+Normale administrative Passwort-/TOTP-Resets sind an die erwartete
+Actor-`authRevision` gebunden und widerrufen auch im Passwortmodus ruhende,
+noch aktive Hardware-Credentials des Zielkontos. Eine eigene Passwortänderung
+widerruft entsprechend die eigenen aktiven Vorabregistrierungen. Solche
+Credentials müssen danach neu registriert werden.
+
+Die Owner-CLI schreibt das Klartextpasswort ausschließlich in die
+Credential-Datei und niemals auf `stdout`, `stderr` oder in Logs. Sie legt die
+Datei exklusiv (`O_EXCL`) und mit No-follow-Schutz an und synchronisiert auf
+POSIX nach Modus `0600` erst die Datei, dann ihr Elternverzeichnis, bevor ihre
+Datenbanktransaktion committen darf. Eine vorhandene Zieldatei oder ein
+Ausgabefehler lässt den Reset zurückrollen; eine in diesem Versuch entstandene
+Teildatei wird gezielt entfernt. Falls erst der anschließende Datenbank-Commit
+fehlschlägt, kann eine sicher geschriebene, aber nicht wirksame Recovery-Datei
+zurückbleiben; sie ist anhand des CLI-Ergebnisses zu verwerfen, bevor der
+Operator den Vorgang mit einem neuen Zielpfad wiederholt.
+
+Der Owner-CLI-Reset erscheint atomar in der Tenant-Hashkette, kann mangels
+angemeldeter Anwendungssitzung aber nur den Akteurtyp `SYSTEM` ausweisen. Die
+Hashkette belegt damit den ausgeführten Prozess, nicht die persönliche Identität
+des Operators. Zugriff auf Host, Datenbank-Zugangsdaten und CLI-Ausführung muss
+deshalb zusätzlich betrieblich beschränkt und nachvollzogen werden.

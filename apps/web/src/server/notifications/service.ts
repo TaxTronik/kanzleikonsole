@@ -16,6 +16,8 @@ import { upsertNotificationTx } from '@taxtronik/db/notification';
 
 interface NotifyInput {
   tenantId: string;
+  /** Persistierter Mandantenscope fuer geschlossene Ressourcen-Mappings. */
+  clientId?: string | null;
   staffId?: string | null;
   kind: NotificationKind;
   title: string;

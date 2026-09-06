@@ -49,6 +49,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/mandate-expansion/gwg-structure.ts
+  - apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx
   - apps/web/src/server/gwg/verification.ts
   - apps/web/src/server/gwg/identity-subject.ts
   - apps/web/src/server/gwg/revisions.ts
@@ -65,6 +67,7 @@ code_refs:
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
+  - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg/__tests__/identity-subject.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts
@@ -74,6 +77,7 @@ feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
 related_rules:
+  - MANDATE-STRUCTURE-001
   - GWG-IDENTIFICATION-EVIDENCE-001
   - GWG-REPRESENTATIVE-AUTHORITY-001
   - GWG-RISK-REVIEW-001
@@ -245,3 +249,7 @@ bleibt, während Namensgleichheit allein nicht genügt.
 Weitere Tests prüfen fehlende Personendaten, ungültige Beteiligungsangaben,
 Zeitplausibilität, fehlende Struktur- und Registerbelege. Sie belegen nicht die
 rechtliche Ermittlung der wirtschaftlich Berechtigten.
+
+### Ergänzung: gebundene Strukturversion als zusätzliche Arbeitsgrundlage
+
+Das optionale Modul MANDATE-STRUCTURE-001 erlaubt eine ausdrückliche Bindung einer unveränderlichen allgemeinen Strukturversion an die neueste offene GwG-Prüfung. Die GwG-Seite zeigt deren vollständige Tabelle und Übernahmehistorie mit aktuellen Zugriffsprüfungen auf alle verbundenen Mandanten. Diese zusätzliche Arbeitsgrundlage erzeugt keine wirtschaftlich berechtigten Personen, mittelbaren Quoten oder rechtlichen Schlussfolgerungen und ersetzt keine bisherigen Pflichtangaben oder Registerbelege.

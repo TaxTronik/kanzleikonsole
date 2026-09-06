@@ -57,6 +57,38 @@ require_line pnpm-workspace.yaml '^pmOnFail:[[:space:]]*download$' \
 require_line pnpm-workspace.yaml "^savePrefix:[[:space:]]*''$" \
   "savePrefix muss leer sein, damit neu hinzugefuegte Dependencies exakt gepinnt werden."
 
+WEBAUTHN_CRL_PATCH='patches/@simplewebauthn__server@13.3.3.patch'
+require_line apps/web/package.json '"@simplewebauthn/server"[[:space:]]*:[[:space:]]*"13\.3\.3"' \
+  "SimpleWebAuthn Server muss fuer den geprueften CRL-Patch exakt auf 13.3.3 gepinnt bleiben."
+require_line pnpm-workspace.yaml "^[[:space:]]*'@simplewebauthn/server@13\.3\.3':[[:space:]]*patches/@simplewebauthn__server@13\.3\.3\.patch$" \
+  "Der versionsgebundene SimpleWebAuthn-CRL-Patch fehlt in pnpm-workspace.yaml."
+require_line pnpm-lock.yaml "^[[:space:]]*'@simplewebauthn/server@13\.3\.3':[[:space:]]*[0-9a-f]{64}$" \
+  "Der SimpleWebAuthn-CRL-Patch ist nicht mit Hash im Lockfile gebunden."
+if [ ! -f "$WEBAUTHN_CRL_PATCH" ]; then
+  error "Der SimpleWebAuthn-CRL-Patch fehlt."
+elif [ "$(grep -Fc "throw new Error('Certificate revocation list could not be downloaded'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc "throw new Error('Certificate revocation list could not be parsed'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
+  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS bei Download-/Parsefehlern fail-closed absichern."
+elif [ "$(grep -Fc "throw new Error('Certificate revocation list could not be verified'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc "throw new Error('Certificate issuer is required to verify its revocation list'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc "redirect: 'error'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc 'const MAX_CACHE_ENTRIES = 256' "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
+  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS an Aussteller, Signatur, Freshness, Redirect-Sperre und begrenzten Cache binden."
+elif [ "$(grep -Fc "throw new Error('Certificate issuer is not an authorized certificate authority'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc "throw new Error('Certificate path did not terminate at the selected trust anchor'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
+  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS mit strikter CA- und Trust-Anchor-Pruefung ausliefern."
+elif [ "$(grep -Fc 'data.verify({ publicKey: issuer.publicKey })' "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc 'distributionPoints.length !== 1' "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc 'point.reasons !== undefined' "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc "const DELTA_CRL_INDICATOR_OID = '2.5.29.27'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc "const ISSUING_DISTRIBUTION_POINT_OID = '2.5.29.28'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
+     [ "$(grep -Fc "const FRESHEST_CRL_OID = '2.5.29.46'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
+  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS an den CRL-Signaturalgorithmus sowie genau eine unpartitionierte Voll-CRL binden."
+elif [ "$(grep -Fc 'was missing`)' "$WEBAUTHN_CRL_PATCH")" -ne 4 ] || \
+     [ "$(grep -Fc 'must not be critical`)' "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
+  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS an die nichtkritische Zertifikat-AAGUID binden."
+fi
+
 awk '
   /^minimumReleaseAgeExclude:/ { in_block = 1; next }
   in_block && /^[^[:space:]#][^:]*:/ { exit }
@@ -71,7 +103,6 @@ awk '
 cat > "$TMP_DIR/min-age-exclude-expected" <<'EOF'
 brace-expansion@1.1.18 || 5.0.9
 deepmerge-ts@8.0.0
-fast-uri@3.1.5
 nanoid@3.3.18
 nodemailer@9.0.1
 postcss@8.5.23

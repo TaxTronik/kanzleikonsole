@@ -24,6 +24,28 @@ datasource db {
 }
 
 model Tenant {
+  formSubmissionRevisions        FormSubmissionRevision[]
+  gwgStructureBindings           GwgStructureBinding[]
+  mandateArtifacts               MandateArtifact[]
+  yearEndCampaigns               YearEndCampaign[]
+  yearEndCampaignEntries         YearEndCampaignEntry[]
+  clientInteractions             ClientInteraction[]
+  payrollIntakes                 PayrollIntake[]
+  payrollEmployeeData            PayrollEmployeeData[]
+  payrollRevisions               PayrollRevision[]
+  payrollEmployerGrants          PayrollEmployerGrant[]
+  payrollEmployeeInvites         PayrollEmployeeInvite[]
+  payrollGuestSessions           PayrollGuestSession[]
+  payrollAttachments             PayrollAttachment[]
+  payrollExports                 PayrollExport[]
+  payrollExternalTasks           PayrollExternalTask[]
+  portalInboxThreads             PortalInboxThread[]
+  portalInboxMessages            PortalInboxMessage[]
+  portalInboxUploadBatches       PortalInboxUploadBatch[]
+  portalInboxAttachments         PortalInboxAttachment[]
+  portalInboxReads               PortalInboxRead[]
+  inboundMailboxes               InboundMailbox[]
+  assistanceCases                ClientAssistanceCase[]
   id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug                           String                           @unique
   name                           String
@@ -56,8 +78,8 @@ model Tenant {
   formTemplates                  FormTemplate[]
   gwgChecks                      GwgCheck[]
   gwgInvites                     GwgOnboardingInvite[]
-  gwgPersonAnchors                GwgPersonAnchor[]
-  gwgPersonLinks                  GwgPersonLink[]
+  gwgPersonAnchors               GwgPersonAnchor[]
+  gwgPersonLinks                 GwgPersonLink[]
   invoices                       Invoice[]
   invoiceCategories              InvoiceCategory[]
   invoiceNumberSeqs              InvoiceNumberSeq[]
@@ -88,6 +110,7 @@ model Tenant {
   staffBookmarks                 StaffBookmark[]
   staffNotes                     StaffNote[]
   staffSkills                    StaffSkill[]
+  staffHardwareCredentials       StaffWebAuthnCredential[]
   staff                          StaffUser[]
   taxDeadlines                   TaxDeadline[]
   taxDeadlineNotificationHistory TaxDeadlineNotificationHistory[]
@@ -100,8 +123,476 @@ model Tenant {
   workflowN8nDispatches          WorkflowN8nDispatch[]
   workflowTemplates              WorkflowTemplate[]
   clientReminderNotes            ClientReminderNote[]
+  mandateStructures              MandateStructureVersion[]
+  mandateStructureNodes          MandateStructureNode[]
+  mandateStructureEdges          MandateStructureEdge[]
+  workflowDependencies           WorkflowDependency[]
+  mandateOffboardings            MandateOffboarding[]
+  mandateOffboardingDocuments    MandateOffboardingDocument[]
+  vdbRecords                     VdbRecord[]
+  sanctionsSnapshots             SanctionsSnapshot[]
+  sanctionsSourceState           SanctionsSourceState?
+  screeningRuns                  ScreeningRun[]
+  screeningReviews               ScreeningReview[]
+  stbvvQuotes                    StbvvQuote[]
 
   @@map("tenant")
+}
+
+/// Explicit, versioned working structure; never a legal beneficial-owner determination.
+model GwgStructureBinding {
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                   @map("tenant_id") @db.Uuid
+  clientId           String                   @map("client_id") @db.Uuid
+  gwgCheckId         String                   @map("gwg_check_id") @db.Uuid
+  structureVersionId String?                  @map("structure_version_id") @db.Uuid
+  structureHash      String?                  @map("structure_hash")
+  revision           Int
+  note               String?
+  createdBy          String                   @map("created_by") @db.Uuid
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  destroyedAt        DateTime?                @map("destroyed_at") @db.Timestamptz(6)
+  tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  client             Client                   @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  check              GwgCheck                 @relation(fields: [gwgCheckId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  structureVersion   MandateStructureVersion? @relation(fields: [structureVersionId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  creator            StaffUser                @relation(fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: Cascade)
+
+  @@unique([gwgCheckId, revision])
+  @@index([tenantId, clientId, createdAt])
+  @@map("gwg_structure_binding")
+}
+
+model MandateStructureVersion {
+  gwgBindings GwgStructureBinding[]
+  artifacts   MandateArtifact[]
+  id          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String                 @map("tenant_id") @db.Uuid
+  clientId    String                 @map("client_id") @db.Uuid
+  revision    Int
+  contentHash String                 @map("content_hash")
+  note        String                 @default("")
+  createdBy   String                 @map("created_by") @db.Uuid
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client                 @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  creator     StaffUser              @relation(fields: [createdBy], references: [id], onDelete: NoAction)
+  nodes       MandateStructureNode[]
+  edges       MandateStructureEdge[]
+
+  @@unique([tenantId, clientId, revision])
+  @@map("mandate_structure_version")
+}
+
+/// Local official EU dataset. Publication is separate from successful freshness checks.
+model SanctionsSnapshot {
+  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String                 @map("tenant_id") @db.Uuid
+  sha256        String
+  sourceUrl     String                 @map("source_url")
+  sourceVersion String                 @map("source_version")
+  publishedAt   DateTime               @map("published_at") @db.Timestamptz(6)
+  importedAt    DateTime               @default(now()) @map("imported_at") @db.Timestamptz(6)
+  entries       Json
+  entryCount    Int                    @map("entry_count")
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  states        SanctionsSourceState[]
+  runs          ScreeningRun[]
+
+  @@unique([tenantId, sha256])
+  @@unique([tenantId, id])
+  @@map("sanctions_snapshot")
+}
+
+model SanctionsSourceState {
+  tenantId    String             @id @map("tenant_id") @db.Uuid
+  snapshotId  String?            @map("snapshot_id") @db.Uuid
+  checkedAt   DateTime?          @map("checked_at") @db.Timestamptz(6)
+  attemptedAt DateTime?          @map("attempted_at") @db.Timestamptz(6)
+  lastError   String?            @map("last_error")
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  snapshot    SanctionsSnapshot? @relation(fields: [tenantId, snapshotId], references: [tenantId, id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("sanctions_source_state")
+}
+
+/// Append-only findings: never changes a GwG decision or client activation.
+model ScreeningRun {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String             @map("tenant_id") @db.Uuid
+  clientId      String             @map("client_id") @db.Uuid
+  snapshotId    String?            @map("snapshot_id") @db.Uuid
+  previousRunId String?            @map("previous_run_id") @db.Uuid
+  kind          String
+  subject       Json
+  result        Json
+  createdBy     String?            @map("created_by") @db.Uuid
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  client        Client             @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: NoAction, onUpdate: NoAction)
+  snapshot      SanctionsSnapshot? @relation(fields: [tenantId, snapshotId], references: [tenantId, id], onDelete: NoAction, onUpdate: NoAction)
+  reviews       ScreeningReview[]
+  previousRun   ScreeningRun?      @relation("ScreeningFollowup", fields: [tenantId, clientId, previousRunId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction, map: "screening_run_previous_run_fkey")
+  followups     ScreeningRun[]     @relation("ScreeningFollowup")
+
+  @@unique([tenantId, clientId, id])
+  @@unique([previousRunId, snapshotId])
+  @@index([tenantId, clientId, createdAt])
+  @@map("screening_run")
+}
+
+model ScreeningReview {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String       @map("tenant_id") @db.Uuid
+  clientId  String       @map("client_id") @db.Uuid
+  runId     String       @map("run_id") @db.Uuid
+  outcome   String
+  note      String
+  sources   Json
+  createdBy String       @map("created_by") @db.Uuid
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant    Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  client    Client       @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: NoAction, onUpdate: NoAction)
+  run       ScreeningRun @relation(fields: [tenantId, clientId, runId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, clientId, runId])
+  @@map("screening_review")
+}
+
+/// Calculation snapshots retain the selected law version and full trace.
+model StbvvQuote {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  clientId      String            @map("client_id") @db.Uuid
+  title         String
+  lawVersion    String            @map("law_version")
+  inputs        Json
+  result        Json
+  createdBy     String            @map("created_by") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  client        Client            @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: NoAction, onUpdate: NoAction)
+  invoiceExport StbvvQuoteExport?
+
+  @@unique([tenantId, id])
+  @@index([tenantId, clientId, createdAt])
+  @@map("stbvv_quote")
+}
+
+model StbvvQuoteExport {
+  quoteId   String     @id @map("quote_id") @db.Uuid
+  tenantId  String     @map("tenant_id") @db.Uuid
+  invoiceId String     @unique @map("invoice_id") @db.Uuid
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  quote     StbvvQuote @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: NoAction, onUpdate: NoAction)
+  invoice   Invoice    @relation(fields: [invoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenantId, quoteId])
+  @@map("stbvv_quote_export")
+}
+
+model MandateStructureNode {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                  @map("tenant_id") @db.Uuid
+  versionId      String                  @map("version_id") @db.Uuid
+  nodeKey        String                  @map("node_key")
+  kind           String
+  label          String
+  linkedClientId String?                 @map("linked_client_id") @db.Uuid
+  x              Float
+  y              Float
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  version        MandateStructureVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  linkedClient   Client?                 @relation(fields: [linkedClientId], references: [id], onDelete: NoAction)
+  edgesFrom      MandateStructureEdge[]  @relation("structure_edge_from")
+  edgesTo        MandateStructureEdge[]  @relation("structure_edge_to")
+
+  @@unique([versionId, nodeKey])
+  @@map("mandate_structure_node")
+}
+
+model MandateStructureEdge {
+  id         String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String                  @map("tenant_id") @db.Uuid
+  versionId  String                  @map("version_id") @db.Uuid
+  fromNodeId String                  @map("from_node_id") @db.Uuid
+  toNodeId   String                  @map("to_node_id") @db.Uuid
+  kind       String
+  percentage Decimal?                @db.Decimal(5, 2)
+  note       String                  @default("")
+  tenant     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  version    MandateStructureVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  fromNode   MandateStructureNode    @relation("structure_edge_from", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode     MandateStructureNode    @relation("structure_edge_to", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, fromNodeId, toNodeId, kind], map: "mandate_structure_edge_version_id_from_node_id_to_node_id_kind_")
+  @@map("mandate_structure_edge")
+}
+
+model WorkflowDependency {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String       @map("tenant_id") @db.Uuid
+  predecessorItemId String       @map("predecessor_item_id") @db.Uuid
+  successorItemId   String       @map("successor_item_id") @db.Uuid
+  createdBy         String       @map("created_by") @db.Uuid
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  predecessor       WorkflowItem @relation("workflow_dependency_before", fields: [predecessorItemId], references: [id], onDelete: Cascade)
+  successor         WorkflowItem @relation("workflow_dependency_after", fields: [successorItemId], references: [id], onDelete: Cascade)
+  creator           StaffUser    @relation(fields: [createdBy], references: [id], onDelete: NoAction)
+
+  @@unique([predecessorItemId, successorItemId])
+  @@map("workflow_dependency")
+}
+
+model MandateOffboarding {
+  recipient      String                       @default("")
+  artifacts      MandateArtifact[]
+  id             String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                       @map("tenant_id") @db.Uuid
+  clientId       String                       @map("client_id") @db.Uuid
+  endDate        DateTime                     @map("end_date") @db.Date
+  sourceHash     String                       @map("source_hash")
+  sourceSnapshot Json                         @map("source_snapshot")
+  handoverNote   String                       @map("handover_note")
+  retentionNote  String                       @map("retention_note")
+  createdBy      String                       @map("created_by") @db.Uuid
+  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt    DateTime?                    @map("completed_at") @db.Timestamptz(6)
+  tenant         Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client         Client                       @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  creator        StaffUser                    @relation(fields: [createdBy], references: [id], onDelete: NoAction)
+  documents      MandateOffboardingDocument[]
+
+  @@index([tenantId, clientId, createdAt])
+  @@map("mandate_offboarding")
+}
+
+model MandateOffboardingDocument {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String             @map("tenant_id") @db.Uuid
+  offboardingId     String             @map("offboarding_id") @db.Uuid
+  documentVersionId String?            @map("document_version_id") @db.Uuid
+  approvedBy        String?            @map("approved_by") @db.Uuid
+  approvedAt        DateTime?          @map("approved_at") @db.Timestamptz(6)
+  sensitiveApproved Boolean            @default(false) @map("sensitive_approved")
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offboarding       MandateOffboarding @relation(fields: [offboardingId], references: [id], onDelete: Cascade)
+  documentVersion   DocumentVersion?   @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
+  approver          StaffUser?         @relation(fields: [approvedBy], references: [id], onDelete: NoAction)
+
+  @@unique([offboardingId, documentVersionId], map: "mandate_offboarding_document_offboarding_id_document_version_id")
+  @@map("mandate_offboarding_document")
+}
+
+model MandateArtifact {
+  id                    String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                   @map("tenant_id") @db.Uuid
+  clientId              String                   @map("client_id") @db.Uuid
+  structureVersionId    String?                  @map("structure_version_id") @db.Uuid
+  offboardingId         String?                  @map("offboarding_id") @db.Uuid
+  sourceKey             String                   @map("source_key")
+  sourceHash            String                   @map("source_hash")
+  generatorVersion      String                   @map("generator_version")
+  manifest              Json
+  kind                  String
+  groupKey              String                   @map("group_key")
+  classification        String
+  requiresPayrollAccess Boolean                  @default(false) @map("requires_payroll_access")
+  documentId            String?                  @unique @map("document_id") @db.Uuid
+  documentVersionId     String?                  @unique @map("document_version_id") @db.Uuid
+  outputHash            String?                  @map("output_hash")
+  status                String                   @default("RESERVED")
+  createdBy             String                   @map("created_by") @db.Uuid
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt           DateTime?                @map("completed_at") @db.Timestamptz(6)
+  tenant                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: NoAction)
+  client                Client                   @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  structureVersion      MandateStructureVersion? @relation(fields: [structureVersionId], references: [id], onDelete: NoAction)
+  offboarding           MandateOffboarding?      @relation(fields: [offboardingId], references: [id], onDelete: NoAction)
+  document              Document?                @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentVersion       DocumentVersion?         @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
+  creator               StaffUser                @relation(fields: [createdBy], references: [id], onDelete: NoAction)
+  sources               MandateArtifactSource[]
+
+  @@unique([tenantId, sourceKey, generatorVersion])
+  @@map("mandate_artifact")
+}
+
+model MandateArtifactSource {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  artifactId        String           @map("artifact_id") @db.Uuid
+  documentVersionId String?          @map("document_version_id") @db.Uuid
+  sourceHash        String           @map("source_hash")
+  artifact          MandateArtifact  @relation(fields: [artifactId], references: [id], onDelete: NoAction)
+  documentVersion   DocumentVersion? @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
+
+  @@unique([artifactId, documentVersionId])
+  @@map("mandate_artifact_source")
+}
+
+/// Append-only external status evidence, independent of the PoA signing state.
+model VdbRecord {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  clientId          String           @map("client_id") @db.Uuid
+  poaId             String           @map("poa_id") @db.Uuid
+  status            String
+  revision          Int
+  externalReference String           @default("") @map("external_reference")
+  evidenceVersionId String?          @map("evidence_version_id") @db.Uuid
+  note              String
+  recordedAt        DateTime         @map("recorded_at") @db.Timestamptz(6)
+  createdBy         String           @map("created_by") @db.Uuid
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client            Client           @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  poa               PowerOfAttorney  @relation(fields: [poaId], references: [id], onDelete: NoAction)
+  evidence          DocumentVersion? @relation(fields: [evidenceVersionId], references: [id], onDelete: NoAction)
+  creator           StaffUser        @relation(fields: [createdBy], references: [id], onDelete: NoAction)
+
+  @@unique([poaId, revision])
+  @@index([tenantId, poaId, createdAt])
+  @@map("vdb_record")
+}
+
+model ClientAssistanceCase {
+  id                        String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                  String                     @map("tenant_id") @db.Uuid
+  clientId                  String                     @map("client_id") @db.Uuid
+  kind                      String
+  title                     String
+  schemaSnapshot            Json                       @map("schema_snapshot")
+  answers                   Json                       @default("{}")
+  revision                  Int                        @default(0)
+  status                    String                     @default("DRAFT")
+  sourceDocumentVersionId   String?                    @map("source_document_version_id") @db.Uuid
+  sourceHash                String?                    @map("source_hash")
+  externalDocumentVersionId String?                    @map("external_document_version_id") @db.Uuid
+  externalDocumentHash      String?                    @map("external_document_hash")
+  confirmedAt               DateTime?                  @map("confirmed_at")
+  submittedByContact        String?                    @map("submitted_by_contact") @db.Uuid
+  reviewedByStaff           String?                    @map("reviewed_by_staff") @db.Uuid
+  reviewNote                String?                    @map("review_note")
+  createdAt                 DateTime                   @default(now()) @map("created_at")
+  updatedAt                 DateTime                   @updatedAt @map("updated_at")
+  tenant                    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client                    Client                     @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  history                   ClientAssistanceRevision[]
+  sourceDocumentVersion     DocumentVersion?           @relation("assistance_original", fields: [sourceDocumentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  externalDocumentVersion   DocumentVersion?           @relation("assistance_external", fields: [externalDocumentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, clientId])
+  @@map("client_assistance_case")
+}
+
+model ClientAssistanceRevision {
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  caseId            String                   @map("case_id") @db.Uuid
+  revision          Int
+  answers           Json
+  status            String
+  snapshot          Json                     @default("{}")
+  snapshotHash      String                   @default("") @map("snapshot_hash")
+  sourceVersionId   String?                  @map("source_version_id") @db.Uuid
+  externalVersionId String?                  @map("external_version_id") @db.Uuid
+  actorId           String                   @map("actor_id") @db.Uuid
+  actorType         String                   @map("actor_type")
+  occurredAt        DateTime                 @default(now()) @map("occurred_at")
+  case              ClientAssistanceCase     @relation(fields: [caseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  outputs           ClientAssistanceOutput[]
+  sourceVersion     DocumentVersion?         @relation("assistance_revision_original", fields: [sourceVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  externalVersion   DocumentVersion?         @relation("assistance_revision_external", fields: [externalVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([caseId, revision])
+  @@map("client_assistance_revision")
+}
+
+model ClientAssistanceOutput {
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisionId        String                   @map("revision_id") @db.Uuid
+  format            String
+  generatorVersion  String                   @map("generator_version")
+  snapshotHash      String                   @map("snapshot_hash")
+  manifest          Json
+  documentVersionId String?                  @unique @map("document_version_id") @db.Uuid
+  outputHash        String?                  @map("output_hash")
+  status            String                   @default("RESERVED")
+  createdBy         String                   @map("created_by") @db.Uuid
+  actorType         String                   @map("actor_type")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  completedAt       DateTime?                @map("completed_at")
+  revision          ClientAssistanceRevision @relation(fields: [revisionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  documentVersion   DocumentVersion?         @relation(fields: [documentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([revisionId, format, generatorVersion], map: "client_assistance_output_revision_id_format_generator_version_k")
+  @@map("client_assistance_output")
+}
+
+model InboundMailbox {
+  claimedUntil  DateTime?        @map("claimed_until")
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String           @map("tenant_id") @db.Uuid
+  name          String
+  provider      String           @default("IMAP")
+  host          String
+  port          Int              @default(993)
+  username      String
+  folder        String           @default("INBOX")
+  secretEnc     String?          @map("secret_enc")
+  entraTenantId String?          @map("entra_tenant_id")
+  entraClientId String?          @map("entra_client_id")
+  oauthCacheEnc String?          @map("oauth_cache_enc")
+  uidValidity   String?          @map("uid_validity")
+  lastUid       Int              @default(0) @map("last_uid")
+  enabled       Boolean          @default(false)
+  lastSuccessAt DateTime?        @map("last_success_at")
+  lastError     String?          @map("last_error")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  messages      InboundMessage[]
+
+  @@index([tenantId])
+  @@map("inbound_mailbox")
+}
+
+model InboundMessage {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mailboxId   String              @map("mailbox_id") @db.Uuid
+  uidValidity String              @map("uid_validity")
+  uid         Int
+  subject     String              @default("")
+  sender      String              @default("")
+  recipients  String              @default("")
+  bodyText    String              @default("") @map("body_text")
+  status      String              @default("PENDING")
+  receivedAt  DateTime            @default(now()) @map("received_at")
+  mailbox     InboundMailbox      @relation(fields: [mailboxId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  attachments InboundAttachment[]
+
+  @@unique([mailboxId, uidValidity, uid])
+  @@map("inbound_message")
+}
+
+model InboundAttachment {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId  String         @map("message_id") @db.Uuid
+  part       Int
+  filename   String
+  mimeType   String         @map("mime_type")
+  sha256     String
+  sizeBytes  Int            @map("size_bytes")
+  status     String         @default("PENDING")
+  storageKey String?        @map("storage_key")
+  documentId String?        @map("document_id") @db.Uuid
+  clientId   String?        @map("client_id") @db.Uuid
+  error      String?
+  createdAt  DateTime       @default(now()) @map("created_at")
+  message    InboundMessage @relation(fields: [messageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([messageId, part])
+  @@map("inbound_attachment")
 }
 
 model TenantSetting {
@@ -117,61 +608,116 @@ model TenantSetting {
 }
 
 model StaffUser {
-  id                            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                      String                      @map("tenant_id") @db.Uuid
-  email                         String                      @db.Citext
-  fullName                      String                      @map("full_name")
-  passwordHash                  String                      @map("password_hash")
-  totpSecretEnc                 String?                     @map("totp_secret_enc")
-  totpEnrolledAt                DateTime?                   @map("totp_enrolled_at")
+  gwgStructureBindings            GwgStructureBinding[]
+  mandateReleaseApprovals         MandateOffboardingDocument[]
+  mandateArtifactsCreated         MandateArtifact[]
+  id                              String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                        String                       @map("tenant_id") @db.Uuid
+  email                           String                       @db.Citext
+  fullName                        String                       @map("full_name")
+  passwordHash                    String                       @map("password_hash")
+  totpSecretEnc                   String?                      @map("totp_secret_enc")
+  totpEnrolledAt                  DateTime?                    @map("totp_enrolled_at")
   // M-3: Setup-Fenster-TTL. Wird beim ersten Secret-Set gesetzt; nach 60 min
   // ohne Confirm wird der Setup-Versuch abgelehnt.
-  totpSetupStartedAt            DateTime?                   @map("totp_setup_started_at")
-  totpBackupCodes               Json?                       @map("totp_backup_codes")
-  active                        Boolean                     @default(true)
-  isProfessional                Boolean                     @default(false) @map("is_professional")
-  datevAdvisorNumber            String?                     @map("datev_advisor_number") @db.VarChar(40)
-  professionalQualificationSource String?                   @map("professional_qualification_source") @db.VarChar(10)
-  lockedUntil                   DateTime?                   @map("locked_until")
-  lastLoginAt                   DateTime?                   @map("last_login_at")
-  createdAt                     DateTime                    @default(now()) @map("created_at")
-  updatedAt                     DateTime                    @updatedAt @map("updated_at")
-  dashboardLayout               Json?                       @map("dashboard_layout")
-  accessibleDisplay             Boolean                     @default(false) @map("accessible_display")
-  accessibleDisplayFontSize     String                      @default("large") @map("accessible_display_font_size")
-  accessibleDisplaySpacing      String                      @default("relaxed") @map("accessible_display_spacing")
-  accessibleDisplayContrast     String                      @default("strong") @map("accessible_display_contrast")
-  accessibleDisplayReduceMotion Boolean                     @default(true) @map("accessible_display_reduce_motion")
-  taxNewsNotify                 Boolean                     @default(false) @map("tax_news_notify")
+  totpSetupStartedAt              DateTime?                    @map("totp_setup_started_at")
+  totpBackupCodes                 Json?                        @map("totp_backup_codes")
+  active                          Boolean                      @default(true)
+  isProfessional                  Boolean                      @default(false) @map("is_professional")
+  datevAdvisorNumber              String?                      @map("datev_advisor_number") @db.VarChar(40)
+  professionalQualificationSource String?                      @map("professional_qualification_source") @db.VarChar(10)
+  lockedUntil                     DateTime?                    @map("locked_until")
+  lastLoginAt                     DateTime?                    @map("last_login_at")
+  hardwareOnlyEnabledAt           DateTime?                    @map("hardware_only_enabled_at")
+  authRevision                    Int                          @default(0) @map("auth_revision")
+  createdAt                       DateTime                     @default(now()) @map("created_at")
+  updatedAt                       DateTime                     @updatedAt @map("updated_at")
+  dashboardLayout                 Json?                        @map("dashboard_layout")
+  accessibleDisplay               Boolean                      @default(false) @map("accessible_display")
+  accessibleDisplayFontSize       String                       @default("large") @map("accessible_display_font_size")
+  accessibleDisplaySpacing        String                       @default("relaxed") @map("accessible_display_spacing")
+  accessibleDisplayContrast       String                       @default("strong") @map("accessible_display_contrast")
+  accessibleDisplayReduceMotion   Boolean                      @default(true) @map("accessible_display_reduce_motion")
+  taxNewsNotify                   Boolean                      @default(false) @map("tax_news_notify")
   /// Benachrichtigungs-Modus fuer Wiedervorlagen-Aktivitaet (Chat, Uploads,
   /// Nachfassen). Zuweisungen, Faelligkeiten und @-Erwaehnungen kommen IMMER
   /// durch — die sind Arbeitsauftrag bzw. gezielte Ansprache, kein Rauschen.
-  reminderNotifyMode            ReminderNotifyMode          @default(ALL) @map("reminder_notify_mode")
-  failedLoginCount              Int                         @default(0) @map("failed_login_count")
-  appointmentsCreated           Appointment[]               @relation("appointment_creator")
-  appointmentsOwned             Appointment[]               @relation("appointment_owner")
-  appointmentRequestsDecided    AppointmentRequest[]        @relation("appointment_request_decided")
-  appointmentRequestsPreferred  AppointmentRequest[]        @relation("appointment_request_preferred")
-  client_handover               ClientHandover[]
-  client_master_change_request  ClientMasterChangeRequest[]
-  responsibilities              ClientResponsibility[]
-  notifications                 Notification[]
-  phone_note                    PhoneNote[]
-  rssFeeds                      RssFeed[]
-  absences                      Absence[]
-  bookmarks                     StaffBookmark[]
-  notes                         StaffNote[]
-  roles                         StaffRole[]
-  permissions                   StaffPermission[]
-  skillAssignments              StaffSkillAssignment[]
-  tenant                        Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  timeEntries                   TimeEntry[]
-  vacationRequests              VacationRequest[]
-  reminderAssignments           ClientReminderAssignee[]
+  reminderNotifyMode              ReminderNotifyMode           @default(ALL) @map("reminder_notify_mode")
+  failedLoginCount                Int                          @default(0) @map("failed_login_count")
+  appointmentsCreated             Appointment[]                @relation("appointment_creator")
+  appointmentsOwned               Appointment[]                @relation("appointment_owner")
+  appointmentRequestsDecided      AppointmentRequest[]         @relation("appointment_request_decided")
+  appointmentRequestsPreferred    AppointmentRequest[]         @relation("appointment_request_preferred")
+  client_handover                 ClientHandover[]
+  client_master_change_request    ClientMasterChangeRequest[]
+  responsibilities                ClientResponsibility[]
+  notifications                   Notification[]
+  phone_note                      PhoneNote[]
+  rssFeeds                        RssFeed[]
+  absences                        Absence[]
+  bookmarks                       StaffBookmark[]
+  notes                           StaffNote[]
+  roles                           StaffRole[]
+  permissions                     StaffPermission[]
+  hardwareCredentials             StaffWebAuthnCredential[]
+  skillAssignments                StaffSkillAssignment[]
+  tenant                          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  timeEntries                     TimeEntry[]
+  vacationRequests                VacationRequest[]
+  reminderAssignments             ClientReminderAssignee[]
+  mandateStructuresCreated        MandateStructureVersion[]
+  workflowDependenciesCreated     WorkflowDependency[]
+  mandateOffboardingsCreated      MandateOffboarding[]
+  vdbRecordsCreated               VdbRecord[]
+  portalInboxThreadsAssigned      PortalInboxThread[]          @relation("PortalInboxAssignedStaff")
+  portalInboxThreadsResolved      PortalInboxThread[]          @relation("PortalInboxResolvedByStaff")
+  portalInboxAttachmentsDecided   PortalInboxAttachment[]      @relation("PortalInboxAttachmentDecidedByStaff")
 
   @@unique([tenantId, email])
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("staff_user")
+}
+
+model StaffWebAuthnCredential {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String    @map("tenant_id") @db.Uuid
+  staffUserId           String    @map("staff_user_id") @db.Uuid
+  credentialId          String    @unique @map("credential_id") @db.VarChar(2048)
+  publicKey             Bytes     @map("public_key")
+  signCount             BigInt    @default(0) @map("sign_count")
+  webauthnUserId        String    @map("webauthn_user_id") @db.VarChar(128)
+  transports            String[]  @default([])
+  deviceType            String    @map("device_type") @db.VarChar(20)
+  backedUp              Boolean   @default(false) @map("backed_up")
+  attestationVerifiedAt DateTime  @map("attestation_verified_at")
+  attestationFormat     String    @map("attestation_format") @db.VarChar(32)
+  authenticatorVersion  BigInt?   @map("authenticator_version")
+  aaguid                String?   @db.Uuid
+  label                 String    @db.VarChar(100)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+  lastUsedAt            DateTime? @map("last_used_at")
+  revokedAt             DateTime? @map("revoked_at")
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "staff_webauthn_credential_tenant_id_fkey")
+  staffUser             StaffUser @relation(fields: [tenantId, staffUserId], references: [tenantId, id], onDelete: Cascade, onUpdate: NoAction, map: "staff_webauthn_credential_tenant_id_staff_user_id_fkey")
+
+  @@index([tenantId, staffUserId])
+  @@map("staff_webauthn_credential")
+}
+
+/// Globaler, nur ueber die Owner-Verbindung erreichbarer Monotonie-Anker fuer
+/// Hardware-Policy und verifizierten FIDO-MDS-Gesamt-BLOB. Serial 0 ist der
+/// fail-closed Policy-Sentinel vor der ersten erfolgreichen MDS-Pruefung.
+model FidoMdsTrustState {
+  singleton     Boolean  @id @default(true)
+  blobSerial    BigInt   @map("blob_serial")
+  nextUpdate    DateTime @map("next_update") @db.Date
+  verifiedAt    DateTime @default(now()) @map("verified_at") @db.Timestamptz(3)
+  policyRevision BigInt  @map("policy_revision")
+  policyHash     String  @map("policy_hash") @db.VarChar(64)
+
+  @@map("fido_mds_trust_state")
 }
 
 model VacationRequest {
@@ -220,6 +766,7 @@ model Absence {
 }
 
 model GwgCheck {
+  structureBindings          GwgStructureBinding[]
   id                         String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                   String                @map("tenant_id") @db.Uuid
   clientId                   String                @map("client_id") @db.Uuid
@@ -447,55 +994,56 @@ model ServiceProvider {
 }
 
 model PowerOfAttorney {
-  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                 String    @map("tenant_id") @db.Uuid
-  clientId                 String    @map("client_id") @db.Uuid
-  signerContactId          String?   @map("signer_contact_id") @db.Uuid
-  signerEmail              String    @map("signer_email") @db.Citext
-  signerName               String    @map("signer_name")
+  id                       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String      @map("tenant_id") @db.Uuid
+  clientId                 String      @map("client_id") @db.Uuid
+  signerContactId          String?     @map("signer_contact_id") @db.Uuid
+  signerEmail              String      @map("signer_email") @db.Citext
+  signerName               String      @map("signer_name")
   subject                  String
   scope                    String
-  validFrom                DateTime  @map("valid_from") @db.Date
-  validUntil               DateTime? @map("valid_until") @db.Date
-  status                   PoaStatus @default(DRAFT)
+  validFrom                DateTime    @map("valid_from") @db.Date
+  validUntil               DateTime?   @map("valid_until") @db.Date
+  status                   PoaStatus   @default(DRAFT)
   /// DB-seitig gesetzter Zeitpunkt des ersten beweisgebundenen Versands.
-  sentAt                   DateTime? @map("sent_at") @db.Timestamptz(6)
-  signingTokenHash         String?   @map("signing_token_hash")
-  signingTokenExpiresAt    DateTime? @map("signing_token_expires_at")
-  signingOtpHash           String?   @map("signing_otp_hash")
-  signingOtpExpiresAt      DateTime? @map("signing_otp_expires_at")
-  signedAt                 DateTime? @map("signed_at")
-  signedByIp               String?   @map("signed_by_ip") @db.Inet
-  signedByUserAgent        String?   @map("signed_by_user_agent")
+  sentAt                   DateTime?   @map("sent_at") @db.Timestamptz(6)
+  signingTokenHash         String?     @map("signing_token_hash")
+  signingTokenExpiresAt    DateTime?   @map("signing_token_expires_at")
+  signingOtpHash           String?     @map("signing_otp_hash")
+  signingOtpExpiresAt      DateTime?   @map("signing_otp_expires_at")
+  signedAt                 DateTime?   @map("signed_at")
+  signedByIp               String?     @map("signed_by_ip") @db.Inet
+  signedByUserAgent        String?     @map("signed_by_user_agent")
   // SHA-256 des beim Versand erzeugten Inhalts-Manifests plus Referenz auf die
   // konkret bestätigte Dokumentversion. Beim Signieren aus dem verifizierten
   // Versand-Snapshot übernommen.
-  signedContentSha256      Bytes?    @map("signed_content_sha256")
-  signedDocumentVersionId  String?   @map("signed_document_version_id") @db.Uuid
+  signedContentSha256      Bytes?      @map("signed_content_sha256")
+  signedDocumentVersionId  String?     @map("signed_document_version_id") @db.Uuid
   // Unveränderlicher Versand-Snapshot. Die Signaturseite und der öffentliche
   // PDF-Endpunkt verwenden ausschließlich diese Fassung; beim Abschluss wird
   // ihr Hash in signedContentSha256 übernommen.
-  signingContentSnapshot   String?   @map("signing_content_snapshot")
-  signingContentSha256     Bytes?    @map("signing_content_sha256")
-  signingDocumentVersionId String?   @map("signing_document_version_id") @db.Uuid
-  documentId               String?   @map("document_id") @db.Uuid
-  createdByStaff           String    @map("created_by_staff") @db.Uuid
-  revokedAt                DateTime? @map("revoked_at")
-  revokedReason            String?   @map("revoked_reason")
+  signingContentSnapshot   String?     @map("signing_content_snapshot")
+  signingContentSha256     Bytes?      @map("signing_content_sha256")
+  signingDocumentVersionId String?     @map("signing_document_version_id") @db.Uuid
+  documentId               String?     @map("document_id") @db.Uuid
+  createdByStaff           String      @map("created_by_staff") @db.Uuid
+  revokedAt                DateTime?   @map("revoked_at")
+  revokedReason            String?     @map("revoked_reason")
   /// Muss vom PostgreSQL-Server stammen: Prisma materialisiert `now()` sonst
   /// clientseitig, wodurch geringe Host-/DB-Uhrabweichungen sent_at < created_at erzeugen.
-  createdAt                DateTime  @default(dbgenerated("statement_timestamp()")) @map("created_at")
-  updatedAt                DateTime  @updatedAt @map("updated_at")
-  signingOtpAttempts       Int       @default(0) @map("signing_otp_attempts")
+  createdAt                DateTime    @default(dbgenerated("statement_timestamp()")) @map("created_at")
+  updatedAt                DateTime    @updatedAt @map("updated_at")
+  signingOtpAttempts       Int         @default(0) @map("signing_otp_attempts")
   // Audit 2026-06 Befund 2: lebenszyklus-weiter Fehlversuchszähler. Anders als
   // signingOtpAttempts wird er beim OTP-Re-Issue NICHT zurückgesetzt — nur beim
   // Versand eines neuen Signatur-Tokens (sendForSignatureAction). Deckelt die
   // Gesamtversuche pro Token-Lebenszyklus (vorher ~50 über Re-Issue-Resets).
-  signingOtpAttemptsTotal  Int       @default(0) @map("signing_otp_attempts_total")
+  signingOtpAttemptsTotal  Int         @default(0) @map("signing_otp_attempts_total")
   // RF-15 (iter79): NoAction statt Cascade — signierte Vollmachten dürfen
   // einen Client-Hard-Delete nicht mitsterben (Aufbewahrung/Beweiswert).
-  client                   Client    @relation(fields: [clientId], references: [id], onDelete: NoAction)
-  tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client                   Client      @relation(fields: [clientId], references: [id], onDelete: NoAction)
+  tenant                   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vdbRecords               VdbRecord[]
 
   @@index([tenantId, clientId])
   @@index([tenantId, status])
@@ -729,58 +1277,59 @@ model KbAttachment {
 }
 
 model Invoice {
-  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId            String            @map("tenant_id") @db.Uuid
-  clientId            String            @map("client_id") @db.Uuid
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String             @map("tenant_id") @db.Uuid
+  clientId            String             @map("client_id") @db.Uuid
   number              String
-  issueDate           DateTime          @map("issue_date") @db.Date
-  dueDate             DateTime          @map("due_date") @db.Date
-  status              InvoiceStatus     @default(DRAFT)
-  format              InvoiceFormat     @default(PDF)
+  issueDate           DateTime           @map("issue_date") @db.Date
+  dueDate             DateTime           @map("due_date") @db.Date
+  status              InvoiceStatus      @default(DRAFT)
+  format              InvoiceFormat      @default(PDF)
   subject             String
-  netAmount           Decimal           @map("net_amount") @db.Decimal(12, 2)
-  vatAmount           Decimal           @map("vat_amount") @db.Decimal(12, 2)
-  totalAmount         Decimal           @map("total_amount") @db.Decimal(12, 2)
+  netAmount           Decimal            @map("net_amount") @db.Decimal(12, 2)
+  vatAmount           Decimal            @map("vat_amount") @db.Decimal(12, 2)
+  totalAmount         Decimal            @map("total_amount") @db.Decimal(12, 2)
   // iter86: NULL bei Mischsätzen (Satz lebt an den Positionen); bei
   // einheitlichem Satz redundant gesetzt (Anzeige/CSV, Bestandsdaten).
-  vatRate             Decimal?          @map("vat_rate") @db.Decimal(5, 2)
+  vatRate             Decimal?           @map("vat_rate") @db.Decimal(5, 2)
   // iter98: Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG, § 31 Abs. 4 UStDV —
   // Monat genügt). NULL = kein separater Zeitraum → der Empfänger-Vorsteuer-
   // abzug knüpft dann an das Rechnungsdatum. In XRechnung als BG-14
   // (BT-73/BT-74), im ZUGFeRD-PDF als Klartext ausgewiesen.
-  servicePeriodStart  DateTime?         @map("service_period_start") @db.Date
-  servicePeriodEnd    DateTime?         @map("service_period_end") @db.Date
+  servicePeriodStart  DateTime?          @map("service_period_start") @db.Date
+  servicePeriodEnd    DateTime?          @map("service_period_end") @db.Date
   // iter101: Befreiungsgrund für 0 %-Umsätze (§ 14 Abs. 4 Nr. 8 UStG; z. B.
   // „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 Nr. …"). NULL = kein
   // 0 %-Umsatz. In XRechnung als BT-120 (Kategorie „E") ausgewiesen.
-  vatExemptionReason  String?           @map("vat_exemption_reason")
+  vatExemptionReason  String?            @map("vat_exemption_reason")
   // Reverse-Charge (§ 13b UStG, EN16931 USt-Kategorie AE): der Leistungs-
   // empfänger schuldet die Steuer, Positionen sind 0 %. Nur DRAFT-setzbar,
   // danach festgeschrieben (iter107).
-  reverseCharge       Boolean           @default(false) @map("reverse_charge")
+  reverseCharge       Boolean            @default(false) @map("reverse_charge")
   notes               String?
-  sentAt              DateTime?         @map("sent_at")
-  paidAt              DateTime?         @map("paid_at")
-  documentId          String?           @map("document_id") @db.Uuid
+  sentAt              DateTime?          @map("sent_at")
+  paidAt              DateTime?          @map("paid_at")
+  documentId          String?            @map("document_id") @db.Uuid
   /// Kanonische separate XRechnung-XML zum selben Snapshot wie die
   /// ZUGFeRD-Hybrid-PDF. Eigener 1:1-Link statt Titelheuristik.
-  xrechnungDocumentId String?           @unique(map: "invoice_xrechnung_document_unique") @map("xrechnung_document_id") @db.Uuid
-  createdByStaff      String            @map("created_by_staff") @db.Uuid
-  createdAt           DateTime          @default(now()) @map("created_at")
-  updatedAt           DateTime          @updatedAt @map("updated_at")
-  categoryId          String?           @map("category_id") @db.Uuid
+  xrechnungDocumentId String?            @unique(map: "invoice_xrechnung_document_unique") @map("xrechnung_document_id") @db.Uuid
+  createdByStaff      String             @map("created_by_staff") @db.Uuid
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  categoryId          String?            @map("category_id") @db.Uuid
   // iter100: Storno-Verkettung. stornoOfId zeigt von der Stornorechnung
-  // (TypeCode 381, negierte Beträge) auf die stornierte Originalrechnung.
-  stornoOfId          String?           @map("storno_of_id") @db.Uuid
-  stornoOf            Invoice?          @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction, map: "invoice_storno_of_fkey")
-  stornoBy            Invoice[]         @relation("InvoiceStorno")
-  category            InvoiceCategory?  @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
-  client              Client            @relation(fields: [clientId], references: [id])
-  document            Document?         @relation("InvoicePrimaryDocument", fields: [documentId], references: [id])
-  xrechnungDocument   Document?         @relation("InvoiceXrechnungDocument", fields: [xrechnungDocumentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "invoice_xrechnung_document_fkey")
-  tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // (TypeCode 384, negierte Beträge) auf die stornierte Originalrechnung.
+  stornoOfId          String?            @map("storno_of_id") @db.Uuid
+  stornoOf            Invoice?           @relation("InvoiceStorno", fields: [stornoOfId], references: [id], onUpdate: NoAction, onDelete: NoAction, map: "invoice_storno_of_fkey")
+  stornoBy            Invoice[]          @relation("InvoiceStorno")
+  category            InvoiceCategory?   @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
+  client              Client             @relation(fields: [clientId], references: [id])
+  document            Document?          @relation("InvoicePrimaryDocument", fields: [documentId], references: [id])
+  xrechnungDocument   Document?          @relation("InvoiceXrechnungDocument", fields: [xrechnungDocumentId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "invoice_xrechnung_document_fkey")
+  tenant              Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   positions           InvoicePosition[]
   timeEntries         TimeEntry[]
+  stbvvQuoteExports   StbvvQuoteExport[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status])
@@ -1126,21 +1675,167 @@ model Notification {
   @@map("notification")
 }
 
+/// Mandantenweit sichtbarer, bereits abgesendeter Nachrichtenfaden. Unfertige
+/// Uploads liegen ausschließlich in PortalInboxUploadBatch und erzeugen noch
+/// keinen Thread und kein Archivdokument.
+model PortalInboxThread {
+  id                    String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                   @map("tenant_id") @db.Uuid
+  clientId              String                   @map("client_id") @db.Uuid
+  subject               String                   @db.VarChar(200)
+  topic                 PortalInboxTopic         @default(GENERAL)
+  status                PortalInboxThreadStatus  @default(OPEN)
+  attention             PortalInboxAttention     @default(STAFF)
+  createdByContactId    String                   @map("created_by_contact_id") @db.Uuid
+  assignedStaffId       String?                  @map("assigned_staff_id") @db.Uuid
+  lastMessageAt         DateTime                 @default(now()) @map("last_message_at") @db.Timestamptz(6)
+  resolvedAt            DateTime?                @map("resolved_at") @db.Timestamptz(6)
+  resolvedByStaffId     String?                  @map("resolved_by_staff_id") @db.Uuid
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client                Client                   @relation(fields: [tenantId, clientId], references: [tenantId, id], map: "portal_inbox_thread_client_fk", onDelete: NoAction, onUpdate: NoAction)
+  createdByContact      ClientContact            @relation("PortalInboxCreatedByContact", fields: [createdByContactId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignedStaff         StaffUser?               @relation("PortalInboxAssignedStaff", fields: [assignedStaffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resolvedByStaff       StaffUser?               @relation("PortalInboxResolvedByStaff", fields: [resolvedByStaffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  messages              PortalInboxMessage[]
+  targetedUploadBatches PortalInboxUploadBatch[] @relation("PortalInboxBatchTargetThread")
+  reads                 PortalInboxRead[]
+
+  @@unique([tenantId, clientId, id], map: "portal_inbox_thread_scope_key")
+  @@index([tenantId, clientId, status, topic, lastMessageAt(sort: Desc), id(sort: Desc)], map: "portal_inbox_thread_client_filter_idx")
+  @@index([tenantId, assignedStaffId, status, lastMessageAt(sort: Desc)], map: "portal_inbox_thread_assignee_idx")
+  @@index([subject(ops: raw("gin_trgm_ops"))], type: Gin, map: "portal_inbox_thread_subject_trgm_idx")
+  @@map("portal_inbox_thread")
+}
+
+/// Unveränderlicher Nachrichtentext. authorId wird wegen des polymorphen
+/// Autors durch einen Datenbanktrigger gegen StaffUser bzw. ClientContact
+/// geprüft; ein Portalakteur darf ausschließlich sich selbst eintragen.
+model PortalInboxMessage {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                  @map("tenant_id") @db.Uuid
+  clientId         String                  @map("client_id") @db.Uuid
+  threadId         String                  @map("thread_id") @db.Uuid
+  authorType       PortalInboxAuthorType   @map("author_type")
+  authorId         String                  @map("author_id") @db.Uuid
+  body             String                  @db.Text
+  clientMutationId String                  @map("client_mutation_id") @db.Uuid
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant           Tenant                  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client           Client                  @relation(fields: [tenantId, clientId], references: [tenantId, id], map: "portal_inbox_message_client_fk", onDelete: NoAction, onUpdate: NoAction)
+  thread           PortalInboxThread       @relation(fields: [tenantId, clientId, threadId], references: [tenantId, clientId, id], map: "portal_inbox_message_thread_fk", onDelete: NoAction, onUpdate: NoAction)
+  attachments      PortalInboxAttachment[]
+
+  @@unique([tenantId, clientId, id], map: "portal_inbox_message_scope_key")
+  @@unique([threadId, clientMutationId], map: "portal_inbox_message_mutation_key")
+  @@unique([tenantId, clientId, authorType, authorId, clientMutationId], map: "portal_inbox_message_author_mutation_key")
+  @@index([threadId, createdAt, id], map: "portal_inbox_message_thread_idx")
+  @@map("portal_inbox_message")
+}
+
+/// Kontaktprivater Uploadentwurf. Erst CONSUMED bindet ein unveränderliches
+/// Manifest an eine abgesendete Nachricht; vor diesem Übergang ist der Batch
+/// für andere Kontakte desselben Mandanten unsichtbar.
+model PortalInboxUploadBatch {
+  id                 String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                       @map("tenant_id") @db.Uuid
+  clientId           String                       @map("client_id") @db.Uuid
+  createdByContactId String                       @map("created_by_contact_id") @db.Uuid
+  purpose            PortalInboxUploadPurpose
+  targetThreadId     String?                      @map("target_thread_id") @db.Uuid
+  status             PortalInboxUploadBatchStatus @default(OPEN)
+  expiresAt          DateTime                     @default(dbgenerated("(CURRENT_TIMESTAMP + '24:00:00'::interval)")) @map("expires_at") @db.Timestamptz(6)
+  manifestSha256     Bytes?                       @map("manifest_sha256")
+  consumedAt         DateTime?                    @map("consumed_at") @db.Timestamptz(6)
+  discardedAt        DateTime?                    @map("discarded_at") @db.Timestamptz(6)
+  createdAt          DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant             Tenant                       @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client             Client                       @relation(fields: [tenantId, clientId], references: [tenantId, id], map: "portal_inbox_upload_batch_client_fk", onDelete: NoAction, onUpdate: NoAction)
+  createdByContact   ClientContact                @relation(fields: [createdByContactId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  targetThread       PortalInboxThread?           @relation("PortalInboxBatchTargetThread", fields: [tenantId, clientId, targetThreadId], references: [tenantId, clientId, id], map: "portal_inbox_upload_batch_target_thread_fk", onDelete: NoAction, onUpdate: NoAction)
+  attachments        PortalInboxAttachment[]
+
+  @@unique([tenantId, clientId, id], map: "portal_inbox_upload_batch_scope_key")
+  @@index([tenantId, createdByContactId, status, expiresAt], map: "portal_inbox_upload_batch_contact_idx")
+  @@index([tenantId, status, expiresAt], map: "portal_inbox_upload_batch_expiry_idx")
+  @@map("portal_inbox_upload_batch")
+}
+
+/// Geprüfte Staging-Identität eines Inbox-Anhangs. Eine zweiphasige Annahme
+/// darf acceptedDocumentId bereits bei PENDING_REVIEW als Resume-Reservierung
+/// auf ein ungeteiltes PENDING-Dokument setzen; erst ACCEPTED kennzeichnet das
+/// fertig persistierte, klassifizierte und freigegebene Archivdokument.
+model PortalInboxAttachment {
+  id                 String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                          @map("tenant_id") @db.Uuid
+  clientId           String                          @map("client_id") @db.Uuid
+  batchId            String                          @map("batch_id") @db.Uuid
+  messageId          String?                         @map("message_id") @db.Uuid
+  originalName       String                          @map("original_name") @db.VarChar(255)
+  mimeType           String                          @map("mime_type") @db.VarChar(200)
+  storageBucket      String                          @map("storage_bucket")
+  storageKey         String                          @map("storage_key")
+  storageVersionId   String?                         @map("storage_version_id")
+  sha256             Bytes
+  sizeBytes          BigInt                          @map("size_bytes")
+  scanStatus         PortalInboxAttachmentScanStatus @default(PENDING) @map("scan_status")
+  decision           PortalInboxAttachmentDecision   @default(PENDING_REVIEW)
+  acceptedDocumentId String?                         @unique(map: "portal_inbox_attachment_accepted_document_id_key") @map("accepted_document_id") @db.Uuid
+  decidedByStaffId   String?                         @map("decided_by_staff_id") @db.Uuid
+  decidedAt          DateTime?                       @map("decided_at") @db.Timestamptz(6)
+  rejectionReason    String?                         @map("rejection_reason") @db.VarChar(64)
+  position           Int
+  createdAt          DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant             Tenant                          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client             Client                          @relation(fields: [tenantId, clientId], references: [tenantId, id], map: "portal_inbox_attachment_client_fk", onDelete: NoAction, onUpdate: NoAction)
+  batch              PortalInboxUploadBatch          @relation(fields: [tenantId, clientId, batchId], references: [tenantId, clientId, id], map: "portal_inbox_attachment_batch_fk", onDelete: NoAction, onUpdate: NoAction)
+  message            PortalInboxMessage?             @relation(fields: [tenantId, clientId, messageId], references: [tenantId, clientId, id], map: "portal_inbox_attachment_message_fk", onDelete: NoAction, onUpdate: NoAction)
+  acceptedDocument   Document?                       @relation(fields: [acceptedDocumentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  decidedByStaff     StaffUser?                      @relation("PortalInboxAttachmentDecidedByStaff", fields: [decidedByStaffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([storageBucket, storageKey], map: "portal_inbox_attachment_storage_key")
+  @@unique([batchId, position], map: "portal_inbox_attachment_batch_position_key")
+  @@index([tenantId, clientId, messageId, position], map: "portal_inbox_attachment_message_idx")
+  @@index([tenantId, decision, createdAt], map: "portal_inbox_attachment_decision_idx")
+  @@map("portal_inbox_attachment")
+}
+
+/// Kontaktbezogener Lesestand; er vermittelt weder Zugriff auf den Thread
+/// noch auf andere Kontakte. Die Thread-RLS bleibt das maßgebliche Gate.
+model PortalInboxRead {
+  tenantId   String            @map("tenant_id") @db.Uuid
+  clientId   String            @map("client_id") @db.Uuid
+  threadId   String            @map("thread_id") @db.Uuid
+  contactId  String            @map("contact_id") @db.Uuid
+  lastReadAt DateTime          @default(now()) @map("last_read_at") @db.Timestamptz(6)
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client     Client            @relation(fields: [tenantId, clientId], references: [tenantId, id], map: "portal_inbox_read_client_fk", onDelete: NoAction, onUpdate: NoAction)
+  thread     PortalInboxThread @relation(fields: [tenantId, clientId, threadId], references: [tenantId, clientId, id], map: "portal_inbox_read_thread_fk", onDelete: NoAction, onUpdate: NoAction)
+  contact    ClientContact     @relation(fields: [contactId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([threadId, contactId])
+  @@index([tenantId, clientId, contactId, lastReadAt], map: "portal_inbox_read_contact_idx")
+  @@map("portal_inbox_read")
+}
+
 model ClientTaxRegistration {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId      String   @map("tenant_id") @db.Uuid
-  clientId      String   @map("client_id") @db.Uuid
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String               @map("tenant_id") @db.Uuid
+  clientId      String               @map("client_id") @db.Uuid
   label         String
-  stateCode     String?  @map("state_code")
-  numberElster  String?  @map("number_elster")
-  taxOfficeName String   @default("") @map("tax_office_name")
-  taxOfficeCode String?  @map("tax_office_code")
-  isPrimary     Boolean  @default(false) @map("is_primary")
-  archivedAt    DateTime? @map("archived_at") @db.Timestamptz(6)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  client        Client   @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade, onUpdate: NoAction)
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stateCode     String?              @map("state_code")
+  numberElster  String?              @map("number_elster")
+  taxOfficeName String               @default("") @map("tax_office_name")
+  taxOfficeCode String?              @map("tax_office_code")
+  isPrimary     Boolean              @default(false) @map("is_primary")
+  archivedAt    DateTime?            @map("archived_at") @db.Timestamptz(6)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client        Client               @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade, onUpdate: NoAction)
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   elsterQueries ElsterKontoabfrage[]
 
   @@unique([tenantId, clientId, id])
@@ -1149,87 +1844,105 @@ model ClientTaxRegistration {
 }
 
 model Client {
-  id                      String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                String                      @map("tenant_id") @db.Uuid
-  kind                    ClientKind
-  name                    String
-  datevNo                 String?                     @map("datev_no")
-  allowActive             Boolean                     @default(false) @map("allow_active")
+  gwgStructureBindings     GwgStructureBinding[]
+  mandateArtifacts         MandateArtifact[]
+  yearEndCampaignEntries   YearEndCampaignEntry[]
+  clientInteractions       ClientInteraction[]
+  payrollIntakes           PayrollIntake[]
+  assistanceCases          ClientAssistanceCase[]
+  id                       String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String                      @map("tenant_id") @db.Uuid
+  kind                     ClientKind
+  name                     String
+  datevNo                  String?                     @map("datev_no")
+  allowActive              Boolean                     @default(false) @map("allow_active")
   /// Expliziter, historischer Abschluss des Erst-Onboardings. Der Zustand
   /// bleibt auch dann abgeschlossen, wenn später eine Wiederholungsprüfung
   /// oder ein Kontaktwechsel ansteht.
-  onboardingCompletedAt   DateTime?                   @map("onboarding_completed_at") @db.Timestamptz(6)
-  onboardingCompletedBy   String?                     @map("onboarding_completed_by") @db.Uuid
-  createdAt               DateTime                    @default(now()) @map("created_at")
-  updatedAt               DateTime                    @updatedAt @map("updated_at")
-  street                  String?
-  postalCode              String?                     @map("postal_code")
-  city                    String?
-  countryIso              String?                     @map("country_iso")
-  vatId                   String?                     @map("vat_id")
+  onboardingCompletedAt    DateTime?                   @map("onboarding_completed_at") @db.Timestamptz(6)
+  onboardingCompletedBy    String?                     @map("onboarding_completed_by") @db.Uuid
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  updatedAt                DateTime                    @updatedAt @map("updated_at")
+  street                   String?
+  postalCode               String?                     @map("postal_code")
+  city                     String?
+  countryIso               String?                     @map("country_iso")
+  vatId                    String?                     @map("vat_id")
   /// Legacy-Migrationswert; aktive Steuerdaten/ELSTER nutzen taxRegistrations.
   /// Keine parallele Bearbeitung. Wird bei NATPERS-Anonymisierung gelöscht.
-  steuernummer            String?                     @map("steuernummer")
-  taxRegistrations        ClientTaxRegistration[]
-  invoiceEmail            String?                     @map("invoice_email") @db.Citext
-  addisonNo               String?                     @map("addison_no")
-  priority                ClientPriority?             @map("priority")
-  internalNotes           String?                     @map("internal_notes")
+  steuernummer             String?                     @map("steuernummer")
+  taxRegistrations         ClientTaxRegistration[]
+  invoiceEmail             String?                     @map("invoice_email") @db.Citext
+  addisonNo                String?                     @map("addison_no")
+  priority                 ClientPriority?             @map("priority")
+  internalNotes            String?                     @map("internal_notes")
   // Zugriffs-Ventil: im OPEN-Zugriffsmodell (Default) dürfen alle aktiven
   // Mitarbeiter an jedem Mandanten arbeiten. Ein als `vertraulich` markierter
   // Mandant bleibt aber auf Admin/Partner + die zugeordneten Berufsträger/
   // Hauptbearbeiter beschränkt (Konflikt-/Geheimhaltungsfälle). Nur Admin/Partner
   // setzt das Flag. Siehe canAccessClient (rbac.ts) + access-policy.ts.
-  vertraulich             Boolean                     @default(false) @map("vertraulich")
+  vertraulich              Boolean                     @default(false) @map("vertraulich")
   // Mandatsende (GwG § 8 Abs. 4): die 5-Jahres-Aufbewahrungsfrist für GwG-Belege
   // beginnt mit dem Schluss des Kalenderjahres, in dem die Geschäftsbeziehung
   // endet. Gesetzt = Mandat beendet, startet die Löschuhr. Siehe server/gwg/
   // retention.ts + die GwG-Lösch-Review-Queue.
-  mandateEndedAt          DateTime?                   @map("mandate_ended_at") @db.Timestamptz(6)
+  mandateEndedAt           DateTime?                   @map("mandate_ended_at") @db.Timestamptz(6)
   // DSGVO Art. 17: Vernichtungsvermerk der Mandanten-Anonymisierung (Pendant zu
   // gwg_check.destroyed_at). Gesetzt = die personenbezogenen Stammdaten der
   // natürlichen Person wurden nach Ablauf ALLER Aufbewahrungsfristen (GoBD 10 J.,
   // GwG 5 J. — ab Jahresende des Mandatsendes, die längste gewinnt) anonymisiert;
   // der Datensatz ist nur noch ein Skelett. Siehe server/dsgvo/client-retention.ts
   // + die Review-Queue /staff/admin/dsgvo-retention.
-  anonymizedAt            DateTime?                   @map("anonymized_at")
+  anonymizedAt             DateTime?                   @map("anonymized_at")
   // Letzter kontrollierter Retentionlauf für natürliche PoA-Unterzeichner von
   // JURPERS/PERSGES. Die Gesellschaft bleibt bestehen; nur die nach Fristablauf
   // nicht mehr erforderlichen Signer-/Snapshotdaten werden redigiert.
-  poaSignerDataRedactedAt DateTime?                   @map("poa_signer_data_redacted_at") @db.Timestamptz(6)
-  appointments            Appointment[]
-  appointmentRequests     AppointmentRequest[]
-  clientConsents          ClientConsent[]
-  bwaPeriods              BwaPeriod[]
-  bwaPlans                BwaPlan[]
-  tenant                  Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contacts                ClientContact[]
-  customFieldValues       ClientCustomFieldValue[]
-  handovers               ClientHandover[]
-  masterChangeRequests    ClientMasterChangeRequest[]
-  reminders               ClientReminder[]
-  responsibilities        ClientResponsibility[]
-  documents               Document[]
-  documentFolders         DocumentFolder[]
-  elsterKontoabfragen     ElsterKontoabfrage[]
-  formSubmissions         FormSubmission[]
-  gwgChecks               GwgCheck[]
-  gwgIdentityDocuments    GwgIdDocument[]             @relation("gwg_natural_client_subject")
-  gwgInvites              GwgOnboardingInvite[]
-  gwgPersonAnchors        GwgPersonAnchor[]           @relation("gwg_person_client")
-  gwgNaturalPersonAnchor  GwgPersonAnchor?            @relation("gwg_person_natural_client")
-  invoices                Invoice[]
-  notifications           Notification[]
-  pendingBinders          PendingBinder[]
-  phoneNotes              PhoneNote[]
-  poas                    PowerOfAttorney[]
-  requests                Request[]
-  riskAnalyses            RiskAnalysis[]
-  taxDeadlines            TaxDeadline[]
-  taxFilings              TaxFiling[]
-  taxNotices              TaxNotice[]
-  taxScheduleConfigs      TaxScheduleConfig[]
-  workflowInstances       WorkflowInstance[]
+  poaSignerDataRedactedAt  DateTime?                   @map("poa_signer_data_redacted_at") @db.Timestamptz(6)
+  appointments             Appointment[]
+  appointmentRequests      AppointmentRequest[]
+  clientConsents           ClientConsent[]
+  bwaPeriods               BwaPeriod[]
+  bwaPlans                 BwaPlan[]
+  tenant                   Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts                 ClientContact[]
+  customFieldValues        ClientCustomFieldValue[]
+  handovers                ClientHandover[]
+  masterChangeRequests     ClientMasterChangeRequest[]
+  reminders                ClientReminder[]
+  responsibilities         ClientResponsibility[]
+  documents                Document[]
+  documentFolders          DocumentFolder[]
+  elsterKontoabfragen      ElsterKontoabfrage[]
+  formSubmissions          FormSubmission[]
+  gwgChecks                GwgCheck[]
+  gwgIdentityDocuments     GwgIdDocument[]             @relation("gwg_natural_client_subject")
+  gwgInvites               GwgOnboardingInvite[]
+  gwgPersonAnchors         GwgPersonAnchor[]           @relation("gwg_person_client")
+  gwgNaturalPersonAnchor   GwgPersonAnchor?            @relation("gwg_person_natural_client")
+  invoices                 Invoice[]
+  notifications            Notification[]
+  pendingBinders           PendingBinder[]
+  phoneNotes               PhoneNote[]
+  poas                     PowerOfAttorney[]
+  requests                 Request[]
+  riskAnalyses             RiskAnalysis[]
+  taxDeadlines             TaxDeadline[]
+  taxFilings               TaxFiling[]
+  taxNotices               TaxNotice[]
+  taxScheduleConfigs       TaxScheduleConfig[]
+  workflowInstances        WorkflowInstance[]
+  mandateStructures        MandateStructureVersion[]
+  mandateStructureLinks    MandateStructureNode[]
+  mandateOffboardings      MandateOffboarding[]
+  vdbRecords               VdbRecord[]
+  screeningRuns            ScreeningRun[]
+  screeningReviews         ScreeningReview[]
+  stbvvQuotes              StbvvQuote[]
+  portalInboxThreads       PortalInboxThread[]
+  portalInboxMessages      PortalInboxMessage[]
+  portalInboxUploadBatches PortalInboxUploadBatch[]
+  portalInboxAttachments   PortalInboxAttachment[]
+  portalInboxReads         PortalInboxRead[]
 
   @@unique([tenantId, datevNo])
   @@unique([tenantId, id], map: "client_tenant_id_id_key")
@@ -1368,6 +2081,9 @@ model ClientResponsibility {
 }
 
 model ClientContact {
+  clientInteractions            ClientInteraction[]
+  feedbackWorkflows             WorkflowInstance[]
+  payrollEmployerGrants         PayrollEmployerGrant[]
   id                            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                      String                      @map("tenant_id") @db.Uuid
   clientId                      String                      @map("client_id") @db.Uuid
@@ -1394,6 +2110,9 @@ model ClientContact {
   tenant                        Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   masterChangeRequests          ClientMasterChangeRequest[]
   magicLinks                    MagicLink[]
+  portalInboxThreadsCreated     PortalInboxThread[]         @relation("PortalInboxCreatedByContact")
+  portalInboxUploadBatches      PortalInboxUploadBatch[]
+  portalInboxReads              PortalInboxRead[]
 
   @@unique([tenantId, clientId, email])
   @@index([tenantId, clientId])
@@ -1420,87 +2139,91 @@ model MagicLink {
 }
 
 model Document {
-  id                        String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                  String                 @map("tenant_id") @db.Uuid
-  clientId                  String?                @map("client_id") @db.Uuid
-  ownerStaffId              String?                @map("owner_staff_id") @db.Uuid
-  title                     String
-  classification            DocumentClassification
-  mimeType                  String                 @map("mime_type")
-  retentionUntil            DateTime?              @map("retention_until")
-  createdAt                 DateTime               @default(now()) @map("created_at")
-  updatedAt                 DateTime               @updatedAt @map("updated_at")
-  workflowItemId            String?                @map("workflow_item_id") @db.Uuid
+  mandateArtifact             MandateArtifact?
+  id                          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                 @map("tenant_id") @db.Uuid
+  clientId                    String?                @map("client_id") @db.Uuid
+  ownerStaffId                String?                @map("owner_staff_id") @db.Uuid
+  title                       String
+  classification              DocumentClassification
+  /// Additional staff-only read restriction for generated payroll material.
+  requiresPayrollAccess       Boolean                @default(false) @map("requires_payroll_access")
+  mimeType                    String                 @map("mime_type")
+  retentionUntil              DateTime?              @map("retention_until")
+  createdAt                   DateTime               @default(now()) @map("created_at")
+  updatedAt                   DateTime               @updatedAt @map("updated_at")
+  workflowItemId              String?                @map("workflow_item_id") @db.Uuid
   // Optionaler Sachverhalts-Bezug (Aktenregal-Tab): Dokument gehört zu genau
   // dieser RiskAnalysis. Analog workflowItemId. SET NULL bei Analyse-Löschung.
-  analysisId                String?                @map("analysis_id") @db.Uuid
-  acknowledgedAt            DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
-  acknowledgedByStaff       String?                @map("acknowledged_by_staff") @db.Uuid
+  analysisId                  String?                @map("analysis_id") @db.Uuid
+  acknowledgedAt              DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
+  acknowledgedByStaff         String?                @map("acknowledged_by_staff") @db.Uuid
   // Soft-Delete: GoBD-Objekte liegen unter COMPLIANCE, GwG-Objekte unter
   // GOVERNANCE plus bestätigtem Vernichtungsworkflow. Reguläres "Löschen"
   // blendet nur aus — physische Vernichtung erfolgt ausschließlich regelkonform.
-  deletedAt                 DateTime?              @map("deleted_at") @db.Timestamptz(6)
-  deletedByStaff            String?                @map("deleted_by_staff") @db.Uuid
-  deleteReason              String?                @map("delete_reason")
+  deletedAt                   DateTime?              @map("deleted_at") @db.Timestamptz(6)
+  deletedByStaff              String?                @map("deleted_by_staff") @db.Uuid
+  deleteReason                String?                @map("delete_reason")
   /// Zweiphasige GwG-Vernichtung: Zuerst wird die Absicht transaktional
   /// protokolliert, danach werden die Object-Store-Bytes idempotent gelöscht
   /// und erst dann die DB-Versionen kontrolliert entfernt. Ein Crash bleibt so
   /// als wiederaufnehmbarer PENDING-Zustand sichtbar statt als Halbzustand.
-  gwgDestructionRequestedAt DateTime?              @map("gwg_destruction_requested_at") @db.Timestamptz(6)
-  gwgDestructionRequestedBy String?                @map("gwg_destruction_requested_by") @db.Uuid
-  gwgDestructionError       String?                @map("gwg_destruction_error")
-  gwgDestroyedAt            DateTime?              @map("gwg_destroyed_at") @db.Timestamptz(6)
+  gwgDestructionRequestedAt   DateTime?              @map("gwg_destruction_requested_at") @db.Timestamptz(6)
+  gwgDestructionRequestedBy   String?                @map("gwg_destruction_requested_by") @db.Uuid
+  gwgDestructionError         String?                @map("gwg_destruction_error")
+  gwgDestroyedAt              DateTime?              @map("gwg_destroyed_at") @db.Timestamptz(6)
   /// Explizite Herkunft von über das anonyme GwG-Onboarding hochgeladenen
   /// Belegen. Ersetzt für Retention-Zwecke die bisherige lose JSON-ID-Liste.
-  gwgOnboardingInviteId     String?                @map("gwg_onboarding_invite_id") @db.Uuid
+  gwgOnboardingInviteId       String?                @map("gwg_onboarding_invite_id") @db.Uuid
   /// Anhang einer Wiedervorlage. Analog workflowItemId/analysisId; SET NULL,
   /// damit das Löschen der Aufgabe die Datei in der Akte belässt.
-  reminderId                String?                @map("reminder_id") @db.Uuid
+  reminderId                  String?                @map("reminder_id") @db.Uuid
   /// Herkunft eines noch nicht abgesendeten Formular-Uploads. Die explizite
   /// Zuordnung verhindert, dass eine frei übermittelte Dokument-UUID zum
   /// Löschen oder Absenden in einem anderen Formular/Feld verwendet wird.
-  formSubmissionId          String?                @map("form_submission_id") @db.Uuid
-  formFieldKey              String?                @map("form_field_key")
+  formSubmissionId            String?                @map("form_submission_id") @db.Uuid
+  formFieldKey                String?                @map("form_field_key")
   // Mandanten-Freigabe (Opt-in): NULL = privat (nur Kanzlei sieht es),
   // gesetzt = im Mandantenportal sichtbar. Vom Mandanten selbst hochgeladene
   // Dokumente (Portal-Upload, Anforderungs-Antwort) werden bei Anlage
   // automatisch geteilt; Staff-Uploads bleiben privat bis zur Freigabe.
-  sharedWithClientAt        DateTime?              @map("shared_with_client_at") @db.Timestamptz(6)
-  sharedByStaff             String?                @map("shared_by_staff") @db.Uuid
+  sharedWithClientAt          DateTime?              @map("shared_with_client_at") @db.Timestamptz(6)
+  sharedByStaff               String?                @map("shared_by_staff") @db.Uuid
   // Organisatorischer Ordner (frei anlegbar, pro Mandant bzw. kanzlei-intern).
   // UNABHÄNGIG von classification — die treibt Retention/Bucket, der Ordner
   // ist reine Ablage-Struktur. SET NULL bei Ordner-Löschung (Dokument bleibt).
-  folderId                  String?                @map("folder_id") @db.Uuid
+  folderId                    String?                @map("folder_id") @db.Uuid
   // onUpdate: NoAction — die Migration iter54_document_folders hat den FK
   // ohne ON UPDATE-Klausel angelegt (Postgres-Default NO ACTION). Ohne
   // explizite Annotation würde Prisma 7 ON UPDATE CASCADE annehmen und
   // Drift melden.
-  folder                    DocumentFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  folder                      DocumentFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   // Datei-Typ (7 Kern-Typen read-only + kanzlei-eigene). Der Typ trägt die
   // Schutzstufe (KEINE/GWG/GOBD), die Bucket + Object-Lock + Frist steuert.
   // `classification` bleibt als Back-Compat-Spalte; neue Logik leitet die
   // Stufe aus documentType ab (bzw. aus classification für Altbestand).
-  documentTypeId            String?                @map("document_type_id") @db.Uuid
+  documentTypeId              String?                @map("document_type_id") @db.Uuid
   // onUpdate: NoAction — analog zu folder oben (iter55_document_types).
-  documentType              DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  client                    Client?                @relation(fields: [clientId], references: [id])
-  tenant                    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  workflowItem              WorkflowItem?          @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "document_workflow_item_fk")
-  analysis                  RiskAnalysis?          @relation("AnalysisAttachedDocs", fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_analysis_fk")
-  reminder                  ClientReminder?        @relation("ReminderAttachments", fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_reminder_fk")
-  formSubmission            FormSubmission?        @relation("FormSubmissionUploads", fields: [formSubmissionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "document_form_submission_fkey")
-  gwgOnboardingInvite       GwgOnboardingInvite?   @relation(fields: [gwgOnboardingInviteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_gwg_invite_fk")
-  versions                  DocumentVersion[]
-  gwgIdDocuments            GwgIdDocument[]
-  invoiceAttachments        Invoice[]              @relation("InvoicePrimaryDocument")
-  xrechnungInvoice          Invoice?               @relation("InvoiceXrechnungDocument")
-  requestResponses          RequestResponse[]
-  riskAnalyses              RiskAnalysis[]         @relation("AnalysisSourceDoc")
-  absences                  Absence[]
-  taxFilings                TaxFiling[]
-  taxNotices                TaxNotice[]
-  researchShelfResult       RiskResearchResult?    @relation("ResearchResultShelfDocument")
-  knowledgeAttachment       KbAttachment?
+  documentType                DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  client                      Client?                @relation(fields: [clientId], references: [id])
+  tenant                      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowItem                WorkflowItem?          @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "document_workflow_item_fk")
+  analysis                    RiskAnalysis?          @relation("AnalysisAttachedDocs", fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_analysis_fk")
+  reminder                    ClientReminder?        @relation("ReminderAttachments", fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_reminder_fk")
+  formSubmission              FormSubmission?        @relation("FormSubmissionUploads", fields: [formSubmissionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "document_form_submission_fkey")
+  gwgOnboardingInvite         GwgOnboardingInvite?   @relation(fields: [gwgOnboardingInviteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "document_gwg_invite_fk")
+  versions                    DocumentVersion[]
+  gwgIdDocuments              GwgIdDocument[]
+  invoiceAttachments          Invoice[]              @relation("InvoicePrimaryDocument")
+  xrechnungInvoice            Invoice?               @relation("InvoiceXrechnungDocument")
+  requestResponses            RequestResponse[]
+  riskAnalyses                RiskAnalysis[]         @relation("AnalysisSourceDoc")
+  absences                    Absence[]
+  taxFilings                  TaxFiling[]
+  taxNotices                  TaxNotice[]
+  researchShelfResult         RiskResearchResult?    @relation("ResearchResultShelfDocument")
+  knowledgeAttachment         KbAttachment?
+  portalInboxSourceAttachment PortalInboxAttachment?
 
   @@index([tenantId, clientId])
   @@index([tenantId, classification])
@@ -1591,20 +2314,30 @@ model DocumentFolder {
 }
 
 model DocumentVersion {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  documentId       String    @map("document_id") @db.Uuid
-  versionNo        Int       @map("version_no")
-  storageBucket    String    @map("storage_bucket")
-  storageKey       String    @map("storage_key")
-  storageVersionId String?   @map("storage_version_id")
-  sha256           Bytes
-  sizeBytes        BigInt    @map("size_bytes")
-  immutable        Boolean   @default(false)
-  scanStatus       String    @default("PENDING") @map("scan_status")
-  scanCompletedAt  DateTime? @map("scan_completed_at")
-  createdById      String    @map("created_by_id") @db.Uuid
-  createdAt        DateTime  @default(now()) @map("created_at")
-  document         Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  formSubmissionRevisionFiles FormSubmissionRevisionFile[]
+  mandateArtifact             MandateArtifact?
+  mandateArtifactSources      MandateArtifactSource[]
+  id                          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId                  String                       @map("document_id") @db.Uuid
+  versionNo                   Int                          @map("version_no")
+  storageBucket               String                       @map("storage_bucket")
+  storageKey                  String                       @map("storage_key")
+  storageVersionId            String?                      @map("storage_version_id")
+  sha256                      Bytes
+  sizeBytes                   BigInt                       @map("size_bytes")
+  immutable                   Boolean                      @default(false)
+  scanStatus                  String                       @default("PENDING") @map("scan_status")
+  scanCompletedAt             DateTime?                    @map("scan_completed_at")
+  createdById                 String                       @map("created_by_id") @db.Uuid
+  createdAt                   DateTime                     @default(now()) @map("created_at")
+  document                    Document                     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  offboardingDocuments        MandateOffboardingDocument[]
+  vdbEvidence                 VdbRecord[]
+  assistanceOriginalCases     ClientAssistanceCase[]       @relation("assistance_original")
+  assistanceExternalCases     ClientAssistanceCase[]       @relation("assistance_external")
+  assistanceOutputs           ClientAssistanceOutput[]
+  assistanceSourceRevisions   ClientAssistanceRevision[]   @relation("assistance_revision_original")
+  assistanceExternalRevisions ClientAssistanceRevision[]   @relation("assistance_revision_external")
 
   @@unique([documentId, versionNo])
   @@index([documentId])
@@ -1662,10 +2395,13 @@ model AuditAnchor {
 }
 
 model Request {
+  clientInteraction              ClientInteraction?
+  yearEndCampaignEntry           YearEndCampaignEntry?
   id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                       String                           @map("tenant_id") @db.Uuid
   clientId                       String                           @map("client_id") @db.Uuid
   title                          String
+  wikiArticleIds                 String[]                         @default([]) @map("wiki_article_ids") @db.Uuid
   description                    String
   priority                       RequestPriority                  @default(NORMAL)
   status                         RequestStatus                    @default(OPEN)
@@ -1716,6 +2452,7 @@ model RequestTemplate {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String          @map("tenant_id") @db.Uuid
   name           String
+  wikiArticleIds String[]        @default([]) @map("wiki_article_ids") @db.Uuid
   category       String?
   title          String
   description    String
@@ -2321,31 +3058,31 @@ model DeadlineDailyReview {
 /// ein Vorgang beim ELSTER-Server → Ergebnisse werden persistiert (Historie,
 /// kein unnötiger Doppelabruf). Die Portalzertifikat-PIN wird NIE gespeichert.
 model ElsterKontoabfrage {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId        String   @map("tenant_id") @db.Uuid
-  clientId        String   @map("client_id") @db.Uuid
-  taxRegistrationId String? @map("tax_registration_id") @db.Uuid
-  taxNumberSnapshot String? @map("tax_number_snapshot")
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                 @map("tenant_id") @db.Uuid
+  clientId          String                 @map("client_id") @db.Uuid
+  taxRegistrationId String?                @map("tax_registration_id") @db.Uuid
+  taxNumberSnapshot String?                @map("tax_number_snapshot")
   /// I = Istbuchungen, O = offene Beträge, ZS = Sollstellungen.
-  art             String
+  art               String
   /// Steuerart (ESt/KSt/USt/…) — null bei O-Abfrage.
-  steuerart       String?
+  steuerart         String?
   /// ZS: vierstelliges Jahr; I: Wertstellungsdatum TTMMJJJJ.
-  zeitraum        String?
+  zeitraum          String?
   /// Explizit erklärter Echtfall (sonst Testmerker-Übertragung).
-  echtfall        Boolean  @default(false)
-  ok              Boolean
-  returnCode      Int      @map("return_code")
+  echtfall          Boolean                @default(false)
+  ok                Boolean
+  returnCode        Int                    @map("return_code")
   /// NutzdatenTicket der Bridge — Audit-/GoBD-Bezug zum ELSTER-Vorgang.
-  nutzdatenTicket String?  @map("nutzdaten_ticket")
+  nutzdatenTicket   String?                @map("nutzdaten_ticket")
   /// Ergebnis-Payload der Bridge (ELSTER-Antwort), null bei Fehler.
-  result          String?
-  errorText       String?  @map("error_text")
-  requestedBy     String   @map("requested_by") @db.Uuid
-  createdAt       DateTime @default(now()) @map("created_at")
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_client_fkey")
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_tenant_fkey")
-  taxRegistration ClientTaxRegistration? @relation(fields: [tenantId, clientId, taxRegistrationId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction, map: "elster_kontoabfrage_tax_registration_fkey")
+  result            String?
+  errorText         String?                @map("error_text")
+  requestedBy       String                 @map("requested_by") @db.Uuid
+  createdAt         DateTime               @default(now()) @map("created_at")
+  client            Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_client_fkey")
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "elster_kontoabfrage_tenant_fkey")
+  taxRegistration   ClientTaxRegistration? @relation(fields: [tenantId, clientId, taxRegistrationId], references: [tenantId, clientId, id], onDelete: NoAction, onUpdate: NoAction, map: "elster_kontoabfrage_tax_registration_fkey")
 
   @@index([tenantId, clientId, createdAt])
   @@map("elster_kontoabfrage")
@@ -2444,19 +3181,20 @@ model WorkflowTemplate {
 }
 
 model WorkflowStep {
-  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  templateId   String           @map("template_id") @db.Uuid
-  position     Int
-  title        String
-  description  String?
-  dueAfterDays Int?             @map("due_after_days")
-  skillId      String?          @map("skill_id") @db.Uuid
-  createdAt    DateTime         @default(now()) @map("created_at")
-  kind         WorkflowStepKind @default(TASK)
-  config       Json             @default("{}")
-  n8nEvent     String?          @map("n8n_event")
-  skill        StaffSkill?      @relation(fields: [skillId], references: [id], onUpdate: NoAction, map: "workflow_step_skill_fkey")
-  template     WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_step_template_fkey")
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateId     String           @map("template_id") @db.Uuid
+  position       Int
+  title          String
+  wikiArticleIds String[]         @default([]) @map("wiki_article_ids") @db.Uuid
+  description    String?
+  dueAfterDays   Int?             @map("due_after_days")
+  skillId        String?          @map("skill_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  kind           WorkflowStepKind @default(TASK)
+  config         Json             @default("{}")
+  n8nEvent       String?          @map("n8n_event")
+  skill          StaffSkill?      @relation(fields: [skillId], references: [id], onUpdate: NoAction, map: "workflow_step_skill_fkey")
+  template       WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_step_template_fkey")
 
   @@unique([templateId, position])
   @@index([templateId])
@@ -2465,29 +3203,35 @@ model WorkflowStep {
 }
 
 model WorkflowInstance {
-  id             String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String                   @map("tenant_id") @db.Uuid
-  clientId       String                   @map("client_id") @db.Uuid
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                   @map("tenant_id") @db.Uuid
+  clientId          String                   @map("client_id") @db.Uuid
   // Nullable: ein „eigener Workflow (einmalig)" wird OHNE Vorlage gestartet
   // (Name frei, Schritte ad-hoc via AddStepForm) — nur templatebasierte Instanzen
   // tragen eine templateId.
-  templateId     String?                  @map("template_id") @db.Uuid
-  name           String
-  status         WorkflowInstanceStatus   @default(ACTIVE)
-  startedAt      DateTime                 @default(now()) @map("started_at")
-  completedAt    DateTime?                @map("completed_at")
-  startedByStaff String                   @map("started_by_staff") @db.Uuid
-  notes          String?
-  pausedUntil    DateTime?                @map("paused_until") @db.Timestamptz(6)
+  templateId        String?                  @map("template_id") @db.Uuid
+  name              String
+  // Explicit period confirmation; legacy cases remain unassigned.
+  assessmentYear    Int?                     @map("assessment_year")
+  feedbackContactId String?                  @map("feedback_contact_id") @db.Uuid
+  feedbackPendingAt DateTime?                @map("feedback_pending_at") @db.Timestamptz(6)
+  feedbackProcessedAt DateTime?              @map("feedback_processed_at") @db.Timestamptz(6)
+  feedbackContact   ClientContact?           @relation(fields: [feedbackContactId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  status            WorkflowInstanceStatus   @default(ACTIVE)
+  startedAt         DateTime                 @default(now()) @map("started_at")
+  completedAt       DateTime?                @map("completed_at")
+  startedByStaff    String                   @map("started_by_staff") @db.Uuid
+  notes             String?
+  pausedUntil       DateTime?                @map("paused_until") @db.Timestamptz(6)
   // Optionaler Sachverhalts-Bezug: ein aus dem Subsumtions-Tab gestarteter
   // Workflow gehört zu genau dieser Analyse (SET NULL überlebt Analyse-Löschung).
-  analysisId     String?                  @map("analysis_id") @db.Uuid
-  client         Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_instance_client_fkey")
-  template       WorkflowTemplate?        @relation(fields: [templateId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "workflow_instance_template_fkey")
-  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_instance_tenant_fkey")
-  analysis       RiskAnalysis?            @relation(fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "workflow_instance_analysis_fk")
-  members        WorkflowInstanceMember[]
-  items          WorkflowItem[]
+  analysisId        String?                  @map("analysis_id") @db.Uuid
+  client            Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_instance_client_fkey")
+  template          WorkflowTemplate?        @relation(fields: [templateId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "workflow_instance_template_fkey")
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_instance_tenant_fkey")
+  analysis          RiskAnalysis?            @relation(fields: [analysisId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "workflow_instance_analysis_fk")
+  members           WorkflowInstanceMember[]
+  items             WorkflowItem[]
 
   @@index([tenantId, clientId, status])
   @@index([tenantId, status, startedAt])
@@ -2519,6 +3263,7 @@ model WorkflowItem {
   instanceId           String                   @map("instance_id") @db.Uuid
   position             Int
   title                String
+  wikiArticleIds       String[]                 @default([]) @map("wiki_article_ids") @db.Uuid
   description          String?
   assigneeStaffId      String?                  @map("assignee_staff_id") @db.Uuid
   skillId              String?                  @map("skill_id") @db.Uuid
@@ -2540,6 +3285,8 @@ model WorkflowItem {
   comments             WorkflowItemComment[]
   emailRecipients      WorkflowEmailRecipient[]
   n8nDispatch          WorkflowN8nDispatch?
+  dependenciesBefore   WorkflowDependency[]     @relation("workflow_dependency_before")
+  dependenciesAfter    WorkflowDependency[]     @relation("workflow_dependency_after")
 
   @@index([instanceId, position])
   @@index([assigneeStaffId, doneAt])
@@ -2614,7 +3361,236 @@ model WorkflowItemComment {
   @@map("workflow_item_comment")
 }
 
+model PayrollIntake {
+  tenant              Tenant                  @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client              Client                  @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employeeData        PayrollEmployeeData?
+  revisions           PayrollRevision[]
+  employerGrants      PayrollEmployerGrant[]
+  invites             PayrollEmployeeInvite[]
+  attachments         PayrollAttachment[]
+  exports             PayrollExport[]
+  externalTasks       PayrollExternalTask[]
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                  @map("tenant_id") @db.Uuid
+  clientId            String                  @map("client_id") @db.Uuid
+  employeeLabel       String                  @map("employee_label")
+  schemaSnapshot      Json                    @map("schema_snapshot")
+  employerAnswers     Json                    @default("{}") @map("employer_answers")
+  revision            Int                     @default(0)
+  status              String                  @default("DRAFT")
+  expiresAt           DateTime                @map("expires_at") @db.Timestamptz
+  revokedAt           DateTime?               @map("revoked_at")
+  employerConfirmedAt DateTime?               @map("employer_confirmed_at")
+  employeeSubmittedAt DateTime?               @map("employee_submitted_at")
+  reviewedAt          DateTime?               @map("reviewed_at")
+  reviewedByStaff     String?                 @map("reviewed_by_staff") @db.Uuid
+  reviewNote          String?                 @map("review_note")
+  advisorNumber       String?                 @map("advisor_number")
+  clientNumber        String?                 @map("client_number")
+  personnelNumber     String?                 @map("personnel_number")
+  numbersConfirmedAt  DateTime?               @map("numbers_confirmed_at")
+  createdByStaff      String                  @map("created_by_staff") @db.Uuid
+  createdAt           DateTime                @default(now()) @map("created_at")
+
+  @@index([tenantId, clientId])
+  @@map("payroll_intake")
+}
+
+model PayrollEmployeeData {
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intake   PayrollIntake @relation(fields: [intakeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intakeId String        @id @map("intake_id") @db.Uuid
+  tenantId String        @map("tenant_id") @db.Uuid
+  answers  Json          @default("{}")
+
+  @@map("payroll_employee_data")
+}
+
+model PayrollRevision {
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intake    PayrollIntake @relation(fields: [intakeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  intakeId  String        @map("intake_id") @db.Uuid
+  revision  Int
+  snapshot  Json
+  actorId   String?       @map("actor_id") @db.Uuid
+  actorType String        @map("actor_type")
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@unique([intakeId, revision])
+  @@map("payroll_revision")
+}
+
+model PayrollEmployerGrant {
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intake    PayrollIntake @relation(fields: [intakeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contact   ClientContact @relation(fields: [contactId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  intakeId  String        @map("intake_id") @db.Uuid
+  contactId String        @map("contact_id") @db.Uuid
+  active    Boolean       @default(true)
+
+  @@unique([intakeId, contactId])
+  @@map("payroll_employer_grant")
+}
+
+model PayrollEmployeeInvite {
+  tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intake     PayrollIntake         @relation(fields: [intakeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessions   PayrollGuestSession[]
+  id         String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String                @map("tenant_id") @db.Uuid
+  intakeId   String                @map("intake_id") @db.Uuid
+  tokenHash  String                @unique @map("token_hash")
+  expiresAt  DateTime              @map("expires_at") @db.Timestamptz
+  redeemedAt DateTime?             @map("redeemed_at")
+  revokedAt  DateTime?             @map("revoked_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+
+  @@map("payroll_employee_invite")
+}
+
+model PayrollGuestSession {
+  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invite    PayrollEmployeeInvite @relation(fields: [inviteId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String                @map("tenant_id") @db.Uuid
+  inviteId  String                @map("invite_id") @db.Uuid
+  tokenHash String                @unique @map("token_hash")
+  expiresAt DateTime              @map("expires_at") @db.Timestamptz
+  revokedAt DateTime?             @map("revoked_at")
+
+  @@map("payroll_guest_session")
+}
+
+model PayrollAttachment {
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intake           PayrollIntake   @relation(fields: [intakeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  exports          PayrollExport[]
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String          @map("tenant_id") @db.Uuid
+  intakeId         String          @map("intake_id") @db.Uuid
+  audience         String
+  uploadedBy       String          @map("uploaded_by") @db.Uuid
+  revision         Int
+  filename         String
+  mimeType         String          @map("mime_type")
+  status           String          @default("PENDING")
+  storageBucket    String          @map("storage_bucket")
+  storageKey       String          @unique @map("storage_key")
+  storageVersionId String?         @map("storage_version_id")
+  sha256           String
+  sizeBytes        BigInt          @map("size_bytes")
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  @@index([tenantId, intakeId])
+  @@map("payroll_attachment")
+}
+
+model PayrollExport {
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intake         PayrollIntake      @relation(fields: [intakeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  attachment     PayrollAttachment? @relation(fields: [attachmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String             @map("tenant_id") @db.Uuid
+  intakeId       String             @map("intake_id") @db.Uuid
+  revision       Int
+  kind           String
+  status         String
+  explanation    String
+  attachmentId   String?            @map("attachment_id") @db.Uuid
+  createdByStaff String             @map("created_by_staff") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  @@map("payroll_export")
+}
+
+model PayrollExternalTask {
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  intake          PayrollIntake @relation(fields: [intakeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  intakeId        String        @map("intake_id") @db.Uuid
+  kind            String        @default("SOFORTMELDUNG")
+  status          String        @default("OPEN")
+  evidence        String?
+  recordedByStaff String?       @map("recorded_by_staff") @db.Uuid
+  recordedAt      DateTime?     @map("recorded_at")
+
+  @@unique([intakeId, kind])
+  @@map("payroll_external_task")
+}
+
+model YearEndCampaign {
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  template       FormTemplate           @relation(fields: [templateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  entries        YearEndCampaignEntry[]
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String                 @map("tenant_id") @db.Uuid
+  name           String
+  year           Int
+  templateId     String                 @map("template_id") @db.Uuid
+  schemaSnapshot Json                   @map("schema_snapshot")
+  dueAt          DateTime               @map("due_at") @db.Timestamptz(6)
+  createdByStaff String                 @map("created_by_staff") @db.Uuid
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([tenantId, name, year])
+  @@map("year_end_campaign")
+}
+
+model YearEndCampaignEntry {
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  campaign     YearEndCampaign @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  client       Client          @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  submission   FormSubmission  @relation(fields: [submissionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  request      Request         @relation(fields: [requestId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String          @map("tenant_id") @db.Uuid
+  campaignId   String          @map("campaign_id") @db.Uuid
+  clientId     String          @map("client_id") @db.Uuid
+  submissionId String          @unique @map("submission_id") @db.Uuid
+  requestId    String          @unique @map("request_id") @db.Uuid
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([campaignId, clientId])
+  @@map("year_end_campaign_entry")
+}
+
+model ClientInteraction {
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contact         ClientContact @relation(fields: [contactId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  request         Request       @relation(fields: [requestId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  clientId        String        @map("client_id") @db.Uuid
+  contactId       String        @map("contact_id") @db.Uuid
+  kind            String
+  revision        Int           @default(1)
+  sourceId        String        @map("source_id") @db.Uuid
+  requestId       String        @unique @map("request_id") @db.Uuid
+  snapshot        Json
+  status          String        @default("OPEN")
+  response        String?
+  message         String?
+  respondedAt     DateTime?     @map("responded_at") @db.Timestamp(6)
+  reviewedAt      DateTime?     @map("reviewed_at") @db.Timestamp(6)
+  reviewedByStaff String?       @map("reviewed_by_staff") @db.Uuid
+  expiresAt       DateTime      @map("expires_at") @db.Timestamptz(6)
+  createdByStaff  String        @map("created_by_staff") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([tenantId, kind, sourceId, revision])
+  @@index([tenantId, clientId, status], map: "client_interaction_scope")
+  @@map("client_interaction")
+}
+
 model FormTemplate {
+  yearEndCampaigns YearEndCampaign[]
   id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String            @map("tenant_id") @db.Uuid
   name             String
@@ -2656,35 +3632,72 @@ model FormField {
 }
 
 model FormSubmission {
-  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId           String               @map("tenant_id") @db.Uuid
-  templateId         String               @map("template_id") @db.Uuid
-  clientId           String               @map("client_id") @db.Uuid
-  requestId          String?              @map("request_id") @db.Uuid
-  status             FormSubmissionStatus @default(PENDING)
-  name               String
-  answers            Json                 @default("{}")
-  submittedByContact String?              @map("submitted_by_contact") @db.Uuid
-  submittedAt        DateTime?            @map("submitted_at")
-  reviewedAt         DateTime?            @map("reviewed_at")
-  reviewedByStaff    String?              @map("reviewed_by_staff") @db.Uuid
-  reviewNotes        String?              @map("review_notes")
-  createdByStaff     String               @map("created_by_staff") @db.Uuid
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @updatedAt @map("updated_at")
-  workflowItemId     String?              @map("workflow_item_id") @db.Uuid
-  client             Client               @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "form_submission_client_fkey")
-  template           FormTemplate         @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "form_submission_template_fkey")
-  tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "form_submission_tenant_fkey")
-  workflowItem       WorkflowItem?        @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "form_submission_workflow_item_fk")
-  requests           Request[]
-  uploadDocuments    Document[]           @relation("FormSubmissionUploads")
+  revisions            FormSubmissionRevision[]
+  yearEndCampaignEntry YearEndCampaignEntry?
+  id                   String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                   @map("tenant_id") @db.Uuid
+  templateId           String                   @map("template_id") @db.Uuid
+  clientId             String                   @map("client_id") @db.Uuid
+  requestId            String?                  @map("request_id") @db.Uuid
+  status               FormSubmissionStatus     @default(PENDING)
+  name                 String
+  answers              Json                     @default("{}")
+  /// Frozen schema at creation. Null explicitly means a legacy submission without historical proof.
+  schemaSnapshot       Json?                    @map("schema_snapshot")
+  submittedByContact   String?                  @map("submitted_by_contact") @db.Uuid
+  submittedAt          DateTime?                @map("submitted_at")
+  reviewedAt           DateTime?                @map("reviewed_at")
+  reviewedByStaff      String?                  @map("reviewed_by_staff") @db.Uuid
+  reviewNotes          String?                  @map("review_notes")
+  createdByStaff       String                   @map("created_by_staff") @db.Uuid
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  workflowItemId       String?                  @map("workflow_item_id") @db.Uuid
+  client               Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "form_submission_client_fkey")
+  template             FormTemplate             @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "form_submission_template_fkey")
+  tenant               Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "form_submission_tenant_fkey")
+  workflowItem         WorkflowItem?            @relation(fields: [workflowItemId], references: [id], onUpdate: NoAction, map: "form_submission_workflow_item_fk")
+  requests             Request[]
+  uploadDocuments      Document[]               @relation("FormSubmissionUploads")
 
   @@unique([workflowItemId], map: "form_submission_workflow_item_unique")
   @@index([tenantId, clientId, status])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, templateId])
   @@map("form_submission")
+}
+
+model FormSubmissionRevision {
+  id                 String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                       @map("tenant_id") @db.Uuid
+  submissionId       String                       @map("submission_id") @db.Uuid
+  sequence           Int
+  schemaSnapshot     Json                         @map("schema_snapshot")
+  answers            Json
+  submittedAt        DateTime                     @map("submitted_at")
+  submittedByContact String?                      @map("submitted_by_contact") @db.Uuid
+  capturedByStaff    String                       @map("captured_by_staff") @db.Uuid
+  createdAt          DateTime                     @default(now()) @map("created_at")
+  tenant             Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  submission         FormSubmission               @relation(fields: [submissionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  files              FormSubmissionRevisionFile[]
+
+  @@unique([submissionId, sequence])
+  @@unique([submissionId, submittedAt])
+  @@map("form_submission_revision")
+}
+
+model FormSubmissionRevisionFile {
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisionId        String                 @map("revision_id") @db.Uuid
+  fieldKey          String                 @map("field_key")
+  documentVersionId String                 @map("document_version_id") @db.Uuid
+  sha256            String
+  revision          FormSubmissionRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  documentVersion   DocumentVersion        @relation(fields: [documentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([revisionId, fieldKey])
+  @@map("form_submission_revision_file")
 }
 
 /// Journal für Storage-Objekte, deren nachgelagerter DB-Commit scheiterte oder
@@ -2944,6 +3957,9 @@ enum StaffRoleName {
 //                    inkl. EXTERNAL-Upload (stellt aus und zu)
 //   ABSENCE_DECIDE — Urlaubsanträge entscheiden, Abwesenheitsmeldungen erhalten
 enum StaffPermissionName {
+  PAYROLL_MANAGE
+  INBOUND_MAIL_MANAGE
+  PORTAL_INBOX_MANAGE
   CLIENT_CREATE
   INVOICE_MANAGE
   INVOICE_SEND
@@ -3130,6 +4146,9 @@ enum BackupStatus {
 }
 
 enum NotificationKind {
+  PORTAL_INBOX_ACTIVITY
+  WORKFLOW_PREREQUISITE_REOPENED
+  SCREENING_REVIEW
   REQUEST_RESPONDED
   POA_SIGNED
   POA_EXPIRY_SOON
@@ -3169,6 +4188,71 @@ enum NotificationKind {
   TAX_DEADLINE_NOTIFICATION_FAILED
 
   @@map("notification_kind")
+}
+
+enum PortalInboxTopic {
+  GENERAL
+  DOCUMENTS
+  BILLING
+  APPOINTMENT
+  OTHER
+
+  @@map("portal_inbox_topic")
+}
+
+enum PortalInboxThreadStatus {
+  OPEN
+  RESOLVED
+
+  @@map("portal_inbox_thread_status")
+}
+
+enum PortalInboxAttention {
+  STAFF
+  CLIENT
+  NONE
+
+  @@map("portal_inbox_attention")
+}
+
+enum PortalInboxAuthorType {
+  STAFF
+  CLIENT_CONTACT
+
+  @@map("portal_inbox_author_type")
+}
+
+enum PortalInboxUploadPurpose {
+  NEW_THREAD
+  REPLY
+
+  @@map("portal_inbox_upload_purpose")
+}
+
+enum PortalInboxUploadBatchStatus {
+  OPEN
+  CONSUMED
+  DISCARDED
+  EXPIRED
+
+  @@map("portal_inbox_upload_batch_status")
+}
+
+enum PortalInboxAttachmentScanStatus {
+  PENDING
+  CLEAN
+  BLOCKED
+
+  @@map("portal_inbox_attachment_scan_status")
+}
+
+enum PortalInboxAttachmentDecision {
+  PENDING_REVIEW
+  ACCEPTED
+  REJECTED
+  BLOCKED
+
+  @@map("portal_inbox_attachment_decision")
 }
 
 /// Wie viel Wiedervorlagen-Aktivitaet eine Person erreichen soll.

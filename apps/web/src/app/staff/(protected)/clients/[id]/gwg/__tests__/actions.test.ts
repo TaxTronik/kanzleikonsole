@@ -207,6 +207,10 @@ function verificationFormData(check = completeCheck()) {
 
 function makeTx(check: ReturnType<typeof completeCheck>) {
   return {
+    tenantSetting: {
+      findUnique: vi.fn().mockResolvedValue({ value: { sanctionsScreening: false } }),
+    },
+    sanctionsSourceState: { findUnique: vi.fn().mockResolvedValue(null) },
     $executeRaw: vi.fn().mockResolvedValue(0),
     $queryRaw: vi.fn().mockResolvedValue([{ statementTimestamp: DATABASE_NOW }]),
     clientResponsibility: {
@@ -2936,6 +2940,20 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.gwgCheck.findFirst.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('GWG-SCREENING-001 sperrt neue Freigabe bei aktiviertem Screening ohne aktuelle Quelle', async () => {
+    const check = completeCheck();
+    const tx = makeTx(check);
+    tx.tenantSetting.findUnique.mockResolvedValue({ value: { sanctionsScreening: true } });
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+    const result = await verifyCheckAction(null, verificationFormData(check));
+    expect(result).toEqual({ ok: false, error: expect.stringContaining('GwG-Freigabe gesperrt') });
+    expect(tx.gwgCheck.updateMany).not.toHaveBeenCalled();
+    expect(tx.client.update).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('versendet bei einer erneuten GwG-Freigabe keine zweite Willkommensmail', async () => {

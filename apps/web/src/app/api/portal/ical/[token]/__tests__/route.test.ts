@@ -1,3 +1,4 @@
+// Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
@@ -62,6 +63,23 @@ async function callRoute(): Promise<Response> {
 }
 
 describe('portal iCal lifecycle gate', () => {
+  it('revokes an existing calendar subscription after mandate termination', async () => {
+    m.contactFindFirst.mockResolvedValue(
+      contact({
+        client: {
+          name: 'Mandant GmbH',
+          allowActive: true,
+          anonymizedAt: null,
+          mandateEndedAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      }),
+    );
+    expect((await callRoute()).status).toBe(404);
+    expect(m.readBooleanTenantModules).not.toHaveBeenCalled();
+    expect(m.deadlineFindMany).not.toHaveBeenCalled();
+    expect(m.appointmentFindMany).not.toHaveBeenCalled();
+    expect(m.buildIcs).not.toHaveBeenCalled();
+  });
   it('returns 404 when GwG/client activation is blocked', async () => {
     m.contactFindFirst.mockResolvedValue(
       contact({
@@ -104,7 +122,9 @@ describe('portal iCal lifecycle gate', () => {
         tenantId: true,
         clientId: true,
         icalTokenVersion: true,
-        client: { select: { name: true, allowActive: true, anonymizedAt: true } },
+        client: {
+          select: { name: true, allowActive: true, anonymizedAt: true, mandateEndedAt: true },
+        },
       },
     });
     expect(m.deadlineFindMany).toHaveBeenCalledTimes(1);

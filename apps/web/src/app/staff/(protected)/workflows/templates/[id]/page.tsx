@@ -66,6 +66,7 @@ export default async function TemplateEditorPage({ params }: { params: Promise<{
         initialDescription={template.description ?? ''}
         initialDefaultSkillId={template.defaultSkillId ?? ''}
         initialSteps={template.steps.map((s) => ({
+          wikiArticleIds: s.wikiArticleIds,
           title: s.title,
           description: s.description ?? '',
           dueAfterDays: s.dueAfterDays,

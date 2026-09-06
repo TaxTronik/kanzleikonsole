@@ -14,8 +14,8 @@ professional_review:
   reviewed_at: null
   reviewed_content_hash: null
 implementation:
-  status: deviates
-  summary: Dokumente nie versendeter Storni bleiben intern, die Portal-Liste zeigt solche CANCELLED-Datensätze derzeit jedoch ohne Versandnachweis an.
+  status: implemented
+  summary: Portal-Liste und Dokumentpfad verwenden dieselbe Positivregel; ein stornierter Beleg bleibt nur mit tatsächlichem Versandnachweis sichtbar, nie versendete Storni bleiben vollständig intern.
 sources:
   - kind: product_documentation
     citation: Benutzerhandbuch Rechnungen, Mandantenportal
@@ -29,9 +29,11 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/app/portal/(protected)/invoices/page.tsx
+  - apps/web/src/server/invoicing/portal-visibility.ts
   - apps/web/src/server/invoicing/archive.ts
   - apps/web/src/server/invoicing/draft-archive.ts
 test_refs:
+  - apps/web/src/server/invoicing/__tests__/portal-visibility.test.ts
   - apps/web/src/server/invoicing/__tests__/archive.test.ts
   - apps/web/src/server/invoicing/__tests__/draft-archive.test.ts
 feature_refs:
@@ -103,21 +105,19 @@ löst versehentlich vorhandene Entwurfsartefakte.
 
 ## Umsetzung in TaxTronik
 
-Die Portalliste schließt derzeit nur `DRAFT` aus. Der Archivdienst entscheidet
-zusätzlich anhand von `sentAt`, ob ein stornierter Beleg zuvor geteilt wurde.
-PDF und XML werden über explizite Dokument-IDs gefunden;
+Die Portalliste verwendet die zentrale Positivregel
+`portalInvoiceVisibilityWhere`: `SENT`, `PAID` und `OVERDUE` sind sichtbar;
+`CANCELLED` nur zusammen mit `sentAt`. Der Archivdienst entscheidet ebenfalls
+anhand von `sentAt`, ob ein stornierter Beleg zuvor geteilt wurde. PDF und XML
+werden über explizite Dokument-IDs gefunden;
 Entwurfsbereinigung entfernt beide Verknüpfungen atomar.
 
 ## Bekannte Abweichungen und Grenzen
 
-Die Portal-Abfrage filtert lediglich `status != DRAFT`. Deshalb erscheint ein
-nie versendeter, aber auf `CANCELLED` gesetzter Entwurf entgegen der Regel als
-Listenzeile ohne Dokument im Portal. Nur die Archivfreigabe berücksichtigt
-`sentAt` bereits korrekt. Auch die bestehende Anwenderdokumentation sagt
-pauschal „alle Rechnungen außer Entwürfen“ und muss bei einer Produktkorrektur
-mit geändert werden. Unabhängig davon brauchen außerhalb des Systems
-versendete Altbelege ohne gepflegtes `sentAt` eine kontrollierte
-Datenbereinigung.
+Portalabfrage und Archivfreigabe berücksichtigen `sentAt` jetzt konsistent.
+Außerhalb des Systems versendete Altbelege ohne gepflegten Versandzeitpunkt
+bleiben fail-closed unsichtbar und brauchen eine kontrollierte, nachweisbare
+Datenbereinigung; die Anwendung erfindet keinen Versandnachweis.
 
 ## Fachliche Prüffragen
 
@@ -131,6 +131,6 @@ Datenbereinigung.
 ## Technische Nachweise
 
 Archivtests prüfen die Freigabe bereits versendeter Storni und die Ablehnung
-nie versendeter Storni. Entwurfsarchiv-Tests prüfen das Lösen und Soft-Delete
-explizit verknüpfter PDF-/XML-Artefakte; die Portalabfrage schließt Entwürfe
-serverseitig aus.
+nie versendeter Storni. Der Portal-Sichtbarkeitstest belegt dieselbe Regel für
+Listenabfrage und Dokumentlookup. Entwurfsarchiv-Tests prüfen das Lösen und
+Soft-Delete explizit verknüpfter PDF-/XML-Artefakte.

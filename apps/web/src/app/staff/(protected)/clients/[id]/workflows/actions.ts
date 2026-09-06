@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
+import { lockWorkflowItemTx } from '@taxtronik/db/workflow-lifecycle';
 import { evidenceService } from '@/server/container';
 import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/execute-step';
 import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
@@ -106,6 +107,7 @@ export async function startInstanceAction(input: {
         ? tpl.steps.map((s) => ({
             position: s.position,
             title: s.title,
+            wikiArticleIds: s.wikiArticleIds,
             description: s.description,
             skillId: s.skillId,
             kind: s.kind,
@@ -244,33 +246,31 @@ export async function toggleItemDoneAction(input: { id: string; done: boolean })
   const parsed = z.object({ id: z.string().uuid(), done: z.boolean() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, g) => {
+    const { staffId, session } = g;
+    await lockWorkflowItemTx(tx, parsed.data.id);
     const existing = await tx.workflowItem.findUnique({
       where: { id: parsed.data.id },
-      select: { instance: { select: { clientId: true } } },
+      select: { instance: { select: { clientId: true, status: true } } },
     });
     if (!existing) throw new ActionError('Schritt nicht gefunden.');
     await assertClientAccessTx(tx, session, existing.instance.clientId);
+    if (!['ACTIVE', 'COMPLETED'].includes(existing.instance.status))
+      throw new ActionError('Workflow zuerst ausdrücklich fortsetzen oder wiederherstellen.');
     const item = await tx.workflowItem.update({
       where: { id: parsed.data.id },
       data: parsed.data.done
         ? { doneAt: new Date(), doneByStaff: staffId }
         : { doneAt: null, doneByStaff: null },
     });
-    // Wenn alle Items erledigt → Instanz auf COMPLETED
-    const remaining = await tx.workflowItem.count({
-      where: { instanceId: item.instanceId, doneAt: null },
-    });
-    if (parsed.data.done && remaining === 0) {
-      await tx.workflowInstance.update({
-        where: { id: item.instanceId },
-        data: { status: 'COMPLETED', completedAt: new Date() },
-      });
-    } else if (!parsed.data.done) {
-      await tx.workflowInstance.updateMany({
-        where: { id: item.instanceId, status: 'COMPLETED' },
-        data: { status: 'ACTIVE', completedAt: null },
-      });
+    // WORKFLOW-LIFECYCLE-001: the database reconciles every completion path.
+    // Immediate feedback is optional; its durable marker survives worker-only paths.
+    if (parsed.data.done) {
+      const completed = await tx.workflowInstance.findUnique({ where: { id: item.instanceId } });
+      if (completed?.status === 'COMPLETED' && completed.feedbackContactId) {
+        const { createFeedbackInvitationTx } = await import('@/server/workflows/interactions');
+        await createFeedbackInvitationTx(tx, g, completed.id, completed.feedbackContactId, true);
+      }
     }
     return { clientId: existing.instance.clientId };
   });
@@ -438,6 +438,12 @@ export async function restoreInstanceAction(input: { instanceId: string }) {
     });
     if (claim.count === 0)
       throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
+    // Der Resume-Trigger kann bei inzwischen erledigten Schritten direkt
+    // COMPLETED herstellen. Evidence beschreibt den tatsächlichen Endzustand.
+    const after = await tx.workflowInstance.findUniqueOrThrow({
+      where: { id: inst.id },
+      select: { status: true, completedAt: true },
+    });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -446,7 +452,7 @@ export async function restoreInstanceAction(input: { instanceId: string }) {
       resourceType: 'workflow_instance',
       resourceId: inst.id,
       before: { status: 'CANCELLED' },
-      after: { status: 'ACTIVE' },
+      after,
     });
     return { clientId: inst.clientId };
   });
@@ -541,6 +547,12 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
     });
     if (claim.count === 0)
       throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
+    // Der Resume-Trigger kann bei inzwischen erledigten Schritten direkt
+    // COMPLETED herstellen. Evidence beschreibt den tatsächlichen Endzustand.
+    const after = await tx.workflowInstance.findUniqueOrThrow({
+      where: { id: inst.id },
+      select: { status: true, completedAt: true },
+    });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -549,7 +561,7 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
       resourceType: 'workflow_instance',
       resourceId: inst.id,
       before: { status: 'PAUSED' },
-      after: { status: 'ACTIVE' },
+      after,
     });
     return { clientId: inst.clientId };
   });

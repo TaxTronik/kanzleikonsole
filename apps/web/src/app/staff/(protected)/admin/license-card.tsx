@@ -4,11 +4,10 @@ import { fmtDateShort } from '@/lib/fmt';
 
 export function LicenseCard({ info }: { info: LicenseInfo }) {
   const tone = toneFor(info.status);
-  const Icon = iconFor(info.status);
 
   return (
     <div className={`rounded-lg border p-4 mb-6 flex items-start gap-3 ${tone.container}`}>
-      <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${tone.icon}`} />
+      <LicenseStatusIcon status={info.status} className={`h-5 w-5 mt-0.5 shrink-0 ${tone.icon}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-3 flex-wrap">
           <h2 className={`text-sm font-medium ${tone.title}`}>
@@ -85,16 +84,22 @@ function toneFor(s: LicenseInfo['status']) {
   }
 }
 
-function iconFor(s: LicenseInfo['status']) {
-  switch (s) {
+function LicenseStatusIcon({
+  status,
+  className,
+}: {
+  status: LicenseInfo['status'];
+  className: string;
+}) {
+  switch (status) {
     case 'VALID':
-      return CheckCircle2;
+      return <CheckCircle2 className={className} />;
     case 'EXPIRED':
-      return AlertTriangle;
+      return <AlertTriangle className={className} />;
     case 'INVALID':
-      return XCircle;
+      return <XCircle className={className} />;
     case 'UNCONFIGURED':
     default:
-      return KeyRound;
+      return <KeyRound className={className} />;
   }
 }

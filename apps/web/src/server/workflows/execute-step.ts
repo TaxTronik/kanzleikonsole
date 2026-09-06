@@ -23,6 +23,7 @@
 // =============================================================================
 
 import { readBooleanTenantModules, withTenantContext, type TxClient } from '@taxtronik/db';
+import { lockWorkflowItemTx } from '@taxtronik/db/workflow-lifecycle';
 import type { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent, type N8nEventName } from '@/server/n8n/emit';
@@ -96,6 +97,28 @@ function hasActiveExecutionClaim(kind: string, startedAt: Date | null): boolean 
     return startedAt.getTime() > Date.now() - N8N_CLAIM_STALE_MS;
   }
   return true;
+}
+
+function executionBlockReason(item: {
+  kind: string;
+  startedAt: Date | null;
+  doneAt: Date | null;
+  instance: { status: string };
+}): string | null {
+  if (item.instance.status !== 'ACTIVE')
+    return 'Workflow zuerst ausdrücklich fortsetzen oder wiederherstellen.';
+  if (item.doneAt) return 'Schritt ist bereits erledigt.';
+  if (hasActiveExecutionClaim(item.kind, item.startedAt))
+    return 'Schritt wurde bereits angestoßen.';
+  return null;
+}
+
+function copyWikiArticleIds(source: string[] | null | undefined): string[] {
+  return source ? [...source] : [];
+}
+
+function mergeWikiArticleIds(current: string[], additional: string[] | null | undefined): string[] {
+  return [...new Set([...current, ...copyWikiArticleIds(additional)])].slice(0, 10);
 }
 
 async function claimWorkflowItem(
@@ -458,6 +481,151 @@ async function finalizeClientEmail(opts: {
       };
 }
 
+type InteractionStepInput = ExecuteOpts & {
+  clientId: string;
+  config: Record<string, unknown>;
+  formsEnabled: boolean;
+  item: { title: string; description: string | null; wikiArticleIds: string[] };
+};
+
+async function executeClientRequest(
+  tx: TxClient,
+  input: InteractionStepInput,
+): Promise<ExecuteResult> {
+  const { tenantId, staffId, itemId, clientId, config, formsEnabled, item } = input;
+  const result: ExecuteResult = { ok: true };
+  // Vorlage hat Vorrang. Inline-Werte greifen nur, wenn keine
+  // Vorlage gewählt ist oder die referenzierte Vorlage gelöscht wurde.
+  const requestTemplateId =
+    typeof config['requestTemplateId'] === 'string' ? config['requestTemplateId'] : null;
+  let title = String(config['requestTitle'] ?? item.title);
+  let description = String(config['requestDescription'] ?? item.description ?? '');
+  let priority = (config['priority'] as 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT') ?? 'NORMAL';
+  let dueAfterDays = typeof config['dueAfterDays'] === 'number' ? config['dueAfterDays'] : null;
+  let formSubmissionId: string | null = null;
+  let formTemplateId: string | null = null;
+  let formName: string | null = null;
+  let wikiArticleIds = copyWikiArticleIds(item.wikiArticleIds);
+
+  if (requestTemplateId) {
+    const tpl = await tx.requestTemplate.findUnique({ where: { id: requestTemplateId } });
+    if (tpl) {
+      wikiArticleIds = mergeWikiArticleIds(wikiArticleIds, tpl.wikiArticleIds);
+      title = tpl.title;
+      description = tpl.description;
+      priority = tpl.priority;
+      if (tpl.dueAfterDays != null) dueAfterDays = tpl.dueAfterDays;
+      if (tpl.formTemplateId) {
+        formTemplateId = tpl.formTemplateId;
+        formName = title;
+      }
+    }
+  }
+
+  if (formTemplateId && !formsEnabled) {
+    return { ok: false, error: 'Das Formular-Modul ist für diese Kanzlei deaktiviert.' };
+  }
+
+  // Erst nach vollständiger Vorlagenvalidierung atomar beanspruchen;
+  // danach liegen Claim und Folgeartefakte in derselben Transaktion.
+  if (!(await claimWorkflowItem(tx, itemId, new Date()))) {
+    return { ok: false, error: 'Schritt wurde bereits angestoßen.' };
+  }
+
+  if (formTemplateId) {
+    const sub = await tx.formSubmission.create({
+      data: {
+        tenantId,
+        templateId: formTemplateId,
+        clientId,
+        name: formName ?? title,
+        workflowItemId: itemId,
+        createdByStaff: staffId,
+      },
+    });
+    formSubmissionId = sub.id;
+    result.createdSubmissionId = sub.id;
+  }
+
+  const dueAt =
+    dueAfterDays != null ? new Date(Date.now() + dueAfterDays * 24 * 60 * 60 * 1000) : null;
+
+  const req = await tx.request.create({
+    data: {
+      tenantId,
+      clientId,
+      title,
+      description,
+      priority,
+      dueAt,
+      workflowItemId: itemId,
+      formSubmissionId,
+      wikiArticleIds,
+      createdByStaff: staffId,
+    },
+  });
+  if (formSubmissionId) {
+    await tx.formSubmission.update({
+      where: { id: formSubmissionId },
+      data: { requestId: req.id },
+    });
+  }
+  result.createdRequestId = req.id;
+
+  return result;
+}
+
+async function executeClientForm(
+  tx: TxClient,
+  input: InteractionStepInput,
+): Promise<ExecuteResult> {
+  const { tenantId, staffId, itemId, clientId, config, formsEnabled } = input;
+  const result: ExecuteResult = { ok: true };
+  if (!formsEnabled) {
+    return { ok: false, error: 'Das Formular-Modul ist für diese Kanzlei deaktiviert.' };
+  }
+  const formTemplateId = String(config['formTemplateId'] ?? '');
+  if (!formTemplateId) return { ok: false, error: 'Schritt enthält keine Formular-Vorlage.' };
+  const tpl = await tx.formTemplate.findUnique({ where: { id: formTemplateId } });
+  if (!tpl) return { ok: false, error: 'Formular-Vorlage nicht gefunden.' };
+  if (!tpl.active) return { ok: false, error: 'Formular-Vorlage ist deaktiviert.' };
+
+  if (!(await claimWorkflowItem(tx, itemId, new Date()))) {
+    return { ok: false, error: 'Schritt wurde bereits angestoßen.' };
+  }
+
+  const sub = await tx.formSubmission.create({
+    data: {
+      tenantId,
+      templateId: formTemplateId,
+      clientId,
+      name: tpl.name,
+      workflowItemId: itemId,
+      createdByStaff: staffId,
+    },
+  });
+  const req = await tx.request.create({
+    data: {
+      tenantId,
+      clientId,
+      title: String(config['requestTitle'] ?? `Formular: ${tpl.name}`),
+      description: String(config['requestDescription'] ?? ''),
+      priority: 'NORMAL',
+      formSubmissionId: sub.id,
+      workflowItemId: itemId,
+      createdByStaff: staffId,
+    },
+  });
+  await tx.formSubmission.update({
+    where: { id: sub.id },
+    data: { requestId: req.id },
+  });
+  result.createdRequestId = req.id;
+  result.createdSubmissionId = sub.id;
+
+  return result;
+}
+
 export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteResult> {
   const { tenantId, staffId, itemId } = opts;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
@@ -483,15 +651,14 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
     if (!modules.workflows) {
       return { ok: false, error: 'Das Workflow-Modul ist für diese Kanzlei deaktiviert.' };
     }
+    await lockWorkflowItemTx(tx, itemId);
     const item = await tx.workflowItem.findUnique({
       where: { id: itemId },
-      include: { instance: { select: { clientId: true, name: true } } },
+      include: { instance: { select: { clientId: true, name: true, status: true } } },
     });
     if (!item) return { ok: false, error: 'Workflow-Schritt nicht gefunden.' };
-    if (item.doneAt) return { ok: false, error: 'Schritt ist bereits erledigt.' };
-    if (hasActiveExecutionClaim(item.kind, item.startedAt)) {
-      return { ok: false, error: 'Schritt wurde bereits angestoßen.' };
-    }
+    const blocked = executionBlockReason(item);
+    if (blocked) return { ok: false, error: blocked };
     executedKind = item.kind;
 
     const clientId = item.instance.clientId;
@@ -526,127 +693,20 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
         }
         break;
 
-      case 'CLIENT_REQUEST': {
-        // Vorlage hat Vorrang. Inline-Werte greifen nur, wenn keine
-        // Vorlage gewählt ist oder die referenzierte Vorlage gelöscht wurde.
-        const requestTemplateId =
-          typeof config['requestTemplateId'] === 'string' ? config['requestTemplateId'] : null;
-        let title = String(config['requestTitle'] ?? item.title);
-        let description = String(config['requestDescription'] ?? item.description ?? '');
-        let priority = (config['priority'] as 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT') ?? 'NORMAL';
-        let dueAfterDays =
-          typeof config['dueAfterDays'] === 'number' ? config['dueAfterDays'] : null;
-        let formSubmissionId: string | null = null;
-        let formTemplateId: string | null = null;
-        let formName: string | null = null;
-
-        if (requestTemplateId) {
-          const tpl = await tx.requestTemplate.findUnique({ where: { id: requestTemplateId } });
-          if (tpl) {
-            title = tpl.title;
-            description = tpl.description;
-            priority = tpl.priority;
-            if (tpl.dueAfterDays != null) dueAfterDays = tpl.dueAfterDays;
-            if (tpl.formTemplateId) {
-              formTemplateId = tpl.formTemplateId;
-              formName = title;
-            }
-          }
-        }
-
-        if (formTemplateId && !modules.forms) {
-          return { ok: false, error: 'Das Formular-Modul ist für diese Kanzlei deaktiviert.' };
-        }
-
-        // Erst nach vollständiger Vorlagenvalidierung atomar beanspruchen;
-        // danach liegen Claim und Folgeartefakte in derselben Transaktion.
-        if (!(await claimWorkflowItem(tx, itemId, new Date()))) {
-          return { ok: false, error: 'Schritt wurde bereits angestoßen.' };
-        }
-
-        if (formTemplateId) {
-          const sub = await tx.formSubmission.create({
-            data: {
-              tenantId,
-              templateId: formTemplateId,
-              clientId,
-              name: formName ?? title,
-              workflowItemId: itemId,
-              createdByStaff: staffId,
-            },
-          });
-          formSubmissionId = sub.id;
-          result.createdSubmissionId = sub.id;
-        }
-
-        const dueAt =
-          dueAfterDays != null ? new Date(Date.now() + dueAfterDays * 24 * 60 * 60 * 1000) : null;
-
-        const req = await tx.request.create({
-          data: {
-            tenantId,
-            clientId,
-            title,
-            description,
-            priority,
-            dueAt,
-            workflowItemId: itemId,
-            formSubmissionId,
-            createdByStaff: staffId,
-          },
-        });
-        if (formSubmissionId) {
-          await tx.formSubmission.update({
-            where: { id: formSubmissionId },
-            data: { requestId: req.id },
-          });
-        }
-        result.createdRequestId = req.id;
-        break;
-      }
-
+      case 'CLIENT_REQUEST':
       case 'CLIENT_FORM': {
-        if (!modules.forms) {
-          return { ok: false, error: 'Das Formular-Modul ist für diese Kanzlei deaktiviert.' };
-        }
-        const formTemplateId = String(config['formTemplateId'] ?? '');
-        if (!formTemplateId) return { ok: false, error: 'Schritt enthält keine Formular-Vorlage.' };
-        const tpl = await tx.formTemplate.findUnique({ where: { id: formTemplateId } });
-        if (!tpl) return { ok: false, error: 'Formular-Vorlage nicht gefunden.' };
-        if (!tpl.active) return { ok: false, error: 'Formular-Vorlage ist deaktiviert.' };
-
-        if (!(await claimWorkflowItem(tx, itemId, new Date()))) {
-          return { ok: false, error: 'Schritt wurde bereits angestoßen.' };
-        }
-
-        const sub = await tx.formSubmission.create({
-          data: {
-            tenantId,
-            templateId: formTemplateId,
-            clientId,
-            name: tpl.name,
-            workflowItemId: itemId,
-            createdByStaff: staffId,
-          },
+        const execute = item.kind === 'CLIENT_REQUEST' ? executeClientRequest : executeClientForm;
+        const interaction = await execute(tx, {
+          tenantId,
+          staffId,
+          itemId,
+          clientId,
+          config,
+          formsEnabled: modules.forms,
+          item,
         });
-        const req = await tx.request.create({
-          data: {
-            tenantId,
-            clientId,
-            title: String(config['requestTitle'] ?? `Formular: ${tpl.name}`),
-            description: String(config['requestDescription'] ?? ''),
-            priority: 'NORMAL',
-            formSubmissionId: sub.id,
-            workflowItemId: itemId,
-            createdByStaff: staffId,
-          },
-        });
-        await tx.formSubmission.update({
-          where: { id: sub.id },
-          data: { requestId: req.id },
-        });
-        result.createdRequestId = req.id;
-        result.createdSubmissionId = sub.id;
+        if (!interaction.ok) return interaction;
+        Object.assign(result, interaction);
         break;
       }
 

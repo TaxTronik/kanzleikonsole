@@ -15,7 +15,7 @@ professional_review:
   reviewed_content_hash: null
 implementation:
   status: implemented
-  summary: Abrechenbare freie Zeiteinträge werden in derselben Transaktion vollständig geclaimt; verliert der Lauf auch nur einen Claim, rollen Rechnung und Nummernvergabe zurück.
+  summary: Abrechenbare freie Zeiteinträge werden in derselben Transaktion vollständig geclaimt; verliert der Lauf auch nur einen Claim, rollen Rechnung und Nummernvergabe zurück. Der Leistungszeitraum verwendet die Berlin-Kalendertage der frühesten Start- und spätesten Endzeit.
 sources:
   - kind: product_documentation
     citation: Technische Modulbeschreibung Fakturierung, Stundenabrechnung und Parallel-Claim
@@ -32,6 +32,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/billing/actions.ts
 test_refs:
   - apps/web/src/server/invoicing/__tests__/time-billing.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/billing/__tests__/actions.test.ts
   - packages/db/src/__tests__/invoice-festschreibung.test.ts
 feature_refs:
   - docs/development/module/fakturierung.md
@@ -77,15 +78,16 @@ abrechenbar ist.
 
 ## Entscheidungslogik
 
-| Ausgangslage                                        | Ergebnis                                                                  |
-| --------------------------------------------------- | ------------------------------------------------------------------------- |
-| kein passender freier Eintrag                       | Rechnungsanlage ablehnen                                                  |
-| passende Einträge vorhanden                         | Dauer und Betrag berechnen und Entwurf in derselben Transaktion anlegen   |
-| Detailstrategie                                     | je Eintrag Pauschalmenge 1 mit Dauer und Satz im Text bilden              |
-| Sammelstrategie                                     | eine Pauschalposition mit Summenbetrag bilden                             |
-| alle ausgewählten IDs haben noch `invoiceId = null` | alle auf die neue Rechnungs-ID setzen und Transaktion fortsetzen          |
-| mindestens eine ID wurde parallel gewonnen          | Fehler auslösen und gesamte Transaktion zurückrollen                      |
-| wirksam korrigiertes unbezahltes Original           | verknüpfte Zeiten erst nach erfolgreichem Korrekturbeleg wieder freigeben |
+| Ausgangslage                                        | Ergebnis                                                                                                                          |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| kein passender freier Eintrag                       | Rechnungsanlage ablehnen                                                                                                          |
+| passende Einträge vorhanden                         | Dauer und Betrag berechnen und Entwurf in derselben Transaktion anlegen                                                           |
+| Leistungszeitraum wird aus Zeitpunkten gebildet     | frühesten Start und spätestes Ende nach Europe/Berlin auf Kalendertage abbilden; UTC-Mitternacht als Datenbankkodierung speichern |
+| Detailstrategie                                     | je Eintrag Pauschalmenge 1 mit Dauer und Satz im Text bilden                                                                      |
+| Sammelstrategie                                     | eine Pauschalposition mit Summenbetrag bilden                                                                                     |
+| alle ausgewählten IDs haben noch `invoiceId = null` | alle auf die neue Rechnungs-ID setzen und Transaktion fortsetzen                                                                  |
+| mindestens eine ID wurde parallel gewonnen          | Fehler auslösen und gesamte Transaktion zurückrollen                                                                              |
+| wirksam korrigiertes unbezahltes Original           | verknüpfte Zeiten erst nach erfolgreichem Korrekturbeleg wieder freigeben                                                         |
 
 ## Ausnahmen und Grenzfälle
 
@@ -94,6 +96,13 @@ Stundenmenge beispielsweise zehn Minuten nicht exakt als ein Sechstel abbilden
 kann. Dauer und Stundensatz bleiben deshalb im Beschreibungstext sichtbar,
 während der berechnete Betrag als Pauschalpreis übernommen wird. Bezahlte und
 später korrigierte Rechnungen geben Zeiteinträge nicht automatisch frei.
+
+Die Abrechnungsdauer bleibt die tatsächlich verstrichene Zeit zwischen den
+UTC-Zeitpunkten. Nur die Leistungsdatumsfelder werden nach Europe/Berlin auf
+Kalendertage umgerechnet. Eine Beratung am 06.09.2026 von 00:30 bis 01:30 Uhr
+lokaler Zeit hat deshalb den Leistungszeitraum 06.09.–06.09., obwohl beide
+Zeitpunkte in UTC noch auf den 05.09. fallen. Sommerzeitwechsel verändern
+nicht die gemessene Dauer und werden bei der Datumsumrechnung berücksichtigt.
 
 ## Beispiele
 
@@ -116,6 +125,8 @@ gelesen; seine Transaktion verwirft Entwurf, Positionen und Zählererhöhung.
 Abrechenbarkeit, Abschluss und freie Zuordnung, berechnet Leistungszeitraum und
 Beträge, legt den Entwurf an und behandelt einen unvollständigen Claim als
 transaktionsabbrechenden Fachfehler.
+Vor Speicherung des Leistungszeitraums bildet `berlinCalendarDate` die
+Zeitpunkte auf die UTC-Mitternachtskodierung des tatsächlichen Berlin-Tags ab.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -144,3 +155,8 @@ bedingten Claim und den Verlust einer Teilmenge. Der DB-Integrationstest lässt
 zwei Rechnungen denselben freien Eintrag parallel beanspruchen und erwartet
 genau einen Gewinner. Die Billing-Action behandelt einen unvollständigen Claim
 als Rollback-Auslöser.
+Der direkte Billing-Action-Test prüft den gespeicherten Leistungszeitraum bis
+zur CII-Ausgabe anhand unabhängiger Erwartungstage für Sommer-/Winternacht,
+beide Sommerzeitwechsel und den Jahreswechsel. Zugleich bleibt die
+Abrechnung der tatsächlichen Dauer unverändert. Die Datenbank ist hierbei
+ein Testdouble; eine reale Datenbank-/Versandabnahme ist ein eigener Nachweis.

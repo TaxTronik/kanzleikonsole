@@ -27,6 +27,15 @@ import {
   staffPasswordAccountRateLimitKey,
 } from '@/server/rate-limit';
 import { env } from '@taxtronik/config';
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+} from '@simplewebauthn/server';
+import {
+  beginHardwareLogin,
+  isAuthenticationResponse,
+  isHardwareAccessConfigured,
+} from '@/server/auth/webauthn';
 
 const { compare, hash } = bcrypt;
 
@@ -39,6 +48,16 @@ const TOTP_ENROLLMENT_LIMIT = { max: 5, windowSec: 300 } as const;
 
 function totpEnrollmentAccountRateLimitKey(staffUserId: string): string {
   return `staff-totp-enroll-account:${staffUserId}`;
+}
+
+function passwordAuthenticationBlocked(account: {
+  hardwareOnlyEnabledAt: Date | null;
+  lockedUntil: Date | null;
+}): boolean {
+  return (
+    Boolean(account.hardwareOnlyEnabledAt) ||
+    Boolean(account.lockedUntil && account.lockedUntil > new Date())
+  );
 }
 
 function generateBackupCode(): string {
@@ -120,7 +139,10 @@ export async function checkPasswordAction(
   // existiert/gesperrt ist.
   const GENERIC_LOGIN_ERROR = 'Ungültige Anmeldedaten.';
 
-  if (staffUser.lockedUntil && staffUser.lockedUntil > new Date()) {
+  // Kein Passwort-, TOTP-, Backup-Code- oder DEV-Bypass-Fallback für bewusst
+  // auf Hardware-only umgestellte Konten. Die generische Meldung verhindert
+  // zugleich eine Enumeration des gewählten Anmeldemodus.
+  if (passwordAuthenticationBlocked(staffUser)) {
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
@@ -277,7 +299,7 @@ export async function confirmTotpEnrollmentAction(
   // Anti-Enumeration: einheitliche Meldung (wie checkPasswordAction).
   if (!staffUser || !staffUser.active) return { ok: false, error: 'Ungültige Daten.' };
 
-  if (staffUser.lockedUntil && staffUser.lockedUntil > new Date()) {
+  if (passwordAuthenticationBlocked(staffUser)) {
     return { ok: false, error: 'Ungültige Daten.' };
   }
   const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
@@ -351,6 +373,7 @@ export async function confirmTotpEnrollmentAction(
         totpEnrolledAt: new Date(),
         totpSetupStartedAt: null,
         totpBackupCodes: hashedBackupCodes,
+        authRevision: { increment: 1 },
       },
     });
     if (claimed.count !== 1) return false;
@@ -388,11 +411,63 @@ export interface LoginResult {
   error?: string;
 }
 
-function safeStaffReturnTo(raw: FormDataEntryValue | null): string {
+function safeStaffReturnTo(raw: unknown): string {
   if (typeof raw !== 'string') return '/staff/dashboard';
   if (!raw.startsWith('/') || raw.startsWith('//')) return '/staff/dashboard';
   if (!raw.startsWith('/staff/') || raw.includes('\\')) return '/staff/dashboard';
   return raw;
+}
+
+export type BeginHardwareLoginResult =
+  | { ceremonyId: string; options: PublicKeyCredentialRequestOptionsJSON }
+  | { error: string };
+
+export async function hardwareLoginAvailabilityAction(): Promise<{ available: boolean }> {
+  return { available: isHardwareAccessConfigured() };
+}
+
+export async function beginHardwareLoginAction(): Promise<BeginHardwareLoginResult> {
+  const ip = getClientIp(await headers());
+  const rate = await checkIpOrGlobalLimit(
+    'staff-hardware-begin',
+    ip,
+    { max: 20, windowSec: 300 },
+    { max: 400, windowSec: 300 },
+  );
+  if (!rate.ok) return { error: 'Zu viele Anmeldeversuche. Bitte kurz warten.' };
+  try {
+    return await beginHardwareLogin();
+  } catch {
+    return { error: 'Sicherheitsschlüssel sind derzeit nicht verfügbar.' };
+  }
+}
+
+export async function loginHardwareAction(input: {
+  ceremonyId: string;
+  response: AuthenticationResponseJSON;
+  returnTo?: string;
+}): Promise<{ error: string }> {
+  if (
+    typeof input?.ceremonyId !== 'string' ||
+    input.ceremonyId.length > 128 ||
+    !isAuthenticationResponse(input.response)
+  ) {
+    return { error: 'Die Antwort des Sicherheitsschlüssels ist ungültig.' };
+  }
+  const returnTo = safeStaffReturnTo(input.returnTo);
+  try {
+    await staffSignIn('hardware-key', {
+      ceremonyId: input.ceremonyId,
+      responseJson: JSON.stringify(input.response),
+      redirect: false,
+    });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return { error: 'Sicherheitsschlüssel ungültig oder für diesen Zugang nicht aktiviert.' };
+    }
+    throw error;
+  }
+  redirect(returnTo);
 }
 
 export async function loginAction(formData: FormData): Promise<LoginResult> {

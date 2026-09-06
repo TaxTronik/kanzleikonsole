@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useActionState, useEffect, useRef, useState, useId } from 'react';
+import { useActionState, useRef, useState, useId } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X, Phone } from 'lucide-react';
@@ -43,19 +43,19 @@ export function QuickPhoneNote({
   const [callerName, setCallerName] = useState('');
   const [callerPhone, setCallerPhone] = useState('');
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
-    createPhoneNoteAction,
+    async (previous, data) => {
+      const result = await createPhoneNoteAction(previous, data);
+      if (result.ok) {
+        formRef.current?.reset();
+        setCallerName('');
+        setCallerPhone('');
+        setOpen(false);
+        router.refresh();
+      }
+      return result;
+    },
     null,
   );
-
-  useEffect(() => {
-    if (state?.ok) {
-      formRef.current?.reset();
-      setCallerName('');
-      setCallerPhone('');
-      setOpen(false);
-      router.refresh();
-    }
-  }, [router, state]);
 
   function onCallerNameChange(value: string) {
     setCallerName(value);

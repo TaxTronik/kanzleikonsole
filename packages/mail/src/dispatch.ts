@@ -398,7 +398,7 @@ export async function notifyClientContacts(
       active: true,
       notificationsEnabled: true,
       lastLoginAt: { not: null },
-      client: { allowActive: true, anonymizedAt: null },
+      client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
     },
     select: { fullName: true, email: true },
   });

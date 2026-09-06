@@ -119,6 +119,10 @@ XRechnungsbeleg ab; heutige Verkäuferdaten werden dafür nicht erneut verwendet
 Dokumentzeiger. Ein transaktionaler Advisory Lock verhindert konkurrierende
 Gewinner. Entwurfsarchive können gelöst und soft-gelöscht werden; nach
 Ausstellung sind die geteilten Object-Lock-Versionen die maßgebliche Quelle.
+Lange Positionsbeschreibungen werden bei neu erzeugten PDF-Fassungen anhand
+der Schriftbreite innerhalb der Beschreibungsspalte und bei Bedarf über
+mehrere Seiten umgebrochen. Rechen-/Quellenangaben dürfen dabei nicht
+abgeschnitten werden oder die Betragsspalten überlagern.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -144,3 +148,5 @@ Archiv-, Lock- und Dokumentlink-Tests prüfen Idempotenz, konkurrierende
 Erzeugung, Vorschau-Isolation, explizite XML-Verknüpfung, Altbestands-Extraktion
 und identische gespeicherte Bytes. Format-Tests prüfen die derzeit erzeugten
 XML- und PDF-Strukturen.
+Der PDF-Test prüft auch lange, mehrseitige Positionsbeschreibungen durch
+Textextraktion und die Koordinaten der tatsächlich gezeichneten Zeilen.

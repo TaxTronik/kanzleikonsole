@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Users, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
@@ -32,10 +32,13 @@ export function TeamEditorButton({
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
 
-  useEffect(() => {
-    // Sync mit Server-State, falls sich Member zwischen Renders ändern
+  function openEditor() {
+    // Jeder neue Entwurf beginnt mit dem aktuellen Serverstand. Weitere
+    // Renders während der Bearbeitung überschreiben die Auswahl nicht.
     setSelected(new Set(currentMemberIds));
-  }, [currentMemberIds]);
+    setError(null);
+    setOpen(true);
+  }
 
   function toggle(id: string) {
     if (id === startedByStaff) return; // Starter kann nicht entfernt werden
@@ -136,7 +139,7 @@ export function TeamEditorButton({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openEditor}
         className="text-xs text-muted hover:text-brand-700 dark:hover:text-brand-300 inline-flex items-center gap-1"
         title="Team bearbeiten"
       >

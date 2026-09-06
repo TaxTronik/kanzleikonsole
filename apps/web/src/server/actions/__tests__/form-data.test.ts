@@ -55,8 +55,15 @@ describe('parseFormData', () => {
     expect(result).toEqual({ ok: true, data: { tenantSlug: 'default' } });
   });
 
-  it('returns the shared action error without exposing schema details', () => {
+  it('returns the shared action error with field association', () => {
     const result = parseFormData(z.object({ id: z.string().uuid() }), new FormData());
-    expect(result).toEqual({ ok: false, error: 'Validierungsfehler.' });
+    expect(result).toEqual({
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: {
+        id: ['Invalid input: expected string, received undefined'],
+      },
+    });
   });
 });

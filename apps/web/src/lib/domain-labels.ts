@@ -44,6 +44,9 @@ export const NOTICE_STATUS_LABELS: Readonly<Record<string, string>> = {
 // Completeness-Test in __tests__/domain-labels.test.ts. Fehlende Einträge
 // fielen in der UI sonst auf den rohen Enum-Namen zurück.
 export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
+  PORTAL_INBOX_ACTIVITY: 'Neue Mandantenpost',
+  SCREENING_REVIEW: 'Sanktionsprüfung bearbeiten',
+  WORKFLOW_PREREQUISITE_REOPENED: 'Workflow-Vorleistung erneut offen',
   REQUEST_RESPONDED: 'Anforderung beantwortet',
   POA_SIGNED: 'Vollmacht unterschrieben',
   POA_EXPIRY_SOON: 'Vollmacht läuft bald aus',

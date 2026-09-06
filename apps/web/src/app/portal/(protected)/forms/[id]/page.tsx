@@ -9,6 +9,8 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { renderSafeMarkdown } from '@/server/markdown';
 import { PortalFormFiller } from './filler';
+import { readFormSchema } from '@/server/forms/schema-snapshot';
+import { FormRevisionHistory } from '@/components/form-revision-history';
 
 export default async function PortalFormFillerPage({
   params,
@@ -26,6 +28,7 @@ export default async function PortalFormFillerPage({
       const submission = await tx.formSubmission.findUnique({
         where: { id },
         include: {
+          revisions: { include: { files: true }, orderBy: { sequence: 'desc' } },
           template: { include: { fields: { orderBy: { position: 'asc' } } } },
           requests: {
             where: { tenantId, clientId },
@@ -47,6 +50,7 @@ export default async function PortalFormFillerPage({
   );
   if (!sub) notFound();
   if (sub.clientId !== clientId) notFound();
+  const formSchema = readFormSchema(sub.schemaSnapshot, sub.template);
 
   const submitted = sub.status === 'SUBMITTED' || sub.status === 'REVIEWED';
   const requestClosed =
@@ -60,11 +64,25 @@ export default async function PortalFormFillerPage({
       </Link>
 
       <h1 className="text-2xl font-bold text-primary mb-1">{sub.name}</h1>
-      {sub.template.description && (
-        <p className="text-muted text-sm mb-4">{sub.template.description}</p>
+      {sub.status === 'DRAFT' && sub.submittedAt && sub.requestId && (
+        <p className="card border-amber-300 p-4 mb-4">
+          Die Kanzlei bittet um Ergänzung des bereits eingereichten Formulars.{' '}
+          <Link className="underline" href={'/portal/requests/' + sub.requestId}>
+            Rückfrage in der zugehörigen Anforderung lesen
+          </Link>
+          . Bitte danach erneut einreichen.
+        </p>
+      )}
+      {!sub.schemaSnapshot && (
+        <p className="text-sm text-muted">
+          Altbestand: Ein historischer Vorlagenstand ist nicht gespeichert.
+        </p>
+      )}
+      {formSchema.description && (
+        <p className="text-muted text-sm mb-4">{formSchema.description}</p>
       )}
 
-      {sub.template.introMd && (
+      {formSchema.introMd && (
         // W-4: Feld heißt introMd — also auch als Markdown rendern.
         // `renderSafeMarkdown` läuft auf admin-controlled Input (Form-Template-
         // Editor), HTML-escaped vorab, und erzeugt eine kuratierte Tag-Liste
@@ -72,7 +90,7 @@ export default async function PortalFormFillerPage({
         // dangerouslySetInnerHTML in genau diesem Trust-Boundary-Kontext.
         <div
           className="card p-4 mb-6 text-sm text-secondary prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(sub.template.introMd) }}
+          dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(formSchema.introMd) }}
         />
       )}
 
@@ -81,7 +99,7 @@ export default async function PortalFormFillerPage({
         submitted={submitted}
         requestClosed={requestClosed}
         initialAnswers={(sub.answers as Record<string, unknown>) ?? {}}
-        fields={sub.template.fields.map((f) => ({
+        fields={formSchema.fields.map((f) => ({
           id: f.id,
           key: f.key,
           label: f.label,
@@ -94,6 +112,7 @@ export default async function PortalFormFillerPage({
           options: f.options as Array<{ value: string; label: string }> | null,
         }))}
       />
+      <FormRevisionHistory rows={sub.revisions} surface="portal" />
     </div>
   );
 }

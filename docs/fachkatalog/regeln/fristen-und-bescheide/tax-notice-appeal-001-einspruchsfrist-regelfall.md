@@ -357,6 +357,13 @@ berechtigtes Ziel wird keine globale Notification angelegt.
 
 ## Bekannte Abweichungen und Grenzen
 
+Die optionale persönliche Bescheidrückfrage TAX-NOTICE-DECISION-001 übernimmt
+den vorhandenen geprüften Fristvorschlag in einen unveränderlichen Antwortstand.
+Sie berechnet keine Frist neu. „Keine Einwände“, ein Einspruchsauftrag oder die
+kanzleiinterne Sichtung ändern weder TaxNotice.status noch Fristkontrollen.
+Die technischen Grenzen und Nachweise sind in
+`docs/development/module/workflow-expansion.md` beschrieben.
+
 - Nachweisstatus und Notiz sind nicht an ein unveränderbares Quelldokument oder
   einen technischen Versandbeleg gebunden. Tatsächlicher Adressat,
   Empfangsvollmacht, förmliche Zustellung und mehrere Beteiligte werden nicht

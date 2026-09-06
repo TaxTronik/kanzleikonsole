@@ -6,9 +6,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
   type ReactNode,
   type ChangeEvent,
+  type RefObject,
 } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -155,6 +157,117 @@ interface Props {
 
 const EMPTY_MARKINGS: MarkingDTO[] = [];
 
+function initialEditorContent(analysis: AnalysisDTO | null) {
+  return { text: analysis?.sourceText ?? '', title: analysis?.title ?? '' };
+}
+
+type WorkspaceView = 'subsumtion' | 'recherche' | 'aufgaben' | 'aktenregal';
+const WORKSPACE_URL_EVENT = 'subsumtion-url-change';
+
+function subscribeWorkspaceUrl(onChange: () => void) {
+  window.addEventListener('popstate', onChange);
+  window.addEventListener(WORKSPACE_URL_EVENT, onChange);
+  return () => {
+    window.removeEventListener('popstate', onChange);
+    window.removeEventListener(WORKSPACE_URL_EVENT, onChange);
+  };
+}
+
+function replaceWorkspaceUrl(url: URL) {
+  window.history.replaceState(window.history.state, '', url);
+  window.dispatchEvent(new Event(WORKSPACE_URL_EVENT));
+}
+
+function readWorkspaceSearch() {
+  return window.location.search;
+}
+
+function serverWorkspaceSearch() {
+  return '';
+}
+
+function useWorkspaceView() {
+  const workspaceSearch = useSyncExternalStore(
+    subscribeWorkspaceUrl,
+    readWorkspaceSearch,
+    serverWorkspaceSearch,
+  );
+  const params = new URLSearchParams(workspaceSearch);
+  const fromUrl = params.get('view');
+  const view: WorkspaceView =
+    fromUrl === 'recherche' || fromUrl === 'aufgaben' || fromUrl === 'aktenregal'
+      ? fromUrl
+      : 'subsumtion';
+  const setView = useCallback((next: WorkspaceView) => {
+    const url = new URL(window.location.href);
+    if (next === 'subsumtion') url.searchParams.delete('view');
+    else url.searchParams.set('view', next);
+    replaceWorkspaceUrl(url);
+  }, []);
+  return { view, setView, wantedMarking: params.get('marking') };
+}
+
+function useMarkingDeeplink(
+  wantedMarking: string | null,
+  markingsById: Record<string, MarkingDTO>,
+  editorRef: RefObject<SubsumtionDocumentHandle | null>,
+  setSelectedId: (value: string | null) => void,
+  setManualSel: (value: ManualSelection | null) => void,
+) {
+  const [consumedDeeplink, setConsumedDeeplink] = useState<string | null>(null);
+  if (wantedMarking && wantedMarking !== consumedDeeplink && markingsById[wantedMarking]) {
+    setConsumedDeeplink(wantedMarking);
+    setSelectedId(wantedMarking);
+    setManualSel(null);
+  }
+  useEffect(() => {
+    if (!consumedDeeplink) return;
+    const marking = markingsById[consumedDeeplink];
+    if (!marking) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('marking') !== consumedDeeplink) return;
+    editorRef.current?.revealMarking(marking.start);
+    // Parameter entfernen, damit ein Reload nicht erneut springt.
+    url.searchParams.delete('marking');
+    replaceWorkspaceUrl(url);
+  }, [consumedDeeplink, markingsById, editorRef]);
+}
+
+function useLlmCompletion({
+  enriched,
+  highlightLlm,
+  setHighlightLlm,
+  markings,
+  manualSel,
+  selectedId,
+  setInfo,
+  setSelectedId,
+}: {
+  enriched: string | null;
+  highlightLlm: boolean;
+  setHighlightLlm: (value: boolean) => void;
+  markings: MarkingDTO[];
+  manualSel: ManualSelection | null;
+  selectedId: string | null;
+  setInfo: (value: string) => void;
+  setSelectedId: (value: string) => void;
+}) {
+  const [prevEnriched, setPrevEnriched] = useState(enriched);
+  if (prevEnriched !== enriched) {
+    setPrevEnriched(enriched);
+    if (highlightLlm && enriched) {
+      setHighlightLlm(false);
+      const llmMarks = markings.filter((m) => m.herkunft === 'LLM' || m.herkunft === 'EMBEDDING');
+      setInfo(
+        llmMarks.length > 0
+          ? `${llmMarks.length} neue KI-Markierung(en) hinzugefügt.`
+          : 'KI-Vertiefung abgeschlossen — die Engine hat keine zusätzlichen Markierungen geliefert (über die deterministischen hinaus).',
+      );
+      if (llmMarks.length > 0 && !manualSel && !selectedId) setSelectedId(llmMarks[0]!.id);
+    }
+  }
+}
+
 export function SubsumtionWorkspace({
   clientId,
   canWrite = true,
@@ -176,8 +289,9 @@ export function SubsumtionWorkspace({
   const [info, setInfo] = useState<string | null>(null);
 
   // Compose-Modus
-  const [text, setText] = useState(initial?.sourceText ?? '');
-  const [title, setTitle] = useState(initial?.title ?? '');
+  const editorContent = initialEditorContent(initial);
+  const [text, setText] = useState(editorContent.text);
+  const [title, setTitle] = useState(editorContent.title);
   const [docId, setDocId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<SubsumtionDocumentHandle>(null);
@@ -197,21 +311,7 @@ export function SubsumtionWorkspace({
   // Remount (AutoRefresh/RSC-Refresh konnte den Nutzer sonst „von alleine"
   // zurück auf Subsumtion werfen) und ist gleichzeitig deeplinkfähig.
   // history.replaceState statt router.replace: kein Server-Roundtrip pro Klick.
-  type WorkspaceView = 'subsumtion' | 'recherche' | 'aufgaben' | 'aktenregal';
-  const [view, setViewState] = useState<WorkspaceView>('subsumtion');
-  useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get('view');
-    if (fromUrl === 'recherche' || fromUrl === 'aufgaben' || fromUrl === 'aktenregal') {
-      setViewState(fromUrl);
-    }
-  }, []);
-  const setView = useCallback((next: WorkspaceView) => {
-    setViewState(next);
-    const url = new URL(window.location.href);
-    if (next === 'subsumtion') url.searchParams.delete('view');
-    else url.searchParams.set('view', next);
-    window.history.replaceState(null, '', url);
-  }, []);
+  const { view, setView, wantedMarking } = useWorkspaceView();
   // Vollbild der Subsumtions-Fläche (Dokument + Panel als Overlay). Esc verlässt es.
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -235,7 +335,8 @@ export function SubsumtionWorkspace({
   // engmaschig pollen. Ist der Lauf fertig (llmEnrichedAt gesetzt), WEICH
   // aktualisieren (router.refresh — der Editor/Cursor/Scroll bleibt erhalten) und
   // die neuen KI-Markierungen hervorheben. Kein harter Reload.
-  const [llm, setLlm] = useState<LlmStatusDTO | null>(null);
+  const [llmState, setLlm] = useState<LlmStatusDTO | null>(null);
+  const llm = engineConfigured ? llmState : null;
   const [pollLlm, setPollLlm] = useState(false);
   const [llmJobState, setLlmJobState] = useState<string | null>(null);
   const [llmWorkerAvailable, setLlmWorkerAvailable] = useState<boolean | null>(null);
@@ -244,8 +345,7 @@ export function SubsumtionWorkspace({
   const enriched = initial?.llmEnrichedAt ?? null;
   const llmProgress = llmProgressCopy(llmJobState, llmWorkerAvailable);
   const pollDeadlineRef = useRef(0);
-  const highlightLlmRef = useRef(false);
-  const prevEnrichedRef = useRef<string | null>(enriched);
+  const [highlightLlm, setHighlightLlm] = useState(false);
   // Stand von llmEnrichedAt beim Start eines KI-Laufs — Fertig = Wert hat sich
   // geändert (deckt Erstlauf null→Zeit UND Re-Run alt→neu ab).
   const llmBaselineRef = useRef<string | null>(null);
@@ -259,13 +359,10 @@ export function SubsumtionWorkspace({
     setLlmJobState('waiting');
     setLlmWorkerAvailable(null);
     setPollLlm(true);
-  }, [enriched]);
+  }, [enriched, setLlmFailed, setLlmJobState, setLlmWorkerAvailable, setPollLlm]);
 
   useEffect(() => {
-    if (!engineConfigured) {
-      setLlm(null);
-      return;
-    }
+    if (!engineConfigured) return;
     let active = true;
     const tick = () => {
       void (async () => {
@@ -293,7 +390,7 @@ export function SubsumtionWorkspace({
           return;
         }
         if (pollLlm && r.enrichedAt && r.enrichedAt !== llmBaselineRef.current) {
-          highlightLlmRef.current = true;
+          setHighlightLlm(true);
           setPollLlm(false);
           setLlmJobState(null);
           setLlmWorkerAvailable(null);
@@ -378,25 +475,15 @@ export function SubsumtionWorkspace({
   // Alt+↑/↓ steppt durch die Markierungen (Alt verhindert Konflikt mit der
   // Texteingabe im Editor). Ref hält die frische Closure → Listener bindet einmal.
   const stepRef = useRef(stepMarking);
-  stepRef.current = stepMarking;
+  useEffect(() => {
+    stepRef.current = stepMarking;
+  });
 
   // Deeplink `?marking=<id>` aus der Zuweisungs-Benachrichtigung: die
   // betroffene Markierung auswählen und im Sachverhalt anspringen. Ohne das
   // landet die zugewiesene Person auf der Analyse und muss ihren Begriff
   // zwischen allen anderen suchen.
-  const deeplinkRef = useRef(false);
-  useEffect(() => {
-    if (deeplinkRef.current) return;
-    const wanted = new URLSearchParams(window.location.search).get('marking');
-    if (!wanted || !markingsById[wanted]) return;
-    deeplinkRef.current = true;
-    selectAndReveal(wanted);
-    // Parameter entfernen, damit ein Reload nicht erneut springt.
-    const url = new URL(window.location.href);
-    url.searchParams.delete('marking');
-    window.history.replaceState(null, '', url);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- einmalig, sobald die Markierungen geladen sind
-  }, [markingsById]);
+  useMarkingDeeplink(wantedMarking, markingsById, editorRef, setSelectedId, setManualSel);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -416,20 +503,16 @@ export function SubsumtionWorkspace({
   // Nach der weichen Aktualisierung (LLM-Lauf fertig): neue KI-Markierungen
   // (LLM/Heuristik) melden + die erste hervorheben — aber NUR, wenn der Bearbeiter
   // gerade nichts offen hat (Auswahl/eigene Markierung), um nicht zu stören.
-  useEffect(() => {
-    const was = prevEnrichedRef.current;
-    prevEnrichedRef.current = enriched;
-    // Nur beim tatsächlichen Wechsel von llmEnrichedAt (Erstlauf ODER Re-Run).
-    if (!highlightLlmRef.current || !enriched || was === enriched) return;
-    highlightLlmRef.current = false;
-    const llmMarks = markings.filter((m) => m.herkunft === 'LLM' || m.herkunft === 'EMBEDDING');
-    setInfo(
-      llmMarks.length > 0
-        ? `${llmMarks.length} neue KI-Markierung(en) hinzugefügt.`
-        : 'KI-Vertiefung abgeschlossen — die Engine hat keine zusätzlichen Markierungen geliefert (über die deterministischen hinaus).',
-    );
-    if (llmMarks.length > 0 && !manualSel && !selectedId) setSelectedId(llmMarks[0]!.id);
-  }, [enriched, markings, manualSel, selectedId]);
+  useLlmCompletion({
+    enriched,
+    highlightLlm,
+    setHighlightLlm,
+    markings,
+    manualSel,
+    selectedId,
+    setInfo,
+    setSelectedId,
+  });
 
   function flash(r: { ok: boolean; error?: string }, okMsg?: string) {
     if (!r.ok) {

@@ -43,6 +43,27 @@ const SELF = 'apps/web/src/app/__tests__/prisma-client-guard.test.ts';
 // Bewusst freigegebene Stellen (repo-relativ, Forward-Slashes). Jede ist KEIN
 // App-Request-Pfad-Client.
 const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
+  // New workflow/notice/campaign policies are exercised with isolated owner
+  // fixtures and a separate non-owner application connection.
+  'packages/db/src/__tests__/workflow-expansion.test.ts',
+  // WORKFLOW-DEPENDENCY-001: isolated owner fixtures and real application-role notification/period checks.
+  'packages/db/src/__tests__/workflow-dependencies.test.ts',
+  // WORKFLOW-LIFECYCLE-001: isolierte Owner-Fixtures und separate App-Rolle
+  // beweisen konkurrierende Abschlüsse, Portaltrigger und Feedback-Atomarität.
+  'packages/db/src/__tests__/workflow-lifecycle.test.ts',
+  // Explicitly isolated expansion database: owner fixture, unchanged production services on the app role.
+  'apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts',
+  // MAIL-INBOX-001: owner creates synthetic fixtures, app connection proves RLS.
+  'packages/db/src/__tests__/mailbox-rls.test.ts',
+  // PORTAL-INBOX-SUBMISSION-001: Owner erzeugt isolierte Fixtures; die
+  // separate App-Verbindung beweist Kontakt-, Staff-, RLS- und Write-only-Grenzen.
+  'packages/db/src/__tests__/portal-inbox-rls.test.ts',
+  // MAIL-INBOX-001: isolated owner fixtures, real app transaction proves OAuth role/module revocation.
+  'packages/db/src/__tests__/mailbox-oauth-cache.test.ts',
+  // Isolated synthetic fixtures; assertions use the restricted App connection.
+  'packages/db/src/__tests__/mandate-assistance-expansion.test.ts',
+  'packages/db/src/__tests__/payroll-intake.test.ts',
+  'packages/db/src/__tests__/screening-fees-rls.test.ts',
   // Der App-Client selbst — fail-closed via resolveAppDatasourceUrl.
   'packages/db/src/client.ts',
   // Owner-Verbindung (BYPASSRLS) ausschließlich für Migrationen/Verifikation.
@@ -57,7 +78,7 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/seeds/provision-n8n.ts',
   // Production-Recovery-CLI: setzt ein bestehendes Admin-Passwort außerhalb
   // des App-Request-Pfads zurück; Owner-Verbindung ist hier bewusst nötig.
-  'packages/db/seeds/reset-admin-password.ts',
+  'apps/web/scripts/reset-admin-password.ts',
   // RLS-Integrationstest konstruiert bewusst Owner- + App-Client.
   'packages/db/src/__tests__/rls-cross-tenant.test.ts',
   // GwG-Schranken-Test konstruiert einen Owner-Client fürs Setup.
@@ -81,6 +102,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // GwG-Zuordnungsinvarianten: eigener Owner-Client gegen eine isolierte
   // Test-DB, damit auch direkte SQL-Umgehungsversuche geprüft werden.
   'packages/db/src/__tests__/gwg-identity-assignment.test.ts',
+  // ACCESS-TENANT-RLS-001: isolierter Owner für Fixtures und separate App-
+  // Verbindung zum Nachweis der WebAuthn-RLS- und Mindestschlüssel-Invarianten.
+  'packages/db/src/__tests__/staff-webauthn-rls.test.ts',
   'packages/db/src/__tests__/tax-notice-evidence.test.ts',
   // TAX-MASTER-DATA-001: isolierte DB-Fixtures plus echte App-RLS-Grenzen.
   'packages/db/src/__tests__/tax-master-data.test.ts',
@@ -207,6 +231,10 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/server/auth/magic-link.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/portal.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/staff.ts <- @/server/db/prisma-owner',
+  // Benutzerloser Hardware-Login hat vor der Assertion-Verifikation noch
+  // keinen vertrauenswürdigen Tenant-Kontext. Der globale Credential-Lookup
+  // wird anschließend kryptografisch, per userHandle und Konto-Tenant gebunden.
+  'apps/web/src/server/auth/webauthn.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/backup/restore.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/backup/runner.ts <- @/server/db/prisma-owner',
   // Dev-only Retention/Object-Lock-Fixtures; verweigert NODE_ENV=production.

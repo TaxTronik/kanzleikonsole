@@ -43,6 +43,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/mandate-expansion/gwg-structure.ts
+  - apps/web/src/server/screening/gwg-gate.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx
   - packages/db/prisma/migrations/20260831102000_staff_professional/migration.sql
   - apps/web/src/server/gwg/risk-score.ts
@@ -51,6 +53,8 @@ code_refs:
   - apps/web/src/server/gwg/review-snapshot.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
 test_refs:
+  - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
+  - apps/web/src/server/screening/__tests__/gwg-gate.test.ts
   - apps/web/src/server/gwg/__tests__/risk-score.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg/__tests__/professional-review.test.ts
@@ -61,6 +65,8 @@ feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
 related_rules:
+  - MANDATE-STRUCTURE-001
+  - GWG-SCREENING-001
   - GWG-ACTIVATION-GATE-001
   - GWG-BENEFICIAL-OWNERS-001
   - GWG-REVERIFICATION-VALIDITY-001
@@ -157,6 +163,15 @@ nicht.
 
 ## Umsetzung in TaxTronik
 
+Bei aktiviertem Zusatzmodul `sanctionsScreening` prüft der bestehende
+Freigabepfad vor dem VERIFIED-Claim zusätzlich **GWG-SCREENING-001**: aktuelle
+erfolgreich geprüfte Quelle, Nachweise für alle aktuellen Mandanten-/Vertreter-/
+Berechtigtenziele, Bindung an den aktuellen Prüfsnapshot, geklärte
+Sanktionskandidaten und abgeschlossene manuelle PEP-Recherchen. Ein PEP-Fund
+erfordert die vorhandene HIGH-/PEP-Risikoeinstufung. Diese Ergänzung ändert keine
+bestehende Freigabe und vergibt selbst keine Berufsträgerfreigabe. Das Modul
+bleibt standardmäßig aus; sein Entwurf ist fachlich ungeprüft.
+
 `risk-score.ts` enthält Faktoren, Standardgewichte, Schwellen und PEP-Override.
 Die Staff-Action validiert jede Antwort und speichert Score, Stufe und
 Aufschlüsselung. Jede inhaltliche Änderung setzt eine laufende Einreichung auf
@@ -218,3 +233,7 @@ PostgreSQL-Tests prüfen konkurrierenden Merkmalsentzug und Zuordnungs-/Rollenl�
 gegen die tatsächlich verwendeten Lesesperren, ohne fachliche Freigaben zu erzeugen.
 Kein Test belegt die fachliche Eignung der Risikomatrix oder die Erfüllung
 verstärkter Sorgfaltspflichten.
+
+### Ergänzung: neue Strukturübernahme verlangt erneute Einreichung
+
+Die ausdrücklich bestätigte Übernahme einer unveränderlichen Strukturversion nach MANDATE-STRUCTURE-001 verwendet denselben GwG-Lifecycle-Lock und Mutationsclaim wie die bisherigen Fachformulare. Eine laufende Einreichung wird auf DRAFT zurückgesetzt und ihre Einreichungsdaten werden geleert. Nur die neueste offene Prüfung ist zugelassen; abgeschlossene Prüfungen werden nicht verändert. Die Übernahme ist eine dokumentierte Arbeitsgrundlage, keine fachliche Freigabe und keine automatische Ermittlung wirtschaftlich Berechtigter.

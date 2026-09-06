@@ -123,6 +123,16 @@ beforeEach(() => {
   h.record.mockResolvedValue({});
 });
 
+it('excludes campaign and personal interaction evidence from generic request purges', async () => {
+  await run();
+  for (const [query] of h.prismaOwner.request.findMany.mock.calls) {
+    expect(query.where.AND[0]).toMatchObject({
+      clientInteraction: { is: null },
+      yearEndCampaignEntry: { is: null },
+    });
+  }
+});
+
 afterEach(() => {
   vi.useRealTimers();
 });

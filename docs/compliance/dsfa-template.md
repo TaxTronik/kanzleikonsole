@@ -65,6 +65,12 @@ Virenscan. Kein Cloud-Provider, keine US-Datenübermittlung.
   - Finanzbehörden (Steuererklärungen, Vollmachten)
   - Banken (Überweisungen aus Rechnungen)
   - Auftragsverarbeiter (siehe VVT, z. B. Mailprovider, RFC-3161-TSA)
+  - bei aktiviertem Hardware-Zugang: FIDO Metadata Service für den signierten
+    Metadaten-BLOB; übermittelt werden keine Staff-/Credential-IDs als
+    Anwendungsparameter, aber Server-Verbindungsdaten fallen beim Anbieter an
+  - bei aktiviertem Hardware-Zugang: CA-CRL-Endpunkte bereits vertrauenswürdig
+    aufgebauter Zertifikatsketten; keine Staff-/Credential-IDs als
+    Anwendungsparameter, aber Server-Verbindungsdaten bei den Betreibern
 
 ### 2.4 Speicherdauer
 
@@ -99,14 +105,15 @@ sichergestellt.
 
 ## 4. Risiken für betroffene Personen
 
-| Risiko                                          | Eintrittswahrscheinlichkeit | Schwere | Brutto-Risiko |
-| ----------------------------------------------- | --------------------------- | ------- | ------------- |
-| Unbefugter Zugriff auf GwG-Identitätsnachweise  | gering                      | hoch    | mittel        |
-| Manipulation der Buchhaltungs-Belege            | gering                      | hoch    | mittel        |
-| Identitätsdiebstahl bei Magic-Link-Phishing     | gering                      | mittel  | gering        |
-| Verlust der GoBD-Daten (z. B. Hardware-Ausfall) | mittel                      | hoch    | hoch          |
-| Datenpanne durch Mitarbeiter-Account-Übernahme  | gering                      | hoch    | mittel        |
-| Ungewollte Weitergabe an Dritte (n8n-Webhook)   | gering                      | mittel  | gering        |
+| Risiko                                              | Eintrittswahrscheinlichkeit | Schwere | Brutto-Risiko |
+| --------------------------------------------------- | --------------------------- | ------- | ------------- |
+| Unbefugter Zugriff auf GwG-Identitätsnachweise      | gering                      | hoch    | mittel        |
+| Manipulation der Buchhaltungs-Belege                | gering                      | hoch    | mittel        |
+| Identitätsdiebstahl bei Magic-Link-Phishing         | gering                      | mittel  | gering        |
+| Verlust der GoBD-Daten (z. B. Hardware-Ausfall)     | mittel                      | hoch    | hoch          |
+| Datenpanne durch Mitarbeiter-Account-Übernahme      | gering                      | hoch    | mittel        |
+| Aussperrung nach Verlust aller Sicherheitsschlüssel | gering                      | mittel  | gering        |
+| Ungewollte Weitergabe an Dritte (n8n-Webhook)       | gering                      | mittel  | gering        |
 
 ---
 
@@ -114,18 +121,41 @@ sichergestellt.
 
 ### 5.1 Technische Maßnahmen
 
-| Risiko                       | Maßnahme                                                                                                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Unbefugter Zugriff           | Mitarbeiter: TOTP-2FA Pflicht; Portal: E-Mail-OTP-Magic-Link, kurze Gültigkeit                                                                         |
-| Cross-Tenant-Datenleck       | Postgres Row-Level-Security + App-Filter (doppelte Verteidigung, ADR-0002)                                                                             |
-| Manipulation Belege          | S3 Object-Lock COMPLIANCE je Dokumenttyp 6/8/10 Jahre + ClamAV-Virenscan vor Commit                                                                    |
-| Manipulation Buchführung     | Hash-Chain auf Audit-Log + rollende RFC-3161-Anker (Regelfall 2 s) + zusätzliche Tagesversiegelung (ADR-0004)                                          |
-| Passwort-Brute-Force         | Rate-Limit 10 Versuche / 10 Min auf Passwort-Step, 5 Versuche / 5 Min auf TOTP                                                                         |
-| Magic-Link-Phishing          | Tokens 32 Byte random, gehashed (SHA-256) gespeichert, 30 Min TTL, one-time                                                                            |
-| Daten in Transit             | HTTPS (Reverse-Proxy der Kanzlei), HSTS-Header                                                                                                         |
-| Daten at Rest                | LUKS/BitLocker auf Server-Storage; Postgres-Verschlüsselung über Filesystem                                                                            |
-| Datenverlust                 | Täglicher Postgres-Dump in den `backups`-Bucket, monatlicher DB-Restore-Drill sowie getrennte, verschlüsselte Off-Site-Sicherung nach Betreiberkonzept |
-| TOTP-Secret-Kompromittierung | Per-Tenant-HKDF-Key, AES-256-GCM-verschlüsselt in DB                                                                                                   |
+| Risiko                        | Maßnahme                                                                                                                                                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unbefugter Zugriff            | Mitarbeiter: Passwort + TOTP oder nach persönlichem Opt-in ausschließlich mindestens zwei physische FIDO2-Schlüssel ohne Software-Fallback; Portal unverändert per E-Mail-Magic-Link                              |
+| Cross-Tenant-Datenleck        | Postgres Row-Level-Security + App-Filter (doppelte Verteidigung, ADR-0002)                                                                                                                                        |
+| Manipulation Belege           | S3 Object-Lock COMPLIANCE je Dokumenttyp 6/8/10 Jahre + ClamAV-Virenscan vor Commit                                                                                                                               |
+| Manipulation Buchführung      | Hash-Chain auf Audit-Log + rollende RFC-3161-Anker (Regelfall 2 s) + zusätzliche Tagesversiegelung (ADR-0004)                                                                                                     |
+| Passwort-Brute-Force          | Rate-Limit 10 Versuche / 10 Min auf Passwort-Step, 5 Versuche / 5 Min auf TOTP                                                                                                                                    |
+| Magic-Link-Phishing           | Tokens 32 Byte random, gehashed (SHA-256) gespeichert, 30 Min TTL, one-time                                                                                                                                       |
+| Daten in Transit              | HTTPS (Reverse-Proxy der Kanzlei), HSTS-Header                                                                                                                                                                    |
+| Daten at Rest                 | LUKS/BitLocker auf Server-Storage; Postgres-Verschlüsselung über Filesystem                                                                                                                                       |
+| Datenverlust                  | Täglicher Postgres-Dump in den `backups`-Bucket, monatlicher DB-Restore-Drill sowie getrennte, verschlüsselte Off-Site-Sicherung nach Betreiberkonzept                                                            |
+| TOTP-Secret-Kompromittierung  | Per-Tenant-HKDF-Key, AES-256-GCM-verschlüsselt in DB                                                                                                                                                              |
+| WebAuthn-Replay/Phishing      | einmalige kurzlebige Challenge, RP-/Origin-Bindung, User Verification `required`, Signaturzähler und Rate-Limit; direkte vollständige `packed`-Attestation mit nichtleerer AAGUID-Allowlist und FIDO MDS `strict` |
+| Verlust aller FIDO2-Schlüssel | hierarchischer Break-glass-Reset, Sperre aller Credentials, neues Passwort/TOTP-Enrollment und Session-Widerruf; zweiter Schlüssel ist getrennt aufzubewahren                                                     |
+
+Der Hardware-only-Modus verlangt `cross-platform`, `singleDevice`, keine
+Backup-Eignung oder -Sicherung und einen Hardware-Transport. Enrollment fordert
+eine direkte, vollständige `packed`-Attestation; die AAGUID muss in der
+nichtleeren Deployment-Allowlist stehen und ihr FIDO-MDS-Statement im Modus
+`strict` die Hardware-Richtlinie erfüllen. Die Zertifikat-AAGUID muss zur
+signierten Authenticator-AAGUID passen; Zertifikatsketten und CRLs werden
+fail-closed geprüft. Jede spätere Assertion prüft die Allowlist und den
+höchstens einstündigen MDS-Snapshot erneut und scheitert bei Nichtverfügbarkeit
+fail-closed. Die höchste verifizierte BLOB-Seriennummer bleibt clusterweit in
+der owner-only Datenbank verankert.
+
+Die AAGUID identifiziert nur eine Modellfamilie, keine Seriennummer oder
+individuelle physische Instanz. Zwei Credentials beweisen deshalb nicht
+kryptografisch zwei unterschiedliche Geräte; beide Schlüssel sind vor dem
+Opt-in einzeln zu testen und getrennt zu verwahren. Attachment und Transporte
+bleiben Clientangaben. Zusätzlich sind MDS-/CA-CRL-Egress, der prozesslokale
+bedarfsgetriebene Refresh, das Aussperrungsrisiko bei MDS-/Netzausfall sowie die
+Verarbeitung von AAGUID, Attestationsdaten, attestierter Firmware-Version und
+Server-Verbindungsdaten in der konkreten TOM-/Datenschutzbewertung zu
+berücksichtigen.
 
 ### 5.2 Organisatorische Maßnahmen
 
@@ -137,6 +167,8 @@ sichergestellt.
 - GwG-Ablauf-Warnung 30 Tage vorher, automatische Deaktivierung
 - Mitarbeiter-Onboarding mit DSGVO-Schulung (jährlich)
 - Verschwiegenheitserklärung aller Mitarbeiter (§ 203 StGB)
+- Bei Hardware-only: geprüfte AAGUID-Allowlist, MDS-Egress-/Refresh-Monitoring,
+  getrennte Funktionsprüfung beider Schlüssel und dokumentierter Recovery-Test
 
 ---
 

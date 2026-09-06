@@ -1,6 +1,13 @@
 import type { output, ZodType } from 'zod';
 
-export type FormDataParseResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type FormDataParseResult<T> =
+  | { ok: true; data: T }
+  | {
+      ok: false;
+      error: string;
+      errorCode: 'VALIDATION_ERROR';
+      fieldErrors: Record<string, string[]>;
+    };
 
 /**
  * Standardisiert FormData → Zod für Server-Actions.
@@ -28,7 +35,17 @@ export function parseFormData<TSchema extends ZodType>(
 
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: options.errorMessage ?? 'Validierungsfehler.' };
+    const fieldErrors: Record<string, string[]> = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path.join('.') || '_form';
+      (fieldErrors[key] ??= []).push(issue.message);
+    }
+    return {
+      ok: false,
+      error: options.errorMessage ?? 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors,
+    };
   }
   return { ok: true, data: parsed.data };
 }
