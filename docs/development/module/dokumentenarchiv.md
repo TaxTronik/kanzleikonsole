@@ -27,6 +27,14 @@ Jahresfrist bei Anlage fixiert, 7 Kern-Typen read-only).
 | Zugriff            | Staff: Tenant-Filter + RESTRICTED-Zuständigkeit (Liste, Download, Preview, Detailseite); Portal: nur eigene, freigegebene Dokumente                                                                                                                                                                                                        |
 | Protokollierung    | `document.upload/.download/.preview/.delete/.restore/.retag/.share/.unshare/.move_folder/.acknowledge`, `document.version.add`, Ordner-/Typ-Events, GwG-Vernichtungs-Events                                                                                                                                                                |
 
+Der Sammeldownload vergibt nach Bereinigung eindeutige ZIP-Namen. Auch bereits
+vergebene Suffixnamen wie `beleg_1.pdf`, Groß-/Kleinschreibung und
+Unicode-Normalisierung werden bei der Kollisionsprüfung berücksichtigt.
+Dadurch bleiben sämtliche ausgewählten Inhalte beim üblichen Entpacken
+erhalten. Archivierte Dokumentnamen, Originalbytes, Auswahl und Zugriffsprüfung
+werden nicht verändert. Der Routentest `bulk-download-filenames.test.ts`
+prüft die tatsächlichen ZIP-Einträge und deren entpackte Inhalte.
+
 ## Upload-Wege (alle über die zentrale Pipeline)
 
 Staff-Explorer (+ neue Version, mit Race-Schutz 409), Portal-Upload

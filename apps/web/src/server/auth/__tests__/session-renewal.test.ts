@@ -151,7 +151,12 @@ async function issueCookie(surface: Surface, extra: JWT = {}, ageMs = 60_000) {
             authMethod: 'totp',
             authRevision: 0,
           }
-        : { contactId: 'contact', clientId: 'client', email: 'contact@example.test' }),
+        : {
+            contactId: 'contact',
+            sessionOriginContactId: 'contact',
+            clientId: 'client',
+            email: 'contact@example.test',
+          }),
       ...extra,
     },
   });
@@ -287,3 +292,13 @@ it('does not renew a portal cookie after mandate termination', async () => {
   h.mandateEndedAt = new Date(NOW.getTime() - 30_000);
   expect(await renew('portal')).toBeNull();
 });
+
+it.each([undefined, null, ''])(
+  'requires a new portal login without a valid original contact %s',
+  async (sessionOriginContactId) => {
+    await issueCookie('portal', { sessionOriginContactId });
+    expect(await portalAuth()).toBeNull();
+    expect(await renew('portal')).toBeNull();
+    expect(h.cookie).toBe('');
+  },
+);

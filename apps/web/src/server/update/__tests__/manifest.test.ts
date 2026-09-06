@@ -1,3 +1,4 @@
+// Fachkatalog: ASSURANCE-RELEASE-EVIDENCE-001.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, sign as cryptoSign, verify as cryptoVerify } from 'node:crypto';
@@ -105,6 +106,95 @@ describe('checkForUpdates', () => {
     expect(r.ok).toBe(true);
     expect(r.hasUpdate).toBe(false); // bereits aktuell
     expect(h.fetch).toHaveBeenCalledWith(`${MANIFEST_URL}.sig`, expect.anything());
+  });
+
+  it.each([undefined, '1'])(
+    'bricht eine übergroße Signatur beim Lesen ab (Content-Length: %s)',
+    async (declaredLength) => {
+      let produced = 0;
+      const cancel = vi.fn();
+      const streamed = new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new Uint8Array(1024).fill(65));
+            if (++produced === 64) controller.close();
+          },
+          cancel,
+        }),
+        { headers: declaredLength ? { 'content-length': declaredLength } : {} },
+      );
+      h.fetch.mockResolvedValueOnce(jsonResponse(body)).mockResolvedValueOnce(streamed);
+
+      expect((await checkForUpdates('1.3.0')).ok).toBe(false);
+      expect(produced).toBeLessThanOrEqual(6); // 4 KiB + overflow chunk + source prefetch
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('begrenzt Signaturen in Bytes vor UTF-8-Dekodierung und Whitespace-Entfernung', async () => {
+    const paddedSignature = signature + '\u00a0'.repeat(2048);
+    expect(paddedSignature.length).toBeLessThan(4096);
+    expect(Buffer.byteLength(paddedSignature)).toBeGreaterThan(4096);
+    h.fetch
+      .mockResolvedValueOnce(jsonResponse(body))
+      .mockResolvedValueOnce(jsonResponse(paddedSignature));
+    const result = await checkForUpdates('1.3.0');
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('keine Signatur');
+  });
+
+  it('akzeptiert eine gültige Signatur exakt an der bisherigen 4096-Byte-Grenze', async () => {
+    const paddedSignature = signature.padEnd(4096, ' ');
+    h.fetch
+      .mockResolvedValueOnce(jsonResponse(body))
+      .mockResolvedValueOnce(jsonResponse(paddedSignature));
+    expect((await checkForUpdates('1.3.0')).ok).toBe(true);
+  });
+
+  it.each([
+    ['manifest', 'status', 503, undefined],
+    ['manifest', 'content-length', 200, String(1024 * 1024 + 1)],
+    ['signature', 'status', 503, undefined],
+    ['signature', 'content-length', 200, '4097'],
+  ] as const)(
+    'verwirft den %s-Body sofort bei %s-Ablehnung',
+    async (kind, _reason, status, length) => {
+      const cancel = vi.fn();
+      const response = new Response(new ReadableStream({ cancel }), {
+        status,
+        headers: length ? { 'content-length': length } : {},
+      });
+      if (kind === 'signature') h.fetch.mockResolvedValueOnce(jsonResponse(body));
+      h.fetch.mockResolvedValueOnce(response);
+
+      const result = await checkForUpdates('1.3.0');
+      const cancelledByAdapter = cancel.mock.calls.length;
+      await response.body!.cancel(); // Clean up even against the unfixed adapter.
+      expect(result.ok).toBe(false);
+      expect(cancelledByAdapter).toBe(1);
+    },
+  );
+
+  it('behält die 1-MiB-Manifestgrenze bei falschem Content-Length beim Streaming bei', async () => {
+    const cancel = vi.fn();
+    let produced = 0;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(256 * 1024));
+          if (++produced === 16) controller.close();
+        },
+        cancel,
+      }),
+      { headers: { 'content-length': '1' } },
+    );
+    h.fetch.mockResolvedValueOnce(response);
+    const result = await checkForUpdates('1.3.0');
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Manifest-Body überschreitet Limit');
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(produced).toBeLessThanOrEqual(6);
+    expect(h.fetch).toHaveBeenCalledOnce();
   });
 
   it('verweigert ein manipuliertes Manifest trotz vorhandener .sig (fail-closed)', async () => {

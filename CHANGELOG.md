@@ -22,6 +22,22 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- **[Scope]** Portal-Profilwechsel bewahren die ursprüngliche Kontaktidentität
+  und den Anmeldezeitpunkt. Widerruf, Abmeldung, geänderte Mailboxidentität und
+  gesperrte Ursprungskontakte werden auch nach einem Wechsel geprüft.
+  Portalnutzer müssen sich nach diesem Update einmal neu anmelden
+  (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Redis-Sitzungswiderrufe können durch verspätete Schreibvorgänge
+  nicht zurückgesetzt werden; ungültige Widerrufsdaten sperren den Zugriff.
+  Kontakt-E-Mail-Änderung, Deaktivierung und Reaktivierung durch Einladung
+  entwerten bestehende Kalenderlinks (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Dokument-ZIPs vergeben auch bei vorhandenen Suffixnamen,
+  Groß-/Kleinschreibung und Unicode-Normalisierung eindeutige Eintragsnamen,
+  damit Dateien beim Entpacken nicht kollidieren (`FK-EXC-20260906-003`).
+- **[Scope]** Gemeinsame HTTP-Abrufe lesen Antwortdaten nach Bedarf und reichen
+  Abbruch und Zeitlimit an den Netzwerkstrom weiter. Die bestehende
+  4-KiB-Grenze für Update-Signaturen greift schon beim Empfang der Bytes
+  (`AUDIT-RFC3161-ANCHOR-001`, `ASSURANCE-RELEASE-EVIDENCE-001`).
 - **[Scope]** Staff-Recovery-Codes lassen sich vollständig im regulären
   Loginfeld eingeben. Browser-Formatprüfung und Längenlimit akzeptieren die
   zehnstelligen Codes; Passwortprüfung und serverseitiger Einmalverbrauch

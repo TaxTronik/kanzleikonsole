@@ -70,12 +70,13 @@ export async function findEligiblePortalProfilesByEmail(input: {
 
 /**
  * Ermittelt die fuer eine laufende Session umschaltbaren Profile. Die E-Mail
- * wird aus dem aktuellen DB-Kontakt gelesen (nicht blind aus dem JWT), damit
- * eine zwischenzeitliche Stammdaten-Aenderung keine fremden Profile oeffnet.
+ * muss weiterhin zur verifizierten Session passen. Eine zwischenzeitliche
+ * Stammdaten-Aenderung darf keine fremde Mailbox-Identitaet uebernehmen.
  */
 export async function findPortalProfilesForContact(input: {
   tenantId: string;
   contactId: string;
+  email: string;
 }): Promise<PortalProfileOption[]> {
   return withTenantContext(
     { tenantId: input.tenantId, actorId: input.contactId, actorType: 'CLIENT_CONTACT' },
@@ -85,7 +86,7 @@ export async function findPortalProfilesForContact(input: {
 
 async function findPortalProfilesForContactTx(
   tx: TxClient,
-  input: { tenantId: string; contactId: string },
+  input: { tenantId: string; contactId: string; email: string },
 ): Promise<PortalProfileOption[]> {
   const current = await tx.clientContact.findFirst({
     where: {
@@ -96,7 +97,8 @@ async function findPortalProfilesForContactTx(
     },
     select: { email: true },
   });
-  if (!current) return [];
+  if (!current || current.email.trim().toLowerCase() !== input.email.trim().toLowerCase())
+    return [];
   return findEligiblePortalProfilesByEmailTx(tx, {
     tenantId: input.tenantId,
     email: current.email,
@@ -108,6 +110,7 @@ export async function resolvePortalProfileSwitch(input: {
   tenantId: string;
   currentContactId: string;
   targetContactId: string;
+  email: string;
 }): Promise<PortalProfileOption | null> {
   return withTenantContext(
     {
@@ -121,11 +124,12 @@ export async function resolvePortalProfileSwitch(input: {
 
 export async function resolvePortalProfileSwitchTx(
   tx: TxClient,
-  input: { tenantId: string; currentContactId: string; targetContactId: string },
+  input: { tenantId: string; currentContactId: string; targetContactId: string; email: string },
 ): Promise<PortalProfileOption | null> {
   const profiles = await findPortalProfilesForContactTx(tx, {
     tenantId: input.tenantId,
     contactId: input.currentContactId,
+    email: input.email,
   });
   return profiles.find((profile) => profile.contactId === input.targetContactId) ?? null;
 }

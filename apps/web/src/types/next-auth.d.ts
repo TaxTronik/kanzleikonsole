@@ -30,6 +30,8 @@ declare module 'next-auth' {
       // Portal-Surface
       contactId?: string;
       clientId?: string;
+      sessionIssuedAt?: number;
+      sessionOriginContactId?: string;
     };
   }
 }

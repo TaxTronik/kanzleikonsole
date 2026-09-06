@@ -209,8 +209,10 @@ export async function GET(req: NextRequest) {
   }
   let zip: Buffer;
   try {
-    // ZIP. Dubletten je Verzeichnis durchnummerieren.
-    const seen = new Map<string, number>();
+    // Alle tatsächlich vergebenen Pfade reservieren, einschließlich erzeugter
+    // Suffixe. Sonst überschreibt z. B. beleg_1.pdf die zweite beleg.pdf beim
+    // Entpacken. NFC + Kleinschreibung schützt auch übliche Windows-/macOS-Ziele.
+    const seen = new Set<string>();
     const entries: ZipEntry[] = [];
     const addEntry = async (
       prefix: string,
@@ -222,14 +224,16 @@ export async function GET(req: NextRequest) {
     ) => {
       const v = d.versions[0]!;
       const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);
-      let leaf = sanitizeZipFileName(filenameWithExtension(d.title, d.mimeType));
-      const key = `${prefix}/${leaf}`;
-      const n = seen.get(key) ?? 0;
-      seen.set(key, n + 1);
-      if (n > 0) {
-        const dot = leaf.lastIndexOf('.');
-        leaf = dot > 0 ? `${leaf.slice(0, dot)}_${n}${leaf.slice(dot)}` : `${leaf}_${n}`;
+      const base = sanitizeZipFileName(filenameWithExtension(d.title, d.mimeType));
+      const dot = base.lastIndexOf('.');
+      let leaf = base;
+      let suffix = 1;
+      const pathKey = () => `${prefix}/${leaf}`.normalize('NFC').toLowerCase();
+      while (seen.has(pathKey())) {
+        leaf = dot > 0 ? `${base.slice(0, dot)}_${suffix}${base.slice(dot)}` : `${base}_${suffix}`;
+        suffix += 1;
       }
+      seen.add(pathKey());
       entries.push({ name: prefix ? `${prefix}/${leaf}` : leaf, data: bytes });
     };
     for (const d of usableLoose) await addEntry('', d);

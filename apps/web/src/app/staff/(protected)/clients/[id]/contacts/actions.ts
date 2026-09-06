@@ -53,7 +53,15 @@ export async function inviteContactAction(
       if (existing) {
         await tx.clientContact.update({
           where: { id: existing.id },
-          data: { fullName, phone: phoneClean, role: roleClean, active: true },
+          data: {
+            fullName,
+            phone: phoneClean,
+            role: roleClean,
+            active: true,
+            // ACCESS-TENANT-RLS-001: Reactivating a previously disabled contact
+            // must not restore calendar capabilities issued before revocation.
+            ...(!existing.active ? { icalTokenVersion: { increment: 1 } } : {}),
+          },
         });
         await evidenceService.record(tx, {
           tenantId,
@@ -167,7 +175,8 @@ export async function updateContactAction(
           // lastLoginAt dient zugleich als Nachweis, dass genau diese
           // Login-Adresse bereits verwendet wurde. Nach einem Adresswechsel
           // darf dieser Nachweis nicht auf die neue E-Mail übergehen.
-          ...(emailChanged ? { lastLoginAt: null } : {}),
+          // iCal URLs authenticate independently of session cookies and email.
+          ...(emailChanged ? { lastLoginAt: null, icalTokenVersion: { increment: 1 } } : {}),
         },
       });
       await evidenceService.record(tx, {
@@ -268,7 +277,7 @@ export async function deactivateContactAction(formData: FormData): Promise<void>
     await revokeAllSessions('portal', contactId);
     await tx.clientContact.update({
       where: { id: contactId },
-      data: { active: false },
+      data: { active: false, icalTokenVersion: { increment: 1 } },
     });
     await evidenceService.record(tx, {
       tenantId: g.tenantId,

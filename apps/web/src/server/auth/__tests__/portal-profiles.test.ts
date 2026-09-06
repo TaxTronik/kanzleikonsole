@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-// Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001
+// Fachkatalog: ACCESS-TENANT-RLS-001, CLIENT-MANDATE-LIFECYCLE-001
 
 const m = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -73,8 +73,12 @@ describe('Portal-Mehrfachprofile', () => {
     ]);
   });
 
-  it('liest die gemeinsame E-Mail aus dem aktuellen DB-Kontakt statt aus der Session', async () => {
-    await findPortalProfilesForContact({ tenantId: 'tenant-1', contactId: CONTACT.id });
+  it('gleicht die verifizierte Session-E-Mail mit dem aktuellen DB-Kontakt ab', async () => {
+    await findPortalProfilesForContact({
+      tenantId: 'tenant-1',
+      contactId: CONTACT.id,
+      email: CONTACT.email,
+    });
 
     expect(m.findFirst).toHaveBeenCalledWith({
       where: {
@@ -98,7 +102,11 @@ describe('Portal-Mehrfachprofile', () => {
     m.findFirst.mockResolvedValue(null);
 
     await expect(
-      findPortalProfilesForContact({ tenantId: 'tenant-1', contactId: CONTACT.id }),
+      findPortalProfilesForContact({
+        tenantId: 'tenant-1',
+        contactId: CONTACT.id,
+        email: CONTACT.email,
+      }),
     ).resolves.toEqual([]);
     expect(m.findMany).not.toHaveBeenCalled();
   });
@@ -108,6 +116,7 @@ describe('Portal-Mehrfachprofile', () => {
       resolvePortalProfileSwitch({
         tenantId: 'tenant-1',
         currentContactId: CONTACT.id,
+        email: CONTACT.email,
         targetContactId: '33333333-3333-4333-8333-333333333333',
       }),
     ).resolves.toBeNull();

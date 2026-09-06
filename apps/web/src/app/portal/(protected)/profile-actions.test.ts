@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// Fachkatalog: ACCESS-TENANT-RLS-001.
 
 const m = vi.hoisted(() => ({
   portalAuth: vi.fn(),
@@ -31,7 +32,13 @@ describe('Portal-Profilwechsel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     m.portalAuth.mockResolvedValue({
-      user: { tenantId: 'tenant-1', contactId: CURRENT_ID },
+      user: {
+        tenantId: 'tenant-1',
+        contactId: CURRENT_ID,
+        email: 'rey@example.test',
+        sessionIssuedAt: 1_783_333_333,
+        sessionOriginContactId: CURRENT_ID,
+      },
     });
     m.withTenantContext.mockImplementation(
       async (_ctx: unknown, run: (client: typeof tx) => Promise<unknown>) => run(tx),
@@ -54,6 +61,7 @@ describe('Portal-Profilwechsel', () => {
     expect(m.resolveSwitch).toHaveBeenCalledWith(tx, {
       tenantId: 'tenant-1',
       currentContactId: CURRENT_ID,
+      email: 'rey@example.test',
       targetContactId: TARGET_ID,
     });
     expect(m.evidenceRecord).toHaveBeenCalledWith(
@@ -64,13 +72,16 @@ describe('Portal-Profilwechsel', () => {
         resourceId: TARGET_ID,
       }),
     );
-    expect(m.writeSession).toHaveBeenCalledWith({
-      id: TARGET_ID,
-      tenantId: 'tenant-1',
-      clientId: '33333333-3333-4333-8333-333333333333',
-      email: 'rey@example.test',
-      fullName: 'Rey Koxha',
-    });
+    expect(m.writeSession).toHaveBeenCalledWith(
+      {
+        id: TARGET_ID,
+        tenantId: 'tenant-1',
+        clientId: '33333333-3333-4333-8333-333333333333',
+        email: 'rey@example.test',
+        fullName: 'Rey Koxha',
+      },
+      { sessionIssuedAt: 1_783_333_333, sessionOriginContactId: CURRENT_ID },
+    );
   });
 
   it('veraendert bei einem unzulaessigen Ziel weder Session noch Audit', async () => {

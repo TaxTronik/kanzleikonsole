@@ -25,6 +25,28 @@ import { getRedis } from '@/server/redis';
 // erfasst, die noch nicht abgelaufen sind.
 const REVOKE_TTL_SEC = 30 * 24 * 60 * 60;
 
+// ACCESS-TENANT-RLS-001: A delayed request or a replica with an older clock
+// must never move the cutoff backwards and resurrect already revoked tokens.
+// Compare and write atomically; keep unreadable stored state fail-closed.
+const ADVANCE_REVOCATION = `
+local stored = redis.call('GET', KEYS[1])
+local incoming = tonumber(ARGV[1])
+if not incoming or incoming <= 0 or incoming > 9007199254740991 or incoming ~= math.floor(incoming) then
+  return redis.error_reply('invalid incoming revocation timestamp')
+end
+if stored then
+  local current = tonumber(stored)
+  if not current or current <= 0 or current > 9007199254740991 or current ~= math.floor(current) then
+    return redis.error_reply('invalid existing revocation timestamp')
+  end
+  if current > incoming then
+    redis.call('EXPIRE', KEYS[1], ARGV[2])
+    return 'OK'
+  end
+end
+return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+`;
+
 export type SessionSurface = 'staff' | 'portal';
 
 export class SessionRevocationUnavailableError extends Error {
@@ -54,8 +76,14 @@ export async function revokeAllSessions(surface: SessionSurface, userId: string)
     throw error;
   }
   try {
-    const result = await r.set(key(surface, userId), String(Date.now()), 'EX', REVOKE_TTL_SEC);
-    if (result !== 'OK') throw new Error(`unexpected Redis SET result: ${String(result)}`);
+    const result = await r.eval(
+      ADVANCE_REVOCATION,
+      1,
+      key(surface, userId),
+      String(Date.now()),
+      REVOKE_TTL_SEC,
+    );
+    if (result !== 'OK') throw new Error(`unexpected Redis revocation result: ${String(result)}`);
   } catch (e) {
     log.warn({ component: 'revocation', err: (e as Error).message }, 'revoke failed');
     throw new SessionRevocationUnavailableError(undefined, { cause: e });
@@ -79,9 +107,9 @@ export async function getRevocationTimestamp(
   }
   try {
     const v = await r.get(key(surface, userId));
-    if (!v) return 0;
+    if (v === null) return 0;
     const timestamp = Number(v);
-    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
       throw new Error('invalid revocation timestamp');
     }
     return timestamp;

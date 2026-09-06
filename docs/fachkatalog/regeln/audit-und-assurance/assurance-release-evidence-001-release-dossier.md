@@ -33,10 +33,12 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/update/manifest.ts
   - .forgejo/workflows/release.yml
   - scripts/release/check-release-gates.mjs
   - scripts/release/verify-release-config.mjs
 test_refs:
+  - apps/web/src/server/update/__tests__/manifest.test.ts
   - scripts/release/tests/check-release-gates.test.mjs
   - scripts/release/tests/verify-release-config.test.mjs
 feature_refs:
@@ -130,6 +132,13 @@ signiertes Manifest. Die Release-Skripte testen die Gate-Struktur und
 fail-closed Konfiguration. Die Dossier-Datei stellt die Felder für die
 tatsächlich ausgeführten Nachweise und Entscheidungen bereit.
 
+Beim Abruf des Update-Manifests gelten die bestehenden Byte-Limits bereits
+während des Lesens: 1 MiB für das Manifest und 4096 Bytes für die separate
+Signaturdatei. Dekodierung und Whitespace-Bereinigung erfolgen erst danach.
+Status-, Größen- und Streamablehnungen brechen den Antwortstrom ab, statt
+überzählige Daten vollständig einzulesen. Signatur-, Schema- und
+Versionsprüfung bleiben unverändert.
+
 ## Bekannte Abweichungen und Grenzen
 
 Der Repository-Stand enthält eine Vorlage, aber noch kein vollständig
@@ -159,3 +168,8 @@ Manifestpfade und erwarten fail-closed Fehler. Die Konfigurationstests prüfen
 HTTPS, credentialfreie Ziel-URLs und den erforderlichen Ed25519-Schlüssel. Sie
 belegen die Workflowstruktur, nicht die tatsächliche Durchführung eines
 bestimmten Release-Laufs.
+
+Die Manifestregression prüft übergroße Antworten ohne verlässliche
+Content-Length, mehrbyteigen Whitespace, die exakt zulässige Signaturgröße
+und die Abbruchweitergabe bei früher Ablehnung. Sie belegt den begrenzten
+Transport und die erhaltene Signaturprüfung, keine Release-Freigabe.

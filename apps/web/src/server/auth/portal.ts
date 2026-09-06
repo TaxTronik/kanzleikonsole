@@ -39,6 +39,15 @@ interface PortalTokenPayload {
   clientId: string;
   fullName: string;
   email: string;
+  sessionOriginContactId?: unknown;
+}
+
+function portalOriginContactId(token: PortalTokenPayload): string | null {
+  // ACCESS-TENANT-RLS-001: Older cookies may already have changed profile and
+  // issue time. Their original mailbox proof cannot be reconstructed safely.
+  return typeof token.sessionOriginContactId === 'string' && token.sessionOriginContactId.length > 0
+    ? token.sessionOriginContactId
+    : null;
 }
 
 function normalizePortalEmail(value: unknown): string | null {
@@ -113,13 +122,30 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
 
   const tokenIat = getSessionIssuedAt(token);
   if (tokenIat === undefined) return session;
-  if (await isTokenRevoked('portal', token.contactId, tokenIat)) {
-    return session;
+  const originContactId = portalOriginContactId(token);
+  if (!originContactId) return session;
+  for (const contactId of unique([token.contactId, originContactId])) {
+    if (await isTokenRevoked('portal', contactId, tokenIat)) return session;
+    if (!(await hasCurrentPortalIdentity(token, contactId))) return session;
   }
 
+  session.user.contactId = token.contactId;
+  session.user.tenantId = token.tenantId;
+  session.user.clientId = token.clientId;
+  session.user.fullName = token.fullName;
+  session.user.email = normalizePortalEmail(token.email)!;
+  session.user.sessionIssuedAt = tokenIat;
+  session.user.sessionOriginContactId = originContactId;
+  return session;
+}
+
+async function hasCurrentPortalIdentity(
+  token: PortalTokenPayload,
+  contactId: string,
+): Promise<boolean> {
   try {
     const c = await prismaOwner.clientContact.findUnique({
-      where: { id: token.contactId },
+      where: { id: contactId },
       select: {
         active: true,
         email: true,
@@ -133,30 +159,25 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
       !c.active ||
       normalizePortalEmail(c.email) !== normalizePortalEmail(token.email) ||
       c.tenantId !== token.tenantId ||
-      c.clientId !== token.clientId ||
+      (contactId === token.contactId && c.clientId !== token.clientId) ||
       !c.client.allowActive ||
       c.client.anonymizedAt !== null ||
       c.client.mandateEndedAt != null
     ) {
       log.warn(
-        { contactId: token.contactId, tokenTenant: token.tenantId },
+        { contactId, tokenTenant: token.tenantId },
         'portal-auth: Session ohne gueltigen/aktiven Kontakt oder Mandant gesperrt/anonymisiert - invalidiert (Re-Login erzwungen)',
       );
-      return session;
+      return false;
     }
   } catch (err) {
     log.warn(
       { err: (err as Error).message },
       'portal-auth: Session-Existenzpruefung fehlgeschlagen - invalidiert (Re-Login erzwungen)',
     );
-    return session;
+    return false;
   }
-
-  session.user.contactId = token.contactId;
-  session.user.tenantId = token.tenantId;
-  session.user.clientId = token.clientId;
-  session.user.fullName = token.fullName;
-  return session;
+  return true;
 }
 
 // Narrower Session-Typ fuer das Portal-Surface. Module-Augmentation fuer
@@ -170,6 +191,8 @@ export type PortalSession = Session & {
     tenantId: string;
     contactId: string;
     clientId: string;
+    sessionIssuedAt: number;
+    sessionOriginContactId: string;
   };
 };
 
@@ -267,6 +290,7 @@ const portalConfig: NextAuthConfig = {
         token.fullName = u.fullName;
         token.email = normalizePortalEmail(u.email) ?? '';
         token.sessionIssuedAt = Math.floor(Date.now() / 1000);
+        token.sessionOriginContactId = u.contactId;
         return token;
       }
       // ACCESS-TENANT-RLS-001: Reject before Auth.js issues another cookie.
@@ -278,7 +302,11 @@ const portalConfig: NextAuthConfig = {
         token,
       );
       if (!hasPortalSessionFields(session)) return null;
-      return { ...token, sessionIssuedAt: issuedAt };
+      return {
+        ...token,
+        sessionIssuedAt: issuedAt,
+        sessionOriginContactId: session.user.sessionOriginContactId,
+      };
     },
     async session({ session, token }) {
       return hydratePortalSessionFromToken(session, token);
@@ -306,7 +334,7 @@ export async function portalSessionSubject(): Promise<string | null> {
   const rawToken = await readPortalSessionTokenCookie();
   if (!rawToken) return null;
   const token = await decodePortalSessionToken(rawToken);
-  return isPortalTokenPayload(token) ? token.contactId : null;
+  return isPortalTokenPayload(token) ? portalOriginContactId(token) : null;
 }
 
 // Härtet die Wrapper-Semantik (analog staffAuth): wenn der session-Callback

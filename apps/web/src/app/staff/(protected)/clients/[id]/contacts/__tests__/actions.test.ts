@@ -184,6 +184,7 @@ describe('updateContactAction — Portal-Identität', () => {
         phone: null,
         role: null,
         lastLoginAt: null,
+        icalTokenVersion: { increment: 1 },
       },
     });
     expect(m.revokeAllSessions).toHaveBeenCalledWith('portal', CONTACT_ID);

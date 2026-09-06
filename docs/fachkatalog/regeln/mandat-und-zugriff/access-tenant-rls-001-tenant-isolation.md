@@ -42,6 +42,15 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/auth/portal-profiles.ts
+  - apps/web/src/app/portal/(protected)/profile-actions.ts
+  - apps/web/src/app/portal/(protected)/layout.tsx
+  - apps/web/src/app/portal/(protected)/requests/[id]/page.tsx
+  - apps/web/src/app/api/portal/logout/route.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/contacts/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts
+  - apps/web/src/server/ical/feed.ts
+  - apps/web/src/app/api/portal/ical/[token]/route.ts
   - apps/web/src/server/auth/staff.ts
   - apps/web/src/server/auth/portal.ts
   - apps/web/src/server/auth/portal-session.ts
@@ -85,6 +94,12 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/scripts/verify-rls.ts
 test_refs:
+  - apps/web/src/server/auth/__tests__/revocation.test.ts
+  - apps/web/src/server/auth/__tests__/revocation.redis.test.ts
+  - apps/web/src/server/auth/__tests__/portal-profile-session.test.ts
+  - apps/web/src/server/auth/__tests__/portal-profiles.test.ts
+  - apps/web/src/app/portal/(protected)/profile-actions.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/contacts/__tests__/ical-identity-revocation.test.ts
   - apps/web/src/app/staff/(auth)/login/__tests__/code-input.test.tsx
   - apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts
   - apps/web/src/server/auth/__tests__/session-renewal.test.ts
@@ -195,6 +210,15 @@ keine behauptete Abdeckung für diese Tabelle.
 
 ## Umsetzung in TaxTronik
 
+Unabhängige Kalender-Abos werden bei Änderung der Login-E-Mail,
+Deaktivierung sowie Wiederaktivierung eines zuvor inaktiven Kontakts durch
+eine atomar erhöhte Tokenversion dauerhaft entwertet. Das gilt auch für die
+Reaktivierung über Einladung oder Onboarding. Neue Berechtigung oder Rückkehr
+zur früheren E-Mail macht alte Feed-URLs nicht wieder gültig. Rein kosmetische
+Kontaktänderungen lassen bestehende Kalender-Abos nutzbar. Die Regression
+führt die echten Kontakt-Actions, HMAC-Tokenprüfung und Feed-Route aus und
+vergleicht entzogene, neu ausgestellte und fremde Kontakt-URLs.
+
 Die aktuelle Sitzung wird vor jeder Auth.js-Cookie-Erneuerung gegen den
 Redis-Widerruf und den aktuellen Konto-/Tenant-/Mandatszustand geprüft.
 Unzulässige oder nicht prüfbare Tokens werden bereits im JWT-Callback verworfen;
@@ -209,11 +233,35 @@ erneut. Direkte Serverzugriffe und Session-Callbacks verwenden dieselbe
 aktuelle Validierung; zusätzliche Staff-Auth-Revisionen werden nicht adoptiert.
 
 Auch direkt ausgestellte Sitzungen enthalten `sessionIssuedAt`: der lokale
-Staff-Passwort-Formularpfad ohne TOTP sowie der Portal-Magic-Link- und
-Profilwechselpfad setzen ihn beim Ausstellen des JWT. Ein erfolgreiches
+Staff-Passwort-Formularpfad ohne TOTP und neue Portal-Magic-Link-Anmeldungen
+setzen ihn beim Ausstellen des JWT. Ein erfolgreiches
 Login darf kein Cookie erzeugen, das die unmittelbar folgende Server-Auth
 wegen eines fehlenden ursprünglichen Anmeldezeitpunkts wieder verwirft.
 Die strikte Ablehnung bestehender Tokens ohne diesen Claim bleibt erhalten.
+
+Neue Magic-Link-Anmeldungen setzen zusätzlich `sessionOriginContactId`.
+Profilwechsel übernehmen beide signierten Werte unverändert. Aktuelles Profil
+und ursprünglicher Login-Kontakt müssen weiterhin im selben Tenant aktiv sein,
+ihre normalisierte E-Mail muss der verifizierten Sitzung entsprechen und ihre
+Mandate müssen aktiv sein. Die Profilauswahl gleicht die aktuelle DB-E-Mail mit
+der verifizierten Session-E-Mail ab. Ein überlappender E-Mail-Wechsel darf keine
+fremde Mailbox-Identität übernehmen. Widerrufe beider Kontakte werden gegen den
+ursprünglichen Anmeldezeitpunkt geprüft; Logout aus einem abgeleiteten Profil
+widerruft den Login-Anker. Portal-Cookies ohne gültigen Ursprungsanker werden
+abgewiesen. Beim Deployment ist eine einmalige Portal-Neuanmeldung nötig,
+weil historische Profilwechsel nicht zuverlässig rekonstruierbar sind.
+
+Redis-Widerrufszeitpunkte steigen durch einen atomaren Lua-Vergleich monoton.
+Verspätete ältere Schreibvorgänge dürfen bereits widerrufene Tokens nicht
+reaktivieren. Nur ein bestätigter Redis-null-Wert bedeutet fehlenden Cutoff;
+leere, beschädigte oder nicht sicher ganzzahlige Werte sperren Sitzungen und
+werden beim Widerruf nicht als gültiger Zustand überschrieben.
+
+Die Regression belegt einen absichtlich verzögerten alten Schreibvorgang
+gegen eine isolierte echte Redis-Instanz. Portaltests führen echte Action,
+Profilresolver, JWT-Codec und Server-Hydration gegen simulierte DB-/Redis-
+Grenzen aus; sie prüfen Ziel-/Quellwiderruf, E-Mail-Wechsel, mehrfachen
+Profilwechsel, Logout-Anker und die Ablehnung historischer Cookies.
 
 Die Regression nutzt die installierte Auth.js-HTTP-Sessionverarbeitung und
 JWT-Verschlüsselung mit simulierten DB-/Redis-Grenzen. Sie prüft Widerruf,

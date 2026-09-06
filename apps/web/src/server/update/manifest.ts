@@ -182,6 +182,10 @@ export interface CheckResult {
   error?: string;
 }
 
+async function cancelResponseBody(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => void 0);
+}
+
 /**
  * Liest das Manifest vom konfigurierten Server, verifiziert Signatur,
  * vergleicht mit aktueller installierter Version.
@@ -207,11 +211,13 @@ export async function checkForUpdates(currentVersion: string): Promise<CheckResu
     return { ok: false, error: `Manifest nicht erreichbar: ${(e as Error).message}` };
   }
   if (!response.ok) {
+    await cancelResponseBody(response);
     return { ok: false, error: `Manifest-Server: HTTP ${response.status}` };
   }
   // H4: Body-Read mit Cap. Content-Length-Vorab-Check + Streaming-Guard.
   const cl = response.headers.get('content-length');
   if (cl && Number(cl) > MAX_MANIFEST_BYTES) {
+    await cancelResponseBody(response);
     return { ok: false, error: `Manifest zu groß: ${cl} Bytes` };
   }
   let body: string;
@@ -313,12 +319,37 @@ async function fetchDetachedSignature(manifestUrl: string): Promise<string | nul
       signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
       redirect: 'error',
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      await cancelResponseBody(res);
+      return null;
+    }
     const cl = res.headers.get('content-length');
-    if (cl && Number(cl) > MAX_SIG_BYTES) return null;
-    const text = (await res.text()).trim();
-    if (text.length > MAX_SIG_BYTES) return null;
-    return /^ed25519:[A-Za-z0-9+/=]+$/.test(text) ? text : null;
+    if (cl && Number(cl) > MAX_SIG_BYTES) {
+      await cancelResponseBody(res);
+      return null;
+    }
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    try {
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        // ASSURANCE-RELEASE-EVIDENCE-001: Bound received bytes before decoding
+        // or trimming; neither Content-Length nor string length is sufficient.
+        if (total > MAX_SIG_BYTES) {
+          await reader.cancel().catch(() => void 0);
+          return null;
+        }
+        chunks.push(value);
+      }
+      const text = Buffer.concat(chunks, total).toString('utf8').trim();
+      return /^ed25519:[A-Za-z0-9+/=]+$/.test(text) ? text : null;
+    } finally {
+      reader.releaseLock();
+    }
   } catch {
     return null;
   }

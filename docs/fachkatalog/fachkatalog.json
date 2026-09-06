@@ -459,6 +459,15 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/auth/portal-profiles.ts",
+        "apps/web/src/app/portal/(protected)/profile-actions.ts",
+        "apps/web/src/app/portal/(protected)/layout.tsx",
+        "apps/web/src/app/portal/(protected)/requests/[id]/page.tsx",
+        "apps/web/src/app/api/portal/logout/route.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/contacts/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts",
+        "apps/web/src/server/ical/feed.ts",
+        "apps/web/src/app/api/portal/ical/[token]/route.ts",
         "apps/web/src/server/auth/staff.ts",
         "apps/web/src/server/auth/portal.ts",
         "apps/web/src/server/auth/portal-session.ts",
@@ -503,6 +512,12 @@
         "packages/db/scripts/verify-rls.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/auth/__tests__/revocation.test.ts",
+        "apps/web/src/server/auth/__tests__/revocation.redis.test.ts",
+        "apps/web/src/server/auth/__tests__/portal-profile-session.test.ts",
+        "apps/web/src/server/auth/__tests__/portal-profiles.test.ts",
+        "apps/web/src/app/portal/(protected)/profile-actions.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/contacts/__tests__/ical-identity-revocation.test.ts",
         "apps/web/src/app/staff/(auth)/login/__tests__/code-input.test.tsx",
         "apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts",
         "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
@@ -628,11 +643,13 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/update/manifest.ts",
         ".forgejo/workflows/release.yml",
         "scripts/release/check-release-gates.mjs",
         "scripts/release/verify-release-config.mjs"
       ],
       "test_refs": [
+        "apps/web/src/server/update/__tests__/manifest.test.ts",
         "scripts/release/tests/check-release-gates.test.mjs",
         "scripts/release/tests/verify-release-config.test.mjs"
       ],
@@ -824,12 +841,16 @@
         }
       ],
       "code_refs": [
+        "packages/http-utils/src/index.ts",
+        "packages/evidence/src/ports/rfc3161-http.ts",
         "packages/evidence/src/service.ts",
         "packages/evidence/src/ports/rfc3161-verify.ts",
         "apps/worker/src/jobs/audit-anchor.ts",
         "apps/worker/src/jobs/evidence-seal.ts"
       ],
       "test_refs": [
+        "packages/http-utils/src/__tests__/response-stream.test.ts",
+        "packages/evidence/src/ports/__tests__/rfc3161-http-policy.test.ts",
         "packages/evidence/src/__tests__/rfc3161-verify.test.ts",
         "packages/evidence/src/__tests__/service-verifychain.test.ts",
         "packages/evidence/src/__tests__/service-seal-trust.test.ts",

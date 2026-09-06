@@ -64,6 +64,7 @@ function token(email?: string) {
     ...(email === undefined ? {} : { email }),
     name: 'Rey Koxha',
     contactId: CONTACT_ID,
+    sessionOriginContactId: CONTACT_ID,
     tenantId: 'tenant-1',
     clientId: CLIENT_ID,
     fullName: 'Rey Koxha',

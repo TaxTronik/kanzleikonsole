@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// Fachkatalog: ACCESS-TENANT-RLS-001.
 
 const m = vi.hoisted(() => ({
   getRedis: vi.fn(),
@@ -21,7 +22,7 @@ const REVOKE_TTL_SEC = 30 * 24 * 60 * 60;
 function makeRedis() {
   return {
     get: vi.fn(),
-    set: vi.fn(),
+    eval: vi.fn(),
   };
 }
 
@@ -39,15 +40,16 @@ afterEach(() => {
 describe('revokeAllSessions', () => {
   it('writes a per-surface user timestamp with a 30 day ttl', async () => {
     const redis = makeRedis();
-    redis.set.mockResolvedValue('OK');
+    redis.eval.mockResolvedValue('OK');
     m.getRedis.mockReturnValue(redis);
 
     await revokeAllSessions('staff', 'staff-1');
 
-    expect(redis.set).toHaveBeenCalledWith(
+    expect(redis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
       'revoke:staff:staff-1',
       String(FIXED_NOW.getTime()),
-      'EX',
       REVOKE_TTL_SEC,
     );
   });
@@ -64,7 +66,7 @@ describe('revokeAllSessions', () => {
 
   it('logs and propagates Redis write failures as a stable security error', async () => {
     const redis = makeRedis();
-    redis.set.mockRejectedValue(new Error('redis down'));
+    redis.eval.mockRejectedValue(new Error('redis down'));
     m.getRedis.mockReturnValue(redis);
 
     await expect(revokeAllSessions('staff', 'staff-1')).rejects.toBeInstanceOf(
@@ -77,9 +79,9 @@ describe('revokeAllSessions', () => {
     );
   });
 
-  it('rejects an unconfirmed Redis SET result', async () => {
+  it('rejects an unconfirmed Redis script result', async () => {
     const redis = makeRedis();
-    redis.set.mockResolvedValue(null);
+    redis.eval.mockResolvedValue(null);
     m.getRedis.mockReturnValue(redis);
 
     await expect(revokeAllSessions('staff', 'staff-1')).rejects.toBeInstanceOf(
@@ -108,6 +110,17 @@ describe('getRevocationTimestamp', () => {
 
     expect(await getRevocationTimestamp('portal', 'contact-1')).toBe(FIXED_NOW.getTime());
     expect(redis.get).toHaveBeenCalledWith('revoke:portal:contact-1');
+  });
+
+  it('treats an existing empty cutoff as corrupt, never as an absent revocation', async () => {
+    const redis = makeRedis();
+    redis.get.mockResolvedValue('');
+    m.getRedis.mockReturnValue(redis);
+
+    await expect(getRevocationTimestamp('portal', 'contact-1')).rejects.toBeInstanceOf(
+      SessionRevocationUnavailableError,
+    );
+    expect(await isTokenRevoked('portal', 'contact-1', Math.floor(Date.now() / 1000))).toBe(true);
   });
 
   it('logs and fails closed on Redis read errors', async () => {

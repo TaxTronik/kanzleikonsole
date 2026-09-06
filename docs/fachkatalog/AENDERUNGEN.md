@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20260906-003
+    date: '2026-09-06'
+    paths:
+      - apps/web/src/app/api/staff/documents/download/route.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+    rule_ids:
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Die technische ZIP-Auslieferung reserviert eindeutige Transportnamen
+      einschließlich erzeugter Suffixe, Groß-/Kleinschreibung und
+      Unicode-Normalisierung. So überschreibt ein Archiveintrag beim Entpacken
+      keinen anderen ausgewählten Beleg. Dokumentauswahl, Autorisierung,
+      Quelldaten, Versionsbindung und Aufbewahrung bleiben unverändert;
+      es werden ausschließlich die Namen in der heruntergeladenen Kopie
+      kollisionsfrei vergeben, keine archivierten Dokumentnamen geändert.
+    tests:
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+      - apps/web/src/server/export/__tests__/zip.test.ts
+    reviewer: Codex (technischer Verhaltensabgleich, keine fachliche Freigabe)
   - id: FK-EXC-20260906-001
     date: '2026-09-06'
     paths:

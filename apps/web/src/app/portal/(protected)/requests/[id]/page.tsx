@@ -62,7 +62,11 @@ export default async function PortalRequestDetailPage({
     // wird über dessen EIGENEN Tenant-Kontext ermittelt (kein RLS-Bypass —
     // die Person ist ohnehin berechtigt, in dieses Profil zu wechseln) und
     // der Wechsel mit sichtbarem Warnhinweis automatisch angestoßen.
-    const profiles = await findPortalProfilesForContact({ tenantId, contactId });
+    const profiles = await findPortalProfilesForContact({
+      tenantId,
+      contactId,
+      email: session.user.email,
+    });
     const otherProfiles = profiles.filter((profile) => profile.clientId !== clientId);
 
     let owningProfile: (typeof otherProfiles)[number] | null = null;

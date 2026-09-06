@@ -33,6 +33,7 @@ export async function switchPortalProfileAction(formData: FormData): Promise<voi
       const resolved = await resolvePortalProfileSwitchTx(tx, {
         tenantId,
         currentContactId,
+        email: session.user.email,
         targetContactId: parsed.data.contactId,
       });
       if (!resolved) return null;
@@ -54,12 +55,18 @@ export async function switchPortalProfileAction(formData: FormData): Promise<voi
   );
   if (!target) redirect('/portal/dashboard');
 
-  await writePortalSession({
-    id: target.contactId,
-    tenantId,
-    clientId: target.clientId,
-    email: target.email,
-    fullName: target.contactName,
-  });
+  await writePortalSession(
+    {
+      id: target.contactId,
+      tenantId,
+      clientId: target.clientId,
+      email: target.email,
+      fullName: target.contactName,
+    },
+    {
+      sessionIssuedAt: session.user.sessionIssuedAt,
+      sessionOriginContactId: session.user.sessionOriginContactId,
+    },
+  );
   redirect(returnTo);
 }

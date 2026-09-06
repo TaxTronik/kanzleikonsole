@@ -33,11 +33,15 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - packages/http-utils/src/index.ts
+  - packages/evidence/src/ports/rfc3161-http.ts
   - packages/evidence/src/service.ts
   - packages/evidence/src/ports/rfc3161-verify.ts
   - apps/worker/src/jobs/audit-anchor.ts
   - apps/worker/src/jobs/evidence-seal.ts
 test_refs:
+  - packages/http-utils/src/__tests__/response-stream.test.ts
+  - packages/evidence/src/ports/__tests__/rfc3161-http-policy.test.ts
   - packages/evidence/src/__tests__/rfc3161-verify.test.ts
   - packages/evidence/src/__tests__/service-verifychain.test.ts
   - packages/evidence/src/__tests__/service-seal-trust.test.ts
@@ -126,6 +130,12 @@ Tagesspitzen-Hash in Tagesversiegelungen. Die Worker führen Netzwerkaufrufe
 außerhalb der Fachtransaktion aus und persistieren Erfolg oder Rückstand
 explizit.
 
+Der gemeinsame HTTP-Transport liest Antworten nach Bedarf des Consumers,
+statt sie unabhängig von dessen Größenprüfung vorab vollständig zu puffern.
+Größenbedingter Abbruch und Timeout erreichen den Reader des ursprünglichen
+Antwortstroms und schließen die Verbindung. Das bestehende TSA-Byte-Limit und
+die kryptografischen Vertrauensentscheidungen bleiben unverändert.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die Implementierung ist nur teilweise als externer Nachweis wirksam: Ohne
@@ -151,3 +161,8 @@ Die RFC-Fixture- und Negativtests prüfen Imprint, Signatur, Zertifikatskette,
 EKU und Trust-Policy. Service- und Worker-Tests prüfen die Bindung an die
 rekonstruierte Kettenspitze, lokales gegenüber externem Vertrauen, Backfill und
 Fehlerbehandlung.
+
+Transportregressionen verwenden echte Web-Streams bei simulierter HTTP-Grenze
+und prüfen begrenztes Vorab-Lesen, Abbruchweitergabe, Timeout, vollständige
+Antwortbytes sowie einmaliges Schließen. Ein zusätzlicher lokaler Socket-Test
+bestätigt das Schließen laufender HTTP-Antworten bei Cancel und Abort.

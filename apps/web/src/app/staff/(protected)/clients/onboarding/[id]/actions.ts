@@ -90,6 +90,8 @@ export async function onboardingAddContactAction(formData: FormData) {
             phone: parsed.data.phone?.trim() || null,
             role: parsed.data.role?.trim() || null,
             active: true,
+            // ACCESS-TENANT-RLS-001: A restored account needs a new calendar URL.
+            ...(!existing.active ? { icalTokenVersion: { increment: 1 } } : {}),
           },
         });
         await evidenceService.record(tx, {

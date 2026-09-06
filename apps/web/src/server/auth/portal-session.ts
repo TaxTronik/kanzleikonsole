@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { encode } from 'next-auth/jwt';
 import { env } from '@taxtronik/config';
+import { getSessionIssuedAt } from './session-issued-at';
 import {
   PORTAL_SESSION_COOKIE,
   PORTAL_SESSION_JWT_SALT,
@@ -15,8 +16,22 @@ export interface PortalSessionContact {
   fullName: string;
 }
 
-/** Schreibt ein neues, vollstaendig kontaktgebundenes Portal-Session-JWT. */
-export async function writePortalSession(contact: PortalSessionContact): Promise<void> {
+export interface PortalSessionIdentity {
+  sessionIssuedAt: number;
+  sessionOriginContactId: string;
+}
+
+/** New mailbox authentication starts an identity; profile switches preserve it. */
+export async function writePortalSession(
+  contact: PortalSessionContact,
+  identity: PortalSessionIdentity = {
+    sessionIssuedAt: Math.floor(Date.now() / 1000),
+    sessionOriginContactId: contact.id,
+  },
+): Promise<void> {
+  if (getSessionIssuedAt(identity) === undefined || !identity.sessionOriginContactId) {
+    throw new Error('Invalid original portal session identity');
+  }
   const sessionToken = await encode({
     secret: env.AUTH_SECRET,
     salt: PORTAL_SESSION_JWT_SALT,
@@ -29,7 +44,8 @@ export async function writePortalSession(contact: PortalSessionContact): Promise
       tenantId: contact.tenantId,
       clientId: contact.clientId,
       fullName: contact.fullName,
-      sessionIssuedAt: Math.floor(Date.now() / 1000),
+      sessionIssuedAt: identity.sessionIssuedAt,
+      sessionOriginContactId: identity.sessionOriginContactId,
     },
   });
 

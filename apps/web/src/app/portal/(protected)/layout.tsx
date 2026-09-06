@@ -52,7 +52,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     readBranding({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
     readModules({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
     readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
-    findPortalProfilesForContact({ tenantId, contactId }),
+    findPortalProfilesForContact({ tenantId, contactId, email: session.user.email }),
     readAccessibleDisplay({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
     readAccessibleDisplayOptions({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
   ]);

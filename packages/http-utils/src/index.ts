@@ -408,14 +408,14 @@ async function safeFetchResolved(
       },
     },
   });
-  // Defaults VOR ...init, damit Caller sie explizit überschreiben können.
-  // Das effektive Signal wird unten (N-10) auch als Not-Aus für den Agent
-  // benutzt, darum hier in einer Variable festhalten.
+  // Ein explizites Signal ersetzt den Default; signal:null darf den
+  // Standardtimeout nicht aufheben. Dasselbe effektive Signal steuert
+  // Netzwerkaufruf und Abbruch des Antwortstroms.
   const effectiveSignal = init?.signal ?? AbortSignal.timeout(SAFE_FETCH_DEFAULT_TIMEOUT_MS);
   const merged = {
     redirect: 'error' as const,
-    signal: effectiveSignal,
     ...init,
+    signal: effectiveSignal,
     dispatcher: agent,
   };
   let response: Response;
@@ -437,55 +437,49 @@ async function safeFetchResolved(
     agent.close().catch(() => void 0);
     return response;
   }
+  const reader = response.body.getReader();
   let closed = false;
+  let onAbort: () => void;
   const closeOnce = () => {
     if (closed) return;
     closed = true;
+    effectiveSignal.removeEventListener('abort', onAbort);
     agent.close().catch(() => void 0);
   };
-  // N-10: Verbindungs-/Agent-Leak absichern. Der reguläre Close hängt daran,
-  // dass der Body konsumiert (start → done) ODER gecancelt (cancel) wird. Ein
-  // Caller, der NUR `res.status` liest und den Body nie anfasst, triggert
-  // weder start noch cancel → der Agent (und damit TCP+TLS-Verbindung) bliebe
-  // offen. Als Not-Aus koppeln wir closeOnce zusätzlich an das effektive
-  // Signal: spätestens beim Timeout/Abort (Default 30s) wird der Agent
-  // garantiert geschlossen. Die erfolgreiche Streaming-Semantik bleibt
-  // unangetastet — wer den Body liest, schließt weiterhin sofort über
-  // start/cancel (i. d. R. lange vor dem Signal).
-  if (effectiveSignal.aborted) {
-    // Extremfall: Signal ist bereits abgebrochen, bevor wir hier ankommen.
-    response.body.cancel().catch(() => void 0);
-    closeOnce();
-  } else {
-    effectiveSignal.addEventListener(
-      'abort',
-      () => {
-        // Body verwerfen, falls noch niemand ihn liest, dann Agent schließen.
-        if (!closed) response.body?.cancel().catch(() => void 0);
+  // Nur auf Nachfrage lesen: eine Schleife in start() würde die gesamte
+  // Antwort unabhängig vom Consumer puffern und dessen Größenlimit umgehen.
+  // Abbruch muss den sperrenden Reader erreichen; body.cancel() wäre nach
+  // getReader() unwirksam (TypeError wegen des bereits gesperrten Streams).
+  const wrapped = new ReadableStream<Uint8Array>({
+    start(controller) {
+      onAbort = () => {
+        if (closed) return;
+        controller.error(effectiveSignal.reason);
+        reader.cancel(effectiveSignal.reason).catch(() => void 0);
         closeOnce();
-      },
-      { once: true },
-    );
-  }
-  const wrapped = new ReadableStream({
-    async start(controller) {
-      const reader = response.body!.getReader();
+      };
+      if (effectiveSignal.aborted) onAbort();
+      else effectiveSignal.addEventListener('abort', onAbort, { once: true });
+    },
+    async pull(controller) {
       try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        const { done, value } = await reader.read();
+        if (closed) return;
+        if (done) {
+          controller.close();
+          closeOnce();
+        } else {
           controller.enqueue(value);
         }
-        controller.close();
       } catch (e) {
-        controller.error(e);
-      } finally {
+        if (!closed) controller.error(e);
         closeOnce();
       }
     },
     cancel(reason) {
-      response.body?.cancel(reason).catch(() => void 0);
+      const cancellation = reader.cancel(reason);
       closeOnce();
+      return cancellation;
     },
   });
   return new Response(wrapped, {

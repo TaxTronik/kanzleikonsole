@@ -336,11 +336,28 @@ Redis- und DB-Ausfälle erlauben keine Erneuerung. Der reale Auth.js-HTTP-Pfad
 wird in `session-renewal.test.ts` mit simulierten Persistenzgrenzen geprüft.
 
 Auch der direkte Staff-Passwort-Formularpfad für den lokalen TOTP-Testmodus
-und der Portal-Session-Schreiber für Magic-Link und Profilwechsel setzen
-`sessionIssuedAt` beim Ausstellen. Andernfalls folgt auf einen erfolgreichen
+und neue Portal-Magic-Link-Anmeldungen setzen `sessionIssuedAt` beim Ausstellen.
+Andernfalls folgt auf einen erfolgreichen
 Login sofort die Abweisung durch die Server-Auth. Die Regression prüft diese
 echten Ausgabepfade einschließlich Cookie-Erneuerung und anschließendem
 Widerruf; die Ablehnung alter Cookies ohne Claim bleibt unverändert.
 
 CLIENT-MANDATE-LIFECYCLE-001: Auch unabhängige Kalenderabonnements prüfen das
 aktuelle Mandatsende vor dem Laden von Terminen und Fristen.
+
+ACCESS-TENANT-RLS-001: Portal-Profilwechsel bewahren den ursprünglichen
+Anmeldezeitpunkt und den signierten `sessionOriginContactId`. Die Server-Auth
+prüft das ausgewählte Profil und diesen Ursprung auf Tenant, verifizierte
+E-Mail, Aktivität, Mandatsstatus und Widerruf. Eine inzwischen geänderte
+Kontaktadresse darf keine andere Mailbox-Identität erschließen. Auch Logout
+aus einem Schwesterprofil widerruft den Ursprung. Nach diesem Deployment
+benötigen bestehende Portal-Cookies ohne Ursprungsanker einmalig eine neue
+Mail-Anmeldung; historische Profilwechsel werden nicht durch einen geratenen
+Anker übernommen. Staff-Cookies benötigen diesen Portal-Claim nicht.
+
+Die Redis-Cutoffs werden atomar monoton erhöht. Ein später eintreffender
+älterer Widerruf setzt keinen neueren Cutoff zurück; beschädigte Werte bleiben
+fail-closed. Kalender-Abos sind davon unabhängige Capabilities: Kontakt-E-Mail-
+Wechsel, Deaktivierung und Wiederaktivierung erhöhen deshalb atomar deren
+Tokenversion, einschließlich Einladung und Onboarding. Alte Kalender-URLs
+werden bei erneuter Aktivierung nicht wieder gültig.
