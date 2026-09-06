@@ -22,6 +22,11 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- Secret-Scan-Fehlalarm für die öffentlich publizierte EU-Sanktionslisten-URL
+  behoben. Die Ausnahme gilt nur für die vollständige, verifizierte Quellzeile
+  in ihrer konkreten Datei. Acht Scanner-Regressionstests prüfen die Ausnahmen
+  einschließlich anderer Token, zusätzlicher Schlüssel und abweichender Pfade;
+  der amtliche Metadaten-Nachweis ist in `.gitleaks.toml` verlinkt.
 - **[Scope]** Sitzungswiderruf vor der Cookie-Erneuerung und unveränderlicher
   Anmeldezeitpunkt; bestehende Staff-/Portal-Sitzungen müssen sich nach dem
   Update einmalig neu anmelden. Kalenderabonnements prüfen das Mandatsende

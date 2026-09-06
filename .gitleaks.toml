@@ -83,3 +83,16 @@ condition = "AND"
 regexTarget = "match"
 paths = ['''(^|/)scripts/provision-signal-llm\.py$''']
 regexes = ['''^MODEL_KEY = "granite-4\.1-8b"$''']
+
+# Am 2026-09-06 mit den frei abrufbaren Download-Metadaten von data.europa.eu
+# abgeglichen. Dieser konkrete URL-Parameter ist dort oeffentlich publiziert:
+# https://data.europa.eu/api/hub/search/datasets/consolidated-list-of-persons-groups-and-entities-subject-to-eu-financial-sanctions
+# Andere FSF-Tokens koennen benutzerbezogen sein. Deshalb nur genau diese
+# vollstaendige Quellzeile in dieser Datei, auch fuer den History-Scan.
+# Gitleaks 8.29.0 nimmt bei Folgezeilen das vorangestellte LF in "line" auf.
+[[rules.allowlists]]
+description = "exakt verifizierte oeffentliche EU-Sanktionslisten-Download-URL"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)packages/tax/src/screening/source\.ts$''']
+regexes = ['''^\n?  'https://webgate\.ec\.europa\.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content\?token=dG9rZW4tMjAxNw';$''']

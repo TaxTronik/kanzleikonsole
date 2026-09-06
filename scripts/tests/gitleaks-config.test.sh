@@ -79,4 +79,43 @@ set -e
 grep -q '"RuleID": "generic-api-key"' "$TMP/model-secret.json"
 grep -q '"File": "scripts/provision-signal-llm.py"' "$TMP/model-secret.json"
 
-echo "4 gitleaks allowlist regression tests passed."
+# Die EU-Quelle publiziert genau diese Download-URL inklusive Parameter.
+# Die vollstaendige Quelle pruefen: Gitleaks behandelt Folgezeilen anders als
+# die erste Fragmentzeile. Jeder Fall bekommt eine unabhaengige Git-Historie.
+EU_SOURCE='packages/tax/src/screening/source.ts'
+EU_LINE="$(sed -n '\|https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?|p' "$ROOT/$EU_SOURCE")"
+[[ -n "$EU_LINE" ]] || { echo 'EU-Quellzeile fehlt.' >&2; exit 1; }
+SYNTHETIC_VALUE="$(printf '%s' 'Q7vN4mZ8' 'pL2xR6cT' '9wK3dF5h' 'J1sB0yU4' 'aE7qI6oP')"
+
+for scenario in public changed-token extra-secret other-path; do
+  CASE_REPO="$TMP/eu-$scenario"
+  TARGET="$EU_SOURCE"
+  [[ "$scenario" != other-path ]] || TARGET='packages/tax/src/screening/other.ts'
+  mkdir -p "$CASE_REPO/$(dirname "$TARGET")"
+  git -C "$CASE_REPO" init -q
+  git -C "$CASE_REPO" config user.email test@example.invalid
+  git -C "$CASE_REPO" config user.name 'Gitleaks Config Test'
+  cp "$ROOT/$EU_SOURCE" "$CASE_REPO/$TARGET"
+  if [[ "$scenario" == changed-token ]]; then
+    sed "s/token=[^']*/token=$SYNTHETIC_VALUE/" "$ROOT/$EU_SOURCE" > "$CASE_REPO/$TARGET"
+  elif [[ "$scenario" == extra-secret ]]; then
+    printf "const apiKey = '%s';\n" "$SYNTHETIC_VALUE" >> "$CASE_REPO/$TARGET"
+  fi
+  git -C "$CASE_REPO" add .
+  git -C "$CASE_REPO" commit -qm "EU download $scenario fixture"
+  set +e
+  "$GITLEAKS" git --config "$ROOT/.gitleaks.toml" --redact --no-banner "$CASE_REPO" \
+    --report-format json --report-path "$TMP/eu-$scenario.json" >/dev/null 2>&1
+  case_rc=$?
+  set -e
+  if [[ "$scenario" == public ]]; then
+    [[ $case_rc -eq 0 ]] || { echo 'Verifizierte oeffentliche EU-URL wurde blockiert.' >&2; exit 1; }
+    grep -qx '\[\]' "$TMP/eu-$scenario.json"
+  else
+    [[ $case_rc -eq 1 ]] || { echo "EU-Gegenbeispiel $scenario wurde nicht blockiert (Exit $case_rc)." >&2; exit 1; }
+    grep -q '"RuleID": "generic-api-key"' "$TMP/eu-$scenario.json"
+    grep -Fq "\"File\": \"$TARGET\"" "$TMP/eu-$scenario.json"
+  fi
+done
+
+echo "8 gitleaks allowlist regression tests passed."
