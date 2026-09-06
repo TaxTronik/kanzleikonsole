@@ -22,6 +22,21 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- Markdown-Ansichten blockieren bei unvollständigen Tabellen nicht mehr.
+  Inline-Code bleibt wortgetreu; Formatierungszeichen in Linkzielen und
+  private Unicode-Zeichen werden nicht mehr umgeschrieben. Blockerkennung und
+  Inline-Verarbeitung sind in getrennte, überschaubare Funktionen aufgeteilt.
+- Globale Suche entfernt vorherige Datensatztreffer bei jedem Begriffswechsel,
+  damit Enter während einer laufenden Suche keinen alten Treffer öffnet.
+  Deaktivierte Datumswähler senden auch ihren versteckten Formularwert nicht mit.
+- Mandanten-Timeline berücksichtigt aktuelle Folgeereignisse älterer Vorgänge
+  und wendet die Zeitgrenze auf jedes Ereignis an. Tagesgruppen verwenden
+  durchgehend Berliner Zeit; ungültige Nachladelimits führen nicht mehr zu
+  Datenbankfehlern, und der Nachladelink endet an der Grenze von 500 Ereignissen.
+- **[Scope]** Die Audit-Übersicht zählt ausschließlich Einträge der eigenen
+  Kanzlei statt einer datenbankweiten Tabellenschätzung. Datenzugriff,
+  Filterzustand und Darstellung sind getrennt; Zugriffs- und Kettenprüfungen
+  bleiben erhalten (`AUDIT-HASH-CHAIN-001`, `ACCESS-TENANT-RLS-001`).
 - **[Scope]** Öffentliche TOTP-Einrichtung und Bestätigung binden ihren
   Schreibzugriff an den geprüften Passwort-, Konto- und Faktorstand.
   Verspätete Anfragen öffnen keine bereits abgeschlossene Einrichtung erneut

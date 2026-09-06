@@ -25,7 +25,12 @@ const CTX: TenantContext = {
 
 /** Stub: alle Quellen leer bis auf die Risiko-Analysen. */
 function mockTx(input: {
-  analyses: Array<{ id: string; title: string | null; vertraulich: boolean }>;
+  analyses: Array<{
+    id: string;
+    title: string | null;
+    vertraulich: boolean;
+    archivedAt?: Date;
+  }>;
   assignedAnalysisIds?: string[];
 }) {
   const leer = { findMany: vi.fn().mockResolvedValue([]) };
@@ -47,7 +52,7 @@ function mockTx(input: {
           textHash: 'hash',
           katalogVersion: 'v1',
           createdAt: new Date('2026-08-01T10:00:00Z'),
-          archivedAt: null,
+          archivedAt: a.archivedAt ?? null,
           _count: { markings: 1 },
         })),
       ),
@@ -100,5 +105,30 @@ describe('buildClientTimeline × vertrauliche Subsumtion', () => {
     const events = await buildClientTimeline(CTX, { clientId: CLIENT });
     expect(events.find((e) => e.id === 'ra:ra1')!.title).toContain('Kassenführung 2025');
     expect(m.canStaffWriteClientTx).not.toHaveBeenCalled();
+  });
+
+  it('ACCESS-TENANT-RLS-001: neutralisiert auch den jüngsten Archivstand ohne Akteur', async () => {
+    const tx = mockTx({
+      analyses: [
+        {
+          id: 'ra1',
+          title: 'Selbstanzeige GF',
+          vertraulich: true,
+          archivedAt: new Date('2026-09-01T10:00:00Z'),
+        },
+      ],
+    });
+    const events = await buildClientTimeline(
+      { ...CTX, actorId: null },
+      { clientId: CLIENT, limit: 1 },
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      id: 'ra-arch:ra1',
+      title: 'Subsumtion revisionssicher archiviert (vertraulich)',
+    });
+    expect(JSON.stringify(events)).not.toContain('Selbstanzeige');
+    expect(m.canStaffWriteClientTx).not.toHaveBeenCalled();
+    expect(tx.riskMarking.findMany).not.toHaveBeenCalled();
   });
 });

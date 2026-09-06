@@ -65,6 +65,27 @@ werden inklusive Beginn und exklusiv bis zur nächsten Mitternacht ausgewertet,
 auch an Zeitumstellungstagen. Der CSV-Auszug ist bei Filtern keine vollständige
 Hash-Kette. Die Berechtigung bleibt auf ADMIN/PARTNER begrenzt.
 
+Die Seitendatei prüft zuerst die Berechtigung und komponiert anschließend
+getrennte Daten-, Filter-, Tabellen- und Statusbausteine. `audit-page-data.ts`
+bündelt alle Reads in demselben Tenantkontext; `audit-page-state.ts` hält
+Filtervalidierung, Cursorbildung und die Zuordnung des persistierten
+Prüfergebnisses. `audit-chain-status.tsx` stellt ungeprüfte, intakte,
+historisch abgegrenzte und neue negative Befunde getrennt dar. Die
+Server-Actions und die Hash-/Ankerprüfung bleiben unverändert.
+
+Der Gesamtzähler ist auch ungefiltert ein exakter, explizit tenantgebundener
+Count. Die frühere `pg_class.reltuples`-Schätzung zählte die gesamte Tabelle
+und konnte Bestände anderer Kanzleien in der Anzeige offenlegen. Seitenliste,
+Ressourcenfilter und Count setzen den Tenant zusätzlich zum RLS-Kontext.
+Count und CSV-Auswahl bleiben cursorfrei; Pagination verwendet weiterhin
+50 sichtbare Zeilen plus eine Probezeile. Der vorhandene
+`audit_log_tenant_id_id_idx` unterstützt die Tenantbegrenzung; der Count muss
+trotzdem den sichtbaren Bestand des Tenants zählen und kann bei großen Logs
+aufwendiger werden. Es gibt keine neue Vollkettenprüfung im Renderpfad.
+`page.test.tsx` belegt die Scopekorrektur, Rollenprüfung, Filter-/Cursorverträge
+und gerenderte Statusübergänge mit simulierten DB-Grenzen
+(`AUDIT-HASH-CHAIN-001`, `ACCESS-TENANT-RLS-001`, `AUDIT-VERIFY-ALERT-001`).
+
 Die historische Einordnung der Statuskarte verlangt den persistierten
 `recovered`-Wert; ein Checkpoint allein verdeckt keinen neu gemeldeten Fehler.
 Bei einem historischen Hash-/Link-Bruch verifiziert der Worker die Teilkette

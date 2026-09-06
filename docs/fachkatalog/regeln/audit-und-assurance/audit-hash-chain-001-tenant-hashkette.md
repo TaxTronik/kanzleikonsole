@@ -29,6 +29,10 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/app/staff/(protected)/admin/audit/page.tsx
+  - apps/web/src/app/staff/(protected)/admin/audit/audit-page-data.ts
+  - apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts
+  - apps/web/src/app/staff/(protected)/admin/audit/audit-filters.tsx
+  - apps/web/src/app/staff/(protected)/admin/audit/audit-entries.tsx
   - packages/evidence/src/service.ts
   - packages/evidence/src/chain.ts
   - packages/evidence/src/canonical-json.ts
@@ -44,6 +48,8 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx
+  - apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.tsx
   - packages/evidence/src/__tests__/service-record.test.ts
   - packages/evidence/src/__tests__/hash-chain.test.ts
   - packages/evidence/src/__tests__/canonical-json.property.test.ts
@@ -180,6 +186,19 @@ verwenden denselben Filter und Berliner Tagesgrenzen, mit exklusiver oberer
 Mitternachtsgrenze. Der Prüfstatus betrifft weiterhin die vollständige
 Kanzleikette; ein gefilterter CSV-Auszug ist kein lückenloses Kettenarchiv.
 
+Der Treffer- beziehungsweise Gesamtzähler zählt ausschließlich Ereignisse des
+aktuellen Kanzlei-Tenants, auch ohne aktive Filter. Globale PostgreSQL-
+Tabellenstatistiken sind dafür keine zulässige Schätzung: Sie enthalten den
+Bestand anderer Kanzleien und werden nicht durch den Tenantkontext gefiltert
+(`ACCESS-TENANT-RLS-001`, `ACCESS-SEARCH-SCOPE-001`). Die ADMIN/PARTNER-Prüfung
+läuft vor Datenabfragen und vor Ausgabe eines Prüfer-Links. Listenabfrage,
+Ressourcenfilter und Zähler tragen zusätzlich zum RLS-Kontext eine explizite
+Tenantbedingung. Der Zähler übernimmt die Anzeigefilter, aber keinen
+Seiten-Cursor; die nächste Seite folgt ausschließlich der 51. Probezeile bei
+50 sichtbaren Einträgen. Der bestehende Index auf `(tenant_id, id)` unterstützt
+die Tenantbegrenzung. Ein exakter Count bleibt abhängig von der Größe des
+eigenen Bestands und ist keine konstante Operation.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die Hash-Kette macht nachträgliche Änderungen oder Lücken innerhalb der
@@ -216,3 +235,11 @@ Ausbleiben einer Klartextausgabe, gezielte Teil-Datei-Bereinigung sowie die
 Synchronisierung von Datei und POSIX-Elternverzeichnis. Die Profil- und
 Admin-Action-Tests belegen die Audit-Zähler für Widerrufe bei regulären
 Passwort-/TOTP-Sicherheitsresets.
+
+Die gerenderte Seitenregression stellt zwei eigene Ereignisse einer globalen
+Tabellenschätzung von 1.317 gegenüber und verlangt den eigenen Zähler. Sie
+prüft außerdem Rollenabweisung vor Daten-/Tokenzugriff, ungültige Filter,
+beide Blätterrichtungen mit BigInt-IDs, Berliner Datumsgrenzen und den
+cursorfreien Zähler/Export. Der Hash-Spaltentest rendert die vollständigen
+32 Hashbytes. Diese Tests simulieren die Persistenzgrenze; sie ersetzen keinen
+RLS-Datenbanktest und keine Lastmessung großer produktiver Audit-Bestände.

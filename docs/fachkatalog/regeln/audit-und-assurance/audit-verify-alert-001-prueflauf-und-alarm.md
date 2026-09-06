@@ -30,10 +30,13 @@ sources:
 code_refs:
   - apps/worker/src/jobs/audit-verify-check.ts
   - apps/web/src/app/staff/(protected)/admin/audit/actions.ts
+  - apps/web/src/app/staff/(protected)/admin/audit/audit-chain-status.tsx
+  - apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts
   - apps/web/src/server/audit/status.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/audit-verify-check.test.ts
   - apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts
+  - apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx
   - apps/web/src/server/audit/__tests__/status.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
@@ -152,3 +155,9 @@ Persistenz, die zeitliche Checkpoint-Abgrenzung und den Ausschluss von
 Lauf-Exceptions aus Recovery. Die Statusmatrix prüft die Anzeige neuer Fehler
 trotz altem Checkpoint. Der UI-Test belegt, dass ein angestoßener Prüflauf
 seinen Status ohne vollständigen Chain-Walk im Renderpfad aktualisieren kann.
+Die gerenderte Seitenregression prüft zusätzlich wartende, exakt zugeordnete
+und durch einen neueren parallelen Lauf abgelöste Prüfergebnisse. Sie belegt
+die sichtbare Trennung von gefilterter Liste und vollständigem Kettenstatus,
+die historische Einordnung nur mit persistierter Recovery sowie weiterhin
+sichtbare neue Policy- und Laufzeitfehler trotz altem Checkpoint. Die
+Komponentenaufteilung verändert keine Workerentscheidung oder Audit-Aktion.

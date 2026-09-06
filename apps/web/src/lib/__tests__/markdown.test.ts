@@ -1,5 +1,63 @@
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { renderMarkdown } from '../markdown';
+
+describe('renderMarkdown robuste Textverarbeitung', () => {
+  it('beendet auch unvollständige Tabellen ohne blockierende Endlosschleife', () => {
+    // Der Prozess-Timeout bleibt wirksam, wenn eine Regression den JS-Thread blockiert.
+    const input = ['| Text', 'Vorher\n| a | b |\nkein Trenner', '|', '   | unfertig\n\n# Danach'];
+    const child = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href,
+        '--input-type=module',
+        '-e',
+        `import { readFileSync } from 'node:fs';
+         import { renderMarkdown } from ${JSON.stringify(new URL('../markdown.ts', import.meta.url).href)};
+         process.stdout.write(JSON.stringify(JSON.parse(readFileSync(0, 'utf8')).map(renderMarkdown)));`,
+      ],
+      { input: JSON.stringify(input), encoding: 'utf8', timeout: 5000, windowsHide: true },
+    );
+
+    expect(child.error, child.stderr).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(JSON.parse(child.stdout)).toEqual([
+      '<p>| Text</p>',
+      '<p>Vorher | a | b | kein Trenner</p>',
+      '<p>|</p>',
+      '<p>   | unfertig</p>\n<h1>Danach</h1>',
+    ]);
+  });
+
+  it('zeigt Inline-Code einschließlich Markdown und Editor-HTML wortgetreu an', () => {
+    expect(renderMarkdown('`**fett** [Link](https://example.test) <u>Text</u>`')).toBe(
+      '<p><code>**fett** [Link](https://example.test) &lt;u&gt;Text&lt;/u&gt;</code></p>',
+    );
+    expect(renderMarkdown('**Text `*literal*`** und *kursiv*')).toBe(
+      '<p><strong>Text <code>*literal*</code></strong> und <em>kursiv</em></p>',
+    );
+  });
+
+  it('erhält private Unicode-Zeichen unabhängig von Editor-Textstilen', () => {
+    expect(renderMarkdown('\uE0000\uE001 <u>Text</u> \uE0009\uE001')).toBe(
+      '<p>\uE0000\uE001 <u>Text</u> \uE0009\uE001</p>',
+    );
+  });
+
+  it('behandelt Formatierungszeichen in Linkzielen als URL-Daten', () => {
+    expect(renderMarkdown('[**Link**](https://example.test/**path**?a=1&b=2)')).toBe(
+      '<p><a href="https://example.test/**path**?a=1&amp;b=2"><strong>Link</strong></a></p>',
+    );
+    expect(
+      renderMarkdown('[Link](https://example.test/<span style="color: #abcdef">x</span>)'),
+    ).toBe(
+      '<p><a href="https://example.test/%3Cspan style=%22color: #abcdef%22%3Ex%3C/span%3E">Link</a></p>',
+    );
+  });
+});
 
 describe('renderMarkdown XSS hardening', () => {
   it('escaped Raw-HTML auch in Text- und Code-Bloecken', () => {

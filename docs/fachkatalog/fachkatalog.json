@@ -757,6 +757,10 @@
       ],
       "code_refs": [
         "apps/web/src/app/staff/(protected)/admin/audit/page.tsx",
+        "apps/web/src/app/staff/(protected)/admin/audit/audit-page-data.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/audit-filters.tsx",
+        "apps/web/src/app/staff/(protected)/admin/audit/audit-entries.tsx",
         "packages/evidence/src/service.ts",
         "packages/evidence/src/chain.ts",
         "packages/evidence/src/canonical-json.ts",
@@ -773,6 +777,8 @@
         "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx",
+        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.tsx",
         "packages/evidence/src/__tests__/service-record.test.ts",
         "packages/evidence/src/__tests__/hash-chain.test.ts",
         "packages/evidence/src/__tests__/canonical-json.property.test.ts",
@@ -903,11 +909,14 @@
       "code_refs": [
         "apps/worker/src/jobs/audit-verify-check.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/audit-chain-status.tsx",
+        "apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts",
         "apps/web/src/server/audit/status.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/audit-verify-check.test.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx",
         "apps/web/src/server/audit/__tests__/status.test.ts"
       ],
       "feature_refs": [

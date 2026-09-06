@@ -126,7 +126,9 @@ function GlobalSearchForPath({ navItems }: { navItems: SearchNavItem[] }) {
     setPreviousQuery(query);
     setLoading(query.trim().length >= 2);
     setError(null);
-    if (query.trim().length < 2) setResults([]);
+    // Alte Datensatztreffer dürfen während Debounce/Request nicht auswählbar
+    // bleiben; Nav-Kommandos werden bereits für den neuen Begriff berechnet.
+    setResults([]);
   }
 
   // Debounced search (API erst ab 2 Zeichen)

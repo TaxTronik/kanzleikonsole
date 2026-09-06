@@ -25,7 +25,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { buildClientTimeline, type TimelineEvent } from '@/server/timeline/build';
-import { fmtDateTimeMedium, fmtDateWeekdayLong } from '@/lib/fmt';
+import { berlinYmd, fmtDateTimeMedium, fmtDateWeekdayLong } from '@/lib/fmt';
 
 const ICON_MAP: Record<TimelineEvent['kind'], { icon: typeof FileText; tone: string }> = {
   document_uploaded: { icon: FileText, tone: 'text-blue-600 bg-blue-50' },
@@ -65,7 +65,7 @@ function formatRelative(d: Date, now: Date): string {
 function groupByDay(events: TimelineEvent[]): Map<string, TimelineEvent[]> {
   const groups = new Map<string, TimelineEvent[]>();
   for (const e of events) {
-    const key = e.occurredAt.toISOString().slice(0, 10);
+    const key = berlinYmd(e.occurredAt);
     const list = groups.get(key);
     if (list) list.push(e);
     else groups.set(key, [e]);
@@ -138,7 +138,10 @@ export default async function ClientTimelinePage({
 
   const { id } = await params;
   const sp = await searchParams;
-  const limit = Math.min(Math.max(Number(sp.limit ?? '100'), 20), 500);
+  const requestedLimit = Number(sp.limit ?? '100');
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 20), 500)
+    : 100;
   const { tenantId, staffId } = session.user;
 
   const client = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
@@ -181,7 +184,7 @@ export default async function ClientTimelinePage({
             <TimelineDay key={day} day={day} events={list} now={now} />
           ))}
 
-          {events.length === limit && (
+          {limit < 500 && events.length === limit && (
             <div className="text-center">
               <Link
                 href={`/staff/clients/${id}/timeline?limit=${limit + 100}`}

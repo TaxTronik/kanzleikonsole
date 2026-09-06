@@ -51,175 +51,165 @@ function safeTextStyle(raw: string): string | null {
   return declarations.length > 0 ? [...new Set(declarations)].join('; ') : null;
 }
 
-function inline(s: string): string {
-  const preserved: string[] = [];
-  const preserve = (html: string): string => {
-    const token = `\uE000${preserved.length}\uE001`;
-    preserved.push(html);
-    return token;
-  };
-  let source = s.replace(
-    /<span\s+style=(['"])([^'"]*)\1>(.*?)<\/span>/gi,
-    (_match, _quote: string, style: string, content: string) => {
-      const safeStyle = safeTextStyle(style);
-      return safeStyle ? preserve(`<span style="${safeStyle}">${inline(content)}</span>`) : content;
-    },
-  );
-  source = source.replace(/<u>(.*?)<\/u>/gi, (_match, content: string) => {
-    return preserve(`<u>${inline(content)}</u>`);
-  });
+// Tokens werden aus dem Quelltext gelesen. Erzeugtes HTML wird nie erneut
+// geparst; Code, Linkziele und Alt-Texte behalten dadurch ihren eigenen Kontext.
+// Ein neuer Link-/Stilanfang beendet einen unvollständigen Vorgänger. Dadurch
+// durchsuchen wiederholte Öffner nicht jeweils den gesamten restlichen Text.
+const INLINE_LINK_TARGET = /(?:(?!!?\[[^[\]]*\]\()[^)])+/.source;
+const INLINE_TOKEN = new RegExp(
+  [
+    /`(?<code>[^`]+)`/.source,
+    /<span\s+style=(?<quote>['"])(?<style>[^'"]*)\k<quote>>(?<span>(?:(?!<span\b).)*?)<\/span>/
+      .source,
+    /<u>(?<underline>(?:(?!<u>).)*?)<\/u>/.source,
+    String.raw`!\[(?<alt>[^\[\]]*)\]\((?<imageUrl>${INLINE_LINK_TARGET})\)`,
+    String.raw`\[(?<label>[^\[\]]+)\]\((?<linkUrl>${INLINE_LINK_TARGET})\)`,
+    /~~(?<strike>(?:`[^`]+`|[^~`])+)~~/.source,
+    /\*\*(?<bold>(?:`[^`]+`|[^*`])+)\*\*/.source,
+    /\*(?<italic>(?:`[^`]+`|[^*`])+)\*/.source,
+  ].join('|'),
+  'gi',
+);
 
-  let out = escapeHtml(source);
-  // Code first (so its contents don't get further processed)
-  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Durchgestrichen
-  out = out.replace(/~~([^~]+)~~/g, '<s>$1</s>');
-  // Bold
-  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  // Italic
-  out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  // Bilder ausschließlich aus dem authentifizierten Wissens-Anhangspfad.
-  out = out.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt: string, url: string) => {
-    return `<img src="${safeImageSrc(url)}" alt="${alt}" loading="lazy">`;
-  });
-  // Links
-  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text: string, url: string) => {
-    return `<a href="${safeHref(url)}">${text}</a>`;
-  });
-  out = out.replace(
-    /\uE000(\d+)\uE001/g,
-    (_match, index: string) => preserved[Number(index)] ?? '',
-  );
-  return out;
+function renderInlineToken(token: Record<string, string | undefined>): string {
+  if (token.code !== undefined) return `<code>${escapeHtml(token.code)}</code>`;
+  if (token.span !== undefined) {
+    const style = safeTextStyle(token.style!);
+    const content = inline(token.span);
+    return style ? `<span style="${style}">${content}</span>` : content;
+  }
+  if (token.underline !== undefined) return `<u>${inline(token.underline)}</u>`;
+  if (token.alt !== undefined) {
+    return `<img src="${safeImageSrc(token.imageUrl!)}" alt="${escapeHtml(token.alt)}" loading="lazy">`;
+  }
+  if (token.label !== undefined) {
+    return `<a href="${escapeHtml(safeHref(token.linkUrl!))}">${inline(token.label)}</a>`;
+  }
+  if (token.strike !== undefined) return `<s>${inline(token.strike)}</s>`;
+  if (token.bold !== undefined) return `<strong>${inline(token.bold)}</strong>`;
+  return `<em>${inline(token.italic!)}</em>`;
+}
+
+function inline(source: string): string {
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const match of source.matchAll(INLINE_TOKEN)) {
+    parts.push(escapeHtml(source.slice(cursor, match.index)), renderInlineToken(match.groups!));
+    cursor = match.index + match[0].length;
+  }
+  parts.push(escapeHtml(source.slice(cursor)));
+  return parts.join('');
+}
+
+const HEADING = /^(#{1,6})\s+(.*)$/;
+const UNORDERED_LIST = /^[-*]\s+/;
+const ORDERED_LIST = /^\d+\.\s+/;
+
+type BlockKind =
+  | 'code'
+  | 'heading'
+  | 'hr'
+  | 'table'
+  | 'quote'
+  | 'ul'
+  | 'ol'
+  | 'blank'
+  | 'paragraph';
+type RenderedBlock = { html: string; next: number };
+
+// Dieselbe Erkennung steuert Blockauswahl und Absatzende. Ein einzelnes "|"
+// ohne Tabellentrenner bleibt normaler Text und kann den Cursor nicht festhalten.
+function blockKind(lines: string[], index: number): BlockKind {
+  const line = lines[index] ?? '';
+  if (line.startsWith('```')) return 'code';
+  if (HEADING.test(line)) return 'heading';
+  if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) return 'hr';
+  const separator = (lines[index + 1] ?? '').trim();
+  if (line.trimStart().startsWith('|') && /^[\s:|-]+$/.test(separator) && separator.includes('-'))
+    return 'table';
+  if (line.startsWith('> ')) return 'quote';
+  if (UNORDERED_LIST.test(line)) return 'ul';
+  if (ORDERED_LIST.test(line)) return 'ol';
+  return line.trim() === '' ? 'blank' : 'paragraph';
+}
+
+function collectLines(
+  lines: string[],
+  start: number,
+  accepts: (line: string, index: number) => boolean,
+) {
+  let next = start;
+  while (next < lines.length && accepts(lines[next]!, next)) next++;
+  return { content: lines.slice(start, next), next };
+}
+
+function tableRow(row: string, tag: 'th' | 'td'): string {
+  const cells = row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+  return `<tr>${cells.map((cell) => `<${tag}>${inline(cell.trim())}</${tag}>`).join('')}</tr>`;
+}
+
+function renderTable(lines: string[], start: number): RenderedBlock {
+  const rows = collectLines(lines, start + 2, (line) => line.trimStart().startsWith('|'));
+  const head = `<thead>${tableRow(lines[start]!, 'th')}</thead>`;
+  const body = `<tbody>${rows.content.map((row) => tableRow(row, 'td')).join('')}</tbody>`;
+  return { html: `<table>${head}${body}</table>`, next: rows.next };
+}
+
+function renderList(lines: string[], start: number, tag: 'ul' | 'ol'): RenderedBlock {
+  const marker = tag === 'ul' ? UNORDERED_LIST : ORDERED_LIST;
+  const items = collectLines(lines, start, (line) => marker.test(line));
+  const html = items.content.map((line) => `<li>${inline(line.replace(marker, ''))}</li>`).join('');
+  return { html: `<${tag}>${html}</${tag}>`, next: items.next };
+}
+
+function renderBlock(lines: string[], start: number): RenderedBlock {
+  const kind = blockKind(lines, start);
+  switch (kind) {
+    case 'blank':
+      return { html: '', next: start + 1 };
+    case 'hr':
+      return { html: '<hr>', next: start + 1 };
+    case 'heading': {
+      const heading = HEADING.exec(lines[start]!)!;
+      const level = heading[1]!.length;
+      return { html: `<h${level}>${inline(heading[2]!)}</h${level}>`, next: start + 1 };
+    }
+    case 'code': {
+      const code = collectLines(lines, start + 1, (line) => !line.startsWith('```'));
+      return {
+        html: `<pre><code>${escapeHtml(code.content.join('\n'))}</code></pre>`,
+        next: code.next + 1,
+      };
+    }
+    case 'table':
+      return renderTable(lines, start);
+    case 'ul':
+    case 'ol':
+      return renderList(lines, start, kind);
+    case 'quote': {
+      const quote = collectLines(lines, start, (line) => line.startsWith('> '));
+      const text = quote.content.map((line) => line.slice(2)).join(' ');
+      return { html: `<blockquote>${inline(text)}</blockquote>`, next: quote.next };
+    }
+    case 'paragraph': {
+      const paragraph = collectLines(
+        lines,
+        start,
+        (_line, index) => blockKind(lines, index) === 'paragraph',
+      );
+      return { html: `<p>${inline(paragraph.content.join(' '))}</p>`, next: paragraph.next };
+    }
+  }
 }
 
 export function renderMarkdown(md: string): string {
   const lines = md.split(/\r?\n/);
   const blocks: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i] ?? '';
-
-    // Code block
-    if (line.startsWith('```')) {
-      const code: string[] = [];
-      i++;
-      while (i < lines.length && !(lines[i] ?? '').startsWith('```')) {
-        code.push(lines[i] ?? '');
-        i++;
-      }
-      i++; // closing ```
-      blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
-      continue;
-    }
-
-    // Heading
-    const h = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (h) {
-      const lvl = h[1]!.length;
-      blocks.push(`<h${lvl}>${inline(h[2]!)}</h${lvl}>`);
-      i++;
-      continue;
-    }
-
-    // Horizontale Trennlinie
-    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-      blocks.push('<hr>');
-      i++;
-      continue;
-    }
-
-    // Tabelle (GitHub-Stil): Kopfzeile + Separator-Zeile aus |---|---|
-    if (
-      line.trimStart().startsWith('|') &&
-      /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1] ?? '') &&
-      (lines[i + 1] ?? '').includes('-')
-    ) {
-      const splitRow = (row: string): string[] =>
-        row
-          .trim()
-          .replace(/^\|/, '')
-          .replace(/\|$/, '')
-          .split('|')
-          .map((cell) => cell.trim());
-      const header = splitRow(line);
-      i += 2; // Kopf + Separator
-      const rows: string[][] = [];
-      while (i < lines.length && (lines[i] ?? '').trimStart().startsWith('|')) {
-        rows.push(splitRow(lines[i] ?? ''));
-        i++;
-      }
-      const thead = `<thead><tr>${header.map((cell) => `<th>${inline(cell)}</th>`).join('')}</tr></thead>`;
-      const tbody = `<tbody>${rows
-        .map((row) => `<tr>${row.map((cell) => `<td>${inline(cell)}</td>`).join('')}</tr>`)
-        .join('')}</tbody>`;
-      blocks.push(`<table>${thead}${tbody}</table>`);
-      continue;
-    }
-
-    // Blockquote
-    if (line.startsWith('> ')) {
-      const quote: string[] = [];
-      while (i < lines.length && (lines[i] ?? '').startsWith('> ')) {
-        quote.push((lines[i] ?? '').slice(2));
-        i++;
-      }
-      blocks.push(`<blockquote>${inline(quote.join(' '))}</blockquote>`);
-      continue;
-    }
-
-    // Unordered list
-    if (/^[-*]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i] ?? '')) {
-        items.push(`<li>${inline((lines[i] ?? '').replace(/^[-*]\s+/, ''))}</li>`);
-        i++;
-      }
-      blocks.push(`<ul>${items.join('')}</ul>`);
-      continue;
-    }
-
-    // Ordered list
-    if (/^\d+\.\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i] ?? '')) {
-        items.push(`<li>${inline((lines[i] ?? '').replace(/^\d+\.\s+/, ''))}</li>`);
-        i++;
-      }
-      blocks.push(`<ol>${items.join('')}</ol>`);
-      continue;
-    }
-
-    // Empty line — paragraph break
-    if (line.trim() === '') {
-      i++;
-      continue;
-    }
-
-    // Paragraph (collect contiguous non-empty lines)
-    const para: string[] = [];
-    while (i < lines.length && (lines[i] ?? '').trim() !== '') {
-      const cur = lines[i] ?? '';
-      // Stop if we hit another block element
-      if (
-        cur.startsWith('```') ||
-        /^#{1,6}\s/.test(cur) ||
-        cur.startsWith('> ') ||
-        /^[-*]\s/.test(cur) ||
-        /^\d+\.\s/.test(cur) ||
-        /^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(cur) ||
-        cur.trimStart().startsWith('|')
-      ) {
-        break;
-      }
-      para.push(cur);
-      i++;
-    }
-    if (para.length > 0) {
-      blocks.push(`<p>${inline(para.join(' '))}</p>`);
-    }
+  let cursor = 0;
+  while (cursor < lines.length) {
+    const block = renderBlock(lines, cursor);
+    if (block.html) blocks.push(block.html);
+    cursor = block.next;
   }
-
   return blocks.join('\n');
 }

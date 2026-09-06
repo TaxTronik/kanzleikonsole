@@ -106,7 +106,7 @@ export function DateTimePicker({
         showPopperArrow={false}
         wrapperClassName="w-full"
       />
-      <input type="hidden" name={name} value={serialized} />
+      <input type="hidden" name={name} value={serialized} disabled={disabled} />
     </div>
   );
 }

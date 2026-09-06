@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20260907-002
+    date: '2026-09-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/audit-access-card.tsx
+      - apps/web/src/app/staff/(protected)/admin/audit/rolling-anchor-card.tsx
+    rule_ids:
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Der Hash-Spaltentest wird als TSX-Test an der tatsächlich gerenderten
+      Tabelle fortgeführt. Prüfer-Link und Rolling-Ankerkarte werden mit
+      unveränderter Tokenbindung, Laufzeit und Statusdarstellung aus der
+      bereits geschützten Audit-Seite extrahiert. Diese Verschiebungen
+      ändern keine Zugriffsentscheidung, Audit-Aktion oder fachliche
+      Bewertung. Die getrennte Korrektur des Kanzlei-Zählers ist direkt
+      in AUDIT-HASH-CHAIN-001 dokumentiert.
+    tests:
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.tsx
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts
+    reviewer: Codex (technischer Refactoring-Abgleich, keine fachliche Freigabe)
   - id: FK-EXC-20260907-001
     date: '2026-09-07'
     paths:
