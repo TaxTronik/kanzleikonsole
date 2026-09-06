@@ -30,6 +30,10 @@ Jahresfrist bei Anlage fixiert, 7 Kern-Typen read-only).
 Der Sammeldownload vergibt nach Bereinigung eindeutige ZIP-Namen. Auch bereits
 vergebene Suffixnamen wie `beleg_1.pdf`, Groß-/Kleinschreibung und
 Unicode-Normalisierung werden bei der Kollisionsprüfung berücksichtigt.
+Benötigte Verzeichnisse und ihre Elternpfade werden vorab reserviert: Eine
+Datei `Belege` erhält einen anderen Transportnamen, wenn zugleich
+`Belege/2026/Original.pdf` enthalten ist. Regressionen prüfen diesen Fall
+einschließlich tatsächlicher Dateisystemextraktion.
 Dadurch bleiben sämtliche ausgewählten Inhalte beim üblichen Entpacken
 erhalten. Archivierte Dokumentnamen, Originalbytes, Auswahl und Zugriffsprüfung
 werden nicht verändert. Der Routentest `bulk-download-filenames.test.ts`

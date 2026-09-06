@@ -30,6 +30,28 @@ bereit, stuft ihn aber **nicht als AES oder QES** ein:
 Magic-Link und Code gehen an dasselbe Postfach. Sie sind daher keine
 unabhängigen Faktoren und ersetzen keine belastbare Identitätsfeststellung.
 
+## Gleichzeitige Code- und Linkwechsel
+
+`POA-SIGNING-CONFIRMATION-001` bindet jeden schreibenden Schritt an den weiterhin
+aktuellen Link- und Codezustand. Die vorgelagerte Anzeige oder Prüfung reserviert
+keinen Code. Wird zwischen Lesen und Schreiben ein neuer Code ausgegeben, darf
+ein bereits laufender Signaturversuch mit dem alten Code nicht abschließen.
+
+Eine erneute Linkausgabe beendet auch noch laufende Codeanforderungen und
+Fehlversuche des alten Links: Sie dürfen weder einen Code überschreiben noch
+die Zähler des neuen Links verändern. Erst nach erfolgreichem Codeclaim wird
+eine Code-Mail versandt. Der finale Signaturclaim prüft Link, Code, Ablauf und
+Fehlversuchsgrenzen; Statuswechsel und Evidence bleiben in derselben
+Transaktion. Der Fehlerpfad einer Codesperre hält die Zeilensperre vom
+Fehlversuchsinkrement bis zur Entwertung.
+
+Die Regressionen in `apps/web/src/app/staff/(protected)/poa/__tests__/otp-concurrency.test.ts`
+prüfen diese Überschneidungen mit den echten öffentlichen Actions und einem
+kontrollierten Persistenzmodell. Sie belegen zusätzlich die erneute
+Ablaufprüfung nach der Dokumentvalidierung sowie den einmaligen erfolgreichen
+Abschluss mit einem aktuellen Code. Die bestehenden Snapshot- und
+Datenbanktests bleiben die Nachweise für Inhaltsbindung und Statusintegrität.
+
 ## Konsequenzen
 
 **Vorteile**

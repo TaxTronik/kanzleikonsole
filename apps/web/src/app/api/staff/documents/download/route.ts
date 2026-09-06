@@ -15,6 +15,7 @@ import { filenameWithExtension } from '@/server/storage/preview-mime';
 import {
   acquireZipBuildSlot,
   buildZip,
+  createZipEntryPathAllocator,
   sanitizeZipFileName,
   ZipBusyError,
   ZipTooLargeError,
@@ -209,10 +210,7 @@ export async function GET(req: NextRequest) {
   }
   let zip: Buffer;
   try {
-    // Alle tatsächlich vergebenen Pfade reservieren, einschließlich erzeugter
-    // Suffixe. Sonst überschreibt z. B. beleg_1.pdf die zweite beleg.pdf beim
-    // Entpacken. NFC + Kleinschreibung schützt auch übliche Windows-/macOS-Ziele.
-    const seen = new Set<string>();
+    const allocatePath = createZipEntryPathAllocator(usableFolder.map((x) => x.path));
     const entries: ZipEntry[] = [];
     const addEntry = async (
       prefix: string,
@@ -224,17 +222,10 @@ export async function GET(req: NextRequest) {
     ) => {
       const v = d.versions[0]!;
       const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);
-      const base = sanitizeZipFileName(filenameWithExtension(d.title, d.mimeType));
-      const dot = base.lastIndexOf('.');
-      let leaf = base;
-      let suffix = 1;
-      const pathKey = () => `${prefix}/${leaf}`.normalize('NFC').toLowerCase();
-      while (seen.has(pathKey())) {
-        leaf = dot > 0 ? `${base.slice(0, dot)}_${suffix}${base.slice(dot)}` : `${base}_${suffix}`;
-        suffix += 1;
-      }
-      seen.add(pathKey());
-      entries.push({ name: prefix ? `${prefix}/${leaf}` : leaf, data: bytes });
+      entries.push({
+        name: allocatePath(prefix, filenameWithExtension(d.title, d.mimeType)),
+        data: bytes,
+      });
     };
     for (const d of usableLoose) await addEntry('', d);
     for (const x of usableFolder) await addEntry(x.path, x.doc);

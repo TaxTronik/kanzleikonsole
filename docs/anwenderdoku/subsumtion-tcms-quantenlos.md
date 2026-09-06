@@ -33,10 +33,11 @@ Platzhaltern zu Originalwerten bleibt in der Kanzlei. Ergebnisse werden über
 gescopte, tenantgebundene Callback-Zugänge zurückgeführt.
 
 Die Vorschau ist derzeit nicht serverseitig durch Token oder Hash an den
-Versand gebunden. Frei befüllbare Normanker werden unverändert an n8n
-übergeben, und getrennt erzeugte Platzhaltermappings für Text, Rechtsfrage und
-Auftrag können denselben Platzhalternamen verwenden. Deshalb müssen auch
-Normanker und die spätere Rückzuordnung manuell geprüft werden; die Funktion
+Versand gebunden. Text, Rechtsfrage, Auftrag, Normanker und Governance-Typ
+werden mit einem gemeinsamen Platzhalternamensraum reduziert; verschiedene
+Originalwerte überschreiben dabei keine bereits vergebenen Platzhalter.
+Nach Änderungen an Quelle oder Stammdaten muss die Vorschau erneut erstellt
+werden. Sämtliche Felder und die spätere Rückzuordnung sind manuell zu prüfen; die Funktion
 gewährleistet keine vollständige Anonymisierung oder zulässige Offenbarung.
 
 ## 3. Export und Archivierung

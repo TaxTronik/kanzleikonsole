@@ -17,8 +17,9 @@ implementation:
   status: implemented
   summary: >-
     TaxTronik verlangt einen gehashten 32-Byte-Linktoken, eine ausdrückliche
-    Inhaltsbestätigung und einen kurzlebigen sechsstelligen E-Mail-Code. Der
-    Abschluss schreibt Status und Evidence atomar, ist aber weder eine
+    Inhaltsbestätigung und einen kurzlebigen sechsstelligen E-Mail-Code.
+    Schreibende Claims binden sich an den weiterhin aktuellen Link- und
+    Codezustand; der Abschluss schreibt Status und Evidence atomar, ist aber weder eine
     belastbare Identitätsfeststellung noch eine zugesagte AES oder QES.
 sources:
   - kind: product_documentation
@@ -54,6 +55,7 @@ code_refs:
   - packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql
 test_refs:
   - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
+  - apps/web/src/app/staff/(protected)/poa/__tests__/otp-concurrency.test.ts
   - apps/web/src/server/poa/__tests__/signing-snapshot.test.ts
   - packages/db/src/__tests__/poa-signing-integrity.test.ts
 feature_refs:
@@ -103,21 +105,22 @@ rechtliche Prüfung von Identität, Vollmachtstyp und Form.
 
 ## Entscheidungslogik
 
-| Wenn                                                             | Dann                                                                                              | Begründung                                            |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Vollmacht wird versandt                                          | 32 Byte Zufall erzeugen, nur Hash speichern und Link auf 72 Stunden begrenzen                     | Roh-Token nicht in der Datenbank ablegen              |
-| Link ist ungültig, abgelaufen oder Vorgang nicht mehr signierbar | Inhalt und Codeanforderung verweigern                                                             | keine Wiederverwendung außerhalb des Zustandsfensters |
-| ausdrückliche Zustimmung fehlt                                   | keinen E-Mail-Code erzeugen                                                                       | bewusste Erklärung vor Codeversand verlangen          |
-| Zustimmung liegt vor und Limits sind frei                        | sechsstelligen Code gehasht speichern, zehn Minuten gültig machen und an dasselbe Postfach senden | kurzlebige zweite Bestätigungsstufe                   |
-| Code ist falsch                                                  | Fehlversuch atomar erhöhen und nach den Grenzen sperren                                           | Online-Ratenbegrenzung und Race-Schutz                |
-| Code, Link, Snapshot und Zustand sind gültig                     | Signaturclaim atomar setzen, Status auf SIGNED wechseln und Evidence schreiben                    | kein Status ohne zugehörigen Nachweis                 |
-| Vorgang wurde bereits abgeschlossen                              | erneuten Abschluss verweigern                                                                     | Einmaligkeit                                          |
+| Wenn                                                             | Dann                                                                                                      | Begründung                                            |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Vollmacht wird versandt                                          | 32 Byte Zufall erzeugen, nur Hash speichern und Link auf 72 Stunden begrenzen                             | Roh-Token nicht in der Datenbank ablegen              |
+| Link ist ungültig, abgelaufen oder Vorgang nicht mehr signierbar | Inhalt und Codeanforderung verweigern                                                                     | keine Wiederverwendung außerhalb des Zustandsfensters |
+| ausdrückliche Zustimmung fehlt                                   | keinen E-Mail-Code erzeugen                                                                               | bewusste Erklärung vor Codeversand verlangen          |
+| Zustimmung liegt vor und Limits sind frei                        | sechsstelligen Code gehasht speichern, zehn Minuten gültig machen und an dasselbe Postfach senden         | kurzlebige zweite Bestätigungsstufe                   |
+| Code ist falsch                                                  | Fehlversuch atomar erhöhen und nach den Grenzen sperren                                                   | Online-Ratenbegrenzung und Race-Schutz                |
+| Link oder Code wurde während einer laufenden Anfrage ersetzt     | alten Schreibversuch verweigern; keinen Ersatzcode und keine Fehlversuche in den neuen Zustand übernehmen | wirksame Ablösung auch bei überlappenden Anfragen     |
+| Code, Link, Snapshot und Zustand sind gültig                     | Signaturclaim atomar setzen, Status auf SIGNED wechseln und Evidence schreiben                            | kein Status ohne zugehörigen Nachweis                 |
+| Vorgang wurde bereits abgeschlossen                              | erneuten Abschluss verweigern                                                                             | Einmaligkeit                                          |
 
 ## Ausnahmen und Grenzfälle
 
 Für einen Code sind höchstens fünf Fehlversuche vorgesehen; über den
-gesamten Vorgang sind höchstens 15 OTP-Fehlversuche und höchstens zehn
-Tokenausgaben innerhalb von 72 Stunden zugelassen. Allgemeine Rate-Limits
+gesamten Link-Lebenszyklus sind höchstens 15 OTP-Fehlversuche und höchstens zehn
+Codeausgaben innerhalb von 72 Stunden zugelassen. Allgemeine Rate-Limits
 ergänzen diese Zustandsgrenzen. Ein kompromittiertes E-Mail-Postfach kann
 jedoch sowohl Link als auch Code offenlegen. IP und User-Agent sind
 Protokolldaten, keine sichere Personenidentifizierung.
@@ -142,9 +145,18 @@ beurteilen.
 
 Die Staff-Actions erzeugen den gehashten Linktoken und versenden den Link. Die
 öffentlichen Sign-Actions prüfen Zustand, Ablauf, Zustimmung, Rate-Limits und
-den gehashten OTP. Der finale Datenbankclaim sperrt die Vollmacht, prüft den
-Snapshot-Hash erneut und schreibt Signaturdaten sowie Evidence gemeinsam. Die
-Oberfläche stellt die Zustimmung als zwingende Eingabe dar.
+den gehashten OTP. Die Codeausgabe prüft im schreibenden Claim nochmals den
+aktuellen SENT-Zustand, Linktoken und Ablauf sowie den zuvor gelesenen
+Codezustand. Hat eine andere Anfrage den Link oder Code ersetzt oder den Vorgang
+abgeschlossen, wird kein Code gespeichert oder versandt.
+
+Auch ein Fehlversuch wird nur dem noch aktuellen Link und Code belastet. Die
+dadurch erworbene Zeilensperre bleibt bis zum Transaktionsende einschließlich
+einer gegebenenfalls notwendigen Tokensperre bestehen. Der finale Signaturclaim
+prüft Link und Code erneut einschließlich Ablauf und Fehlversuchsgrenzen;
+Status und Evidence werden gemeinsam geschrieben. Die Prüfung des
+Snapshot-Hashes bleibt zwingend. Die Oberfläche stellt die Zustimmung als
+zwingende Eingabe dar.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -165,6 +177,12 @@ werden nicht festgestellt.
 ## Technische Nachweise
 
 Action-Tests belegen Zustimmungspflicht, Token-/OTP-Abläufe, Ablaufzeiten,
-Fehlversuche, Limits und atomare Claims. Snapshot- und Datenbanktests belegen
+Fehlversuche, Limits und atomare Claims. Die Interleaving-Regressionen in
+`otp-concurrency.test.ts` führen die echten öffentlichen Actions gegen einen
+kontrolliert veränderten Persistenzstand aus: Ein neu ausgegebener Code sperrt
+den alten Signaturversuch, eine Linkrotation verhindert alte Codeausgaben und
+Fehlversuchsbelastungen, und der Abschluss prüft Ablauf auch nach einer
+zwischenzeitlichen Dokumentvalidierung. Ein aktueller Code bleibt genau einmal
+nutzbar. Snapshot- und Datenbanktests belegen
 die Inhaltsbindung und unveränderliche Evidence. Diese Tests können weder eine
 Person identifizieren noch eine rechtliche Signaturklasse bestätigen.

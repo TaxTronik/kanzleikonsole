@@ -22,6 +22,21 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- **[Scope]** Öffentliche TOTP-Einrichtung und Bestätigung binden ihren
+  Schreibzugriff an den geprüften Passwort-, Konto- und Faktorstand.
+  Verspätete Anfragen öffnen keine bereits abgeschlossene Einrichtung erneut
+  und übernehmen keinen inzwischen geänderten Zugang (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Vollmacht-Signaturcodes werden beim Schreiben erneut an den
+  aktuellen Link und die aktuelle Challenge gebunden. Ersetzte Codes und
+  verzögerte Fehlversuche wirken nicht auf einen neuen Signaturvorgang
+  (`POA-SIGNING-CONFIRMATION-001`).
+- **[Scope]** Rechercheversand maskiert auch Normanker und Governance-Typ.
+  Alle Freitextfelder teilen einen Platzhalternamensraum; nachträglich
+  ergänzte Angaben überschreiben keine Zuordnungen aus der Vorschau.
+  Rückzuordnung ersetzt Originalwerte genau einmal
+  (`RISK-EXTERNAL-ANONYMIZATION-001`).
+- **[Scope]** Dokument-ZIPs vermeiden auch Datei-/Verzeichnis-Kollisionen
+  einschließlich benötigter Elternpfade (`FK-EXC-20260907-001`).
 - **[Scope]** Portal-Profilwechsel bewahren die ursprüngliche Kontaktidentität
   und den Anmeldezeitpunkt. Widerruf, Abmeldung, geänderte Mailboxidentität und
   gesperrte Ursprungskontakte werden auch nach einem Wechsel geprüft.

@@ -17,9 +17,9 @@ implementation:
   status: partial
   summary: >-
     Bekannte Mandanten- und Kontaktdaten werden vor n8n-Aufträgen
-    deterministisch ersetzt, weitere Muster nur heuristisch. Normanker werden
-    jedoch unverändert versendet, die Vorschau ist serverseitig nicht gebunden
-    und getrennte Platzhaltermappings können kollidieren. Vollständige
+    deterministisch ersetzt, weitere Muster nur heuristisch. Text, Auftrag,
+    Rechtsfrage, Normanker und Governance-Typ teilen einen Platzhalternamensraum.
+    Die Vorschau ist weiterhin serverseitig nicht gebunden. Vollständige
     Anonymität und zulässige Verarbeitung sind nicht gewährleistet.
 sources:
   - kind: official_law
@@ -70,8 +70,8 @@ tags:
 TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und
 Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer.
 Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird
-nicht in den Outbound-Payload aufgenommen. Unverändert mitgesendete Normanker
-können allerdings Freitext enthalten. Die Heuristik ist unvollständig;
+nicht in den Outbound-Payload aufgenommen. Auch frei befüllte Normanker und
+Governance-Typen durchlaufen dieselbe Ersetzung. Die Heuristik ist unvollständig;
 deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche
 beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server
 erzwingt oder bindet diese Vorschauprüfung aktuell nicht.
@@ -100,16 +100,16 @@ auswählen.
 
 ## Entscheidungslogik
 
-| Wenn                                                                               | Dann                                                             | Begründung                                                       |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
-| bekannte Stammdaten im Text vorkommen                                              | durch stabile Platzhalter ersetzen und Mapping lokal speichern   | deterministische Datenminimierung und spätere Rückzuordnung      |
-| E-Mail, Firma, IBAN, Steuernummer, Betrag oder Datum auf ein Heuristikmuster passt | heuristischen Platzhalter setzen und in der Vorschau hervorheben | unsichere Treffer benötigen menschliche Kontrolle                |
-| Vorschau erzeugt wird                                                              | noch nichts persistieren oder senden                             | Berater soll den tatsächlichen Outbound-Text prüfen können       |
-| finaler Text, Rechtsfrage oder Auftrag versendet wird                              | diese drei Freitextfelder erneut anonymisieren                   | Sicherheitsnetz gegen wieder eingefügten bekannten Klartext      |
-| Normanker mitgesendet werden                                                       | Werte derzeit unverändert in den Payload übernehmen              | aktuelle Implementierung; Freitext darin ist ein offenes Leck    |
-| Analyse vertraulich und Nutzer nur einer Markierung zugewiesen ist                 | Auszug ohne Kontextpolster bilden und `full` verbieten           | fremder Falltext darf nicht über den Rechercheweg hinausgelangen |
-| n8n-Antwort korreliert zurückkommt                                                 | lokales Mapping zur De-Anonymisierung verwenden                  | Originalwerte müssen den Outbound-Kanal nicht verlassen          |
-| Heuristik keine Treffer zeigt                                                      | nicht als vollständige Anonymität werten                         | Kontext und unbekannte Entitäten können weiterhin identifizieren |
+| Wenn                                                                               | Dann                                                                        | Begründung                                                       |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| bekannte Stammdaten im Text vorkommen                                              | durch stabile Platzhalter ersetzen und Mapping lokal speichern              | deterministische Datenminimierung und spätere Rückzuordnung      |
+| E-Mail, Firma, IBAN, Steuernummer, Betrag oder Datum auf ein Heuristikmuster passt | heuristischen Platzhalter setzen und in der Vorschau hervorheben            | unsichere Treffer benötigen menschliche Kontrolle                |
+| Vorschau erzeugt wird                                                              | noch nichts persistieren oder senden                                        | Berater soll den tatsächlichen Outbound-Text prüfen können       |
+| finaler Text, Rechtsfrage, Auftrag, Normanker oder Governance-Typ versendet wird   | alle Freitextfelder im gemeinsamen Kontext anonymisieren                    | bekannte Klartextwerte auch in Zusatzfeldern reduzieren          |
+| verschiedene Felder verschiedene Originalwerte enthalten                           | unterschiedliche Platzhalter reservieren und Wiederholungen wiederverwenden | Rückzuordnung darf keinen anderen Feldwert übernehmen            |
+| Analyse vertraulich und Nutzer nur einer Markierung zugewiesen ist                 | Auszug ohne Kontextpolster bilden und `full` verbieten                      | fremder Falltext darf nicht über den Rechercheweg hinausgelangen |
+| n8n-Antwort korreliert zurückkommt                                                 | lokales Mapping zur De-Anonymisierung verwenden                             | Originalwerte müssen den Outbound-Kanal nicht verlassen          |
+| Heuristik keine Treffer zeigt                                                      | nicht als vollständige Anonymität werten                                    | Kontext und unbekannte Entitäten können weiterhin identifizieren |
 
 ## Ausnahmen und Grenzfälle
 
@@ -127,17 +127,20 @@ Vertraulichkeitsverpflichtungen, Rechtsgrundlage, Zweckbindung,
 Speicherfristen, Empfängerland oder Löschkonzept.
 
 Normanker sind nicht auf ein geprüftes Normformat begrenzt. Manuell ergänzte
-Werte können Namen oder andere Geheimnisse enthalten und werden derzeit ohne
-Anonymisierung an n8n übergeben. Außerdem akzeptiert die Server-Action den
+Werte können Namen oder andere Geheimnisse enthalten; die technische Ersetzung
+greift dort ebenso wie im Governance-Typ, erfasst aber keine unbekannten oder
+nur kontextuell erkennbaren Geheimnisse. Außerdem akzeptiert die Server-Action den
 finalen Text und Auftrag ohne Vorschau-Token, Hashbindung oder persistierten
 Bestätigungsnachweis. Der normale UI-Ablauf beweist daher keine technisch
 erzwungene manuelle Vorschau.
 
-Text, Rechtsfrage und Auftrag werden getrennt anonymisiert. Heuristische
-Platzhalter beginnen dabei je Durchlauf erneut bei Bezeichnern wie
-`[EMAIL_1]`; beim Zusammenführen kann ein späteres Mapping einen früheren Wert
-mit demselben Platzhalter überschreiben. Eine Antwort kann dadurch einen
-zitierten Platzhalter zum falschen Original zurückführen.
+Alle Felder eines Auftrags teilen denselben Platzhalternamensraum. Der Versand
+baut zunächst den Vorschaukontext in gleicher Reihenfolge auf; erst danach
+ergänzen bearbeiteter Text und Auftrag neue Werte. Bestehende Platzhalter
+werden dabei nicht mit anderen Originalen überschrieben. Kontakte werden
+stabil nach ID gelesen. Ändern sich Stammdaten, Quelltext oder Eingaben zwischen
+Vorschau und Versand, fehlt weiterhin eine technische Bindung an den zuvor
+gesehenen Stand. Eine neue Vorschau bleibt dann erforderlich.
 
 ## Beispiele
 
@@ -160,10 +163,13 @@ Text muss manuell gekürzt oder geschwärzt werden.
 `anonymize.ts` ersetzt bekannte Entitäten tokenbegrenzt und führt danach eine
 Liste heuristischer Regex-Muster aus. `research.ts` baut je Auswahl den
 Auftrag, begrenzt vertrauliche Auszüge anhand serverseitig geladener Rechte,
-liefert eine Vorschau und re-anonymisiert Text, Rechtsfrage und Auftrag vor
-dem Outbox-Event. Normanker werden unverändert übernommen. Die getrennten
-Mappings werden anschließend per Objekt-Zusammenführung kombiniert. Das
-Ergebnis wird am tenantgebundenen Request gespeichert, nicht in den
+liefert eine Vorschau und re-anonymisiert alle ausgehenden Freitextfelder vor
+dem Outbox-Event. Ein gemeinsamer Kontext vergibt kollisionsfreie Platzhalter
+für Text, Rechtsfrage, Auftrag, Normanker und Governance-Typ. Neue Originale
+im bearbeiteten Text erweitern den Kontext; vorhandene Vorschau-Platzhalter
+bleiben erhalten. Die Rückzuordnung ersetzt nur Platzhalter im Antworttext,
+nicht erneut Platzhalterzeichen innerhalb eines eingesetzten Originals. Das
+Mapping wird am tenantgebundenen Request gespeichert, nicht in den
 n8n-Payload geschrieben; eine vorherige Vorschau ist serverseitig nicht an den
 Versand gebunden.
 
@@ -173,9 +179,8 @@ Die Umsetzung ist teilweise. Deterministische Stammdatenersetzung,
 Heuristikhinweise, erneuter Versandlauf und enger Vertraulichkeitsausschnitt
 sind implementiert. Eine vollständige Anonymisierung oder
 Verschwiegenheits-/Datenschutzfreigabe ist technisch nicht gewährleistet.
-Insbesondere können Normanker unverändert Klartext übertragen, getrennte
-Mappings kollidieren, die manuelle Vorschau wird nicht serverseitig erzwungen,
-das Mapping bleibt lokal reversibel und unbekannter oder nur kontextuell
+Die manuelle Vorschau wird nicht serverseitig erzwungen oder an den Datenstand
+gebunden, das Mapping bleibt lokal reversibel und unbekannter oder nur kontextuell
 erkennbarer Klartext kann die Filter passieren.
 
 ## Fachliche Prüffragen
@@ -192,8 +197,11 @@ erkennbarer Klartext kann die Filter passieren.
 
 Die Tests belegen synthetisch die Ersetzung bekannter Stammdaten, ausgewählte
 Heuristiken, Mapping-Round-trip, separaten anonymisierten Auftrag und den
-kontextlosen Auszug für eingeschränkte vertrauliche Analysen. Sie belegen
-keine Anonymisierung frei befüllter Normanker, keine Kollisionsfreiheit des
-zusammengeführten Mappings, keine erzwungene Vorschau, keine vollständige
+kontextlosen Auszug für eingeschränkte vertrauliche Analysen. Die am 7. September
+2026 ergänzten Regressionen reproduzierten vor der Korrektur Klartext im
+tatsächlichen Norm-/Governance-Outbound, falsche feldübergreifende Zuordnung
+von E-Mail und Betrag sowie rekursive Ersetzung innerhalb eines Originals.
+Danach bestehen diese Fälle einschließlich Vorschau, Bearbeitung und
+Rückzuordnung. Sie belegen keine erzwungene Vorschau, keine vollständige
 Anonymität, keine rechtliche Übermittlungsbefugnis und keinen realen
 n8n-/Dienstleisterschutz.

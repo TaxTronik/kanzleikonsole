@@ -1,6 +1,7 @@
 'use server';
 
 import bcrypt from 'bcryptjs';
+import type { StaffUser } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -45,6 +46,12 @@ const BACKUP_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
 const BACKUP_CODE_LENGTH = 10;
 const TOTP_SETUP_TTL_MS = 60 * 60 * 1000;
 const TOTP_ENROLLMENT_LIMIT = { max: 5, windowSec: 300 } as const;
+const GENERIC_LOGIN_ERROR = 'Ungültige Anmeldedaten.';
+
+type PasswordBoundAccount = Pick<StaffUser, 'id' | 'tenantId' | 'passwordHash' | 'authRevision'> & {
+  active: true;
+  hardwareOnlyEnabledAt: null;
+};
 
 function totpEnrollmentAccountRateLimitKey(staffUserId: string): string {
   return `staff-totp-enroll-account:${staffUserId}`;
@@ -121,15 +128,13 @@ export async function checkPasswordAction(
     return { ok: false, error: 'Kanzlei nicht gefunden.' };
   }
 
-  const staffUser = await prismaOwner.staffUser.findFirst({
+  let staffUser = await prismaOwner.staffUser.findFirst({
     where: { tenantId: tenant.id, email: email.toLowerCase() },
   });
 
   // Absichtlich keine Unterscheidung zwischen "User nicht gefunden" und "Passwort falsch"
   if (!staffUser || !staffUser.active) {
-    return { ok: false, error: 'Ungültige Anmeldedaten.' };
-    // Hinweis: GENERIC_LOGIN_ERROR ist hier noch nicht im Scope — der String
-    // ist identisch.
+    return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
   // M2: Anti-Enumeration. Vorher unterschied der Code "Konto gesperrt" von
@@ -137,8 +142,6 @@ export async function checkPasswordAction(
   // Accounts erkennen (nach 5 Versuchen Lockout-Meldung). Jetzt einheitlich,
   // mit dezentem Hinweis zur Wartezeit ohne preisgeben, dass der Account
   // existiert/gesperrt ist.
-  const GENERIC_LOGIN_ERROR = 'Ungültige Anmeldedaten.';
-
   // Kein Passwort-, TOTP-, Backup-Code- oder DEV-Bypass-Fallback für bewusst
   // auf Hardware-only umgestellte Konten. Die generische Meldung verhindert
   // zugleich eine Enumeration des gewählten Anmeldemodus.
@@ -167,6 +170,22 @@ export async function checkPasswordAction(
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
+  // ACCESS-TENANT-RLS-001: bcrypt may overlap a reset, enrollment or mode
+  // change. Bind every setup read/write to the password and revision proved
+  // above; never adopt a newer authentication state for the old password.
+  const passwordBoundAccount: PasswordBoundAccount = {
+    id: staffUser.id,
+    tenantId: tenant.id,
+    passwordHash: staffUser.passwordHash,
+    authRevision: staffUser.authRevision,
+    active: true,
+    hardwareOnlyEnabledAt: null,
+  };
+  staffUser = await prismaOwner.staffUser.findFirst({ where: passwordBoundAccount });
+  if (!staffUser || passwordAuthenticationBlocked(staffUser)) {
+    return { ok: false, error: GENERIC_LOGIN_ERROR };
+  }
+
   // Erfolg → Counter zurücksetzen (IP-RL + Account-Counter)
   await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
   await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
@@ -182,6 +201,13 @@ export async function checkPasswordAction(
     return { ok: true, totpRequired: true };
   }
 
+  return prepareTotpSetup(staffUser, passwordBoundAccount);
+}
+
+async function prepareTotpSetup(
+  staffUser: Pick<StaffUser, 'email' | 'totpSecretEnc' | 'totpSetupStartedAt'>,
+  passwordBoundAccount: PasswordBoundAccount,
+): Promise<CheckPasswordResult> {
   // Erste Anmeldung: TOTP-Setup. Wenn bereits ein Secret existiert (Setup
   // begonnen, aber Bestätigung noch offen), das bestehende Secret zurückgeben
   // statt zu überschreiben — sonst kann ein Angreifer mit Passwort den
@@ -206,19 +232,31 @@ export async function checkPasswordAction(
 
   const authSecret = env.AUTH_SECRET;
   let rawSecret: string;
+  let encSecret = staffUser.totpSecretEnc;
   if (staffUser.totpSecretEnc) {
-    rawSecret = decryptTotpSecret(staffUser.totpSecretEnc, tenant.id, authSecret);
+    rawSecret = decryptTotpSecret(
+      staffUser.totpSecretEnc,
+      passwordBoundAccount.tenantId,
+      authSecret,
+    );
   } else {
     rawSecret = generateTotpSecret();
-    const encSecret = encryptTotpSecret(rawSecret, tenant.id, authSecret);
-    await prismaOwner.staffUser.update({
-      where: { id: staffUser.id },
+    encSecret = encryptTotpSecret(rawSecret, passwordBoundAccount.tenantId, authSecret);
+    const initialized = await prismaOwner.staffUser.updateMany({
+      where: {
+        ...passwordBoundAccount,
+        totpSecretEnc: null,
+        totpEnrolledAt: null,
+        totpSetupStartedAt: staffUser.totpSetupStartedAt,
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
+      },
       data: {
         totpSecretEnc: encSecret,
         totpEnrolledAt: null,
         totpSetupStartedAt: new Date(),
       },
     });
+    if (initialized.count !== 1) return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
   const qrUri = buildTotpUri(staffUser.email, rawSecret);
@@ -235,6 +273,20 @@ export async function checkPasswordAction(
     margin: 1,
     width: 240,
   });
+
+  // QR generation also yields. Do not disclose a secret whose account or
+  // pending setup has meanwhile been replaced or confirmed.
+  const pending = await prismaOwner.staffUser.findFirst({
+    where: {
+      ...passwordBoundAccount,
+      totpSecretEnc: encSecret,
+      totpEnrolledAt: null,
+      totpSetupStartedAt: { gte: new Date(Date.now() - TOTP_SETUP_TTL_MS) },
+      OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
+    },
+    select: { id: true },
+  });
+  if (!pending) return { ok: false, error: GENERIC_LOGIN_ERROR };
 
   return {
     ok: true,
@@ -364,10 +416,14 @@ export async function confirmTotpEnrollmentAction(
       where: {
         id: staffUser.id,
         tenantId: tenant.id,
+        passwordHash: staffUser.passwordHash,
+        authRevision: staffUser.authRevision,
         active: true,
+        hardwareOnlyEnabledAt: null,
         totpEnrolledAt: null,
         totpSecretEnc: staffUser.totpSecretEnc,
         totpSetupStartedAt: { gte: setupCutoff },
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
       },
       data: {
         totpEnrolledAt: new Date(),

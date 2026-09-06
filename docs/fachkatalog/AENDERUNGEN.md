@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20260907-001
+    date: '2026-09-07'
+    paths:
+      - apps/web/src/app/api/staff/documents/download/route.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+    rule_ids:
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Technische Fortsetzung der kollisionsfreien ZIP-Transportnamen:
+      Benötigte Verzeichnisse einschließlich aller Elternpfade werden vor
+      Dateien reserviert. Eine namensgleiche Datei kann dadurch das Entpacken
+      eines ausgewählten Ordners nicht blockieren. Zugriff, Dokumentauswahl,
+      Originalbytes, gespeicherte Namen, Versionen und Aufbewahrung bleiben
+      unverändert. Geändert werden ausschließlich Pfade der Downloadkopie.
+    tests:
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+      - apps/web/src/server/export/__tests__/zip.test.ts
+    reviewer: Codex (technischer Verhaltensabgleich, keine fachliche Freigabe)
   - id: FK-EXC-20260906-003
     date: '2026-09-06'
     paths:

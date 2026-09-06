@@ -219,3 +219,35 @@ export function sanitizeZipFileName(name: string, maxLen = 100): string {
   if (/^\.+$/.test(cleaned)) return 'datei';
   return cleaned.replace(/^\.+/, '_').slice(0, maxLen);
 }
+
+/**
+ * Vergibt Dateipfade unter bereits bereinigten Ordnerpfaden. Verzeichnisse und
+ * alle Elternpfade zuerst reservieren: Eine Datei namens "Belege" darf das
+ * Entpacken von "Belege/2026/Original.pdf" nicht blockieren. Derselbe Namensraum
+ * erfasst vergebene Suffixe sowie NFC-/Großschreibungsvarianten.
+ */
+export function createZipEntryPathAllocator(folderPaths: readonly string[]) {
+  const pathKey = (path: string) => path.normalize('NFC').toLowerCase();
+  const reserved = new Set<string>();
+  for (const path of folderPaths) {
+    const parts = path.split('/');
+    for (let length = 1; length <= parts.length; length += 1) {
+      reserved.add(pathKey(parts.slice(0, length).join('/')));
+    }
+  }
+
+  return (prefix: string, filename: string): string => {
+    const base = sanitizeZipFileName(filename);
+    const dot = base.lastIndexOf('.');
+    let leaf = base;
+    let suffix = 1;
+    const fullPath = () => (prefix ? `${prefix}/${leaf}` : leaf);
+    while (reserved.has(pathKey(fullPath()))) {
+      leaf = dot > 0 ? `${base.slice(0, dot)}_${suffix}${base.slice(dot)}` : `${base}_${suffix}`;
+      suffix += 1;
+    }
+    const path = fullPath();
+    reserved.add(pathKey(path));
+    return path;
+  };
+}

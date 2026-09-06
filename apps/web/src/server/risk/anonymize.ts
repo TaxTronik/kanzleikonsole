@@ -81,8 +81,15 @@ export function anonymize(
   text: string,
   input: { client: AnonymizeClient; contacts: AnonymizeContact[] },
 ): AnonymizeResult {
+  return createAnonymizer(input)(text);
+}
+
+/** RISK-EXTERNAL-ANONYMIZATION-001: One namespace for all fields of one request. */
+export function createAnonymizer(input: {
+  client: AnonymizeClient;
+  contacts: AnonymizeContact[];
+}): (text: string) => AnonymizeResult {
   const mapping: Record<string, string> = {};
-  const heuristicHits: string[] = [];
 
   // --- Stufe 1: deterministisch -------------------------------------------
   // (original, placeholder, caseInsensitive). Längste Originale zuerst ersetzen,
@@ -124,15 +131,10 @@ export function anonymize(
   add(input.client.postalCode, () => '[PLZ]', { ci: false, minLen: 4 });
 
   repl.sort((a, b) => b.original.length - a.original.length);
-  let out = text;
   // Unicode-bewusste Wortgrenzen (\p{L}\p{N}, u-Flag): ein Original wird nur als
   // GANZES Token ersetzt, nicht als Teilstück. Sonst würde z. B. eine kurze Stadt
   // („Au", „Hof") jedes Vorkommen in „auch"/„Hofladen" zerschießen.
   const TOKEN = '[\\p{L}\\p{N}]';
-  for (const r of repl) {
-    const pattern = `(?<!${TOKEN})(?:${escapeRegExp(r.original)})(?!${TOKEN})`;
-    out = out.replace(new RegExp(pattern, r.ci ? 'giu' : 'gu'), r.placeholder);
-  }
 
   // --- Stufe 2: heuristisch ------------------------------------------------
   const heurCount: Record<string, number> = {};
@@ -141,32 +143,41 @@ export function anonymize(
   // Schlüssel → kaputter De-Anonymisierungs-Round-Trip).
   heurCount['EMAIL'] = emailN;
   const heurUsed = new Map<string, string>();
-  for (const [re, cat] of HEURISTICS) {
-    out = out.replace(re, (m) => {
-      const token = m.trim();
-      const key = cat + '::' + token;
-      let ph = heurUsed.get(key);
-      if (!ph) {
-        heurCount[cat] = (heurCount[cat] ?? 0) + 1;
-        ph = `[${cat}_${heurCount[cat]}]`;
-        heurUsed.set(key, ph);
-        mapping[ph] = token;
+  return (text) => {
+    let out = text;
+    const heuristicHits: string[] = [];
+    for (const r of repl) {
+      const pattern = `(?<!${TOKEN})(?:${escapeRegExp(r.original)})(?!${TOKEN})`;
+      out = out.replace(new RegExp(pattern, r.ci ? 'giu' : 'gu'), r.placeholder);
+    }
+    for (const [re, cat] of HEURISTICS) {
+      out = out.replace(re, (m) => {
+        const token = m.trim();
+        const key = cat + '::' + token;
+        let ph = heurUsed.get(key);
+        if (!ph) {
+          heurCount[cat] = (heurCount[cat] ?? 0) + 1;
+          ph = `[${cat}_${heurCount[cat]}]`;
+          heurUsed.set(key, ph);
+          mapping[ph] = token;
+        }
         heuristicHits.push(ph);
-      }
-      return ph;
-    });
-  }
-
-  return { text: out, mapping, heuristicHits };
+        return ph;
+      });
+    }
+    return { text: out, mapping: { ...mapping }, heuristicHits: [...new Set(heuristicHits)] };
+  };
 }
 
 /** Macht die Anonymisierung rückgängig (für die n8n-Antwort). */
 export function deanonymize(text: string, mapping: Record<string, string>): string {
-  let out = text;
-  // Längste Platzhalter zuerst, falls einer Präfix eines anderen wäre.
-  const entries = Object.entries(mapping).sort((a, b) => b[0].length - a[0].length);
-  for (const [placeholder, original] of entries) {
-    out = out.split(placeholder).join(original);
-  }
-  return out;
+  const placeholders = Object.keys(mapping)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  if (placeholders.length === 0) return text;
+  // Replace only tokens in the response, never token-shaped text in originals.
+  return text.replace(
+    new RegExp(placeholders.map(escapeRegExp).join('|'), 'g'),
+    (ph) => mapping[ph]!,
+  );
 }

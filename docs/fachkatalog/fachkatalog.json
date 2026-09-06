@@ -520,6 +520,7 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/contacts/__tests__/ical-identity-revocation.test.ts",
         "apps/web/src/app/staff/(auth)/login/__tests__/code-input.test.tsx",
         "apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts",
+        "apps/web/src/app/staff/(auth)/login/__tests__/totp-setup-race.test.ts",
         "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "packages/db/src/__tests__/tax-master-data.test.ts",
@@ -3907,7 +3908,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "TaxTronik verlangt einen gehashten 32-Byte-Linktoken, eine ausdrückliche Inhaltsbestätigung und einen kurzlebigen sechsstelligen E-Mail-Code. Der Abschluss schreibt Status und Evidence atomar, ist aber weder eine belastbare Identitätsfeststellung noch eine zugesagte AES oder QES."
+        "summary": "TaxTronik verlangt einen gehashten 32-Byte-Linktoken, eine ausdrückliche Inhaltsbestätigung und einen kurzlebigen sechsstelligen E-Mail-Code. Schreibende Claims binden sich an den weiterhin aktuellen Link- und Codezustand; der Abschluss schreibt Status und Evidence atomar, ist aber weder eine belastbare Identitätsfeststellung noch eine zugesagte AES oder QES."
       },
       "sources": [
         {
@@ -3955,6 +3956,7 @@
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/poa/__tests__/otp-concurrency.test.ts",
         "apps/web/src/server/poa/__tests__/signing-snapshot.test.ts",
         "packages/db/src/__tests__/poa-signing-integrity.test.ts"
       ],
@@ -4419,7 +4421,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Bekannte Mandanten- und Kontaktdaten werden vor n8n-Aufträgen deterministisch ersetzt, weitere Muster nur heuristisch. Normanker werden jedoch unverändert versendet, die Vorschau ist serverseitig nicht gebunden und getrennte Platzhaltermappings können kollidieren. Vollständige Anonymität und zulässige Verarbeitung sind nicht gewährleistet."
+        "summary": "Bekannte Mandanten- und Kontaktdaten werden vor n8n-Aufträgen deterministisch ersetzt, weitere Muster nur heuristisch. Text, Auftrag, Rechtsfrage, Normanker und Governance-Typ teilen einen Platzhalternamensraum. Die Vorschau ist weiterhin serverseitig nicht gebunden. Vollständige Anonymität und zulässige Verarbeitung sind nicht gewährleistet."
       },
       "sources": [
         {
@@ -4467,7 +4469,7 @@
       "related_rules": ["RISK-AI-SUGGESTION-001", "RISK-ARCHIVE-SNAPSHOT-001"],
       "tags": ["anonymisierung", "n8n", "recherche", "verschwiegenheit", "datenschutz"],
       "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/risk-external-anonymization-001-rechercheversand.md",
-      "summary": "TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer. Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird nicht in den Outbound-Payload aufgenommen. Unverändert mitgesendete Normanker können allerdings Freitext enthalten. Die Heuristik ist unvollständig; deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server erzwingt oder bindet diese Vorschauprüfung aktuell nicht."
+      "summary": "TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer. Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird nicht in den Outbound-Payload aufgenommen. Auch frei befüllte Normanker und Governance-Typen durchlaufen dieselbe Ersetzung. Die Heuristik ist unvollständig; deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server erzwingt oder bindet diese Vorschauprüfung aktuell nicht."
     },
     {
       "id": "STBVV-CALCULATION-001",

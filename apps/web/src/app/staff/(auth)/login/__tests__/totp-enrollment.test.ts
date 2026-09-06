@@ -68,6 +68,7 @@ function staff(overrides: Record<string, unknown> = {}) {
     active: true,
     lockedUntil: null,
     passwordHash: 'password-hash',
+    authRevision: 0,
     totpSecretEnc: 'encrypted-secret',
     totpEnrolledAt: null,
     totpSetupStartedAt: new Date(NOW.getTime() - 5 * 60 * 1000),
@@ -165,10 +166,14 @@ describe('confirmTotpEnrollmentAction security gates', () => {
       where: {
         id: STAFF_ID,
         tenantId: 'tenant-1',
+        passwordHash: 'password-hash',
+        authRevision: 0,
         active: true,
+        hardwareOnlyEnabledAt: null,
         totpEnrolledAt: null,
         totpSecretEnc: 'encrypted-secret',
         totpSetupStartedAt: { gte: new Date(NOW.getTime() - 60 * 60 * 1000) },
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: NOW } }],
       },
       data: {
         totpEnrolledAt: NOW,

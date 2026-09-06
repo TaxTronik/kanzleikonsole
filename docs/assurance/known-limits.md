@@ -50,12 +50,14 @@ treffen aber keine bindenden Entscheidungen. Die Verantwortung liegt immer beim
 menschlichen Berater. KI-Ergebnisse sind als Arbeitserleichterung zu verstehen,
 nicht als fachliches Urteil.
 
-Beim n8n-Rechercheversand werden Text, Rechtsfrage und Auftrag technisch
-reduziert, frei befüllbare Normanker jedoch unverändert übertragen. Die
+Beim n8n-Rechercheversand werden Text, Rechtsfrage, Auftrag, Normanker und
+Governance-Typ technisch reduziert und über einen gemeinsamen Platzhalternamensraum
+zurückgeordnet. Die
 editierbare Vorschau ist serverseitig nicht per Token oder Hash an den Versand
-gebunden. Getrennt anonymisierte Felder können außerdem gleiche
-Platzhalternamen erzeugen, deren lokale Mappings sich bei der Zusammenführung
-überschreiben. Diese Funktion ist deshalb weder ein Anonymitätsnachweis noch
+gebunden. Änderungen am Quelltext oder an Stammdaten zwischen Vorschau und
+Versand erfordern deshalb eine erneute manuelle Vorschau. Unbekannte oder nur
+kontextuell erkennbare Geheimnisse können die Filter weiterhin passieren.
+Diese Funktion ist weder ein Anonymitätsnachweis noch
 eine Freigabe nach § 203 StGB oder Datenschutzrecht.
 
 Der initiale Risk-Analysepfad referenziert einen vollständigen Engine-Rohoutput.

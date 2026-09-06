@@ -21,6 +21,12 @@ const sachverhalt =
   'Zum 1.4.2026 wechselt die Geschäftsführung.';
 
 describe('anonymize (§ 203)', () => {
+  it('RISK-EXTERNAL-ANONYMIZATION-001: ersetzt Originale mit Platzhaltertext nur einmal', () => {
+    const mapping = { '[PERSON_1]': 'Person [ORT]', '[ORT]': 'München' };
+    expect(deanonymize('[PERSON_1] wohnt in [ORT].', mapping)).toBe(
+      'Person [ORT] wohnt in München.',
+    );
+  });
   const r = anonymize(sachverhalt, { client, contacts });
 
   it('entfernt ALLE bekannten Mandanten-/Kontakt-Klartextdaten', () => {

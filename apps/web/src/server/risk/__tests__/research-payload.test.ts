@@ -26,7 +26,8 @@ vi.mock('@/server/n8n/callback-receipts', () => ({
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/notifications/service', () => ({ notify: vi.fn() }));
 
-import { sendResearchToN8n } from '../research';
+import { previewResearch, sendResearchToN8n } from '../research';
+import { deanonymize } from '../anonymize';
 
 const TENANT = { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' as const };
 
@@ -69,6 +70,82 @@ beforeEach(() => {
 });
 
 describe('sendResearchToN8n — Payload-Vertrag', () => {
+  it('RISK-EXTERNAL-ANONYMIZATION-001: schwärzt auch frei befüllte Norm- und Governance-Felder', async () => {
+    const tx = makeTx();
+    tx.riskMarking.findFirst.mockResolvedValue({
+      id: 'marking-1',
+      begriff: 'Frage zur Muster GmbH',
+      normAnker: ['§ 8 KStG: Muster GmbH, norm@example.test'],
+      governanceTyp: 'Muster GmbH intern',
+      start: 0,
+      end: 10,
+    });
+    m.withTenantContext.mockImplementation(async (_ctx, fn) => fn(tx));
+    const input = {
+      analysisId: 'analysis-1',
+      markingId: 'marking-1',
+      sachverhalt: 'full' as const,
+    };
+    const preview = await previewResearch(TENANT, input);
+    await sendResearchToN8n(TENANT, {
+      ...input,
+      finalText: preview.anonymizedText,
+      finalPrompt: null,
+    });
+    const payload = m.enqueueN8nEvent.mock.calls[0]![1];
+    expect(JSON.stringify(payload)).not.toContain('Muster GmbH');
+    expect(JSON.stringify(payload)).not.toContain('norm@example.test');
+    expect(payload.normAnker[0]).toContain('§ 8 KStG');
+    expect(payload).not.toHaveProperty('mapping');
+    for (const field of [preview.rechtsfrage, ...preview.normAnker, preview.governanceTyp]) {
+      expect(field).not.toContain('Muster GmbH');
+      expect(field).not.toContain('norm@example.test');
+    }
+  });
+
+  it('RISK-EXTERNAL-ANONYMIZATION-001: erhält verschiedene Originale über Vorschau, Felder und neue Bearbeitung hinweg', async () => {
+    const tx = makeTx();
+    tx.riskAnalysis.findFirst.mockResolvedValue({
+      id: 'analysis-1',
+      clientId: 'client-1',
+      katalogVersion: 'v1',
+      sourceText: 'Sachverhalt: alpha@example.test schuldet 1.000 €.',
+    });
+    tx.riskMarking.findFirst.mockResolvedValue({
+      id: 'marking-1',
+      begriff: 'Frage von frage@example.test',
+      normAnker: ['§ 8 KStG: norm@example.test'],
+      governanceTyp: 'Typ governance@example.test',
+      start: 0,
+      end: 10,
+    });
+    m.withTenantContext.mockImplementation(async (_ctx, fn) => fn(tx));
+    const input = {
+      analysisId: 'analysis-1',
+      markingId: 'marking-1',
+      sachverhalt: 'full' as const,
+      prompt: 'Prüfe beta@example.test und 2.000 €.',
+    };
+    const preview = await previewResearch(TENANT, input);
+    await sendResearchToN8n(TENANT, {
+      ...input,
+      finalText: preview.anonymizedText + ' Ergänzung gamma@example.test und 3.000 €.',
+      finalPrompt: preview.anonymizedPrompt,
+    });
+    const payload = m.enqueueN8nEvent.mock.calls[0]![1];
+    const mapping = tx.riskResearchRequest.create.mock.calls[0]![0].data.mapping;
+    expect(deanonymize(payload.auftrag, mapping)).toBe(input.prompt);
+    expect(deanonymize(payload.rechtsfrage, mapping)).toBe('Frage von frage@example.test');
+    expect(deanonymize(payload.normAnker[0], mapping)).toBe('§ 8 KStG: norm@example.test');
+    expect(deanonymize(payload.governanceTyp, mapping)).toBe('Typ governance@example.test');
+    const restoredText = deanonymize(payload.anonymizedText, mapping);
+    expect(restoredText).toContain('alpha@example.test schuldet 1.000 €');
+    expect(restoredText).toContain('Ergänzung gamma@example.test und 3.000 €');
+    for (const original of ['alpha@example.test', 'beta@example.test', 'gamma@example.test']) {
+      expect(JSON.stringify(payload)).not.toContain(original);
+    }
+  });
+
   it('sendet den Auftrag als eigenes, anonymisiertes Feld', async () => {
     await sendResearchToN8n(TENANT, {
       analysisId: 'analysis-1',

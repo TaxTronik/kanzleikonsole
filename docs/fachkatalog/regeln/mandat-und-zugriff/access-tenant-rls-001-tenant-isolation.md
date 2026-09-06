@@ -102,6 +102,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/contacts/__tests__/ical-identity-revocation.test.ts
   - apps/web/src/app/staff/(auth)/login/__tests__/code-input.test.tsx
   - apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts
+  - apps/web/src/app/staff/(auth)/login/__tests__/totp-setup-race.test.ts
   - apps/web/src/server/auth/__tests__/session-renewal.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - packages/db/src/__tests__/tax-master-data.test.ts
@@ -284,6 +285,26 @@ Fallback noch Ersatz für den frischen TOTP eines administrativen Step-up.
 Der Render-Regressionsnachweis prüft die tatsächliche zweite Loginansicht mit
 vollständigen TOTP-/Recovery-Eingaben und ungültigen Formaten; er ersetzt
 keinen Browser- oder Datenbanknachweis des einmaligen Verbrauchs.
+
+Das öffentliche Staff-TOTP-Erstsetup bindet den nach bcrypt erneut gelesenen
+Kontostand an genau den geprüften Passwort-Hash und die ursprüngliche
+`authRevision`. Neue Secrets werden nur bei weiterhin aktivem, nicht
+gesperrtem Passwortkonto und unverändert offenem Setup atomar beansprucht.
+Ein verspäteter Passwortvorschritt darf ein inzwischen bestätigtes Enrollment
+nicht wieder öffnen oder dessen Secret ersetzen. Vor Ausgabe von Secret und
+lokal gerendertem QR werden Konto, Revision, Secret, offenes Enrollment und
+das 60-Minuten-Fenster erneut geprüft. Auch der abschließende Enrollment-Claim
+nach dem Backup-Code-Hashing verlangt denselben Passwort-/Revisionsstand,
+aktiven Passwortmodus und fehlende aktuelle Kontosperre. Verlorene Claims
+geben weder neue Secrets noch Backup-Codes aus und schreiben kein
+Enrollment-Audit. Erfolgreiche Bestätigung und Audit bleiben transaktional
+gekoppelt; ein bereits offenes, unverändertes Setup behält sein Secret.
+
+Die Setup-Regressionsfälle führen die echten öffentlichen Actions mit
+zustandsbehafteten Persistenz-Doubles aus. Gezielte Zustandswechsel während
+Passwortprüfung, Secret-Erzeugung, QR-Rendering und Backup-Code-Hashing sowie
+zwei parallele Setup-Aufrufe belegen die Rückweisung veralteter Claims. Sie
+ersetzen keinen Parallelitätstest gegen einen echten PostgreSQL-Server.
 
 `withTenantContext` setzt die drei `app.current_*`-Werte transaktionslokal und
 serialisiert Queries auf der Verbindung. Die Migration aktiviert und erzwingt

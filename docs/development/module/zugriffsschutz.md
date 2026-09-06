@@ -26,6 +26,15 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
   Formatprüfung und mobile Tastatur unterstützen beide Wege. Die Prüfung und
   der Einmalverbrauch erfolgen unverändert auf dem Server
   (`ACCESS-TENANT-RLS-001`).
+- **TOTP-Erstsetup bei parallelen Änderungen:** Nach der Passwortprüfung wird
+  der aktuelle Account an den geprüften Passwort-Hash und die ursprüngliche
+  Auth-Revision gebunden. Ein neues Secret wird nur für ein weiterhin offenes
+  Setup atomar gesetzt; ein inzwischen bestätigtes Enrollment bleibt erhalten.
+  Vor der Secret-/QR-Ausgabe wird der unveränderte, aktive und ungesperrte
+  Passwortmodus einschließlich Setup-Fenster erneut geprüft. Die Bestätigung
+  bindet auch nach dem Backup-Code-Hashing denselben Passwort-/Revisionsstand.
+  Passwortreset, Moduswechsel oder verlorener paralleler Claim führen zur
+  Ablehnung ohne Secret-/Backup-Code-Ausgabe (`ACCESS-TENANT-RLS-001`).
 - **Staff, optionaler Hardware-only-Modus:** Ein Mitarbeiter kann im eigenen
   Profil mindestens zwei geeignete physische FIDO2-Sicherheitsschlüssel
   registrieren und den Modus danach mit einer WebAuthn-Assertion bewusst
@@ -250,6 +259,7 @@ Rollenmodell implizit.
 | Magic-Link-Lebenszyklus                           | auth/magic-link                            | `magic-link.test.ts` + Security-Audit 2026-06 (One-Time/Replay/Prefetch verifiziert)                              |
 | Lockout ohne Fremd-Aussperrung                    | auth/lockout                               | `lockout.test.ts`                                                                                                 |
 | TOTP-Helfer                                       | auth/totp                                  | `totp.test.ts`                                                                                                    |
+| TOTP-Setup und Reset-Rennen                       | login/actions.ts                           | `totp-setup-race.test.ts` + `totp-enrollment.test.ts`                                                             |
 | Passwort-/2FA-Kontowiederherstellung              | profile + admin/users actions              | `profile/__tests__/actions.test.ts` + `admin/users/__tests__/account-actions.test.ts`                             |
 | Physische WebAuthn-/MDS-Policy                    | auth/webauthn + DB-Policyanker + CRL-Patch | `webauthn.test.ts` + `simplewebauthn-crl-hardening.test.ts` + Config-/DB-/Supply-Chain-Tests                      |
 | Hardware-Modus, Fallback und Recovery             | staff auth + profile/admin/Owner-CLI       | `staff-auth-state.test.ts` + `totp-enrollment.test.ts` + Profil-/Admin-Action-Tests + `admin-break-glass.test.ts` |

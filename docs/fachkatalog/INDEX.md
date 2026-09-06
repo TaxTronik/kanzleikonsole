@@ -540,7 +540,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: ab 2018-05-25
-- Kurzfassung: TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer. Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird nicht in den Outbound-Payload aufgenommen. Unverändert mitgesendete Normanker können allerdings Freitext enthalten. Die Heuristik ist unvollständig; deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server erzwingt oder bindet diese Vorschauprüfung aktuell nicht.
+- Kurzfassung: TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer. Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird nicht in den Outbound-Payload aufgenommen. Auch frei befüllte Normanker und Governance-Typen durchlaufen dieselbe Ersetzung. Die Heuristik ist unvollständig; deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server erzwingt oder bindet diese Vorschauprüfung aktuell nicht.
 
 ### [TCMS-SAMPLE-PROOF-001 — Stichprobennachweis nur auf den deklarierten Rahmen und die konkrete Ziehung beziehen](regeln/subsumtion-und-tcms/tcms-sample-proof-001-rahmenbindung.md)
 

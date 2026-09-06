@@ -244,7 +244,11 @@ describe('signPoaAction — falsches OTP', () => {
     expect(res.ok).toBe(false);
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledTimes(1);
     expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledWith({
-      where: { id: 'poa-1' },
+      where: expect.objectContaining({
+        id: 'poa-1',
+        signingTokenHash: sha256(RAW_TOKEN),
+        signingOtpHash: sha256(OTP),
+      }),
       data: {
         signingOtpAttempts: { increment: 1 },
         signingOtpAttemptsTotal: { increment: 1 },
@@ -308,7 +312,12 @@ describe('signPoaAction — korrektes OTP', () => {
     const res = await signPoaAction({ rawToken: RAW_TOKEN, otp: OTP, consentAccepted: true });
     expect(res).toEqual({ ok: true });
     expect(m.prismaOwner.powerOfAttorney.updateMany).toHaveBeenCalledWith({
-      where: { id: 'poa-1', status: 'SENT', signingTokenHash: sha256(RAW_TOKEN) },
+      where: expect.objectContaining({
+        id: 'poa-1',
+        status: 'SENT',
+        signingTokenHash: sha256(RAW_TOKEN),
+        signingOtpHash: sha256(OTP),
+      }),
       data: expect.objectContaining({
         status: 'SIGNED',
         signingTokenHash: null,
@@ -409,8 +418,8 @@ describe('requestSigningOtpAction — Re-Issue', () => {
   it('resettet NUR den pro-OTP-Zähler, niemals signingOtpAttemptsTotal', async () => {
     const res = await requestSigningOtpAction({ rawToken: RAW_TOKEN, consentAccepted: true });
     expect(res).toEqual({ ok: true });
-    expect(m.prismaOwner.powerOfAttorney.update).toHaveBeenCalledTimes(1);
-    const { data } = m.prismaOwner.powerOfAttorney.update.mock.calls[0]![0] as {
+    expect(m.prismaOwner.powerOfAttorney.updateMany).toHaveBeenCalledTimes(1);
+    const { data } = m.prismaOwner.powerOfAttorney.updateMany.mock.calls[0]![0] as {
       data: Record<string, unknown>;
     };
     expect(data.signingOtpAttempts).toBe(0);

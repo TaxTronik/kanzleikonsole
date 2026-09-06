@@ -209,8 +209,17 @@ export async function requestSigningOtpAction(input: {
     const otpHash = hashToken(otp);
     const otpExpires = new Date(Date.now() + SIGNING_OTP_TTL_MINUTES * 60 * 1000);
 
-    await owner.powerOfAttorney.update({
-      where: { id: poa.id },
+    // POA-SIGNING-CONFIRMATION-001: A lookup does not reserve this challenge.
+    // A concurrent resend, completion or OTP issue must win permanently.
+    const issued = await owner.powerOfAttorney.updateMany({
+      where: {
+        id: poa.id,
+        status: 'SENT',
+        signingTokenHash: tokenHash,
+        signingTokenExpiresAt: { gt: new Date() },
+        signingOtpHash: poa.signingOtpHash,
+        signingOtpExpiresAt: poa.signingOtpExpiresAt,
+      },
       data: {
         signingOtpHash: otpHash,
         signingOtpExpiresAt: otpExpires,
@@ -225,6 +234,7 @@ export async function requestSigningOtpAction(input: {
         signingOtpAttempts: 0,
       },
     });
+    if (issued.count !== 1) return { ok: false, error: GENERIC_TOKEN_ERROR };
 
     await sendTemplateMail({
       tenantId: poa.tenantId,
@@ -370,7 +380,18 @@ export async function signPoaAction(input: {
           timingSafeEqual(Buffer.from(poa.signingOtpHash, 'hex'), Buffer.from(otpHash, 'hex'));
         if (!otpMatches) {
           const updated = await tx.powerOfAttorney.update({
-            where: { id: poa.id },
+            // Bind the debit to this still-current challenge. Once this UPDATE
+            // locks the row, the following invalidation shares its transaction.
+            where: {
+              id: poa.id,
+              status: 'SENT',
+              signingTokenHash: tokenHash,
+              signingTokenExpiresAt: { gt: new Date() },
+              signingOtpHash: poa.signingOtpHash,
+              signingOtpExpiresAt: { gt: new Date() },
+              signingOtpAttempts: { lt: MAX_POA_OTP_ATTEMPTS },
+              signingOtpAttemptsTotal: { lt: MAX_POA_OTP_ATTEMPTS_TOTAL },
+            },
             data: {
               signingOtpAttempts: { increment: 1 },
               signingOtpAttemptsTotal: { increment: 1 },
@@ -397,7 +418,17 @@ export async function signPoaAction(input: {
         const signedAt = new Date();
         const contentSha256 = Buffer.from(poa.signingContentSha256!);
         const claim = await tx.powerOfAttorney.updateMany({
-          where: { id: poa.id, status: 'SENT', signingTokenHash: tokenHash },
+          // Recheck the OTP at the write, not only before asynchronous reads.
+          where: {
+            id: poa.id,
+            status: 'SENT',
+            signingTokenHash: tokenHash,
+            signingTokenExpiresAt: { gt: signedAt },
+            signingOtpHash: otpHash,
+            signingOtpExpiresAt: { gt: signedAt },
+            signingOtpAttempts: { lt: MAX_POA_OTP_ATTEMPTS },
+            signingOtpAttemptsTotal: { lt: MAX_POA_OTP_ATTEMPTS_TOTAL },
+          },
           data: {
             status: 'SIGNED',
             signedAt,

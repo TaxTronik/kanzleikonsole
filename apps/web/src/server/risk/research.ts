@@ -29,7 +29,7 @@ import {
 } from '@/server/n8n/callback-receipts';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
-import { anonymize, deanonymize } from './anonymize';
+import { createAnonymizer, deanonymize } from './anonymize';
 import { reflowProse } from './reflow';
 import { scoreMarkingSuggestions, type MarkingSuggestion } from './suggest';
 
@@ -126,6 +126,7 @@ async function buildRaw(
   if (!client) throw new Error('Mandant nicht gefunden.');
   const contacts = await tx.clientContact.findMany({
     where: { clientId, active: true },
+    orderBy: { id: 'asc' },
     select: { fullName: true, email: true, phone: true },
   });
 
@@ -191,6 +192,30 @@ async function buildRaw(
   };
 }
 
+/** Same allocation order for preview and send; edited text adds new tokens. */
+function anonymizeResearch(raw: Awaited<ReturnType<typeof buildRaw>>, input: ResearchInput) {
+  const anonymizeField = createAnonymizer({ client: raw.client, contacts: raw.contacts });
+  const text = anonymizeField(raw.rawText);
+  const prompt = input.prompt?.trim() ? anonymizeField(input.prompt.trim()) : null;
+  const rechtsfrage = anonymizeField(raw.rechtsfrage);
+  const norms = raw.normAnker.map((value) => anonymizeField(value));
+  const governance = raw.governanceTyp ? anonymizeField(raw.governanceTyp) : null;
+  const fields = [text, prompt, rechtsfrage, ...norms, governance].filter(
+    (value) => value !== null,
+  );
+  return {
+    anonymizeField,
+    preview: {
+      rechtsfrage: rechtsfrage.text,
+      normAnker: norms.map((value) => value.text),
+      governanceTyp: governance?.text ?? null,
+      anonymizedText: text.text,
+      anonymizedPrompt: prompt?.text ?? null,
+      heuristicHits: [...new Set(fields.flatMap((value) => value.heuristicHits))],
+    },
+  };
+}
+
 /** Baut + anonymisiert den Auftrag, OHNE zu persistieren/senden (Vorschau). */
 export async function previewResearch(
   ctx: TenantContext,
@@ -198,23 +223,8 @@ export async function previewResearch(
   scope: ResearchScope = OFFEN,
 ): Promise<ResearchPreview> {
   return withTenantContext(ctx, async (tx) => {
-    const { client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } = await buildRaw(
-      tx,
-      ctx.tenantId,
-      input,
-      scope,
-    );
-    const anon = anonymize(rawText, { client, contacts });
-    const prompt = input.prompt?.trim() || null;
-    const anonPrompt = prompt ? anonymize(prompt, { client, contacts }) : null;
-    return {
-      rechtsfrage,
-      normAnker,
-      governanceTyp,
-      anonymizedText: anon.text,
-      anonymizedPrompt: anonPrompt?.text ?? null,
-      heuristicHits: [...new Set([...anon.heuristicHits, ...(anonPrompt?.heuristicHits ?? [])])],
-    };
+    const raw = await buildRaw(tx, ctx.tenantId, input, scope);
+    return anonymizeResearch(raw, input).preview;
   });
 }
 
@@ -230,39 +240,20 @@ export async function sendResearchToN8n(
   scope: ResearchScope = OFFEN,
 ): Promise<{ requestId: string; sentText: string; delivery: N8nEnqueueResult }> {
   const prepared = await withTenantContext(ctx, async (tx) => {
-    const { analysis, marking, client, contacts, rawText, rechtsfrage, normAnker, governanceTyp } =
-      await buildRaw(tx, ctx.tenantId, input, scope);
-
-    // Mapping aus dem ROH-Text (deckt die ursprünglichen Platzhalter für die
-    // De-Anonymisierung der Antwort) + Sicherheits-Pass über den finalen Text
-    // (fängt vom Berater wieder eingefügte bekannte Entitäten).
-    const baseMapping = anonymize(rawText, { client, contacts }).mapping;
-    const safe = anonymize(input.finalText, { client, contacts });
-    // rechtsfrage geht als eigenes Feld raus → ebenfalls anonymisieren. Bei BERATER-
-    // Markierungen ist begriff Freitext und kann Mandantenbezug enthalten (§203).
-    const safeRechtsfrage = anonymize(rechtsfrage, { client, contacts });
-    // Der Auftrag (Recherche-Frage) geht zusätzlich als EIGENES Feld raus,
-    // damit n8n-Workflows die Frage nicht per String-Parsing aus dem
-    // kombinierten anonymizedText extrahieren müssen. Freitext des Beraters →
-    // ebenfalls anonymisieren.
+    const raw = await buildRaw(tx, ctx.tenantId, input, scope);
+    const { analysis, marking, normAnker, governanceTyp } = raw;
+    // RISK-EXTERNAL-ANONYMIZATION-001: Preserve preview tokens and allocate
+    // new originals across every outbound field without overwriting mappings.
+    const { anonymizeField, preview } = anonymizeResearch(raw, input);
+    const safe = anonymizeField(input.finalText);
     const promptText = input.finalPrompt?.trim() || null;
-    const safeAuftrag = promptText ? anonymize(promptText, { client, contacts }) : null;
-    // Reihenfolge = Priorität (späteres gewinnt). `safe` (der gesendete
-    // anonymizedText) MUSS gewinnen: die n8n-Antwort echo't dessen Platzhalter,
-    // also muss deren De-Anonymisierung aus safe.mapping kommen. Heuristik-
-    // Platzhalter ([BETRAG_1]…) sind pro Text nummeriert und könnten sonst auf
-    // das Original der rechtsfrage statt des gesendeten Texts zurückfallen.
-    const mapping = {
-      ...baseMapping,
-      ...safeRechtsfrage.mapping,
-      ...(safeAuftrag?.mapping ?? {}),
-      ...safe.mapping,
-    };
+    const safeAuftrag = promptText ? anonymizeField(promptText) : null;
+    const mapping = safeAuftrag?.mapping ?? safe.mapping;
 
     const payload = {
-      rechtsfrage: safeRechtsfrage.text,
-      normAnker,
-      governanceTyp,
+      rechtsfrage: preview.rechtsfrage,
+      normAnker: preview.normAnker,
+      governanceTyp: preview.governanceTyp,
       /** Recherche-Frage des Beraters, separat und anonymisiert (null, wenn keine erfasst). */
       auftrag: safeAuftrag?.text ?? null,
       anonymizedText: safe.text,
