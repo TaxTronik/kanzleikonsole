@@ -1531,7 +1531,7 @@ build_images() {
   prefix="${TAXTRONIK_IMAGE_PREFIX:-taxtronik}"
   tag="$(image_tag)"
   sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  memory_limit="${TAXTRONIK_BUILD_MEMORY_LIMIT:-3g}"
+  memory_limit="${TAXTRONIK_BUILD_MEMORY_LIMIT:-6g}"
   memory_limit="${memory_limit,,}"
   memory_reserve="${TAXTRONIK_BUILD_MEMORY_RESERVE:-1g}"
   memory_reserve="${memory_reserve,,}"

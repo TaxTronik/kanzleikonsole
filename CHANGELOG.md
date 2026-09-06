@@ -22,6 +22,9 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- Web-Dockerbuild: Node-Heap für die TypeScript-Prüfung von 2 auf 4 GiB
+  erhöht. Lokale Operator-Builds erhalten 6 GiB Gesamtspeicher und verlangen
+  zusätzlich 1 GiB freie Systemreserve; cgroup-Limit und Swap-Sperre bleiben aktiv.
 - Secret-Scan-Fehlalarm für die öffentlich publizierte EU-Sanktionslisten-URL
   behoben. Die Ausnahme gilt nur für die vollständige, verifizierte Quellzeile
   in ihrer konkreten Datei. Acht Scanner-Regressionstests prüfen die Ausnahmen

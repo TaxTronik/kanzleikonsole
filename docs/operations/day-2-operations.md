@@ -198,7 +198,8 @@ Zwei Eigenheiten sind wichtig:
    `NODE_OPTIONS` allein genügt hier nicht: Next/Turbopack nutzt weitere
    Prozesse und nativen Speicher außerhalb des JavaScript-Heaps. Jeder
    Docker-Build-Schritt läuft deshalb mit einem harten cgroup-Limit (Default
-   `3g`) und ohne Build-Swap. Vor dem Start verlangt das Skript zusätzlich
+   `6g`) und ohne Build-Swap. Der Node-Heap ist auf 4 GiB begrenzt, damit die
+   TypeScript-Prüfung des Workspaces ausreichend Platz hat. Vor dem Start verlangt das Skript zusätzlich
    Limit + Systemreserve (Default `1g`) als `MemAvailable`. Bei zu wenig RAM
    oder einem Docker/Buildx ohne `--resource` bricht es vor dem Build mit einer
    klaren Meldung ab. Die Defaults lassen sich mit

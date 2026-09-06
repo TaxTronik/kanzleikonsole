@@ -66,14 +66,15 @@ RUN cd packages/db && \
 # OCR-/PDF-Worker und Sprachmodelle hier explizit fuer das Runtime-public kopieren.
 RUN node apps/web/scripts/prepare-identity-assets.mjs
 
-# NODE_OPTIONS begrenzt den Hauptprozess zusaetzlich. Der eigentliche Host-
+# NODE_OPTIONS begrenzt Hauptprozess und TypeScript-Worker zusaetzlich. 2 GiB
+# reichen fuer die Typpruefung des Workspaces nicht mehr aus. Der Host-
 # Schutz liegt im cgroup-Limit von build_images: Next/Turbopack kann weitere
 # Prozesse und nativen Speicher ausserhalb dieses V8-Heaps belegen.
 RUN --mount=type=cache,target=/repo/apps/web/.next/cache \
     cd apps/web && \
     NEXT=$(find /repo -path "*/next/dist/bin/next" -not -path "*/cache/*" 2>/dev/null | head -1) && \
     test -n "$NEXT" && \
-    NODE_OPTIONS="--max-old-space-size=2048" \
+    NODE_OPTIONS="--max-old-space-size=4096" \
     AUTH_SECRET=build-time-dummy-not-used-at-runtime-padding-padding \
     N8N_HMAC_SECRET=build-time-hmac-secret-padding-padding-padding-padding \
     S3_ACCESS_KEY=build-time-access-key \

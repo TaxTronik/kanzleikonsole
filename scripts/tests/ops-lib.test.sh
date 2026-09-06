@@ -1342,14 +1342,15 @@ test_build_images_refuses_insufficient_host_memory() {
     DOCKER_LOG="$log_file"
     export PATH DOCKER_LOG
     image_tag() { printf 'test-version'; }
-    host_available_memory_kib() { printf '3145728\n'; }
+    unset TAXTRONIK_BUILD_MEMORY_LIMIT TAXTRONIK_BUILD_MEMORY_RESERVE
+    host_available_memory_kib() { printf '6291456\n'; }
     build_images
   ) >"$out" 2>&1; then
     test_fail "local build started without memory limit plus system reserve"
   fi
 
   assert_contains "$out" "Lokalbuild wegen RAM-Schutz abgebrochen"
-  assert_contains "$out" "erforderlich 4096 MiB"
+  assert_contains "$out" "erforderlich 7168 MiB"
   assert_not_contains "$log_file" "Dockerfile.web"
   pass "local image build fails before work when host memory is insufficient"
 }
