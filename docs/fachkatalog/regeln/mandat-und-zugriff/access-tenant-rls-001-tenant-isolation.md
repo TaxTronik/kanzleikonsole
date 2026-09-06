@@ -44,6 +44,10 @@ sources:
 code_refs:
   - apps/web/src/server/auth/staff.ts
   - apps/web/src/server/auth/portal.ts
+  - apps/web/src/server/auth/portal-session.ts
+  - apps/web/src/app/staff/(auth)/login/page.tsx
+  - apps/web/src/app/staff/(auth)/login/actions.ts
+  - apps/web/src/app/staff/(auth)/login/password/route.ts
   - apps/web/src/server/auth/session-issued-at.ts
   - apps/web/src/server/auth/revocation.ts
   - packages/db/src/tenant-context.ts
@@ -81,6 +85,8 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/scripts/verify-rls.ts
 test_refs:
+  - apps/web/src/app/staff/(auth)/login/__tests__/code-input.test.tsx
+  - apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts
   - apps/web/src/server/auth/__tests__/session-renewal.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - packages/db/src/__tests__/tax-master-data.test.ts
@@ -202,10 +208,34 @@ neue Anmeldung. Fehlende oder ungültige Zeitwerte bleiben gesperrt. Damit
 erneut. Direkte Serverzugriffe und Session-Callbacks verwenden dieselbe
 aktuelle Validierung; zusätzliche Staff-Auth-Revisionen werden nicht adoptiert.
 
+Auch direkt ausgestellte Sitzungen enthalten `sessionIssuedAt`: der lokale
+Staff-Passwort-Formularpfad ohne TOTP sowie der Portal-Magic-Link- und
+Profilwechselpfad setzen ihn beim Ausstellen des JWT. Ein erfolgreiches
+Login darf kein Cookie erzeugen, das die unmittelbar folgende Server-Auth
+wegen eines fehlenden ursprünglichen Anmeldezeitpunkts wieder verwirft.
+Die strikte Ablehnung bestehender Tokens ohne diesen Claim bleibt erhalten.
+
 Die Regression nutzt die installierte Auth.js-HTTP-Sessionverarbeitung und
 JWT-Verschlüsselung mit simulierten DB-/Redis-Grenzen. Sie prüft Widerruf,
 mehrfache Erneuerung, bestehende Tokens, Konto-/Mandatssperren, Auth-Revision,
 ungültige Claims und Ausfälle. Dies ist kein externer Penetrationstest.
+Zusätzlich werden die tatsächlich vom Staff-Formularhandler und Portal-
+Session-Schreiber ausgestellten Cookies mit der echten JWT-Verschlüsselung
+eingelesen, über den Auth.js-HTTP-Pfad erneuert und anschließend anhand eines
+zwischen Anmeldung und Erneuerung liegenden Widerrufs gesperrt.
+
+Im regulären Passwort-/TOTP-Modus nimmt dasselbe beschriftete Loginfeld
+entweder einen sechsstelligen TOTP oder einen vollständigen zehnstelligen
+Recovery-Code aus dem beim Enrollment ausgegebenen Alphabet entgegen. Das
+Längenlimit und die Browser-Formatprüfung dürfen den bereits unterstützten
+Recovery-Pfad nicht abschneiden. Die mobile Tastatur erlaubt dafür auch
+Buchstaben. Die serverseitige Passwortprüfung, die zeitliche TOTP-Prüfung,
+der Redis-Replay-Schutz und der atomare Verbrauch des gehashten Backup-Codes
+bleiben maßgeblich. Ein Backup-Code ist weiterhin weder Hardware-only-
+Fallback noch Ersatz für den frischen TOTP eines administrativen Step-up.
+Der Render-Regressionsnachweis prüft die tatsächliche zweite Loginansicht mit
+vollständigen TOTP-/Recovery-Eingaben und ungültigen Formaten; er ersetzt
+keinen Browser- oder Datenbanknachweis des einmaligen Verbrauchs.
 
 `withTenantContext` setzt die drei `app.current_*`-Werte transaktionslokal und
 serialisiert Queries auf der Verbindung. Die Migration aktiviert und erzwingt

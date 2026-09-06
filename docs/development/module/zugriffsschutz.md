@@ -20,8 +20,12 @@ rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 - **Staff, Standardmodus:** Passwort (bcrypt cost 12, min. 12 Zeichen bei
   Anlage und Änderung) + **TOTP-Pflicht** (Self-Enrollment beim Erstlogin,
   60-min-Fenster, serverseitig erzeugter QR; Secret verschlüsselt; 8 einmalige
-  Backup-Codes, bcrypt-gehasht, atomarer Konsum; TOTP-Replay-Schutz via Redis
-  SET NX, fail-closed).
+  zehnstellige Backup-Codes, bcrypt-gehasht, atomarer Konsum; TOTP-Replay-Schutz
+  via Redis SET NX, fail-closed). Das reguläre Loginfeld akzeptiert entweder
+  sechs TOTP-Ziffern oder einen vollständigen Recovery-Code; Beschriftung,
+  Formatprüfung und mobile Tastatur unterstützen beide Wege. Die Prüfung und
+  der Einmalverbrauch erfolgen unverändert auf dem Server
+  (`ACCESS-TENANT-RLS-001`).
 - **Staff, optionaler Hardware-only-Modus:** Ein Mitarbeiter kann im eigenen
   Profil mindestens zwei geeignete physische FIDO2-Sicherheitsschlüssel
   registrieren und den Modus danach mit einer WebAuthn-Assertion bewusst
@@ -330,6 +334,13 @@ bestehende Staff- und Portal-Sitzungen einmalig eine neue Anmeldung nötig.
 Auch ein parallel gesetzter Widerruf wird nicht durch ein frisches `iat` überholt.
 Redis- und DB-Ausfälle erlauben keine Erneuerung. Der reale Auth.js-HTTP-Pfad
 wird in `session-renewal.test.ts` mit simulierten Persistenzgrenzen geprüft.
+
+Auch der direkte Staff-Passwort-Formularpfad für den lokalen TOTP-Testmodus
+und der Portal-Session-Schreiber für Magic-Link und Profilwechsel setzen
+`sessionIssuedAt` beim Ausstellen. Andernfalls folgt auf einen erfolgreichen
+Login sofort die Abweisung durch die Server-Auth. Die Regression prüft diese
+echten Ausgabepfade einschließlich Cookie-Erneuerung und anschließendem
+Widerruf; die Ablehnung alter Cookies ohne Claim bleibt unverändert.
 
 CLIENT-MANDATE-LIFECYCLE-001: Auch unabhängige Kalenderabonnements prüfen das
 aktuelle Mandatsende vor dem Laden von Terminen und Fristen.

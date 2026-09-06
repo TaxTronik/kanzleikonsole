@@ -29,6 +29,7 @@ export async function writePortalSession(contact: PortalSessionContact): Promise
       tenantId: contact.tenantId,
       clientId: contact.clientId,
       fullName: contact.fullName,
+      sessionIssuedAt: Math.floor(Date.now() / 1000),
     },
   });
 

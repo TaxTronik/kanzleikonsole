@@ -22,6 +22,14 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- **[Scope]** Staff-Recovery-Codes lassen sich vollständig im regulären
+  Loginfeld eingeben. Browser-Formatprüfung und Längenlimit akzeptieren die
+  zehnstelligen Codes; Passwortprüfung und serverseitiger Einmalverbrauch
+  bleiben unverändert (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Direkte Staff-Testanmeldung und Portal-Magic-Link setzen jetzt den
+  ursprünglichen Anmeldezeitpunkt im Sitzungscookie, damit neue Sitzungen die
+  Widerrufsprüfung bestehen (`ACCESS-TENANT-RLS-001`).
+- Kontrast des Hinweises „Einrichtung offen“ in der Benutzerverwaltung erhöht.
 - Web-Dockerbuild: Node-Heap für die TypeScript-Prüfung von 2 auf 4 GiB
   erhöht. Lokale Operator-Builds erhalten 6 GiB Gesamtspeicher und verlangen
   zusätzlich 1 GiB freie Systemreserve; cgroup-Limit und Swap-Sperre bleiben aktiv.

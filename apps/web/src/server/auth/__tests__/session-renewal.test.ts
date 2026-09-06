@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Auth } from '@auth/core';
 import type { NextAuthConfig } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
+import { NextRequest } from 'next/server';
 
 const h = vi.hoisted(() => ({
   configs: {} as Record<'staff' | 'portal', NextAuthConfig>,
@@ -14,10 +15,17 @@ const h = vi.hoisted(() => ({
   dbFailure: false,
   authRevision: 0,
   mandateEndedAt: null as Date | null,
+  checkPasswordAction: vi.fn(),
 }));
 vi.mock('react', () => ({ cache: <T>(fn: T) => fn }));
 vi.mock('next/headers', () => ({
-  cookies: async () => ({ get: () => ({ value: h.cookie }), getAll: () => [] }),
+  cookies: async () => ({
+    get: () => ({ value: h.cookie }),
+    getAll: () => [],
+    set: (_name: string, value: string) => {
+      h.cookie = value;
+    },
+  }),
 }));
 vi.mock('next-auth', () => ({
   default: (config: NextAuthConfig) => {
@@ -34,6 +42,9 @@ vi.mock('@taxtronik/config', () => ({
   },
 }));
 vi.mock('../magic-link', () => ({ verifyMagicLink: vi.fn() }));
+vi.mock('@/app/staff/(auth)/login/actions', () => ({
+  checkPasswordAction: h.checkPasswordAction,
+}));
 vi.mock('../totp', () => ({ decryptTotpSecret: vi.fn(), verifyTotpCode: vi.fn() }));
 vi.mock('../lockout', () => ({ resetFailedLogin: vi.fn() }));
 vi.mock('../login-audit', () => ({ recordFailedLoginAudited: vi.fn(), auditIp: vi.fn() }));
@@ -58,7 +69,17 @@ vi.mock('@/server/redis', () => ({
 }));
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: {
+    tenant: { findFirst: async () => ({ id: 'tenant' }) },
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
     staffUser: {
+      findFirst: async () => ({
+        id: 'staff',
+        email: 'staff@example.test',
+        fullName: 'Fixture',
+        authRevision: h.authRevision,
+        roles: [{ role: 'EMPLOYEE' }],
+        permissions: [],
+      }),
       findUnique: async () => {
         if (h.dbFailure) throw new Error('fixture DB unavailable');
         return {
@@ -88,6 +109,9 @@ vi.mock('@/server/db/prisma-owner', () => ({
 
 import { staffAuth } from '../staff';
 import { portalAuth } from '../portal';
+import { writePortalSession } from '../portal-session';
+import { POST as staffPasswordPost } from '@/app/staff/(auth)/login/password/route';
+import { STAFF_SESSION_COOKIE } from '../session-cookie';
 
 const NOW = new Date('2026-09-06T12:00:00Z');
 type Surface = 'staff' | 'portal';
@@ -103,6 +127,7 @@ beforeEach(() => {
   h.authRevision = 0;
   h.mandateEndedAt = null;
   h.cookie = '';
+  h.checkPasswordAction.mockResolvedValue({ ok: true, devSkip: true });
 });
 afterEach(() => vi.useRealTimers());
 
@@ -153,6 +178,38 @@ async function renew(surface: Surface) {
 }
 
 describe.each<Surface>(['portal', 'staff'])('%s session renewal', (surface) => {
+  it('accepts a directly issued login cookie and preserves its revocation time after renewal', async () => {
+    if (surface === 'staff') {
+      const response = await staffPasswordPost(
+        new NextRequest('http://localhost:3000/staff/login/password', {
+          method: 'POST',
+          body: new URLSearchParams({
+            email: 'staff@example.test',
+            password: 'synthetic-password',
+          }),
+        }),
+      );
+      expect(response.status).toBe(303);
+      h.cookie = response.cookies.get(STAFF_SESSION_COOKIE)!.value;
+    } else {
+      await writePortalSession({
+        id: 'contact',
+        tenantId: 'tenant',
+        clientId: 'client',
+        email: 'contact@example.test',
+        fullName: 'Fixture',
+      });
+    }
+
+    expect(await readSession[surface]()).not.toBeNull();
+    vi.setSystemTime(new Date(NOW.getTime() + 60_000));
+    expect(await renew(surface)).not.toBeNull();
+    h.cutoff = String(NOW.getTime() + 30_000);
+    expect(await readSession[surface]()).toBeNull();
+    expect(await renew(surface)).toBeNull();
+    expect(h.cookie).toBe('');
+  });
+
   it('deletes a revoked unexpired cookie instead of renewing it', async () => {
     await issueCookie(surface);
     h.cutoff = String(NOW.getTime() - 30_000);

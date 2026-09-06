@@ -122,7 +122,7 @@ function UserLoginMode({
       </span>
     );
   }
-  return <span className="text-xs text-amber-700">Einrichtung offen</span>;
+  return <span className="text-xs text-amber-800">Einrichtung offen</span>;
 }
 
 function UserStatus({

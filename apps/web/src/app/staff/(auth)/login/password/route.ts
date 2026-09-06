@@ -105,6 +105,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       permissions: staffUser.permissions.map((p) => p.permission as string),
       authMethod: 'dev_skip_totp',
       authRevision: staffUser.authRevision,
+      sessionIssuedAt: Math.floor(Date.now() / 1000),
     },
   });
 

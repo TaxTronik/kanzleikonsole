@@ -331,19 +331,22 @@ export default function StaffLoginPage() {
             <input type="hidden" name="tenantSlug" value={tenantSlug} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <p className="text-sm text-secondary text-center mb-4">
-              Gib den 6-stelligen Code aus deiner Authenticator-App ein.
+              Gib den 6-stelligen Code aus deiner Authenticator-App oder einen 10-stelligen
+              Recovery-Code ein.
             </p>
             <div>
               <label className="label" htmlFor="totpCode">
-                TOTP-Code
+                TOTP-Code oder Recovery-Code
               </label>
               <input
                 id="totpCode"
                 name="totpCode"
                 type="text"
-                inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
+                inputMode="text"
+                pattern="[0-9]{6}|[23456789ABCDEFGHJKMNPQRSTVWXYZ]{10}"
+                maxLength={10}
+                autoCapitalize="characters"
+                spellCheck={false}
                 className="input text-center text-2xl tracking-widest"
                 placeholder="000000"
                 autoFocus

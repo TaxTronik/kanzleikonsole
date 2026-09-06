@@ -461,6 +461,10 @@
       "code_refs": [
         "apps/web/src/server/auth/staff.ts",
         "apps/web/src/server/auth/portal.ts",
+        "apps/web/src/server/auth/portal-session.ts",
+        "apps/web/src/app/staff/(auth)/login/page.tsx",
+        "apps/web/src/app/staff/(auth)/login/actions.ts",
+        "apps/web/src/app/staff/(auth)/login/password/route.ts",
         "apps/web/src/server/auth/session-issued-at.ts",
         "apps/web/src/server/auth/revocation.ts",
         "packages/db/src/tenant-context.ts",
@@ -499,6 +503,8 @@
         "packages/db/scripts/verify-rls.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(auth)/login/__tests__/code-input.test.tsx",
+        "apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts",
         "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "packages/db/src/__tests__/tax-master-data.test.ts",
