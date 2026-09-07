@@ -15,6 +15,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { requireClientAccess, ForbiddenError, UnauthorizedError } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
+import { darfSteuern } from '@/server/reminders/access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,16 +47,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const items = await withTenantContext(ctx, async (tx) => {
     const rows = await tx.clientReminder.findMany({
-      where: { clientId: id },
-      orderBy: [{ doneAt: 'asc' }, { dueDate: 'asc' }],
+      where: { clientId: id, archivedAt: null },
+      orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
       take: MAX_ROWS,
       select: {
         id: true,
+        ticketNumber: true,
+        archivedAt: true,
         dueDate: true,
         subject: true,
         notes: true,
         priority: true,
         doneAt: true,
+        doneByStaff: true,
         createdByStaff: true,
         assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
         riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
@@ -79,6 +83,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     return rows.map((r) => ({
       id: r.id,
+      ticketNumber: r.ticketNumber,
+      archivedAt: r.archivedAt?.toISOString() ?? null,
+      canArchive: !r.archivedAt && Boolean(r.doneAt && r.doneByStaff) && darfSteuern(session, r),
       dueDate: r.dueDate.toISOString(),
       subject: r.subject,
       notes: r.notes,

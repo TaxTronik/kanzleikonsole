@@ -199,22 +199,34 @@ SELECT concat_ws('|',
      WHERE rolname = 'taxtronik_app'
        AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole
        AND NOT rolreplication AND NOT rolbypassrls
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_catalog.pg_roles elevated
+          WHERE pg_catalog.pg_has_role('taxtronik_app', elevated.oid, 'SET')
+            AND (elevated.rolsuper OR elevated.rolcreatedb OR elevated.rolcreaterole
+              OR elevated.rolreplication OR elevated.rolbypassrls
+              OR EXISTS (
+                SELECT 1 FROM pg_catalog.pg_class owned
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = owned.relnamespace
+                WHERE owned.relowner = elevated.oid AND ns.nspname = 'public'
+                  AND owned.relkind IN ('r', 'p')
+              ))
+       )
   ))::text,
   has_schema_privilege('taxtronik_app', 'app', 'USAGE')::text,
   has_function_privilege('taxtronik_app', 'app.current_tenant_id()', 'EXECUTE')::text,
   has_function_privilege('taxtronik_app', 'app.destroy_gwg_check(uuid)', 'EXECUTE')::text,
   has_function_privilege('taxtronik_app', 'app.destroy_gwg_document_versions(uuid)', 'EXECUTE')::text,
-  has_table_privilege('taxtronik_app', 'audit_log', 'SELECT')::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_log', 'UPDATE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_log', 'DELETE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_log', 'TRUNCATE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_seal', 'UPDATE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_seal', 'DELETE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_seal', 'TRUNCATE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_archive', 'UPDATE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_archive', 'DELETE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'audit_archive', 'TRUNCATE'))::text,
-  (NOT has_table_privilege('taxtronik_app', 'document_version', 'DELETE'))::text,
+  has_table_privilege('taxtronik_app', 'public.audit_log', 'SELECT')::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_log', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_log', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_log', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_seal', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_seal', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_seal', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.document_version', 'DELETE'))::text,
   (NOT EXISTS (
     SELECT 1
       FROM pg_catalog.pg_proc p
@@ -224,15 +236,25 @@ SELECT concat_ws('|',
      WHERE p.oid IN (
        'app.destroy_gwg_check(uuid)'::regprocedure,
        'app.assert_gwg_document_destruction_due(uuid)'::regprocedure,
-       'app.destroy_gwg_document_versions(uuid)'::regprocedure
+       'app.destroy_gwg_document_versions(uuid)'::regprocedure,
+       'app.allocate_reminder_ticket_number()'::regprocedure,
+       'app.guard_reminder_ticket_identity()'::regprocedure
      )
        AND acl.grantee = 0
        AND acl.privilege_type = 'EXECUTE'
-  ))::text
+  ))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.client_reminder_counter',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
+  has_table_privilege('taxtronik_app', 'public.client_reminder_reference', 'SELECT')::text,
+  has_table_privilege('taxtronik_app', 'public.client_reminder_reference', 'INSERT')::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.client_reminder_reference',
+    'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
+  (NOT has_function_privilege('taxtronik_app', 'app.allocate_reminder_ticket_number()', 'EXECUTE')
+    AND NOT has_function_privilege('taxtronik_app', 'app.guard_reminder_ticket_identity()', 'EXECUTE'))::text
 );
 SQL
 )"
-EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
+EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
 [[ "$ACL_STATE" == "$EXPECTED_ACL_STATE" ]] || \
   die "ACL-/REVOKE-Pruefung fehlgeschlagen: $ACL_STATE"
 

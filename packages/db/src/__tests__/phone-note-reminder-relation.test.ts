@@ -12,11 +12,9 @@ const migration = readFileSync(
 
 describe('Telefonnotiz → mehrere Wiedervorlagen', () => {
   it('modelliert eine optionale Herkunft mit Rückrelation und Index', () => {
-    expect(schema).toContain(
-      'phoneNoteId    String?                  @map("phone_note_id") @db.Uuid',
-    );
+    expect(schema).toMatch(/phoneNoteId\s+String\?\s+@map\("phone_note_id"\)\s+@db\.Uuid/);
     expect(schema).toContain('@relation("PhoneNoteReminders"');
-    expect(schema).toContain('reminders      ClientReminder[] @relation("PhoneNoteReminders")');
+    expect(schema).toMatch(/reminders\s+ClientReminder\[\]\s+@relation\("PhoneNoteReminders"\)/);
     expect(schema).toContain('@@index([phoneNoteId], map: "client_reminder_phone_note_idx")');
   });
 

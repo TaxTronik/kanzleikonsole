@@ -405,6 +405,13 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Ein standardmäßig deaktiviertes Modul bereitet einzelne Mitarbeiterneuanlagen für DATEV Lohn und Gehalt vor. Arbeitgeber und Arbeitnehmer geben getrennte Daten ab; nur berechtigte Lohnbearbeiter sehen den vollständigen Prüfstand. Das DATEV-Importgate bleibt mangels konkreter Formatspezifikation und realer Importprobe gesperrt.
 
+### [REMINDER-TICKET-001 — Wiedervorlagen mit stabilen Ticketverweisen und getrenntem Archiv führen](regeln/mandat-und-zugriff/reminder-ticket-001-verweise-und-archiv.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Umgesetzt und getestet**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Eine Wiedervorlage ist eine eigenständige Aufgabe mit optionalem Mandantenbezug, Fälligkeit und Zuständigkeit. Ihre kanzleiweit eindeutige Nummer sowie gespeicherte Verweise bleiben nach Erledigung und Archivierung erhalten. Archivierung ist eine organisatorische Ablageentscheidung, keine fachliche Freigabe und kein eigenständiger Fristabschluss.
+
 ### [REQ-INTERNAL-COMMENT-001 — Interne Anforderungskommentare vom Mandantenkanal trennen](regeln/mandat-und-zugriff/req-internal-comment-001-interne-kommentare.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**

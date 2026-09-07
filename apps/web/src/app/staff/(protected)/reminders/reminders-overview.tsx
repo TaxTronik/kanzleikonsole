@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -8,18 +8,17 @@ import {
   Undo2,
   ChevronUp,
   ChevronDown,
-  Quote,
   Copy,
   MessageSquare,
   Paperclip,
-  CornerDownRight,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
 import {
   PRIORITY_BADGE,
   PRIORITY_LABEL,
   REMINDER_PRIORITIES,
-  byPriorityThenDue,
   type ReminderPriority,
 } from '@/lib/reminder-priority';
 import {
@@ -27,288 +26,229 @@ import {
   reopenReminderAction,
   setReminderPriorityAction,
   cloneReminderAction,
+  archiveReminderAction,
+  restoreReminderAction,
 } from '../clients/[id]/reminders/actions';
-import type { ReminderRow, ReminderScope } from '@/server/reminders/queries';
+import type { ReminderRow, ReminderScope, ReminderStatus } from '@/server/reminders/queries';
+import { inZweiWochen } from './[id]/ticket-forms';
 
-/** Muss zu REMINDER_DONE_NOTIFY_DELAY_MS im Queue-Modul passen. */
 const UNDO_WINDOW_MS = 10_000;
 
+/** REMINDER-TICKET-001: Die Liste zeigt genau den serverseitig gefilterten Zustand. */
 export function RemindersOverview({
   scope,
+  status,
   currentStaffId,
-  offen,
-  erledigt,
+  rows,
   canPrioritizeAll = false,
 }: {
   scope: ReminderScope;
+  status: ReminderStatus;
   currentStaffId: string;
-  offen: ReminderRow[];
-  erledigt: ReminderRow[];
-  /** Admin/Partner darf jede Priorität ändern, nicht nur die eigener Aufträge. */
+  rows: ReminderRow[];
   canPrioritizeAll?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  // Gerade erledigt — bleibt für das Rücknahme-Fenster sichtbar. Solange der
-  // Eintrag hier steht, ist auch die Rückmeldung an die delegierende Person
-  // noch nicht raus (verzögerter Job).
   const [undoBar, setUndoBar] = useState<{ id: string; subject: string } | null>(null);
-
-  const sortiert = useMemo(() => [...offen].sort(byPriorityThenDue), [offen]);
-  const today = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-
-  function erledigen(r: ReminderRow) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  function run(action: () => Promise<{ ok: boolean; error?: string }>, onSuccess?: () => void) {
     setError(null);
     start(async () => {
-      const res = await markReminderDoneAction({ id: r.id });
-      if (!res.ok) {
-        setError(res.error ?? 'Konnte nicht erledigt werden.');
-        return;
+      try {
+        const result = await action();
+        if (!result.ok) {
+          setError(result.error ?? 'Aktion fehlgeschlagen.');
+          return;
+        }
+        onSuccess?.();
+        router.refresh();
+      } catch {
+        setError('Aktion fehlgeschlagen. Bitte erneut versuchen.');
       }
-      setUndoBar({ id: r.id, subject: r.subject });
-      window.setTimeout(() => {
-        setUndoBar((cur) => (cur?.id === r.id ? null : cur));
-      }, UNDO_WINDOW_MS);
-      router.refresh();
     });
   }
-
-  function zurueckholen(id: string) {
-    setError(null);
-    start(async () => {
-      const res = await reopenReminderAction({ id });
-      if (!res.ok) {
-        setError(res.error ?? 'Konnte nicht zurückgeholt werden.');
-        return;
-      }
-      setUndoBar((cur) => (cur?.id === id ? null : cur));
-      router.refresh();
-    });
+  function reopen(id: string) {
+    run(
+      () => reopenReminderAction({ id }),
+      () => setUndoBar((current) => (current?.id === id ? null : current)),
+    );
   }
-
-  function klonen(id: string) {
-    setError(null);
-    const in14 = new Date();
-    in14.setDate(in14.getDate() + 14);
-    start(async () => {
-      const res = await cloneReminderAction({
-        id,
-        alsNachfrage: false,
-        dueDate: in14.toISOString().slice(0, 10),
-      });
-      if (!res.ok) setError(res.error ?? 'Klonen fehlgeschlagen.');
-      else router.refresh();
-    });
+  function markDone(row: ReminderRow) {
+    run(
+      () => markReminderDoneAction({ id: row.id }),
+      () => {
+        const undo = { id: row.id, subject: `#${row.ticketNumber} ${row.subject}` };
+        setUndoBar(undo);
+        window.setTimeout(
+          () => setUndoBar((current) => (current === undo ? null : current)),
+          UNDO_WINDOW_MS,
+        );
+      },
+    );
   }
-
-  function priorisieren(id: string, priority: ReminderPriority) {
-    setError(null);
-    start(async () => {
-      const res = await setReminderPriorityAction({ id, priority });
-      if (!res.ok) setError(res.error ?? 'Priorität konnte nicht geändert werden.');
-      else router.refresh();
-    });
-  }
-
-  const darfPriorisieren = (r: ReminderRow) =>
-    canPrioritizeAll || r.createdByStaff === currentStaffId;
-
   return (
-    <div className="space-y-4">
-      {error && <p className="alert-error-sm">{error}</p>}
-
+    <div>
+      {error && (
+        <p role="alert" className="alert-error-sm m-4">
+          {error}
+        </p>
+      )}
       {undoBar && (
-        <div className="flex items-center gap-3 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/25 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-100">
-          <Check className="h-4 w-4 shrink-0" />
-          <span className="flex-1 min-w-0 truncate">
+        <div
+          role="status"
+          className="m-4 flex items-center gap-3 rounded border border-default bg-surface-raised p-3 text-xs"
+        >
+          <Check className="h-4 w-4" />
+          <span className="flex-1">
             Erledigt: <strong>{undoBar.subject}</strong>
           </span>
           <button
             type="button"
-            onClick={() => zurueckholen(undoBar.id)}
+            onClick={() => reopen(undoBar.id)}
             disabled={pending}
-            className="btn-secondary text-xs shrink-0"
+            className="btn-secondary text-xs"
           >
-            <Undo2 className="h-3.5 w-3.5" /> Rückgängig
+            <Undo2 className="h-3 w-3" />
+            Rückgängig
           </button>
         </div>
       )}
-
-      <div className="card overflow-hidden">
-        <div className="card-header">
-          <h2 className="text-sm font-medium text-primary">Offen ({sortiert.length})</h2>
-        </div>
-        {sortiert.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-disabled text-center">
-            {scope === 'mir'
-              ? 'Nichts offen — dir ist gerade nichts zugewiesen.'
-              : 'Du hast aktuell nichts delegiert, das noch offen wäre.'}
-          </p>
-        ) : (
-          <ul className="divide-y divide-border-subtle">
-            {sortiert.map((r) => {
-              const due = new Date(r.dueDate);
-              const overdue = due.getTime() < today.getTime();
-              const badge = PRIORITY_BADGE[r.priority];
-              return (
-                <li key={r.id} className="px-6 py-3 flex items-start gap-3">
+      {rows.length === 0 ? (
+        <p className="p-6 text-sm text-muted text-center">
+          {status === 'archived'
+            ? 'Keine archivierten Tickets.'
+            : status === 'done'
+              ? 'Keine erledigten Tickets.'
+              : scope === 'mir'
+                ? 'Keine offenen Tickets an dich.'
+                : 'Keine offenen Tickets.'}
+        </p>
+      ) : (
+        <ul className="divide-y divide-border-subtle">
+          {rows.map((row) => {
+            const archived = Boolean(row.archivedAt);
+            const done = Boolean(row.doneAt);
+            const canSteer = canPrioritizeAll || row.createdByStaff === currentStaffId;
+            const badge = PRIORITY_BADGE[row.priority];
+            const overdue = !done && !archived && new Date(row.dueDate) < today;
+            return (
+              <li key={row.id} className="p-4 flex gap-3 items-start">
+                {!done && !archived ? (
                   <button
                     type="button"
-                    onClick={() => erledigen(r)}
+                    onClick={() => markDone(row)}
                     disabled={pending}
+                    className="mt-1 w-5 h-5 rounded border-2 border-strong text-transparent hover:text-emerald-600 hover:border-emerald-600 shrink-0"
                     title="Als erledigt markieren"
-                    className="mt-0.5 w-5 h-5 rounded border-2 border-strong hover:border-emerald-600 hover:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/20 shrink-0"
+                    aria-label={`Ticket #${row.ticketNumber} als erledigt markieren`}
                   >
-                    <Check className="h-3 w-3" />
+                    <Check className="h-4 w-4" />
                   </button>
-
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link
-                        href={`/staff/reminders/${r.id}`}
-                        className="text-sm text-primary hover:underline"
-                      >
-                        {r.subject}
-                      </Link>
-                      {badge && (
-                        <span className={`${badge} text-[11px]`}>{PRIORITY_LABEL[r.priority]}</span>
-                      )}
-                      {r.predecessorId && (
-                        <span
-                          className="text-disabled inline-flex items-center"
-                          title="Folgestufe einer früheren Wiedervorlage"
-                        >
-                          <CornerDownRight className="h-3.5 w-3.5" />
-                        </span>
-                      )}
-                      {r.noteCount > 0 && (
-                        <span
-                          className="text-[11px] text-disabled inline-flex items-center gap-0.5"
-                          title={`${r.noteCount} Rückfrage(n)`}
-                        >
-                          <MessageSquare className="h-3 w-3" /> {r.noteCount}
-                        </span>
-                      )}
-                      {r.attachmentCount > 0 && (
-                        <span
-                          className="text-[11px] text-disabled inline-flex items-center gap-0.5"
-                          title={`${r.attachmentCount} Anhang/Anhänge`}
-                        >
-                          <Paperclip className="h-3 w-3" /> {r.attachmentCount}
-                        </span>
-                      )}
-                    </div>
-
-                    <p
-                      className={
-                        overdue ? 'text-xs text-red-700 font-medium' : 'text-xs text-muted'
-                      }
+                ) : (
+                  <span className="mt-1 text-disabled">
+                    {archived ? <Archive className="h-5 w-5" /> : <Check className="h-5 w-5" />}
+                  </span>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link
+                      href={`/staff/reminders/${row.ticketNumber}`}
+                      className="font-medium text-sm text-primary hover:underline break-words"
                     >
-                      {r.clientName} · fällig {fmtDateShort(due)}
-                      {overdue && ' · überfällig'}
-                      {scope === 'mir' && r.createdByName && (
-                        <span className="ml-2 text-disabled">· von {r.createdByName}</span>
-                      )}
-                      {scope === 'vonmir' && r.assigneeNames.length > 0 && (
-                        <span className="ml-2 text-disabled">
-                          · bei {r.assigneeNames.join(', ')}
-                        </span>
-                      )}
-                    </p>
-
-                    {(r.begriff || r.normAnker.length > 0) && (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {r.begriff && <span className="badge-yellow text-[11px]">{r.begriff}</span>}
-                        {r.normAnker.map((n) => (
-                          <span key={n} className="badge-gray text-[11px] font-mono">
-                            {n}
-                          </span>
-                        ))}
-                      </div>
+                      <span className="text-muted">#{row.ticketNumber}</span> {row.subject}
+                    </Link>
+                    {badge && (
+                      <span className={`${badge} text-[11px]`}>{PRIORITY_LABEL[row.priority]}</span>
                     )}
-                    {r.auftrag && (
-                      <blockquote className="flex gap-1.5 rounded border-l-2 border-strong bg-surface-raised px-2 py-1 text-xs text-secondary">
-                        <Quote className="h-3 w-3 shrink-0 mt-0.5 text-disabled" />
-                        <span className="min-w-0 break-words whitespace-pre-wrap">{r.auftrag}</span>
-                      </blockquote>
+                    {row.noteCount > 0 && (
+                      <span className="text-xs text-muted inline-flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3" />
+                        {row.noteCount} Kommentare
+                      </span>
                     )}
-                    {r.researchAnalysisId && r.researchMarkingId && (
-                      <Link
-                        href={`/staff/clients/${r.clientId}/subsumtion/${r.researchAnalysisId}?marking=${r.researchMarkingId}`}
-                        className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1"
-                      >
-                        Markierung im Subsumtions-Space öffnen
-                      </Link>
+                    {row.attachmentCount > 0 && (
+                      <span className="text-xs text-muted inline-flex items-center gap-1">
+                        <Paperclip className="h-3 w-3" />
+                        {row.attachmentCount} Anhänge
+                      </span>
                     )}
                   </div>
-
-                  {darfPriorisieren(r) && (
-                    <PriorityControl
-                      value={r.priority}
-                      pending={pending}
-                      onChange={(p) => priorisieren(r.id, p)}
-                    />
+                  <TicketRowContext row={row} overdue={overdue} />
+                  {done && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {!archived && (
+                        <button
+                          type="button"
+                          onClick={() => reopen(row.id)}
+                          disabled={pending}
+                          className="btn-secondary text-xs"
+                        >
+                          <Undo2 className="h-3 w-3" />
+                          Zurückholen
+                        </button>
+                      )}
+                      {row.canArchive && (
+                        <button
+                          type="button"
+                          onClick={() => run(() => archiveReminderAction({ id: row.id }))}
+                          disabled={pending}
+                          className="btn-secondary text-xs"
+                        >
+                          <Archive className="h-3 w-3" />
+                          Archivieren
+                        </button>
+                      )}
+                      {row.canRestore && (
+                        <button
+                          type="button"
+                          onClick={() => run(() => restoreReminderAction({ id: row.id }))}
+                          disabled={pending}
+                          className="btn-secondary text-xs"
+                        >
+                          <ArchiveRestore className="h-3 w-3" />
+                          Wiederherstellen
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          run(() =>
+                            cloneReminderAction({
+                              id: row.id,
+                              alsNachfrage: false,
+                              dueDate: inZweiWochen(),
+                            }),
+                          )
+                        }
+                        disabled={pending}
+                        className="btn-secondary text-xs"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Klonen
+                      </button>
+                    </div>
                   )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      {erledigt.length > 0 && (
-        <details className="card overflow-hidden">
-          <summary className="card-header cursor-pointer text-sm text-muted">
-            {erledigt.length} erledigt — zum Zurückholen aufklappen
-          </summary>
-          <ul className="divide-y divide-border-subtle">
-            {erledigt.map((r) => (
-              <li key={r.id} className="px-6 py-2.5 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <Link
-                    href={`/staff/reminders/${r.id}`}
-                    className="block text-sm text-muted line-through truncate hover:underline"
-                    title="Details — Nachfassen und Rückfragen, ohne die Aufgabe wieder zu öffnen"
-                  >
-                    {r.subject}
-                  </Link>
-                  <p className="text-[11px] text-disabled">
-                    {r.clientName} · erledigt {r.doneAt ? fmtDateShort(new Date(r.doneAt)) : ''}
-                  </p>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => klonen(r.id)}
-                    disabled={pending}
-                    title="Dieselbe Aufgabe erneut aufsetzen"
-                    className="btn-secondary text-xs"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> Klonen
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => zurueckholen(r.id)}
-                    disabled={pending}
-                    className="btn-secondary text-xs"
-                  >
-                    <Undo2 className="h-3.5 w-3.5" /> Zurückholen
-                  </button>
-                </div>
+                {!done && !archived && canSteer && (
+                  <PriorityControl
+                    value={row.priority}
+                    pending={pending}
+                    onChange={(priority) =>
+                      run(() => setReminderPriorityAction({ id: row.id, priority }))
+                    }
+                  />
+                )}
               </li>
-            ))}
-          </ul>
-        </details>
+            );
+          })}
+        </ul>
       )}
     </div>
   );
 }
-
 /**
  * Priorität hoch-/runterstufen. Bewusst zwei Pfeile statt eines Dropdowns:
  * „bumpen" ist die eigentliche Handlung, und sie soll ein Klick sein.
@@ -349,5 +289,39 @@ function PriorityControl({
         <ChevronDown className="h-4 w-4" />
       </button>
     </div>
+  );
+}
+
+function TicketRowContext({ row, overdue }: { row: ReminderRow; overdue: boolean }) {
+  return (
+    <>
+      <p className="text-xs text-muted mt-1">
+        {row.clientId ? (
+          <Link href={`/staff/clients/${row.clientId}`} className="hover:underline">
+            {row.clientName}
+          </Link>
+        ) : (
+          'Intern'
+        )}
+        {' · '}
+        <span className={overdue ? 'text-red-700 font-medium' : undefined}>
+          fällig {fmtDateShort(new Date(row.dueDate))}
+          {overdue ? ' · überfällig' : ''}
+        </span>
+        {row.assigneeNames.length > 0 && ` · ${row.assigneeNames.join(', ')}`}
+        {row.createdByName && ` · von ${row.createdByName}`}
+      </p>
+      {row.begriff && (
+        <p className="text-xs text-muted mt-1">
+          Recherche: {row.begriff}
+          {row.normAnker.length > 0 ? ` · ${row.normAnker.join(', ')}` : ''}
+        </p>
+      )}
+      {row.auftrag && (
+        <p className="text-xs text-secondary mt-1 line-clamp-2 whitespace-pre-wrap">
+          {row.auftrag}
+        </p>
+      )}
+    </>
   );
 }

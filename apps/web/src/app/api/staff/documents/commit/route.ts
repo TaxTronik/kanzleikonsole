@@ -33,6 +33,10 @@ import {
 import { withTenantContext } from '@taxtronik/db';
 import { notifyReminderAttachmentTx } from '@/server/reminders/service';
 import {
+  assertReminderUploadTx,
+  ReminderUploadError,
+} from '@/server/documents/reminder-upload-guard';
+import {
   parseMultipartUpload,
   storageCommitErrorResponse,
   createDocumentWithVersion,
@@ -218,18 +222,7 @@ export async function POST(req: NextRequest) {
         // gehängt wird — eine interne Aufgabe (clientId null) nimmt
         // entsprechend nur kanzlei-interne Dateien auf.
         if (reminderId) {
-          const rem = await tx.clientReminder.findFirst({
-            where: { id: reminderId },
-            select: { clientId: true },
-          });
-          if (!rem) {
-            throw new Error('REMINDER_NOT_FOUND: reminderId nicht in diesem Tenant.');
-          }
-          if ((rem.clientId ?? null) !== (clientId ?? null)) {
-            throw new Error(
-              'REMINDER_CLIENT_MISMATCH: Wiedervorlage gehört zu einem anderen Mandanten.',
-            );
-          }
+          await assertReminderUploadTx(tx, session, reminderId, clientId ?? null);
         }
         // Ordner muss zum Tenant gehören und im selben Bereich liegen wie das
         // Dokument (Mandant ↔ Mandant, bzw. beide kanzlei-intern). Sonst
@@ -253,23 +246,7 @@ export async function POST(req: NextRequest) {
     resolvedTypeId = r.resolvedTypeId;
     effectiveFolderId = r.effectiveFolderId;
   } catch (e) {
-    // Bekannte Validierungsfehler → 400 mit Message; alles andere generisch
-    // + strukturiertes Log (Policy rbac.ts: unbekannte Errors nie roh ans UI).
-    const msg = (e as Error).message ?? '';
-    const isValidation =
-      msg.startsWith('TYPE_NOT_FOUND') ||
-      msg.startsWith('CLIENT_NOT_FOUND') ||
-      msg.startsWith('ANALYSIS_NOT_FOUND') ||
-      msg.startsWith('WORKFLOW_ITEM_NOT_FOUND') ||
-      msg.startsWith('WORKFLOW_ITEM_CLIENT_MISMATCH');
-    if (isValidation) {
-      return NextResponse.json({ error: msg }, { status: 400 });
-    }
-    log.error(
-      { component: 'documents-commit', tenantId, err: msg },
-      'documents-commit: Validierungs-Tx vor Storage-Commit fehlgeschlagen',
-    );
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+    return preflightErrorResponse(e, tenantId);
   }
 
   const fileData = Buffer.from(await file.arrayBuffer());
@@ -325,12 +302,11 @@ export async function POST(req: NextRequest) {
           }
         }
         if (reminderId) {
-          const rem = await tx.clientReminder.findFirst({
-            where: { id: reminderId },
-            select: { clientId: true },
-          });
-          if (!rem || (rem.clientId ?? null) !== (clientId ?? null)) {
-            throw referenceChanged('reminderId nicht mehr gueltig oder Mandant geaendert.');
+          try {
+            await assertReminderUploadTx(tx, session, reminderId, clientId ?? null);
+          } catch (error) {
+            if (!(error instanceof ReminderUploadError)) throw error;
+            throw referenceChanged('Wiedervorlage nicht mehr verfügbar oder bereits archiviert.');
           }
         }
         if (effectiveFolderId) {
@@ -432,4 +408,27 @@ export async function POST(req: NextRequest) {
     sha256: commit.sha256.toString('hex'),
     immutable: commit.immutable,
   });
+}
+
+/** Nur bekannte Validierungsfehler dürfen vor dem Store-Write ins UI gelangen. */
+function preflightErrorResponse(error: unknown, tenantId: string): NextResponse {
+  if (error instanceof ReminderUploadError) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  const message = error instanceof Error ? error.message : '';
+  const validationPrefixes = [
+    'TYPE_NOT_FOUND',
+    'CLIENT_NOT_FOUND',
+    'ANALYSIS_NOT_FOUND',
+    'WORKFLOW_ITEM_NOT_FOUND',
+    'WORKFLOW_ITEM_CLIENT_MISMATCH',
+  ];
+  if (validationPrefixes.some((prefix) => message.startsWith(prefix))) {
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+  log.error(
+    { component: 'documents-commit', tenantId, err: message },
+    'documents-commit: Validierungs-Tx vor Storage-Commit fehlgeschlagen',
+  );
+  return NextResponse.json({ error: 'internal_error' }, { status: 500 });
 }

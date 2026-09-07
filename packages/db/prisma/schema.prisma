@@ -67,6 +67,8 @@ model Tenant {
   clientConsents                 ClientConsent[]
   clientMasterChangeRequests     ClientMasterChangeRequest[]
   clientReminders                ClientReminder[]
+  clientReminderCounter          ClientReminderCounter?
+  clientReminderReferences       ClientReminderReference[]
   deadlineDailyReviews           DeadlineDailyReview[]
   documents                      Document[]
   documentFolders                DocumentFolder[]
@@ -1965,38 +1967,50 @@ model Client {
 /// `assignees` (mehrere möglich — EINE Aufgabe, wer abhakt, erledigt sie für
 /// alle); `predecessor` verkettet Nachfragen zur vorigen Wiedervorlage.
 model ClientReminder {
-  id             String                   @id(map: "client_reminder_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String                   @map("tenant_id") @db.Uuid
+  id                  String                    @id(map: "client_reminder_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                    @map("tenant_id") @db.Uuid
+  /// Tenantweite, unveränderliche Ticketnummer. Der INSERT-Trigger ersetzt 0.
+  ticketNumber        Int                       @default(0) @map("ticket_number")
   /// null = interne Aufgabe ohne Mandantenbezug.
-  clientId       String?                  @map("client_id") @db.Uuid
-  dueDate        DateTime                 @map("due_date") @db.Date
-  subject        String
-  notes          String?
+  clientId            String?                   @map("client_id") @db.Uuid
+  dueDate             DateTime                  @map("due_date") @db.Date
+  subject             String
+  notes               String?
   // Dringlichkeit — die delegierende Person kann sie nachtraeglich anheben
   // ("bumpen"), ohne die Wiedervorlage neu anzulegen. Gleiche Skala wie bei
   // Anforderungen, damit die Uebersichten dieselben Labels/Farben nutzen.
-  priority       RequestPriority          @default(NORMAL)
+  priority            RequestPriority           @default(NORMAL)
   /// Vorgänger in der Kette (Nachfrage/Folgeauftrag). SET NULL, damit das
   /// Löschen einer alten Stufe die Folgestufe nicht mitreisst.
-  predecessorId  String?                  @map("predecessor_id") @db.Uuid
+  predecessorId       String?                   @map("predecessor_id") @db.Uuid
   /// Optionale Herkunft: eine Telefonnotiz kann bewusst mehrere eigenständige
   /// Wiedervorlagen erzeugen. Kein Unique-Constraint auf diesem Fremdschlüssel.
-  phoneNoteId    String?                  @map("phone_note_id") @db.Uuid
-  createdByStaff String                   @map("created_by_staff") @db.Uuid
-  doneAt         DateTime?                @map("done_at") @db.Timestamptz(6)
-  doneByStaff    String?                  @map("done_by_staff") @db.Uuid
-  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
-  client         Client?                  @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
-  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
-  predecessor    ClientReminder?          @relation("ReminderChain", fields: [predecessorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_predecessor_fk")
-  successors     ClientReminder[]         @relation("ReminderChain")
-  phoneNote      PhoneNote?               @relation("PhoneNoteReminders", fields: [phoneNoteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_phone_note_fk")
-  assignees      ClientReminderAssignee[]
-  discussion     ClientReminderNote[]
-  attachments    Document[]               @relation("ReminderAttachments")
-  riskMarkings   RiskMarking[]
+  phoneNoteId         String?                   @map("phone_note_id") @db.Uuid
+  originRiskMarkingId String?                   @map("origin_risk_marking_id") @db.Uuid
+  createdByStaff      String                    @map("created_by_staff") @db.Uuid
+  doneAt              DateTime?                 @map("done_at") @db.Timestamptz(6)
+  doneByStaff         String?                   @map("done_by_staff") @db.Uuid
+  /// Operatives Archiv erledigter Tickets; kein Löschen und keine Aufbewahrungsfrist.
+  archivedAt          DateTime?                 @map("archived_at") @db.Timestamptz(6)
+  archivedByStaff     String?                   @map("archived_by_staff") @db.Uuid
+  createdAt           DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client              Client?                   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_client_fk")
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_tenant_fk")
+  predecessor         ClientReminder?           @relation("ReminderChain", fields: [predecessorId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_predecessor_fk")
+  successors          ClientReminder[]          @relation("ReminderChain")
+  phoneNote           PhoneNote?                @relation("PhoneNoteReminders", fields: [phoneNoteId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_phone_note_fk")
+  assignees           ClientReminderAssignee[]
+  discussion          ClientReminderNote[]
+  attachments         Document[]                @relation("ReminderAttachments")
+  riskMarkings        RiskMarking[]
+  originRiskMarking   RiskMarking?              @relation("ReminderRiskOrigin", fields: [tenantId, originRiskMarkingId], references: [tenantId, id], onDelete: SetNull, onUpdate: NoAction, map: "client_reminder_risk_origin_fk")
+  outgoingReferences  ClientReminderReference[] @relation("ReminderReferenceSource")
+  incomingReferences  ClientReminderReference[] @relation("ReminderReferenceTarget")
 
+  @@unique([tenantId, id], map: "client_reminder_tenant_id_id_key")
+  @@unique([tenantId, ticketNumber], map: "client_reminder_tenant_ticket_number_key")
+  @@index([tenantId, archivedAt, doneAt, dueDate], map: "client_reminder_archive_due_idx")
   // Meine Wiedervorlagen (/staff/reminders): die "von mir delegiert"-Sicht
   // filtert auf createdByStaff — dafuer gab es bisher keinen Index.
   @@index([createdByStaff, doneAt], map: "client_reminder_creator_idx")
@@ -2006,7 +2020,34 @@ model ClientReminder {
   @@index([clientId, doneAt, dueDate], map: "client_reminder_client_idx")
   @@index([predecessorId], map: "client_reminder_predecessor_idx")
   @@index([phoneNoteId], map: "client_reminder_phone_note_idx")
+  @@index([tenantId, originRiskMarkingId], map: "client_reminder_risk_origin_idx")
   @@map("client_reminder")
+}
+
+/// Owner-only Zuteilungsstand. App-Schreiber erhalten Nummern nur über den Ticket-Trigger.
+model ClientReminderCounter {
+  tenantId   String @id(map: "client_reminder_counter_pk") @map("tenant_id") @db.Uuid
+  lastNumber Int    @map("last_number")
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_counter_tenant_fk")
+
+  @@map("client_reminder_counter")
+}
+
+/// Dauerhafte Erwähnung: Beschreibung und Kommentare addieren dieselbe gerichtete Kante.
+/// Kein Workflow-Blocker. Tatsächliche datenschutzbedingte Löschung entfernt die Kanten.
+model ClientReminderReference {
+  id               String         @id(map: "client_reminder_reference_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String         @map("tenant_id") @db.Uuid
+  sourceReminderId String         @map("source_reminder_id") @db.Uuid
+  targetReminderId String         @map("target_reminder_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_reference_tenant_fk")
+  sourceReminder   ClientReminder @relation("ReminderReferenceSource", fields: [tenantId, sourceReminderId], references: [tenantId, id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_reference_source_fk")
+  targetReminder   ClientReminder @relation("ReminderReferenceTarget", fields: [tenantId, targetReminderId], references: [tenantId, id], onDelete: Cascade, onUpdate: NoAction, map: "client_reminder_reference_target_fk")
+
+  @@unique([sourceReminderId, targetReminderId], map: "client_reminder_reference_pair_key")
+  @@index([tenantId, targetReminderId, createdAt], map: "client_reminder_reference_backlink_idx")
+  @@map("client_reminder_reference")
 }
 
 /// Zuständige einer Wiedervorlage. Mehrere möglich; die Aufgabe bleibt EINE —
@@ -2628,9 +2669,11 @@ model RiskMarking {
   // Delegation = interne Wiedervorlage (NICHT mandantengerichteter Request —
   // der wäre im Portal sichtbar). assignee/„an" liegt auf verantwortlichId.
   reminder            ClientReminder?       @relation(fields: [reminderId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "risk_marking_reminder_fk")
+  originatedReminders ClientReminder[]      @relation("ReminderRiskOrigin")
   researchRequests    RiskResearchRequest[]
   researchResults     RiskResearchResult[]
 
+  @@unique([tenantId, id], map: "risk_marking_tenant_id_id_key")
   @@index([tenantId, analysisId])
   @@index([tenantId, status])
   @@index([tenantId, reminderId])

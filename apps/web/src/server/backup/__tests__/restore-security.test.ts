@@ -1,4 +1,4 @@
-// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001.
+// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001, REMINDER-TICKET-001.
 import { describe, expect, it, vi } from 'vitest';
 import { assertRestoreTargetSecurity } from '@taxtronik/db/restore-security';
 
@@ -26,5 +26,14 @@ describe('Restore security probe failures', () => {
       })),
     ).rejects.toThrow('Dienste nicht starten');
     expect(disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('does not accept the former 17-invariant evidence without the ticket protections', async () => {
+    await expect(
+      assertRestoreTargetSecurity('postgresql://synthetic/test', () => ({
+        $queryRaw: vi.fn().mockResolvedValue([{ aclState: Array(17).fill('true').join('|') }]),
+        $disconnect: vi.fn().mockResolvedValue(undefined),
+      })),
+    ).rejects.toThrow('Dienste nicht starten');
   });
 });

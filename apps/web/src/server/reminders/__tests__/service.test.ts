@@ -17,17 +17,37 @@ vi.mock('@/server/notifications/service', () => ({ notify: notifyMock }));
 // rbac zieht transitiv next-auth — fuer den Unit-Test gemockt.
 vi.mock('@/server/auth/rbac', () => ({
   filterStaffAccessClientTx: filterAccessMock,
+  assertClientAccessTx: vi.fn(),
+  isStaffAdmin: vi.fn(() => false),
+  accessibleClientsWhereFor: vi.fn(async () => ({ vertraulich: false })),
+  ForbiddenError: class extends Error {},
 }));
 
 import { ActionError } from '@/server/actions/staff-action';
+import { persistReminderReferencesTx } from '../references';
 import {
-  addReminderNoteTx,
-  cloneReminderTx,
-  createReminderTx,
+  addReminderNoteTx as addNote,
+  cloneReminderTx as clone,
+  createReminderTx as create,
   nachfrageTitel,
   notifyReminderAttachmentTx,
   setReminderAssigneesTx,
 } from '../service';
+
+const sessionFor = (staffId: string, tenantId: string) =>
+  ({ user: { staffId, tenantId, roles: ['EMPLOYEE'] } }) as never;
+const createReminderTx = (tx: Parameters<typeof create>[0], input: Parameters<typeof create>[1]) =>
+  create(tx, input, sessionFor(input.createdByStaff, input.tenantId));
+const addReminderNoteTx = (
+  tx: Parameters<typeof addNote>[0],
+  input: Parameters<typeof addNote>[1],
+) => addNote(tx, input, sessionFor(input.staffId, input.tenantId));
+const cloneReminderTx = (
+  tx: Parameters<typeof clone>[0],
+  id: string,
+  actor: Parameters<typeof clone>[2],
+  opts: Parameters<typeof clone>[3],
+) => clone(tx, id, actor, opts, sessionFor(actor.staffId, actor.tenantId));
 
 const TENANT = 'tenant-1';
 const ICH = 'staff-ich';
@@ -53,6 +73,7 @@ function letzteCreateData(fn: { mock: { calls: unknown[][] } }): CreateData {
 
 function makeTx(over: Record<string, unknown> = {}) {
   return {
+    $queryRaw: vi.fn(async () => []),
     staffUser: {
       // Beantwortet drei Abfrage-Formen: Kandidaten-Pruefung ({id:{in}}),
       // Modus-Filter ({id:{in}, reminderNotifyMode}) und Mention-Kandidaten
@@ -69,13 +90,16 @@ function makeTx(over: Record<string, unknown> = {}) {
       findUnique: vi.fn(async () => ({ fullName: 'Admin Mustermann' })),
     },
     clientReminder: {
-      create: vi.fn(async () => ({ id: 'neu-1' })),
+      create: vi.fn(async () => ({ id: 'neu-1', ticketNumber: 123 })),
+      findMany: vi.fn(async () => [{ id: 'target-1' }]),
       findFirst: vi.fn(async () => ({
+        archivedAt: null,
         clientId: 'client-1',
         subject: 'Recherche Kassenführung',
         dueDate: new Date('2026-09-01'),
       })),
       findUnique: vi.fn(async () => ({
+        archivedAt: null,
         clientId: 'client-1',
         subject: 'Recherche Kassenführung',
         notes: 'Auftragstext',
@@ -85,6 +109,7 @@ function makeTx(over: Record<string, unknown> = {}) {
       })),
     },
     clientReminderNote: { create: vi.fn(async () => ({ id: 'note-1' })) },
+    clientReminderReference: { createMany: vi.fn(async () => ({ count: 1 })) },
     clientReminderAssignee: {
       findMany: vi.fn(async (): Promise<Array<{ staffId: string }>> => []),
       deleteMany: vi.fn(async () => ({ count: 0 })),
@@ -294,6 +319,125 @@ describe('nachfrageTitel', () => {
     expect(eins).toBe('Nachfrage zu: Recherche X');
     expect(zwei).toBe('Nachfrage 2 zu: Recherche X');
     expect(drei).toBe('Nachfrage 3 zu: Recherche X');
+  });
+});
+
+describe('REMINDER-TICKET-001 — Verweise und Archivgrenze', () => {
+  it('löst keine Ziele auf, wenn die Quelle nach dem Lock nicht mehr lesbar oder aktiv ist', async () => {
+    const tx = makeTx();
+    tx.clientReminder.findFirst.mockResolvedValueOnce(null as never);
+    await persistReminderReferencesTx(tx as never, sessionFor(ICH, TENANT), 'r1', 'Siehe #42');
+    expect(tx.clientReminder.findMany).not.toHaveBeenCalled();
+    expect(tx.clientReminderReference.createMany).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+  it('behält die vergebene Nummer und speichert Beschreibungsverweise ohne eigene Nachrichten', async () => {
+    const tx = makeTx();
+    const result = await createReminderTx(tx as never, {
+      ...BASIS,
+      assigneeStaffIds: [ICH],
+      notes: 'Siehe #42 und #42.',
+    });
+    expect(result).toEqual({ id: 'neu-1', ticketNumber: 123 });
+    expect(tx.clientReminderReference.createMany).toHaveBeenCalledWith({
+      data: [{ tenantId: TENANT, sourceReminderId: 'neu-1', targetReminderId: 'target-1' }],
+      skipDuplicates: true,
+    });
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('bindet den Ersteller an die tatsächlich übergebene Sitzung vor jedem Insert', async () => {
+    const tx = makeTx();
+    await expect(
+      create(tx as never, { ...BASIS, assigneeStaffIds: [ICH] }, sessionFor(A, TENANT)),
+    ).rejects.toThrow('Ungültiger Ticket-Akteur');
+    expect(tx.clientReminder.create).not.toHaveBeenCalled();
+  });
+
+  it('Kommentarverweise informieren weiterhin nur den bestehenden Beteiligtenkreis', async () => {
+    const tx = makeTx();
+    await addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      staffId: ICH,
+      reminderId: 'r1',
+      body: 'Siehe #42.',
+    });
+    expect(tx.clientReminderReference.createMany).toHaveBeenCalledWith({
+      data: [{ tenantId: TENANT, sourceReminderId: 'r1', targetReminderId: 'target-1' }],
+      skipDuplicates: true,
+    });
+    expect(
+      notifyMock.mock.calls.map((call) => (call[1] as { staffId: string }).staffId).sort(),
+    ).toEqual([A, B]);
+  });
+
+  it('wartet auf die Archivierung und verweigert danach Kommentar, Referenz und Benachrichtigung', async () => {
+    const tx = makeTx();
+    let release!: () => void;
+    tx.$queryRaw.mockImplementationOnce(
+      () =>
+        new Promise<never[]>((resolve) => {
+          release = () => resolve([]);
+        }),
+    );
+    const running = addReminderNoteTx(tx as never, {
+      tenantId: TENANT,
+      staffId: ICH,
+      reminderId: 'r1',
+      body: 'Spät #42',
+    });
+    expect(tx.clientReminder.findUnique).not.toHaveBeenCalled();
+    tx.clientReminder.findUnique.mockResolvedValueOnce({
+      ...(await tx.clientReminder.findUnique()),
+      archivedAt: new Date(),
+    } as never);
+    const rejected = expect(running).rejects.toThrow('Archivierte Tickets');
+    release();
+    await rejected;
+    expect(tx.clientReminderNote.create).not.toHaveBeenCalled();
+    expect(tx.clientReminderReference.createMany).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('ein neuer verknüpfter Auftrag aus dem Archiv erhält eine eigene Nummer und keine alte Folgestufenmeldung', async () => {
+    const tx = makeTx();
+    tx.clientReminder.findUnique.mockResolvedValue({
+      ...(await tx.clientReminder.findUnique()),
+      archivedAt: new Date(),
+    } as never);
+    await cloneReminderTx(
+      tx as never,
+      'quelle-1',
+      { tenantId: TENANT, staffId: ICH },
+      {
+        alsNachfrage: false,
+        alsVerknuepftesTicket: true,
+        dueDate: new Date('2026-10-01'),
+        assigneeStaffIds: [ICH],
+      },
+    );
+    expect(letzteCreateData(tx.clientReminder.create).predecessorId).toBeNull();
+    expect(tx.clientReminderReference.createMany).toHaveBeenCalledWith({
+      data: [{ tenantId: TENANT, sourceReminderId: 'neu-1', targetReminderId: 'quelle-1' }],
+      skipDuplicates: true,
+    });
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('archivierte Anhänge lösen keine neuen Nachrichten aus', async () => {
+    const tx = makeTx();
+    tx.clientReminder.findUnique.mockResolvedValue({
+      ...(await tx.clientReminder.findUnique()),
+      archivedAt: new Date(),
+    } as never);
+    await notifyReminderAttachmentTx(tx as never, {
+      tenantId: TENANT,
+      reminderId: 'r1',
+      documentId: 'd1',
+      documentTitle: 'Datei',
+      uploadedBy: ICH,
+    });
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 });
 

@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:186627afd0abb00874b9be0740d229627c6fd6e8d285887fe258f3bcda7b147e",
-    "expected_active_rule_count": 80,
+    "definition_sha256": "sha256:7456511f095ac44ec5d7b8640372dabeac6484642f688cfb4f183a8676ea9910",
+    "expected_active_rule_count": 81,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -69,6 +69,7 @@
       "POA-SIGNING-CONFIRMATION-001",
       "POA-SIGNING-SNAPSHOT-001",
       "PORTAL-INBOX-SUBMISSION-001",
+      "REMINDER-TICKET-001",
       "REQ-INTERNAL-COMMENT-001",
       "REQ-LIFECYCLE-001",
       "RISK-AI-SUGGESTION-001",
@@ -101,8 +102,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 80,
-  "active_rule_count": 80,
+  "rule_count": 81,
+  "active_rule_count": 81,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -483,6 +484,7 @@
         "apps/web/src/server/auth/revocation.ts",
         "packages/db/src/tenant-context.ts",
         "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260907013230_reminder_tickets/migration.sql",
         "packages/db/prisma/migrations/20260623000000_iter42_force_rls/migration.sql",
         "packages/db/prisma/migrations/20260831100000_tax_registrations/migration.sql",
         "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql",
@@ -531,6 +533,7 @@
         "apps/web/src/app/staff/(auth)/login/__tests__/totp-setup-race.test.ts",
         "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
+        "packages/db/src/__tests__/reminder-tickets.test.ts",
         "packages/db/src/__tests__/tax-master-data.test.ts",
         "packages/db/src/__tests__/gwg-person-links.test.ts",
         "packages/db/src/__tests__/mailbox-rls.test.ts",
@@ -4260,6 +4263,94 @@
       "tags": ["portal", "posteingang", "staging", "virenpruefung", "mandantenkommunikation"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/portal-inbox-submission-001-technischer-eingang.md",
       "summary": "Eine abgesendete Portalnachricht ist ein technischer Eingang, keine fachliche Annahme, Fristbestätigung, Vollständigkeitsbestätigung oder Erledigung einer Anforderung. Anlagen bleiben bis zur ausdrücklichen Entscheidung einer berechtigten Kanzleiperson in einem getrennten Staging-Bestand. Erst eine Annahme darf ein zugeordnetes Document erzeugen. Diese ausdrückliche Staff-Entscheidung klassifiziert das Dokument und gibt es nach vollständig erfolgreicher Persistierung auf Mandantenebene frei; bis dahin bleibt es privat."
+    },
+    {
+      "id": "REMINDER-TICKET-001",
+      "title": "Wiedervorlagen mit stabilen Ticketverweisen und getrenntem Archiv führen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Wiedervorlagen erhalten tenantgebundene Nummern, gerichtete persistierte Erwähnungen und ein getrenntes Archiv erledigter Aufgaben. Zugriffsrechte werden an jedem Zusammenhang erneut geprüft. Datenbank-, Dienst- und Browserregressionen belegen den Ablauf; eine fachliche Freigabe liegt nicht vor."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Wiedervorlagen als Tickets",
+          "path": "docs/anwenderdoku/wiedervorlagen.md",
+          "checked_at": "2026-09-07",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20260907013230_reminder_tickets/migration.sql",
+        "packages/db/src/restore-security.ts",
+        "apps/web/src/lib/reminder-ticket-references.ts",
+        "apps/web/src/server/reminders/service.ts",
+        "apps/web/src/server/reminders/detail.ts",
+        "apps/web/src/server/reminders/queries.ts",
+        "apps/web/src/server/reminders/access.ts",
+        "apps/web/src/server/reminders/references.ts",
+        "apps/web/src/server/reminders/history.ts",
+        "apps/web/src/server/reminders/presentation.ts",
+        "apps/worker/src/jobs/reminders-daily.ts",
+        "apps/worker/src/jobs/reminder-done-notify.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/_data.ts",
+        "apps/web/src/server/risk/delegate.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts",
+        "apps/web/src/server/documents/reminder-upload-guard.ts",
+        "apps/web/src/app/api/staff/documents/commit/route.ts",
+        "apps/web/src/app/api/staff/clients/[id]/reminders/route.ts",
+        "apps/web/src/app/staff/(protected)/reminders/page.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/reminders-overview.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/ticket-text.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/use-mounted.ts",
+        "apps/web/src/app/staff/(protected)/reminders/[id]/page.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/[id]/reminder-detail-view.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/[id]/ticket-context.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/[id]/ticket-conversation.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/[id]/ticket-forms.tsx",
+        "apps/web/src/app/staff/(protected)/reminders/[id]/ticket-history-pagination.tsx"
+      ],
+      "test_refs": [
+        "apps/web/src/lib/__tests__/reminder-ticket-references.test.ts",
+        "apps/web/src/server/documents/__tests__/reminder-upload-guard.test.ts",
+        "apps/web/src/server/risk/__tests__/delegate.test.ts",
+        "packages/db/src/__tests__/reminder-tickets.test.ts",
+        "apps/web/src/server/reminders/__tests__/tickets-db.test.ts",
+        "apps/web/src/server/reminders/__tests__/access.test.ts",
+        "apps/web/src/server/reminders/__tests__/service.test.ts",
+        "apps/web/src/server/reminders/__tests__/history.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/reminders/__tests__/done-undo.test.ts",
+        "apps/worker/src/jobs/__tests__/reminder-done-notify.test.ts",
+        "apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts",
+        "apps/web/src/app/api/staff/clients/[id]/reminders/__tests__/route.test.ts",
+        "apps/web/src/app/staff/(protected)/reminders/__tests__/overview-page.test.tsx",
+        "apps/e2e/tests/22-reminder-tickets.spec.ts",
+        "apps/e2e/tests/23-reminder-ticket-flow.spec.ts"
+      ],
+      "feature_refs": ["docs/anwenderdoku/wiedervorlagen.md"],
+      "related_rules": [
+        "ACCESS-CLIENT-MODE-001",
+        "ACCESS-TENANT-RLS-001",
+        "TAX-CONTROL-STATUS-001",
+        "RISK-ARCHIVE-SNAPSHOT-001",
+        "DSGVO-MANDATE-ANONYMIZATION-001"
+      ],
+      "tags": ["wiedervorlage", "ticket", "zusammenarbeit", "rückverweis", "archiv"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/reminder-ticket-001-verweise-und-archiv.md",
+      "summary": "Eine Wiedervorlage ist eine eigenständige Aufgabe mit optionalem Mandantenbezug, Fälligkeit und Zuständigkeit. Ihre kanzleiweit eindeutige Nummer sowie gespeicherte Verweise bleiben nach Erledigung und Archivierung erhalten. Archivierung ist eine organisatorische Ablageentscheidung, keine fachliche Freigabe und kein eigenständiger Fristabschluss."
     },
     {
       "id": "REQ-INTERNAL-COMMENT-001",

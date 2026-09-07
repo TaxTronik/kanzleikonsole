@@ -1,4 +1,4 @@
-// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001.
+// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001, REMINDER-TICKET-001.
 // Real PostgreSQL privilege/policy regressions. Every mutation rolls back.
 import { afterAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
@@ -27,6 +27,16 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
     'GRANT TRUNCATE ON audit_log TO PUBLIC',
     'GRANT taxtronik TO taxtronik_app WITH INHERIT FALSE, SET TRUE',
     'GRANT EXECUTE ON FUNCTION app.destroy_gwg_check(uuid) TO PUBLIC',
+    'GRANT SELECT ON client_reminder_counter TO taxtronik_app',
+    'GRANT UPDATE ON client_reminder_counter TO taxtronik_app',
+    'GRANT TRUNCATE ON client_reminder_counter TO PUBLIC',
+    'GRANT UPDATE ON client_reminder_reference TO taxtronik_app',
+    'GRANT DELETE ON client_reminder_reference TO taxtronik_app',
+    'GRANT TRUNCATE ON client_reminder_reference TO PUBLIC',
+    'REVOKE SELECT ON client_reminder_reference FROM taxtronik_app',
+    'REVOKE INSERT ON client_reminder_reference FROM taxtronik_app',
+    'GRANT EXECUTE ON FUNCTION app.allocate_reminder_ticket_number() TO PUBLIC',
+    'GRANT EXECUTE ON FUNCTION app.guard_reminder_ticket_identity() TO taxtronik_app',
     'REVOKE EXECUTE ON FUNCTION app.current_tenant_id() FROM taxtronik_app, PUBLIC',
     'ALTER TABLE client DISABLE ROW LEVEL SECURITY',
     'ALTER TABLE client NO FORCE ROW LEVEL SECURITY',

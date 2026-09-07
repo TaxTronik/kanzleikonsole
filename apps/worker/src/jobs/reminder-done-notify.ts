@@ -34,12 +34,15 @@ export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
     }
 
     await withWorkerTenantContext(tenantId, async (tx) => {
+      // REMINDER-TICKET-001: same lock as archive/reopen; a queued job grants no write window.
+      await tx.$queryRaw`SELECT id FROM client_reminder
+        WHERE id = ${reminderId}::uuid AND tenant_id = ${tenantId}::uuid FOR NO KEY UPDATE`;
       const reminder = await tx.clientReminder.findFirst({
         where: { id: reminderId, tenantId },
-        select: { doneAt: true, clientId: true, subject: true },
+        select: { doneAt: true, clientId: true, subject: true, archivedAt: true },
       });
       // Zurückgeholt (oder gelöscht) → nichts zustellen.
-      if (!reminder?.doneAt) {
+      if (!reminder?.doneAt || reminder.archivedAt) {
         log.info(
           { component: 'reminder-done-notify', reminderId },
           'Wiedervorlage nicht mehr erledigt — Benachrichtigung entfällt',

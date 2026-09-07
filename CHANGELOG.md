@@ -20,6 +20,22 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+### Wiedervorlagen als Tickets (2026-09-07)
+
+- Wiedervorlagen erhalten stabile kanzleiweite Nummern, eine durchsuchbare
+  Übersicht und automatische Verweise sowie Rückverweise durch `#123` in
+  Beschreibungen und Kommentaren. Vorhandene UUID-Links bleiben gültig.
+- Erledigte Tickets können archiviert und als erledigt zurückgeholt werden.
+  Kommentare, Anhänge und Verknüpfungen bleiben erhalten; neue Arbeit am
+  archivierten Ticket wird gesperrt. Rechercheherkunft bleibt unabhängig von
+  einer späteren erneuten Delegation bestehen.
+- **[Scope]** Referenzen übernehmen keine Zugriffsrechte. Aktuelle Mandanten-
+  und Beteiligungsrechte gelten auch für Ketten, Backlinks und Anhänge; der
+  Upload prüft Archivierung unter derselben Zeilensperre wie die Ticketaktionen.
+- Neue Produktregel `REMINDER-TICKET-001` als ungeprüfter Entwurf; keine
+  fachliche Freigabe. Bedienung und Abgrenzung sind unter
+  `docs/anwenderdoku/wiedervorlagen.md` dokumentiert.
+
 ### Behoben
 
 - **[Scope]** Restore meldet Erfolg erst nach verpflichtender Prüfung der

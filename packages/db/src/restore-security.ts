@@ -1,4 +1,4 @@
-// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001.
+// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001, REMINDER-TICKET-001.
 import type { PrismaClient } from './prisma-client';
 
 type SecurityProbe = Pick<InstanceType<typeof PrismaClient>, '$queryRaw' | '$disconnect'>;
@@ -10,7 +10,8 @@ export async function assertRestoreTargetSecurity(
 ): Promise<void> {
   const probe = createProbe(targetUrl);
   try {
-    // Same 17 effective privilege invariants as scripts/restore-selftest.sh.
+    // Same 22 effective privilege invariants as scripts/restore-selftest.sh:
+    // the original 17 plus five for the counter and permanent ticket links.
     // Target default privileges may re-grant permissions while pg_restore
     // recreates tables; a successful process exit does not prove safe ACLs.
     const rows = await probe.$queryRaw<Array<{ aclState: string }>>`
@@ -57,14 +58,24 @@ SELECT concat_ws('|',
      WHERE p.oid IN (
        'app.destroy_gwg_check(uuid)'::regprocedure,
        'app.assert_gwg_document_destruction_due(uuid)'::regprocedure,
-       'app.destroy_gwg_document_versions(uuid)'::regprocedure
+       'app.destroy_gwg_document_versions(uuid)'::regprocedure,
+       'app.allocate_reminder_ticket_number()'::regprocedure,
+       'app.guard_reminder_ticket_identity()'::regprocedure
      )
        AND acl.grantee = 0
        AND acl.privilege_type = 'EXECUTE'
-  ))::text
+  ))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.client_reminder_counter',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
+  has_table_privilege('taxtronik_app', 'public.client_reminder_reference', 'SELECT')::text,
+  has_table_privilege('taxtronik_app', 'public.client_reminder_reference', 'INSERT')::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.client_reminder_reference',
+    'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
+  (NOT has_function_privilege('taxtronik_app', 'app.allocate_reminder_ticket_number()', 'EXECUTE')
+    AND NOT has_function_privilege('taxtronik_app', 'app.guard_reminder_ticket_identity()', 'EXECUTE'))::text
 ) AS "aclState";
     `;
-    if (rows.length !== 1 || rows[0]?.aclState !== Array(17).fill('true').join('|')) {
+    if (rows.length !== 1 || rows[0]?.aclState !== Array(22).fill('true').join('|')) {
       throw new Error('Rollen-/Grant-/REVOKE-Invarianten verletzt.');
     }
     // Match verify-rls.ts's documented global exceptions. Include partitioned

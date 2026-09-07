@@ -423,17 +423,21 @@ export async function phoneNoteToReminderAction(input: {
     const assigneeStaffId = parsed.data.assigneeStaffId ?? note.forwardToStaff ?? staffId;
     await assertPhoneNoteRecipientAccessTx(tx, tenantId, assigneeStaffId, note.clientId);
 
-    const reminder = await createReminderTx(tx, {
-      tenantId,
-      clientId: note.clientId,
-      phoneNoteId: parsed.data.id,
-      dueDate: new Date(parsed.data.dueDate),
-      subject: `${note.callerName}: ${note.subject}`,
-      notes: `Telefonnotiz vom ${fmtDateShort(new Date())}${note.callerPhone ? ' (Tel ' + note.callerPhone + ')' : ''}\n\n${note.body}`,
-      priority: 'NORMAL',
-      createdByStaff: staffId,
-      assigneeStaffIds: [assigneeStaffId],
-    });
+    const reminder = await createReminderTx(
+      tx,
+      {
+        tenantId,
+        clientId: note.clientId,
+        phoneNoteId: parsed.data.id,
+        dueDate: new Date(parsed.data.dueDate),
+        subject: `${note.callerName}: ${note.subject}`,
+        notes: `Telefonnotiz vom ${fmtDateShort(new Date())}${note.callerPhone ? ' (Tel ' + note.callerPhone + ')' : ''}\n\n${note.body}`,
+        priority: 'NORMAL',
+        createdByStaff: staffId,
+        assigneeStaffIds: [assigneeStaffId],
+      },
+      session,
+    );
 
     await evidenceService.record(tx, {
       tenantId,

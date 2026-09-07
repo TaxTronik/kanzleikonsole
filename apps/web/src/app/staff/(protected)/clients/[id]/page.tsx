@@ -571,12 +571,19 @@ export default async function ClientDetailPage({
           ),
           reminders: !modules.reminders ? null : (
             <RemindersBlock
-              key="reminders"
+              key={`reminders:${client.id}`}
               clientId={client.id}
               currentStaffId={staffId}
+              canSteerAll={isStaffAdmin(session)}
               staffOptions={staffList}
               initial={reminders.map((r) => ({
                 id: r.id,
+                ticketNumber: r.ticketNumber,
+                archivedAt: r.archivedAt?.toISOString() ?? null,
+                canArchive:
+                  !r.archivedAt &&
+                  Boolean(r.doneAt && r.doneByStaff) &&
+                  (r.createdByStaff === staffId || isStaffAdmin(session)),
                 dueDate: r.dueDate.toISOString(),
                 subject: r.subject,
                 notes: r.notes,

@@ -63,6 +63,7 @@ code_refs:
   - apps/web/src/server/auth/revocation.ts
   - packages/db/src/tenant-context.ts
   - packages/db/prisma/schema.prisma
+  - packages/db/prisma/migrations/20260907013230_reminder_tickets/migration.sql
   - packages/db/prisma/migrations/20260623000000_iter42_force_rls/migration.sql
   - packages/db/prisma/migrations/20260831100000_tax_registrations/migration.sql
   - packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql
@@ -110,6 +111,7 @@ test_refs:
   - apps/web/src/app/staff/(auth)/login/__tests__/totp-setup-race.test.ts
   - apps/web/src/server/auth/__tests__/session-renewal.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
+  - packages/db/src/__tests__/reminder-tickets.test.ts
   - packages/db/src/__tests__/tax-master-data.test.ts
   - packages/db/src/__tests__/gwg-person-links.test.ts
   - packages/db/src/__tests__/mailbox-rls.test.ts
@@ -218,8 +220,13 @@ keine behauptete Abdeckung für diese Tabelle.
 
 ## Umsetzung in TaxTronik
 
-Nach `pg_restore` prüft die Restore-CLI vor jeder Erfolgsmeldung die 17 bereits
-im Restore-Selbsttest festgelegten effektiven Rollen-/Grant-/REVOKE-Invarianten.
+Nach `pg_restore` prüft die Restore-CLI vor jeder Erfolgsmeldung die 17 bisherigen
+effektiven Rollen-/Grant-/REVOKE-Invarianten und fünf zusätzliche Invarianten
+für dauerhafte Wiedervorlagen-Tickets (`REMINDER-TICKET-001`). Der
+tenantgebundene Nummernzähler bleibt vollständig ohne App-Tabellenrechte;
+Referenzkanten erlauben nur SELECT und INSERT. Die beiden Ticket-Triggerfunktionen
+sind weder für PUBLIC noch die App-Rolle direkt ausführbar. Die
+Restore-Selbsttest-Assertion prüft denselben Satz von insgesamt 22 Invarianten.
 Die Rollenprüfung umfasst zusätzlich per `SET ROLE` erreichbare privilegierte
 Rollen und Tabellenowner. Audit-Tabellen werden ausdrücklich im Schema
 `public` geprüft, unabhängig vom `search_path` der Verbindung.
@@ -465,6 +472,36 @@ Der Datenbanktest belegt Cross-Tenant-Sperren für Lesen, Einfügen, Aktualisier
 und Löschen sowie Paar-Guards ausgewählter Tabellen. Das Skript belegt den
 Schema-Inventurmechanismus. Beides beweist nicht die Sicherheit privilegierter
 Zugänge oder eine vollständige Angriffssimulation.
+
+Die Ticket-Regression belegt tenantunabhängige Nummernkreise, parallele
+automatische Nummernvergabe, den gemeinsamen Rollback von Zähler und Anlage
+sowie den Erhalt vergebener Nummern nach tatsächlicher Löschung. Sie prüft
+unveränderliche Identitäten, Archivzustände mit Abschlusszeit und handelnder
+Person, gerichtete Referenzen ohne Selbst-/Cross-Tenant-Kanten und den
+quellengebundenen Rechercheanker. Der reale Herkunfts-Fremdschlüssel setzt bei
+Quelllöschung ausschließlich die Herkunftsspalte null, nicht den Tenant.
+Ein separater Upgrade-Gegenlauf erhält alle bisherigen Ticketspalten und
+vergibt Nummern deterministisch nach Erstellungszeit und UUID; mehrdeutige
+aktuelle Markierungszeiger werden nicht als Herkunft übernommen.
+
+Zusätzliche Restore-ACL-Proben entziehen notwendige Referenzrechte oder
+vergeben unzulässige Zähler-, Referenz- und Funktionsrechte jeweils nur in
+zurückgerollten Testtransaktionen. Ein echter PostgreSQL-Dump-/Restore-Gegenlauf
+erhält Tickets einschließlich Archiv, Zähler und Referenzen bytewertgleich
+in den verglichenen Spalten. Ein durch Defaultprivilegien vorbereitetes Ziel
+mit erneut gewährten Zähler-/Referenz-Schreibrechten wird trotz gleicher
+Datensätze abgewiesen; ein leeres Ziel mit erhaltenen Rechten besteht die
+Abnahme. Diese Tests ersetzen keine Objektberechtigungsprüfung innerhalb
+einer Kanzlei; Referenzanzeige und Nummernauflösung brauchen weiterhin das
+aktuelle Zugriffsgate für beide Tickets.
+
+Ticketmutationen und Archivierung verwenden `FOR NO KEY UPDATE`: Der Lock
+serialisiert Zustandsänderungen, lässt aber die `KEY SHARE`-Sperren der
+Referenz-Fremdschlüssel zu. Zwei gleichzeitig geschriebene gegenseitige
+Erwähnungen müssen beide committen können. Die PostgreSQL-Regression weist
+für `FOR UPDATE` zuvor den Deadlock `40P01` nach und belegt mit dem schwächeren
+Schreiblock zwei persistierte Kanten. Der parallele Archivtest belegt weiterhin,
+dass ein wartender Schreiber nach Freigabe den neuen Archivzustand liest.
 
 Der Inbox-RLS-Test ergänzt Cross-Client-, Kontakt-, Rechteentzugs-, Draft-,
 Attachment- und SECURITY-DEFINER-Fälle. Er belegt nicht die Autorisierung jeder

@@ -86,12 +86,21 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 
 Ein vorbereiteter Zielserver kann über Defaultprivilegien beim Neuanlegen der
 Tabellen Rechte vergeben, die im Quellsystem entzogen waren. Deshalb prüft
-`restore-security.ts` nach `pg_restore` die 17 effektiven Rollen-/ACL-/REVOKE-
+`restore-security.ts` nach `pg_restore` die 22 effektiven Rollen-/ACL-/REVOKE-
 Invarianten des CI-Selbsttests, einschließlich erreichbarer privilegierter
 `SET ROLE`-Ziele, sowie ENABLE/FORCE RLS und Policies aller
 normalen und partitionierten öffentlichen Tenanttabellen. Die dokumentierten
 globalen Ausnahmen bleiben erhalten; ein leeres Inventar wird abgewiesen.
 `--no-smoke-test` schaltet diese Sicherheitsabnahme nicht aus.
+
+Fünf der Prüfungen betreffen die Ticketmigration `20260907013230`: Der
+Nummernzähler bleibt ausschließlich dem Owner zugänglich, Referenzkanten
+sind für die Anwendung nur les- und ergänzbar; die Triggerfunktionen sind
+nicht direkt aufrufbar. Der aktuelle Restorepfad migriert den Dump nicht
+selbst. Ein Backup vor dieser Migration muss daher mit dem passenden alten
+Softwarestand wiederhergestellt und anschließend kontrolliert aktualisiert
+werden. Mit der aktuellen CLI wird ein Dump ohne die erwarteten Ticketobjekte
+bei der Sicherheitsabnahme abgewiesen.
 
 Schlägt die Abnahme fehl, meldet die CLI keinen erfolgreichen Restore und
 endet mit Fehler. **Der Restore wurde dann bereits angewendet; die Abnahme

@@ -356,6 +356,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'staff.reminder_notify_mode': 'Benachrichtigungs-Modus für Wiedervorlagen geändert',
   'client_reminder.priority': 'Priorität der Wiedervorlage geändert',
   'client_reminder.delete': 'Wiedervorlage gelöscht',
+  'client_reminder.archive': 'Wiedervorlage archiviert',
+  'client_reminder.restore': 'Wiedervorlage aus dem Archiv zurückgeholt',
   'pending_binder.create': 'Pendelordner angelegt',
   'pending_binder.status_change': 'Pendelordner-Status geändert',
   'pending_binder.delete': 'Pendelordner gelöscht',

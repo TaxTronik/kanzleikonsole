@@ -4,7 +4,7 @@ Inventurstand: 2026-09-06
 Technischer Bezugspunkt: Ausbau-Arbeitsbaum auf `599c969c` einschließlich übernommener GwG-/Steuerstammdatenänderungen
 Status: ungeprüfte Scope-Inventur, keine fachliche Freigabe
 
-<!-- fachkatalog-scope: version=1; active=80; reserved=8 -->
+<!-- fachkatalog-scope: version=1; active=81; reserved=8 -->
 
 ## Zweck und belastbare Vollständigkeitsgrenze
 
@@ -32,20 +32,20 @@ jedoch in scope.
 
 ### Umfang des vollständigen Produkt-Scope-Exports
 
-| Regelbereich                            | Atomare Regeln | Einordnung                                                                   |
-| --------------------------------------- | -------------: | ---------------------------------------------------------------------------- |
-| Fristen und Bescheide                   |              6 | Bestand einschließlich persönlicher Bescheidentscheidung                     |
-| Geldwäschegesetz                        |             12 | GwG-Inventur mit OCR, Kontrollliste und lokalem Screening                    |
-| Datenschutz und Betroffenenrechte       |              6 | Abschnitt 1                                                                  |
-| Dokumente und Aufbewahrung              |              9 | Abschnitt 2 und Opt-in-Assistenten                                           |
-| Mandat, Zugriff und Anforderungen       |             19 | Abschnitt 3, Steuerverbindungen, Workflow-Abschluss und Opt-in-Abläufe       |
-| Vollmachten und Signaturen              |              5 | Abschnitt 4 einschließlich getrennter VDB-Nachweise                          |
-| Audit und Software-Assurance            |              6 | Abschnitt 5                                                                  |
-| Rechnungslogik                          |              9 | Abschnitt 6 einschließlich StBVV-Vorschlägen                                 |
-| BWA, Subsumtion und TCMS-Produktgrenzen |              8 | Abschnitt 7                                                                  |
-| **Gesamt**                              |         **80** | Export der definierten Produktlogik einschließlich ungeprüfter Erweiterungen |
+| Regelbereich                            | Atomare Regeln | Einordnung                                                                      |
+| --------------------------------------- | -------------: | ------------------------------------------------------------------------------- |
+| Fristen und Bescheide                   |              6 | Bestand einschließlich persönlicher Bescheidentscheidung                        |
+| Geldwäschegesetz                        |             12 | GwG-Inventur mit OCR, Kontrollliste und lokalem Screening                       |
+| Datenschutz und Betroffenenrechte       |              6 | Abschnitt 1                                                                     |
+| Dokumente und Aufbewahrung              |              9 | Abschnitt 2 und Opt-in-Assistenten                                              |
+| Mandat, Zugriff und Anforderungen       |             20 | Abschnitt 3, Steuerverbindungen, Workflow-Abschluss, Tickets und Opt-in-Abläufe |
+| Vollmachten und Signaturen              |              5 | Abschnitt 4 einschließlich getrennter VDB-Nachweise                             |
+| Audit und Software-Assurance            |              6 | Abschnitt 5                                                                     |
+| Rechnungslogik                          |              9 | Abschnitt 6 einschließlich StBVV-Vorschlägen                                    |
+| BWA, Subsumtion und TCMS-Produktgrenzen |              8 | Abschnitt 7                                                                     |
+| **Gesamt**                              |         **81** | Export der definierten Produktlogik einschließlich ungeprüfter Erweiterungen    |
 
-Die acht reservierten IDs in Abschnitt 8 zählen nicht zu diesen 80 Regeln.
+Die acht reservierten IDs in Abschnitt 8 zählen nicht zu diesen 81 Regeln.
 Sie kennzeichnen bewusst nicht behauptete Rechts- oder Organisationsabdeckung.
 
 ### Separat inventarisierte Regelblöcke
@@ -119,6 +119,12 @@ Abschnitten 1 bis 7 aber nicht erneut fachlich beschrieben:
 | G/R + S | `GOBD-VERFAHRENSDOKU-001`      | **Teilweise.** TaxTronik erzeugt eine IST-orientierte technische Verfahrensdokumentation aus Konfiguration und Betriebsdaten. Fachliche Prozessbeschreibung, tatsächliche Kontrolldurchführung, Freigabe und langfristige Dokumentenlenkung bleiben organisatorisch.                                                                               | `apps/web/src/server/compliance/verfahrensdoku.ts`<br>`docs/compliance/gobd.md`<br>`docs/compliance/gobd-template.md`                                                                                                  | `apps/web/src/server/compliance/__tests__/verfahrensdoku.test.ts`                                                                                                                                                                                                |
 
 ## 3. Mandat, Zugriff, Portal und Anforderungen
+
+Ergänzung vom 7. September 2026:
+
+| Klasse | Regel-ID              | Entscheidungsblock und Ist-Status                                                                                                                                | Codepfade                                                                                                                     | Testnachweise                                                                                                                                                                       |
+| ------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P      | `REMINDER-TICKET-001` | **Technisch umgesetzt, fachlich ungeprüft.** Eigenständige Wiedervorlagen mit stabilen Nummern, erlaubten Erwähnungen und getrenntem Archiv erledigter Aufgaben. | `apps/web/src/server/reminders/service.ts`<br>`apps/web/src/server/reminders/detail.ts`<br>`packages/db/prisma/schema.prisma` | `apps/web/src/lib/__tests__/reminder-ticket-references.test.ts`<br>`apps/web/src/server/reminders/__tests__/tickets-db.test.ts`<br>`apps/e2e/tests/23-reminder-ticket-flow.spec.ts` |
 
 | Klasse | Regel-ID                            | Entscheidungsblock und Ist-Status                                                                                                                                                                                                                                                                                                                            | Codepfade                                                                                                                                                                                                           | Testnachweise                                                                                                                                                                                     |
 | ------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

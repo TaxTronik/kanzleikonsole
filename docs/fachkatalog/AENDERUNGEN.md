@@ -826,3 +826,27 @@ Löschung.
   Benachrichtigungsabläufen; keine Regelwirkung.
 - `FK-EXC-20260827-006` — Einbettung der GwG-Einladung in den neuen Seitenaufbau
   und gemeinsamer Bestätigungsdialog bei unveränderter Einladungslogik.
+
+## 2026-09-07 — Wiedervorlagen als Tickets
+
+Neue Produktregel `REMINDER-TICKET-001`: kanzleiweite Nummern, ausdrückliche
+Erwähnungen mit Rückverweisen und getrenntes Archiv erledigter Aufgaben.
+Die Erweiterung des aktiven Katalog-Scope von 80 auf 81 Regeln ist ausdrücklich
+in `SCOPE.md` erfasst. Keine fachliche Freigabe wird behauptet oder geändert.
+
+Nummern werden für sämtliche Erzeuger atomar in der Datenbank vergeben;
+Bestands-UUIDs bleiben erhalten. Rechercheherkunft wird unabhängig vom
+aktuellen Delegationszeiger gespeichert. Das Archiv verlangt Abschlusszeit
+und abschließende Person, bleibt schreibgeschützt und bewahrt Verweise.
+Wiederherstellung aus dem Ticketarchiv behält den Arbeitsabschluss.
+
+Die Berechtigung eines Verweises wird bei Erzeugung und Anzeige geprüft;
+Ketten und Anhänge verwenden ebenfalls aktuelle Mandanten- bzw. interne
+Beteiligungsrechte. Ein gemeinsamer Row-Lock verhindert, dass die endgültige
+Anhangzuordnung die Archivierung überholt. Die Restore-Sicherheitsabnahme
+prüft die Owner-Rechte des Zählers und die nur ergänzbaren Referenzkanten.
+
+Technische Nachweise stehen in der neuen Regel und unter
+`docs/reviews/2026-09-07-wiedervorlagen-tickets.md`. Fachliche Ergebnisfreigaben,
+Fristenkontrolle und getrennte Aufbewahrungs-/Löschverfahren bleiben eigene
+Entscheidungen.

@@ -6,7 +6,7 @@ import { Plus, X } from 'lucide-react';
 import { REMINDER_PRIORITIES, PRIORITY_LABEL } from '@/lib/reminder-priority';
 import { createReminderAction } from '../clients/[id]/reminders/actions';
 import type { ActionResult } from '@/server/actions/staff-action';
-import { StaffPicker } from './[id]/reminder-detail-view';
+import { StaffPicker } from './staff-picker';
 
 /**
  * Neue Wiedervorlage — mandantenbezogen ODER intern, mit mehreren Zuständigen.
@@ -40,7 +40,7 @@ export function NewReminderForm({
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="btn-primary text-sm">
-        <Plus className="h-4 w-4" /> Neue Wiedervorlage
+        <Plus className="h-4 w-4" /> Neues Ticket
       </button>
     );
   }
@@ -53,9 +53,11 @@ export function NewReminderForm({
       ))}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-primary">Neue Wiedervorlage</p>
+        <p className="text-sm font-medium text-primary">Neues Ticket</p>
         <button
           type="button"
+          aria-label="Neues Ticket schließen"
+          disabled={isPending}
           onClick={() => setOpen(false)}
           className="text-disabled hover:text-secondary"
         >
@@ -88,7 +90,7 @@ export function NewReminderForm({
       </div>
 
       <label className="block text-xs">
-        <span className="text-muted">Stichwort</span>
+        <span className="text-muted">Titel</span>
         <input
           type="text"
           name="subject"
@@ -100,8 +102,9 @@ export function NewReminderForm({
       </label>
 
       <label className="block text-xs">
-        <span className="text-muted">Auftrag / Notiz</span>
+        <span className="text-muted">Beschreibung</span>
         <textarea name="notes" rows={2} maxLength={2000} className="input text-sm w-full mt-0.5" />
+        <span className="text-muted">Mit #123 auf ein zugängliches Ticket verweisen.</span>
       </label>
 
       <div className="grid grid-cols-2 gap-2">

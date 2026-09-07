@@ -739,8 +739,16 @@ User-Agent bei Signatur.
 
 ## Wiedervorlagen ⚙
 
-- Pro Mandant Datum + Stichwort + optional Notiz + zugewiesener
-  Bearbeiter (Default: Ersteller)
+- Eigenständige Tickets mit dauerhafter kanzleiweiter Nummer `#123`, Titel,
+  Fälligkeit, optionalem Mandantenbezug und mehreren Zuständigen (Default: Ersteller)
+- Übersicht mit An mich / Von mir / Alle zugänglichen, Zustandsfilter
+  Offen / Erledigt / Archiv, Suche nach Nummer oder Titel und Seitennavigation
+- Automatische Verweise und Rückverweise durch `#123` in neuen Beschreibungen
+  und Kommentaren; aktuelle Sichtbarkeit wird für jedes Ziel erneut geprüft
+- Archivieren erledigter Tickets durch Ersteller, Admin oder Partner; Nummer,
+  Kommentare und Kontext bleiben erhalten. Zurückholen behält den Arbeitsabschluss
+- Fester Recherche-Herkunftsbezug bleibt auch bei erneuter Delegation bestehen;
+  vorhandene UUID-Links bleiben neben kurzen Nummernlinks gültig
 - Bei mandantenbezogenen Wiedervorlagen werden Zuweisungen ebenfalls gegen
   `OPEN`/`RESTRICTED` und das Vertraulich-Flag geprüft; rein interne
   Wiedervorlagen benötigen nur einen aktiven Tenant-Mitarbeiter
@@ -749,7 +757,9 @@ User-Agent bei Signatur.
   mir erstellt ohne Assignee)
 - Worker `reminders-daily` schickt zur Fälligkeit eine Notification an
   Bearbeiter/Ersteller; idempotent über (resourceId, kind, day-bucket)
-- Audit-Trail über `client_reminder.create/.done/.delete`
+- Audit-Trail einschließlich Anlage, Abschluss, Archivierung und Wiederherstellung
+- [Bedienung und Grenzen der Ticketverweise](docs/anwenderdoku/wiedervorlagen.md);
+  Fachkatalog `REMINDER-TICKET-001` (ungeprüfter Entwurf)
 
 ## Fristenkontrollbuch
 

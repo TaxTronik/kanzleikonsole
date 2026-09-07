@@ -5,6 +5,12 @@ const mocks = vi.hoisted(() => ({
   evidenceRecord: vi.fn(),
   notify: vi.fn(),
   canOtherStaffAccessClientTx: vi.fn(),
+  persistReminderReferencesTx: vi.fn(),
+}));
+
+vi.mock('@/server/actions/staff-action', () => ({ ActionError: class extends Error {} }));
+vi.mock('@/server/reminders/references', () => ({
+  persistReminderReferencesTx: mocks.persistReminderReferencesTx,
 }));
 
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
@@ -15,6 +21,7 @@ vi.mock('@/server/auth/rbac', () => ({
 }));
 
 import type { TenantContext, TxClient } from '@taxtronik/db';
+import type { StaffSession } from '@/server/auth/staff';
 import { delegateMarking } from '../delegate';
 
 const ACTOR = '22222222-2222-4222-8222-222222222222';
@@ -24,6 +31,8 @@ const ctx: TenantContext = {
   actorId: ACTOR,
   actorType: 'STAFF',
 };
+
+const session = { user: { staffId: ACTOR, tenantId: ctx.tenantId } } as StaffSession;
 
 const MARKING = {
   id: '33333333-3333-4333-8333-333333333333',
@@ -65,9 +74,27 @@ describe('delegateMarking', () => {
     mocks.canOtherStaffAccessClientTx.mockResolvedValue(true);
   });
 
+  // Fachkatalog: REMINDER-TICKET-001
+  it('behält bei erneuter Delegation die Rechercheherkunft am neuen Ticket', async () => {
+    const tx = mockTx();
+    tx.riskMarking.findUnique.mockResolvedValue({
+      ...MARKING,
+      reminder: { id: 'previous-ticket', doneAt: new Date() },
+    });
+    await delegateMarking(ctx, input, session);
+    expect(tx.clientReminder.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ originRiskMarkingId: MARKING.id }),
+      }),
+    );
+    expect(tx.riskMarking.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ reminderId: 'reminder-1' }) }),
+    );
+  });
+
   it('benachrichtigt die zugewiesene Person sofort mit Sprung auf die Markierung', async () => {
     mockTx();
-    await delegateMarking(ctx, input);
+    await delegateMarking(ctx, input, session);
 
     expect(mocks.notify).toHaveBeenCalledTimes(1);
     const [, arg] = mocks.notify.mock.calls[0] as [unknown, Record<string, unknown>];
@@ -81,7 +108,7 @@ describe('delegateMarking', () => {
 
   it('traegt den woertlichen Sachverhaltsauszug NICHT in die Benachrichtigung', async () => {
     mockTx();
-    await delegateMarking(ctx, input);
+    await delegateMarking(ctx, input, session);
 
     const [, arg] = mocks.notify.mock.calls[0] as [unknown, Record<string, unknown>];
     const text = `${arg.title ?? ''} ${arg.body ?? ''}`;
@@ -92,7 +119,7 @@ describe('delegateMarking', () => {
     const tx = mockTx();
     mocks.canOtherStaffAccessClientTx.mockResolvedValue(false);
 
-    await expect(delegateMarking(ctx, input)).rejects.toThrow(/keinen Zugriff/);
+    await expect(delegateMarking(ctx, input, session)).rejects.toThrow(/keinen Zugriff/);
     // Weder Wiedervorlage noch Zuweisung noch Benachrichtigung entstehen.
     expect(tx.clientReminder.create).not.toHaveBeenCalled();
     expect(tx.riskMarking.update).not.toHaveBeenCalled();
@@ -101,7 +128,7 @@ describe('delegateMarking', () => {
 
   it('benachrichtigt nicht, wenn jemand sich selbst zuweist', async () => {
     mockTx();
-    await delegateMarking(ctx, { ...input, assigneeStaffId: ACTOR });
+    await delegateMarking(ctx, { ...input, assigneeStaffId: ACTOR }, session);
 
     expect(mocks.notify).not.toHaveBeenCalled();
   });
@@ -113,7 +140,9 @@ describe('delegateMarking', () => {
       reminder: { id: 'reminder-open', doneAt: null },
     });
 
-    await expect(delegateMarking(ctx, input)).rejects.toThrow(/bereits eine Delegation offen/);
+    await expect(delegateMarking(ctx, input, session)).rejects.toThrow(
+      /bereits eine Delegation offen/,
+    );
 
     expect(tx.clientReminder.create).not.toHaveBeenCalled();
     expect(tx.riskMarking.update).not.toHaveBeenCalled();

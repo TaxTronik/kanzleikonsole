@@ -117,8 +117,8 @@ export async function loadClientDashboard(
         },
       }),
       tx.clientReminder.findMany({
-        where: { clientId },
-        orderBy: [{ doneAt: 'asc' }, { dueDate: 'asc' }],
+        where: { clientId, archivedAt: null },
+        orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
         take: 50,
         include: {
           riskMarkings: { select: { id: true, analysisId: true }, take: 1 },

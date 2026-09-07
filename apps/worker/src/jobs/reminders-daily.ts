@@ -238,6 +238,7 @@ async function resolveCurrentReminderRecipientsTx(
       id: { in: [...new Set(candidates.map((candidate) => candidate.resourceId))] },
       tenantId,
       doneAt: null,
+      archivedAt: null,
       dueDate: { in: deadlineTimestamps.map((timestamp) => new Date(timestamp)) },
       OR: [{ clientId: null }, { client: { mandateEndedAt: null } }],
     },
@@ -620,6 +621,7 @@ export const remindersDailyWorker = new Worker<ChecksJob>(
                 // darf sie nicht mit aussortieren.
                 OR: [{ clientId: null }, { client: { mandateEndedAt: null } }],
                 doneAt: null,
+                archivedAt: null,
                 dueDate: { lte: today },
               },
               select: {

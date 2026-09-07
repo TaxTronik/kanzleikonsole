@@ -13,9 +13,59 @@
 //                  Mandantenfelds sonst aufreissen würde.
 // =============================================================================
 
-import { ForbiddenError, assertClientAccessTx, isStaffAdmin } from '@/server/auth/rbac';
+import {
+  ForbiddenError,
+  assertClientAccessTx,
+  isStaffAdmin,
+  accessibleClientsWhereFor,
+} from '@/server/auth/rbac';
+import { ActionError } from '@/server/actions/action-error';
 import type { StaffSession } from '@/server/auth/staff';
 import type { TxClient } from '@taxtronik/db';
+import type { Prisma as PrismaTypes } from '@prisma/client';
+
+/** REMINDER-TICKET-001: Filter before counting, pagination or projecting related titles. */
+export async function accessibleRemindersWhereTx(
+  tx: TxClient,
+  session: StaffSession,
+): Promise<PrismaTypes.ClientReminderWhereInput> {
+  const { tenantId, staffId } = session.user;
+  const clients = await accessibleClientsWhereFor(tx, session);
+  return {
+    tenantId,
+    OR: [
+      { client: { is: { tenantId, ...clients } } },
+      {
+        clientId: null,
+        ...(isStaffAdmin(session)
+          ? {}
+          : {
+              OR: [{ createdByStaff: staffId }, { assignees: { some: { staffId } } }],
+            }),
+      },
+    ],
+  };
+}
+
+/** Serializes ticket mutations with archive and document finalization. */
+export async function lockReminderTx(tx: TxClient, tenantId: string, id: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM client_reminder
+    WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid FOR NO KEY UPDATE`;
+}
+
+export function assertReminderNotArchived(reminder: { archivedAt: Date | null }): void {
+  if (reminder.archivedAt) throw new ActionError('Archivierte Tickets bitte zuerst zurückholen.');
+}
+
+export function assertReminderActor(
+  session: StaffSession,
+  tenantId: string,
+  staffId: string,
+): void {
+  if (session.user.tenantId !== tenantId || session.user.staffId !== staffId) {
+    throw new ForbiddenError('Ungültiger Ticket-Akteur.');
+  }
+}
 
 export interface ReminderAccessSubject {
   clientId: string | null;
@@ -56,6 +106,7 @@ export function darfSteuern(session: StaffSession, reminder: { createdByStaff: s
 
 /** Prisma-Select, das `assertReminderAccessTx` mit allem Nötigen versorgt. */
 export const REMINDER_ACCESS_SELECT = {
+  archivedAt: true,
   clientId: true,
   createdByStaff: true,
   assignees: { select: { staffId: true } },

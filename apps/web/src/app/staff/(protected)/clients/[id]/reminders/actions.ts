@@ -9,6 +9,8 @@ import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
 import {
   assertReminderAccessTx,
+  assertReminderNotArchived,
+  lockReminderTx,
   darfSteuern,
   REMINDER_ACCESS_SELECT,
 } from '@/server/reminders/access';
@@ -67,17 +69,21 @@ export async function createReminderAction(
         await assertClientInTenant(tx, clientId);
       }
 
-      const r = await createReminderTx(tx, {
-        tenantId,
-        createdByStaff: staffId,
-        clientId,
-        dueDate: new Date(parsed.data.dueDate),
-        subject: parsed.data.subject.trim(),
-        notes: parsed.data.notes?.trim() || null,
-        priority: parsed.data.priority,
-        assigneeStaffIds: parsed.data.assigneeStaffIds,
-        predecessorId: parsed.data.predecessorId ?? null,
-      });
+      const r = await createReminderTx(
+        tx,
+        {
+          tenantId,
+          createdByStaff: staffId,
+          clientId,
+          dueDate: new Date(parsed.data.dueDate),
+          subject: parsed.data.subject.trim(),
+          notes: parsed.data.notes?.trim() || null,
+          priority: parsed.data.priority,
+          assigneeStaffIds: parsed.data.assigneeStaffIds,
+          predecessorId: parsed.data.predecessorId ?? null,
+        },
+        session,
+      );
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -112,6 +118,7 @@ export async function createReminderAction(
 export async function cloneReminderAction(input: {
   id: string;
   alsNachfrage: boolean;
+  alsVerknuepftesTicket?: boolean;
   dueDate: string;
   subject?: string;
   notes?: string | null;
@@ -121,6 +128,7 @@ export async function cloneReminderAction(input: {
     .object({
       id: z.string().uuid(),
       alsNachfrage: z.boolean(),
+      alsVerknuepftesTicket: z.boolean().optional(),
       dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum YYYY-MM-DD'),
       subject: z.string().max(200).optional(),
       notes: z.string().max(2000).nullable().optional(),
@@ -132,7 +140,7 @@ export async function cloneReminderAction(input: {
 
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     const quelle = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       select: REMINDER_ACCESS_SELECT,
     });
     if (!quelle) throw new ActionError('Wiedervorlage nicht gefunden.');
@@ -144,6 +152,7 @@ export async function cloneReminderAction(input: {
       { tenantId, staffId },
       {
         alsNachfrage: parsed.data.alsNachfrage,
+        ...(parsed.data.alsVerknuepftesTicket ? { alsVerknuepftesTicket: true } : {}),
         dueDate: new Date(parsed.data.dueDate),
         ...(parsed.data.subject !== undefined ? { subject: parsed.data.subject } : {}),
         ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
@@ -151,6 +160,7 @@ export async function cloneReminderAction(input: {
           ? { assigneeStaffIds: parsed.data.assigneeStaffIds }
           : {}),
       },
+      session,
     );
     await evidenceService.record(tx, {
       tenantId,
@@ -183,18 +193,24 @@ export async function addReminderNoteAction(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+    await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       select: REMINDER_ACCESS_SELECT,
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
-    await addReminderNoteTx(tx, {
-      tenantId,
-      reminderId: parsed.data.id,
-      staffId,
-      body: parsed.data.body,
-    });
+    assertReminderNotArchived(rem);
+    await addReminderNoteTx(
+      tx,
+      {
+        tenantId,
+        reminderId: parsed.data.id,
+        staffId,
+        body: parsed.data.body,
+      },
+      session,
+    );
     return { clientId: rem.clientId };
   });
   if (r.ok) {
@@ -216,12 +232,14 @@ export async function setReminderAssigneesAction(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+    await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       select: REMINDER_ACCESS_SELECT,
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
+    assertReminderNotArchived(rem);
     if (!darfSteuern(session, rem)) {
       throw new ActionError('Nur die delegierende Person oder Admin/Partner darf umverteilen.');
     }
@@ -256,15 +274,17 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+    await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       select: { ...REMINDER_ACCESS_SELECT, subject: true, doneAt: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
+    assertReminderNotArchived(rem);
     if (rem.doneAt) return { clientId: rem.clientId, notify: null };
     await tx.clientReminder.update({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       data: { doneAt: new Date(), doneByStaff: staffId },
     });
     await resolveNotificationsTx(tx, {
@@ -307,11 +327,12 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
     if (!eingeplant) {
       // Fail-safe: sofort zustellen statt die Rueckmeldung zu verlieren.
       await withRemindersStaff(async (tx) => {
+        await lockReminderTx(tx, geplant.tenantId, geplant.reminderId);
         const reminder = await tx.clientReminder.findFirst({
           where: { id: geplant.reminderId, tenantId: geplant.tenantId },
-          select: { doneAt: true, clientId: true, subject: true },
+          select: { doneAt: true, clientId: true, subject: true, archivedAt: true },
         });
-        if (!reminder?.doneAt) return;
+        if (!reminder?.doneAt || reminder.archivedAt) return;
         if (reminder.clientId) {
           const allowed = await filterStaffAccessClientTx(
             tx,
@@ -355,15 +376,17 @@ export async function reopenReminderAction(input: { id: string }): Promise<Actio
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+    await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       select: { ...REMINDER_ACCESS_SELECT, doneAt: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
+    assertReminderNotArchived(rem);
     if (!rem.doneAt) return { clientId: rem.clientId };
     await tx.clientReminder.update({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       data: { doneAt: null, doneByStaff: null },
     });
     await resolveNotificationsTx(tx, {
@@ -414,18 +437,20 @@ export async function setReminderPriorityAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+    await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       select: { ...REMINDER_ACCESS_SELECT, priority: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
+    assertReminderNotArchived(rem);
     if (!darfSteuern(session, rem)) {
       throw new ActionError('Nur die delegierende Person oder Admin/Partner darf umpriorisieren.');
     }
     if (rem.priority === parsed.data.priority) return { clientId: rem.clientId };
     await tx.clientReminder.update({
-      where: { id: parsed.data.id },
+      where: { id: parsed.data.id, tenantId },
       data: { priority: parsed.data.priority },
     });
     await evidenceService.record(tx, {
@@ -469,10 +494,12 @@ export async function submitResearchResultAction(input: {
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
     await assertClientAccessTx(tx, session, parsed.data.clientId);
     await assertClientInTenant(tx, parsed.data.clientId);
+    await lockReminderTx(tx, tenantId, parsed.data.reminderId);
     const reminder = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.reminderId },
+      where: { id: parsed.data.reminderId, tenantId },
       select: {
         id: true,
+        archivedAt: true,
         clientId: true,
         createdByStaff: true,
         riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
@@ -480,6 +507,7 @@ export async function submitResearchResultAction(input: {
     });
     if (!reminder || reminder.clientId !== parsed.data.clientId)
       throw new Error('Wiedervorlage nicht gefunden.');
+    assertReminderNotArchived(reminder);
     const markingId = reminder.riskMarkings[0]?.id ?? null;
     const analysisId = reminder.riskMarkings[0]?.analysisId ?? null;
     if (!markingId) throw new Error('Diese Wiedervorlage ist kein Rechercheauftrag.');
@@ -557,39 +585,111 @@ export async function submitResearchResultAction(input: {
   return r;
 }
 
-export async function deleteReminderAction(input: { id: string }): Promise<ActionResult> {
+export async function archiveReminderAction(input: { id: string }): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    };
+  }
 
   const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+    await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
-      where: { id: parsed.data.id },
-      select: { ...REMINDER_ACCESS_SELECT, subject: true },
+      where: { id: parsed.data.id, tenantId },
+      select: { ...REMINDER_ACCESS_SELECT, subject: true, doneAt: true, doneByStaff: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
+    if (!darfSteuern(session, rem)) {
+      throw new ActionError('Nur die anlegende Person oder Admin/Partner darf archivieren.');
+    }
+    if (rem.archivedAt) return { clientId: rem.clientId };
+    if (!rem.doneAt || !rem.doneByStaff) {
+      throw new ActionError('Bitte das Ticket zuerst mit dokumentiertem Abschluss erledigen.');
+    }
     await resolveNotificationsTx(tx, {
       tenantId,
       resources: [{ resourceType: 'client_reminder', resourceId: parsed.data.id }],
       hrefs: [`/staff/reminders/${parsed.data.id}`],
     });
-    await tx.clientReminder.delete({ where: { id: parsed.data.id } });
+    const archivedAt = new Date();
+    await tx.clientReminder.update({
+      where: { id: parsed.data.id, tenantId },
+      data: { archivedAt, archivedByStaff: staffId },
+    });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
       actorId: staffId,
-      action: 'client_reminder.delete',
+      action: 'client_reminder.archive',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
       before: { subject: rem?.subject ?? null },
+      after: { archivedAt, archivedByStaff: staffId },
     });
     return { clientId: rem.clientId };
   });
   if (r.ok) {
+    await cancelReminderDoneNotification(parsed.data.id);
     if (r.clientId) revalidatePath(`/staff/clients/${r.clientId}`);
     revalidatePath('/staff/dashboard');
+    revalidatePath('/staff/reminders');
   }
   return r;
+}
+
+/** Existing clients keep their action name; normal ticket history is never deleted. */
+export async function deleteReminderAction(input: { id: string }): Promise<ActionResult> {
+  return archiveReminderAction(input);
+}
+
+export async function restoreReminderAction(input: { id: string }): Promise<ActionResult> {
+  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    };
+  }
+  const result = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+    await lockReminderTx(tx, tenantId, parsed.data.id);
+    const reminder = await tx.clientReminder.findUnique({
+      where: { id: parsed.data.id, tenantId },
+      select: REMINDER_ACCESS_SELECT,
+    });
+    if (!reminder) throw new ActionError('Wiedervorlage nicht gefunden.');
+    await assertReminderAccessTx(tx, session, reminder);
+    if (!darfSteuern(session, reminder)) {
+      throw new ActionError('Nur die anlegende Person oder Admin/Partner darf zurückholen.');
+    }
+    if (!reminder.archivedAt) return { clientId: reminder.clientId };
+    await tx.clientReminder.update({
+      where: { id: parsed.data.id, tenantId },
+      data: { archivedAt: null, archivedByStaff: null },
+    });
+    await evidenceService.record(tx, {
+      tenantId,
+      actorType: 'STAFF',
+      actorId: staffId,
+      action: 'client_reminder.restore',
+      resourceType: 'client_reminder',
+      resourceId: parsed.data.id,
+      before: { archivedAt: reminder.archivedAt },
+      after: { archivedAt: null },
+    });
+    return { clientId: reminder.clientId };
+  });
+  if (result.ok) {
+    if (result.clientId) revalidatePath(`/staff/clients/${result.clientId}`);
+    revalidatePath('/staff/reminders');
+  }
+  return result;
 }
 
 /**

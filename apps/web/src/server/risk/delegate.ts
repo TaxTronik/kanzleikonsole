@@ -15,6 +15,9 @@ import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 import { notify } from '@/server/notifications/service';
 import { buildDelegationNotes } from './delegate-notes';
 import { subsumtionMarkingHref } from './links';
+import type { StaffSession } from '@/server/auth/staff';
+import { assertReminderActor } from '@/server/reminders/access';
+import { persistReminderReferencesTx } from '@/server/reminders/references';
 
 const DEFAULT_DUE_DAYS = 14;
 
@@ -37,7 +40,9 @@ export interface DelegateMarkingResult {
 export async function delegateMarking(
   ctx: TenantContext,
   input: DelegateMarkingInput,
+  session: StaffSession,
 ): Promise<DelegateMarkingResult> {
+  assertReminderActor(session, ctx.tenantId, input.createdByStaffId);
   return withTenantContext(ctx, async (tx) => {
     // Ein Marking darf höchstens eine offene Delegation besitzen. Der
     // transaktionsgebundene Lock schließt auch parallele Doppelklicks, bevor
@@ -87,11 +92,14 @@ export async function delegateMarking(
         dueDate,
         subject: `Risiko-Recherche: ${marking.begriff}`,
         notes: buildDelegationNotes(marking, input.notes),
+        originRiskMarkingId: marking.id,
         createdByStaff: input.createdByStaffId,
         assignees: { create: { staffId: input.assigneeStaffId } },
       },
       select: { id: true },
     });
+
+    await persistReminderReferencesTx(tx, session, reminder.id, input.notes ?? '');
 
     await tx.riskMarking.update({
       where: { id: marking.id },

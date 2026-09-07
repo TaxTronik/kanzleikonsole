@@ -49,6 +49,12 @@ import {
   markReminderDoneAction,
   reopenReminderAction,
   setReminderPriorityAction,
+  archiveReminderAction,
+  restoreReminderAction,
+  deleteReminderAction,
+  addReminderNoteAction,
+  setReminderAssigneesAction,
+  submitResearchResultAction,
 } from '../actions';
 
 const ICH = '11111111-1111-4111-8111-111111111111';
@@ -59,6 +65,7 @@ const CLIENT = '44444444-4444-4444-8444-444444444444';
 /** Bildet withStaff nach: fuehrt den Callback mit Stub-Tx aus. */
 function stubWithStaff(reminder: Record<string, unknown> | null) {
   const tx = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     clientReminder: {
       findUnique: vi.fn().mockResolvedValue(reminder),
       findFirst: vi
@@ -228,5 +235,122 @@ describe('setReminderPriorityAction', () => {
     await setReminderPriorityAction({ id: REMINDER, priority: 'HIGH' });
 
     expect(tx.clientReminder.update).toHaveBeenCalled();
+  });
+});
+
+describe('REMINDER-TICKET-001 / TAX-CONTROL-STATUS-001 — Archiv statt Löschung', () => {
+  it.each([archiveReminderAction, restoreReminderAction, deleteReminderAction])(
+    'weist ungültige Ticketkennungen mit Feldzuordnung vor dem Zugriff zurück',
+    async (action) => {
+      const result = await action({ id: 'invalid' });
+      expect(result).toMatchObject({ ok: false, errorCode: 'VALIDATION_ERROR' });
+      expect(result.fieldErrors?.id).toEqual([expect.any(String)]);
+      expect(m.withStaff).not.toHaveBeenCalled();
+    },
+  );
+  const completed = () => ({
+    clientId: CLIENT,
+    subject: 'Auftrag',
+    createdByStaff: ICH,
+    assignees: [],
+    doneAt: new Date('2026-09-01'),
+    doneByStaff: ICH,
+    archivedAt: null,
+  });
+
+  it.each([{ doneAt: null }, { doneByStaff: null }])(
+    'lehnt unvollständigen Abschluss ab: %j',
+    async (missing) => {
+      const tx = stubWithStaff({ ...completed(), ...missing });
+      await expect(archiveReminderAction({ id: REMINDER })).rejects.toThrow(
+        'dokumentiertem Abschluss',
+      );
+      expect(tx.clientReminder.update).not.toHaveBeenCalled();
+      expect(m.evidenceRecord).not.toHaveBeenCalled();
+    },
+  );
+
+  it('sperrt Archiv und Restore für bloß zugewiesene Personen', async () => {
+    const tx = stubWithStaff({
+      ...completed(),
+      createdByStaff: DELEGIERT_VON,
+      assignees: [{ staffId: ICH }],
+    });
+    await expect(archiveReminderAction({ id: REMINDER })).rejects.toThrow(
+      'Nur die anlegende Person',
+    );
+    await expect(restoreReminderAction({ id: REMINDER })).rejects.toThrow(
+      'Nur die anlegende Person',
+    );
+    expect(tx.clientReminder.update).not.toHaveBeenCalled();
+  });
+
+  it('Legacy-delete archiviert; Restore behält den ursprünglichen Abschluss', async () => {
+    const reminder = completed();
+    const tx = stubWithStaff(reminder);
+    tx.clientReminder.update.mockImplementation(async ({ data }) => {
+      Object.assign(reminder, data);
+      return reminder;
+    });
+    const doneAt = reminder.doneAt;
+    await deleteReminderAction({ id: REMINDER });
+    expect(reminder.archivedAt).toBeInstanceOf(Date);
+    expect(tx.clientReminder.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { archivedAt: expect.any(Date), archivedByStaff: ICH } }),
+    );
+    await restoreReminderAction({ id: REMINDER });
+    expect(reminder.archivedAt).toBeNull();
+    expect(reminder.doneAt).toBe(doneAt);
+    expect(reminder.doneByStaff).toBe(ICH);
+    expect(m.evidenceRecord.mock.calls.map((call) => call[1].action)).toEqual([
+      'client_reminder.archive',
+      'client_reminder.restore',
+    ]);
+    expect(m.cancel).toHaveBeenCalledWith(REMINDER);
+  });
+
+  it('lässt Admin/Partner fremde erledigte Tickets archivieren', async () => {
+    m.isStaffAdmin.mockReturnValue(true);
+    const tx = stubWithStaff({ ...completed(), createdByStaff: DELEGIERT_VON });
+    await archiveReminderAction({ id: REMINDER });
+    expect(tx.clientReminder.update).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['erledigen', () => markReminderDoneAction({ id: REMINDER })],
+    ['öffnen', () => reopenReminderAction({ id: REMINDER })],
+    ['priorisieren', () => setReminderPriorityAction({ id: REMINDER, priority: 'HIGH' })],
+    ['kommentieren', () => addReminderNoteAction({ id: REMINDER, body: 'Kommentar' })],
+    ['zuweisen', () => setReminderAssigneesAction({ id: REMINDER, staffIds: [ICH] })],
+    [
+      'Recherche abgeben',
+      () =>
+        submitResearchResultAction({ reminderId: REMINDER, clientId: CLIENT, body: 'Ergebnis' }),
+    ],
+  ])('Archiv verhindert %s vor jeglicher Mutation', async (_label, action) => {
+    const tx = stubWithStaff({ ...completed(), archivedAt: new Date() });
+    await expect(action()).rejects.toThrow('Archivierte Tickets');
+    expect(tx.clientReminder.update).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+    expect(m.notify).not.toHaveBeenCalled();
+  });
+
+  it('liest nach einem parallelen Wiederöffnen neu und archiviert den nun offenen Vorgang nicht', async () => {
+    const reminder = completed();
+    const tx = stubWithStaff(reminder);
+    let release!: () => void;
+    tx.$queryRaw.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const running = archiveReminderAction({ id: REMINDER });
+    expect(tx.clientReminder.findUnique).not.toHaveBeenCalled();
+    Object.assign(reminder, { doneAt: null, doneByStaff: null });
+    const rejected = expect(running).rejects.toThrow('dokumentiertem Abschluss');
+    release();
+    await rejected;
+    expect(tx.clientReminder.update).not.toHaveBeenCalled();
   });
 });

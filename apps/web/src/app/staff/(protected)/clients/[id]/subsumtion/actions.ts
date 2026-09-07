@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
-import { ForbiddenError, toActionError } from '@/server/auth/rbac';
+import { ForbiddenError, requireStaffSession, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
@@ -458,16 +458,21 @@ export async function delegateAction(
   try {
     const parsed = DelegateSchema.parse(input);
     const { ctx, staffId, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
+    const session = await requireStaffSession();
     if (!(await readModules(ctx)).reminders) {
       throw new ForbiddenError('Das Wiedervorlagen-Modul ist für diese Kanzlei deaktiviert.');
     }
-    const res = await delegateMarking(ctx, {
-      markingId: parsed.markingId,
-      createdByStaffId: staffId,
-      assigneeStaffId: parsed.assigneeStaffId,
-      dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
-      notes: parsed.notes,
-    });
+    const res = await delegateMarking(
+      ctx,
+      {
+        markingId: parsed.markingId,
+        createdByStaffId: staffId,
+        assigneeStaffId: parsed.assigneeStaffId,
+        dueDate: parsed.dueDate ? new Date(parsed.dueDate) : undefined,
+        notes: parsed.notes,
+      },
+      session,
+    );
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
     return { ok: true, reminderId: res.reminderId };
   } catch (e) {

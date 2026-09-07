@@ -7,7 +7,7 @@ import {
   CalendarClock,
   Check,
   Plus,
-  Trash2,
+  Archive,
   Send,
   UserCheck,
   Quote,
@@ -28,14 +28,16 @@ import {
   markReminderDoneAction,
   reopenReminderAction,
   setReminderPriorityAction,
-  deleteReminderAction,
+  archiveReminderAction,
   submitResearchResultAction,
 } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
-import { confirmDialog } from '@/components/ui/modal';
 
 interface Reminder {
   id: string;
+  ticketNumber: number;
+  archivedAt: string | null;
+  canArchive: boolean;
   dueDate: string; // ISO
   subject: string;
   notes: string | null;
@@ -62,11 +64,13 @@ export function RemindersBlock({
   initial,
   staffOptions,
   currentStaffId,
+  canSteerAll = false,
 }: {
   clientId: string;
   initial: Reminder[];
   staffOptions: StaffOption[];
   currentStaffId: string;
+  canSteerAll?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -89,6 +93,7 @@ export function RemindersBlock({
   const [submitFor, setSubmitFor] = useState<string | null>(null);
   const [resultBody, setResultBody] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   // Serverdaten (initial) plus per Live-Nachladen aktualisierte Fassung.
   const [live, setLive] = useState<Reminder[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -156,24 +161,22 @@ export function RemindersBlock({
       } else setSubmitError(res.error ?? 'Konnte nicht eingereicht werden.');
     });
   }
-  async function remove(id: string) {
-    if (
-      !(await confirmDialog('Wiedervorlage löschen?', {
-        title: 'Wiedervorlage löschen',
-        confirmLabel: 'Löschen',
-        danger: true,
-      }))
-    )
-      return;
+  function archive(id: string) {
+    setMutationError(null);
     startMut(async () => {
-      await deleteReminderAction({ id });
-      router.refresh();
+      try {
+        const result = await archiveReminderAction({ id });
+        if (result.ok) router.refresh();
+        else setMutationError(result.error ?? 'Ticket konnte nicht archiviert werden.');
+      } catch {
+        setMutationError('Ticket konnte nicht archiviert werden. Bitte erneut versuchen.');
+      }
     });
   }
 
   const rows = live ?? initial;
-  const open_items = rows.filter((r) => !r.doneAt);
-  const done_items = rows.filter((r) => r.doneAt);
+  const open_items = rows.filter((r) => !r.doneAt && !r.archivedAt);
+  const done_items = rows.filter((r) => r.doneAt && !r.archivedAt);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -195,9 +198,14 @@ export function RemindersBlock({
           className="btn-secondary text-xs inline-flex items-center gap-1"
         >
           <Plus className="h-3 w-3" />
-          Neu
+          Neues Ticket
         </button>
       </div>
+      {mutationError && (
+        <p role="alert" className="alert-error-sm m-4">
+          {mutationError}
+        </p>
+      )}
 
       {open && (
         <form
@@ -209,6 +217,7 @@ export function RemindersBlock({
             <input
               type="date"
               name="dueDate"
+              aria-label="Fällig"
               className="input text-sm"
               min={new Date().toISOString().slice(0, 10)}
               required
@@ -216,7 +225,8 @@ export function RemindersBlock({
             <input
               type="text"
               name="subject"
-              placeholder='Stichwort — z. B. „nach Urlaub anrufen"'
+              aria-label="Titel"
+              placeholder='Titel — z. B. „nach Urlaub anrufen"'
               className="input text-sm col-span-2"
               maxLength={200}
               required
@@ -224,7 +234,8 @@ export function RemindersBlock({
           </div>
           <textarea
             name="notes"
-            placeholder="Optionale Notiz"
+            aria-label="Beschreibung"
+            placeholder="Beschreibung — mit #123 andere Tickets erwähnen"
             rows={2}
             maxLength={2000}
             className="input text-sm"
@@ -233,6 +244,7 @@ export function RemindersBlock({
             <select
               multiple
               name="assigneeStaffIds"
+              aria-label="Zuständige"
               defaultValue={[currentStaffId]}
               size={Math.min(4, Math.max(2, staffOptions.length))}
               className="input text-sm flex-1"
@@ -311,10 +323,10 @@ export function RemindersBlock({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Link
-                      href={`/staff/reminders/${r.id}`}
+                      href={`/staff/reminders/${r.ticketNumber}`}
                       className="text-sm text-primary hover:underline"
                     >
-                      {r.subject}
+                      <span className="text-muted">#{r.ticketNumber}</span> {r.subject}
                     </Link>
                     {anMich && (
                       <span className="badge-brand text-[11px] inline-flex items-center gap-1">
@@ -329,6 +341,7 @@ export function RemindersBlock({
                     <ReminderPriorityControls
                       reminder={r}
                       currentStaffId={currentStaffId}
+                      canSteerAll={canSteerAll}
                       isMutating={isMutating}
                       bump={bump}
                     />
@@ -401,15 +414,6 @@ export function RemindersBlock({
                       </button>
                     ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => remove(r.id)}
-                  disabled={isMutating}
-                  className="text-disabled hover:text-red-700 p-1 shrink-0"
-                  title="Löschen"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
               </li>
             );
           })}
@@ -425,11 +429,11 @@ export function RemindersBlock({
             {done_items.map((r) => (
               <li key={r.id} className="px-6 py-2 flex items-center gap-3">
                 <Link
-                  href={`/staff/reminders/${r.id}`}
+                  href={`/staff/reminders/${r.ticketNumber}`}
                   className="flex-1 min-w-0 truncate text-sm text-muted line-through hover:underline"
-                  title="Details — Nachfassen und Rückfragen, ohne die Aufgabe wieder zu öffnen"
+                  title="Ticket öffnen"
                 >
-                  {r.subject} · {fmtDateShort(new Date(r.dueDate))}
+                  #{r.ticketNumber} {r.subject} · {fmtDateShort(new Date(r.dueDate))}
                 </Link>
                 <button
                   type="button"
@@ -440,11 +444,28 @@ export function RemindersBlock({
                 >
                   <Undo2 className="h-3.5 w-3.5" />
                 </button>
+                {r.canArchive && (
+                  <button
+                    type="button"
+                    onClick={() => archive(r.id)}
+                    disabled={isMutating}
+                    aria-label={`Ticket #${r.ticketNumber} archivieren`}
+                    title="Archivieren"
+                    className="text-disabled hover:text-brand-600 disabled:opacity-40 shrink-0"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         </details>
       )}
+      <div className="card-footer">
+        <Link href="/staff/reminders?scope=alle" className="text-xs text-brand-600 hover:underline">
+          Zur Ticketübersicht mit Suche und Archiv
+        </Link>
+      </div>
     </div>
   );
 }
@@ -505,11 +526,13 @@ function ReminderContext({ reminder: r, clientId }: { reminder: Reminder; client
 function ReminderPriorityControls({
   reminder: r,
   currentStaffId,
+  canSteerAll,
   isMutating,
   bump,
 }: {
   reminder: Reminder;
   currentStaffId: string;
+  canSteerAll: boolean;
   isMutating: boolean;
   bump: (id: string, priority: ReminderPriority) => void;
 }) {
@@ -521,7 +544,7 @@ function ReminderPriorityControls({
           {PRIORITY_LABEL[r.priority]}
         </span>
       )}
-      {r.createdByStaff === currentStaffId && naechsteStufe(r.priority) && (
+      {(canSteerAll || r.createdByStaff === currentStaffId) && naechsteStufe(r.priority) && (
         <button
           type="button"
           onClick={() => bump(r.id, naechsteStufe(r.priority)!)}

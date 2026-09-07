@@ -32,6 +32,7 @@ export function MentionTextarea({
   maxLength = 5000,
   placeholder,
   className = 'input text-sm flex-1',
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -40,6 +41,7 @@ export function MentionTextarea({
   maxLength?: number;
   placeholder?: string;
   className?: string;
+  ariaLabel?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [vorschlaege, setVorschlaege] = useState<Option[] | null>(null);
@@ -77,6 +79,7 @@ export function MentionTextarea({
     <div className="relative flex-1">
       <textarea
         ref={ref}
+        aria-label={ariaLabel}
         value={value}
         onChange={(e) => aktualisiere(e.target.value, e.target.selectionStart)}
         onBlur={() => window.setTimeout(() => setVorschlaege(null), 150)}

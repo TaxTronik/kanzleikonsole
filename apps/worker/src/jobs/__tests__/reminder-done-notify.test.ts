@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   findFirst: vi.fn(),
   filterStaffAccessClientTx: vi.fn(),
   moduleEnabled: vi.fn(),
+  lock: vi.fn(),
 }));
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -29,7 +30,7 @@ vi.mock('@taxtronik/db/staff-client-access', () => ({
 }));
 vi.mock('../../tenant-context', () => ({
   withWorkerTenantContext: (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
-    fn({ clientReminder: { findFirst: h.findFirst } }),
+    fn({ $queryRaw: h.lock, clientReminder: { findFirst: h.findFirst } }),
 }));
 vi.mock('../../module-gate', () => ({
   isWorkerTenantModuleEnabled: h.moduleEnabled,
@@ -58,6 +59,27 @@ beforeEach(() => {
 });
 
 describe('reminder-done-notify', () => {
+  it('REMINDER-TICKET-001: liest nach dem Archiv-Lock neu und unterdrückt überholte Jobs', async () => {
+    let release!: () => void;
+    h.lock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const running = processors.get('reminder-done-notify')!(JOB);
+    await vi.waitFor(() => expect(h.lock).toHaveBeenCalled());
+    expect(h.findFirst).not.toHaveBeenCalled();
+    h.findFirst.mockResolvedValue({
+      doneAt: new Date(),
+      archivedAt: new Date(),
+      clientId: 'client-1',
+      subject: 'Archiv',
+    });
+    release();
+    await running;
+    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+  });
   it('überspringt den direkten Job-Einstieg bei deaktivierten Wiedervorlagen', async () => {
     h.moduleEnabled.mockResolvedValue(false);
 

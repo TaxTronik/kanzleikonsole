@@ -87,7 +87,9 @@ function staffContext() {
   return {
     tenantId: 'tenant-1',
     staffId: 'staff-1',
-    session: {},
+    session: {
+      user: { tenantId: 'tenant-1', staffId: 'staff-1', roles: ['ADMIN'], permissions: [] },
+    },
     ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
   };
 }
@@ -255,7 +257,10 @@ describe('fachliche Lifecycle-Guards', () => {
         update: vi.fn(),
       },
       clientReminder: {
-        create: vi.fn().mockResolvedValue({ id: 'reminder-1' }),
+        create: vi
+          .fn()
+          .mockResolvedValueOnce({ id: 'reminder-1', ticketNumber: 1 })
+          .mockResolvedValueOnce({ id: 'reminder-2', ticketNumber: 2 }),
       },
       staffUser: {
         findMany: vi.fn().mockResolvedValue([{ id: NEW_STAFF }]),
@@ -288,11 +293,11 @@ describe('fachliche Lifecycle-Guards', () => {
         priority: 'NORMAL',
         assignees: { create: [{ staffId: NEW_STAFF }] },
       }),
-      select: { id: true },
+      select: { id: true, ticketNumber: true },
     });
     expect(tx.clientReminder.create).toHaveBeenNthCalledWith(2, {
       data: expect.objectContaining({ phoneNoteId: UUID, dueDate: new Date('2026-08-28') }),
-      select: { id: true },
+      select: { id: true, ticketNumber: true },
     });
     expect(tx.phoneNote.update).not.toHaveBeenCalled();
     expect(h.resolveNotificationsTx).not.toHaveBeenCalled();

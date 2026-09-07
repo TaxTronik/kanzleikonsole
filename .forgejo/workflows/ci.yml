@@ -233,13 +233,22 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/db test 2>&1 | tee testbericht-db.log
 
+      - name: Ticket services against the PostgreSQL app role
+        env:
+          REMINDER_TICKETS_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/reminders/__tests__/tickets-db.test.ts 2>&1 | tee testbericht-reminder-services.log
+
       - name: Testnachweis hochladen
         if: always()
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: testbericht-db
           retention-days: 90
-          path: testbericht-db.log
+          path: |
+            testbericht-db.log
+            testbericht-reminder-services.log
           if-no-files-found: ignore
 
       - name: Schema drift check
@@ -1146,7 +1155,7 @@ jobs:
           fi
 
       - name: Run E2E paranoid tests
-        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts tests/11-upload-fuzz.spec.ts tests/12-accessibility.spec.ts tests/13-accessible-display.spec.ts tests/14-dashboard-keyboard.spec.ts tests/15-search-notifications-a11y.spec.ts tests/16-identity-local.spec.ts tests/17-expansion.spec.ts tests/18-portal-inbox.spec.ts tests/19-document-explorer-state.spec.ts tests/20-subsumtion-editor-state.spec.ts tests/21-bwa-basis-state.spec.ts
+        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts tests/11-upload-fuzz.spec.ts tests/12-accessibility.spec.ts tests/13-accessible-display.spec.ts tests/14-dashboard-keyboard.spec.ts tests/15-search-notifications-a11y.spec.ts tests/16-identity-local.spec.ts tests/17-expansion.spec.ts tests/18-portal-inbox.spec.ts tests/19-document-explorer-state.spec.ts tests/20-subsumtion-editor-state.spec.ts tests/21-bwa-basis-state.spec.ts tests/22-reminder-tickets.spec.ts tests/23-reminder-ticket-flow.spec.ts
 
       - name: Upload Playwright report
         if: always()

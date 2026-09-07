@@ -13,7 +13,16 @@ import { ActionError } from '@/server/actions/staff-action';
 import type { ReminderPriority } from '@/lib/reminder-priority';
 import { notify } from '@/server/notifications/service';
 import { extractMentions } from '@/lib/reminder-mentions';
-import { filterStaffAccessClientTx } from '@/server/auth/rbac';
+import { assertClientAccessTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
+import type { StaffSession } from '@/server/auth/staff';
+import {
+  assertReminderAccessTx,
+  assertReminderActor,
+  assertReminderNotArchived,
+  lockReminderTx,
+  REMINDER_ACCESS_SELECT,
+} from './access';
+import { persistReminderReferencesTx } from './references';
 
 export interface CreateReminderInput {
   tenantId: string;
@@ -82,7 +91,18 @@ async function filterCurrentReminderRecipientsTx(
 export async function createReminderTx(
   tx: TxClient,
   input: CreateReminderInput,
-): Promise<{ id: string }> {
+  session: StaffSession,
+): Promise<{ id: string; ticketNumber: number }> {
+  assertReminderActor(session, input.tenantId, input.createdByStaff);
+  if (input.clientId) await assertClientAccessTx(tx, session, input.clientId);
+  if (input.predecessorId) {
+    const predecessor = await tx.clientReminder.findUnique({
+      where: { id: input.predecessorId, tenantId: input.tenantId },
+      select: REMINDER_ACCESS_SELECT,
+    });
+    if (!predecessor) throw new ActionError('Vorgänger nicht gefunden.');
+    await assertReminderAccessTx(tx, session, predecessor);
+  }
   const assignees = [...new Set(input.assigneeStaffIds)].filter(Boolean);
   if (assignees.length > MAX_ASSIGNEES) {
     throw new ActionError(`Höchstens ${MAX_ASSIGNEES} Zuständige je Wiedervorlage.`);
@@ -113,9 +133,10 @@ export async function createReminderTx(
       phoneNoteId: input.phoneNoteId ?? null,
       assignees: { create: wirksam.map((staffId) => ({ staffId })) },
     },
-    select: { id: true },
+    select: { id: true, ticketNumber: true },
   });
 
+  await persistReminderReferencesTx(tx, session, reminder.id, input.notes ?? '');
   await notifyAssigneesTx(tx, {
     tenantId: input.tenantId,
     reminderId: reminder.id,
@@ -138,7 +159,7 @@ export async function createReminderTx(
 async function filterByNotifyMode(tx: TxClient, staffIds: string[]): Promise<string[]> {
   if (staffIds.length === 0) return [];
   const rows = await tx.staffUser.findMany({
-    where: { id: { in: staffIds }, reminderNotifyMode: 'ALL' },
+    where: { id: { in: staffIds }, active: true, reminderNotifyMode: 'ALL' },
     select: { id: true },
   });
   return rows.map((r) => r.id);
@@ -207,6 +228,7 @@ export async function notifyAssigneesTx(
 export interface CloneOptions {
   /** true = Kette: die neue Aufgabe verweist auf die alte (Nachfrage). */
   alsNachfrage: boolean;
+  alsVerknuepftesTicket?: boolean;
   dueDate: Date;
   subject?: string;
   notes?: string | null;
@@ -231,10 +253,14 @@ export async function cloneReminderTx(
   quelleId: string,
   actor: { tenantId: string; staffId: string },
   opts: CloneOptions,
-): Promise<{ id: string }> {
+  session: StaffSession,
+): Promise<{ id: string; ticketNumber: number }> {
+  assertReminderActor(session, actor.tenantId, actor.staffId);
+  await lockReminderTx(tx, actor.tenantId, quelleId);
   const quelle = await tx.clientReminder.findUnique({
-    where: { id: quelleId },
+    where: { id: quelleId, tenantId: actor.tenantId },
     select: {
+      archivedAt: true,
       clientId: true,
       subject: true,
       notes: true,
@@ -244,29 +270,40 @@ export async function cloneReminderTx(
     },
   });
   if (!quelle) throw new ActionError('Wiedervorlage nicht gefunden.');
+  await assertReminderAccessTx(tx, session, quelle);
 
   const subject =
     opts.subject?.trim() || (opts.alsNachfrage ? nachfrageTitel(quelle.subject) : quelle.subject);
 
   const zustaendige = opts.assigneeStaffIds ?? quelle.assignees.map((a) => a.staffId);
-  const neu = await createReminderTx(tx, {
-    tenantId: actor.tenantId,
-    createdByStaff: actor.staffId,
-    clientId: quelle.clientId,
-    dueDate: opts.dueDate,
-    subject,
-    notes: opts.notes !== undefined ? opts.notes : quelle.notes,
-    priority: opts.priority ?? quelle.priority,
-    assigneeStaffIds: zustaendige,
-    predecessorId: opts.alsNachfrage ? quelleId : null,
-  });
+  const neu = await createReminderTx(
+    tx,
+    {
+      tenantId: actor.tenantId,
+      createdByStaff: actor.staffId,
+      clientId: quelle.clientId,
+      dueDate: opts.dueDate,
+      subject,
+      notes: opts.notes !== undefined ? opts.notes : quelle.notes,
+      priority: opts.priority ?? quelle.priority,
+      assigneeStaffIds: zustaendige,
+      predecessorId: opts.alsNachfrage ? quelleId : null,
+    },
+    session,
+  );
+  if (opts.alsVerknuepftesTicket) {
+    await tx.clientReminderReference.createMany({
+      data: [{ tenantId: actor.tenantId, sourceReminderId: neu.id, targetReminderId: quelleId }],
+      skipDuplicates: true,
+    });
+  }
 
   // Nachfassen ist ein Dialog, keine Einbahnstrasse: auch die Beteiligten der
   // URSPRUNGSSTUFE (delegierende Person + bisherige Zustaendige) erfahren von
   // der Folgestufe. Die Zustaendigen der NEUEN Stufe wurden soeben schon per
   // CLIENT_REMINDER_ASSIGNED informiert — sie bekommen keine zweite Meldung,
   // ebensowenig die ausloesende Person selbst.
-  if (opts.alsNachfrage) {
+  if (opts.alsNachfrage && !quelle.archivedAt) {
     const schonInformiert = new Set([...zustaendige, actor.staffId]);
     const aktuellBerechtigte = await filterCurrentReminderRecipientsTx(
       tx,
@@ -318,9 +355,19 @@ export function nachfrageTitel(original: string): string {
 export async function addReminderNoteTx(
   tx: TxClient,
   input: { tenantId: string; reminderId: string; staffId: string; body: string },
+  session: StaffSession,
 ): Promise<{ id: string }> {
+  assertReminderActor(session, input.tenantId, input.staffId);
   const body = input.body.trim();
   if (!body) throw new ActionError('Bitte einen Text eingeben.');
+  await lockReminderTx(tx, input.tenantId, input.reminderId);
+  const rem = await tx.clientReminder.findUnique({
+    where: { id: input.reminderId, tenantId: input.tenantId },
+    select: { ...REMINDER_ACCESS_SELECT, archivedAt: true, subject: true },
+  });
+  if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
+  await assertReminderAccessTx(tx, session, rem);
+  assertReminderNotArchived(rem);
   const note = await tx.clientReminderNote.create({
     data: {
       tenantId: input.tenantId,
@@ -331,15 +378,7 @@ export async function addReminderNoteTx(
     select: { id: true },
   });
 
-  const rem = await tx.clientReminder.findUnique({
-    where: { id: input.reminderId },
-    select: {
-      clientId: true,
-      subject: true,
-      createdByStaff: true,
-      assignees: { select: { staffId: true } },
-    },
-  });
+  await persistReminderReferencesTx(tx, session, input.reminderId, body);
   if (rem) {
     const vonName = await staffName(tx, input.staffId);
     const auszug = body.length > 140 ? body.slice(0, 140) + '…' : body;
@@ -418,11 +457,13 @@ export async function setReminderAssigneesTx(
     throw new ActionError('Mindestens eine zuständige Person ist unbekannt oder inaktiv.');
   }
 
+  await lockReminderTx(tx, input.tenantId, input.reminderId);
   const rem = await tx.clientReminder.findFirst({
     where: { id: input.reminderId, tenantId: input.tenantId },
-    select: { clientId: true, subject: true, dueDate: true },
+    select: { clientId: true, subject: true, dueDate: true, archivedAt: true },
   });
   if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
+  assertReminderNotArchived(rem);
   await assertReminderAssigneeAccessTx(tx, input.tenantId, ziel, rem.clientId);
 
   // Wer schon zustaendig war, bekommt keine zweite Meldung — nur die neu
@@ -486,16 +527,18 @@ export async function notifyReminderAttachmentTx(
     uploadedBy: string;
   },
 ): Promise<void> {
+  await lockReminderTx(tx, input.tenantId, input.reminderId);
   const rem = await tx.clientReminder.findUnique({
-    where: { id: input.reminderId },
+    where: { id: input.reminderId, tenantId: input.tenantId },
     select: {
+      archivedAt: true,
       clientId: true,
       subject: true,
       createdByStaff: true,
       assignees: { select: { staffId: true } },
     },
   });
-  if (!rem) return;
+  if (!rem || rem.archivedAt) return;
 
   const beteiligte = [
     ...new Set([rem.createdByStaff, ...rem.assignees.map((a) => a.staffId)]),

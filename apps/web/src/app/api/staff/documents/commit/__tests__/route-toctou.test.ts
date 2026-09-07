@@ -19,7 +19,11 @@ vi.mock('@taxtronik/config', () => ({
   env: { NEXTAUTH_URL: 'http://localhost:3000' },
 }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: m.staffAuth }));
-vi.mock('@/server/auth/rbac', () => ({ canAccessClientTx: m.canAccessClientTx }));
+vi.mock('@/server/auth/rbac', () => ({
+  canAccessClientTx: m.canAccessClientTx,
+  assertClientAccessTx: vi.fn(),
+  ForbiddenError: class extends Error {},
+}));
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: m.withTenantContext,
   DEFAULT_BOOLEAN_TENANT_MODULES: {},
@@ -71,12 +75,13 @@ const SESSION = {
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const DOCUMENT_TYPE_ID = '22222222-2222-4222-8222-222222222222';
 
-function makeRequest() {
+function makeRequest(reminderId?: string) {
   const fd = new FormData();
   fd.set('file', new Blob(['vertrag'], { type: 'text/plain' }), 'vertrag.txt');
   fd.set('title', 'Vertrag');
   fd.set('documentTypeId', DOCUMENT_TYPE_ID);
   fd.set('clientId', CLIENT_ID);
+  if (reminderId) fd.set('reminderId', reminderId);
 
   return new NextRequest('http://localhost:3000/api/staff/documents/commit', {
     method: 'POST',
@@ -116,6 +121,56 @@ beforeEach(() => {
 });
 
 describe('POST /api/staff/documents/commit - TOCTOU', () => {
+  it('behandelt auch nicht typisierte Vorprüfungsfehler ohne Details oder Store-Write', async () => {
+    m.withTenantContext.mockRejectedValueOnce(null);
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: 'internal_error' });
+    expect(m.commitBytesWithTier).not.toHaveBeenCalled();
+  });
+
+  // Fachkatalog: REMINDER-TICKET-001
+  it.each(['before-storage', 'during-storage'])(
+    'archiviertes Ticket erhält keinen Anhang: %s',
+    async (phase) => {
+      const reminderId = '44444444-4444-4444-8444-444444444444';
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([{ id: reminderId }]),
+        documentType: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: DOCUMENT_TYPE_ID,
+            tier: 'NONE',
+            classificationKey: 'GENERAL',
+            retentionYears: null,
+          }),
+        },
+        client: { findFirst: vi.fn().mockResolvedValue({ id: CLIENT_ID }) },
+        clientReminder: { findFirst: vi.fn() },
+      };
+      const reminder = {
+        clientId: CLIENT_ID,
+        createdByStaff: 'staff-1',
+        assignees: [],
+        archivedAt: null,
+      };
+      tx.clientReminder.findFirst.mockResolvedValue({ ...reminder, archivedAt: new Date() });
+      if (phase === 'during-storage') tx.clientReminder.findFirst.mockResolvedValueOnce(reminder);
+      m.withTenantContext.mockImplementation(
+        async (_ctx: unknown, fn: (value: unknown) => unknown) => fn(tx),
+      );
+
+      const res = await POST(makeRequest(reminderId));
+
+      expect(res.status).toBe(phase === 'before-storage' ? 400 : 409);
+      expect(m.createDocumentWithVersion).not.toHaveBeenCalled();
+      expect(m.evidenceRecord).not.toHaveBeenCalled();
+      expect(m.emitN8nEvent).not.toHaveBeenCalled();
+      expect(m.commitBytesWithTier).toHaveBeenCalledTimes(phase === 'before-storage' ? 0 : 1);
+      expect(m.compensateStorageCommit).toHaveBeenCalledTimes(phase === 'before-storage' ? 0 : 1);
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(phase === 'before-storage' ? 1 : 2);
+    },
+  );
+
   it('uebernimmt Schutzstufe und Achtjahresfrist aus dem Kern-Typ im Classification-Backcompat-Pfad', async () => {
     const findBuiltin = vi.fn().mockResolvedValue({
       id: DOCUMENT_TYPE_ID,

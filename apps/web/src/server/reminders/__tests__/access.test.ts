@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@/server/actions/staff-action', () => ({ ActionError: class extends Error {} }));
 
 // =============================================================================
 // Zugriff auf Wiedervorlagen — besonders die INTERNEN (ohne Mandant).
