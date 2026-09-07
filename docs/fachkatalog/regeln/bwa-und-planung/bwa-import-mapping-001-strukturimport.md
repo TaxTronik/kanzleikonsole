@@ -35,9 +35,13 @@ sources:
 code_refs:
   - apps/web/src/server/bwa/datev-parser.ts
   - apps/web/src/server/bwa/addison-parser.ts
+  - apps/web/src/lib/xlsx/read-xlsx.ts
+  - apps/web/src/lib/xlsx/xml.ts
 test_refs:
   - apps/web/src/server/bwa/__tests__/datev-parser.test.ts
   - apps/web/src/server/bwa/__tests__/addison-parser.test.ts
+  - apps/web/src/lib/xlsx/__tests__/read-xlsx.test.ts
+  - apps/web/src/lib/xlsx/__tests__/xml.test.ts
 feature_refs:
   - docs/anwenderdoku/bwa-planung.md
 related_rules:
@@ -136,6 +140,16 @@ ausführliche und ein kompaktes Addison-CSV-Format. `computeBwaKpis` bildet nur
 die im Code genannten Positionen auf Umsatz, Kosten, Ergebnis vor und nach
 Steuern sowie Personalaufwand ab.
 
+Der vorgeschaltete XLSX-Leser ordnet Blattnamen anhand der tatsächlichen
+Workbook-Relationships den XML-Blättern zu. Die Relationship-Datei wird
+ausdrücklich mit entpackt und unterliegt denselben Größenbudgets wie andere
+gelesene Einträge. Damit bleiben auch vertauschte interne Blattnummern und
+abweichende Blattdateinamen dem richtigen Namen zugeordnet. Fehlen die
+Relationships vollständig, bleibt der bestehende konventionelle Fallback
+erhalten. Der XML-Attributscanner konsumiert fehlerhafte Namen fortlaufend;
+unbekannte benannte Entities bleiben Quelltext. Perioden-, Positions- und
+Kennzahlabbildung ändern sich durch diese technische Lesekorrektur nicht.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die Umsetzung ist teilweise. Es gibt keine automatische Prüfung auf
@@ -168,3 +182,10 @@ Der direkte Addison-Kompakt-Test hält die bekannte Spaltenzuordnung,
 Quartalsgrenzen, negative deutsche Beträge, fehlende Werte und die Warnung
 bei unbekannten Spalten fest. Die Aufteilung des Parsers in Hilfsfunktionen
 ändert weder Zuordnungen noch Periodenregeln.
+
+Die direkten XLSX-Regressionen verwenden kleine synthetische ZIP-Dateien mit
+vertauschten Relationship-Zielen, individuellen Blattpfaden und einer
+überhöhten deklarierten Entpackgröße. Der XML-Test begrenzt einen separaten
+Prozess für ein langes fehlerhaftes Attribut zeitlich und prüft unbekannte
+Entities einschließlich geerbter Objektnamen. Diese Nachweise betreffen die
+technisch richtige Quellzuordnung, keine fachliche Freigabe des BWA-Mappings.

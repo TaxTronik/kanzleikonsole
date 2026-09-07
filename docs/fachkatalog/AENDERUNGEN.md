@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20260907-003
+    date: '2026-09-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/notifications/page.tsx
+      - apps/web/src/app/staff/(protected)/notifications/__tests__/page.test.tsx
+    rule_ids:
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+    reason: >-
+      Die Listenansicht sortiert ungelesene Einträge ausdrücklich vor
+      gelesenen und zählt alle aktuell sichtbaren ungelesenen Hinweise
+      unabhängig vom 100er-Anzeigefenster. Liste und Count bleiben in
+      derselben Tenant-Transaktion mit demselben persönlichen oder
+      kanzleiweiten Empfängerfilter, ausdrücklicher Tenantbedingung
+      und bestehender RLS. Keine
+      Empfängerauswahl, Zugriffsentscheidung oder Gelesen-Mutation ändert sich.
+    tests:
+      - apps/web/src/app/staff/(protected)/notifications/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
+    reviewer: Codex (technischer Anzeigeabgleich, keine fachliche Freigabe)
   - id: FK-EXC-20260907-002
     date: '2026-09-07'
     paths:

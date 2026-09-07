@@ -55,10 +55,12 @@ const MAX_TOTAL_BYTES = 128 * 1024 * 1024;
  * Nur die Teile, die dieser Reader auswertet. Alles andere — eingebettete
  * Bilder unter `xl/media/`, OLE-Objekte, Drucker-Einstellungen — wird gar nicht
  * erst dekomprimiert. Sheet-Pfade stehen erst nach dem Lesen der Relationships
- * fest, deshalb `xl/**\/*.xml` statt einer festen Liste.
+ * fest, deshalb `xl/**\/*.xml` statt einer festen Liste. Die Workbook-
+ * Relationships selbst enden auf `.rels` und müssen ebenfalls gelesen werden.
  */
 function isNeededEntry(name: string): boolean {
   if (name === '[Content_Types].xml') return true;
+  if (name === 'xl/_rels/workbook.xml.rels') return true;
   return name.startsWith('xl/') && name.toLowerCase().endsWith('.xml');
 }
 

@@ -96,17 +96,13 @@ export function BrowserView({
   const selected = useMemo(() => new Set(sel.map(selKey)), [sel]);
   const isSel = (kind: 'file' | 'folder', id: string) => selected.has(`${kind}:${id}`);
 
-  function toggle(kind: 'file' | 'folder', id: string, additive: boolean) {
+  function toggle(kind: 'file' | 'folder', id: string) {
     setSel((prev) => {
       const has = prev.some((s) => s.kind === kind && s.id === id);
-      if (additive) {
-        return has
-          ? prev.filter((s) => !(s.kind === kind && s.id === id))
-          : [...prev, { kind, id }];
-      }
-      return has && prev.length === 1 ? [] : [{ kind, id }];
+      return has ? prev.filter((s) => !(s.kind === kind && s.id === id)) : [...prev, { kind, id }];
     });
   }
+  const selectOnly = (kind: 'file' | 'folder', id: string) => setSel([{ kind, id }]);
   const clearSel = () => setSel([]);
 
   function applySearch(ev: SubmitEvent<HTMLFormElement>) {
@@ -548,7 +544,7 @@ export function BrowserView({
                   if (e.kind === 'nav') return;
                   ev.preventDefault();
                   if (sk && !isSel(e.kind as 'file' | 'folder', e.id))
-                    toggle(e.kind as 'file' | 'folder', e.id, false);
+                    selectOnly(e.kind as 'file' | 'folder', e.id);
                   setCtx({ x: ev.clientX, y: ev.clientY, e });
                 }}
                 className={`flex items-center gap-3 px-5 py-3 group ${
@@ -563,7 +559,7 @@ export function BrowserView({
                   <input
                     type="checkbox"
                     checked={selectedRow}
-                    onChange={() => toggle(e.kind as 'file' | 'folder', e.id, true)}
+                    onChange={() => toggle(e.kind as 'file' | 'folder', e.id)}
                     className="shrink-0"
                     aria-label="Auswählen"
                   />
@@ -665,7 +661,7 @@ export function BrowserView({
                           type="button"
                           title="Verschieben"
                           onClick={() => {
-                            toggle('file', e.id, false);
+                            selectOnly('file', e.id);
                             setMoveOpen(true);
                           }}
                           className="icon-btn"

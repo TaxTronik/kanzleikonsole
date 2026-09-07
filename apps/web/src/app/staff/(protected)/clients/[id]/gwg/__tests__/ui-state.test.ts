@@ -50,12 +50,9 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
   });
 
   it('aktualisiert Kopfstatus und Owner-Zusammenfassung ohne Seitenreload', () => {
-    const page = read('page.tsx');
     const editState = read('edit-state-context.tsx');
     const owner = read('beneficial-owner-form.tsx');
 
-    expect(page).toContain("initialStatus={check?.status ?? 'DRAFT'}");
-    expect(page).toContain('<GwgLiveStatusBadge />');
     expect(editState).toContain("const markDraft = useCallback(() => setStatus('DRAFT')");
     expect(editState).toContain('if (lastServerStatus.current === initialStatus) return;');
     expect(editState).toContain("const markInReview = useCallback(() => setStatus('IN_REVIEW')");

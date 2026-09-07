@@ -964,11 +964,15 @@
       ],
       "code_refs": [
         "apps/web/src/server/bwa/datev-parser.ts",
-        "apps/web/src/server/bwa/addison-parser.ts"
+        "apps/web/src/server/bwa/addison-parser.ts",
+        "apps/web/src/lib/xlsx/read-xlsx.ts",
+        "apps/web/src/lib/xlsx/xml.ts"
       ],
       "test_refs": [
         "apps/web/src/server/bwa/__tests__/datev-parser.test.ts",
-        "apps/web/src/server/bwa/__tests__/addison-parser.test.ts"
+        "apps/web/src/server/bwa/__tests__/addison-parser.test.ts",
+        "apps/web/src/lib/xlsx/__tests__/read-xlsx.test.ts",
+        "apps/web/src/lib/xlsx/__tests__/xml.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/bwa-planung.md"],
       "related_rules": ["BWA-PROJECTION-001", "BWA-TAX-ESTIMATE-001"],
@@ -2302,6 +2306,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx",
         "apps/web/src/server/mandate-expansion/gwg-structure.ts",
         "apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx",
         "apps/web/src/server/gwg/verification.ts",
@@ -2321,6 +2327,7 @@
         "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts",
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
@@ -2440,6 +2447,9 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-evidence.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/use-identity-review-state.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-subjects-context.tsx",
         "apps/web/src/server/gwg/identity-source.ts",
@@ -2471,6 +2481,7 @@
         "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-source.test.ts",
         "apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts",
@@ -2656,6 +2667,10 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-overview.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-labels.ts",
         "apps/web/src/server/gwg/representatives.ts",
         "apps/web/src/server/gwg/verification.ts",
         "apps/web/src/server/gwg/identity-subject.ts",
@@ -2674,6 +2689,7 @@
         "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/server/gwg/__tests__/representatives.test.ts",
         "apps/web/src/server/gwg/__tests__/verification.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
@@ -2721,6 +2737,9 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx",
         "packages/db/prisma/migrations/20260831260000_gwg_structure_binding/migration.sql",
         "apps/web/src/server/gwg/retention.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts",
@@ -2733,6 +2752,7 @@
         "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
         "packages/db/src/__tests__/gwg-destruction.test.ts",
@@ -2795,6 +2815,9 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx",
         "apps/web/src/server/gwg/reverification.ts",
         "apps/web/src/server/gwg/risk-score.ts",
         "apps/web/src/server/gwg/review-snapshot.ts",
@@ -2806,6 +2829,7 @@
         "apps/worker/src/jobs/gwg-expiry-check.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/server/gwg/__tests__/reverification.test.ts",
         "apps/web/src/server/gwg/__tests__/review-snapshot.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/invite-draft-revision.test.ts",
@@ -2873,6 +2897,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-assessment.tsx",
         "apps/web/src/server/mandate-expansion/gwg-structure.ts",
         "apps/web/src/server/screening/gwg-gate.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx",
@@ -2884,6 +2910,7 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts",
         "apps/web/src/server/screening/__tests__/gwg-gate.test.ts",
         "apps/web/src/server/gwg/__tests__/risk-score.test.ts",
@@ -3006,6 +3033,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-invitation.tsx",
         "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
         "apps/web/src/app/gwg-onboarding/wizard.tsx",
         "apps/web/src/server/gwg-onboarding/invite-lifecycle.ts",
@@ -3027,6 +3056,7 @@
         "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/service.test.ts",

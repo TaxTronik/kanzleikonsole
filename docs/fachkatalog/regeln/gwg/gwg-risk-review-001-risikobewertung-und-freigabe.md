@@ -43,6 +43,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-assessment.tsx
   - apps/web/src/server/mandate-expansion/gwg-structure.ts
   - apps/web/src/server/screening/gwg-gate.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx
@@ -53,6 +55,7 @@ code_refs:
   - apps/web/src/server/gwg/review-snapshot.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
   - apps/web/src/server/screening/__tests__/gwg-gate.test.ts
   - apps/web/src/server/gwg/__tests__/risk-score.test.ts
@@ -163,6 +166,8 @@ nicht.
 
 ## Umsetzung in TaxTronik
 
+Der Datenlader der Staff-Einzelprüfung verwendet den gemeinsamen lesenden Berufsträger-Helper für die aktuelle aktive qualifizierte Mandantenzuordnung. Risikobewertung und Entscheidung sind eigene Darstellungsabschnitte; der Freigabehash wird weiterhin aus dem vollständigen unveränderten geladenen Snapshot erzeugt. Transaktionale Entscheidungslogik, Sperren und Auditierung bleiben unverändert.
+
 Bei aktiviertem Zusatzmodul `sanctionsScreening` prüft der bestehende
 Freigabepfad vor dem VERIFIED-Claim zusätzlich **GWG-SCREENING-001**: aktuelle
 erfolgreich geprüfte Quelle, Nachweise für alle aktuellen Mandanten-/Vertreter-/
@@ -225,6 +230,8 @@ Grenzen:
 - Sollen Gewichte tatsächlich tenantbezogen konfigurierbar sein?
 
 ## Technische Nachweise
+
+`page-render.test.tsx`: Der SSR-Nachweis prüft Freigabe mit frischer Berufsträgerzuordnung, fehlende Freigabe allein aufgrund ADMIN-Rolle sowie Gleichheit des gerenderten Freigabehashes mit dem vollständigen gespeicherten Snapshot.
 
 Score- und Verifikationstests belegen Schwellen, PEP-Override, vollständige
 Antworten, Widerspruchskontrollen und das einheitliche Entscheidungsgate. Die

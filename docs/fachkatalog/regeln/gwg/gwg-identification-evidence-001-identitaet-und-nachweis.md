@@ -50,6 +50,9 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-evidence.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/use-identity-review-state.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-subjects-context.tsx
   - apps/web/src/server/gwg/identity-source.ts
@@ -80,6 +83,7 @@ code_refs:
   - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts
   - apps/web/src/server/gwg/__tests__/identity-source.test.ts
   - apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts
@@ -202,6 +206,8 @@ Vertreter-Fremdschlüssel wird er nicht als Identitätsnachweis akzeptiert.
 
 ## Umsetzung in TaxTronik
 
+Die Staff-Seite lädt Daten getrennt von der reinen Nachweis-/Personenprojektion und den gerenderten Abschnitten. Die Projektion erhält Dokumentset-IDs, ausdrückliche Personen-Fremdschlüssel, die Trennung aktueller/ersetzter Nachweise, den bisherigen Verfügbarkeitsfilter und CAS-Revisionen aus unveränderten gespeicherten Ansichtsmetadaten.
+
 Seit der Erweiterung vom 31. August 2026 setzen weder OCR-Übernahme noch
 Speichern eine Prüfbestätigung. „Als geprüft markieren“ ist eine gesonderte
 Mitarbeiteraktion für den bereits gespeicherten, revisionsgebundenen Stand.
@@ -315,6 +321,8 @@ Der Implementierungsstatus ist deshalb **teilweise**.
   ausreichend?
 
 ## Technische Nachweise
+
+`page-render.test.tsx`: Der SSR-Nachweis prüft Personen-/Nachweisreihenfolge, verknüpfte Doppelrolle, historischen Ausweissatz und neun nicht verfügbare Dokumentzustände. Der ergänzende Modellnachweis vergleicht die Gruppenrevision mit den unveränderten gespeicherten Viewport-Daten.
 
 Die Verifikations- und Evidence-Helfer belegen das fail-closed Gate für
 Personenzuordnung, Dateiverfügbarkeit und Dokumentgruppen. Die Tests prüfen

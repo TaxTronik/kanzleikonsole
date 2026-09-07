@@ -28,6 +28,9 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx
   - packages/db/prisma/migrations/20260831260000_gwg_structure_binding/migration.sql
   - apps/web/src/server/gwg/retention.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
@@ -39,6 +42,7 @@ code_refs:
   - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
   - packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - packages/db/src/__tests__/gwg-destruction.test.ts
@@ -152,6 +156,8 @@ fachliche Einzelprüfung.
 
 ## Umsetzung in TaxTronik
 
+Ein mit `destroyedAt` markiertes Prüfskelett erscheint in der Staff-Einzelprüfung ausdrücklich als vernichtet. Historische Status-/Verlaufsdaten begründen keinen grünen Freigabehinweis und keinen Onboarding-Fortsetzungslink. Personen-, Register-, Nachweis-, Risiko-, Einladungs- und Entscheidungsbereiche werden nicht aus dem Skelett oder aktuellen Mandantenstammdaten rekonstruiert. Der vorhandene Start eines neuen Zyklus bleibt für terminale Status erhalten; die bestehende Kopierlogik übernimmt aus vernichteten Quellen keine Identifizierungsdaten. Für nichtterminale vernichtete Skelette wird keine zusätzliche Wiederaufnahmeentscheidung eingeführt.
+
 `retention.ts` berechnet den regulären Stichtag als 1. Januar nach fünf vollen
 Kalenderjahren und eine entsprechende Zehnjahresgrenze. Beendete Mandate und
 nie etablierte Erstprüfungen erscheinen in einer Admin-Review-Queue; ein
@@ -207,6 +213,8 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 - Wer bestätigt und kontrolliert `mandateEndedAt`?
 
 ## Technische Nachweise
+
+`page-render.test.tsx`: Gerenderte Regressionen decken vernichtete VERIFIED-, DRAFT- und IN_REVIEW-Skelette sowie verbliebene Vertreter-/WB-/Dokumentdaten ab: keine Bearbeitungs- oder Freigabebereiche und keine erneut sichtbaren Personen-/Dokumentdetails.
 
 Retention-Helfer und Tests belegen die Datumsberechnung, laufende Beziehungen,
 nie etablierte Onboardings und die Queue. Action- und DB-Tests prüfen

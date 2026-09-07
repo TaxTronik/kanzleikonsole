@@ -41,6 +41,10 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-overview.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-labels.ts
   - apps/web/src/server/gwg/representatives.ts
   - apps/web/src/server/gwg/verification.ts
   - apps/web/src/server/gwg/identity-subject.ts
@@ -58,6 +62,7 @@ code_refs:
   - packages/db/prisma/migrations/20260801004900_gwg_cross_role_person_identity/migration.sql
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/gwg/__tests__/representatives.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg/__tests__/identity-subject.test.ts
@@ -160,6 +165,8 @@ des Personennachweises; die Vertretungsmacht bleibt gesondert zu prüfen.
 
 ## Umsetzung in TaxTronik
 
+Die Staff-Einzelprüfung trennt Stammdaten/Prüfverlauf und Personenanzeige von der Datenprojektion. Gesetzliche Vertretung bleibt vor Einladung und Personenbereich sichtbar; ausdrücklich verbundene Vertreter-/WB-Doppelrollen bleiben zusammengeführt. Die zugrunde liegenden Fachentscheidungen und Bearbeitungssperren abgeschlossener Prüfungen bleiben erhalten.
+
 Vertreter werden als eigene Datensätze mit stabiler UUID, Reihenfolge und
 allgemeinen Personenangaben gespeichert. `syncGwgRepresentativesTx`
 aktualisiert die Liste konkurrenzsicher; Änderungen an identitätsrelevanten
@@ -227,6 +234,8 @@ Der Implementierungsstatus ist deshalb **teilweise**.
   aufgenommen?
 
 ## Technische Nachweise
+
+`page-render.test.tsx`: Der gerenderte Seitentest prüft die Abschnittsreihenfolge und die gemeinsame Vertreter-/WB-Person mit ihrem explizit zugeordneten Ausweis.
 
 Der Synchronisationshelfer und die Datenbankmigration belegen stabile
 Vertreteridentitäten, allgemeine Personenangaben, Doppelrollen und das

@@ -19,6 +19,25 @@ import type { BrowserProps, EmbeddedProps } from './types';
 export type { Crumb, Entry, FolderNode, ManagedDoc, BrowserProps, EmbeddedProps } from './types';
 
 export function DocumentExplorer(props: BrowserProps | EmbeddedProps) {
+  // Ansichts- und Dialogzustand gehören zum geöffneten Bereich. Ein normaler
+  // Daten-Refresh behält den Schlüssel und damit Auswahl/Suchentwurf bei.
+  const contextKey = JSON.stringify(
+    props.variant === 'browser'
+      ? [
+          props.variant,
+          props.scope?.clientId,
+          props.scope?.typeParam,
+          props.currentFolderId,
+          props.crumbs.at(-1)?.href,
+          props.deleted,
+          props.q,
+        ]
+      : [props.variant, props.clientId, props.analysisId],
+  );
+  return <DocumentExplorerForContext key={contextKey} {...props} />;
+}
+
+function DocumentExplorerForContext(props: BrowserProps | EmbeddedProps) {
   const ops = useDocumentOps();
   const scopeClientId =
     props.variant === 'browser' ? (props.scope?.clientId ?? null) : props.clientId;

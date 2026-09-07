@@ -11,17 +11,25 @@ export default async function NotificationsPage() {
 
   const { tenantId, staffId } = session.user;
 
-  const notifications = await withTenantContext(
+  const recipientWhere = { tenantId, OR: [{ staffId }, { staffId: null }] };
+  const [notifications, unreadCount] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     (tx) =>
-      tx.notification.findMany({
-        where: { OR: [{ staffId }, { staffId: null }] },
-        orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
-        take: 100,
-      }),
+      Promise.all([
+        tx.notification.findMany({
+          where: recipientWhere,
+          // PostgreSQL ASC places NULL last unless explicitly requested.
+          // Unread notices must survive LIMIT even when many read notices exist.
+          orderBy: [
+            { readAt: { sort: 'asc', nulls: 'first' } },
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
+          take: 100,
+        }),
+        tx.notification.count({ where: { ...recipientWhere, readAt: null } }),
+      ]),
   );
-
-  const unreadCount = notifications.filter((n) => n.readAt === null).length;
 
   return (
     <div className="p-8">
@@ -30,6 +38,7 @@ export default async function NotificationsPage() {
           <h1 className="text-2xl font-bold text-primary mb-1">Benachrichtigungen</h1>
           <p className="text-muted text-sm">
             {unreadCount > 0 ? `${unreadCount} ungelesen` : 'Alles gelesen.'}
+            {notifications.length === 100 && ' · 100 Einträge angezeigt'}
           </p>
         </div>
         {unreadCount > 0 && (

@@ -260,6 +260,36 @@ describe('readXlsx', () => {
     expect(sheets[1]!.rows).toEqual([[2]]);
   });
 
+  it('BWA-IMPORT-MAPPING-001: ordnet Blattnamen den Relationship-Zielen statt Dateinummern zu', () => {
+    const data = zipSync({
+      'xl/workbook.xml': strToU8(workbookXml('Umsatz', 'Vorjahr')),
+      'xl/_rels/workbook.xml.rels': strToU8(`<Relationships>
+        <Relationship Id="rId1" Target="worksheets/sheet2.xml"/>
+        <Relationship Id="rId2" Target="worksheets/sheet1.xml"/>
+      </Relationships>`),
+      'xl/worksheets/sheet1.xml': strToU8(sheetXml('<row><c r="A1"><v>100</v></c></row>')),
+      'xl/worksheets/sheet2.xml': strToU8(sheetXml('<row><c r="A1"><v>200</v></c></row>')),
+    });
+    expect(readXlsx(data)).toEqual([
+      { name: 'Umsatz', rows: [[200]] },
+      { name: 'Vorjahr', rows: [[100]] },
+    ]);
+  });
+
+  it.each(['worksheets/export.xml', './worksheets/export.xml', '/xl/worksheets/export.xml'])(
+    'liest das tatsächlich verknüpfte Blatt unter %s',
+    (target) => {
+      const data = zipSync({
+        'xl/workbook.xml': strToU8(workbookXml('Export')),
+        'xl/_rels/workbook.xml.rels': strToU8(
+          `<Relationships><Relationship Id="rId1" Target="${target}"/></Relationships>`,
+        ),
+        'xl/worksheets/export.xml': strToU8(sheetXml('<row><c r="A1"><v>42</v></c></row>')),
+      });
+      expect(readXlsx(data)).toEqual([{ name: 'Export', rows: [[42]] }]);
+    },
+  );
+
   it('faellt ohne Relationships auf die konventionelle Ablage zurueck', () => {
     const data = buildXlsx({
       omitRels: true,
@@ -307,6 +337,25 @@ describe('readXlsx', () => {
       'xl/worksheets/sheet1.xml': huge,
     });
     expect(() => readXlsx(data)).toThrow(/zu gross/);
+  });
+
+  it('wendet das Entpack-Budget auch auf die Workbook-Relationships an', () => {
+    const data = buildXlsx({ sheets: [sheetXml('<row><c r="A1"><v>7</v></c></row>')] });
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    // Forge only the declared original size in the ZIP central directory;
+    // the fixture stays small and rejection must happen before allocation.
+    let patched = false;
+    for (let offset = 0; offset + 46 < data.length; offset++) {
+      if (view.getUint32(offset, true) !== 0x02014b50) continue;
+      const nameLength = view.getUint16(offset + 28, true);
+      const name = new TextDecoder().decode(data.subarray(offset + 46, offset + 46 + nameLength));
+      if (name !== 'xl/_rels/workbook.xml.rels') continue;
+      view.setUint32(offset + 24, 65 * 1024 * 1024, true);
+      patched = true;
+      break;
+    }
+    expect(patched).toBe(true);
+    expect(() => readXlsx(data)).toThrow(/workbook\.xml\.rels.*zu gross/);
   });
 
   it('bricht bei nicht lesbarem Container ab', () => {

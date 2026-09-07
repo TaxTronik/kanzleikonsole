@@ -39,6 +39,9 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx
   - apps/web/src/server/gwg/reverification.ts
   - apps/web/src/server/gwg/risk-score.ts
   - apps/web/src/server/gwg/review-snapshot.ts
@@ -49,6 +52,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
   - apps/worker/src/jobs/gwg-expiry-check.ts
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/gwg/__tests__/reverification.test.ts
   - apps/web/src/server/gwg/__tests__/review-snapshot.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/invite-draft-revision.test.ts
@@ -160,6 +164,8 @@ Risikoscore werden nicht als aktuelle Entscheidung übernommen.
 
 ## Umsetzung in TaxTronik
 
+Die Staff-Einzelprüfung trennt den gespeicherten historischen Status von der aktuellen Nutzbarkeit. Sobald der gespeicherte Gültigkeitszeitpunkt erreicht ist (`validUntil <= jetzt`), werden auch vor dem nächsten Worker-Lauf ein Ablaufhinweis statt des grünen Freigabebanners und kein Onboarding-Fortsetzungslink angezeigt. Kopfstatus, Fortschritt und Statusbereich verwenden denselben beim Rendern ermittelten Zeitpunkt. Gespeicherter Status, Prüfsnapshot und serverseitige Aktivierungsgates bleiben unverändert.
+
 `riskValidForDays` ist die gemeinsame Quelle für 365 beziehungsweise 1095
 Tage. Die Verifizierungs-Action speichert `validUntil`; der Worker gruppiert
 Warnungen in 90-, 30- und Ablaufstufe, auditiert Statuswechsel und berücksichtigt
@@ -218,6 +224,8 @@ Abweichungen festgestellt. Die Policy deckt die gesetzliche laufende
   Produkts?
 
 ## Technische Nachweise
+
+`page-render.test.tsx`: Der gerenderte Seitentest prüft einen gültigen VERIFIED-Check sowie genau erreichten und bereits überschrittenen Gültigkeitszeitpunkt einschließlich Kopfstatus und fehlendem Fortsetzungslink.
 
 Reverifikations-Tests belegen Lifecycle-Lock, Entwertung, Deaktivierung,
 Vorgängerlinie und das Kopieren ohne Bestätigungen. Worker-Tests prüfen

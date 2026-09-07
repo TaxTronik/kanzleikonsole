@@ -40,7 +40,7 @@ export function decodeXmlEntities(value: string): string {
       const code = Number.parseInt(body.slice(1), 10);
       return Number.isFinite(code) ? safeFromCodePoint(code, match) : match;
     }
-    return NAMED_ENTITIES[body] ?? match;
+    return Object.hasOwn(NAMED_ENTITIES, body) ? NAMED_ENTITIES[body]! : match;
   });
 }
 
@@ -71,22 +71,9 @@ export function parseXml(xml: string, handlers: XmlHandlers): void {
     }
     if (lt > pos) emitText(xml.slice(pos, lt));
 
-    // Kommentare, CDATA, Doctype und Deklarationen
-    if (xml.startsWith('<!--', lt)) {
-      const end = xml.indexOf('-->', lt + 4);
-      pos = end === -1 ? len : end + 3;
-      continue;
-    }
-    if (xml.startsWith('<![CDATA[', lt)) {
-      const end = xml.indexOf(']]>', lt + 9);
-      const raw = xml.slice(lt + 9, end === -1 ? len : end);
-      if (raw && onText) onText(raw);
-      pos = end === -1 ? len : end + 3;
-      continue;
-    }
-    if (xml.startsWith('<?', lt) || xml.startsWith('<!', lt)) {
-      const end = xml.indexOf('>', lt + 2);
-      pos = end === -1 ? len : end + 1;
+    const specialEnd = skipSpecialMarkup(xml, lt, onText);
+    if (specialEnd !== null) {
+      pos = specialEnd;
       continue;
     }
 
@@ -114,6 +101,29 @@ export function parseXml(xml: string, handlers: XmlHandlers): void {
     if (!raw || !onText) return;
     onText(decodeXmlEntities(raw));
   }
+}
+
+/** Kommentare/Deklarationen überspringen; CDATA ohne Entity-Dekodierung melden. */
+function skipSpecialMarkup(
+  xml: string,
+  from: number,
+  onText: XmlHandlers['onText'],
+): number | null {
+  if (xml.startsWith('<!--', from)) {
+    const end = xml.indexOf('-->', from + 4);
+    return end === -1 ? xml.length : end + 3;
+  }
+  if (xml.startsWith('<![CDATA[', from)) {
+    const end = xml.indexOf(']]>', from + 9);
+    const raw = xml.slice(from + 9, end === -1 ? xml.length : end);
+    if (raw) onText?.(raw);
+    return end === -1 ? xml.length : end + 3;
+  }
+  if (xml.startsWith('<?', from) || xml.startsWith('<!', from)) {
+    const end = xml.indexOf('>', from + 2);
+    return end === -1 ? xml.length : end + 1;
+  }
+  return null;
 }
 
 /** Findet das `>`, das das Tag schliesst — Anfuehrungszeichen werden respektiert. */
@@ -148,16 +158,35 @@ function stripNamespace(name: string): string {
   return colon === -1 ? name : name.slice(colon + 1);
 }
 
-const ATTRIBUTE = /([^\s=/]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
-
 function parseAttributes(source: string): XmlAttributes {
+  // Consume each candidate once. A searching regex would retry every suffix
+  // of a long malformed name without `=`, causing quadratic backtracking.
   const attrs: Record<string, string> = {};
-  if (!source.trim()) return attrs;
-  ATTRIBUTE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = ATTRIBUTE.exec(source)) !== null) {
-    const raw = match[3] ?? match[4] ?? '';
-    attrs[stripNamespace(match[1]!)] = decodeXmlEntities(raw);
+  let pos = 0;
+  while (pos < source.length) {
+    pos = skipAttributeWhitespace(source, pos);
+    const nameStart = pos;
+    while (pos < source.length && !/[\s=/]/.test(source[pos]!)) pos++;
+    if (pos === nameStart) {
+      pos++;
+      continue;
+    }
+    const name = stripNamespace(source.slice(nameStart, pos));
+    pos = skipAttributeWhitespace(source, pos);
+    if (source[pos] !== '=') continue;
+    pos = skipAttributeWhitespace(source, pos + 1);
+    const quote = source[pos];
+    if (quote !== '"' && quote !== "'") continue;
+    const end = source.indexOf(quote, pos + 1);
+    if (end === -1) break;
+    attrs[name] = decodeXmlEntities(source.slice(pos + 1, end));
+    pos = end + 1;
   }
   return attrs;
+}
+
+function skipAttributeWhitespace(source: string, from: number): number {
+  let pos = from;
+  while (pos < source.length && /\s/.test(source[pos]!)) pos++;
+  return pos;
 }

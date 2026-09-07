@@ -49,6 +49,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx
   - apps/web/src/server/mandate-expansion/gwg-structure.ts
   - apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx
   - apps/web/src/server/gwg/verification.ts
@@ -67,6 +69,7 @@ code_refs:
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
   - apps/web/src/server/gwg/__tests__/verification.test.ts
   - apps/web/src/server/gwg/__tests__/identity-subject.test.ts
@@ -175,6 +178,8 @@ und zu dokumentieren.
 
 ## Umsetzung in TaxTronik
 
+Die Staff-Einzelprüfung trennt die reine Personenprojektion von der Darstellung. Eine über den gespeicherten Fremdschlüssel verbundene Vertreter-/WB-Doppelrolle bleibt genau eine Person; Name, allgemeine Angaben, Rollen und Nachweise werden weiterhin aus denselben gespeicherten Quellen zugeordnet.
+
 Wirtschaftlich Berechtigte sind eigene, an den jeweiligen Prüfsnapshot
 gebundene Datensätze. Self-Onboarding und Staff-Oberfläche erfassen allgemeine
 Personenangaben und PEP-Status getrennt von der rollenspezifischen
@@ -236,6 +241,8 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 - Sind die zusätzlich erzwungenen Personendaten in jedem Risikofall angemessen?
 
 ## Technische Nachweise
+
+`page-render.test.tsx`: Der gerenderte Seitentest prüft die gemeinsame Doppelrolle mit Anteil und zugehörigem Owner-Ausweis sowie die Reihenfolge allgemeiner Angaben vor Rollenangaben.
 
 Schema, Owner-Submission und Verifikationsgate belegen die gespeicherten
 Personendaten, PEP-Angabe, Pflichtstruktur und den Registerbeleg. Action- und

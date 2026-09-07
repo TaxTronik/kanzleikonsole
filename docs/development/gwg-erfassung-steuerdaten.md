@@ -169,3 +169,35 @@ Nicht enthalten: Scanneranbindung, DATEV-Synchronisation, zentrale gemeinsame
 Personenstammdaten, automatische Finanzamtzuständigkeit oder vollständige
 Prüfaktenexporte. Mehr als 10.000 XLSX-Detailzeilen werden ausdrücklich
 abgewiesen, statt Daten still zu kürzen.
+
+## Staff-Einzelprüfung: Darstellung und aktueller Zustand
+
+Die Route `clients/[id]/gwg/page.tsx` übernimmt Authentifizierung, Mandantenauswahl
+und Abschnittsreihenfolge. `gwg-page-data.ts` lädt den bestehenden Snapshot,
+Historie, saubere Nachweisoptionen, Einladungen und Kontakte im Tenantkontext;
+der gemeinsame Berufsträger-Helper bestimmt die sichtbare Freigabemöglichkeit.
+
+`gwg-page-model.ts` projiziert ausschließlich die Anzeige: gespeicherte
+Personen-Fremdschlüssel, Dokumentset-IDs und unveränderte Rohdaten für CAS bleiben
+maßgeblich. Übersicht, Einladung, Personen, Nachweise, Risikobewertung/Entscheidung
+und Status besitzen eigene Darstellungsbausteine. Die zuvor ungenutzte
+Upload-Zusammenfassung samt zusätzlichem Dokumentabruf entfällt.
+
+Nach `GWG-REVERIFICATION-VALIDITY-001` zeigt eine bereits erreichte Gültigkeitsgrenze
+auch vor dem Worker-Lauf keinen Freigabebanner oder Onboarding-Fortsetzungslink.
+Kopfstatus, Fortschritt und Statusbereich verwenden denselben Anzeigezeitpunkt.
+Nach `GWG-RETENTION-DESTRUCTION-001` bleibt ein vernichtetes Prüfskelett ausdrücklich
+Historie: keine rekonstruierten Personen-/Nachweisdetails und keine Einladungs-,
+Risiko- oder Entscheidungsformulare. Der bestehende neue Zyklus bei terminalem
+Status übernimmt weiterhin keine Daten einer vernichteten Quelle.
+
+`page-render.test.tsx` rendert die echten synchronen Seiten-/Formkomponenten;
+Serveraktionen, Tenantzugriffe und das separate asynchrone Strukturpanel sind
+abgegrenzt. Nachweise betreffen Gültigkeit/Vernichtung, Abschnittsreihenfolge,
+explizite Vertreter-/WB-Verknüpfung, ersetzte/gesperrte Nachweise, unveränderte
+CAS-Revisionen und Freigabehashes sowie die frische Berufsträgerzuordnung
+(`GWG-IDENTIFICATION-EVIDENCE-001`, `GWG-BENEFICIAL-OWNERS-001`,
+`GWG-REPRESENTATIVE-AUTHORITY-001`, `GWG-RISK-REVIEW-001`,
+`GWG-SELF-ONBOARDING-001`). Die bisherigen Quelltextprüfungen der Seitenstruktur
+werden durch diese Rendernachweise ersetzt. Entscheidungsaktionen,
+Aktivierungsgates, Auditbelege und professionelle Freigabefelder ändern sich nicht.

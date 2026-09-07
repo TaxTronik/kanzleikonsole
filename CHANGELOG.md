@@ -22,6 +22,21 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- **[Scope]** Ungelesene Benachrichtigungen stehen auch bei vielen gelesenen
+  Einträgen zuerst. Der Zähler umfasst alle berechtigten ungelesenen Hinweise
+  unabhängig vom 100er-Anzeigefenster (`ACCESS-NOTIFICATION-RECIPIENT-001`).
+- **[Scope]** Der Dokumentenbrowser verschiebt bereits ausgewählte Dateien
+  zuverlässig. Mandanten-, Ordner- und Suchkontextwechsel setzen Auswahl und
+  Dialoge gemeinsam zurück; Aktualisierungen im selben Kontext erhalten sie.
+- XLSX-Importe lesen Workbook-Relationships mit, damit Blattnamen zu den
+  tatsächlichen Werten gehören. Der XML-Leser vermeidet quadratisches
+  Backtracking bei fehlerhaften Attributen und lässt unbekannte Entities
+  unverändert (`BWA-IMPORT-MAPPING-001`).
+- Die GwG-Seite trennt Datenzugriff, Aufbereitung und Darstellung. Abgelaufene
+  und vernichtete Prüfungen zeigen keine aktuelle Verifikation oder
+  Weiterleitung zur nächsten Onboarding-Stufe mehr; vernichtete Aufzeichnungen
+  bieten keine Personenbearbeitung oder Freigabe an
+  (`GWG-REVERIFICATION-VALIDITY-001`, `GWG-RETENTION-DESTRUCTION-001`).
 - Markdown-Ansichten blockieren bei unvollständigen Tabellen nicht mehr.
   Inline-Code bleibt wortgetreu; Formatierungszeichen in Linkzielen und
   private Unicode-Zeichen werden nicht mehr umgeschrieben. Blockerkennung und

@@ -38,6 +38,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-invitation.tsx
   - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
   - apps/web/src/app/gwg-onboarding/wizard.tsx
   - apps/web/src/server/gwg-onboarding/invite-lifecycle.ts
@@ -58,6 +60,7 @@ code_refs:
   - packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql
   - packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/representative-submission.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/service.test.ts
@@ -173,6 +176,8 @@ Einreichung ab und überschreibt weder Personen noch Dokumentzuordnungen.
 
 ## Umsetzung in TaxTronik
 
+Die Staff-Einladung ist ein eigener Darstellungsabschnitt mit unveränderten Statussperren und vorhandenen Kontakten/Einladungen. Die Seite verwendet direkt die tatsächlich sichtbaren Angaben der jüngsten Einladung; ein zuvor nur für eine ungenutzte Zusammenfassungsprojektion ausgeführter zusätzlicher Dokumentabruf entfällt.
+
 Einladung und „In der Kanzlei erfassen“ sind gleichwertige Einstiege. Der
 Kanzleiweg öffnet einen vorhandenen DRAFT-/IN_REVIEW-Stand unverändert oder
 legt nach einem abgeschlossenen Stand einen neuen Entwurf an. Offene Links
@@ -229,6 +234,8 @@ Grenzen:
   vorausgefüllt werden?
 
 ## Technische Nachweise
+
+`page-render.test.tsx`: Der gerenderte Seitentest prüft die sichtbare jüngste Einladung und bestätigt, dass ihre ungenutzten Upload-IDs keinen weiteren Dokumentabruf auslösen.
 
 Einladungsbindung, Preflight und Transaktionsskript belegen Scope, CAS und
 Phasenreihenfolge. Die Tests prüfen invitefremde und doppelte Dokumente,
