@@ -17,6 +17,12 @@ const base: TaxEstimationInput = {
   isPersonengesellschaft: false,
 };
 
+it('BWA-TAX-ESTIMATE-001: lehnt ein bekanntes Nachsteuerergebnis als Schätzungsbasis ab', () => {
+  expect(() => estimateTaxes({ ...base, result: 60_000, resultIsAfterTax: true })).toThrow(
+    'Ergebnis vor Steuern',
+  );
+});
+
 describe('§ 32a EStG — jahrgangsbezogener Grundtarif', () => {
   it('verwendet 2026 Grundfreibetrag und amtliche lineare Zone', () => {
     expect(einkommensteuerGrundtarif(2026, 12_348)).toBe(0);

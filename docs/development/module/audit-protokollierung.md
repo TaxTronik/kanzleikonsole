@@ -35,6 +35,26 @@ Tagesversiegelung und unveränderlicher Langzeit-Archivierung.
 
 ## Betrieb / Oberflächen
 
+### Kanonisierung und betroffene historische Sonderfelder
+
+Die Kanonisierung erhält eigene JSON-Schlüssel wie `__proto__` in einem
+Objekt ohne geerbte Setter. Die frühere Objektzuweisung ließ dieses Feld aus
+und band damit seine Daten weder im Ereignishash noch zuverlässig in der
+Archivkopie. Die korrigierte gemeinsame Serialisierung gilt für Record,
+Onlineprüfung und Archivierung; normale Eingaben behalten ihre bisherigen
+Bytes einschließlich numerischer Schlüsselreihenfolge.
+
+Altbestände mit noch gespeichertem Sonderfeld können nun eine Hashabweichung
+melden. Bestehende Ereignisse, Hashes und Archivobjekte bleiben unverändert;
+es gibt keinen Rückfall auf die fehlerhafte Prüfung und keine automatische
+Neubesiegelung. Ein bereits in einer alten Archivkopie verlorener Feldinhalt
+kann daraus nicht rekonstruiert werden. Solche Befunde müssen unter Erhaltung
+der Originalnachweise geprüft und dokumentiert werden. Die direkten
+Regressionen und Property-Tests bilden diese Grenzen ab
+(`AUDIT-HASH-CHAIN-001`, `AUDIT-ARCHIVE-001`).
+
+### Laufende Dienste und Ansichten
+
 - Worker: `audit-anchor` (alle 2 Sekunden, Rechnung/GwG bevorzugt, Backoff),
   `evidence-seal` (02:30 UTC), `audit-verify-check` (02:45 UTC,
   persistiert Ergebnis als `tenant_setting`, Notification an Admins bei

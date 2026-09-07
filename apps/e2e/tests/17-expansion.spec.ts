@@ -143,7 +143,14 @@ test.describe('isolated opt-in expansion browser integration', () => {
       .getByRole('combobox', { name: 'Abhängiger Schritt', exact: true })
       .selectOption({ label: 'Abhängigkeit Ziel · Veranlagung Ziel · 2026 · Prüfung Ziel' });
     await page.getByRole('button', { name: 'Abhängigkeit hinzufügen', exact: true }).click();
-    await expect(page.getByText('Wartet auf Vorleistungen', { exact: true })).toBeVisible();
-    await expect(page.getByText('Bereit zur Fertigstellung', { exact: true })).toHaveCount(0);
+    const target = page.locator('section').filter({
+      has: page.getByRole('heading', {
+        name: 'Abhängigkeit Ziel · Veranlagung Ziel · 2026 · Prüfung Ziel',
+        level: 3,
+        exact: true,
+      }),
+    });
+    await expect(target.getByText('Wartet auf Vorleistungen', { exact: true })).toBeVisible();
+    await expect(target.getByText('Bereit zur Fertigstellung', { exact: true })).toHaveCount(0);
   });
 });

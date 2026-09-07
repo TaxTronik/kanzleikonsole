@@ -18,8 +18,9 @@ implementation:
   summary: >-
     Datenbanktrigger und Actions erzwingen die technische Statusmaschine von
     DRAFT über SENT zu SIGNED sowie REVOKED oder EXPIRED. Der Ablaufworker
-    behandelt nur signierte Vollmachten und ändert ohne ermittelbaren
-    Benachrichtigungsempfänger derzeit auch den Status nicht.
+    behandelt nur signierte Vollmachten. Ablaufstatus, Evidence und vorhandene
+    Empfängerhinweise werden gemeinsam committed; fehlende Empfänger verhindern
+    den technischen Ablaufstatus nicht.
 sources:
   - kind: product_documentation
     citation: Feature-Katalog, Vollmachten und Statusmaschine
@@ -48,10 +49,12 @@ code_refs:
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql
 test_refs:
+  - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
   - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
   - packages/db/src/__tests__/poa-signing-integrity.test.ts
 feature_refs:
+  - docs/development/module/vollmachten-ablauf.md
   - FEATURES.md
   - docs/adr/0009-eidas-aes-via-token-und-otp.md
 related_rules:
@@ -97,16 +100,16 @@ widerrufene oder erloschene Vollmacht wird nicht automatisch erkannt.
 
 ## Entscheidungslogik
 
-| Wenn                                                                           | Dann                                                                                         | Begründung                                 |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Vollmacht wird angelegt                                                        | Status DRAFT setzen                                                                          | bearbeitbarer Ausgangszustand              |
-| gültiger DRAFT wird erstmals versandt                                          | Snapshot erzeugen, Versanddaten setzen und nach SENT wechseln                                | Inhalt vor externer Bestätigung einfrieren |
-| SENT wird erneut versandt                                                      | Zustand SENT beibehalten und begrenzten neuen Token ausgeben                                 | kontrollierter Ersatz eines Zugangslinks   |
-| SENT wird mit gültigem Link, Code und Snapshot bestätigt                       | atomar nach SIGNED wechseln                                                                  | abgeschlossener technischer Nachweis       |
-| DRAFT, SENT oder SIGNED wird berechtigt widerrufen                             | Grund und DB-Zeit speichern, Token entkräften und nach REVOKED wechseln                      | expliziter technischer Endzustand          |
-| SIGNED hat ein `validUntil` in den nächsten 30 Tagen                           | zuständige Mitarbeiter benachrichtigen                                                       | Ablaufkontrolle                            |
-| SIGNED liegt nach dem inklusiven `validUntil`-Tag und Empfänger sind vorhanden | Status nach EXPIRED wechseln, alte Hinweise auflösen und Evidence/Benachrichtigung schreiben | automatisierter Ablauf ab dem Folgetag     |
-| Status ist REVOKED oder EXPIRED                                                | weiteren fachlichen Statuswechsel verweigern                                                 | terminaler technischer Zustand             |
+| Wenn                                                     | Dann                                                                                                                                  | Begründung                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Vollmacht wird angelegt                                  | Status DRAFT setzen                                                                                                                   | bearbeitbarer Ausgangszustand              |
+| gültiger DRAFT wird erstmals versandt                    | Snapshot erzeugen, Versanddaten setzen und nach SENT wechseln                                                                         | Inhalt vor externer Bestätigung einfrieren |
+| SENT wird erneut versandt                                | Zustand SENT beibehalten und begrenzten neuen Token ausgeben                                                                          | kontrollierter Ersatz eines Zugangslinks   |
+| SENT wird mit gültigem Link, Code und Snapshot bestätigt | atomar nach SIGNED wechseln                                                                                                           | abgeschlossener technischer Nachweis       |
+| DRAFT, SENT oder SIGNED wird berechtigt widerrufen       | Grund und DB-Zeit speichern, Token entkräften und nach REVOKED wechseln                                                               | expliziter technischer Endzustand          |
+| SIGNED hat ein `validUntil` in den nächsten 30 Tagen     | zuständige Mitarbeiter benachrichtigen                                                                                                | Ablaufkontrolle                            |
+| SIGNED liegt nach dem inklusiven `validUntil`-Tag        | Status nach EXPIRED wechseln, alte Hinweise auflösen und Evidence samt Hinweisen an vorhandene berechtigte Empfänger atomar schreiben | automatisierter Ablauf ab dem Folgetag     |
+| Status ist REVOKED oder EXPIRED                          | weiteren fachlichen Statuswechsel verweigern                                                                                          | terminaler technischer Zustand             |
 
 ## Ausnahmen und Grenzfälle
 
@@ -114,8 +117,10 @@ widerrufene oder erloschene Vollmacht wird nicht automatisch erkannt.
 erst am Folgetag fällig. Der Worker betrachtet nur SIGNED. Ein abgelaufener
 DRAFT oder SENT kann nicht mehr regulär versandt beziehungsweise bestätigt
 werden, erhält durch den Worker aber nicht automatisch den Status EXPIRED. Sind
-weder verantwortliche Mitarbeiter noch aktive ADMIN/PARTNER vorhanden,
-überspringt der Worker den Datensatz einschließlich des Statuswechsels.
+weder aktuell berechtigte verantwortliche Mitarbeiter noch aktive ADMIN/PARTNER
+vorhanden, werden Ablaufstatus und Evidence trotzdem geschrieben; es gibt in
+diesem Fall keine persönliche Benachrichtigung. Zuständigkeiten bleiben
+organisatorisch zu klären.
 
 ## Beispiele
 
@@ -127,10 +132,10 @@ wird protokolliert und die zuständigen Mitarbeiter erhalten einen Hinweis.
 
 ### Grenzfall
 
-Für eine abgelaufene SIGNED-Vollmacht gibt es weder Verantwortungseinträge
-noch aktive ADMIN/PARTNER. Der Worker überspringt sie und lässt den Status
-SIGNED bestehen. Die Kanzlei muss Zuständigkeit und Ablauf organisatorisch
-nachhalten; der Katalog behauptet hier keinen automatischen Vollzug.
+Für eine abgelaufene SIGNED-Vollmacht gibt es weder berechtigte Verantwortliche
+noch aktive ADMIN/PARTNER. Der Worker setzt den technischen Status EXPIRED und
+protokolliert den Übergang. Eine persönliche Benachrichtigung entsteht nicht;
+die Kanzlei muss die fehlende Zuständigkeit organisatorisch nachhalten.
 
 ## Umsetzung in TaxTronik
 
@@ -141,11 +146,21 @@ statusabhängige Felder ein und verlangt serverseitige Zeit- und
 Nachweiskonsistenz. Ein täglicher Worker prüft SIGNED-Vollmachten im
 30-Tage-Fenster, warnt und setzt nach dem inklusiven Gültigkeitstag EXPIRED.
 
+Die Kandidatenabfrage lädt nur Kennungen. Jeder Kandidat wird im Tenantkontext
+gesperrt und danach erneut gelesen, einschließlich aktuellem Status und Datum.
+Ein zwischenzeitlicher Widerruf erzeugt weder Warn- noch Ablaufhinweis. Der
+gemeinsame Empfängerfilter prüft Aktivität und Mandantenzugriff; nur wenn keine
+zuständige Person übrig bleibt, werden aktuelle ADMIN/PARTNER herangezogen.
+Statuswechsel, Auflösung alter Warnungen, Evidence und sämtliche neuen Hinweise
+liegen in derselben Transaktion. Ein fehlgeschlagener Hinweis rollt deshalb
+auch EXPIRED zurück und lässt den nächsten Lauf den Vorgang erneut vollständig
+bearbeiten. Ein verlorener Status-Claim schreibt keine Folgeereignisse.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die technische Statusmaschine selbst ist für den beschriebenen Produktworkflow
-implementiert. Die Ablaufautomatik bleibt an die Ermittlung mindestens eines
-Empfängers gekoppelt; ohne Empfänger findet auch kein Statuswechsel statt.
+implementiert. Ohne ermittelbaren Empfänger entsteht weiterhin kein persönlicher
+Hinweis; dies verhindert den technischen Ablaufstatus jedoch nicht.
 Außerhalb von TaxTronik erklärte Widerrufe, der Fortbestand des
 Grundverhältnisses und gesetzliche Erlöschensgründe werden nicht ermittelt.
 
@@ -156,14 +171,29 @@ Wirksamkeit, Fortbestand oder Form einer konkreten Vollmacht ab.
 ## Fachliche Prüffragen
 
 - Welche Vollmachtstypen und externen Widerrufswege müssen organisatorisch abgeglichen werden?
-- Soll EXPIRED auch ohne Benachrichtigungsempfänger zwingend gesetzt werden?
+- Wie werden Vollmachten ohne zuständigen Benachrichtigungsempfänger organisatorisch kontrolliert?
 - Müssen DRAFT oder SENT nach Ablauf des Gültigkeitsdatums formal auf EXPIRED wechseln?
 - Wer kontrolliert, ob das zugrunde liegende Rechtsverhältnis fortbesteht?
 
 ## Technische Nachweise
+
+Ein ergänzender isolierter PostgreSQL-18-Test am 07.09.2026 belegt vier Fälle
+mit echtem Worker-Prozessor und nativen Transaktionen: SQL-Fehler nach dem
+Notification-Insert mit vollständigem Rollback und genau einmal erfolgreichem
+Retry, Ablauf ohne aktive Empfänger sowie zwei über `pg_blocking_pids`
+bestätigte Lockkonkurrenzen, nach denen ein inzwischen widerrufener Kandidat
+keine Ablauf-/Warnhinweise mehr erzeugt. BullMQ-Start und externe Dienste
+werden dabei abgefangen; das ist kein Nachweis eines Signaturverfahrens.
 
 Action- und Datenbanktests belegen zulässige sowie verbotene Übergänge,
 Widerrufszeit, Grund, Tokenentkräftung und atomaren Abschluss. Worker-Tests
 belegen das inklusive Gültigkeitsdatum, Warnfenster, Evidence,
 Benachrichtigungen und den Empfänger-leer-Grenzfall. Sie belegen keine
 materiell-rechtliche Wirkung.
+
+Die Regression `poa-expiry-atomicity.test.ts` reproduziert den früheren
+Teilcommit bei fehlgeschlagenem Notification-Write mit einem transaktionalen
+Testmodell und prüft Rollback, erfolgreichen Retry und anschließende Idempotenz.
+Weitere Fälle belegen den Ablauf ohne Empfänger sowie das Verwerfen bereits
+widerrufener Warn- und Ablaufkandidaten. Das Testmodell ersetzt keine zusätzliche
+PostgreSQL-Abnahme der tatsächlichen Sperren.

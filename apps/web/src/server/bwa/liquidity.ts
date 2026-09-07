@@ -18,9 +18,9 @@
 
 import { computeBwaKpis } from './addison-parser';
 
-// Pos 3100 in Addison = Abschreibungen (DATEV: 1200)
+// Pos 3100 in Addison = Abschreibungen (DATEV: 1240)
 const ADDISON_DEPRECIATION = 3100;
-const DATEV_DEPRECIATION = 1200;
+const DATEV_DEPRECIATION = 1240;
 
 export interface LiquidityKpis {
   monthsCovered: number;
@@ -49,13 +49,13 @@ function monthsCovered(p: PeriodInput): number {
   return (toY - fromY) * 12 + (to - from) + 1;
 }
 
-function depreciation(positions: PeriodInput['positions']): number {
+function depreciation(positions: PeriodInput['positions']): number | null {
   for (const p of positions) {
     if (p.number === ADDISON_DEPRECIATION || p.number === DATEV_DEPRECIATION) {
       return typeof p.amount === 'number' ? p.amount : Number(p.amount.toString());
     }
   }
-  return 0;
+  return null;
 }
 
 function trend(curr: number | null, prev: number | null): 'up' | 'down' | 'flat' | null {
@@ -82,7 +82,8 @@ export function computeLiquidity(
   const currDep = depreciation(current.positions);
   const months = monthsCovered(current);
 
-  const cashflowProxy = currKpi.result !== null ? currKpi.result + currDep : null;
+  const cashflowProxy =
+    currKpi.result !== null && currDep !== null ? currKpi.result + currDep : null;
   const cashflowMonthly = cashflowProxy !== null && months > 0 ? cashflowProxy / months : null;
   const marginPct = shareOfRevenue(currKpi.result, currKpi.revenue);
   const personnelRatioPct = shareOfRevenue(currKpi.personnelCost, currKpi.revenue);

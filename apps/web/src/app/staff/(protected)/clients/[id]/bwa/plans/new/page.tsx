@@ -1,9 +1,9 @@
-﻿import { notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { computeBwaKpis } from '@/server/bwa/addison-parser';
+import { computeBwaPlanBasis } from '@/server/bwa/plan-basis';
 import { PlanWizard } from '@/app/portal/(protected)/bwa/plan/plan-wizard';
 import { createStaffPlanAction } from '../actions';
 
@@ -31,24 +31,13 @@ export default async function StaffNewPlanPage({ params }: { params: Promise<{ i
   if (!data) notFound();
   const { client, periods } = data;
 
-  const bases = periods.map((p) => {
-    const map = new Map<number, number>();
-    for (const pos of p.positions) map.set(pos.number, Number(pos.amount.toString()));
-    const k = computeBwaKpis(p.positions);
-    return {
-      id: p.id,
-      periodKey: p.periodKey,
-      label: p.periodKey,
-      periodType: p.periodType as 'YEAR' | 'QUARTER' | 'MONTH',
-      revenue: k.revenue,
-      costs: k.costs,
-      result: k.result,
-      personnelCost: k.personnelCost,
-      material: map.get(3010) ?? null,
-      depreciation: map.get(3100) ?? null,
-      otherIncome: map.get(1010) ?? null,
-    };
-  });
+  const bases = periods.map((p) => ({
+    id: p.id,
+    periodKey: p.periodKey,
+    label: p.periodKey,
+    periodType: p.periodType,
+    ...computeBwaPlanBasis(p.positions, p.source),
+  }));
 
   const currentYear = new Date().getUTCFullYear();
 

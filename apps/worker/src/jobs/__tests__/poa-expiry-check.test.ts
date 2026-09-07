@@ -5,10 +5,10 @@
 // bullmq via mocks/bullmq.ts, Prisma/Notify/Tenant-Context/Evidence per
 // vi.mock. Abgedeckt:
 //   - Schwellenlogik: > 30 Tage nichts, ≤ 30 Tage POA_EXPIRY_SOON,
-//     daysLeft ≤ 0 → EXPIRED (Tagesgrenze: validUntil == now zählt als abgelaufen)
+//     daysLeft < 0 → EXPIRED (validUntil bleibt inklusive gültig)
 //   - RF-8: Statuswechsel SIGNED → EXPIRED + Audit-Record 'poa.expire' laufen
 //     in EINER Tenant-Context-Tx (guarded updateMany auf status SIGNED)
-//   - Idempotenz: updateMany count 0 → kein Audit-Record, Notification trotzdem
+//   - Idempotenz: updateMany count 0 → kein Audit-Record und keine Notification
 //   - Empfänger: Responsibilities des Mandanten, sonst ADMIN/PARTNER-Fallback
 // =============================================================================
 
@@ -21,7 +21,9 @@ const h = vi.hoisted(() => {
     powerOfAttorney: { findMany: vi.fn() },
   };
   const tx = {
-    powerOfAttorney: { updateMany: vi.fn() },
+    $queryRaw: vi.fn(),
+    powerOfAttorney: { findFirst: vi.fn(), updateMany: vi.fn() },
+    staffUser: prismaOwner.staffUser,
   };
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
@@ -46,9 +48,12 @@ vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
-vi.mock('../../notify', () => ({ upsertNotification: h.upsertNotification }));
 vi.mock('@taxtronik/db/notification', () => ({
   resolveNotificationsTx: h.resolveNotificationsTx,
+  upsertNotificationTx: h.upsertNotification,
+}));
+vi.mock('@taxtronik/db/staff-client-access', () => ({
+  filterStaffAccessClientTx: async (_tx: unknown, _tenant: string, ids: string[]) => new Set(ids),
 }));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {
@@ -76,6 +81,7 @@ function run(): Promise<PoaResult> {
 function poa(validUntil: Date, overrides: Record<string, unknown> = {}) {
   return {
     id: 'poa-1',
+    clientId: 'client-1',
     subject: 'Steuerliche Vertretung',
     signerName: 'Max Muster',
     status: 'SIGNED',
@@ -99,6 +105,11 @@ beforeEach(() => {
   h.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }]);
   h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([]);
   h.tx.powerOfAttorney.updateMany.mockResolvedValue({ count: 1 });
+  h.tx.$queryRaw.mockResolvedValue([{ id: 'poa-1' }]);
+  h.tx.powerOfAttorney.findFirst.mockImplementation(
+    async () =>
+      (await h.prismaOwner.powerOfAttorney.findMany.mock.results.at(-1)?.value)?.[0] ?? null,
+  );
   h.record.mockResolvedValue({});
   h.upsertNotification.mockResolvedValue(undefined);
 });
@@ -130,7 +141,7 @@ describe('Schwellenlogik', () => {
     const result = await run();
 
     expect(h.upsertNotification).not.toHaveBeenCalled();
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.tx.powerOfAttorney.updateMany).not.toHaveBeenCalled();
     expect(result).toEqual({ soon: 0, expired: 0 });
   });
 
@@ -141,13 +152,14 @@ describe('Schwellenlogik', () => {
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.withWorkerTenantContext).toHaveBeenCalledOnce();
     expect(h.record).not.toHaveBeenCalled();
     expect(h.upsertNotification).toHaveBeenCalledTimes(1);
     expect(h.upsertNotification).toHaveBeenCalledWith(
-      TENANT,
-      'hb-1',
+      h.tx,
       expect.objectContaining({
+        tenantId: TENANT,
+        staffId: 'hb-1',
         kind: 'POA_EXPIRY_SOON',
         title: 'Vollmacht läuft in 30 Tagen ab — Muster GmbH',
         href: '/staff/poa/poa-1',
@@ -168,12 +180,13 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.withWorkerTenantContext).toHaveBeenCalledOnce();
     expect(h.record).not.toHaveBeenCalled();
     expect(h.upsertNotification).toHaveBeenCalledWith(
-      TENANT,
-      'hb-1',
+      h.tx,
       expect.objectContaining({
+        tenantId: TENANT,
+        staffId: 'hb-1',
         kind: 'POA_EXPIRY_SOON',
         title: 'Vollmacht läuft heute ab — Muster GmbH',
       }),
@@ -191,7 +204,12 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
     expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
     // Guarded: nur SIGNED → EXPIRED (paralleler Lauf darf nicht doppelt schreiben)
     expect(h.tx.powerOfAttorney.updateMany).toHaveBeenCalledWith({
-      where: { id: 'poa-1', status: 'SIGNED' },
+      where: {
+        id: 'poa-1',
+        tenantId: TENANT,
+        status: 'SIGNED',
+        validUntil: { lt: new Date('2026-06-09T00:00:00Z') },
+      },
       data: { status: 'EXPIRED' },
     });
     // Audit-Record läuft auf DEMSELBEN Tx-Client wie der Statuswechsel
@@ -208,9 +226,10 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
       after: { status: 'EXPIRED', validUntil },
     });
     expect(h.upsertNotification).toHaveBeenCalledWith(
-      TENANT,
-      'hb-1',
+      h.tx,
       expect.objectContaining({
+        tenantId: TENANT,
+        staffId: 'hb-1',
         kind: 'POA_EXPIRED',
         title: 'Vollmacht abgelaufen — Muster GmbH',
       }),
@@ -218,7 +237,7 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
     expect(result).toEqual({ soon: 0, expired: 1 });
   });
 
-  it('idempotent: updateMany count 0 (schon EXPIRED) → kein Audit-Record, Notification trotzdem', async () => {
+  it('verlorener Status-Claim → kein Audit-Record und keine veraltete Notification', async () => {
     h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
       poa(new Date(FIXED_NOW.getTime() - 5 * DAY)),
     ]);
@@ -227,11 +246,7 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
     await run();
 
     expect(h.record).not.toHaveBeenCalled();
-    expect(h.upsertNotification).toHaveBeenCalledWith(
-      TENANT,
-      'hb-1',
-      expect.objectContaining({ kind: 'POA_EXPIRED' }),
-    );
+    expect(h.upsertNotification).not.toHaveBeenCalled();
   });
 });
 
@@ -246,12 +261,10 @@ describe('Empfänger', () => {
     await run();
 
     expect(h.upsertNotification).toHaveBeenCalledTimes(1);
-    expect(h.upsertNotification.mock.calls[0]![1]).toBe('admin-1');
+    expect(h.upsertNotification.mock.calls[0]![1].staffId).toBe('admin-1');
   });
 
-  it('gar keine Empfänger → Vollmacht wird übersprungen (auch kein Statuswechsel)', async () => {
-    // Dokumentiert aktuelles Verhalten: der Empfänger-Check kommt VOR dem
-    // Statuswechsel — eine abgelaufene POA ohne Empfänger bleibt SIGNED.
+  it('gar keine Empfänger → Ablaufstatus und Evidence bleiben unabhängig von der Zustellung', async () => {
     h.prismaOwner.staffUser.findMany.mockResolvedValue([]);
     h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
       poa(new Date(FIXED_NOW.getTime() - DAY), {
@@ -261,7 +274,9 @@ describe('Empfänger', () => {
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.withWorkerTenantContext).toHaveBeenCalledOnce();
+    expect(h.tx.powerOfAttorney.updateMany).toHaveBeenCalledOnce();
+    expect(h.record).toHaveBeenCalledOnce();
     expect(h.upsertNotification).not.toHaveBeenCalled();
     expect(result).toEqual({ soon: 0, expired: 0 });
   });

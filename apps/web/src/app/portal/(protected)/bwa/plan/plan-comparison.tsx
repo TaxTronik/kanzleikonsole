@@ -69,6 +69,9 @@ export interface ProjectionSnapshot {
   material: number | null;
   depreciation: number | null;
   otherCosts: number | null;
+  costs: number | null;
+  resultBeforeTax: number | null;
+  resultAfterTax: number | null;
   taxes: number | null;
   // Optional: Basis-Beschreibung („YTD 2026-Q2", „Trend aus 4 Jahren")
   basis: string;
@@ -207,21 +210,15 @@ function ComparisonTable({
   // Hochrechnung als Pseudo-Spalte aufbereiten — chronologisch einsortiert.
   const projTotals = projection
     ? {
-        revenue: (projection.revenue ?? 0) + (projection.otherIncome ?? 0),
-        costs:
-          (projection.personnelCost ?? 0) +
-          (projection.material ?? 0) +
-          (projection.depreciation ?? 0) +
-          (projection.otherCosts ?? 0),
-        taxes: projection.taxes ?? 0,
-        resultBeforeTax: 0,
-        resultAfterTax: 0,
+        revenue:
+          projection.revenue !== null && projection.otherIncome !== null
+            ? projection.revenue + projection.otherIncome
+            : null,
+        costs: projection.costs,
+        resultBeforeTax: projection.resultBeforeTax,
+        resultAfterTax: projection.resultAfterTax,
       }
     : null;
-  if (projTotals) {
-    projTotals.resultBeforeTax = projTotals.revenue - projTotals.costs;
-    projTotals.resultAfterTax = projTotals.resultBeforeTax - projTotals.taxes;
-  }
 
   // Spalten-Reihenfolge mit chronologisch eingefügter Hochrechnung
   type Col =
@@ -236,23 +233,23 @@ function ComparisonTable({
   function cellPlan(axis: Axis, p: PlanForCompare) {
     return lineValue(p, axis);
   }
-  function cellProjection(axis: Axis): number {
-    if (!projection) return 0;
+  function cellProjection(axis: Axis): number | null {
+    if (!projection) return null;
     switch (axis) {
       case 'REVENUE':
-        return projection.revenue ?? 0;
+        return projection.revenue;
       case 'OTHER_INCOME':
-        return projection.otherIncome ?? 0;
+        return projection.otherIncome;
       case 'PERSONNEL':
-        return projection.personnelCost ?? 0;
+        return projection.personnelCost;
       case 'MATERIAL':
-        return projection.material ?? 0;
+        return projection.material;
       case 'DEPRECIATION':
-        return projection.depreciation ?? 0;
+        return projection.depreciation;
       case 'OTHER_COSTS':
-        return projection.otherCosts ?? 0;
+        return projection.otherCosts;
       case 'TAXES':
-        return projection.taxes ?? 0;
+        return projection.taxes;
     }
   }
 
@@ -356,9 +353,9 @@ function ComparisonTable({
                       ? sums[plans.findIndex((p) => p.id === c.plan.id)]![row.key]
                       : projTotals![row.key];
                   const cls =
-                    row.accent && v < 0
+                    row.accent && v !== null && v < 0
                       ? 'text-red-700 dark:text-red-300'
-                      : row.accent && v > 0
+                      : row.accent && v !== null && v > 0
                         ? 'text-emerald-700 dark:text-emerald-300'
                         : 'text-primary';
                   return (

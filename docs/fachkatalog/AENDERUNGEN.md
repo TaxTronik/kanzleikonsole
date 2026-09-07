@@ -1,5 +1,34 @@
 ---
 exceptions:
+  - id: FK-EXC-20260907-004
+    date: '2026-09-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-workspace.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-document.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-compose.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-review-controls.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-selection-panel.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/use-format-autosave.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/use-subsumtion-llm.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/workspace-types.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.ts
+    rule_ids:
+      - RISK-AI-SUGGESTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+    reason: >-
+      Die Editoransicht trennt Erfassung, Prüfung, Auswahl und technische
+      Speicherzustände. Importierter Text wird an das bestehende Rich-Text-
+      Dokument angehängt, ohne vorhandene Formatierungen oder zwischenzeitlich
+      eingegebene Titel zu überschreiben. Fehlgeschlagene Formatierungssaves
+      wiederholen den neuesten unveränderten Inhaltsstand. Fachanalyse,
+      Berechtigungen, fachliche Prüfmarkierung, Provenienz und Archivierung
+      bleiben unverändert; Inhaltsänderungen verhindern die Formatierungssave-
+      Wiederholung. Browsertests nutzen echte Komponenten mit synthetischen
+      Action-Grenzen, keine fachliche Freigabe.
+    tests:
+      - apps/e2e/tests/20-subsumtion-editor-state.spec.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.ts
+    reviewer: Codex (technische Zustands- und Komponentenprüfung, keine fachliche Freigabe)
   - id: FK-EXC-20260907-003
     date: '2026-09-07'
     paths:
@@ -724,6 +753,26 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-09-07: Dritter gemeinsamer Qualitätsdurchlauf. `AUDIT-HASH-CHAIN-001`
+  und `AUDIT-ARCHIVE-001` erhalten vollständige Bindung eigener JSON-Schlüssel
+  einschließlich `__proto__`; historische Sonderfälle werden ausdrücklich
+  dokumentiert und niemals umgeschrieben. `BWA-IMPORT-MAPPING-001`,
+  `BWA-PROJECTION-001` und `BWA-TAX-ESTIMATE-001` korrigieren DATEV-Positionen,
+  fehlende Werte, Vorsteuerbasis und die belegbare automatische Planvorbelegung.
+  `POA-LIFECYCLE-001` und `ACCESS-NOTIFICATION-RECIPIENT-001` binden Ablauf,
+  Nachweis und aktuelle Empfänger an dieselbe Transaktion.
+  `DOC-UPLOAD-JOURNAL-001`, `DOC-VERSION-IMMUTABILITY-001` und
+  `DOC-PORTAL-SHARING-001` sperren die Auslieferung nicht vollständig
+  finalisierter Versionen. Die vorhandenen Zugriffsregeln
+  `ACCESS-TENANT-RLS-001` und `ACCESS-CLIENT-MODE-001` bleiben bei der
+  konkurrierenden Terminabsage und den DATEV-Transportkorrekturen erhalten.
+  `FK-EXC-20260907-004` dokumentiert die technische Editorreparatur.
+  Restore erhält zusätzlich eine obligatorische Prüfung effektiver Rollen,
+  erreichbarer privilegierter Rollen, Audit-Schreibsperren und RLS vor jedem
+  Erfolg (`ACCESS-TENANT-RLS-001`, `AUDIT-HASH-CHAIN-001`). Fehler verhindern
+  die Dienstfreigabe; sie rollen den bereits angewendeten Restore nicht zurück.
+  Keine fachliche Freigabe wurde erteilt oder verändert.
 
 - `FK-EXC-20260830-012` — verhaltensneutrale Komponenten- und
   Helferextraktionen zum Integrationsabschluss; Fachprüfungen und

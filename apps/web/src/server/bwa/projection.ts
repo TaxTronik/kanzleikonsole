@@ -143,7 +143,7 @@ export function linearSeasonalProjection(
   // Bemessungsbasis der Steuerschätzung ist das Ergebnis VOR Steuern. Bei
   // DATEV ist die generische `result`-Achse (Zeile 1380) bereits NACH Steuern —
   // sie hier zu projizieren und dann `estimateTaxRange` anzuwenden zöge die
-  // Ertragsteuern ein zweites Mal ab. Deshalb `resultBeforeTax` (1345/1300 bzw.
+  // Ertragsteuern ein zweites Mal ab. Deshalb `resultBeforeTax` (1345 bzw.
   // Addison-Vorläufiges-Ergebnis 3250) als Basis.
   const result = projectAxis('resultBeforeTax');
   const taxes = estimateTaxRange(result);

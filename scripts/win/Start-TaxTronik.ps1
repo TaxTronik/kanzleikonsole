@@ -37,15 +37,8 @@ function Ok($m)  { Write-Host "    ok: $m" -ForegroundColor Green }
 function Warn($m){ Write-Host "    !! $m" -ForegroundColor Yellow }
 function Die($m) { Write-Host $m -ForegroundColor Red; exit 1 }
 
-# Native docker-Aufrufe von $ErrorActionPreference='Stop' entkoppeln (docker
-# schreibt Fortschritt auf stderr; das würde sonst das Skript abbrechen).
-function Run-Docker {
-  param([Parameter(ValueFromRemainingArguments=$true)][string[]]$DockerArgs)
-  $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  try { & docker @DockerArgs; return $LASTEXITCODE } finally { $ErrorActionPreference = $old }
-}
-function Test-Docker  { cmd /c "docker info >NUL 2>NUL";            return ($LASTEXITCODE -eq 0) }
-function Image-Exists { param($ref) cmd /c "docker image inspect $ref >NUL 2>NUL"; return ($LASTEXITCODE -eq 0) }
+# Native Ausgabe und Exitstatus dürfen nicht im selben Rückgabewert landen.
+. (Join-Path $PSScriptRoot 'docker-commands.ps1')
 
 # base64url-Secret (RFC 4648 §5) — '+/=' würden in DATABASE_URL/JSON Probleme machen.
 function New-Secret([int]$bytes){

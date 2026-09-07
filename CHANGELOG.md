@@ -22,6 +22,42 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ### Behoben
 
+- **[Scope]** Restore meldet Erfolg erst nach verpflichtender Prüfung der
+  effektiven Rollen-, Audit-Schreibsperren und RLS-Policies, auch bei
+  `--no-smoke-test`. Unsichere, durch Ziel-Defaultprivilegien veränderte Rechte
+  führen zu einem Fehler und einem ausdrücklichen Hinweis, die Dienste
+  gestoppt zu lassen (`ACCESS-TENANT-RLS-001`, `AUDIT-HASH-CHAIN-001`). Die
+  nachgelagerte Prüfung rollt den bereits angewendeten Restore nicht zurück.
+- **[Scope]** Dokumentdownload, Vorschau und ZIP-Exporte liefern die neueste
+  Version erst nach erfolgreichem Scan und abgeschlossenem Upload aus; eine
+  ältere Version wird nicht stillschweigend ersatzweise ausgegeben
+  (`DOC-UPLOAD-JOURNAL-001`, `DOC-VERSION-IMMUTABILITY-001`,
+  `DOC-PORTAL-SHARING-001`). DATEV-Belegexporte erhalten korrekte Office-Endungen
+  und weisen ungültige oder umgekehrte Datumsbereiche zurück.
+- **[Scope]** Die Audit-Kanonisierung erhält eigene JSON-Schlüssel wie
+  `__proto__` vollständig. Gewöhnliche Hashes bleiben bytegleich. Historische
+  Ereignisse mit diesem bislang ungebundenen Sonderfeld können jetzt eine
+  Abweichung zeigen; historische Hashes und Archive werden nicht verändert
+  (`AUDIT-HASH-CHAIN-001`, `AUDIT-ARCHIVE-001`).
+- BWA-Auswertungen unterscheiden DATEV-Erlöse, Gesamtleistung, Betriebs- und
+  Vorsteuerergebnis. Der Cashflow-Proxy verwendet die Abschreibungsposition.
+  Fehlende Werte bleiben unbekannt; automatische Planvorbelegung erfordert
+  vollständige, zum Modell passende Daten. Steuerschätzungen benötigen eine
+  bekannte Vorsteuerbasis (`BWA-IMPORT-MAPPING-001`, `BWA-PROJECTION-001`,
+  `BWA-TAX-ESTIMATE-001`).
+- Vollmachtsablauf, Audit-Eintrag und Benachrichtigungen werden atomar
+  gespeichert. Fehler können sicher wiederholt werden; Empfänger werden
+  unmittelbar vor dem Versandauftrag erneut geprüft (`POA-LIFECYCLE-001`,
+  `ACCESS-NOTIFICATION-RECIPIENT-001`). Gleich lange neue SMTP-Passwörter
+  aktualisieren den zwischengespeicherten Transport ebenfalls.
+- Gleichzeitige Terminentscheidungen überschreiben sich bei Portalabsagen
+  nicht mehr. Der Editor erhält Formatierungen beim Import und selbst
+  eingegebene Titel; fehlgeschlagene Formatierungssaves werden wiederholt.
+  Erfassung, Prüfung und Speicherzustände sind in kleinere Komponenten und
+  Hooks aufgeteilt (`FK-EXC-20260907-004`).
+- Windows-Setup erhält bei fehlgeschlagenem Docker-Reset die Konfiguration.
+  UTF-8-Kodierung, Docker-Argumente und Exitcodes funktionieren unter Windows
+  PowerShell 5.1 und PowerShell 7 mit eigenen Regressionstests.
 - **[Scope]** Ungelesene Benachrichtigungen stehen auch bei vielen gelesenen
   Einträgen zuerst. Der Zähler umfasst alle berechtigten ungelesenen Hinweise
   unabhängig vom 100er-Anzeigefenster (`ACCESS-NOTIFICATION-RECIPIENT-001`).

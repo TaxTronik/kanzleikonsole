@@ -39,6 +39,14 @@ function params() {
 
 const ROUTES = [
   {
+    name: 'preview-stream',
+    call: () =>
+      previewGet(
+        new NextRequest(`http://localhost/api/staff/documents/${DOCUMENT_ID}/preview-url?stream=1`),
+        params(),
+      ),
+  },
+  {
     name: 'download',
     call: () =>
       downloadGet(
@@ -66,7 +74,14 @@ beforeEach(() => {
     mimeType: 'application/pdf',
     classification: 'GOBD_CONTRACT',
     clientId: 'client-1',
-    versions: [{ storageBucket: 'documents', storageKey: 'tenant/document' }],
+    versions: [
+      {
+        storageBucket: 'documents',
+        storageKey: 'tenant/document',
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+      },
+    ],
   });
   mocks.tx.powerOfAttorney.findFirst.mockResolvedValue(null);
   mocks.evidenceRecord.mockResolvedValue({});
@@ -78,6 +93,30 @@ beforeEach(() => {
 });
 
 describe.each(ROUTES)('Staff document delivery: $name', ({ call }) => {
+  // DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001.
+  it.each(['PENDING', 'INFECTED', 'ERROR', 'MISSING_COMPLETION'])(
+    'blocks the newest %s version before audit or object access',
+    async (state) => {
+      const candidate = await mocks.tx.document.findFirst();
+      const clean = candidate.versions[0];
+      mocks.tx.document.findFirst.mockResolvedValue({
+        ...candidate,
+        versions: [
+          {
+            ...clean,
+            scanStatus: state === 'MISSING_COMPLETION' ? 'CLEAN' : state,
+            scanCompletedAt: state === 'MISSING_COMPLETION' ? null : clean.scanCompletedAt,
+          },
+          clean,
+        ],
+      });
+      const response = await call();
+      expect(response.status).toBe(404);
+      expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+      expect(mocks.streamObject).not.toHaveBeenCalled();
+      expect(mocks.fetchObjectBytes).not.toHaveBeenCalled();
+    },
+  );
   it('bindet Tenant-/Soft-Delete-Filter und das aktuelle Mandantenzugriffsgate ein', async () => {
     const response = await call();
 

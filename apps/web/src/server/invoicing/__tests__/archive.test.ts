@@ -552,6 +552,11 @@ describe('ensureZugferdArchive', () => {
     expect(tx.document.create.mock.calls[0]![0]!.data.retentionUntil).toEqual(RETENTION_UNTIL);
     expect(tx.document.create.mock.calls[1]![0]!.data.retentionUntil).toEqual(RETENTION_UNTIL);
     expect(tx.documentVersion.create).toHaveBeenCalledTimes(2);
+    // DOC-UPLOAD-JOURNAL-001: Generierte PDF-/XML-Ausgaben erfüllen ebenfalls
+    // den allgemeinen Download-Gate; keine Klassifikationsausnahme nötig.
+    for (const [call] of tx.documentVersion.create.mock.calls) {
+      expect(call.data).toMatchObject({ scanStatus: 'CLEAN', scanCompletedAt: expect.any(Date) });
+    }
     expect(tx.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv1' },
       data: { documentId: 'pdf-doc-new', xrechnungDocumentId: 'xml-doc-new' },

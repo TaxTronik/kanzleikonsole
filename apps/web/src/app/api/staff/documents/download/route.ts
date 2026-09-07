@@ -25,6 +25,7 @@ import {
 } from '@/server/export/zip';
 import { evidenceService } from '@/server/container';
 import { isUuid } from '@/lib/uuid';
+import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
@@ -69,7 +70,13 @@ export async function GET(req: NextRequest) {
         versions: {
           orderBy: { versionNo: 'desc' as const },
           take: 1,
-          select: { storageBucket: true, storageKey: true, sizeBytes: true },
+          select: {
+            storageBucket: true,
+            storageKey: true,
+            sizeBytes: true,
+            scanStatus: true,
+            scanCompletedAt: true,
+          },
         },
       };
 
@@ -138,8 +145,8 @@ export async function GET(req: NextRequest) {
     },
   );
 
-  const usableLoose = looseDocs.filter((d) => d.versions[0]);
-  const usableFolder = folderDocs.filter((x) => x.doc.versions[0]);
+  const usableLoose = looseDocs.filter((d) => isDocumentVersionReady(d.versions[0]));
+  const usableFolder = folderDocs.filter((x) => isDocumentVersionReady(x.doc.versions[0]));
   if (usableLoose.length === 0 && usableFolder.length === 0) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }

@@ -22,10 +22,9 @@ export interface TaxEstimationInput {
   /** Veranlagungsjahr der BWA. Unbekannte Tarife werden fail-safe nicht geschätzt. */
   taxYear: number;
   legalForm: LegalForm;
-  // Bemessungsbasis: Ergebnis VOR Ertragsteuern (EUR). Wenn nur ein Nach-Steuer-
-  // Ergebnis verfügbar war, `resultIsAfterTax: true` setzen (Disclaimer).
+  // Bemessungsbasis: Ergebnis VOR Ertragsteuern (EUR).
   result: number;
-  /** True, wenn `result` das Ergebnis NACH Steuern ist (Zirkelbezug möglich). */
+  /** Bekannte Nachsteuerbasis wird ausdrücklich abgewiesen. */
   resultIsAfterTax?: boolean;
   // Erlöse (Pos 1990 in BWA, EUR) — für USt-Schätzung
   revenue: number | null;
@@ -144,15 +143,15 @@ function estimateVat(
 }
 
 export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
+  if (input.resultIsAfterTax) {
+    throw new Error(
+      'Für die Steuerschätzung ist ein Ergebnis vor Steuern erforderlich. Ein Nachsteuerergebnis darf es nicht ersetzen.',
+    );
+  }
   const disclaimers: string[] = [
     'Diese Schätzung ist eine grobe Orientierung und ersetzt keine fachliche Beurteilung.',
     `Werte basieren auf der vorläufigen BWA; Einkommensteuer-Grundtarif ${input.taxYear}.`,
   ];
-  if (input.resultIsAfterTax) {
-    disclaimers.push(
-      'Kein „Ergebnis vor Steuern" in der BWA gefunden (DATEV 1345/1300) — die Schätzung nutzt das vorläufige Ergebnis; die tatsächliche Steuerlast kann dadurch systematisch unterschätzt sein.',
-    );
-  }
 
   const isKap = input.legalForm === 'GMBH' || input.legalForm === 'AG' || input.legalForm === 'UG';
   const isPnP =

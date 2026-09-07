@@ -43,7 +43,10 @@ const jsonValueArb: fc.Arbitrary<unknown> = fc.oneof(
 const shuffledObjectArb = fc
   .array(
     fc.tuple(
-      fc.string({ minLength: 1, maxLength: 8 }).filter((s) => !s.includes('"')),
+      fc.oneof(
+        fc.string({ minLength: 1, maxLength: 8 }).filter((s) => !s.includes('"')),
+        fc.constantFrom('__proto__', 'constructor', 'toString'),
+      ),
       jsonValueArb,
     ),
     {
@@ -51,11 +54,7 @@ const shuffledObjectArb = fc
       maxLength: 5,
     },
   )
-  .map((entries) => {
-    const obj: Record<string, unknown> = {};
-    for (const [k, v] of entries) obj[k] = v;
-    return obj;
-  });
+  .map((entries) => Object.fromEntries(entries));
 
 /** Zufälliges ChainEvent mit eingeschränkten Werten (vermeidet fast-check-Edge-Cases). */
 const chainEventArb: fc.Arbitrary<ChainEvent> = fc.record({
@@ -88,8 +87,7 @@ describe('canonicalJson — Property-Based', () => {
       fc.property(shuffledObjectArb, (obj) => {
         // Rekonstruiere das Objekt in umgekehrter Key-Reihenfolge
         const reversedKeys = Object.keys(obj).reverse();
-        const reversed: Record<string, unknown> = {};
-        for (const k of reversedKeys) reversed[k] = obj[k];
+        const reversed = Object.fromEntries(reversedKeys.map((key) => [key, obj[key]]));
         expect(canonicalJson(obj)).toBe(canonicalJson(reversed));
       }),
     );
@@ -113,6 +111,14 @@ describe('canonicalJson — Property-Based', () => {
   it('C4: null wird serialisiert als "null" (nicht ausgelassen)', () => {
     expect(canonicalJson({ a: null })).toBe('{"a":null}');
     expect(canonicalJson(null)).toBe('null');
+  });
+
+  it('AUDIT-HASH-CHAIN-001: behält alle eigenen JSON-Schlüssel und Werte', () => {
+    fc.assert(
+      fc.property(shuffledObjectArb, (obj) => {
+        expect(JSON.parse(canonicalJson(obj))).toEqual(obj);
+      }),
+    );
   });
 });
 

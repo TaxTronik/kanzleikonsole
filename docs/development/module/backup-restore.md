@@ -51,7 +51,8 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   sie gestoppt;
   `pg_restore --single-transaction --exit-on-error` (ganz oder gar nicht);
   setzt die vorab aus der Betreiberkonfiguration angelegte Cluster-Rolle
-  `taxtronik_app` voraus; Smoke-Test (Tenants/Audit-Zählung) nach Restore.
+  `taxtronik_app` voraus; verbindliche Rollen-/ACL-/RLS-Abnahme vor jeder
+  Erfolgsmeldung, zusätzlich optionaler Smoke-Test (Tenants/Audit-Zählung).
 - **Restore-Drill** (Worker, monatlich 1., 05:00 UTC): letztes
   SUCCESS-Backup → Wegwerf-DB (S3→pg_restore-stdin-Stream, SHA-Check) →
   `verifyChain` je Tenant auf der **wiederhergestellten** DB; Ergebnis als
@@ -82,6 +83,23 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 | Sichtbarkeit ohne Dump-Zugriff          | Admin-Backup-Karte + Drill-Ergebnis; Trigger und Download nur durch Operator         | Route-Tests + manuelle Abnahme                                                                                          |
 
 ## Bekannte Grenzen
+
+Ein vorbereiteter Zielserver kann über Defaultprivilegien beim Neuanlegen der
+Tabellen Rechte vergeben, die im Quellsystem entzogen waren. Deshalb prüft
+`restore-security.ts` nach `pg_restore` die 17 effektiven Rollen-/ACL-/REVOKE-
+Invarianten des CI-Selbsttests, einschließlich erreichbarer privilegierter
+`SET ROLE`-Ziele, sowie ENABLE/FORCE RLS und Policies aller
+normalen und partitionierten öffentlichen Tenanttabellen. Die dokumentierten
+globalen Ausnahmen bleiben erhalten; ein leeres Inventar wird abgewiesen.
+`--no-smoke-test` schaltet diese Sicherheitsabnahme nicht aus.
+
+Schlägt die Abnahme fehl, meldet die CLI keinen erfolgreichen Restore und
+endet mit Fehler. **Der Restore wurde dann bereits angewendet; die Abnahme
+rollt ihn nicht zurück. Dienste bleiben gestoppt.** Die Zielrechte und RLS
+müssen geprüft und eine sichere Wiederherstellung erneut nachgewiesen werden.
+Die CLI korrigiert Rechte nicht automatisch. Auditkette, Migrationsstand,
+Release-Vertrag und betrieblicher Wiederanlauf müssen weiterhin gesondert
+geprüft werden (`ACCESS-TENANT-RLS-001`, `AUDIT-HASH-CHAIN-001`).
 
 Object-Store-Inhalte (Dokumente) sichert das DB-only-Backup nicht;
 `backup-files` bleibt eine versionstreue **ungeeignete** Notfall-Bytequelle.

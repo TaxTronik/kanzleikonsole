@@ -56,6 +56,9 @@ aktueller Einarbeitungs- und Übergabepfad in
 
 ## 3. Änderungsverfahren (Entwicklung und Wartung)
 
+Für Änderungen an Setup und Launcher gelten zusätzlich die lokalen
+[Regressionstests der Windows-Hilfsskripte](windows-hilfsskripte.md).
+
 Jede Änderung — Feature, Fehlerbehebung, Härtung — folgt demselben Weg:
 
 1. **Anlass festhalten:** fachliche Anforderung, Fehlerbild oder

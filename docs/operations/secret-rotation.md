@@ -76,6 +76,20 @@ pnpm verify:chain
 
 8. Fachlicher Smoke: Login, Upload, Mail/Test-Mail, n8n-Webhook, Backup-List.
 
+## SMTP-Passwörter
+
+In den Tenant-Einstellungen gespeicherte SMTP-Passwörter werden vor jedem
+Versand erneut gelesen. Der Prozesscache erkennt auch einen Wechsel zu einem
+anderen Passwort gleicher Länge, schließt den bisherigen Transporter und
+verwendet beim nächsten Versand die neue Konfiguration. Der Cachefingerprint
+enthält einen SHA-256-Hash der strukturierten Transportkonfiguration; das Passwort
+wird nicht als Cachekennung abgelegt oder protokolliert. Der Regressionstest
+`packages/mail/src/__tests__/send-cache.test.ts` prüft Rotation, unveränderte
+Konfiguration und Tenanttrennung ohne echte Zustellung.
+
+Der ENV-Fallback `SMTP_PASSWORD` bleibt Prozesskonfiguration und verlangt nach
+einem Wechsel den regulären Neustart der betreffenden App-/Worker-Prozesse.
+
 ## DB-Passwörter
 
 DB-Passwörter betreffen nicht nur `.env`, sondern auch die Rollen in Postgres.

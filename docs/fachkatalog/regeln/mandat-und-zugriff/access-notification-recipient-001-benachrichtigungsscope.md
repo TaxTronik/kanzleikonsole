@@ -50,6 +50,7 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/worker/src/jobs/poa-expiry-check.ts
   - packages/db/src/staff-client-access.ts
   - packages/db/src/notification.ts
   - apps/web/src/server/notifications/service.ts
@@ -64,6 +65,8 @@ code_refs:
   - apps/web/src/server/inbox/client-notification.ts
   - packages/mail/src/dispatch.ts
 test_refs:
+  - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
+  - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
   - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
   - packages/db/src/__tests__/notification-client-scope-migration.test.ts
@@ -151,6 +154,15 @@ Fachressource und der gemeinsame Accessfilter verwirft den alten Empfänger;
 eine schon vorhandene Notification wird durch RLS unsichtbar.
 
 ## Umsetzung in TaxTronik
+
+Der Vollmachts-Ablaufworker sperrt den jeweiligen Datensatz und liest den
+aktuellen Status vor einem Warn-/Ablaufhinweis erneut. Die Empfängerauswahl
+verwendet denselben aktuellen Mandantenzugriffsfilter wie Reminder; nicht mehr
+aktive oder berechtigte Verantwortliche fallen heraus. Bleibt niemand übrig,
+werden aktive berechtigte ADMIN/PARTNER verwendet. Die Hinweise werden zusammen
+mit dem Ablaufstatus und dessen Evidence committed. Fehlen alle Empfänger,
+bleibt die Zustellung leer; der technische Ablauf wird trotzdem vollzogen
+(`POA-LIFECYCLE-001`).
 
 Die Migration ergänzt `client_id`, leitet sie über eine geschlossene Liste
 bekannter Ressourcen ab, macht Scope und Ressourcenlink unveränderlich und

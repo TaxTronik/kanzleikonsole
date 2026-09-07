@@ -13,6 +13,7 @@
 // =============================================================================
 
 import nodemailer, { type Transporter } from 'nodemailer';
+import { createHash } from 'node:crypto';
 import { env } from '@taxtronik/config';
 import { readSmtpConfig, type SmtpConfig } from './smtp-settings';
 
@@ -95,7 +96,11 @@ function transporterFor(cfg: SmtpConfig): Transporter {
 }
 
 function transporterSignature(cfg: SmtpConfig): string {
-  return [cfg.host, cfg.port, cfg.secure, cfg.user, cfg.password.length, cfg.from].join('|');
+  // A rotation must invalidate the transporter even when password length is unchanged.
+  // Hash a structured tuple: keep credentials out of cache keys and avoid delimiter collisions.
+  return createHash('sha256')
+    .update(JSON.stringify([cfg.host, cfg.port, cfg.secure, cfg.user, cfg.password, cfg.from]))
+    .digest('hex');
 }
 
 function getEnvTransporter(): Transporter {

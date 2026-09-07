@@ -47,7 +47,9 @@ function toJsonValue(value: unknown): JsonValue {
     return value.map(toJsonValue);
   }
   if (typeof value === 'object') {
-    const out: { [k: string]: JsonValue } = {};
+    // Every own JSON key is evidence, including __proto__. A normal object
+    // would invoke its inherited setter and silently omit that persisted key.
+    const out: { [k: string]: JsonValue } = Object.create(null);
     for (const k of Object.keys(value as object).sort()) {
       const v = (value as Record<string, unknown>)[k];
       if (v !== undefined) {

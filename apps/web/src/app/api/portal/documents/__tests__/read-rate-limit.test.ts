@@ -68,7 +68,15 @@ const DOCUMENT = {
   title: 'BWA Mai',
   mimeType: 'application/pdf',
   classification: 'GOBD_INVOICE',
-  versions: [{ versionNo: 1, storageBucket: 'docs', storageKey: 'k/doc-1' }],
+  versions: [
+    {
+      versionNo: 1,
+      storageBucket: 'docs',
+      storageKey: 'k/doc-1',
+      scanStatus: 'CLEAN',
+      scanCompletedAt: new Date('2026-01-01T00:00:00Z'),
+    },
+  ],
 };
 
 // Gültige UUID — die Routen weisen Nicht-UUID-IDs jetzt vor der DB mit 404 ab.
@@ -99,6 +107,14 @@ beforeEach(() => {
 // Reihenfolge Auth → Limit → DB/Audit.
 const ROUTES = [
   {
+    name: 'preview-stream',
+    call: (id?: string) =>
+      previewGet(
+        new NextRequest('http://portal.example.de/api/portal/documents/doc-1/preview-url?stream=1'),
+        params(id),
+      ),
+  },
+  {
     name: 'download',
     call: (id?: string) =>
       downloadGet(
@@ -117,6 +133,29 @@ const ROUTES = [
 ] as const;
 
 describe.each(ROUTES)('Portal-Read-Limit: $name-Route', ({ call }) => {
+  // DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001.
+  it.each(['PENDING', 'INFECTED', 'ERROR', 'MISSING_COMPLETION'])(
+    'blocks the newest %s version despite an older clean version',
+    async (state) => {
+      const clean = DOCUMENT.versions[0]!;
+      m.tx.document.findFirst.mockResolvedValue({
+        ...DOCUMENT,
+        versions: [
+          {
+            ...clean,
+            scanStatus: state === 'MISSING_COMPLETION' ? 'CLEAN' : state,
+            scanCompletedAt: state === 'MISSING_COMPLETION' ? null : clean.scanCompletedAt,
+          },
+          clean,
+        ],
+      });
+      const response = await call();
+      expect(response.status).toBe(404);
+      expect(m.evidenceRecord).not.toHaveBeenCalled();
+      expect(m.streamObject).not.toHaveBeenCalled();
+      expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+    },
+  );
   it('keine Session → 401, Limiter wird NICHT konsumiert', async () => {
     m.portalAuth.mockResolvedValue(null);
     const res = await call();

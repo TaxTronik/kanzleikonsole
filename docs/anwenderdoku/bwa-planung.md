@@ -23,6 +23,18 @@ Die Periodenansicht zeigt Kennzahlen, Vergleiche und Liquiditätsindikatoren.
 Portalnutzer sehen BWA-Daten nur, wenn das Portal-Feature **BWA-Ansicht** für
 die Kanzlei aktiviert ist.
 
+Für die unterstützte DATEV-Gliederung werden Umsatzerlöse (1020), Gesamtleistung
+(1051), Betriebsergebnis (1300) und Ergebnis vor Steuern (1345) getrennt behandelt.
+Fehlt die Umsatz- oder Vorsteuerposition, bleibt diese Kennzahl leer. Gesamtleistung
+und Betriebsergebnis ersetzen sie nicht. Betriebliche Kosten umfassen Material-
+und Wareneinkauf sowie die Kostenartensumme; fehlende Bestandteile werden nicht
+als null Euro angenommen (`BWA-IMPORT-MAPPING-001`).
+
+Der einfache Cashflow-Proxy addiert nur vorhandene Abschreibungen zum
+vorläufigen Ergebnis (DATEV 1240, Addison 3100). Ohne bekannte Abschreibungen
+bleibt der Proxy leer. Er berücksichtigt keine tatsächlichen Zahlungsbewegungen
+und ist keine Liquiditätsrechnung.
+
 ## 2. Hochrechnung
 
 TaxTronik stellt zwei Rechenwege nebeneinander dar:
@@ -40,6 +52,11 @@ Abweichende Ergebnisse sind kein technischer Fehler, sondern zeigen die
 unterschiedlichen Annahmen. Die Oberfläche weist die Datenbasis als Zahl der
 erfassten Monate (`N/12`) aus. Eine Projektion ist keine Steuer- oder
 Liquiditätsgarantie.
+
+Ohne vorhandenes Ergebnis vor Steuern werden weder dessen Hochrechnung noch
+eine darauf aufbauende Steuerpauschale angezeigt. Auch die Steuerschätzung in
+der Periodenansicht verwendet kein vorläufiges Nachsteuerergebnis als Ersatz
+(`BWA-TAX-ESTIMATE-001`).
 
 ## 3. Planungen und Szenarien
 
@@ -59,15 +76,32 @@ Empfohlener Ablauf:
 4. Annahmen mit dem Mandanten abstimmen und fachlich dokumentieren.
 5. Veraltete Szenarien nicht als aktuelle Prognose weiterverwenden.
 
+Eine automatische Vorbelegung steht nur für vollständige, zu den Planachsen
+passende Ausgangswerte zur Verfügung. Fehlen Einzelpositionen oder stimmt die
+Summe nicht centgenau mit dem Ergebnis vor Steuern überein, zeigt TaxTronik den
+Grund und lässt die manuelle Planung zu. DATEV-Bestandsänderungen, aktivierte
+Eigenleistungen und neutraler Aufwand können in den vorhandenen Planachsen
+nicht getrennt vorbelegt werden; sie müssen für eine automatische Übernahme
+ausdrücklich mit null Euro vorliegen. Ungeklärte Differenzen werden nicht als
+sonstige Erträge eingefügt. Auch eine lesbare kompakte Addison-BWA kann deshalb
+für eine vollständige automatische Planvorbelegung unzureichend sein.
+
+Manuelle BWA-Daten haben keine automatische Positionszuordnung und werden deshalb nur manuell geplant. Im Dashboard und Planvergleich bleiben fehlende Werte ausdrücklich unbekannt; sie werden weder als null Euro noch als berechnetes Ergebnis ergänzt. Die Umsatzzeile vergleicht reine Umsatzerlöse ohne sonstige Erträge.
+
+Bereits gespeicherte und manuell bearbeitete Planungen bleiben unverändert.
+Die korrigierte Kennzahlzuordnung wird beim erneuten Lesen auch auf historische
+BWA-Rohpositionen angewendet. Prüfen Sie frühere Planvorbelegungen gegen die
+Original-BWA; insbesondere können zuvor Gesamtleistung als Umsatz oder
+Betriebsergebnis als Vorsteuerergebnis übernommen worden sein.
+
 ## 4. Grenzen
 
 - Kein Live-Banking und keine DATEV-API-Synchronisation.
 - Keine automatische fachliche Freigabe von Annahmen.
 - Ergebnisse hängen vollständig von importierten Daten und eingegebenen
   Szenarien ab.
-- Das DATEV-Mapping führt Position 1051 (Gesamtleistung) intern als `revenue`
-  und verwendet Position 1300 (Betriebsergebnis) ersatzweise als
-  `resultBeforeTax`. Diese Felder dürfen nicht ohne fachliche Überleitung als
-  Umsatzerlöse oder Ergebnis vor Steuern behandelt werden.
+- Die fest hinterlegten Positionsnummern gelten nur für die beschriebenen
+  BWA-Schemata. Technisch richtige Kennzahlen sind keine steuerliche Überleitung;
+  die USt-Pauschale berücksichtigt etwa keine gemischten oder steuerfreien Umsätze.
 - Exporte und Screenshots müssen außerhalb von TaxTronik nach dem
   Berechtigungskonzept der Kanzlei behandelt werden.

@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # taxtronik Setup — One-Command-Deploy für Windows.
 #
 # Voraussetzung: Docker Desktop installiert und gestartet.
@@ -70,6 +70,10 @@ Write-Done "pnpm verfügbar."
 if ($Reset) {
   Write-Step "Reset — Stack stoppen + Volumes löschen"
   & docker compose --env-file .env -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.dev.yml down -v
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host 'Reset fehlgeschlagen. Die bestehende .env bleibt erhalten.' -ForegroundColor Red
+    exit 1
+  }
   if (Test-Path .env) { Remove-Item .env }
   Write-Done "Stack zurückgesetzt."
 }

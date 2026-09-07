@@ -27,6 +27,10 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - apps/web/src/server/documents/delivery-readiness.ts
+  - apps/web/src/server/documents/delivery.ts
+  - apps/web/src/app/api/staff/documents/download/route.ts
+  - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
   - apps/web/src/server/documents/resumable-upload.ts
   - apps/web/src/server/documents/upload-helpers.ts
@@ -39,6 +43,12 @@ code_refs:
   - packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql
   - packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql
 test_refs:
+  - apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts
+  - apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts
+  - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+  - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/__tests__/route.test.ts
+  - apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts
+  - apps/web/src/server/invoicing/__tests__/archive.test.ts
   - apps/web/src/server/documents/__tests__/resumable-upload.test.ts
   - apps/web/src/server/documents/__tests__/upload-helpers.test.ts
   - apps/web/src/server/documents/__tests__/storage-compensation.test.ts
@@ -126,6 +136,21 @@ Gewinnerentscheid.
 
 ## Umsetzung in TaxTronik
 
+Allgemeiner Download und Vorschau für Staff und Portal sowie Sammeldownload
+und DATEV-Belegexport verlangen an der neuesten Dokumentversion `CLEAN` und
+einen vorhandenen `scanCompletedAt`. Die Prüfung liegt vor Abrufnachweis und
+Object-Store-Zugriff. Ein älterer sauberer Stand ersetzt eine nicht
+finalisierte oder gesperrte neueste Version nicht. Einzelabrufe liefern 404;
+Sammelausgaben enthalten und zählen nur auslieferbare Dokumente. Ein reiner
+Sammeldownload ohne auslieferbare Auswahl liefert 404.
+
+Diese Kontrolle schließt insbesondere die Lücke zwischen erfolgreichem
+Object-Write und noch fehlender Finalisierung. Sie ersetzt keinen Virenscan:
+Der Upload prüft fremde Bytes weiterhin vor dem Store-Write. Intern erzeugte,
+bereits finalisierte Ausgaben erfüllen dieselben Statusfelder. Ein unbekannter
+Altbestand ohne Abschlusszeitpunkt bleibt gesperrt; es erfolgt weder ein
+pauschaler Backfill noch ein fingierter Scan-Nachweis.
+
 Der gemeinsame Orphan-Worker priorisiert die geringste Zahl bisheriger
 Bereinigungsversuche, danach Alter und ID. So blockiert ein voller Batch
 dauerhaft fehlender oder mehrdeutiger Speicheridentitäten keine späteren
@@ -195,6 +220,15 @@ wiederholbarer Fehler offen.
 - Wie werden nicht dokumentgebundene geschützte Blobs inventarisiert?
 
 ## Technische Nachweise
+
+Die Auslieferungsregressionen prüfen echte HTTP-Handler und entpackte
+ZIP-Inhalte mit `PENDING`, `INFECTED`, `ERROR` und fehlendem Abschlusszeitpunkt
+einschließlich einer älteren sauberen Version. Sie belegen, dass gesperrte
+Versionen weder gelesen noch als Abruf auditiert werden. Der Lifecycle-Test
+verbindet die echten Upload-/Finalize-Helper mit dem allgemeinen Ladepfad;
+Archivtests prüfen die Abschlussfelder erzeugter PDF-/XML-Ausgaben. Abgeschlossene
+historische Ausgaben benötigen für dieses Gate keine nachträglich ergänzte
+Storage-Version-ID. Diese Tests ersetzen keine Bestandsinventur der Kanzlei.
 
 Die resumierbaren Tests belegen Reihenfolge, Tenantgrenze, Recovery,
 Idempotenz und CAS-Finalisierung. Helper-Tests prüfen die persistierte

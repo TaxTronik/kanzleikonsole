@@ -237,6 +237,7 @@
         }
       ],
       "code_refs": [
+        "apps/worker/src/jobs/poa-expiry-check.ts",
         "packages/db/src/staff-client-access.ts",
         "packages/db/src/notification.ts",
         "apps/web/src/server/notifications/service.ts",
@@ -252,6 +253,8 @@
         "packages/mail/src/dispatch.ts"
       ],
       "test_refs": [
+        "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
+        "apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts",
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
         "apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts",
         "packages/db/src/__tests__/notification-client-scope-migration.test.ts",
@@ -459,6 +462,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/backup/restore.ts",
+        "packages/db/src/restore-security.ts",
         "apps/web/src/server/auth/portal-profiles.ts",
         "apps/web/src/app/portal/(protected)/profile-actions.ts",
         "apps/web/src/app/portal/(protected)/layout.tsx",
@@ -512,6 +517,9 @@
         "packages/db/scripts/verify-rls.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/backup/__tests__/restore-security.test.ts",
+        "apps/web/src/server/backup/__tests__/restore.test.ts",
+        "packages/db/src/__tests__/restore-security.test.ts",
         "apps/web/src/server/auth/__tests__/revocation.test.ts",
         "apps/web/src/server/auth/__tests__/revocation.redis.test.ts",
         "apps/web/src/server/auth/__tests__/portal-profile-session.test.ts",
@@ -703,9 +711,14 @@
           "primary": false
         }
       ],
-      "code_refs": ["packages/evidence/src/archive.ts", "apps/worker/src/jobs/audit-rotate.ts"],
+      "code_refs": [
+        "packages/evidence/src/archive.ts",
+        "packages/evidence/src/canonical-json.ts",
+        "apps/worker/src/jobs/audit-rotate.ts"
+      ],
       "test_refs": [
         "packages/evidence/src/__tests__/archive.test.ts",
+        "packages/evidence/src/__tests__/canonical-json-keys.test.ts",
         "apps/worker/src/jobs/__tests__/audit-rotate.test.ts"
       ],
       "feature_refs": [
@@ -756,6 +769,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/backup/restore.ts",
+        "packages/db/src/restore-security.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/page.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-page-data.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts",
@@ -777,11 +792,15 @@
         "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/server/backup/__tests__/restore-security.test.ts",
+        "apps/web/src/server/backup/__tests__/restore.test.ts",
+        "packages/db/src/__tests__/restore-security.test.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.tsx",
         "packages/evidence/src/__tests__/service-record.test.ts",
         "packages/evidence/src/__tests__/hash-chain.test.ts",
         "packages/evidence/src/__tests__/canonical-json.property.test.ts",
+        "packages/evidence/src/__tests__/canonical-json-keys.test.ts",
         "apps/web/src/server/audit/__tests__/query.test.ts",
         "apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts",
         "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
@@ -944,14 +963,21 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Strukturierte DATEV-XLSX- und Addison-CSV-Daten werden anhand fest hinterlegter Perioden- und BWA-Positionsmuster importiert. Vollständigkeit, Vorzeichen, Kontenrahmen, Quellformat und fachliche Plausibilität werden nicht abschließend automatisch festgestellt; zudem bezeichnet das interne Mapping DATEV-Gesamtleistung und einen Betriebsergebnis-Fallback zu weit."
+        "summary": "Strukturierte DATEV-XLSX- und Addison-CSV-Daten werden anhand fest hinterlegter Perioden- und BWA-Positionsmuster importiert. Vollständigkeit, Vorzeichen, Kontenrahmen, Quellformat und fachliche Plausibilität werden nicht abschließend automatisch festgestellt. DATEV-Umsatzerlöse, Gesamtleistung, betriebliche Kosten und Ergebnis vor Steuern werden getrennt; unvollständige oder nicht darstellbare Planbasen werden nicht automatisch vorbelegt."
       },
       "sources": [
         {
           "kind": "technical_standard",
-          "citation": "DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Positionen 1051, 1300, 1345 und 1380",
+          "citation": "DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Positionen 1020, 1051, 1060, 1090, 1280, 1300, 1345 und 1380",
           "url": "https://www.datev.de/dnlexom/v2/content/files/st13860276747_de.pdf",
           "checked_at": "2026-08-24",
+          "primary": false
+        },
+        {
+          "kind": "technical_standard",
+          "citation": "DATEV Standard-BAB SKR42, getrennte Umsatzerlöse, Gesamtleistung, Betriebsergebnis, neutraler Aufwand/Ertrag und Ergebnis vor Steuern",
+          "url": "https://help-center.apps.datev.de/api/amr/knowledge-common/v1/entities/st18014421205989515_de.pdf",
+          "checked_at": "2026-09-07",
           "primary": false
         },
         {
@@ -963,14 +989,24 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/portal/(protected)/bwa/plan/plan-wizard.tsx",
+        "apps/web/src/app/portal/(protected)/bwa/plan/new/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx",
         "apps/web/src/server/bwa/datev-parser.ts",
         "apps/web/src/server/bwa/addison-parser.ts",
+        "apps/web/src/server/bwa/plan-basis.ts",
+        "apps/web/src/server/bwa/liquidity.ts",
         "apps/web/src/lib/xlsx/read-xlsx.ts",
         "apps/web/src/lib/xlsx/xml.ts"
       ],
       "test_refs": [
+        "apps/web/src/components/bwa/__tests__/plan-page-basis.test.tsx",
+        "apps/e2e/tests/21-bwa-basis-state.spec.ts",
         "apps/web/src/server/bwa/__tests__/datev-parser.test.ts",
         "apps/web/src/server/bwa/__tests__/addison-parser.test.ts",
+        "apps/web/src/server/bwa/__tests__/kpis.test.ts",
+        "apps/web/src/server/bwa/__tests__/plan-basis.test.ts",
+        "apps/web/src/server/bwa/__tests__/liquidity.test.ts",
         "apps/web/src/lib/xlsx/__tests__/read-xlsx.test.ts",
         "apps/web/src/lib/xlsx/__tests__/xml.test.ts"
       ],
@@ -1007,8 +1043,23 @@
           "primary": true
         }
       ],
-      "code_refs": ["apps/web/src/server/bwa/projection.ts"],
-      "test_refs": ["apps/web/src/server/bwa/__tests__/projection.test.ts"],
+      "code_refs": [
+        "apps/web/src/components/bwa/projection-snapshot.ts",
+        "apps/web/src/components/bwa/bwa-dashboard.tsx",
+        "apps/web/src/app/portal/(protected)/bwa/plan/plan-comparison.tsx",
+        "apps/web/src/app/portal/(protected)/bwa/plan/plan-vs-projection.tsx",
+        "apps/web/src/app/portal/(protected)/bwa/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx",
+        "apps/web/src/server/bwa/projection.ts",
+        "apps/web/src/server/bwa/plan-basis.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts",
+        "apps/e2e/tests/21-bwa-basis-state.spec.ts",
+        "apps/web/src/server/bwa/__tests__/projection.test.ts",
+        "apps/web/src/server/bwa/__tests__/kpis.test.ts",
+        "apps/web/src/server/bwa/__tests__/plan-basis.test.ts"
+      ],
       "feature_refs": ["docs/anwenderdoku/bwa-planung.md"],
       "related_rules": ["BWA-IMPORT-MAPPING-001", "BWA-TAX-ESTIMATE-001"],
       "tags": ["bwa", "hochrechnung", "szenario", "regression", "bandbreite"],
@@ -1031,7 +1082,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Der Produktstand bildet einzelne Tarife und Rechenschritte für 2025 und 2026 nach, setzt aber das BWA-Ergebnis vereinfachend mit steuerlichen Bemessungsgrundlagen gleich. Persönliche Faktoren, zahlreiche Gewinnkorrekturen, gemischte Umsatzsteuersachverhalte und Sonderfälle fehlen. Im DATEV-Pfad kann außerdem Gesamtleistung statt Umsatzerlösen in die USt-Pauschale eingehen; Hinweise oder Beta-Kennzeichnung heilen diese Lücken nicht."
+        "summary": "Der Produktstand bildet einzelne Tarife und Rechenschritte für 2025 und 2026 nach, setzt aber das BWA-Ergebnis vereinfachend mit steuerlichen Bemessungsgrundlagen gleich. Persönliche Faktoren, zahlreiche Gewinnkorrekturen, gemischte Umsatzsteuersachverhalte und Sonderfälle fehlen. DATEV-Umsatzerlöse werden getrennt von Gesamtleistung verwendet; eine fehlende Vorsteuerposition wird nicht ersetzt und eine als nachsteuerlich gekennzeichnete Eingabe abgewiesen. Hinweise oder Beta-Kennzeichnung heilen die verbleibenden Modelllücken nicht."
       },
       "sources": [
         {
@@ -1092,7 +1143,7 @@
         },
         {
           "kind": "technical_standard",
-          "citation": "DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Gesamtleistung in Position 1051",
+          "citation": "DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Umsatzerlöse 1020, Gesamtleistung 1051 und Ergebnis vor Steuern 1345",
           "url": "https://www.datev.de/dnlexom/v2/content/files/st13860276747_de.pdf",
           "checked_at": "2026-08-24",
           "primary": false
@@ -1105,8 +1156,18 @@
           "primary": false
         }
       ],
-      "code_refs": ["apps/web/src/server/bwa/tax-estimator.ts"],
-      "test_refs": ["apps/web/src/server/bwa/__tests__/tax-estimator.test.ts"],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/bwa/[periodId]/page.tsx",
+        "apps/web/src/server/bwa/tax-estimator.ts",
+        "apps/web/src/server/bwa/addison-parser.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/bwa/[periodId]/tax-estimator-card.tsx"
+      ],
+      "test_refs": [
+        "apps/web/src/components/bwa/__tests__/tax-basis.test.tsx",
+        "apps/e2e/tests/21-bwa-basis-state.spec.ts",
+        "apps/web/src/server/bwa/__tests__/tax-estimator.test.ts",
+        "apps/web/src/server/bwa/__tests__/kpis.test.ts"
+      ],
       "feature_refs": ["docs/anwenderdoku/bwa-planung.md"],
       "related_rules": ["BWA-IMPORT-MAPPING-001", "BWA-PROJECTION-001"],
       "tags": [
@@ -1438,7 +1499,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Portal-Download und -Vorschau verlangen Session-Mandant, explizite Freigabe, nicht gelöschtes Dokument und vorhandene Version; unsichere Dateitypen werden nicht inline auf der App-Origin gerendert."
+        "summary": "Portal-Download und -Vorschau verlangen Session-Mandant, explizite Freigabe, nicht gelöschtes Dokument und eine saubere finalisierte neueste Version; unsichere Dateitypen werden nicht inline auf der App-Origin gerendert."
       },
       "sources": [
         {
@@ -1457,6 +1518,7 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/documents/delivery-readiness.ts",
         "apps/web/src/server/documents/delivery.ts",
         "packages/db/prisma/migrations/20260831190000_document_payroll_access/migration.sql",
         "apps/web/src/app/api/portal/documents/[id]/download/route.ts",
@@ -1585,6 +1647,10 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/documents/delivery-readiness.ts",
+        "apps/web/src/server/documents/delivery.ts",
+        "apps/web/src/app/api/staff/documents/download/route.ts",
+        "apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts",
         "apps/worker/src/jobs/storage-orphan-cleanup.ts",
         "apps/web/src/server/documents/resumable-upload.ts",
         "apps/web/src/server/documents/upload-helpers.ts",
@@ -1598,6 +1664,12 @@
         "packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts",
+        "apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts",
+        "apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts",
+        "apps/web/src/app/api/staff/clients/[id]/datev-belege-export/__tests__/route.test.ts",
+        "apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts",
+        "apps/web/src/server/invoicing/__tests__/archive.test.ts",
         "apps/web/src/server/documents/__tests__/resumable-upload.test.ts",
         "apps/web/src/server/documents/__tests__/upload-helpers.test.ts",
         "apps/web/src/server/documents/__tests__/storage-compensation.test.ts",
@@ -1660,6 +1732,10 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/documents/delivery-readiness.ts",
+        "apps/web/src/server/documents/delivery.ts",
+        "apps/web/src/app/api/staff/documents/download/route.ts",
+        "apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts",
         "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts",
         "apps/web/src/server/storage/retag-policy.ts",
         "apps/web/src/app/staff/(protected)/documents/actions.ts",
@@ -1672,6 +1748,12 @@
         "apps/worker/src/jobs/storage-orphan-cleanup.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts",
+        "apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts",
+        "apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts",
+        "apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts",
+        "apps/web/src/app/api/staff/clients/[id]/datev-belege-export/__tests__/route.test.ts",
+        "apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts",
         "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts",
         "apps/web/src/server/storage/__tests__/retag-policy.test.ts",
         "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts",
@@ -3804,7 +3886,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Datenbanktrigger und Actions erzwingen die technische Statusmaschine von DRAFT über SENT zu SIGNED sowie REVOKED oder EXPIRED. Der Ablaufworker behandelt nur signierte Vollmachten und ändert ohne ermittelbaren Benachrichtigungsempfänger derzeit auch den Status nicht."
+        "summary": "Datenbanktrigger und Actions erzwingen die technische Statusmaschine von DRAFT über SENT zu SIGNED sowie REVOKED oder EXPIRED. Der Ablaufworker behandelt nur signierte Vollmachten. Ablaufstatus, Evidence und vorhandene Empfängerhinweise werden gemeinsam committed; fehlende Empfänger verhindern den technischen Ablaufstatus nicht."
       },
       "sources": [
         {
@@ -3844,11 +3926,16 @@
         "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
       ],
       "test_refs": [
+        "apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts",
         "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
         "packages/db/src/__tests__/poa-signing-integrity.test.ts"
       ],
-      "feature_refs": ["FEATURES.md", "docs/adr/0009-eidas-aes-via-token-und-otp.md"],
+      "feature_refs": [
+        "docs/development/module/vollmachten-ablauf.md",
+        "FEATURES.md",
+        "docs/adr/0009-eidas-aes-via-token-und-otp.md"
+      ],
       "related_rules": [
         "POA-SIGNING-SNAPSHOT-001",
         "POA-SIGNING-CONFIRMATION-001",

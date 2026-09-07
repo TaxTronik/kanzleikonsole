@@ -17,11 +17,11 @@ interface ProjectedKpis {
 
 function plannedTotals(p: PlanForCompare) {
   const get = (axis: string) => p.lines.find((l) => l.axis === axis)?.amount ?? 0;
-  const revenue = get('REVENUE') + get('OTHER_INCOME');
+  const revenue = get('REVENUE');
   const personnelCost = get('PERSONNEL');
   const costs = get('PERSONNEL') + get('MATERIAL') + get('DEPRECIATION') + get('OTHER_COSTS');
   const taxes = get('TAXES');
-  const resultBeforeTax = revenue - costs;
+  const resultBeforeTax = revenue + get('OTHER_INCOME') - costs;
   return {
     revenue,
     costs,

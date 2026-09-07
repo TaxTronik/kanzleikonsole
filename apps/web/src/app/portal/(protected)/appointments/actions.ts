@@ -245,10 +245,13 @@ export async function cancelAppointmentRequestAction(input: {
       if (req.clientId !== clientId) throw new ActionError('Keine Berechtigung.');
       if (req.status !== 'PENDING') throw new ActionError('Anfrage ist nicht mehr offen.');
 
-      await tx.appointmentRequest.update({
-        where: { id: parsed.data.id },
+      // Die Kanzlei kann die Anfrage seit dem Read entschieden haben. Wie bei
+      // Annahme/Ablehnung darf nur ein weiterhin offener Zustand gewonnen werden.
+      const cancelled = await tx.appointmentRequest.updateMany({
+        where: { id: parsed.data.id, clientId, status: 'PENDING' },
         data: { status: 'CANCELLED', decidedAt: new Date() },
       });
+      if (cancelled.count !== 1) throw new ActionError('Anfrage ist nicht mehr offen.');
       await resolveClientContactNotificationsTx(tx, {
         tenantId,
         resourceType: 'appointment_request',

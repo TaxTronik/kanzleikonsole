@@ -27,9 +27,20 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - apps/web/src/components/bwa/projection-snapshot.ts
+  - apps/web/src/components/bwa/bwa-dashboard.tsx
+  - apps/web/src/app/portal/(protected)/bwa/plan/plan-comparison.tsx
+  - apps/web/src/app/portal/(protected)/bwa/plan/plan-vs-projection.tsx
+  - apps/web/src/app/portal/(protected)/bwa/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx
   - apps/web/src/server/bwa/projection.ts
+  - apps/web/src/server/bwa/plan-basis.ts
 test_refs:
+  - apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts
+  - apps/e2e/tests/21-bwa-basis-state.spec.ts
   - apps/web/src/server/bwa/__tests__/projection.test.ts
+  - apps/web/src/server/bwa/__tests__/kpis.test.ts
+  - apps/web/src/server/bwa/__tests__/plan-basis.test.ts
 feature_refs:
   - docs/anwenderdoku/bwa-planung.md
 related_rules:
@@ -128,6 +139,22 @@ nutzen das Ergebnis vor Ertragsteuern und geben `estimate`, `low` und `high`
 aus. Die Regression filtert vor der Mindestmengenprüfung auf
 `Periodenjahr < Zieljahr`.
 
+Für DATEV ist die Umsatzachse an 1020 und die Vorsteuerergebnisachse an 1345
+gebunden. Gesamtleistung 1051 und Betriebsergebnis 1300 ersetzen diese Werte
+nicht. Fehlt 1345, bleiben Ergebnis, Steuerpauschale und abgeleitetes Ergebnis
+nach Steuern in beiden Strategien `null`. Die betriebliche Kostenachse nutzt
+die vollständig bekannte Kostenbasis nach `BWA-IMPORT-MAPPING-001`.
+
+Automatische Planvorbelegungen verlangen zusätzlich vollständig vorhandene
+und auf die bestehenden Planachsen abbildbare Werte sowie eine centgenaue
+Abstimmung zum Ergebnis vor Steuern. Fehlende oder nicht abbildbare Werte
+werden nicht in Nullbeträge umgewandelt. Ein ungeklärter Unterschied zwischen
+Umsatz, Kosten und Ergebnis wird nicht als sonstiger Ertrag dargestellt.
+Manuelle Planung bleibt möglich; bereits gespeicherte Pläne werden nicht
+nachträglich umgerechnet.
+
+Dashboard und Planvergleich bewahren unbekannte Umsatz-, Kosten- und Ergebnisachsen als `null`. Die ausgewiesenen Hochrechnungssummen werden direkt weitergegeben; fehlende Einzelachsen erzeugen weder null Euro noch ein rekonstruiertes Vor- oder Nachsteuerergebnis. Sonstige Erträge beruhen nur auf bekannten quellspezifischen Positionen. Die Umsatzzeile vergleicht Plan-Umsatzerlöse ohne sonstige Erträge mit der BWA-Umsatzachse; die Ergebnisrechnung berücksichtigt die echten Ertragsachsen weiterhin. Renderer- und Browserregressionen prüfen fehlende Werte, echte Nullbeträge, DATEV/Addison sowie manuelle Planung.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die zeitliche Vorjahresauswahl ist umgesetzt. Unverändert bestehen keine echte
@@ -155,3 +182,9 @@ Vorsteuerposition projiziert, die Steuerpauschale nur einmal abgezogen und die
 Trendbasis strikt auf Jahre vor dem Zieljahr begrenzt wird. Er bestätigt weder
 Prognosegüte, Saisonalität, tatsächliche Steuerbelastung noch
 Liquiditätswirkung eines realen Mandats.
+
+Die KPI-Regression prüft außerdem getrennte DATEV-Umsatz-/Kostenachsen sowie
+fehlende Vorsteuerpositionen in linearer und Trendprojektion. Die Planbasisfälle
+prüfen vollständige Einzelachsen, nicht darstellbare Posten, fehlende Werte,
+vorhandene Nullbeträge und die Cent-Abstimmung. Eine zulässige Vorbelegung
+ersetzt weiterhin keine manuelle Plausibilitätskontrolle.

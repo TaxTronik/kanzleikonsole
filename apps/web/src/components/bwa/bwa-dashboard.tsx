@@ -1,4 +1,4 @@
-﻿// =============================================================================
+// =============================================================================
 // BwaDashboard — Server-Component, gemeinsam genutzt von Portal- und
 // Staff-BWA-Seite. Erwartet als Eingabe bereits geladene Daten + den
 // linkPrefix für Plan-Links + einen optionalen „neuer Plan"-Pfad.
@@ -23,9 +23,9 @@ import { computeLiquidity } from '@/server/bwa/liquidity';
 import {
   PlanListWithCompare,
   type PlanForCompare,
-  type ProjectionSnapshot,
 } from '@/app/portal/(protected)/bwa/plan/plan-comparison';
 import { PlanVsProjection } from '@/app/portal/(protected)/bwa/plan/plan-vs-projection';
+import { buildProjectionSnapshot } from './projection-snapshot';
 
 import { fmtEURRound } from '@/lib/fmt';
 const fmtPct = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)} %`);
@@ -37,6 +37,7 @@ const fmtRange = (r: ProjectionRange | null) => {
 export interface BwaPeriodInput {
   id: string;
   periodKey: string;
+  source: 'DATEV' | 'ADDISON' | 'MANUAL';
   periodType: 'YEAR' | 'QUARTER' | 'MONTH';
   fromDate: Date;
   toDate: Date;
@@ -73,6 +74,7 @@ export function BwaDashboard({
 }) {
   const periodsForEngine = periods.map((p) => ({
     periodKey: p.periodKey,
+    source: p.source,
     periodType: p.periodType,
     fromDate: p.fromDate,
     toDate: p.toDate,
@@ -94,72 +96,7 @@ export function BwaDashboard({
 
   // Plan-Vergleichs-Snapshot bauen
   const projForCompare = projection.linear ?? projection.trend ?? null;
-  let projectionSnapshot: ProjectionSnapshot | null = null;
-  let planVsActualKpis: {
-    revenue: number | null;
-    costs: number | null;
-    personnelCost: number | null;
-    resultBeforeTax: number | null;
-    taxes: number | null;
-    resultAfterTax: number | null;
-  } | null = null;
-  if (projForCompare) {
-    const ytdPeriod = periodsForEngine
-      .filter((p) => p.fromDate.getUTCFullYear() === projection.targetYear)
-      .sort((a, b) => b.toDate.getTime() - a.toDate.getTime())
-      .find((p) => {
-        const m =
-          (p.toDate.getUTCFullYear() - p.fromDate.getUTCFullYear()) * 12 +
-          (p.toDate.getUTCMonth() - p.fromDate.getUTCMonth()) +
-          1;
-        return m < 12;
-      });
-    const ytdMonths = ytdPeriod
-      ? (ytdPeriod.toDate.getUTCFullYear() - ytdPeriod.fromDate.getUTCFullYear()) * 12 +
-        (ytdPeriod.toDate.getUTCMonth() - ytdPeriod.fromDate.getUTCMonth()) +
-        1
-      : 12;
-    const factor = ytdPeriod ? 12 / ytdMonths : 1;
-
-    function posInYtd(num: number): number | null {
-      if (!ytdPeriod) return null;
-      const p = ytdPeriod.positions.find((x) => x.number === num);
-      return p ? p.amount * factor : null;
-    }
-
-    const material = posInYtd(3010);
-    const depreciation = posInYtd(3100);
-    const personnel = projForCompare.personnelCost?.estimate ?? posInYtd(3030) ?? null;
-    const totalCosts = projForCompare.costs?.estimate ?? null;
-    const otherCosts =
-      totalCosts !== null
-        ? totalCosts - (personnel ?? 0) - (material ?? 0) - (depreciation ?? 0)
-        : null;
-    const revenue = projForCompare.revenue?.estimate ?? null;
-    const taxes = projForCompare.taxes?.estimate ?? null;
-    const resultBeforeTax = projForCompare.result?.estimate ?? null;
-    const resultAfterTax = projForCompare.resultAfterTax?.estimate ?? null;
-
-    projectionSnapshot = {
-      year: projection.targetYear,
-      revenue,
-      otherIncome: 0,
-      personnelCost: personnel,
-      material,
-      depreciation,
-      otherCosts,
-      taxes,
-      basis: projForCompare.basis,
-    };
-    planVsActualKpis = {
-      revenue,
-      costs: totalCosts,
-      personnelCost: personnel,
-      resultBeforeTax,
-      taxes,
-      resultAfterTax,
-    };
-  }
+  const projectionSnapshot = buildProjectionSnapshot(projForCompare, periodsForEngine);
 
   const yearPeriods = periods.filter((p) => p.periodType === 'YEAR');
   const quarterPeriods = periods.filter((p) => p.periodType === 'QUARTER');
@@ -261,10 +198,10 @@ export function BwaDashboard({
             </section>
           )}
 
-          {planVsActualKpis && plansForUI.length > 0 && (
+          {projectionSnapshot && plansForUI.length > 0 && (
             <PlanVsProjection
               plans={plansForUI}
-              projection={planVsActualKpis}
+              projection={projectionSnapshot}
               projectionLabel={projForCompare?.basis ?? ''}
               linkPrefix={linkPrefix}
             />

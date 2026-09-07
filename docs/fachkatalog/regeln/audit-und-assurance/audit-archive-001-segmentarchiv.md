@@ -29,9 +29,11 @@ sources:
     primary: false
 code_refs:
   - packages/evidence/src/archive.ts
+  - packages/evidence/src/canonical-json.ts
   - apps/worker/src/jobs/audit-rotate.ts
 test_refs:
   - packages/evidence/src/__tests__/archive.test.ts
+  - packages/evidence/src/__tests__/canonical-json-keys.test.ts
   - apps/worker/src/jobs/__tests__/audit-rotate.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
@@ -116,6 +118,11 @@ prüft jede enthaltene Kettenzeile. `audit-rotate.ts` wählt den nächsten Berei
 setzt die COMPLIANCE-Retention, behandelt Wiederholungen über Storage-Metadaten
 und registriert das Segment in einer Tenant-Transaktion.
 
+Eigene JSON-Schlüssel einschließlich `__proto__` werden beim NDJSON-Export
+vollständig erhalten. Die gemeinsame Kanonisierung verwendet dafür ein
+Objekt ohne geerbte Setter. Eine Änderung allein in einem solchen Feld führt
+bei der erneuten Zeilenprüfung zum Hashfehler (`AUDIT-HASH-CHAIN-001`).
+
 ## Bekannte Abweichungen und Grenzen
 
 Der dokumentierte HARD-Modus ist nicht implementiert: Eine HARD-Anforderung
@@ -124,6 +131,13 @@ Datenbank. Ein TSA-Ausfall blockiert die Archivierung bewusst nicht; das
 Segment kann daher ohne externen Zeitstempel vorliegen. Die konfigurierte
 zehnjährige Storage-Retention ist eine Produkteinstellung, keine fachliche
 Feststellung der im Einzelfall richtigen Frist.
+
+Die frühere Kanonisierung konnte `__proto__` bereits beim Archivexport
+auslassen. Ein späterer Prüfer kann einen in der Archivdatei gar nicht mehr
+enthaltenen Wert nicht rekonstruieren. Altbestände sind deshalb gegebenenfalls
+mit den erhaltenen Quelldaten abzugleichen. Die Korrektur überschreibt weder
+Archivobjekte noch historische Hashes und führt keinen Legacy-Fallback ein,
+der die fehlende ursprüngliche Feldbindung verdecken würde.
 
 ## Fachliche Prüffragen
 
@@ -141,3 +155,6 @@ Die Pakettests prüfen deterministische Serialisierung, Datei- und Zeilenhashes,
 Ankergrenzen und fehlerhafte Segmente. Worker-Tests decken Segmentauswahl,
 Object-Lock-Parameter, idempotente Registrierung, Unterbrechungs-Recovery,
 TSA-Fehler und die SOFT-Behandlung einer HARD-Anforderung ab.
+Die Schlüsselregressionen prüfen zusätzlich den verlustfreien Export, die
+Nachrechnung, eine ausschließlich im Sonderfeld veränderte Archivzeile und
+die Ablehnung eines historischen Hashes mit ausgelassenem Feld.

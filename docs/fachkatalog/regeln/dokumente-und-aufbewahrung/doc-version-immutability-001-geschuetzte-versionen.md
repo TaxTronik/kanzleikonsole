@@ -37,6 +37,10 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/documents/delivery-readiness.ts
+  - apps/web/src/server/documents/delivery.ts
+  - apps/web/src/app/api/staff/documents/download/route.ts
+  - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts
   - apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts
   - apps/web/src/server/storage/retag-policy.ts
   - apps/web/src/app/staff/(protected)/documents/actions.ts
@@ -48,6 +52,12 @@ code_refs:
   - apps/web/src/server/inbox/staff-mutations.ts
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
 test_refs:
+  - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+  - apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts
+  - apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts
+  - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+  - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/__tests__/route.test.ts
+  - apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts
   - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
   - apps/web/src/server/storage/__tests__/retag-policy.test.ts
   - apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts
@@ -134,6 +144,13 @@ eigener Klassifikation anlegen.
 
 ## Umsetzung in TaxTronik
 
+Allgemeine Downloads, Vorschauen und Sammel-/DATEV-Exporte wählen zuerst die
+neueste Version ohne Scanfilter in der Versionsauswahl. Nur wenn diese `CLEAN`
+und mit `scanCompletedAt` finalisiert ist, dürfen ihre Bytes ausgeliefert
+werden. Andernfalls bleibt das Dokument für diesen Abruf gesperrt; eine
+ältere saubere Version wird nicht als vermeintlich aktueller Beleg eingesetzt.
+Die Prüfung verändert weder historische Bytes noch Hashes oder Schutzfelder.
+
 Die New-Version-Route sperrt Referenzen erneut, bestimmt die nächste Nummer in
 der Commit-Transaktion und fügt die Version an. `retag-policy.ts` entscheidet
 über Metadatenänderung, Re-Store oder Blockade. Die Retag-Action stabilisiert
@@ -176,6 +193,11 @@ nachgelagerter Prozesse.
 - Wie werden Korrekturen nach Fehlklassifikation dokumentiert?
 
 ## Technische Nachweise
+
+Download- und Preview-Routentests prüfen Staff-/Portal-Abrufe einschließlich
+des tatsächlichen Preview-Streams. Sammel-/DATEV-Tests entpacken echte ZIPs und
+belegen, dass eine gesperrte neueste Version auch bei vorhandenem älterem
+sauberem Stand weder im Archiv noch in Abrufnachweisen erscheint.
 
 Retag-Race-Tests belegen den Abbruch bei Versionsdrift und das Anfügen statt
 Update einer geschützten Version. Policy-Tests prüfen Höherstufung,

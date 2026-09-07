@@ -54,6 +54,7 @@ export default async function StaffClientBwaDashboardPage({
         periods={periods.map((p) => ({
           id: p.id,
           periodKey: p.periodKey,
+          source: p.source,
           periodType: p.periodType as 'YEAR' | 'QUARTER' | 'MONTH',
           fromDate: p.fromDate,
           toDate: p.toDate,

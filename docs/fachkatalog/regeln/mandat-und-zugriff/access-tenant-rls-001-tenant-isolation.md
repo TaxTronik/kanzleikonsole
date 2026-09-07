@@ -42,6 +42,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/backup/restore.ts
+  - packages/db/src/restore-security.ts
   - apps/web/src/server/auth/portal-profiles.ts
   - apps/web/src/app/portal/(protected)/profile-actions.ts
   - apps/web/src/app/portal/(protected)/layout.tsx
@@ -94,6 +96,9 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/scripts/verify-rls.ts
 test_refs:
+  - apps/web/src/server/backup/__tests__/restore-security.test.ts
+  - apps/web/src/server/backup/__tests__/restore.test.ts
+  - packages/db/src/__tests__/restore-security.test.ts
   - apps/web/src/server/auth/__tests__/revocation.test.ts
   - apps/web/src/server/auth/__tests__/revocation.redis.test.ts
   - apps/web/src/server/auth/__tests__/portal-profile-session.test.ts
@@ -193,8 +198,10 @@ abweichender deaktivierter Policy-Hash sperrt die Hardware-Pfade. RLS
 verhindert keine unzulässige
 Einsicht eines berechtigten
 Mitarbeiters innerhalb desselben Tenants. SECURITY-DEFINER-Funktionen und
-Owner-Clients benötigen eine eigene, enge Prüfung. Restore, Replikation und
-direkter Datenbankbetrieb liegen außerhalb des Anwendungstests.
+Owner-Clients benötigen eine eigene, enge Prüfung. Die Restore-CLI prüft
+ausdrücklich die unten beschriebenen Rollen-, Rechte- und RLS-Invarianten.
+Replikation und direkter Datenbankbetrieb sowie die vollständige Sicherheit
+einer Restore-Zielumgebung liegen außerhalb dieser begrenzten Prüfung.
 
 ## Beispiele
 
@@ -210,6 +217,26 @@ Policy versehen. `verify:rls` muss den Build stoppen; bis zur Ergänzung besteht
 keine behauptete Abdeckung für diese Tabelle.
 
 ## Umsetzung in TaxTronik
+
+Nach `pg_restore` prüft die Restore-CLI vor jeder Erfolgsmeldung die 17 bereits
+im Restore-Selbsttest festgelegten effektiven Rollen-/Grant-/REVOKE-Invarianten.
+Die Rollenprüfung umfasst zusätzlich per `SET ROLE` erreichbare privilegierte
+Rollen und Tabellenowner. Audit-Tabellen werden ausdrücklich im Schema
+`public` geprüft, unabhängig vom `search_path` der Verbindung.
+Zusätzlich inventarisiert sie normale und partitionierte öffentliche Tabellen:
+ENABLE/FORCE RLS und mindestens eine Policy sind Pflicht, abgesehen von den
+drei dokumentierten globalen Ausnahmen. Ein leeres Inventar ist kein Erfolg.
+Diese Prüfung bleibt auch bei `--no-smoke-test` aktiv. Ziel-Defaultprivilegien
+können beim Neuanlegen von Tabellen zuvor entzogene Rechte erneut vergeben;
+ein erfolgreicher `pg_restore`-Exit allein genügt deshalb nicht.
+
+Eine nicht erfüllte oder nicht ausführbare Sicherheitsprüfung beendet die CLI
+mit Fehler und untersagt im Ergebnistext den Dienststart. Der eigentliche
+Restore ist zu diesem Zeitpunkt bereits angewendet; die nachgelagerte Prüfung
+behauptet keinen Rollback und ändert keine Zielrechte automatisch. Zielrechte
+und RLS müssen geprüft und eine sichere Wiederherstellung erneut nachgewiesen
+werden. Die Prüfung ersetzt weder Auditketten-/Migrationsprüfung noch die
+betriebliche Freigabe der Zielumgebung.
 
 Unabhängige Kalender-Abos werden bei Änderung der Login-E-Mail,
 Deaktivierung sowie Wiederaktivierung eines zuvor inaktiven Kontakts durch
@@ -419,6 +446,20 @@ Host-Isolation.
 - Wie wird die RLS-Prüfung in jeder Zielumgebung nachgewiesen?
 
 ## Technische Nachweise
+
+Die PostgreSQL-Regression führt den tatsächlichen Sicherheitsprüfer gegen
+isolierte Datenbanken aus. Sie prüft sichere Rechte vor und nach den stets
+zurückgerollten Abweichungen, zusätzliche Audit-/Dokument-Schreibrechte,
+öffentliches TRUNCATE und Definer-Ausführung, erreichbare privilegierte
+SET-ROLE-Ziele, fehlende Funktionsausführung, deaktiviertes oder nicht
+erzwungenes RLS sowie neue ungeschützte normale und partitionierte Tabellen.
+Probe-Units weisen fehlende, verkürzte und null-Ergebnisse sowie Queryfehler
+ab. Ein echter Dump-/Restore-Gegenlauf prüft jeweils mit und ohne optionalen
+Datensmoke ein leeres Ziel und ein durch den CI-Bootstrap vorbereitetes Ziel:
+identische Daten können unterschiedliche effektive Rechte haben; nur das
+sichere Ziel darf Erfolg melden. Fehlende Rollen/Schemaobjekte, ausschließlich
+fehlende Policies und ein vollständig leeres RLS-Inventar sind konservative
+Fehlerpfade im Code, keine gesondert dynamisch nachgewiesenen Fälle.
 
 Der Datenbanktest belegt Cross-Tenant-Sperren für Lesen, Einfügen, Aktualisieren
 und Löschen sowie Paar-Guards ausgewählter Tabellen. Das Skript belegt den

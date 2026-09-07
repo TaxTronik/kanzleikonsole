@@ -1,3 +1,4 @@
+// Fachkatalog: DOC-VERSION-IMMUTABILITY-001 (finalisierte Ausgaben bleiben vollständig entpackbar).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { unzipSync } from 'fflate';
@@ -86,7 +87,15 @@ describe('Sammeldownload: Dateien dürfen keine benötigten Verzeichnispfade bel
       title: name,
       mimeType,
       folderId,
-      versions: [{ storageBucket: 'synthetic', storageKey: `document-${index}`, sizeBytes: 32n }],
+      versions: [
+        {
+          storageBucket: 'synthetic',
+          storageKey: `document-${index}`,
+          sizeBytes: 32n,
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date(),
+        },
+      ],
     });
     const collidingDocument = makeDocument(
       1,
@@ -178,7 +187,15 @@ describe('Sammeldownload: Dateinamen dürfen keine anderen Dokumentbytes beim En
       title,
       mimeType: 'application/pdf',
       folderId: null,
-      versions: [{ storageBucket: 'synthetic', storageKey: `document-${index}`, sizeBytes: 32n }],
+      versions: [
+        {
+          storageBucket: 'synthetic',
+          storageKey: `document-${index}`,
+          sizeBytes: 32n,
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date(),
+        },
+      ],
     }));
     mocks.tx.document.findMany.mockResolvedValue(documents);
     const response = await GET(

@@ -35,6 +35,7 @@ import { env } from '@taxtronik/config';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import { pgConnArgs } from '@taxtronik/db/pg-tools';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { assertRestoreTargetSecurity } from '@taxtronik/db/restore-security';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
 
@@ -533,7 +534,11 @@ async function main() {
       }
     }
   }
-  process.stdout.write(`✓ Restore abgeschlossen.\n`);
+  await assertRestoreTargetSecurity(
+    targetUrl,
+    (url) => new PrismaClient({ adapter: createPostgresAdapter(url) }),
+  );
+  process.stdout.write(`✓ Restore abgeschlossen; Rollenrechte und RLS geprüft.\n`);
 
   if (args.smokeTest) {
     await smokeTest(targetUrl);

@@ -3,6 +3,7 @@
 import { useState, useTransition, useMemo } from 'react';
 import { Save, ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
 import { fmtEURRound } from '@/lib/fmt';
+import type { BwaPlanBasis } from '@/server/bwa/plan-basis';
 
 export type PlanAxis =
   | 'REVENUE'
@@ -26,19 +27,12 @@ export type CreatePlanFn = (
   input: CreatePlanInput,
 ) => Promise<{ ok: boolean; error?: string; id?: string }>;
 
-interface Base {
+type Base = BwaPlanBasis & {
   id: string;
   periodKey: string;
   label: string;
   periodType: 'YEAR' | 'QUARTER' | 'MONTH';
-  revenue: number | null;
-  costs: number | null;
-  result: number | null;
-  personnelCost: number | null;
-  material: number | null;
-  depreciation: number | null;
-  otherIncome: number | null;
-}
+};
 
 type Axis =
   | 'REVENUE'
@@ -121,19 +115,19 @@ export function PlanWizard({
   const selectedBase = bases.find((b) => b.id === baseId) ?? null;
 
   function applyBase(percentageBump = 0) {
-    if (!selectedBase) return;
+    if (!selectedBase?.canApply) return;
     const factor = 1 + percentageBump / 100;
     const otherCosts =
-      (selectedBase.costs ?? 0) -
-      (selectedBase.personnelCost ?? 0) -
-      (selectedBase.depreciation ?? 0) -
-      (selectedBase.material ?? 0);
-    const revenue = Math.round((selectedBase.revenue ?? 0) * factor);
-    const personnel = Math.round((selectedBase.personnelCost ?? 0) * factor);
+      selectedBase.costs -
+      selectedBase.personnelCost -
+      selectedBase.depreciation -
+      selectedBase.material;
+    const revenue = Math.round(selectedBase.revenue * factor);
+    const personnel = Math.round(selectedBase.personnelCost * factor);
     const otherCost = Math.round(otherCosts * factor);
-    const depr = Math.round((selectedBase.depreciation ?? 0) * factor);
-    const material = Math.round((selectedBase.material ?? 0) * factor);
-    const otherIncome = Math.round((selectedBase.otherIncome ?? 0) * factor);
+    const depr = Math.round(selectedBase.depreciation * factor);
+    const material = Math.round(selectedBase.material * factor);
+    const otherIncome = Math.round(selectedBase.otherIncome * factor);
     const resultBeforeTax = revenue + otherIncome - personnel - otherCost - depr - material;
     setLines({
       REVENUE: { amount: revenue, note: '' },
@@ -257,8 +251,8 @@ export function PlanWizard({
             </select>
             {selectedBase && (
               <p id="bwa-plan-wizard-base-hint" className="text-xs text-muted mt-1">
-                Erlöse {fmtEURRound(selectedBase.revenue ?? 0)} · Ergebnis{' '}
-                {fmtEURRound(selectedBase.result ?? 0)}
+                Erlöse {fmtEURRound(selectedBase.revenue)} · Ergebnis vor Steuern{' '}
+                {fmtEURRound(selectedBase.resultBeforeTax)}
               </p>
             )}
             {!selectedBase && (
@@ -270,6 +264,9 @@ export function PlanWizard({
 
           {selectedBase && (
             <div className="rounded-md bg-brand-50/40 border border-brand-200 p-3 space-y-3">
+              {!selectedBase.canApply && (
+                <p className="text-sm text-secondary">{selectedBase.unavailableReason}</p>
+              )}
               <p className="text-xs text-secondary">
                 Werte aus der Basis übernehmen und optional prozentual anpassen — Steuern werden
                 automatisch grob geschätzt:
@@ -280,6 +277,7 @@ export function PlanWizard({
                     key={pct}
                     type="button"
                     onClick={() => applyBase(pct)}
+                    disabled={!selectedBase.canApply}
                     className={
                       'text-xs py-1 px-2.5 rounded-md border ' +
                       (lastAppliedPct === pct
@@ -300,6 +298,7 @@ export function PlanWizard({
                     type="text"
                     inputMode="decimal"
                     value={customPct}
+                    disabled={!selectedBase.canApply}
                     onChange={(e) => setCustomPct(e.target.value)}
                     placeholder="z. B. 7,5"
                     className="input text-xs py-1 w-20 font-mono"
@@ -308,7 +307,7 @@ export function PlanWizard({
                   <button
                     type="button"
                     onClick={applyCustomPct}
-                    disabled={!customPct.trim()}
+                    disabled={!selectedBase.canApply || !customPct.trim()}
                     className="text-xs py-1 px-2.5 rounded-md bg-surface border border-strong hover:bg-gray-50 disabled:opacity-40"
                   >
                     Anwenden

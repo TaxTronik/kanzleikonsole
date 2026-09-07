@@ -17,7 +17,7 @@ implementation:
   status: implemented
   summary: >-
     Portal-Download und -Vorschau verlangen Session-Mandant, explizite
-    Freigabe, nicht gelöschtes Dokument und vorhandene Version; unsichere
+    Freigabe, nicht gelöschtes Dokument und eine saubere finalisierte neueste Version; unsichere
     Dateitypen werden nicht inline auf der App-Origin gerendert.
 sources:
   - kind: product_documentation
@@ -31,6 +31,7 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/documents/delivery-readiness.ts
   - apps/web/src/server/documents/delivery.ts
   - packages/db/prisma/migrations/20260831190000_document_payroll_access/migration.sql
   - apps/web/src/app/api/portal/documents/[id]/download/route.ts
@@ -85,20 +86,20 @@ der Abruffilter bleibt gleich.
 - Dokument-ID und Mandantenzuordnung
 - nicht gesetztes Soft-Delete
 - gesetzter Freigabezeitpunkt
-- mindestens eine Dokumentversion
+- neueste Dokumentversion mit `scanStatus: CLEAN` und vorhandenem `scanCompletedAt`
 - gespeicherter und effektiv erkannter MIME-Typ
 
 ## Entscheidungslogik
 
-| Wenn                                          | Dann                                                   | Begründung                                              |
-| --------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
-| keine Portal-Session besteht                  | mit 401 ablehnen                                       | Authentifizierung fehlt                                 |
-| ID ungültig oder Filter trifft nicht          | 404 liefern                                            | keine Existenzinformation über fremde/private Dokumente |
-| Mandant, Freigabe und Löschstatus passen      | neueste Version laden und Abruf auditieren             | ausdrücklicher Zugriffsscope                            |
-| Staff will kanzleiinternes Dokument freigeben | Aktion blockieren                                      | kein Portal-Empfänger                                   |
-| Staff setzt oder entzieht Freigabe            | Mandantenzugriff erneut prüfen und Ereignis auditieren | sensible Zustandsänderung                               |
-| MIME ist nicht inline-sicher                  | `attachment` und `application/octet-stream` erzwingen  | kein aktiver Inhalt auf der App-Origin                  |
-| Vorschau ist `text/plain`                     | zusätzlich CSP `sandbox` setzen                        | Defense in Depth gegen Sniffing                         |
+| Wenn                                                                           | Dann                                                   | Begründung                                              |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------ | ------------------------------------------------------- |
+| keine Portal-Session besteht                                                   | mit 401 ablehnen                                       | Authentifizierung fehlt                                 |
+| ID ungültig oder Filter trifft nicht                                           | 404 liefern                                            | keine Existenzinformation über fremde/private Dokumente |
+| Mandant, Freigabe, Löschstatus und Abschlussstatus der neuesten Version passen | neueste Version laden und Abruf auditieren             | ausdrücklicher Zugriffsscope                            |
+| Staff will kanzleiinternes Dokument freigeben                                  | Aktion blockieren                                      | kein Portal-Empfänger                                   |
+| Staff setzt oder entzieht Freigabe                                             | Mandantenzugriff erneut prüfen und Ereignis auditieren | sensible Zustandsänderung                               |
+| MIME ist nicht inline-sicher                                                   | `attachment` und `application/octet-stream` erzwingen  | kein aktiver Inhalt auf der App-Origin                  |
+| Vorschau ist `text/plain`                                                      | zusätzlich CSP `sandbox` setzen                        | Defense in Depth gegen Sniffing                         |
 
 ## Ausnahmen und Grenzfälle
 
@@ -123,6 +124,13 @@ aber einem anderen Mandanten gehört oder nicht freigegeben ist. Download und
 Vorschau liefern 404 und lesen keine Bytes aus dem Object Store.
 
 ## Umsetzung in TaxTronik
+
+Der gemeinsame Ladepfad verlangt an der neuesten Version `CLEAN` und einen
+vorhandenen Abschlusszeitpunkt. `PENDING`, Fehler-/Quarantänestatus oder ein
+fehlender Zeitpunkt führen vor Audit und Storage zu 404. Auch eine frühere
+saubere Version öffnet diesen Abruf nicht. Das gilt für Preview-Metadaten und
+den separat angefragten Byte-Stream; eine vorher erhaltene Preview-URL umgeht
+die erneute Prüfung nicht.
 
 Beide Portal-Routen filtern in der tenantgebundenen Transaktion auf
 `clientId`, `deletedAt: null` und `sharedWithClientAt != null`. Die Staff-
@@ -167,5 +175,7 @@ Dokument tatsächlich zur Kenntnis genommen hat.
 
 Der Portal-Routentest prüft den vollständigen Freigabe-, Mandanten- und
 Soft-Delete-Filter für Download und Vorschau sowie 404 ohne Bytezugriff.
+Er prüft außerdem unvollständige oder gesperrte neueste Versionen trotz
+vorhandenem früherem sauberem Stand, jeweils ohne Audit und Storage-Zugriff.
 MIME-Tests belegen Positivliste, Attachment-Fallback und CSP-Sandbox. Die Tests
 bewerten keine Dokumentinhalte und keine fachliche Freigabeentscheidung.

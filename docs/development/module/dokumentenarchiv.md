@@ -41,6 +41,27 @@ prüft die tatsächlichen ZIP-Einträge und deren entpackte Inhalte.
 
 ## Upload-Wege (alle über die zentrale Pipeline)
 
+DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001 /
+DOC-PORTAL-SHARING-001: Einzel-Download und Vorschau für Staff und Portal,
+Sammeldownload und DATEV-Belegexport prüfen die neueste Version vor Audit und
+Storage über `delivery-readiness.ts`: `CLEAN` und vorhandenes
+`scanCompletedAt`. PENDING-Intents, Fehler-/Quarantänestatus und unvollständige
+Abschlussdaten bleiben gesperrt, ohne Rückfall auf eine ältere saubere Version.
+Einzelabrufe und leere Sammeldownloads liefern 404; ZIP-Exporte nehmen nur
+auslieferbare Dokumente in Auswahl und Zähler auf.
+
+Der Virenscan fremder Uploadbytes bleibt vor dem Store-Write. Die neue
+Auslieferungssperre verhindert insbesondere den Abruf eines zwar geschriebenen,
+aber noch nicht finalisierten Upload-Intents. Reguläre Upload-/Finalize-Helper
+und erzeugte Rechnungs-PDF-/XML-Archive setzen beide Abschlussfelder. Bereits
+finalisierte historische Dokumente bleiben ohne zusätzliche Forderung nach
+einer Storage-Version-ID lesbar. Unbekannte Altstände ohne Abschlussdaten
+werden nicht pauschal freigeschaltet oder nachträglich als geprüft markiert.
+Relevante Nachweise sind `delivery-lifecycle.test.ts`, die Staff-/Portal-
+Routentests, `bulk-download-readiness.test.ts`, der DATEV-Export-Routentest und
+der Rechnungsarchivtest; sie prüfen echte Handler und tatsächliche ZIP-Inhalte
+mit synthetischem Storage/DB-Zugriff.
+
 Staff-Explorer (+ neue Version, mit Race-Schutz 409), Portal-Upload
 (Feature-Flag, Rate-Limit, auto-geteilt), Formular-Anhänge (10 MB),
 GwG-Onboarding (anonym per Token, GWG-Bucket), Rechnungs-PDFs

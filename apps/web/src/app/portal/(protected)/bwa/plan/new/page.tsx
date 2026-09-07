@@ -1,10 +1,10 @@
-﻿import { redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
-import { computeBwaKpis } from '@/server/bwa/addison-parser';
+import { computeBwaPlanBasis } from '@/server/bwa/plan-basis';
 import { PlanWizard } from '../plan-wizard';
 import { createPlanAction } from '../actions';
 
@@ -29,26 +29,13 @@ export default async function NewPlanPage() {
       }),
   );
 
-  // Aufbereiten: pro Periode KPIs + Position-Maps für Achsen-Vorbelegung
-  const bases = periods.map((p) => {
-    const map = new Map<number, number>();
-    for (const pos of p.positions) map.set(pos.number, Number(pos.amount.toString()));
-    const k = computeBwaKpis(p.positions);
-    return {
-      id: p.id,
-      periodKey: p.periodKey,
-      label: p.periodKey,
-      periodType: p.periodType as 'YEAR' | 'QUARTER' | 'MONTH',
-      revenue: k.revenue,
-      costs: k.costs,
-      result: k.result,
-      personnelCost: k.personnelCost,
-      // Einzelne Positionen für Plan-Achsen-Vorbelegung
-      material: map.get(3010) ?? null,
-      depreciation: map.get(3100) ?? null,
-      otherIncome: map.get(1010) ?? null,
-    };
-  });
+  const bases = periods.map((p) => ({
+    id: p.id,
+    periodKey: p.periodKey,
+    label: p.periodKey,
+    periodType: p.periodType,
+    ...computeBwaPlanBasis(p.positions, p.source),
+  }));
 
   const currentYear = new Date().getUTCFullYear();
 

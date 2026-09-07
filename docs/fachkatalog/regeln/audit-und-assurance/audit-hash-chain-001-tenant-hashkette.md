@@ -28,6 +28,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/backup/restore.ts
+  - packages/db/src/restore-security.ts
   - apps/web/src/app/staff/(protected)/admin/audit/page.tsx
   - apps/web/src/app/staff/(protected)/admin/audit/audit-page-data.ts
   - apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts
@@ -48,11 +50,15 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql
 test_refs:
+  - apps/web/src/server/backup/__tests__/restore-security.test.ts
+  - apps/web/src/server/backup/__tests__/restore.test.ts
+  - packages/db/src/__tests__/restore-security.test.ts
   - apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx
   - apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.tsx
   - packages/evidence/src/__tests__/service-record.test.ts
   - packages/evidence/src/__tests__/hash-chain.test.ts
   - packages/evidence/src/__tests__/canonical-json.property.test.ts
+  - packages/evidence/src/__tests__/canonical-json-keys.test.ts
   - apps/web/src/server/audit/__tests__/query.test.ts
   - apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts
   - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
@@ -137,10 +143,31 @@ eine lineare Vorgängerfolge entsteht.
 
 ## Umsetzung in TaxTronik
 
+Die Restore-CLI prüft vor jeder Erfolgsmeldung auch die effektiven
+Schreibsperren auf `audit_log`, `audit_seal` und `audit_archive`. Beim
+Wiederherstellen können Ziel-Defaultprivilegien sonst entzogene Rechte erneut
+erteilen, obwohl der Dump die ursprünglichen ACLs enthält. Diese obligatorische
+Sicherheitsabnahme bleibt bei `--no-smoke-test` aktiv. Abweichungen sperren die
+Erfolgsmeldung und weisen ausdrücklich darauf hin, dass der Restore bereits
+angewendet wurde und Dienste nicht gestartet werden dürfen. Historische
+Auditdaten und Hashes werden dabei nicht geändert. Die Rechteprüfung ist
+zusätzlich zur gesonderten inhaltlichen Kettenprüfung erforderlich
+(`ACCESS-TENANT-RLS-001`).
+
 `service.ts` setzt Zeitpunkt und Vorgänger unter dem Tenant-Lock und schreibt
 den Audit-Datensatz. `canonical-json.ts` normalisiert den Ereignisinhalt;
 `chain.ts` berechnet Genesis- und Folgewerte. Die Verifikation rekonstruiert
 dieselbe Ereignisform aus den gespeicherten Spalten.
+
+Die Objektaufbereitung verwendet ein Wörterbuch ohne geerbte Setter.
+Dadurch bleibt auch ein eigener JSON-Schlüssel `__proto__` vollständig in
+der kanonischen Darstellung und im Ereignishash erhalten. Die bisherige
+Implementierung verwarf diesen Schlüssel beim Aufbau eines gewöhnlichen
+JavaScript-Objekts. Gewöhnliche Schlüssel, bestehende numerische
+Schlüsselreihenfolge und Wertnormalisierung bleiben bytekompatibel.
+Aufzeichnung, Onlineprüfung und Archivprüfung verwenden weiterhin dieselbe
+korrigierte Abbildung; ein stiller Rückfall auf die fehlerhafte Abbildung
+findet nicht statt.
 
 Inbox-Call-Sites sollen technische Ressourcen-IDs, Statusmerkmale und Zähler
 protokollieren, jedoch keine Nachrichtentexte, Betreffe, Originaldateinamen,
@@ -211,6 +238,16 @@ Der `SYSTEM`-Akteur des Owner-CLI-Resets identifiziert den ausgeführten Prozess
 nicht die natürliche Person am Host; dafür bleiben betriebliche Zugriffs- und
 Ausführungsnachweise erforderlich.
 
+Historische Ereignisse mit einem eigenen `__proto__`-Schlüssel waren unter
+der früheren Implementierung insoweit nicht hashgebunden. Sind diese Daten
+noch im gespeicherten Ereignis enthalten, meldet die korrigierte Nachrechnung
+eine Abweichung vom alten Hash. Das ist ein ausdrücklich zu prüfender
+Altbestandsbefund; vorhandene Hashes, Ereignisse, Anker und Prüferfreigaben
+werden nicht automatisch umgeschrieben. Eine erfolgreiche frühere Prüfung
+belegt für dieses betroffene Feld keine Unverändertheit. Bereits verlustbehaftet
+serialisierte Archivkopien können fehlende Daten nicht rekonstruieren
+(`AUDIT-ARCHIVE-001`).
+
 ## Fachliche Prüffragen
 
 - Welche Aktionen müssen zwingend in der Audit-Kette erscheinen?
@@ -226,6 +263,14 @@ Die Service- und Hash-Ketten-Tests prüfen Vorgängerbindung, Tenant-Serialisier
 und Brucherkennung. Property-Tests variieren Schlüsselreihenfolgen und
 unterstützte Werttypen, damit Aufzeichnung und Nachrechnung dieselbe kanonische
 Darstellung verwenden.
+
+Die zusätzlichen Schlüsseltests verwenden echte JSON-Objekte einschließlich
+`__proto__` mit skalaren, Objekt- und Arraywerten, einen Persistenz-Roundtrip
+sowie reale Ereignis- und Archivfunktionen. Eine Änderung nur innerhalb dieses
+Schlüssels muss den Hash ändern und die Archivprüfung scheitern lassen.
+Alte Hashes, die einen weiterhin vorhandenen Schlüssel ausließen, werden
+nicht als gültig bestätigt. Der Property-Generator erzeugt diese Sondernamen
+ausdrücklich und prüft zusätzlich den verlustfreien JSON-Roundtrip.
 
 `admin-break-glass.test.ts` belegt, dass der ADMIN-Owner-Reset das Audit vor
 der Credential-Ausgabe schreibt, erst danach committen darf und bei einem

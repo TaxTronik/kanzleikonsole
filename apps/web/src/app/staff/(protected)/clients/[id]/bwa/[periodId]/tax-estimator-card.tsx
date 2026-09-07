@@ -6,8 +6,7 @@ import { estimateTaxes, type LegalForm } from '@/server/bwa/tax-estimator';
 
 import { fmtEURRound } from '@/lib/fmt';
 interface Props {
-  result: number;
-  /** Ergebnis vor Steuern (DATEV 1345/1300) — bevorzugte Bemessungsbasis. */
+  /** Belastbares Ergebnis vor Steuern (DATEV 1345). */
   resultBeforeTax?: number | null;
   revenue: number | null;
   inputVat: number | null;
@@ -17,7 +16,6 @@ interface Props {
 }
 
 export function TaxEstimatorCard({
-  result,
   resultBeforeTax,
   revenue,
   inputVat,
@@ -30,39 +28,41 @@ export function TaxEstimatorCard({
   const [isFreiberufler, setIsFreiberufler] = useState(false);
   const [show, setShow] = useState(false);
 
-  // P2-12: Steuern auf das Ergebnis VOR Ertragsteuern bemessen (kein
-  // Zirkelbezug). Fehlt die Zeile, Fallback auf das (evtl. Nach-Steuer-)
-  // Ergebnis — der Estimator ergänzt dann einen Hinweis.
-  const basis = resultBeforeTax ?? result;
+  // BWA-TAX-ESTIMATE-001: Fehlende Werte sind keine Nullbeträge und ein
+  // Nachsteuerergebnis kann die Bemessungsgrundlage nicht ersetzen.
+  const basis =
+    resultBeforeTax != null && Number.isFinite(resultBeforeTax) ? resultBeforeTax : null;
   // Freiberufler-Option nur bei Nicht-Kapitalformen sinnvoll (eine GmbH ist
   // stets Gewerbebetrieb kraft Rechtsform, § 2 Abs. 2 GewStG).
   const isKapitalform = legalForm === 'GMBH' || legalForm === 'AG' || legalForm === 'UG';
   const freiberuflich = !isKapitalform && isFreiberufler;
   const est = useMemo(
     () =>
-      estimateTaxes({
-        taxYear,
-        legalForm,
-        result: basis,
-        resultIsAfterTax: resultBeforeTax == null,
-        revenue,
-        inputVat,
-        vatPaid,
-        gewerbesteuerHebesatzPct: hebesatz,
-        isFreiberufler: freiberuflich,
-      }),
-    [
-      legalForm,
-      hebesatz,
-      basis,
-      resultBeforeTax,
-      revenue,
-      inputVat,
-      vatPaid,
-      freiberuflich,
-      taxYear,
-    ],
+      basis === null
+        ? null
+        : estimateTaxes({
+            taxYear,
+            legalForm,
+            result: basis,
+            revenue,
+            inputVat,
+            vatPaid,
+            gewerbesteuerHebesatzPct: hebesatz,
+            isFreiberufler: freiberuflich,
+          }),
+    [legalForm, hebesatz, basis, revenue, inputVat, vatPaid, freiberuflich, taxYear],
   );
+
+  if (!est) {
+    return (
+      <div className="card p-6 mb-6">
+        <h2 className="text-sm font-medium text-primary">Steuerschätzung {taxYear} (Beta)</h2>
+        <p className="text-sm text-muted mt-2">
+          Für die Steuerschätzung fehlt ein belastbares Ergebnis vor Steuern.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="card p-6 mb-6">

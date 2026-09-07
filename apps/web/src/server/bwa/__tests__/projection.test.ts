@@ -68,7 +68,7 @@ function yearPeriod(year: number, revenue: number): PeriodInput {
     periodType: 'YEAR',
     fromDate: new Date(Date.UTC(year, 0, 1)),
     toDate: new Date(Date.UTC(year, 11, 31)),
-    positions: [{ number: 1051, amount: revenue }],
+    positions: [{ number: 1020, amount: revenue }],
   };
 }
 

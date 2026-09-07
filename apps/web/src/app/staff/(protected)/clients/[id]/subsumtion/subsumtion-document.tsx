@@ -42,11 +42,14 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { docToText, plainRangeToPm, pmPosToPlain, type TextRange } from './doc-text';
 import { baseEditorExtensions } from './editor-extensions';
 import { FormatToolbar } from './editor-toolbar';
+import { useFormatAutosave } from './use-format-autosave';
 import { buildSegments, segmentStyle } from './marking-style';
 import { type MarkingDTO, FILTER_KEYS, FILTER_LABEL, type FilterKey } from './_ui';
 
 export interface SubsumtionDocumentHandle {
   setText: (text: string) => void;
+  /** Append imported paragraphs without flattening existing rich content. */
+  appendText: (text: string) => void;
   getText: () => string;
   getDoc: () => unknown;
   focus: () => void;
@@ -231,9 +234,11 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
     } = props;
 
     const [textChanged, setTextChanged] = useState(false);
-    const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>(
-      'idle',
-    );
+    const {
+      saveState,
+      schedule: scheduleFormatSave,
+      flush: flushFormatSave,
+    } = useFormatAutosave(canEdit, props.onSaveFormat);
     const rangesRef = useRef<TextRange[]>([]);
     // Schwebende Formatier-Leiste (Review): erscheint über/unter der Auswahl.
     const [flyover, setFlyover] = useState<{
@@ -251,11 +256,6 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
     const boxRef = useRef<HTMLDivElement>(null);
     // true, solange mit der Maus gezogen wird → Leiste erst nach dem Loslassen.
     const draggingRef = useRef(false);
-
-    // Auto-Save (Formatierung on-the-fly, debounced).
-    const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const savingRef = useRef(false);
-    const pendingDocRef = useRef<unknown>(null);
 
     // Aktuelle Auswahl-Callbacks/Markierungen für die Editor-Closures (ohne Editor-Neubau).
     const ctxRef = useRef({
@@ -289,45 +289,6 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
       floatingToolbarEnabled,
     ]);
 
-    // Debounce-Logik in Refs (immer frisch), damit die stabile onUpdate-Closure sie
-    // ohne Stale-Capture aufrufen kann.
-    const flushRef = useRef<() => void>(() => {});
-    const scheduleRef = useRef<(doc: unknown, changed: boolean) => void>(() => {});
-    // Editor creation is deferred; its event callbacks see these initialized
-    // handlers after the layout phase. Mutable refs keep all later values fresh.
-    useLayoutEffect(() => {
-      flushRef.current = async () => {
-        if (saveTimer.current) {
-          clearTimeout(saveTimer.current);
-          saveTimer.current = null;
-        }
-        if (savingRef.current) return; // läuft schon → der nächste Lauf holt's nach
-        const doc = pendingDocRef.current;
-        const save = ctxRef.current.onSaveFormat;
-        if (doc == null || !save) return;
-        pendingDocRef.current = null;
-        savingRef.current = true;
-        setSaveState('saving');
-        const ok = await save(doc)
-          .then((r) => r.ok)
-          .catch(() => false);
-        savingRef.current = false;
-        setSaveState(ok ? 'saved' : 'error');
-        if (ok && pendingDocRef.current != null) flushRef.current(); // zwischenzeitliche Änderung
-      };
-      scheduleRef.current = (doc, changed) => {
-        if (saveTimer.current) {
-          clearTimeout(saveTimer.current);
-          saveTimer.current = null;
-        }
-        // Nur Formatierung auto-speichern; Textänderung → Warnung, KEIN Save (Offsets).
-        if (changed || !ctxRef.current.canEdit) return;
-        pendingDocRef.current = doc;
-        setSaveState('dirty');
-        saveTimer.current = setTimeout(() => flushRef.current(), 1000);
-      };
-    }, []);
-
     const editor = useEditor({
       extensions: [...baseEditorExtensions, MarkDecorations],
       content: initialDoc != null ? (initialDoc as object) : textToHtml(initialText),
@@ -345,7 +306,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
         // Editor verlassen → ausstehende Formatierung sofort speichern (statt Debounce).
         handleDOMEvents: {
           blur: () => {
-            flushRef.current();
+            void flushFormatSave();
             return false;
           },
         },
@@ -358,7 +319,7 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
           const changed = text !== ctxRef.current.sourceText;
           setTextChanged(changed);
           // Formatierung on-the-fly speichern (debounced).
-          scheduleRef.current(editor.getJSON(), changed);
+          scheduleFormatSave(editor.getJSON(), changed);
         }
       },
       onSelectionUpdate: ({ editor }) => {
@@ -404,6 +365,15 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
         setText: (text: string) => {
           editor?.commands.setContent(textToHtml(text));
           if (editor) props.onTextChange?.(docToText(editor.state.doc).text);
+        },
+        appendText: (text: string) => {
+          if (!editor) return;
+          if (!docToText(editor.state.doc).text.trim()) {
+            editor.commands.setContent(textToHtml(text));
+          } else {
+            editor.commands.insertContentAt(editor.state.doc.content.size, textToHtml(text));
+          }
+          props.onTextChange?.(docToText(editor.state.doc).text);
         },
         getText: () => (editor ? docToText(editor.state.doc).text : ''),
         getDoc: () => editor?.getJSON() ?? null,
@@ -554,14 +524,6 @@ export const SubsumtionDocument = forwardRef<SubsumtionDocumentHandle, Props>(
       editor.commands.setContent(textToHtml(joined));
       props.onTextChange?.(docToText(editor.state.doc).text);
     }
-
-    // Beim Unmount (z. B. Wegnavigieren) ausstehende Formatierung noch sichern.
-    useEffect(
-      () => () => {
-        if (pendingDocRef.current != null) flushRef.current();
-      },
-      [],
-    );
 
     // Tiptap rendert NUR client-seitig (immediatelyRender:false → editor ist auf dem
     // Server und im ersten Client-Render null). Bis dahin ein stabiler Platzhalter,

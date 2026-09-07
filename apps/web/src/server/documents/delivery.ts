@@ -7,6 +7,7 @@ import { evidenceService } from '@/server/container';
 import { getClientIp } from '@/server/rate-limit';
 import { documentPreviewMetadata, loadDocumentPreview } from '@/server/storage/document-preview';
 import { effectiveDocumentMime, filenameWithExtension } from '@/server/storage/preview-mime';
+import { isDocumentVersionReady } from './delivery-readiness';
 
 export interface DocumentDeliverySource {
   title: string;
@@ -80,12 +81,17 @@ export async function loadDocumentDelivery(
         versions: {
           orderBy: { versionNo: 'desc' },
           take: 1,
-          select: { storageBucket: true, storageKey: true },
+          select: {
+            storageBucket: true,
+            storageKey: true,
+            scanStatus: true,
+            scanCompletedAt: true,
+          },
         },
       },
     });
     const version = candidate?.versions[0];
-    if (!candidate || !version) return null;
+    if (!candidate || !version || !isDocumentVersionReady(version)) return null;
     if (candidate.requiresPayrollAccess) {
       if (options.actorType !== 'STAFF') return null;
       const allowed = await tx.$queryRaw<

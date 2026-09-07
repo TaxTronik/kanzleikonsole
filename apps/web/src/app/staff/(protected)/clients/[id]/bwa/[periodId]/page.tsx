@@ -74,29 +74,26 @@ export default async function BwaPeriodDetailPage({
         <KpiCard label="Personalquote" value={fmtPct(kpis.personnelRatio)} />
       </div>
 
-      {kpis.result !== null && (
-        <TaxEstimatorCard
-          taxYear={period.toDate.getUTCFullYear()}
-          result={kpis.result}
-          resultBeforeTax={kpis.resultBeforeTax}
-          revenue={kpis.revenue}
-          inputVat={(() => {
-            const v = period.positions.find((p) => p.number === 3190);
-            return v ? Number(v.amount.toString()) : null;
-          })()}
-          vatPaid={(() => {
-            const v = period.positions.find((p) => p.number === 3200);
-            return v ? Number(v.amount.toString()) : null;
-          })()}
-          defaultLegalForm={
-            (period.client.kind === 'JURPERS'
-              ? 'GMBH'
-              : period.client.kind === 'PERSGES'
-                ? 'GBR'
-                : 'EINZELUNTERNEHMEN') as LegalForm
-          }
-        />
-      )}
+      <TaxEstimatorCard
+        taxYear={period.toDate.getUTCFullYear()}
+        resultBeforeTax={kpis.resultBeforeTax}
+        revenue={kpis.revenue}
+        inputVat={(() => {
+          const v = period.positions.find((p) => p.number === 3190);
+          return v ? Number(v.amount.toString()) : null;
+        })()}
+        vatPaid={(() => {
+          const v = period.positions.find((p) => p.number === 3200);
+          return v ? Number(v.amount.toString()) : null;
+        })()}
+        defaultLegalForm={
+          (period.client.kind === 'JURPERS'
+            ? 'GMBH'
+            : period.client.kind === 'PERSGES'
+              ? 'GBR'
+              : 'EINZELUNTERNEHMEN') as LegalForm
+        }
+      />
 
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b border-default">

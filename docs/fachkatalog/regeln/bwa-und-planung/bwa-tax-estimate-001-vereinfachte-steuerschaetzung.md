@@ -20,9 +20,10 @@ implementation:
     2026 nach, setzt aber das BWA-Ergebnis vereinfachend mit steuerlichen
     Bemessungsgrundlagen gleich. Persönliche Faktoren, zahlreiche
     Gewinnkorrekturen, gemischte Umsatzsteuersachverhalte und Sonderfälle
-    fehlen. Im DATEV-Pfad kann außerdem Gesamtleistung statt Umsatzerlösen in
-    die USt-Pauschale eingehen; Hinweise oder Beta-Kennzeichnung heilen diese
-    Lücken nicht.
+    fehlen. DATEV-Umsatzerlöse werden getrennt von Gesamtleistung verwendet;
+    eine fehlende Vorsteuerposition wird nicht ersetzt und eine als nachsteuerlich
+    gekennzeichnete Eingabe abgewiesen. Hinweise oder Beta-Kennzeichnung heilen
+    die verbleibenden Modelllücken nicht.
 sources:
   - kind: official_guidance
     citation: Amtliches Lohnsteuer-Handbuch 2025, § 32a EStG mit Tarifparametern 2025
@@ -65,7 +66,7 @@ sources:
     checked_at: '2026-08-24'
     primary: true
   - kind: technical_standard
-    citation: DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Gesamtleistung in Position 1051
+    citation: DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Umsatzerlöse 1020, Gesamtleistung 1051 und Ergebnis vor Steuern 1345
     url: https://www.datev.de/dnlexom/v2/content/files/st13860276747_de.pdf
     checked_at: '2026-08-24'
     primary: false
@@ -75,9 +76,15 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/bwa/[periodId]/page.tsx
   - apps/web/src/server/bwa/tax-estimator.ts
+  - apps/web/src/server/bwa/addison-parser.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/bwa/[periodId]/tax-estimator-card.tsx
 test_refs:
+  - apps/web/src/components/bwa/__tests__/tax-basis.test.tsx
+  - apps/e2e/tests/21-bwa-basis-state.spec.ts
   - apps/web/src/server/bwa/__tests__/tax-estimator.test.ts
+  - apps/web/src/server/bwa/__tests__/kpis.test.ts
 feature_refs:
   - docs/anwenderdoku/bwa-planung.md
 related_rules:
@@ -133,16 +140,16 @@ Sachverhalte erfordern eine gesonderte Berechnung.
 
 ## Entscheidungslogik
 
-| Wenn                                          | Dann                                                                                                                                      | Begründung                                                                                     |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Jahr 2025 oder 2026 und Einzelunternehmen     | hinterlegten Grundtarif auf das abgerundete positive BWA-Ergebnis anwenden                                                                | technische Annahme eines alleinstehenden Steuerpflichtigen ohne weitere Faktoren               |
-| anderes ESt-Jahr                              | Einkommensteuer `null` lassen und fehlenden verifizierten Tarif anzeigen                                                                  | ein alter Tarif darf nicht still fortgeschrieben werden                                        |
-| gewerbliche Tätigkeit                         | positives Ergebnis auf volle 100 Euro abrunden, gegebenenfalls 24.500 Euro Freibetrag abziehen und mit 3,5 Prozent sowie Hebesatz rechnen | vereinfachte Abbildung von § 11 GewStG                                                         |
-| Einzelunternehmen mit positiver Gewerbesteuer | ESt technisch um höchstens das Vierfache des Messbetrags, die berechnete GewSt und die tarifliche ESt mindern                             | begrenzte Produktabbildung des § 35 EStG                                                       |
-| `isFreiberufler` gesetzt                      | keine Gewerbesteuer und keine §-35-Anrechnung ansetzen                                                                                    | Produktannahme für reine freiberufliche Tätigkeit                                              |
-| GmbH, AG oder UG                              | 15 Prozent des positiven BWA-Ergebnisses als KSt und 5,5 Prozent darauf als SolZ ansetzen                                                 | vereinfachte Rechnung mit den für 2025/2026 geltenden Sätzen                                   |
-| das interne Feld `revenue` ist befüllt        | 19 Prozent dieses Werts abzüglich übergebener Vorsteuer als USt-Saldo rechnen                                                             | Produktpauschale; im DATEV-Mapping kann der Wert Gesamtleistung statt Umsatzerlöse enthalten   |
-| nur Ergebnis nach Steuern vorhanden           | Warnhinweis ergänzen, die Rechnung technisch aber fortsetzen                                                                              | aktueller Produktstand; fachlich ist vor Verwendung manuell ein Vorsteuerergebnis zu bestimmen |
+| Wenn                                                                             | Dann                                                                                                                                      | Begründung                                                                                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Jahr 2025 oder 2026 und Einzelunternehmen                                        | hinterlegten Grundtarif auf das abgerundete positive BWA-Ergebnis anwenden                                                                | technische Annahme eines alleinstehenden Steuerpflichtigen ohne weitere Faktoren                                    |
+| anderes ESt-Jahr                                                                 | Einkommensteuer `null` lassen und fehlenden verifizierten Tarif anzeigen                                                                  | ein alter Tarif darf nicht still fortgeschrieben werden                                                             |
+| gewerbliche Tätigkeit                                                            | positives Ergebnis auf volle 100 Euro abrunden, gegebenenfalls 24.500 Euro Freibetrag abziehen und mit 3,5 Prozent sowie Hebesatz rechnen | vereinfachte Abbildung von § 11 GewStG                                                                              |
+| Einzelunternehmen mit positiver Gewerbesteuer                                    | ESt technisch um höchstens das Vierfache des Messbetrags, die berechnete GewSt und die tarifliche ESt mindern                             | begrenzte Produktabbildung des § 35 EStG                                                                            |
+| `isFreiberufler` gesetzt                                                         | keine Gewerbesteuer und keine §-35-Anrechnung ansetzen                                                                                    | Produktannahme für reine freiberufliche Tätigkeit                                                                   |
+| GmbH, AG oder UG                                                                 | 15 Prozent des positiven BWA-Ergebnisses als KSt und 5,5 Prozent darauf als SolZ ansetzen                                                 | vereinfachte Rechnung mit den für 2025/2026 geltenden Sätzen                                                        |
+| das interne Feld `revenue` ist befüllt                                           | 19 Prozent dieses Werts abzüglich übergebener Vorsteuer als USt-Saldo rechnen                                                             | Produktpauschale auf DATEV 1020 oder die bekannte Addison-Erlösposition; keine vollständige USt-Bemessungsgrundlage |
+| eine Vorsteuerbasis fehlt oder die Eingabe als nachsteuerlich gekennzeichnet ist | keine Schätzung auf Ersatzbasis ausführen                                                                                                 | zuerst ein fachlich geprüftes Ergebnis vor Steuern bestimmen                                                        |
 
 ## Ausnahmen und Grenzfälle
 
@@ -171,10 +178,13 @@ Die Umsatzsteuerrechnung kennt weder steuerfreie, ermäßigte oder
 nullbesteuerte Umsätze noch Reverse Charge, innergemeinschaftliche Fälle,
 Mischumsätze, Vorsteueraufteilung, Berichtigungen, Ist-/Sollversteuerung oder
 abweichende Bemessungsgrundlagen. Fehlende Vorsteuer wird als null behandelt.
-Im DATEV-Import wird Position 1051 **Gesamtleistung** als `revenue` geführt;
-darin können neben Umsatzerlösen auch Bestandsveränderungen und aktivierte
-Eigenleistungen stecken. Die 19-Prozent-Pauschale kann deshalb bereits in
-ihrer Ausgangsgröße fachlich falsch sein. USt-Salden werden nicht in `gesamt`
+Im DATEV-Import wird ausschließlich Position 1020 **Umsatzerlöse** als
+`revenue` geführt. Gesamtleistung 1051 ersetzt diese Position nicht;
+Bestandsänderungen und aktivierte Eigenleistungen werden so nicht mehr
+als zusätzliche Umsätze in die 19-Prozent-Pauschale eingeschleust. Fehlt 1020,
+bleiben die USt-Werte mangels Basis `null`. Auch echte Umsatzerlöse sind wegen
+der vorstehenden fehlenden Umsatzsteuermerkmale keine hinreichend geprüfte
+Bemessungsgrundlage. USt-Salden werden nicht in `gesamt`
 einbezogen; die Bezeichnung dieses Felds darf daher nicht als Gesamtsteuerlast
 verstanden werden.
 
@@ -191,10 +201,10 @@ zvE, weitere Einkünfte, Abzüge, Hinzurechnungen, Kürzungen und Vorauszahlunge
 ### Grenzfall
 
 Eine GmbH erzielt teilweise steuerfreie Umsätze und Beteiligungserträge; die
-BWA zeigt nur ein Ergebnis nach Steuern. Die 15-Prozent- und
-19-Prozent-Pauschalen können technisch Zahlen liefern, bilden aber weder die
-KSt- noch die USt-Bemessungsgrundlage ab. Der Hinweis im UI erlaubt keine
-fachliche Verwendung dieser Zahlen.
+BWA zeigt nur ein vorläufiges Ergebnis nach Steuern. Die automatische
+Steuerschätzung bleibt wegen der fehlenden Vorsteuerbasis gesperrt. Selbst mit
+einer vorhandenen Vorsteuerposition bilden die pauschalen Sätze weder die
+KSt- noch die USt-Bemessungsgrundlage dieses Sachverhalts ab.
 
 ## Umsetzung in TaxTronik
 
@@ -203,8 +213,16 @@ fachliche Verwendung dieser Zahlen.
 `null`. `estimateTaxes` verzweigt nach Rechtsform, verwendet positive
 BWA-Ergebnisse, einen übergebenen Hebesatz, feste KSt-/SolZ-/Messzahl-Sätze
 und eine 19-Prozent-USt-Pauschale auf das intern als `revenue` bezeichnete
-Feld. Es fügt Hinweise zu Annahmen hinzu, sperrt eine sachlich unvollständige
-Rechnung aber nicht in allen Fällen.
+Feld. Die Kennzahlenübergabe verwendet für DATEV 1020 und strikt 1345; ein
+Betriebsergebnis 1300 ersetzt keine fehlende 1345. Die Karte zeigt bei fehlender
+geeigneter Vorsteuerbasis einen Hinweis und ruft die Engine nicht mit dem
+vorläufigen Ergebnis auf. Auch ein direkter Engine-Aufruf mit
+`resultIsAfterTax=true` wird mit einem Eingabefehler abgewiesen. Gültige
+Vorsteuer-Eingaben behalten den bestehenden Rechenweg und Resultattyp.
+Andere sachlich unvollständige Eingaben werden weiterhin nicht vollständig
+automatisch erkannt.
+
+Die Steuerkarte sperrt den Aufruf bei fehlender oder ungeeigneter Vorsteuerbasis mit einem verständlichen Hinweis. Ein vorhandenes Ergebnis vor Steuern bleibt auch ohne nachsteuerliche Ergebnisposition nutzbar. Gerenderte Karten- und Browserfälle belegen fehlende Basis, echte Null und gültiges Vorsteuerergebnis; der direkte Engine-Test schützt zusätzliche Aufrufer.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -212,10 +230,12 @@ Die Umsetzung ist teilweise und fachlich hoch priorisiert. Die Tarifparameter
 2025/2026, die Abrundung des Gewerbeertrags, der Freibetrag und einzelne
 Deckelungen sind technisch getestet. Die zentrale Abweichung bleibt, dass
 vorläufige BWA-Werte ohne vollständige steuerliche Überleitung als
-Bemessungsgrundlagen verwendet werden. Ein Nachsteuerergebnis, unplausibler
-Hebesatz oder widersprüchliche Flags werden nicht konsequent fail-closed
-abgewiesen. Im DATEV-Pfad kann die USt-Pauschale auf Gesamtleistung statt
-Umsatzerlösen rechnen. Vor einer produktiven fachlichen Freigabe sind
+Bemessungsgrundlagen verwendet werden. Die bekannte Nachsteuerbasis wird
+inzwischen abgewiesen; eine lediglich falsch als vorsteuerlich deklarierte
+Eingabe kann die Engine nicht fachlich erkennen. Unplausible Hebesätze oder
+widersprüchliche Flags werden noch nicht konsequent fail-closed abgewiesen.
+Die Korrektur der DATEV-Ausgangspositionen verändert keine importierten
+Rohdaten oder gespeicherten Planwerte. Vor einer produktiven fachlichen Freigabe sind
 Eingaben, Überleitungen, Gültigkeitsjahre und Sonderfälle neu zu entscheiden.
 
 ## Fachliche Prüffragen
@@ -224,8 +244,8 @@ Eingaben, Überleitungen, Gültigkeitsjahre und Sonderfälle neu zu entscheiden.
   interne Testszenarien zulassen?
 - Welche Mindestangaben müssen für ESt, KSt, GewSt, SolZ und USt jeweils
   vorhanden sein, bevor überhaupt eine Zahl gezeigt wird?
-- Muss ein Ergebnis nach Steuern statt eines Vorsteuerergebnisses zwingend zum
-  Abbruch führen?
+- Welche zusätzlichen Belege sind für eine als vorsteuerlich deklarierte
+  Eingabe erforderlich?
 - Wie werden Tarif- und Rechtsänderungen jahrgangsbezogen freigegeben und
   abgelaufene Jahre gesperrt?
 - Welche Plausibilitätsgrenzen gelten für Hebesatz, Rechtsform und
@@ -239,3 +259,10 @@ unbekannten ESt-Jahrs, die GewSt-Abrundung, den Freibetrag, eine begrenzte
 belegt keine vollständige steuerliche Bemessungsgrundlage, keine persönliche
 Veranlagung, keine KSt-/USt-Sonderfälle und keine fachliche Richtigkeit einer
 realen Schätzung.
+
+Die zusätzlichen Regressionen belegen die Ablehnung einer ausdrücklich
+nachsteuerlichen Engine-Eingabe und die Übernahme von DATEV-Umsatzerlösen
+anstelle von Gesamtleistung in die USt-Pauschale. Fehlende 1345 liefert auch
+in beiden Projektionsstrategien keine Ergebnis- oder Steuerersatzachse.
+Diese Positions- und Eingabekorrektur ist keine Freigabe der verbleibenden
+steuerlichen Vereinfachungen.

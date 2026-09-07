@@ -33,17 +33,14 @@ import { escapeCsvCell } from '@/server/export/csv';
 import { fmtDateShort, fmtDateTimeLong } from '@/lib/fmt';
 import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 import { isUuid } from '@/lib/uuid';
+import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 
-const QuerySchema = z.object({
-  from: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  to: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-});
+const QuerySchema = z
+  .object({
+    from: z.string().date().optional(),
+    to: z.string().date().optional(),
+  })
+  .refine(({ from, to }) => !from || !to || from <= to);
 
 const GOBD_CLASSIFICATIONS = ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'] as const;
 
@@ -60,11 +57,13 @@ function mimeToExtension(mime: string): string {
   if (m.includes('png')) return 'png';
   if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
   if (m.includes('tiff')) return 'tif';
+  // OOXML ist ein Office-ZIP; die spezifischen MIME-Typen müssen vor dem
+  // generischen XML-Fallback geprüft werden.
+  if (m.includes('vnd.openxmlformats-officedocument.spreadsheetml')) return 'xlsx';
+  if (m.includes('vnd.openxmlformats-officedocument.wordprocessingml')) return 'docx';
   if (m.includes('xml')) return 'xml';
   if (m.includes('xrechnung')) return 'xml';
   if (m.includes('csv')) return 'csv';
-  if (m.includes('vnd.openxmlformats-officedocument.spreadsheetml')) return 'xlsx';
-  if (m.includes('vnd.openxmlformats-officedocument.wordprocessingml')) return 'docx';
   if (m.includes('msword')) return 'doc';
   if (m.includes('excel')) return 'xls';
   return 'bin';
@@ -123,7 +122,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       // Leak), bevor Belege gelesen oder auditiert werden.
       if (!(await canAccessClientTx(tx, session, clientId))) return null;
 
-      const docs = await tx.document.findMany({
+      const candidates = await tx.document.findMany({
         where: {
           tenantId,
           clientId,
@@ -146,6 +145,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           },
         },
       });
+
+      const docs = candidates.filter((doc) => isDocumentVersionReady(doc.versions[0]));
 
       await evidenceService.record(tx, {
         tenantId,

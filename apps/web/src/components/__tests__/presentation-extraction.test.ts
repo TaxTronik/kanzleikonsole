@@ -61,6 +61,7 @@ describe('Verhaltensneutrale Darstellungsextraktionen', () => {
 
   it('RISK-ARCHIVE-SNAPSHOT-001: Editoroberfläche übernimmt weiterhin unveränderte Schreib-/Flyover-Bedingungen', () => {
     const doc = source('clients/[id]/subsumtion/subsumtion-document.tsx');
+    const autosave = source('clients/[id]/subsumtion/use-format-autosave.ts');
     const surface = doc.slice(
       doc.indexOf('function DocumentEditorSurface'),
       doc.indexOf('export const SubsumtionDocument'),
@@ -68,10 +69,12 @@ describe('Verhaltensneutrale Darstellungsextraktionen', () => {
     expect(surface).toContain('{canEdit && (');
     expect(surface).toContain('analyzed && canEdit && floatingToolbarEnabled && flyover');
     expect(surface).toContain('onReflow={!analyzed && canEdit ? reflow : undefined}');
-    expect(doc).toContain('if (changed || !ctxRef.current.canEdit) return;');
+    expect(doc).toContain('scheduleFormatSave(editor.getJSON(), changed);');
+    expect(autosave).toContain('if (textChanged || !current.canEdit) return;');
     expect(doc).toContain('const best = smallestCoveringMarking(c.markings, plain);');
     expect(doc).toMatch(/useLayoutEffect\(\(\) => \{\s+ctxRef\.current\.analyzed = analyzed;/);
-    expect(doc).toMatch(/useLayoutEffect\(\(\) => \{\s+flushRef\.current = async \(\) => \{/);
+    expect(autosave).toMatch(/useLayoutEffect\(\(\) => \{\s+state\.current\.canEdit = canEdit;/);
+    expect(autosave).toContain('flushRef.current = () => {');
     expect(doc).toContain("dom.style.setProperty('font-size', `calc(0.875rem * ${zoom})`)");
   });
 

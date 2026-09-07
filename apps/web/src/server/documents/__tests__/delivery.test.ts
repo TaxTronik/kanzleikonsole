@@ -31,7 +31,14 @@ function transaction() {
         mimeType: 'application/pdf',
         classification: 'GOBD_CONTRACT',
         clientId: 'client-1',
-        versions: [{ storageBucket: 'documents', storageKey: 'tenant/document-1' }],
+        versions: [
+          {
+            storageBucket: 'documents',
+            storageKey: 'tenant/document-1',
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+          },
+        ],
       }),
     },
     powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -65,7 +72,14 @@ describe('document delivery pipeline', () => {
       classification: 'PERSONNEL',
       clientId: 'client-1',
       requiresPayrollAccess: true,
-      versions: [{ storageBucket: 'documents', storageKey: 'restricted' }],
+      versions: [
+        {
+          storageBucket: 'documents',
+          storageKey: 'restricted',
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date(),
+        },
+      ],
     } as never);
     mocks.withTenantContext.mockImplementation(async (_ctx, callback) => callback(tx));
     await expect(loadDocumentDelivery(options())).resolves.toBeNull();
