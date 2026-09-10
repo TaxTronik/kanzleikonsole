@@ -26,7 +26,7 @@
     "@taxtronik/storage": "workspace:*",
     "imapflow": "1.7.2",
     "mailparser": "3.9.15",
-    "nodemailer": "9.0.1",
+    "nodemailer": "9.1.1",
     "pdf-lib": "1.17.1"
   },
   "devDependencies": {
@@ -34,6 +34,6 @@
     "@types/nodemailer": "^8.0.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
-    "vitest": "^4.1.7"
+    "vitest": "4.1.11"
   }
 }

@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20260910-001
+    date: '2026-09-10'
+    paths:
+      - packages/tax/package.json
+    rule_ids:
+      - GWG-SCREENING-001
+    reason: >-
+      Ausschließlich die Entwicklungsabhängigkeit Vitest wird von ^4.1.7
+      auf den Sicherheitsstand 4.1.11 gepinnt (GHSA-82fw-gwwq-j7x9).
+      Der in GWG-SCREENING-001 referenzierte Paketpfad erhält keine Änderung
+      an Laufzeitabhängigkeiten, Exporten oder Skripten. Quellenprüfung,
+      Namensabgleich, Nachweisbindung, Persistenz und GwG-Freigabesperren
+      bleiben unverändert. Die bestehenden Screening-Tests dienen dem
+      technischen Regressionsabgleich mit dem aktualisierten Testwerkzeug;
+      dies ist keine fachliche Freigabe.
+    tests:
+      - packages/tax/src/screening/screening.test.ts
+      - packages/tax/src/screening/persistence.test.ts
+      - apps/web/src/server/screening/__tests__/gwg-gate.test.ts
+    reviewer: Codex (technischer Dependency-Diff-Abgleich, keine fachliche Freigabe)
   - id: FK-EXC-20260907-004
     date: '2026-09-07'
     paths:
@@ -753,6 +773,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-09-10: `FK-EXC-20260910-001` dokumentiert den reinen
+  Vitest-Sicherheitswechsel im von `GWG-SCREENING-001` referenzierten
+  Tax-Paketmanifest. Fachlogik, Regelinhalt und fachlicher Prüfstatus
+  bleiben unverändert.
 
 - 2026-09-07: Dritter gemeinsamer Qualitätsdurchlauf. `AUDIT-HASH-CHAIN-001`
   und `AUDIT-ARCHIVE-001` erhalten vollständige Bindung eigener JSON-Schlüssel

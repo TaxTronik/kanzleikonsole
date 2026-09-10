@@ -20,6 +20,21 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+### Dependency-Audit behoben (2026-09-10)
+
+- Next.js und sein ESLint-Plugin auf `16.3.3`, sharp auf `0.35.4`, js-yaml auf
+  `4.3.2`, Nodemailer auf `9.1.1` und Vitest samt Begleitpaketen auf `4.1.11`
+  aktualisiert. Damit werden die elf Befunde aus Dependency Audit 3497
+  geschlossen, einschließlich der beiden kritischen Next.js-Schwachstellen.
+- Exakte Overrides sichern auch die von Mailparser eingebundene Nodemailer-Kopie
+  und Next.js' Bildverarbeitung ab. baseline-browser-mapping wird einheitlich auf
+  den bereits für browserslist verwendeten gepatchten Stand `2.11.4` aufgelöst.
+  Alle neuen Fixstände erfüllen die siebentägige Mindestwartezeit und benötigen
+  keine zusätzliche Quarantäneausnahme.
+- Der Vitest-Wechsel im überwachten Tax-Paket verändert keine Screening-Regel
+  (`GWG-SCREENING-001`); die technische Ausnahme ist als `FK-EXC-20260910-001`
+  dokumentiert.
+
 ### Wiedervorlagen als Tickets (2026-09-07)
 
 - Wiedervorlagen erhalten stabile kanzleiweite Nummern, eine durchsuchbare

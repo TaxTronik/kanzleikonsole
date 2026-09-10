@@ -85,9 +85,16 @@ overrides:
   vite: '8.0.16'
   # tmp 0.2.6 is vulnerable (GHSA-7c78-jf6q-g5cm); force the patched release.
   tmp: '0.2.7'
-  # js-yaml <4.3.1 ist verwundbar (einschliesslich CVE-2026-59870);
-  # 4.3.1 ist der kleinste gepatchte v4-Stand fuer ESLint und xmlbuilder2.
-  js-yaml: '4.3.1'
+  # js-yaml <4.3.2 erlaubt CPU-DoS ueber leere Merge-Quellen
+  # (GHSA-2883-xcg3-v3hh); den gepatchten v4-Stand auch transitiv erzwingen.
+  js-yaml: '4.3.2'
+  # mailparser 3.9.15 pinnt nodemailer 9.0.5. Auch diese Kopie muss die
+  # Addressparser- und resolveContent-Fixes aus 9.1.1 erhalten.
+  nodemailer: '9.1.1'
+  # Next.js erlaubt noch den verwundbaren 2.10-Zweig
+  # (GHSA-w5vr-8v7q-w6rv); den bereits fuer browserslist aufgeloesten
+  # gepatchten Stand einheitlich verwenden.
+  baseline-browser-mapping: '2.11.4'
   # Beide von PostCSS bzw. docx benoetigten nanoid-Zweige separat auf die
   # kleinsten Releases mit den jeweiligen Security-Fixes pinnen.
   nanoid@3: '3.3.18'
@@ -118,8 +125,8 @@ overrides:
   # aeltere Kopie erzeugt inkompatible nominale Node-/View-Typen im Editor.
   prosemirror-model: '1.25.11'
   prosemirror-view: '1.42.3'
-  # sharp <0.35.0 erbt libvips-CVEs (GHSA-f88m-g3jw-g9cj); next fordert ^0.34.5.
-  sharp: '^0.35.3'
+  # sharp <0.35.4 erbt libheif-Schwachstellen (GHSA-rgj7-g3m4-5g8c).
+  sharp: '0.35.4'
   # brace-expansion zweig-genau pinnen: minimatch@3 braucht die Callable-API
   # aus 1.x, minimatch@10 die 5.x-API. Ein pauschaler 5.x-Force bricht ESLint.
   brace-expansion@1: '1.1.18'
