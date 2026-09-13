@@ -42,15 +42,19 @@ export default async function ScreeningPage({ params }: { params: Promise<{ id: 
   });
   if (!data.client) notFound();
   return (
-    <main className="max-w-5xl p-8 space-y-6">
-      <Link href={`/staff/clients/${id}`}>← {data.client.name}</Link>
-      <h1 className="text-2xl font-bold">Sanktionsabgleich und PEP-Recherche</h1>
-      <p className="rounded border border-amber-300 bg-amber-50 p-4 text-amber-950">
+    <div className="max-w-5xl space-y-6 p-4 sm:p-8">
+      <div>
+        <Link className="back-link" href={`/staff/clients/${id}`}>
+          ← {data.client.name}
+        </Link>
+        <h1 className="page-title">Sanktionsabgleich und PEP-Recherche</h1>
+      </div>
+      <p className="alert-warning leading-relaxed">
         Ungeprüfter fachlicher Entwurf. Namensähnlichkeiten sind Prüfhinweise; kein Treffer ist
         keine Freigabe. Eigentums- und Kontrollverhältnisse sowie PEP-Eigenschaften werden nicht
         automatisch beurteilt. Bestehende GwG-Prüfungen und Mandatsfreigaben bleiben unverändert.
       </p>
-      <p>
+      <p className="card p-5 text-sm leading-relaxed text-secondary">
         EU-Quelle:{' '}
         {data.state?.snapshot
           ? `${data.state.snapshot.entryCount} Einträge · Veröffentlichung ${data.state.snapshot.publishedAt.toLocaleDateString('de-DE')} · erfolgreicher Abruf ${data.state.checkedAt?.toLocaleString('de-DE') ?? 'unbekannt'}`
@@ -59,33 +63,49 @@ export default async function ScreeningPage({ params }: { params: Promise<{ id: 
         {sourceIsFresh(data.state?.checkedAt ?? null, data.state?.lastError ?? null)
           ? 'Abruf aktuell'
           : 'nicht aktuell / Fehler – erneuter Abgleich gesperrt'}
-        . <Link href="/staff/admin/screening">Quellenverwaltung</Link>
+        .{' '}
+        <Link className="text-brand-700 underline underline-offset-2" href="/staff/admin/screening">
+          Quellenverwaltung
+        </Link>
       </p>
       <ScreeningForms clientId={id} defaultName={data.client.name} context={data.context} />
-      <h2 className="text-lg font-semibold">Letzte 50 unveränderliche Prüfläufe</h2>
+      <h2 className="text-lg font-semibold text-primary">Letzte 50 unveränderliche Prüfläufe</h2>
+      {data.runs.length === 0 && (
+        <p className="card px-5 py-10 text-center text-sm text-muted">
+          Für diesen Mandanten sind noch keine Prüfläufe gespeichert.
+        </p>
+      )}
       {data.runs.map((run) => (
-        <article key={run.id} className="rounded-lg border border-default p-4 space-y-2">
-          <h3 className="font-semibold">
+        <article key={run.id} className="card space-y-4 p-5">
+          <h3 className="font-semibold text-primary">
             {run.kind === 'PEP' ? 'Manuelle PEP-Recherche' : 'EU-Namensabgleich'} ·{' '}
             {run.createdAt.toLocaleString('de-DE')}
             {run.previousRunId ? ' · automatischer Folgelauf' : ''}
           </h3>
-          <p className="text-sm">
+          <p className="text-sm text-muted break-words">
             Bearbeiter: {run.createdBy ?? 'System'} · Quellversion:{' '}
             {run.snapshot?.sourceVersion ?? 'manuelle Quellen'}
           </p>
-          <pre className="overflow-auto whitespace-pre-wrap rounded bg-surface-secondary p-3 text-xs">
+          <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-surface-raised p-4 text-xs text-secondary">
             {JSON.stringify({ person: run.subject, ergebnis: run.result }, null, 2)}
           </pre>
           {run.reviews.map((review) => (
-            <div key={review.id} className="border-l-2 pl-3 text-sm">
+            <div
+              key={review.id}
+              className="space-y-2 border-l-2 border-strong pl-4 text-sm text-secondary"
+            >
               <strong>{review.outcome}</strong> · {review.createdAt.toLocaleString('de-DE')} ·{' '}
               {review.createdBy}
               <p className="whitespace-pre-wrap">{review.note}</p>
               <ul>
                 {(review.sources as string[]).map((url) => (
                   <li key={url}>
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="underline">
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all text-brand-700 underline underline-offset-2"
+                    >
                       {url}
                     </a>
                   </li>
@@ -96,6 +116,6 @@ export default async function ScreeningPage({ params }: { params: Promise<{ id: 
           <ScreeningReviewForm clientId={id} runId={run.id} pep={run.kind === 'PEP'} />
         </article>
       ))}
-    </main>
+    </div>
   );
 }

@@ -112,6 +112,11 @@ erhalten und eingegebene Formeln werden nicht ausgeführt. Rate-Limit,
 No-Store-Header und ein Auditereignis mit Umfang und Filterart ergänzen den
 Leseschutz. Der Audittext enthält keine vollständige Ausweisdatenliste.
 
+Die Webansicht nutzt die gemeinsamen Seitenabstände, Karten, Tabellenköpfe und
+Schaltflächen der Anwendung. Schmale Ansichten scrollen die Detailtabelle innerhalb
+der Karte. Diese Darstellung ändert weder Filter, Gruppierung, Kontrollstatus noch
+den Inhalt des Excel-Exports.
+
 ## Bekannte Abweichungen und Grenzen
 
 Historische Akten, Registerbelege, Eigentumsstrukturen und Risikobegründungen

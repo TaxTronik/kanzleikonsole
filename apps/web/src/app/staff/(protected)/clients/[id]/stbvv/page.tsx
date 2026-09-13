@@ -31,21 +31,23 @@ export default async function ClientStbvvPage({ params }: { params: Promise<{ id
   const modules = await readModules(ctx),
     canSave = hasStaffPermission(session, 'INVOICE_MANAGE');
   return (
-    <main className="p-8 max-w-6xl space-y-5">
-      <Link href={`/staff/clients/${id}`}>← {data.client.name}</Link>
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
+      <Link className="back-link" href={`/staff/clients/${id}`}>
+        ← {data.client.name}
+      </Link>
       <h1 className="text-2xl font-bold">Gebührenkalkulationen</h1>
       <p>
         Gespeicherte Nachweise bleiben unverändert. Neue Berechnungen ersetzen keinen früheren
         Nachweis. Die Übernahme legt ausschließlich einen neuen Rechnungsentwurf an.
       </p>
-      <details>
-        <summary>Neue Kalkulation erstellen</summary>
+      <details className="card p-5 space-y-4">
+        <summary className="cursor-pointer font-semibold">Neue Kalkulation erstellen</summary>
         <FeeCalculatorForm clients={[data.client]} canSave={canSave} />
       </details>
       {data.quotes.map((q) => {
         const r = q.result as unknown as FeeCalculation;
         return (
-          <article key={q.id} className="rounded border p-4 space-y-2">
+          <article key={q.id} className="card p-5 space-y-3">
             <h2 className="font-semibold">
               {q.title} ·{' '}
               {(r.grossCents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
@@ -55,7 +57,7 @@ export default async function ClientStbvvPage({ params }: { params: Promise<{ id
             </p>
             <details>
               <summary>Vollständiger Berechnungsnachweis</summary>
-              <pre className="whitespace-pre-wrap overflow-auto text-xs">
+              <pre className="mt-3 rounded-lg bg-surface-raised p-4 whitespace-pre-wrap overflow-auto text-xs">
                 {JSON.stringify({ inputs: q.inputs, result: q.result }, null, 2)}
               </pre>
             </details>
@@ -73,6 +75,6 @@ export default async function ClientStbvvPage({ params }: { params: Promise<{ id
           </article>
         );
       })}
-    </main>
+    </div>
   );
 }

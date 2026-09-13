@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { recordPepResearchAction, reviewScreeningAction, runEuScreeningAction } from './actions';
-const field = 'block w-full rounded border border-default bg-surface px-3 py-2';
+const field = 'input mt-1';
 const sources = (value: FormDataEntryValue | null) =>
   String(value ?? '')
     .split(/\r?\n/)
@@ -10,7 +10,7 @@ const sources = (value: FormDataEntryValue | null) =>
 function ReviewFields({ pep }: { pep: boolean }) {
   return (
     <>
-      <label>
+      <label className="label">
         Dokumentiertes Ergebnis
         <select name="outcome" className={field} defaultValue="UNRESOLVED">
           <option value="UNRESOLVED">Offen / weitere Prüfung nötig</option>
@@ -29,13 +29,13 @@ function ReviewFields({ pep }: { pep: boolean }) {
           )}
         </select>
       </label>
-      <label>
+      <label className="label">
         Begründung / Rechercheumfang
-        <textarea name="note" required minLength={10} maxLength={4000} className={field} />
+        <textarea name="note" required minLength={10} maxLength={4000} rows={3} className={field} />
       </label>
-      <label>
+      <label className="label">
         Quellen-URLs, eine je Zeile
-        <textarea name="sources" required className={field} placeholder="https://…" />
+        <textarea name="sources" required rows={3} className={field} placeholder="https://…" />
       </label>
     </>
   );
@@ -58,7 +58,7 @@ export function ScreeningForms({
   const [message, setMessage] = useState('');
   return (
     <form
-      className="space-y-3 rounded-lg border border-default p-4"
+      className="card space-y-4 p-5"
       action={async (fd) => {
         setPending(true);
         setMessage('');
@@ -88,9 +88,9 @@ export function ScreeningForms({
         }
       }}
     >
-      <h2 className="font-semibold">Neue Prüfung dokumentieren</h2>
+      <h2 className="font-semibold text-primary">Neue Prüfung dokumentieren</h2>
       {context?.status === 'IN_REVIEW' ? (
-        <label>
+        <label className="label">
           Bindung an aktuelle GwG-Fassung
           <select name="targetKey" className={field}>
             <option value="">Freier Nachweis (erfüllt keine GwG-Freigabesperre)</option>
@@ -100,18 +100,18 @@ export function ScreeningForms({
               </option>
             ))}
           </select>
-          <span className="text-sm">
+          <span className="mt-2 block text-sm font-normal leading-relaxed text-muted">
             Bei Bindung werden Name und Geburtsdatum aus der aktuellen GwG-Fassung übernommen. Freie
             Werte unten ändern diese Person nicht.
           </span>
         </label>
       ) : (
-        <p>
+        <p className="text-sm leading-relaxed text-muted">
           Für freigaberelevante Nachweise zuerst die GwG-Fassung zur Berufsträgerprüfung einreichen.
           Freie Nachweise bleiben separat.
         </p>
       )}
-      <label>
+      <label className="label">
         Prüfart
         <select
           className={field}
@@ -122,7 +122,7 @@ export function ScreeningForms({
           <option value="PEP">Manuelle PEP-Recherche</option>
         </select>
       </label>
-      <label>
+      <label className="label">
         Name / Firma
         <input
           className={field}
@@ -133,7 +133,7 @@ export function ScreeningForms({
           maxLength={250}
         />
       </label>
-      <label>
+      <label className="label">
         Rolle im Mandat
         <input
           className={field}
@@ -143,22 +143,19 @@ export function ScreeningForms({
           placeholder="Mandant / gesetzliche Vertretung / wirtschaftlich Berechtigter"
         />
       </label>
-      <label>
+      <label className="label">
         Geburtsdatum, soweit bekannt
         <input type="date" className={field} name="birthDate" />
       </label>
       {mode === 'PEP' && <ReviewFields pep />}
-      <button
-        disabled={pending}
-        className="rounded bg-primary px-4 py-2 text-white disabled:opacity-50"
-      >
+      <button disabled={pending} className="btn-primary">
         {pending
           ? 'Wird gespeichert …'
           : mode === 'EU'
             ? 'Lokal abgleichen'
             : 'Recherche speichern'}
       </button>
-      <p role="status" className="text-sm">
+      <p role="status" className={message ? 'text-sm text-secondary' : 'sr-only'}>
         {message}
       </p>
     </form>
@@ -176,10 +173,12 @@ export function ScreeningReviewForm({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
   return (
-    <details className="mt-3">
-      <summary>Beurteilung als neuen Nachweis ergänzen</summary>
+    <details className="border-t border-default pt-4">
+      <summary className="cursor-pointer text-sm font-medium text-primary">
+        Beurteilung als neuen Nachweis ergänzen
+      </summary>
       <form
-        className="space-y-3 mt-3"
+        className="space-y-4 mt-4"
         action={async (fd) => {
           setPending(true);
           try {
@@ -199,10 +198,12 @@ export function ScreeningReviewForm({
         }}
       >
         <ReviewFields pep={pep} />
-        <button disabled={pending} className="rounded border px-3 py-2">
+        <button disabled={pending} className="btn-secondary">
           Ergänzung speichern
         </button>
-        <p role="status">{message}</p>
+        <p role="status" className={message ? 'text-sm text-secondary' : 'sr-only'}>
+          {message}
+        </p>
       </form>
     </details>
   );

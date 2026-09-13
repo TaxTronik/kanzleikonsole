@@ -12,7 +12,7 @@ import {
   type FeeCalculationInput,
 } from '@taxtronik/tax';
 import { saveStbvvQuoteAction, createStbvvDraftAction } from './actions';
-const field = 'block w-full rounded border border-default bg-surface px-3 py-2';
+const field = 'input mt-1 block';
 const euro = (c: number) =>
   (c / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 const id = () => crypto.randomUUID();
@@ -66,7 +66,7 @@ export function FeeCalculatorForm({
     onChange: (v: number) => void,
     allowSigned = false,
   ) => (
-    <label className="text-sm">
+    <label className="block text-sm font-medium text-secondary">
       {label}
       <input
         type="number"
@@ -92,8 +92,8 @@ export function FeeCalculatorForm({
   }
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <label>
+      <div className="card grid gap-4 p-5 md:grid-cols-2">
+        <label className="block text-sm font-medium text-secondary">
           Mandat
           <select className={field} value={clientId} onChange={(e) => setClientId(e.target.value)}>
             <option value="">Mandat auswählen</option>
@@ -104,7 +104,7 @@ export function FeeCalculatorForm({
             ))}
           </select>
         </label>
-        <label>
+        <label className="block text-sm font-medium text-secondary">
           Bezeichnung
           <input
             className={field}
@@ -117,9 +117,9 @@ export function FeeCalculatorForm({
       {lines.map((l, i) => {
         const d = STBVV_CATALOG.find((d) => d.id === l.feeId)!;
         return (
-          <fieldset key={l.id} className="rounded-lg border border-default p-4 space-y-3">
-            <legend className="px-1">Position {i + 1}</legend>
-            <label>
+          <fieldset key={l.id} className="card p-5 space-y-4">
+            <legend className="px-2 font-semibold">Position {i + 1}</legend>
+            <label className="block text-sm font-medium text-secondary">
               Gebührentatbestand
               <select
                 className={field}
@@ -148,7 +148,7 @@ export function FeeCalculatorForm({
               </a>
             </p>
             <div className="grid gap-3 md:grid-cols-3">
-              <label>
+              <label className="block text-sm font-medium text-secondary">
                 Angelegenheit / Gegenstand / Zeitraum
                 <input
                   className={field}
@@ -205,7 +205,7 @@ export function FeeCalculatorForm({
                 Keine natürliche Person (Mindestwert 25.000 Euro)
               </label>
             )}
-            <label>
+            <label className="block text-sm font-medium text-secondary">
               Beratung aus dieser Kalkulation anrechnen (§ 21 Abs. 1)
               <select
                 className={field}
@@ -222,7 +222,7 @@ export function FeeCalculatorForm({
                   ))}
               </select>
             </label>
-            <label>
+            <label className="block text-sm font-medium text-secondary">
               Wertberechnung, Rahmenwahl, Abgrenzung und Nachweis
               <textarea
                 className={field}
@@ -234,7 +234,7 @@ export function FeeCalculatorForm({
             </label>
             <button
               type="button"
-              className="text-sm underline"
+              className="btn-secondary"
               onClick={() => {
                 setLines((old) => old.filter((_, j) => j !== i));
                 setResult(null);
@@ -247,7 +247,7 @@ export function FeeCalculatorForm({
       })}
       <button
         type="button"
-        className="rounded border px-4 py-2"
+        className="btn-secondary"
         onClick={() => {
           setLines((old) => [...old, newLine()]);
           setResult(null);
@@ -256,10 +256,10 @@ export function FeeCalculatorForm({
         Gebührenposition hinzufügen ({STBVV_CATALOG.length} Katalogeinträge)
       </button>
       {expenses.map((e, i) => (
-        <fieldset key={e.id} className="rounded border p-4 space-y-3">
-          <legend>Auslage {i + 1}</legend>
+        <fieldset key={e.id} className="card p-5 space-y-4">
+          <legend className="px-2 font-semibold">Auslage {i + 1}</legend>
           <div className="grid gap-3 md:grid-cols-2">
-            <label>
+            <label className="block text-sm font-medium text-secondary">
               Art
               <select
                 className={field}
@@ -279,7 +279,7 @@ export function FeeCalculatorForm({
                 <option value="ACTUAL">Tatsächliche Auslagen / Softwarekosten mit Nachweis</option>
               </select>
             </label>
-            <label>
+            <label className="block text-sm font-medium text-secondary">
               Angelegenheit
               <select
                 className={field}
@@ -323,7 +323,7 @@ export function FeeCalculatorForm({
                 {numeric('Abwesenheit (Stunden, je Kalendertag)', e.hours, (v) =>
                   updateExpense(i, { hours: v }),
                 )}
-                <label>
+                <label className="block text-sm font-medium text-secondary">
                   <input
                     type="checkbox"
                     checked={e.foreignUplift ?? false}
@@ -334,7 +334,7 @@ export function FeeCalculatorForm({
               </>
             )}
           </div>
-          <label>
+          <label className="block text-sm font-medium text-secondary">
             Anspruchsvoraussetzung / Beleg / Verteilung
             <textarea
               className={field}
@@ -345,7 +345,7 @@ export function FeeCalculatorForm({
           </label>
           <button
             type="button"
-            className="underline text-sm"
+            className="btn-secondary"
             onClick={() => {
               setExpenses((old) => old.filter((_, j) => j !== i));
               setResult(null);
@@ -357,7 +357,7 @@ export function FeeCalculatorForm({
       ))}
       <button
         type="button"
-        className="rounded border px-4 py-2"
+        className="btn-secondary"
         onClick={() => {
           setExpenses((old) => [
             ...old,
@@ -368,8 +368,8 @@ export function FeeCalculatorForm({
       >
         Auslage hinzufügen
       </button>
-      <div className="grid md:grid-cols-2 gap-3">
-        <label>
+      <div className="card grid gap-4 p-5 md:grid-cols-2">
+        <label className="block text-sm font-medium text-secondary">
           Umsatzsteuer
           <select
             className={field}
@@ -384,7 +384,7 @@ export function FeeCalculatorForm({
           </select>
         </label>
         {vatRate === 0 && (
-          <label>
+          <label className="block text-sm font-medium text-secondary">
             Befreiungsgrund
             <input
               className={field}
@@ -421,9 +421,9 @@ export function FeeCalculatorForm({
         Anrechnungen wurden fachlich geprüft. Diese Bestätigung ist keine Berufsträgerfreigabe im
         Fachkatalog.
       </label>
-      <details>
-        <summary>Allgemeine Regeln und Grenzen</summary>
-        <ul className="list-disc pl-5">
+      <details className="card p-5 space-y-3">
+        <summary className="cursor-pointer font-semibold">Allgemeine Regeln und Grenzen</summary>
+        <ul className="list-disc space-y-2 pl-5 text-sm text-secondary">
           {STBVV_GENERAL_RULES.map(([p, t]) => (
             <li key={p}>
               {p}: {t}
@@ -436,14 +436,14 @@ export function FeeCalculatorForm({
           Rechtsstände, Erfolgshonorare und automatische Anspruchsprüfung sind nicht enthalten.
         </p>
       </details>
-      <div className="flex gap-3">
-        <button type="button" className="rounded border px-4 py-2" onClick={preview}>
+      <div className="flex flex-wrap gap-3">
+        <button type="button" className="btn-secondary" onClick={preview}>
           Berechnen
         </button>
         <button
           type="button"
           disabled={pending || !canSave || !clientId}
-          className="rounded border px-4 py-2 disabled:opacity-50"
+          className="btn-primary"
           onClick={async () => {
             if (!preview()) return;
             setPending(true);
@@ -466,12 +466,12 @@ export function FeeCalculatorForm({
         {message}
       </p>
       {clientId && (
-        <Link className="underline" href={`/staff/clients/${clientId}/stbvv`}>
+        <Link className="btn-secondary" href={`/staff/clients/${clientId}/stbvv`}>
           Gespeicherte Kalkulationen dieses Mandats
         </Link>
       )}
       {result && (
-        <section className="rounded border p-4 space-y-3">
+        <section className="card p-5 space-y-4">
           <h2 className="font-semibold">Kalkulation · {euro(result.grossCents)} brutto</h2>
           <p>
             Netto {euro(result.netCents)} · USt {euro(result.vatCents)}
@@ -507,7 +507,7 @@ export function FeeCalculatorForm({
           ))}
           <button
             type="button"
-            className="underline"
+            className="btn-secondary"
             onClick={() => {
               const blob = new Blob([JSON.stringify({ input: input(), result }, null, 2)], {
                   type: 'application/json',
@@ -552,17 +552,17 @@ export function FeeDraftForm({ clientId, quoteId }: { clientId: string; quoteId:
         }
       }}
     >
-      <div className="flex gap-3">
-        <label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm font-medium text-secondary">
           Rechnungsdatum
           <input type="date" name="issueDate" required className={field} />
         </label>
-        <label>
+        <label className="block text-sm font-medium text-secondary">
           Fälligkeit
           <input type="date" name="dueDate" required className={field} />
         </label>
       </div>
-      <button disabled={pending} className="rounded border px-3 py-2">
+      <button disabled={pending} className="btn-primary">
         Als neuen Rechnungsentwurf übernehmen
       </button>
       <p role="status">{message}</p>

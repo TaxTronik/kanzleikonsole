@@ -57,7 +57,7 @@ export function PayrollActionForm({
               </a>
               {result.link.startsWith('/payroll/employee') && (
                 <button
-                  className="btn ml-2"
+                  className="btn-secondary mt-2 sm:ml-2 sm:mt-0"
                   type="button"
                   onClick={() =>
                     navigator.clipboard.writeText(

@@ -40,14 +40,14 @@ export default function StructureEditor({
     }));
   };
   return (
-    <ActionForm action={saveStructureAction} className="space-y-6">
+    <ActionForm action={saveStructureAction} className="card p-5 space-y-6">
       <input type="hidden" name="structure" value={JSON.stringify(data)} />
       <p className="text-sm text-muted">
         Manuell dokumentierte direkte Beziehungen. Keine automatische Personenidentität, indirekte
         Beteiligungsquote, wirtschaftlich-berechtigte Person oder Organschaft. Gespeicherte
         Versionen bleiben getrennt von GwG-Freigaben.
       </p>
-      <div className="border rounded-lg overflow-hidden bg-slate-50">
+      <div className="border border-default rounded-lg overflow-hidden bg-surface-raised">
         <svg
           viewBox="0 0 1040 600"
           className="w-full touch-none"
@@ -77,7 +77,7 @@ export default function StructureEditor({
               refY="4"
               orient="auto"
             >
-              <path d="M0 0L8 4L0 8Z" fill="#64748b" />
+              <path d="M0 0L8 4L0 8Z" fill="rgb(var(--text-muted))" />
             </marker>
           </defs>
           {data.edges.map((edge, i) => {
@@ -90,11 +90,16 @@ export default function StructureEditor({
                   y1={a.y + 25}
                   x2={b.x + 70}
                   y2={b.y + 25}
-                  stroke="#64748b"
+                  stroke="rgb(var(--text-muted))"
                   strokeWidth="2"
                   markerEnd="url(#structure-arrow)"
                 />
-                <text x={(a.x + b.x) / 2 + 70} y={(a.y + b.y) / 2 + 18} fontSize="12">
+                <text
+                  x={(a.x + b.x) / 2 + 70}
+                  y={(a.y + b.y) / 2 + 18}
+                  fontSize="12"
+                  fill="rgb(var(--text-primary))"
+                >
                   {edge.percentage === null ? edge.kind : `${edge.percentage}%`}
                 </text>
               </g>
@@ -114,13 +119,16 @@ export default function StructureEditor({
                 width="140"
                 height="52"
                 rx="7"
-                fill={n.kind === 'CLIENT' ? '#dbeafe' : 'white'}
-                stroke="#475569"
+                fill="rgb(var(--surface-card))"
+                stroke={
+                  n.kind === 'CLIENT' ? 'rgb(var(--brand-focus))' : 'rgb(var(--border-strong))'
+                }
+                strokeWidth={n.kind === 'CLIENT' ? 2 : 1}
               />
-              <text x="8" y="21" fontSize="12">
+              <text x="8" y="21" fontSize="12" fill="rgb(var(--text-primary))">
                 {n.label.length > 21 ? `${n.label.slice(0, 20)}…` : n.label}
               </text>
-              <text x="8" y="40" fontSize="10" fill="#64748b">
+              <text x="8" y="40" fontSize="10" fill="rgb(var(--text-muted))">
                 {n.kind}
               </text>
             </g>
@@ -169,11 +177,11 @@ export default function StructureEditor({
         </button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[640px] text-sm [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_td]:p-3 [&_tbody_tr]:border-t [&_tbody_tr]:border-default">
           <caption className="text-left font-semibold py-2">
             Knoten – alternativ ohne Drag-and-drop bearbeitbar
           </caption>
-          <thead>
+          <thead className="bg-surface-raised text-muted">
             <tr>
               <th>Name</th>
               <th>Art / Akte</th>
@@ -198,7 +206,7 @@ export default function StructureEditor({
                 <td>
                   {n.linkedClientId ? (
                     <a
-                      className="text-blue-700 underline"
+                      className="text-brand-700 underline"
                       href={`/staff/clients/${n.linkedClientId}`}
                     >
                       Mandantenakte öffnen
@@ -232,6 +240,7 @@ export default function StructureEditor({
                 <td>
                   <button
                     type="button"
+                    className="btn-secondary"
                     disabled={n.linkedClientId === data.clientId}
                     onClick={() =>
                       setData((d) => ({
@@ -324,6 +333,7 @@ export default function StructureEditor({
           />
           <button
             type="button"
+            className="btn-secondary"
             onClick={() => setData((d) => ({ ...d, edges: d.edges.filter((_, j) => j !== i) }))}
           >
             Entfernen

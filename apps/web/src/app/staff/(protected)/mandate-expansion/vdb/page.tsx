@@ -44,10 +44,10 @@ export default async function VdbPage({
       }))
     : null;
   return (
-    <main className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl space-y-6">
       <ExpansionNavigation />
       <h1 className="text-2xl font-semibold">VDB-Vorbereitung und externe Nachweise</h1>
-      <aside className="border border-amber-300 bg-amber-50 p-5 rounded-lg">
+      <aside className="alert-warning">
         <h2 className="font-semibold">Dateiexport / direkte Meldung nicht freigeschaltet</h2>
         <p>
           Es liegt hier keine implementierte und nachgewiesene offizielle Importspezifikation vor.
@@ -65,7 +65,7 @@ export default async function VdbPage({
         const latest = p.vdbRecords[0];
         const next = VDB_STATES.filter((s) => vdbTransitionAllowed(latest?.status ?? null, s));
         return (
-          <section className="border rounded-lg p-5 space-y-4" key={p.id}>
+          <section className="card p-5 space-y-4" key={p.id}>
             <h2 className="font-semibold">{p.subject}</h2>
             <p>
               Technischer Vollmachtsstatus: {p.status} · Externer Nachweis:{' '}
@@ -137,6 +137,6 @@ export default async function VdbPage({
           </section>
         );
       })}
-    </main>
+    </div>
   );
 }

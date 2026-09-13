@@ -74,19 +74,24 @@ export async function AssistancePage({
       }),
     );
     return (
-      <main className="p-8 space-y-4">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
         <h1 className="text-2xl font-bold">Mandanten-Assistenten</h1>
-        <p>Mandant für Belegassistenten und Verfahrensdokumentation wählen.</p>
-        <ul>
+        <p className="text-sm text-muted">
+          Mandant für Belegassistenten und Verfahrensdokumentation wählen.
+        </p>
+        <ul className="grid gap-3 sm:grid-cols-2">
           {clients.map((c) => (
             <li key={c.id}>
-              <Link className="text-accent underline" href={prefix + '?clientId=' + c.id}>
+              <Link
+                className="card block p-4 font-medium hover:bg-surface-raised"
+                href={prefix + '?clientId=' + c.id}
+              >
                 {c.name}
               </Link>
             </li>
           ))}
         </ul>
-      </main>
+      </div>
     );
   }
   const items = await withAssistance(surface, kind, clientId, (tx) =>
@@ -156,7 +161,7 @@ export async function AssistancePage({
     </>
   );
   return (
-    <main className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
       <h1 className="text-2xl font-bold">Mandanten-Assistenten</h1>
       <nav className="flex flex-wrap gap-3">
         {kinds.map((k) => (
@@ -170,9 +175,11 @@ export async function AssistancePage({
         ))}
       </nav>
       <div className="grid gap-8 md:grid-cols-[1fr_2fr]">
-        <aside>
+        <aside className="card self-start p-5 space-y-3">
           <h2 className="font-semibold">Vorgänge (neueste 100)</h2>
-          <Link href={prefix + '?clientId=' + clientId + '&kind=' + kind}>Neuer Vorgang</Link>
+          <Link className="btn-secondary" href={prefix + '?clientId=' + clientId + '&kind=' + kind}>
+            Neuer Vorgang
+          </Link>
           <ul className="space-y-3 mt-3">
             {items.map((item) => (
               <li key={item.id}>
@@ -186,9 +193,9 @@ export async function AssistancePage({
             ))}
           </ul>
         </aside>
-        <section className="space-y-6">
+        <section className="min-w-0 space-y-6">
           {selected?.externalDocumentVersionId ? (
-            <section className="rounded-lg border p-4 space-y-3">
+            <section className="card p-5 space-y-3">
               <h2 className="text-lg font-semibold">
                 Externe Word-Fassung · V{selected.revision} · {selected.status}
               </h2>
@@ -234,7 +241,7 @@ export async function AssistancePage({
                 </p>
               )}
               {reviewAction && ['SUBMITTED', 'REVIEWED'].includes(selected.status) && (
-                <section className="border rounded-lg p-4">
+                <section className="card p-5">
                   <h2 className="font-semibold mb-3">Prüfung dieser Fassung</h2>
                   <ExpansionForm action={reviewAction} label="Prüfentscheidung protokollieren">
                     {identity(selected.revision)}
@@ -266,7 +273,7 @@ export async function AssistancePage({
                 </section>
               )}
               {kind === 'PROCEDURE' && (
-                <section className="border rounded-lg p-4 space-y-3">
+                <section className="card p-5 space-y-3">
                   <h2 className="font-semibold">Extern bearbeitete Word-Datei als neue Fassung</h2>
                   <p className="text-sm">
                     Bearbeitete DOCX zuerst im Bereich Dokumente hochladen. Die unveränderte
@@ -325,7 +332,7 @@ export async function AssistancePage({
                   <details
                     key={row.id}
                     open={row.revision === selected.revision}
-                    className="border rounded-lg p-4 space-y-3"
+                    className="card p-5 space-y-3"
                   >
                     <summary className="font-semibold">
                       V{row.revision} · {row.status} · {row.occurredAt.toISOString().slice(0, 10)} ·{' '}
@@ -438,6 +445,6 @@ export async function AssistancePage({
           )}
         </section>
       </div>
-    </main>
+    </div>
   );
 }

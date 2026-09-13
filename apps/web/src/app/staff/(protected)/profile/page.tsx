@@ -12,6 +12,42 @@ const ROLE_LABELS: Record<string, string> = {
   EMPLOYEE: 'Mitarbeiter',
 };
 
+function AccountDetails({
+  account,
+  user,
+}: {
+  account: { fullName: string; email: string; datevAdvisorNumber: string | null } | null;
+  user: { fullName: string; email: string; roles: string[] };
+}) {
+  return (
+    <section className="card p-6">
+      <h2 className="mb-3 font-semibold text-primary">Kontodaten</h2>
+      <dl className="space-y-3 text-sm">
+        <div>
+          <dt className="text-xs text-muted">Name</dt>
+          <dd className="font-medium text-primary">{account?.fullName ?? user.fullName}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted">E-Mail</dt>
+          <dd className="break-all text-secondary">{account?.email ?? user.email}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted">DATEV-Beraternummer (intern)</dt>
+          <dd className="break-all text-secondary">
+            {account?.datevAdvisorNumber || 'Nicht hinterlegt'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted">Rollen</dt>
+          <dd className="text-secondary">
+            {user.roles.map((role) => ROLE_LABELS[role] ?? role).join(', ')}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 export default async function StaffProfilePage() {
   const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
@@ -23,6 +59,7 @@ export default async function StaffProfilePage() {
         select: {
           fullName: true,
           email: true,
+          datevAdvisorNumber: true,
           totpEnrolledAt: true,
           hardwareOnlyEnabledAt: true,
           hardwareCredentials: {
@@ -105,27 +142,7 @@ export default async function StaffProfilePage() {
         </section>
 
         <div className="space-y-6">
-          <section className="card p-6">
-            <h2 className="mb-3 font-semibold text-primary">Kontodaten</h2>
-            <dl className="space-y-3 text-sm">
-              <div>
-                <dt className="text-xs text-muted">Name</dt>
-                <dd className="font-medium text-primary">
-                  {account?.fullName ?? session.user.fullName}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">E-Mail</dt>
-                <dd className="break-all text-secondary">{account?.email ?? session.user.email}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Rollen</dt>
-                <dd className="text-secondary">
-                  {session.user.roles.map((role) => ROLE_LABELS[role] ?? role).join(', ')}
-                </dd>
-              </div>
-            </dl>
-          </section>
+          <AccountDetails account={account} user={session.user} />
 
           <section className="card p-6">
             <div className="mb-2 flex items-center gap-2">

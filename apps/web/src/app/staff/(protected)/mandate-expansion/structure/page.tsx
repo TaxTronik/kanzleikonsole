@@ -38,7 +38,7 @@ export default async function StructurePage({
       )
     : [];
   return (
-    <main className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl space-y-6">
       <ExpansionNavigation />
       <h1 className="text-2xl font-semibold">Mandanten- und Beteiligungsstruktur</h1>
       <ClientSelect clients={clients} selected={clientId} />
@@ -51,7 +51,7 @@ export default async function StructurePage({
         client && (
           <>
             {saved && (
-              <section className="border rounded-lg p-4">
+              <section className="card p-5">
                 <h2 className="font-semibold">Version {saved.revision}</h2>
                 <p>
                   PDF mit Grafik, vollständiger Tabelle, Generator- und Quellenbindung ausdrücklich
@@ -116,6 +116,6 @@ export default async function StructurePage({
         </section>
       )}
       {client && !unavailable && <GwgStructurePanel session={session} clientId={clientId} />}
-    </main>
+    </div>
   );
 }

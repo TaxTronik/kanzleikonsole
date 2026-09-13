@@ -39,7 +39,7 @@ export default async function OffboardingPage({
     : null;
   const draft = data?.runs.find((r) => !r.completedAt);
   return (
-    <main className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl space-y-6">
       <ExpansionNavigation />
       <h1 className="text-2xl font-semibold">Mandatsübergabe und Beendigung</h1>
       <p>
@@ -50,7 +50,7 @@ export default async function OffboardingPage({
       <ClientSelect clients={clients} selected={clientId} />
       {data && (
         <>
-          <section className="border rounded-lg p-5 space-y-3">
+          <section className="card p-5 space-y-3">
             <h2 className="font-semibold">Offene Vorgänge</h2>
             <ul className="list-disc pl-5">
               {data.source.snapshot.deadlines.map((d) => (
@@ -84,7 +84,7 @@ export default async function OffboardingPage({
             <ActionForm
               key={draft?.sourceHash ?? data.source.hash}
               action={prepareOffboardingAction}
-              className="border rounded-lg p-5 space-y-4"
+              className="card p-5 space-y-4"
             >
               <input type="hidden" name="clientId" value={clientId} />
               <input type="hidden" name="expectedHash" value={data.source.hash} />
@@ -132,7 +132,10 @@ export default async function OffboardingPage({
                       (v) => v.documentVersionId === d.versionId,
                     );
                     return (
-                      <fieldset className="border rounded p-3 space-y-2" key={d.versionId}>
+                      <fieldset
+                        className="border border-default bg-surface-raised rounded-lg p-3 space-y-2"
+                        key={d.versionId}
+                      >
                         <legend className="px-1 text-sm font-medium">{d.title}</legend>
                         <p className="text-xs">
                           {d.classification}
@@ -199,7 +202,7 @@ export default async function OffboardingPage({
               <button className="btn-primary">Freigaben und Prüfstand speichern</button>
             </ActionForm>
           ) : (
-            <p className="border p-4">
+            <p className="card p-4">
               Mandat beendet seit {data.source.client.mandateEndedAt.toISOString().slice(0, 10)}.
               Eine Wiederaufnahme ist eine separate administrative Entscheidung.
             </p>
@@ -217,7 +220,7 @@ export default async function OffboardingPage({
               const hash = handoverPreparationHash(run);
               const currentArtifacts = run.artifacts.filter((a) => a.sourceHash === hash);
               return (
-                <article className="border rounded-lg p-5 space-y-3" key={run.id}>
+                <article className="card p-5 space-y-3" key={run.id}>
                   <h3 className="font-semibold">
                     {run.createdAt.toISOString().slice(0, 10)} ·{' '}
                     {run.completedAt ? 'Abgeschlossen' : 'Vorbereitet'} · {run.documents.length}{' '}
@@ -266,7 +269,7 @@ export default async function OffboardingPage({
             })}
           </section>
           {draft && !data.source.client.mandateEndedAt && (
-            <section className="border rounded-lg p-5 space-y-4">
+            <section className="card p-5 space-y-4">
               <h2 className="font-semibold">3. Gesondert abschließen</h2>
               <ActionForm action={finishOffboardingAction}>
                 <input type="hidden" name="id" value={draft.id} />
@@ -283,6 +286,6 @@ export default async function OffboardingPage({
           )}
         </>
       )}
-    </main>
+    </div>
   );
 }

@@ -76,16 +76,18 @@ export default async function PayrollPage({
   const selected = id && isUuid(id) ? id : data.rows[0]?.id;
   const detail = selected ? await loadPayrollDetail(selected) : null;
   return (
-    <main className="p-6 max-w-7xl space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl space-y-6">
       <h1 className="text-2xl font-bold">Personalfragebogen</h1>
-      <p>
+      <p className="text-sm text-muted">
         Neuanlage vorbereiten, getrennte Angaben einholen und prüfen. Zugriff nur mit PAYROLL_MANAGE
         und aktuellem Mandatszugriff. Lohnanlagen erscheinen nicht in der allgemeinen
         Dokumentensuche.
       </p>
       <div className="card border-amber-300 p-4">{DATEV_GATE_MESSAGE}</div>
-      <details className="card p-4">
-        <summary className="font-semibold">Neuen Personalvorgang vorbereiten</summary>
+      <details className="card p-5 space-y-4">
+        <summary className="cursor-pointer font-semibold">
+          Neuen Personalvorgang vorbereiten
+        </summary>
         <PayrollActionForm action={createPayrollAction} label="Einzelvorgang anlegen">
           <label className="block">
             Mandat
@@ -123,7 +125,7 @@ export default async function PayrollPage({
         <aside className="space-y-2">
           {data.rows.map((row) => (
             <Link
-              className="block rounded border p-3"
+              className="card block p-3 hover:bg-surface-raised"
               key={row.id}
               href={'/staff/payroll?id=' + row.id}
             >
@@ -137,7 +139,7 @@ export default async function PayrollPage({
         </aside>
         {detail ? <PayrollDetailView detail={detail} /> : <p>Noch kein Personalvorgang.</p>}
       </div>
-    </main>
+    </div>
   );
 }
 

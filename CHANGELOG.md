@@ -20,6 +20,29 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+### Neue Modulansichten und Profilbearbeitung vereinheitlicht (2026-09-14)
+
+- GwG-Kontrollliste und Smart-Mailbox erhalten die üblichen Seitenabstände,
+  responsiven Formularfelder, Karten und Buttons. Das Anlegen eines Postfachs
+  ist klar gegliedert; Nachrichten, Anhänge und Zuordnung bleiben getrennt lesbar
+  (`GWG-CONTROL-EXPORT-001`, `MAIL-INBOX-001`).
+- **[Scope]** Berufliches Profil und interne DATEV-Beraternummer sind zunächst
+  schreibgeschützt dargestellt. Erst „Bearbeiten“ öffnet den Entwurf;
+  „Abbrechen“ verwirft ihn. Speichern und die bestehende Bestätigung beim Entzug
+  einer Qualifikation funktionieren auch gemeinsam. Die eigene Beraternummer
+  ist mit führenden Nullen in den Kontodaten sichtbar. Rechte und serverseitige
+  Validierungen bleiben unverändert (`ACCESS-STAFF-PERMISSION-001`).
+- Die EU-Sanktionsquelle erklärt den Zustand vor dem ersten Abruf. Gespeicherte
+  Quellversion, Umfang und Abrufzeitpunkte sowie Fehler werden beschriftet
+  dargestellt. Bestehende Screening-Sperren und Prüfentscheidungen bleiben
+  unverändert (`GWG-SCREENING-001`).
+- Gebührenkalkulation, Mandatsorganisation, Personalfragebogen und
+  Mandanten-Assistenten nutzen vorhandene Designklassen für Eingaben,
+  Karten, Buttons und Rückmeldungen. Die Beteiligungsgrafik folgt dem hellen
+  und dunklen Farbschema; breite Tabellen scrollen innerhalb ihrer Karte.
+  Diese Darstellungsänderungen ändern keine fachliche Berechnung, Freigabe,
+  Zuordnung oder Archivierung.
+
 ### Scrollleisten der Seitenmenüs (2026-09-14)
 
 - Kanzlei- und Mandantenportal verwenden für ihre Navigation dieselbe schmale,

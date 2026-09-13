@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { FileDown, Search } from 'lucide-react';
 import { withTenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
@@ -57,23 +58,24 @@ export default async function GwgControlPage({
   const visible = [...groups].slice((currentPage - 1) * 50, currentPage * 50);
   const pageUrl = (next: number) => `/staff/gwg?${query.toString()}&page=${next}`;
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">GwG-Kontrollliste</h1>
-          <p className="mt-2 text-sm text-muted">
+          <h1 className="page-title">GwG-Kontrollliste</h1>
+          <p className="max-w-3xl text-sm leading-relaxed text-muted">
             Aktueller, nicht vernichteter Prüfstand der für Sie sichtbaren Mandanten. Diese
             Arbeitsübersicht ist keine vollständige GwG-Akte.
           </p>
         </div>
         {data.list && (
-          <a className="btn-primary" href={`/api/staff/gwg/export?${query.toString()}`}>
+          <a className="btn-secondary shrink-0" href={`/api/staff/gwg/export?${query.toString()}`}>
+            <FileDown className="h-4 w-4" aria-hidden="true" />
             Excel exportieren
           </a>
         )}
       </div>
-      <form className="card grid gap-4 p-4 md:grid-cols-4" method="get">
-        <div>
+      <form className="card grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4" method="get">
+        <div className="min-w-0">
           <label className="label" htmlFor="gwg-search">
             Person / Mandant / DATEV-Nr.
           </label>
@@ -85,7 +87,7 @@ export default async function GwgControlPage({
             maxLength={150}
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <label className="label" htmlFor="gwg-state">
             Kontrollstatus
           </label>
@@ -101,7 +103,7 @@ export default async function GwgControlPage({
             ))}
           </select>
         </div>
-        <div>
+        <div className="min-w-0">
           <label className="label" htmlFor="gwg-client">
             Mandant
           </label>
@@ -115,7 +117,10 @@ export default async function GwgControlPage({
           </select>
         </div>
         <div className="flex items-end">
-          <button className="btn-secondary">Filtern</button>
+          <button className="btn-primary">
+            <Search className="h-4 w-4" aria-hidden="true" />
+            Filtern
+          </button>
         </div>
       </form>
       {data.error && (
@@ -130,19 +135,26 @@ export default async function GwgControlPage({
             Excel-Blätter verwenden dieselbe Personengruppennummer.
           </p>
           <PersonLinkForm people={data.list.people} links={data.list.links} />
-          {!visible.length && <p className="card p-6 text-muted">Keine passenden Einträge.</p>}
+          {!visible.length && (
+            <div className="card px-6 py-12 text-center">
+              <p className="font-medium text-primary">Keine passenden Einträge</p>
+              <p className="mt-2 text-sm text-muted">
+                Für die ausgewählten Filter sind keine Einträge sichtbar.
+              </p>
+            </div>
+          )}
           {visible.map(([id, rows]) => (
-            <details key={id} className="card" open={visible.length <= 3}>
-              <summary className="cursor-pointer p-4 font-medium">
+            <details key={id} className="card overflow-hidden" open={visible.length <= 3}>
+              <summary className="cursor-pointer px-5 py-4 font-medium text-primary">
                 {id} · {[...new Set(rows.map((row) => row.personName))].join(' / ')}{' '}
                 <span className="text-sm font-normal text-muted">
                   · {new Set(rows.map((row) => row.clientId)).size} sichtbare Mandanten
                 </span>
               </summary>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="min-w-[48rem] w-full text-left text-sm">
                   <thead>
-                    <tr className="border-y border-subtle">
+                    <tr className="border-y border-default bg-surface-raised">
                       {[
                         'Mandant / Rolle',
                         'Ausweis',
@@ -150,7 +162,7 @@ export default async function GwgControlPage({
                         'Ausweisprüfung',
                         'GwG-Freigabe',
                       ].map((title) => (
-                        <th className="p-3 font-medium" key={title}>
+                        <th className="th px-4" scope="col" key={title}>
                           {title}
                         </th>
                       ))}
@@ -158,10 +170,13 @@ export default async function GwgControlPage({
                   </thead>
                   <tbody>
                     {rows.map((row) => (
-                      <tr key={row.rowId} className="border-b border-subtle align-top">
-                        <td className="p-3">
+                      <tr
+                        key={row.rowId}
+                        className="border-b border-subtle align-top last:border-0"
+                      >
+                        <td className="px-4 py-3">
                           <Link
-                            className="text-brand-700 underline"
+                            className="font-medium text-brand-700 underline underline-offset-2"
                             href={`/staff/clients/${row.clientId}/gwg`}
                           >
                             {row.clientName}
@@ -174,24 +189,24 @@ export default async function GwgControlPage({
                             {row.datevNo ? ` · DATEV ${row.datevNo}` : ''}
                           </p>
                         </td>
-                        <td className="p-3">
+                        <td className="px-4 py-3">
                           <p>{row.documentType || 'Kein Ausweis'}</p>
                           <p className="font-mono">{row.number || 'Nummer fehlt'}</p>
                           <p className="text-xs text-muted">
                             {row.expiryDate ? `Gültig bis ${row.expiryDate}` : 'Gültigkeit fehlt'}
                           </p>
                         </td>
-                        <td className="p-3">
+                        <td className="px-4 py-3">
                           {row.missingPerson
                             ? 'Keine Person erfasst'
                             : CONTROL_STATE_LABELS[row.state]}
                           <p className="text-xs text-muted">Prüfstatus: {row.checkStatus}</p>
                         </td>
-                        <td className="p-3">
+                        <td className="px-4 py-3">
                           {row.identityReviewedBy || 'Nicht geprüft'}
                           <p className="text-xs text-muted">{row.identityReviewedAt}</p>
                         </td>
-                        <td className="p-3">
+                        <td className="px-4 py-3">
                           {row.approvedBy || 'Nicht freigegeben'}
                           <p className="text-xs text-muted">{row.approvedAt}</p>
                         </td>
@@ -203,7 +218,10 @@ export default async function GwgControlPage({
             </details>
           ))}
           {pages > 1 && (
-            <nav aria-label="Kontrollliste Seiten" className="flex items-center justify-between">
+            <nav
+              aria-label="Kontrollliste Seiten"
+              className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted"
+            >
               {currentPage > 1 ? (
                 <Link className="btn-secondary" href={pageUrl(currentPage - 1)}>
                   Zurück

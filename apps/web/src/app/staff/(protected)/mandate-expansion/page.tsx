@@ -12,13 +12,13 @@ export default async function MandateExpansionPage() {
   });
   const items = resolveMandateExpansionItems(m, isStaffAdmin(s));
   return (
-    <main className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       <h1 className="text-2xl font-semibold">Mandatsorganisation</h1>
       <div className="grid gap-4 md:grid-cols-2">
         {items.map((i) => (
-          <Link className="card p-6 border rounded-lg" href={i.href} key={i.id}>
+          <Link className="card p-6 hover:bg-surface-raised" href={i.href} key={i.id}>
             <h2 className="font-semibold mb-2">{i.title}</h2>
-            <p>{i.description}</p>
+            <p className="text-sm text-muted">{i.description}</p>
           </Link>
         ))}
       </div>
@@ -28,6 +28,6 @@ export default async function MandateExpansionPage() {
           den Einstellungen einschalten.
         </p>
       )}
-    </main>
+    </div>
   );
 }

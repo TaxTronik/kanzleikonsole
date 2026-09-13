@@ -15,18 +15,18 @@ export function PersonLinkForm({
     people.map((person) => [person.id, `${person.name} — ${person.clientName}`]),
   );
   return (
-    <details className="card p-4">
-      <summary className="cursor-pointer font-medium">
+    <details className="card p-5">
+      <summary className="cursor-pointer font-medium text-primary">
         Personen ausdrücklich verknüpfen oder Verbindung lösen
       </summary>
       <p className="mt-3 text-sm text-muted">
         Bestätigen Sie nur bekannte Personenidentität. Angaben, Ausweise und GwG-Freigaben bleiben
         je Mandat getrennt. Gleiche Namen werden nicht automatisch verbunden.
       </p>
-      <form action={action} className="mt-4 space-y-3">
-        <div className="grid gap-3 md:grid-cols-2">
+      <form action={action} className="mt-4 space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
           {(['left', 'right'] as const).map((key, index) => (
-            <div key={key}>
+            <div className="min-w-0" key={key}>
               <label className="label" htmlFor={`person-link-${key}`}>
                 Person {index + 1}
               </label>
@@ -50,7 +50,12 @@ export function PersonLinkForm({
           ))}
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <input name="confirmed" type="checkbox" required />
+          <input
+            name="confirmed"
+            type="checkbox"
+            className="h-4 w-4 shrink-0 rounded border-strong"
+            required
+          />
           Ich bestätige: Die ausgewählten Einträge gehören zu derselben Person.
         </label>
         <button className="btn-primary" disabled={pending || people.length < 2}>
@@ -63,7 +68,7 @@ export function PersonLinkForm({
         </p>
       )}
       {state?.ok && (
-        <p role="status" className="text-sm mt-3">
+        <p role="status" className="text-sm text-secondary mt-3">
           Die Verknüpfung wurde gespeichert.
         </p>
       )}
@@ -91,14 +96,19 @@ function RemoveLink({ link, label }: { link: VisiblePersonLink; label: string })
       <input type="hidden" name="remove" value="true" />
       <span className="flex-1">{label}</span>
       <label className="flex items-center gap-2">
-        <input type="checkbox" name="confirmed" required />
+        <input
+          type="checkbox"
+          name="confirmed"
+          className="h-4 w-4 shrink-0 rounded border-strong"
+          required
+        />
         Verbindung lösen
       </label>
       <button className="btn-secondary text-xs" disabled={pending}>
         {pending ? 'Speichert…' : 'Bestätigen'}
       </button>
       {state && !state.ok && (
-        <span role="alert" className="text-red-700">
+        <span role="alert" className="alert-error-sm">
           {state.error}
         </span>
       )}

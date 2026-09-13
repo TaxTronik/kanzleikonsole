@@ -24,10 +24,12 @@ export async function ExpansionNavigation() {
   });
   const items = resolveMandateExpansionItems(modules, isStaffAdmin(session));
   return (
-    <nav className="flex flex-wrap gap-4 text-sm mb-6" aria-label="Mandatsorganisation">
-      <Link href="/staff/mandate-expansion">Übersicht</Link>
+    <nav className="flex flex-wrap gap-2" aria-label="Mandatsorganisation">
+      <Link className="btn-secondary" href="/staff/mandate-expansion">
+        Übersicht
+      </Link>
       {items.map((item) => (
-        <Link href={item.href} key={item.id}>
+        <Link className="btn-secondary" href={item.href} key={item.id}>
           {item.label}
         </Link>
       ))}
@@ -42,9 +44,9 @@ export function ClientSelect({
   selected: string;
 }) {
   return (
-    <form method="get" className="flex gap-2 mb-6">
-      <label className="label">
-        Mandant
+    <form method="get" className="card flex flex-wrap items-end gap-3 p-5">
+      <label className="block min-w-0 flex-1 sm:max-w-md">
+        <span className="label">Mandant</span>
         <select className="input" name="clientId" defaultValue={selected}>
           <option value="">Bitte wählen</option>
           {clients.map((c) => (

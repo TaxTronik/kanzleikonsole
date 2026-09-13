@@ -24,9 +24,9 @@ export default async function StbvvPage() {
     }),
   );
   return (
-    <main className="p-8 max-w-6xl space-y-5">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
       <h1 className="text-2xl font-bold">StBVV-Gebührenkalkulation</h1>
-      <p>
+      <p className="text-sm text-muted">
         Aktueller Gebührenkatalog mit Tabellen A–D. Fachlicher Entwurf ohne Berufsträgerfreigabe.
         Tatbestand, Gegenstandswert und Rahmenwahl bleiben prüfpflichtig; externe RVG-Berechnungen
         werden ausdrücklich gekennzeichnet.
@@ -35,6 +35,6 @@ export default async function StbvvPage() {
         clients={clients}
         canSave={hasStaffPermission(session, 'INVOICE_MANAGE')}
       />
-    </main>
+    </div>
   );
 }

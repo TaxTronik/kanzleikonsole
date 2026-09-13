@@ -36,7 +36,7 @@ export function ClientAssistanceForm({
   const fields = item?.schemaSnapshot?.fields ?? definition.fields;
   const locked = item && !['DRAFT', 'RETURNED'].includes(item.status);
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="card p-5 space-y-4">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="id" value={item?.id ?? ''} />
@@ -48,7 +48,7 @@ export function ClientAssistanceForm({
       </p>
       {fields.map((field) => (
         <label key={field.key} className="block">
-          <span className="block text-sm font-medium">
+          <span className="label">
             {field.label}
             {field.required ? ' *' : ''}
           </span>
@@ -99,7 +99,7 @@ export function ClientAssistanceForm({
             <input type="checkbox" name="confirmed" />
             Ich bestätige die Richtigkeit meiner Angaben.
           </label>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button name="intent" value="save" disabled={pending} className="btn-secondary">
               Entwurf speichern
             </button>
@@ -110,7 +110,7 @@ export function ClientAssistanceForm({
         </>
       )}
       {state && (
-        <p role="status" className={state.ok ? 'text-success' : 'text-danger'}>
+        <p role="status" className={state.ok ? 'alert-success-sm' : 'alert-error-sm'}>
           {state.ok ? 'Gespeichert. Die Übersicht wurde aktualisiert.' : state.error}
         </p>
       )}

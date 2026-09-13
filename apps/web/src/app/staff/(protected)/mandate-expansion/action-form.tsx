@@ -18,7 +18,7 @@ export function ActionForm({
   }, [state, router]);
   return (
     <form action={submit} className={className}>
-      <fieldset disabled={pending} className="space-y-4">
+      <fieldset disabled={pending} className="min-w-0 space-y-4">
         {children}
       </fieldset>
       <p role="status" className={state?.ok ? 'text-green-700' : 'text-red-700'}>

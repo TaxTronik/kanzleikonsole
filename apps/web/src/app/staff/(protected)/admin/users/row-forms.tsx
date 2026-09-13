@@ -64,76 +64,140 @@ export function ProfessionalProfileForm({
   source: string | null;
   disabled?: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
   const [qualified, setQualified] = useState(isProfessional);
   const [number, setNumber] = useState(advisorNumber ?? '');
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [gaps, setGaps] = useState<Array<{ id: string; name: string }>>([]);
   return (
-    <form
-      className="mt-3 space-y-2 border-t border-default pt-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        start(async () => {
-          if (
-            isProfessional &&
-            !qualified &&
-            !(await confirmDialog(
-              'Qualifikation entziehen? Bestehende Zuordnungen und frühere Freigaben bleiben erhalten; neue GwG-Freigaben werden gesperrt.',
-              {
-                title: 'Berufsträgerqualifikation entziehen',
-                confirmLabel: 'Entziehen',
-                danger: true,
-              },
-            ))
-          )
-            return;
-          const result = await setProfessionalProfileAction({
-            userId,
-            isProfessional: qualified,
-            datevAdvisorNumber: number,
-          });
-          setMessage(result.ok ? 'Gespeichert.' : (result.error ?? 'Speichern fehlgeschlagen.'));
-          setGaps(result.assignmentGaps ?? []);
-        });
-      }}
-    >
-      <label className="flex items-center gap-2 text-xs">
-        <input
-          type="checkbox"
-          checked={qualified}
-          disabled={disabled || pending}
-          onChange={(event) => setQualified(event.target.checked)}
-        />
-        Berufsträger
-      </label>
+    <div className="mt-3 space-y-3 border-t border-default pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-primary">Berufliches Profil</p>
+        {!editing && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              setQualified(isProfessional);
+              setNumber(advisorNumber ?? '');
+              setMessage(null);
+              setGaps([]);
+              setEditing(true);
+            }}
+            className="btn-secondary px-2 py-1 text-xs"
+          >
+            Bearbeiten
+          </button>
+        )}
+      </div>
       {source === 'legacy' && (
         <p className="text-xs text-amber-700">
           Aus bestehender Mandatszuordnung übernommen; bitte fachlich bestätigen.
         </p>
       )}
-      <label className="block text-xs text-muted" htmlFor={`advisor-${userId}`}>
-        DATEV-Beraternummer (intern)
-      </label>
-      <input
-        id={`advisor-${userId}`}
-        value={number}
-        onChange={(event) => setNumber(event.target.value)}
-        maxLength={40}
-        className="input w-full text-xs"
-        disabled={disabled || pending}
-      />
-      <button
-        type="submit"
-        disabled={disabled || pending}
-        className="text-xs text-brand-700 hover:underline"
-      >
-        {pending
-          ? 'Speichert…'
-          : source === 'legacy'
-            ? 'Speichern / Qualifikation bestätigen'
-            : 'Speichern'}
-      </button>
+      {editing ? (
+        <form
+          className="space-y-3 rounded-lg border border-default bg-surface-page p-3"
+          aria-label="Berufliches Profil bearbeiten"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (disabled || pending) return;
+            setMessage(null);
+            if (
+              isProfessional &&
+              !qualified &&
+              !(await confirmDialog(
+                'Qualifikation entziehen? Bestehende Zuordnungen und frühere Freigaben bleiben erhalten; neue GwG-Freigaben werden gesperrt.',
+                {
+                  title: 'Berufsträgerqualifikation entziehen',
+                  confirmLabel: 'Entziehen',
+                  danger: true,
+                },
+              ))
+            )
+              return;
+            start(async () => {
+              try {
+                const result = await setProfessionalProfileAction({
+                  userId,
+                  isProfessional: qualified,
+                  datevAdvisorNumber: number,
+                });
+                setMessage(
+                  result.ok ? 'Gespeichert.' : (result.error ?? 'Speichern fehlgeschlagen.'),
+                );
+                setGaps(result.assignmentGaps ?? []);
+                if (result.ok) setEditing(false);
+              } catch {
+                setMessage('Speichern fehlgeschlagen. Bitte erneut versuchen.');
+              }
+            });
+          }}
+        >
+          <label className="flex items-center gap-2 text-xs text-primary">
+            <input
+              type="checkbox"
+              checked={qualified}
+              disabled={disabled || pending}
+              onChange={(event) => setQualified(event.target.checked)}
+            />
+            Berufsträger
+          </label>
+          <div>
+            <label className="mb-1 block text-xs text-muted" htmlFor={`advisor-${userId}`}>
+              DATEV-Beraternummer (intern)
+            </label>
+            <input
+              id={`advisor-${userId}`}
+              type="text"
+              value={number}
+              onChange={(event) => setNumber(event.target.value)}
+              maxLength={40}
+              className="input w-full text-xs"
+              disabled={disabled || pending}
+              autoFocus
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="submit"
+              disabled={disabled || pending}
+              className="btn-primary px-2 py-1 text-xs"
+            >
+              {pending
+                ? 'Speichert…'
+                : source === 'legacy'
+                  ? 'Speichern / Qualifikation bestätigen'
+                  : 'Speichern'}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setEditing(false);
+                setMessage(null);
+              }}
+              className="btn-secondary px-2 py-1 text-xs"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      ) : (
+        <dl className="space-y-2 text-xs">
+          <div>
+            <dt className="text-muted">Berufsträger</dt>
+            <dd className="font-medium text-primary">{isProfessional ? 'Ja' : 'Nein'}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">DATEV-Beraternummer (intern)</dt>
+            <dd className="break-all font-medium text-primary">
+              {advisorNumber || 'Nicht hinterlegt'}
+            </dd>
+          </div>
+        </dl>
+      )}
       {message && (
         <p role="status" className="text-xs text-secondary">
           {message}
@@ -153,7 +217,7 @@ export function ProfessionalProfileForm({
           </ul>
         </div>
       )}
-    </form>
+    </div>
   );
 }
 type Role = (typeof ROLE_OPTIONS)[number];

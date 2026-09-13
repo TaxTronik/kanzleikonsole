@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { refreshScreeningSourceAction } from './actions';
 export function RefreshScreeningForm() {
   const [pending, setPending] = useState(false);
@@ -20,10 +21,11 @@ export function RefreshScreeningForm() {
         }
       }}
     >
-      <button disabled={pending} className="rounded border px-4 py-2">
+      <button disabled={pending} className="btn-primary">
+        <RefreshCw className="h-4 w-4" aria-hidden="true" />
         {pending ? 'Offizielle Liste wird geladen …' : 'EU-Liste jetzt abrufen'}
       </button>
-      <p role="status" className="mt-2">
+      <p role="status" className={message ? 'mt-3 text-sm text-secondary' : 'sr-only'}>
         {message}
       </p>
     </form>
