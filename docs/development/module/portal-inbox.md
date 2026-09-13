@@ -255,7 +255,7 @@ darf er versionsgenau löschen und `DELETED` protokollieren; fehlende oder
 mehrdeutige Nachweise bleiben als Fehler offen.
 Für abgesendete Nachrichten ist ein Kanzleiwert konfigurierbar; seine
 organisatorische Dokumentation ist Aktivierungsvoraussetzung, eine automatische
-Nachrichtenlöschung ist in 0.3.0 aber bewusst nicht aktiv. Eine angenommene
+Nachrichtenlöschung ist im aktuellen Entwicklungsstand bewusst nicht aktiv. Eine angenommene
 Anlage folgt nach ihrer Klassifikation ausschließlich den bestehenden
 Dokument- und Object-Lock-Regeln.
 

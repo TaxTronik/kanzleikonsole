@@ -51,3 +51,15 @@ Auswirkung benötigen keinen neuen Katalogeintrag.
    `scripts/ops-lib.sh` sowie zugehörigen Guards und Tests synchron halten.
    `pnpm guard:supply-chain`, `pnpm test:ops`, `pnpm fachkatalog:check` und
    `pnpm fachkatalog:diff` ausführen.
+
+# Arbeitsregeln für den Changelog
+
+1. Neue Änderungen ausschließlich unter `[Unreleased]` in die vorhandenen
+   Kategorien `Hinzugefügt`, `Geändert`, `Behoben` oder `Sicherheit` einordnen.
+   Keine zusätzlichen Abschnitte pro Task oder Commit anlegen.
+2. Datierte Versionsabschnitte nur im tatsächlichen Release-Schritt erstellen.
+   Weder die Version in `package.json` noch ein Entwicklungsdatum belegt eine
+   Veröffentlichung. Vor einer Release-Zuordnung die Git-Tags prüfen.
+3. Historische Kandidaten nicht als eigenständige Releases führen.
+   Bei redaktioneller Neuordnung vorhandene Änderungen, Scope-Markierungen
+   und Regelverweise erhalten.

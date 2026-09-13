@@ -20,6 +20,8 @@ ist, entscheidet die Kanzlei anhand ihres konkreten Nachweisbedarfs.
 
 Letzter getaggter Release-Stand: **0.2.1**. Die zugehörigen Änderungen stehen im
 [Changelog](CHANGELOG.md#021---2026-08-22).
+Der Entwicklungsstand **0.3.0 ist noch nicht veröffentlicht**; seine Änderungen
+stehen unter [Unreleased](CHANGELOG.md#unreleased).
 
 Dokumentation nach Zielgruppe: [docs/README.md](docs/README.md). Aktuelle
 Einarbeitung und Übergabe: [docs/HANDOFF.md](docs/HANDOFF.md). Vollständige

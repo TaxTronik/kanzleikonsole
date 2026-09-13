@@ -1,89 +1,27 @@
 # Changelog
 
-Änderungsjournal für TaxTronik.
+Änderungsjournal für TaxTronik. Der letzte getaggte Release-Stand ist
+[`v0.2.1`](#021---2026-08-22) vom 22. August 2026. **`0.3.0` ist noch nicht
+veröffentlicht.** Die Versionsnummer in `package.json` bezeichnet den
+Entwicklungsstand; alle Änderungen seit `v0.2.1` stehen unter `[Unreleased]`.
 
-`v0.1.0` wurde am 10. Juni 2026 als erster versionierter interner Stand
-markiert. Der am 21. August 2026 als `0.2.0` bezeichnete Stand war nur ein
-**ungetaggter Kandidatenstand**; ein Git-Tag `v0.2.0` existiert nicht und darf
-nicht als eigenständige Release-Identität verwendet werden. Seine Änderungen
-gingen in den ersten nachfolgenden getaggten Stand `v0.2.1` vom 22. August 2026
-ein. Neue, noch nicht getaggte Änderungen stehen unter `[Unreleased]`.
+Einträge mit **[Scope]** betreffen Module des
+[Prüfungs-Scopes](docs/compliance/idw-ps880-pruefungsbereitschaft.md)
+(Fakturierung, Dokumentenarchiv, Audit-Protokollierung, Zugriffsschutz oder
+Backup/Restore). Diese Kennzeichnung dient der späteren Abgrenzung für
+Folgeprüfungen; sie ist keine fachliche oder PS-880-bezogene Freigabe.
 
-Einträge, die Module des Prüfungs-Scopes betreffen (Fakturierung,
-Dokumentenarchiv, Audit-Protokollierung, Zugriffsschutz, Backup/Restore; siehe
-[docs/compliance/idw-ps880-pruefungsbereitschaft.md](docs/compliance/idw-ps880-pruefungsbereitschaft.md)),
-sind mit **[Scope]** gekennzeichnet. Diese Markierung dient später der
-Abgrenzung zwischen bereits geprüfter Version und neuen Änderungen.
-
-Pflegeregel: Änderungen werden hier im selben Arbeitsstand dokumentiert und
-vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
+Neue Einträge werden unter der passenden vorhandenen Kategorie in
+`[Unreleased]` ergänzt. Ein datierter Versionsabschnitt entsteht erst bei der
+tatsächlichen Release-Erstellung. Eine geplante Versionsnummer oder ein
+Entwicklungsdatum begründet keinen Release-Abschnitt.
 
 ## [Unreleased]
 
-### Neue Modulansichten und Profilbearbeitung vereinheitlicht (2026-09-14)
+Noch nicht veröffentlicht. Fachliche Prüfungen und organisatorische
+Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
-- GwG-Kontrollliste und Smart-Mailbox erhalten die üblichen Seitenabstände,
-  responsiven Formularfelder, Karten und Buttons. Das Anlegen eines Postfachs
-  ist klar gegliedert; Nachrichten, Anhänge und Zuordnung bleiben getrennt lesbar
-  (`GWG-CONTROL-EXPORT-001`, `MAIL-INBOX-001`).
-- **[Scope]** Berufliches Profil und interne DATEV-Beraternummer sind zunächst
-  schreibgeschützt dargestellt. Erst „Bearbeiten“ öffnet den Entwurf;
-  „Abbrechen“ verwirft ihn. Speichern und die bestehende Bestätigung beim Entzug
-  einer Qualifikation funktionieren auch gemeinsam. Die eigene Beraternummer
-  ist mit führenden Nullen in den Kontodaten sichtbar. Rechte und serverseitige
-  Validierungen bleiben unverändert (`ACCESS-STAFF-PERMISSION-001`).
-- Die EU-Sanktionsquelle erklärt den Zustand vor dem ersten Abruf. Gespeicherte
-  Quellversion, Umfang und Abrufzeitpunkte sowie Fehler werden beschriftet
-  dargestellt. Bestehende Screening-Sperren und Prüfentscheidungen bleiben
-  unverändert (`GWG-SCREENING-001`).
-- Gebührenkalkulation, Mandatsorganisation, Personalfragebogen und
-  Mandanten-Assistenten nutzen vorhandene Designklassen für Eingaben,
-  Karten, Buttons und Rückmeldungen. Die Beteiligungsgrafik folgt dem hellen
-  und dunklen Farbschema; breite Tabellen scrollen innerhalb ihrer Karte.
-  Diese Darstellungsänderungen ändern keine fachliche Berechnung, Freigabe,
-  Zuordnung oder Archivierung.
-
-### Scrollleisten der Seitenmenüs (2026-09-14)
-
-- Kanzlei- und Mandantenportal verwenden für ihre Navigation dieselbe schmale,
-  an das helle oder dunkle Farbschema angepasste Scrollleiste wie die kompakten
-  Dashboard-Listen. Damit entfällt der helle native Scrollbalken in Chrome.
-
-### One-Click-Installation und pnpm aktualisiert (2026-09-13)
-
-- `ERR_PNPM_IGNORED_BUILDS` für `tesseract.js@7.0.0` behoben: Dessen
-  `opencollective-postinstall || true` zeigt nur einen Spendenhinweis an und
-  wird versionsgebunden ausdrücklich deaktiviert. OCR benötigt diesen Hook
-  nicht; unbekannte Installationsskripte bleiben gesperrt.
-- Das Quality-Gate installiert mit leerem pnpm-Store und aktivierten,
-  ausdrücklich geprüften Installationsskripten. Fehlende `allowBuilds`-Einträge
-  fallen dadurch bereits in CI auf. AGENTS.md verlangt denselben frischen
-  Linux-Installationsnachweis bei Dependency- und pnpm-Änderungen.
-- pnpm in Projekt, Docker-Builds, Host-Setup und Tests von `11.20.0` auf
-  `12.4.1` aktualisiert. Das entfallene `confirmModulesPurge` entfernt;
-  Corepack lädt die native pnpm-Binary bereits beim Docker-Toolchain-Setup.
-  Das Lockfile erhält die von pnpm 12 benötigten Paketmanager-Metadaten;
-  der Anwendungsteil und die Supply-Chain-Schutzregeln bleiben unverändert.
-- Der technische Umsetzungshinweis zu `ACCESS-TENANT-RLS-001` dokumentiert
-  die Änderungen am referenzierten Supply-Chain-Guard. Die bestehenden
-  SimpleWebAuthn-Patchprüfungen und fachlichen Zugriffsregeln bleiben gleich.
-
-### Dependency-Audit behoben (2026-09-10)
-
-- Next.js und sein ESLint-Plugin auf `16.3.3`, sharp auf `0.35.4`, js-yaml auf
-  `4.3.2`, Nodemailer auf `9.1.1` und Vitest samt Begleitpaketen auf `4.1.11`
-  aktualisiert. Damit werden die elf Befunde aus Dependency Audit 3497
-  geschlossen, einschließlich der beiden kritischen Next.js-Schwachstellen.
-- Exakte Overrides sichern auch die von Mailparser eingebundene Nodemailer-Kopie
-  und Next.js' Bildverarbeitung ab. baseline-browser-mapping wird einheitlich auf
-  den bereits für browserslist verwendeten gepatchten Stand `2.11.4` aufgelöst.
-  Alle neuen Fixstände erfüllen die siebentägige Mindestwartezeit und benötigen
-  keine zusätzliche Quarantäneausnahme.
-- Der Vitest-Wechsel im überwachten Tax-Paket verändert keine Screening-Regel
-  (`GWG-SCREENING-001`); die technische Ausnahme ist als `FK-EXC-20260910-001`
-  dokumentiert.
-
-### Wiedervorlagen als Tickets (2026-09-07)
+### Hinzugefügt
 
 - Wiedervorlagen erhalten stabile kanzleiweite Nummern, eine durchsuchbare
   Übersicht und automatische Verweise sowie Rückverweise durch `#123` in
@@ -98,144 +36,6 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 - Neue Produktregel `REMINDER-TICKET-001` als ungeprüfter Entwurf; keine
   fachliche Freigabe. Bedienung und Abgrenzung sind unter
   `docs/anwenderdoku/wiedervorlagen.md` dokumentiert.
-
-### Behoben
-
-- **[Scope]** Restore meldet Erfolg erst nach verpflichtender Prüfung der
-  effektiven Rollen-, Audit-Schreibsperren und RLS-Policies, auch bei
-  `--no-smoke-test`. Unsichere, durch Ziel-Defaultprivilegien veränderte Rechte
-  führen zu einem Fehler und einem ausdrücklichen Hinweis, die Dienste
-  gestoppt zu lassen (`ACCESS-TENANT-RLS-001`, `AUDIT-HASH-CHAIN-001`). Die
-  nachgelagerte Prüfung rollt den bereits angewendeten Restore nicht zurück.
-- **[Scope]** Dokumentdownload, Vorschau und ZIP-Exporte liefern die neueste
-  Version erst nach erfolgreichem Scan und abgeschlossenem Upload aus; eine
-  ältere Version wird nicht stillschweigend ersatzweise ausgegeben
-  (`DOC-UPLOAD-JOURNAL-001`, `DOC-VERSION-IMMUTABILITY-001`,
-  `DOC-PORTAL-SHARING-001`). DATEV-Belegexporte erhalten korrekte Office-Endungen
-  und weisen ungültige oder umgekehrte Datumsbereiche zurück.
-- **[Scope]** Die Audit-Kanonisierung erhält eigene JSON-Schlüssel wie
-  `__proto__` vollständig. Gewöhnliche Hashes bleiben bytegleich. Historische
-  Ereignisse mit diesem bislang ungebundenen Sonderfeld können jetzt eine
-  Abweichung zeigen; historische Hashes und Archive werden nicht verändert
-  (`AUDIT-HASH-CHAIN-001`, `AUDIT-ARCHIVE-001`).
-- BWA-Auswertungen unterscheiden DATEV-Erlöse, Gesamtleistung, Betriebs- und
-  Vorsteuerergebnis. Der Cashflow-Proxy verwendet die Abschreibungsposition.
-  Fehlende Werte bleiben unbekannt; automatische Planvorbelegung erfordert
-  vollständige, zum Modell passende Daten. Steuerschätzungen benötigen eine
-  bekannte Vorsteuerbasis (`BWA-IMPORT-MAPPING-001`, `BWA-PROJECTION-001`,
-  `BWA-TAX-ESTIMATE-001`).
-- Vollmachtsablauf, Audit-Eintrag und Benachrichtigungen werden atomar
-  gespeichert. Fehler können sicher wiederholt werden; Empfänger werden
-  unmittelbar vor dem Versandauftrag erneut geprüft (`POA-LIFECYCLE-001`,
-  `ACCESS-NOTIFICATION-RECIPIENT-001`). Gleich lange neue SMTP-Passwörter
-  aktualisieren den zwischengespeicherten Transport ebenfalls.
-- Gleichzeitige Terminentscheidungen überschreiben sich bei Portalabsagen
-  nicht mehr. Der Editor erhält Formatierungen beim Import und selbst
-  eingegebene Titel; fehlgeschlagene Formatierungssaves werden wiederholt.
-  Erfassung, Prüfung und Speicherzustände sind in kleinere Komponenten und
-  Hooks aufgeteilt (`FK-EXC-20260907-004`).
-- Windows-Setup erhält bei fehlgeschlagenem Docker-Reset die Konfiguration.
-  UTF-8-Kodierung, Docker-Argumente und Exitcodes funktionieren unter Windows
-  PowerShell 5.1 und PowerShell 7 mit eigenen Regressionstests.
-- **[Scope]** Ungelesene Benachrichtigungen stehen auch bei vielen gelesenen
-  Einträgen zuerst. Der Zähler umfasst alle berechtigten ungelesenen Hinweise
-  unabhängig vom 100er-Anzeigefenster (`ACCESS-NOTIFICATION-RECIPIENT-001`).
-- **[Scope]** Der Dokumentenbrowser verschiebt bereits ausgewählte Dateien
-  zuverlässig. Mandanten-, Ordner- und Suchkontextwechsel setzen Auswahl und
-  Dialoge gemeinsam zurück; Aktualisierungen im selben Kontext erhalten sie.
-- XLSX-Importe lesen Workbook-Relationships mit, damit Blattnamen zu den
-  tatsächlichen Werten gehören. Der XML-Leser vermeidet quadratisches
-  Backtracking bei fehlerhaften Attributen und lässt unbekannte Entities
-  unverändert (`BWA-IMPORT-MAPPING-001`).
-- Die GwG-Seite trennt Datenzugriff, Aufbereitung und Darstellung. Abgelaufene
-  und vernichtete Prüfungen zeigen keine aktuelle Verifikation oder
-  Weiterleitung zur nächsten Onboarding-Stufe mehr; vernichtete Aufzeichnungen
-  bieten keine Personenbearbeitung oder Freigabe an
-  (`GWG-REVERIFICATION-VALIDITY-001`, `GWG-RETENTION-DESTRUCTION-001`).
-- Markdown-Ansichten blockieren bei unvollständigen Tabellen nicht mehr.
-  Inline-Code bleibt wortgetreu; Formatierungszeichen in Linkzielen und
-  private Unicode-Zeichen werden nicht mehr umgeschrieben. Blockerkennung und
-  Inline-Verarbeitung sind in getrennte, überschaubare Funktionen aufgeteilt.
-- Globale Suche entfernt vorherige Datensatztreffer bei jedem Begriffswechsel,
-  damit Enter während einer laufenden Suche keinen alten Treffer öffnet.
-  Deaktivierte Datumswähler senden auch ihren versteckten Formularwert nicht mit.
-- Mandanten-Timeline berücksichtigt aktuelle Folgeereignisse älterer Vorgänge
-  und wendet die Zeitgrenze auf jedes Ereignis an. Tagesgruppen verwenden
-  durchgehend Berliner Zeit; ungültige Nachladelimits führen nicht mehr zu
-  Datenbankfehlern, und der Nachladelink endet an der Grenze von 500 Ereignissen.
-- **[Scope]** Die Audit-Übersicht zählt ausschließlich Einträge der eigenen
-  Kanzlei statt einer datenbankweiten Tabellenschätzung. Datenzugriff,
-  Filterzustand und Darstellung sind getrennt; Zugriffs- und Kettenprüfungen
-  bleiben erhalten (`AUDIT-HASH-CHAIN-001`, `ACCESS-TENANT-RLS-001`).
-- **[Scope]** Öffentliche TOTP-Einrichtung und Bestätigung binden ihren
-  Schreibzugriff an den geprüften Passwort-, Konto- und Faktorstand.
-  Verspätete Anfragen öffnen keine bereits abgeschlossene Einrichtung erneut
-  und übernehmen keinen inzwischen geänderten Zugang (`ACCESS-TENANT-RLS-001`).
-- **[Scope]** Vollmacht-Signaturcodes werden beim Schreiben erneut an den
-  aktuellen Link und die aktuelle Challenge gebunden. Ersetzte Codes und
-  verzögerte Fehlversuche wirken nicht auf einen neuen Signaturvorgang
-  (`POA-SIGNING-CONFIRMATION-001`).
-- **[Scope]** Rechercheversand maskiert auch Normanker und Governance-Typ.
-  Alle Freitextfelder teilen einen Platzhalternamensraum; nachträglich
-  ergänzte Angaben überschreiben keine Zuordnungen aus der Vorschau.
-  Rückzuordnung ersetzt Originalwerte genau einmal
-  (`RISK-EXTERNAL-ANONYMIZATION-001`).
-- **[Scope]** Dokument-ZIPs vermeiden auch Datei-/Verzeichnis-Kollisionen
-  einschließlich benötigter Elternpfade (`FK-EXC-20260907-001`).
-- **[Scope]** Portal-Profilwechsel bewahren die ursprüngliche Kontaktidentität
-  und den Anmeldezeitpunkt. Widerruf, Abmeldung, geänderte Mailboxidentität und
-  gesperrte Ursprungskontakte werden auch nach einem Wechsel geprüft.
-  Portalnutzer müssen sich nach diesem Update einmal neu anmelden
-  (`ACCESS-TENANT-RLS-001`).
-- **[Scope]** Redis-Sitzungswiderrufe können durch verspätete Schreibvorgänge
-  nicht zurückgesetzt werden; ungültige Widerrufsdaten sperren den Zugriff.
-  Kontakt-E-Mail-Änderung, Deaktivierung und Reaktivierung durch Einladung
-  entwerten bestehende Kalenderlinks (`ACCESS-TENANT-RLS-001`).
-- **[Scope]** Dokument-ZIPs vergeben auch bei vorhandenen Suffixnamen,
-  Groß-/Kleinschreibung und Unicode-Normalisierung eindeutige Eintragsnamen,
-  damit Dateien beim Entpacken nicht kollidieren (`FK-EXC-20260906-003`).
-- **[Scope]** Gemeinsame HTTP-Abrufe lesen Antwortdaten nach Bedarf und reichen
-  Abbruch und Zeitlimit an den Netzwerkstrom weiter. Die bestehende
-  4-KiB-Grenze für Update-Signaturen greift schon beim Empfang der Bytes
-  (`AUDIT-RFC3161-ANCHOR-001`, `ASSURANCE-RELEASE-EVIDENCE-001`).
-- **[Scope]** Staff-Recovery-Codes lassen sich vollständig im regulären
-  Loginfeld eingeben. Browser-Formatprüfung und Längenlimit akzeptieren die
-  zehnstelligen Codes; Passwortprüfung und serverseitiger Einmalverbrauch
-  bleiben unverändert (`ACCESS-TENANT-RLS-001`).
-- **[Scope]** Direkte Staff-Testanmeldung und Portal-Magic-Link setzen jetzt den
-  ursprünglichen Anmeldezeitpunkt im Sitzungscookie, damit neue Sitzungen die
-  Widerrufsprüfung bestehen (`ACCESS-TENANT-RLS-001`).
-- Kontrast des Hinweises „Einrichtung offen“ in der Benutzerverwaltung erhöht.
-- Web-Dockerbuild: Node-Heap für die TypeScript-Prüfung von 2 auf 4 GiB
-  erhöht. Lokale Operator-Builds erhalten 6 GiB Gesamtspeicher und verlangen
-  zusätzlich 1 GiB freie Systemreserve; cgroup-Limit und Swap-Sperre bleiben aktiv.
-- Secret-Scan-Fehlalarm für die öffentlich publizierte EU-Sanktionslisten-URL
-  behoben. Die Ausnahme gilt nur für die vollständige, verifizierte Quellzeile
-  in ihrer konkreten Datei. Acht Scanner-Regressionstests prüfen die Ausnahmen
-  einschließlich anderer Token, zusätzlicher Schlüssel und abweichender Pfade;
-  der amtliche Metadaten-Nachweis ist in `.gitleaks.toml` verlinkt.
-- **[Scope]** Sitzungswiderruf vor der Cookie-Erneuerung und unveränderlicher
-  Anmeldezeitpunkt; bestehende Staff-/Portal-Sitzungen müssen sich nach dem
-  Update einmalig neu anmelden. Kalenderabonnements prüfen das Mandatsende
-  (`ACCESS-TENANT-RLS-001`, `CLIENT-MANDATE-LIFECYCLE-001`).
-- **[Scope]** Storno-XRechnungen verwenden Typ 384 mit Vorgängerreferenz;
-  StBVV-Übernahmen erzeugen archivierbare XRechnungsentwürfe und reparieren eng
-  begrenzt bisherige dokumentlose PDF-Entwürfe. Gebührenbeschreibungen werden
-  vollständig im PDF umbrochen; Leistungsdaten aus Zeiterfassung verwenden
-  Europe/Berlin (`INV-STORNO-REFERENCE-001`, `STBVV-CALCULATION-001`,
-  `INV-TIME-ENTRY-CLAIM-001`).
-- **[Scope]** IMAP-Anhänge über dem Ressourcenlimit blockieren die einzelne
-  Nachricht statt den gesamten Import. Wiederholte Speicherlöschfehler
-  verdrängen keine späteren Orphans mehr (`MAIL-INBOX-001`,
-  `DOC-UPLOAD-JOURNAL-001`, `DSGVO-OPERATIONAL-RETENTION-001`).
-- Workflow-Abschluss aus manuellen, automatischen und Datenbank-Schritten wird
-  atomar abgeleitet; pausierte und abgebrochene Vorgänge bleiben geschützt.
-  Feedback wird dauerhaft vorgemerkt und einmalig verarbeitet
-  (`WORKFLOW-LIFECYCLE-001`, `CLIENT-FEEDBACK-001`).
-- React-Zustands-/Effektwarnungen und Formatfehler bereinigt; komplexe Rechnungs-,
-  BWA-, Workflow- und UI-Funktionen in kleinere Einheiten aufgeteilt.
-
-### Hinzugefügt
 
 - Optionaler Staff-Anmeldemodus **„Nur physische FIDO2-Sicherheitsschlüssel“**:
   Das persönliche Opt-in ist erst ab zwei registrierten Schlüsseln möglich und
@@ -288,15 +88,6 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
   `AUDIT-HASH-CHAIN-001` (auditierte Schlüssel-, Modus- und Recovery-Aktionen)
   zugeordnet; als allgemeine Auth-Härtung entsteht gemäß Fachkatalog-Scope
   keine neue Fachregel.
-
-## [0.3.0] - 2026-09-01
-
-Version 0.3.0 bündelt den Ausbau nach `v0.2.1`. Die Versionsnummer ist keine
-fachliche, rechtliche oder PS-880-bezogene Freigabe; ungeprüfte Fachregeln und
-offene organisatorische Pilotentscheidungen bleiben ausdrücklich als solche
-gekennzeichnet.
-
-### Hinzugefügt
 
 - **[Scope]** Separater, opt-in Mandantenposteingang (`clientInbox`, Default
   `false`) mit mandantenweit sichtbaren, unveränderlichen Nachrichten,
@@ -420,6 +211,44 @@ gekennzeichnet.
   Release-Evidence ordnen die Nachweise nach Zielgruppe und Dokumenttyp.
 
 ### Geändert
+
+- GwG-Kontrollliste und Smart-Mailbox erhalten die üblichen Seitenabstände,
+  responsiven Formularfelder, Karten und Buttons. Das Anlegen eines Postfachs
+  ist klar gegliedert; Nachrichten, Anhänge und Zuordnung bleiben getrennt lesbar
+  (`GWG-CONTROL-EXPORT-001`, `MAIL-INBOX-001`).
+- **[Scope]** Berufliches Profil und interne DATEV-Beraternummer sind zunächst
+  schreibgeschützt dargestellt. Erst „Bearbeiten“ öffnet den Entwurf;
+  „Abbrechen“ verwirft ihn. Speichern und die bestehende Bestätigung beim Entzug
+  einer Qualifikation funktionieren auch gemeinsam. Die eigene Beraternummer
+  ist mit führenden Nullen in den Kontodaten sichtbar. Rechte und serverseitige
+  Validierungen bleiben unverändert (`ACCESS-STAFF-PERMISSION-001`).
+- Die EU-Sanktionsquelle erklärt den Zustand vor dem ersten Abruf. Gespeicherte
+  Quellversion, Umfang und Abrufzeitpunkte sowie Fehler werden beschriftet
+  dargestellt. Bestehende Screening-Sperren und Prüfentscheidungen bleiben
+  unverändert (`GWG-SCREENING-001`).
+- Gebührenkalkulation, Mandatsorganisation, Personalfragebogen und
+  Mandanten-Assistenten nutzen vorhandene Designklassen für Eingaben,
+  Karten, Buttons und Rückmeldungen. Die Beteiligungsgrafik folgt dem hellen
+  und dunklen Farbschema; breite Tabellen scrollen innerhalb ihrer Karte.
+  Diese Darstellungsänderungen ändern keine fachliche Berechnung, Freigabe,
+  Zuordnung oder Archivierung.
+
+- `ERR_PNPM_IGNORED_BUILDS` für `tesseract.js@7.0.0` behoben: Dessen
+  `opencollective-postinstall || true` zeigt nur einen Spendenhinweis an und
+  wird versionsgebunden ausdrücklich deaktiviert. OCR benötigt diesen Hook
+  nicht; unbekannte Installationsskripte bleiben gesperrt.
+- Das Quality-Gate installiert mit leerem pnpm-Store und aktivierten,
+  ausdrücklich geprüften Installationsskripten. Fehlende `allowBuilds`-Einträge
+  fallen dadurch bereits in CI auf. AGENTS.md verlangt denselben frischen
+  Linux-Installationsnachweis bei Dependency- und pnpm-Änderungen.
+- pnpm in Projekt, Docker-Builds, Host-Setup und Tests von `11.20.0` auf
+  `12.4.1` aktualisiert. Das entfallene `confirmModulesPurge` entfernt;
+  Corepack lädt die native pnpm-Binary bereits beim Docker-Toolchain-Setup.
+  Das Lockfile erhält die von pnpm 12 benötigten Paketmanager-Metadaten;
+  der Anwendungsteil und die Supply-Chain-Schutzregeln bleiben unverändert.
+- Der technische Umsetzungshinweis zu `ACCESS-TENANT-RLS-001` dokumentiert
+  die Änderungen am referenzierten Supply-Chain-Guard. Die bestehenden
+  SimpleWebAuthn-Patchprüfungen und fachlichen Zugriffsregeln bleiben gleich.
 
 - **[Scope]** Audit-Verifikation unterdrückt neue Kettenfehler nicht mehr über
   alte Recovery-Checkpoints; BWA-Projektionen verwenden nur Jahre vor dem
@@ -567,6 +396,144 @@ gekennzeichnet.
 
 ### Behoben
 
+- Kanzlei- und Mandantenportal verwenden für ihre Navigation dieselbe schmale,
+  an das helle oder dunkle Farbschema angepasste Scrollleiste wie die kompakten
+  Dashboard-Listen. Damit entfällt der helle native Scrollbalken in Chrome.
+
+- **[Scope]** Restore meldet Erfolg erst nach verpflichtender Prüfung der
+  effektiven Rollen-, Audit-Schreibsperren und RLS-Policies, auch bei
+  `--no-smoke-test`. Unsichere, durch Ziel-Defaultprivilegien veränderte Rechte
+  führen zu einem Fehler und einem ausdrücklichen Hinweis, die Dienste
+  gestoppt zu lassen (`ACCESS-TENANT-RLS-001`, `AUDIT-HASH-CHAIN-001`). Die
+  nachgelagerte Prüfung rollt den bereits angewendeten Restore nicht zurück.
+- **[Scope]** Dokumentdownload, Vorschau und ZIP-Exporte liefern die neueste
+  Version erst nach erfolgreichem Scan und abgeschlossenem Upload aus; eine
+  ältere Version wird nicht stillschweigend ersatzweise ausgegeben
+  (`DOC-UPLOAD-JOURNAL-001`, `DOC-VERSION-IMMUTABILITY-001`,
+  `DOC-PORTAL-SHARING-001`). DATEV-Belegexporte erhalten korrekte Office-Endungen
+  und weisen ungültige oder umgekehrte Datumsbereiche zurück.
+- **[Scope]** Die Audit-Kanonisierung erhält eigene JSON-Schlüssel wie
+  `__proto__` vollständig. Gewöhnliche Hashes bleiben bytegleich. Historische
+  Ereignisse mit diesem bislang ungebundenen Sonderfeld können jetzt eine
+  Abweichung zeigen; historische Hashes und Archive werden nicht verändert
+  (`AUDIT-HASH-CHAIN-001`, `AUDIT-ARCHIVE-001`).
+- BWA-Auswertungen unterscheiden DATEV-Erlöse, Gesamtleistung, Betriebs- und
+  Vorsteuerergebnis. Der Cashflow-Proxy verwendet die Abschreibungsposition.
+  Fehlende Werte bleiben unbekannt; automatische Planvorbelegung erfordert
+  vollständige, zum Modell passende Daten. Steuerschätzungen benötigen eine
+  bekannte Vorsteuerbasis (`BWA-IMPORT-MAPPING-001`, `BWA-PROJECTION-001`,
+  `BWA-TAX-ESTIMATE-001`).
+- Vollmachtsablauf, Audit-Eintrag und Benachrichtigungen werden atomar
+  gespeichert. Fehler können sicher wiederholt werden; Empfänger werden
+  unmittelbar vor dem Versandauftrag erneut geprüft (`POA-LIFECYCLE-001`,
+  `ACCESS-NOTIFICATION-RECIPIENT-001`). Gleich lange neue SMTP-Passwörter
+  aktualisieren den zwischengespeicherten Transport ebenfalls.
+- Gleichzeitige Terminentscheidungen überschreiben sich bei Portalabsagen
+  nicht mehr. Der Editor erhält Formatierungen beim Import und selbst
+  eingegebene Titel; fehlgeschlagene Formatierungssaves werden wiederholt.
+  Erfassung, Prüfung und Speicherzustände sind in kleinere Komponenten und
+  Hooks aufgeteilt (`FK-EXC-20260907-004`).
+- Windows-Setup erhält bei fehlgeschlagenem Docker-Reset die Konfiguration.
+  UTF-8-Kodierung, Docker-Argumente und Exitcodes funktionieren unter Windows
+  PowerShell 5.1 und PowerShell 7 mit eigenen Regressionstests.
+- **[Scope]** Ungelesene Benachrichtigungen stehen auch bei vielen gelesenen
+  Einträgen zuerst. Der Zähler umfasst alle berechtigten ungelesenen Hinweise
+  unabhängig vom 100er-Anzeigefenster (`ACCESS-NOTIFICATION-RECIPIENT-001`).
+- **[Scope]** Der Dokumentenbrowser verschiebt bereits ausgewählte Dateien
+  zuverlässig. Mandanten-, Ordner- und Suchkontextwechsel setzen Auswahl und
+  Dialoge gemeinsam zurück; Aktualisierungen im selben Kontext erhalten sie.
+- XLSX-Importe lesen Workbook-Relationships mit, damit Blattnamen zu den
+  tatsächlichen Werten gehören. Der XML-Leser vermeidet quadratisches
+  Backtracking bei fehlerhaften Attributen und lässt unbekannte Entities
+  unverändert (`BWA-IMPORT-MAPPING-001`).
+- Die GwG-Seite trennt Datenzugriff, Aufbereitung und Darstellung. Abgelaufene
+  und vernichtete Prüfungen zeigen keine aktuelle Verifikation oder
+  Weiterleitung zur nächsten Onboarding-Stufe mehr; vernichtete Aufzeichnungen
+  bieten keine Personenbearbeitung oder Freigabe an
+  (`GWG-REVERIFICATION-VALIDITY-001`, `GWG-RETENTION-DESTRUCTION-001`).
+- Markdown-Ansichten blockieren bei unvollständigen Tabellen nicht mehr.
+  Inline-Code bleibt wortgetreu; Formatierungszeichen in Linkzielen und
+  private Unicode-Zeichen werden nicht mehr umgeschrieben. Blockerkennung und
+  Inline-Verarbeitung sind in getrennte, überschaubare Funktionen aufgeteilt.
+- Globale Suche entfernt vorherige Datensatztreffer bei jedem Begriffswechsel,
+  damit Enter während einer laufenden Suche keinen alten Treffer öffnet.
+  Deaktivierte Datumswähler senden auch ihren versteckten Formularwert nicht mit.
+- Mandanten-Timeline berücksichtigt aktuelle Folgeereignisse älterer Vorgänge
+  und wendet die Zeitgrenze auf jedes Ereignis an. Tagesgruppen verwenden
+  durchgehend Berliner Zeit; ungültige Nachladelimits führen nicht mehr zu
+  Datenbankfehlern, und der Nachladelink endet an der Grenze von 500 Ereignissen.
+- **[Scope]** Die Audit-Übersicht zählt ausschließlich Einträge der eigenen
+  Kanzlei statt einer datenbankweiten Tabellenschätzung. Datenzugriff,
+  Filterzustand und Darstellung sind getrennt; Zugriffs- und Kettenprüfungen
+  bleiben erhalten (`AUDIT-HASH-CHAIN-001`, `ACCESS-TENANT-RLS-001`).
+- **[Scope]** Öffentliche TOTP-Einrichtung und Bestätigung binden ihren
+  Schreibzugriff an den geprüften Passwort-, Konto- und Faktorstand.
+  Verspätete Anfragen öffnen keine bereits abgeschlossene Einrichtung erneut
+  und übernehmen keinen inzwischen geänderten Zugang (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Vollmacht-Signaturcodes werden beim Schreiben erneut an den
+  aktuellen Link und die aktuelle Challenge gebunden. Ersetzte Codes und
+  verzögerte Fehlversuche wirken nicht auf einen neuen Signaturvorgang
+  (`POA-SIGNING-CONFIRMATION-001`).
+- **[Scope]** Rechercheversand maskiert auch Normanker und Governance-Typ.
+  Alle Freitextfelder teilen einen Platzhalternamensraum; nachträglich
+  ergänzte Angaben überschreiben keine Zuordnungen aus der Vorschau.
+  Rückzuordnung ersetzt Originalwerte genau einmal
+  (`RISK-EXTERNAL-ANONYMIZATION-001`).
+- **[Scope]** Dokument-ZIPs vermeiden auch Datei-/Verzeichnis-Kollisionen
+  einschließlich benötigter Elternpfade (`FK-EXC-20260907-001`).
+- **[Scope]** Portal-Profilwechsel bewahren die ursprüngliche Kontaktidentität
+  und den Anmeldezeitpunkt. Widerruf, Abmeldung, geänderte Mailboxidentität und
+  gesperrte Ursprungskontakte werden auch nach einem Wechsel geprüft.
+  Portalnutzer müssen sich nach diesem Update einmal neu anmelden
+  (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Redis-Sitzungswiderrufe können durch verspätete Schreibvorgänge
+  nicht zurückgesetzt werden; ungültige Widerrufsdaten sperren den Zugriff.
+  Kontakt-E-Mail-Änderung, Deaktivierung und Reaktivierung durch Einladung
+  entwerten bestehende Kalenderlinks (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Dokument-ZIPs vergeben auch bei vorhandenen Suffixnamen,
+  Groß-/Kleinschreibung und Unicode-Normalisierung eindeutige Eintragsnamen,
+  damit Dateien beim Entpacken nicht kollidieren (`FK-EXC-20260906-003`).
+- **[Scope]** Gemeinsame HTTP-Abrufe lesen Antwortdaten nach Bedarf und reichen
+  Abbruch und Zeitlimit an den Netzwerkstrom weiter. Die bestehende
+  4-KiB-Grenze für Update-Signaturen greift schon beim Empfang der Bytes
+  (`AUDIT-RFC3161-ANCHOR-001`, `ASSURANCE-RELEASE-EVIDENCE-001`).
+- **[Scope]** Staff-Recovery-Codes lassen sich vollständig im regulären
+  Loginfeld eingeben. Browser-Formatprüfung und Längenlimit akzeptieren die
+  zehnstelligen Codes; Passwortprüfung und serverseitiger Einmalverbrauch
+  bleiben unverändert (`ACCESS-TENANT-RLS-001`).
+- **[Scope]** Direkte Staff-Testanmeldung und Portal-Magic-Link setzen jetzt den
+  ursprünglichen Anmeldezeitpunkt im Sitzungscookie, damit neue Sitzungen die
+  Widerrufsprüfung bestehen (`ACCESS-TENANT-RLS-001`).
+- Kontrast des Hinweises „Einrichtung offen“ in der Benutzerverwaltung erhöht.
+- Web-Dockerbuild: Node-Heap für die TypeScript-Prüfung von 2 auf 4 GiB
+  erhöht. Lokale Operator-Builds erhalten 6 GiB Gesamtspeicher und verlangen
+  zusätzlich 1 GiB freie Systemreserve; cgroup-Limit und Swap-Sperre bleiben aktiv.
+- Secret-Scan-Fehlalarm für die öffentlich publizierte EU-Sanktionslisten-URL
+  behoben. Die Ausnahme gilt nur für die vollständige, verifizierte Quellzeile
+  in ihrer konkreten Datei. Acht Scanner-Regressionstests prüfen die Ausnahmen
+  einschließlich anderer Token, zusätzlicher Schlüssel und abweichender Pfade;
+  der amtliche Metadaten-Nachweis ist in `.gitleaks.toml` verlinkt.
+- **[Scope]** Sitzungswiderruf vor der Cookie-Erneuerung und unveränderlicher
+  Anmeldezeitpunkt; bestehende Staff-/Portal-Sitzungen müssen sich nach dem
+  Update einmalig neu anmelden. Kalenderabonnements prüfen das Mandatsende
+  (`ACCESS-TENANT-RLS-001`, `CLIENT-MANDATE-LIFECYCLE-001`).
+- **[Scope]** Storno-XRechnungen verwenden Typ 384 mit Vorgängerreferenz;
+  StBVV-Übernahmen erzeugen archivierbare XRechnungsentwürfe und reparieren eng
+  begrenzt bisherige dokumentlose PDF-Entwürfe. Gebührenbeschreibungen werden
+  vollständig im PDF umbrochen; Leistungsdaten aus Zeiterfassung verwenden
+  Europe/Berlin (`INV-STORNO-REFERENCE-001`, `STBVV-CALCULATION-001`,
+  `INV-TIME-ENTRY-CLAIM-001`).
+- **[Scope]** IMAP-Anhänge über dem Ressourcenlimit blockieren die einzelne
+  Nachricht statt den gesamten Import. Wiederholte Speicherlöschfehler
+  verdrängen keine späteren Orphans mehr (`MAIL-INBOX-001`,
+  `DOC-UPLOAD-JOURNAL-001`, `DSGVO-OPERATIONAL-RETENTION-001`).
+- Workflow-Abschluss aus manuellen, automatischen und Datenbank-Schritten wird
+  atomar abgeleitet; pausierte und abgebrochene Vorgänge bleiben geschützt.
+  Feedback wird dauerhaft vorgemerkt und einmalig verarbeitet
+  (`WORKFLOW-LIFECYCLE-001`, `CLIENT-FEEDBACK-001`).
+- React-Zustands-/Effektwarnungen und Formatfehler bereinigt; komplexe Rechnungs-,
+  BWA-, Workflow- und UI-Funktionen in kleinere Einheiten aufgeteilt.
+
 - Die Profilüberschrift bricht bei schmalen Fenstern und vergrößerter Schrift
   auch mit breiteren Systemschriften um, ohne den Hauptinhalt seitlich
   hinauszuschieben.
@@ -651,6 +618,21 @@ gekennzeichnet.
   gesperrt; der reale Logout-E2E-Fall prüft zusätzlich den 303-Redirect und
   die Cookie-Löschung (`0c1f8174`).
 
+### Sicherheit
+
+- Next.js und sein ESLint-Plugin auf `16.3.3`, sharp auf `0.35.4`, js-yaml auf
+  `4.3.2`, Nodemailer auf `9.1.1` und Vitest samt Begleitpaketen auf `4.1.11`
+  aktualisiert. Damit werden die elf Befunde aus Dependency Audit 3497
+  geschlossen, einschließlich der beiden kritischen Next.js-Schwachstellen.
+- Exakte Overrides sichern auch die von Mailparser eingebundene Nodemailer-Kopie
+  und Next.js' Bildverarbeitung ab. baseline-browser-mapping wird einheitlich auf
+  den bereits für browserslist verwendeten gepatchten Stand `2.11.4` aufgelöst.
+  Alle neuen Fixstände erfüllen die siebentägige Mindestwartezeit und benötigen
+  keine zusätzliche Quarantäneausnahme.
+- Der Vitest-Wechsel im überwachten Tax-Paket verändert keine Screening-Regel
+  (`GWG-SCREENING-001`); die technische Ausnahme ist als `FK-EXC-20260910-001`
+  dokumentiert.
+
 ## [0.2.1] - 2026-08-22
 
 ### Hinzugefügt
@@ -687,12 +669,13 @@ gekennzeichnet.
   dadurch auch im vollständigen paranoiden CI-Lauf nicht mehr durch eigene
   Vorläuferfälle gedrosselt werden.
 
-## [0.2.0 – ungetaggter Kandidatenstand] - 2026-08-21
+### Enthaltener Kandidatenstand vom 21. August 2026
 
-Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
-Änderungen wurden erst als Bestandteil von `v0.2.1` versioniert ausgeliefert.
+Der damals als `0.2.0` bezeichnete Kandidat wurde nicht eigenständig getaggt.
+Die folgenden Änderungen gehören zum Release `v0.2.1`; die frühere
+Themengliederung bleibt zur historischen Zuordnung erhalten.
 
-### Releaseabschluss
+#### Releaseabschluss
 
 - Der Abmelden-Button im Mandantenportal verwendet jetzt einen hosttreuen
   POST-Endpunkt statt einer proxy-empfindlichen Server-Action. Der Endpunkt
@@ -749,7 +732,7 @@ Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
 - Produktionsabhängigkeiten sind zum Release reproduzierbar gepinnt, darunter
   SeaweedFS 4.41, n8n 2.33.7 und BullMQ 5.81.3.
 
-### Seit dem Kandidatenstand ergänzte Änderungen
+#### Seit dem Kandidatenstand ergänzte Änderungen
 
 - Signal-Integration: Die Integrations-Einstellungen zeigen Zustand, Aktualität
   und letzten protokollierten Lauf des Embedding-Index. Kanzlei-Admins können
@@ -888,7 +871,7 @@ Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
   `localhost`-/Loopback-n8n-Vorgaben als geführten Migrationszustand statt als
   irreführenden SSRF-Fehler.
 
-### Betrieb, Deployment und Dokumentation
+#### Betrieb, Deployment und Dokumentation
 
 - n8n-Integration: geführte Einrichtung trennt Instanz-UI, Management-API,
   Legacy-Webhook-Präfix und exakte Production-Webhook-URLs. Verwaltete und
@@ -976,7 +959,7 @@ Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
 - Betriebsreife: Runbooks für Day-2 Operations, Secret-Rotation und
   Release-Rehearsal ergänzt; Testkonzept und Assurance-Modell aktualisiert
 
-### Risk-Layer / TCMS
+#### Risk-Layer / TCMS
 
 - Risk-Layer-Client nutzt ein dediziertes trusted Backend-Fetching für die
   festen `/v1/*`-Endpunkte; `RISK_LAYER_URL` darf Docker-Service-DNS,
@@ -990,7 +973,7 @@ Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
   `/v1/*`-Dienst, tenant-scoped Persistenz in TaxTronik, Zugriff nur für
   berechtigte Rollen bzw. Mandantenverantwortliche
 
-### Sicherheit, Auth und Plattform
+#### Sicherheit, Auth und Plattform
 
 - Dokumentvorschau: unsichere DOCX-HTML-Inline-Darstellung entfernt; DOCX
   nutzt ausschließlich den authentifizierten Download-Pfad
@@ -1024,7 +1007,7 @@ Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
 - **[Scope]** CI führt alle Testpakete aus und archiviert Testprotokolle als
   Nachweis-Artefakte je Lauf
 
-### Fachliche Module und Workflows
+#### Fachliche Module und Workflows
 
 - ELSTER: neutrales Paket `@taxtronik/elster` (Feature-Flag
   `ELSTER_BRIDGE_URL`/`ELSTER_BRIDGE_TOKEN`, typisierter Client für
@@ -1049,7 +1032,7 @@ Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
   neutrale Teamanzeige, Kanzleikalender-Einträge und Benachrichtigungen an
   Entscheidungsträger
 
-### Fakturierung und E-Rechnung
+#### Fakturierung und E-Rechnung
 
 - **[Scope]** Fakturierung: USt-Satz je Position (Migration iter86; 19 %,
   7 %, 0 %) mit Steuerausweis und Rundung je Satz-Gruppe in Anzeige, PDF und
@@ -1063,7 +1046,7 @@ Für diesen Abschnitt existiert **kein** Git-Tag `v0.2.0`. Die aufgeführten
   Statusübergänge nur vorwärts, GoBD-Archivkopie vor Versand und Schutz
   abgerechneter Zeiteinträge
 
-### Backup, Archiv und Compliance-Nachweise
+#### Backup, Archiv und Compliance-Nachweise
 
 - **[Scope]** Backup: Admin-Trigger ist im Build-Kontext enthalten;
   vollständige Datenbank-Dumps sind wegen ihres installationsweiten Inhalts
