@@ -60,6 +60,9 @@ jobs:
       - name: Fresh install with reviewed dependency scripts
         run: pnpm install --frozen-lockfile --prod=false --store-dir "$(mktemp -d)"
 
+      - name: Guard paranoid E2E coverage
+        run: pnpm guard:paranoid-e2e
+
       - name: Format-Baseline prüfen
         run: pnpm format:check
 
@@ -84,9 +87,6 @@ jobs:
 
       - name: Guard ERiC/ELSTER spec artifacts
         run: sh scripts/check-no-eric-spec.sh
-
-      - name: Guard paranoid E2E coverage
-        run: sh scripts/check-paranoid-e2e.sh
 
       - name: Guard no focused or skipped tests
         run: sh scripts/check-no-focused-tests.sh
@@ -1155,7 +1155,9 @@ jobs:
           fi
 
       - name: Run E2E paranoid tests
-        run: pnpm --filter @taxtronik/e2e exec playwright test tests/02-auth.spec.ts tests/03-search-reports.spec.ts tests/04-rate-limit.spec.ts tests/05-user-walkthrough.spec.ts tests/06-actions.spec.ts tests/07-compliance.spec.ts tests/08-differential.spec.ts tests/09-api-rbac.spec.ts tests/10-concurrency.spec.ts tests/11-upload-fuzz.spec.ts tests/12-accessibility.spec.ts tests/13-accessible-display.spec.ts tests/14-dashboard-keyboard.spec.ts tests/15-search-notifications-a11y.spec.ts tests/16-identity-local.spec.ts tests/17-expansion.spec.ts tests/18-portal-inbox.spec.ts tests/19-document-explorer-state.spec.ts tests/20-subsumtion-editor-state.spec.ts tests/21-bwa-basis-state.spec.ts tests/22-reminder-tickets.spec.ts tests/23-reminder-ticket-flow.spec.ts
+        # Playwright discovers every spec, including newly added and nested files.
+        # Keep the early smoke job above; do not maintain a second file list here.
+        run: pnpm --filter @taxtronik/e2e exec playwright test
 
       - name: Upload Playwright report
         if: always()

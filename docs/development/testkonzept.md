@@ -143,6 +143,14 @@ noch, dass zwei Credentials von zwei verschiedenen physischen Geräten stammen.
 
 ## 3. Testumgebungen
 
+Der CI-Job `e2e-paranoid` entdeckt die vollständige Playwright-Suite ohne
+manuell gepflegte Dateiliste. `pnpm guard:paranoid-e2e` prüft den unbeschränkten
+CI-Aufruf und gleicht die Testdateien rekursiv mit der tatsächlichen
+Playwright-Testerkennung ab; einschränkende Filter sowie Fokus-/Skip-Marker
+werden abgewiesen. Der Guard samt Regressionstests läuft unmittelbar nach der
+CI-Installation und lokal in `pnpm lint`, auch unter Windows. Dieser Check
+startet keine Browser oder Dienste und ist kein Nachweis bestandener E2E-Tests.
+
 | Umgebung            | Beschreibung                                                                                                                                                                                                                                                                                                                                              |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CI (maßgeblich)     | Forgejo-Runner; je Lauf frische Postgres-18-Instanz (Service-Container), im Workflow definierte ENV und Installation mit `--frozen-lockfile`. Runner-Host, Kernel und Ressourcen sind nicht allein aus `ci.yml` eingefroren und müssen im Release-Evidence-Satz ergänzt werden.                                                                           |

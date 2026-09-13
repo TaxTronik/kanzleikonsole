@@ -71,10 +71,21 @@ Wenn nicht gesetzt, muss lokal `DEV_SKIP_TOTP=true` aktiv sein.
 
 ## CI-Guard
 
-`scripts/check-paranoid-e2e.sh` erzwingt, dass jede `apps/e2e/tests/*.spec.ts`
-im Forgejo-Workflow verdrahtet ist und dass die E2E-Suite keine
-`test.only`/`test.skip`/`test.fixme`-Marker enthält. Neue E2E-Specs sind damit
-automatisch CI-pflichtig.
+Der Forgejo-Job `e2e-paranoid` führt `playwright test` ohne Dateiliste aus.
+Neue Specs unter `apps/e2e/tests`, auch in Unterverzeichnissen, gehören damit
+automatisch zum vollständigen Lauf. Der frühere Smoke-Job bleibt als separates
+frühes Gate bestehen.
+
+`pnpm guard:paranoid-e2e` prüft den tatsächlichen Workflow-Aufruf und gleicht
+alle Testdateien mit der echten Playwright-Testerkennung ab. Einschränkende
+Filter und `test.only`/`test.skip`/`test.fixme`-Marker sind nicht erlaubt. Der
+Guard und seine Regressionstests laufen in CI unmittelbar nach der Installation
+und lokal als Teil von `pnpm lint` im Repository-Root. Beide Aufrufe funktionieren
+auch unter Windows ohne `sh`.
+
+Der Discovery-Check benötigt installierte Workspace-Abhängigkeiten, aber keine
+Browser, Datenbank oder laufende App. Er führt die Tests nicht aus und ersetzt
+keinen echten E2E-Lauf.
 
 ## Reports
 

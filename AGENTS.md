@@ -52,6 +52,22 @@ Auswirkung benötigen keinen neuen Katalogeintrag.
    `pnpm guard:supply-chain`, `pnpm test:ops`, `pnpm fachkatalog:check` und
    `pnpm fachkatalog:diff` ausführen.
 
+# Arbeitsregeln für Tests und CI
+
+1. Der CI-Job `e2e-paranoid` führt die vollständige Playwright-Suite ohne
+   Dateiliste oder Testfilter aus. Neue Specs unter `apps/e2e/tests` werden
+   automatisch aufgenommen; keine zweite Spec-Liste im Workflow pflegen.
+2. Vor Commit und Push `pnpm lint` im Repository-Root ausführen. Darin läuft
+   auch `pnpm guard:paranoid-e2e`: Der Guard prüft den tatsächlichen CI-Aufruf,
+   die Playwright-Testerkennung und unerlaubte Fokus-/Skip-Marker. Er braucht
+   installierte Workspace-Abhängigkeiten, aber weder Browser noch laufende
+   Dienste und funktioniert auch unter Windows ohne zusätzliche Shell.
+3. Gezieltes ESLint für einzelne Dateien und isolierte Browsertests ersetzen
+   diesen strukturellen Check nicht. Neue oder geänderte Tests zusätzlich
+   passend zur Änderung ausführen. Ein erfolgreicher Discovery-Check ist kein
+   bestandener E2E-Lauf; fehlende Dienste und offene CI-Prüfungen ausdrücklich
+   nennen.
+
 # Arbeitsregeln für den Changelog
 
 1. Neue Änderungen ausschließlich unter `[Unreleased]` in die vorhandenen

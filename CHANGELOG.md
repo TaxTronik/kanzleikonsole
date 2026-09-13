@@ -396,6 +396,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Der vollständige CI-Browsertestlauf erkennt neue und verschachtelte Specs
+  automatisch, einschließlich der Profiltests. Eine zusätzliche manuelle
+  Dateiliste entfällt. Der lokal und in CI identische Guard prüft die echte
+  Playwright-Testerkennung, läuft unter Windows ohne `sh` und ist Bestandteil
+  von `pnpm lint`; Regressionstests sichern die Abdeckung gegen Filter ab.
+
 - Kanzlei- und Mandantenportal verwenden für ihre Navigation dieselbe schmale,
   an das helle oder dunkle Farbschema angepasste Scrollleiste wie die kompakten
   Dashboard-Listen. Damit entfällt der helle native Scrollbalken in Chrome.
