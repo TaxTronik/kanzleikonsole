@@ -74,31 +74,38 @@ body:has(.react-grid-item.resizing) {
 }
 
 /*
- * Schlanke, dezente Scrollbar — opt-in via .scrollbar-thin.
+ * Schlanke, dezente Scrollbar für die Navigation beider Seitenmenüs
+ * sowie opt-in via .scrollbar-thin für weitere kompakte Listen.
  * Nicht über die App global biegen, damit OS-typische Bedienelemente
  * (z. B. Mandantenliste) ihren gewohnten Look behalten.
  */
-.scrollbar-thin {
+.scrollbar-thin,
+.app-sidebar > nav {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--border-strong)) transparent;
 }
-.scrollbar-thin::-webkit-scrollbar {
+.scrollbar-thin::-webkit-scrollbar,
+.app-sidebar > nav::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-.scrollbar-thin::-webkit-scrollbar-track {
+.scrollbar-thin::-webkit-scrollbar-track,
+.app-sidebar > nav::-webkit-scrollbar-track {
   background: transparent;
 }
-.scrollbar-thin::-webkit-scrollbar-thumb {
+.scrollbar-thin::-webkit-scrollbar-thumb,
+.app-sidebar > nav::-webkit-scrollbar-thumb {
   background-color: rgb(var(--border-strong));
   border-radius: 9999px;
   border: 1px solid transparent;
   background-clip: padding-box;
 }
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+.scrollbar-thin::-webkit-scrollbar-thumb:hover,
+.app-sidebar > nav::-webkit-scrollbar-thumb:hover {
   background-color: rgb(var(--text-disabled));
 }
-.scrollbar-thin::-webkit-scrollbar-corner {
+.scrollbar-thin::-webkit-scrollbar-corner,
+.app-sidebar > nav::-webkit-scrollbar-corner {
   background: transparent;
 }
 

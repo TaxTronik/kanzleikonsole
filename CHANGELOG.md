@@ -20,6 +20,12 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+### Scrollleisten der Seitenmenüs (2026-09-14)
+
+- Kanzlei- und Mandantenportal verwenden für ihre Navigation dieselbe schmale,
+  an das helle oder dunkle Farbschema angepasste Scrollleiste wie die kompakten
+  Dashboard-Listen. Damit entfällt der helle native Scrollbalken in Chrome.
+
 ### One-Click-Installation und pnpm aktualisiert (2026-09-13)
 
 - `ERR_PNPM_IGNORED_BUILDS` für `tesseract.js@7.0.0` behoben: Dessen
