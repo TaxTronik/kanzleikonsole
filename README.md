@@ -44,7 +44,7 @@ Voraussetzungen:
 
 - Docker Desktop oder Docker Engine
 - Node.js 24 LTS (`>=24.11.0 <25`)
-- Corepack/pnpm 11: `corepack enable`
+- Corepack/pnpm 12 (Version aus `package.json`): `corepack enable`
 
 Einmaliges Setup:
 

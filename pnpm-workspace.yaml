@@ -8,11 +8,10 @@ packages:
 patchedDependencies:
   '@simplewebauthn/server@13.3.3': patches/@simplewebauthn__server@13.3.3.patch
 
-# pnpm 11 reads project settings from pnpm-workspace.yaml instead of
+# pnpm >=11 reads project settings from pnpm-workspace.yaml instead of
 # package.json#pnpm or non-auth .npmrc entries.
 nodeLinker: hoisted
 shamefullyHoist: true
-confirmModulesPurge: false
 audit:
   level: high
 
@@ -47,7 +46,7 @@ verifyDepsBeforeRun: error
 pmOnFail: download
 savePrefix: ''
 
-# pnpm 11: Build scripts are denied unless explicitly reviewed here.
+# Build scripts are denied unless explicitly reviewed here.
 # Keep this allowlist narrow; packages not listed remain blocked.
 allowBuilds:
   '@prisma/client': true
@@ -57,6 +56,9 @@ allowBuilds:
   msgpackr-extract: true
   prisma: true
   sharp: true
+  # 7.0.0 postinstall zeigt nur den OpenCollective-Spendenhinweis; kein OCR-Build.
+  # Versionsgebunden, damit ein geaenderter Hook erneut geprueft werden muss.
+  'tesseract.js@7.0.0': false
   unrs-resolver: true
 
 peerDependencyRules:

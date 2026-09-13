@@ -25,7 +25,7 @@ function docker {
   throw 'Unexpected Docker call in the isolated reset fixture.'
 }
 function pnpm {
-  if ($args[0] -eq '--version') { Write-Output '11.20.0'; $global:LASTEXITCODE = 0; return }
+  if ($args[0] -eq '--version') { Write-Output '12.4.1'; $global:LASTEXITCODE = 0; return }
   throw 'Dependency or database work must never start after failed reset.'
 }
 & $SetupPath -Reset -SkipSeed

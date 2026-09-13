@@ -20,6 +20,25 @@ vor dem Release-Tag in den zum Tag passenden Versionsabschnitt überführt.
 
 ## [Unreleased]
 
+### One-Click-Installation und pnpm aktualisiert (2026-09-13)
+
+- `ERR_PNPM_IGNORED_BUILDS` für `tesseract.js@7.0.0` behoben: Dessen
+  `opencollective-postinstall || true` zeigt nur einen Spendenhinweis an und
+  wird versionsgebunden ausdrücklich deaktiviert. OCR benötigt diesen Hook
+  nicht; unbekannte Installationsskripte bleiben gesperrt.
+- Das Quality-Gate installiert mit leerem pnpm-Store und aktivierten,
+  ausdrücklich geprüften Installationsskripten. Fehlende `allowBuilds`-Einträge
+  fallen dadurch bereits in CI auf. AGENTS.md verlangt denselben frischen
+  Linux-Installationsnachweis bei Dependency- und pnpm-Änderungen.
+- pnpm in Projekt, Docker-Builds, Host-Setup und Tests von `11.20.0` auf
+  `12.4.1` aktualisiert. Das entfallene `confirmModulesPurge` entfernt;
+  Corepack lädt die native pnpm-Binary bereits beim Docker-Toolchain-Setup.
+  Das Lockfile erhält die von pnpm 12 benötigten Paketmanager-Metadaten;
+  der Anwendungsteil und die Supply-Chain-Schutzregeln bleiben unverändert.
+- Der technische Umsetzungshinweis zu `ACCESS-TENANT-RLS-001` dokumentiert
+  die Änderungen am referenzierten Supply-Chain-Guard. Die bestehenden
+  SimpleWebAuthn-Patchprüfungen und fachlichen Zugriffsregeln bleiben gleich.
+
 ### Dependency-Audit behoben (2026-09-10)
 
 - Next.js und sein ESLint-Plugin auf `16.3.3`, sharp auf `0.35.4`, js-yaml auf

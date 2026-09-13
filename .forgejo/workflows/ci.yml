@@ -49,13 +49,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Guard pnpm supply-chain policy
         run: sh scripts/check-pnpm-supply-chain.sh
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+      # Der One-Click-Installer fuehrt die geprueften Install-Scripts aus.
+      # --ignore-scripts mit selektivem rebuild verdeckt neue Pakete ohne
+      # allowBuilds-Entscheidung. Dieser frische Store erzwingt denselben
+      # strictDepBuilds-Check auch nach einem zuvor erfolgreichen CI-Lauf.
+      - name: Fresh install with reviewed dependency scripts
+        run: pnpm install --frozen-lockfile --prod=false --store-dir "$(mktemp -d)"
 
       - name: Format-Baseline prüfen
         run: pnpm format:check
@@ -72,9 +75,6 @@ jobs:
           FACHKATALOG_PUSH_BASE: ${{ github.event.before }}
           FACHKATALOG_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: pnpm fachkatalog:diff
-
-      - name: Rebuild approved native packages
-        run: pnpm rebuild -r @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
       - name: Generate Prisma client
         run: pnpm --filter @taxtronik/db exec prisma generate

@@ -29,8 +29,8 @@ require_line() {
   fi
 }
 
-require_line package.json '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@11\.20\.0"' \
-  "Root packageManager muss auf pnpm@11.20.0 gepinnt sein."
+require_line package.json '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@12\.4\.1"' \
+  "Root packageManager muss auf pnpm@12.4.1 gepinnt sein."
 
 require_line pnpm-workspace.yaml '^minimumReleaseAge:[[:space:]]*10080([[:space:]]*#.*)?$' \
   "minimumReleaseAge muss auf 10080 Minuten (7 Tage) stehen."
@@ -53,7 +53,7 @@ require_line pnpm-workspace.yaml '^sideEffectsCache:[[:space:]]*false$' \
 require_line pnpm-workspace.yaml '^verifyDepsBeforeRun:[[:space:]]*error$' \
   "verifyDepsBeforeRun muss error sein."
 require_line pnpm-workspace.yaml '^pmOnFail:[[:space:]]*download$' \
-  "pmOnFail muss download sein, damit Corepack die deklarierte pnpm-Version laedt."
+  "pmOnFail muss download sein, damit pnpm bei Bedarf die deklarierte Version laedt."
 require_line pnpm-workspace.yaml "^savePrefix:[[:space:]]*''$" \
   "savePrefix muss leer sein, damit neu hinzugefuegte Dependencies exakt gepinnt werden."
 
@@ -161,6 +161,7 @@ esbuild=true
 msgpackr-extract=true
 prisma=true
 sharp=true
+tesseract.js@7.0.0=false
 unrs-resolver=true
 EOF
 sort -o "$TMP_DIR/allow-expected" "$TMP_DIR/allow-expected"

@@ -55,7 +55,7 @@ TAXTRONIK_UPDATE_PUBLIC_KEY_DEFAULT="NE1YtBNNPFM545o1VqoBNTcKIPmZP0rmvLq22YyqKaU
 HOST_NODE_VERSION="24.19.0"
 HOST_NODE_LINUX_X64_SHA256="14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647"
 HOST_NODE_LINUX_ARM64_SHA256="01443c1e1a29e531ccad5a46fefa6df490d2189c49f7955904aecdbb0fe86fdc"
-HOST_PNPM_VERSION="11.20.0"
+HOST_PNPM_VERSION="12.4.1"
 
 # Interne Autorisierungen gelten nur im dynamischen Scope der unten definierten
 # Aktivierungs-Wrapper. Geerbte Shell-Variablen duerfen einen Operator-Aufruf

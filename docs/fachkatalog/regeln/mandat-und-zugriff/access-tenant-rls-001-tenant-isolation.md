@@ -422,6 +422,16 @@ dabei vor Staff-Kontolocks beansprucht; parallel überholte Snapshots oder
 Policies können nicht committen. Die versionsgebundene Dependency-Härtung ist
 über Patch- und Lockfile-Hash im Supply-Chain-Gate abgesichert.
 
+Der technische Paketmanager-Pin wird für Repository, CI, Container und
+One-Click-Host synchron auf pnpm `12.4.1` geführt und im Supply-Chain-Gate
+geprüft. Die Build-Script-Sollliste enthält die versionsgebundene Entscheidung
+`tesseract.js@7.0.0: false`: Dessen Postinstall zeigt ausschließlich einen
+OpenCollective-Spendenhinweis und erstellt keine OCR-Artefakte. Unbekannte
+Build-Scripts führen weiterhin zum Installationsfehler. Die bestehenden
+SimpleWebAuthn-Paket-, Patch- und Lockfile-Prüfungen bleiben unverändert;
+diese technische Installationskorrektur ändert weder Zugriffsentscheidungen
+noch die fachliche Bewertung dieser Regel.
+
 Der privilegierte ADMIN-Owner-CLI-Pfad verlangt exakte E-Mail- und Tenant-Slug-
 Angaben, prüft die ADMIN-Zuordnung nach dem gemeinsamen Kontolock erneut und
 mutiert nur genau diesen Treffer. Seine Credential-Datei wird exklusiv,

@@ -9,16 +9,16 @@
 # `pnpm install` — so entstehen die Workspace-Symlinks gegen VORHANDENE Quellen.
 # Der frühere „deps-first" (nur package.json kopieren, installieren, dann Quelle
 # nachkopieren) erzeugte Symlinks auf quell-lose Pakete; im Builder fand Turbopack
-# dann @taxtronik/* (und transitiv zod) nicht („Module not found"). .npmrc liefert
-# node-linker=hoisted + shamefully-hoist=true für die flache Auflösung.
+# dann @taxtronik/* (und transitiv zod) nicht („Module not found").
+# pnpm-workspace.yaml liefert nodeLinker=hoisted + shamefullyHoist=true.
 # =============================================================================
 
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
-# pnpm 11 — Lockfile-Format ab Round 11 enthält settings.injectWorkspacePackages,
-# das pnpm 10 unter --frozen-lockfile ablehnt.
-RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
+# Dieselbe pnpm-Version wie Host-Setup und package.json; --version laedt
+# bereits hier die native pnpm-12-Binary ueber den Corepack-Einstiegspunkt.
+RUN corepack enable && corepack prepare pnpm@12.4.1 --activate && pnpm --version
 
 # Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim Modul-Load,
 # wenn ENV-Vars fehlen — Next evaluiert Server-Components bei der Page-Data-
@@ -43,9 +43,10 @@ COPY . .
 # in den spaeteren non-root-Runner tragen.
 RUN chmod -R u=rwX,go=rX /repo
 
-# pnpm 11 blockt Build-Scripts (interaktive Approval) → --ignore-scripts; die
-# nötigen postinstall-Hooks (Prisma-Engine, sharp libvips, esbuild) holt rebuild
-# nach. --filter @taxtronik/db, damit dessen devDep prisma (+ transitiv dotenv)
+# Die benoetigten, per allowBuilds geprueften postinstall-Hooks werden gezielt
+# im rebuild ausgefuehrt. Ein frischer CI-Install ohne --ignore-scripts prueft
+# zusaetzlich auf neue Hooks ohne Entscheidung. --filter @taxtronik/db,
+# damit dessen devDep prisma (+ transitiv dotenv)
 # für prisma generate/migrate von packages/db auflösbar ist.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts \
@@ -54,9 +55,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 RUN pnpm rebuild -r --filter @taxtronik/web... --filter @taxtronik/web \
       @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
-# pnpm 11 löst bei JEDEM Aufruf einen impliziten Deps-Status-Check aus
-# (ERR_PNPM_IGNORED_BUILDS, nicht abschaltbar) → pnpm umgehen, Binaries direkt mit
-# node. cd packages/db: @prisma/client (Generate-Ziel) + prisma/config (für die
+# Prisma direkt aus dem gefilterten Build-Workspace aufrufen.
+# cd packages/db: @prisma/client (Generate-Ziel) + prisma/config (für die
 # prisma.config.ts) sind dort auflösbar; ENV-Dummy-DATABASE_URL fürs Config-Load.
 RUN cd packages/db && \
     PRISMA=$(find /repo -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -1) && \

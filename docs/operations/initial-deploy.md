@@ -47,7 +47,7 @@ ACME-Volume. Dieses Volume wird im verschlüsselten `backup-full` mitgesichert.
 ## Voraussetzungen
 
 Die Standardmethode setzt Docker Engine mit Compose-v2-Plugin, Git, Node.js
-`>=24.11.0 <25`, pnpm 11 und `curl` als bewusst betreiberverwaltete
+`>=24.11.0 <25`, pnpm 12 (Version aus `package.json`) und `curl` als bewusst betreiberverwaltete
 Host-Werkzeuge voraus.
 
 Beim 1-Klick-Weg reicht ein ausgecheckter, freigegebener TaxTronik-Release auf
@@ -67,6 +67,23 @@ Der Assistent verändert weder die Host- noch die Provider-Firewall.
 Vorgeschaltete CDN-/Proxy-DNS-Modi müssen für die initiale ACME-Ausstellung
 deaktiviert sein. Andere Linux-Distributionen verwenden die Standardmethode
 und provisionieren ihre Host-Werkzeuge selbst.
+
+### Abbruch mit `ERR_PNPM_IGNORED_BUILDS`
+
+Dieser Fehler bedeutet, dass für ein Installationsskript einer Abhängigkeit
+noch keine ausdrückliche Entscheidung in `allowBuilds` vorliegt. Langsame
+Registry-Anfragen mit `[WARN] Request took ...` sind davon unabhängig.
+
+Für `tesseract.js@7.0.0` ist der reine OpenCollective-Spendenhinweis im
+Repository ausdrücklich deaktiviert; OCR braucht diesen Installations-Hook
+nicht. Den korrigierten Release auschecken und `./taxtronik deploy` erneut
+starten. Konfiguration und Wiederaufnahme-Marker dabei behalten.
+
+Bei anderen Paketen muss zuerst der konkrete Hook geprüft und die Entscheidung
+zusammen mit dem Supply-Chain-Guard im Repository ergänzt werden. Eine lokale
+pauschale Freigabe per `pnpm approve-builds` oder `--ignore-scripts` beim
+Deployment ersetzt diese Korrektur nicht. Das Quality-Gate prüft eine frische
+Linux-Installation mit leerem pnpm-Store und aktivierten, geprüften Hooks.
 
 Der empfohlene verwaltete Signal-Pfad funktioniert ohne GPU: Er installiert den
 deterministischen Signal-Kern, die CPU-fähige BGE-M3-Embedding-Runtime und die

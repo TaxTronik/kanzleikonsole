@@ -25,3 +25,29 @@ compliance-relevanter oder kanzleifachlicher Workflow-Logik.
 Der Fachkatalog ersetzt weder die Einzelfallprüfung noch die organisatorische
 Fristenkontrolle der Kanzlei. Bedienungs- oder Layoutänderungen ohne fachliche
 Auswirkung benötigen keinen neuen Katalogeintrag.
+
+# Arbeitsregeln für Abhängigkeiten und Deployment
+
+1. Bei Änderungen an Abhängigkeiten oder pnpm die Installations-Hooks neuer
+   und aktualisierter Pakete prüfen. Jede Entscheidung in `allowBuilds` in
+   `pnpm-workspace.yaml` und der Soll-Liste in
+   `scripts/check-pnpm-supply-chain.sh` gemeinsam dokumentieren. Nicht benötigte
+   Hooks ausdrücklich mit `false` sperren; Entscheidungen möglichst an die
+   geprüfte Version binden.
+2. `strictDepBuilds: true` und `dangerouslyAllowAllBuilds: false` beibehalten.
+   `ERR_PNPM_IGNORED_BUILDS` durch eine begründete Entscheidung zum konkreten
+   Hook beheben. `--ignore-scripts`, pauschale Freigaben oder das Abschalten
+   von `strictDepBuilds` sind dafür kein Ersatz.
+3. Vor Abschluss einen frischen Linux-Installationslauf mit
+   `pnpm install --frozen-lockfile --prod=false` ohne `--ignore-scripts`
+   nachweisen, mit leerem `node_modules` und einem separaten, leeren pnpm-Store.
+   Dafür einen isolierten Checkout oder Container verwenden. Bestehende lokale
+   Abhängigkeiten nicht dafür löschen. Das Quality-CI-Gate muss denselben
+   Installationsfall prüfen; ein gezieltes `pnpm rebuild` allein reicht nicht.
+   Scheitert der Nachweis an externen Diensten, die konkrete Ursache und die
+   noch offene CI-Prüfung ausdrücklich nennen; keinen erfolgreichen Build
+   behaupten.
+4. pnpm-Versionspins in `package.json`, beiden Dockerfiles, dem Host-Setup in
+   `scripts/ops-lib.sh` sowie zugehörigen Guards und Tests synchron halten.
+   `pnpm guard:supply-chain`, `pnpm test:ops`, `pnpm fachkatalog:check` und
+   `pnpm fachkatalog:diff` ausführen.

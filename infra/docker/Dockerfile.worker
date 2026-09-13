@@ -12,7 +12,7 @@
 FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
+RUN corepack enable && corepack prepare pnpm@12.4.1 --activate && pnpm --version
 
 # Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
 COPY . .
@@ -20,8 +20,9 @@ COPY . .
 # Runtime-COPYs muessen fuer `node` lesbar, aber nie gruppen-/welt-schreibbar sein.
 RUN chmod -R u=rwX,go=rX /repo
 
-# --ignore-scripts (pnpm 11 blockt Build-Scripts) → postinstall-Hooks holt rebuild
-# nach. `--filter @taxtronik/db`, damit dessen devDep prisma (+ transitiv dotenv)
+# Gepruefte postinstall-Hooks holt rebuild nach; der frische CI-Install prueft
+# zusaetzlich neue Hooks ohne allowBuilds-Entscheidung. `--filter @taxtronik/db`,
+# damit dessen devDep prisma (+ transitiv dotenv)
 # für den Migrate-Service (prisma.config.ts) von packages/db auflösbar ist.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker... --filter @taxtronik/db
@@ -29,7 +30,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 RUN pnpm rebuild -r --filter @taxtronik/worker... \
       @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
-# pnpm 11 umgehen — siehe Dockerfile.web. cd packages/db: @prisma/client
+# Prisma direkt aufrufen — siehe Dockerfile.web. cd packages/db: @prisma/client
 # (Generate-Ziel) + prisma/config (für prisma.config.ts) dort auflösbar.
 # Dummy-DATABASE_URL, weil der Config-Load datasource.url=env('DATABASE_URL')
 # auswertet (generate verbindet nicht).

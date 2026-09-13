@@ -561,7 +561,7 @@ test_one_click_runtime_install_contract_is_pinned_and_official() {
   [[ "$HOST_NODE_VERSION" =~ ^24\.[0-9]+\.[0-9]+$ ]] || test_fail "managed Node version is not pinned to Node 24"
   [[ "$HOST_NODE_LINUX_X64_SHA256" =~ ^[0-9a-f]{64}$ ]] || test_fail "Node x64 SHA-256 is not pinned"
   [[ "$HOST_NODE_LINUX_ARM64_SHA256" =~ ^[0-9a-f]{64}$ ]] || test_fail "Node arm64 SHA-256 is not pinned"
-  [[ "$HOST_PNPM_VERSION" == "11.20.0" ]] || test_fail "pnpm host version drifted from packageManager"
+  [[ "$HOST_PNPM_VERSION" == "12.4.1" ]] || test_fail "pnpm host version drifted from packageManager"
   assert_contains "$source" 'https://download.docker.com/linux/${os_id}/gpg'
   assert_contains "$source" 'https://nodejs.org/download/release/v${HOST_NODE_VERSION}/node-v${HOST_NODE_VERSION}-linux-${platform}.tar.xz'
   assert_not_contains "$source" 'curl | sh'
