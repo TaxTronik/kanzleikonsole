@@ -167,6 +167,50 @@ describe('resolveConsentSelectionsTx', () => {
     ).rejects.toThrow(/Dienstleister/);
   });
 
+  it.each([false, true])(
+    'blockiert einen fehlenden aktiven Provider auch ohne Auswahl (required: %s)',
+    async (required) => {
+      const tx = txFor(catalogWithCustom({ providerId: PROVIDER_ID, required }));
+      const notice = { version: 4, body: 'Angezeigter Hinweis' };
+      const visible = visibleConsentOptions(await readResolvedConsentOptionsTx(tx, TENANT_ID));
+      expect(visible.some((option) => option.id === CUSTOM_ID)).toBe(false);
+
+      await expect(
+        resolveConsentSelectionsTx(tx, TENANT_ID, emptyConsent(), {
+          enforceRequired: true,
+          expectedDisplay: { notice, revision: consentDisplayRevision(notice, visible) },
+        }),
+      ).rejects.toThrow(/Dienstleister.*Digitale Beleganalyse/);
+      await expect(resolveConsentSelectionsTx(tx, TENANT_ID, emptyConsent())).rejects.toThrow(
+        /Dienstleister.*Digitale Beleganalyse/,
+      );
+    },
+  );
+
+  it('lässt einen fehlenden Built-in-Provider keine zwingende Auswahl ausblenden', async () => {
+    const catalog = defaultConsentOptionsCatalog();
+    const fax = catalog.options.find((option) => option.id === 'communication.fax')!;
+    fax.required = true;
+    fax.serviceProviderId = PROVIDER_ID;
+
+    await expect(
+      resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, emptyConsent(), {
+        enforceRequired: true,
+      }),
+    ).rejects.toThrow(/Dienstleister.*Fax/);
+  });
+
+  it('nimmt inaktive unaufgelöste Optionen weiterhin nicht in neue Erklärungen auf', async () => {
+    await expect(
+      resolveConsentSelectionsTx(
+        txFor(catalogWithCustom({ active: false, providerId: PROVIDER_ID })),
+        TENANT_ID,
+        emptyConsent(),
+        { enforceRequired: true },
+      ),
+    ).resolves.toMatchObject({ optionSelections: [] });
+  });
+
   it('ergänzt für alte Built-in-Bools einen kanonischen Snapshot', async () => {
     const legacy = emptyConsent();
     legacy.communication.fax = true;

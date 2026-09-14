@@ -61,6 +61,10 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts',
   // MAIL-INBOX-001: owner creates synthetic fixtures, app connection proves RLS.
   'packages/db/src/__tests__/mailbox-rls.test.ts',
+  // MAIL-INBOX-001: Owner legt synthetische Dokumenttypen in einer stets
+  // zurückgerollten Transaktion an; der echte Web-Reader belegt SQL-NULL- und
+  // Typfilter. Kein App-Request-Client und kein Ersatz für den RLS-Nachweis.
+  'packages/db/src/__tests__/mailbox-document-types.test.ts',
   // PORTAL-INBOX-SUBMISSION-001: Owner erzeugt isolierte Fixtures; die
   // separate App-Verbindung beweist Kontakt-, Staff-, RLS- und Write-only-Grenzen.
   'packages/db/src/__tests__/portal-inbox-rls.test.ts',

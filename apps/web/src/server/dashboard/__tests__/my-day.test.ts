@@ -11,7 +11,7 @@ function createTx() {
   };
 }
 
-describe('loadMyDayEntries', () => {
+describe('PORTAL-INBOX-SUBMISSION-001: loadMyDayEntries', () => {
   const tx = createTx();
 
   beforeEach(() => {
@@ -154,5 +154,31 @@ describe('loadMyDayEntries', () => {
     expect(tx.clientReminder.findMany).toHaveBeenCalledOnce();
     expect(tx.appointment.findMany).not.toHaveBeenCalled();
     expect(tx.phoneNote.findMany).not.toHaveBeenCalled();
+  });
+
+  it('behaelt fuer chronologische Ansichten das gemeinsame Standardlimit bei', async () => {
+    const notes = Array.from({ length: 25 }, (_, index) => ({
+      id: `phone-${index}`,
+      subject: `Telefonzettel ${index}`,
+      callerName: 'Anrufer',
+      client: null,
+      createdAt: new Date(Date.UTC(2026, 6, 1, 0, index)),
+    }));
+    tx.phoneNote.findMany.mockImplementation(async ({ take }: { take: number }) =>
+      notes.slice(0, take),
+    );
+    tx.clientReminder.findMany.mockResolvedValue([
+      {
+        id: 'newer-reminder',
+        subject: 'Neuere Rückfrage',
+        dueDate: new Date('2026-08-01T00:00:00Z'),
+        client: null,
+      },
+    ]);
+
+    const result = await loadMyDayEntries(tx as never, 'staff-1');
+
+    expect(result).toHaveLength(20);
+    expect(result.map((entry) => entry.id)).toEqual(notes.slice(0, 20).map((note) => note.id));
   });
 });

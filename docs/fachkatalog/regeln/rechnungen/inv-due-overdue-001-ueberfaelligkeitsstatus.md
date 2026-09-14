@@ -34,8 +34,11 @@ sources:
     primary: true
 code_refs:
   - apps/worker/src/jobs/invoice-overdue-check.ts
+  - apps/web/src/app/staff/(protected)/invoices/page.tsx
 test_refs:
   - apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts
+  - apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx
+  - apps/e2e/tests/12-accessibility.spec.ts
 feature_refs:
   - docs/development/module/fakturierung.md
   - docs/anwenderdoku/rechnungen.md
@@ -117,7 +120,29 @@ Berliner Tagesbeginn und führt ein bedingtes `SENT`-Update aus. Der
 Evidence-Service und die Notification teilen denselben Tenant-Transaktionsclient.
 Eine bereits offene Ressourcenmeldung wird aktualisiert.
 
+Die Staff-Rechnungsübersicht verwendet für noch als `SENT` gespeicherte Rechnungen
+dieselbe Berliner Kalendertagesgrenze wie Worker und Portalübersicht. Der gemeinsame
+Helfer `berlinTodayUtcMidnight` aus `@taxtronik/tax` liefert den Berliner Tag als
+UTC-Mitternacht passend zu `dueDate` als `@db.Date`. Dieser Tageswert wird einmal
+je Seitenaufruf berechnet. Die Anzeige kann dadurch ab dem Folgetag bereits vor
+dem nächsten Worker-Lauf „Überfällig“ zeigen; sie schreibt weder Rechnungsstatus
+noch Audit oder Benachrichtigungen. Gespeicherte andere Status bleiben erhalten.
+
+Die Rechnungsübersicht lässt auf schmalen Bildschirmen Kopfzeile und Statusfilter
+umbrechen. Die Tabelle bleibt in einer eigenen benannten, per Tastatur
+erreichbaren Region horizontal scrollbar; die Seitennavigation steht außerhalb
+dieses Scrollbereichs. Der Accessibility-Test prüft bei 320 CSS-Pixeln auf
+Seitenüberlauf einschließlich des Hauptinhalts. Die Layoutanpassung ändert weder
+Statusberechnung noch Filter, Berechtigungen oder Rechnungsaktionen.
+
 ## Bekannte Abweichungen und Grenzen
+
+Der am 14. September 2026 festgestellte Konflikt zwischen Regel und Staff-Anzeige
+ist korrigiert: Die Übersicht verglich `dueDate` bisher mit dem aktuellen
+Zeitpunkt statt dem Berliner Kalendertag. Dadurch erschien eine heute fällige
+`SENT`-Rechnung bereits tagsüber als überfällig, obwohl die Regel dies erst ab
+dem Folgetag vorsieht. Die Korrektur gleicht die Anzeige an die bestehende Regel
+an und stellt keine fachliche Freigabe dar.
 
 Der Produktstatus ist im beschriebenen Scope umgesetzt. Er beweist weder
 Zugang der Rechnung, Nichtzahlung, Mahnung, Vertretenmüssen noch das Vorliegen
@@ -142,3 +167,9 @@ Die Worker-Tests prüfen Kandidatenfilter, Tagesgrenze, Tagzählung,
 Status-Recheck, gemeinsamen Transaktionsclient für Update, Audit und Meldung,
 idempotente Aktualisierung, Parallelkollision und Fehlerweitergabe. Sie
 beurteilen keine zivilrechtlichen Verzugsvoraussetzungen.
+
+Die SSR-Tests der echten Staff-Rechnungsseite verwenden den unveränderten
+gemeinsamen Datumshilfsdienst. Sie prüfen Fälligkeitstag und Folgetag an den
+exakten CET-/CEST-Tagesgrenzen, die 23- und 25-Stunden-Tage der Zeitumstellung,
+zukünftige Fälligkeit, abweichende Serverzeitzonen sowie die unveränderte Anzeige
+von `DRAFT`, `PAID`, `CANCELLED` und `OVERDUE`.

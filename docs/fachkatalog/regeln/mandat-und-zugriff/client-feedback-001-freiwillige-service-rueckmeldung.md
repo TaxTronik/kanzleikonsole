@@ -95,6 +95,10 @@ Navigationsicons ändern ausschließlich die Darstellung. Die Hinweise zur
 Trennung von Antwort, Kanzleiprüfung und fachlicher Fristerledigung sowie
 Einladungs-, Zugriffs- und Auswertungslogik bleiben unverändert.
 
+Die horizontal scrollbar dargestellte Monatstabelle ist als benannte Region
+mit sichtbarem Tastaturfokus erreichbar. Das ermöglicht das Lesen aller Spalten
+auf schmalen Ansichten und ändert keine Monatswerte oder Auswertungsgrenzen.
+
 WORKFLOW-LIFECYCLE-001 bindet sämtliche neuen Abschlusswege an dieselbe Datenbankentscheidung. Bei aktiviertem Feedback und vorgemerktem Kontakt schreibt der Abschluss eine dauerhafte Verarbeitungsmarkierung. Der manuelle Webpfad verarbeitet sie unmittelbar, der minütliche Worker übernimmt insbesondere E-Mail-/n8n- und Request-/Formularabschlüsse. Beide verwenden denselben Service und dieselben Sperren. Der Worker prüft zusätzlich den aktuellen Zugriff des Workflow-Erstellers; bei fehlendem Zugriff, inaktivem Mandat/Kontakt, deaktiviertem Modul oder unterschrittenem Mindestabstand wird ohne Einladung abgeschlossen. Technische Fehler bleiben mit verzögertem Wiederholungsversuch offen. Einladung, Evidence und Verarbeitungsmarkierung sind atomar. Bestehende historische Abschlüsse erhalten durch die Migration keine nachträglichen Einladungen.
 
 Personenbezogene Fachdaten gehören zum privaten Workflowbestand des bestehenden Löschkonzepts. Verbundene Requests sind gemäß DSGVO-OPERATIONAL-RETENTION-001 vom automatischen Request-Purge ausgenommen, bis der gesamte verbundene Fachvorgang in einem geprüften Löschprozess bewertet wird. Diese Regel begründet keine neue Aufbewahrungsdauer. Unveränderliche Evidenz enthält IDs und knappe Statusmerkmale, keine Nachrichtentexte. Vor einer produktiven Nutzung sind Datenbankmigration, negative Zugriffsprüfungen und organisatorische Zuständigkeiten abzunehmen.

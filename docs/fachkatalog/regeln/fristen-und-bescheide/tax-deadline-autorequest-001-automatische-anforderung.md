@@ -53,6 +53,7 @@ code_refs:
   - apps/web/src/lib/tax-deadline-pipeline.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts
   - apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx
+  - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
   - apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts
   - apps/worker/src/jobs/tax-deadline-materialize.ts
   - apps/worker/src/jobs/tax-deadline-notification.ts
@@ -70,6 +71,7 @@ test_refs:
   - apps/web/src/lib/__tests__/tax-deadline-pipeline.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+  - apps/e2e/tests/12-accessibility.spec.ts
   - apps/worker/src/jobs/__tests__/tax-deadline-materialize.test.ts
   - apps/worker/src/jobs/__tests__/tax-deadline-notification.test.ts
   - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
@@ -255,6 +257,18 @@ Fehlerbenachrichtigung. Sie prüft jedoch nicht fachlich, ob eine vorhandene
 Adresse weiterhin zum richtigen Empfänger gehört.
 
 ## Umsetzung in TaxTronik
+
+Die Monatsnavigation der Steuerterminübersicht benennt ihre beiden
+Pfeilverknüpfungen für assistive Technik als vorherigen und nächsten Monat.
+Zieladressen, Filter und Terminberechnung bleiben unverändert. Der
+Accessibility-Test prüft die zugänglichen Linknamen auf dieser Seite.
+
+Bei schmalen Bildschirmen passen sich Seitenabstände und Monatsnavigation an die
+verfügbare Breite an. Die Statistik der Listenansicht ordnet sich untereinander
+an; breite Termintabellen scrollen innerhalb einer benannten, per Tastatur
+erreichbaren Region. Der Accessibility-Test prüft außerdem bei 320 CSS-Pixeln
+auf Seitenüberlauf einschließlich des Hauptinhalts. Terminberechnung,
+Mandantenzugriff und Abschlussaktionen bleiben unverändert.
 
 `materialize.ts` materialisiert Termine bis 90 Tage voraus und führt
 Vorwarnung, Stop/Freigabe und Request-Anlage. Portal-Anforderung, Verknüpfung,

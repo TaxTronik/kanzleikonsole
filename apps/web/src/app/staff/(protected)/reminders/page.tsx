@@ -103,7 +103,7 @@ export default async function RemindersPage({
         ))}
       </nav>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <nav aria-label="Ticketstatus" className="flex gap-2">
+        <nav aria-label="Ticketstatus" className="flex flex-wrap gap-2">
           {STATUSES.map((tab) => (
             <Link
               key={tab.key}
@@ -115,7 +115,11 @@ export default async function RemindersPage({
             </Link>
           ))}
         </nav>
-        <form action="/staff/reminders" method="get" className="flex items-center gap-2">
+        <form
+          action="/staff/reminders"
+          method="get"
+          className="flex min-w-0 flex-wrap items-center gap-2"
+        >
           <input type="hidden" name="scope" value={scope} />
           <input type="hidden" name="status" value={status} />
           <input
@@ -126,7 +130,7 @@ export default async function RemindersPage({
             placeholder="#123 oder Titel"
             defaultValue={q}
             maxLength={200}
-            className="input text-sm"
+            className="input min-w-0 flex-1 basis-36 text-sm"
           />
           <button type="submit" className="btn-secondary text-xs">
             <Search className="h-4 w-4" />

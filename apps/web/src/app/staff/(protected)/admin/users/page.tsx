@@ -238,11 +238,14 @@ export default async function UsersAdminPage() {
               Bestehende Nachweise bleiben erhalten; neue Freigaben sind gesperrt.
             </p>
             <details className="mt-2">
-              <summary className="cursor-pointer">Zuordnungen prüfen</summary>
+              <summary className="min-h-6 cursor-pointer py-1">Zuordnungen prüfen</summary>
               <ul>
                 {uncoveredClients.map((client) => (
                   <li key={client.id}>
-                    <Link className="underline" href={`/staff/clients/${client.id}/edit`}>
+                    <Link
+                      className="inline-flex min-h-6 items-center py-1 underline"
+                      href={`/staff/clients/${client.id}/edit`}
+                    >
                       {client.name}
                     </Link>
                   </li>

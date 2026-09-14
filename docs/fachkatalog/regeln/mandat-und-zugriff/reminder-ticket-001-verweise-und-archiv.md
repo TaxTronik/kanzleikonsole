@@ -225,3 +225,10 @@ Browserregressionen prüfen die Komponenten sowie den vollständigen Ablauf
 über Oberfläche, Server-Actions und Datenbank. Der Abnahmebericht steht unter
 `docs/reviews/2026-09-07-wiedervorlagen-tickets.md`; daraus entsteht keine
 fachliche Freigabe.
+
+Nach einem Kommentar wartet der Ablaufnachweis ausdrücklich auf den vom Server
+gerenderten Beitrag in der Unterhaltungsliste, bevor die Seite neu geladen
+wird. Der bereits sichtbare Text im kontrollierten Eingabefeld ist kein
+Speichernachweis. Die anschließende Prüfung des persistierten Ticketverweises
+nach dem Neuladen bleibt bestehen; Timeouts, Wiederholungen und fachliche
+Ablaufprüfungen werden dadurch nicht verändert.

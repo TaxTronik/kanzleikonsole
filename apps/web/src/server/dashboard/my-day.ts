@@ -62,11 +62,10 @@ function nullableClientVisibility(deniedClientIds: string[] | undefined) {
 }
 
 /**
- * Persönliche Arbeitsliste für das Dashboard. Anders als das eigenständige
- * Kalender-Widget enthält sie nur Objekte, für die der aktuelle Mitarbeiter
- * tatsächlich zuständig ist.
+ * Begrenzt die Kandidaten je Quelle, bevor die jeweilige Ansicht priorisiert.
+ * Enthält nur Objekte, für die der aktuelle Mitarbeiter tatsächlich zuständig ist.
  */
-export async function loadMyDayEntries(
+export async function loadMyDayCandidates(
   tx: TxClient,
   staffId: string,
   deniedClientIds?: string[],
@@ -204,6 +203,20 @@ export async function loadMyDayEntries(
     })),
   ];
 
+  return entries;
+}
+
+/** Persönliche, chronologisch begrenzte Arbeitsliste für das Dashboard. */
+export async function loadMyDayEntries(
+  tx: TxClient,
+  staffId: string,
+  deniedClientIds?: string[],
+  now = new Date(),
+  sources: MyDaySources = ALL_MY_DAY_SOURCES,
+  limit = DEFAULT_MY_DAY_LIMIT,
+): Promise<MyDayEntry[]> {
+  const queryLimit = Math.max(1, Math.min(200, Math.trunc(limit)));
+  const entries = await loadMyDayCandidates(tx, staffId, deniedClientIds, now, sources, queryLimit);
   return entries
     .sort((a, b) => {
       if (a.sortAt === null) return b.sortAt === null ? a.title.localeCompare(b.title, 'de') : 1;

@@ -54,6 +54,7 @@ code_refs:
   - packages/db/src/staff-client-access.ts
   - packages/db/src/notification.ts
   - apps/web/src/server/notifications/service.ts
+  - apps/web/src/app/staff/(protected)/notifications/page.tsx
   - apps/worker/src/jobs/reminders-daily.ts
   - packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql
   - packages/db/prisma/migrations/20260824030000_notification_client_contact_insert/migration.sql
@@ -69,6 +70,8 @@ test_refs:
   - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
   - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
+  - apps/web/src/app/staff/(protected)/notifications/__tests__/page.test.tsx
+  - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/notification-client-scope-migration.test.ts
   - packages/db/src/__tests__/notification-client-scope-rls.test.ts
   - packages/db/src/__tests__/notification-write-only-forward.test.ts
@@ -154,6 +157,14 @@ Fachressource und der gemeinsame Accessfilter verwirft den alten Empfänger;
 eine schon vorhandene Notification wird durch RLS unsichtbar.
 
 ## Umsetzung in TaxTronik
+
+Die Öffnen-Verknüpfung in der Benachrichtigungsübersicht ist dauerhaft
+unterstrichen und damit unabhängig von Farbe erkennbar. Ziel, Lesebestätigung
+und Empfängerprüfung bleiben unverändert. Die gerenderte Seitenregression und
+der Accessibility-Test decken die Anzeige ab.
+Ungelesene Zeilen verwenden eine zum aktiven Farbschema passende Fläche und
+lesbare Metadaten; der Kopf mit der Sammelaktion bricht auf schmalen Bildschirmen
+um. Ungelesen-Auswahl, Reihenfolge, Zähler und Actions bleiben unverändert.
 
 Der Vollmachts-Ablaufworker sperrt den jeweiligen Datensatz und liest den
 aktuellen Status vor einem Warn-/Ablaufhinweis erneut. Die Empfängerauswahl

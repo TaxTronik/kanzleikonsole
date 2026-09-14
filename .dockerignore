@@ -84,3 +84,5 @@ DEMODATEN
 # CI- / lokale Notes
 install.log
 .claude
+# Lokale QA-Zustände, Zugangsdaten, Logs und Test-Fixtures.
+.codex-run

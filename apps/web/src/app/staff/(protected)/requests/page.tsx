@@ -152,13 +152,13 @@ export default async function RequestsOverviewPage({
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-end justify-between mb-6">
+    <div className="p-4 sm:p-8">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Anforderungen</h1>
           <p className="text-muted text-sm">Alle laufenden Anforderungen an Mandanten.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <a
             href={`/api/staff/requests/export${baseQs.toString() ? '?' + baseQs.toString() : ''}`}
             className="btn-secondary"
@@ -178,7 +178,7 @@ export default async function RequestsOverviewPage({
 
       {/* Status-Tabs */}
       <div className="border-b border-default mb-4">
-        <nav className="-mb-px flex gap-6">
+        <nav className="-mb-px flex flex-wrap gap-x-6 gap-y-1">
           {tabs.map((t) => {
             const active = (filterStatus ?? '') === t.key;
             return (
@@ -202,7 +202,7 @@ export default async function RequestsOverviewPage({
       <form action="/staff/requests" method="get" className="card p-4 mb-4 space-y-3">
         {filterStatus && <input type="hidden" name="status" value={filterStatus} />}
         <div className="flex gap-3 items-end flex-wrap">
-          <div className="flex-1 min-w-[240px] relative">
+          <div className="relative min-w-0 basis-full sm:flex-1">
             <Search
               aria-hidden="true"
               className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-disabled"
@@ -233,7 +233,7 @@ export default async function RequestsOverviewPage({
             <option value="asc">Aufsteigend</option>
           </select>
         </div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-sm text-secondary">
             <input
               type="checkbox"
@@ -244,7 +244,7 @@ export default async function RequestsOverviewPage({
             />
             Nur meine Mandanten
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(sp.q || sort !== 'created' || dir !== 'desc' || mine) && (
               <Link
                 href={filterStatus ? `/staff/requests?status=${filterStatus}` : '/staff/requests'}
@@ -268,91 +268,99 @@ export default async function RequestsOverviewPage({
           </div>
         ) : (
           <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-default">
-                  <th className="px-3 py-3 w-8"></th>
-                  <th className="th">Mandant</th>
-                  <th className="th">DATEV / Addison</th>
-                  <th className="th">Titel</th>
-                  <th className="th">Status</th>
-                  <th className="th">Priorität</th>
-                  <th className="th">Antw.</th>
-                  <th className="th">Fällig</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {requests.map((r) => {
-                  const closable = r.status !== 'CLOSED' && r.status !== 'CANCELLED';
-                  return (
-                    <tr key={r.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-3">
-                        {closable && (
-                          <input
-                            type="checkbox"
-                            data-bulk-id={r.id}
-                            className="rounded border-strong text-brand-600 focus:ring-focus"
-                            aria-label="Auswählen"
-                          />
-                        )}
-                      </td>
-                      <td className="px-6 py-3">
-                        <Link
-                          href={`/staff/clients/${r.client.id}`}
-                          className="text-secondary hover:underline"
-                        >
-                          {r.client.name}
-                        </Link>
-                      </td>
-                      <td className="px-6 py-3 text-xs font-mono text-muted">
-                        {r.client.datevNo ?? '—'}
-                        {r.client.addisonNo ? ` / ${r.client.addisonNo}` : ''}
-                      </td>
-                      <td className="px-6 py-3 font-medium text-primary">
-                        <Link href={`/staff/requests/${r.id}`} className="hover:underline">
-                          {r.title}
-                        </Link>
-                      </td>
-                      <td className="px-6 py-3">
-                        {r.status === 'OPEN' && (
-                          <span className="badge-yellow">{statusLabels[r.status]}</span>
-                        )}
-                        {r.status === 'IN_PROGRESS' && (
-                          <span className="badge-yellow">{statusLabels[r.status]}</span>
-                        )}
-                        {r.status === 'RESPONDED' && (
-                          <span className="badge-green">{statusLabels[r.status]}</span>
-                        )}
-                        {r.status === 'CLOSED' && (
-                          <span className="badge-gray">{statusLabels[r.status]}</span>
-                        )}
-                        {r.status === 'CANCELLED' && (
-                          <span className="badge-gray">{statusLabels[r.status]}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-3">
-                        {r.priority === 'URGENT' && (
-                          <span className="badge-red">{priorityLabels[r.priority]}</span>
-                        )}
-                        {r.priority === 'HIGH' && (
-                          <span className="badge-yellow">{priorityLabels[r.priority]}</span>
-                        )}
-                        {r.priority === 'NORMAL' && (
-                          <span className="text-secondary">{priorityLabels[r.priority]}</span>
-                        )}
-                        {r.priority === 'LOW' && (
-                          <span className="text-disabled">{priorityLabels[r.priority]}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-3 text-secondary">{r._count.responses}</td>
-                      <td className="px-6 py-3 text-secondary">
-                        {r.dueAt ? fmtDateShort(r.dueAt) : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div
+              className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              role="region"
+              aria-label="Anforderungsliste"
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Horizontale Tabellenspalten müssen per Tastatur erreichbar sein.
+              tabIndex={0}
+            >
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-default">
+                    <th className="px-3 py-3 w-8"></th>
+                    <th className="th">Mandant</th>
+                    <th className="th">DATEV / Addison</th>
+                    <th className="th">Titel</th>
+                    <th className="th">Status</th>
+                    <th className="th">Priorität</th>
+                    <th className="th">Antw.</th>
+                    <th className="th">Fällig</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {requests.map((r) => {
+                    const closable = r.status !== 'CLOSED' && r.status !== 'CANCELLED';
+                    return (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-3">
+                          {closable && (
+                            <input
+                              type="checkbox"
+                              data-bulk-id={r.id}
+                              className="rounded border-strong text-brand-600 focus:ring-focus"
+                              aria-label="Auswählen"
+                            />
+                          )}
+                        </td>
+                        <td className="px-6 py-3">
+                          <Link
+                            href={`/staff/clients/${r.client.id}`}
+                            className="text-secondary hover:underline"
+                          >
+                            {r.client.name}
+                          </Link>
+                        </td>
+                        <td className="px-6 py-3 text-xs font-mono text-muted">
+                          {r.client.datevNo ?? '—'}
+                          {r.client.addisonNo ? ` / ${r.client.addisonNo}` : ''}
+                        </td>
+                        <td className="px-6 py-3 font-medium text-primary">
+                          <Link href={`/staff/requests/${r.id}`} className="hover:underline">
+                            {r.title}
+                          </Link>
+                        </td>
+                        <td className="px-6 py-3">
+                          {r.status === 'OPEN' && (
+                            <span className="badge-yellow">{statusLabels[r.status]}</span>
+                          )}
+                          {r.status === 'IN_PROGRESS' && (
+                            <span className="badge-yellow">{statusLabels[r.status]}</span>
+                          )}
+                          {r.status === 'RESPONDED' && (
+                            <span className="badge-green">{statusLabels[r.status]}</span>
+                          )}
+                          {r.status === 'CLOSED' && (
+                            <span className="badge-gray">{statusLabels[r.status]}</span>
+                          )}
+                          {r.status === 'CANCELLED' && (
+                            <span className="badge-gray">{statusLabels[r.status]}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3">
+                          {r.priority === 'URGENT' && (
+                            <span className="badge-red">{priorityLabels[r.priority]}</span>
+                          )}
+                          {r.priority === 'HIGH' && (
+                            <span className="badge-yellow">{priorityLabels[r.priority]}</span>
+                          )}
+                          {r.priority === 'NORMAL' && (
+                            <span className="text-secondary">{priorityLabels[r.priority]}</span>
+                          )}
+                          {r.priority === 'LOW' && (
+                            <span className="text-disabled">{priorityLabels[r.priority]}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 text-secondary">{r._count.responses}</td>
+                        <td className="px-6 py-3 text-secondary">
+                          {r.dueAt ? fmtDateShort(r.dueAt) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             <BulkToolbar
               closableIds={requests
                 .filter((r) => r.status !== 'CLOSED' && r.status !== 'CANCELLED')

@@ -238,7 +238,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   }));
 
   return (
-    <div className="p-8 max-w-7xl">
+    <div className="p-4 sm:p-8 max-w-7xl">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="page-title">
@@ -280,8 +280,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <Link
             href={`/staff/calendar?month=${prevMonthQs}`}
             aria-label="Vorheriger Monat"
@@ -289,7 +289,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           >
             <ChevronLeft aria-hidden="true" className="h-4 w-4" />
           </Link>
-          <h2 className="text-lg font-semibold text-primary min-w-[220px] text-center">
+          <h2 className="min-w-0 text-center text-lg font-semibold text-primary sm:min-w-[220px]">
             {fmtMonthYear(new Date(Date.UTC(year, month0, 15)))}
           </h2>
           <Link

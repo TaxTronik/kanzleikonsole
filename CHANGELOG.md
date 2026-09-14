@@ -411,6 +411,36 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Nächtliche Qualitätsprüfung: Der Arbeitskorb priorisiert überfällige Aufgaben
+  vor dem Gesamtlimit. Eigene Dokumenttypen erscheinen wieder im Mailbox-Import;
+  inkonsistente aktive Dienstleisterbezüge blockieren neue Datenschutzerklärungen
+  vor der Pflichtprüfung (`PORTAL-INBOX-SUBMISSION-001`, `MAIL-INBOX-001`,
+  `DSGVO-CONSENT-SNAPSHOT-001`).
+- Posteingangsantworten leeren Text und Dateiauswahl nach bestätigtem Speichern
+  zuverlässig. Netzwerkfehler erhalten den Entwurf und die Retry-Identität.
+  Portal-Lesestände bestätigen nur angezeigte Nachrichten und bleiben bei
+  verspäteten Bestätigungen monoton (`PORTAL-INBOX-SUBMISSION-001`).
+- Mobile Formularbreiten und Beschriftungen in Mandanten- und Benutzeranlage
+  sowie Personalaufnahme korrigiert; Datenschutzsymbol behält seine Größe.
+  Arbeitskorb-Schaltflächen, Onboardingkontrast, Zurück- und Monatslinks,
+  Audit-Prüflink sowie scrollbare Feedback- und Abwesenheitstabellen sind besser
+  per Tastatur, Touch und Screenreader bedienbar.
+- Zwölf schmale Seitenansichten erhalten umbrechende Kopfzeilen und Aktionen
+  sowie lokale Tabellenscrollbereiche. Die Browserprüfung erfasst jetzt auch
+  seitlichen Überlauf im Hauptinhalt. Ungelesene Benachrichtigungen und
+  Hintergrundjobs bleiben im Dark Mode lesbar.
+- Heute fällige versendete Rechnungen werden in der Kanzleiübersicht erst ab
+  dem folgenden Berliner Kalendertag als „Überfällig“ angezeigt, konsistent
+  mit Portal und bestehender Fachregel (`INV-DUE-OVERDUE-001`).
+- Kanzleileitfäden behalten ungespeicherte Auswahlen beim Wechsel der Vorlage.
+  Auswahlgrenze, Leerzustände, ausstehende Änderungen und Speicherfehler werden
+  direkt erklärt; gespeichert wird ausschließlich die aktuelle Auswahl
+  (`KNOWLEDGE-CONTEXT-001`).
+- Der Ticket-Browsertest wartet vor dem Neuladen auf den gespeicherten Kommentar.
+  Text im Eingabefeld kann keinen vorzeitigen Testfortschritt mehr auslösen
+  (`REMINDER-TICKET-001`). Der technische Prüfbericht steht unter
+  `docs/development/qa-2026-09-14.md`.
+
 - Im Arbeitskorb umfasst der Hover- und Tastaturfokus die gesamte Listenzeile
   einschließlich Symbol; die Erledigen-Aktion bleibt separat bedienbar.
 - „Zuletzt“ bei Mandanten zeigt aktuelle, serverseitig sichtbare Namen statt
@@ -651,6 +681,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   die Cookie-Löschung (`0c1f8174`).
 
 ### Sicherheit
+
+- Lokale QA-Artefakte unter `.codex-run` werden ausdrücklich aus dem
+  Docker-Buildkontext ausgeschlossen. Der bestehende Docker-Guard und eine
+  negative Regression sichern den Ausschluss auch für verschachtelte Dateien.
 
 - Next.js und sein ESLint-Plugin auf `16.3.3`, sharp auf `0.35.4`, js-yaml auf
   `4.3.2`, Nodemailer auf `9.1.1` und Vitest samt Begleitpaketen auf `4.1.11`

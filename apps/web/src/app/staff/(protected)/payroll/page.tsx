@@ -121,7 +121,7 @@ export default async function PayrollPage({
           </label>
         </PayrollActionForm>
       </details>
-      <div className="grid lg:grid-cols-[240px_1fr] gap-6">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="space-y-2">
           {data.rows.map((row) => (
             <Link
@@ -147,7 +147,7 @@ function PayrollDetailView({ detail }: { detail: PayrollDetail }) {
   const item = detail.item;
   const schema = item.schemaSnapshot as unknown as typeof PAYROLL_SCHEMA;
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <h2 className="text-xl font-semibold">{item.employeeLabel}</h2>
       <p>
         Revision {item.revision} · {item.status} · Arbeitgeber{' '}
@@ -241,18 +241,24 @@ function PayrollDetailView({ detail }: { detail: PayrollDetail }) {
         >
           <input type="hidden" name="id" value={item.id} />
           <input type="hidden" name="revision" value={item.revision} />
-          <select className="input" name="status">
-            <option value="NOT_REQUIRED">Nach Einzelfallprüfung nicht erforderlich</option>
-            <option value="EVIDENCE_RECORDED">Externe Meldung durch Nachweis dokumentiert</option>
-          </select>
-          <textarea
-            className="input block w-full"
-            name="evidence"
-            minLength={10}
-            maxLength={2000}
-            placeholder="Prüfgrund oder externes Protokoll/Referenz und Ereignisdatum"
-            required
-          />
+          <label className="block">
+            Ergebnis der externen Prüfung
+            <select className="input" name="status">
+              <option value="NOT_REQUIRED">Nach Einzelfallprüfung nicht erforderlich</option>
+              <option value="EVIDENCE_RECORDED">Externe Meldung durch Nachweis dokumentiert</option>
+            </select>
+          </label>
+          <label className="block">
+            Prüfgrund oder externer Nachweis
+            <textarea
+              className="input block w-full"
+              name="evidence"
+              minLength={10}
+              maxLength={2000}
+              placeholder="Prüfgrund oder externes Protokoll/Referenz und Ereignisdatum"
+              required
+            />
+          </label>
         </PayrollActionForm>
       </section>
       <section className="card p-5 space-y-3">
@@ -260,7 +266,15 @@ function PayrollDetailView({ detail }: { detail: PayrollDetail }) {
         {['DRAFT', 'RETURNED'].includes(item.status) && (
           <PayrollActionForm action={uploadPayrollAction} label="Interne Lohnanlage hochladen">
             <input type="hidden" name="id" value={item.id} />
-            <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg" />
+            <label className="block">
+              Lohnanlage auswählen
+              <input
+                className="input block w-full min-w-0"
+                type="file"
+                name="file"
+                accept=".pdf,.png,.jpg,.jpeg"
+              />
+            </label>
             <p>
               PDF/PNG/JPEG bis 25 MiB. Bei unterbrochenem Commit dieselbe Datei erneut wählen; die
               angezeigte Upload-ID wird weiterverwendet.
@@ -297,11 +311,14 @@ function PayrollDetailView({ detail }: { detail: PayrollDetail }) {
         <PayrollActionForm action={reviewPayrollAction} label="Prüfentscheidung speichern">
           <input type="hidden" name="id" value={item.id} />
           <input type="hidden" name="revision" value={item.revision} />
-          <select className="input" name="decision">
-            <option value="REVIEWED">Eingereichten Stand geprüft</option>
-            <option value="RETURNED">Beide Teile zur Korrektur zurückgeben</option>
-            <option value="REVOKED">Vorgangszugänge widerrufen</option>
-          </select>
+          <label className="block">
+            Prüfentscheidung
+            <select className="input" name="decision">
+              <option value="REVIEWED">Eingereichten Stand geprüft</option>
+              <option value="RETURNED">Beide Teile zur Korrektur zurückgeben</option>
+              <option value="REVOKED">Vorgangszugänge widerrufen</option>
+            </select>
+          </label>
           <label className="block">
             Vermerk für Arbeitgeber UND Arbeitnehmer (keine vertraulichen Arbeitnehmerdetails)
             <textarea
@@ -318,10 +335,13 @@ function PayrollDetailView({ detail }: { detail: PayrollDetail }) {
         <h3 className="text-lg font-semibold">Prüfexporte</h3>
         <PayrollActionForm action={createPayrollExportAction} label="Geprüften Stand erzeugen">
           <input type="hidden" name="id" value={item.id} />
-          <select className="input" name="kind">
-            <option value="PDF">PDF-Personalfragebogen</option>
-            <option value="ZIP">PDF und gebundene Anlagen als ZIP (max. 20 MiB Quellen)</option>
-          </select>
+          <label className="block">
+            Exportformat
+            <select className="input" name="kind">
+              <option value="PDF">PDF-Personalfragebogen</option>
+              <option value="ZIP">PDF und gebundene Anlagen als ZIP (max. 20 MiB Quellen)</option>
+            </select>
+          </label>
         </PayrollActionForm>
         <PayrollActionForm
           action={checkDatevGateAction}

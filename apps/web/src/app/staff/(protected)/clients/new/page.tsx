@@ -27,15 +27,19 @@ export default async function NewClientPage({
   );
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-4 sm:p-8 max-w-2xl">
       <div className="flex items-center gap-3 mb-8">
-        <Link href="/staff/clients" className="text-disabled hover:text-secondary">
+        <Link
+          href="/staff/clients"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          aria-label="Zurück zu Mandanten"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-2xl font-bold text-primary">Mandant anlegen</h1>
       </div>
 
-      <div className="card p-6">
+      <div className="card p-4 sm:p-6">
         <form action={createClientAction} className="space-y-6">
           {sp.error && <div className="alert-error-sm">{sp.error}</div>}
 
@@ -74,12 +78,12 @@ export default async function NewClientPage({
             <input id="datevNo" name="datevNo" type="text" className="input" placeholder="12345" />
           </div>
 
-          <fieldset className="border border-default rounded-md p-4 space-y-3">
+          <fieldset className="min-w-0 border border-default rounded-md p-4 space-y-3">
             <legend className="text-xs font-medium text-muted uppercase tracking-wide px-2">
               Rechnungsadresse (für XRechnung)
             </legend>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="sm:col-span-2">
                 <label className="label" htmlFor="street">
                   Straße + Hausnr.
                 </label>
@@ -98,8 +102,8 @@ export default async function NewClientPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="sm:col-span-2">
                 <label className="label" htmlFor="city">
                   Ort
                 </label>
@@ -121,7 +125,7 @@ export default async function NewClientPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="label" htmlFor="invoiceEmail">
                   Rechnungs-E-Mail
@@ -150,7 +154,7 @@ export default async function NewClientPage({
             Mögliche Doppel-Mandant-Warnung ignorieren und trotzdem anlegen
           </label>
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-wrap gap-3 pt-2">
             <button type="submit" className="btn-primary">
               Mandant anlegen
             </button>

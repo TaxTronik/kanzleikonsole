@@ -145,10 +145,11 @@ export function InboxComposer({
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (busy) return;
+    const formElement = event.currentTarget;
     setBusy(true);
     setResult({ ok: true });
     try {
-      const form = new FormData(event.currentTarget);
+      const form = new FormData(formElement);
       form.set('clientMutationId', mutationId.current);
       const activeBatchId = await ensureBatch();
       if (files.length > 0 && !activeBatchId) return;
@@ -163,12 +164,20 @@ export function InboxComposer({
       if (!saved.ok || !saved.threadId) return;
 
       setBatchId(null);
+      setFiles([]);
       uploadedIndexes.current.clear();
       resumeIds.current.clear();
+      formElement.reset();
       mutationId.current = crypto.randomUUID();
       setProgress('Nachricht technisch eingegangen.');
       router.push(`/portal/inbox/${saved.threadId}`);
       router.refresh();
+    } catch {
+      setResult({
+        ok: false,
+        error:
+          'Der Sendestatus konnte nicht bestätigt werden. Bitte erneut versuchen. Ihr Entwurf bleibt erhalten.',
+      });
     } finally {
       setBusy(false);
     }
@@ -199,6 +208,7 @@ export function InboxComposer({
               className="input w-full"
               required
               maxLength={INBOX_SUBJECT_MAX_LENGTH}
+              disabled={busy}
               {...fieldErrorProps('subject', result.fieldErrors)}
             />
             <FieldError name="subject" errors={result.fieldErrors?.subject} />
@@ -212,6 +222,7 @@ export function InboxComposer({
               name="topic"
               className="input w-full"
               defaultValue="GENERAL"
+              disabled={busy}
               {...fieldErrorProps('topic', result.fieldErrors)}
             >
               {INBOX_TOPICS.map((topic) => (
@@ -240,6 +251,7 @@ export function InboxComposer({
           className="input min-h-36 w-full"
           required
           maxLength={INBOX_MESSAGE_MAX_LENGTH}
+          disabled={busy}
           {...fieldErrorProps('body', result.fieldErrors)}
         />
         <FieldError name="body" errors={result.fieldErrors?.body} />
@@ -256,6 +268,7 @@ export function InboxComposer({
             multiple
             accept={ACCEPT}
             className="input w-full"
+            disabled={busy}
             onChange={onFilesChanged}
             {...fieldErrorProps('files', result.fieldErrors)}
           />

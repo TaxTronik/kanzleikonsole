@@ -84,8 +84,8 @@ export default async function AbsencesPage() {
   const staffById = new Map(staff.map((s) => [s.id, s.fullName]));
 
   return (
-    <div className="p-8">
-      <div className="flex items-end justify-between mb-6">
+    <div className="p-4 sm:p-8">
+      <div className="mb-6 flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Abwesenheiten</h1>
           <p className="text-muted text-sm">

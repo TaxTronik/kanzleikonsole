@@ -74,8 +74,8 @@ export function RequestDecision({
 
   return (
     <li className="px-5 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+        <div className="min-w-0 flex-1 break-words">
           <p className="text-sm font-medium text-primary">{request.subject}</p>
           <p className="text-xs text-muted">
             {request.clientName}
@@ -101,7 +101,7 @@ export function RequestDecision({
           </ul>
         </div>
         {mode === null && (
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
             <button
               type="button"
               onClick={() => setMode('accept')}
@@ -126,8 +126,8 @@ export function RequestDecision({
 
       {mode === 'accept' && (
         <div className="mt-3 p-3 rounded bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="min-w-0 text-xs">
               Wunschtermin
               <select
                 value={slotIndex}
@@ -141,7 +141,7 @@ export function RequestDecision({
                 ))}
               </select>
             </label>
-            <label className="text-xs">
+            <label className="min-w-0 text-xs">
               Owner
               <select
                 value={ownerStaffId}
@@ -156,7 +156,7 @@ export function RequestDecision({
               </select>
             </label>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={() => setMode(null)}
@@ -187,7 +187,7 @@ export function RequestDecision({
             maxLength={500}
             className="input text-xs"
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={() => setMode(null)}

@@ -9,9 +9,12 @@ export function PayrollFields({
   disabled?: boolean;
 }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {fields.map((field) => (
-        <label key={field.key} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
+        <label
+          key={field.key}
+          className={`min-w-0 break-words ${field.type === 'textarea' ? 'md:col-span-2' : ''}`}
+        >
           {field.label}
           {field.required ? ' *' : ''}
           {field.type === 'select' ? (

@@ -44,6 +44,7 @@ code_refs:
   - packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql
   - packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
+  - apps/web/src/app/staff/(protected)/admin/users/page.tsx
   - apps/web/src/server/gwg/professional-review.ts
 test_refs:
   - apps/web/src/server/documents/__tests__/delivery.test.ts
@@ -51,6 +52,7 @@ test_refs:
   - apps/web/src/server/actions/__tests__/staff-action.test.ts
   - apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts
   - apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts
+  - apps/e2e/tests/12-accessibility.spec.ts
   - apps/web/src/server/gwg/__tests__/professional-review.test.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
 feature_refs:
@@ -143,6 +145,12 @@ Freigaben erhalten und zeigt Mandate ohne verfügbaren qualifizierten Berufsträ
 Neue Berufsträgerzuordnungen verlangen einen aktiven qualifizierten Mitarbeiter
 mit gültiger Staff-Rolle. Die GwG-Entscheidung liest diese Voraussetzungen samt
 Mandatszuordnung erneut aus der Datenbank; eine alte Session genügt nicht.
+
+Der aufklappbare Hinweis „Zuordnungen prüfen“ und seine Mandatslinks haben
+mindestens 24 Pixel hohe Klickflächen. Dies ist eine Layoutkorrektur für die
+Bedienbarkeit; Auswahl der betroffenen Mandate, Qualifikationsprüfung und
+Freigabesperren bleiben unverändert. Der Accessibility-Test prüft die
+Benutzerverwaltung einschließlich dieser Bedienelemente.
 
 Bei der Migration wird die Qualifikation ausschließlich aus bereits ausdrücklich
 als `BERUFSTRAEGER` gespeicherten Mandatszuordnungen übernommen, auch bei inaktiven

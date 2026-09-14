@@ -90,6 +90,9 @@ const MessageSchema = z.object({
 });
 
 const IdSchema = z.object({ id: z.uuid() });
+const ReadSchema = IdSchema.extend({
+  lastMessageAt: z.iso.datetime({ offset: true }).transform((value) => new Date(value)),
+});
 
 async function portalGuardWithRateLimit() {
   const guard = await portalActionGuard();
@@ -212,13 +215,13 @@ export async function addInboxMessageAction(formData: FormData): Promise<Message
 }
 
 export async function markInboxThreadReadAction(formData: FormData): Promise<ActionResult> {
-  const parsed = parseFormData(IdSchema, formData);
+  const parsed = parseFormData(ReadSchema, formData);
   if (!parsed.ok) return parsed;
   const guard = await portalGuardWithRateLimit();
   if (!guard.ok) return guard;
   try {
     await withTenantContext(guard.ctx, (tx) =>
-      markPortalInboxThreadReadTx(tx, actorOf(guard), parsed.data.id),
+      markPortalInboxThreadReadTx(tx, actorOf(guard), parsed.data.id, parsed.data.lastMessageAt),
     );
     revalidatePath('/portal');
     revalidatePath('/portal/inbox');

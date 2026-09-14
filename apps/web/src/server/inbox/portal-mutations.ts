@@ -12,6 +12,7 @@ import {
   type InboxTopic,
 } from './constants';
 import { resolveInboxNotificationRecipientsTx } from './routing';
+import { advancePortalInboxReadTx } from './read-state';
 
 // Fachkatalog: PORTAL-INBOX-SUBMISSION-001 (Entwurf),
 // ACCESS-NOTIFICATION-RECIPIENT-001, AUDIT-HASH-CHAIN-001,
@@ -145,25 +146,6 @@ async function consumeUploadBatchTx(
     throw new ActionError('Der Uploadentwurf wurde bereits verwendet.');
   }
   return batch.attachments.length;
-}
-
-async function markPortalReadTx(
-  tx: TxClient,
-  actor: PortalInboxActor,
-  threadId: string,
-  readAt: Date,
-): Promise<void> {
-  await tx.portalInboxRead.upsert({
-    where: { threadId_contactId: { threadId, contactId: actor.contactId } },
-    create: {
-      tenantId: actor.tenantId,
-      clientId: actor.clientId,
-      threadId,
-      contactId: actor.contactId,
-      lastReadAt: readAt,
-    },
-    update: { lastReadAt: readAt },
-  });
 }
 
 async function notifyStaffAboutClientMessageTx(
@@ -468,7 +450,7 @@ export async function createPortalInboxThreadTx(
   // Der AFTER-INSERT-Trigger projiziert Zeit und Aufmerksamkeit atomar aus
   // der unveränderlichen Nachricht. Portal-Kontakte erhalten bewusst keine
   // allgemeine UPDATE-Policy auf Thread-Metadaten.
-  await markPortalReadTx(tx, actor, thread.id, message.createdAt);
+  await advancePortalInboxReadTx(tx, actor, thread.id, message.createdAt);
   await notifyStaffAboutClientMessageTx(tx, actor, thread.id, thread.assignedStaffId);
   await evidenceService.record(tx, {
     tenantId: actor.tenantId,
@@ -554,7 +536,7 @@ export async function addPortalInboxMessageTx(
   });
   await recordSubmissionBindingTx(tx, actor, message.id, input.batchId, attachmentCount);
   // Zeit und Aufmerksamkeit stammen atomar aus dem Message-Insert-Trigger.
-  await markPortalReadTx(tx, actor, thread.id, message.createdAt);
+  await advancePortalInboxReadTx(tx, actor, thread.id, message.createdAt);
   await notifyStaffAboutClientMessageTx(tx, actor, thread.id, thread.assignedStaffId);
   await evidenceService.record(tx, {
     tenantId: actor.tenantId,
@@ -576,12 +558,19 @@ export async function markPortalInboxThreadReadTx(
   tx: TxClient,
   actor: PortalInboxActor,
   threadId: string,
+  displayedLastMessageAt: Date,
 ): Promise<void> {
   await assertActivePortalInboxIdentityTx(tx, actor);
+  if (!Number.isFinite(displayedLastMessageAt.getTime())) {
+    throw new ActionError('Ungültiger Lesestand.');
+  }
   const thread = await tx.portalInboxThread.findFirst({
     where: { id: threadId, tenantId: actor.tenantId, clientId: actor.clientId },
     select: { lastMessageAt: true },
   });
   if (!thread) throw new ActionError('Verlauf nicht gefunden.');
-  await markPortalReadTx(tx, actor, threadId, thread.lastMessageAt);
+  const readAt = new Date(
+    Math.min(displayedLastMessageAt.getTime(), thread.lastMessageAt.getTime()),
+  );
+  await advancePortalInboxReadTx(tx, actor, threadId, readAt);
 }

@@ -18,7 +18,7 @@ export function LocalHashCard({ head }: { head: AuditPageData['localHead'] }) {
                 Aktuelle Spitze:{' '}
                 <Link
                   href={`/staff/admin/audit/${head.id}`}
-                  className="text-brand-700 hover:underline"
+                  className="text-brand-700 underline underline-offset-2"
                 >
                   Audit-ID {String(head.id)}
                 </Link>

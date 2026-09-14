@@ -58,6 +58,12 @@ deaktiviert das Modul.
   werden nicht neu gerendert; EXTERNAL-PDFs bleiben unverändert.
 - **Worker:** `invoice-overdue-check` (täglich 06:15 UTC): SENT + überfällig
   → OVERDUE + Audit (SYSTEM) + interne Notification.
+- **Überfälligkeitsanzeige (`INV-DUE-OVERDUE-001`):** Staff- und Portalübersicht
+  vergleichen `dueDate` als `@db.Date` mit `berlinTodayUtcMidnight()` aus
+  `@taxtronik/tax`. Noch als SENT gespeicherte Rechnungen erscheinen erst ab dem
+  folgenden Berliner Kalendertag als überfällig, ohne dabei Status oder Audit zu
+  schreiben. Die Staff-Seitenregression prüft Tagesgrenzen, Zeitumstellungen und
+  unterschiedliche Serverzeitzonen mit dem echten gemeinsamen Helper.
 - **Zustellung:** EXTERNAL versendet E-Mail mit PDF-Anhang an aktive
   Kontakte mit Opt-in (Template je Rechnungstyp); n8n-Event `invoice.due`.
 - **Zeitabrechnung (`INV-TIME-ENTRY-CLAIM-001`):** Der Leistungszeitraum

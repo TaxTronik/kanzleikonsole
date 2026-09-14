@@ -19,6 +19,12 @@ const owner = new PrismaClient({
 const app = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_APP_URL'])),
 });
+let advancePortalInboxReadTx: (
+  tx: Prisma.TransactionClient,
+  actor: { tenantId: string; clientId: string; contactId: string },
+  threadId: string,
+  readAt: Date,
+) => Promise<void>;
 
 async function asActor<T>(
   tenantId: string,
@@ -87,6 +93,11 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
   const rejectedSizeBytes = 4321n;
 
   beforeAll(async () => {
+    const helperPath = new URL(
+      '../../../../apps/web/src/server/inbox/read-state.ts',
+      import.meta.url,
+    ).href;
+    ({ advancePortalInboxReadTx } = await import(helperPath));
     const seed = `${Date.now()}-${Math.random()}`;
     tenantId = (
       await owner.tenant.create({ data: { slug: `portal-inbox-${seed}`, name: 'Portal Inbox' } })
@@ -401,6 +412,49 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
       await asActor(tenantId, peerContactId, 'CLIENT_CONTACT', (tx) =>
         tx.portalInboxAttachment.count({ where: { id: attachmentId } }),
       ),
+    ).toBe(0);
+  });
+
+  it('PORTAL-INBOX-SUBMISSION-001 hält verspätete und parallele Lesebestätigungen monoton und kontaktgebunden', async () => {
+    const thread = await asActor(tenantId, contactId, 'CLIENT_CONTACT', (tx) =>
+      tx.portalInboxThread.create({
+        data: {
+          tenantId,
+          clientId,
+          createdByContactId: contactId,
+          subject: 'Lesestand-Regression',
+        },
+      }),
+    );
+    const actor = { tenantId, clientId, contactId };
+    const displayed = new Date('2026-09-14T00:00:00.000Z');
+    const newer = new Date('2026-09-14T00:00:01.000Z');
+    const mark = (readAt: Date) =>
+      asActor(tenantId, contactId, 'CLIENT_CONTACT', (tx) =>
+        advancePortalInboxReadTx(tx, actor, thread.id, readAt),
+      );
+
+    await Promise.all([mark(newer), mark(displayed)]);
+    await expect(mark(displayed)).resolves.toBeUndefined();
+    await expect(mark(newer)).resolves.toBeUndefined();
+    expect(
+      await asActor(tenantId, contactId, 'CLIENT_CONTACT', (tx) =>
+        tx.portalInboxRead.findUniqueOrThrow({
+          where: { threadId_contactId: { threadId: thread.id, contactId } },
+          select: { lastReadAt: true },
+        }),
+      ),
+    ).toEqual({ lastReadAt: newer });
+
+    await expect(
+      asActor(tenantId, contactId, 'CLIENT_CONTACT', (tx) =>
+        advancePortalInboxReadTx(tx, { ...actor, contactId: peerContactId }, thread.id, displayed),
+      ),
+    ).rejects.toThrow();
+    expect(
+      await owner.portalInboxRead.count({
+        where: { threadId: thread.id, contactId: peerContactId },
+      }),
     ).toBe(0);
   });
 

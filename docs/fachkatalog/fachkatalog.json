@@ -242,6 +242,7 @@
         "packages/db/src/staff-client-access.ts",
         "packages/db/src/notification.ts",
         "apps/web/src/server/notifications/service.ts",
+        "apps/web/src/app/staff/(protected)/notifications/page.tsx",
         "apps/worker/src/jobs/reminders-daily.ts",
         "packages/db/prisma/migrations/20260823202000_notification_client_scope/migration.sql",
         "packages/db/prisma/migrations/20260824030000_notification_client_contact_insert/migration.sql",
@@ -258,6 +259,8 @@
         "apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts",
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
         "apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/notifications/__tests__/page.test.tsx",
+        "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/notification-client-scope-migration.test.ts",
         "packages/db/src/__tests__/notification-client-scope-rls.test.ts",
         "packages/db/src/__tests__/notification-write-only-forward.test.ts",
@@ -325,6 +328,7 @@
       ],
       "test_refs": [
         "apps/e2e/tests/recent-clients-state.spec.ts",
+        "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "apps/web/src/app/api/staff/search/__tests__/route.test.ts",
@@ -397,6 +401,7 @@
         "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql",
         "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
         "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/users/page.tsx",
         "apps/web/src/server/gwg/professional-review.ts"
       ],
       "test_refs": [
@@ -405,6 +410,7 @@
         "apps/web/src/server/actions/__tests__/staff-action.test.ts",
         "apps/web/src/server/actions/__tests__/staff-action-policy.property.test.ts",
         "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts",
+        "apps/e2e/tests/12-accessibility.spec.ts",
         "apps/web/src/server/gwg/__tests__/professional-review.test.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts"
       ],
@@ -784,6 +790,8 @@
         "apps/web/src/app/staff/(protected)/admin/audit/audit-filters.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-entries.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/local-hash-card.tsx",
+        "apps/web/src/app/staff/(protected)/admin/audit/audit-access-card.tsx",
+        "apps/web/src/components/copy-field.tsx",
         "packages/evidence/src/service.ts",
         "packages/evidence/src/chain.ts",
         "packages/evidence/src/canonical-json.ts",
@@ -805,6 +813,7 @@
         "packages/db/src/__tests__/restore-security.test.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.tsx",
+        "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/evidence/src/__tests__/service-record.test.ts",
         "packages/evidence/src/__tests__/hash-chain.test.ts",
         "packages/evidence/src/__tests__/canonical-json.property.test.ts",
@@ -1827,6 +1836,7 @@
         "apps/web/src/server/privacy/notice.ts",
         "apps/web/src/components/consent-fields.tsx",
         "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
+        "apps/web/src/app/staff/(protected)/admin/privacy/page.tsx",
         "apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx"
@@ -3290,8 +3300,15 @@
           "primary": true
         }
       ],
-      "code_refs": ["apps/worker/src/jobs/invoice-overdue-check.ts"],
-      "test_refs": ["apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts"],
+      "code_refs": [
+        "apps/worker/src/jobs/invoice-overdue-check.ts",
+        "apps/web/src/app/staff/(protected)/invoices/page.tsx"
+      ],
+      "test_refs": [
+        "apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts",
+        "apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx",
+        "apps/e2e/tests/12-accessibility.spec.ts"
+      ],
       "feature_refs": [
         "docs/development/module/fakturierung.md",
         "docs/anwenderdoku/rechnungen.md"
@@ -3693,12 +3710,16 @@
       ],
       "code_refs": [
         "apps/web/src/app/staff/(protected)/knowledge/context/actions.ts",
+        "apps/web/src/app/staff/(protected)/knowledge/context/editor.tsx",
         "apps/web/src/components/knowledge-context.tsx",
         "apps/web/src/app/staff/(protected)/requests/[id]/page.tsx",
         "apps/web/src/server/workflows/execute-step.ts",
         "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql"
       ],
-      "test_refs": ["apps/web/src/server/workflows/__tests__/execute-step.test.ts"],
+      "test_refs": [
+        "apps/e2e/tests/knowledge-context-state.spec.ts",
+        "apps/web/src/server/workflows/__tests__/execute-step.test.ts"
+      ],
       "feature_refs": ["docs/development/module/workflow-expansion.md"],
       "related_rules": ["ACCESS-CLIENT-MODE-001", "REQ-INTERNAL-COMMENT-001"],
       "tags": ["workflow", "mandantenportal", "ungeprueft"],
@@ -3745,6 +3766,8 @@
         "apps/web/next.config.mjs",
         "apps/web/scripts/verify-standalone-trace.mjs",
         "apps/web/src/app/staff/(protected)/mailbox/actions.ts",
+        "apps/web/src/app/staff/(protected)/mailbox/page.tsx",
+        "apps/web/src/server/mailbox/document-types.ts",
         "apps/web/src/app/api/staff/mailbox/oauth/route.ts",
         "apps/web/src/server/mailbox/oauth-cache.ts",
         "packages/db/prisma/migrations/20260831150000_smart_mailbox/migration.sql",
@@ -3757,7 +3780,9 @@
         "packages/mail/src/__tests__/attachment-resource-limits.test.ts",
         "apps/web/src/server/mailbox/__tests__/oauth-cache.test.ts",
         "packages/db/src/__tests__/mailbox-oauth-cache.test.ts",
-        "packages/db/src/__tests__/mailbox-rls.test.ts"
+        "packages/db/src/__tests__/mailbox-rls.test.ts",
+        "packages/db/src/__tests__/mailbox-document-types.test.ts",
+        "apps/web/src/app/__tests__/prisma-client-guard.test.ts"
       ],
       "feature_refs": ["docs/development/module/smart-mailbox.md"],
       "related_rules": ["ACCESS-TENANT-RLS-001", "ACCESS-STAFF-PERMISSION-001"],
@@ -3860,6 +3885,8 @@
         "apps/web/src/server/documents/pdf-fonts.ts",
         "apps/web/src/server/payroll/download.ts",
         "apps/web/src/app/staff/(protected)/payroll/actions.ts",
+        "apps/web/src/app/staff/(protected)/payroll/page.tsx",
+        "apps/web/src/components/payroll-fields.tsx",
         "apps/web/src/app/portal/(protected)/payroll/actions.ts",
         "apps/web/src/app/payroll/employee/actions.ts",
         "packages/db/prisma/migrations/20260831160000_payroll_intake/migration.sql",
@@ -4227,6 +4254,8 @@
         "apps/web/src/app/staff/(protected)/dashboard/page.tsx",
         "apps/web/src/app/staff/(protected)/dashboard/actions.ts",
         "apps/web/src/app/staff/(protected)/dashboard/widgets/my-work-basket.tsx",
+        "apps/web/src/server/dashboard/my-day.ts",
+        "apps/web/src/server/work/basket.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260901000000_portal_inbox_enums/migration.sql",
         "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
@@ -4239,6 +4268,7 @@
         "apps/web/src/server/settings/portal-features.ts",
         "apps/web/src/server/inbox/access.ts",
         "apps/web/src/server/inbox/portal-mutations.ts",
+        "apps/web/src/server/inbox/read-state.ts",
         "apps/web/src/server/inbox/queries.ts",
         "apps/web/src/server/inbox/search.ts",
         "apps/web/src/server/inbox/staging-upload.ts",
@@ -4246,18 +4276,25 @@
         "apps/web/src/server/inbox/attachment-delivery.ts",
         "apps/web/src/server/inbox/client-notification.ts",
         "apps/web/src/app/portal/(protected)/inbox/actions.ts",
+        "apps/web/src/app/portal/(protected)/inbox/mark-read.tsx",
+        "apps/web/src/app/portal/(protected)/inbox/[id]/page.tsx",
         "apps/web/src/app/staff/(protected)/inbox/actions.ts",
+        "apps/web/src/app/staff/(protected)/inbox/controls.tsx",
+        "apps/web/src/app/portal/(protected)/inbox/composer.tsx",
         "apps/worker/src/jobs/portal-inbox-cleanup.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/dashboard/__tests__/page-work-basket.test.tsx",
         "apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx",
         "apps/web/src/app/staff/(protected)/dashboard/__tests__/actions.test.ts",
+        "apps/web/src/server/dashboard/__tests__/my-day.test.ts",
+        "apps/web/src/server/work/__tests__/basket.test.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "apps/web/src/server/settings/__tests__/portal-features.test.ts",
         "apps/web/src/app/__tests__/prisma-client-guard.test.ts",
         "apps/web/src/server/inbox/__tests__/idempotency.test.ts",
+        "apps/web/src/server/inbox/__tests__/read-state.test.ts",
         "apps/web/src/server/inbox/__tests__/constants.test.ts",
         "apps/web/src/server/inbox/__tests__/staging-upload.test.ts",
         "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts",
@@ -4268,7 +4305,9 @@
         "apps/web/src/app/portal/(protected)/inbox/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
         "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
-        "apps/e2e/tests/18-portal-inbox.spec.ts"
+        "apps/e2e/tests/18-portal-inbox.spec.ts",
+        "apps/e2e/tests/inbox-composer-state.spec.ts",
+        "apps/e2e/tests/inbox-read-state.spec.ts"
       ],
       "feature_refs": ["docs/development/module/portal-inbox.md"],
       "related_rules": [
@@ -4863,6 +4902,7 @@
         "apps/web/src/server/fristen/kontrollbuch.ts",
         "apps/web/src/server/fristen/tagesabschluss.ts",
         "apps/web/src/app/staff/(protected)/fristen/actions.ts",
+        "apps/web/src/app/staff/(protected)/fristen/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-transition.ts",
@@ -4871,6 +4911,7 @@
         "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
       ],
       "test_refs": [
+        "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/tax-notice-evidence.test.ts",
         "packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts",
         "apps/web/src/server/fristen/__tests__/eintrag.test.ts",
@@ -4952,6 +4993,7 @@
         "apps/web/src/lib/tax-deadline-pipeline.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts",
         "apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx",
+        "apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx",
         "apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts",
         "apps/worker/src/jobs/tax-deadline-materialize.ts",
         "apps/worker/src/jobs/tax-deadline-notification.ts",
@@ -4970,6 +5012,7 @@
         "apps/web/src/lib/__tests__/tax-deadline-pipeline.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts",
+        "apps/e2e/tests/12-accessibility.spec.ts",
         "apps/worker/src/jobs/__tests__/tax-deadline-materialize.test.ts",
         "apps/worker/src/jobs/__tests__/tax-deadline-notification.test.ts",
         "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",

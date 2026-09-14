@@ -38,6 +38,13 @@ assert.throws(
     ),
   /\*\*\/\.next/,
 );
+assert.throws(
+  () =>
+    checkDockerignore(
+      REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS.filter((entry) => entry !== '.codex-run').join('\n'),
+    ),
+  /\.codex-run/,
+);
 const webRuntime = [
   'ENV NODE_ENV=production \\',
   '    HOSTNAME=0.0.0.0 \\',
@@ -126,4 +133,4 @@ assert.throws(
   /N8N_WEBHOOK_BASE_URL.*default-leeren/,
 );
 
-process.stdout.write('18 Docker base/context/runtime/compose tests passed.\n');
+process.stdout.write('19 Docker base/context/runtime/compose tests passed.\n');

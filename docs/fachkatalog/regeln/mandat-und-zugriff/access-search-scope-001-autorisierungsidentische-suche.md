@@ -46,6 +46,7 @@ code_refs:
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
 test_refs:
   - apps/e2e/tests/recent-clients-state.spec.ts
+  - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - apps/web/src/app/api/staff/search/__tests__/route.test.ts
@@ -144,6 +145,11 @@ Namen. Eine leere, gefilterte oder paginierte Serverliste kann Einträge
 ausblenden; sie löscht die übrige Besuchshistorie nicht. Der Browsercache
 begründet weder Sichtbarkeit noch Zugriff auf eine Mandantenakte.
 
+Die Kopfzeile der Mandantenliste ordnet Titel und Aktionen auf schmalen
+Bildschirmen untereinander an; die Aktionsgruppe kann umbrechen. Diese reine
+Darstellungsänderung belässt Suchfilter, Trefferzähler, Aktionsziele,
+Erstellberechtigung und die autorisierte Quelle der „Zuletzt“-Einträge unverändert.
+
 Inbox-Abfragen setzen Tenant und Mandant explizit, prüfen das opt-in Feature und
 verwenden RLS als zusätzlichen Backstop. Staff-Listen kombinieren
 `accessibleClientsWhereFor` mit aktivem Mandat; Detailabfragen prüfen den
@@ -186,6 +192,12 @@ Namenscaches, Tenant-/Mitarbeiterwechsel, ausschließlich gespeicherte IDs,
 aktuelle Namen sowie leere oder eingeschränkte Serverlisten. Die Prüfung
 simuliert die bereits autorisierte Serverliste; sie ersetzt keinen
 serverseitigen RLS- oder Detailzugriffstest.
+
+`12-accessibility.spec.ts` verlangt beim Aufruf der Mandantenliste eine
+erfolgreiche Antwort auf der angeforderten Route. Bei 320 Pixeln prüft die
+Browserregression zusätzlich zur Dokumentwurzel die Breite sichtbarer
+Hauptbereiche, damit seitlich ausgelagerte Kopfaktionen erkannt werden.
+Dieser Darstellungsnachweis ersetzt keine Autorisierungsprüfung.
 
 RLS-Tests belegen Cross-Tenant-, Cross-Client-, Kontakt- und Staff-Permission-
 Grenzen sowie sofortigen Rechteentzug. Der Query-Test belegt, dass Portal und

@@ -145,12 +145,12 @@ export default async function ClientsPage({
           zugeordnet.
         </div>
       )}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Mandanten</h1>
           <p className="text-muted mt-1">{totalCount.toLocaleString('de-DE')} Treffer</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <QuickRequestDialog
             requestId={randomUUID()}
             templates={requestTemplates}

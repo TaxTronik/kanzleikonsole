@@ -115,11 +115,11 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   const bucketOrder: FristBucket[] = ['UEBERFAELLIG', 'HEUTE', 'DIESE_WOCHE', 'SPAETER'];
 
   return (
-    <div className="p-8 max-w-7xl">
-      <div className="flex items-end justify-between mb-6">
-        <div>
+    <div className="p-4 sm:p-8 max-w-7xl">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+        <div className="min-w-0">
           <h1 className="page-title">
-            <AlarmClock className="h-6 w-6 text-brand-600" />
+            <AlarmClock className="h-6 w-6 shrink-0 text-brand-600" />
             Fristenkontrollbuch
           </h1>
           <p className="text-muted text-sm">
@@ -340,63 +340,71 @@ function FristenTabelle({
           {titel}
         </h2>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50 border-b border-default text-xs text-muted uppercase">
-            <th className="text-left px-6 py-2 font-medium">Fällig</th>
-            <th className="text-left px-4 py-2 font-medium">Art</th>
-            <th className="text-left px-4 py-2 font-medium">Frist</th>
-            <th className="text-left px-4 py-2 font-medium">Mandant</th>
-            <th className="text-left px-4 py-2 font-medium">Verantwortlich</th>
-            <th className="text-left px-4 py-2 font-medium">Erledigt</th>
-            <th className="px-4 py-2"></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border-subtle">
-          {rows.map((e) => (
-            <tr key={`${e.quelle}-${e.id}`} className="hover:bg-gray-50">
-              <td className="px-6 py-2.5 whitespace-nowrap font-medium text-primary">
-                {fmtDateShort(e.faelligAm)}
-              </td>
-              <td className="px-4 py-2.5">
-                <span className="badge-gray text-[10px]">
-                  {e.artLabel ?? QUELLE_LABELS[e.quelle]}
-                </span>
-              </td>
-              <td className="px-4 py-2.5 text-secondary max-w-[26rem]">
-                <span className="block truncate" title={e.titel}>
-                  {e.titel}
-                </span>
-                {e.kontrollhinweis && (
-                  <span className="block text-xs text-amber-700 mt-0.5">{e.kontrollhinweis}</span>
-                )}
-              </td>
-              <td className="px-4 py-2.5 text-secondary whitespace-nowrap">
-                <Link href={`/staff/clients/${e.clientId}`} className="hover:underline">
-                  {e.clientName}
-                </Link>
-              </td>
-              <td className="px-4 py-2.5 text-muted whitespace-nowrap">
-                {e.verantwortlich ?? '—'}
-              </td>
-              <td className="px-4 py-2.5 text-muted whitespace-nowrap">
-                {e.erledigt
-                  ? `${e.kontrollzustand === 'CLOSED_DISPOSITION' ? 'Disposition' : 'Erfüllt'} · ${e.erledigtAm ? fmtDateShort(e.erledigtAm) : 'Datum fehlt'}${e.erledigtVon ? ` · ${e.erledigtVon}` : ''}`
-                  : '—'}
-              </td>
-              <td className="px-4 py-2.5 text-right">
-                <Link
-                  href={e.href}
-                  className="text-disabled hover:text-brand-700"
-                  title="Zum Vorgang"
-                >
-                  <ExternalLink className="h-4 w-4 inline" />
-                </Link>
-              </td>
+      <div
+        className="overflow-x-auto"
+        role="region"
+        aria-label={titel}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Horizontale Tabellenspalten müssen per Tastatur erreichbar sein.
+        tabIndex={0}
+      >
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b border-default text-xs text-muted uppercase">
+              <th className="text-left px-6 py-2 font-medium">Fällig</th>
+              <th className="text-left px-4 py-2 font-medium">Art</th>
+              <th className="text-left px-4 py-2 font-medium">Frist</th>
+              <th className="text-left px-4 py-2 font-medium">Mandant</th>
+              <th className="text-left px-4 py-2 font-medium">Verantwortlich</th>
+              <th className="text-left px-4 py-2 font-medium">Erledigt</th>
+              <th className="px-4 py-2"></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-border-subtle">
+            {rows.map((e) => (
+              <tr key={`${e.quelle}-${e.id}`} className="hover:bg-gray-50">
+                <td className="px-6 py-2.5 whitespace-nowrap font-medium text-primary">
+                  {fmtDateShort(e.faelligAm)}
+                </td>
+                <td className="px-4 py-2.5">
+                  <span className="badge-gray text-[10px]">
+                    {e.artLabel ?? QUELLE_LABELS[e.quelle]}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-secondary max-w-[26rem]">
+                  <span className="block truncate" title={e.titel}>
+                    {e.titel}
+                  </span>
+                  {e.kontrollhinweis && (
+                    <span className="block text-xs text-amber-700 mt-0.5">{e.kontrollhinweis}</span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-secondary whitespace-nowrap">
+                  <Link href={`/staff/clients/${e.clientId}`} className="hover:underline">
+                    {e.clientName}
+                  </Link>
+                </td>
+                <td className="px-4 py-2.5 text-muted whitespace-nowrap">
+                  {e.verantwortlich ?? '—'}
+                </td>
+                <td className="px-4 py-2.5 text-muted whitespace-nowrap">
+                  {e.erledigt
+                    ? `${e.kontrollzustand === 'CLOSED_DISPOSITION' ? 'Disposition' : 'Erfüllt'} · ${e.erledigtAm ? fmtDateShort(e.erledigtAm) : 'Datum fehlt'}${e.erledigtVon ? ` · ${e.erledigtVon}` : ''}`
+                    : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  <Link
+                    href={e.href}
+                    className="text-disabled hover:text-brand-700"
+                    title="Zum Vorgang"
+                  >
+                    <ExternalLink className="h-4 w-4 inline" />
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

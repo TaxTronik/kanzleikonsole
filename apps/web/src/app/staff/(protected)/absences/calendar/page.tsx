@@ -114,18 +114,18 @@ export default async function AbsencesCalendarPage({
   });
 
   return (
-    <div className="p-8 max-w-full">
-      <div className="flex items-end justify-between mb-6">
-        <div>
+    <div className="min-w-0 max-w-full p-4 sm:p-6 lg:p-8">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="page-title">
-            <Plane className="h-6 w-6 text-brand-600" />
+            <Plane className="h-6 w-6 shrink-0 text-brand-600" />
             Abwesenheits-Kalender
           </h1>
           <p className="text-muted text-sm">
             {fmtDateMedium(start)} – {fmtDateMedium(end)} · alle Mitarbeiter
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="toggle-group">
             {[4, 8, 12].map((w) => (
               <Link
@@ -147,7 +147,13 @@ export default async function AbsencesCalendarPage({
         </div>
       </div>
 
-      <div className="card overflow-x-auto">
+      <div
+        className="card overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+        role="region"
+        aria-label="Abwesenheitskalender"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Native horizontale Scrollregion muss per Tastatur erreichbar sein.
+        tabIndex={0}
+      >
         <table className="text-xs border-separate border-spacing-0">
           <thead>
             <tr>
@@ -231,7 +237,7 @@ export default async function AbsencesCalendarPage({
         </table>
       </div>
 
-      <div className="mt-4 flex items-center gap-4 text-xs text-secondary">
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-secondary">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 rounded bg-emerald-200" /> Urlaub (genehmigt)
         </span>

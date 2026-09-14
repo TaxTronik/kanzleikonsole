@@ -36,6 +36,8 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/audit/audit-filters.tsx
   - apps/web/src/app/staff/(protected)/admin/audit/audit-entries.tsx
   - apps/web/src/app/staff/(protected)/admin/audit/local-hash-card.tsx
+  - apps/web/src/app/staff/(protected)/admin/audit/audit-access-card.tsx
+  - apps/web/src/components/copy-field.tsx
   - packages/evidence/src/service.ts
   - packages/evidence/src/chain.ts
   - packages/evidence/src/canonical-json.ts
@@ -56,6 +58,7 @@ test_refs:
   - packages/db/src/__tests__/restore-security.test.ts
   - apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx
   - apps/web/src/app/staff/(protected)/admin/audit/__tests__/hash-column.test.tsx
+  - apps/e2e/tests/12-accessibility.spec.ts
   - packages/evidence/src/__tests__/service-record.test.ts
   - packages/evidence/src/__tests__/hash-chain.test.ts
   - packages/evidence/src/__tests__/canonical-json.property.test.ts
@@ -237,6 +240,12 @@ bleiben getrennt sichtbar. Ein fehlender Anker oder fehlendes externes Vertrauen
 wird nicht durch eine grüne Darstellung als Erfolg ausgewiesen
 (`AUDIT-RFC3161-ANCHOR-001`). Die Seitenregression prüft den ungefilterten
 Tenant-Head, vollständige Hashbytes, große IDs und den Leerzustand.
+
+Die Verknüpfung der lokalen Audit-ID ist dauerhaft unterstrichen; das
+schreibgeschützte Kopierfeld benennt seinen Inhalt als Prüfer-Link. Diese
+Zugänglichkeitskorrektur verändert weder Token, Zugriffsrechte noch Hashwerte.
+Die Seitenregression rendert das tatsächliche Kopierfeld; der Accessibility-Test
+prüft die zugänglichen Namen und die Linkkennzeichnung der Audit-Ansicht.
 
 ## Bekannte Abweichungen und Grenzen
 

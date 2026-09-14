@@ -1,6 +1,6 @@
 import type { TxClient } from '@taxtronik/db';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
-import { loadMyDayEntries, type MyDayEntry, type MyDaySources } from '@/server/dashboard/my-day';
+import { loadMyDayCandidates, type MyDayEntry, type MyDaySources } from '@/server/dashboard/my-day';
 
 export type WorkBasketKind = MyDayEntry['kind'] | 'portal-inbox';
 export type WorkBasketSlot = 'mine' | 'team';
@@ -127,7 +127,7 @@ export async function loadWorkBasket(input: LoadWorkBasketInput): Promise<WorkBa
   const builtIn =
     slot === 'mine'
       ? (
-          await loadMyDayEntries(
+          await loadMyDayCandidates(
             input.tx,
             input.staffId,
             input.deniedClientIds,

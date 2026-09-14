@@ -36,7 +36,10 @@ export default async function PortalInboxThreadPage({
 
   return (
     <main className="p-4 sm:p-8">
-      <MarkInboxThreadRead threadId={thread.id} />
+      <MarkInboxThreadRead
+        threadId={thread.id}
+        lastMessageAt={thread.lastMessageAt.toISOString()}
+      />
       <Link
         href="/portal/inbox"
         className="mb-5 inline-flex items-center gap-2 text-sm text-brand-700 hover:underline"

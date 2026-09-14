@@ -41,7 +41,7 @@ export function NotifyModeToggle({ initial }: { initial: Mode }) {
 
   return (
     <div
-      className="flex items-center gap-1.5"
+      className="flex flex-wrap items-center gap-1.5"
       title="Gilt für Chat, Uploads und Nachfassen — Zuweisungen und Fälligkeiten kommen immer."
     >
       <span className="text-xs text-muted mr-1">Benachrichtigungen:</span>

@@ -49,7 +49,7 @@ export default async function WorkflowsPage() {
         <p className="text-muted text-sm">
           Wiederkehrende Prozesse als Vorlage definieren — pro Mandant instanziierbar, Schritte
           werden Mitarbeitern zugewiesen und abgehakt. Laufende Vorgänge unter{' '}
-          <Link href="/staff/workflows" className="text-brand-700 hover:underline">
+          <Link href="/staff/workflows" className="text-brand-700 underline underline-offset-2">
             Workflows
           </Link>
           .

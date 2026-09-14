@@ -15,6 +15,7 @@ export const REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS = [
   '.taxtronik.state',
   '.taxtronik.migration-pending',
   '.taxtronik.database-restored',
+  '.codex-run',
 ];
 export const REQUIRED_COMPOSE_SECRETS = ['AUTH_SECRET', 'N8N_ENCRYPTION_KEY'];
 

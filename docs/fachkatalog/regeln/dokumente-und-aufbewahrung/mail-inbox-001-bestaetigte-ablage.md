@@ -37,6 +37,8 @@ code_refs:
   - apps/web/next.config.mjs
   - apps/web/scripts/verify-standalone-trace.mjs
   - apps/web/src/app/staff/(protected)/mailbox/actions.ts
+  - apps/web/src/app/staff/(protected)/mailbox/page.tsx
+  - apps/web/src/server/mailbox/document-types.ts
   - apps/web/src/app/api/staff/mailbox/oauth/route.ts
   - apps/web/src/server/mailbox/oauth-cache.ts
   - packages/db/prisma/migrations/20260831150000_smart_mailbox/migration.sql
@@ -49,6 +51,8 @@ test_refs:
   - apps/web/src/server/mailbox/__tests__/oauth-cache.test.ts
   - packages/db/src/__tests__/mailbox-oauth-cache.test.ts
   - packages/db/src/__tests__/mailbox-rls.test.ts
+  - packages/db/src/__tests__/mailbox-document-types.test.ts
+  - apps/web/src/app/__tests__/prisma-client-guard.test.ts
 feature_refs:
   - docs/development/module/smart-mailbox.md
 related_rules:
@@ -102,6 +106,15 @@ einen gesperrten Eingang mit 51 Anhängen, den erfolgreichen Folgeeingang
 und die Deduplizierung beim nächsten Poll.
 
 Der BullMQ-Worker speichert Empfangsidentitäten und vorgemerkte Ablagepfade dauerhaft. Die App-Rolle benötigt zusätzliche Posteingangsrechte; Portalakteure erhalten keinen Zugriff. Änderungen an Prüfwerten bleiben dem System-Scanner vorbehalten. Die Archivierung nutzt persistResumableDocumentUpload einschließlich erneuter Rechte- und Modulprüfung in den Schreibtransaktionen.
+
+Die Dokumenttypauswahl berücksichtigt auch eigene aktive Typen ohne
+Klassifikationsschlüssel. Die Datenbankabfrage schließt diese NULL-Werte explizit
+ein; Mandantenzuordnung, GwG-Schutzstufe sowie die Ausschlüsse STAFF_PRIVATE und
+PERSONNEL bleiben bestehen. Ein echter PostgreSQL-Test belegt eigene Typen der
+Stufen NONE und GOBD sowie die Ausschlüsse für fremde, inaktive und gesperrte Typen.
+Der Client-Guard erlaubt ausschließlich den dafür begründeten Owner-Testclient;
+seine synthetischen Fixtures werden stets zurückgerollt. Der Nachweis prüft den
+Produktionsreader, ersetzt aber keinen RLS-Test mit der App-Rolle.
 
 Nach dem externen Microsoft-Tokenaustausch werden Modul, aktive Identität und
 Admin-/Partnerrolle erneut unter Datenbanksperren geprüft. Der OAuth-Callback

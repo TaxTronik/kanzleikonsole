@@ -32,6 +32,8 @@ code_refs:
   - apps/web/src/app/staff/(protected)/dashboard/page.tsx
   - apps/web/src/app/staff/(protected)/dashboard/actions.ts
   - apps/web/src/app/staff/(protected)/dashboard/widgets/my-work-basket.tsx
+  - apps/web/src/server/dashboard/my-day.ts
+  - apps/web/src/server/work/basket.ts
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260901000000_portal_inbox_enums/migration.sql
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
@@ -44,6 +46,7 @@ code_refs:
   - apps/web/src/server/settings/portal-features.ts
   - apps/web/src/server/inbox/access.ts
   - apps/web/src/server/inbox/portal-mutations.ts
+  - apps/web/src/server/inbox/read-state.ts
   - apps/web/src/server/inbox/queries.ts
   - apps/web/src/server/inbox/search.ts
   - apps/web/src/server/inbox/staging-upload.ts
@@ -51,17 +54,24 @@ code_refs:
   - apps/web/src/server/inbox/attachment-delivery.ts
   - apps/web/src/server/inbox/client-notification.ts
   - apps/web/src/app/portal/(protected)/inbox/actions.ts
+  - apps/web/src/app/portal/(protected)/inbox/mark-read.tsx
+  - apps/web/src/app/portal/(protected)/inbox/[id]/page.tsx
   - apps/web/src/app/staff/(protected)/inbox/actions.ts
+  - apps/web/src/app/staff/(protected)/inbox/controls.tsx
+  - apps/web/src/app/portal/(protected)/inbox/composer.tsx
   - apps/worker/src/jobs/portal-inbox-cleanup.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/dashboard/__tests__/page-work-basket.test.tsx
   - apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx
   - apps/web/src/app/staff/(protected)/dashboard/__tests__/actions.test.ts
+  - apps/web/src/server/dashboard/__tests__/my-day.test.ts
+  - apps/web/src/server/work/__tests__/basket.test.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - apps/web/src/server/settings/__tests__/portal-features.test.ts
   - apps/web/src/app/__tests__/prisma-client-guard.test.ts
   - apps/web/src/server/inbox/__tests__/idempotency.test.ts
+  - apps/web/src/server/inbox/__tests__/read-state.test.ts
   - apps/web/src/server/inbox/__tests__/constants.test.ts
   - apps/web/src/server/inbox/__tests__/staging-upload.test.ts
   - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
@@ -73,6 +83,8 @@ test_refs:
   - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
   - apps/e2e/tests/18-portal-inbox.spec.ts
+  - apps/e2e/tests/inbox-composer-state.spec.ts
+  - apps/e2e/tests/inbox-read-state.spec.ts
 feature_refs:
   - docs/development/module/portal-inbox.md
 related_rules:
@@ -179,6 +191,34 @@ bleiben im Teamkorb. Beim Hinzufügen des Widgets liest
 der vorhandenen Tenant-Transaktion; der bisherige Reader bleibt ein Wrapper.
 Diese Anzeige ändert weder die Eingangs- noch die Annahmeentscheidung.
 
+Staff- und Portalantwortformulare binden das Formelement vor asynchronen
+Aufrufen. Erst ein bestätigter Speichererfolg leert den Nachrichtentext und
+im Portal zusätzlich den nativen Dateieingang und den Dateiauswahlzustand;
+erst dann beginnt eine neue Mutation. Ein Fehler erhält den Entwurf,
+die Mutation-ID und bereits gebundene Uploadmarker für den Retry und zeigt
+eine allgemeine Fehlermeldung. Während des Sendens bleiben die Eingaben
+gesperrt. Eine erfolgreich gespeicherte Antwort mit E-Mail-Warnung gilt als
+Speichererfolg; die Warnung bleibt sichtbar. Serverzugriff, Idempotenzvertrag,
+fachliche Annahme und Versandentscheidung ändern sich dadurch nicht.
+
+Die Portal-Lesebestätigung übermittelt den tatsächlich angezeigten
+Nachrichtenzeitstand. Eine zwischen Seitendarstellung und Bestätigung neu
+eingegangene Antwort bleibt dadurch ungelesen. Der Server verlangt einen gültigen
+Zeitwert und begrenzt ihn auf den aktuellen Nachrichtenstand des zugänglichen
+Verlaufs. Ein bedingtes atomisches Upsert schreibt den kontaktgebundenen Lesestand
+nur vorwärts; verspätete oder identische Bestätigungen sind ein No-op und
+respektieren den bestehenden monotonen Datenbank-Guard. Zeigt ein Refresh neuere
+Nachrichten desselben Verlaufs an, bestätigt der Effekt diesen neuen Stand.
+Der Lesemarker ist keine fachliche Bearbeitungs- oder Fristbestätigung.
+
+Die Quellenabfrage begrenzt zunächst jede aktive persönliche Quelle separat.
+Der Arbeitskorb sortiert diese Kandidaten und die freigeschalteten Erweiterungen
+gemeinsam nach den bestehenden Fälligkeitsgruppen und begrenzt erst danach die
+Ergebnisliste. Viele ältere Telefonzettel verdrängen dadurch keine überfälligen
+Aufgaben schon vor der Priorisierung. Die chronologische My-Day-Ansicht behält
+ihr bisheriges gemeinsames Limit; Zuständigkeits-, Modul- und Zugriffsfilter
+bleiben unverändert.
+
 `PortalInboxUploadBatch` und `PortalInboxAttachment` bilden den Staging-Bestand.
 Die Attachment-Zeile besitzt vor Beginn einer Annahme kein Dokument. Der
 zweiphasige Übernahmepfad darf das erzeugte, noch ungeteilte PENDING-Dokument
@@ -266,6 +306,25 @@ begrenzte Vorschau und die Übergabe der Mandantenzugriffsfilter. Sowohl beim
 ersten Rendern als auch beim Hinzufügen wird Mandantenpost nur nach Feature-
 und Berechtigungsprüfung zugeschaltet. Der Feature-Reader-Test belegt die
 Wiederverwendung der bestehenden Transaktion bei unveränderten Defaults.
+
+Die Loader-Regressionen belegen die Fälligkeitspriorisierung vor der gemeinsamen
+Begrenzung bei 1, 20, 100 und 200 Einträgen mit überfüllter Telefonzettelquelle.
+Sie erhalten zugleich die chronologische Begrenzung der My-Day-Ansicht und
+prüfen die unveränderten Zuständigkeits-, Modul- und Mandantenzugriffsfilter.
+
+Die Browserregression prüft verzögerte Staff- und Portalantworten, das Leeren
+nach Erfolg auch auf unveränderter Threadroute, ausbleibenden erneuten Upload
+der vorherigen Anlage und den unveränderten Retryzustand bei Server- oder
+Netzwerkfehlern. Sie prüft außerdem gesperrte Eingaben während des Sendens und
+sichtbare E-Mail-Warnungen nach bestätigter Speicherung.
+
+Die Lesestand-Regressionen prüfen den Zeitstand über den Action-Vertrag,
+zwischenzeitlich neu eingegangene Antworten, die Begrenzung zukünftiger Angaben,
+fehlende oder ungültige Werte sowie entzogene Identität und fremde Verläufe.
+Echte PostgreSQL-Aufrufe belegen parallele, verspätete und identische Bestätigungen
+ohne Rückschritt und den unveränderten Schutz fremder Kontakte. Der Browsertest
+prüft Mount und Refresh desselben Verlaufs mit verzögerten Bestätigungen; ein
+unveränderter Zeitstand löst keinen weiteren Effekt aus.
 
 Der Datenbanktest belegt kontaktprivate Entwürfe, mandantenweite abgesendete
 Threads, kumulativen Staff-Zugriff, sofortigen Rechteentzug, Cross-Tenant- und

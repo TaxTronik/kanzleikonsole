@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   writeLimit: vi.fn(),
   threadLimit: vi.fn(),
   revalidate: vi.fn(),
+  markRead: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: h.revalidate }));
@@ -31,13 +32,17 @@ vi.mock('@/server/inbox/portal-mutations', () => ({
   addPortalInboxMessageTx: h.addMessage,
   createPortalInboxUploadBatchTx: vi.fn(),
   discardPortalInboxUploadBatchTx: vi.fn(),
-  markPortalInboxThreadReadTx: vi.fn(),
+  markPortalInboxThreadReadTx: h.markRead,
 }));
 vi.mock('@/server/documents/storage-compensation', () => ({
   compensateStorageCommit: vi.fn(),
 }));
 
-import { addInboxMessageAction, createInboxThreadAction } from '../actions';
+import {
+  addInboxMessageAction,
+  createInboxThreadAction,
+  markInboxThreadReadAction,
+} from '../actions';
 
 const MUTATION_ID = '00000000-0000-4000-8000-000000000001';
 
@@ -97,4 +102,35 @@ describe('PORTAL-INBOX-SUBMISSION-001 Action-Vertrag ohne Anlagen', () => {
     expect(h.addMessage).toHaveBeenCalledOnce();
     expect(h.addMessage.mock.calls[0]![2]).not.toHaveProperty('batchId');
   });
+
+  it('übergibt den angezeigten Nachrichtenstand und die authentifizierte Identität', async () => {
+    const form = new FormData();
+    form.set('id', MUTATION_ID);
+    form.set('lastMessageAt', '2026-09-14T00:00:00.000Z');
+
+    await expect(markInboxThreadReadAction(form)).resolves.toEqual({ ok: true });
+    expect(h.markRead).toHaveBeenCalledWith(
+      {},
+      { tenantId: 'tenant-1', clientId: 'client-1', contactId: 'contact-1' },
+      MUTATION_ID,
+      new Date('2026-09-14T00:00:00.000Z'),
+    );
+  });
+
+  it.each([undefined, '', 'ungueltig', '2026-09-14', '2026-02-30T00:00:00Z'])(
+    'weist einen fehlenden oder ungültigen angezeigten Stand vor Nebenwirkungen ab (%s)',
+    async (value) => {
+      const form = new FormData();
+      form.set('id', MUTATION_ID);
+      if (value !== undefined) form.set('lastMessageAt', value);
+
+      await expect(markInboxThreadReadAction(form)).resolves.toMatchObject({
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+      });
+      expect(h.guard).not.toHaveBeenCalled();
+      expect(h.withTenant).not.toHaveBeenCalled();
+      expect(h.markRead).not.toHaveBeenCalled();
+    },
+  );
 });

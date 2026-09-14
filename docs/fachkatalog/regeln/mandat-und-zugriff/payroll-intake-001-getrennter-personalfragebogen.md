@@ -35,6 +35,8 @@ code_refs:
   - apps/web/src/server/documents/pdf-fonts.ts
   - apps/web/src/server/payroll/download.ts
   - apps/web/src/app/staff/(protected)/payroll/actions.ts
+  - apps/web/src/app/staff/(protected)/payroll/page.tsx
+  - apps/web/src/components/payroll-fields.tsx
   - apps/web/src/app/portal/(protected)/payroll/actions.ts
   - apps/web/src/app/payroll/employee/actions.ts
   - packages/db/prisma/migrations/20260831160000_payroll_intake/migration.sql
@@ -96,6 +98,12 @@ Ein abgelaufener, widerrufener, deaktivierter oder beendeter Vorgang sperrt Gast
 Ein ausgewählter Arbeitgeberkontakt bestätigt Arbeitsbeginn und Vergütung. Ein zweiter Kontakt desselben Mandanten sieht den Vorgang nicht. Die beschäftigte Person trägt über ihren Link IBAN und Versicherungsnummer ein; diese Antworten und Anlagen bleiben dem Arbeitgeber verborgen. Nach beiderseitiger Abgabe erzeugt die Kanzlei einen geprüften PDF-Stand. Trotz bestätigter DATEV-Nummern bleibt der DATEV-Import ohne reale Formatabnahme gesperrt.
 
 ## Umsetzung in TaxTronik
+
+Die Kanzleiansicht begrenzt die Formularspalten auf schmalen Bildschirmen und
+bricht lange Feldbezeichnungen um. Externe Prüfung, Nachweis, Dateiauswahl,
+Prüfentscheidung und Exportformat besitzen zugeordnete sichtbare Beschriftungen.
+Diese technische Layout- und Bedienkorrektur verändert keine Feldnamen,
+Auswahlwerte, Pflichtangaben, Zugriffsprüfung oder fachlichen Statusübergänge.
 
 Die Oberflächen liegen unter `/staff/payroll`, `/portal/payroll` und `/payroll/employee`. Kanzleizugriff verlangt `PAYROLL_MANAGE`. Fachlich relevante Antworten, Bestätigungen, externe Nachweise und Quellen werden privat revisionsgebunden; technische Audit-Evidenz enthält keine Antworttexte oder persönlichen Nummern. Lohnanlagen sind keine allgemein sichtbaren Dokumente. Private Vorgangsbestände gehören zum bestehenden Löschkonzept, ohne erfundene gesetzliche Frist oder zusätzlichen Massenlöschlauf.
 

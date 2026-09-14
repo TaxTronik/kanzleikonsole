@@ -25,7 +25,7 @@ export function ResponsibilityFields({ staff }: { staff: StaffOption[] }) {
   }
 
   return (
-    <fieldset className="border border-default rounded-md p-4 space-y-4">
+    <fieldset className="min-w-0 border border-default rounded-md p-4 space-y-4">
       <legend className="text-xs font-medium text-muted uppercase tracking-wide px-2">
         Zuständigkeit
       </legend>
@@ -55,16 +55,19 @@ export function ResponsibilityFields({ staff }: { staff: StaffOption[] }) {
           {staff
             .filter((s) => s.isProfessional)
             .map((s) => (
-              <label key={s.id} className="flex items-center gap-3 text-sm px-3 py-2">
+              <label
+                key={s.id}
+                className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 text-sm px-3 py-2"
+              >
                 <input
                   type="checkbox"
                   name="berufstraegerIds"
                   value={s.id}
                   onChange={onBerufstraegerChange}
-                  className="rounded border-strong text-brand-600"
+                  className="row-span-2 rounded border-strong text-brand-600"
                 />
-                <span className="text-primary">{s.fullName}</span>
-                <span className="text-xs text-muted truncate">{s.email}</span>
+                <span className="break-words text-primary">{s.fullName}</span>
+                <span className="truncate text-xs text-muted">{s.email}</span>
               </label>
             ))}
           {!staff.some((s) => s.isProfessional) && (
@@ -80,15 +83,18 @@ export function ResponsibilityFields({ staff }: { staff: StaffOption[] }) {
         <p className="text-xs font-medium text-secondary mb-2">Hauptbearbeiter</p>
         <div className="max-h-48 overflow-auto rounded-md border border-default divide-y divide-border-subtle">
           {staff.map((s) => (
-            <label key={s.id} className="flex items-center gap-3 text-sm px-3 py-2">
+            <label
+              key={s.id}
+              className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 text-sm px-3 py-2"
+            >
               <input
                 type="checkbox"
                 name="hauptbearbeiterIds"
                 value={s.id}
-                className="rounded border-strong text-brand-600"
+                className="row-span-2 rounded border-strong text-brand-600"
               />
-              <span className="text-primary">{s.fullName}</span>
-              <span className="text-xs text-muted truncate">{s.email}</span>
+              <span className="break-words text-primary">{s.fullName}</span>
+              <span className="truncate text-xs text-muted">{s.email}</span>
             </label>
           ))}
         </div>

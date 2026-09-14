@@ -236,7 +236,7 @@ export default async function AdminPage() {
   ];
 
   return (
-    <div className="p-8">
+    <div className="min-w-0 p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary mb-1">Administration</h1>
         <p className="text-muted text-sm">Compliance-Status, Backup, Updates, DSGVO, Lizenz.</p>
@@ -300,7 +300,7 @@ export default async function AdminPage() {
       </div>
 
       {/* Sekundäre KPIs */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <SmallKpi icon={Users} label="Aktive Portal-Kontakte" value={contactCount} tone="brand" />
         <SmallKpi
           icon={Building2}
@@ -606,9 +606,9 @@ function SetupChecklist({ setup }: { setup: SetupStatus }) {
   if (setup.allDone || setup.dismissed) return null;
   return (
     <div className="card p-5 mb-6 border-l-4 border-l-yellow-500 dark:border-l-yellow-400">
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-primary">Erste Schritte zur Inbetriebnahme</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-muted">
             {setup.doneCount} / {setup.totalCount} erledigt
           </span>

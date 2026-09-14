@@ -19,6 +19,7 @@ export function AuditAccessCard({ tenantId }: { tenantId: string }) {
         Tage.
       </p>
       <CopyField
+        label="Prüfer-Link (read-only)"
         value={`${env.NEXTAUTH_URL.replace(/\/$/, '')}/audit-verify/${signAuditToken(
           tenantId,
           auditLinkExpiresAt,

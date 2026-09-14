@@ -31,11 +31,6 @@ vi.mock('@/server/audit-access/token', () => ({
   signAuditToken: mocks.signAuditToken,
   AUDIT_TOKEN_TTL_DAYS: 7,
 }));
-vi.mock('@/components/copy-field', () => ({
-  CopyField: ({ value }: { value: string }) => (
-    <input aria-label="Prüfer-Link" value={value} readOnly />
-  ),
-}));
 vi.mock('../actions', () => ({
   createAuditRecoveryCheckpointAction: '/test/recovery',
   triggerAuditVerifyAction: '/test/verify',

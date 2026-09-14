@@ -40,6 +40,7 @@ code_refs:
   - apps/web/src/server/privacy/notice.ts
   - apps/web/src/components/consent-fields.tsx
   - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
+  - apps/web/src/app/staff/(protected)/admin/privacy/page.tsx
   - apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx
@@ -153,12 +154,25 @@ den Katalog kontrolliert repariert hat. Historische Snapshots bleiben lesbar.
 
 ## Umsetzung in TaxTronik
 
+Das Symbol im Kopf der Datenschutz-Zentrale behält auch bei schmalen
+Ansichten seine feste Größe. Die Textspalte darf umbrechen; diese technische
+Layoutkorrektur ändert keine Option, Pflichtvorgabe oder gespeicherte Erklärung.
+
 `consent-catalog.ts` validiert Revision, Optionen, Zwecke und
 Dienstleisterbezüge. `consent.ts` erzeugt unselektierte Ausgangswerte,
 kanonisiert Eingaben, persistiert append-only und bildet Widerrufe als neuen
 Stand ab. `service.ts` lädt Hinweis- und Anbieterdaten. Eine Display-Revision
 verhindert, dass eine zwischen Anzeige und Speicherung geänderte Konfiguration
 still akzeptiert wird.
+
+Vor der Kanonisierung prüft der Resolver sämtliche aktiven Dienstleisterbezüge,
+auch bei nicht ausgewählten Optionen. Fehlt ein Anbieter, wird die neue
+Erklärung im Portal und in der Kanzleierfassung abgewiesen. Der Sichtfilter
+darf eine inkonsistente aktive Option insbesondere nicht ausblenden und damit
+ihre Abschlussvorgabe umgehen. Inaktive Optionen bleiben aus der neuen
+Erklärung ausgeschlossen. Tests prüfen diesen Fehlerfall für zwingende und
+optionale eigene Optionen sowie eine zwingende Standardoption, einschließlich
+einer zur sichtbaren Teilmenge passenden Displayrevision.
 
 Die Oberfläche kennzeichnet die bereits serverseitig verlangte Kenntnisnahme
 als „Zwingend“. Die Kanzlei kann diese Anforderung nicht abschalten.

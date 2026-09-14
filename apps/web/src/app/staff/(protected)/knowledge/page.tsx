@@ -45,16 +45,16 @@ export default async function KnowledgePage({
   const staffNames = new Map(staffUsers.map((staff) => [staff.id, staff.fullName]));
 
   return (
-    <div className="p-8">
-      <div className="flex items-end justify-between mb-6">
-        <div>
+    <div className="min-w-0 p-4 sm:p-6 lg:p-8">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-primary mb-1">Wissensdatenbank</h1>
           <p className="text-muted text-sm">
             Interne Anleitungen, Vorlagen und Verfahrensbeschreibungen.
           </p>
         </div>
-        <Link href="/staff/knowledge/new" className="btn-primary">
-          <Plus className="h-3.5 w-3.5" />
+        <Link href="/staff/knowledge/new" className="btn-primary shrink-0">
+          <Plus className="h-3.5 w-3.5 shrink-0" />
           Neuer Artikel
         </Link>
       </div>

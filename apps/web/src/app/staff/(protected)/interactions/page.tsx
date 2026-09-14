@@ -191,7 +191,13 @@ export default async function InteractionsPage() {
               anonymen Bewertungen; keine repräsentative Zufriedenheitsmessung.
             </p>
           )}
-          <div className="overflow-auto">
+          <div
+            className="overflow-auto rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            role="region"
+            aria-label="Feedback im Monatsverlauf: Tabelle"
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Tastaturzugriff auf horizontal scrollbare Tabellenspalten.
+            tabIndex={0}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr>

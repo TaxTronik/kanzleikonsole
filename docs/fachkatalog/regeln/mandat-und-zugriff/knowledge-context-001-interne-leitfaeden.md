@@ -26,11 +26,13 @@ sources:
     primary: true
 code_refs:
   - apps/web/src/app/staff/(protected)/knowledge/context/actions.ts
+  - apps/web/src/app/staff/(protected)/knowledge/context/editor.tsx
   - apps/web/src/components/knowledge-context.tsx
   - apps/web/src/app/staff/(protected)/requests/[id]/page.tsx
   - apps/web/src/server/workflows/execute-step.ts
   - packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql
 test_refs:
+  - apps/e2e/tests/knowledge-context-state.spec.ts
   - apps/web/src/server/workflows/__tests__/execute-step.test.ts
 feature_refs:
   - docs/development/module/workflow-expansion.md
@@ -73,6 +75,16 @@ Ein berechtigter Mitarbeiter bereitet den beschriebenen Vorgang vor und prüft s
 
 ## Umsetzung in TaxTronik
 
+Der Editor zeigt die unveränderte Grenze von zehn Artikeln mit Auswahlzähler
+und begrenzt weitere Markierungen, ohne das Abwählen zu sperren. Nicht
+gespeicherte Auswahlen bleiben beim Wechsel zwischen Vorlagen innerhalb der
+aktuellen Ansicht erhalten; erst ausdrückliches Speichern übermittelt die
+aktuelle Vorlage. Bestätigte Auswahlen bleiben bei einem anschließenden
+Zielwechsel sichtbar. Während der Speicherung sind Ziel und Auswahl gesperrt.
+Bei einem technischen Fehler bleiben Entwurf und erneuter Speicherzugriff
+erhalten. Diese Bedienkorrektur ändert weder Serverlimit noch Veröffentlichung,
+Tenantzugriff oder die unveränderte Auswahl laufender Vorgänge.
+
 Personenbezogene Fachdaten gehören zum privaten Workflowbestand des bestehenden Löschkonzepts. Diese Regel begründet keine neue Aufbewahrungsdauer. Unveränderliche Evidenz enthält IDs und knappe Statusmerkmale, keine Nachrichtentexte. Vor einer produktiven Nutzung sind Datenbankmigration, negative Zugriffsprüfungen und organisatorische Zuständigkeiten abzunehmen.
 
 ## Bekannte Abweichungen und Grenzen
@@ -84,5 +96,10 @@ Es fehlt die produktionsnahe Abnahme der neuen Migration und ihrer RLS-Regeln mi
 Wer ist für die Auswahl und Sichtung verantwortlich? Welche fachlichen Vorlagen dürfen eingesetzt werden? Wie werden abgebrochene oder falsch adressierte Vorgänge organisatorisch korrigiert? Welche Einzelfallgründe beeinflussen die Löschung?
 
 ## Technische Nachweise
+
+Die Browserregression rendert den tatsächlichen Editor mit simulierter
+Speicheraktion. Sie prüft die Auswahlgrenze, das Abwählen, Zielwechsel mit
+ungespeichertem und gespeichertem Stand, den laufenden Submit und den Erhalt
+des Entwurfs bei einem geworfenen Speicherfehler.
 
 Die referenzierten Unit- und Regressionstests prüfen den abgegrenzten technischen Umfang. Datenbanktests benötigen eine getrennte Owner- und App-Verbindung und sind ohne diese Umgebung als übersprungen auszuweisen. Eine Testdefinition ersetzt weder ihren erfolgreichen Datenbanklauf noch eine fachliche Freigabe.

@@ -18,7 +18,7 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
 
   return (
     <form ref={ref} action={formAction} className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="user-fullName">
             Name
@@ -79,7 +79,7 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
           Initial-Passwort über einen sicheren Kanal.
         </p>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="role.PARTNER" />
           <span>Rolle: Partner</span>

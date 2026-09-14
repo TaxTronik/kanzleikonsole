@@ -5,6 +5,12 @@ import { loginAsMandant } from './helpers/portal-auth';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
+async function visitPage(page: Page, path: string): Promise<void> {
+  const response = await page.goto(path, { waitUntil: 'networkidle' });
+  expect(response?.status(), `${path}: Die angeforderte Seite muss erfolgreich laden.`).toBe(200);
+  await expect(page).toHaveURL((url) => url.pathname === path);
+}
+
 async function expectNoWcagViolations(page: Page, context: string): Promise<void> {
   const result = await new AxeBuilder({ page })
     .withTags(WCAG_TAGS)
@@ -30,15 +36,22 @@ async function expectNoWcagViolations(page: Page, context: string): Promise<void
 }
 
 async function expectNoPageOverflow(page: Page, context: string): Promise<void> {
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(
-    dimensions.scrollWidth,
-    `${context}: Die Seite ist ${dimensions.scrollWidth - dimensions.clientWidth}px breiter als der Viewport. ` +
-      'Breite Datentabellen dürfen intern scrollen, die Dokumentwurzel nicht.',
-  ).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+  const regions = await page.evaluate(() =>
+    [document.documentElement, ...document.querySelectorAll('main')]
+      .filter((element) => element.clientWidth > 0)
+      .map((element) => ({
+        name: element.id || element.tagName,
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      })),
+  );
+  for (const region of regions) {
+    expect(
+      region.scrollWidth,
+      `${context}: ${region.name} läuft ${region.scrollWidth - region.clientWidth}px seitlich über. ` +
+        'Breite Datentabellen dürfen lokal scrollen, die Seite und ihr Hauptinhalt nicht.',
+    ).toBeLessThanOrEqual(region.clientWidth + 1);
+  }
 }
 
 test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
@@ -69,9 +82,18 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
       ['knowledge', '/staff/knowledge'],
       ['admin', '/staff/admin'],
       ['admin-users', '/staff/admin/users'],
-      ['admin-settings', '/staff/admin/settings'],
+      ['admin-settings', '/staff/admin/settings/branding'],
+      ['work', '/staff/work'],
+      ['new-client', '/staff/clients/new'],
+      ['onboarding', '/staff/clients/onboarding/new'],
+      ['workflow-templates', '/staff/workflows/templates'],
+      ['absence-calendar', '/staff/absences/calendar'],
+      ['tax-deadlines', '/staff/tax-deadlines'],
+      ['notifications', '/staff/notifications'],
+      ['audit', '/staff/admin/audit'],
+      ['jobs', '/staff/admin/jobs'],
     ] as const) {
-      await page.goto(path, { waitUntil: 'networkidle' });
+      await visitPage(page, path);
       await expectNoWcagViolations(page, name);
     }
 
@@ -101,7 +123,7 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
       ['portal-settings', '/portal/settings'],
       ['portal-stammdaten', '/portal/stammdaten'],
     ] as const) {
-      await page.goto(path, { waitUntil: 'networkidle' });
+      await visitPage(page, path);
       await expectNoWcagViolations(page, name);
     }
   });
@@ -117,9 +139,10 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
     for (const [name, path] of [
       ['dashboard-dark', '/staff/dashboard'],
       ['knowledge-dark', '/staff/knowledge'],
-      ['admin-settings-dark', '/staff/admin/settings'],
+      ['admin-settings-dark', '/staff/admin/settings/branding'],
+      ['jobs-dark', '/staff/admin/jobs'],
     ] as const) {
-      await page.goto(path, { waitUntil: 'networkidle' });
+      await visitPage(page, path);
       await expectNoWcagViolations(page, name);
     }
   });
@@ -134,9 +157,20 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
     await loginAsAdmin(page);
     for (const [name, path] of [
       ['dashboard-320', '/staff/dashboard'],
+      ['clients-320', '/staff/clients'],
+      ['requests-320', '/staff/requests'],
+      ['calendar-320', '/staff/calendar'],
+      ['reminders-320', '/staff/reminders'],
+      ['fristen-320', '/staff/fristen'],
+      ['tax-deadlines-320', '/staff/tax-deadlines'],
+      ['invoices-320', '/staff/invoices'],
+      ['absences-320', '/staff/absences'],
+      ['absence-calendar-320', '/staff/absences/calendar'],
       ['knowledge-320', '/staff/knowledge'],
+      ['notifications-320', '/staff/notifications'],
+      ['admin-320', '/staff/admin'],
     ] as const) {
-      await page.goto(path, { waitUntil: 'networkidle' });
+      await visitPage(page, path);
       await expectNoPageOverflow(page, name);
     }
   });

@@ -6,6 +6,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { accessibleClientsWhereFor, isStaffAdmin } from '@/server/auth/rbac';
 import { connectMicrosoft, importAttachment, saveMailbox, setMailboxEnabled } from './actions';
 import { suggestInboundClients } from '@/server/mailbox/suggestions';
+import { loadMailboxDocumentTypesTx } from '@/server/mailbox/document-types';
 
 export default async function MailboxPage({
   searchParams,
@@ -61,16 +62,7 @@ export default async function MailboxPage({
       },
       orderBy: { name: 'asc' },
     }),
-    types: await tx.documentType.findMany({
-      where: {
-        tenantId: g.tenantId,
-        active: true,
-        tier: { not: 'GWG' },
-        NOT: { classificationKey: { in: ['STAFF_PRIVATE', 'PERSONNEL'] } },
-      },
-      select: { id: true, name: true },
-      orderBy: { sortOrder: 'asc' },
-    }),
+    types: await loadMailboxDocumentTypesTx(tx, g.tenantId),
   }));
   return (
     <div className="space-y-6 p-6 sm:p-8">

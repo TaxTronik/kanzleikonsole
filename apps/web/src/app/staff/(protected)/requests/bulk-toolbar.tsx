@@ -77,8 +77,8 @@ export function BulkToolbar({ closableIds }: Props) {
   if (selected.size === 0 && closableIds.length === 0) return null;
 
   return (
-    <div className="sticky bottom-0 z-10 bg-surface border-t border-default px-6 py-3 flex items-center justify-between text-sm">
-      <div className="flex items-center gap-3">
+    <div className="sticky bottom-0 z-10 bg-surface border-t border-default px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-sm sm:px-6">
+      <div className="flex flex-wrap items-center gap-3">
         {selected.size > 0 ? (
           <>
             <CheckSquare className="h-4 w-4 text-brand-600" />
@@ -105,7 +105,7 @@ export function BulkToolbar({ closableIds }: Props) {
           </>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {error && <span className="text-xs text-red-700">{error}</span>}
         <button
           type="button"

@@ -70,6 +70,7 @@ code_refs:
   - apps/web/src/server/fristen/kontrollbuch.ts
   - apps/web/src/server/fristen/tagesabschluss.ts
   - apps/web/src/app/staff/(protected)/fristen/actions.ts
+  - apps/web/src/app/staff/(protected)/fristen/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-transition.ts
@@ -77,6 +78,7 @@ code_refs:
   - packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql
   - packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql
 test_refs:
+  - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/tax-notice-evidence.test.ts
   - packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts
   - apps/web/src/server/fristen/__tests__/eintrag.test.ts
@@ -292,6 +294,13 @@ Ein Berufsträger entscheidet begründet, keinen Einspruch einzulegen.
 dokumentierte Disposition geschlossen.
 
 ## Umsetzung in TaxTronik
+
+Die Kontrollübersicht verwendet auf schmalen Bildschirmen kleinere Seitenabstände
+und eine umbrechende Kopfzeile. Breite Fristentabellen sind innerhalb einer
+benannten, per Tastatur erreichbaren Region horizontal scrollbar. Die
+Kontrollzustände, Quellen, Filter und Aktionen bleiben unverändert. Der
+Accessibility-Test prüft bei 320 CSS-Pixeln, dass der Hauptinhalt keinen
+horizontalen Seitenüberlauf erzeugt.
 
 `eintrag.ts` und `kontrollbuch.ts` leiten den Kontrollzustand aus dem
 Quellvorgang ab; es gibt keinen frei editierbaren Erledigt-Schalter im

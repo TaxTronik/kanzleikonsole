@@ -153,23 +153,25 @@ async function renderMonth(
   const todayKey = berlinYmd(new Date());
 
   return (
-    <div className="p-8 max-w-7xl">
+    <div className="p-4 sm:p-8 max-w-7xl">
       <PageHeader view="month" scope={scope} month={currentMonthQs} q={q} queued={queued} />
 
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
           <Link
             href={qs({ view: 'month', scope, month: prevMonthQs, q })}
-            className="btn-secondary text-xs px-2 py-1"
+            className="btn-secondary shrink-0 text-xs px-2 py-1"
+            aria-label="Vorheriger Monat"
           >
             <ChevronLeft className="h-4 w-4" />
           </Link>
-          <h2 className="text-lg font-semibold text-primary min-w-[200px] text-center">
+          <h2 className="min-w-0 flex-1 text-lg font-semibold text-primary text-center sm:min-w-[200px]">
             {fmtMonthYear(new Date(Date.UTC(year, month0, 15)))}
           </h2>
           <Link
             href={qs({ view: 'month', scope, month: nextMonthQs, q })}
-            className="btn-secondary text-xs px-2 py-1"
+            className="btn-secondary shrink-0 text-xs px-2 py-1"
+            aria-label="Nächster Monat"
           >
             <ChevronRight className="h-4 w-4" />
           </Link>
@@ -300,10 +302,10 @@ async function renderList(
   );
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-4 sm:p-8 max-w-6xl">
       <PageHeader view="list" scope={scope} month={currentMonthQs} q={q} queued={queued} />
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Überfällig" value={overdue.length} accent="red" />
         <Stat label="Anstehend" value={upcoming.length} />
         <Stat label="Erledigt (gesamt)" value={done} accent="emerald" />
@@ -412,7 +414,7 @@ function PageHeader({
           name="q"
           defaultValue={q}
           placeholder="Mandant suchen — Name, DATEV-Nr. oder Addison-Nr."
-          className="input flex-1 text-sm"
+          className="input min-w-0 flex-1 text-sm"
           maxLength={120}
         />
         <button type="submit" className="btn-secondary text-xs">
@@ -528,7 +530,13 @@ function DeadlineTable({
   }>;
 }) {
   return (
-    <div className="card overflow-hidden">
+    <div
+      className="card overflow-x-auto"
+      role="region"
+      aria-label="Steuertermine"
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Horizontale Tabellenspalten müssen per Tastatur erreichbar sein.
+      tabIndex={0}
+    >
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-default">

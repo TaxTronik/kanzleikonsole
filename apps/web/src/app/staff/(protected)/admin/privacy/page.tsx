@@ -91,8 +91,8 @@ export default async function AdminPrivacyPage() {
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
       <div className="mb-6 flex items-start gap-3">
-        <ShieldCheck className="h-6 w-6 text-brand-600 mt-1" />
-        <div>
+        <ShieldCheck className="h-6 w-6 shrink-0 text-brand-600 mt-1" aria-hidden="true" />
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-primary mb-1">Datenschutz-Zentrale</h1>
           <p className="text-muted text-sm">
             Kanzlei-Hinweise, Datenschutz-Auswahl und Bestätigungen, Dienstleister (AVV),

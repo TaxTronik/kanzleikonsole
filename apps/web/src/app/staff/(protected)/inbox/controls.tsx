@@ -41,6 +41,11 @@ export function InboxStaffControls({
       const result = await action(form);
       setState(result);
       if (result.ok) router.refresh();
+    } catch {
+      setState({
+        ok: false,
+        error: 'Die Aktion konnte nicht bestätigt werden. Bitte erneut versuchen.',
+      });
     } finally {
       setBusy(false);
     }
@@ -49,7 +54,8 @@ export function InboxStaffControls({
   async function reply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     form.set('threadId', threadId);
     form.set('clientMutationId', mutationId.current);
     setBusy(true);
@@ -58,9 +64,15 @@ export function InboxStaffControls({
       setState(result);
       if (result.ok) {
         mutationId.current = crypto.randomUUID();
-        event.currentTarget.reset();
+        formElement.reset();
         router.refresh();
       }
+    } catch {
+      setState({
+        ok: false,
+        error:
+          'Der Speicherstatus konnte nicht bestätigt werden. Bitte erneut versuchen. Ihr Entwurf bleibt erhalten.',
+      });
     } finally {
       setBusy(false);
     }
@@ -144,6 +156,7 @@ export function InboxStaffControls({
             className="input min-h-32 w-full"
             required
             maxLength={10000}
+            disabled={busy}
           />
           <p className="text-xs text-muted">
             Die E-Mail enthält nur einen neutralen Aktivitätshinweis; der Nachrichtentext bleibt im

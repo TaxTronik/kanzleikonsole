@@ -173,6 +173,14 @@ export async function resolveConsentSelectionsTx(
 ): Promise<ConsentSelections> {
   const input = ConsentSelectionsSchema.parse(value);
   const options = await readResolvedConsentOptionsTx(tx, tenantId);
+  // Ein ausgeblendeter, inkonsistenter aktiver Eintrag darf weder seine
+  // Abschlussvorgabe verlieren noch einen unvollständigen Katalog bestätigen.
+  const unavailable = options.find((option) => option.active && option.providerMissing);
+  if (unavailable) {
+    throw new Error(
+      `Der Dienstleister der Einwilligungsoption „${unavailable.label}“ ist nicht mehr verfügbar.`,
+    );
+  }
   const visibleOptions = visibleConsentOptions(options);
   if (
     policy.expectedDisplay &&
@@ -201,11 +209,6 @@ export async function resolveConsentSelectionsTx(
     }
     if (!option.active) {
       throw new Error(`Die Einwilligungsoption „${option.label}“ ist nicht mehr aktiv.`);
-    }
-    if (option.providerMissing) {
-      throw new Error(
-        `Der Dienstleister der Einwilligungsoption „${option.label}“ ist nicht mehr verfügbar.`,
-      );
     }
     canonicalSelections.push({
       optionId: option.id,

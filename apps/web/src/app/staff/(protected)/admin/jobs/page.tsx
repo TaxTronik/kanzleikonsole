@@ -31,7 +31,13 @@ export default async function AdminJobsPage() {
       )}
 
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div
+          className="overflow-x-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
+          role="region"
+          aria-label="Status der Hintergrund-Jobs: Tabelle"
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Tastaturzugriff auf horizontal scrollbare Tabellenspalten.
+          tabIndex={0}
+        >
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-default">
@@ -47,7 +53,10 @@ export default async function AdminJobsPage() {
               {queues.map((q) => {
                 const problem = q.stale || q.failed > 0;
                 return (
-                  <tr key={q.name} className={problem ? 'bg-red-50/50' : 'hover:bg-gray-50'}>
+                  <tr
+                    key={q.name}
+                    className={problem ? 'bg-red-50/50 dark:bg-red-950/30' : 'hover:bg-gray-50'}
+                  >
                     <td className="px-4 py-3 font-mono text-primary">
                       {q.name}
                       {q.stale && <span className="badge-red ml-2 text-[10px]">veraltet</span>}

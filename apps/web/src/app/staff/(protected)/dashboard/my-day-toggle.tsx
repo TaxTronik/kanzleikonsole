@@ -34,8 +34,8 @@ export function MyDayToggle({ id }: { id: string }) {
         disabled={isPending || done}
         className={
           done
-            ? 'w-5 h-5 rounded border-2 border-emerald-600 bg-emerald-600 text-white flex items-center justify-center'
-            : 'w-5 h-5 rounded border-2 border-strong hover:border-emerald-600'
+            ? 'w-6 h-6 rounded border-2 border-emerald-600 bg-emerald-600 text-white flex items-center justify-center'
+            : 'w-6 h-6 rounded border-2 border-strong hover:border-emerald-600'
         }
         aria-label="Als erledigt markieren"
         aria-describedby={error ? errorId : undefined}

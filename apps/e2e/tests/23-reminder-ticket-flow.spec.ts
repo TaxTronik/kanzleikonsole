@@ -59,7 +59,10 @@ test('REMINDER-TICKET-001 – Tickets anlegen, erwähnen, verknüpfen, archivier
   await expect(
     page
       .getByRole('region', { name: 'Unterhaltung', exact: true })
-      .getByText(`Nachfrage zu #${target}: Bitte die Belege ergänzen.`),
+      // Der kontrollierte Textarea-Inhalt ist bereits vor dem Speichern sichtbar.
+      // Erst der Serverbeitrag in der Liste belegt den abgeschlossenen Submit.
+      .getByRole('listitem')
+      .filter({ hasText: `Nachfrage zu #${target}: Bitte die Belege ergänzen.` }),
   ).toBeVisible();
   await page.reload();
   await expect(

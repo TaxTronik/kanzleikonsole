@@ -29,6 +29,12 @@ möglich. Bei einer bereits bezahlten Rechnung entsteht ebenfalls ein
 Korrekturbeleg; eine erforderliche Rückzahlung wird außerhalb von TaxTronik
 abgewickelt. „Storniert" ist der Endzustand.
 
+Für „Überfällig“ zählt der Kalendertag in Europe/Berlin. Eine heute fällige,
+versendete Rechnung wird in der Übersicht erst ab dem Folgetag als überfällig
+angezeigt, gegebenenfalls schon vor dem nächsten täglichen Statuslauf. Diese
+Anzeige ist keine rechtliche Feststellung des Schuldnerverzugs
+(Fachregel `INV-DUE-OVERDUE-001`).
+
 **Archivkopie (GoBD).** Beim Versand einer XRechnung-/ZUGFeRD-Rechnung wird
 die Rechnungsdatei **vor** der Festschreibung mit Object-Lock abgelegt
 (8 Jahre ab dem einschlägigen Jahresende, schreibgeschützt). Schlägt das fehl — z. B. weil die

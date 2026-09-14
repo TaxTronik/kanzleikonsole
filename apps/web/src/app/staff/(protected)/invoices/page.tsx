@@ -7,7 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
 
-import { fmtDateShort, fmtEUR } from '@/lib/fmt';
+import { berlinTodayUtcMidnight, fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
 const PAGE_SIZE = 50;
 
@@ -62,14 +62,16 @@ export default async function InvoicesPage({
     { key: 'PAID', label: 'Bezahlt' },
     { key: 'CANCELLED', label: 'Storniert' },
   ];
+  // INV-DUE-OVERDUE-001: @db.Date erst ab dem folgenden Berliner Kalendertag überfällig.
+  const today = berlinTodayUtcMidnight();
 
   return (
-    <div className="p-8">
-      <div className="flex items-end justify-between mb-6">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Rechnungen</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <a
             href={`/api/staff/invoices/export${filterStatus ? '?status=' + filterStatus : ''}`}
             className="btn-secondary"
@@ -87,7 +89,7 @@ export default async function InvoicesPage({
       </div>
 
       <div className="border-b border-default mb-4">
-        <nav className="-mb-px flex gap-6">
+        <nav className="-mb-px flex flex-wrap gap-x-4 gap-y-1 sm:gap-x-6">
           {tabs.map((t) => {
             const active = (filterStatus ?? '') === t.key;
             const href = t.key ? `/staff/invoices?status=${t.key}` : '/staff/invoices';
@@ -116,62 +118,74 @@ export default async function InvoicesPage({
           </div>
         ) : (
           <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-default">
-                  <th className="th">Nr.</th>
-                  <th className="th">Mandant</th>
-                  <th className="th">Datum</th>
-                  <th className="th">Fällig</th>
-                  <th className="th th-right">Brutto</th>
-                  <th className="th">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {visible.map((i) => {
-                  const overdue = i.status === 'SENT' && i.dueDate < new Date();
-                  return (
-                    <tr key={i.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-primary">
-                        <Link href={`/staff/invoices/${i.id}`} className="hover:underline">
-                          {i.number}
-                        </Link>
-                      </td>
-                      <td className="px-6 py-4 text-secondary">{i.client.name}</td>
-                      <td className="px-6 py-4 text-secondary">{fmtDateShort(i.issueDate)}</td>
-                      <td
-                        className={overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'}
-                      >
-                        {fmtDateShort(i.dueDate)}
-                      </td>
-                      <td className="px-6 py-4 text-right font-mono tabular-nums">
-                        {fmtEUR(i.totalAmount)}
-                      </td>
-                      <td className="px-6 py-4">
-                        {i.status === 'DRAFT' && (
-                          <span className="badge-gray">{INVOICE_STATUS_LABELS[i.status]}</span>
-                        )}
-                        {i.status === 'SENT' &&
-                          (overdue ? (
-                            <span className="badge-red">Überfällig</span>
-                          ) : (
-                            <span className="badge-yellow">{INVOICE_STATUS_LABELS[i.status]}</span>
-                          ))}
-                        {i.status === 'PAID' && (
-                          <span className="badge-green">{INVOICE_STATUS_LABELS[i.status]}</span>
-                        )}
-                        {i.status === 'OVERDUE' && (
-                          <span className="badge-red">{INVOICE_STATUS_LABELS[i.status]}</span>
-                        )}
-                        {i.status === 'CANCELLED' && (
-                          <span className="badge-gray">{INVOICE_STATUS_LABELS[i.status]}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div
+              className="overflow-x-auto"
+              role="region"
+              aria-label="Rechnungen"
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Horizontale Tabellenspalten müssen per Tastatur erreichbar sein.
+              tabIndex={0}
+            >
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-default">
+                    <th className="th">Nr.</th>
+                    <th className="th">Mandant</th>
+                    <th className="th">Datum</th>
+                    <th className="th">Fällig</th>
+                    <th className="th th-right">Brutto</th>
+                    <th className="th">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {visible.map((i) => {
+                    const overdue = i.status === 'SENT' && i.dueDate < today;
+                    return (
+                      <tr key={i.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-primary">
+                          <Link href={`/staff/invoices/${i.id}`} className="hover:underline">
+                            {i.number}
+                          </Link>
+                        </td>
+                        <td className="px-6 py-4 text-secondary">{i.client.name}</td>
+                        <td className="px-6 py-4 text-secondary">{fmtDateShort(i.issueDate)}</td>
+                        <td
+                          className={
+                            overdue ? 'px-6 py-4 text-red-700' : 'px-6 py-4 text-secondary'
+                          }
+                        >
+                          {fmtDateShort(i.dueDate)}
+                        </td>
+                        <td className="px-6 py-4 text-right font-mono tabular-nums">
+                          {fmtEUR(i.totalAmount)}
+                        </td>
+                        <td className="px-6 py-4">
+                          {i.status === 'DRAFT' && (
+                            <span className="badge-gray">{INVOICE_STATUS_LABELS[i.status]}</span>
+                          )}
+                          {i.status === 'SENT' &&
+                            (overdue ? (
+                              <span className="badge-red">Überfällig</span>
+                            ) : (
+                              <span className="badge-yellow">
+                                {INVOICE_STATUS_LABELS[i.status]}
+                              </span>
+                            ))}
+                          {i.status === 'PAID' && (
+                            <span className="badge-green">{INVOICE_STATUS_LABELS[i.status]}</span>
+                          )}
+                          {i.status === 'OVERDUE' && (
+                            <span className="badge-red">{INVOICE_STATUS_LABELS[i.status]}</span>
+                          )}
+                          {i.status === 'CANCELLED' && (
+                            <span className="badge-gray">{INVOICE_STATUS_LABELS[i.status]}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             <Pagination
               basePath="/staff/invoices"
               baseQs={baseQs}

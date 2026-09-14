@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 
 /** Read-only Textfeld mit Kopieren-Button (für Links, Tokens etc.). */
-export function CopyField({ value }: { value: string }) {
+export function CopyField({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -21,6 +21,7 @@ export function CopyField({ value }: { value: string }) {
     <div className="flex gap-2">
       <input
         readOnly
+        aria-label={label}
         value={value}
         onFocus={(e) => e.currentTarget.select()}
         className="input flex-1 text-xs font-mono"

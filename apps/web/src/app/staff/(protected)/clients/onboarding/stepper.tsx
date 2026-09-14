@@ -54,7 +54,7 @@ export function Stepper({
                   </span>
                 )}
                 {s.label}
-                {!s.required && <span className="text-[10px] opacity-70">(optional)</span>}
+                {!s.required && <span className="text-[10px]">(optional)</span>}
               </Link>
             ) : (
               <span className={cls} aria-current={current ? 'step' : undefined}>
@@ -66,9 +66,7 @@ export function Stepper({
                   </span>
                 )}
                 {s.label}
-                {!s.required && !current && (
-                  <span className="text-[10px] opacity-70">(optional)</span>
-                )}
+                {!s.required && !current && <span className="text-[10px]">(optional)</span>}
               </span>
             )}
             {i < steps.length - 1 && <span className="mx-1 text-disabled">›</span>}
