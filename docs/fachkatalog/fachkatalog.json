@@ -165,12 +165,15 @@
       "code_refs": [
         "packages/db/src/staff-client-access.ts",
         "apps/web/src/server/settings/access-policy.ts",
-        "apps/web/src/server/auth/rbac.ts"
+        "apps/web/src/server/auth/rbac.ts",
+        "apps/web/src/app/staff/(protected)/invoices/new/page.tsx"
       ],
       "test_refs": [
         "apps/web/src/server/settings/__tests__/access-policy.test.ts",
         "apps/web/src/server/settings/__tests__/access-policy.property.test.ts",
-        "apps/web/src/server/auth/__tests__/rbac.test.ts"
+        "apps/web/src/server/auth/__tests__/rbac.test.ts",
+        "apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx",
+        "apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
       "related_rules": [

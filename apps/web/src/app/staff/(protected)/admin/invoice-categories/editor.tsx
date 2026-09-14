@@ -67,24 +67,26 @@ export function InvoiceCategoryEditor({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {initial.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-muted">
+        <div className="card p-6 text-center text-sm text-muted">
           Noch keine Rechnungstypen — leg den ersten an.
         </div>
       ) : (
         <ul className="space-y-2">
           {initial.map((t) => (
             <li key={t.id} className="card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Receipt className="h-3.5 w-3.5 text-disabled" />
-                    <span className="font-medium text-primary">{t.name}</span>
+              <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <div className="min-w-0 w-full flex-1 [overflow-wrap:anywhere]">
+                  <div className="flex min-w-0 items-center gap-2 flex-wrap [&>*]:max-w-full">
+                    <span className="inline-flex min-w-0 items-start gap-2 font-medium text-primary">
+                      <Receipt className="mt-1 h-3.5 w-3.5 shrink-0 text-disabled" />
+                      <span className="min-w-0">{t.name}</span>
+                    </span>
                     <code className="text-[10px] text-disabled font-mono">{t.slug}</code>
                     {t.emailTemplateSlug && (
                       <span className="badge-gray text-[10px] inline-flex items-center gap-1">
-                        <Lock className="h-2.5 w-2.5" />
+                        <Lock className="h-3 w-3 shrink-0" />
                         Mail-Vorlage: {t.emailTemplateSlug}
                       </span>
                     )}
@@ -95,7 +97,7 @@ export function InvoiceCategoryEditor({
                   <button
                     type="button"
                     onClick={() => setEditing(t)}
-                    className="text-muted hover:text-brand-700 p-1"
+                    className="icon-action"
                     title="Bearbeiten"
                     aria-label={`Rechnungstyp „${t.name}“ bearbeiten`}
                   >
@@ -105,7 +107,7 @@ export function InvoiceCategoryEditor({
                     type="button"
                     onClick={() => remove(t.id)}
                     disabled={isPending}
-                    className="text-disabled hover:text-red-700 p-1"
+                    className="icon-action hover:!text-red-700"
                     title="Löschen"
                     aria-label={`Rechnungstyp „${t.name}“ löschen`}
                   >
@@ -130,12 +132,12 @@ export function InvoiceCategoryEditor({
       )}
 
       {editing && (
-        <div className="card p-5 space-y-4 border-2 border-brand-200 dark:border-brand-900/60">
-          <h3 className="text-sm font-semibold text-primary">
+        <div className="card min-w-0 space-y-4 p-4 sm:p-6">
+          <h2 className="text-base font-semibold text-primary">
             {editing.id ? 'Typ bearbeiten' : 'Neuer Rechnungstyp'}
-          </h3>
+          </h2>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <div>
               <label className="label" htmlFor="invoice-category-name">
                 Anzeige-Name
@@ -143,7 +145,7 @@ export function InvoiceCategoryEditor({
               <input
                 id="invoice-category-name"
                 type="text"
-                className="input"
+                className="input min-w-0"
                 value={editing.name}
                 onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                 maxLength={120}
@@ -158,7 +160,7 @@ export function InvoiceCategoryEditor({
               <input
                 id="invoice-category-slug"
                 type="text"
-                className="input font-mono"
+                className="input min-w-0 font-mono"
                 value={editing.slug}
                 onChange={(e) => setEditing({ ...editing, slug: e.target.value })}
                 maxLength={60}
@@ -173,7 +175,7 @@ export function InvoiceCategoryEditor({
             </label>
             <select
               id="invoice-category-email-template"
-              className="input"
+              className="input min-w-0"
               value={editing.emailTemplateSlug ?? ''}
               onChange={(e) =>
                 setEditing({ ...editing, emailTemplateSlug: e.target.value || null })
@@ -193,7 +195,7 @@ export function InvoiceCategoryEditor({
             </p>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-sm">
+          <label className="inline-flex items-start gap-2 text-sm [&>input]:mt-1 [&>input]:shrink-0">
             <input
               type="checkbox"
               checked={editing.active}
@@ -204,12 +206,12 @@ export function InvoiceCategoryEditor({
           </label>
 
           {error && (
-            <div className="rounded-md bg-red-50 p-2 text-xs text-red-700" role="alert">
+            <div className="alert-error-sm" role="alert">
               {error}
             </div>
           )}
 
-          <div className="flex items-center gap-2 pt-2">
+          <div className="flex flex-wrap items-center gap-2 pt-2">
             <button
               type="button"
               onClick={save}

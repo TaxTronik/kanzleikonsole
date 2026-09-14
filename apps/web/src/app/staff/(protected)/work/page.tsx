@@ -25,12 +25,11 @@ type WorkSlot = 'mine' | 'team';
 const BUCKETS: ReadonlyArray<{
   id: WorkBasketBucket;
   label: string;
-  empty: string;
 }> = [
-  { id: 'overdue', label: 'Überfällig', empty: 'Keine überfälligen Aufgaben.' },
-  { id: 'today', label: 'Heute', empty: 'Für heute ist nichts terminiert.' },
-  { id: 'later', label: 'Später', empty: 'Keine späteren Termine oder Fälligkeiten.' },
-  { id: 'undated', label: 'Ohne Termin', empty: 'Keine offenen Eingänge ohne Termin.' },
+  { id: 'overdue', label: 'Überfällig' },
+  { id: 'today', label: 'Heute' },
+  { id: 'later', label: 'Später' },
+  { id: 'undated', label: 'Ohne Termin' },
 ];
 
 function selectedKindFrom(value: string | undefined): WorkBasketKind | null {
@@ -86,25 +85,77 @@ function WorkBucketSection({
   bucket: (typeof BUCKETS)[number];
   items: WorkBasketItem[];
 }) {
-  const bucketItems = items.filter((item) => item.bucket === bucket.id);
   return (
     <section className="card overflow-hidden" aria-labelledby={`work-${bucket.id}`}>
       <div className="flex items-center justify-between border-b border-default px-5 py-3">
         <h2 id={`work-${bucket.id}`} className="font-semibold text-primary">
           {bucket.label}
         </h2>
-        <span className="text-xs tabular-nums text-muted">{bucketItems.length}</span>
+        <span className="text-xs tabular-nums text-muted">{items.length}</span>
       </div>
-      {bucketItems.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-disabled">{bucket.empty}</p>
-      ) : (
-        <ul className="divide-y divide-border-subtle">
-          {bucketItems.map((item) => (
-            <WorkBasketItemRow key={item.key} item={item} />
-          ))}
-        </ul>
-      )}
+      <ul className="divide-y divide-border-subtle">
+        {items.map((item) => (
+          <WorkBasketItemRow key={item.key} item={item} />
+        ))}
+      </ul>
     </section>
+  );
+}
+
+function WorkBasketContent({
+  items,
+  slot,
+  selectedKind,
+}: {
+  items: WorkBasketItem[];
+  slot: WorkSlot;
+  selectedKind: WorkBasketKind | null;
+}) {
+  if (items.length === 0) {
+    return (
+      <section className="card p-5 sm:p-6" aria-labelledby="work-empty">
+        <h2 id="work-empty" className="font-semibold text-primary">
+          Keine offenen Einträge
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          {selectedKind
+            ? `Für „${WORK_KIND_LABELS[selectedKind]}“ gibt es in dieser Ansicht keine offenen Einträge.`
+            : slot === 'team'
+              ? 'Aktuell gibt es keine unzugeordneten Eingänge für das Kanzleiteam.'
+              : 'Ihre Aufgaben, Termine und Eingänge erscheinen hier, sobald etwas ansteht.'}
+        </p>
+        {selectedKind && (
+          <Link
+            href={slot === 'team' ? '/staff/work?scope=team' : '/staff/work'}
+            className="btn-secondary mt-4 text-sm"
+          >
+            Alle Einträge anzeigen
+          </Link>
+        )}
+      </section>
+    );
+  }
+
+  const groups = BUCKETS.map((bucket) => ({
+    bucket,
+    items: items.filter((item) => item.bucket === bucket.id),
+  }));
+  const filledGroups = groups.filter((group) => group.items.length > 0);
+  const emptyGroups = groups.filter((group) => group.items.length === 0);
+
+  return (
+    <>
+      <div className={`grid items-start gap-5 ${filledGroups.length > 1 ? 'xl:grid-cols-2' : ''}`}>
+        {filledGroups.map(({ bucket, items: bucketItems }) => (
+          <WorkBucketSection key={bucket.id} bucket={bucket} items={bucketItems} />
+        ))}
+      </div>
+      {emptyGroups.length > 0 && (
+        <p className="mt-3 text-xs text-muted">
+          Ohne offene Einträge: {emptyGroups.map(({ bucket }) => bucket.label).join(' · ')}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -211,11 +262,7 @@ function WorkBasketView({
         </p>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        {BUCKETS.map((bucket) => (
-          <WorkBucketSection key={bucket.id} bucket={bucket} items={items} />
-        ))}
-      </div>
+      <WorkBasketContent items={items} slot={slot} selectedKind={selectedKind} />
     </div>
   );
 }

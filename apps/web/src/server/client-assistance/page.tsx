@@ -3,10 +3,11 @@ import { notFound, redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { portalActionGuard } from '@/server/actions/portal-action';
-import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
 import { readModules } from '@/server/settings/modules';
 import { ClientAssistanceForm } from '@/components/client-assistance-form';
 import { ExpansionForm } from '@/components/expansion-form';
+import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { CASE_DEFINITIONS, CASE_KINDS, caseModule, type CaseKind } from './definitions';
 import { withAssistance, assistanceDocumentWhere, type Surface } from './service';
 import { checkedAssistanceSnapshot, DOCX_MIME } from './snapshot';
@@ -29,6 +30,41 @@ function selectedAssistanceCase<T extends { id: string }>(
   requested: string | undefined,
 ): T | undefined {
   return requested ? items.find((item) => item.id === requested) : undefined;
+}
+
+function AssistanceClientSelection({
+  clients,
+  canCreateClient,
+  prefix,
+}: {
+  clients: Array<{ id: string; name: string }>;
+  canCreateClient: boolean;
+  prefix: string;
+}) {
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
+      <h1 className="text-2xl font-bold">Mandanten-Assistenten</h1>
+      <p className="text-sm text-muted">
+        Mandant für Belegassistenten und Verfahrensdokumentation wählen.
+      </p>
+      {clients.length === 0 ? (
+        <ClientPrerequisiteEmptyState canCreateClient={canCreateClient} />
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {clients.map((c) => (
+            <li key={c.id}>
+              <Link
+                className="card block p-4 font-medium hover:bg-surface-raised"
+                href={prefix + '?clientId=' + c.id}
+              >
+                {c.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export async function AssistancePage({
@@ -74,24 +110,11 @@ export async function AssistancePage({
       }),
     );
     return (
-      <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
-        <h1 className="text-2xl font-bold">Mandanten-Assistenten</h1>
-        <p className="text-sm text-muted">
-          Mandant für Belegassistenten und Verfahrensdokumentation wählen.
-        </p>
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {clients.map((c) => (
-            <li key={c.id}>
-              <Link
-                className="card block p-4 font-medium hover:bg-surface-raised"
-                href={prefix + '?clientId=' + c.id}
-              >
-                {c.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <AssistanceClientSelection
+        clients={clients}
+        canCreateClient={hasStaffPermission(guard.session, 'CLIENT_CREATE')}
+        prefix={prefix}
+      />
     );
   }
   const items = await withAssistance(surface, kind, clientId, (tx) =>

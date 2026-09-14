@@ -109,11 +109,21 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
   }
 
   return (
-    <div className="space-y-4">
-      {error && <div className="alert-error-sm">{error}</div>}
+    <div className="min-w-0 space-y-4">
+      {error && (
+        <div className="alert-error-sm" role="alert">
+          {error}
+        </div>
+      )}
 
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
+      <div
+        className="card overflow-x-auto"
+        role="region"
+        aria-label="Datei-Typen"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Horizontale Tabellenspalten müssen per Tastatur erreichbar sein.
+        tabIndex={0}
+      >
+        <table className="w-full min-w-[48rem] text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-default">
               <th className="text-left px-5 py-2.5 text-xs font-medium text-muted uppercase">
@@ -137,18 +147,24 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
           <tbody className="divide-y divide-border-subtle">
             {initial.map((t) => (
               <tr key={t.id} className="hover:bg-gray-50">
-                <td className="px-5 py-3 font-medium text-primary">
+                <td className="min-w-56 max-w-80 px-5 py-3 font-medium text-primary [overflow-wrap:anywhere]">
                   {editId === t.id ? (
-                    <input
-                      autoFocus
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="input !py-1 text-sm"
-                      maxLength={120}
-                    />
+                    <>
+                      <label className="label" htmlFor={`document-type-name-${t.id}`}>
+                        Name
+                      </label>
+                      <input
+                        id={`document-type-name-${t.id}`}
+                        autoFocus
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="input min-w-0 !py-1 text-sm"
+                        maxLength={120}
+                      />
+                    </>
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
-                      {t.builtin && <Lock className="h-3.5 w-3.5 text-disabled" />}
+                      {t.builtin && <Lock className="h-3.5 w-3.5 shrink-0 text-disabled" />}
                       {t.name}
                     </span>
                   )}
@@ -161,7 +177,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                 </td>
                 <td className="px-5 py-3 text-muted">
                   <span className="inline-flex items-center gap-1">
-                    <FileText className="h-3.5 w-3.5 text-disabled" />
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-disabled" />
                     {t.docCount}
                   </span>
                 </td>
@@ -200,26 +216,28 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                         title={t.active ? 'Deaktivieren' : 'Aktivieren'}
                         disabled={isPending}
                         onClick={() => saveEdit(t, !t.active)}
-                        className="text-xs text-muted hover:text-primary mr-2"
+                        className="btn-secondary text-xs mr-2"
                       >
                         {t.active ? 'Deaktivieren' : 'Aktivieren'}
                       </button>
                       <button
                         type="button"
                         title="Umbenennen"
+                        aria-label={`Datei-Typ „${t.name}“ umbenennen`}
                         onClick={() => {
                           setEditId(t.id);
                           setEditName(t.name);
                         }}
-                        className="text-disabled hover:text-brand-700 p-1"
+                        className="icon-action"
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
                         title="Löschen"
+                        aria-label={`Datei-Typ „${t.name}“ löschen`}
                         onClick={() => remove(t)}
-                        className="text-disabled hover:text-red-600 p-1"
+                        className="icon-action hover:!text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -233,8 +251,9 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
       </div>
 
       {creating ? (
-        <div className="card p-4 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+        <div className="card min-w-0 space-y-4 p-4 sm:p-6">
+          <h2 className="text-base font-semibold text-primary">Neuer Datei-Typ</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>*]:min-w-0">
             <div>
               <label className="label" htmlFor="dt-name">
                 Name
@@ -244,7 +263,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                 autoFocus
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="input"
+                className="input min-w-0"
                 maxLength={120}
                 placeholder="z. B. Arbeitspapiere"
               />
@@ -257,7 +276,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                 id="dt-retention"
                 value={newTier === 'GOBD' ? newRetentionYears : newTier === 'GWG' ? 5 : 0}
                 onChange={(e) => setNewRetentionYears(Number(e.target.value) as 6 | 8 | 10)}
-                className="input"
+                className="input min-w-0"
                 disabled={newTier !== 'GOBD'}
               >
                 {newTier === 'NONE' && <option value={0}>keine feste Frist</option>}
@@ -279,7 +298,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
                 id="dt-tier"
                 value={newTier}
                 onChange={(e) => setNewTier(e.target.value as Tier)}
-                className="input"
+                className="input min-w-0"
               >
                 <option value="NONE">Kein Lock</option>
                 <option value="GWG">GwG · 5 Jahre + fachliche Prüfung</option>
@@ -292,7 +311,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
             bereits abgelegten Dokumente dieses Typs umkopiert werden). Für eine andere Stufe einen
             neuen Typ anlegen.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               disabled={isPending || !newName.trim()}
@@ -311,7 +330,7 @@ export function DocumentTypeEditor({ initial }: { initial: DocType[] }) {
           </div>
         </div>
       ) : (
-        <button type="button" onClick={() => setCreating(true)} className="btn-secondary text-sm">
+        <button type="button" onClick={() => setCreating(true)} className="btn-primary">
           <Plus className="h-4 w-4" />
           Eigenen Typ anlegen
         </button>

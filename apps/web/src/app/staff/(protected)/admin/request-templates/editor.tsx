@@ -74,18 +74,18 @@ export function RequestTemplateEditor({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {initial.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-muted">
+        <div className="card p-6 text-center text-sm text-muted">
           Noch keine Vorlagen definiert.
         </div>
       ) : (
         <ul className="space-y-2">
           {initial.map((t) => (
             <li key={t.id} className="card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <div className="min-w-0 w-full flex-1 [overflow-wrap:anywhere]">
+                  <div className="flex min-w-0 items-center gap-2 flex-wrap [&>*]:max-w-full">
                     <span className="font-medium text-primary">{t.name}</span>
                     {t.category && <span className="badge-gray">{t.category}</span>}
                     <span className="badge-gray text-xs">{PRIORITY_LABELS[t.priority]}</span>
@@ -93,9 +93,9 @@ export function RequestTemplateEditor({
                       <span className="text-xs text-muted">fällig +{t.dueAfterDays} Tage</span>
                     )}
                     {t.formTemplateName && (
-                      <span className="inline-flex items-center gap-1 text-xs text-brand-700">
-                        <FileText className="h-3 w-3" />
-                        {t.formTemplateName}
+                      <span className="inline-flex min-w-0 items-start gap-1 text-xs text-brand-700">
+                        <FileText className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span className="min-w-0">{t.formTemplateName}</span>
                       </span>
                     )}
                     {!t.active && <span className="badge-yellow">deaktiviert</span>}
@@ -117,7 +117,7 @@ export function RequestTemplateEditor({
                   <button
                     type="button"
                     onClick={() => remove(t.id)}
-                    className="text-disabled hover:text-red-700 p-1"
+                    className="icon-action hover:!text-red-700"
                     title="Löschen"
                     aria-label={`Anforderungsvorlage „${t.name}“ löschen`}
                   >
@@ -213,12 +213,12 @@ function Form({
   }
 
   return (
-    <div className="card p-6 space-y-4 border-brand-300">
-      <h2 className="text-sm font-medium text-primary">
+    <div className="card min-w-0 space-y-4 p-4 sm:p-6">
+      <h2 className="text-base font-semibold text-primary [overflow-wrap:anywhere]">
         {isNew ? 'Neue Vorlage' : `Bearbeiten: ${draft.name}`}
       </h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
         <div>
           <label className="label" htmlFor="request-template-name">
             Vorlagen-Name (intern)
@@ -230,7 +230,7 @@ function Form({
             onChange={(e) => set('name', e.target.value)}
             maxLength={120}
             placeholder="z. B. FiBu-Belege quartalsweise"
-            className="input"
+            className="input min-w-0"
           />
         </div>
         <div>
@@ -244,7 +244,7 @@ function Form({
             onChange={(e) => set('category', e.target.value)}
             maxLength={60}
             placeholder="z. B. FiBu, Lohn, Jahresabschluss"
-            className="input"
+            className="input min-w-0"
           />
         </div>
       </div>
@@ -260,7 +260,7 @@ function Form({
           onChange={(e) => set('title', e.target.value)}
           maxLength={200}
           placeholder="z. B. Belege Quartal X"
-          className="input"
+          className="input min-w-0"
         />
       </div>
 
@@ -275,11 +275,11 @@ function Form({
           rows={5}
           maxLength={5000}
           placeholder="Was wird konkret benötigt? Markdown unterstützt."
-          className="input text-sm"
+          className="input min-w-0 text-sm"
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>*]:min-w-0">
         <div>
           <label className="label" htmlFor="request-template-priority">
             Priorität
@@ -288,7 +288,7 @@ function Form({
             id="request-template-priority"
             value={t.priority}
             onChange={(e) => set('priority', e.target.value as Priority)}
-            className="input"
+            className="input min-w-0"
           >
             {(Object.keys(PRIORITY_LABELS) as Priority[]).map((p) => (
               <option key={p} value={p}>
@@ -314,7 +314,7 @@ function Form({
               )
             }
             placeholder="leer = keine Fälligkeit"
-            className="input"
+            className="input min-w-0"
           />
         </div>
         <fieldset>
@@ -339,7 +339,7 @@ function Form({
           id="request-template-form"
           value={t.formTemplateId ?? ''}
           onChange={(e) => set('formTemplateId', e.target.value || null)}
-          className="input"
+          className="input min-w-0"
           aria-describedby="request-template-form-hint"
         >
           <option value="">— kein Formular —</option>
@@ -361,7 +361,7 @@ function Form({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={save} disabled={isPending} className="btn-primary">
           <Save className="h-4 w-4" />
           {isPending ? 'Speichert…' : 'Speichern'}

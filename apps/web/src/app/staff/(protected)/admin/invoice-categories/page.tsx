@@ -25,12 +25,12 @@ export default async function InvoiceCategoriesPage() {
   );
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="min-w-0 max-w-4xl p-4 sm:p-6 lg:p-8">
       <Link href="/staff/admin" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Administration
       </Link>
-      <h1 className="text-2xl font-bold text-primary mb-1">Rechnungstypen</h1>
+      <h1 className="page-title [overflow-wrap:anywhere]">Rechnungstypen</h1>
       <p className="text-muted text-sm mb-6">
         Im EXTERNAL-Rechnungsmodus wählst du beim Hochladen einer Rechnung einen Typ aus. Jeder Typ
         kann eine eigene E-Mail-Vorlage referenzieren — so wird der Mandant je nach Anlass (Honorar

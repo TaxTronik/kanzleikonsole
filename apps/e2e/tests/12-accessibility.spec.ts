@@ -82,6 +82,12 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
       ['knowledge', '/staff/knowledge'],
       ['admin', '/staff/admin'],
       ['admin-users', '/staff/admin/users'],
+      ['custom-fields', '/staff/admin/custom-fields'],
+      ['document-types', '/staff/admin/document-types'],
+      ['invoice-categories', '/staff/admin/invoice-categories'],
+      ['request-templates', '/staff/admin/request-templates'],
+      ['email-templates', '/staff/admin/email-templates'],
+      ['skills', '/staff/admin/skills'],
       ['admin-settings', '/staff/admin/settings/branding'],
       ['work', '/staff/work'],
       ['new-client', '/staff/clients/new'],
@@ -169,6 +175,13 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
       ['knowledge-320', '/staff/knowledge'],
       ['notifications-320', '/staff/notifications'],
       ['admin-320', '/staff/admin'],
+      ['work-320', '/staff/work'],
+      ['custom-fields-320', '/staff/admin/custom-fields'],
+      ['document-types-320', '/staff/admin/document-types'],
+      ['invoice-categories-320', '/staff/admin/invoice-categories'],
+      ['request-templates-320', '/staff/admin/request-templates'],
+      ['email-templates-320', '/staff/admin/email-templates'],
+      ['skills-320', '/staff/admin/skills'],
     ] as const) {
       await visitPage(page, path);
       await expectNoPageOverflow(page, name);

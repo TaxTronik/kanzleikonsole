@@ -6,7 +6,8 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { NewPoaForm } from './form';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { inaccessibleClientIdsFor, hasStaffPermission } from '@/server/auth/rbac';
+import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { isUuid } from '@/lib/uuid';
 import { resolveInitialPoaClientId } from './client-selection';
 import { parsePoaCreateReturnContext } from './return-context';
@@ -74,7 +75,7 @@ export default async function NewPoaPage({
       : undefined;
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl">
       <div className="flex items-start gap-4 mb-6">
         <Link
           href={
@@ -100,9 +101,9 @@ export default async function NewPoaPage({
           zugaenglich. Es wurde kein anderer Mandant vorausgewaehlt.
         </div>
       ) : clients.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-muted">
-          Keine aktiven Mandanten. Bitte zuerst GwG-Prüfung abschließen.
-        </div>
+        <ClientPrerequisiteEmptyState
+          canCreateClient={hasStaffPermission(session, 'CLIENT_CREATE')}
+        />
       ) : (
         <NewPoaForm
           poaMode={modules.poaMode}

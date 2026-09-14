@@ -217,6 +217,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Arbeitskorb mit einem gemeinsamen Leerzustand und kurzer Zusammenfassung
+  leerer Fälligkeitsgruppen hinter den tatsächlich anstehenden Aufgaben.
+  Bei leerem Filterergebnis führt eine direkte Aktion zurück zu allen Einträgen
+  derselben Ansicht.
+- Mandanten-Assistenten, Rechnungs- und Vollmachtenanlage erklären fehlende
+  auswählbare Mandanten und bieten passende nächste Schritte an. Die
+  Mandantenaufnahme erscheint nur mit dem bestehenden Recht `CLIENT_CREATE`.
+- Einheitliche mobile Abstände, Karten, Feldbreiten und Aktionen für
+  Mandantenfelder, Dokumenttypen, Rechnungstypen, Anforderungs-/E-Mail-Vorlagen
+  und Tätigkeitsbereiche. Lange Namen und geöffnete Formulare bleiben auf
+  schmalen Bildschirmen lesbar.
+
 - Kürzere Navigationstitel und feste Icongrößen verhindern, dass lange
   Beschriftungen Symbole verkleinern oder verschieben. Bisherige Bezeichnungen
   bleiben als Suchbegriffe verfügbar.
@@ -685,6 +697,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   die Cookie-Löschung (`0c1f8174`).
 
 ### Sicherheit
+
+- **[Scope]** Die Mandantenauswahl bei neuer Rechnung und externem
+  Rechnungsupload berücksichtigt jetzt bereits beim Laden den zentralen
+  Mandantenzugriff. Rechnungsrechte allein zeigen damit keine vertraulichen
+  oder im eingeschränkten Zugriffsmodus unzugeordneten Mandanten mehr an.
+  Die bestehenden Schreibprüfungen bleiben erhalten
+  (`ACCESS-CLIENT-MODE-001`, `ACCESS-STAFF-PERMISSION-001`).
 
 - Lokale QA-Artefakte unter `.codex-run` werden ausdrücklich aus dem
   Docker-Buildkontext ausgeschlossen. Der bestehende Docker-Guard und eine

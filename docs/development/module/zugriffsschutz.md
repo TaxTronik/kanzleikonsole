@@ -15,6 +15,14 @@ Zwei strikt getrennte Anmeldekontexte (Kanzlei/Staff und Mandanten/Portal),
 rollenbasierte Berechtigungen, Mandantentrennung in Tiefenstaffelung
 (App-Guards + Postgres-RLS) und vollständige Anmelde-Protokollierung.
 
+Die Mandantenauswahl für neue Rechnungen und externe Rechnungsuploads verwendet
+bereits beim Lesen den zentralen OPEN-/RESTRICTED-/Vertraulichkeitsfilter
+(`ACCESS-CLIENT-MODE-001`). Das Rechnungsrecht allein reicht nicht aus;
+die Actions prüfen den Zugriff beim Speichern nochmals. Ohne auswählbaren
+Mandanten erläutern Rechnung, Vollmacht und Mandanten-Assistenten die fehlende
+Voraussetzung, ohne einen kanzleiweiten Bestand zu behaupten. Die Mandantenliste
+bleibt erreichbar; „Mandant aufnehmen“ wird nur mit `CLIENT_CREATE` angeboten.
+
 ## Authentifizierung
 
 - **Staff, Standardmodus:** Passwort (bcrypt cost 12, min. 12 Zeichen bei

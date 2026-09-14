@@ -69,24 +69,26 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {initial.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-muted">
+        <div className="card p-6 text-center text-sm text-muted">
           Noch keine E-Mail-Vorlagen definiert.
         </div>
       ) : (
         <ul className="space-y-2">
           {initial.map((t) => (
             <li key={t.id} className="card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {t.slug ? (
-                      <Lock className="h-3.5 w-3.5 text-amber-600" />
-                    ) : (
-                      <Mail className="h-3.5 w-3.5 text-disabled" />
-                    )}
-                    <span className="font-medium text-primary">{t.name}</span>
+              <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <div className="min-w-0 w-full flex-1 [overflow-wrap:anywhere]">
+                  <div className="flex min-w-0 items-center gap-2 flex-wrap [&>*]:max-w-full">
+                    <span className="inline-flex min-w-0 items-start gap-2 font-medium text-primary">
+                      {t.slug ? (
+                        <Lock className="mt-1 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                      ) : (
+                        <Mail className="mt-1 h-3.5 w-3.5 shrink-0 text-disabled" />
+                      )}
+                      <span className="min-w-0">{t.name}</span>
+                    </span>
                     {t.slug && (
                       <span
                         className="badge-yellow text-[10px]"
@@ -109,7 +111,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                   <button
                     type="button"
                     onClick={() => setEditing(t)}
-                    className="text-muted hover:text-brand-700 p-1"
+                    className="icon-action"
                     title="Bearbeiten"
                     aria-label={`E-Mail-Vorlage „${t.name}“ bearbeiten`}
                   >
@@ -120,7 +122,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
                       type="button"
                       onClick={() => remove(t.id, t.slug)}
                       disabled={isPending}
-                      className="text-disabled hover:text-red-700 p-1"
+                      className="icon-action hover:!text-red-700"
                       title="Löschen"
                       aria-label={`E-Mail-Vorlage „${t.name}“ löschen`}
                     >
@@ -146,20 +148,20 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
       )}
 
       {editing && (
-        <div className="card p-5 space-y-4 border-2 border-brand-200 dark:border-brand-900/60">
-          <h3 className="text-sm font-semibold text-primary">
+        <div className="card min-w-0 space-y-4 p-4 sm:p-6">
+          <h2 className="text-base font-semibold text-primary">
             {editing.id ? 'Vorlage bearbeiten' : 'Neue Vorlage'}
-          </h3>
+          </h2>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>*]:min-w-0">
+            <div className="sm:col-span-2">
               <label className="label" htmlFor="email-template-name">
                 Name (intern)
               </label>
               <input
                 id="email-template-name"
                 type="text"
-                className="input"
+                className="input min-w-0"
                 value={editing.name}
                 onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                 maxLength={120}
@@ -173,7 +175,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
               <input
                 id="email-template-category"
                 type="text"
-                className="input"
+                className="input min-w-0"
                 value={editing.category ?? ''}
                 onChange={(e) => setEditing({ ...editing, category: e.target.value })}
                 maxLength={60}
@@ -189,7 +191,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
             <input
               id="email-template-subject"
               type="text"
-              className="input"
+              className="input min-w-0"
               value={editing.subject}
               onChange={(e) => setEditing({ ...editing, subject: e.target.value })}
               maxLength={200}
@@ -203,7 +205,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
             </label>
             <textarea
               id="email-template-body"
-              className="input font-mono text-sm"
+              className="input min-w-0 font-mono text-sm"
               rows={10}
               value={editing.bodyMd}
               onChange={(e) => setEditing({ ...editing, bodyMd: e.target.value })}
@@ -219,7 +221,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
             </p>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-sm">
+          <label className="inline-flex items-start gap-2 text-sm [&>input]:mt-1 [&>input]:shrink-0">
             <input
               type="checkbox"
               checked={editing.active}
@@ -234,7 +236,7 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={save}

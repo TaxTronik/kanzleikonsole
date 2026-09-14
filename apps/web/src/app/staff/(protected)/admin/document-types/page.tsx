@@ -19,12 +19,12 @@ export default async function DocumentTypesPage() {
   );
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="min-w-0 max-w-4xl p-4 sm:p-6 lg:p-8">
       <Link href="/staff/admin" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Administration
       </Link>
-      <h1 className="text-2xl font-bold text-primary mb-1">Datei-Typen</h1>
+      <h1 className="page-title [overflow-wrap:anywhere]">Datei-Typen</h1>
       <p className="text-muted text-sm mb-6">
         Jedes Dokument hat einen Typ. Der Typ trägt die <strong>Schutzstufe</strong>, die Bucket und
         Object-Lock-Modus steuert — genau drei Stufen:

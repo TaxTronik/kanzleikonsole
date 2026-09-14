@@ -1,8 +1,9 @@
-﻿import { redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { hasStaffPermission } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
+import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { NewInvoiceForm } from './form';
@@ -22,10 +23,11 @@ export default async function NewInvoicePage() {
 
   const [clients, categories] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
+    async (tx) => {
+      const accessWhere = await accessibleClientsWhereFor(tx, session);
+      return Promise.all([
         tx.client.findMany({
-          where: { allowActive: true },
+          where: { ...accessWhere, allowActive: true },
           orderBy: { name: 'asc' },
           select: { id: true, name: true },
         }),
@@ -34,7 +36,8 @@ export default async function NewInvoicePage() {
           orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
           select: { id: true, name: true },
         }),
-      ]),
+      ]);
+    },
   );
 
   // iter85 (GoB): In-App-Nummern vergibt der Nummernkreis automatisch und
@@ -43,7 +46,7 @@ export default async function NewInvoicePage() {
   const isExternal = modules.invoiceMode === 'EXTERNAL';
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
       <div className="flex items-start gap-4 mb-6">
         <Link
           href="/staff/invoices"
@@ -65,9 +68,9 @@ export default async function NewInvoicePage() {
       </div>
 
       {clients.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-muted">
-          Keine aktiven Mandanten vorhanden. Bitte zuerst GwG-Prüfung abschließen.
-        </div>
+        <ClientPrerequisiteEmptyState
+          canCreateClient={hasStaffPermission(session, 'CLIENT_CREATE')}
+        />
       ) : isExternal ? (
         <ExternalInvoiceForm clients={clients} categories={categories} />
       ) : (

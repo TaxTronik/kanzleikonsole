@@ -50,10 +50,13 @@ code_refs:
   - packages/db/src/staff-client-access.ts
   - apps/web/src/server/settings/access-policy.ts
   - apps/web/src/server/auth/rbac.ts
+  - apps/web/src/app/staff/(protected)/invoices/new/page.tsx
 test_refs:
   - apps/web/src/server/settings/__tests__/access-policy.test.ts
   - apps/web/src/server/settings/__tests__/access-policy.property.test.ts
   - apps/web/src/server/auth/__tests__/rbac.test.ts
+  - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
+  - apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
@@ -137,7 +140,23 @@ Bedarf Verantwortungen. `rbac.ts` stellt Einzel-, Batch- und Prisma-Filter für
 Seiten, Actions, Exporte und Empfängerlisten bereit. Ein ungültiger
 Konfigurationswert wird derzeit wie OPEN behandelt.
 
+Die Mandantenauswahl bei neuer Rechnung und externem Rechnungsupload wendet
+`accessibleClientsWhereFor` bereits in der Datenbankabfrage zusätzlich zu
+`allowActive` an. Ein Rechnungsrecht ersetzt den Mandantenzugriff nicht.
+Ein leerer sichtbarer Bestand führt zu einem neutralen Hinweis mit Link auf
+die Mandantenliste; der Aufnahmeweg erscheint nur mit `CLIENT_CREATE`.
+Der Hinweis behauptet weder einen leeren Kanzleibestand noch das Vorhandensein
+vertraulicher Mandate. Die Schreibaktionen prüfen den Zugriff weiterhin erneut.
+
 ## Bekannte Abweichungen und Grenzen
+
+Bei der UX-Nachprüfung am 14. September 2026 widersprach die Rechnungsanlage
+dieser Policy: Ihre Auswahl lud alle aktiven Mandanten im Tenant, obwohl
+die Schreibaktionen den Zugriff bereits gesondert prüften. Die Client-RLS
+allein beschränkt auf den Tenant und verhinderte diese Namensanzeige nicht.
+Der Auswahlfilter wurde ergänzt; Rollen, Zuständigkeiten und Aktionsrechte
+wurden nicht erweitert. Ein negativer Gegenlauf ohne diesen Filter zeigt
+die früheren unzulässigen Anzeigen mit echten PostgreSQL-Daten.
 
 Keine bekannte Abweichung innerhalb der zentralen Wahrheitstabelle. Die Tests
 beweisen aber nicht, dass jeder heutige und zukünftige Austrittspfad das Gate
@@ -158,3 +177,10 @@ Wahrheits- und Property-Tests belegen Admin-Override, OPEN, RESTRICTED,
 Vertraulichkeit und Zuordnung. RBAC-Tests belegen Einzel- und Batchfilter. Sie
 belegen weder die organisatorische Angemessenheit noch die vollständige
 Abdeckung aller Call-Sites.
+
+SSR-Tests der Rechnungsanlage prüfen die tatsächliche zentrale Policy,
+Moduswahl und Aufnahmeberechtigung. Fünf zusätzliche Tests führen die echte
+Seitenabfrage mit der PostgreSQL-App-Rolle aus: beide Rechnungsmodi ohne
+Zuständigkeit, gezielte Hauptbearbeiterzuordnung, OPEN mit Vertraulichkeitsflag
+und Admin-Override. Authentifizierung und nachgelagerte Eingabeformulare sind
+in diesen isolierten Tests ersetzt; Auswahlabfrage, Policy und RLS sind echt.

@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20260914-001
+    date: '2026-09-14'
+    paths:
+      - apps/web/src/app/staff/(protected)/poa/new/page.tsx
+    rule_ids:
+      - POA-LIFECYCLE-001
+      - ACCESS-STAFF-PERMISSION-001
+    reason: >-
+      Die Vollmachtsanlage erhält mobile Außenabstände und einen neutralen
+      Leerzustand mit Link zur Mandantenliste. Der Aufnahmeweg erscheint nur
+      mit dem bestehenden CLIENT_CREATE-Recht. Mandantenauswahl, expliziter
+      Onboarding-Kontext, Modul- und Adminprüfung, Uploadkontext, Server-Actions
+      und fachliche Statusmaschine bleiben unverändert. Der bisher pauschale
+      Hinweis auf eine noch abzuschließende GwG-Prüfung wird nicht länger als
+      Erklärung eines unbekannten Grundes verwendet. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/poa/new/__tests__/return-context.test.ts
+      - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
+      - apps/web/src/server/client-assistance/__tests__/page.test.tsx
+      - apps/e2e/tests/12-accessibility.spec.ts
+    reviewer: Codex (technischer Layout- und Leerzustandsabgleich, keine fachliche Freigabe)
   - id: FK-EXC-20260910-001
     date: '2026-09-10'
     paths:

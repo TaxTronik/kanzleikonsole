@@ -43,6 +43,9 @@ const SELF = 'apps/web/src/app/__tests__/prisma-client-guard.test.ts';
 // Bewusst freigegebene Stellen (repo-relativ, Forward-Slashes). Jede ist KEIN
 // App-Request-Pfad-Client.
 const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
+  // ACCESS-CLIENT-MODE-001: Owner erzeugt isolierte Mandantenfixtures; die
+  // separate App-Rolle prüft echte Seitenabfrage, OPEN/RESTRICTED und RLS.
+  'apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx',
   // Fachkatalog: REMINDER-TICKET-001. Isolierte Owner-Fixtures und eine
   // separate App-Verbindung belegen Nummernvergabe, RLS, FK- und Archivrennen.
   'packages/db/src/__tests__/reminder-tickets.test.ts',

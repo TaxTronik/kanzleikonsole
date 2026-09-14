@@ -67,7 +67,7 @@ export function WorkBasketItemRow({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-            <p className="min-w-0 flex-1 break-words text-sm font-medium text-primary">
+            <p className="min-w-0 flex-[1_1_12rem] break-words text-sm font-medium text-primary">
               {item.title}
             </p>
             <span className="text-[10px] text-muted">{WORK_KIND_LABELS[item.kind]}</span>

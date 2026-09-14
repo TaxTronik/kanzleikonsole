@@ -28,8 +28,8 @@ export function CreateSkillForm() {
   }, [state]);
 
   return (
-    <form ref={ref} action={formAction} className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+    <form ref={ref} action={formAction} className="min-w-0 space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>*]:min-w-0">
         <div>
           <label className="label" htmlFor="skill-slug">
             Kürzel
@@ -38,7 +38,7 @@ export function CreateSkillForm() {
             id="skill-slug"
             name="slug"
             type="text"
-            className="input font-mono"
+            className="input min-w-0 font-mono"
             required
             minLength={2}
             maxLength={40}
@@ -47,7 +47,7 @@ export function CreateSkillForm() {
             title="Großbuchstaben/Ziffern/Unterstrich"
           />
         </div>
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <label className="label" htmlFor="skill-label">
             Anzeige-Name
           </label>
@@ -55,7 +55,7 @@ export function CreateSkillForm() {
             id="skill-label"
             name="label"
             type="text"
-            className="input"
+            className="input min-w-0"
             required
             minLength={2}
             maxLength={100}
@@ -67,7 +67,7 @@ export function CreateSkillForm() {
         <label className="label" htmlFor="skill-color">
           Farbe
         </label>
-        <select id="skill-color" name="color" className="input">
+        <select id="skill-color" name="color" className="input min-w-0">
           {COLOR_OPTIONS.map((c) => (
             <option key={c.value} value={c.value}>
               {c.label}
@@ -76,8 +76,16 @@ export function CreateSkillForm() {
         </select>
       </div>
 
-      {state?.error && <div className="alert-error-sm">{state.error}</div>}
-      {state?.ok && <div className="alert-success-sm">Tätigkeitsbereich angelegt.</div>}
+      {state?.error && (
+        <div className="alert-error-sm" role="alert">
+          {state.error}
+        </div>
+      )}
+      {state?.ok && (
+        <div className="alert-success-sm" role="status">
+          Tätigkeitsbereich angelegt.
+        </div>
+      )}
 
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Anlegen'}

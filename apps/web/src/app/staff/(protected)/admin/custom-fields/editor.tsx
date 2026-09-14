@@ -122,18 +122,18 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {fields.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-muted">
-          Noch keine Custom-Felder definiert.
+        <div className="card p-6 text-center text-sm text-muted">
+          Noch keine eigenen Mandantenfelder definiert.
         </div>
       ) : (
         <ul className="space-y-2">
           {fields.map((f) => (
             <li key={f.id} className="card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <div className="min-w-0 w-full flex-1 [overflow-wrap:anywhere]">
+                  <div className="flex min-w-0 items-center gap-2 flex-wrap [&>*]:max-w-full">
                     <span className="font-medium text-primary">{f.label}</span>
                     <code className="text-xs text-muted font-mono">{f.key}</code>
                     <span className="badge-gray">{TYPE_LABELS[f.type]}</span>
@@ -147,7 +147,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
                   </p>
                   {f.helpText && <p className="text-xs text-disabled mt-1 italic">{f.helpText}</p>}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => startEdit(f)}
@@ -158,7 +158,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
                   <button
                     type="button"
                     onClick={() => remove(f.id)}
-                    className="text-disabled hover:text-red-700 p-1"
+                    className="icon-action hover:!text-red-700"
                     title="Feld löschen"
                     aria-label={`Feld „${f.label}“ löschen`}
                   >
@@ -211,12 +211,12 @@ function FieldForm({
   const isNew = !draft.id;
 
   return (
-    <div className="card p-6 space-y-4 border-brand-300">
-      <h2 className="text-sm font-medium text-primary">
+    <div className="card min-w-0 space-y-4 p-4 sm:p-6">
+      <h2 className="text-base font-semibold text-primary [overflow-wrap:anywhere]">
         {isNew ? 'Neues Feld' : `Feld bearbeiten: ${draft.label}`}
       </h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
         <div>
           <label className="label" htmlFor="custom-field-label">
             Bezeichnung
@@ -227,7 +227,7 @@ function FieldForm({
             value={draft.label}
             onChange={(e) => set('label', e.target.value)}
             maxLength={120}
-            className="input"
+            className="input min-w-0"
             placeholder="z. B. Branche"
           />
         </div>
@@ -244,14 +244,14 @@ function FieldForm({
             value={draft.key}
             onChange={(e) => set('key', e.target.value.toLowerCase())}
             maxLength={50}
-            className="input font-mono text-sm"
+            className="input min-w-0 font-mono text-sm"
             placeholder={slugify(draft.label)}
             disabled={!isNew}
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
         <div>
           <label className="label" htmlFor="custom-field-type">
             Typ
@@ -260,7 +260,7 @@ function FieldForm({
             id="custom-field-type"
             value={draft.type}
             onChange={(e) => set('type', e.target.value as FieldType)}
-            className="input"
+            className="input min-w-0"
             disabled={!isNew}
             aria-describedby={!isNew ? 'custom-field-type-hint' : undefined}
           >
@@ -300,7 +300,7 @@ function FieldForm({
           value={draft.helpText ?? ''}
           onChange={(e) => set('helpText', e.target.value)}
           maxLength={300}
-          className="input text-sm"
+          className="input min-w-0 text-sm"
         />
       </div>
 
@@ -351,7 +351,7 @@ function FieldForm({
             rows={5}
             maxLength={2000}
             placeholder={'klein=Klein (<10 MA)\nmittel=Mittel (10-50)\ngross=Groß (50+)'}
-            className="input font-mono text-sm"
+            className="input min-w-0 font-mono text-sm"
           />
         </div>
       )}
@@ -362,7 +362,7 @@ function FieldForm({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={onSave} disabled={isPending} className="btn-primary">
           <Save className="h-4 w-4" />
           {isPending ? 'Speichert…' : 'Speichern'}

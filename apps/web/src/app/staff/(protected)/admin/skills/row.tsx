@@ -45,33 +45,47 @@ export function SkillRow(p: Props) {
 
   return (
     <tr className="hover:bg-gray-50">
-      <td className="px-6 py-3">
+      <td className="min-w-56 max-w-80 px-6 py-3 [overflow-wrap:anywhere]">
         {editing ? (
-          <input
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            className="input text-sm"
-            maxLength={100}
-          />
+          <>
+            <label className="label" htmlFor={`skill-row-label-${p.id}`}>
+              Anzeige-Name
+            </label>
+            <input
+              id={`skill-row-label-${p.id}`}
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className="input text-sm"
+              maxLength={100}
+            />
+          </>
         ) : (
-          <SkillBadge label={p.label} color={p.color} />
+          <span className="[&>span]:max-w-full [&>span]:rounded-md">
+            <SkillBadge label={p.label} color={p.color} />
+          </span>
         )}
       </td>
       <td className="px-6 py-3 font-mono text-xs text-muted">{p.slug}</td>
       <td className="px-6 py-3">
         {editing ? (
-          <select
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="input text-xs"
-          >
-            {COLOR_OPTIONS.map((c) => (
-              <option key={c} value={c}>
-                {c || '— Keine —'}
-              </option>
-            ))}
-          </select>
+          <>
+            <label className="label" htmlFor={`skill-row-color-${p.id}`}>
+              Farbe
+            </label>
+            <select
+              id={`skill-row-color-${p.id}`}
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="input text-xs"
+            >
+              {COLOR_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c || '— Keine —'}
+                </option>
+              ))}
+            </select>
+          </>
         ) : (
           <span className="text-xs text-muted">{p.colorHint}</span>
         )}
@@ -85,14 +99,14 @@ export function SkillRow(p: Props) {
         )}
       </td>
       <td className="px-6 py-3 text-right">
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {editing ? (
             <>
               <button
                 type="button"
                 onClick={save}
                 disabled={isPending}
-                className="text-xs text-brand-700 hover:underline"
+                className="btn-primary text-xs"
               >
                 {isPending ? '…' : 'Speichern'}
               </button>
@@ -103,7 +117,7 @@ export function SkillRow(p: Props) {
                   setLabel(p.label);
                   setColor(p.color ?? '');
                 }}
-                className="text-xs text-muted hover:underline"
+                className="btn-secondary text-xs"
               >
                 Abbrechen
               </button>
@@ -113,7 +127,7 @@ export function SkillRow(p: Props) {
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="text-xs text-secondary hover:underline"
+                className="btn-secondary text-xs"
               >
                 Bearbeiten
               </button>
@@ -122,7 +136,7 @@ export function SkillRow(p: Props) {
                   type="button"
                   onClick={remove}
                   disabled={isPending}
-                  className="text-xs text-red-700 hover:underline"
+                  className="btn-danger-outline text-xs"
                 >
                   Löschen
                 </button>
