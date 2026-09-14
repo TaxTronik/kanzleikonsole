@@ -35,6 +35,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts
   - apps/web/src/app/staff/(protected)/admin/audit/audit-filters.tsx
   - apps/web/src/app/staff/(protected)/admin/audit/audit-entries.tsx
+  - apps/web/src/app/staff/(protected)/admin/audit/local-hash-card.tsx
   - packages/evidence/src/service.ts
   - packages/evidence/src/chain.ts
   - packages/evidence/src/canonical-json.ts
@@ -225,6 +226,17 @@ Seiten-Cursor; die nächste Seite folgt ausschließlich der 51. Probezeile bei
 50 sichtbaren Einträgen. Der bestehende Index auf `(tenant_id, id)` unterstützt
 die Tenantbegrenzung. Ein exakter Count bleibt abhängig von der Größe des
 eigenen Bestands und ist keine konstante Operation.
+
+Die Audit-Ansicht zeigt zusätzlich den vollständigen gespeicherten SHA-256-Wert
+der aktuellen lokalen Kettenspitze mit Audit-ID und Ereigniszeit. Die begrenzte
+Abfrage nach höchster ID bleibt explizit tenantgebunden und unabhängig von
+Listenfiltern, Sortierung und Seiten-Cursor. Ohne Ereignis wird kein Genesis-
+oder Erfolgsnachweis erfunden. Der gespeicherte Wert ist keine Nachrechnung;
+der persistierte Integritätsprüfstatus und die externe Rolling-Verankerung
+bleiben getrennt sichtbar. Ein fehlender Anker oder fehlendes externes Vertrauen
+wird nicht durch eine grüne Darstellung als Erfolg ausgewiesen
+(`AUDIT-RFC3161-ANCHOR-001`). Die Seitenregression prüft den ungefilterten
+Tenant-Head, vollständige Hashbytes, große IDs und den Leerzustand.
 
 ## Bekannte Abweichungen und Grenzen
 

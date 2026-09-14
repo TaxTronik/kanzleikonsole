@@ -19,6 +19,9 @@ export type Tx = TxClient;
 export interface RenderCtx {
   tx: Tx;
   staffId: string;
+  tenantId?: string;
+  /** Serverseitig aus aktivem Portal-Feature und PORTAL_INBOX_MANAGE abgeleitet. */
+  portalInboxEnabled?: boolean;
   isAdmin?: boolean;
   modules: BooleanTenantModules;
   /**

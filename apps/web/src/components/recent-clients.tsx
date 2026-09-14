@@ -1,12 +1,12 @@
 'use client';
 
 // =============================================================================
-// Zuletzt besuchte Mandanten — rein clientseitig über localStorage.
+// Zuletzt besuchte Mandanten — IDs pro Kanzlei und Mitarbeiter im Browser.
 //
 // `RecordClientVisit` (auf der Mandanten-Detailseite gemountet) schreibt den
 // Besuch; `RecentClients` (auf der Mandantenliste) zeigt die letzten als Chips.
-// Bewusst kein Backend/keine DB: das ist eine reine Bequemlichkeit pro Browser,
-// keine Auswertung — daher auch DSGVO-/Überwachungs-neutral.
+// Namen und Sichtbarkeit stammen ausschließlich aus der aktuellen Serverliste.
+// Ein früherer Besuch ist keine Zugriffsberechtigung.
 // =============================================================================
 
 import { useEffect } from 'react';
@@ -14,48 +14,76 @@ import { readBrowserStorage, useBrowserStorage, writeBrowserStorage } from './us
 import Link from 'next/link';
 import { Clock } from 'lucide-react';
 
-const STORAGE_KEY = 'taxtronik:recent-clients';
+const LEGACY_STORAGE_KEY = 'taxtronik:recent-clients';
 const MAX_RECENT = 8;
+
+interface ClientVisitScope {
+  tenantId: string;
+  staffId: string;
+}
 
 interface RecentClient {
   id: string;
   name: string;
 }
 
-function readRecent(raw: string | null): RecentClient[] {
+function storageKey({ tenantId, staffId }: ClientVisitScope): string {
+  return `${LEGACY_STORAGE_KEY}:v2:${JSON.stringify([tenantId, staffId])}`;
+}
+
+function readRecent(raw: string | null): string[] {
   try {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (e): e is RecentClient => !!e && typeof e.id === 'string' && typeof e.name === 'string',
-      )
-      .slice(0, MAX_RECENT);
+    return [
+      ...new Set(parsed.filter((id): id is string => typeof id === 'string' && id !== '')),
+    ].slice(0, MAX_RECENT);
   } catch {
     return [];
   }
 }
 
-/** Unsichtbar — protokolliert den Besuch eines Mandanten beim Mounten. */
-export function RecordClientVisit({ id, name }: RecentClient): null {
+function useDiscardLegacyVisits(): void {
   useEffect(() => {
-    try {
-      const current = readRecent(readBrowserStorage(STORAGE_KEY)).filter((e) => e.id !== id);
-      const next = [{ id, name }, ...current].slice(0, MAX_RECENT);
-      writeBrowserStorage(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // localStorage nicht verfügbar (Privacy-Modus) → einfach ignorieren.
+    // Der alte Speicher enthält Namen ohne verlässliche Kontozuordnung.
+    // Nicht übernehmen; auch noch offene Tabs über den leeren Stand informieren.
+    if (readBrowserStorage(LEGACY_STORAGE_KEY) !== null) {
+      writeBrowserStorage(LEGACY_STORAGE_KEY, '[]');
     }
-  }, [id, name]);
+  }, []);
+}
+
+/** Unsichtbar — protokolliert den Besuch eines Mandanten beim Mounten. */
+export function RecordClientVisit({
+  id,
+  tenantId,
+  staffId,
+}: ClientVisitScope & { id: string }): null {
+  const key = storageKey({ tenantId, staffId });
+  useDiscardLegacyVisits();
+  useEffect(() => {
+    const current = readRecent(readBrowserStorage(key)).filter((recentId) => recentId !== id);
+    writeBrowserStorage(key, JSON.stringify([id, ...current].slice(0, MAX_RECENT)));
+  }, [id, key]);
   return null;
 }
 
 /** Chip-Leiste der zuletzt besuchten Mandanten (ohne den aktuell offenen). */
-export function RecentClients({ excludeId }: { excludeId?: string }) {
-  const recent = readRecent(useBrowserStorage(STORAGE_KEY));
+export function RecentClients({
+  tenantId,
+  staffId,
+  clients,
+  excludeId,
+}: ClientVisitScope & { clients: readonly RecentClient[]; excludeId?: string }) {
+  const recent = readRecent(useBrowserStorage(storageKey({ tenantId, staffId })));
+  useDiscardLegacyVisits();
 
-  const shown = recent.filter((c) => c.id !== excludeId);
+  const visible = new Map(clients.map((client) => [client.id, client]));
+  const shown = recent.flatMap((id) => {
+    const client = visible.get(id);
+    return client && id !== excludeId ? [client] : [];
+  });
   if (shown.length === 0) return null;
 
   return (

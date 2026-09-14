@@ -39,6 +39,7 @@ code_refs:
   - packages/evidence/src/ports/rfc3161-verify.ts
   - apps/worker/src/jobs/audit-anchor.ts
   - apps/worker/src/jobs/evidence-seal.ts
+  - apps/web/src/app/staff/(protected)/admin/audit/rolling-anchor-card.tsx
 test_refs:
   - packages/http-utils/src/__tests__/response-stream.test.ts
   - packages/evidence/src/ports/__tests__/rfc3161-http-policy.test.ts
@@ -46,6 +47,7 @@ test_refs:
   - packages/evidence/src/__tests__/service-verifychain.test.ts
   - packages/evidence/src/__tests__/service-seal-trust.test.ts
   - apps/worker/src/jobs/__tests__/evidence-seal.test.ts
+  - apps/web/src/app/staff/(protected)/admin/audit/__tests__/rolling-anchor-card.test.tsx
 feature_refs:
   - docs/development/module/audit-protokollierung.md
   - docs/adr/0004-evidence-chain-mit-rfc3161.md
@@ -129,6 +131,16 @@ Spitze, ID-Bereich und vorherigen Token in Rolling Anchors beziehungsweise den
 Tagesspitzen-Hash in Tagesversiegelungen. Die Worker führen Netzwerkaufrufe
 außerhalb der Fachtransaktion aus und persistieren Erfolg oder Rückstand
 explizit.
+
+Die Audit-Oberfläche stellt den gespeicherten externen Rolling-Anker neben
+der lokalen Kettenspitze dar. Ohne Anker bleibt die Anzeige neutral. Ein
+grünes Symbol setzt einen vorhandenen, als vertrauensverankert gespeicherten
+Anker ohne offenen Restbestand oder gemeldete Verzögerung voraus; fehlendes
+Vertrauen und lokaler Zeitstempelmodus bleiben sichtbar. Diese Darstellung
+führt keine neue kryptografische Prüfung aus und ersetzt nicht den getrennten
+persistierten Integritätsprüfstatus. Die Kartenregression prüft Leerstand,
+fehlendes Vertrauen, offene lokale Ereignisse, TSA-Verzögerung und lokalen
+Zeitstempelmodus einschließlich großer Audit-IDs.
 
 Der gemeinsame HTTP-Transport liest Antworten nach Bedarf des Consumers,
 statt sie unabhängig von dessen Größenprüfung vorab vollständig zu puffern.

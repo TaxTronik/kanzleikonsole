@@ -34,6 +34,9 @@ sources:
     checked_at: '2026-09-01'
     primary: false
 code_refs:
+  - apps/web/src/components/recent-clients.tsx
+  - apps/web/src/app/staff/(protected)/clients/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
   - apps/web/src/server/inbox/access.ts
   - apps/web/src/server/inbox/queries.ts
   - apps/web/src/server/inbox/search.ts
@@ -42,6 +45,7 @@ code_refs:
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
 test_refs:
+  - apps/e2e/tests/recent-clients-state.spec.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - apps/web/src/app/api/staff/search/__tests__/route.test.ts
@@ -132,6 +136,14 @@ eines anderen Kontakts desselben Mandanten bleibt ebenfalls unsichtbar.
 
 ## Umsetzung in TaxTronik
 
+Die Navigationshilfe „Zuletzt“ speichert ausschließlich Mandanten-IDs in einem
+versionierten, tenant- und mitarbeitergebundenen Browser-Schlüssel. Alte,
+ungebundene Einträge mit gespeicherten Namen werden verworfen. Angezeigt werden
+nur IDs aus dem aktuellen autorisierten Serverergebnis, mit dessen aktuellen
+Namen. Eine leere, gefilterte oder paginierte Serverliste kann Einträge
+ausblenden; sie löscht die übrige Besuchshistorie nicht. Der Browsercache
+begründet weder Sichtbarkeit noch Zugriff auf eine Mandantenakte.
+
 Inbox-Abfragen setzen Tenant und Mandant explizit, prüfen das opt-in Feature und
 verwenden RLS als zusätzlichen Backstop. Staff-Listen kombinieren
 `accessibleClientsWhereFor` mit aktivem Mandat; Detailabfragen prüfen den
@@ -168,6 +180,12 @@ Bestandteil von Version 0.3.
 - Welche zukünftigen Inhaltsindizes würden eine neue Datenschutz- und Berechtigungsprüfung auslösen?
 
 ## Technische Nachweise
+
+`recent-clients-state.spec.ts` prüft im echten Browser die Ablösung alter
+Namenscaches, Tenant-/Mitarbeiterwechsel, ausschließlich gespeicherte IDs,
+aktuelle Namen sowie leere oder eingeschränkte Serverlisten. Die Prüfung
+simuliert die bereits autorisierte Serverliste; sie ersetzt keinen
+serverseitigen RLS- oder Detailzugriffstest.
 
 RLS-Tests belegen Cross-Tenant-, Cross-Client-, Kontakt- und Staff-Permission-
 Grenzen sowie sofortigen Rechteentzug. Der Query-Test belegt, dass Portal und

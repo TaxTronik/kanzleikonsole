@@ -183,7 +183,11 @@ export default async function ClientsPage({
 
       <div className="mb-4 space-y-2">
         <SavedViews />
-        <RecentClients />
+        <RecentClients
+          tenantId={tenantId}
+          staffId={staffId}
+          clients={clients.map(({ id, name }) => ({ id, name }))}
+        />
       </div>
 
       {/* Filter */}

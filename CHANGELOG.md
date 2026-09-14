@@ -23,6 +23,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Dashboard-Widget „Mein Arbeitskorb“ mit den persönlichen Aufgaben, Terminen
+  und Eingängen, ihren Fälligkeiten und direktem Link zum Arbeitskorb. Es nutzt
+  dieselben Modul- und Zugriffsfilter wie die Arbeitskorbseite
+  (`PORTAL-INBOX-SUBMISSION-001`).
+
 - Wiedervorlagen erhalten stabile kanzleiweite Nummern, eine durchsuchbare
   Übersicht und automatische Verweise sowie Rückverweise durch `#123` in
   Beschreibungen und Kommentaren. Vorhandene UUID-Links bleiben gültig.
@@ -395,6 +400,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   nicht länger als bereits erbrachte Nachweise.
 
 ### Behoben
+
+- Im Arbeitskorb umfasst der Hover- und Tastaturfokus die gesamte Listenzeile
+  einschließlich Symbol; die Erledigen-Aktion bleibt separat bedienbar.
+- „Zuletzt“ bei Mandanten zeigt aktuelle, serverseitig sichtbare Namen statt
+  alter Browserkopien. Die Besuchshistorie speichert nur IDs, getrennt nach
+  Kanzlei und Mitarbeiter; Altwerte früherer Installationen werden verworfen
+  (`ACCESS-SEARCH-SCOPE-001`).
+- Das Audit-Log zeigt die aktuelle lokale Kettenspitze unabhängig von
+  Tabellenfiltern neben der externen Verankerung. Eine leere oder nicht
+  vertrauensverankerte externe Kette erhält keinen grünen Erfolgsstatus
+  (`AUDIT-HASH-CHAIN-001`, `AUDIT-RFC3161-ANCHOR-001`).
 
 - Der vollständige CI-Browsertestlauf erkennt neue und verschachtelte Specs
   automatisch, einschließlich der Profiltests. Eine zusätzliche manuelle

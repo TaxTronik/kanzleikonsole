@@ -1,5 +1,5 @@
 ﻿import { requireStaffPage } from '@/server/auth/staff-page';
-import { isStaffAdmin, inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { isStaffAdmin, inaccessibleClientIdsFor, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 
 import Link from 'next/link';
@@ -13,6 +13,7 @@ import {
 } from '@/server/dashboard/widgets';
 import { getSetupStatus, type SetupStatus } from '@/server/setup/status';
 import { readModules } from '@/server/settings/modules';
+import { readPortalFeatures } from '@/server/settings/portal-features';
 import { renderWidget } from './widgets';
 import { DashboardGrid } from './dashboard-grid';
 
@@ -65,6 +66,10 @@ export default async function DashboardPage() {
     readModules(ctx),
   ]);
   const layout = filterDashboardLayoutByModules(storedLayout, modules);
+  const portalInboxEnabled =
+    layout.widgets.some((widget) => widget.type === 'my_work_basket') &&
+    hasStaffPermission(session, 'PORTAL_INBOX_MANAGE') &&
+    (await readPortalFeatures(ctx)).clientInbox;
 
   // 2. Widgets PARALLEL rendern — jedes in eigener Tx (eigene Connection).
   // serializeTx serialisiert Queries innerhalb EINER Tx; mit je eigener Tx
@@ -73,7 +78,15 @@ export default async function DashboardPage() {
   const rendered = await mapWithConcurrency(layout.widgets, WIDGET_CONCURRENCY, async (w) => ({
     widget: w,
     node: await withTenantContext(ctx, (tx) =>
-      renderWidget(w.type, { tx, staffId, isAdmin, deniedClientIds, modules }),
+      renderWidget(w.type, {
+        tx,
+        tenantId,
+        staffId,
+        isAdmin,
+        deniedClientIds,
+        modules,
+        portalInboxEnabled,
+      }),
     ),
   }));
 

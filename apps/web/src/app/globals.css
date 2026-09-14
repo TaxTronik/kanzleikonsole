@@ -859,6 +859,17 @@ body:has(.react-grid-item.resizing) {
     color: rgb(var(--text-primary));
   }
 
+  /* Arbeitskorb: Hover/Fokus umfassen die gesamte Zeile einschließlich Icon. */
+  .work-basket-row:hover,
+  .work-basket-row:focus-within {
+    background-color: rgb(var(--surface-raised));
+  }
+
+  .work-basket-row > a:focus-visible {
+    outline: 2px solid rgb(var(--brand-focus));
+    outline-offset: -3px;
+  }
+
   /*
    * Tabellenzelle für Geldbeträge / Zahlen — rechtsbündig, monospace,
    * tabular-nums (Spaltenausrichtung über Reihen).

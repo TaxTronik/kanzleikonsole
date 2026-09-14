@@ -1,18 +1,17 @@
 import Link from 'next/link';
-import { CalendarClock, CalendarDays, Inbox, ListChecks, Phone, Workflow } from 'lucide-react';
+import { ListChecks } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { hasStaffPermission, inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { readPortalFeatures } from '@/server/settings/portal-features';
-import { fmtDateShort, fmtDateTimeShort, fmtTimeShort } from '@/lib/fmt';
+import { WorkBasketItemRow, WORK_KIND_LABELS } from '@/components/work-basket-item';
 import {
   loadWorkBasket,
   type WorkBasketBucket,
   type WorkBasketItem,
   type WorkBasketKind,
 } from '@/server/work/basket';
-import { MyDayToggle } from '../dashboard/my-day-toggle';
 import { portalInboxWorkExtension } from '@/server/inbox/work-extension';
 
 interface Search {
@@ -22,14 +21,6 @@ interface Search {
 
 type Modules = Awaited<ReturnType<typeof readModules>>;
 type WorkSlot = 'mine' | 'team';
-
-const KIND_LABELS: Record<WorkBasketKind, string> = {
-  workflow: 'Workflows',
-  reminder: 'Wiedervorlagen',
-  appointment: 'Termine',
-  'phone-note': 'Telefonzettel',
-  'portal-inbox': 'Mandantenpost',
-};
 
 const BUCKETS: ReadonlyArray<{
   id: WorkBasketBucket;
@@ -42,28 +33,8 @@ const BUCKETS: ReadonlyArray<{
   { id: 'undated', label: 'Ohne Termin', empty: 'Keine offenen Eingänge ohne Termin.' },
 ];
 
-function WorkKindIcon({ kind }: { kind: WorkBasketKind }) {
-  const className = 'h-3 w-3 text-muted';
-  if (kind === 'workflow') return <Workflow className={className} aria-hidden="true" />;
-  if (kind === 'reminder') return <CalendarClock className={className} aria-hidden="true" />;
-  if (kind === 'appointment') return <CalendarDays className={className} aria-hidden="true" />;
-  if (kind === 'phone-note') return <Phone className={className} aria-hidden="true" />;
-  return <Inbox className={className} aria-hidden="true" />;
-}
-
-function timing(item: WorkBasketItem): string | null {
-  if (item.kind === 'appointment' && item.startsAt && item.endsAt) {
-    return `${fmtDateShort(item.startsAt)} · ${fmtTimeShort(item.startsAt)}–${fmtTimeShort(item.endsAt)}`;
-  }
-  if ((item.kind === 'workflow' || item.kind === 'reminder') && item.dueAt) {
-    return `fällig ${fmtDateShort(item.dueAt)}`;
-  }
-  if (item.occurredAt) return `eingegangen ${fmtDateTimeShort(item.occurredAt)}`;
-  return null;
-}
-
 function selectedKindFrom(value: string | undefined): WorkBasketKind | null {
-  if (!Object.hasOwn(KIND_LABELS, value ?? '')) return null;
+  if (!Object.hasOwn(WORK_KIND_LABELS, value ?? '')) return null;
   return value as WorkBasketKind;
 }
 
@@ -108,37 +79,6 @@ function availableKinds(modules: Modules, inboxEnabled: boolean, slot: WorkSlot)
   return kinds;
 }
 
-function WorkItemRow({ item, bucket }: { item: WorkBasketItem; bucket: WorkBasketBucket }) {
-  const time = timing(item);
-  return (
-    <li className="flex items-start gap-3 px-5 py-3">
-      {item.kind === 'workflow' ? (
-        <MyDayToggle id={item.sourceId} />
-      ) : (
-        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-default">
-          <WorkKindIcon kind={item.kind} />
-        </span>
-      )}
-      <Link href={item.href} className="min-w-0 flex-1 rounded hover:bg-gray-50">
-        <div className="flex items-start justify-between gap-2">
-          <p className="item-title">{item.title}</p>
-          <span className="shrink-0 text-[10px] text-disabled">{KIND_LABELS[item.kind]}</span>
-        </div>
-        {item.context && <p className="truncate text-xs text-muted">{item.context}</p>}
-        {time && (
-          <p
-            className={
-              bucket === 'overdue' ? 'text-xs font-medium text-red-700' : 'text-xs text-muted'
-            }
-          >
-            {time}
-          </p>
-        )}
-      </Link>
-    </li>
-  );
-}
-
 function WorkBucketSection({
   bucket,
   items,
@@ -160,7 +100,7 @@ function WorkBucketSection({
       ) : (
         <ul className="divide-y divide-border-subtle">
           {bucketItems.map((item) => (
-            <WorkItemRow key={item.key} item={item} bucket={bucket.id} />
+            <WorkBasketItemRow key={item.key} item={item} />
           ))}
         </ul>
       )}
@@ -216,7 +156,7 @@ function WorkFilters({
                 selectedKind === itemKind ? 'btn-primary text-xs' : 'btn-secondary text-xs'
               }
             >
-              {KIND_LABELS[itemKind]}
+              {WORK_KIND_LABELS[itemKind]}
             </Link>
           ))}
         </nav>

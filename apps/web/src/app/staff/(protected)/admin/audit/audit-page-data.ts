@@ -44,6 +44,7 @@ export async function loadAuditPageData(
     anchorSummaryRows,
     resourceTypeRows,
     totalCount,
+    localHead,
   ] = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) =>
     Promise.all([
       tx.auditLog.findMany({
@@ -86,6 +87,13 @@ export async function loadAuditPageData(
       // are database-wide. Count only this tenant, without the page cursor.
       // The existing (tenant_id, id) index supports this tenant restriction.
       tx.auditLog.count({ where: { ...filters.countWhere, tenantId } }),
+      // AUDIT-HASH-CHAIN-001: current tenant tip, independent of list filters/cursor.
+      // This reads the stored hash; integrity verification stays in the worker.
+      tx.auditLog.findFirst({
+        where: { tenantId },
+        orderBy: { id: 'desc' },
+        select: { id: true, occurredAt: true, thisHash: true },
+      }),
     ]),
   );
 
@@ -93,6 +101,7 @@ export async function loadAuditPageData(
     entries,
     resourceTypeRows,
     totalCount,
+    localHead,
     verifyResult: (verifySetting ?? null) as PersistedVerifyResult | null,
     checkpoint: (checkpointSetting ?? null) as PersistedRecoveryCheckpoint | null,
     anchorStatus: (anchorStatusSetting ?? null) as PersistedAnchorStatus | null,

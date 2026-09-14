@@ -29,6 +29,7 @@ export type WidgetType =
   | 'bookmarks'
   | 'personal_notes'
   | 'my_workflow_items'
+  | 'my_work_basket'
   | 'my_workflows'
   | 'my_reminders'
   | 'latest_notifications';
@@ -133,6 +134,12 @@ export const WIDGETS: WidgetDef[] = [
     type: 'my_workflow_items',
     label: 'Mein Tag',
     description: 'Meine offenen Aufgaben, Wiedervorlagen, Termine und Telefonzettel',
+    size: 'half',
+  },
+  {
+    type: 'my_work_basket',
+    label: 'Mein Arbeitskorb',
+    description: 'Vorschau meiner Aufgaben und mir zugewiesener Mandantenpost',
     size: 'half',
   },
   {
@@ -249,6 +256,7 @@ export const DEFAULT_SIZE: Record<
   bookmarks: { w: 4, h: 10, minW: 3, minH: 4 },
   personal_notes: { w: 4, h: 10, minW: 3, minH: 5 },
   my_workflow_items: { w: 4, h: 10, minW: 3, minH: 4 },
+  my_work_basket: { w: 4, h: 12, minW: 3, minH: 4 },
   my_workflows: { w: 4, h: 10, minW: 3, minH: 4 },
   my_reminders: { w: 4, h: 10, minW: 3, minH: 4 },
   latest_notifications: { w: 4, h: 10, minW: 3, minH: 4 },

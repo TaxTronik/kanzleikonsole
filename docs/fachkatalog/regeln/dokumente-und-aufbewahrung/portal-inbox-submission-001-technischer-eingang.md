@@ -29,6 +29,9 @@ sources:
     checked_at: '2026-09-01'
     primary: true
 code_refs:
+  - apps/web/src/app/staff/(protected)/dashboard/page.tsx
+  - apps/web/src/app/staff/(protected)/dashboard/actions.ts
+  - apps/web/src/app/staff/(protected)/dashboard/widgets/my-work-basket.tsx
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260901000000_portal_inbox_enums/migration.sql
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
@@ -51,6 +54,9 @@ code_refs:
   - apps/web/src/app/staff/(protected)/inbox/actions.ts
   - apps/worker/src/jobs/portal-inbox-cleanup.ts
 test_refs:
+  - apps/web/src/app/staff/(protected)/dashboard/__tests__/page-work-basket.test.tsx
+  - apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx
+  - apps/web/src/app/staff/(protected)/dashboard/__tests__/actions.test.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - apps/web/src/server/settings/__tests__/portal-features.test.ts
@@ -164,6 +170,15 @@ abweichendem Manifest oder offenem Scannerstatus kann nicht konsumiert werden.
 
 ## Umsetzung in TaxTronik
 
+Das Dashboard-Widget „Mein Arbeitskorb“ verwendet dieselbe persönliche
+Arbeitskorbabfrage wie die eigenständige Seite. Mandantenpost wird nur mit
+aktivem `clientInbox`-Opt-in, `PORTAL_INBOX_MANAGE`, aktueller persönlicher
+Zuständigkeit und bestehendem Mandantenzugriffsfilter geladen. Team-Eingänge
+bleiben im Teamkorb. Beim Hinzufügen des Widgets liest
+`readPortalFeaturesTx` die unveränderten Feature-Defaults und Werte innerhalb
+der vorhandenen Tenant-Transaktion; der bisherige Reader bleibt ein Wrapper.
+Diese Anzeige ändert weder die Eingangs- noch die Annahmeentscheidung.
+
 `PortalInboxUploadBatch` und `PortalInboxAttachment` bilden den Staging-Bestand.
 Die Attachment-Zeile besitzt vor Beginn einer Annahme kein Dokument. Der
 zweiphasige Übernahmepfad darf das erzeugte, noch ungeteilte PENDING-Dokument
@@ -245,6 +260,12 @@ als wiederholbarer Fehler offen und erzeugen keinen Löschabschluss.
 - Welche Audit-Ereignisse sind für Einreichung, Annahme, Ablehnung und Download erforderlich?
 
 ## Technische Nachweise
+
+Die Dashboard-Regressionen prüfen die persönlichen Arbeitskorbquellen, die
+begrenzte Vorschau und die Übergabe der Mandantenzugriffsfilter. Sowohl beim
+ersten Rendern als auch beim Hinzufügen wird Mandantenpost nur nach Feature-
+und Berechtigungsprüfung zugeschaltet. Der Feature-Reader-Test belegt die
+Wiederverwendung der bestehenden Transaktion bei unveränderten Defaults.
 
 Der Datenbanktest belegt kontaktprivate Entwürfe, mandantenweite abgesendete
 Threads, kumulativen Staff-Zugriff, sofortigen Rechteentzug, Cross-Tenant- und

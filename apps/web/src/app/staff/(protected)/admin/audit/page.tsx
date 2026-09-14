@@ -9,6 +9,7 @@ import { AuditChainStatusCard } from './audit-chain-status';
 import { AuditEntries } from './audit-entries';
 import { AuditFilters } from './audit-filters';
 import { RollingAnchorCard } from './rolling-anchor-card';
+import { LocalHashCard } from './local-hash-card';
 import { loadAuditPageData } from './audit-page-data';
 import {
   parseAuditPageQuery,
@@ -54,11 +55,14 @@ export default async function AuditLogPage({
           CSV exportieren
         </a>
       </div>
-      <RollingAnchorCard
-        summary={anchorSummary}
-        status={anchorStatus}
-        pendingCount={pendingAnchorCount}
-      />
+      <div className="grid gap-4 xl:grid-cols-2 mb-6">
+        <LocalHashCard head={data.localHead} />
+        <RollingAnchorCard
+          summary={anchorSummary}
+          status={anchorStatus}
+          pendingCount={pendingAnchorCount}
+        />
+      </div>
       <AuditAccessCard tenantId={tenantId} />
       <AuditChainStatusCard
         verifyResult={verifyResult}

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   signAuditToken: vi.fn(() => 'test-read-only-token'),
   findMany: vi.fn(),
+  findFirst: vi.fn(),
   count: vi.fn(),
   groupBy: vi.fn(),
   queryRaw: vi.fn(),
@@ -84,6 +85,7 @@ beforeEach(() => {
     where.id === 0n ? [] : [entry(2n), entry(1n)],
   );
   mocks.count.mockImplementation(async ({ where }) => (where.id === 0n ? 0 : 2));
+  mocks.findFirst.mockResolvedValue({ id: 2n, occurredAt: entry(2n).occurredAt, thisHash: hash });
   mocks.groupBy.mockResolvedValue([{ resourceType: 'document' }]);
   mocks.readSetting.mockResolvedValue(null);
   // The table contains many tenants. pg_class statistics are global even in an RLS transaction.
@@ -92,7 +94,12 @@ beforeEach(() => {
   );
   mocks.withTenantContext.mockImplementation(async (_context, run) =>
     run({
-      auditLog: { findMany: mocks.findMany, count: mocks.count, groupBy: mocks.groupBy },
+      auditLog: {
+        findMany: mocks.findMany,
+        findFirst: mocks.findFirst,
+        count: mocks.count,
+        groupBy: mocks.groupBy,
+      },
       $queryRaw: mocks.queryRaw,
     }),
   );
@@ -125,6 +132,43 @@ describe('AUDIT-HASH-CHAIN-001 / ACCESS-TENANT-RLS-001: audit page isolation', (
   it('continues to allow PARTNER access', async () => {
     mocks.staffAuth.mockResolvedValue({ user: { tenantId, staffId, roles: ['PARTNER'] } });
     expect(await renderPage()).toContain('2 Einträge gesamt');
+  });
+
+  it('shows the full current tenant hash independently of an older filtered page', async () => {
+    const id = 9007199254741107n;
+    const tipHash = 'fedcba9876543210'.repeat(4);
+    mocks.findFirst.mockResolvedValue({
+      id,
+      occurredAt: entry(id).occurredAt,
+      thisHash: Buffer.from(tipHash, 'hex'),
+    });
+    const html = await renderPage({
+      category: 'documents',
+      sort: 'oldest',
+      cursor: '9007199254740993',
+    });
+    expect(mocks.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { tenantId },
+      orderBy: { id: 'desc' },
+      select: { id: true, occurredAt: true, thisHash: true },
+    });
+    expect(html).toContain(`Audit-ID ${id}`);
+    expect(html).toContain(`href="/staff/admin/audit/${id}"`);
+    expect(html).toMatch(new RegExp(`<code class="[^"]*break-all[^"]*">${tipHash}</code>`));
+    expect(html).toContain('keine Integritätsprüfung');
+    expect(html).toContain('Noch kein Prüfergebnis');
+  });
+
+  it('explains an empty local chain without inventing a genesis hash or success', async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.findMany.mockResolvedValue([]);
+    mocks.count.mockResolvedValue(0);
+    const html = await renderPage();
+    expect(html).toContain('Noch keine lokalen Audit-Ereignisse vorhanden');
+    expect(html).toContain('Noch kein externer Rolling-Anker vorhanden');
+    expect(html).not.toContain('Gespeicherter SHA-256-Kettenwert');
+    expect(html).not.toContain('Kein unverankerter lokaler Restbestand');
+    expect(html).not.toContain('lucide-shield-check');
   });
 
   it('rejects invalid filters without listing all events or exposing an export link', async () => {

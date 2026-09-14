@@ -63,10 +63,16 @@ function normalize(value: unknown): PortalFeatures {
 }
 
 export async function readPortalFeatures(ctx: TenantContext): Promise<PortalFeatures> {
-  return withTenantContext(ctx, async (tx) => {
-    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY);
-    return value === undefined ? DEFAULT_PORTAL_FEATURES : normalize(value);
-  });
+  return withTenantContext(ctx, (tx) => readPortalFeaturesTx(tx, ctx.tenantId));
+}
+
+/** Verwendet einen bereits autorisierten Tenant-Transaktionskontext. */
+export async function readPortalFeaturesTx(
+  tx: TxClient,
+  tenantId: string,
+): Promise<PortalFeatures> {
+  const value = await readTenantSettingValue(tx, tenantId, KEY);
+  return value === undefined ? DEFAULT_PORTAL_FEATURES : normalize(value);
 }
 
 export async function writePortalFeatures(ctx: TenantContext, cfg: PortalFeatures): Promise<void> {

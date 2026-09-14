@@ -17,7 +17,11 @@ vi.mock('@taxtronik/db/tenant-settings', () => ({
   writeTenantSettingValue: mocks.writeTenantSettingValue,
 }));
 
-import { DEFAULT_PORTAL_FEATURES, readPortalFeatures } from '../portal-features';
+import {
+  DEFAULT_PORTAL_FEATURES,
+  readPortalFeatures,
+  readPortalFeaturesTx,
+} from '../portal-features';
 
 const CTX: TenantContext = {
   tenantId: 'tenant-a',
@@ -33,6 +37,20 @@ beforeEach(() => {
 });
 
 describe('PortalFeatures.clientInbox', () => {
+  it('verwendet eine vorhandene Transaktion mit denselben Opt-in-Regeln ohne neue Connection', async () => {
+    const tx = {} as Parameters<typeof readPortalFeaturesTx>[0];
+    mocks.readTenantSettingValue
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ clientInbox: true })
+      .mockResolvedValueOnce({ clientInbox: 'true' });
+
+    expect(await readPortalFeaturesTx(tx, 'tenant-a')).toEqual(DEFAULT_PORTAL_FEATURES);
+    expect((await readPortalFeaturesTx(tx, 'tenant-a')).clientInbox).toBe(true);
+    expect((await readPortalFeaturesTx(tx, 'tenant-a')).clientInbox).toBe(false);
+    expect(mocks.readTenantSettingValue).toHaveBeenCalledWith(tx, 'tenant-a', 'portal.features');
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+  });
+
   it('ist für neue und bestehende Tenants ohne gespeicherten Schlüssel opt-in false', async () => {
     mocks.readTenantSettingValue.mockResolvedValueOnce(undefined).mockResolvedValueOnce({});
 

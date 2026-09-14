@@ -21,6 +21,7 @@ import {
 } from './widgets/list-widgets';
 import { CalendarWidget } from './widgets/calendar';
 import { TaxNews } from './widgets/tax-news';
+import { MyWorkBasket } from './widgets/my-work-basket';
 import {
   Bookmarks,
   LatestNotifications,
@@ -30,7 +31,30 @@ import {
   MyReminders,
 } from './widgets/personal';
 
+const CONTENT_RENDERERS: Partial<Record<WidgetType, (ctx: RenderCtx) => Promise<ReactNode>>> = {
+  recent_activity: RecentActivity,
+  upcoming_requests: UpcomingRequests,
+  gwg_expiring: GwgExpiring,
+  unreviewed_notices: UnreviewedNotices,
+  my_tax_deadlines: TaxDeadlines,
+  calendar: CalendarWidget,
+  tax_news: TaxNews,
+  phone_notes: PhoneNotesWidget,
+  bookmarks: Bookmarks,
+  personal_notes: PersonalNotes,
+  my_workflow_items: MyDay,
+  my_work_basket: MyWorkBasket,
+  my_workflows: MyWorkflows,
+  my_reminders: MyReminders,
+  latest_notifications: LatestNotifications,
+};
+
 export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<ReactNode> {
+  const contentRenderer = Object.hasOwn(CONTENT_RENDERERS, type)
+    ? CONTENT_RENDERERS[type]
+    : undefined;
+  if (contentRenderer) return contentRenderer(ctx);
+
   switch (type) {
     case 'kpi_clients':
       return kpi(ctx, Users, 'Mandanten', '/staff/clients', (t) => t.client.count());
@@ -69,34 +93,6 @@ export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<Re
       return kpi(ctx, Workflow, 'Laufende Workflows', '/staff/workflows', (t) =>
         t.workflowInstance.count({ where: { status: 'ACTIVE' } }),
       );
-    case 'recent_activity':
-      return RecentActivity(ctx);
-    case 'upcoming_requests':
-      return UpcomingRequests(ctx);
-    case 'gwg_expiring':
-      return GwgExpiring(ctx);
-    case 'unreviewed_notices':
-      return UnreviewedNotices(ctx);
-    case 'my_tax_deadlines':
-      return TaxDeadlines(ctx);
-    case 'calendar':
-      return CalendarWidget(ctx);
-    case 'tax_news':
-      return TaxNews(ctx);
-    case 'phone_notes':
-      return PhoneNotesWidget(ctx);
-    case 'bookmarks':
-      return Bookmarks(ctx);
-    case 'personal_notes':
-      return PersonalNotes(ctx);
-    case 'my_workflow_items':
-      return MyDay(ctx);
-    case 'my_workflows':
-      return MyWorkflows(ctx);
-    case 'my_reminders':
-      return MyReminders(ctx);
-    case 'latest_notifications':
-      return LatestNotifications(ctx);
     default:
       return <div className="card p-4 text-xs text-muted">Unbekanntes Widget: {type}</div>;
   }

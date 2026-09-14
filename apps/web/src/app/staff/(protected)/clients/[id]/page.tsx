@@ -148,7 +148,7 @@ export default async function ClientDetailPage({
 
   return (
     <div className="p-8">
-      <RecordClientVisit id={client.id} name={client.name} />
+      <RecordClientVisit tenantId={tenantId} staffId={staffId} id={client.id} />
       <div className="flex items-start gap-4 mb-8">
         <Link
           href="/staff/clients"

@@ -16,7 +16,8 @@ import {
   withStaff,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
-import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
+import { inaccessibleClientIdsFor, isStaffAdmin, hasStaffPermission } from '@/server/auth/rbac';
+import { readPortalFeaturesTx } from '@/server/settings/portal-features';
 import { renderWidget } from './widgets';
 
 export type ActionResult = BaseActionResult;
@@ -84,16 +85,22 @@ export async function addDashboardWidgetAction(
       throw new ActionError('Dieses Dashboard-Widget ist für die deaktivierte Funktion gesperrt.');
     }
     const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
+    const portalInboxEnabled =
+      widget.type === 'my_work_basket' &&
+      hasStaffPermission(session, 'PORTAL_INBOX_MANAGE') &&
+      (await readPortalFeaturesTx(tx, tenantId)).clientInbox;
     await tx.staffUser.update({
       where: { id: staffId },
       data: { dashboardLayout: cleaned as unknown as Prisma.InputJsonValue },
     });
     const node = await renderWidget(widget.type, {
       tx,
+      tenantId,
       staffId,
       isAdmin: isStaffAdmin(session),
       deniedClientIds,
       modules,
+      portalInboxEnabled,
     });
     return { rendered: { widget, node } };
   });

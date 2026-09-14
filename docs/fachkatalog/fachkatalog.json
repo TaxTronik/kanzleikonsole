@@ -312,6 +312,9 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/components/recent-clients.tsx",
+        "apps/web/src/app/staff/(protected)/clients/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/page.tsx",
         "apps/web/src/server/inbox/access.ts",
         "apps/web/src/server/inbox/queries.ts",
         "apps/web/src/server/inbox/search.ts",
@@ -321,6 +324,7 @@
         "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql"
       ],
       "test_refs": [
+        "apps/e2e/tests/recent-clients-state.spec.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "apps/web/src/app/api/staff/search/__tests__/route.test.ts",
@@ -779,6 +783,7 @@
         "apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-filters.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-entries.tsx",
+        "apps/web/src/app/staff/(protected)/admin/audit/local-hash-card.tsx",
         "packages/evidence/src/service.ts",
         "packages/evidence/src/chain.ts",
         "packages/evidence/src/canonical-json.ts",
@@ -875,7 +880,8 @@
         "packages/evidence/src/service.ts",
         "packages/evidence/src/ports/rfc3161-verify.ts",
         "apps/worker/src/jobs/audit-anchor.ts",
-        "apps/worker/src/jobs/evidence-seal.ts"
+        "apps/worker/src/jobs/evidence-seal.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/rolling-anchor-card.tsx"
       ],
       "test_refs": [
         "packages/http-utils/src/__tests__/response-stream.test.ts",
@@ -883,7 +889,8 @@
         "packages/evidence/src/__tests__/rfc3161-verify.test.ts",
         "packages/evidence/src/__tests__/service-verifychain.test.ts",
         "packages/evidence/src/__tests__/service-seal-trust.test.ts",
-        "apps/worker/src/jobs/__tests__/evidence-seal.test.ts"
+        "apps/worker/src/jobs/__tests__/evidence-seal.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/rolling-anchor-card.test.tsx"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -4208,6 +4215,9 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/dashboard/page.tsx",
+        "apps/web/src/app/staff/(protected)/dashboard/actions.ts",
+        "apps/web/src/app/staff/(protected)/dashboard/widgets/my-work-basket.tsx",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260901000000_portal_inbox_enums/migration.sql",
         "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
@@ -4231,6 +4241,9 @@
         "apps/worker/src/jobs/portal-inbox-cleanup.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/dashboard/__tests__/page-work-basket.test.tsx",
+        "apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx",
+        "apps/web/src/app/staff/(protected)/dashboard/__tests__/actions.test.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "apps/web/src/server/settings/__tests__/portal-features.test.ts",
