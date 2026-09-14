@@ -423,6 +423,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die Barrierefreiheitsprüfung der Staff- und Verwaltungsseiten ist in kürzere
+  Rundgänge aufgeteilt, damit alle Seiten innerhalb der unveränderten
+  Zeitbudgets geprüft werden.
+
 - Die SQL-Regression der Rechnungs-Mandantenauswahl läuft verbindlich im
   CI-Datenbank-Job und erhält einen eigenen Testnachweis. Konfigurierte URLs
   aktivieren sie nicht mehr versehentlich im Unit-Job ohne PostgreSQL-Dienst.

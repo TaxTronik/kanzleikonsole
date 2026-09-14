@@ -80,22 +80,28 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
       ['forms', '/staff/forms'],
       ['workflows', '/staff/workflows'],
       ['knowledge', '/staff/knowledge'],
+      ['work', '/staff/work'],
+      ['notifications', '/staff/notifications'],
+    ] as const) {
+      await visitPage(page, path);
+      await expectNoWcagViolations(page, name);
+    }
+  });
+
+  test('Verwaltung, Mandantenanlage und Fristen enthalten keine automatisiert erkennbaren Verstöße', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+    // Kurze Rundgänge halten auch bei langsamen Browsern das reguläre Zeitbudget ein.
+    for (const [name, path] of [
       ['admin', '/staff/admin'],
       ['admin-users', '/staff/admin/users'],
-      ['custom-fields', '/staff/admin/custom-fields'],
-      ['document-types', '/staff/admin/document-types'],
-      ['invoice-categories', '/staff/admin/invoice-categories'],
-      ['request-templates', '/staff/admin/request-templates'],
-      ['email-templates', '/staff/admin/email-templates'],
-      ['skills', '/staff/admin/skills'],
       ['admin-settings', '/staff/admin/settings/branding'],
-      ['work', '/staff/work'],
       ['new-client', '/staff/clients/new'],
       ['onboarding', '/staff/clients/onboarding/new'],
       ['workflow-templates', '/staff/workflows/templates'],
       ['absence-calendar', '/staff/absences/calendar'],
       ['tax-deadlines', '/staff/tax-deadlines'],
-      ['notifications', '/staff/notifications'],
       ['audit', '/staff/admin/audit'],
       ['jobs', '/staff/admin/jobs'],
     ] as const) {
@@ -112,6 +118,25 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
     const clientPath = new URL(page.url()).pathname.replace(/\/$/, '');
     await page.goto(`${clientPath}/gwg`, { waitUntil: 'networkidle' });
     await expectNoWcagViolations(page, 'gwg');
+  });
+
+  test('Verwaltungsformulare enthalten keine automatisiert erkennbaren Verstöße', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+    // Eigener Rundgang: Die sechs zusätzlichen Seiten dürfen das Zeitbudget
+    // der bestehenden Kernseitenprüfung nicht aufbrauchen.
+    for (const [name, path] of [
+      ['custom-fields', '/staff/admin/custom-fields'],
+      ['document-types', '/staff/admin/document-types'],
+      ['invoice-categories', '/staff/admin/invoice-categories'],
+      ['request-templates', '/staff/admin/request-templates'],
+      ['email-templates', '/staff/admin/email-templates'],
+      ['skills', '/staff/admin/skills'],
+    ] as const) {
+      await visitPage(page, path);
+      await expectNoWcagViolations(page, name);
+    }
   });
 
   test('zentrale Portal-Seiten enthalten keine automatisiert erkennbaren Verstöße', async ({
