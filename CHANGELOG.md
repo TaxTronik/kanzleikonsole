@@ -411,6 +411,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- ClamAV kann seinen Laufzeitordner jetzt bereits beim ersten Containerstart
+  korrekt anlegen. Eine fehlende Dateisystem-Capability führte bisher zu einem
+  frühen Abbruch, den ein automatischer Neustart häufig verdeckte. Die
+  Deployment-Prüfung verlangt nun einen erfolgreichen Start ohne Neustart.
 - Nächtliche Qualitätsprüfung: Der Arbeitskorb priorisiert überfällige Aufgaben
   vor dem Gesamtlimit. Eigene Dokumenttypen erscheinen wieder im Mailbox-Import;
   inkonsistente aktive Dienstleisterbezüge blockieren neue Datenschutzerklärungen

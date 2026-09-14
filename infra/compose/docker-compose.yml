@@ -224,11 +224,14 @@ services:
     restart: unless-stopped
     # ClamAV hält die Signatur-DB im RAM (~2-3 GB) — Limit großzügig.
     mem_limit: ${CLAMAV_MEM_LIMIT:-4g}
-    # ClamAV läuft als unprivileged user, braucht CHOWN für sein Daten-Volume.
+    # Der Entrypoint legt /run/clamav mit install -d -o clamav -m 775 an.
+    # Nach dem CHOWN braucht root FOWNER für chmod; sonst scheitert der Erststart.
+    # Danach läuft ClamAV als unprivilegierter User.
     cap_add:
       - CHOWN
       - SETUID
       - SETGID
+      - FOWNER
       - DAC_OVERRIDE
     ports:
       # Host-Port überschreibbar (CI: Deploy-Readiness-Job weicht Kollisionen

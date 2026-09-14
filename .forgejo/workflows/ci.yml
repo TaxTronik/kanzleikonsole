@@ -1342,6 +1342,15 @@ jobs:
           # nächsten Schritt vorgebaut, damit `run` nicht implizit bauen muss.
           $COMPOSE build seaweedfs clamav seaweedfs-init
           $COMPOSE up -d --wait seaweedfs clamav
+          # Ein automatischer Neustart darf Fehler des frischen Entrypoints
+          # nicht kaschieren (z. B. fehlende Rechte beim Anlegen von /run/clamav).
+          clamav_id="$($COMPOSE ps -q clamav)"
+          test -n "$clamav_id"
+          clamav_restarts="$(docker inspect --format '{{.RestartCount}}' "$clamav_id")"
+          if [ "$clamav_restarts" != 0 ]; then
+            echo "ClamAV muss ohne automatischen Neustart starten (RestartCount=$clamav_restarts)." >&2
+            exit 1
+          fi
 
       - name: Create buckets with Object-Lock (real init-storage.sh)
         # Der ECHTE Bucket-Init: gobd mit COMPLIANCE, gwg mit GOVERNANCE
@@ -1369,6 +1378,11 @@ jobs:
       - name: Diagnose bei Fehler
         if: failure()
         run: |
+          docker compose version || true
+          clamav_id="$($COMPOSE ps --all -q clamav || true)"
+          if [ -n "$clamav_id" ]; then
+            docker inspect --format 'RestartCount={{.RestartCount}} State={{json .State}} Healthcheck={{json .Config.Healthcheck}} CapAdd={{json .HostConfig.CapAdd}}' "$clamav_id" || true
+          fi
           echo "=== clamav ==="; $COMPOSE logs clamav --tail 60 || true
           echo "=== seaweedfs ==="; $COMPOSE logs seaweedfs --tail 60 || true
           echo "=== seaweedfs-init ==="; $COMPOSE logs seaweedfs-init --tail 60 || true
