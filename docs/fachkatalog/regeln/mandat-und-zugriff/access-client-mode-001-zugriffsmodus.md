@@ -57,6 +57,7 @@ test_refs:
   - apps/web/src/server/auth/__tests__/rbac.test.ts
   - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
   - apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx
+  - apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
@@ -184,3 +185,10 @@ Seitenabfrage mit der PostgreSQL-App-Rolle aus: beide Rechnungsmodi ohne
 Zuständigkeit, gezielte Hauptbearbeiterzuordnung, OPEN mit Vertraulichkeitsflag
 und Admin-Override. Authentifizierung und nachgelagerte Eingabeformulare sind
 in diesen isolierten Tests ersetzt; Auswahlabfrage, Policy und RLS sind echt.
+
+Der Datenbanktest wird ausschließlich mit `INVOICE_SELECTION_DB_TEST=1`
+aktiviert. Der verpflichtende `db`-CI-Schritt führt ihn nach den Migrationen
+aus und archiviert `testbericht-invoice-selection.log`. Ungültige oder fehlende
+Datenbank-URLs führen bei aktiviertem Test zum Fehler. Die URL-Platzhalter des
+Quality-Jobs ohne PostgreSQL aktivieren ihn nicht; ein regulärer Unit-Test
+prüft die verbindliche CI-Zuordnung, das Opt-in und die Logarchivierung.

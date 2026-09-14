@@ -423,6 +423,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die SQL-Regression der Rechnungs-Mandantenauswahl läuft verbindlich im
+  CI-Datenbank-Job und erhält einen eigenen Testnachweis. Konfigurierte URLs
+  aktivieren sie nicht mehr versehentlich im Unit-Job ohne PostgreSQL-Dienst.
+
 - ClamAV kann seinen Laufzeitordner jetzt bereits beim ersten Containerstart
   korrekt anlegen. Eine fehlende Dateisystem-Capability führte bisher zu einem
   frühen Abbruch, den ein automatischer Neustart häufig verdeckte. Die

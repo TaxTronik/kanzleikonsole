@@ -36,9 +36,22 @@ vi.mock('@/app/staff/(protected)/invoices/new/external-form', () => ({
 }));
 import NewInvoicePage from '@/app/staff/(protected)/invoices/new/page';
 
-const enabled = Boolean(process.env.DATABASE_URL && process.env.DATABASE_APP_URL);
-if (process.env.CI === 'true' && !enabled)
-  throw new Error('Invoice selection tests need both database URLs in CI.');
+// Quality has URL placeholders but no database service. The required db-job
+// step opts in explicitly; missing/invalid URLs must then fail, never skip.
+const enabled = process.env.INVOICE_SELECTION_DB_TEST === '1';
+if (enabled) {
+  for (const name of ['DATABASE_URL', 'DATABASE_APP_URL']) {
+    let url: URL;
+    try {
+      url = new URL(process.env[name] ?? '');
+    } catch {
+      throw new Error(`INVOICE_SELECTION_DB_TEST requires a valid ${name}.`);
+    }
+    if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.pathname.length < 2) {
+      throw new Error(`INVOICE_SELECTION_DB_TEST requires a PostgreSQL ${name} with a database.`);
+    }
+  }
+}
 
 (enabled ? describe : describe.skip)(
   'ACCESS-CLIENT-MODE-001 invoice selection with real SQL',

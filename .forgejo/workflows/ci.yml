@@ -240,6 +240,13 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/reminders/__tests__/tickets-db.test.ts 2>&1 | tee testbericht-reminder-services.log
 
+      - name: Invoice selection against the PostgreSQL app role
+        env:
+          INVOICE_SELECTION_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/invoice-selection-db.test.tsx 2>&1 | tee testbericht-invoice-selection.log
+
       - name: Testnachweis hochladen
         if: always()
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
@@ -249,6 +256,7 @@ jobs:
           path: |
             testbericht-db.log
             testbericht-reminder-services.log
+            testbericht-invoice-selection.log
           if-no-files-found: ignore
 
       - name: Schema drift check
