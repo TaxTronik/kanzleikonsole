@@ -1,6 +1,7 @@
 // Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
 import { describe, expect, it } from 'vitest';
 import {
+  BUILTIN_CONSENT_OPTION_IDS,
   consentForNewDeclaration,
   countGranted,
   countRevocableGranted,
@@ -319,11 +320,11 @@ describe('Einwilligungsoptions-Katalog', () => {
     ]);
   });
 
-  it('verbietet Pflicht-Einwilligungen für Kommunikation und Marketing', () => {
+  it.each(BUILTIN_CONSENT_OPTION_IDS)('verbietet Pflicht-Einwilligungen für %s', (optionId) => {
     const catalog = defaultConsentOptionsCatalog();
-    const newsletter = catalog.options.find((option) => option.id === 'marketing.emailNewsletter');
-    if (!newsletter) throw new Error('Newsletter-Builtin fehlt');
-    newsletter.required = true;
+    const option = catalog.options.find((entry) => entry.id === optionId);
+    if (!option) throw new Error(`Builtin fehlt: ${optionId}`);
+    option.required = true;
 
     expect(() => normalizeConsentOptionsCatalog(catalog)).toThrow(/Bereich OTHER/);
   });

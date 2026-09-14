@@ -1802,7 +1802,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Neue Erklärungen starten ohne freiwillige Vorauswahl und speichern die angezeigte Hinweisfassung, kanonische Optionen sowie verknüpfte Dienstleister append-only. Widerrufe entfernen nur freiwillige Auswahl; die Eignung der Rechtsgrundlage bleibt außerhalb der Produktregel."
+        "summary": "Neue Erklärungen starten ohne freiwillige Vorauswahl und speichern die angezeigte Hinweisfassung, kanonische Optionen sowie verknüpfte Dienstleister append-only. Die im öffentlichen Onboarding zwingende Kenntnisnahme ist von freiwilligen Kontaktfreigaben getrennt. Widerrufe entfernen nur freiwillige Auswahl; die Eignung der Rechtsgrundlage bleibt außerhalb der Produktregel."
       },
       "sources": [
         {
@@ -1814,9 +1814,9 @@
         },
         {
           "kind": "official_law",
-          "citation": "Art. 5 Abs. 2, Art. 7 und Art. 28 DSGVO",
+          "citation": "Art. 5 Abs. 2, Art. 6, Art. 7 und Art. 28 DSGVO",
           "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-09-14",
           "primary": false
         }
       ],
@@ -1824,12 +1824,18 @@
         "apps/web/src/server/privacy/consent.ts",
         "apps/web/src/server/privacy/consent-catalog.ts",
         "apps/web/src/server/privacy/service.ts",
+        "apps/web/src/server/privacy/notice.ts",
+        "apps/web/src/components/consent-fields.tsx",
+        "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
+        "apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts"
       ],
       "test_refs": [
         "apps/web/src/server/privacy/__tests__/consent.test.ts",
         "apps/web/src/server/privacy/__tests__/consent-catalog.test.ts",
         "apps/web/src/server/privacy/__tests__/consent-display.test.ts",
+        "apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/administration.md"],

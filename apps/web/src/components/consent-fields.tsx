@@ -235,11 +235,13 @@ export function ConsentFields({
       {commOptions.length > 0 && (
         <fieldset>
           <legend className="text-sm font-semibold text-primary mb-1">
-            1. Elektronische Kommunikation
+            1. Zusätzliche Kontaktwege
           </legend>
           <p className="text-xs text-muted mb-2">
-            Über welche Kanäle darf die Kanzlei mandatsbezogen kommunizieren und Unterlagen
-            bereitstellen/entgegennehmen?
+            Freiwillige, zweckgebundene Zusatzfreigaben für die ausgewählten Kommunikationswege.
+            Nicht angekreuzte Optionen gelten als nicht erteilt; dies ist kein pauschales Verbot
+            notwendiger Mandatskommunikation. Stimmen Sie geeignete sichere Kontaktwege mit der
+            Kanzlei ab.
           </p>
           {commOptions.map((option) => (
             <Check
@@ -273,7 +275,7 @@ export function ConsentFields({
       {marketingOptions.length > 0 && (
         <fieldset>
           <legend className="text-sm font-semibold text-primary mb-1">
-            2. Informationen außerhalb des Mandats / Kanzleimarketing
+            2. Werbung und Informationen
           </legend>
           <p className="text-xs text-muted mb-2">
             Freiwillig, jederzeit widerrufbar — betrifft Newsletter/Veranstaltungen über das
@@ -307,9 +309,7 @@ export function ConsentFields({
 
       {otherOptions.length > 0 && (
         <fieldset>
-          <legend className="text-sm font-semibold text-primary mb-1">
-            3. Weitere Datenschutz-Optionen
-          </legend>
+          <legend className="text-sm font-semibold text-primary mb-1">3. Weitere Auswahl</legend>
           <p className="text-xs text-muted mb-2">
             Kanzleispezifische Optionen. Pflichtfelder müssen rechtlich notwendige Bestätigungen
             oder eine anderweitig zulässige Pflichtauswahl abbilden.

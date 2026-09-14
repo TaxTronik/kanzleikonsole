@@ -1,5 +1,7 @@
+// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { consentForNewDeclaration } from '@/server/privacy/consent';
+import { checkRateLimit } from '@/server/rate-limit';
 import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 
 const m = vi.hoisted(() => ({
@@ -124,6 +126,59 @@ function owner(
   };
 }
 
+function validSubmission(): Parameters<typeof submitOnboardingAction>[0] {
+  return {
+    token: 'valid-looking-token',
+    master: {
+      companyName: 'Muster GbR',
+      street: 'Musterweg 1',
+      postalCode: '10115',
+      city: 'Berlin',
+      countryIso: 'DE',
+    },
+    legalEntity: { noRegisterEntry: true },
+    owners: [
+      owner(OWNER_ONE, 'Erika Eins', DOCUMENT_IDS[0], DOCUMENT_IDS[1]),
+      owner(OWNER_TWO, 'Peter Zwei', DOCUMENT_IDS[2], DOCUMENT_IDS[3], 'REISEPASS'),
+    ],
+    representatives: [
+      {
+        localId: REP_ONE,
+        fullName: 'Erika Eins',
+        linkedOwnerLocalId: OWNER_ONE,
+        idType: 'PERSONALAUSWEIS',
+        idNumber: '',
+        idIssuedBy: '',
+        idIssueDate: '',
+        idExpiryDate: '',
+        idFrontDocumentId: null,
+        idBackDocumentId: null,
+      },
+      {
+        localId: REP_TWO,
+        fullName: 'Rita Vertretung',
+        linkedOwnerLocalId: null,
+        idType: 'PERSONALAUSWEIS',
+        idNumber: 'ID-2',
+        idIssuedBy: 'Berlin',
+        idIssueDate: '2025-01-01',
+        idExpiryDate: '2035-01-01',
+        idFrontDocumentId: DOCUMENT_IDS[4],
+        idBackDocumentId: DOCUMENT_IDS[5],
+        idFrontViewport: fullIdentityViewport(versionFor(DOCUMENT_IDS[4]), 'front'),
+        idBackViewport: fullIdentityViewport(versionFor(DOCUMENT_IDS[5]), 'back'),
+      },
+    ],
+    extraDocuments: [{ documentId: DOCUMENT_IDS[6], type: 'GESELLSCHAFTSVERTRAG' }],
+    consent: {
+      noticeAcknowledged: true,
+      signedByName: 'Erika Eins',
+      selections: consentForNewDeclaration(),
+      displayRevision: 'a'.repeat(64),
+    },
+  };
+}
+
 describe('gebundener GwG-DRAFT Submit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -142,7 +197,7 @@ describe('gebundener GwG-DRAFT Submit', () => {
     m.lockEvidence.mockResolvedValue(true);
   });
 
-  it('erhält bei unverändertem Submit zwei Owner-/Vertreter-IDs und Dokument-FKs', async () => {
+  it('erhält Owner-/Vertreter-IDs und Dokument-FKs bei Kenntnisnahme ohne freiwillige Einwilligungen', async () => {
     const existingDocuments = DOCUMENT_IDS.map((documentId, index) => ({
       id: `6${String(index + 1).repeat(7)}-${String(index + 1).repeat(4)}-4${String(index + 1).repeat(3)}-8${String(index + 1).repeat(3)}-${String(index + 1).repeat(12)}`,
       documentId,
@@ -243,58 +298,21 @@ describe('gebundener GwG-DRAFT Submit', () => {
       },
     });
 
-    const result = await submitOnboardingAction({
-      token: 'valid-looking-token',
-      master: {
-        companyName: 'Muster GbR',
-        street: 'Musterweg 1',
-        postalCode: '10115',
-        city: 'Berlin',
-        countryIso: 'DE',
-      },
-      legalEntity: { noRegisterEntry: true },
-      owners: [
-        owner(OWNER_ONE, 'Erika Eins', DOCUMENT_IDS[0], DOCUMENT_IDS[1]),
-        owner(OWNER_TWO, 'Peter Zwei', DOCUMENT_IDS[2], DOCUMENT_IDS[3], 'REISEPASS'),
-      ],
-      representatives: [
-        {
-          localId: REP_ONE,
-          fullName: 'Erika Eins',
-          linkedOwnerLocalId: OWNER_ONE,
-          idType: 'PERSONALAUSWEIS',
-          idNumber: '',
-          idIssuedBy: '',
-          idIssueDate: '',
-          idExpiryDate: '',
-          idFrontDocumentId: null,
-          idBackDocumentId: null,
-        },
-        {
-          localId: REP_TWO,
-          fullName: 'Rita Vertretung',
-          linkedOwnerLocalId: null,
-          idType: 'PERSONALAUSWEIS',
-          idNumber: 'ID-2',
-          idIssuedBy: 'Berlin',
-          idIssueDate: '2025-01-01',
-          idExpiryDate: '2035-01-01',
-          idFrontDocumentId: DOCUMENT_IDS[4],
-          idBackDocumentId: DOCUMENT_IDS[5],
-          idFrontViewport: fullIdentityViewport(versionFor(DOCUMENT_IDS[4]), 'front'),
-          idBackViewport: fullIdentityViewport(versionFor(DOCUMENT_IDS[5]), 'back'),
-        },
-      ],
-      extraDocuments: [{ documentId: DOCUMENT_IDS[6], type: 'GESELLSCHAFTSVERTRAG' }],
-      consent: {
-        noticeAcknowledged: true,
-        signedByName: 'Erika Eins',
-        selections: consentForNewDeclaration(),
-        displayRevision: 'a'.repeat(64),
-      },
-    });
+    const submission = validSubmission();
+    const result = await submitOnboardingAction(submission);
 
     expect(result).toEqual({ ok: true });
+    expect(submission.consent.noticeAcknowledged).toBe(true);
+    expect(Object.values(submission.consent.selections.communication)).not.toContain(true);
+    expect(Object.values(submission.consent.selections.marketing)).not.toContain(true);
+    expect(submission.consent.selections.optionSelections).toEqual([]);
+    expect(tx.clientConsent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        consents: submission.consent.selections,
+        noticeSnapshot: 'Hinweis',
+        source: 'PORTAL',
+      }),
+    });
     expect(m.lockEvidence).toHaveBeenCalledTimes(6);
     expect(tx.document.findFirst).toHaveBeenCalledTimes(6);
     for (const call of tx.gwgIdDocument.updateMany.mock.calls) {
@@ -342,4 +360,51 @@ describe('gebundener GwG-DRAFT Submit', () => {
       expect(call[0]?.data).not.toHaveProperty('notes');
     }
   });
+
+  it.each([undefined, false])(
+    'weist fehlende Kenntnisnahme (%s) trotz aller freiwilligen Einwilligungen vor Nebenwirkungen ab',
+    async (noticeAcknowledged) => {
+      const submission = validSubmission();
+      const consent: Omit<typeof submission.consent, 'noticeAcknowledged'> & {
+        noticeAcknowledged?: boolean;
+      } = {
+        ...submission.consent,
+        selections: {
+          ...submission.consent.selections,
+          communication: {
+            portal: true,
+            emailTls: true,
+            emailE2e: true,
+            phone: true,
+            video: true,
+            sms: true,
+            fax: true,
+            details: '',
+          },
+          marketing: {
+            emailNewsletter: true,
+            postal: true,
+            phone: true,
+            sms: true,
+            details: '',
+          },
+        },
+      };
+      if (noticeAcknowledged === undefined) delete consent.noticeAcknowledged;
+      else consent.noticeAcknowledged = noticeAcknowledged;
+
+      const result = await submitOnboardingAction({
+        ...submission,
+        consent,
+      } as Parameters<typeof submitOnboardingAction>[0]);
+
+      expect(result).toEqual({ ok: false, error: expect.any(String) });
+      expect(checkRateLimit).not.toHaveBeenCalled();
+      expect(m.inviteFindFirst).not.toHaveBeenCalled();
+      expect(m.withSystemContext).not.toHaveBeenCalled();
+      expect(m.claimInvite).not.toHaveBeenCalled();
+      expect(m.evidenceRecord).not.toHaveBeenCalled();
+      expect(m.notifyMany).not.toHaveBeenCalled();
+    },
+  );
 });

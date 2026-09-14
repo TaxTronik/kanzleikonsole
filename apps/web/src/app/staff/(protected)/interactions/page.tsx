@@ -88,9 +88,12 @@ export default async function InteractionsPage() {
     </option>
   ));
   return (
-    <div className="p-8 max-w-6xl space-y-6">
-      <h1 className="text-2xl font-bold">Mandantenentscheidungen und Feedback</h1>
-      <p>
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-bold text-primary">Rückmeldungen</h1>
+        <p className="text-sm text-muted">Bescheidentscheidungen und Feedback von Mandanten.</p>
+      </header>
+      <p className="text-sm text-muted">
         Antwort, Kanzleiprüfung und fachliche Fristerledigung bleiben getrennt. Anfragen werden im
         Portal bereitgestellt; kein zusätzlicher E-Mail-Versand.
       </p>
@@ -138,7 +141,7 @@ export default async function InteractionsPage() {
       )}
       {modules.feedbackSurveys && modules.workflows && (
         <details className="card p-5">
-          <summary className="font-semibold">Feedback nach Workflow-Abschluss</summary>
+          <summary className="font-semibold">Feedback nach Abschluss</summary>
           <p className="my-3">
             Aktive Workflows lösen die Anfrage bei ihrem Abschluss aus. Abgeschlossene Workflows
             werden sofort angefragt. Mindestens 90 Tage Abstand pro Mandant, eine Anfrage pro
@@ -169,7 +172,7 @@ export default async function InteractionsPage() {
       )}
       {modules.feedbackSurveys && (
         <section className="card p-4 space-y-3">
-          <h2 className="text-lg font-semibold">Service-Barometer – Monatsverlauf</h2>
+          <h2 className="text-lg font-semibold">Feedback im Monatsverlauf</h2>
           <p>
             Einladungsmonate {trend[0]?.month} bis {trend.at(-1)?.month} (Europe/Berlin), Stand{' '}
             {fmtDateTimeShort(trendNow)}. Antworten werden dem Monat ihrer Einladung zugeordnet.

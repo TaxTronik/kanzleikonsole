@@ -18,7 +18,9 @@ implementation:
   summary: >-
     Neue Erklärungen starten ohne freiwillige Vorauswahl und speichern die
     angezeigte Hinweisfassung, kanonische Optionen sowie verknüpfte
-    Dienstleister append-only. Widerrufe entfernen nur freiwillige Auswahl;
+    Dienstleister append-only. Die im öffentlichen Onboarding zwingende
+    Kenntnisnahme ist von freiwilligen Kontaktfreigaben getrennt. Widerrufe
+    entfernen nur freiwillige Auswahl;
     die Eignung der Rechtsgrundlage bleibt außerhalb der Produktregel.
 sources:
   - kind: product_documentation
@@ -27,19 +29,25 @@ sources:
     checked_at: '2026-08-24'
     primary: true
   - kind: official_law
-    citation: Art. 5 Abs. 2, Art. 7 und Art. 28 DSGVO
+    citation: Art. 5 Abs. 2, Art. 6, Art. 7 und Art. 28 DSGVO
     url: https://eur-lex.europa.eu/eli/reg/2016/679/oj?locale=de
-    checked_at: '2026-08-24'
+    checked_at: '2026-09-14'
     primary: false
 code_refs:
   - apps/web/src/server/privacy/consent.ts
   - apps/web/src/server/privacy/consent-catalog.ts
   - apps/web/src/server/privacy/service.ts
+  - apps/web/src/server/privacy/notice.ts
+  - apps/web/src/components/consent-fields.tsx
+  - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
+  - apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
 test_refs:
   - apps/web/src/server/privacy/__tests__/consent.test.ts
   - apps/web/src/server/privacy/__tests__/consent-catalog.test.ts
   - apps/web/src/server/privacy/__tests__/consent-display.test.ts
+  - apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts
+  - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts
 feature_refs:
   - docs/anwenderdoku/administration.md
@@ -61,6 +69,13 @@ vorausgewählte freiwillige Option. Gespeichert werden die tatsächlich
 angezeigte Hinweisfassung, kanonische Optionsdaten und gegebenenfalls ein
 Snapshot des zugeordneten Dienstleisters; spätere Katalogänderungen schreiben
 historische Erklärungen nicht um.
+
+Die Kenntnisnahme der Datenschutzhinweise ist im öffentlichen Onboarding
+zwingend und wird getrennt von freiwilligen Einwilligungen angezeigt. Sie
+bestätigt den Hinweis, erteilt aber keine allgemeine Kommunikationseinwilligung.
+Notwendige Mandatskommunikation und freiwillige Kontaktfreigaben werden in
+Hinweisfassung 3 ausdrücklich unterschieden; geeignete sichere Kontaktwege
+bleiben mit dem Mandanten abzustimmen.
 
 ## Wann gilt die Regel?
 
@@ -100,6 +115,15 @@ Bestand, Wirksamkeit oder Erforderlichkeit des Vertrags. Eine erteilte Auswahl
 beweist auch nicht die tatsächliche technische Deaktivierung aller
 Verarbeitungen nach einem Widerruf.
 
+Das Fehlen einer freiwilligen Kontaktfreigabe ist kein pauschales Verbot
+notwendiger Mandatskommunikation. Umgekehrt erzeugt die Kenntnisnahme keine
+pauschale Erlaubnis für alle Telefon- oder E-Mail-Kontakte. Die jeweils
+einschlägige Rechtsgrundlage und gesetzliche Rechte bleiben maßgeblich.
+Die getrennte Einstellung für E-Mail-Benachrichtigungen wird dadurch nicht
+überschrieben. Dies löst den bisherigen Widerspruch zwischen dem als allgemeine
+Kontakterlaubnis formulierten Auswahltext und den Datenschutzhinweisen auf;
+bestehende freiwillige Optionen und historische Nachweise werden nicht umgedeutet.
+
 ## Beispiele
 
 ### Normalfall
@@ -123,6 +147,13 @@ Stand ab. `service.ts` lädt Hinweis- und Anbieterdaten. Eine Display-Revision
 verhindert, dass eine zwischen Anzeige und Speicherung geänderte Konfiguration
 still akzeptiert wird.
 
+Die Oberfläche kennzeichnet die bereits serverseitig verlangte Kenntnisnahme
+als „Zwingend“. Die Kanzlei kann diese Anforderung nicht abschalten.
+`noticeAcknowledged: true` bleibt Voraussetzung der öffentlichen Übermittlung;
+alle freiwilligen Auswahlen dürfen leer bleiben. Der ergänzte Kommunikationstext
+ist Bestandteil der versionierten und eingefrorenen Hinweisfassung, nicht nur
+ein zusätzlicher Oberflächentext.
+
 ## Bekannte Abweichungen und Grenzen
 
 Keine bekannte technische Abweichung innerhalb des beschriebenen Snapshot-,
@@ -144,3 +175,7 @@ Die Tests belegen fehlende Vorauswahl, kanonische Serverwerte,
 Katalogvalidierung, Dienstleister-Snapshots, Display-CAS, append-only
 Persistenz und den Erhalt erforderlicher Bestätigungen beim Widerruf. Sie
 belegen keine datenschutzrechtliche Eignung einer Option.
+
+Regressionstests zur öffentlichen Übermittlung prüfen zusätzlich, dass eine
+fehlende oder falsche Kenntnisnahme trotz ausgewählter Einwilligungen abgewiesen
+wird und eine bestätigte Kenntnisnahme ohne freiwillige Auswahl zulässig bleibt.

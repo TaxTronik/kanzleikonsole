@@ -18,7 +18,7 @@ import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/t
 import { lockConsentCatalogTx } from './catalog-lock';
 
 /** Inhaltliche Version des Standardtextes. Bei Textänderung erhöhen. */
-export const PRIVACY_NOTICE_VERSION = 2;
+export const PRIVACY_NOTICE_VERSION = 3;
 
 const PRIVACY_SETTING_KEY = 'privacy.notice';
 
@@ -163,6 +163,8 @@ Die Bereitstellung der mandatserforderlichen Daten ist regelmäßig vertraglich 
 ## 9. Datensicherheit
 
 Die Kanzlei setzt angemessene technische und organisatorische Maßnahmen ein. Für besonders vertrauliche oder umfangreiche Unterlagen wird ein sicherer Weg (Mandantenportal, Datenraum, Ende-zu-Ende-verschlüsselte Kommunikation) empfohlen.
+
+Notwendige Mandatskommunikation kann auf den jeweils einschlägigen vertraglichen oder gesetzlichen Rechtsgrundlagen beruhen. Die freiwilligen Kommunikationsfreigaben in Teil B sind davon getrennt: Eine fehlende oder widerrufene Auswahl ist kein pauschales Verbot notwendiger Mandatskommunikation. Daraus folgt keine allgemeine Erlaubnis für jeden Telefon- oder E-Mail-Kontakt. Geeignete und sichere Kontaktwege stimmen Sie mit der Kanzlei ab; Ihre gesetzlichen Rechte bleiben unberührt. Die Bestätigung der Kenntnisnahme dieser Hinweise ist keine Einwilligung.
 
 ## 10. Rechte betroffener Personen
 

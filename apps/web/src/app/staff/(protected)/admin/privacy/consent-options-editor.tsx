@@ -11,9 +11,9 @@ import type {
 import { saveConsentOptionsAction } from './actions';
 
 const SECTION_LABELS: Record<ConsentOptionSection, string> = {
-  COMMUNICATION: 'Elektronische Kommunikation',
-  MARKETING: 'Kanzleimarketing / Informationen',
-  OTHER: 'Weitere Datenschutz-Optionen',
+  COMMUNICATION: 'Freiwillige Kontaktfreigaben',
+  MARKETING: 'Kanzleiinformationen',
+  OTHER: 'Weitere Optionen',
 };
 
 interface ProviderOption {
@@ -97,9 +97,7 @@ export function ConsentOptionsEditor({
       <input type="hidden" name="expectedRevision" value={revision} />
 
       <div>
-        <h2 className="text-base font-semibold text-primary">
-          Datenschutz-Optionen und Bestätigungen
-        </h2>
+        <h2 className="text-base font-semibold text-primary">Datenschutzoptionen</h2>
         <p className="text-sm text-muted mt-1">
           Optionen gelten gemeinsam in der Kanzlei-Erfassung und im öffentlichen GwG-Onboarding.
           Deaktivieren blendet sie für neue Erklärungen aus; bestehende Nachweise bleiben
@@ -124,12 +122,32 @@ export function ConsentOptionsEditor({
         </div>
       )}
 
+      <section className="rounded-lg border border-default bg-surface-raised p-4 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold text-primary">
+            Kenntnisnahme der Datenschutzhinweise
+          </h3>
+          <span className="badge-brand">Zwingend</span>
+        </div>
+        <p className="text-sm text-secondary">
+          Im öffentlichen Onboarding immer erforderlich. Mandanten müssen die Kenntnisnahme aktiv
+          bestätigen; diese Anforderung lässt sich nicht abschalten.
+        </p>
+        <p className="text-sm text-muted">
+          Die Hinweise erläutern auch die notwendige Mandatskommunikation. Freiwillige
+          Kontaktfreigaben sind davon getrennt: Eine fehlende Auswahl ist kein pauschales
+          Kontaktverbot. Geeignete Telefon- und elektronische Kontaktwege werden mit dem Mandanten
+          abgestimmt. Die Kenntnisnahme ersetzt keine Einwilligung.
+        </p>
+      </section>
+
       <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30 p-3 text-xs text-yellow-900 dark:text-yellow-200">
-        <strong>Wichtig:</strong> „Pflicht im Portal“ darf nur für rechtlich notwendige
-        Bestätigungen oder eine anderweitig zulässige Pflichtauswahl verwendet werden, nicht für
-        freiwillige Werbung, Newsletter oder vergleichbare Einwilligungen. Eine Einwilligung ersetzt
-        außerdem keinen erforderlichen Auftragsverarbeitungsvertrag nach Art. 28 DSGVO. Die
-        Verknüpfung dokumentiert nur, welcher erfasste Dienstleister zu dieser Option gehört.
+        <strong>Weitere Pflichtbestätigungen:</strong> „Zwingend im Onboarding“ darf nur für
+        rechtlich notwendige Bestätigungen oder eine anderweitig zulässige Pflichtauswahl verwendet
+        werden, nicht für freiwillige Werbung, Newsletter oder vergleichbare Einwilligungen. Eine
+        Einwilligung ersetzt außerdem keinen erforderlichen Auftragsverarbeitungsvertrag nach Art.
+        28 DSGVO. Die Verknüpfung dokumentiert nur, welcher erfasste Dienstleister zu dieser Option
+        gehört.
       </div>
 
       <div className="space-y-3">
@@ -262,7 +280,7 @@ export function ConsentOptionsEditor({
                           className="switch mt-0.5"
                         />
                         <span>
-                          Pflicht im Portal
+                          Zwingend im Onboarding
                           <span className="block text-xs text-muted">
                             Nur für rechtlich notwendige Bestätigungen oder zulässige
                             Pflichtauswahl; niemals für freiwillige Werbung oder Newsletter. Ohne

@@ -262,6 +262,17 @@ Unter **Administration → Datenschutz** pflegt die Kanzlei neben dem Text der
 Datenschutzhinweise auch die freiwilligen Einwilligungsoptionen, die in der
 internen Erfassung und im öffentlichen GwG-Onboarding angeboten werden.
 
+- **Zwingend:** Die Kenntnisnahme der Datenschutzhinweise ist im öffentlichen
+  Onboarding immer erforderlich und muss aktiv bestätigt werden. Die Hinweise
+  erklären auch die notwendige Mandatskommunikation. Eine fehlende freiwillige
+  Kontaktfreigabe ist kein pauschales Verbot notwendiger Kommunikation; geeignete
+  sichere Kontaktwege sind mit dem Mandanten abzustimmen. Die Kenntnisnahme
+  erteilt keine allgemeine Erlaubnis für Telefon- oder E-Mail-Kontakte.
+- Eigene rechtlich notwendige Bestätigungen im Bereich **Weitere Optionen**
+  können als **Zwingend im Onboarding** markiert werden. Freiwillige Kontakt-
+  und Werbeeinwilligungen lassen sich nicht in Pflichtauswahlen umwandeln.
+  Einwilligungen und Kenntnisnahmen starten ungekreuzt. Separate Einstellungen
+  für E-Mail-Benachrichtigungen werden durch diese Auswahl nicht ersetzt.
 - Standardoptionen wie Fax oder Newsletter können deaktiviert und später
   wieder aktiviert werden. Das verändert keine bereits abgegebenen
   Erklärungen.

@@ -122,8 +122,8 @@ function NavLinks({ items, activeHref }: { items: readonly NavItem[]; activeHref
         className={active ? 'nav-item active' : 'nav-item'}
         aria-current={active ? 'page' : undefined}
       >
-        <Icon className="h-4 w-4" />
-        {item.label}
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 self-start" aria-hidden="true" />
+        <span className="min-w-0 break-words leading-5">{item.label}</span>
       </Link>
     );
   });
@@ -189,12 +189,12 @@ export function GroupedSidebarNav({ groups }: { groups: NavGroup[] }) {
                 })
               }
             >
-              <span>{group.label}</span>
+              <span className="min-w-0 break-words">{group.label}</span>
               <ChevronDown
                 className={
                   open
-                    ? 'h-3.5 w-3.5 rotate-180 transition-transform'
-                    : 'h-3.5 w-3.5 transition-transform'
+                    ? 'h-3.5 w-3.5 shrink-0 rotate-180 transition-transform'
+                    : 'h-3.5 w-3.5 shrink-0 transition-transform'
                 }
                 aria-hidden="true"
               />

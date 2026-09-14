@@ -31,8 +31,11 @@ export default async function PortalInteractionsPage() {
     }),
   );
   return (
-    <div className="p-8 max-w-3xl space-y-5">
-      <h1 className="text-2xl font-bold">Rückmeldungen an Ihre Kanzlei</h1>
+    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl space-y-5">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-bold text-primary">Rückmeldungen</h1>
+        <p className="text-sm text-muted">Persönliche Anfragen Ihrer Kanzlei beantworten.</p>
+      </header>
       {!rows.length && <p>Keine persönlichen Anfragen vorhanden.</p>}
       {rows.map((row) => {
         const snapshot = row.kind === 'NOTICE' ? noticeDecisionSnapshot.parse(row.snapshot) : null;

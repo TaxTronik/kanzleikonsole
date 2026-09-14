@@ -445,22 +445,53 @@ export function PrivacyStep({
   return (
     <div className="card p-6 space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-primary">Datenschutzhinweise</h2>
+        <h2 className="text-lg font-semibold text-primary">Datenschutz</h2>
         <p className="text-xs text-muted mt-1">
-          Bitte lesen Sie die Hinweise Ihrer Kanzlei (Fassung {noticeVersion}). Die zur
-          Mandatsbearbeitung nötige Verarbeitung ist auch ohne Einwilligung zulässig.
+          Bitte lesen Sie die Hinweise Ihrer Kanzlei (Fassung {noticeVersion}). Sie erläutern die
+          Rechtsgrundlagen der Mandatsbearbeitung und Ihre Rechte.
         </p>
       </div>
       <div className="max-h-72 overflow-y-auto rounded-md border border-default bg-surface-raised p-4">
         <NoticeView body={noticeBody} />
       </div>
 
+      <section
+        aria-labelledby="privacy-notice-ack-heading"
+        className="rounded-md border border-default bg-surface-raised p-4 space-y-3"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 id="privacy-notice-ack-heading" className="text-sm font-semibold text-primary">
+            Kenntnisnahme
+          </h3>
+          <span className="badge-brand">Zwingend</span>
+        </div>
+        <p className="text-xs text-secondary">
+          Notwendige Mandatskommunikation kann auf vertraglichen oder gesetzlichen Rechtsgrundlagen
+          beruhen. Stimmen Sie geeignete sichere Kontaktwege mit der Kanzlei ab; Ihre gesetzlichen
+          Rechte bleiben unberührt. Die Kenntnisnahme erteilt keine pauschale Freigabe sämtlicher
+          Telefon- oder E-Mail-Wege.
+        </p>
+        <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={noticeAck}
+            onChange={(event) => onNoticeAckChange(event.target.checked)}
+            required
+            className="mt-0.5 rounded border-strong text-brand-600"
+          />
+          <span className="text-secondary">
+            Ich habe die Datenschutzhinweise zur Kenntnis genommen.
+          </span>
+        </label>
+      </section>
+
       <div>
-        <h3 className="text-sm font-semibold text-primary mb-1">Datenschutz-Auswahl</h3>
+        <h3 className="text-sm font-semibold text-primary mb-1">Weitere Auswahl</h3>
         <p className="text-xs text-muted mb-3">
-          Treffen Sie jede Auswahl aktiv. Empfehlungen der Kanzlei bleiben bewusst ungekreuzt. Als
+          Kommunikations- und Werbeeinwilligungen sind freiwillig. Nicht angekreuzte Optionen gelten
+          als nicht erteilt. Empfehlungen bleiben ungekreuzt, bis Sie selbst wählen. Gesondert als
           Pflichtfeld gekennzeichnete rechtlich notwendige Bestätigungen sind für den Abschluss
-          erforderlich; alle übrigen Optionen können Sie frei wählen.
+          erforderlich.
         </p>
         <ConsentFields
           initial={consent}
@@ -471,19 +502,6 @@ export function PrivacyStep({
       </div>
 
       <div className="border-t border-default pt-4 space-y-3">
-        <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={noticeAck}
-            onChange={(event) => onNoticeAckChange(event.target.checked)}
-            className="mt-0.5 rounded border-strong text-brand-600"
-          />
-          <span className="text-secondary">
-            Ich habe die Datenschutzhinweise zur Kenntnis genommen. Die einzelnen Auswahlfelder habe
-            ich aktiv bestätigt; nicht angekreuzte Optionen gelten als nicht erteilt beziehungsweise
-            nicht bestätigt.
-          </span>
-        </label>
         <div>
           <label className="label-sm" htmlFor="gwg-onboarding-signed-by-name">
             Name der erklärenden Person *

@@ -217,6 +217,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Kürzere Navigationstitel und feste Icongrößen verhindern, dass lange
+  Beschriftungen Symbole verkleinern oder verschieben. Bisherige Bezeichnungen
+  bleiben als Suchbegriffe verfügbar.
+- Datenschutz: Die verpflichtende Kenntnisnahme ist als „Zwingend“ sichtbar.
+  Hinweisfassung 3 und Auswahltexte trennen notwendige Mandatskommunikation von
+  freiwilligen Kontakt- und Werbefreigaben. Historische Nachweise und separate
+  Benachrichtigungseinstellungen bleiben erhalten
+  (`DSGVO-CONSENT-SNAPSHOT-001`).
+
 - GwG-Kontrollliste und Smart-Mailbox erhalten die üblichen Seitenabstände,
   responsiven Formularfelder, Karten und Buttons. Das Anlegen eines Postfachs
   ist klar gegliedert; Nachrichten, Anhänge und Zuordnung bleiben getrennt lesbar
