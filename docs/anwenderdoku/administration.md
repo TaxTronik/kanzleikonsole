@@ -259,20 +259,21 @@ Netzwerkbetrieb bleiben Betreiberaufgaben.
 ## 5. Datenschutz-Einwilligungen und Dienstleister
 
 Unter **Administration → Datenschutz** pflegt die Kanzlei neben dem Text der
-Datenschutzhinweise auch die freiwilligen Einwilligungsoptionen, die in der
+Datenschutzhinweise auch die Datenschutzoptionen, die in der
 internen Erfassung und im öffentlichen GwG-Onboarding angeboten werden.
 
-- **Zwingend:** Die Kenntnisnahme der Datenschutzhinweise ist im öffentlichen
-  Onboarding immer erforderlich und muss aktiv bestätigt werden. Die Hinweise
-  erklären auch die notwendige Mandatskommunikation. Eine fehlende freiwillige
-  Kontaktfreigabe ist kein pauschales Verbot notwendiger Kommunikation; geeignete
-  sichere Kontaktwege sind mit dem Mandanten abzustimmen. Die Kenntnisnahme
-  erteilt keine allgemeine Erlaubnis für Telefon- oder E-Mail-Kontakte.
-- Eigene rechtlich notwendige Bestätigungen im Bereich **Weitere Optionen**
-  können als **Zwingend im Onboarding** markiert werden. Freiwillige Kontakt-
-  und Werbeeinwilligungen lassen sich nicht in Pflichtauswahlen umwandeln.
-  Einwilligungen und Kenntnisnahmen starten ungekreuzt. Separate Einstellungen
-  für E-Mail-Benachrichtigungen werden durch diese Auswahl nicht ersetzt.
+- **Zwingend:** Die Kanzlei entscheidet für jede aktive Option, ob sie für den
+  Abschluss des öffentlichen Onboardings bestätigt werden muss. Das gilt für
+  Standardoptionen wie Telefon und E-Mail ebenso wie für Kanzleiinformationen
+  und eigene Optionen. Fehlende Pflichtauswahl verhindert den Abschluss;
+  sämtliche Optionen starten trotzdem ungekreuzt.
+- Die Kenntnisnahme der Datenschutzhinweise bleibt immer erforderlich.
+  Die interne Erfassung kann auch eine unvollständige Erklärung dokumentieren.
+- „Zwingend“ bestimmt den Abschluss des Onboardings, keine Widerrufssperre.
+  Kommunikations- und Marketingeinwilligungen bleiben auch mit dieser Vorgabe
+  widerrufbar. Eigene Pflichtbestätigungen im Bereich **Weitere Optionen** bleiben
+  beim Widerruf als Nachweis erhalten. Separate Einstellungen für
+  E-Mail-Benachrichtigungen werden durch die Auswahl nicht ersetzt.
 - Standardoptionen wie Fax oder Newsletter können deaktiviert und später
   wieder aktiviert werden. Das verändert keine bereits abgegebenen
   Erklärungen.
@@ -294,7 +295,8 @@ internen Erfassung und im öffentlichen GwG-Onboarding angeboten werden.
   vorsichtshalber, kann aber auf derselben Admin-Seite kontrolliert durch einen
   vollständig validierten Katalog ersetzt werden.
 
-Einwilligungen sind freiwillig und zweckbezogen. Rechtsgrundlagen,
+Die Kanzlei verantwortet Zweck und Zulässigkeit ihrer Vorgaben. Die Einstellung
+bestätigt keine Rechtsgrundlage oder Wirksamkeit einer Einwilligung.
 Auftragsverarbeitungsverträge, Löschfristen und die tatsächliche technische
 Einbindung eines Dienstleisters bleiben unabhängig davon zu prüfen.
 

@@ -46,6 +46,7 @@ export const ConsentOptionDefinitionSchema = z.object({
   label: z.string().trim().min(1).max(300),
   description: z.string().trim().max(1000).nullable().default(null),
   active: z.boolean(),
+  /** Abschlussvorgabe im Onboarding; keine Vorauswahl oder allgemeine Widerrufssperre. */
   required: z.boolean().default(false),
   recommended: z.boolean().default(false),
   sortOrder: z.number().int().min(0).max(100_000),
@@ -198,7 +199,8 @@ export function defaultConsentOptionsCatalog(): ConsentOptionsCatalog {
 /**
  * Validiert den persistierten Tenant-Katalog und ergaenzt bei kuenftigen
  * Versionen fehlende Built-ins. Built-ins behalten ihre stabile Semantik und
- * ihr kanonisches Label; konfigurierbar sind Aktivitaet und Provider-Link.
+ * ihr kanonisches Label; konfigurierbar sind Aktivitaet, Abschlussvorgaben,
+ * Empfehlungen und Provider-Link.
  */
 export function normalizeConsentOptionsCatalog(value: unknown): ConsentOptionsCatalog {
   const parsed = StoredConsentOptionsCatalogSchema.parse(value);
@@ -214,11 +216,6 @@ export function normalizeConsentOptionsCatalog(value: unknown): ConsentOptionsCa
     }
     if (!option.active && (option.required || option.recommended)) {
       throw new Error(`Inaktive Einwilligungsoption mit aktiver Vorgabe: ${option.id}`);
-    }
-    if (option.required && (option.builtin || option.section !== 'OTHER')) {
-      throw new Error(
-        `Pflichtoptionen sind nur für eigene, rechtlich notwendige Bestätigungen im Bereich OTHER zulässig: ${option.id}`,
-      );
     }
   }
 
@@ -422,10 +419,11 @@ export function missingRequiredConsentOptions(
   options: readonly ResolvedConsentOption[],
 ): ResolvedConsentOption[] {
   const selectedIds = new Set<string>(selectedBuiltinConsentOptionIds(consent));
-  for (const selection of consent.optionSelections) selectedIds.add(selection.optionId);
+  for (const selection of consent.optionSelections) {
+    if (!isBuiltinConsentOptionId(selection.optionId)) selectedIds.add(selection.optionId);
+  }
   return options.filter(
-    (option) =>
-      option.active && option.section === 'OTHER' && option.required && !selectedIds.has(option.id),
+    (option) => option.active && option.required && !selectedIds.has(option.id),
   );
 }
 
@@ -475,13 +473,14 @@ export function countGranted(c: ConsentSelections): number {
 
 /**
  * Entfernt nur widerrufbare Einwilligungen aus einem vollstaendigen Snapshot.
- * Rechtlich notwendige Bestaetigungen sind keine Einwilligungen und bleiben
- * deshalb mit ihrem bei Abgabe eingefrorenen Snapshot unveraendert erhalten.
+ * Pflichtbestaetigungen im Bereich OTHER bleiben mit ihrem bei Abgabe
+ * eingefrorenen Snapshot erhalten. Abschlussvorgaben fuer Kommunikation und
+ * Marketing bleiben widerrufbar.
  */
 export function revokeVoluntaryConsent(consent: ConsentSelections): ConsentSelections {
   const revoked = emptyConsent();
   revoked.optionSelections = consent.optionSelections.filter(
-    (selection) => selection.requiredSnapshot,
+    (selection) => selection.requiredSnapshot && selection.section === 'OTHER',
   );
   return revoked;
 }

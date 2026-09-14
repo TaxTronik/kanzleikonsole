@@ -31,6 +31,7 @@ function Check({
   label,
   hint,
   required = false,
+  enforceRequired = false,
   recommended = false,
 }: {
   checked: boolean;
@@ -38,6 +39,7 @@ function Check({
   label: string;
   hint?: string | null;
   required?: boolean;
+  enforceRequired?: boolean;
   recommended?: boolean;
 }) {
   return (
@@ -50,12 +52,12 @@ function Check({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        required={required}
+        required={required && enforceRequired}
         className="mt-0.5 rounded border-strong text-brand-600"
       />
       <span className="text-secondary">
         {label}
-        {required && <span className="ml-1 text-xs font-medium text-red-700">(Pflichtfeld)</span>}
+        {required && <span className="badge-brand ml-2">Zwingend</span>}
         {recommended && (
           <span className="ml-1 text-xs font-medium text-brand-700 dark:text-brand-300">
             (Empfehlung der Kanzlei)
@@ -70,6 +72,12 @@ function Check({
       </span>
     </label>
   );
+}
+
+function sectionSelectionHint(options: readonly ResolvedConsentOption[]): string {
+  return options.some((option) => option.required)
+    ? 'Zwingend markierte Optionen müssen für den Onboarding-Abschluss bestätigt werden. Alle übrigen sind optional.'
+    : 'Alle Optionen in diesem Bereich sind optional.';
 }
 
 export function ConsentFields({
@@ -234,14 +242,9 @@ export function ConsentFields({
 
       {commOptions.length > 0 && (
         <fieldset>
-          <legend className="text-sm font-semibold text-primary mb-1">
-            1. Zusätzliche Kontaktwege
-          </legend>
+          <legend className="text-sm font-semibold text-primary mb-1">1. Kontaktwege</legend>
           <p className="text-xs text-muted mb-2">
-            Freiwillige, zweckgebundene Zusatzfreigaben für die ausgewählten Kommunikationswege.
-            Nicht angekreuzte Optionen gelten als nicht erteilt; dies ist kein pauschales Verbot
-            notwendiger Mandatskommunikation. Stimmen Sie geeignete sichere Kontaktwege mit der
-            Kanzlei ab.
+            {sectionSelectionHint(commOptions)} Einwilligungen bleiben widerrufbar.
           </p>
           {commOptions.map((option) => (
             <Check
@@ -250,7 +253,8 @@ export function ConsentFields({
               onChange={(selected) => setOption(option, selected)}
               label={option.label}
               hint={optionHint(option)}
-              required={mode === 'catalog-only' && option.required}
+              required={option.required}
+              enforceRequired={mode === 'catalog-only'}
               recommended={option.recommended}
             />
           ))}
@@ -275,11 +279,10 @@ export function ConsentFields({
       {marketingOptions.length > 0 && (
         <fieldset>
           <legend className="text-sm font-semibold text-primary mb-1">
-            2. Werbung und Informationen
+            2. Kanzleiinformationen
           </legend>
           <p className="text-xs text-muted mb-2">
-            Freiwillig, jederzeit widerrufbar — betrifft Newsletter/Veranstaltungen über das
-            konkrete Mandat hinaus.
+            {sectionSelectionHint(marketingOptions)} Einwilligungen bleiben widerrufbar.
           </p>
           {marketingOptions.map((option) => (
             <Check
@@ -288,7 +291,8 @@ export function ConsentFields({
               onChange={(selected) => setOption(option, selected)}
               label={option.label}
               hint={optionHint(option)}
-              required={mode === 'catalog-only' && option.required}
+              required={option.required}
+              enforceRequired={mode === 'catalog-only'}
               recommended={option.recommended}
             />
           ))}
@@ -309,11 +313,8 @@ export function ConsentFields({
 
       {otherOptions.length > 0 && (
         <fieldset>
-          <legend className="text-sm font-semibold text-primary mb-1">3. Weitere Auswahl</legend>
-          <p className="text-xs text-muted mb-2">
-            Kanzleispezifische Optionen. Pflichtfelder müssen rechtlich notwendige Bestätigungen
-            oder eine anderweitig zulässige Pflichtauswahl abbilden.
-          </p>
+          <legend className="text-sm font-semibold text-primary mb-1">3. Weitere Optionen</legend>
+          <p className="text-xs text-muted mb-2">{sectionSelectionHint(otherOptions)}</p>
           {otherOptions.map((option) => (
             <Check
               key={option.id}
@@ -321,7 +322,8 @@ export function ConsentFields({
               onChange={(selected) => setOption(option, selected)}
               label={option.label}
               hint={optionHint(option)}
-              required={mode === 'catalog-only' && option.required}
+              required={option.required}
+              enforceRequired={mode === 'catalog-only'}
               recommended={option.recommended}
             />
           ))}

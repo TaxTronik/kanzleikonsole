@@ -11,7 +11,7 @@ import type {
 import { saveConsentOptionsAction } from './actions';
 
 const SECTION_LABELS: Record<ConsentOptionSection, string> = {
-  COMMUNICATION: 'Freiwillige Kontaktfreigaben',
+  COMMUNICATION: 'Kontaktwege',
   MARKETING: 'Kanzleiinformationen',
   OTHER: 'Weitere Optionen',
 };
@@ -99,10 +99,8 @@ export function ConsentOptionsEditor({
       <div>
         <h2 className="text-base font-semibold text-primary">Datenschutzoptionen</h2>
         <p className="text-sm text-muted mt-1">
-          Optionen gelten gemeinsam in der Kanzlei-Erfassung und im öffentlichen GwG-Onboarding.
-          Deaktivieren blendet sie für neue Erklärungen aus; bestehende Nachweise bleiben
-          unverändert. Empfehlungen werden lediglich hervorgehoben und niemals vorausgewählt.
-          Pflichtoptionen werden im öffentlichen Onboarding serverseitig erzwungen.
+          Sie entscheiden für jede aktive Option, ob sie im Onboarding bestätigt werden muss. Alle
+          Optionen bleiben zunächst ungekreuzt. Empfehlungen werden nur hervorgehoben.
         </p>
       </div>
 
@@ -122,33 +120,11 @@ export function ConsentOptionsEditor({
         </div>
       )}
 
-      <section className="rounded-lg border border-default bg-surface-raised p-4 space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-semibold text-primary">
-            Kenntnisnahme der Datenschutzhinweise
-          </h3>
-          <span className="badge-brand">Zwingend</span>
-        </div>
-        <p className="text-sm text-secondary">
-          Im öffentlichen Onboarding immer erforderlich. Mandanten müssen die Kenntnisnahme aktiv
-          bestätigen; diese Anforderung lässt sich nicht abschalten.
-        </p>
-        <p className="text-sm text-muted">
-          Die Hinweise erläutern auch die notwendige Mandatskommunikation. Freiwillige
-          Kontaktfreigaben sind davon getrennt: Eine fehlende Auswahl ist kein pauschales
-          Kontaktverbot. Geeignete Telefon- und elektronische Kontaktwege werden mit dem Mandanten
-          abgestimmt. Die Kenntnisnahme ersetzt keine Einwilligung.
-        </p>
-      </section>
-
-      <div className="rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30 p-3 text-xs text-yellow-900 dark:text-yellow-200">
-        <strong>Weitere Pflichtbestätigungen:</strong> „Zwingend im Onboarding“ darf nur für
-        rechtlich notwendige Bestätigungen oder eine anderweitig zulässige Pflichtauswahl verwendet
-        werden, nicht für freiwillige Werbung, Newsletter oder vergleichbare Einwilligungen. Eine
-        Einwilligung ersetzt außerdem keinen erforderlichen Auftragsverarbeitungsvertrag nach Art.
-        28 DSGVO. Die Verknüpfung dokumentiert nur, welcher erfasste Dienstleister zu dieser Option
-        gehört.
-      </div>
+      <p className="text-xs text-muted">
+        Die Kenntnisnahme der Datenschutzhinweise ist immer erforderlich. „Zwingend“ gilt für den
+        Onboarding-Abschluss; Widerrufsrechte bleiben unberührt. Änderungen gelten für neue
+        Erklärungen, bestehende Nachweise bleiben unverändert.
+      </p>
 
       <div className="space-y-3">
         {options.map((option) => (
@@ -158,7 +134,7 @@ export function ConsentOptionsEditor({
               option.active ? 'border-default' : 'border-dashed border-strong opacity-75'
             }`}
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1 space-y-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   {option.builtin ? (
@@ -172,7 +148,7 @@ export function ConsentOptionsEditor({
                         id={`consent-option-${option.id}-label`}
                         value={option.label}
                         onChange={(event) => patch(option.id, { label: event.target.value })}
-                        className="input min-w-[260px] flex-1"
+                        className="input min-w-0 w-full flex-1"
                         placeholder="Bezeichnung der Einwilligung *"
                         maxLength={300}
                         required={option.active}
@@ -202,10 +178,7 @@ export function ConsentOptionsEditor({
                           value={option.section}
                           onChange={(event) => {
                             const section = event.target.value as ConsentOptionSection;
-                            patch(option.id, {
-                              section,
-                              required: section === 'OTHER' ? option.required : false,
-                            });
+                            patch(option.id, { section });
                           }}
                           className="input"
                         >
@@ -271,24 +244,20 @@ export function ConsentOptionsEditor({
 
                 {option.active && (
                   <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-md border border-default bg-surface-raised p-3">
-                    {option.section === 'OTHER' && (
-                      <label className="flex items-start gap-2 text-sm text-secondary">
-                        <input
-                          type="checkbox"
-                          checked={option.required}
-                          onChange={(event) => patch(option.id, { required: event.target.checked })}
-                          className="switch mt-0.5"
-                        />
-                        <span>
-                          Zwingend im Onboarding
-                          <span className="block text-xs text-muted">
-                            Nur für rechtlich notwendige Bestätigungen oder zulässige
-                            Pflichtauswahl; niemals für freiwillige Werbung oder Newsletter. Ohne
-                            aktive Bestätigung kann das Onboarding nicht abgesendet werden.
-                          </span>
+                    <label className="flex items-start gap-2 text-sm text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={option.required}
+                        onChange={(event) => patch(option.id, { required: event.target.checked })}
+                        className="switch mt-0.5"
+                      />
+                      <span>
+                        Zwingend
+                        <span className="block text-xs text-muted">
+                          Ohne Bestätigung kann das Onboarding nicht abgeschlossen werden.
                         </span>
-                      </label>
-                    )}
+                      </span>
+                    </label>
                     <label className="flex items-start gap-2 text-sm text-secondary">
                       <input
                         type="checkbox"
@@ -309,7 +278,7 @@ export function ConsentOptionsEditor({
                 )}
               </div>
 
-              <div className="shrink-0">
+              <div className="shrink-0 self-end sm:self-start">
                 {option.builtin ? (
                   <label className="flex items-center gap-2 text-sm text-secondary">
                     <input

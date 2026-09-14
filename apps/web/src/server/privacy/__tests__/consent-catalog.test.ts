@@ -1,6 +1,14 @@
+// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
 import { describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
-import { defaultConsentOptionsCatalog, emptyConsent } from '../consent';
+import {
+  BUILTIN_CONSENT_OPTION_IDS,
+  defaultConsentOptionsCatalog,
+  emptyConsent,
+  parseConsent,
+  setBuiltinConsentSelected,
+  type ConsentOptionSection,
+} from '../consent';
 import { consentDisplayRevision, visibleConsentOptions } from '../consent-display';
 import {
   ConsentDisplayChangedError,
@@ -18,13 +26,14 @@ function catalogWithCustom(
     providerId?: string | null;
     required?: boolean;
     recommended?: boolean;
+    section?: ConsentOptionSection;
   } = {},
 ) {
   const catalog = defaultConsentOptionsCatalog();
   catalog.options.push({
     id: CUSTOM_ID,
     builtin: false,
-    section: 'OTHER',
+    section: input.section ?? 'OTHER',
     label: 'Digitale Beleganalyse',
     description: 'Option der Kanzlei',
     active: input.active ?? true,
@@ -179,43 +188,128 @@ describe('resolveConsentSelectionsTx', () => {
     ]);
   });
 
-  it('erzwingt Pflichtoptionen nur im Portal-Policy-Modus', async () => {
-    const empty = emptyConsent();
-    const catalog = catalogWithCustom({ required: true });
+  it.each(['COMMUNICATION', 'MARKETING', 'OTHER'] as const)(
+    'erzwingt eigene Abschlussvorgaben aus %s nur im Portal-Policy-Modus',
+    async (section) => {
+      const empty = emptyConsent();
+      const catalog = catalogWithCustom({ required: true, section });
 
-    await expect(
-      resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, empty, { enforceRequired: true }),
-    ).rejects.toThrow(/Pflichtoptionen.*Digitale Beleganalyse/);
+      await expect(
+        resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, empty, { enforceRequired: true }),
+      ).rejects.toThrow(/Pflichtoptionen.*Digitale Beleganalyse/);
 
-    await expect(
-      resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, empty),
-    ).resolves.toMatchObject({ optionSelections: [] });
-  });
+      await expect(
+        resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, empty),
+      ).resolves.toMatchObject({ optionSelections: [] });
+    },
+  );
 
-  it('akzeptiert eine kanonisch ausgewählte Pflichtoption', async () => {
-    const submitted = emptyConsent();
-    submitted.optionSelections = [
-      {
-        optionId: CUSTOM_ID,
-        labelSnapshot: 'Browser-Label',
-        descriptionSnapshot: null,
-        section: 'OTHER',
-        requiredSnapshot: false,
-        recommendedSnapshot: false,
-        serviceProviderSnapshot: null,
-      },
-    ];
+  it.each(['COMMUNICATION', 'MARKETING', 'OTHER'] as const)(
+    'akzeptiert eine kanonisch ausgewählte Abschlussvorgabe aus %s',
+    async (section) => {
+      const submitted = emptyConsent();
+      submitted.optionSelections = [
+        {
+          optionId: CUSTOM_ID,
+          labelSnapshot: 'Browser-Label',
+          descriptionSnapshot: null,
+          section: 'OTHER',
+          requiredSnapshot: false,
+          recommendedSnapshot: false,
+          serviceProviderSnapshot: null,
+        },
+      ];
 
-    await expect(
-      resolveConsentSelectionsTx(
-        txFor(catalogWithCustom({ required: true })),
-        TENANT_ID,
-        submitted,
-        { enforceRequired: true },
-      ),
-    ).resolves.toMatchObject({
-      optionSelections: [expect.objectContaining({ optionId: CUSTOM_ID })],
-    });
+      await expect(
+        resolveConsentSelectionsTx(
+          txFor(catalogWithCustom({ required: true, section })),
+          TENANT_ID,
+          submitted,
+          { enforceRequired: true },
+        ),
+      ).resolves.toMatchObject({
+        optionSelections: [
+          expect.objectContaining({ optionId: CUSTOM_ID, section, requiredSnapshot: true }),
+        ],
+      });
+    },
+  );
+
+  it.each(BUILTIN_CONSENT_OPTION_IDS)(
+    'verlangt für die Abschlussvorgabe %s den tatsächlichen Built-in-Bool',
+    async (optionId) => {
+      const catalog = defaultConsentOptionsCatalog();
+      const option = catalog.options.find((entry) => entry.id === optionId)!;
+      option.required = true;
+      const unchecked = emptyConsent();
+      unchecked.optionSelections = [
+        {
+          optionId,
+          labelSnapshot: 'Gefälschte Auswahl',
+          descriptionSnapshot: null,
+          section: 'OTHER',
+          requiredSnapshot: true,
+          recommendedSnapshot: false,
+          serviceProviderSnapshot: null,
+        },
+      ];
+
+      await expect(
+        resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, emptyConsent(), {
+          enforceRequired: true,
+        }),
+      ).rejects.toThrow(/Pflichtoptionen/);
+      await expect(
+        resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, unchecked, { enforceRequired: true }),
+      ).rejects.toThrow(/Pflichtoptionen/);
+      await expect(
+        resolveConsentSelectionsTx(txFor(catalog), TENANT_ID, unchecked),
+      ).resolves.toMatchObject({ optionSelections: [] });
+      await expect(
+        resolveConsentSelectionsTx(
+          txFor(catalog),
+          TENANT_ID,
+          setBuiltinConsentSelected(unchecked, optionId, true),
+          { enforceRequired: true },
+        ),
+      ).resolves.toMatchObject({
+        optionSelections: [
+          {
+            optionId,
+            labelSnapshot: option.label,
+            descriptionSnapshot: option.description,
+            section: option.section,
+            requiredSnapshot: true,
+            recommendedSnapshot: false,
+            serviceProviderSnapshot: null,
+          },
+        ],
+      });
+    },
+  );
+
+  it('ändert bei späteren Abschlussvorgaben keinen historischen freiwilligen Snapshot', async () => {
+    const historical = await resolveConsentSelectionsTx(
+      txFor(defaultConsentOptionsCatalog()),
+      TENANT_ID,
+      setBuiltinConsentSelected(emptyConsent(), 'communication.fax', true),
+    );
+    const storedJson = JSON.stringify(historical);
+    const updatedCatalog = defaultConsentOptionsCatalog();
+    const updated = updatedCatalog.options.find((option) => option.id === 'communication.fax')!;
+    updated.required = true;
+
+    const newDeclaration = await resolveConsentSelectionsTx(
+      txFor(updatedCatalog),
+      TENANT_ID,
+      historical,
+      { enforceRequired: true },
+    );
+
+    expect(newDeclaration.optionSelections[0]?.requiredSnapshot).toBe(true);
+    expect(historical.optionSelections[0]?.requiredSnapshot).toBe(false);
+    expect(JSON.stringify(historical)).toBe(storedJson);
+    expect(parseConsent(JSON.parse(storedJson))).toEqual(historical);
   });
 
   it('blockiert eine geänderte Anzeige vor der Snapshot-Kanonisierung', async () => {

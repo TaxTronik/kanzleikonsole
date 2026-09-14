@@ -16,17 +16,17 @@ professional_review:
 implementation:
   status: implemented
   summary: >-
-    Neue Erklärungen starten ohne freiwillige Vorauswahl und speichern die
+    Neue Erklärungen starten ohne Vorauswahl und speichern die
     angezeigte Hinweisfassung, kanonische Optionen sowie verknüpfte
-    Dienstleister append-only. Die im öffentlichen Onboarding zwingende
-    Kenntnisnahme ist von freiwilligen Kontaktfreigaben getrennt. Widerrufe
-    entfernen nur freiwillige Auswahl;
+    Dienstleister append-only. Die Kanzlei kann jede aktive Option für den
+    Onboardingabschluss verlangen. Diese Vorgabe sperrt keine Widerrufe von
+    Kommunikations- oder Marketingeinwilligungen;
     die Eignung der Rechtsgrundlage bleibt außerhalb der Produktregel.
 sources:
   - kind: product_documentation
     citation: Benutzerhandbuch Administration, Datenschutz-Einwilligungen und Dienstleister
     path: docs/anwenderdoku/administration.md
-    checked_at: '2026-08-24'
+    checked_at: '2026-09-14'
     primary: true
   - kind: official_law
     citation: Art. 5 Abs. 2, Art. 6, Art. 7 und Art. 28 DSGVO
@@ -42,13 +42,16 @@ code_refs:
   - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
   - apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx
 test_refs:
   - apps/web/src/server/privacy/__tests__/consent.test.ts
   - apps/web/src/server/privacy/__tests__/consent-catalog.test.ts
   - apps/web/src/server/privacy/__tests__/consent-display.test.ts
   - apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts
   - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+  - apps/web/src/app/staff/(protected)/admin/privacy/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/page.test.tsx
 feature_refs:
   - docs/anwenderdoku/administration.md
 related_rules:
@@ -63,19 +66,20 @@ tags:
 
 ## Kurzfassung
 
-TaxTronik trennt freiwillige Einwilligungsoptionen von erforderlichen
-Kenntnisnahmen oder Bestätigungen. Neue Erklärungen enthalten keine
-vorausgewählte freiwillige Option. Gespeichert werden die tatsächlich
+Die Kanzlei legt für jede aktive Datenschutzoption fest, ob sie für den
+Abschluss des öffentlichen Onboardings bestätigt werden muss. Neue Erklärungen
+enthalten keine vorausgewählte Option. Gespeichert werden die tatsächlich
 angezeigte Hinweisfassung, kanonische Optionsdaten und gegebenenfalls ein
 Snapshot des zugeordneten Dienstleisters; spätere Katalogänderungen schreiben
 historische Erklärungen nicht um.
 
 Die Kenntnisnahme der Datenschutzhinweise ist im öffentlichen Onboarding
-zwingend und wird getrennt von freiwilligen Einwilligungen angezeigt. Sie
+zwingend und wird getrennt von den auswählbaren Optionen angezeigt. Sie
 bestätigt den Hinweis, erteilt aber keine allgemeine Kommunikationseinwilligung.
-Notwendige Mandatskommunikation und freiwillige Kontaktfreigaben werden in
-Hinweisfassung 3 ausdrücklich unterschieden; geeignete sichere Kontaktwege
-bleiben mit dem Mandanten abzustimmen.
+Hinweisfassung 4 erläutert die von der Kanzlei vorgegebenen Pflichtauswahlen.
+„Zwingend“ bezeichnet eine Abschlussvoraussetzung, keine Rechtsgrundlage oder
+Widerrufssperre. Geeignete sichere Kontaktwege bleiben mit dem Mandanten
+abzustimmen.
 
 ## Wann gilt die Regel?
 
@@ -89,28 +93,35 @@ Auftragsverarbeitungsvertrag erforderlich und wirksam ist.
 
 - aktive, vollständig validierte Katalogrevision
 - angezeigter Datenschutzhinweis samt Fassung und Inhalt
-- angebotene freiwillige Optionen mit Zweck und Bezeichnung
+- angebotene Optionen mit Zweck, Bezeichnung und Abschlussvorgabe
 - getrennte erforderliche Bestätigungen
 - gegebenenfalls verknüpfter Dienstleister und angezeigte Vertragsmetadaten
 - tatsächlich ausgewählte Optionen und erklärende Person
 
 ## Entscheidungslogik
 
-| Wenn                                        | Dann                                                            | Begründung                                                   |
-| ------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------ |
-| neue Erklärung beginnt                      | alle freiwilligen Optionen unselektiert setzen                  | keine Vorauswahl durch das Produkt                           |
-| Browser sendet Optionsdaten                 | anhand des aktiven Katalogs kanonisieren                        | Clientwerte dürfen Bezeichnung oder Zweck nicht bestimmen    |
-| Katalog oder Dienstleister ist inkonsistent | neue Erklärung fail-closed blockieren                           | kein uneindeutiger Nachweis                                  |
-| Erklärung wird gespeichert                  | Hinweis, Optionen und Dienstleister-Snapshot append-only binden | historischer Anzeige- und Auswahlstand                       |
-| freiwillige Einwilligung wird widerrufen    | nur widerrufbare Auswahl entfernen und neuen Nachweis erzeugen  | Pflichtbestätigung ist keine widerrufene freiwillige Auswahl |
-| Katalog ändert sich später                  | alte Erklärung unverändert lassen                               | historische Nachvollziehbarkeit                              |
+| Wenn                                                       | Dann                                                                              | Begründung                                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| neue Erklärung beginnt                                     | alle Optionen unselektiert setzen                                                 | keine Vorauswahl durch das Produkt                                           |
+| Kanzlei markiert eine aktive Option als zwingend           | Bestätigung beim öffentlichen Abschluss serverseitig verlangen                    | Vorgabe gilt für Standardoptionen und eigene Optionen in jedem Bereich       |
+| Pflichtauswahl fehlt im öffentlichen Onboarding            | Übermittlung abweisen                                                             | keine Umgehung durch manipulierte Browserdaten                               |
+| Browser sendet Optionsdaten                                | anhand des aktiven Katalogs kanonisieren                                          | Clientwerte dürfen Bezeichnung oder Zweck nicht bestimmen                    |
+| Katalog oder Dienstleister ist inkonsistent                | neue Erklärung fail-closed blockieren                                             | kein uneindeutiger Nachweis                                                  |
+| Erklärung wird gespeichert                                 | Hinweis, Optionen und Dienstleister-Snapshot append-only binden                   | historischer Anzeige- und Auswahlstand                                       |
+| Kommunikations- oder Marketingeinwilligung wird widerrufen | auch eine beim Onboarding zwingende Auswahl entfernen und neuen Nachweis erzeugen | Abschlussvorgabe ist keine Widerrufssperre                                   |
+| eigene Pflichtbestätigung im Bereich OTHER liegt vor       | beim Widerruf anhand ihres historischen Snapshots erhalten                        | Bestätigung ist keine widerrufene Kommunikations- oder Marketingeinwilligung |
+| Katalog ändert sich später                                 | alte Erklärung unverändert lassen                                                 | historische Nachvollziehbarkeit                                              |
 
 ## Ausnahmen und Grenzfälle
 
-Benutzerdefinierte Pflichtbestätigungen sind nur in der dafür vorgesehenen
-Kategorie zulässig; eingebaute Kommunikations- und Marketingoptionen dürfen
-nicht nachträglich als verpflichtend umgedeutet werden. Ein eingefrorener
-Dienstleistername oder AVV-Zeitraum belegt nur die angezeigten Metadaten, nicht
+Die bisherige Beschränkung konfigurierbarer Pflichtvorgaben auf eigene
+OTHER-Bestätigungen entfällt. Die Kanzlei kann nun Standardoptionen und eigene
+Optionen in allen drei Bereichen für den Onboardingabschluss verlangen. Das ist
+eine Änderung der Produktregel, keine fachliche Freigabe einer konkreten
+Pflichtauswahl. Frühere Erklärungen werden dadurch nicht nachträglich als
+verpflichtend umgedeutet.
+
+Ein eingefrorener Dienstleistername oder AVV-Zeitraum belegt nur die angezeigten Metadaten, nicht
 Bestand, Wirksamkeit oder Erforderlichkeit des Vertrags. Eine erteilte Auswahl
 beweist auch nicht die tatsächliche technische Deaktivierung aller
 Verarbeitungen nach einem Widerruf.
@@ -122,15 +133,17 @@ einschlägige Rechtsgrundlage und gesetzliche Rechte bleiben maßgeblich.
 Die getrennte Einstellung für E-Mail-Benachrichtigungen wird dadurch nicht
 überschrieben. Dies löst den bisherigen Widerspruch zwischen dem als allgemeine
 Kontakterlaubnis formulierten Auswahltext und den Datenschutzhinweisen auf;
-bestehende freiwillige Optionen und historische Nachweise werden nicht umgedeutet.
+historische Nachweise werden nicht umgedeutet.
 
 ## Beispiele
 
 ### Normalfall
 
-Ein Kontakt sieht zwei freiwillige Kommunikationsoptionen und wählt nur eine.
-TaxTronik speichert diese Auswahl zusammen mit Hinweistext, Katalogrevision und
-Dienstleister-Snapshot. Eine spätere Umbenennung verändert den Nachweis nicht.
+Die Kanzlei markiert Telefon und E-Mail als zwingend und belässt Fax optional.
+Ein Kontakt muss Telefon und E-Mail aktiv bestätigen, bevor er das öffentliche
+Onboarding abschließen kann. TaxTronik speichert die Auswahl samt Hinweistext,
+Katalogrevision und Dienstleister-Snapshot. Ein späterer Widerruf entfernt auch
+diese Kommunikationsauswahl; die damalige Abschlussvorgabe sperrt ihn nicht.
 
 ### Grenzfall
 
@@ -150,7 +163,12 @@ still akzeptiert wird.
 Die Oberfläche kennzeichnet die bereits serverseitig verlangte Kenntnisnahme
 als „Zwingend“. Die Kanzlei kann diese Anforderung nicht abschalten.
 `noticeAcknowledged: true` bleibt Voraussetzung der öffentlichen Übermittlung;
-alle freiwilligen Auswahlen dürfen leer bleiben. Der ergänzte Kommunikationstext
+alle optionalen Auswahlen dürfen leer bleiben. `required` wird für jede aktive
+Option ausgewertet; inaktive Optionen dürfen keine Pflichtvorgabe tragen.
+`requiredSnapshot` friert die damalige Abschlussvorgabe ein. Beim Widerruf bleiben
+nur als verpflichtend gespeicherte OTHER-Bestätigungen erhalten, während
+Kommunikations- und Marketingauswahl unabhängig von der Abschlussvorgabe entfernt
+wird. Der ergänzte Kommunikationstext
 ist Bestandteil der versionierten und eingefrorenen Hinweisfassung, nicht nur
 ein zusätzlicher Oberflächentext.
 
@@ -167,6 +185,7 @@ die Richtigkeit kanzleiseitiger Texte.
 - Welche Prozesse dürfen tatsächlich auf Einwilligung gestützt werden?
 - Sind Zweck, Freiwilligkeit und Widerrufsinformation je Option ausreichend?
 - Welche erforderlichen Bestätigungen sind keine Einwilligungen und wie sind sie zu benennen?
+- Sind die von der Kanzlei vorgegebenen Pflichtauswahlen im konkreten Mandat zulässig?
 - Wie wird die operative Umsetzung eines Widerrufs außerhalb des Snapshots nachgewiesen?
 
 ## Technische Nachweise
@@ -178,4 +197,14 @@ belegen keine datenschutzrechtliche Eignung einer Option.
 
 Regressionstests zur öffentlichen Übermittlung prüfen zusätzlich, dass eine
 fehlende oder falsche Kenntnisnahme trotz ausgewählter Einwilligungen abgewiesen
-wird und eine bestätigte Kenntnisnahme ohne freiwillige Auswahl zulässig bleibt.
+wird und eine bestätigte Kenntnisnahme ohne weitere Auswahl zulässig bleibt,
+sofern der Katalog keine weiteren Pflichtoptionen enthält. Katalog- und
+Resolvertests prüfen Pflichtvorgaben in allen Bereichen, fehlende Legacy-Bools
+trotz gefälschter Built-in-Snapshots sowie die Trennung zwischen Abschlussvorgabe
+und Widerruf. Die Tests belegen keine rechtliche Zulässigkeit einer Pflichtvorgabe.
+
+Die Kanzleiansicht bietet nach einem Teilwiderruf den Sammelwiderruf weiter an,
+solange widerrufbare Auswahl besteht. Der Zähler umfasst Datenschutzoptionen
+einschließlich erforderlicher Bestätigungen; er zählt nicht ausschließlich
+Einwilligungen. SSR-Tests prüfen die Anzeige bei verbleibender Kommunikations-
+und Marketingauswahl sowie bei ausschließlich erforderlicher OTHER-Bestätigung.

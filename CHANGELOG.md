@@ -220,10 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 - Kürzere Navigationstitel und feste Icongrößen verhindern, dass lange
   Beschriftungen Symbole verkleinern oder verschieben. Bisherige Bezeichnungen
   bleiben als Suchbegriffe verfügbar.
-- Datenschutz: Die verpflichtende Kenntnisnahme ist als „Zwingend“ sichtbar.
-  Hinweisfassung 3 und Auswahltexte trennen notwendige Mandatskommunikation von
-  freiwilligen Kontakt- und Werbefreigaben. Historische Nachweise und separate
-  Benachrichtigungseinstellungen bleiben erhalten
+- Datenschutz: Die Kanzlei kann jede aktive Option als „Zwingend“ für den
+  Abschluss des öffentlichen Onboardings vorgeben, einschließlich Telefon,
+  E-Mail und Kanzleiinformationen. Pflichtauswahl wird serverseitig geprüft und
+  nie vorausgewählt. Hinweisfassung 4 beschreibt die Vorgabe; Widerrufsrechte,
+  historische Nachweise und separate Benachrichtigungseinstellungen bleiben erhalten
   (`DSGVO-CONSENT-SNAPSHOT-001`).
 
 - GwG-Kontrollliste und Smart-Mailbox erhalten die üblichen Seitenabstände,

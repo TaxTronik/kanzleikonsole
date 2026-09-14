@@ -49,6 +49,7 @@ export class ConsentDisplayChangedError extends Error {
 }
 
 export interface ConsentResolutionPolicy {
+  /** Durchsetzung der Kanzlei-Abschlussvorgaben für das öffentliche Onboarding. */
   enforceRequired?: boolean;
   /** Nur im Portal: bindet die Auswahl an exakt die zuvor gerenderte Anzeige. */
   expectedDisplay?: {
@@ -186,11 +187,7 @@ export async function resolveConsentSelectionsTx(
 
   if (policy.enforceRequired) {
     const missing = visibleOptions.filter(
-      (option) =>
-        option.active &&
-        option.section === 'OTHER' &&
-        option.required &&
-        !selectedIds.has(option.id),
+      (option) => option.active && option.required && !selectedIds.has(option.id),
     );
     if (missing.length > 0) {
       throw new RequiredConsentOptionsError(missing.map((option) => option.label));

@@ -179,7 +179,7 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
                 ({current.source === 'PORTAL' ? 'Mandant über Portal' : 'Kanzlei'})
               </span>
               {' · '}
-              {countGranted(currentConsent)} Einzeleinwilligung(en) aktiv
+              {countGranted(currentConsent)} Datenschutz-Option(en) aktiv
             </p>
             <ul className="text-xs text-muted grid grid-cols-1 sm:grid-cols-2 gap-x-6">
               {(Object.keys(COMMUNICATION_LABELS) as Array<keyof typeof COMMUNICATION_LABELS>)
@@ -245,15 +245,15 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
       />
 
       {/* Widerruf */}
-      {current && !current.isRevocation && revocableConsentCount > 0 && (
+      {current && revocableConsentCount > 0 && (
         <form action={revokeAllConsentAction} className="card p-5 mt-6 border-l-4 border-l-red-400">
           <input type="hidden" name="clientId" value={clientId} />
           <h3 className="text-sm font-semibold text-red-800 dark:text-red-300 mb-1">
-            Alle freiwilligen Einwilligungen widerrufen
+            Einwilligungen widerrufen
           </h3>
           <p className="text-xs text-muted mb-3">
-            Wirkung für die Zukunft (Art. 7 Abs. 3 DSGVO). Die mandatsnotwendige Verarbeitung bleibt
-            auf gesetzlicher/vertraglicher Grundlage zulässig.
+            Nimmt die widerrufbare Auswahl für die Zukunft zurück, auch wenn sie im Onboarding
+            zwingend war. Erforderliche Bestätigungen bleiben als Nachweis erhalten.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <input

@@ -80,7 +80,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
-- Kurzfassung: TaxTronik trennt freiwillige Einwilligungsoptionen von erforderlichen Kenntnisnahmen oder Bestätigungen. Neue Erklärungen enthalten keine vorausgewählte freiwillige Option. Gespeichert werden die tatsächlich angezeigte Hinweisfassung, kanonische Optionsdaten und gegebenenfalls ein Snapshot des zugeordneten Dienstleisters; spätere Katalogänderungen schreiben historische Erklärungen nicht um.
+- Kurzfassung: Die Kanzlei legt für jede aktive Datenschutzoption fest, ob sie für den Abschluss des öffentlichen Onboardings bestätigt werden muss. Neue Erklärungen enthalten keine vorausgewählte Option. Gespeichert werden die tatsächlich angezeigte Hinweisfassung, kanonische Optionsdaten und gegebenenfalls ein Snapshot des zugeordneten Dienstleisters; spätere Katalogänderungen schreiben historische Erklärungen nicht um.
 
 ### [DSGVO-CONTACT-EXPORT-001 — Kontaktbezogenes Auskunfts- und Portabilitätspaket vorbereiten](regeln/datenschutz/dsgvo-contact-export-001-kontaktpaket.md)
 

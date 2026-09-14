@@ -1,3 +1,4 @@
+// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultConsentOptionsCatalog } from '@/server/privacy/consent';
 
@@ -80,6 +81,50 @@ describe('savePrivacyConfigAction', () => {
 });
 
 describe('saveConsentOptionsAction', () => {
+  it('speichert und auditiert Kanzlei-Pflichtvorgaben für sämtliche Standardoptionen', async () => {
+    const revision = new Date('2026-09-14T10:00:00.000Z');
+    const previous = defaultConsentOptionsCatalog();
+    const catalog = defaultConsentOptionsCatalog();
+    for (const option of catalog.options) option.required = true;
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      tenantSetting: {
+        findUnique: vi.fn().mockResolvedValue({ value: previous, updatedAt: revision }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      serviceProvider: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: typeof tx) => unknown) => fn(tx),
+    );
+    const formData = new FormData();
+    formData.set('catalogJson', JSON.stringify(catalog));
+    formData.set('expectedRevision', revision.toISOString());
+
+    expect(await saveConsentOptionsAction(null, formData)).toEqual({ ok: true });
+    expect(mocks.staffActionGuard).toHaveBeenCalledWith({ requireAdmin: true });
+    expect(tx.tenantSetting.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        key: 'privacy.consent_options',
+        updatedAt: revision,
+      },
+      data: {
+        value: catalog,
+        updatedBy: '22222222-2222-4222-8222-222222222222',
+      },
+    });
+    expect(mocks.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'privacy.consent_options.update',
+        before: previous,
+        after: catalog,
+      }),
+    );
+    expect(previous.options.every((option) => !option.required)).toBe(true);
+  });
+
   it('ersetzt einen korrupten Bestandskatalog über den expliziten ACP-Reparaturpfad', async () => {
     const revision = new Date('2026-07-15T10:00:00.000Z');
     const tx = {

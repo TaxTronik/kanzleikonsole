@@ -13,6 +13,7 @@ import {
   parseConsent,
   PortalConsentSelectionsSchema,
   revokeVoluntaryConsent,
+  setBuiltinConsentSelected,
 } from '../consent';
 
 const CUSTOM_ID = 'c8ecfcf4-aa72-47b5-a67e-d42fdc736dcc';
@@ -135,6 +136,63 @@ describe('ConsentSelections V1/V2', () => {
 });
 
 describe('revokeVoluntaryConsent', () => {
+  it('widerruft auch im Onboarding zwingende Kommunikations- und Marketingauswahlen', () => {
+    const consent = emptyConsent();
+    consent.communication.emailTls = true;
+    consent.marketing.emailNewsletter = true;
+    const snapshot = {
+      descriptionSnapshot: null,
+      requiredSnapshot: true,
+      recommendedSnapshot: false,
+      serviceProviderSnapshot: null,
+    };
+    const requiredConfirmation = {
+      ...snapshot,
+      optionId: CUSTOM_ID,
+      labelSnapshot: 'Bestätigung',
+      section: 'OTHER' as const,
+    };
+    consent.optionSelections = [
+      {
+        ...snapshot,
+        optionId: 'communication.emailTls',
+        labelSnapshot: 'E-Mail',
+        section: 'COMMUNICATION',
+      },
+      {
+        ...snapshot,
+        optionId: 'marketing.emailNewsletter',
+        labelSnapshot: 'Newsletter',
+        section: 'MARKETING',
+      },
+      {
+        ...snapshot,
+        optionId: '7e1c134e-1d2a-44a5-b135-43cf35c0d6ee',
+        labelSnapshot: 'Eigene Kommunikation',
+        section: 'COMMUNICATION',
+      },
+      {
+        ...snapshot,
+        optionId: '0bc8ce8b-e192-49fa-a6bb-5888a1c42f9f',
+        labelSnapshot: 'Eigenes Marketing',
+        section: 'MARKETING',
+      },
+      requiredConfirmation,
+    ];
+    const historical = structuredClone(consent);
+
+    const revoked = revokeVoluntaryConsent(consent);
+
+    expect(revoked).toEqual({ ...emptyConsent(), optionSelections: [requiredConfirmation] });
+    expect(revoked.optionSelections[0]).toBe(requiredConfirmation);
+    expect(countGranted(consent)).toBe(5);
+    expect(countRevocableGranted(consent)).toBe(4);
+    expect(countGranted(revoked)).toBe(1);
+    expect(countRevocableGranted(revoked)).toBe(0);
+    expect(hasConsentRevocation(consent, revoked)).toBe(true);
+    expect(consent).toEqual(historical);
+  });
+
   it('entfernt freiwillige Auswahlen und erhaelt Pflichtbestaetigungen exakt', () => {
     const consent = emptyConsent();
     consent.communication.emailTls = true;
@@ -320,23 +378,72 @@ describe('Einwilligungsoptions-Katalog', () => {
     ]);
   });
 
-  it.each(BUILTIN_CONSENT_OPTION_IDS)('verbietet Pflicht-Einwilligungen für %s', (optionId) => {
-    const catalog = defaultConsentOptionsCatalog();
-    const option = catalog.options.find((entry) => entry.id === optionId);
-    if (!option) throw new Error(`Builtin fehlt: ${optionId}`);
-    option.required = true;
+  it.each(BUILTIN_CONSENT_OPTION_IDS)(
+    'erlaubt eine ungekreuzte Abschlussvorgabe für %s',
+    (optionId) => {
+      const catalog = defaultConsentOptionsCatalog();
+      const option = catalog.options.find((entry) => entry.id === optionId);
+      if (!option) throw new Error(`Builtin fehlt: ${optionId}`);
+      option.required = true;
 
-    expect(() => normalizeConsentOptionsCatalog(catalog)).toThrow(/Bereich OTHER/);
-  });
+      const normalized = normalizeConsentOptionsCatalog(catalog);
+      expect(normalized.options.find((entry) => entry.id === optionId)).toEqual(option);
+      const options = normalized.options.map((entry) => ({
+        ...entry,
+        serviceProvider: null,
+        providerMissing: false,
+      }));
+      const initial = consentForNewDeclaration();
+      expect(countGranted(initial)).toBe(0);
+      expect(missingRequiredConsentOptions(initial, options).map((entry) => entry.id)).toEqual([
+        optionId,
+      ]);
+      expect(
+        missingRequiredConsentOptions(setBuiltinConsentSelected(initial, optionId, true), options),
+      ).toEqual([]);
+    },
+  );
 
-  it('verhindert Pflicht-Built-ins auch bei gefälschter Bereichsangabe', () => {
+  it('behält bei Abschlussvorgaben die kanonische Built-in-Sektion und Beschriftung', () => {
     const catalog = defaultConsentOptionsCatalog();
     const fax = catalog.options.find((option) => option.id === 'communication.fax');
     if (!fax) throw new Error('Fax-Builtin fehlt');
     fax.section = 'OTHER';
+    fax.label = 'Manipulierte Bestätigung';
     fax.required = true;
 
-    expect(() => normalizeConsentOptionsCatalog(catalog)).toThrow(/eigene.*Bereich OTHER/);
+    expect(
+      normalizeConsentOptionsCatalog(catalog).options.find((option) => option.id === fax.id),
+    ).toMatchObject({
+      section: 'COMMUNICATION',
+      label: 'Fax',
+      required: true,
+    });
+  });
+
+  it('lässt gefälschte Built-in-Snapshots keine ungekreuzten Pflichtfelder ersetzen', () => {
+    const options = defaultConsentOptionsCatalog().options.map((option) => ({
+      ...option,
+      required: option.id === 'communication.fax',
+      serviceProvider: null,
+      providerMissing: false,
+    }));
+    const consent = emptyConsent();
+    consent.optionSelections = [
+      {
+        optionId: 'communication.fax',
+        labelSnapshot: 'Angeblich bestätigt',
+        descriptionSnapshot: null,
+        section: 'OTHER',
+        requiredSnapshot: true,
+        recommendedSnapshot: false,
+        serviceProviderSnapshot: null,
+      },
+    ];
+
+    expect(missingRequiredConsentOptions(consent, options).map((option) => option.id)).toEqual([
+      'communication.fax',
+    ]);
   });
 
   it('weist Vorgaben auf inaktiven Optionen zurück', () => {

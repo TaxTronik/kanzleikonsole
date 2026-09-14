@@ -465,12 +465,6 @@ export function PrivacyStep({
           </h3>
           <span className="badge-brand">Zwingend</span>
         </div>
-        <p className="text-xs text-secondary">
-          Notwendige Mandatskommunikation kann auf vertraglichen oder gesetzlichen Rechtsgrundlagen
-          beruhen. Stimmen Sie geeignete sichere Kontaktwege mit der Kanzlei ab; Ihre gesetzlichen
-          Rechte bleiben unberührt. Die Kenntnisnahme erteilt keine pauschale Freigabe sämtlicher
-          Telefon- oder E-Mail-Wege.
-        </p>
         <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
           <input
             type="checkbox"
@@ -486,12 +480,10 @@ export function PrivacyStep({
       </section>
 
       <div>
-        <h3 className="text-sm font-semibold text-primary mb-1">Weitere Auswahl</h3>
+        <h3 className="text-sm font-semibold text-primary mb-1">Datenschutzoptionen</h3>
         <p className="text-xs text-muted mb-3">
-          Kommunikations- und Werbeeinwilligungen sind freiwillig. Nicht angekreuzte Optionen gelten
-          als nicht erteilt. Empfehlungen bleiben ungekreuzt, bis Sie selbst wählen. Gesondert als
-          Pflichtfeld gekennzeichnete rechtlich notwendige Bestätigungen sind für den Abschluss
-          erforderlich.
+          Die Kanzlei legt fest, welche Optionen für den Abschluss bestätigt werden müssen. Treffen
+          Sie jede Auswahl aktiv; Empfehlungen sind nicht vorausgewählt.
         </p>
         <ConsentFields
           initial={consent}

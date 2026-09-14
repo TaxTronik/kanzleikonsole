@@ -1802,14 +1802,14 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Neue Erklärungen starten ohne freiwillige Vorauswahl und speichern die angezeigte Hinweisfassung, kanonische Optionen sowie verknüpfte Dienstleister append-only. Die im öffentlichen Onboarding zwingende Kenntnisnahme ist von freiwilligen Kontaktfreigaben getrennt. Widerrufe entfernen nur freiwillige Auswahl; die Eignung der Rechtsgrundlage bleibt außerhalb der Produktregel."
+        "summary": "Neue Erklärungen starten ohne Vorauswahl und speichern die angezeigte Hinweisfassung, kanonische Optionen sowie verknüpfte Dienstleister append-only. Die Kanzlei kann jede aktive Option für den Onboardingabschluss verlangen. Diese Vorgabe sperrt keine Widerrufe von Kommunikations- oder Marketingeinwilligungen; die Eignung der Rechtsgrundlage bleibt außerhalb der Produktregel."
       },
       "sources": [
         {
           "kind": "product_documentation",
           "citation": "Benutzerhandbuch Administration, Datenschutz-Einwilligungen und Dienstleister",
           "path": "docs/anwenderdoku/administration.md",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-09-14",
           "primary": true
         },
         {
@@ -1828,7 +1828,8 @@
         "apps/web/src/components/consent-fields.tsx",
         "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
         "apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx",
-        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx"
       ],
       "test_refs": [
         "apps/web/src/server/privacy/__tests__/consent.test.ts",
@@ -1836,13 +1837,15 @@
         "apps/web/src/server/privacy/__tests__/consent-display.test.ts",
         "apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts"
+        "apps/web/src/app/staff/(protected)/admin/privacy/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/page.test.tsx"
       ],
       "feature_refs": ["docs/anwenderdoku/administration.md"],
       "related_rules": ["DSGVO-OPERATIONAL-RETENTION-001"],
       "tags": ["einwilligung", "widerruf", "snapshot"],
       "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-consent-snapshot-001-einwilligungsnachweis.md",
-      "summary": "TaxTronik trennt freiwillige Einwilligungsoptionen von erforderlichen Kenntnisnahmen oder Bestätigungen. Neue Erklärungen enthalten keine vorausgewählte freiwillige Option. Gespeichert werden die tatsächlich angezeigte Hinweisfassung, kanonische Optionsdaten und gegebenenfalls ein Snapshot des zugeordneten Dienstleisters; spätere Katalogänderungen schreiben historische Erklärungen nicht um."
+      "summary": "Die Kanzlei legt für jede aktive Datenschutzoption fest, ob sie für den Abschluss des öffentlichen Onboardings bestätigt werden muss. Neue Erklärungen enthalten keine vorausgewählte Option. Gespeichert werden die tatsächlich angezeigte Hinweisfassung, kanonische Optionsdaten und gegebenenfalls ein Snapshot des zugeordneten Dienstleisters; spätere Katalogänderungen schreiben historische Erklärungen nicht um."
     },
     {
       "id": "DSGVO-CONTACT-EXPORT-001",
