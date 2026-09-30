@@ -706,6 +706,16 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Dependency Audit 3673: Nodemailer auf `10.0.10`, Undici auf `8.10.2`,
+  fast-uri auf `3.1.8`, ip-address auf `10.7.1` und die beiden benötigten
+  brace-expansion-Zweige auf `1.1.21` beziehungsweise `5.0.12` aktualisiert.
+  Exakte Overrides schließen auch die transitiven verwundbaren Kopien.
+  Next.js und sein ESLint-Plugin erhalten zusätzlich `16.3.6` gegen den beim
+  erneuten Audit gemeldeten kritischen Befund `GHSA-vcvr-r3jv-pc5j`.
+  Ein echter Nodemailer-/Mailparser-Roundtrip prüft MIME-Kompatibilität und
+  den korrigierten Empfängerparser. Hook-Prüfung und technische Nachweise:
+  [Dependency-Audit 3673](docs/reviews/2026-09-30-dependency-audit-3673.md).
+
 - **[Scope]** Die Mandantenauswahl bei neuer Rechnung und externem
   Rechnungsupload berücksichtigt jetzt bereits beim Laden den zentralen
   Mandantenzugriff. Rechnungsrechte allein zeigen damit keine vertraulichen

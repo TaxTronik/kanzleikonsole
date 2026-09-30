@@ -30,7 +30,7 @@
     "imapflow": "1.7.2",
     "ioredis": "^5.11.1",
     "mailparser": "3.9.15",
-    "nodemailer": "9.1.1",
+    "nodemailer": "10.0.10",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3"
   },
