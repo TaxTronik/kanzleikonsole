@@ -48,6 +48,7 @@ test_refs:
   - packages/mail/src/__tests__/microsoft-cache.test.ts
   - packages/mail/src/__tests__/attachments.test.ts
   - packages/mail/src/__tests__/attachment-resource-limits.test.ts
+  - apps/web/src/__tests__/next-workspace-transpilation.test.ts
   - apps/web/src/server/mailbox/__tests__/oauth-cache.test.ts
   - packages/db/src/__tests__/mailbox-oauth-cache.test.ts
   - packages/db/src/__tests__/mailbox-rls.test.ts
@@ -129,6 +130,14 @@ Originalbytes und Verschlüsselungsprüfung bleiben unverändert. Die RSS-Prüfu
 ist eine konservative Überwachung und keine harte Betriebssystem-Speicherquote.
 Der PDF-Parser bleibt ein externes Node-Modul im Standalone-Paket; der
 Build-Nachweis verwirft einen versehentlichen Rückgriff auf Host-Abhängigkeiten.
+
+Die gemeinsam referenzierte Next.js-Konfiguration transpiliert alle direkt
+eingebundenen Workspace-Laufzeitpakete, einschließlich `@taxtronik/elster`.
+Diese Pakete exportieren TypeScript, das auch aus den von pnpm unter
+`node_modules` injizierten Kopien verarbeitet werden muss. Der Manifestabgleich
+verhindert Auslassungen in der Transpilierungsliste. Diese technische
+Build-Korrektur ändert weder Posteingangszuordnung noch Anhangsprüfung,
+Archivierung oder die externen PDF-Module und Standalone-Tracing-Grenzen.
 
 Ein zusätzlicher Entzug der aus Bootstrap-Standardrechten geerbten DELETE-Rechte
 schützt Postfachprofile und Empfangs-/Anhangsnachweise vor Entfernung durch die

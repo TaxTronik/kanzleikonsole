@@ -45,12 +45,14 @@ const nextConfig = {
     ],
   },
 
-  // Workspace-Pakete transpilieren. WICHTIG für `output: 'standalone'`:
-  // nur was hier steht, landet im production-Bundle.
+  // Workspace-Pakete exportieren TypeScript-Quellen. Auch die von pnpm unter
+  // node_modules injizierten Kopien müssen für den Produktionsbuild durch
+  // Next.js transpiliert werden. Die Liste gegen die Runtime-Manifeste prüfen.
   transpilePackages: [
     '@taxtronik/config',
     '@taxtronik/crypto',
     '@taxtronik/db',
+    '@taxtronik/elster',
     '@taxtronik/evidence',
     '@taxtronik/http-utils',
     '@taxtronik/mail',

@@ -83,3 +83,38 @@ Die vollständige Playwright-Ausführung und die datenbankgestützten
 Integrationsjobs bleiben dem anschließenden CI-Lauf vorbehalten. Die
 Playwright-Testerkennung ist kein bestandener E2E-Lauf. Es wird kein
 Produktionsbuild oder Deployment aus diesem Prüfstand behauptet.
+
+## Nachprüfung des Docker-Web-Builds 3681
+
+Der anschließende CI-Build scheiterte an der injizierten Datei
+`node_modules/@taxtronik/elster/src/index.ts` mit `Unknown module type`.
+Das Paket exportiert TypeScript, fehlte aber in `transpilePackages`.
+Die explizite Aufnahme ergänzt die bestehende Next.js-Buildkonfiguration.
+Die Sicherheitsupdates und die Workspace-Injektion bleiben erhalten.
+
+Der neue Test `apps/web/src/__tests__/next-workspace-transpilation.test.ts`
+gleicht die tatsächlich geladene Konfiguration mit den Workspace-
+Laufzeitabhängigkeiten des Web-Manifests ab. Vor der Korrektur meldete er
+genau das fehlende ELSTER-Paket, danach besteht er. Der gemeinsam katalogisierte
+Konfigurationspfad ist in den technischen Umsetzungshinweisen von
+`MAIL-INBOX-001` dokumentiert; die fachliche Logik und Freigabefelder ändern
+sich nicht.
+
+Für diese Nachprüfung bestanden:
+
+- Der vollständige Linux-Docker-Build mit `infra/docker/Dockerfile.web`,
+  einschließlich Turbopack, TypeScript, Seitengenerierung und Runtime-Image.
+  Lokales Image: `taxtronik/web:build-3681-fixed`, Image-ID
+  `sha256:f2d424b51e7c58d92b030a4efde76d64854da21c39ff93a75ac3ed079d94ad80`.
+- Ein weiterer isolierter Linux-Install mit fehlendem `node_modules`, leerem
+  Store `/audit/pnpm-store-mhpfiI`, `--frozen-lockfile --prod=false` und
+  aktivierten Hooks; Node 24.18.0, pnpm 12.4.1.
+- Sieben gezielte Tests für Workspace-Transpilierung, Token-Referrer-Header
+  und PDF-Anhangsgrenzen.
+- Root-Lint mit Paranoid-E2E-Discovery: null Fehler, 66 Warnungen.
+- Supply-Chain-Guard, Ops-Tests, Fachkatalog-Check und -Diff,
+  vollständige Formatprüfung und Dokumentationslinks.
+
+Das Image wurde lokal gebaut, nicht veröffentlicht oder produktiv gestartet.
+Der erneute entfernte CI-Lauf und die vollständigen E2E-/DB-Integrationsläufe
+sind dadurch nicht nachgewiesen.

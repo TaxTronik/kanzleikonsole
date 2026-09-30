@@ -3782,6 +3782,7 @@
         "packages/mail/src/__tests__/microsoft-cache.test.ts",
         "packages/mail/src/__tests__/attachments.test.ts",
         "packages/mail/src/__tests__/attachment-resource-limits.test.ts",
+        "apps/web/src/__tests__/next-workspace-transpilation.test.ts",
         "apps/web/src/server/mailbox/__tests__/oauth-cache.test.ts",
         "packages/db/src/__tests__/mailbox-oauth-cache.test.ts",
         "packages/db/src/__tests__/mailbox-rls.test.ts",

@@ -423,6 +423,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Der Docker-Web-Build transpiliert auch das injizierte TypeScript-Paket
+  `@taxtronik/elster`. Ein Regressionstest gleicht die Next.js-Konfiguration
+  mit den Workspace-Laufzeitabhängigkeiten ab und verhindert weitere
+  Auslassungen. Die technische Änderung ist bei `MAIL-INBOX-001` dokumentiert;
+  die fachliche Posteingangslogik bleibt unverändert.
+
 - Die Barrierefreiheitsprüfung der Staff- und Verwaltungsseiten ist in kürzere
   Rundgänge aufgeteilt, damit alle Seiten innerhalb der unveränderten
   Zeitbudgets geprüft werden.
