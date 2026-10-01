@@ -122,7 +122,8 @@ export async function toggleRssFeedAction(input: {
   return withRssReaderStaff(
     async (tx, { tenantId, staffId }) => {
       await tx.rssFeed.update({
-        where: { id: parsed.data.id },
+        // ACCESS-TENANT-RLS-001: Tenant-RLS allein schützt keine fremden Abos.
+        where: { id: parsed.data.id, tenantId, staffId },
         data: { active: parsed.data.active },
       });
       await evidenceService.record(tx, {
@@ -144,11 +145,12 @@ export async function deleteRssFeedAction(input: { id: string }): Promise<Action
 
   return withRssReaderStaff(
     async (tx, { tenantId, staffId }) => {
-      const f = await tx.rssFeed.findUnique({
-        where: { id: parsed.data.id },
+      const f = await tx.rssFeed.findFirst({
+        where: { id: parsed.data.id, tenantId, staffId },
         select: { name: true, url: true },
       });
-      await tx.rssFeed.delete({ where: { id: parsed.data.id } });
+      if (!f) throw new ActionError('Feed nicht gefunden.');
+      await tx.rssFeed.delete({ where: { id: parsed.data.id, tenantId, staffId } });
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',
@@ -156,7 +158,7 @@ export async function deleteRssFeedAction(input: { id: string }): Promise<Action
         action: 'rss_feed.delete',
         resourceType: 'rss_feed',
         resourceId: parsed.data.id,
-        before: { name: f?.name ?? null, url: f?.url ?? null },
+        before: { name: f.name, url: f.url },
       });
     },
     { revalidate: '/staff/dashboard' },

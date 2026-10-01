@@ -54,7 +54,12 @@ code_refs:
   - apps/web/src/server/ical/feed.ts
   - apps/web/src/app/api/portal/ical/[token]/route.ts
   - apps/web/src/server/auth/staff.ts
+  - apps/web/src/server/rate-limit/index.ts
+  - apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts
   - apps/web/src/server/auth/portal.ts
+  - apps/web/src/server/auth/magic-link-entry.ts
+  - apps/web/src/app/portal/(auth)/login/actions.ts
+  - apps/web/src/app/portal/(auth)/login/verify/page.tsx
   - apps/web/src/server/auth/portal-session.ts
   - apps/web/src/app/staff/(auth)/login/page.tsx
   - apps/web/src/app/staff/(auth)/login/actions.ts
@@ -125,6 +130,9 @@ test_refs:
   - apps/web/src/server/auth/__tests__/admin-break-glass.test.ts
   - apps/web/src/server/auth/__tests__/staff-auth-state.test.ts
   - apps/web/src/server/auth/__tests__/staff-session-auth-binding.test.ts
+  - apps/web/src/server/auth/__tests__/staff-second-factor-rate-limit.test.ts
+  - apps/web/src/server/auth/__tests__/magic-link-entry.test.tsx
+  - apps/web/src/app/staff/(protected)/dashboard/__tests__/rss-feed-actions.test.ts
   - packages/config/src/__tests__/env-webauthn.test.ts
   - packages/db/src/__tests__/dev-seed-auth-reset.test.ts
   - apps/web/src/server/auth/__tests__/simplewebauthn-crl-hardening.test.ts
@@ -286,6 +294,15 @@ widerruft den Login-Anker. Portal-Cookies ohne gültigen Ursprungsanker werden
 abgewiesen. Beim Deployment ist eine einmalige Portal-Neuanmeldung nötig,
 weil historische Profilwechsel nicht zuverlässig rekonstruierbar sind.
 
+Alle öffentlichen Magic-Link-Einstiege begrenzen Datenbankabfragen vor dem
+Tokenlookup. Auth.js-Callback und Bestätigungs-Server-Action teilen denselben
+IP- beziehungsweise globalen Bucket; die GET-Profilauswahl besitzt ein eigenes
+Lesekontingent und verbraucht weiterhin keinen Einmal-Link. Bei erschöpftem
+Kontingent erfolgen weder Tokenverbrauch noch Sessionausstellung. Die Anzeige
+unterscheidet vorübergehende Drosselung von einem ungültigen oder verbrauchten
+Link. Laufzeitregressionen führen beide Anmeldepfade und die gerenderte
+Profilauswahl mit simulierten Auth-/Persistenzgrenzen aus.
+
 Redis-Widerrufszeitpunkte steigen durch einen atomaren Lua-Vergleich monoton.
 Verspätete ältere Schreibvorgänge dürfen bereits widerrufene Tokens nicht
 reaktivieren. Nur ein bestätigter Redis-null-Wert bedeutet fehlenden Cutoff;
@@ -320,6 +337,19 @@ Der Render-Regressionsnachweis prüft die tatsächliche zweite Loginansicht mit
 vollständigen TOTP-/Recovery-Eingaben und ungültigen Formaten; er ersetzt
 keinen Browser- oder Datenbanknachweis des einmaligen Verbrauchs.
 
+TOTP und Backup-Codes teilen sich nach erfolgreicher Passwortprüfung ein
+eigenes kontogebundenes Limit von fünf Prüfversuchen je fünf Minuten. Dieser
+Zähler ist von IP-Buckets, Passwortversuchen und dem bisherigen Kontolockout
+getrennt. Eine erfolgreiche Passwort-Vorprüfung kann ihn nicht zurücksetzen;
+wechselnde Quell-IPs schaffen kein zusätzliches Kontingent. Erst ein
+vollständig erfolgreicher Login einschließlich des transaktionalen Audits
+setzt das Limit zurück. Fehlende Codes oder falsche Passwörter verbrauchen
+dieses Kontingent nicht. Nicht verfügbare Redis-Prüfung sperrt den
+Produktionslogin weiterhin. Die Regression führt reale Passwort-Action,
+Credentials-Provider, Rate-Limiter und Lockout mit zustandsbehafteten
+Persistenz-Doubles aus und prüft verteilte Versuche, Ablauf, Recovery-Verbrauch,
+Replay, Auditfehler, Redis-Ausfall und den fortbestehenden Hardware-only-Ausschluss.
+
 Das öffentliche Staff-TOTP-Erstsetup bindet den nach bcrypt erneut gelesenen
 Kontostand an genau den geprüften Passwort-Hash und die ursprüngliche
 `authRevision`. Neue Secrets werden nur bei weiterhin aktivem, nicht
@@ -344,6 +374,13 @@ ersetzen keinen Parallelitätstest gegen einen echten PostgreSQL-Server.
 serialisiert Queries auf der Verbindung. Die Migration aktiviert und erzwingt
 RLS. `verify-rls.ts` inventarisiert Tabellen, RLS-Flags und Policies; der
 Cross-Tenant-Test verwendet getrennte App-Sessions für Lesen und Mutieren.
+
+Persönliche RSS-Abonnements verwenden zusätzlich zur tenantweiten RLS bei
+Aktivierung und Löschung die aus der Sitzung abgeleitete Mitarbeiter-ID.
+Eine bekannte fremde Feed-ID desselben Tenants berechtigt weder zum Lesen
+der Löschmetadaten noch zur Änderung oder Löschung des Abonnements. Die
+Action-Regression prüft eigene, mitarbeiterfremde und tenantfremde IDs gegen
+ein zustandsbehaftetes Persistenz-Double sowie den fehlenden Sessionkontext.
 
 Steuerverbindungen und lokale GwG-Personenanker sind Teil derselben
 Tabelleninventur. Beide führen den zentralen Tenant-/Client-Paartrigger

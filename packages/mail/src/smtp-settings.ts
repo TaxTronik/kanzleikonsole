@@ -12,6 +12,7 @@
 // brauchen keine Migration.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
 import {
@@ -91,6 +92,15 @@ export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | n
 }
 
 export async function writeSmtpConfig(ctx: TenantContext, cfg: SmtpConfig): Promise<void> {
+  await withTenantContext(ctx, (tx) => writeSmtpConfigTx(tx, ctx, cfg));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeSmtpConfigTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  cfg: SmtpConfig,
+): Promise<void> {
   const stored: SmtpStored = {
     host: cfg.host.trim(),
     port: cfg.port,
@@ -100,20 +110,21 @@ export async function writeSmtpConfig(ctx: TenantContext, cfg: SmtpConfig): Prom
     from: cfg.from.trim(),
     replyTo: cfg.replyTo.trim(),
   };
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY,
-      value: stored as object,
-      updatedBy: ctx.actorId,
-    });
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY,
+    value: stored as object,
+    updatedBy: ctx.actorId,
   });
 }
 
 export async function deleteSmtpConfig(ctx: TenantContext): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    await deleteTenantSettingValue(tx, ctx.tenantId, KEY);
-  });
+  await withTenantContext(ctx, (tx) => deleteSmtpConfigTx(tx, ctx));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function deleteSmtpConfigTx(tx: TxClient, ctx: TenantContext): Promise<void> {
+  await deleteTenantSettingValue(tx, ctx.tenantId, KEY);
 }
 
 /**

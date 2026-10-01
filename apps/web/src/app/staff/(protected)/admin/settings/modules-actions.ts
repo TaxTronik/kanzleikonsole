@@ -10,10 +10,10 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
-import { writeModules, type ModuleConfig } from '@/server/settings/modules';
-import { writeAccessPolicy, type ClientAccessMode } from '@/server/settings/access-policy';
+import { writeModulesTx, type ModuleConfig } from '@/server/settings/modules';
+import { writeAccessPolicyTx, type ClientAccessMode } from '@/server/settings/access-policy';
 import {
-  writeClientLayout,
+  writeClientLayoutTx,
   ALL_CLIENT_BLOCKS,
   DEFAULT_CLIENT_LAYOUT,
   type ClientBlockKey,
@@ -138,9 +138,8 @@ export async function saveModulesAction(
         : null,
   };
 
-  await writeModules(ctx, cfg);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeModulesTx(tx, ctx, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -179,9 +178,8 @@ export async function saveAccessPolicyAction(
 
   const { tenantId, staffId, ctx } = g;
   const cfg = { clientAccessMode: parsed.data.clientAccessMode as ClientAccessMode };
-  await writeAccessPolicy(ctx, cfg);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeAccessPolicyTx(tx, ctx, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -227,9 +225,8 @@ export async function saveClientLayoutAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const { tenantId, staffId, ctx } = g;
-  await writeClientLayout(ctx, { items: parsed.data.items });
-
   await withTenantContext(ctx, async (tx) => {
+    await writeClientLayoutTx(tx, ctx, { items: parsed.data.items });
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -249,9 +246,8 @@ export async function resetClientLayoutAction(): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
-  await writeClientLayout(ctx, DEFAULT_CLIENT_LAYOUT);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeClientLayoutTx(tx, ctx, DEFAULT_CLIENT_LAYOUT);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',

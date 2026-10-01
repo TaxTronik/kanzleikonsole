@@ -36,6 +36,15 @@ import {
 export type MaterializeDb = Prisma.TransactionClient;
 
 /**
+ * TAX-DEADLINE-AUTOREQUEST-001: acquire before config/deadline/audit writes.
+ * Config edits and candidate creation share this tenant gate, including new
+ * configs with no row to lock yet. Hold it only inside a transaction.
+ */
+export async function lockTaxScheduleTx(db: MaterializeDb, tenantId: string): Promise<void> {
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`tax-deadline-config:${tenantId}`}, 0))`;
+}
+
+/**
  * Audit-Eintrag für eine automatisch erzeugte Anforderung. Strukturell
  * kompatibel zu `AuditEventInput` aus @taxtronik/evidence — der Recorder wird
  * injiziert, damit dieses Paket frei von Evidence-/DB-Laufzeitabhängigkeiten
@@ -69,11 +78,11 @@ export interface StaffNotificationInput {
 }
 
 export interface MaterializeDeps {
-  /** Client für Reads, Deadline-Inserts und das OVERDUE-Update. */
+  /** Client für Pipeline-Reads und das OVERDUE-Update. */
   db: MaterializeDb;
   /**
-   * Führt den Block „Request anlegen + Deadline updaten + Audit-Eintrag" in
-   * EINER Transaktion aus. Web läuft bereits komplett in einer
+   * Führt Kandidatenanlage und jeweils „Request + Deadline + Audit“ in einer
+   * Transaktion aus. Web läuft bereits komplett in einer
    * withTenantContext-Transaktion (`(fn) => fn(tx)`); der Worker öffnet pro
    * Block eine withWorkerTenantContext-Transaktion.
    */
@@ -156,58 +165,15 @@ export async function materializeTenantTaxDeadlines(
     staffWarned: 0,
   };
 
-  const { region, bavariaAssumption } = await readDeadlineCalendar(db, tenantId);
-
-  // 1. Aktive Configs laden
-  const configs = await db.taxScheduleConfig.findMany({
-    where: { tenantId, active: true },
-    include: { client: { select: { id: true, allowActive: true } } },
+  // The config read and bulk insert must use the SAME transaction and gate as
+  // schedule edits. Otherwise a worker can reinsert the old due date after an
+  // edit removed it; skipDuplicates would then retain that stale date forever.
+  const { configs, createdCount } = await deps.runAtomic(async (tx) => {
+    await lockTaxScheduleTx(tx, tenantId);
+    return createDeadlineCandidates(tx, tenantId, today, horizon);
   });
   stats.configsScanned = configs.length;
-
-  // 2. Pro Config alle Kandidaten generieren und idempotent einfügen.
-  //    P-4: EIN createMany(skipDuplicates) über den Unique-Key
-  //    (tenantId, clientId, kind, period) statt findUnique+create pro
-  //    Kandidat — vorher 2 sequentielle Queries × Configs × Kandidaten
-  //    (5.000–12.000 bei 1000 Mandanten), was die interaktive 15-s-Tx der
-  //    Web-Action riss (P2028). skipDuplicates = ON CONFLICT DO NOTHING.
-  const candidateRows: Prisma.TaxDeadlineCreateManyInput[] = [];
-  for (const cfg of configs) {
-    // Übersprungen wenn Mandant nicht freigeschaltet (GwG)
-    if (!cfg.client.allowActive) continue;
-
-    const candidates = generateDeadlines(
-      cfg.kind,
-      today,
-      horizon,
-      cfg.hasDauerfrist,
-      region,
-      cfg.advised,
-      bavariaAssumption,
-    );
-    for (const c of candidates) {
-      // Niemals retrospektiv erzeugen — Mandanten werden oft unterjährig
-      // übernommen, alte Perioden gehören dem Vorgänger. „Retrospektiv" ist
-      // ein Termin erst NACH Ende seines Fälligkeitstags (§ 108 (1) AO) —
-      // ein heute fälliger Termin wird noch angelegt.
-      if (c.dueDate.getTime() < today.getTime()) continue;
-      candidateRows.push({
-        tenantId,
-        clientId: cfg.clientId,
-        configId: cfg.id,
-        kind: c.kind,
-        period: c.period,
-        dueDate: c.dueDate,
-      });
-    }
-  }
-  if (candidateRows.length > 0) {
-    const created = await db.taxDeadline.createMany({
-      data: candidateRows,
-      skipDuplicates: true,
-    });
-    stats.deadlinesCreated = created.count;
-  }
+  stats.deadlinesCreated = createdCount;
 
   // 3. Zweistufige Auto-Anforderung:
   //    (3a) Interne Vorwarnung an Zuständige, sobald heute ≥ Fälligkeit −
@@ -446,4 +412,65 @@ export async function materializeTenantTaxDeadlines(
   stats.markedOverdue = overdueResult.count;
 
   return stats;
+}
+
+async function createDeadlineCandidates(
+  db: MaterializeDb,
+  tenantId: string,
+  today: Date,
+  horizon: Date,
+) {
+  const { region, bavariaAssumption } = await readDeadlineCalendar(db, tenantId);
+
+  // 1. Aktive Configs laden
+  const configs = await db.taxScheduleConfig.findMany({
+    where: { tenantId, active: true },
+    include: { client: { select: { id: true, allowActive: true } } },
+  });
+
+  // 2. Pro Config alle Kandidaten generieren und idempotent einfügen.
+  //    P-4: EIN createMany(skipDuplicates) über den Unique-Key
+  //    (tenantId, clientId, kind, period) statt findUnique+create pro
+  //    Kandidat — vorher 2 sequentielle Queries × Configs × Kandidaten
+  //    (5.000–12.000 bei 1000 Mandanten), was die interaktive 15-s-Tx der
+  //    Web-Action riss (P2028). skipDuplicates = ON CONFLICT DO NOTHING.
+  const candidateRows: Prisma.TaxDeadlineCreateManyInput[] = [];
+  for (const cfg of configs) {
+    // Übersprungen wenn Mandant nicht freigeschaltet (GwG)
+    if (!cfg.client.allowActive) continue;
+
+    const candidates = generateDeadlines(
+      cfg.kind,
+      today,
+      horizon,
+      cfg.hasDauerfrist,
+      region,
+      cfg.advised,
+      bavariaAssumption,
+    );
+    for (const c of candidates) {
+      // Niemals retrospektiv erzeugen — Mandanten werden oft unterjährig
+      // übernommen, alte Perioden gehören dem Vorgänger. „Retrospektiv" ist
+      // ein Termin erst NACH Ende seines Fälligkeitstags (§ 108 (1) AO) —
+      // ein heute fälliger Termin wird noch angelegt.
+      if (c.dueDate.getTime() < today.getTime()) continue;
+      candidateRows.push({
+        tenantId,
+        clientId: cfg.clientId,
+        configId: cfg.id,
+        kind: c.kind,
+        period: c.period,
+        dueDate: c.dueDate,
+      });
+    }
+  }
+  let createdCount = 0;
+  if (candidateRows.length > 0) {
+    const created = await db.taxDeadline.createMany({
+      data: candidateRows,
+      skipDuplicates: true,
+    });
+    createdCount = created.count;
+  }
+  return { configs, createdCount };
 }

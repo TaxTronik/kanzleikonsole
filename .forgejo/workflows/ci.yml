@@ -247,6 +247,20 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/invoice-selection-db.test.tsx 2>&1 | tee testbericht-invoice-selection.log
 
+      - name: Settings and audit atomicity against the PostgreSQL app role
+        env:
+          SETTINGS_ATOMICITY_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/settings/__tests__/settings-atomicity-db.test.ts 2>&1 | tee testbericht-settings-atomicity.log
+
+      - name: Invoice payment and correction concurrency against PostgreSQL
+        env:
+          INVOICE_CONCURRENCY_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/invoicing/__tests__/invoice-concurrency-db.test.ts 2>&1 | tee testbericht-invoice-concurrency.log
+
       - name: Testnachweis hochladen
         if: always()
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
@@ -257,10 +271,15 @@ jobs:
             testbericht-db.log
             testbericht-reminder-services.log
             testbericht-invoice-selection.log
+            testbericht-settings-atomicity.log
+            testbericht-invoice-concurrency.log
           if-no-files-found: ignore
 
       - name: Schema drift check
-        run: pnpm verify:schema-drift
+        # A reused shadow DB must also rebuild custom app-schema functions.
+        run: |
+          pnpm verify:schema-drift
+          pnpm verify:schema-drift
 
       - name: RLS drift gate
         run: pnpm verify:rls

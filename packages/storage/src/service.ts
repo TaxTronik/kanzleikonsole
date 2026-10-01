@@ -451,9 +451,28 @@ async function readObjectBodyWithLimit(
   return Buffer.concat(chunks);
 }
 
-export async function fetchObjectBytes(bucket: string, storageKey: string): Promise<Buffer> {
-  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
+export async function fetchObjectBytes(
+  bucket: string,
+  storageKey: string,
+  storageVersionId?: string | null,
+): Promise<Buffer> {
+  const result = await s3.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      ...versionReadInput(storageVersionId),
+    }),
+  );
   return readObjectBodyWithLimit(result.Body as Readable, result.ContentLength);
+}
+
+/** DOC-VERSION-IMMUTABILITY-001: a known version must never fall back to a mutable key. */
+function versionReadInput(storageVersionId: string | null | undefined): { VersionId?: string } {
+  if (storageVersionId == null) return {};
+  if (!storageVersionId.trim() || storageVersionId === 'null') {
+    throw new Error('STORAGE_VERSION_ID_INVALID: Ungültige gebundene Objektversion.');
+  }
+  return { VersionId: storageVersionId };
 }
 
 /**
@@ -525,8 +544,18 @@ export interface ObjectStream {
  * pro Chunk nachgedeckelt — die Quelle ist der interne, vertrauenswürdige
  * Object-Store; der Cap ist DoS-Vorsorge, kein Schutz vor manipuliertem Upstream.
  */
-export async function streamObject(bucket: string, storageKey: string): Promise<ObjectStream> {
-  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
+export async function streamObject(
+  bucket: string,
+  storageKey: string,
+  storageVersionId?: string | null,
+): Promise<ObjectStream> {
+  const result = await s3.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      ...versionReadInput(storageVersionId),
+    }),
+  );
   const contentLength = typeof result.ContentLength === 'number' ? result.ContentLength : null;
   if (contentLength !== null && contentLength > MAX_UPLOAD_BYTES) {
     // Body schliessen, bevor geworfen wird: er wurde nie in einen Web-Stream

@@ -10,6 +10,7 @@
 
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { requireWritableRiskMarkingTx } from '@taxtronik/db/risk-analysis';
 import { evidenceService } from '@/server/container';
 
 /** Minimaler Client-Vertrag für DI/Tests. */
@@ -34,6 +35,9 @@ export async function pushDefinitionToCatalog(
   input: PushDefinitionInput,
   client?: DefineCapableClient,
 ): Promise<PushDefinitionResult> {
+  await withTenantContext(ctx, (tx) =>
+    requireWritableRiskMarkingTx(tx, ctx.tenantId, input.markingId),
+  );
   const c = client ?? new RiskLayerClient();
   const res = await c.katalogDefiniere({
     begriff: input.begriff,
@@ -46,6 +50,8 @@ export async function pushDefinitionToCatalog(
   // Provenienz (herkunft) bleibt unverändert — sie beschreibt, WIE die Stelle
   // erkannt wurde, nicht wer den Begriff kuratiert hat.
   await withTenantContext(ctx, async (tx) => {
+    // The engine call runs outside the DB transaction; recheck its live target.
+    await requireWritableRiskMarkingTx(tx, ctx.tenantId, input.markingId);
     await tx.riskMarking.update({
       where: { id: input.markingId },
       data: { begriffId: res.begriffId },

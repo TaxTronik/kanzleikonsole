@@ -29,13 +29,18 @@ sources:
     primary: false
 code_refs:
   - packages/db/prisma/migrations/20260801001000_iter85_invoice_gob/migration.sql
+  - packages/db/prisma/migrations/20261001001000_invoice_position_consistency/migration.sql
   - apps/web/src/app/staff/(protected)/invoices/actions.ts
   - apps/web/src/server/invoicing/number.ts
   - apps/web/src/server/invoicing/storno.ts
+  - apps/web/src/server/invoicing/payment-claim.ts
 test_refs:
   - packages/db/src/__tests__/invoice-festschreibung.test.ts
   - apps/web/src/server/invoicing/__tests__/number.test.ts
   - apps/web/src/server/invoicing/__tests__/storno.test.ts
+  - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+  - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+  - apps/web/src/server/invoicing/__tests__/invoice-concurrency-ci.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/rechnungen.md
@@ -92,6 +97,17 @@ versendeter Entwurf kann storniert werden, ohne einen bereits kommunizierten
 Beleg zu behaupten. Extern erzeugte Rechnungen folgen bei der Erfassung einem
 anderen Ablauf, behalten aber ihre hochgeladenen Originalbytes.
 
+Eine bestehende Position behält ihre ID und ihre Rechnungszuordnung auch im
+Entwurf. Entwurfspositionen können innerhalb derselben Rechnung bearbeitet,
+ergänzt oder gelöscht werden. Ein Umhängen darf die Festschreibung des
+Ursprungsbelegs nicht umgehen.
+
+Die Zahlungsmarkierung beansprucht atomar einen noch offenen Status `SENT`
+oder `OVERDUE`. Bei parallelen Aufrufen schreibt nur der Gewinner den
+Zahlungszeitpunkt und den Zahlungsaudit; ein verlorener Claim wird als
+Zustandskonflikt angezeigt. Eine bereits erfolgte Zahlung wird nicht erneut
+datiert.
+
 ## Beispiele
 
 ### Normalfall
@@ -113,6 +129,21 @@ Anwendungscode prüft die Statusmatrix und Berechtigungen. Datenbank-Trigger
 sperren nach Verlassen von `DRAFT` die Geschäftsfelder, alle Positionen und das
 Löschen des Belegs unabhängig vom Anwendungspfad. Der Storno-Helfer bildet
 Korrekturpositionen mit Belegbezug.
+
+Der Positionstrigger sperrt vor jeder Änderung die zugehörige Rechnung bis
+zum Transaktionsende und liest deren Status erneut. Damit werden auch direkte
+SQL- und verschachtelte Prisma-Schreibvorgänge mit der Festschreibung
+serialisiert. Die forward-only Ergänzung verändert keine historischen
+Positionen. `payment-claim.ts` verwendet einen bedingten Update; Claim,
+Benachrichtigungsabschluss und Audit der Action liegen in derselben Transaktion.
+
+Beim Versand eines Korrekturbelegs sperrt die Action die Originalrechnung vor
+dem ersten Versand-Audit und hält die Sperre bis zum Commit. Damit gilt wie
+bei der Zahlungsmarkierung die Reihenfolge Rechnungszeile vor Auditkette.
+Eine zuvor beanspruchte Zahlung kann vollständig committen, bevor der Storno
+den dann aktuellen Status auswertet; gewinnt der Storno zuerst, verliert der
+spätere Zahlungsclaim ohne Zahlungsaudit. Die Sperre verhindert einen Zyklus
+zwischen Originalzeile und tenantweiter Audit-Sperre.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -138,3 +169,19 @@ Die Migration enthält die unveränderlichen Feldmengen und Statusmatrix als
 Datenbank-Backstop. Der DB-Test greift Beträge, Daten, Positionen, Löschen und
 privilegierte Verbindungen an; Anwendungs-Tests decken Matrix und
 Korrekturpositionen ab.
+Weitere PostgreSQL-Regressionen prüfen Umhängeversuche, beide Reihenfolgen
+konkurrierender Positionsänderung und Versand sowie INSERT, UPDATE und DELETE
+mit der App-Rolle. `pg_blocking_pids` belegt das tatsächliche Warten.
+Parallele Zahlungsclaims, ein zuvor gewonnener Storno, Tenantbindung und
+Transaktionsrollback sind ebenfalls mit echten Datenbankverbindungen geprüft.
+Der Action-Test prüft, dass bei einem verlorenen Zahlungsclaim weder Audit
+noch Benachrichtigungsabschluss doppelt ausgeführt wird.
+
+Die zusätzliche PostgreSQL-Regression führt die echten Zahlungs- und
+Versand-Actions mit App-Rolle und echten Evidence-Schreibvorgängen in beiden
+konkurrierenden Reihenfolgen aus. `pg_blocking_pids` weist das tatsächliche
+Warten nach; Endstatus, Zahlungsdatum, Rückzahlungskennzeichen und Auditkette
+werden anschließend geprüft. Authentifizierung, Archivrenderer und ausgehende
+Benachrichtigungen sind isoliert. Der Test läuft mit
+`INVOICE_CONCURRENCY_DB_TEST=1` verpflichtend im DB-CI-Job; ohne dieses Opt-in
+werden keine Datenbankzugriffe durch den Web-Unit-Lauf ausgelöst.

@@ -28,6 +28,17 @@
 
 ## Entscheidung
 
+Ergänzung vom 1. Oktober 2026: Vor dem Prisma-Reset wird auch das
+handgepflegte `app`-Schema der ausdrücklich benannten Shadow-Datenbank entfernt.
+Prisma setzte nur `public` zurück; Funktionen aus einem früheren Prüflauf
+konnten deshalb spätere Migrationen blockieren. Die Shadow-Datenbank muss
+einen anderen Namen als die Ziel-/App-Datenbank tragen und `public` verwenden;
+auch eine abweichende Hostangabe macht denselben Datenbanknamen nicht zulässig.
+Die tatsächlichen Datenbanknamen von Ziel-/App- und Shadow-Verbindungen werden
+vor dem Löschen geprüft, einschließlich möglicher Pooler-Aliase. Ausschließlich
+eine entbehrliche separate Datenbank als `SHADOW_DATABASE_URL` angeben.
+CI weist zwei vollständige aufeinanderfolgende Durchläufe nach.
+
 Wir behalten die Mischarchitektur (Prisma generiert Tabellen-Diffs,
 handgepflegte SQL-Migrationen für RLS-Policies, Trigger und Indizes).
 Aber: **`prisma migrate diff` als Drift-Check** wird als

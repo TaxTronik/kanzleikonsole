@@ -36,10 +36,14 @@ code_refs:
   - apps/web/src/server/risk/run-analysis.ts
   - apps/web/src/server/risk/persistence.ts
   - apps/worker/src/jobs/risk-analyse-llm.ts
+  - apps/web/src/server/risk/reanalyze.ts
+  - packages/db/src/risk-analysis.ts
 test_refs:
   - apps/web/src/server/risk/__tests__/llm.test.ts
   - apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts
   - apps/web/src/server/risk/__tests__/norms-core.test.ts
+  - apps/web/src/server/risk/__tests__/reanalyze.test.ts
+  - packages/db/src/__tests__/risk-archive-consistency.test.ts
 feature_refs:
   - docs/anwenderdoku/subsumtion-tcms-quantenlos.md
   - docs/assurance/known-limits.md
@@ -134,6 +138,16 @@ Worker `risk-analyse-llm.ts` ergänzt nach Modul- und Verfügbarkeitsprüfung ne
 LLM-/Embedding-Markierungen und protokolliert nur einen erfolgreichen
 Enrichment-Lauf, ohne dessen vollständigen Rohoutput zu speichern.
 
+Worker und Reanalyse prüfen nach dem externen Engine-Aufruf in der
+Schreibtransaktion unter dem gemeinsamen Analyse-Lock erneut, dass der Stand
+noch nicht archiviert und der Sachverhalt unverändert ist. Ein bereits
+archivierter oder zwischenzeitlich redigierter Sachverhalt nimmt keine
+verspäteten Markierungen auf. Der Worker verwirft solche Ergebnisse ohne
+Erfolgs-Audit; vor einem neuen Engine-Lauf prüft er auch veraltete Queue-Payloads.
+Ein weiterer Check unmittelbar nach dem Modellwarmlauf verhindert, dass ein
+während dieses Warmlaufs archivierter oder redigierter Queue-Text gesendet wird.
+Langes Engine-I/O findet außerhalb der Datenbanktransaktion statt.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die Umsetzung ist teilweise. Provenienz, getrennte LLM-Phase, Hashanker und
@@ -156,7 +170,10 @@ archivierter Rohoutput samt dort verwendeter Katalogversion. Die Aussage
 ## Technische Nachweise
 
 Die referenzierten Tests belegen LLM-Statusabbildung, den Modul-Gate des
-Workers und reine Operationen zur Normkuratierung. Sie belegen ausdrücklich
+Workers, Zurückweisung archivierter/redigierter Queue-Payloads und später
+veralteter Ergebnisse sowie reine Operationen zur Normkuratierung. Die
+PostgreSQL-Nachweise der Archivregel prüfen die zugrunde liegenden Locks.
+Sie belegen ausdrücklich
 weder die fachliche Qualität der Engine noch die Vollständigkeit der Treffer,
 den vollständigen Persistenzpfad, die Rohoutput-Archivierung des Enrichments
 oder eine tatsächliche Berufsträgerfreigabe.

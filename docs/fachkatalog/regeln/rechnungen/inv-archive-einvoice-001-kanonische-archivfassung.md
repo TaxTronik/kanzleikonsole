@@ -28,14 +28,19 @@ sources:
     checked_at: '2026-08-23'
     primary: false
 code_refs:
+  - apps/web/src/app/api/staff/invoices/[id]/zugferd/route.ts
+  - apps/web/src/app/api/staff/invoices/[id]/xrechnung/route.ts
+  - packages/storage/src/service.ts
   - apps/web/src/server/invoicing/archive.ts
   - apps/web/src/server/invoicing/archive-lock.ts
   - apps/web/src/server/invoicing/draft-archive.ts
   - apps/web/src/server/invoicing/xrechnung.ts
   - apps/web/src/server/invoicing/zugferd.ts
 test_refs:
+  - packages/storage/src/__tests__/object-version.test.ts
   - apps/web/src/server/invoicing/__tests__/archive.test.ts
   - apps/web/src/server/invoicing/__tests__/archive-lock.test.ts
+  - apps/web/src/server/invoicing/__tests__/archive-lock-call-sites.test.ts
   - apps/web/src/server/invoicing/__tests__/draft-archive.test.ts
   - apps/web/src/server/invoicing/__tests__/xrechnung.test.ts
   - apps/web/src/server/invoicing/__tests__/zugferd.test.ts
@@ -124,6 +129,12 @@ der Schriftbreite innerhalb der Beschreibungsspalte und bei Bedarf über
 mehrere Seiten umgebrochen. Rechen-/Quellenangaben dürfen dabei nicht
 abgeschnitten werden oder die Betragsspalten überlagern.
 
+Die gespeicherte S3-Version-ID bleibt beim Wiederverwenden und konkurrierenden
+Verknüpfen einer Archivfassung bis zur PDF-/XML-Auslieferung erhalten. Auch
+die Altbestands-XML-Extraktion liest die konkret gebundene PDF-Version.
+Die früheren Key-only-Abrufe ignorierten diesen vorhandenen Identitätsanker;
+eine neuere Objektversion konnte dadurch an die Stelle des Originals treten.
+
 ## Bekannte Abweichungen und Grenzen
 
 Innerhalb des beschriebenen Konsistenz- und Byte-Stabilitäts-Scopes sind keine
@@ -148,5 +159,8 @@ Archiv-, Lock- und Dokumentlink-Tests prüfen Idempotenz, konkurrierende
 Erzeugung, Vorschau-Isolation, explizite XML-Verknüpfung, Altbestands-Extraktion
 und identische gespeicherte Bytes. Format-Tests prüfen die derzeit erzeugten
 XML- und PDF-Strukturen.
+Die Storage-Regression zu `DOC-VERSION-IMMUTABILITY-001` prüft verschiedene
+Bytes für den aktuellen Key und die gebundene Version sowie das Ausbleiben
+eines Fallbacks bei fehlender Version.
 Der PDF-Test prüft auch lange, mehrseitige Positionsbeschreibungen durch
 Textextraktion und die Koordinaten der tatsächlich gezeichneten Zeilen.

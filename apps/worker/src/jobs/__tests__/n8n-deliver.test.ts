@@ -281,7 +281,7 @@ describe('n8n delivery worker', () => {
   });
 
   it.each([401, 403, 404])('behandelt HTTP %s terminal ohne BullMQ-Retry', async (status) => {
-    h.safeFetch.mockResolvedValue({ ok: false, status, text: async () => 'denied' });
+    h.safeFetch.mockResolvedValue(new Response('denied', { status }));
     h.tx.n8nDelivery.findMany.mockResolvedValue([
       { status: 'FAILED', lastError: `HTTP ${status}: denied`, deliveredAt: null },
     ]);
@@ -296,7 +296,7 @@ describe('n8n delivery worker', () => {
   it.each([429, 500, 503])(
     'gibt HTTP %s für BullMQ-Retry frei und löst den Lease',
     async (status) => {
-      h.safeFetch.mockResolvedValue({ ok: false, status, text: async () => 'later' });
+      h.safeFetch.mockResolvedValue(new Response('later', { status }));
 
       await expect(runDelivery()).rejects.toThrow(`HTTP ${status}`);
       expect(h.tx.n8nDelivery.updateMany).toHaveBeenCalledWith({
@@ -310,6 +310,28 @@ describe('n8n delivery worker', () => {
       });
     },
   );
+
+  it.each([400, 503])('limits and cancels an endless HTTP %s error body', async (status) => {
+    const cancel = vi.fn();
+    let reads = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        reads++;
+        controller.enqueue(new TextEncoder().encode('x'.repeat(256)));
+      },
+      cancel,
+    });
+    h.safeFetch.mockResolvedValue(new Response(body, { status }));
+    if (status === 400) await expect(runDelivery()).resolves.toBeUndefined();
+    else await expect(runDelivery()).rejects.toThrow(`HTTP ${status}: ${'x'.repeat(200)}`);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(reads).toBeLessThanOrEqual(5); // four chunks plus the Web Stream's one-chunk prefetch
+    expect(h.tx.n8nDelivery.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lastError: `HTTP ${status}: ${'x'.repeat(200)}` }),
+      }),
+    );
+  });
 
   it('markiert einen SSRF-Verstoß terminal als FAILED', async () => {
     h.safeFetch.mockRejectedValue(new h.SsrfGuardError('private-ip', 'resolves to 10.0.0.1'));
@@ -547,7 +569,7 @@ describe('n8n delivery worker', () => {
   });
 
   it('stempelt einen transienten Fehler im letzten Versuch atomar FAILED', async () => {
-    h.safeFetch.mockResolvedValue({ ok: false, status: 503, text: async () => 'later' });
+    h.safeFetch.mockResolvedValue(new Response('later', { status: 503 }));
     h.tx.n8nDelivery.findFirst.mockResolvedValue({ outboxId: 'outbox-1' });
     h.tx.n8nDelivery.findMany.mockResolvedValue([
       { status: 'FAILED', lastError: 'HTTP 503: later', deliveredAt: null },

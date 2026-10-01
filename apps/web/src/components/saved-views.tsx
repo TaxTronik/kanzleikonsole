@@ -2,11 +2,12 @@
 
 // =============================================================================
 // Gespeicherte Ansichten — benannte Lesezeichen der aktuellen Filter-/Sortier-
-// Kombination (Query-String) pro Listenseite. localStorage, kein Backend:
-// persönliche Bequemlichkeit pro Browser, keine Auswertung.
+// Kombination (Query-String) pro Listenseite, Kanzlei und Mitarbeiter.
+// Suchbegriffe und benannte Ansichten werden nicht kontoübergreifend angezeigt.
 // =============================================================================
 
 import { readBrowserStorage, useBrowserStorage, writeBrowserStorage } from './use-browser-storage';
+import { useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Bookmark, BookmarkPlus, X } from 'lucide-react';
 import { promptDialog } from '@/components/ui/modal';
@@ -16,39 +17,63 @@ interface SavedView {
   query: string; // Such-String OHNE führendes '?'
 }
 
-const KEY = 'taxtronik:saved-views';
+const LEGACY_KEY = 'taxtronik:saved-views';
+
+interface SavedViewScope {
+  tenantId: string;
+  staffId: string;
+}
 
 function readAll(raw: string | null): Record<string, SavedView[]> {
   try {
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, SavedView[]>) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).flatMap(([path, value]: [string, unknown]) => {
+        if (!path.startsWith('/staff/') || !Array.isArray(value)) return [];
+        const valid = value.filter(
+          (view): view is SavedView =>
+            !!view &&
+            typeof view === 'object' &&
+            typeof view.name === 'string' &&
+            view.name.trim().length > 0 &&
+            typeof view.query === 'string',
+        );
+        return [[path, [...new Map(valid.map((view) => [view.name, view])).values()]]];
+      }),
+    );
   } catch {
     return {};
   }
 }
 
-function writeAll(data: Record<string, SavedView[]>): void {
+function writeAll(key: string, data: Record<string, SavedView[]>): void {
   try {
-    writeBrowserStorage(KEY, JSON.stringify(data));
+    writeBrowserStorage(key, JSON.stringify(data));
   } catch {
     // localStorage nicht verfügbar → ignorieren.
   }
 }
 
-export function SavedViews() {
+export function SavedViews({ tenantId, staffId }: SavedViewScope) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const views = readAll(useBrowserStorage(KEY))[pathname] ?? [];
+  const key = `${LEGACY_KEY}:v2:${JSON.stringify([tenantId, staffId])}`;
+  const views = readAll(useBrowserStorage(key))[pathname] ?? [];
+  useEffect(() => {
+    // ACCESS-SEARCH-SCOPE-001: Legacy names/search terms have no known owner.
+    if (readBrowserStorage(LEGACY_KEY) !== null) writeBrowserStorage(LEGACY_KEY, '{}');
+  }, []);
 
   const currentQuery = searchParams.toString();
 
   function persist(next: SavedView[]) {
-    const all = readAll(readBrowserStorage(KEY));
+    const all = readAll(readBrowserStorage(key));
     if (next.length === 0) delete all[pathname];
     else all[pathname] = next;
-    writeAll(all);
+    writeAll(key, all);
   }
 
   async function saveCurrent() {

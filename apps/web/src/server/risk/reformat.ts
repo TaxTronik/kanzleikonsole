@@ -14,6 +14,7 @@
 
 import { createHash } from 'node:crypto';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { evidenceService } from '@/server/container';
 
 export interface ReformatInput {
@@ -40,6 +41,7 @@ export async function reformatSourceDoc(
   input: ReformatInput,
 ): Promise<ReformatResult> {
   return withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskAnalysisTx(tx, ctx.tenantId, input.analysisId);
     const analysis = await tx.riskAnalysis.findUnique({
       where: { id: input.analysisId },
       select: { sourceText: true, sourceDoc: true, archivedAt: true },

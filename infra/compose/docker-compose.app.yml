@@ -199,6 +199,8 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
     depends_on:
+      backup-dir-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -243,6 +245,9 @@ services:
       S3_BUCKET_STAFF_PRIVATE: staff-private
       # Ziel-Bucket des täglichen backup-run-Jobs (P1-24).
       S3_BUCKET_BACKUPS: backups
+      # Hashprüfung vollständig vor pg_restore; große Dumps gehören auf Disk,
+      # nicht in das 64-MB-/tmp-tmpfs. Laufkopien werden im finally entfernt.
+      BACKUP_DRILL_TMP_DIR: /app/backups/restore-drill
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
       SMTP_HOST: ${SMTP_HOST:?SMTP_HOST nicht gesetzt - Prod braucht ein echtes SMTP-Relay; Mailhog nur in docker-compose.dev.yml}
@@ -270,6 +275,7 @@ services:
       ELSTER_BRIDGE_URL: ${ELSTER_BRIDGE_URL:-}
       ELSTER_BRIDGE_TOKEN: ${ELSTER_BRIDGE_TOKEN:-}
     volumes:
+      - ${BACKUP_HOST_DIR:-../../backups}:/app/backups
       - ${TSA_TRUSTED_ROOTS_HOST_DIR:-./tsa-roots}:/etc/taxtronik/tsa-roots:ro
 
   # ===========================================================================

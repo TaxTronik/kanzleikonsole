@@ -43,6 +43,22 @@ const SELF = 'apps/web/src/app/__tests__/prisma-client-guard.test.ts';
 // Bewusst freigegebene Stellen (repo-relativ, Forward-Slashes). Jede ist KEIN
 // App-Request-Pfad-Client.
 const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
+  // AUDIT-HASH-CHAIN-001 / ACCESS-CLIENT-MODE-001: synthetic fixtures in an
+  // explicitly opted-in disposable DB; real actions use the restricted app
+  // connection to prove setting/audit rollback, never a production request.
+  'apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts',
+  // INV-LIFECYCLE-FREEZE-001: synthetic owner fixtures and actual app actions
+  // exercise payment/storno row and audit lock ordering in a disposable DB.
+  'apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts',
+  // TCMS-SAMPLE-PROOF-001: isolated owner/app connections prove one attempt
+  // reservation and exact pending-state consumption under concurrent callers.
+  'packages/db/src/__tests__/los-state-consistency.test.ts',
+  // RISK-ARCHIVE-SNAPSHOT-001: isolated owner fixtures and two app connections
+  // exercise actual concurrent archive writers, RLS and transaction rollback.
+  'packages/db/src/__tests__/risk-archive-consistency.test.ts',
+  // TAX-DEADLINE-AUTOREQUEST-001: isolated owner fixtures plus competing app
+  // transactions prove materialization/configuration ordering against PostgreSQL.
+  'packages/db/src/__tests__/tax-deadline-materialize-consistency.test.ts',
   // ACCESS-CLIENT-MODE-001: Owner erzeugt isolierte Mandantenfixtures; die
   // separate App-Rolle prüft echte Seitenabfrage, OPEN/RESTRICTED und RLS.
   'apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx',

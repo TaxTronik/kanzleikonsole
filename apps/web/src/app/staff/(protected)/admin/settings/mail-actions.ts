@@ -9,12 +9,12 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
   readSmtpConfig,
-  writeSmtpConfig,
-  deleteSmtpConfig,
+  writeSmtpConfigTx,
+  deleteSmtpConfigTx,
   type SmtpConfig,
 } from '@/server/settings/smtp';
 import { sendTestMail } from '@/server/mail/send';
-import { writeMailDispatch, type MailDispatchConfig } from '@/server/settings/mail-dispatch';
+import { writeMailDispatchTx, type MailDispatchConfig } from '@/server/settings/mail-dispatch';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 
 const SmtpSchema = z.object({
@@ -72,9 +72,8 @@ export async function saveSmtpAction(
     from: parsed.data.from.trim(),
     replyTo: (parsed.data.replyTo ?? '').trim(),
   };
-  await writeSmtpConfig(ctx, cfg);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeSmtpConfigTx(tx, ctx, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -103,8 +102,8 @@ export async function resetSmtpAction(): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
-  await deleteSmtpConfig(ctx);
   await withTenantContext(ctx, async (tx) => {
+    await deleteSmtpConfigTx(tx, ctx);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -187,9 +186,8 @@ export async function saveMailDispatchAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const cfg: MailDispatchConfig = parsed.data;
-  await writeMailDispatch(ctx, cfg);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeMailDispatchTx(tx, ctx, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',

@@ -51,6 +51,14 @@ const MARKING = {
 
 function mockTx() {
   const tx = {
+    $queryRaw: vi.fn().mockResolvedValue([
+      {
+        analysisId: MARKING.analysisId,
+        id: MARKING.analysisId,
+        sourceText: 'text',
+        archivedAt: null,
+      },
+    ]),
     $executeRaw: vi.fn().mockResolvedValue(0),
     riskMarking: { findUnique: vi.fn().mockResolvedValue(MARKING), update: vi.fn() },
     staffUser: { findFirst: vi.fn().mockResolvedValue({ id: 'assignee' }) },

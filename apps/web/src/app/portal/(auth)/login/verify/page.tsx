@@ -20,8 +20,10 @@ import type { ReactNode } from 'react';
 // =============================================================================
 
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { confirmMagicLinkAction } from '../actions';
 import { inspectMagicLink } from '@/server/auth/magic-link';
+import { checkMagicLinkEntryLimit } from '@/server/auth/magic-link-entry';
 import { safePortalReturnTo } from './safe-return-to';
 
 // Hängt am Request (Token im Query) — nie statisch generierbar.
@@ -34,15 +36,26 @@ export default async function VerifyMagicLinkPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const token = typeof params.token === 'string' ? params.token : '';
   const returnTo = safePortalReturnTo(params.returnTo);
+  if (token && !(await checkMagicLinkEntryLimit(await headers(), 'inspect')).ok) {
+    return (
+      <Shell>
+        <div className="alert-error-sm">
+          Zu viele Aufrufe. Bitte warten Sie kurz und öffnen Sie diesen Link anschließend erneut.
+        </div>
+      </Shell>
+    );
+  }
   const inspection = token ? await inspectMagicLink(token) : null;
 
   if (!token || !inspection) {
     return (
       <Shell>
         <div className="alert-error-sm">
-          {params.status === 'invalid' || token
-            ? 'Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.'
-            : 'Kein Token in der URL.'}
+          {params.status === 'rate-limited'
+            ? 'Zu viele Bestätigungsversuche. Bitte warten Sie kurz und öffnen Sie Ihren ursprünglichen Login-Link erneut.'
+            : params.status === 'invalid' || token
+              ? 'Der Link ist ungültig, abgelaufen oder wurde bereits verwendet.'
+              : 'Kein Token in der URL.'}
         </div>
         <Link
           href="/portal/login"

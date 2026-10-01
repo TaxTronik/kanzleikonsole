@@ -41,10 +41,12 @@ code_refs:
   - apps/web/src/server/invoicing/vat.ts
   - apps/web/src/server/invoicing/time-billing.ts
   - apps/web/src/server/invoicing/xrechnung.ts
+  - apps/web/src/app/staff/(protected)/invoices/actions.ts
 test_refs:
   - apps/web/src/server/invoicing/__tests__/vat.test.ts
   - apps/web/src/server/invoicing/__tests__/time-billing.test.ts
   - apps/web/src/server/invoicing/__tests__/xrechnung.test.ts
+  - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
 feature_refs:
   - docs/development/module/fakturierung.md
   - docs/anwenderdoku/rechnungen.md
@@ -78,6 +80,8 @@ Stundenabrechnungen. Sie beschreibt Rechenweg und technische Abbildung der
 erfassten Steuermerkmale. Sie entscheidet nicht, welcher Satz oder welche
 Steuerbefreiung für eine konkrete Leistung materiell-rechtlich zutrifft.
 Extern hochgeladene PDFs werden nicht positionsweise nachgerechnet.
+Der erfasste externe Bruttobetrag muss jedoch dieselbe Cent-Präzision wie das
+gespeicherte Betragsfeld einhalten.
 
 ## Benötigte Angaben
 
@@ -108,6 +112,21 @@ nicht der Eingabe-Guard. Bei drei Positionen zu 0,33 Euro und 19 Prozent
 entsteht aus 0,99 Euro Gruppen-Netto eine Steuer von 0,19 Euro; eine Rundung je
 Position würde abweichen.
 
+Menge und Einzelpreis einer In-App-Position dürfen höchstens zwei
+Nachkommastellen haben, entsprechend den gespeicherten Decimal-Feldern.
+Zusätzliche Stellen werden serverseitig mit einer Eingabemeldung abgelehnt,
+nicht still gerundet. Sonst könnte beispielsweise `1,234 × 100` als Netto
+123,40 gespeichert werden, während die gespeicherte und exportierte Menge
+bereits auf 1,23 gerundet wäre. Der erfasste externe Bruttobetrag wird vor
+einem Upload ebenfalls auf höchstens zwei Nachkommastellen begrenzt.
+
+Positionsnetto und die berechneten Kopfwerte für Netto, Umsatzsteuer und
+Brutto dürfen den Speicherbereich von `Decimal(12,2)` nicht überschreiten
+(jeweils höchstens 9.999.999.999,99 Euro). Die Action prüft auch die
+Kopfwerte vor der Datenbanktransaktion: Umsatzsteuer und mehrere einzeln
+zulässige Positionen können zusammen den Betragsbereich überschreiten.
+Ein solcher Entwurf erhält eine Eingabemeldung und verbraucht keine Nummer.
+
 ## Beispiele
 
 ### Normalfall
@@ -129,6 +148,9 @@ Steuerkategorien zu. Die Rechnungs- und Stunden-Actions validieren den engen
 Satzvorrat und zusätzliche Nullsatzangaben. `xrechnung.ts` erzeugt je Gruppe
 einen Header-Steuerblock und verwendet dieselben Gruppen für die strukturierten
 Summen.
+Die Anlage-Action validiert Menge und Einzelpreis vor der Netto-Berechnung
+auf die Speicherpräzision. Sie berechnet anschließend den gerundeten
+Positionsnettobetrag aus genau diesen Werten.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -157,3 +179,9 @@ Die VAT-Tests prüfen einheitliche und gemischte Sätze, Gruppensortierung,
 Gruppenrundung, Nullwerte und Kategorien `S`, `Z`, `E` und `AE`.
 Stundenabrechnungstests prüfen die Nullsatz-Guards; XRechnungstests prüfen
 Steuerblöcke und konsistente Netto-, Steuer- und Bruttosummen der Fixture.
+Action-Regressionen verwerfen zusätzliche Mengen-, Preis- und Bruttostellen
+vor Datenbank- beziehungsweise Storagezugriff und prüfen zulässige Werte,
+Grenzbeträge sowie die Halbcent-Rundung eines Positionsprodukts.
+Getrennte Regressionsfälle prüfen den Bruttoüberlauf einer einzelnen Position
+und den Nettoüberlauf mehrerer Positionen sowie einen zulässigen Grenzbetrag
+einschließlich Umsatzsteuer.

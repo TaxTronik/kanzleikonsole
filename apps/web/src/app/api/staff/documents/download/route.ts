@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
           select: {
             storageBucket: true,
             storageKey: true,
+            storageVersionId: true,
             sizeBytes: true,
             scanStatus: true,
             scanCompletedAt: true,
@@ -177,7 +178,7 @@ export async function GET(req: NextRequest) {
     const d = usableLoose[0]!;
     const v = d.versions[0]!;
     await recordDownloadAudits([d]);
-    const obj = await streamObject(v.storageBucket, v.storageKey);
+    const obj = await streamObject(v.storageBucket, v.storageKey, v.storageVersionId);
     const headers: Record<string, string> = {
       'content-type': d.mimeType || 'application/octet-stream',
       'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(
@@ -224,11 +225,11 @@ export async function GET(req: NextRequest) {
       d: {
         title: string;
         mimeType: string;
-        versions: { storageBucket: string; storageKey: string }[];
+        versions: { storageBucket: string; storageKey: string; storageVersionId: string | null }[];
       },
     ) => {
       const v = d.versions[0]!;
-      const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);
+      const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey, v.storageVersionId);
       entries.push({
         name: allocatePath(prefix, filenameWithExtension(d.title, d.mimeType)),
         data: bytes,

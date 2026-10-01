@@ -6,6 +6,7 @@
 // statt "taxtronik" zeigt Sub-Brand, Akzent-Farbe als CSS-Variable).
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import { cache } from 'react';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
@@ -100,12 +101,19 @@ export async function readBrandingForSlug(slug: string): Promise<BrandingInfo> {
 }
 
 export async function writeBranding(ctx: TenantContext, info: BrandingInfo): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY_BRANDING,
-      value: info as object,
-      updatedBy: ctx.actorId,
-    });
+  await withTenantContext(ctx, (tx) => writeBrandingTx(tx, ctx, info));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeBrandingTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  info: BrandingInfo,
+): Promise<void> {
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY_BRANDING,
+    value: info as object,
+    updatedBy: ctx.actorId,
   });
 }

@@ -1,7 +1,7 @@
 // Fachkatalog: MAIL-INBOX-001
 type FakeRow = Record<string, unknown>;
 import { Readable } from 'node:stream';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({
   tx: null as unknown as ReturnType<typeof makeTx>,
   enabled: true,
@@ -70,8 +70,21 @@ const messages = new Map<number, FakeRow>();
 function makeTx() {
   return {
     inboundMailbox: {
-      updateMany: async () => ({ count: 1 }),
-      findUnique: async () => account,
+      updateMany: async ({ where, data }: { where: FakeRow; data: FakeRow }) => {
+        if (where.enabled === true && !account.enabled) return { count: 0 };
+        if (where.OR) {
+          if (account.claimedUntil && (account.claimedUntil as Date) >= new Date())
+            return { count: 0 };
+        } else if (
+          (where.claimedUntil as Date | null)?.getTime() !==
+          (account.claimedUntil as Date | null)?.getTime()
+        ) {
+          return { count: 0 };
+        }
+        Object.assign(account, data);
+        return { count: 1 };
+      },
+      findUnique: async () => ({ ...account }),
       findFirst: async () => (account.enabled ? account : null),
       update: async ({ data }: { data: FakeRow }) => Object.assign(account, data),
     },
@@ -89,7 +102,22 @@ function makeTx() {
     inboundAttachment: {
       upsert: async ({ create }: { create: FakeRow }) =>
         attachment ?? (attachment = { id: 'attachment', status: 'PENDING', ...create }),
-      update: async ({ data }: { data: FakeRow }) => Object.assign(attachment!, data),
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { status: { in: string[] } };
+        data: FakeRow;
+      }) => {
+        if (
+          !attachment ||
+          attachment.documentId ||
+          !where.status.in.includes(attachment.status as string)
+        )
+          return { count: 0 };
+        Object.assign(attachment, data);
+        return { count: 1 };
+      },
     },
   };
 }
@@ -112,6 +140,7 @@ beforeEach(() => {
     enabled: true,
     uidValidity: null,
     lastUid: 0,
+    claimedUntil: null,
   };
   m.open.mockResolvedValue({ uidValidity: 1n });
   m.download.mockImplementation(async () => ({
@@ -129,7 +158,80 @@ beforeEach(() => {
   });
   m.tx = makeTx();
 });
+afterEach(() => vi.useRealTimers());
 describe('read-only receipt import', () => {
+  it('MAIL-INBOX-001 preserves an archive claim when an older poll finishes scanning later', async () => {
+    vi.useFakeTimers();
+    let finishScan: (value: string) => void = () => {};
+    let notifyScan: () => void = () => {};
+    const scanStarted = new Promise<void>((resolve) => {
+      notifyScan = resolve;
+    });
+    m.scan.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishScan = resolve;
+          notifyScan();
+        }),
+    );
+    const olderPoll = pollMailbox('tenant', 'mailbox');
+    await scanStarted;
+    // Models a new claimant after the older poll's ten-minute lease expired.
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    await pollMailbox('tenant', 'mailbox');
+    expect(attachment!.status).toBe('CLEAN');
+    attachment!.status = 'IMPORTED';
+    attachment!.documentId = 'archived-document';
+    finishScan('CLEAN');
+    await olderPoll;
+    expect(attachment!.status).toBe('IMPORTED');
+    expect(attachment!.documentId).toBe('archived-document');
+  });
+
+  it('MAIL-INBOX-001 does not release a newer poll lease when the old connection ends', async () => {
+    let finishLogout: () => void = () => {};
+    let notifyLogout: () => void = () => {};
+    const logoutStarted = new Promise<void>((resolve) => {
+      notifyLogout = resolve;
+    });
+    m.logout.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLogout = resolve;
+          notifyLogout();
+        }),
+    );
+    const olderPoll = pollMailbox('tenant', 'mailbox');
+    await logoutStarted;
+    const newerClaim = new Date(Date.now() + 20 * 60_000);
+    account.claimedUntil = newerClaim;
+    finishLogout();
+    await olderPoll;
+    expect(account.claimedUntil).toEqual(newerClaim);
+  });
+
+  it('MAIL-INBOX-001 preserves newer cursor and error state after a stale scan completes', async () => {
+    m.scan.mockImplementationOnce(async () => {
+      account.claimedUntil = new Date(Date.now() + 20 * 60_000);
+      account.lastUid = 42;
+      account.lastError = 'newer poll error';
+      return 'CLEAN';
+    });
+    await pollMailbox('tenant', 'mailbox');
+    expect(account.lastUid).toBe(42);
+    expect(account.lastError).toBe('newer poll error');
+  });
+
+  it('MAIL-INBOX-001 does not disable a newer claimant after a stale authentication error', async () => {
+    m.connect.mockImplementationOnce(async () => {
+      account.claimedUntil = new Date(Date.now() + 20 * 60_000);
+      account.lastError = null;
+      throw new Error('invalid_grant');
+    });
+    await pollMailbox('tenant', 'mailbox');
+    expect(account.enabled).toBe(true);
+    expect(account.lastError).toBeNull();
+  });
   it('MAIL-INBOX-001 blocks an excessive attachment count and still imports the next UID', async () => {
     m.uids = [1, 2];
     m.parse.mockResolvedValueOnce({

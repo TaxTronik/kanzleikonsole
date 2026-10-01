@@ -11,6 +11,7 @@
 // Erweiterung, nicht Single-Point-of-Failure.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
@@ -45,13 +46,20 @@ export async function writeMailDispatch(
   ctx: TenantContext,
   cfg: MailDispatchConfig,
 ): Promise<void> {
+  await withTenantContext(ctx, (tx) => writeMailDispatchTx(tx, ctx, cfg));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeMailDispatchTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  cfg: MailDispatchConfig,
+): Promise<void> {
   const stored = normalize(cfg);
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY,
-      value: stored as object,
-      updatedBy: ctx.actorId,
-    });
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY,
+    value: stored as object,
+    updatedBy: ctx.actorId,
   });
 }

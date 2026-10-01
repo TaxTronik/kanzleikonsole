@@ -58,6 +58,7 @@ describe('Steuertermin-Neuplanung', () => {
 
   it('schließt Hinweise für gelöschte Termine und deren stornierte Anforderung', async () => {
     const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
       taxScheduleConfig: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -88,6 +89,8 @@ describe('Steuertermin-Neuplanung', () => {
     const result = await saveScheduleConfigAction(null, formData);
 
     expect(result.ok).toBe(true);
+    expect(tx.$executeRaw).toHaveBeenCalledBefore(tx.taxScheduleConfig.findMany);
+    expect(tx.$executeRaw).toHaveBeenCalledBefore(tx.taxDeadline.deleteMany);
     expect(h.resolveNotificationsTx).toHaveBeenCalledWith(tx, {
       tenantId: 'tenant-1',
       resources: [
@@ -103,6 +106,7 @@ describe('Steuertermin-Neuplanung', () => {
     // In Berlin ist bereits der 10. Juni (00:30 MESZ), UTC noch der 9. Juni.
     vi.setSystemTime(new Date('2026-06-09T22:30:00.000Z'));
     const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
       taxScheduleConfig: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -143,6 +147,7 @@ describe('Steuertermin-Neuplanung', () => {
 
   it('uebergibt neu angelegte QUEUED-Benachrichtigungen an den Worker', async () => {
     const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
       taxScheduleConfig: { findMany: vi.fn().mockResolvedValue([]) },
       taxDeadline: { findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn() },
       request: { updateMany: vi.fn() },

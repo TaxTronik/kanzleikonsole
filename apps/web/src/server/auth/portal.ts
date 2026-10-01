@@ -19,7 +19,7 @@ import { env } from '@taxtronik/config';
 import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
 import { getSessionIssuedAt } from './session-issued-at';
-import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
+import { checkMagicLinkEntryLimit } from './magic-link-entry';
 import {
   PORTAL_SESSION_COOKIE,
   PORTAL_SESSION_COOKIE_BASE,
@@ -217,24 +217,9 @@ const portalConfig: NextAuthConfig = {
         // 256-bit-Zufall und gehasht (Brute-Force chancenlos), aber ohne Limit
         // kann ein Angreifer unbegrenzt sha256+DB-Lookups gegen den Callback
         // fahren. Per-IP eng, bei fehlender IP globaler Sturm-Bucket.
-        const ip = (() => {
-          try {
-            return request?.headers ? getClientIp(request.headers) : null;
-          } catch {
-            return null;
-          }
-        })();
-        const rl = await checkIpOrGlobalLimit(
-          'portal-authorize',
-          ip,
-          { max: 10, windowSec: 600 },
-          { max: 200, windowSec: 600 },
-        );
+        const rl = await checkMagicLinkEntryLimit(request?.headers ?? new Headers(), 'verify');
         if (!rl.ok) {
-          log.warn(
-            { ip, bucket: ip ? 'per-ip' : 'global' },
-            'portal-auth: authorize-rate-limit hit',
-          );
+          log.warn('portal-auth: authorize-rate-limit hit');
           return null;
         }
 

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
+import { lockClientRiskAnalysesTx } from '@taxtronik/db/risk-analysis';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { evidenceService } from '@/server/container';
 import { revokeAllSessions } from '@/server/auth/revocation';
@@ -100,6 +101,11 @@ export async function confirmClientAnonymizationAction(input: {
           'Es existieren noch GwG-Belege/-Aufzeichnungen — bitte zuerst über die GwG-Pflichtlöschung vernichten.',
       };
     }
+
+    // RISK-ARCHIVE-SNAPSHOT-001: Client -> Risk -> Audit. Contacts below write
+    // evidence before the side-table redaction; acquiring risk locks only there
+    // could deadlock with an archiver already holding Risk and awaiting Audit.
+    await lockClientRiskAnalysesTx(tx, clientId);
 
     // Redis-Widerruf vor jeder irreversiblen Anonymisierung bestaetigen. Ein
     // spaeterer SQL-Fehler fuehrt damit hoechstens zu einem vorzeitigen Logout.

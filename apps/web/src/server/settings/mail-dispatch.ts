@@ -8,6 +8,7 @@
 export {
   readMailDispatch,
   writeMailDispatch,
+  writeMailDispatchTx,
   DEFAULT_DISPATCH,
   type MailDispatchMode,
   type MailDispatchConfig,

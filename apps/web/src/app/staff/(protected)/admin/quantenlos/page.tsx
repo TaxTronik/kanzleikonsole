@@ -15,7 +15,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import { readModules } from '@/server/settings/modules';
 import { getIbmTokenStatus } from '@/server/settings/quantenlos';
-import { buildLosRahmen, getPendingLos, listLosZiehungen } from '@/server/risk';
+import { buildLosRahmen, getPendingLos, getLosStart, listLosZiehungen } from '@/server/risk';
 import { QuantenlosPanel } from './quantenlos-panel';
 
 function ymd(d: Date): string {
@@ -37,14 +37,15 @@ export default async function QuantenlosPage() {
   const von = new Date(bis.getTime() - 90 * 24 * 60 * 60 * 1000);
   const zeitraum = { von: ymd(von), bis: ymd(bis) };
 
-  const [rahmen, pending, ziehungen, ibmToken] = bereit
+  const [rahmen, pending, ziehungen, ibmToken, openStart] = bereit
     ? await Promise.all([
         buildLosRahmen(ctx, zeitraum),
         getPendingLos(ctx),
         listLosZiehungen(ctx, 10),
         getIbmTokenStatus(ctx),
+        getLosStart(ctx),
       ])
-    : [[], null, [], { hinterlegt: false, suffix: null, gesetztAm: null }];
+    : [[], null, [], { hinterlegt: false, suffix: null, gesetztAm: null }, null];
 
   return (
     <div className="p-8">
@@ -79,6 +80,8 @@ export default async function QuantenlosPage() {
         </div>
       ) : (
         <QuantenlosPanel
+          key={openStart?.attemptId ?? pending?.jobId ?? 'ready'}
+          initialStart={openStart}
           initialZeitraum={zeitraum}
           initialN={rahmen.length}
           initialPending={pending}

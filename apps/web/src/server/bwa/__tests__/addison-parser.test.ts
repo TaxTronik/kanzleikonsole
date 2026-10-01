@@ -1,6 +1,46 @@
 // Fachkatalog: BWA-IMPORT-MAPPING-001 — regression evidence for the compact CSV variant.
 import { describe, expect, it } from 'vitest';
-import { parseAddisonBwaCompactCsv } from '../addison-parser';
+import { parseAddisonBwaCompactCsv, parseAddisonBwaCsv } from '../addison-parser';
+
+describe.each([
+  [
+    'Langform',
+    (period: string) =>
+      parseAddisonBwaCsv(`Nummer;Bezeichnung;Zeitraum\n;;${period}\n1990;Summe Erlöse;100,00`),
+  ],
+  [
+    'Kompaktform',
+    (period: string) => parseAddisonBwaCompactCsv(`;Summe Erlöse\nZeitraum ${period};100,00`),
+  ],
+] as const)('Addison %s: eindeutige und gueltige Perioden', (_variant, parse) => {
+  it('bewahrt einen verschobenen Dreimonatsbereich ohne Kalenderquartals-Kollision', () => {
+    const shifted = parse('02.26-04.26').periods[0]!;
+    const quarter = parse('04.26-06.26').periods[0]!;
+    expect(shifted).toMatchObject({
+      type: 'YEAR',
+      periodKey: '2026-02-2026-04',
+      fromDate: new Date('2026-02-01T00:00:00Z'),
+      toDate: new Date('2026-04-30T00:00:00Z'),
+    });
+    expect(quarter).toMatchObject({ type: 'QUARTER', periodKey: '2026-Q2' });
+    expect(shifted.periodKey).not.toBe(quarter.periodKey);
+  });
+
+  it.each(['00.26-00.26', '13.26-13.26', '01.26-13.26', '06.26-05.26', '12.26-01.26'])(
+    'verwirft den ungueltigen Bereich %s statt das Datum zu normalisieren',
+    (period) => {
+      expect(parse(period).periods).toEqual([]);
+    },
+  );
+
+  it('bewahrt einen gueltigen jahresuebergreifenden Bereich und den Schalttag', () => {
+    expect(parse('12.23-02.24').periods[0]).toMatchObject({
+      periodKey: '2023-12-2024-02',
+      fromDate: new Date('2023-12-01T00:00:00Z'),
+      toDate: new Date('2024-02-29T00:00:00Z'),
+    });
+  });
+});
 
 describe('Addison compact CSV', () => {
   it('preserves German signed amounts, known column mapping and quarter boundaries', () => {

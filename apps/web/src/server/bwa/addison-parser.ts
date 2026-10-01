@@ -60,6 +60,12 @@ function parsePeriodHeader(s: string): {
   const fromYear = fromYy < 70 ? 2000 + fromYy : 1900 + fromYy;
   const toYear = toYy < 70 ? 2000 + toYy : 1900 + toYy;
 
+  // Date.UTC normalisiert 00/13 still in ein anderes Jahr. Ein Import darf
+  // dadurch weder einen anderen Zeitraum erfinden noch einen rueckwaerts
+  // laufenden Bereich an die Hochrechnung weitergeben.
+  if (fromMonth < 1 || fromMonth > 12 || toMonth < 1 || toMonth > 12) return null;
+  if (fromYear * 12 + fromMonth > toYear * 12 + toMonth) return null;
+
   const fromDate = new Date(Date.UTC(fromYear, fromMonth - 1, 1));
   const lastDay = new Date(Date.UTC(toYear, toMonth, 0)).getUTCDate();
   const toDate = new Date(Date.UTC(toYear, toMonth - 1, lastDay));
@@ -73,8 +79,9 @@ function parsePeriodHeader(s: string): {
       label: `Geschäftsjahr ${fromYear}`,
     };
   }
-  // Quartal-Erkennung: Spanne von 3 Monaten
-  if (toMonth - fromMonth === 2 && fromYear === toYear) {
+  // Nur Kalenderquartale bekommen einen Q-Schluessel. Ein Bereich Februar
+  // bis April ist kein Q2 und darf nicht mit April bis Juni kollidieren.
+  if ((fromMonth - 1) % 3 === 0 && toMonth - fromMonth === 2 && fromYear === toYear) {
     const q = Math.ceil(toMonth / 3);
     return {
       type: 'QUARTER',

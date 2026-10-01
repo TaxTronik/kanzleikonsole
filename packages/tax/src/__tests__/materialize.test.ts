@@ -59,7 +59,11 @@ function makeHarness(opts: HarnessOptions = {}) {
   // Separater Tx-Fake: so ist nachweisbar, dass der atomare Block NICHT auf
   // dem äußeren db-Client läuft, sondern auf dem von runAtomic gereichten Tx.
   const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
+    tenantSetting: db.tenantSetting,
+    taxScheduleConfig: db.taxScheduleConfig,
     taxDeadline: {
+      createMany: db.taxDeadline.createMany,
       findUnique: vi.fn().mockResolvedValue({
         status: 'PLANNED',
         requestId: null,
@@ -139,7 +143,7 @@ const upcomingDeadline = (
 
 describe('Upsert — Termine aus aktiven Configs', () => {
   it('legt einen neuen Termin im Horizont an (USt-VA Mai → fällig 10.06.)', async () => {
-    const { db, deps } = makeHarness({ configs: [ustaMonthlyConfig()], createdCount: 1 });
+    const { db, tx, deps } = makeHarness({ configs: [ustaMonthlyConfig()], createdCount: 1 });
     const stats = await materializeTenantTaxDeadlines(deps, {
       tenantId: TENANT,
       systemStaffId: STAFF,
@@ -169,6 +173,8 @@ describe('Upsert — Termine aus aktiven Configs', () => {
     });
     expect(stats.configsScanned).toBe(1);
     expect(stats.deadlinesCreated).toBe(1);
+    expect(tx.$executeRaw).toHaveBeenCalledBefore(db.taxScheduleConfig.findMany);
+    expect(db.taxScheduleConfig.findMany).toHaveBeenCalledBefore(db.taxDeadline.createMany);
   });
 
   it('ist idempotent: vorhandener Termin (Unique-Key) zählt nicht als neu angelegt', async () => {
@@ -237,7 +243,7 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
       },
     });
 
-    expect(runAtomic).toHaveBeenCalledTimes(1);
+    expect(runAtomic).toHaveBeenCalledTimes(2);
     expect(tx.request.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         tenantId: TENANT,
@@ -354,7 +360,7 @@ describe('Auto-Anforderung (3b) — Versand atomar', () => {
       now: NOW,
     });
 
-    expect(runAtomic).not.toHaveBeenCalled();
+    expect(runAtomic).toHaveBeenCalledTimes(1); // candidate transaction only
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(stats.requestsCreated).toBe(0);
   });
@@ -491,7 +497,7 @@ describe('Vorwarnung (3a) — interne Benachrichtigung vor dem Versand', () => {
       now: NOW,
     });
 
-    expect(runAtomic).toHaveBeenCalledTimes(1);
+    expect(runAtomic).toHaveBeenCalledTimes(2);
     expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'dl-1',
@@ -690,7 +696,7 @@ describe('Vorwarnung (3a) — interne Benachrichtigung vor dem Versand', () => {
       now: NOW,
     });
 
-    expect(runAtomic).not.toHaveBeenCalled();
+    expect(runAtomic).toHaveBeenCalledTimes(1); // candidate transaction only
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(stats.requestsCreated).toBe(0);
   });

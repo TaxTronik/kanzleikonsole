@@ -8,6 +8,7 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Dices,
   ShieldCheck,
@@ -21,12 +22,20 @@ import {
 } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { ThemeSync } from '@/components/theme-sync';
-import type { LosZiehung, PendingLos, LosPruefErgebnis, LosRahmenTyp } from '@/server/risk';
+import type {
+  LosZiehung,
+  PendingLos,
+  LosPruefErgebnis,
+  LosRahmenTyp,
+  LosStart,
+} from '@/server/risk';
 import type { IbmTokenStatus } from '@/server/settings/quantenlos';
 import {
   rahmenVorschauAction,
   losZiehenAction,
   losAbholenAction,
+  losStartWiederaufnehmenAction,
+  losStartFreigebenAction,
   losPruefenAction,
   ibmTokenSpeichernAction,
   ibmTokenEntfernenAction,
@@ -127,10 +136,175 @@ function HashWert({ label, value }: { label: string; value: string }) {
   );
 }
 
+function hasOpenLos(pending: PendingLos | null, reservation: LosStart | null): boolean {
+  return Boolean(pending || reservation);
+}
+
+function LosRecoveryPanel({
+  openStart,
+  onResolved,
+}: {
+  openStart: LosStart | null;
+  onResolved: (result?: import('@/server/risk').LosZiehungErgebnis) => void;
+}) {
+  const router = useRouter();
+  const [busy, start] = useTransition();
+  const [fehler, setFehler] = useState<string | null>(null);
+  const savedJobId =
+    typeof openStart?.engineResponse?.job_id === 'string' ? openStart.engineResponse.job_id : '';
+  const savedProof = openStart?.engineResponse?.nachweis
+    ? JSON.stringify(openStart.engineResponse.nachweis, null, 2)
+    : '';
+  const [recoveryJobId, setRecoveryJobId] = useState('');
+  const [recoveryProof, setRecoveryProof] = useState('');
+  const [releaseReason, setReleaseReason] = useState('');
+  const [confirmedNotExecuted, setConfirmedNotExecuted] = useState(false);
+
+  function recoverStart(release: boolean) {
+    if (!openStart) return;
+    setFehler(null);
+    start(async () => {
+      if (release) {
+        const r = await losStartFreigebenAction({
+          attemptId: openStart.attemptId,
+          reason: releaseReason,
+          confirmedNotExecuted,
+        });
+        if (!r.ok) {
+          setFehler(r.error ?? 'Freigabe fehlgeschlagen.');
+          return;
+        }
+        onResolved();
+      } else {
+        const r = await losStartWiederaufnehmenAction({
+          attemptId: openStart.attemptId,
+          jobId: recoveryJobId,
+          proofJson: recoveryProof,
+        });
+        if (!r.ok || !r.ergebnis) {
+          setFehler(
+            !r.ok
+              ? (r.error ?? 'Wiederaufnahme fehlgeschlagen.')
+              : 'Wiederaufnahme fehlgeschlagen.',
+          );
+          return;
+        }
+        onResolved(r.ergebnis);
+      }
+      router.refresh();
+    });
+  }
+
+  if (!openStart) return null;
+  return (
+    <>
+      <div className="alert-warning space-y-3">
+        <p className="font-medium">
+          Eine Ziehung wird bearbeitet oder ihr Ausgang ist noch ungeklärt.
+        </p>
+        <p className="text-sm">
+          Bitte zuerst den laufenden Aufruf abwarten. Nach einem Abbruch mit dem Betreiber anhand
+          von Zeitpunkt, Rahmen und Versuch prüfen, ob die Engine eine Ziehung angenommen hat. Eine
+          neue Ziehung bleibt bis zur Klärung gesperrt.
+        </p>
+        <details className="text-xs">
+          <summary>Gespeicherter Auftrag für die Betreiberklärung</summary>
+          <pre className="whitespace-pre-wrap break-all">{JSON.stringify(openStart, null, 2)}</pre>
+        </details>
+        {(savedJobId || savedProof) && (
+          <button
+            className="btn-secondary"
+            disabled={busy}
+            onClick={() => {
+              setRecoveryJobId(savedJobId);
+              setRecoveryProof(savedProof);
+            }}
+          >
+            Bereits gespeicherte Engine-Antwort zur Prüfung laden
+          </button>
+        )}
+        <div className="flex flex-wrap gap-2 items-end">
+          <label className="text-sm">
+            Ermittelte Remote-Job-ID
+            <input
+              className="input"
+              value={recoveryJobId}
+              onChange={(e) => setRecoveryJobId(e.target.value)}
+            />
+          </label>
+          <button
+            className="btn-secondary"
+            disabled={busy || !recoveryJobId.trim() || !!recoveryProof.trim()}
+            onClick={() => recoverStart(false)}
+          >
+            Bestehenden Job abholen
+          </button>
+        </div>
+        <details className="text-sm space-y-2">
+          <summary>Bereits fertigen Engine-Nachweis wiederherstellen</summary>
+          <p>
+            Wenn die ursprüngliche Engine-Antwort beim Betreiber vorliegt, deren Objekt „nachweis“
+            einfügen. Der Risk-Layer prüft es gegen den gespeicherten Rahmen; es erfolgt keine neue
+            Ziehung. Eine positive Prüfung belegt allein nicht die Herkunft der Entropie.
+          </p>
+          <label className="block">
+            Gesicherter Nachweis als JSON
+            <textarea
+              className="input"
+              value={recoveryProof}
+              onChange={(e) => setRecoveryProof(e.target.value)}
+            />
+          </label>
+          <button
+            className="btn-secondary"
+            disabled={busy || !recoveryProof.trim() || !!recoveryJobId.trim()}
+            onClick={() => recoverStart(false)}
+          >
+            Nachweis prüfen und übernehmen
+          </button>
+        </details>
+        <details className="text-sm space-y-2">
+          <summary>Bestätigte Nichtausführung dokumentieren</summary>
+          <p>
+            Nur wenn der Betreiber die Nichtausführung bestätigt hat. Ein unbekanntes oder bereits
+            abgeschlossenes Ergebnis rechtfertigt keine neue Ziehung.
+          </p>
+          <label className="block">
+            Nachweis und Begründung
+            <textarea
+              className="input"
+              maxLength={2000}
+              value={releaseReason}
+              onChange={(e) => setReleaseReason(e.target.value)}
+            />
+          </label>
+          <label className="flex gap-2">
+            <input
+              type="checkbox"
+              checked={confirmedNotExecuted}
+              onChange={(e) => setConfirmedNotExecuted(e.target.checked)}
+            />
+            Ich habe geprüft, dass keine Ziehung ausgeführt wurde.
+          </label>
+          <button
+            className="btn-secondary"
+            disabled={busy || !confirmedNotExecuted || releaseReason.trim().length < 30}
+            onClick={() => recoverStart(true)}
+          >
+            Nichtausführung protokollieren und freigeben
+          </button>
+        </details>
+      </div>
+      {fehler && <p className="text-red-600 text-sm">{fehler}</p>}
+    </>
+  );
+}
+
 interface Props {
   initialZeitraum: { von: string; bis: string };
   initialN: number;
   initialPending: PendingLos | null;
+  initialStart: LosStart | null;
   initialZiehungen: LosZiehung[];
   initialIbmToken: IbmTokenStatus;
 }
@@ -139,9 +313,12 @@ export function QuantenlosPanel({
   initialZeitraum,
   initialN,
   initialPending,
+  initialStart,
   initialZiehungen,
   initialIbmToken,
 }: Props) {
+  const router = useRouter();
+  const [openStart, setOpenStart] = useState(initialStart);
   const [von, setVon] = useState(initialZeitraum.von);
   const [bis, setBis] = useState(initialZeitraum.bis);
   const [rahmenTyp, setRahmenTyp] = useState<LosRahmenTyp>('subsumtion');
@@ -183,6 +360,7 @@ export function QuantenlosPanel({
       const r = await losZiehenAction({ von, bis, k, backend, rahmenTyp });
       if (!r.ok || !r.ergebnis) {
         setFehler(!r.ok ? (r.error ?? 'Ziehung fehlgeschlagen.') : 'Ziehung fehlgeschlagen.');
+        router.refresh();
         return;
       }
       const erg = r.ergebnis;
@@ -449,7 +627,9 @@ export function QuantenlosPanel({
           </p>
           <button
             onClick={ziehen}
-            disabled={busy || !!pending || n === null || n === 0 || k > (n ?? 0)}
+            disabled={
+              busy || hasOpenLos(pending, openStart) || n === null || n === 0 || k > (n ?? 0)
+            }
             className="btn-primary text-xs"
             title={pending ? 'Es wartet noch ein QPU-Job — bitte zuerst abholen.' : undefined}
           >
@@ -461,6 +641,14 @@ export function QuantenlosPanel({
       </div>
 
       {/* Wartender QPU-Job */}
+      <LosRecoveryPanel
+        openStart={openStart}
+        onResolved={(result) => {
+          setOpenStart(null);
+          if (result?.status === 'wartet') setPending(result.pending);
+          else if (result?.status === 'fertig') setZiehungen((z) => [result.ziehung, ...z]);
+        }}
+      />
       {pending && (
         <div className="alert-warning">
           <div className="flex items-start gap-3">

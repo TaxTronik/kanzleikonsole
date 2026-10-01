@@ -401,8 +401,16 @@ export function parseExceptionLedger(source, label = EXCEPTION_LOG) {
         throw new Error(`${entryLabel}.${key} muss eine nicht leere String-Liste sein.`);
       }
     }
-    if (entry.paths.some((path) => !isFachPath(path))) {
-      throw new Error(`${entryLabel}.paths darf nur überwachte Fachpfade enthalten.`);
+    if (
+      entry.paths.some(
+        (path) =>
+          path.startsWith('/') ||
+          path.includes('\\') ||
+          path.includes(':') ||
+          path.split('/').some((part) => !part || part === '.' || part === '..'),
+      )
+    ) {
+      throw new Error(`${entryLabel}.paths muss kanonische relative Repository-Pfade enthalten.`);
     }
     if (entry.rule_ids.some((id) => !RULE_ID_PATTERN.test(id))) {
       throw new Error(`${entryLabel}.rule_ids enthält keine gültige Regel-ID.`);
@@ -422,7 +430,7 @@ export function parseExceptionLedger(source, label = EXCEPTION_LOG) {
   });
 }
 
-function newExceptions(baseSource, headSource, headRuleIds) {
+export function newExceptions(baseSource, headSource, headRuleIds, catalogFachPaths = []) {
   if (headSource === null) {
     return {
       findings: [`${EXCEPTION_LOG} fehlt im Zielstand.`],
@@ -443,7 +451,16 @@ function newExceptions(baseSource, headSource, headRuleIds) {
   }
   const baseIds = new Set(baseEntries.map((entry) => entry.id));
   const added = headEntries.filter((entry) => !baseIds.has(entry.id));
+  const catalogPaths = new Set(catalogFachPaths);
   for (const entry of added) {
+    // Historical entries stay immutable even after code references are retired.
+    // New exceptions must match exactly the paths monitored by the diff gate.
+    const unmonitored = entry.paths.filter((path) => !isFachPath(path) && !catalogPaths.has(path));
+    if (unmonitored.length > 0) {
+      findings.push(
+        `${entry.id}.paths darf nur überwachte Fachpfade enthalten: ${unmonitored.join(', ')}`,
+      );
+    }
     const unknownRuleIds = entry.rule_ids.filter((id) => !headRuleIds.includes(id));
     if (unknownRuleIds.length > 0) {
       findings.push(`${entry.id} verweist auf unbekannte Regel-IDs: ${unknownRuleIds.join(', ')}`);
@@ -472,19 +489,21 @@ export function runDiffGuard() {
   const headRules = catalogRecordsAtTarget(context.target);
   const baseRuleIds = baseRules.map((rule) => rule.id);
   const headRuleIds = headRules.map((rule) => rule.id);
+  const catalogFachPaths = [...baseRules, ...headRules].flatMap((rule) =>
+    Array.isArray(rule.code_refs) ? rule.code_refs : [],
+  );
   const exceptions = newExceptions(
     fileAtCommit(context.base, EXCEPTION_LOG),
     fileAtTarget(context.target, EXCEPTION_LOG),
     headRuleIds,
+    catalogFachPaths,
   );
   const result = evaluateCatalogDiff(context.changes, {
     baseRuleIds,
     headRuleIds,
     documentedFachPaths: changedRuleEvidence(context.changes, baseRules, headRules),
     newExceptionPaths: exceptions.paths,
-    catalogFachPaths: [...baseRules, ...headRules].flatMap((rule) =>
-      Array.isArray(rule.code_refs) ? rule.code_refs : [],
-    ),
+    catalogFachPaths,
     extraFindings: exceptions.findings,
   });
   if (result.findings.length > 0) {

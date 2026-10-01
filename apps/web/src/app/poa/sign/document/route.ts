@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { streamObject } from '@taxtronik/storage';
+import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 import {
   effectiveDocumentMime,
   previewContentType,
@@ -80,6 +81,7 @@ export async function GET(req: NextRequest) {
   });
   if (
     !version ||
+    !isDocumentVersionReady(version) ||
     !snapshotDocumentMatches(snapshot, {
       id: version.id,
       documentId: version.documentId,
@@ -100,7 +102,11 @@ export async function GET(req: NextRequest) {
     classification: doc.classification,
     isPoaDocument: true,
   });
-  const obj = await streamObject(version.storageBucket, version.storageKey);
+  const obj = await streamObject(
+    version.storageBucket,
+    version.storageKey,
+    version.storageVersionId,
+  );
   const headers: Record<string, string> = {
     'content-type': previewContentType(mime, doc.title),
     'content-disposition': previewDisposition(mime, doc.title),

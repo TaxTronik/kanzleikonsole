@@ -47,6 +47,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts
   - apps/web/src/server/tax-master-data/__tests__/service.test.ts
   - packages/db/src/__tests__/poa-signing-integrity.test.ts
+  - packages/db/src/__tests__/risk-archive-consistency.test.ts
 feature_refs:
   - docs/compliance/dsgvo-konzept.md
 related_rules:
@@ -133,6 +134,19 @@ personenbezogene Felder in Stammdaten, Kontakten, Vollmachten, Formularen,
 Terminen, Wiedervorlagen, Übergaben und Risikoanalysen. Die Admin-Actions
 sperren den Mandanten, revalidieren Fälligkeit und GwG-Vorbedingungen,
 widerrufen Sitzungen und schreiben nur Zähler in den Auditnachweis.
+
+Die schon bestehende Redaktion der Risikoanalysen und Markierungen verwendet
+denselben Analyse-Row-Lock wie deren Archivierung. Bei archivierten Analysen
+erlaubt der DB-Backstop nur das exakte Leeren von `sourceText`/`sourceDoc` und
+`matchedText`/`notiz`, wenn NATPERS-Anonymisierungsmarker, bisheriger
+Jahresende-Stichtag und aktive Admin-/Partner-Rolle vorliegen. Sonstige
+Kernfelder, Archivpointer und geschützter Archivblob bleiben unverändert.
+Das setzt die bestehende Feldliste um und ist weder eine neue Löschfreigabe
+noch eine Erweiterung des Aufbewahrungsnachweises.
+Die Sperrfolge ist Mandant vor Risikoanalyse vor Audit. Der Hauptpfad sperrt
+die Analyse-Parents deshalb bereits vor dem ersten Kontakt-Audit und nicht
+erst bei der späteren Nebentabellenredaktion. Der DB-Stichtag verwendet
+denselben UTC-Jahreswechsel wie `isClientAnonymizationDue`.
 
 Der NATPERS-Pfad leert außerdem USt-ID und die nur noch zur Migration vorhandene
 `Client.steuernummer`. Er redigiert alle aktiven und archivierten

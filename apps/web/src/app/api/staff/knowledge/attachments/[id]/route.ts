@@ -4,6 +4,7 @@ import { sanitizeFilenameForHeader, streamObject } from '@taxtronik/storage';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { evidenceService } from '@/server/container';
 import { isUuid } from '@/lib/uuid';
+import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 import {
   effectiveDocumentMime,
   filenameWithExtension,
@@ -32,7 +33,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             versions: {
               orderBy: { versionNo: 'desc' },
               take: 1,
-              select: { storageBucket: true, storageKey: true, scanStatus: true },
+              select: {
+                storageBucket: true,
+                storageKey: true,
+                storageVersionId: true,
+                scanStatus: true,
+                scanCompletedAt: true,
+              },
             },
           },
         },
@@ -41,7 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (
       !entry ||
       entry.document.deletedAt !== null ||
-      entry.document.versions[0]?.scanStatus !== 'CLEAN' ||
+      !isDocumentVersionReady(entry.document.versions[0]) ||
       (entry.articleId === null && entry.uploadedBy !== guard.staffId)
     ) {
       return null;
@@ -64,7 +71,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const object = await streamObject(version.storageBucket, version.storageKey);
+  const object = await streamObject(
+    version.storageBucket,
+    version.storageKey,
+    version.storageVersionId,
+  );
   const mimeType = effectiveDocumentMime(attachment.document);
   const filename = filenameWithExtension(attachment.displayName, mimeType);
   const download = req.nextUrl.searchParams.get('download') === '1';

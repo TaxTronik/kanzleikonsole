@@ -23,13 +23,18 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
+import { createHash } from 'node:crypto';
+import type { Readable } from 'node:stream';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
-import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
   createRfc3161Adapter,
   resolveTsaUrl,
   serializeArchive,
+  parseArchive,
+  verifyArchiveChain,
   type ArchiveAuditRow,
+  type ArchiveSerializeResult,
 } from '@taxtronik/evidence';
 import { env } from '@taxtronik/config';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
@@ -58,6 +63,31 @@ const ARCHIVE_BUCKET = env.S3_BUCKET_GOBD;
 const DEFAULT_TSA_PROVIDER_ID = 'globalsign';
 // § 147 AO: 10 Jahre ab Schluss des Kalenderjahres — siehe gobdRetentionUntil
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
+
+/** AUDIT-ARCHIVE-001: existence alone never proves that recovery found our segment. */
+async function verifyStoredArchive(storageKey: string, expected: ArchiveSerializeResult) {
+  const object = await s3.send(new GetObjectCommand({ Bucket: ARCHIVE_BUCKET, Key: storageKey }));
+  const body = object.Body as Readable;
+  try {
+    if (object.ContentLength !== expected.ndjson.length) {
+      throw new Error('AUDIT_ARCHIVE_RECOVERY_MISMATCH: Gespeicherte Segmentgröße weicht ab.');
+    }
+    const hash = createHash('sha256');
+    let size = 0;
+    for await (const chunk of body) {
+      size += chunk.length;
+      if (size > expected.ndjson.length) {
+        throw new Error('AUDIT_ARCHIVE_RECOVERY_MISMATCH: Gespeichertes Segment ist zu groß.');
+      }
+      hash.update(chunk);
+    }
+    if (size !== expected.ndjson.length || !hash.digest().equals(expected.fileSha256)) {
+      throw new Error('AUDIT_ARCHIVE_RECOVERY_MISMATCH: Gespeicherter Segmentinhalt weicht ab.');
+    }
+  } finally {
+    body?.destroy();
+  }
+}
 
 async function timestampArchiveHash(tenantId: string, hash: Buffer): Promise<Buffer | null> {
   const selected = (await readTenantSettingValue(prismaOwner, tenantId, 'evidence.tsa')) as
@@ -166,6 +196,15 @@ export const auditRotateWorker = new Worker<ChecksJob>(
       }));
 
       const ser = serializeArchive(archiveRows);
+      const check = verifyArchiveChain(parseArchive(ser.ndjson), {
+        firstPrevHash: ser.firstPrevHash,
+        lastThisHash: ser.lastThisHash,
+      });
+      if (!check.ok) {
+        throw new Error(
+          `AUDIT_ARCHIVE_CHAIN_INVALID: ${check.reason ?? 'Segmentprüfung fehlgeschlagen'}`,
+        );
+      }
 
       // 3. Upload in Object-Store mit Object-Lock COMPLIANCE
       const yyyy = ser.fromOccurredAt.getUTCFullYear();
@@ -181,6 +220,7 @@ export const auditRotateWorker = new Worker<ChecksJob>(
       let alreadyExists = false;
       try {
         await s3.send(new HeadObjectCommand({ Bucket: ARCHIVE_BUCKET, Key: storageKey }));
+        await verifyStoredArchive(storageKey, ser);
         alreadyExists = true;
         log.warn(
           { tenantId, storageKey },
@@ -200,6 +240,7 @@ export const auditRotateWorker = new Worker<ChecksJob>(
           new PutObjectCommand({
             Bucket: ARCHIVE_BUCKET,
             Key: storageKey,
+            IfNoneMatch: '*',
             Body: ser.ndjson,
             ContentLength: ser.ndjson.length,
             ContentType: 'application/x-ndjson',

@@ -149,7 +149,7 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: only completed 
         'belege/0001_Freigegeben.pdf',
       ]);
       expect(Buffer.from(files['index.csv']!).toString()).not.toContain('Unvollstaendig');
-      expect(h.fetchObjectBytes).toHaveBeenCalledExactlyOnceWith('synthetic', 'ready');
+      expect(h.fetchObjectBytes).toHaveBeenCalledExactlyOnceWith('synthetic', 'ready', undefined);
       expect(h.evidenceRecord.mock.calls[0]![1].after.documents).toBe(1);
     },
   );

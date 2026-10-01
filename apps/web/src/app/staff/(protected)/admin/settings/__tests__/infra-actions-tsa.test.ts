@@ -14,8 +14,8 @@ vi.mock('@taxtronik/config', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/http/ssrf-guard', () => ({ assertPublicUrl: mocks.assertPublicUrl }));
-vi.mock('@/server/settings/tax-region', () => ({ writeTaxRegion: vi.fn() }));
-vi.mock('@/server/settings/tsa', () => ({ writeTsaConfig: vi.fn() }));
+vi.mock('@/server/settings/tax-region', () => ({ writeTaxRegionTx: vi.fn() }));
+vi.mock('@/server/settings/tsa', () => ({ writeTsaConfigTx: vi.fn() }));
 vi.mock('@/server/actions/staff-action', () => ({
   staffActionGuard: mocks.staffActionGuard,
 }));

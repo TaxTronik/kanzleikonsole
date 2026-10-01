@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Fachkatalog: DOC-PORTAL-SHARING-001
 // Fachkatalog: ACCESS-STAFF-PERMISSION-001
 import { NextRequest } from 'next/server';
+import { streamObject, fetchObjectBytes } from '@taxtronik/storage';
 
 const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
@@ -19,7 +20,11 @@ vi.mock('@taxtronik/storage', () => ({
   detectMimeFromMagicBytes: vi.fn(),
 }));
 
-import { loadDocumentDelivery } from '../delivery';
+import {
+  loadDocumentDelivery,
+  documentDownloadResponse,
+  documentPreviewResponse,
+} from '../delivery';
 
 function transaction() {
   return {
@@ -35,6 +40,7 @@ function transaction() {
           {
             storageBucket: 'documents',
             storageKey: 'tenant/document-1',
+            storageVersionId: 'bound-s3-version',
             scanStatus: 'CLEAN',
             scanCompletedAt: new Date(),
           },
@@ -63,6 +69,30 @@ beforeEach(() => {
 });
 
 describe('document delivery pipeline', () => {
+  it('DOC-VERSION-IMMUTABILITY-001: reicht die gebundene Version in Download und Vorschau durch', async () => {
+    const tx = transaction();
+    mocks.withTenantContext.mockImplementation(async (_ctx, callback) => callback(tx));
+    const document = await loadDocumentDelivery(options());
+    expect(document?.storageVersionId).toBe('bound-s3-version');
+    vi.mocked(streamObject).mockResolvedValue({
+      body: new ReadableStream({
+        start(c) {
+          c.close();
+        },
+      }),
+      contentLength: 0,
+      contentType: 'application/pdf',
+    });
+    await documentDownloadResponse(document!, { mimeSource: 'validated-document' });
+    expect(streamObject).toHaveBeenCalledWith('documents', 'tenant/document-1', 'bound-s3-version');
+    vi.mocked(fetchObjectBytes).mockResolvedValue(Buffer.from('%PDF-test'));
+    await documentPreviewResponse(new NextRequest('http://localhost/doc?stream=1'), document!);
+    expect(fetchObjectBytes).toHaveBeenCalledWith(
+      'documents',
+      'tenant/document-1',
+      'bound-s3-version',
+    );
+  });
   it('requires fresh payroll rights even when a generic document lookup returned the artifact', async () => {
     const tx = transaction();
     tx.document.findFirst.mockResolvedValue({

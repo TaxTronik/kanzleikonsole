@@ -54,10 +54,18 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   `taxtronik_app` voraus; verbindliche Rollen-/ACL-/RLS-Abnahme vor jeder
   Erfolgsmeldung, zusätzlich optionaler Smoke-Test (Tenants/Audit-Zählung).
 - **Restore-Drill** (Worker, monatlich 1., 05:00 UTC): letztes
-  SUCCESS-Backup → Wegwerf-DB (S3→pg_restore-stdin-Stream, SHA-Check) →
+  SUCCESS-Backup → private lokale Kopie unter `BACKUP_DRILL_TMP_DIR`
+  (Compose: `/app/backups/restore-drill`, gemeinsamer Backup-Hostmount) →
+  vollständiger SHA-256- und Größenvergleich mit `BackupRecord` →
+  `pg_restore` genau dieser Datei in eine je Lauf zufällig benannte Wegwerf-DB →
   `verifyChain` je Tenant auf der **wiederhergestellten** DB; Ergebnis als
   `tenant_setting` (Admin-Karte) + Audit `backup.drill.*` in der
-  Produktiv-Chain; Fehlschlag → Admin-Notification.
+  Produktiv-Chain; Fehlschlag → Admin-Notification. Fehlende Hash-/Größenwerte,
+  zu große oder abgebrochene Streams und unzureichender freier Plattenplatz
+  sperren `pg_restore`. Die Laufkopie wird bei Erfolg und Fehler entfernt.
+  Ein SIGKILL/Stromausfall kann private Restdateien hinterlassen, die der
+  Betreiber nach Prüfung aktiver Läufe löschen muss; es gibt keinen
+  automatischen Zugriff auf eine ungeprüfte Restdatei.
 - **CI-Selbsttest** (`scripts/restore-selftest.sh`, Job `restore`): echter
   runner→restore-Roundtrip je Commit mit Zeilenzahl-, App-Rollen-/ACL-/REVOKE-
   Assertions + Chain-Verifikation; Protokoll als CI-Artefakt.
@@ -72,17 +80,23 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 
 ## Traceability
 
-| Anforderung                             | Implementierung                                                                      | Test/Nachweis                                                                                                           |
-| --------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| Backup integritätsgeprüft               | SHA-256 in BackupRecord, Verify beim Restore, solange die Referenz-DB verfügbar ist  | restore.ts-Hash-Abbruchpfad; monatlicher Drill                                                                          |
-| Wiederherstellbarkeit je Software-Stand | restore-selftest.sh                                                                  | CI-Job `restore` (Artefakt `testbericht-restore`)                                                                       |
-| Wiederherstellbarkeit je Installation   | backup-drill-Worker                                                                  | `backup-drill.test.ts` (Helfer) + End-to-End über echte Queue/Image (verifiziert 2026-06-10); Audit-Events in der Chain |
-| Ganz-oder-gar-nicht-Restore             | --single-transaction                                                                 | CI-Roundtrip                                                                                                            |
-| Migration nie ohne Backup               | ops-lib `backup_before_migrations`                                                   | ./taxtronik deploy/update                                                                                               |
-| Vollständiger Recovery Point sicherbar  | quiesziertes, age-verschlüsseltes `backup-full` + Cold-Volumes + signiertes Inventar | Manipulationstest; Betreiber-Vollsystem-Drill                                                                           |
-| Sichtbarkeit ohne Dump-Zugriff          | Admin-Backup-Karte + Drill-Ergebnis; Trigger und Download nur durch Operator         | Route-Tests + manuelle Abnahme                                                                                          |
+| Anforderung                             | Implementierung                                                                      | Test/Nachweis                                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backup integritätsgeprüft               | SHA-256 in BackupRecord, Verify beim Restore, solange die Referenz-DB verfügbar ist  | restore.ts-Hash-Abbruchpfad; monatlicher Drill                                                                                                           |
+| Wiederherstellbarkeit je Software-Stand | restore-selftest.sh                                                                  | CI-Job `restore` (Artefakt `testbericht-restore`)                                                                                                        |
+| Wiederherstellbarkeit je Installation   | backup-drill-Worker; `BACKUP-DRILL-INTEGRITY-001`                                    | `backup-drill.test.ts` (Helfer), `backup-drill-file.test.ts` (echte Streams/Dateien, Manipulation, Cleanup); vollständiger Queue-/Image-Nachweis separat |
+| Ganz-oder-gar-nicht-Restore             | --single-transaction                                                                 | CI-Roundtrip                                                                                                                                             |
+| Migration nie ohne Backup               | ops-lib `backup_before_migrations`                                                   | ./taxtronik deploy/update                                                                                                                                |
+| Vollständiger Recovery Point sicherbar  | quiesziertes, age-verschlüsseltes `backup-full` + Cold-Volumes + signiertes Inventar | Manipulationstest; Betreiber-Vollsystem-Drill                                                                                                            |
+| Sichtbarkeit ohne Dump-Zugriff          | Admin-Backup-Karte + Drill-Ergebnis; Trigger und Download nur durch Operator         | Route-Tests + manuelle Abnahme                                                                                                                           |
 
 ## Bekannte Grenzen
+
+Der Restore-CLI-Download legt jede Laufkopie in einem zufälligen privaten
+Verzeichnis (0700) mit exklusiver Datei (0600) ab. Parallele Aufrufe teilen
+keinen vorhersehbaren Dateinamen. Auch bei unterbrochenem Download wird das
+eigene Verzeichnis samt Teil-Dump entfernt; der Test `restore.test.ts` prüft
+Bytes, SHA-256, Berechtigungen, getrennte Parallelkopien und Fehler-Cleanup.
 
 Ein vorbereiteter Zielserver kann über Defaultprivilegien beim Neuanlegen der
 Tabellen Rechte vergeben, die im Quellsystem entzogen waren. Deshalb prüft

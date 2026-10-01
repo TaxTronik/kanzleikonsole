@@ -49,15 +49,20 @@ sources:
 code_refs:
   - packages/db/src/staff-client-access.ts
   - apps/web/src/server/settings/access-policy.ts
+  - apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts
   - apps/web/src/server/auth/rbac.ts
   - apps/web/src/app/staff/(protected)/invoices/new/page.tsx
+  - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts
 test_refs:
+  - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
+  - apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts
   - apps/web/src/server/settings/__tests__/access-policy.test.ts
   - apps/web/src/server/settings/__tests__/access-policy.property.test.ts
   - apps/web/src/server/auth/__tests__/rbac.test.ts
   - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
   - apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx
   - apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts
+  - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/__tests__/route.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
@@ -112,6 +117,15 @@ Tenant-Isolation, externe Systeme oder Tätigkeiten außerhalb von TaxTronik.
 
 ## Ausnahmen und Grenzfälle
 
+Administrativ gespeicherte Änderungen zwischen OPEN und RESTRICTED werden
+zusammen mit dem Audit-Ereignis in derselben Datenbanktransaktion committet.
+Scheitert das Audit oder der Commit, bleibt der bisherige Zugriffsmodus
+unverändert; insbesondere darf ein fehlgeschlagener Wechsel nach OPEN den
+Mandantenzugriff nicht ohne Nachweis erweitern. Cache-Revalidierung erfolgt
+erst nach erfolgreichem Commit. Die PostgreSQL-Regression injiziert nach einem
+echten Audit-Insert einen SQL-Fehler und prüft den Rollback von Einstellung und
+Hashketten-Ende sowie den erfolgreichen und den rollenbedingt abgewiesenen Pfad.
+
 Eine Fach- oder Vertretungszuordnung außerhalb der beiden Rollen
 `BERUFSTRAEGER` und `HAUPTBEARBEITER` begründet in diesem Gate keinen Zugriff.
 Das OPEN-Modell ist bewusst breit und kann für besonders sensible Bestände
@@ -149,6 +163,17 @@ die Mandantenliste; der Aufnahmeweg erscheint nur mit `CLIENT_CREATE`.
 Der Hinweis behauptet weder einen leeren Kanzleibestand noch das Vorhandensein
 vertraulicher Mandate. Die Schreibaktionen prüfen den Zugriff weiterhin erneut.
 
+Der PDF-/DOCX-Export einer Subsumtionsanalyse gleicht den aus der Analyse
+ermittelten Mandanten mit der URL ab und prüft dessen Zugriff vor dem Rendern.
+Vertrauliche Analysen benötigen zusätzlich Schreibzugriff, weil der Report den
+gesamten Sachverhalt enthält. Für internationale Titel verwendet der
+Download-Header einen ByteString-kompatiblen Dateinamen-Fallback und bewahrt
+den bereinigten Originaltitel UTF-8-kodiert in `filename*`.
+Die Längenbegrenzung schneidet nur an Unicode-Codepoint-Grenzen, damit keine
+ungültigen halben Surrogatpaare in die UTF-8-Kodierung gelangen. Dadurch scheitert
+ein berechtigter Export nicht mehr beim Aufbau des HTTP-Headers; die
+Zugriffsvoraussetzungen bleiben unverändert.
+
 ## Bekannte Abweichungen und Grenzen
 
 Bei der UX-Nachprüfung am 14. September 2026 widersprach die Rechnungsanlage
@@ -178,6 +203,15 @@ Wahrheits- und Property-Tests belegen Admin-Override, OPEN, RESTRICTED,
 Vertraulichkeit und Zuordnung. RBAC-Tests belegen Einzel- und Batchfilter. Sie
 belegen weder die organisatorische Angemessenheit noch die vollständige
 Abdeckung aller Call-Sites.
+
+Route-Regressionen führen den DOCX- und PDF-Download mit chinesischen und
+kyrillischen Titelzeichen durch die echte `NextResponse`-/`Headers`-Erzeugung
+und den gemeinsamen Dateinamen-Sanitizer. Ein zusätzlicher Titel prüft ein
+Supplementary-Unicode-Zeichen an der Längengrenze. Sie prüfen Originalbytes,
+Inhaltstyp, internationalen Dateinamen und Audit-Ereignis sowie die Abweisung
+eines fremden URL-Mandanten und einer vertraulichen Analyse ohne Schreibrecht.
+Renderer, Datenbank und Authentifizierung sind in diesen Transporttests
+ersetzt; die zentralen Berechtigungs- und RLS-Tests bleiben zusätzlich nötig.
 
 SSR-Tests der Rechnungsanlage prüfen die tatsächliche zentrale Policy,
 Moduswahl und Aufnahmeberechtigung. Fünf zusätzliche Tests führen die echte

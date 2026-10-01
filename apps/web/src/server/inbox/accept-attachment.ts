@@ -248,7 +248,11 @@ export async function acceptInboxAttachment(input: {
       retentionYears: source.documentType.retentionYears ?? undefined,
     },
     readBytes: async () => {
-      const bytes = await fetchObjectBytes(source.storageBucket, source.storageKey);
+      const bytes = await fetchObjectBytes(
+        source.storageBucket,
+        source.storageKey,
+        source.storageVersionId,
+      );
       const actual = createHash('sha256').update(bytes).digest();
       if (!actual.equals(Buffer.from(source.sha256)) || BigInt(bytes.length) !== source.sizeBytes) {
         throw new ActionError('Die Prüfsumme der Anlage stimmt nicht.');

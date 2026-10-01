@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { ForbiddenError, requireStaffSession, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
+import { lockRiskAnalysisTx, requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { getClientIp } from '@/server/rate-limit';
@@ -82,9 +83,10 @@ export async function updateAnalysisAction(
     const parsed = UpdateAnalysisSchema.parse(input);
     const { ctx, clientId } = await guardAnalysisWrite(parsed.analysisId);
     const title = parsed.title?.trim() || null;
-    await withTenantContext(ctx, (tx) =>
-      tx.riskAnalysis.update({ where: { id: parsed.analysisId }, data: { title } }),
-    );
+    await withTenantContext(ctx, async (tx) => {
+      await requireWritableRiskAnalysisTx(tx, ctx.tenantId, parsed.analysisId);
+      await tx.riskAnalysis.update({ where: { id: parsed.analysisId }, data: { title } });
+    });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);
     revalidatePath(`/staff/clients/${clientId}/subsumtion`);
     return { ok: true, title };
@@ -166,12 +168,12 @@ export async function setAnalysisVertraulichAction(input: {
   vertraulich: boolean;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, staffId, clientId, vertraulich } = await guardAnalysisVertraulich(
-      input.analysisId,
-    );
+    const { ctx, staffId, clientId } = await guardAnalysisVertraulich(input.analysisId);
 
-    if (vertraulich !== input.vertraulich) {
-      await withTenantContext(ctx, async (tx) => {
+    await withTenantContext(ctx, async (tx) => {
+      const current = await lockRiskAnalysisTx(tx, ctx.tenantId, input.analysisId);
+      if (!current) throw new Error('Analyse nicht gefunden.');
+      if (current.vertraulich !== input.vertraulich) {
         await tx.riskAnalysis.update({
           where: { id: input.analysisId },
           data: { vertraulich: input.vertraulich },
@@ -185,11 +187,11 @@ export async function setAnalysisVertraulichAction(input: {
             : 'subsumtion.vertraulich.aufgehoben',
           resourceType: 'risk_analysis',
           resourceId: input.analysisId,
-          before: { vertraulich },
+          before: { vertraulich: current.vertraulich },
           after: { vertraulich: input.vertraulich, clientId },
         });
-      });
-    }
+      }
+    });
 
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
     return { ok: true };
@@ -517,12 +519,18 @@ export async function importClientDocAction(
         ip,
         userAgent,
       });
-      return { mimeType: d.mimeType, bucket: v.storageBucket, key: v.storageKey, title: d.title };
+      return {
+        mimeType: d.mimeType,
+        bucket: v.storageBucket,
+        key: v.storageKey,
+        storageVersionId: v.storageVersionId,
+        title: d.title,
+      };
     });
     if (!doc) return { ok: false, error: 'Dokument nicht gefunden.' };
 
     // App-proxied: Bytes intern aus SeaweedFS holen (Store nie öffentlich).
-    const bytes = await fetchObjectBytes(doc.bucket, doc.key);
+    const bytes = await fetchObjectBytes(doc.bucket, doc.key, doc.storageVersionId);
     const text = await extractText(bytes, doc.mimeType || 'application/octet-stream');
     if (!text.trim())
       return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };

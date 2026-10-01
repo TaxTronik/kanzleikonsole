@@ -1,3 +1,5 @@
+import { berlinCalendarDate } from '@taxtronik/tax';
+
 export interface VerificationDocument {
   gwgCheckId: string;
   documentSetId: string;
@@ -96,6 +98,9 @@ function personalIdSets(
   clientId: string,
   now: Date,
 ): ValidPersonalIdSet[] {
+  // expiryDate ist ein fachliches DATE. Derselbe Berliner Kalendertag wie
+  // im Ablauf-Worker entscheidet, auch nach Mitternacht vor dem UTC-Wechsel.
+  const today = berlinCalendarDate(now).getTime();
   const groups = new Map<string, VerificationDocument[]>();
   for (const document of documents) {
     if (document.supersededAt != null) continue;
@@ -136,7 +141,7 @@ function personalIdSets(
         Boolean(entry.issuedBy?.trim()) &&
         entry.issueDate !== null &&
         entry.expiryDate !== null &&
-        startOfUtcDay(entry.expiryDate) >= startOfUtcDay(now) &&
+        startOfUtcDay(entry.expiryDate) >= today &&
         hasAttachedEvidence(entry, clientId),
     );
     if (

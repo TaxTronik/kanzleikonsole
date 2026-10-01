@@ -24,7 +24,7 @@ interface ArchiveXmlInput {
 }
 
 type ArchiveXmlState =
-  | { state: 'ready'; bucket: string; key: string }
+  | { state: 'ready'; bucket: string; key: string; storageVersionId: string | null }
   | { state: 'missing' | 'not_found' | 'status_conflict' };
 
 function invoiceStatusAllowsPortalShare(status: string, sentAt: Date | null): boolean {
@@ -133,6 +133,7 @@ async function readArchivedXmlCopy(input: ArchiveXmlInput): Promise<ArchiveXmlSt
       state: 'ready' as const,
       bucket: version.storageBucket,
       key: version.storageKey,
+      storageVersionId: version.storageVersionId,
     };
   });
 }
@@ -343,7 +344,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!archive || archive.state !== 'ready') {
     return NextResponse.json({ error: 'archive_failed' }, { status: 502 });
   }
-  const object = await streamObject(archive.bucket, archive.key);
+  const object = await streamObject(archive.bucket, archive.key, archive.storageVersionId);
   const responseHeaders: Record<string, string> = {
     'Content-Type': 'application/xml; charset=utf-8',
     'Content-Disposition': `attachment; filename="${fileName}"`,

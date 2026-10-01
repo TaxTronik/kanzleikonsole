@@ -108,6 +108,16 @@ und die Deduplizierung beim nächsten Poll.
 
 Der BullMQ-Worker speichert Empfangsidentitäten und vorgemerkte Ablagepfade dauerhaft. Die App-Rolle benötigt zusätzliche Posteingangsrechte; Portalakteure erhalten keinen Zugriff. Änderungen an Prüfwerten bleiben dem System-Scanner vorbehalten. Die Archivierung nutzt persistResumableDocumentUpload einschließlich erneuter Rechte- und Modulprüfung in den Schreibtransaktionen.
 
+Scanneränderungen sind atomar auf noch ungebundene Anhänge in PENDING oder
+SCAN_ERROR beschränkt. Ein langsamer Poll darf einen inzwischen freigegebenen,
+gesperrten oder bereits in Archivierung befindlichen Empfangsnachweis nicht
+zurücksetzen. Die Freigabe des Postfach-Claims ist an dessen übernommenen
+Zeitwert gebunden und löscht keinen neueren Claim. Auch UID-Cursor, UIDVALIDITY,
+Erfolgs-/Fehlerstatus und fehlerbedingtes Pausieren verlangen den eigenen Claim
+und ein weiterhin aktives Postfach. Zuvor konnte ein nach Ablauf
+des zehnminütigen Claims überlappender Poll IMPORTED wieder auf CLEAN setzen;
+die unveränderliche Dokumentbindung allein verhinderte diesen Statusfehler nicht.
+
 Die Dokumenttypauswahl berücksichtigt auch eigene aktive Typen ohne
 Klassifikationsschlüssel. Die Datenbankabfrage schließt diese NULL-Werte explizit
 ein; Mandantenzuordnung, GwG-Schutzstufe sowie die Ausschlüsse STAFF_PRIVATE und
@@ -156,3 +166,10 @@ Wer erhält das zusätzliche Posteingangsrecht? Welche Aufbewahrung ist für nic
 ## Technische Nachweise
 
 Transporttests belegen Read-only-/TLS-Parameter, Deduplizierung und Cursor-Recovery, Wiederaufnahme nach Scannerfehlern, Malware-/Verschlüsselungssperren, Modul-Aus und UIDVALIDITY-Pause. Echte Datenbanktests prüfen zusätzliche Mitarbeiterrechte, fremde Tenants, Portalidentitäten und unveränderliche Anhanghashes. Diese Nachweise ersetzen weder eine Live-Exchange-Abnahme noch eine fachliche Freigabe.
+
+Konkurrierende Poll-Regressionen verzögern einen Scan über einen Claim-Wechsel,
+archivieren den Anhang im neueren Lauf und prüfen den unveränderten IMPORTED-
+Status nach Abschluss des alten Scans. Ein verzögerter Logout darf außerdem
+den neueren Postfach-Claim nicht freigeben.
+Ein alter erfolgreicher Poll darf neueren Cursor/Fehlerstatus nicht überschreiben;
+ein alter Authentifizierungsfehler darf den neuen Claim nicht deaktivieren.

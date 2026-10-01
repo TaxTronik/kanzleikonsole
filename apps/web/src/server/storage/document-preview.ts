@@ -12,6 +12,7 @@ export interface PreviewDocumentSource {
   classification: string;
   bucket: string;
   key: string;
+  storageVersionId?: string | null;
   isPoaDocument: boolean;
 }
 
@@ -38,7 +39,7 @@ export async function loadDocumentPreview(doc: PreviewDocumentSource): Promise<{
   headers: Record<string, string>;
 }> {
   const metadataMime = effectiveDocumentMime(doc);
-  const bytes = await fetchObjectBytes(doc.bucket, doc.key);
+  const bytes = await fetchObjectBytes(doc.bucket, doc.key, doc.storageVersionId);
   const detected = detectMimeFromMagicBytes(bytes);
   const detectedMime = detected
     ? previewContentType(detected, doc.title)

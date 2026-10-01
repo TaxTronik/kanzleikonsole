@@ -12,7 +12,7 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard } from '@/server/actions/staff-action';
-import { berlinTodayUtcMidnight } from '@taxtronik/tax';
+import { berlinTodayUtcMidnight, lockTaxScheduleTx } from '@taxtronik/tax';
 
 const ALL_KINDS: TaxScheduleKind[] = [
   'USTA_MONATLICH',
@@ -79,6 +79,9 @@ export async function saveScheduleConfigAction(
     await assertClientAccessTx(tx, session, clientId);
     // R-2: clientId Tenant-Sanity vor allen taxScheduleConfig-Mutationen.
     await assertClientInTenant(tx, clientId);
+    // Same order as candidate creation: schedule gate -> config/deadline -> audit.
+    // Acquire before reading the old config or deleting any future deadlines.
+    await lockTaxScheduleTx(tx, tenantId);
     const now = new Date();
     // Bestehende laden für Diff
     const existing = await tx.taxScheduleConfig.findMany({ where: { clientId } });

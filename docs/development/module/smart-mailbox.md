@@ -25,6 +25,17 @@ Erst eine berechtigte Mitarbeiteraktion bestätigt Mandant und Dokumenttyp. Sie 
 
 ## Betrieb und Grenzen
 
+MAIL-INBOX-001: Scanner schreiben nur atomar in noch ungebundene Anhänge der
+Zustände PENDING/SCAN_ERROR. Ein nach Claim-Ablauf überlappender langsamer Poll
+kann damit weder CLEAN/BLOCKED noch eine laufende oder abgeschlossene
+Archivzuordnung zurücksetzen. Die Claim-Freigabe beim Logout verlangt weiterhin
+den eigenen ursprünglichen Zeitwert; sie löscht keinen neueren Claim. Der
+zehnminütige Claim wird nicht verlängert, daher bleibt doppelte Scanarbeit bei
+sehr langen Läufen möglich. Cursor-/Statusänderungen verlangen ebenfalls den
+eigenen Claim und ein weiterhin aktives Profil; alte Läufe überschreiben weder
+neueren Cursor/Fehlerstatus noch pausieren sie einen neuen Claim. Die
+dauerhaften Empfangsidentitäten verhindern einen neuen Import derselben UID.
+
 Die App-Rolle darf Postfachprofile und ihre Empfangs- und Anhangsnachweise nicht
 löschen. Die additive Migration `20260831290000_mailbox_receipt_delete_guard`
 entzieht auch aus Bootstrap-Standardrechten geerbte DELETE-Rechte, damit bekannte

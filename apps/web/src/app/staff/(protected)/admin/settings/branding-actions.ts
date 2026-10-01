@@ -7,10 +7,10 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { writeSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
-import { writeBranding, type BrandingInfo } from '@/server/settings/branding';
-import { writeLetterhead, type LetterheadConfig } from '@/server/settings/letterhead';
-import { writeLegal, type LegalLinks } from '@/server/settings/legal';
+import { writeSellerInfoTx, type SellerInfo } from '@/server/settings/tenant-settings';
+import { writeBrandingTx, type BrandingInfo } from '@/server/settings/branding';
+import { writeLetterheadTx, type LetterheadConfig } from '@/server/settings/letterhead';
+import { writeLegalTx, type LegalLinks } from '@/server/settings/legal';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 
 const SellerSchema = z.object({
@@ -67,9 +67,8 @@ export async function saveSellerInfoAction(
     bankName: parsed.data.bankName || null,
   };
 
-  await writeSellerInfo(ctx, info);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeSellerInfoTx(tx, ctx, info);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -140,9 +139,8 @@ export async function saveBrandingAction(
     logoDataUrlDark: logoDarkStr || null,
   };
 
-  await writeBranding(ctx, info);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeBrandingTx(tx, ctx, info);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -193,9 +191,8 @@ export async function saveLetterheadAction(
 
   const { tenantId, staffId, ctx } = g;
   const cfg: LetterheadConfig = parsed.data;
-  await writeLetterhead(ctx, cfg);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeLetterheadTx(tx, ctx, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -236,9 +233,8 @@ export async function saveLegalAction(
 
   const { tenantId, staffId, ctx } = g;
   const cfg: LegalLinks = parsed.data;
-  await writeLegal(ctx, cfg);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeLegalTx(tx, ctx, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',

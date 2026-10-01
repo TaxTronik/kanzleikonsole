@@ -164,6 +164,7 @@ describe('anonymizeClientSideTablesInTx — personentragende Nebentabellen (eine
 
   function fakeTx() {
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
       powerOfAttorney: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
       gwgOnboardingInvite: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
       formSubmission: { updateMany: vi.fn().mockResolvedValue({ count: 3 }) },

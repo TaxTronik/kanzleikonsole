@@ -208,7 +208,7 @@ describe('Preview-Route — Antwortformen unter Limit', () => {
     );
     expect(res.status).toBe(200);
     expect(m.checkPortalReadLimit).toHaveBeenCalledTimes(1);
-    expect(m.fetchObjectBytes).toHaveBeenCalledWith('docs', 'k/doc-1');
+    expect(m.fetchObjectBytes).toHaveBeenCalledWith('docs', 'k/doc-1', undefined);
     expect(res.headers.get('content-type')).toBe('application/pdf');
   });
 

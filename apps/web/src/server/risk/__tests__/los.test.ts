@@ -12,6 +12,7 @@ const h = vi.hoisted(() => {
       { id: 'c3', clientId: null, title: null },
     ] as { id: string; clientId: string | null; title: string | null }[],
     pendingRow: null as { value: unknown } | null,
+    startRow: null as { value: unknown } | null,
     auditRows: [] as { id: bigint; after: unknown }[],
     // Chain-Ereignisse für den Audit-Rahmen (Betriebs-Nachschau): zeitraum-
     // Query (occurredAt) liefert alle, id-in-Query die angefragten.
@@ -34,6 +35,7 @@ const h = vi.hoisted(() => {
     settingDeleteMany: vi.fn(async (_args: unknown) => ({ count: 1 })),
   };
   const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
     riskAnalysis: {
       findMany: async (args: { where: { createdAt?: unknown; id?: { in: string[] } } }) =>
         args.where.id
@@ -42,7 +44,8 @@ const h = vi.hoisted(() => {
     },
     clientReminder: { create: state.reminderCreate },
     tenantSetting: {
-      findUnique: async () => state.pendingRow,
+      findUnique: async (args: { where: { tenantId_key: { key: string } } }) =>
+        args.where.tenantId_key.key === 'quantenlos.start' ? state.startRow : state.pendingRow,
       upsert: state.settingUpsert,
       deleteMany: state.settingDeleteMany,
     },
@@ -100,6 +103,10 @@ vi.mock('@taxtronik/risk-layer', async () => {
 import {
   zieheLosStichprobe,
   holeLosAb,
+  getLosStart,
+  releaseLosStart,
+  resumeLosStart,
+  resumeLosStartProof,
   pruefeLosNachweis,
   listLosZiehungen,
   LosRahmenLeerError,
@@ -127,12 +134,33 @@ beforeEach(() => {
     { id: 'c3', clientId: null, title: null },
   ];
   h.state.pendingRow = null;
+  h.state.startRow = null;
   h.state.auditRows = [];
   h.state.chainRows = [];
   h.state.record.mockClear();
   h.state.reminderCreate.mockClear();
   h.state.settingUpsert.mockClear();
   h.state.settingDeleteMany.mockClear();
+  h.state.settingUpsert.mockImplementation(async (input: unknown) => {
+    const args = input as { where: { tenantId_key: { key: string } }; create: { value: unknown } };
+    if (args.where.tenantId_key.key === 'quantenlos.start')
+      h.state.startRow = { value: args.create.value };
+    else h.state.pendingRow = { value: args.create.value };
+    return {};
+  });
+  h.state.settingDeleteMany.mockImplementation(async (input: unknown) => {
+    const args = input as { where: { key: string; value: { path?: string[]; equals: unknown } } };
+    const isStart = args.where.key === 'quantenlos.start';
+    const row = isStart ? h.state.startRow : h.state.pendingRow;
+    const value =
+      isStart && args.where.value.path
+        ? (row?.value as { attemptId: string } | undefined)?.attemptId
+        : row?.value;
+    if (JSON.stringify(value) !== JSON.stringify(args.where.value.equals)) return { count: 0 };
+    if (isStart) h.state.startRow = null;
+    else h.state.pendingRow = null;
+    return { count: 1 };
+  });
 });
 
 describe('zieheLosStichprobe', () => {
@@ -210,8 +238,8 @@ describe('zieheLosStichprobe', () => {
       zeitraum,
     });
 
-    expect(h.state.settingUpsert).toHaveBeenCalledTimes(1);
-    const up = h.state.settingUpsert.mock.calls[0]![0] as unknown as {
+    expect(h.state.settingUpsert).toHaveBeenCalledTimes(3);
+    const up = h.state.settingUpsert.mock.calls[2]![0] as unknown as {
       where: { tenantId_key: { key: string } };
       create: { value: Record<string, unknown> };
     };
@@ -483,6 +511,241 @@ describe('holeLosAb', () => {
     expect(h.state.record).toHaveBeenCalledTimes(1);
     expect(h.state.settingDeleteMany).toHaveBeenCalledTimes(1);
     expect(h.state.reminderCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TCMS-SAMPLE-PROOF-001: Reservation, konkurrierende Abholung und Betreiberklärung', () => {
+  const pending = {
+    jobId: 'job-1',
+    backend: 'qpu',
+    commitment: 'c0ffee',
+    k: 2,
+    rahmen: ['a1', 'b2', 'c3'],
+    zeitraum,
+    beantragtAm: '2026-06-10T07:00:00Z',
+    beantragtVon: 's1',
+  };
+  const qpuProof = {
+    ...nachweis,
+    entropie: { ...nachweis.entropie, quelle_klasse: 'qpu', job_id: 'job-1' },
+  };
+  const attempt = {
+    attemptId: '00000000-0000-4000-8000-000000000001',
+    backend: 'qpu',
+    k: 2,
+    rahmen: ['a1', 'b2', 'c3'],
+    rahmenTyp: 'subsumtion',
+    zeitraum,
+    beantragtAm: '2026-06-10T07:00:00Z',
+    beantragtVon: 's1',
+  };
+
+  it('zwei Abholungen desselben Jobs erstellen Aufgaben und Audit nur einmal', async () => {
+    h.state.pendingRow = { value: pending };
+    const losAbholen = vi.fn(async () => ({
+      ok: true as const,
+      status: 'fertig' as const,
+      nachweis: qpuProof,
+    }));
+    const results = await Promise.allSettled([
+      holeLosAb(ctx, { losAbholen }),
+      holeLosAb(ctx, { losAbholen }),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    expect(h.state.record).toHaveBeenCalledTimes(1);
+    expect(h.state.reminderCreate).toHaveBeenCalledTimes(1);
+  });
+  it('alte Abholung bewahrt einen zwischenzeitlich neueren Pending-Job', async () => {
+    h.state.pendingRow = { value: pending };
+    const newer = { ...pending, jobId: 'job-2' };
+    const losAbholen = vi.fn(async () => {
+      h.state.pendingRow = { value: newer };
+      return { ok: true as const, status: 'fertig' as const, nachweis: qpuProof };
+    });
+    await expect(holeLosAb(ctx, { losAbholen })).rejects.toThrow('bereits bearbeitet');
+    expect(h.state.pendingRow?.value).toEqual(newer);
+    expect(h.state.record).not.toHaveBeenCalled();
+    expect(h.state.reminderCreate).not.toHaveBeenCalled();
+  });
+  it('reserviert vor Engine-I/O und verweigert einen zweiten Start ohne zweiten Engine-Aufruf', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const enteredPromise = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const losZiehen = vi.fn(async () => {
+      entered();
+      await hold;
+      return { ok: true as const, status: 'fertig' as const, nachweis };
+    });
+    const first = zieheLosStichprobe(ctx, { zeitraum, k: 2, backend: 'csprng' }, { losZiehen });
+    await enteredPromise;
+    try {
+      await expect(
+        zieheLosStichprobe(ctx, { zeitraum, k: 2, backend: 'csprng' }, { losZiehen }),
+      ).rejects.toThrow('anderer Auftrag');
+      expect(losZiehen).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
+    await first;
+  });
+  it('unklarer Engine-Ausgang bewahrt ursprünglichen Rahmen und verhindert automatische Wiederholung', async () => {
+    const losZiehen = vi.fn().mockRejectedValue(new Error('lost response'));
+    await expect(
+      zieheLosStichprobe(ctx, { zeitraum, k: 2, backend: 'qpu' }, { losZiehen }),
+    ).rejects.toThrow('lost response');
+    expect(await getLosStart(ctx)).toMatchObject({
+      k: 2,
+      rahmen: ['a1', 'b2', 'c3'],
+      zeitraum,
+      backend: 'qpu',
+    });
+    await expect(
+      zieheLosStichprobe(ctx, { zeitraum, k: 2, backend: 'qpu' }, { losZiehen }),
+    ).rejects.toThrow('anderer Auftrag');
+    expect(losZiehen).toHaveBeenCalledTimes(1);
+  });
+  it('nimmt einen identifizierten Remote-Job ohne neue Ziehung wieder auf', async () => {
+    h.state.startRow = { value: attempt };
+    const losAbholen = vi.fn(async () => ({
+      ok: true as const,
+      status: 'fertig' as const,
+      nachweis: qpuProof,
+    }));
+    await expect(
+      resumeLosStart(ctx, { attemptId: attempt.attemptId, jobId: 'job-1' }, { losAbholen }),
+    ).resolves.toMatchObject({ status: 'fertig' });
+    expect(losAbholen).toHaveBeenCalledWith({
+      jobId: 'job-1',
+      rahmen: attempt.rahmen,
+      k: attempt.k,
+    });
+    expect(h.state.startRow).toBeNull();
+  });
+  it.each([
+    { ...qpuProof, entropie: { ...qpuProof.entropie, job_id: 'wrong-job' } },
+    { ...qpuProof, entropie: { ...qpuProof.entropie, quelle_klasse: 'csprng' } },
+    { ...qpuProof, k: 1 },
+    { ...qpuProof, stichprobe: ['a1', 'a1'] },
+    { ...qpuProof, rahmen: { ...qpuProof.rahmen, commitment: 'wrong' } },
+  ])('verwirft inkonsistente Job-/Quellen-/K-/Treffer-/Commitmentbindung', async (proof) => {
+    h.state.pendingRow = { value: pending };
+    await expect(
+      holeLosAb(ctx, { losAbholen: async () => ({ ok: true, status: 'fertig', nachweis: proof }) }),
+    ).rejects.toBeInstanceOf(LosNachweisInkonsistentError);
+    expect(h.state.pendingRow?.value).toEqual(pending);
+    expect(h.state.record).not.toHaveBeenCalled();
+  });
+  it('übernimmt einen gesicherten fertigen Nachweis nur nach Prüfung gegen den Originalrahmen', async () => {
+    h.state.startRow = { value: { ...attempt, backend: 'csprng' } };
+    const losPruefen = vi.fn(async () => ({
+      ok: true as const,
+      gueltig: true,
+      geprueft: ['commitment'],
+      hinweise: [],
+    }));
+    await expect(
+      resumeLosStartProof(ctx, { attemptId: attempt.attemptId, proof: nachweis }, { losPruefen }),
+    ).resolves.toMatchObject({ status: 'fertig' });
+    expect(losPruefen).toHaveBeenCalledWith({ nachweis, rahmen: attempt.rahmen, online: false });
+  });
+  it('lehnt einen alten Nachweis, negativen Verifikationsbefund und fremde Freigabe ab', async () => {
+    h.state.startRow = { value: attempt };
+    const losPruefen = vi.fn(async () => ({
+      ok: true as const,
+      gueltig: false,
+      geprueft: [],
+      hinweise: [],
+    }));
+    await expect(
+      resumeLosStartProof(
+        ctx,
+        {
+          attemptId: attempt.attemptId,
+          proof: { ...qpuProof, gezogen_am: '2020-01-01T00:00:00Z' },
+        },
+        { losPruefen },
+      ),
+    ).rejects.toThrow('Zeitpunkt');
+    expect(losPruefen).not.toHaveBeenCalled();
+    await expect(
+      resumeLosStartProof(ctx, { attemptId: attempt.attemptId, proof: qpuProof }, { losPruefen }),
+    ).rejects.toThrow('abgelehnt');
+    await expect(
+      releaseLosStart(ctx, {
+        attemptId: '00000000-0000-4000-8000-000000000099',
+        reason: 'Betreiber hat die Nichtausführung dokumentiert bestätigt.',
+        confirmedNotExecuted: true,
+      }),
+    ).rejects.toThrow('bereits bearbeitet');
+    expect(h.state.startRow?.value).toEqual(attempt);
+  });
+  it('bindet bekannte Engine-Antworten an ihren Job/Proof und verbietet widersprüchliche Nichtausführung', async () => {
+    const saved = {
+      ...attempt,
+      engineResponse: { ok: true, status: 'fertig', nachweis: qpuProof },
+    };
+    h.state.startRow = { value: saved };
+    const losAbholen = vi.fn();
+    const losPruefen = vi.fn(async () => ({
+      ok: true as const,
+      gueltig: true,
+      geprueft: [],
+      hinweise: [],
+    }));
+    await expect(
+      resumeLosStart(ctx, { attemptId: attempt.attemptId, jobId: 'different-job' }, { losAbholen }),
+    ).rejects.toThrow('gespeicherten Engine-Antwort');
+    expect(losAbholen).not.toHaveBeenCalled();
+    await expect(
+      resumeLosStartProof(
+        ctx,
+        { attemptId: attempt.attemptId, proof: { ...qpuProof, stichprobe: ['b2', 'c3'] } },
+        { losPruefen },
+      ),
+    ).rejects.toThrow('gespeicherten Engine-Antwort');
+    expect(losPruefen).not.toHaveBeenCalled();
+    await expect(
+      releaseLosStart(ctx, {
+        attemptId: attempt.attemptId,
+        reason: 'Betreiber hat die Nichtausführung dokumentiert bestätigt.',
+        confirmedNotExecuted: true,
+      }),
+    ).rejects.toThrow('belegt die Annahme');
+    expect(h.state.startRow?.value).toEqual(saved);
+    await expect(
+      resumeLosStartProof(ctx, { attemptId: attempt.attemptId, proof: qpuProof }, { losPruefen }),
+    ).resolves.toMatchObject({ status: 'fertig' });
+  });
+
+  it('protokolliert die bestätigte Nichtausführung mit Originalauftrag vor Freigabe', async () => {
+    h.state.startRow = { value: attempt };
+    await releaseLosStart(ctx, {
+      attemptId: attempt.attemptId,
+      reason: 'Betreiber hat die Nichtausführung dokumentiert bestätigt.',
+      confirmedNotExecuted: true,
+    });
+    expect(h.state.startRow).toBeNull();
+    expect(h.state.record).toHaveBeenCalledWith(
+      h.tx,
+      expect.objectContaining({ action: 'risk.los.start_released', before: attempt }),
+    );
+  });
+  it.each([
+    { von: '2026-02-30', bis: '2026-03-01' },
+    { von: '2026-03-02', bis: '2026-03-01' },
+  ])('weist ungültige oder umgekehrte Zeiträume vor Reservierung zurück', async (period) => {
+    const losZiehen = vi.fn();
+    await expect(
+      zieheLosStichprobe(ctx, { zeitraum: period, k: 2, backend: 'qpu' }, { losZiehen }),
+    ).rejects.toThrow();
+    expect(losZiehen).not.toHaveBeenCalled();
+    expect(h.state.settingUpsert).not.toHaveBeenCalled();
   });
 });
 

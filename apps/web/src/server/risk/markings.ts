@@ -11,6 +11,10 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import {
+  requireWritableRiskAnalysisTx,
+  requireWritableRiskMarkingTx,
+} from '@taxtronik/db/risk-analysis';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import type { GovernanceTyp, RiskStufe, RiskWk } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
@@ -55,6 +59,7 @@ export async function updateMarking(
   fields: UpdateMarkingInput,
 ): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskMarkingTx(tx, ctx.tenantId, markingId);
     const before = await tx.riskMarking.findUnique({
       where: { id: markingId },
       select: { ...DECISION_SELECT, begriff: true, normAnker: true, analysisId: true },
@@ -158,6 +163,7 @@ export async function addManualMarking(
   input: AddManualMarkingInput,
 ): Promise<{ markingId: string }> {
   const marking = await withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskAnalysisTx(tx, ctx.tenantId, input.analysisId);
     // matchedText + Offsets NICHT vom Client übernehmen, sondern aus dem
     // gespeicherten Sachverhalt ableiten — die Markierung muss den analysierten
     // Text 1:1 abbilden (TCMS-/Audit-Treue), und die Offsets müssen im Text liegen.
@@ -216,6 +222,7 @@ export async function addManualMarking(
 
 export async function deleteMarking(ctx: TenantContext, markingId: string): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskMarkingTx(tx, ctx.tenantId, markingId);
     const before = await tx.riskMarking.findUnique({
       where: { id: markingId },
       select: { analysisId: true, herkunft: true, begriff: true, start: true, end: true },

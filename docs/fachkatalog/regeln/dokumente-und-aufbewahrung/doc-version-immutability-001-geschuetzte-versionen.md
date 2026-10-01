@@ -37,6 +37,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - packages/storage/src/service.ts
+  - apps/web/src/server/storage/document-preview.ts
   - apps/web/src/server/documents/delivery-readiness.ts
   - apps/web/src/server/documents/delivery.ts
   - apps/web/src/app/api/staff/documents/download/route.ts
@@ -52,6 +54,9 @@ code_refs:
   - apps/web/src/server/inbox/staff-mutations.ts
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
 test_refs:
+  - packages/storage/src/__tests__/object-version.test.ts
+  - apps/web/src/server/documents/__tests__/delivery.test.ts
+  - apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts
   - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
   - apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts
   - apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts
@@ -151,6 +156,16 @@ werden. Andernfalls bleibt das Dokument für diesen Abruf gesperrt; eine
 ältere saubere Version wird nicht als vermeintlich aktueller Beleg eingesetzt.
 Die Prüfung verändert weder historische Bytes noch Hashes oder Schutzfelder.
 
+Ist eine konkrete `storageVersionId` gespeichert, geben Byte- und Streamleser
+sie an den S3-GET weiter. Das gilt auch für Vorschau, Retag-Quellbytes,
+Rechnungsarchive, DATEV-/Sammel-Exporte, Wissensanlagen, Inbox-Übernahmen und
+GwG-Originale. Ein Fehler beim Abruf dieser Version erlaubt keinen zweiten
+Abruf des aktuellen Schlüssels. Historische bereits finalisierte Datensätze
+ohne Storage-Version-ID bleiben beim bisherigen Key-Abruf; das ist keine
+nachträglich erfundene Versionsbindung. Akzeptierte Inbox-Anlagen und
+Wissensanlagen prüfen ebenfalls den Abschlussstatus der tatsächlich
+ausgewählten Dokumentversion.
+
 Die New-Version-Route sperrt Referenzen erneut, bestimmt die nächste Nummer in
 der Commit-Transaktion und fügt die Version an. `retag-policy.ts` entscheidet
 über Metadatenänderung, Re-Store oder Blockade. Die Retag-Action stabilisiert
@@ -178,6 +193,12 @@ Storage-Version muss sie vor physischer Löschung eindeutig recovern und binden.
 
 ## Bekannte Abweichungen und Grenzen
 
+Beim Quellcode-Abgleich vom 1. Oktober 2026 wurde eine Abweichung festgestellt:
+Die zentrale Auslieferung ignorierte vorhandene S3-Version-IDs und konnte
+dadurch eine neuere Storage-Fassung unter demselben Key lesen. Der
+versionsgebundene Abruf korrigiert diesen Pfad; Altbestände ohne Version-ID
+erhalten dadurch keine zusätzliche Speicheridentität.
+
 Keine bekannte technische Abweichung innerhalb des Scopes geschützter
 Versionen und Schutz-Herabstufungen. Die Historie eines ungeschützten
 Dokuments wird beim ersten Retagging nicht zwingend als eigene alte
@@ -193,6 +214,12 @@ nachgelagerter Prozesse.
 - Wie werden Korrekturen nach Fehlklassifikation dokumentiert?
 
 ## Technische Nachweise
+
+`object-version.test.ts` simuliert unterschiedliche Bytes für aktuellen Key
+und gebundene Version und prüft beide realen Storage-Leser sowie Abbruch ohne
+Fallback bei fehlender Version. Die Delivery-Regression weist die Weitergabe
+aus dem DB-Ladepfad an Download und Preview nach. Inbox-Tests belegen
+Versionsweitergabe und die Sperre eines später infizierten Archivdokuments.
 
 Download- und Preview-Routentests prüfen Staff-/Portal-Abrufe einschließlich
 des tatsächlichen Preview-Streams. Sammel-/DATEV-Tests entpacken echte ZIPs und

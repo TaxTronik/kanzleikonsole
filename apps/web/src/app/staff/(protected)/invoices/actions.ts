@@ -18,6 +18,7 @@ import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { toStornoPosition } from '@/server/invoicing/storno';
 import { claimInvoiceDraftForSend } from '@/server/invoicing/send-claim';
+import { claimInvoicePayment } from '@/server/invoicing/payment-claim';
 import { discardNeverSentDraftArchiveTx } from '@/server/invoicing/draft-archive';
 import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
@@ -57,10 +58,22 @@ const ALLOWED_VAT_RATES = [0, 7, 19] as const;
 const PositionSchema = z
   .object({
     description: z.string().min(1).max(500),
-    quantity: z.coerce.number().min(0).max(100000),
+    quantity: z.coerce
+      .number()
+      .min(0)
+      .max(100000)
+      .refine((n) => round2(n) === n, {
+        message: 'Menge darf höchstens zwei Nachkommastellen haben.',
+      }),
     // EN 16931 BR-27: BT-146 (Artikel-Nettopreis) darf nicht negativ sein.
     // Gutschriften/Stornos werden über eine negative Menge modelliert.
-    unitPrice: z.coerce.number().min(0).max(1000000),
+    unitPrice: z.coerce
+      .number()
+      .min(0)
+      .max(1000000)
+      .refine((n) => round2(n) === n, {
+        message: 'Einzelpreis darf höchstens zwei Nachkommastellen haben.',
+      }),
     unit: z.string().max(50).default('Stück'),
     // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz je Position.
     vatRate: z.coerce
@@ -196,6 +209,19 @@ export async function createInvoiceAction(input: {
     vatRate: p.vatRate,
   }));
   const totals = computeVatTotals(positionsWithNet);
+  // Decimal(12,2) limits apply to the header as well as each individual line.
+  // VAT or several individually valid lines can still overflow those columns.
+  if (
+    [totals.netAmount, totals.vatAmount, totals.totalAmount].some(
+      (amount) => !Number.isFinite(amount) || amount > 9_999_999_999.99,
+    )
+  ) {
+    return {
+      ok: false,
+      error:
+        'Rechnungssumme zu groß: Netto, Umsatzsteuer und Brutto dürfen jeweils höchstens 9.999.999.999,99 € betragen.',
+    };
+  }
 
   // BR-AE-01: Reverse-Charge braucht auch die USt-IdNr des LEISTENDEN (Kanzlei,
   // BT-31). Die allgemeine Absender-Vollständigkeit (archive) akzeptiert USt-IdNr
@@ -396,6 +422,20 @@ async function finalizeInvoiceSendTx(
   if (claim.outcome !== 'sent') return claim;
 
   const updated = claim.invoice;
+  if (updated.stornoOfId) {
+    // INV-LIFECYCLE-FREEZE-001: payments lock the original before writing audit.
+    // Match that order before invoice.send acquires the tenant audit lock;
+    // otherwise payment (original -> audit) and cancellation (audit -> original)
+    // can deadlock. Re-read the status in the cancellation helper after this lock.
+    const originals = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM public.invoice
+      WHERE id = ${updated.stornoOfId}::uuid AND tenant_id = ${opts.tenantId}::uuid
+      FOR UPDATE
+    `;
+    if (originals.length !== 1) {
+      throw new ActionError('Originalrechnung zum Korrekturbeleg wurde nicht gefunden.');
+    }
+  }
   if (updated.documentId) {
     await tx.document.updateMany({
       where: { id: updated.documentId, sharedWithClientAt: null },
@@ -641,10 +681,12 @@ export async function markPaidAction(formData: FormData): Promise<void> {
       if (!isValidInvoiceTransition(current.status, 'PAID')) {
         throw new ActionError(`Statuswechsel ${current.status} → PAID ist nicht zulässig.`);
       }
-      const updated = await tx.invoice.update({
-        where: { id: parsed.data.invoiceId },
-        data: { status: 'PAID', paidAt: new Date() },
-      });
+      const updated = await claimInvoicePayment(tx, tenantId, parsed.data.invoiceId);
+      if (!updated) {
+        throw new ActionError(
+          'Der Rechnungsstatus hat sich geändert. Bitte die Rechnung neu laden.',
+        );
+      }
       await resolveNotificationsTx(tx, {
         tenantId,
         resources: [{ resourceType: 'invoice', resourceId: parsed.data.invoiceId }],
@@ -909,7 +951,13 @@ const UploadExternalSchema = z.object({
   subject: z.string().min(1).max(200),
   issueDate: z.string().date(),
   dueDate: z.string().date(),
-  totalAmount: z.coerce.number().min(0).max(100_000_000),
+  totalAmount: z.coerce
+    .number()
+    .min(0)
+    .max(100_000_000)
+    .refine((n) => round2(n) === n, {
+      message: 'Bruttobetrag darf höchstens zwei Nachkommastellen haben.',
+    }),
   // USt-Satz des Fremdbelegs (0 = steuerfrei / Reverse-Charge / Kleinunternehmer).
   // Nur die deutschen Regelsätze; ohne diesen wäre Netto aus dem Brutto nicht
   // ableitbar und das Umsatz-KPI (netto) systematisch überhöht.

@@ -237,7 +237,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
       let bytes: Buffer;
       try {
-        bytes = await fetchObjectBytes(v.storageBucket, v.storageKey);
+        bytes = await fetchObjectBytes(v.storageBucket, v.storageKey, v.storageVersionId);
       } catch {
         // Fehlende Datei: Eintrag überspringen, im Index markieren
         indexRows.push(

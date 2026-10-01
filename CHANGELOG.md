@@ -423,6 +423,49 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die E2E-Bereinigung respektiert die Redis-Datenbank aus der URL und sendet
+  `FLUSHDB` erst nach bestätigtem `SELECT`. Neue verpflichtende Helper-Tests
+  verhindern das versehentliche Leeren von Datenbank 0 sowie übrig gebliebene
+  Login-Sperren in einer anderen Testdatenbank
+  (`ASSURANCE-RELEASE-EVIDENCE-001`).
+- Der Root-Typecheck erfasst jetzt auch alle E2E-Specs und deren Helper-Units;
+  die Inbox-Reply-Fixtures sind korrekt typisiert.
+- **[Scope]** Admin-Einstellungen und ihr Audit werden gemeinsam committed;
+  fehlgeschlagene Auditierung lässt keine bereits wirksame Einstellung zurück
+  (`ACCESS-CLIENT-MODE-001`, `AUDIT-HASH-CHAIN-001`).
+- Fristenmaterialisierung und Konfigurationswechsel sind gegen gleichzeitige
+  Workerläufe abgesichert. Änderungen der Steuerregion erhalten vorhandene
+  Termine entsprechend der bisherigen Bedienregel
+  (`TAX-DEADLINE-WORKDAY-001`, `TAX-DEADLINE-AUTOREQUEST-001`).
+- **[Scope]** Rechnungspositionen bleiben an ihre ursprüngliche Rechnung
+  gebunden; Statusprüfung und Festschreibung verwenden dieselbe Zeilensperre.
+  Zahlungsmarkierungen beanspruchen ihren Status atomar; Zahlung und
+  Stornoversand halten dieselbe Sperrreihenfolge ein. Manuelle Mengen und
+  Preise müssen zur gespeicherten Dezimalpräzision passen, Kopf- und
+  Steuersummen werden vor einem Datenbanküberlauf abgewiesen
+  (`INV-LIFECYCLE-FREEZE-001`, `INV-VAT-TOTALS-001`).
+- Verspätete IMAP-Polls dürfen weder neuere Mailboxzustände noch bereits
+  importierte Anlagen überschreiben (`MAIL-INBOX-001`).
+- Risk-Exporte unterstützen internationale Dateinamen einschließlich Zeichen
+  außerhalb der Unicode-Basisebene (`ACCESS-CLIENT-MODE-001`).
+- Wiederholte Schema-Driftprüfungen bereinigen auch das eigene Shadow-Schema
+  `app`. Verbindungs- und Datenbankidentitätsprüfungen schützen die eigentliche
+  Zieldatenbank vor Verwechslung; CI prüft zwei vollständige Durchläufe
+  (`ASSURANCE-RELEASE-EVIDENCE-001`).
+- Addison-Importe unterscheiden echte Kalenderquartale von anderen Zeiträumen
+  und weisen ungültige Monatsgrenzen zurück; DATEV-Leerbeträge gelten nicht
+  als Nullwerte (`BWA-IMPORT-MAPPING-001`). GwG-Ausweisentscheidungen verwenden
+  den Berliner Kalendertag auch unmittelbar um Mitternacht
+  (`GWG-IDENTIFICATION-EVIDENCE-001`).
+- **[Scope]** Risk-Archivierung bindet den vollständigen geprüften Stand und
+  serialisiert konkurrierende Bearbeitungen mit Datenbanksperren und einem
+  DB-Backstop. Verspätete Analyseergebnisse dürfen keinen archivierten oder
+  anonymisierten Stand überschreiben (`RISK-ARCHIVE-SNAPSHOT-001`,
+  `RISK-AI-SUGGESTION-001`, `DSGVO-MANDATE-ANONYMIZATION-001`).
+- Fachkatalog-Ausnahmen können dieselben katalogreferenzierten Dateien
+  abdecken, die der Diffguard überwacht; historische Einträge bleiben
+  unveränderlich (`ASSURANCE-PROFESSIONAL-REVIEW-001`).
+
 - Der Docker-Web-Build transpiliert auch das injizierte TypeScript-Paket
   `@taxtronik/elster`. Ein Regressionstest gleicht die Next.js-Konfiguration
   mit den Workspace-Laufzeitabhängigkeiten ab und verhindert weitere
@@ -711,6 +754,28 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   die Cookie-Löschung (`0c1f8174`).
 
 ### Sicherheit
+
+- **[Scope]** Eigenes kontogebundenes TOTP-/Backup-Code-Budget verhindert
+  Umgehungen durch reine Passwortprüfungen und wechselnde IPs. Magic-Link-
+  Vorschau und Bestätigung werden an den tatsächlichen Einstiegspunkten
+  begrenzt. Persönliche RSS-Aktionen prüfen den Eigentümer; gespeicherte
+  Filter werden nach Tenant und Mitarbeiter getrennt
+  (`ACCESS-TENANT-RLS-001`, `ACCESS-SEARCH-SCOPE-001`).
+- **[Scope]** Dokumentleser verwenden die gespeicherte S3-Version auch für
+  Vollmachten, Rechnungen, Vorschauen, Sammeldownloads und Inbox-Anlagen.
+  Alternative Downloadwege verlangen den aktuellen Scanabschluss
+  (`DOC-VERSION-IMMUTABILITY-001`, `DOC-PORTAL-SHARING-001`,
+  `POA-SIGNING-SNAPSHOT-001`, `INV-ARCHIVE-EINVOICE-001`).
+- **[Scope]** Automatische Restore-Drills prüfen eine private, exklusive
+  Laufkopie vollständig gegen BackupRecord-Hash und -Größe, bevor PostgreSQL
+  Dumpanweisungen ausführt. Restore-CLI-Downloads verwenden ebenfalls private
+  Dateien mit Fehler-Cleanup. Neue ungeprüfte Produktregel
+  `BACKUP-DRILL-INTEGRITY-001`; keine fachliche Freigabe.
+- **[Scope]** Auditrotation prüft Ketten und vorhandene Recovery-Objekte vor
+  Wiederaufnahme. TSA- und n8n-Fehlerantworten werden beendet beziehungsweise
+  begrenzt gelesen (`AUDIT-ARCHIVE-001`, `AUDIT-RFC3161-ANCHOR-001`).
+- Technische Befunde, Nachweise und Grenzen der repositoryweiten Prüfung
+  sind im [Prüfbericht](docs/reviews/2026-10-01-vollpruefung.md) dokumentiert.
 
 - Dependency Audit 3673: Nodemailer auf `10.0.10`, Undici auf `8.10.2`,
   fast-uri auf `3.1.8`, ip-address auf `10.7.1` und die beiden benötigten

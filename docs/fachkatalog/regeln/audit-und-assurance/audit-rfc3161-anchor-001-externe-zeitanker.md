@@ -148,6 +148,10 @@ Größenbedingter Abbruch und Timeout erreichen den Reader des ursprünglichen
 Antwortstroms und schließen die Verbindung. Das bestehende TSA-Byte-Limit und
 die kryptografischen Vertrauensentscheidungen bleiben unverändert.
 
+Auch frühe Ablehnungen bei HTTP-Fehlerstatus oder bereits angekündigter
+Übergröße brechen den Request ab, bevor der Timeout entfernt wird. So bleiben
+weder ungelesener Antwortstrom noch gepinnter HTTP-Agent nach dem Fehler offen.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die Implementierung ist nur teilweise als externer Nachweis wirksam: Ohne
@@ -178,3 +182,5 @@ Transportregressionen verwenden echte Web-Streams bei simulierter HTTP-Grenze
 und prüfen begrenztes Vorab-Lesen, Abbruchweitergabe, Timeout, vollständige
 Antwortbytes sowie einmaliges Schließen. Ein zusätzlicher lokaler Socket-Test
 bestätigt das Schließen laufender HTTP-Antworten bei Cancel und Abort.
+Die Adaptertests prüfen zusätzlich sofortigen Abbruch bei HTTP 503 und bei
+einer vor dem ersten Read erkannten Übergröße.

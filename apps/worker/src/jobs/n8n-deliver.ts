@@ -37,6 +37,27 @@ const DELIVERY_LEASE_MS = 2 * 60_000;
 // Läufe desselben Fensters. PENDING-Jobs behalten ihren BullMQ-Backoff.
 const RECONCILE_JOB_BUCKET_MS = 5 * 60_000;
 
+/** Only a short diagnostic is persisted; never buffer a complete webhook error body. */
+async function readErrorPrefix(response: Response): Promise<string> {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const prefix = new Uint8Array(1024);
+  let size = 0;
+  try {
+    while (size < prefix.length) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const count = Math.min(value.length, prefix.length - size);
+      prefix.set(value.subarray(0, count), size);
+      size += count;
+    }
+    return new TextDecoder().decode(prefix.subarray(0, size)).slice(0, 200);
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
 function deliveryRecoveryJobId(id: string, now: Date): string {
   return `recovery-delivery-${id}-${Math.floor(now.getTime() / RECONCILE_JOB_BUCKET_MS)}`;
 }
@@ -386,8 +407,8 @@ async function sendSignedDelivery(input: {
       return;
     }
 
-    const responseText = await response.text().catch(() => '');
-    const error = `HTTP ${response.status}: ${responseText.slice(0, 200)}`;
+    const responseText = await readErrorPrefix(response).catch(() => '');
+    const error = `HTTP ${response.status}: ${responseText}`;
     if (response.status >= 400 && response.status < 500 && response.status !== 429) {
       await markDeliveryTerminal(input.deliveryId, input.outboxId, input.leaseToken, 'FAILED', {
         httpStatus: response.status,
@@ -403,6 +424,7 @@ async function sendSignedDelivery(input: {
     });
     throw new Error(error);
   } finally {
+    ctrl.abort();
     clearTimeout(timeout);
   }
 }

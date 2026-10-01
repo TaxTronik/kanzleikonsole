@@ -148,4 +148,45 @@ describe('parseDatevBwaXlsx', () => {
     );
     expect(result.warnings).toEqual(['Keine Datums-Spalten im Header erkannt.']);
   });
+
+  it('verwirft rueckwaerts laufende Bereiche und behaelt gueltige Nachbarspalten', async () => {
+    const result = await parseDatevBwaXlsx(
+      buildBwaXlsx([
+        {
+          index: 1,
+          cells: [
+            'Zeile',
+            'Konto',
+            'Bezeichnung',
+            'Jun/2026 - Mai/2026',
+            'Dez/2026 - Jan/2026',
+            'Feb/2024',
+          ],
+        },
+        { index: 2, cells: ['1020', null, 'Umsatzerlöse', 100, 200, 300] },
+      ]),
+    );
+    expect(result.periods).toHaveLength(1);
+    expect(result.periods[0]).toMatchObject({
+      periodKey: '2024-02',
+      fromDate: new Date('2024-02-01T00:00:00Z'),
+      toDate: new Date('2024-02-29T00:00:00Z'),
+      positions: [{ number: 1020, amount: 300 }],
+    });
+  });
+
+  it('laesst leere Textbetraege unbekannt und bewahrt echte Nullwerte', async () => {
+    const result = await parseDatevBwaXlsx(
+      buildBwaXlsx([
+        { index: 1, cells: ['Zeile', 'Konto', 'Bezeichnung', 'Jan/2026'] },
+        { index: 2, cells: ['1020', null, 'Umsatzerlöse', '   '] },
+        { index: 3, cells: ['1060', null, 'Material', 0] },
+        { index: 4, cells: ['1280', null, 'Kostenarten', '0,00'] },
+      ]),
+    );
+    expect(result.periods[0]!.positions).toEqual([
+      { number: 1060, label: 'Material', amount: 0, sharePct: null },
+      { number: 1280, label: 'Kostenarten', amount: 0, sharePct: null },
+    ]);
+  });
 });

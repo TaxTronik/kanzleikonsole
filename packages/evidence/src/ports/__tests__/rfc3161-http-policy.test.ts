@@ -17,7 +17,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('Rfc3161HttpAdapter SSRF policy', () => {
+describe('AUDIT-RFC3161-ANCHOR-001: Rfc3161HttpAdapter SSRF policy', () => {
   it('uses the strict public policy for every TSA request', async () => {
     const adapter = new Rfc3161HttpAdapter('https://tsa.example/tsr');
 
@@ -67,4 +67,32 @@ describe('Rfc3161HttpAdapter SSRF policy', () => {
     await rejection;
     expect(requestSignal?.aborted).toBe(true);
   });
+
+  it.each([
+    { status: 503, headers: {}, error: /TSA HTTP 503/ },
+    { status: 200, headers: { 'content-length': String(1024 * 1024 + 1) }, error: /Größenlimit/ },
+  ])(
+    'cancels unread HTTP $status response on early rejection',
+    async ({ status, headers, error }) => {
+      const cancelled = vi.fn();
+      let signal: AbortSignal | undefined;
+      mocks.safeFetch.mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        signal = init.signal as AbortSignal;
+        // Model safeFetch's abort propagation into its pinned response reader.
+        const body = new ReadableStream<Uint8Array>({ cancel: cancelled });
+        signal.addEventListener(
+          'abort',
+          () => {
+            void body.cancel();
+          },
+          { once: true },
+        );
+        return new Response(body, { status, headers });
+      });
+      const adapter = new Rfc3161HttpAdapter('https://tsa.example/tsr');
+      await expect(adapter.timestamp(new Uint8Array([1, 2, 3]))).rejects.toThrow(error);
+      expect(signal?.aborted).toBe(true);
+      expect(cancelled).toHaveBeenCalledOnce();
+    },
+  );
 });

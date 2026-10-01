@@ -95,9 +95,9 @@ RUN set -eux; \
 
 # Q-9: HEALTHCHECK auf den Heartbeat-File-Touch (siehe apps/worker/src/index.ts).
 # Worker schreibt alle 30 s nach /tmp/worker-alive; HEALTHCHECK schlägt fehl,
-# wenn die Datei älter als 90 s ist → Docker restartet den Container.
-# Vorher: kein Healthcheck → Worker konnte deadlock'en, ohne dass Restart-Policy
-# greift.
+# wenn die Datei älter als 90 s ist → Docker meldet den Container unhealthy.
+# Ein Neustart braucht den externen Ops-Pfad aus day-2-operations.md;
+# die Docker-Restart-Policy selbst reagiert nur auf ein Prozessende.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "const s=require('node:fs').statSync('/tmp/worker-alive'); if (Date.now()-s.mtimeMs > 90000) process.exit(1)" || exit 1
 

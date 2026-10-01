@@ -30,6 +30,7 @@ export {
 
 export {
   materializeTenantTaxDeadlines,
+  lockTaxScheduleTx,
   type MaterializeDb,
   type MaterializeDeps,
   type MaterializeParams,

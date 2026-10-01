@@ -177,7 +177,8 @@ bestimmte Dokumente sind nicht Teil des automatischen Freigabegates.
   Identifizierung abzusehen. TaxTronik kopiert bei Re-Verifikation eine
   Arbeitsgrundlage, verlangt aber für den neuen Zyklus eine neue Bestätigung.
 - Ein Ausweis ist am gespeicherten Ablaufdatum noch gültig; die Prüfung arbeitet
-  mit Kalendertagen.
+  mit Berliner Kalendertagen. Ab Mitternacht in Europe/Berlin am Folgetag
+  zählt er auch dann nicht mehr als gültig, wenn UTC noch den Vortag zeigt.
 - Vorder- und Rückseite müssen zu einem stabilen `documentSetId` gehören und
   dieselben Metadaten tragen. Ein aktiver Satz besteht aus höchstens zwei
   Dateien. Pro Person darf nur eine `documentSetId` aktiv sein; Personalausweis
@@ -220,7 +221,9 @@ Freigabe bleibt ein nachfolgender Schritt gemäß GWG-RISK-REVIEW-001.
 `verification.ts` bildet das serverseitige Freigabegate. Personalausweis- und
 Reisepassdateien werden nach `documentSetId` gruppiert, auf konsistente
 Metadaten, genau eine Rollenreferenz, Bestätigung, Gültigkeit und einen sauberen
-Dateinachweis geprüft. Bei einer ausdrücklich verknüpften Doppelrolle gilt der
+Dateinachweis geprüft. Für die Tagesgültigkeit wird der Prüfzeitpunkt einmalig
+in den Berliner Kalendertag umgerechnet, wie bereits im Ausweis-Ablaufworker.
+Bei einer ausdrücklich verknüpften Doppelrolle gilt der
 bestätigte Ausweissatz der wirtschaftlich berechtigten Person zugleich als
 Vertreternachweis; maßgeblich sind ausschließlich die stabilen Owner- und
 Vertreter-IDs desselben Prüfsnapshots. Die Datenbank ergänzt Eindeutigkeits- und
@@ -321,6 +324,11 @@ Der Implementierungsstatus ist deshalb **teilweise**.
   ausreichend?
 
 ## Technische Nachweise
+
+Die Verifikationsregression prüft für Sommer- und Winterzeit jeweils den letzten
+gültigen Zeitpunkt vor Berliner Mitternacht und den ersten abgelaufenen
+Zeitpunkt unmittelbar danach. Der Ausweis bleibt damit den vollständigen
+Ablauftag gültig; eine Freigabe am Folgetag wird auch vor UTC-Mitternacht gesperrt.
 
 `page-render.test.tsx`: Der SSR-Nachweis prüft Personen-/Nachweisreihenfolge, verknüpfte Doppelrolle, historischen Ausweissatz und neun nicht verfügbare Dokumentzustände. Der ergänzende Modellnachweis vergleicht die Gruppenrevision mit den unveränderten gespeicherten Viewport-Daten.
 

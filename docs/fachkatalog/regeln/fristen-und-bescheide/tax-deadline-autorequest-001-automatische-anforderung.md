@@ -50,6 +50,8 @@ sources:
     primary: false
 code_refs:
   - packages/tax/src/materialize.ts
+  - packages/tax/src/index.ts
+  - apps/web/src/server/settings/tax-region.ts
   - apps/web/src/lib/tax-deadline-pipeline.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts
   - apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx
@@ -65,6 +67,7 @@ code_refs:
   - packages/db/prisma/migrations/20260823200100_tax_deadline_notification_kind/migration.sql
   - packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql
 test_refs:
+  - packages/db/src/__tests__/tax-deadline-materialize-consistency.test.ts
   - packages/tax/src/__tests__/materialize.test.ts
   - packages/mail/src/__tests__/dispatch-profile-context.test.ts
   - packages/mail/src/__tests__/request-opened.test.ts
@@ -275,6 +278,26 @@ Vorwarnung, Stop/Freigabe und Request-Anlage. Portal-Anforderung, Verknüpfung,
 Status `REMINDED`, Benachrichtigungsstatus `QUEUED` und Audit-Ereignis entstehen
 in einer Transaktion.
 
+Das Lesen der Schedule-Konfiguration und die gebündelte Anlage ihrer
+Terminkandidaten laufen ebenfalls in einer gemeinsamen Transaktion. Ein
+tenantgebundenes Transaktions-Advisory-Lock serialisiert diesen Abschnitt mit
+Schedule-Änderungen sowie dem Speichern der Steuerregion. Die Sperrreihenfolge
+lautet Schedule-Gate, Konfigurations-/Termindaten, gegebenenfalls Audit. Auch
+eine noch nicht existierende Konfiguration fällt unter das Gate. Dadurch kann
+ein älterer paralleler Worker nach einer Änderung von Dauerfrist, Beratung
+oder Aktivierung keine inzwischen gelöschten alten Fälligkeiten wieder
+einfügen, die spätere Läufe wegen des Perioden-Unique-Keys beibehalten würden.
+Im Worker endet dieser kurze Abschnitt vor der weiteren Request-Pipeline;
+externer Versand findet außerhalb statt.
+
+Ein Wechsel der Tenant-Steuerregion betrifft gemäß der bestehenden
+Einstellungsoberfläche neu angelegte Termine. Bereits materialisierte Termine
+werden dadurch weiterhin nicht automatisch umdatiert. Das gemeinsame Gate
+ordnet den Wechsel gegenüber neuer Kandidatenanlage; es ersetzt keine
+fachliche Prüfung vorhandener Fristen. Direkte Owner-/SQL-Schreibpfade, die
+das Gate nicht verwenden, sind damit nicht allgemein serialisiert; eine
+Änderung der Mandantenfreischaltung bleibt ein eigenständiger Vorgang.
+
 `tax-deadline-notification.ts` verarbeitet ausschließlich fällige `QUEUED`-
 und `FAILED`-Datensätze mit stabiler `requestId` und atomarem
 Compare-and-set-Claim, sofern der Request noch `OPEN` oder `IN_PROGRESS` ist.
@@ -364,6 +387,13 @@ Der Implementierungsstatus bleibt deshalb **teilweise**.
 - Sind externe Dienste nach § 62a StBerG und Art. 28 DSGVO eingeordnet?
 
 ## Technische Nachweise
+
+Der zusätzliche PostgreSQL-Test verwendet echte parallele App-Transaktionen
+und die Materialisierungs-Engine. Er weist die tatsächliche Sperrabhängigkeit
+über `pg_blocking_pids` in beiden Reihenfolgen nach, prüft Dauerfristwechsel,
+Deaktivierung, parallele Idempotenz sowie den realen Steuerregions-Writer und
+den Erhalt bereits materialisierter Termine. Er läuft automatisch im
+vollständigen CI-Datenbanktest des DB-Pakets.
 
 Materialisierungs-, Pipeline-, Worker- und Datenbanktests prüfen Zeitfenster,
 Stop/Freigabe, Atomizität, parallele Läufe und Doppelanlage-Schutz. Die neuen

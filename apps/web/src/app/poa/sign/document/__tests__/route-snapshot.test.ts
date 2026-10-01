@@ -67,6 +67,9 @@ beforeEach(() => {
     sha256: DOCUMENT_SHA256,
     storageBucket: 'docs-gobd',
     storageKey: 'tenant-1/poa/version-1.pdf',
+    storageVersionId: 'bound-s3-version',
+    scanStatus: 'CLEAN',
+    scanCompletedAt: new Date('2026-08-01'),
     document: {
       id: DOCUMENT_ID,
       tenantId: 'tenant-1',
@@ -102,6 +105,27 @@ describe('GET /poa/sign/document — Versand-Snapshot', () => {
       },
       include: { document: true },
     });
-    expect(m.streamObject).toHaveBeenCalledWith('docs-gobd', 'tenant-1/poa/version-1.pdf');
+    expect(m.streamObject).toHaveBeenCalledWith(
+      'docs-gobd',
+      'tenant-1/poa/version-1.pdf',
+      'bound-s3-version',
+    );
   });
+
+  it.each(['PENDING', 'INFECTED', 'ERROR', 'UNFINISHED'])(
+    'POA-SIGNING-SNAPSHOT-001: verweigert nachträglich gesperrten oder unvollständigen Snapshot (%s)',
+    async (state) => {
+      const version = await m.versionFindFirst();
+      m.versionFindFirst.mockResolvedValue({
+        ...version,
+        scanStatus: state === 'UNFINISHED' ? 'CLEAN' : state,
+        scanCompletedAt: state === 'UNFINISHED' ? null : version.scanCompletedAt,
+      });
+      const response = await GET(
+        new NextRequest(`http://localhost:3000/poa/sign/document?token=${TOKEN}`),
+      );
+      expect(response.status).toBe(404);
+      expect(m.streamObject).not.toHaveBeenCalled();
+    },
+  );
 });

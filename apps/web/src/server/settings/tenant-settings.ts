@@ -6,6 +6,7 @@
 // Zugriff.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
@@ -66,12 +67,19 @@ export async function readSellerInfo(ctx: TenantContext): Promise<SellerInfo> {
 }
 
 export async function writeSellerInfo(ctx: TenantContext, info: SellerInfo): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY_SELLER,
-      value: info as object,
-      updatedBy: ctx.actorId,
-    });
+  await withTenantContext(ctx, (tx) => writeSellerInfoTx(tx, ctx, info));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeSellerInfoTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  info: SellerInfo,
+): Promise<void> {
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY_SELLER,
+    value: info as object,
+    updatedBy: ctx.actorId,
   });
 }

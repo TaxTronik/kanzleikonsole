@@ -37,7 +37,7 @@ import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
 import { discardNeverSentDraftArchiveTx } from '@/server/invoicing/draft-archive';
 
 export type ArchiveResult =
-  | { ok: true; bucket: string; key: string; number: string }
+  | { ok: true; bucket: string; key: string; storageVersionId?: string | null; number: string }
   | { ok: true; bytes: Buffer; number: string }
   | {
       ok: false;
@@ -161,7 +161,7 @@ async function renderDraftPreview(
 
 type DraftPreviewRecheck =
   | { state: 'not_found' | 'status_conflict' | 'preview' | 'retry' }
-  | { state: 'archived'; bucket: string; key: string };
+  | { state: 'archived'; bucket: string; key: string; storageVersionId: string | null };
 
 async function recheckDraftPreview(
   ctx: TenantContext,
@@ -192,6 +192,7 @@ async function recheckDraftPreview(
         state: 'archived',
         bucket: archived.storageBucket,
         key: archived.storageKey,
+        storageVersionId: archived.storageVersionId,
       };
     }
     if (
@@ -225,6 +226,7 @@ async function renderConsistentDraftPreview(
       ok: true,
       bucket: rechecked.bucket,
       key: rechecked.key,
+      storageVersionId: rechecked.storageVersionId,
       number: loaded.number,
     };
   }
@@ -487,7 +489,11 @@ async function reuseExistingArchive(
     // wird exakt deren eingebettete factur-x.xml extrahiert. Eine heutige
     // Neugenerierung aus inzwischen geänderten Stammdaten könnte sonst von
     // der bereits ausgestellten PDF abweichen.
-    const archivedPdf = await fetchObjectBytes(existing.storageBucket, existing.storageKey);
+    const archivedPdf = await fetchObjectBytes(
+      existing.storageBucket,
+      existing.storageKey,
+      existing.storageVersionId,
+    );
     const cii = await extractFacturXXml(archivedPdf);
     const storedXml = await commitBytesWithTier({
       fileData: cii,
@@ -509,6 +515,7 @@ async function reuseExistingArchive(
     ok: true,
     bucket: existing.storageBucket,
     key: existing.storageKey,
+    storageVersionId: existing.storageVersionId,
     number: loaded.number,
   };
 }
@@ -567,6 +574,7 @@ type ArchiveLinkResult =
       outcome: 'ready';
       bucket: string;
       key: string;
+      storageVersionId: string | null;
       usedStoredPdf: boolean;
       usedStoredXml: boolean;
       needsCanonicalXml: boolean;
@@ -680,6 +688,7 @@ async function linkGeneratedArchiveTx(
       outcome: 'ready',
       bucket: freshVersion.storageBucket,
       key: freshVersion.storageKey,
+      storageVersionId: freshVersion.storageVersionId,
       usedStoredPdf: false,
       usedStoredXml: false,
       needsCanonicalXml: !fresh.xrechnungDocumentId || !freshXmlVersion,
@@ -741,6 +750,7 @@ async function linkGeneratedArchiveTx(
     outcome: 'ready',
     bucket: input.stored.targetBucket,
     key: input.stored.targetKey,
+    storageVersionId: input.stored.storageVersionId,
     usedStoredPdf: true,
     usedStoredXml: canonicalXml.usedStoredXml,
     needsCanonicalXml: false,
@@ -822,7 +832,13 @@ async function finalizeGeneratedArchive(
     // nach Kompensation factur-x.xml bytegenau aus der Gewinner-PDF extrahieren.
     return ensureZugferdArchive(input.ctx, input.invoiceId, options);
   }
-  return { ok: true, bucket: result.bucket, key: result.key, number: input.number };
+  return {
+    ok: true,
+    bucket: result.bucket,
+    key: result.key,
+    storageVersionId: result.storageVersionId,
+    number: input.number,
+  };
 }
 
 /**

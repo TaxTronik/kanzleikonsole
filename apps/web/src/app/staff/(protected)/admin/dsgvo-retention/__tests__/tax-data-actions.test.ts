@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const m = vi.hoisted(() => ({ guard: vi.fn(), context: vi.fn(), record: vi.fn() }));
+const m = vi.hoisted(() => ({
+  guard: vi.fn(),
+  context: vi.fn(),
+  record: vi.fn(),
+  anonymizeContact: vi.fn(),
+}));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.context }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.record } }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: m.guard }));
 vi.mock('@/server/auth/revocation', () => ({ revokeAllSessions: vi.fn() }));
 vi.mock('@/server/dsgvo/anonymize-contact', () => ({
-  anonymizeContactInTx: vi.fn(),
+  anonymizeContactInTx: m.anonymizeContact,
   isAnonymizedContactEmail: vi.fn(),
 }));
 vi.mock('@/server/dsgvo/anonymize-client-data', () => ({
@@ -30,7 +35,7 @@ describe('DSGVO-MANDATE-ANONYMIZATION-001 / TAX-MASTER-DATA-001 tax redaction', 
           kind: 'NATPERS',
           mandateEndedAt: new Date('2010-01-01'),
           anonymizedAt: null,
-          contacts: [],
+          contacts: [{ id: 'synthetic-contact', email: 'synthetic@example.test' }],
           _count: { documents: 0, gwgChecks: 0 },
         }),
         update: vi.fn(),
@@ -42,6 +47,11 @@ describe('DSGVO-MANDATE-ANONYMIZATION-001 / TAX-MASTER-DATA-001 tax redaction', 
     };
     m.context.mockImplementation(async (_ctx, fn) => fn(tx));
     expect(await confirmClientAnonymizationAction({ clientId })).toEqual({ ok: true });
+    // RISK-ARCHIVE-SNAPSHOT-001: Client and Risk locks precede contact Audit.
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      m.anonymizeContact.mock.invocationCallOrder[0]!,
+    );
     expect(tx.client.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ vatId: null, steuernummer: null }),

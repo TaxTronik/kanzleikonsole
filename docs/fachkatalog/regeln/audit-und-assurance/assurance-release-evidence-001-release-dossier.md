@@ -33,11 +33,19 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/e2e/tests/helpers/redis.ts
+  - packages/db/scripts/verify-drift.ts
+  - packages/db/scripts/drift-shadow.ts
+  - .forgejo/workflows/ci.yml
   - apps/web/src/server/update/manifest.ts
   - .forgejo/workflows/release.yml
   - scripts/release/check-release-gates.mjs
   - scripts/release/verify-release-config.mjs
 test_refs:
+  - apps/e2e/unit/redis.test.ts
+  - apps/e2e/tests/inbox-composer-state.spec.ts
+  - packages/db/src/__tests__/drift-shadow.test.ts
+  - packages/db/src/__tests__/drift-shadow-identity.test.ts
   - apps/web/src/server/update/__tests__/manifest.test.ts
   - scripts/release/tests/check-release-gates.test.mjs
   - scripts/release/tests/verify-release-config.test.mjs
@@ -161,6 +169,27 @@ IDW-PS-880-Erfüllung, Zertifizierung oder Softwarebescheinigung.
   und regelmäßig wiederhergestellt?
 
 ## Technische Nachweise
+
+Die E2E-Testbereinigung verwendet ausdrücklich die Datenbanknummer aus der
+Redis-URL. Sie bestätigt `SELECT`, bevor sie `FLUSHDB` sendet; ein fehlerhafter
+Index darf nicht versehentlich Datenbank 0 leeren. Nicht unterstützte
+Authentifizierungs-/TLS-URLs und mehrdeutige Pfade werden vor Netzwerkzugriff
+abgewiesen. Die im normalen Unit-Job ausgeführten Node-Tests prüfen getrennte
+DB-Inhalte, fragmentierte Antworten und Fehler-/Verbindungsabbruchpfade über
+einen lokalen TCP-Server. Das ersetzt keinen vollständigen Browserlauf.
+Der normale Workspace-Typecheck umfasst nun auch sämtliche E2E-Specs und
+Helper-Units; die Inbox-Testdaten sind entsprechend ihrem Fixture-Payload
+typisiert. Die Laufzeitassertionen und die vollständige Playwright-Erkennung
+bleiben erhalten.
+
+Der Schema-Check prüft zunächst das Migrations-Ledger der Ziel-DB und baut
+anschließend eine ausdrücklich getrennte Shadow-Datenbank auf. Er entfernt
+auch das handgepflegte `app`-Schema; ein bloßer Prisma-Reset von `public`
+ließ dort zuvor Funktionen zurück und scheiterte beim wiederholten Lauf.
+Konfigurations- und Live-Datenbankprüfung verhindern das Zurücksetzen derselben
+Zieldatenbank. CI führt den vollständigen Check zweimal aus. Die Regression
+prüft Wiederholbarkeit an einer eigenen PostgreSQL-Datenbank; das ist kein
+Beweis der fachlichen Richtigkeit aller dort installierten Funktionen.
 
 Die Release-Gate-Tests manipulieren Pflichtabhängigkeiten, Tag- und
 Digest-Bindung, Registry-Immutability, Scanner-, SBOM-, Smoke- und

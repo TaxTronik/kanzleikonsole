@@ -24,6 +24,7 @@
 
 import { Prisma } from '../src/prisma-client';
 import { prismaOwner } from '../src/owner-client';
+import { requireWritableRiskMarkingTx } from '../src/risk-analysis';
 
 interface NormRef {
   zitat: string;
@@ -102,7 +103,10 @@ async function main() {
   let skippedNoMatch = 0;
 
   try {
-    const all = await prisma.riskAnalysis.findMany({ select: { id: true, rawResult: true } });
+    const all = await prisma.riskAnalysis.findMany({
+      where: { archivedAt: null },
+      select: { id: true, tenantId: true, rawResult: true },
+    });
     for (const a of all) {
       analyses++;
       const entries = entriesFromRaw(a.rawResult);
@@ -139,9 +143,12 @@ async function main() {
         }
         updated++;
         if (!dry) {
-          await prisma.riskMarking.update({
-            where: { id: m.id },
-            data: { normRefs: refs as object },
+          await prisma.$transaction(async (tx) => {
+            await requireWritableRiskMarkingTx(tx, a.tenantId, m.id);
+            await tx.riskMarking.update({
+              where: { id: m.id },
+              data: { normRefs: refs as object },
+            });
           });
         }
       }

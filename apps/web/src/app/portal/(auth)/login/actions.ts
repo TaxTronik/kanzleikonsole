@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { safePortalReturnTo } from './verify/safe-return-to';
 import { requestMagicLink, verifyMagicLink } from '@/server/auth/magic-link';
 import { writePortalSession } from '@/server/auth/portal-session';
+import { checkMagicLinkEntryLimit } from '@/server/auth/magic-link-entry';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import { parseFormData } from '@/server/actions/form-data';
@@ -67,6 +68,7 @@ export async function requestMagicLinkAction(
 export interface VerifyResult {
   ok: boolean;
   error?: string;
+  rateLimited?: boolean;
 }
 
 export async function verifyMagicLinkAction(
@@ -74,6 +76,15 @@ export async function verifyMagicLinkAction(
   contactId?: string,
 ): Promise<VerifyResult> {
   if (!token) return { ok: false, error: 'Token fehlt.' };
+
+  const limit = await checkMagicLinkEntryLimit(await headers(), 'verify');
+  if (!limit.ok) {
+    return {
+      ok: false,
+      rateLimited: true,
+      error: 'Zu viele Bestätigungsversuche. Bitte kurz warten.',
+    };
+  }
 
   const result = await verifyMagicLink(token, contactId);
   if (!result) return { ok: false, error: 'Link ungültig oder abgelaufen.' };
@@ -97,5 +108,7 @@ export async function confirmMagicLinkAction(formData: FormData): Promise<void> 
   const r = await verifyMagicLinkAction(token, contactId);
   // redirect() wirft NEXT_REDIRECT — muss AUSSERHALB des try/catch von
   // verifyMagicLinkAction laufen (tut es hier).
-  redirect(r.ok ? returnTo : '/portal/login/verify?status=invalid');
+  redirect(
+    r.ok ? returnTo : `/portal/login/verify?status=${r.rateLimited ? 'rate-limited' : 'invalid'}`,
+  );
 }

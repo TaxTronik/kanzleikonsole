@@ -9,7 +9,9 @@
 export {
   readSmtpConfig,
   writeSmtpConfig,
+  writeSmtpConfigTx,
   deleteSmtpConfig,
+  deleteSmtpConfigTx,
   getSmtpStatus,
   DEFAULT_SMTP_CONFIG,
   type SmtpConfig,

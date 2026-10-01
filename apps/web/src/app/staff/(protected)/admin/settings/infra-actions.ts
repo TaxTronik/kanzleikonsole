@@ -10,8 +10,8 @@ import { withTenantContext } from '@taxtronik/db';
 import { env } from '@taxtronik/config';
 import { evidenceService } from '@/server/container';
 import { assertPublicUrl } from '@/server/http/ssrf-guard';
-import { writeTaxRegion } from '@/server/settings/tax-region';
-import { writeTsaConfig, type TsaConfig } from '@/server/settings/tsa';
+import { writeTaxRegionTx } from '@/server/settings/tax-region';
+import { writeTsaConfigTx, type TsaConfig } from '@/server/settings/tsa';
 import { createRfc3161Adapter, getTsaProvider } from '@taxtronik/evidence';
 import type { GermanRegion } from '@taxtronik/tax';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
@@ -62,9 +62,8 @@ export async function saveTaxRegionAction(
   const assumptionHoliday = region === 'DE-BY' ? formData.get('assumptionHoliday') !== null : true;
 
   const { tenantId, staffId, ctx } = g;
-  await writeTaxRegion(ctx, region, assumptionHoliday);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeTaxRegionTx(tx, ctx, region, assumptionHoliday);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',
@@ -133,9 +132,8 @@ export async function saveTsaAction(
     providerId: parsed.data.providerId,
     customUrl: parsed.data.customUrl ?? '',
   };
-  await writeTsaConfig(ctx, cfg);
-
   await withTenantContext(ctx, async (tx) => {
+    await writeTsaConfigTx(tx, ctx, cfg);
     await evidenceService.record(tx, {
       tenantId,
       actorType: 'STAFF',

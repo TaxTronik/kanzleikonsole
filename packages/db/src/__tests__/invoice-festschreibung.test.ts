@@ -22,6 +22,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import type { TxClient } from '../tenant-context';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 
@@ -34,14 +35,63 @@ const describeWithDatabase = hasDatabase ? describe : describe.skip;
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_URL'])),
 });
+const app = new PrismaClient({
+  adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_APP_URL'])),
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+async function backendId(tx: TxClient) {
+  const [row] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::integer AS pid`;
+  return row!.pid;
+}
+async function waitsFor(pid: number, blocker: number) {
+  for (let i = 0; i < 200; i++) {
+    const [row] = await owner.$queryRaw<
+      Array<{ blockers: number[] }>
+    >`SELECT pg_blocking_pids(${pid}::integer) AS blockers`;
+    if (row?.blockers.includes(blocker)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return false;
+}
+function appTransaction<T>(fn: (tx: TxClient) => Promise<T>) {
+  return app.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '8s'");
+      await tx.$queryRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true),
+      set_config('app.current_actor_type', 'STAFF', true), set_config('app.current_actor_id', ${staffId}, true)`;
+      return fn(tx);
+    },
+    { timeout: 12_000 },
+  );
+}
 
 let tenantId: string;
 let clientId: string;
 let staffId: string;
+let claimPayment: (
+  tx: TxClient,
+  tenantId: string,
+  invoiceId: string,
+  paidAt: Date,
+) => Promise<{ paidAt: Date | null } | null>;
 
 const FUTURE = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
 beforeAll(async () => {
+  // Production web helper has only a type import; computed import keeps this
+  // integration probe outside the DB package's compile-time rootDir.
+  const paymentModule = new URL(
+    '../../../../apps/web/src/server/invoicing/payment-claim.ts',
+    import.meta.url,
+  ).pathname;
+  ({ claimInvoicePayment: claimPayment } = await import(paymentModule));
   const tenant = await owner.tenant.create({
     data: { slug: `test-inv-gob-${Date.now()}`, name: 'Festschreibung Test' },
   });
@@ -96,6 +146,7 @@ afterAll(async () => {
     );
   });
   await owner.$disconnect();
+  await app.$disconnect();
 });
 
 let counter = 0;
@@ -227,6 +278,211 @@ describeWithDatabase(
       await setStatus(id, 'SENT');
       await expect(
         owner.invoice.update({ where: { id }, data: { sentAt: new Date() } }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('INV-LIFECYCLE-FREEZE-001: eine SENT-Position lässt sich nicht in einen Entwurf verschieben', async () => {
+      const issued = await makeInvoice();
+      const draft = await makeInvoice();
+      await setStatus(issued, 'SENT');
+      const position = await owner.invoicePosition.findFirstOrThrow({
+        where: { invoiceId: issued },
+      });
+      await expect(
+        owner.invoicePosition.update({
+          where: { id: position.id },
+          data: { invoiceId: draft, position: 2 },
+        }),
+      ).rejects.toThrow(/Festschreibung/);
+      expect(
+        (await owner.invoicePosition.findUniqueOrThrow({ where: { id: position.id } })).invoiceId,
+      ).toBe(issued);
+    });
+
+    it.each(['UPDATE', 'DELETE', 'INSERT'] as const)(
+      'INV-LIFECYCLE-FREEZE-001: paralleles %s wartet auf Festschreibung und wird abgelehnt',
+      async (operation) => {
+        const id = await makeInvoice();
+        const position = await owner.invoicePosition.findFirstOrThrow({ where: { invoiceId: id } });
+        const held = deferred<number>();
+        const release = deferred<void>();
+        const sending = owner.$transaction(
+          async (tx) => {
+            await tx.invoice.update({ where: { id }, data: { status: 'SENT' } });
+            held.resolve(await backendId(tx));
+            await release.promise;
+          },
+          { timeout: 12_000 },
+        );
+        const blocker = await held.promise;
+        const started = deferred<number>();
+        const mutation = appTransaction(async (tx) => {
+          started.resolve(await backendId(tx));
+          if (operation === 'UPDATE')
+            return tx.$executeRaw`UPDATE invoice_position SET net_amount = 1 WHERE id = ${position.id}::uuid`;
+          if (operation === 'DELETE')
+            return tx.$executeRaw`DELETE FROM invoice_position WHERE id = ${position.id}::uuid`;
+          return tx.invoicePosition.create({
+            data: {
+              invoiceId: id,
+              position: 2,
+              description: 'Race',
+              quantity: 1,
+              unit: 'Stück',
+              unitPrice: 1,
+              netAmount: 1,
+              vatRate: 19,
+            },
+          });
+        }).then(
+          () => ({ ok: true as const }),
+          (error: unknown) => ({ ok: false as const, error }),
+        );
+        let blocked: boolean;
+        try {
+          blocked = await waitsFor(await started.promise, blocker);
+        } finally {
+          release.resolve();
+        }
+        await sending;
+        const result = await mutation;
+        expect(blocked).toBe(true);
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(String(result.error)).toMatch(/Festschreibung/);
+        expect(await owner.invoicePosition.count({ where: { invoiceId: id } })).toBe(1);
+        expect(
+          (
+            await owner.invoicePosition.findUniqueOrThrow({ where: { id: position.id } })
+          ).netAmount.toString(),
+        ).toBe('100');
+      },
+    );
+
+    it('INV-LIFECYCLE-FREEZE-001: begonnene Positionsänderung serialisiert den folgenden Versand', async () => {
+      const id = await makeInvoice();
+      const position = await owner.invoicePosition.findFirstOrThrow({ where: { invoiceId: id } });
+      const held = deferred<number>();
+      const release = deferred<void>();
+      const editing = appTransaction(async (tx) => {
+        await tx.invoicePosition.update({
+          where: { id: position.id },
+          data: { description: 'Vor Versand' },
+        });
+        held.resolve(await backendId(tx));
+        await release.promise;
+      });
+      const blocker = await held.promise;
+      const started = deferred<number>();
+      const sending = owner.$transaction(
+        async (tx) => {
+          started.resolve(await backendId(tx));
+          return tx.invoice.update({ where: { id }, data: { status: 'SENT' } });
+        },
+        { timeout: 12_000 },
+      );
+      let blocked: boolean;
+      try {
+        blocked = await waitsFor(await started.promise, blocker);
+      } finally {
+        release.resolve();
+      }
+      await Promise.all([editing, sending]);
+      expect(blocked).toBe(true);
+      expect(
+        (await owner.invoicePosition.findUniqueOrThrow({ where: { id: position.id } })).description,
+      ).toBe('Vor Versand');
+    });
+
+    it('INV-LIFECYCLE-FREEZE-001: zwei echte Zahlungsclaims haben einen Gewinner und bewahren dessen Zeitpunkt', async () => {
+      const id = await makeInvoice();
+      await setStatus(id, 'SENT');
+      const firstAt = new Date('2026-06-02T08:00:00Z');
+      const held = deferred<number>();
+      const release = deferred<void>();
+      const winner = appTransaction(async (tx) => {
+        const paid = await claimPayment(tx, tenantId, id, firstAt);
+        held.resolve(await backendId(tx));
+        await release.promise;
+        return paid;
+      });
+      const blocker = await held.promise;
+      const started = deferred<number>();
+      const loser = appTransaction(async (tx) => {
+        started.resolve(await backendId(tx));
+        return claimPayment(tx, tenantId, id, new Date('2026-06-02T09:00:00Z'));
+      });
+      let blocked: boolean;
+      try {
+        blocked = await waitsFor(await started.promise, blocker);
+      } finally {
+        release.resolve();
+      }
+      const results = await Promise.all([winner, loser]);
+      expect(blocked).toBe(true);
+      expect(results[0]?.paidAt).toEqual(firstAt);
+      expect(results[1]).toBeNull();
+      expect((await owner.invoice.findUniqueOrThrow({ where: { id } })).paidAt).toEqual(firstAt);
+    });
+
+    it('INV-LIFECYCLE-FREEZE-001: Zahlungsclaim folgt OVERDUE, verliert gegen Storno und ist tenantgebunden', async () => {
+      const id = await makeInvoice();
+      await setStatus(id, 'SENT');
+      await setStatus(id, 'OVERDUE');
+      await expect(
+        appTransaction((tx) =>
+          claimPayment(tx, '00000000-0000-4000-8000-000000000001', id, new Date()),
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        appTransaction((tx) => claimPayment(tx, tenantId, id, new Date())),
+      ).resolves.toBeTruthy();
+      const cancelled = await makeInvoice();
+      await setStatus(cancelled, 'SENT');
+      const held = deferred<number>();
+      const release = deferred<void>();
+      const cancellation = owner.$transaction(
+        async (tx) => {
+          await tx.invoice.update({ where: { id: cancelled }, data: { status: 'CANCELLED' } });
+          held.resolve(await backendId(tx));
+          await release.promise;
+        },
+        { timeout: 12_000 },
+      );
+      const blocker = await held.promise;
+      const started = deferred<number>();
+      const payment = appTransaction(async (tx) => {
+        started.resolve(await backendId(tx));
+        return claimPayment(tx, tenantId, cancelled, new Date());
+      });
+      let blocked: boolean;
+      try {
+        blocked = await waitsFor(await started.promise, blocker);
+      } finally {
+        release.resolve();
+      }
+      await cancellation;
+      const result = await payment;
+      expect(blocked).toBe(true);
+      expect(result).toBeNull();
+      expect(
+        (await owner.invoice.findUniqueOrThrow({ where: { id: cancelled } })).paidAt,
+      ).toBeNull();
+    });
+
+    it('INV-LIFECYCLE-FREEZE-001: fehlgeschlagene Nachverarbeitung rollt Zahlungsclaim vollständig zurück', async () => {
+      const id = await makeInvoice();
+      await setStatus(id, 'SENT');
+      await expect(
+        appTransaction(async (tx) => {
+          expect(await claimPayment(tx, tenantId, id, new Date())).toBeTruthy();
+          throw new Error('Simulierter Auditfehler');
+        }),
+      ).rejects.toThrow('Simulierter Auditfehler');
+      const invoice = await owner.invoice.findUniqueOrThrow({ where: { id } });
+      expect(invoice.status).toBe('SENT');
+      expect(invoice.paidAt).toBeNull();
+      await expect(
+        appTransaction((tx) => claimPayment(tx, tenantId, id, new Date())),
       ).resolves.toBeTruthy();
     });
 

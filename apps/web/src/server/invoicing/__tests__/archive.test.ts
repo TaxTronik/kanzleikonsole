@@ -194,7 +194,13 @@ describe('ensureZugferdArchive', () => {
     );
     expect(exported).toEqual({ invoiceId: 'inv1', existing: false });
     const archive = await ensureZugferdArchive(ctx, exported.invoiceId, { purpose: 'ISSUE' });
-    expect(archive).toEqual({ ok: true, bucket: 'gobd', key: 'k-new', number: '2026-0001' });
+    expect(archive).toEqual({
+      ok: true,
+      bucket: 'gobd',
+      key: 'k-new',
+      storageVersionId: 's3-version-1',
+      number: '2026-0001',
+    });
     expect(generateZugferdPdf).toHaveBeenCalledOnce();
     expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
     expect(tx.invoice.update).toHaveBeenCalledWith({
@@ -314,7 +320,7 @@ describe('ensureZugferdArchive', () => {
     const result = await ensureZugferdArchive(ctx, 'inv1');
 
     expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'pdf-key', number: 'R-001' });
-    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'pdf-key');
+    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'pdf-key', undefined);
     expect(extractFacturXXml).toHaveBeenCalledWith(Buffer.from('archived-pdf'));
     expect(tx.document.findFirst).not.toHaveBeenCalled();
     expect(tx.document.create).toHaveBeenCalledWith(
@@ -431,7 +437,13 @@ describe('ensureZugferdArchive', () => {
 
     const result = await ensureZugferdArchive(ctx, 'inv1', { purpose: 'ISSUE' });
 
-    expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'k-new', number: 'R-001' });
+    expect(result).toEqual({
+      ok: true,
+      bucket: 'gobd',
+      key: 'k-new',
+      storageVersionId: 's3-version-1',
+      number: 'R-001',
+    });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
     expect(fetchObjectBytes).not.toHaveBeenCalled();
     expect(tx.invoice.update).toHaveBeenCalledWith({
@@ -535,7 +547,13 @@ describe('ensureZugferdArchive', () => {
       .mockResolvedValueOnce(baseInvoice()) // load: kein documentId
       .mockResolvedValueOnce(baseInvoice()); // write-tx Re-Check: immer noch keins
     const res = await ensureZugferdArchive(ctx, 'inv1');
-    expect(res).toEqual({ ok: true, bucket: 'gobd', key: 'k-new', number: 'R-001' });
+    expect(res).toEqual({
+      ok: true,
+      bucket: 'gobd',
+      key: 'k-new',
+      storageVersionId: 's3-version-1',
+      number: 'R-001',
+    });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
     expect(generateZugferdPdf).toHaveBeenCalledWith(
       expect.anything(),
@@ -632,7 +650,7 @@ describe('ensureZugferdArchive', () => {
     const result = await ensureZugferdArchive(ctx, 'inv1');
 
     expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'k-winner', number: 'R-001' });
-    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'k-winner');
+    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'k-winner', undefined);
     expect(extractFacturXXml).toHaveBeenCalledWith(Buffer.from('archived-pdf'));
     expect(tx.document.create).toHaveBeenCalledTimes(1);
     expect(tx.document.create).toHaveBeenCalledWith(

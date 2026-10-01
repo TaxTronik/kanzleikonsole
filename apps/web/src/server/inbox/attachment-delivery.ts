@@ -5,6 +5,7 @@ import type { PortalSession } from '@/server/auth/portal';
 import type { StaffSession } from '@/server/auth/staff';
 import { evidenceService } from '@/server/container';
 import { getClientIp } from '@/server/rate-limit';
+import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 import { assertActivePortalInboxIdentityTx, assertStaffInboxClientTx } from './access';
 
 // Fachkatalog: ACCESS-TENANT-RLS-001, DOC-PORTAL-SHARING-001,
@@ -13,6 +14,7 @@ import { assertActivePortalInboxIdentityTx, assertStaffInboxClientTx } from './a
 export interface InboxAttachmentObject {
   bucket: string;
   key: string;
+  storageVersionId?: string | null;
   mimeType: string;
   downloadName: string;
   audit: {
@@ -49,6 +51,7 @@ async function loadPortalAttachment(
           mimeType: true,
           storageBucket: true,
           storageKey: true,
+          storageVersionId: true,
           decision: true,
           acceptedDocument: {
             select: {
@@ -59,7 +62,13 @@ async function loadPortalAttachment(
               versions: {
                 orderBy: { versionNo: 'desc' },
                 take: 1,
-                select: { storageBucket: true, storageKey: true },
+                select: {
+                  storageBucket: true,
+                  storageKey: true,
+                  storageVersionId: true,
+                  scanStatus: true,
+                  scanCompletedAt: true,
+                },
               },
             },
           },
@@ -72,19 +81,21 @@ async function loadPortalAttachment(
         attachment.decision === 'ACCEPTED' &&
         accepted?.deletedAt === null &&
         accepted.sharedWithClientAt !== null &&
-        Boolean(acceptedVersion);
+        isDocumentVersionReady(acceptedVersion);
       if (attachment.decision === 'ACCEPTED' && !useAccepted) return null;
 
       const object = useAccepted
         ? {
             bucket: acceptedVersion!.storageBucket,
             key: acceptedVersion!.storageKey,
+            storageVersionId: acceptedVersion!.storageVersionId,
             mimeType: accepted!.mimeType,
             downloadName: accepted!.title,
           }
         : {
             bucket: attachment.storageBucket,
             key: attachment.storageKey,
+            storageVersionId: attachment.storageVersionId,
             mimeType: attachment.mimeType,
             downloadName: attachment.originalName,
           };
@@ -123,6 +134,7 @@ async function loadStaffAttachment(
         mimeType: true,
         storageBucket: true,
         storageKey: true,
+        storageVersionId: true,
         decision: true,
         acceptedDocument: {
           select: {
@@ -132,7 +144,13 @@ async function loadStaffAttachment(
             versions: {
               orderBy: { versionNo: 'desc' },
               take: 1,
-              select: { storageBucket: true, storageKey: true },
+              select: {
+                storageBucket: true,
+                storageKey: true,
+                storageVersionId: true,
+                scanStatus: true,
+                scanCompletedAt: true,
+              },
             },
           },
         },
@@ -145,19 +163,21 @@ async function loadStaffAttachment(
     const useAccepted =
       attachment.decision === 'ACCEPTED' &&
       accepted?.deletedAt === null &&
-      Boolean(acceptedVersion);
+      isDocumentVersionReady(acceptedVersion);
     if (attachment.decision === 'ACCEPTED' && !useAccepted) return null;
 
     const object = useAccepted
       ? {
           bucket: acceptedVersion!.storageBucket,
           key: acceptedVersion!.storageKey,
+          storageVersionId: acceptedVersion!.storageVersionId,
           mimeType: accepted!.mimeType,
           downloadName: accepted!.title,
         }
       : {
           bucket: attachment.storageBucket,
           key: attachment.storageKey,
+          storageVersionId: attachment.storageVersionId,
           mimeType: attachment.mimeType,
           downloadName: attachment.originalName,
         };
@@ -200,7 +220,7 @@ export async function buildInboxAttachmentDownloadResponse(
   request: NextRequest,
   source: InboxAttachmentObject,
 ): Promise<NextResponse> {
-  const object = await streamObject(source.bucket, source.key);
+  const object = await streamObject(source.bucket, source.key, source.storageVersionId);
   // Erst ein erfolgreich geöffnetes Storage-Objekt wird protokolliert. Das
   // Ereignis behauptet bewusst keinen vollständig übertragenen Response-Body.
   await withTenantContext(source.audit.context, (tx) =>

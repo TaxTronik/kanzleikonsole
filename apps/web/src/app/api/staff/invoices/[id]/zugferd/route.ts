@@ -132,7 +132,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     headers['Content-Length'] = String(archive.bytes.length);
     return new NextResponse(new Uint8Array(archive.bytes), { status: 200, headers });
   }
-  const obj = await streamObject(archive.bucket, archive.key);
+  const obj = await streamObject(archive.bucket, archive.key, archive.storageVersionId);
   if (obj.contentLength !== null) headers['Content-Length'] = String(obj.contentLength);
   return new NextResponse(obj.body, { status: 200, headers });
 }

@@ -148,6 +148,13 @@ die gebundenen Daten nach Versand. Die öffentliche Seite sowie die Download-
 Route lesen nicht den später veränderbaren Live-Text oder die neueste
 Dokumentversion, sondern ausschließlich den gespeicherten Snapshot.
 
+Der öffentliche PDF-Abruf prüft auch die aktuelle Scanfreigabe der gebundenen
+Version (`CLEAN` und finalisierter Abschlusszeitpunkt) und reicht eine
+vorhandene `storageVersionId` bis an S3 weiter. Eine spätere Quarantäne sperrt
+den Abruf; eine neuere S3-Version unter demselben Key ersetzt die gebundene
+Fassung nicht. Die frühere Route prüfte nur den gespeicherten DB-Hash und
+ließ diese beiden Speicher-/Scanbedingungen aus.
+
 ## Bekannte Abweichungen und Grenzen
 
 Keine bekannte technische Abweichung innerhalb der beschriebenen
@@ -170,3 +177,6 @@ Unit-Tests belegen Kanonisierung, Text- und PDF-Snapshots sowie die Ablehnung
 abweichender Dokumentdaten. Route-Tests belegen die Auslieferung der gebundenen
 Version. Datenbanktests belegen Hash-Paare, Statusabhängigkeit und
 Unveränderlichkeit; sie treffen keine Aussage zur rechtlichen Wirksamkeit.
+Die Downloadregression prüft zusätzlich die S3-Version-Weitergabe und sperrt
+PENDING-, Fehler-/Infektions- sowie CLEAN-Versionen ohne Abschlusszeitpunkt
+vor dem Storagezugriff.

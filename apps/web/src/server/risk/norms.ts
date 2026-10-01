@@ -14,6 +14,7 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { requireWritableRiskMarkingTx } from '@taxtronik/db/risk-analysis';
 import { evidenceService } from '@/server/container';
 import {
   type CuratedNormRef,
@@ -36,6 +37,7 @@ async function persistNorms(
   mutate: (refs: CuratedNormRef[]) => CuratedNormRef[],
 ): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskMarkingTx(tx, ctx.tenantId, markingId);
     const before = await tx.riskMarking.findUnique({
       where: { id: markingId },
       select: { normRefs: true, normAnker: true },

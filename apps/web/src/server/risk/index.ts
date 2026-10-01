@@ -133,6 +133,10 @@ export {
   zieheLosStichprobe,
   holeLosAb,
   getPendingLos,
+  getLosStart,
+  resumeLosStart,
+  resumeLosStartProof,
+  releaseLosStart,
   listLosZiehungen,
   pruefeLosNachweis,
   LosRahmenLeerError,
@@ -141,6 +145,7 @@ export {
 export type {
   LosZeitraum,
   PendingLos,
+  LosStart,
   LosZiehung,
   LosZiehungErgebnis,
   LosStichprobeEintrag,

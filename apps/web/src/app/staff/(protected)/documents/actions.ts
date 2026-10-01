@@ -510,7 +510,7 @@ export async function retagDocumentAction(
     } else {
       // Höherstufung → Re-Store: Bytes holen und tier-getrieben mit
       // Object-Lock + Retention neu schreiben. Storage AUSSERHALB der DB-Tx.
-      const bytes = await fetchObjectBytes(ctx.bucket, ctx.key);
+      const bytes = await fetchObjectBytes(ctx.bucket, ctx.key, ctx.storageVersionId);
       const commit = await commitBytesWithTier({
         fileData: bytes,
         tier: ctx.newTier,

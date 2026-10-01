@@ -15,6 +15,7 @@ import {
   UnauthorizedError,
 } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { readModules } from '@/server/settings/modules';
 import { buildReportModel } from '@/server/risk/export/report-model';
@@ -26,9 +27,9 @@ export const dynamic = 'force-dynamic';
 
 function safeFilename(title: string, ext: string): string {
   const base =
-    (title || 'Subsumtion')
-      .replace(/[^\p{L}\p{N} _.-]+/gu, '_')
+    Array.from((title || 'Subsumtion').replace(/[^\p{L}\p{N} _.-]+/gu, '_'))
       .slice(0, 80)
+      .join('')
       .trim() || 'Subsumtion';
   return `${base}.${ext}`;
 }
@@ -130,7 +131,7 @@ export async function GET(
       'content-type': isPdf
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'content-disposition': `attachment; filename="${filename.replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
       'cache-control': 'no-store',
     },
   });

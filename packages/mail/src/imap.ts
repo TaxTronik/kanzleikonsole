@@ -134,10 +134,22 @@ async function claimMailbox(tenantId: string, id: string): Promise<InboundMailbo
 
 async function updateMailbox(
   tenantId: string,
-  id: string,
-  data: { uidValidity?: string; lastUid?: number; lastSuccessAt?: Date; lastError?: string | null },
-): Promise<void> {
-  await withSystemContext(tenantId, (tx) => tx.inboundMailbox.update({ where: { id }, data }));
+  account: InboundMailbox,
+  data: {
+    uidValidity?: string;
+    lastUid?: number;
+    lastSuccessAt?: Date;
+    lastError?: string | null;
+    enabled?: false;
+  },
+): Promise<boolean> {
+  const updated = await withSystemContext(tenantId, (tx) =>
+    tx.inboundMailbox.updateMany({
+      where: { id: account.id, tenantId, claimedUntil: account.claimedUntil, enabled: true },
+      data,
+    }),
+  );
+  return updated.count === 1;
 }
 
 async function fetchMailboxMetadata(
@@ -243,10 +255,14 @@ async function updateInboundAttachment(
     error?: string | null;
     storageKey?: string;
   },
-): Promise<void> {
-  await withSystemContext(tenantId, (tx) =>
-    tx.inboundAttachment.update({ where: { id: attachmentId }, data }),
+): Promise<boolean> {
+  const updated = await withSystemContext(tenantId, (tx) =>
+    tx.inboundAttachment.updateMany({
+      where: { id: attachmentId, documentId: null, status: { in: ['PENDING', 'SCAN_ERROR'] } },
+      data,
+    }),
   );
+  return updated.count === 1;
 }
 
 async function releaseInboundAttachment(
@@ -260,11 +276,11 @@ async function releaseInboundAttachment(
       where: { id: mailboxId, tenantId, enabled: true },
     });
     if (!modules.smartMailbox || !mailbox) return false;
-    await tx.inboundAttachment.update({
-      where: { id: attachmentId },
+    const released = await tx.inboundAttachment.updateMany({
+      where: { id: attachmentId, documentId: null, status: { in: ['PENDING', 'SCAN_ERROR'] } },
       data: { status: 'CLEAN', error: null },
     });
-    return true;
+    return released.count === 1;
   });
 }
 
@@ -299,15 +315,22 @@ async function processInboundAttachment(
     return true;
   }
   if (scan !== 'CLEAN') {
-    await updateInboundAttachment(tenantId, row.id, {
+    const updated = await updateInboundAttachment(tenantId, row.id, {
       status: 'SCAN_ERROR',
       error: 'Virenscanner nicht verfügbar; keine Freigabe.',
     });
+    if (!updated) return true;
     throw new Error('Virenscanner nicht verfügbar.');
   }
 
   const key = tenantId + '/inbound-staging/' + row.id + '/' + sha256;
-  await updateInboundAttachment(tenantId, row.id, { storageKey: key, status: 'PENDING' });
+  // MAIL-INBOX-001: a slow, expired poll must not reset another poll's CLEAN
+  // result or a staff member's IMPORTING/IMPORTED archive claim.
+  const prepared = await updateInboundAttachment(tenantId, row.id, {
+    storageKey: key,
+    status: 'PENDING',
+  });
+  if (!prepared) return true;
   await putObjectBytes(getBucketForTier('NONE'), key, attachment.content, {
     contentType: kind.mime,
   });
@@ -392,15 +415,15 @@ async function runMailboxPoll(
     throw new Error(
       'UIDVALIDITY_CHANGED: Synchronisierung angehalten. Kontrollierter Neuabgleich erforderlich.',
     );
-  await updateMailbox(tenantId, account.id, { uidValidity });
+  if (!(await updateMailbox(tenantId, account, { uidValidity }))) return;
   const metadata = await fetchMailboxMetadata(connection, account.lastUid);
   for (const item of metadata) {
     if (!(await stillEnabled(tenantId, account.id))) break;
     const outcome = await processInboundMessage(tenantId, account, connection, uidValidity, item);
     if (outcome === 'STOP') return;
-    await updateMailbox(tenantId, account.id, { lastUid: item.uid });
+    if (!(await updateMailbox(tenantId, account, { lastUid: item.uid }))) return;
   }
-  await updateMailbox(tenantId, account.id, { lastSuccessAt: new Date(), lastError: null });
+  await updateMailbox(tenantId, account, { lastSuccessAt: new Date(), lastError: null });
 }
 
 function mailboxErrorState(
@@ -436,16 +459,14 @@ export async function pollMailbox(tenantId: string, id: string): Promise<void> {
   } catch (error) {
     // Do not leak provider errors, tokens, subjects or credentials into logs.
     const state = mailboxErrorState(account, error);
-    await withSystemContext(tenantId, (tx) =>
-      tx.inboundMailbox.update({
-        where: { id },
-        data: state,
-      }),
-    );
+    await updateMailbox(tenantId, account, state);
   } finally {
     if (connection) await connection.logout().catch(() => connection?.close());
     await withSystemContext(tenantId, (tx) =>
-      tx.inboundMailbox.update({ where: { id }, data: { claimedUntil: null } }),
+      tx.inboundMailbox.updateMany({
+        where: { id, tenantId, claimedUntil: account.claimedUntil },
+        data: { claimedUntil: null },
+      }),
     );
   }
 }

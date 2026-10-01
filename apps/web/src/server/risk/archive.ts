@@ -10,64 +10,41 @@
 // werden über die Guards abgelehnt).
 // =============================================================================
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import {
+  commitRiskArchiveTx,
+  readRiskArchiveStateTx,
+  riskArchiveStateHash,
+  RiskAnalysisArchivedError,
+} from '@taxtronik/db/risk-analysis';
 import { getBucketForTier, gobdRetentionUntil, putObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 
-export class AlreadyArchivedError extends Error {
-  constructor() {
-    super('Diese Subsumtion ist bereits archiviert.');
-    this.name = 'AlreadyArchivedError';
-  }
-}
+export { RiskAnalysisArchivedError as AlreadyArchivedError };
 
 function archiveKeyFor(tenantId: string, analysisId: string): string {
-  return `risk-archive/${tenantId}/${analysisId}.json.gz`;
+  // Object Lock protects versions, not a mutable key's current version. A losing
+  // concurrent attempt must never replace the winner's referenced bytes.
+  return `risk-archive/${tenantId}/${analysisId}/${randomUUID()}.json.gz`;
 }
 
 export async function archiveAnalysis(
   ctx: TenantContext,
   analysisId: string,
 ): Promise<{ bucket: string; key: string; snapshotHash: string }> {
-  const a = await withTenantContext(ctx, async (tx) => {
-    const found = await tx.riskAnalysis.findUnique({
-      where: { id: analysisId },
-      include: {
-        markings: { orderBy: [{ start: 'asc' }, { end: 'asc' }] },
-        client: { select: { name: true } },
-      },
-    });
-    if (!found) throw new Error('Analyse nicht gefunden.');
-    if (found.archivedAt) throw new AlreadyArchivedError();
-    return found;
-  });
+  const state = await withTenantContext(ctx, (tx) =>
+    readRiskArchiveStateTx(tx, ctx.tenantId, analysisId),
+  );
+  const expectedStateHash = riskArchiveStateHash(state);
+  const archivedAt = new Date();
 
   // Self-contained Snapshot — alles, was die Subsumtion ausmacht.
   const payload = {
-    schemaVersion: 1,
-    archivedAt: new Date().toISOString(),
-    analysis: {
-      id: a.id,
-      title: a.title,
-      clientId: a.clientId,
-      clientName: a.client?.name ?? null,
-      documentId: a.documentId,
-      textHash: a.textHash,
-      katalogVersion: a.katalogVersion,
-      engineVersion: a.engineVersion,
-      createdAt: a.createdAt.toISOString(),
-      createdById: a.createdById,
-      llmEnrichedAt: a.llmEnrichedAt ? a.llmEnrichedAt.toISOString() : null,
-      rawResultRef: { bucket: a.rawResultBucket, key: a.rawResultKey },
-    },
-    sourceText: a.sourceText,
-    markings: a.markings.map((m) => ({
-      ...m,
-      createdAt: m.createdAt.toISOString(),
-      updatedAt: m.updatedAt.toISOString(),
-    })),
+    schemaVersion: 2,
+    archivedAt: archivedAt.toISOString(),
+    ...state,
   };
   const json = Buffer.from(JSON.stringify(payload), 'utf8');
   const snapshotHash = createHash('sha256').update(json).digest('hex');
@@ -82,9 +59,13 @@ export async function archiveAnalysis(
   });
 
   await withTenantContext(ctx, async (tx) => {
-    await tx.riskAnalysis.update({
-      where: { id: analysisId },
-      data: { archivedAt: new Date(), archiveBucket: bucket, archiveKey: key },
+    await commitRiskArchiveTx(tx, {
+      tenantId: ctx.tenantId,
+      analysisId,
+      expectedStateHash,
+      archivedAt,
+      bucket,
+      key,
     });
     await evidenceService.record(tx, {
       tenantId: ctx.tenantId,
@@ -97,8 +78,8 @@ export async function archiveAnalysis(
         archiveBucket: bucket,
         archiveKey: key,
         snapshotHash,
-        markingCount: a.markings.length,
-        textHash: a.textHash,
+        markingCount: state.markings.length,
+        textHash: state.analysis.textHash,
       },
     });
   });

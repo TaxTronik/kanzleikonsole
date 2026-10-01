@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { requireWritableRiskMarkingTx } from '@taxtronik/db/risk-analysis';
 import { evidenceService } from '@/server/container';
 import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 import { notify } from '@/server/notifications/service';
@@ -44,6 +45,7 @@ export async function delegateMarking(
 ): Promise<DelegateMarkingResult> {
   assertReminderActor(session, ctx.tenantId, input.createdByStaffId);
   return withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskMarkingTx(tx, ctx.tenantId, input.markingId);
     // Ein Marking darf höchstens eine offene Delegation besitzen. Der
     // transaktionsgebundene Lock schließt auch parallele Doppelklicks, bevor
     // beide Aufrufe jeweils eine Wiedervorlage anlegen könnten.

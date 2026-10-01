@@ -5,10 +5,11 @@
 // Werktagsverschiebung in der Steuertermin-Engine verwendet.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
-import type { GermanRegion } from '@taxtronik/tax';
+import { lockTaxScheduleTx, type GermanRegion } from '@taxtronik/tax';
 
 const KEY_TAX_REGION = 'tax_region';
 
@@ -39,13 +40,24 @@ export async function writeTaxRegion(
   region: GermanRegion | null,
   assumptionHoliday = true,
 ): Promise<void> {
+  await withTenantContext(ctx, (tx) => writeTaxRegionTx(tx, ctx, region, assumptionHoliday));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeTaxRegionTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  region: GermanRegion | null,
+  assumptionHoliday = true,
+): Promise<void> {
   const value = { region, assumptionHoliday };
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY_TAX_REGION,
-      value,
-      updatedBy: ctx.actorId,
-    });
+  // Same candidate-generation boundary as schedule edits. The existing UI
+  // policy deliberately retains already materialized deadlines unchanged.
+  await lockTaxScheduleTx(tx, ctx.tenantId);
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY_TAX_REGION,
+    value,
+    updatedBy: ctx.actorId,
   });
 }

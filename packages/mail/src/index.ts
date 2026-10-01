@@ -33,7 +33,9 @@ export {
 export {
   readSmtpConfig,
   writeSmtpConfig,
+  writeSmtpConfigTx,
   deleteSmtpConfig,
+  deleteSmtpConfigTx,
   getSmtpStatus,
   DEFAULT_SMTP_CONFIG,
   type SmtpConfig,
@@ -42,6 +44,7 @@ export {
 export {
   readMailDispatch,
   writeMailDispatch,
+  writeMailDispatchTx,
   DEFAULT_DISPATCH,
   type MailDispatchMode,
   type MailDispatchConfig,

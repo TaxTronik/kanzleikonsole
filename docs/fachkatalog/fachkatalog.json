@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:7456511f095ac44ec5d7b8640372dabeac6484642f688cfb4f183a8676ea9910",
-    "expected_active_rule_count": 81,
+    "definition_sha256": "sha256:5a18d51989b3f18710257e3cf1e68a445acd099c48e68d7c3829ee234455b8a4",
+    "expected_active_rule_count": 82,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -19,6 +19,7 @@
       "AUDIT-HASH-CHAIN-001",
       "AUDIT-RFC3161-ANCHOR-001",
       "AUDIT-VERIFY-ALERT-001",
+      "BACKUP-DRILL-INTEGRITY-001",
       "BWA-IMPORT-MAPPING-001",
       "BWA-PROJECTION-001",
       "BWA-TAX-ESTIMATE-001",
@@ -102,8 +103,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 81,
-  "active_rule_count": 81,
+  "rule_count": 82,
+  "active_rule_count": 82,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -165,16 +166,21 @@
       "code_refs": [
         "packages/db/src/staff-client-access.ts",
         "apps/web/src/server/settings/access-policy.ts",
+        "apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts",
         "apps/web/src/server/auth/rbac.ts",
-        "apps/web/src/app/staff/(protected)/invoices/new/page.tsx"
+        "apps/web/src/app/staff/(protected)/invoices/new/page.tsx",
+        "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts",
+        "apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts",
         "apps/web/src/server/settings/__tests__/access-policy.test.ts",
         "apps/web/src/server/settings/__tests__/access-policy.property.test.ts",
         "apps/web/src/server/auth/__tests__/rbac.test.ts",
         "apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx",
         "apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx",
-        "apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts"
+        "apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts",
+        "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/__tests__/route.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
       "related_rules": [
@@ -320,6 +326,8 @@
       ],
       "code_refs": [
         "apps/web/src/components/recent-clients.tsx",
+        "apps/web/src/components/saved-views.tsx",
+        "apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/page.tsx",
         "apps/web/src/server/inbox/access.ts",
@@ -332,6 +340,7 @@
       ],
       "test_refs": [
         "apps/e2e/tests/recent-clients-state.spec.ts",
+        "apps/e2e/tests/saved-views-state.spec.ts",
         "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
@@ -489,7 +498,12 @@
         "apps/web/src/server/ical/feed.ts",
         "apps/web/src/app/api/portal/ical/[token]/route.ts",
         "apps/web/src/server/auth/staff.ts",
+        "apps/web/src/server/rate-limit/index.ts",
+        "apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts",
         "apps/web/src/server/auth/portal.ts",
+        "apps/web/src/server/auth/magic-link-entry.ts",
+        "apps/web/src/app/portal/(auth)/login/actions.ts",
+        "apps/web/src/app/portal/(auth)/login/verify/page.tsx",
         "apps/web/src/server/auth/portal-session.ts",
         "apps/web/src/app/staff/(auth)/login/page.tsx",
         "apps/web/src/app/staff/(auth)/login/actions.ts",
@@ -561,6 +575,9 @@
         "apps/web/src/server/auth/__tests__/admin-break-glass.test.ts",
         "apps/web/src/server/auth/__tests__/staff-auth-state.test.ts",
         "apps/web/src/server/auth/__tests__/staff-session-auth-binding.test.ts",
+        "apps/web/src/server/auth/__tests__/staff-second-factor-rate-limit.test.ts",
+        "apps/web/src/server/auth/__tests__/magic-link-entry.test.tsx",
+        "apps/web/src/app/staff/(protected)/dashboard/__tests__/rss-feed-actions.test.ts",
         "packages/config/src/__tests__/env-webauthn.test.ts",
         "packages/db/src/__tests__/dev-seed-auth-reset.test.ts",
         "apps/web/src/server/auth/__tests__/simplewebauthn-crl-hardening.test.ts",
@@ -619,7 +636,11 @@
           "primary": false
         }
       ],
-      "code_refs": ["scripts/fachkatalog/cli.mjs", "scripts/fachkatalog/lib.mjs"],
+      "code_refs": [
+        "scripts/fachkatalog/cli.mjs",
+        "scripts/fachkatalog/lib.mjs",
+        "scripts/fachkatalog/diff-guard.mjs"
+      ],
       "test_refs": ["scripts/tests/fachkatalog.test.mjs"],
       "feature_refs": ["docs/fachkatalog/BEITRAGEN.md", "docs/fachkatalog/README.md", "AGENTS.md"],
       "related_rules": ["ASSURANCE-RELEASE-EVIDENCE-001"],
@@ -669,12 +690,20 @@
         }
       ],
       "code_refs": [
+        "apps/e2e/tests/helpers/redis.ts",
+        "packages/db/scripts/verify-drift.ts",
+        "packages/db/scripts/drift-shadow.ts",
+        ".forgejo/workflows/ci.yml",
         "apps/web/src/server/update/manifest.ts",
         ".forgejo/workflows/release.yml",
         "scripts/release/check-release-gates.mjs",
         "scripts/release/verify-release-config.mjs"
       ],
       "test_refs": [
+        "apps/e2e/unit/redis.test.ts",
+        "apps/e2e/tests/inbox-composer-state.spec.ts",
+        "packages/db/src/__tests__/drift-shadow.test.ts",
+        "packages/db/src/__tests__/drift-shadow-identity.test.ts",
         "apps/web/src/server/update/__tests__/manifest.test.ts",
         "scripts/release/tests/check-release-gates.test.mjs",
         "scripts/release/tests/verify-release-config.test.mjs"
@@ -786,6 +815,26 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/settings/mail-actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/settings/infra-actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts",
+        "apps/web/src/server/settings/access-policy.ts",
+        "apps/web/src/server/settings/modules.ts",
+        "apps/web/src/server/settings/tenant-settings.ts",
+        "apps/web/src/server/settings/branding.ts",
+        "apps/web/src/server/settings/letterhead.ts",
+        "apps/web/src/server/settings/legal.ts",
+        "apps/web/src/server/settings/client-layout.ts",
+        "apps/web/src/server/settings/tax-region.ts",
+        "apps/web/src/server/settings/tsa.ts",
+        "apps/web/src/server/settings/quantenlos.ts",
+        "apps/web/src/server/settings/smtp.ts",
+        "apps/web/src/server/settings/mail-dispatch.ts",
+        "packages/mail/src/smtp-settings.ts",
+        "packages/mail/src/dispatch-settings.ts",
+        "packages/mail/src/index.ts",
         "apps/web/src/server/backup/restore.ts",
         "packages/db/src/restore-security.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/page.tsx",
@@ -812,6 +861,8 @@
         "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts",
+        "apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts",
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
         "apps/web/src/server/backup/__tests__/restore.test.ts",
         "packages/db/src/__tests__/restore-security.test.ts",
@@ -971,6 +1022,48 @@
       "summary": "Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet."
     },
     {
+      "id": "BACKUP-DRILL-INTEGRITY-001",
+      "title": "Automatische Restore-Drills nur mit vorab verifizierten Dumpbytes ausführen",
+      "domain": "audit-und-assurance",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Compliance und Verfahrensdokumentation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der automatische Drill prüft eine private Laufkopie vollständig gegen Hash und Größe des BackupRecord, bevor pg_restore die Datei lesen darf. Ein vollständiger Infrastruktur- und Wiederanlaufnachweis bleibt gesondert erforderlich."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Backup und Restore",
+          "path": "docs/development/module/backup-restore.md",
+          "checked_at": "2026-10-01",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/worker/src/jobs/backup-drill.ts",
+        "apps/worker/src/jobs/backup-drill-file.ts"
+      ],
+      "test_refs": [
+        "apps/worker/src/jobs/__tests__/backup-drill.test.ts",
+        "apps/worker/src/jobs/__tests__/backup-drill-file.test.ts",
+        "apps/worker/src/jobs/__tests__/backup-drill-integrity.test.ts"
+      ],
+      "feature_refs": ["docs/development/module/backup-restore.md"],
+      "related_rules": ["AUDIT-HASH-CHAIN-001", "ACCESS-TENANT-RLS-001"],
+      "tags": ["backup", "restore", "integritaet"],
+      "path": "docs/fachkatalog/regeln/audit-und-assurance/backup-drill-integrity-001-verifizierte-laufkopie.md",
+      "summary": "Ungeprüfter Entwurf: Ein PostgreSQL-Dump enthält ausführbare Anweisungen. Der automatische Restore-Drill darf ausschließlich eine vollständig gegen den zugehörigen Datenbanknachweis geprüfte lokale Kopie ausführen. Eine erst nach dem Restore erkannte Abweichung kann vorausgegangene Wirkungen nicht verhindern."
+    },
+    {
       "id": "BWA-IMPORT-MAPPING-001",
       "title": "DATEV- und Addison-BWA nur anhand bekannter Strukturen importieren",
       "domain": "bwa-und-planung",
@@ -986,7 +1079,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Strukturierte DATEV-XLSX- und Addison-CSV-Daten werden anhand fest hinterlegter Perioden- und BWA-Positionsmuster importiert. Vollständigkeit, Vorzeichen, Kontenrahmen, Quellformat und fachliche Plausibilität werden nicht abschließend automatisch festgestellt. DATEV-Umsatzerlöse, Gesamtleistung, betriebliche Kosten und Ergebnis vor Steuern werden getrennt; unvollständige oder nicht darstellbare Planbasen werden nicht automatisch vorbelegt."
+        "summary": "Strukturierte DATEV-XLSX- und Addison-CSV-Daten werden anhand fest hinterlegter Perioden- und BWA-Positionsmuster importiert. Vollständigkeit, Vorzeichen, Kontenrahmen, Quellformat und fachliche Plausibilität werden nicht abschließend automatisch festgestellt. DATEV-Umsatzerlöse, Gesamtleistung, betriebliche Kosten und Ergebnis vor Steuern werden getrennt; unvollständige oder nicht darstellbare Planbasen werden nicht automatisch vorbelegt. Ungültige Monate und umgekehrte Perioden werden verworfen; nur tatsächliche Kalenderquartale erhalten einen Quartalsschlüssel. Leere Textbeträge bleiben unbekannt."
       },
       "sources": [
         {
@@ -1755,6 +1848,8 @@
         }
       ],
       "code_refs": [
+        "packages/storage/src/service.ts",
+        "apps/web/src/server/storage/document-preview.ts",
         "apps/web/src/server/documents/delivery-readiness.ts",
         "apps/web/src/server/documents/delivery.ts",
         "apps/web/src/app/api/staff/documents/download/route.ts",
@@ -1771,6 +1866,9 @@
         "apps/worker/src/jobs/storage-orphan-cleanup.ts"
       ],
       "test_refs": [
+        "packages/storage/src/__tests__/object-version.test.ts",
+        "apps/web/src/server/documents/__tests__/delivery.test.ts",
+        "apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts",
         "apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts",
         "apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts",
         "apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts",
@@ -1960,7 +2058,8 @@
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/poa-signer-actions.test.ts",
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts",
         "apps/web/src/server/tax-master-data/__tests__/service.test.ts",
-        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts",
+        "packages/db/src/__tests__/risk-archive-consistency.test.ts"
       ],
       "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
       "related_rules": [
@@ -3239,6 +3338,9 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/api/staff/invoices/[id]/zugferd/route.ts",
+        "apps/web/src/app/api/staff/invoices/[id]/xrechnung/route.ts",
+        "packages/storage/src/service.ts",
         "apps/web/src/server/invoicing/archive.ts",
         "apps/web/src/server/invoicing/archive-lock.ts",
         "apps/web/src/server/invoicing/draft-archive.ts",
@@ -3246,8 +3348,10 @@
         "apps/web/src/server/invoicing/zugferd.ts"
       ],
       "test_refs": [
+        "packages/storage/src/__tests__/object-version.test.ts",
         "apps/web/src/server/invoicing/__tests__/archive.test.ts",
         "apps/web/src/server/invoicing/__tests__/archive-lock.test.ts",
+        "apps/web/src/server/invoicing/__tests__/archive-lock-call-sites.test.ts",
         "apps/web/src/server/invoicing/__tests__/draft-archive.test.ts",
         "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts",
         "apps/web/src/server/invoicing/__tests__/zugferd.test.ts",
@@ -3358,14 +3462,19 @@
       ],
       "code_refs": [
         "packages/db/prisma/migrations/20260801001000_iter85_invoice_gob/migration.sql",
+        "packages/db/prisma/migrations/20261001001000_invoice_position_consistency/migration.sql",
         "apps/web/src/app/staff/(protected)/invoices/actions.ts",
         "apps/web/src/server/invoicing/number.ts",
-        "apps/web/src/server/invoicing/storno.ts"
+        "apps/web/src/server/invoicing/storno.ts",
+        "apps/web/src/server/invoicing/payment-claim.ts"
       ],
       "test_refs": [
         "packages/db/src/__tests__/invoice-festschreibung.test.ts",
         "apps/web/src/server/invoicing/__tests__/number.test.ts",
-        "apps/web/src/server/invoicing/__tests__/storno.test.ts"
+        "apps/web/src/server/invoicing/__tests__/storno.test.ts",
+        "apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts",
+        "apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts",
+        "apps/web/src/server/invoicing/__tests__/invoice-concurrency-ci.test.ts"
       ],
       "feature_refs": [
         "FEATURES.md",
@@ -3664,12 +3773,14 @@
       "code_refs": [
         "apps/web/src/server/invoicing/vat.ts",
         "apps/web/src/server/invoicing/time-billing.ts",
-        "apps/web/src/server/invoicing/xrechnung.ts"
+        "apps/web/src/server/invoicing/xrechnung.ts",
+        "apps/web/src/app/staff/(protected)/invoices/actions.ts"
       ],
       "test_refs": [
         "apps/web/src/server/invoicing/__tests__/vat.test.ts",
         "apps/web/src/server/invoicing/__tests__/time-billing.test.ts",
-        "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts"
+        "apps/web/src/server/invoicing/__tests__/xrechnung.test.ts",
+        "apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/fakturierung.md",
@@ -4563,12 +4674,16 @@
       "code_refs": [
         "apps/web/src/server/risk/run-analysis.ts",
         "apps/web/src/server/risk/persistence.ts",
-        "apps/worker/src/jobs/risk-analyse-llm.ts"
+        "apps/worker/src/jobs/risk-analyse-llm.ts",
+        "apps/web/src/server/risk/reanalyze.ts",
+        "packages/db/src/risk-analysis.ts"
       ],
       "test_refs": [
         "apps/web/src/server/risk/__tests__/llm.test.ts",
         "apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts",
-        "apps/web/src/server/risk/__tests__/norms-core.test.ts"
+        "apps/web/src/server/risk/__tests__/norms-core.test.ts",
+        "apps/web/src/server/risk/__tests__/reanalyze.test.ts",
+        "packages/db/src/__tests__/risk-archive-consistency.test.ts"
       ],
       "feature_refs": [
         "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
@@ -4599,7 +4714,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Analyse, Sachverhalt, Markierungen und Metadaten werden als gehashter gzip-JSON-Snapshot in den geschützten Bucket geschrieben; zentrale Inhaltsguards sperren danach Änderungen. Rohresultat und Rich-Doc sind nicht vollständig eingebettet, einige nachgelagerte Mutationen sowie Storage-/DB-Fehlerfenster bleiben offen."
+        "summary": "Analyse, Sachverhalt, Markierungen und Metadaten werden als gehashter gzip-JSON-Snapshot einschließlich Rich-Doc in den geschützten Bucket geschrieben. Gemeinsame Parent-Locks, Inhaltsvergleich nach Storage-I/O und DB-Trigger schützen den archivierten Kernstand. Das Rohresultat bleibt referenziert; Storage-/DB-Fehler können unverknüpfte geschützte Blobs hinterlassen."
       },
       "sources": [
         {
@@ -4619,10 +4734,30 @@
       ],
       "code_refs": [
         "apps/web/src/server/risk/archive.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guards.ts"
+        "packages/db/src/risk-analysis.ts",
+        "packages/db/prisma/migrations/20261001000000_risk_archive_consistency/migration.sql",
+        "apps/web/src/server/risk/reanalyze.ts",
+        "apps/web/src/server/risk/catalog-feedback.ts",
+        "apps/web/src/server/risk/delegate.ts",
+        "apps/web/src/server/risk/markings.ts",
+        "apps/web/src/server/risk/norms.ts",
+        "apps/web/src/server/risk/reformat.ts",
+        "packages/db/scripts/backfill-norm-refs.ts",
+        "apps/worker/src/jobs/risk-analyse-llm.ts",
+        "apps/web/src/server/dsgvo/anonymize-client-data.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guards.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts"
       ],
       "test_refs": [
-        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/guards-tx.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/guards-tx.test.ts",
+        "apps/web/src/server/risk/__tests__/archive.test.ts",
+        "apps/web/src/server/risk/__tests__/reanalyze.test.ts",
+        "apps/web/src/server/risk/__tests__/delegate.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts",
+        "apps/web/src/server/dsgvo/__tests__/client-retention.test.ts",
+        "apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts",
+        "packages/db/src/__tests__/risk-archive-consistency.test.ts"
       ],
       "feature_refs": [
         "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
@@ -4631,11 +4766,12 @@
       "related_rules": [
         "RISK-AI-SUGGESTION-001",
         "RISK-EXTERNAL-ANONYMIZATION-001",
-        "TCMS-SAMPLE-PROOF-001"
+        "TCMS-SAMPLE-PROOF-001",
+        "DSGVO-MANDATE-ANONYMIZATION-001"
       ],
       "tags": ["subsumtion", "archiv", "snapshot", "object-lock", "nachweis"],
       "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/risk-archive-snapshot-001-archivstand.md",
-      "summary": "TaxTronik serialisiert den aktuellen Sachverhalt, die Analysemetadaten und alle Markierungen als JSON, bildet darüber einen SHA-256-Wert und speichert eine gzip-Fassung im geschützten Speicher. Anschließend werden Archivverweis und Audit-Ereignis gesetzt. Der Snapshot konserviert einen wichtigen Arbeitsstand, ist aber nicht vollständig selbsttragend und die Sperre erfasst noch nicht jede mögliche Folgemutation."
+      "summary": "TaxTronik serialisiert den aktuellen Sachverhalt, die Analysemetadaten und alle Markierungen als JSON, bildet darüber einen SHA-256-Wert und speichert eine gzip-Fassung im geschützten Speicher. Anschließend werden Archivverweis und Audit-Ereignis gesetzt. Der Snapshot konserviert einen wichtigen Arbeitsstand. Analyse und Markierungen werden gemeinsam gesperrt und nach dem Storage-Schreiben nochmals inhaltlich verglichen. Er ist wegen referenzierter Rohresultate und weiterer Folgeobjekte nicht vollständig selbsttragend."
     },
     {
       "id": "RISK-CATALOG-FOUR-EYES-001",
@@ -4995,6 +5131,8 @@
       ],
       "code_refs": [
         "packages/tax/src/materialize.ts",
+        "packages/tax/src/index.ts",
+        "apps/web/src/server/settings/tax-region.ts",
         "apps/web/src/lib/tax-deadline-pipeline.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts",
         "apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx",
@@ -5011,6 +5149,7 @@
         "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
       ],
       "test_refs": [
+        "packages/db/src/__tests__/tax-deadline-materialize-consistency.test.ts",
         "packages/tax/src/__tests__/materialize.test.ts",
         "packages/mail/src/__tests__/dispatch-profile-context.test.ts",
         "packages/mail/src/__tests__/request-opened.test.ts",
@@ -5089,10 +5228,12 @@
         "packages/tax/src/index.ts",
         "packages/tax/src/legal-assessments.ts",
         "packages/tax/src/materialize.ts",
+        "apps/web/src/server/settings/tax-region.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-assessment.ts",
         "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
       ],
       "test_refs": [
+        "packages/db/src/__tests__/tax-deadline-materialize-consistency.test.ts",
         "packages/tax/src/__tests__/engine.test.ts",
         "packages/tax/src/__tests__/legal-assessments.test.ts",
         "packages/tax/src/__tests__/plausibility-engine.test.ts",
@@ -5516,9 +5657,17 @@
       ],
       "code_refs": [
         "apps/web/src/server/risk/los.ts",
-        "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts"
+        "apps/web/src/server/risk/los-state.ts",
+        "apps/web/src/server/risk/index.ts",
+        "apps/web/src/server/audit/labels.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/page.tsx",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx"
       ],
-      "test_refs": ["apps/web/src/server/risk/__tests__/los.test.ts"],
+      "test_refs": [
+        "apps/web/src/server/risk/__tests__/los.test.ts",
+        "packages/db/src/__tests__/los-state-consistency.test.ts"
+      ],
       "feature_refs": [
         "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",
         "docs/assurance/known-limits.md",

@@ -28,6 +28,26 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts
+  - apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts
+  - apps/web/src/app/staff/(protected)/admin/settings/mail-actions.ts
+  - apps/web/src/app/staff/(protected)/admin/settings/infra-actions.ts
+  - apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts
+  - apps/web/src/server/settings/access-policy.ts
+  - apps/web/src/server/settings/modules.ts
+  - apps/web/src/server/settings/tenant-settings.ts
+  - apps/web/src/server/settings/branding.ts
+  - apps/web/src/server/settings/letterhead.ts
+  - apps/web/src/server/settings/legal.ts
+  - apps/web/src/server/settings/client-layout.ts
+  - apps/web/src/server/settings/tax-region.ts
+  - apps/web/src/server/settings/tsa.ts
+  - apps/web/src/server/settings/quantenlos.ts
+  - apps/web/src/server/settings/smtp.ts
+  - apps/web/src/server/settings/mail-dispatch.ts
+  - packages/mail/src/smtp-settings.ts
+  - packages/mail/src/dispatch-settings.ts
+  - packages/mail/src/index.ts
   - apps/web/src/server/backup/restore.ts
   - packages/db/src/restore-security.ts
   - apps/web/src/app/staff/(protected)/admin/audit/page.tsx
@@ -53,6 +73,8 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql
 test_refs:
+  - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
+  - apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
   - packages/db/src/__tests__/restore-security.test.ts
@@ -125,6 +147,23 @@ dass jeder denkbare Schreibpfad bereits ein Audit-Ereignis erzeugt.
 | Nachrechnung weicht ab                             | Kettenprüfung als fehlerhaft melden                              |
 
 ## Ausnahmen und Grenzfälle
+
+Die administrativen Mutationen für Zugriffsmodus, Module, Mandantenlayout
+einschließlich Reset, Verkäuferstammdaten, Branding, Briefkopf, Rechtshinweise,
+SMTP einschließlich Reset, Mail-Dispatch, Steuerregion, TSA sowie IBM-Quantum-Token
+einschließlich Entfernung schreiben
+Einstellung und Audit-Ereignis atomar. Dazu erhalten die Setting-Writer den
+bereits geöffneten Transaktionsclient; eigenständige Writer bleiben für
+interne Aufrufer als Wrapper verfügbar. Eine eigene verschachtelte Transaktion
+darf den Einstellungswert nicht vor dem Audit committen. Die Revalidierung des
+Next-Caches erfolgt erst nach erfolgreichem Commit. SMTP- und IBM-Geheimnisse bleiben
+verschlüsselt gespeichert und im Audit maskiert.
+
+Der verpflichtende CI-Datenbanktest verwendet echte Actions, Rollenprüfung,
+Writer, Verschlüsselung, Evidence-Service und PostgreSQL-App-Rolle. Ein
+injizierter SQL-Fehler nach dem Audit-Insert muss sowohl den Einstellungswert
+als auch das neue Kettenende zurückrollen; Erfolgsfälle müssen genau das
+zugehörige Audit-Ereignis und eine weiterhin gültige Hashkette liefern.
 
 `BigInt` wird als Dezimaltext, binäre Daten werden hexadezimal und Datumswerte
 werden als ISO-Zeitpunkt kanonisiert. IP-Adresse und User-Agent können am

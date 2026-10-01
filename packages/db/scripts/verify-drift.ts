@@ -22,6 +22,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { assertSeparateShadowDatabase, resetShadowAppSchema } from './drift-shadow';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, '..');
@@ -44,6 +45,19 @@ if (!shadowUrl) {
       'Lokal (über docker-compose ist `postgres` bereits da):\n' +
       '  docker exec taxtronik-postgres psql -U taxtronik -d postgres -c "CREATE DATABASE taxtronik_shadow"\n' +
       '  SHADOW_DATABASE_URL=postgresql://taxtronik:<pwd>@localhost:5432/taxtronik_shadow pnpm verify:schema-drift\n',
+  );
+  process.exit(1);
+}
+
+const sourceUrls = [process.env['DATABASE_URL'], process.env['DATABASE_APP_URL']].filter(
+  (value): value is string => Boolean(value?.trim()),
+);
+try {
+  assertSeparateShadowDatabase(shadowUrl, sourceUrls);
+} catch (error) {
+  console.error(
+    '[verify:schema-drift]',
+    error instanceof Error ? error.message : 'Ungültige Shadow-Konfiguration.',
   );
   process.exit(1);
 }
@@ -75,6 +89,15 @@ if (!run(process.execPath, [ledgerCheck, '--after-deploy'])) {
 }
 
 console.log('[verify:schema-drift] Resette Shadow-DB + applye Migrationen ...');
+try {
+  await resetShadowAppSchema(shadowUrl, sourceUrls);
+} catch {
+  // Connection errors may include credentials. Keep the public diagnostic generic.
+  console.error(
+    '[verify:schema-drift] Separates app-Schema der Shadow-DB konnte nicht zurückgesetzt werden.',
+  );
+  process.exit(1);
+}
 if (
   !run(process.execPath, [prismaCli, 'migrate', 'reset', '--force'], {
     DATABASE_URL: shadowUrl,

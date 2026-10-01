@@ -30,6 +30,7 @@ sources:
 code_refs:
   - scripts/fachkatalog/cli.mjs
   - scripts/fachkatalog/lib.mjs
+  - scripts/fachkatalog/diff-guard.mjs
 test_refs:
   - scripts/tests/fachkatalog.test.mjs
 feature_refs:
@@ -115,6 +116,13 @@ Inhaltshash, trennt Implementierungs- von Reviewmetadaten und verwirft stale
 Hashes. `cli.mjs` kann den prüfbaren Hash ausgeben und weist ausdrücklich auf
 die fehlende Identitätswirkung hin. CI prüft Struktur und Drift des Katalogs.
 
+Das Diff-Gate verlangt für neue technische Ausnahmen dieselbe Pfadabdeckung
+wie für fachliche Änderungen: statische Fachpfade sowie katalogisierte
+Codeverweise aus Basis- und Zielstand. Auch ein ausschließlich im Katalog
+referenzierter Buildpfad kann damit nachvollziehbar verhaltensneutral geändert
+werden. Bereits erfasste Ausnahmen bleiben unveränderlich erhalten, wenn eine
+Codeverknüpfung später entfällt; fremde neue Pfade werden weiter abgewiesen.
+
 Amtliche Quellen werden je Quellenart anhand ausdrücklich zugelassener Hosts
 geprüft. Dazu gehört für `official_guidance` die Finanzverwaltungsplattform
 `elster.de`, insbesondere ihre veröffentlichte Steuernummerntabelle.
@@ -154,3 +162,7 @@ Die Katalogtests prüfen unvollständige Freigaben, Hashbindung, Erkennung
 nachträglicher Inhaltsänderungen, Quellen- und Datumsplausibilität, getrennte
 Code-/Testnachweise sowie die Konsistenz von Schema und Validator. Diese Tests
 belegen keine reale Reviewer-Identität und keine fachliche Richtigkeit.
+
+Regressionen prüfen katalogisierte Pfade außerhalb statischer Präfixe,
+abgewiesene neue Fremdpfade, kanonische Repository-Pfade und die unveränderliche
+Historie technischer Ausnahmen.

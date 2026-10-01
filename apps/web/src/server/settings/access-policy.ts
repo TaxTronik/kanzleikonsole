@@ -16,6 +16,7 @@
 // ohne reine Unit-Tests zu beschweren.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import { cache } from 'react';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 import type { TenantContext } from '@taxtronik/db';
@@ -49,12 +50,19 @@ export function readAccessPolicy(ctx: TenantContext): Promise<AccessPolicy> {
 }
 
 export async function writeAccessPolicy(ctx: TenantContext, cfg: AccessPolicy): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY_ACCESS,
-      value: cfg as object,
-      updatedBy: ctx.actorId,
-    });
+  await withTenantContext(ctx, (tx) => writeAccessPolicyTx(tx, ctx, cfg));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeAccessPolicyTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  cfg: AccessPolicy,
+): Promise<void> {
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY_ACCESS,
+    value: cfg as object,
+    updatedBy: ctx.actorId,
   });
 }

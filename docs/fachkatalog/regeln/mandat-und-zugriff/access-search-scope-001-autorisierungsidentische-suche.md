@@ -35,6 +35,8 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/components/recent-clients.tsx
+  - apps/web/src/components/saved-views.tsx
+  - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
   - apps/web/src/app/staff/(protected)/clients/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
   - apps/web/src/server/inbox/access.ts
@@ -46,6 +48,7 @@ code_refs:
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
 test_refs:
   - apps/e2e/tests/recent-clients-state.spec.ts
+  - apps/e2e/tests/saved-views-state.spec.ts
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
@@ -145,6 +148,13 @@ Namen. Eine leere, gefilterte oder paginierte Serverliste kann Einträge
 ausblenden; sie löscht die übrige Besuchshistorie nicht. Der Browsercache
 begründet weder Sichtbarkeit noch Zugriff auf eine Mandantenakte.
 
+Auch benannte Suchansichten speichern Namen und Query-Strings ausschließlich
+in einem versionierten Tenant-/Mitarbeiter-Schlüssel. Ein Kontowechsel zeigt
+keine Ansichten des vorherigen Kontos an. Ungebundene Altbestände werden ohne
+Übernahme geleert, da ihre Urheberschaft nicht rekonstruierbar ist. Beschädigte
+Einträge werden verworfen. Suchansichten sind persönliche Filtervorlagen;
+der erneute Seitenaufruf prüft die aktuelle serverseitige Berechtigung.
+
 Die Kopfzeile der Mandantenliste ordnet Titel und Aktionen auf schmalen
 Bildschirmen untereinander an; die Aktionsgruppe kann umbrechen. Diese reine
 Darstellungsänderung belässt Suchfilter, Trefferzähler, Aktionsziele,
@@ -192,6 +202,12 @@ Namenscaches, Tenant-/Mitarbeiterwechsel, ausschließlich gespeicherte IDs,
 aktuelle Namen sowie leere oder eingeschränkte Serverlisten. Die Prüfung
 simuliert die bereits autorisierte Serverliste; sie ersetzt keinen
 serverseitigen RLS- oder Detailzugriffstest.
+
+`saved-views-state.spec.ts` prüft mit echter Komponente und Browser-Storage
+die getrennte Speicherung und Anzeige von Ansichtsname und Suchbegriffen,
+Tenant-/Mitarbeiterwechsel, Altbestandsbereinigung, Wiederaufruf der eigenen
+Ansichten und beschädigte Einträge. Die Navigation wird als UI-Grenze
+simuliert; dieser Test ersetzt keine serverseitige Suchautorisierung.
 
 `12-accessibility.spec.ts` verlangt beim Aufruf der Mandantenliste eine
 erfolgreiche Antwort auf der angeforderten Route. Bei 320 Pixeln prüft die

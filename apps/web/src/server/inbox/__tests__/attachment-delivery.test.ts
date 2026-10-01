@@ -32,6 +32,8 @@ vi.mock('../access', () => ({
 
 import {
   buildInboxAttachmentDownloadResponse,
+  portalInboxAttachmentDownloadResponse,
+  staffInboxAttachmentDownloadResponse,
   type InboxAttachmentObject,
 } from '../attachment-delivery';
 
@@ -60,6 +62,55 @@ describe('Portal-Inbox Download-Audit', () => {
     vi.resetAllMocks();
     h.withTenant.mockImplementation(async (_context, callback) => callback({}));
   });
+
+  it.each(['portal', 'staff'])(
+    'DOC-VERSION-IMMUTABILITY-001: akzeptierte Anlagen verwenden aktuelle Scanfreigabe und S3-Version (%s)',
+    async (actor) => {
+      const version = {
+        storageBucket: 'gobd',
+        storageKey: 'bound-key',
+        storageVersionId: 'bound-version',
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+      };
+      const attachment = {
+        id: 'attachment-1',
+        clientId: 'client-1',
+        decision: 'ACCEPTED',
+        acceptedDocument: {
+          title: 'approved.pdf',
+          mimeType: 'application/pdf',
+          deletedAt: null,
+          sharedWithClientAt: new Date(),
+          versions: [version],
+        },
+      };
+      const tx = { portalInboxAttachment: { findFirst: vi.fn(async () => attachment) } };
+      h.withTenant.mockImplementation(async (_context, callback) => callback(tx));
+      h.streamObject.mockResolvedValue({ body: new Uint8Array([1]), contentLength: 1 });
+      const session = {
+        user: {
+          tenantId: 'tenant-1',
+          clientId: 'client-1',
+          contactId: 'contact-1',
+          staffId: 'staff-1',
+        },
+      } as never;
+      const download =
+        actor === 'portal'
+          ? portalInboxAttachmentDownloadResponse
+          : staffInboxAttachmentDownloadResponse;
+      await download(request, session, 'attachment-1');
+      expect(h.streamObject).toHaveBeenCalledWith('gobd', 'bound-key', 'bound-version');
+      h.streamObject.mockClear();
+      h.audit.mockClear();
+      version.scanStatus = 'INFECTED';
+      const blocked = await download(request, session, 'attachment-1');
+      expect(blocked.status).toBe(404);
+      expect(h.streamObject).not.toHaveBeenCalled();
+      expect(h.audit).not.toHaveBeenCalled();
+    },
+  );
 
   it('schreibt bei fehlendem Object-Open keinen falschen Downloadnachweis', async () => {
     h.streamObject.mockRejectedValueOnce(new Error('object missing'));

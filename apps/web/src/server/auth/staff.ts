@@ -28,8 +28,10 @@ import {
   getClientIp,
   checkIpOrGlobalLimit,
   checkStaffPasswordAccountLimit,
+  checkStaffSecondFactorAccountLimit,
   resetRateLimit,
   staffPasswordAccountRateLimitKey,
+  staffSecondFactorAccountRateLimitKey,
 } from '@/server/rate-limit';
 import { authenticateStaffHardwareCredential } from './webauthn';
 import { staffTokenMatchesCurrentAuthState, type StaffAuthMethod } from './staff-auth-state';
@@ -234,6 +236,14 @@ function passwordAuthenticationBlocked(account: {
   );
 }
 
+async function mayVerifySecondFactor(staffId: string, code: string): Promise<boolean> {
+  if (!code) return false;
+  // ACCESS-TENANT-RLS-001: Kenntnis des Passworts genügt nicht, um
+  // verteilte TOTP-/Backup-Code-Versuche zurückzusetzen. Dieser Bucket
+  // ist unabhängig vom Passwortvorschritt und allen IP-Buckets.
+  return (await checkStaffSecondFactorAccountLimit(staffId)).ok;
+}
+
 const staffConfig: NextAuthConfig = {
   basePath: '/api/auth/staff',
   // Auth.js v5 verlangt trustHost=true. Der vorgeschaltete Proxy pinnt den
@@ -366,7 +376,7 @@ const staffConfig: NextAuthConfig = {
         if (!staffUser.totpSecretEnc || !staffUser.totpEnrolledAt) return null;
 
         // TOTP-Code prüfen
-        if (!totpCode) return null;
+        if (!(await mayVerifySecondFactor(staffUser.id, totpCode))) return null;
         const secret = decryptTotpSecret(staffUser.totpSecretEnc, tenant.id, env.AUTH_SECRET);
         const totpValid = verifyTotpCode(totpCode, secret);
 
@@ -517,6 +527,7 @@ const staffConfig: NextAuthConfig = {
             ip: auditIp(ip),
           });
         });
+        await resetRateLimit(staffSecondFactorAccountRateLimitKey(staffUser.id));
 
         return {
           id: staffUser.id,

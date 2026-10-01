@@ -15,6 +15,7 @@
 import { Prisma } from '@taxtronik/db/prisma-client';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
+import { lockClientRiskAnalysesTx } from '@taxtronik/db/risk-analysis';
 
 /** Zähler je Datenklasse — landen im Audit-Event `client.anonymize`. */
 export interface ClientSideTableAnonymization {
@@ -168,6 +169,9 @@ export async function anonymizeClientSideTablesInTx(
   // Rich-Doc-Kopie → DbNull) enthält den Lebenssachverhalt des Mandanten.
   // Analyse-Metadaten (Hash, Engine-/Katalog-Version, Archiv-Referenzen)
   // bleiben als Nachweis bestehen.
+  // RISK-ARCHIVE-SNAPSHOT-001 / DSGVO-MANDATE-ANONYMIZATION-001: retain the
+  // existing exact live-data redaction exception, serialize it with snapshots.
+  await lockClientRiskAnalysesTx(tx, clientId);
   const riskAnalyses = await tx.riskAnalysis.updateMany({
     where: { clientId },
     data: { sourceText: '', sourceDoc: Prisma.DbNull },

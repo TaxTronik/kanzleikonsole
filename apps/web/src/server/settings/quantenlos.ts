@@ -16,7 +16,7 @@
 // =============================================================================
 
 import { withTenantContext } from '@taxtronik/db';
-import type { TenantContext } from '@taxtronik/db';
+import type { TenantContext, TxClient } from '@taxtronik/db';
 import {
   deleteTenantSettingValue,
   readTenantSettingValue,
@@ -55,6 +55,15 @@ export async function readIbmToken(ctx: TenantContext): Promise<string | null> {
 }
 
 export async function writeIbmToken(ctx: TenantContext, token: string): Promise<void> {
+  await withTenantContext(ctx, (tx) => writeIbmTokenTx(tx, ctx, token));
+}
+
+/** AUDIT-HASH-CHAIN-001: the admin action shares this transaction with its audit. */
+export async function writeIbmTokenTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  token: string,
+): Promise<void> {
   const trimmed = token.trim();
   if (!trimmed) throw new Error('Leerer Token — zum Entfernen `deleteIbmToken` verwenden.');
   const stored: QuantenlosIbmStored = {
@@ -62,20 +71,20 @@ export async function writeIbmToken(ctx: TenantContext, token: string): Promise<
     suffix: trimmed.slice(-4),
     gesetztAm: new Date().toISOString(),
   };
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY,
-      value: stored as object,
-      updatedBy: ctx.actorId,
-    });
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY,
+    value: stored as object,
+    updatedBy: ctx.actorId,
   });
 }
 
 export async function deleteIbmToken(ctx: TenantContext): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    await deleteTenantSettingValue(tx, ctx.tenantId, KEY);
-  });
+  await withTenantContext(ctx, (tx) => deleteIbmTokenTx(tx, ctx));
+}
+
+export async function deleteIbmTokenTx(tx: TxClient, ctx: TenantContext): Promise<void> {
+  await deleteTenantSettingValue(tx, ctx.tenantId, KEY);
 }
 
 /** UI-Status ohne Entschlüsselung. */

@@ -22,6 +22,8 @@ implementation:
     nicht abschließend automatisch festgestellt. DATEV-Umsatzerlöse,
     Gesamtleistung, betriebliche Kosten und Ergebnis vor Steuern werden getrennt;
     unvollständige oder nicht darstellbare Planbasen werden nicht automatisch vorbelegt.
+    Ungültige Monate und umgekehrte Perioden werden verworfen; nur tatsächliche
+    Kalenderquartale erhalten einen Quartalsschlüssel. Leere Textbeträge bleiben unbekannt.
 sources:
   - kind: technical_standard
     citation: DATEV-Musterauswertung Planungsrechnung, Planungscockpit BWA 01 Kurzform, Positionen 1020, 1051, 1060, 1090, 1280, 1300, 1345 und 1380
@@ -122,6 +124,14 @@ stehenden Kontendetails. Beim Addison-Import werden zweistellige Jahre unter
 70 als 20xx und ab 70 als 19xx interpretiert. Nicht erkannte Addison-
 Periodenbezeichnungen können als Jahresbereich eingeordnet werden, ohne dass
 damit ein vollständiges Wirtschaftsjahr bewiesen ist.
+
+Monatsnummern außerhalb von 1 bis 12 sowie Bereiche mit einem Ende vor dem
+Beginn werden nicht importiert. Eine dreimonatige Addison-Periode bekommt
+nur bei den Grenzen Januar–März, April–Juni, Juli–September oder
+Oktober–Dezember einen Kalenderquartalsschlüssel. Andere gültige Bereiche
+behalten ihre tatsächlichen Datumsgrenzen und einen eindeutigen
+Bereichsschlüssel, etwa `2026-02-2026-04`. Der bestehende technische Typ
+`YEAR` für solche Bereiche bedeutet weiterhin kein vollständiges Jahr.
 
 Die Kennzahlabbildung nutzt feste Positionen. `revenue` verwendet DATEV 1020
 **Umsatzerlöse**, `resultBeforeTax` ausschließlich DATEV 1345 **Ergebnis vor
@@ -230,6 +240,17 @@ Freigabe beliebiger Kontenrahmen oder individueller BWA-Schemata.
   weiterverarbeitet werden?
 
 ## Technische Nachweise
+
+Die Periodenregressionen prüfen Addison-Lang- und Kompaktform mit
+verschobenen Dreimonatsbereichen neben echten Kalenderquartalen, Monaten
+00/13, umgekehrten Bereichen sowie einem gültigen Jahreswechsel mit
+Schalttag. DATEV-Fälle prüfen umgekehrte Bereiche neben gültigen Spalten.
+Damit können unterschiedliche Zeiträume nicht mehr durch die fehlerhafte
+Quartalszuordnung denselben Import-Schlüssel erhalten und beim späteren
+Import als vermeintlich bereits vorhanden übersprungen werden. Ein weiterer
+DATEV-Fall unterscheidet reine Leerzeichen in einer Betragszelle von echten
+numerischen und textuellen Nullbeträgen: fehlende Werte bleiben unbekannt.
+Die Tests belegen keine umfassende fachliche Plausibilisierung der Quelldaten.
 
 Die Liquiditätsregression trennt abweichende Werbe-/Reisekosten von
 tatsächlichen Abschreibungen und prüft, dass fehlende Abschreibungen weder

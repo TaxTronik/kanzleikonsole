@@ -96,6 +96,27 @@ function legalSnapshot(overrides: Partial<GwgVerificationSnapshot> = {}): GwgVer
 }
 
 describe('gwgVerificationErrors', () => {
+  it.each([
+    ['Sommerzeit', '2026-07-11', '2026-07-11T21:59:59.999Z', '2026-07-11T22:00:00.000Z'],
+    ['Winterzeit', '2026-01-11', '2026-01-11T22:59:59.999Z', '2026-01-11T23:00:00.000Z'],
+  ])(
+    'GWG-IDENTIFICATION-EVIDENCE-001: Ausweisablauf folgt dem Berliner Kalendertag (%s)',
+    (_season, expiry, lastValid, firstExpired) => {
+      const snapshot = legalSnapshot({
+        clientKind: 'NATPERS',
+        idDocuments: [
+          evidence('PERSONALAUSWEIS', {
+            naturalClientSubjectId: CLIENT_ID,
+            representativeSubjectId: null,
+            expiryDate: new Date(`${expiry}T00:00:00Z`),
+          }),
+        ],
+      });
+      expect(gwgVerificationErrors(snapshot, new Date(lastValid))).toEqual([]);
+      expect(gwgVerificationErrors(snapshot, new Date(firstExpired))).toHaveLength(1);
+    },
+  );
+
   it('akzeptiert einen vollstaendigen Rechtstraeger-Snapshot mit bestaetigter Vertreter-UUID', () => {
     expect(gwgVerificationErrors(legalSnapshot(), NOW)).toEqual([]);
   });

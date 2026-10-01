@@ -26,9 +26,24 @@ export interface RateLimitResult {
 }
 
 const STAFF_PASSWORD_ACCOUNT_LIMIT: RateLimitConfig = { max: 20, windowSec: 600 };
+const STAFF_SECOND_FACTOR_ACCOUNT_LIMIT: RateLimitConfig = { max: 5, windowSec: 300 };
 
 export function staffPasswordAccountRateLimitKey(staffUserId: string): string {
   return `staff-pw-account:${staffUserId}`;
+}
+
+export function staffSecondFactorAccountRateLimitKey(staffUserId: string): string {
+  return `staff-second-factor-account:${staffUserId}`;
+}
+
+/** ACCESS-TENANT-RLS-001: A password alone must not reset second-factor attempts. */
+export async function checkStaffSecondFactorAccountLimit(
+  staffUserId: string,
+): Promise<RateLimitResult> {
+  return checkRateLimit(
+    staffSecondFactorAccountRateLimitKey(staffUserId),
+    STAFF_SECOND_FACTOR_ACCOUNT_LIMIT,
+  );
 }
 
 /**

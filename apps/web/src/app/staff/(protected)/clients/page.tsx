@@ -182,7 +182,7 @@ export default async function ClientsPage({
       </div>
 
       <div className="mb-4 space-y-2">
-        <SavedViews />
+        <SavedViews tenantId={tenantId} staffId={staffId} />
         <RecentClients
           tenantId={tenantId}
           staffId={staffId}

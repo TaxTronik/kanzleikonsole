@@ -23,6 +23,7 @@ import {
 import {
   evaluateCatalogDiff,
   isFachPath,
+  newExceptions,
   parseExceptionLedger,
   parseNameStatus,
 } from '../fachkatalog/diff-guard.mjs';
@@ -697,8 +698,45 @@ exceptions:
 `;
   assert.equal(parseExceptionLedger(valid).length, 1);
   assert.throws(
-    () => parseExceptionLedger(valid.replace('packages/tax/src/engine.ts', 'README.md')),
+    () => parseExceptionLedger(valid.replace('packages/tax/src/engine.ts', '../README.md')),
+    /kanonische relative Repository-Pfade/,
+  );
+});
+
+test('Ausnahmen überwachen auch Katalogpfade und erhalten unveränderliche Historie', () => {
+  const source = (path) => `---
+exceptions:
+  - id: FK-EXC-20260823-001
+    date: '2026-08-23'
+    paths: ['${path}']
+    rule_ids: [ASSURANCE-PROFESSIONAL-REVIEW-001]
+    reason: Technische Korrektur ohne Änderung der fachlichen Entscheidungslogik.
+    tests: [scripts/tests/fachkatalog.test.mjs]
+    reviewer: Technischer Test
+---
+`;
+  const ids = ['ASSURANCE-PROFESSIONAL-REVIEW-001'];
+  const path = 'apps/web/next.config.mjs';
+  assert.equal(isFachPath(path), false);
+  assert.deepEqual(newExceptions(null, source(path), ids, [path]).findings, []);
+  assert.match(newExceptions(null, source(path), ids).findings[0], /nur überwachte Fachpfade/);
+  assert.match(
+    newExceptions(null, source('README.md'), ids, [path]).findings[0],
     /nur überwachte Fachpfade/,
+  );
+  assert.deepEqual(newExceptions(source(path), source(path), ids).findings, []);
+  assert.match(
+    newExceptions(source(path), source('README.md'), ids).findings[0],
+    /nicht gelöscht oder verändert/,
+  );
+  const exception = newExceptions(null, source(path), ids, [path]);
+  assert.deepEqual(
+    evaluateCatalogDiff([{ status: 'M', path }], {
+      catalogFachPaths: [path],
+      newExceptionPaths: exception.paths,
+      extraFindings: exception.findings,
+    }).findings,
+    [],
   );
 });
 

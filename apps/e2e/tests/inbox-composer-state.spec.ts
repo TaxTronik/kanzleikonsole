@@ -8,6 +8,14 @@ const { build } = createRequire(webRequire.resolve('tsx'))('esbuild') as typeof 
 const webRoot = dirname(webRequire.resolve('./package.json'));
 let bundle: Promise<string> | undefined;
 
+// Both mounted reply forms submit these strings; attachments only add batchId.
+interface ReplyFixturePayload {
+  body: string;
+  threadId: string;
+  clientMutationId: string;
+  batchId?: string;
+}
+
 function controlsBundle() {
   bundle ??= build({
     stdin: {
@@ -92,7 +100,7 @@ test('leert die Antwort nach verzögertem Erfolg und vergibt erst dann eine neue
   await expect(page.getByRole('button', { name: 'Wird gespeichert …' })).toBeDisabled();
   await expect(reply).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Zuweisen', exact: true })).toBeDisabled();
-  const first = await page.evaluate('globalThis.__calls[0]');
+  const first = await page.evaluate<ReplyFixturePayload>('globalThis.__calls[0]');
   expect(first).toMatchObject({ body: 'Erste synthetische Antwort.', threadId: 'thread-a' });
   await page.evaluate(
     'globalThis.__resolveReply({ok:true,mailWarning:"Hinweisversand nicht bestätigt."})',
@@ -105,7 +113,7 @@ test('leert die Antwort nach verzögertem Erfolg und vergibt erst dann eine neue
 
   await reply.fill('Zweite synthetische Antwort.');
   await save.click();
-  const second = await page.evaluate('globalThis.__calls[1]');
+  const second = await page.evaluate<ReplyFixturePayload>('globalThis.__calls[1]');
   expect(second.clientMutationId).not.toBe(first.clientMutationId);
   expect(second.body).toBe('Zweite synthetische Antwort.');
   await page.evaluate('globalThis.__resolveReply({ok:true})');
@@ -136,7 +144,7 @@ test('leert eine erfolgreiche Portalantwort samt Anlagen auch bei unveränderter
   await expect.poll(() => page.evaluate('globalThis.__calls.length')).toBe(1);
   await expect(reply).toBeDisabled();
   await expect(files).toBeDisabled();
-  const first = await page.evaluate('globalThis.__calls[0]');
+  const first = await page.evaluate<ReplyFixturePayload>('globalThis.__calls[0]');
   expect(first).toMatchObject({ body: 'Portalantwort mit Anlage.', batchId: 'batch-1' });
   await page.evaluate('globalThis.__resolveReply({ok:true,threadId:"thread-a"})');
   await expect(reply).toHaveValue('');
@@ -146,7 +154,7 @@ test('leert eine erfolgreiche Portalantwort samt Anlagen auch bei unveränderter
   await reply.fill('Neue Antwort ohne Anlage.');
   await save.click();
   await expect.poll(() => page.evaluate('globalThis.__calls.length')).toBe(2);
-  const second = await page.evaluate('globalThis.__calls[1]');
+  const second = await page.evaluate<ReplyFixturePayload>('globalThis.__calls[1]');
   expect(second.clientMutationId).not.toBe(first.clientMutationId);
   expect(second.batchId).toBeUndefined();
   expect(uploads).toBe(1);

@@ -14,6 +14,7 @@
 //   - PoaMode steuert das Vollmachten-Subsystem.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import { cache } from 'react';
 import { withTenantContext, type TenantContext } from '@taxtronik/db/tenant-context';
 import type { BooleanTenantModules, BooleanTenantModuleKey } from '@taxtronik/db/tenant-modules';
@@ -115,13 +116,20 @@ export function isModeModuleEnabled(cfg: ModuleConfig, module: ModeModuleKey): b
 }
 
 export async function writeModules(ctx: TenantContext, cfg: ModuleConfig): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY_MODULES,
-      value: cfg as object,
-      updatedBy: ctx.actorId,
-    });
+  await withTenantContext(ctx, (tx) => writeModulesTx(tx, ctx, cfg));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeModulesTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  cfg: ModuleConfig,
+): Promise<void> {
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY_MODULES,
+    value: cfg as object,
+    updatedBy: ctx.actorId,
   });
 }
 

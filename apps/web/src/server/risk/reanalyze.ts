@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
@@ -30,7 +31,7 @@ export async function reanalyzeAnalysis(
   // sourceText aus der gespeicherten Analyse (NICHT vom Client) — der erneute Lauf
   // muss auf demselben Text aufsetzen, damit die Offsets passen.
   const analysis = await withTenantContext(ctx, (tx) =>
-    tx.riskAnalysis.findUnique({ where: { id: analysisId }, select: { sourceText: true } }),
+    requireWritableRiskAnalysisTx(tx, ctx.tenantId, analysisId),
   );
   if (!analysis) throw new Error('Analyse nicht gefunden.');
 
@@ -38,6 +39,7 @@ export async function reanalyzeAnalysis(
   const result = await c.analyse({ text: analysis.sourceText, mitLLM: false });
 
   return withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskAnalysisTx(tx, ctx.tenantId, analysisId, analysis.sourceText);
     const existing = await tx.riskMarking.findMany({
       where: { analysisId },
       select: { start: true, end: true, herkunft: true, begriff: true },

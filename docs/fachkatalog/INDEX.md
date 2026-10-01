@@ -50,6 +50,13 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet.
 
+### [BACKUP-DRILL-INTEGRITY-001 — Automatische Restore-Drills nur mit vorab verifizierten Dumpbytes ausführen](regeln/audit-und-assurance/backup-drill-integrity-001-verifizierte-laufkopie.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Ungeprüfter Entwurf: Ein PostgreSQL-Dump enthält ausführbare Anweisungen. Der automatische Restore-Drill darf ausschließlich eine vollständig gegen den zugehörigen Datenbanknachweis geprüfte lokale Kopie ausführen. Eine erst nach dem Restore erkannte Abweichung kann vorausgegangene Wirkungen nicht verhindern.
+
 ## BWA und Planung
 
 ### [BWA-IMPORT-MAPPING-001 — DATEV- und Addison-BWA nur anhand bekannter Strukturen importieren](regeln/bwa-und-planung/bwa-import-mapping-001-strukturimport.md)
@@ -533,7 +540,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
-- Kurzfassung: TaxTronik serialisiert den aktuellen Sachverhalt, die Analysemetadaten und alle Markierungen als JSON, bildet darüber einen SHA-256-Wert und speichert eine gzip-Fassung im geschützten Speicher. Anschließend werden Archivverweis und Audit-Ereignis gesetzt. Der Snapshot konserviert einen wichtigen Arbeitsstand, ist aber nicht vollständig selbsttragend und die Sperre erfasst noch nicht jede mögliche Folgemutation.
+- Kurzfassung: TaxTronik serialisiert den aktuellen Sachverhalt, die Analysemetadaten und alle Markierungen als JSON, bildet darüber einen SHA-256-Wert und speichert eine gzip-Fassung im geschützten Speicher. Anschließend werden Archivverweis und Audit-Ereignis gesetzt. Der Snapshot konserviert einen wichtigen Arbeitsstand. Analyse und Markierungen werden gemeinsam gesperrt und nach dem Storage-Schreiben nochmals inhaltlich verglichen. Er ist wegen referenzierter Rohresultate und weiterer Folgeobjekte nicht vollständig selbsttragend.
 
 ### [RISK-CATALOG-FOUR-EYES-001 — Geteilte Beraterbegriffe nur vorwärts und durch eine zweite Person freigeben](regeln/subsumtion-und-tcms/risk-catalog-four-eyes-001-freigabe.md)
 

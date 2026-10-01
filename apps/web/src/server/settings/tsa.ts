@@ -6,6 +6,7 @@
 // in @taxtronik/evidence aufgelöst.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
@@ -35,16 +36,23 @@ export async function readTsaConfig(ctx: TenantContext): Promise<TsaConfig> {
 }
 
 export async function writeTsaConfig(ctx: TenantContext, cfg: TsaConfig): Promise<void> {
+  await withTenantContext(ctx, (tx) => writeTsaConfigTx(tx, ctx, cfg));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeTsaConfigTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  cfg: TsaConfig,
+): Promise<void> {
   const stored: TsaConfig = {
     providerId: cfg.providerId.trim(),
     customUrl: cfg.customUrl.trim(),
   };
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY,
-      value: stored as object,
-      updatedBy: ctx.actorId,
-    });
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY,
+    value: stored as object,
+    updatedBy: ctx.actorId,
   });
 }

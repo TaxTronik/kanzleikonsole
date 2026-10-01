@@ -78,15 +78,15 @@ eine zulässige Löschung der Quelldatenbank.
 
 ## Entscheidungslogik
 
-| Ausgangslage                               | Ergebnis                                                                  |
-| ------------------------------------------ | ------------------------------------------------------------------------- |
-| kein neuer zusammenhängender Bereich       | keinen leeren Archivdatensatz erzeugen                                    |
-| Segment lässt sich vollständig nachrechnen | deterministische Bytes und SHA-256-Dateihash bilden                       |
-| Segmentprüfung schlägt fehl                | Upload und Registrierung abbrechen                                        |
-| identisches Objekt ist bereits gespeichert | Metadaten per Head-Abfrage prüfen und fehlende DB-Registrierung nachholen |
-| Upload gelingt, DB-Registrierung scheitert | Objekt erhalten; späteren Lauf vorwärts recovern lassen                   |
-| externe TSA fehlt oder schlägt fehl        | Segment ohne behaupteten externen Zeitnachweis archivieren                |
-| HARD-Modus ist angefordert                 | als SOFT behandeln; keine Audit-Quelldaten löschen                        |
+| Ausgangslage                               | Ergebnis                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| kein neuer zusammenhängender Bereich       | keinen leeren Archivdatensatz erzeugen                                               |
+| Segment lässt sich vollständig nachrechnen | deterministische Bytes und SHA-256-Dateihash bilden                                  |
+| Segmentprüfung schlägt fehl                | Upload und Registrierung abbrechen                                                   |
+| identisches Objekt ist bereits gespeichert | Größe und SHA-256 der gelesenen Bytes prüfen und fehlende DB-Registrierung nachholen |
+| Upload gelingt, DB-Registrierung scheitert | Objekt erhalten; späteren Lauf vorwärts recovern lassen                              |
+| externe TSA fehlt oder schlägt fehl        | Segment ohne behaupteten externen Zeitnachweis archivieren                           |
+| HARD-Modus ist angefordert                 | als SOFT behandeln; keine Audit-Quelldaten löschen                                   |
 
 ## Ausnahmen und Grenzfälle
 
@@ -115,8 +115,12 @@ erzeugen.
 
 `archive.ts` definiert das stabile Segmentformat, berechnet den Datei-Hash und
 prüft jede enthaltene Kettenzeile. `audit-rotate.ts` wählt den nächsten Bereich,
-setzt die COMPLIANCE-Retention, behandelt Wiederholungen über Storage-Metadaten
-und registriert das Segment in einer Tenant-Transaktion.
+rechnet vor jedem Upload die serialisierten Zeilen und ihre Vorgängerbindung
+nach und setzt die COMPLIANCE-Retention. Ein bedingter PUT verhindert das
+Überschreiben eines bereits vorhandenen Schlüssels. Bei Wiederholungen wird
+das bestehende Objekt größenbegrenzt gestreamt und sein SHA-256 gegen das
+deterministische Segment geprüft; eine reine Head-Erfolgsantwort genügt nicht.
+Erst danach registriert der Job das Segment tenantgebunden.
 
 Eigene JSON-Schlüssel einschließlich `__proto__` werden beim NDJSON-Export
 vollständig erhalten. Die gemeinsame Kanonisierung verwendet dafür ein
@@ -124,6 +128,13 @@ Objekt ohne geerbte Setter. Eine Änderung allein in einem solchen Feld führt
 bei der erneuten Zeilenprüfung zum Hashfehler (`AUDIT-HASH-CHAIN-001`).
 
 ## Bekannte Abweichungen und Grenzen
+
+Der Quellcode-Abgleich vom 1. Oktober 2026 stellte eine frühere Abweichung zu
+dieser Regel fest: Der Worker serialisierte ohne eigene Kettennachrechnung
+und übernahm ein vorhandenes Objekt allein anhand einer erfolgreichen
+Head-Abfrage. Die Korrektur schließt diese beiden Prüfungen vor Upload bzw.
+Registrierung. Bereits registrierte Altsegmente werden dadurch nicht
+rückwirkend validiert und bleiben Gegenstand der separaten Archivprüfung.
 
 Der dokumentierte HARD-Modus ist nicht implementiert: Eine HARD-Anforderung
 wird auf SOFT normalisiert und `audit_log` bleibt vollständig in der
@@ -155,6 +166,10 @@ Die Pakettests prüfen deterministische Serialisierung, Datei- und Zeilenhashes,
 Ankergrenzen und fehlerhafte Segmente. Worker-Tests decken Segmentauswahl,
 Object-Lock-Parameter, idempotente Registrierung, Unterbrechungs-Recovery,
 TSA-Fehler und die SOFT-Behandlung einer HARD-Anforderung ab.
+Die Worker-Regressionen zu `AUDIT-ARCHIVE-001` rechnen echte gültige und
+manipulierte Quellzeilen nach. Sie verweigern Recovery bei verändertem Inhalt,
+abweichender Header-Größe oder einem überlangen Stream, ohne einen
+Archivdatensatz oder ein Ersatzobjekt zu erzeugen.
 Die Schlüsselregressionen prüfen zusätzlich den verlustfreien Export, die
 Nachrechnung, eine ausschließlich im Sonderfeld veränderte Archivzeile und
 die Ablehnung eines historischen Hashes mit ausgelassenem Feld.

@@ -17,6 +17,8 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 
 const h = vi.hoisted(() => {
   const prismaOwner = {
@@ -27,6 +29,8 @@ const h = vi.hoisted(() => {
   };
   const s3Send = vi.fn();
   const serializeArchive = vi.fn();
+  const parseArchive = vi.fn();
+  const verifyArchiveChain = vi.fn();
   const tsaTimestamp = vi.fn();
   const tsaVerify = vi.fn();
   const assertPublicHost = vi.fn();
@@ -38,6 +42,8 @@ const h = vi.hoisted(() => {
     prismaOwner,
     s3Send,
     serializeArchive,
+    parseArchive,
+    verifyArchiveChain,
     tsaTimestamp,
     tsaVerify,
     assertPublicHost,
@@ -58,12 +64,14 @@ vi.mock('@taxtronik/storage', () => ({
 }));
 vi.mock('@taxtronik/evidence', () => ({
   serializeArchive: h.serializeArchive,
+  parseArchive: h.parseArchive,
+  verifyArchiveChain: h.verifyArchiveChain,
   createRfc3161Adapter: () => ({ timestamp: h.tsaTimestamp, verify: h.tsaVerify }),
   resolveTsaUrl: (providerId: string | null, customUrl: string | null) =>
     customUrl ?? (providerId ? `https://tsa.example.com/${providerId}` : null),
 }));
 
-import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { processors } from './mocks/bullmq';
 import '../audit-rotate';
 
@@ -80,7 +88,7 @@ const SER = {
   fromOccurredAt: new Date('2026-01-15T08:00:00.000Z'),
   toOccurredAt: new Date('2026-02-01T09:00:00.000Z'),
   ndjson: NDJSON,
-  fileSha256: Buffer.alloc(32, 0xab),
+  fileSha256: createHash('sha256').update(NDJSON).digest(),
   firstPrevHash: Buffer.alloc(32, 0),
   lastThisHash: Buffer.alloc(32, 2),
 };
@@ -135,6 +143,8 @@ beforeEach(() => {
   h.prismaOwner.auditLog.findMany.mockResolvedValue([auditRow(6n), auditRow(7n)]);
   h.prismaOwner.tenantSetting.findUnique.mockResolvedValue(null);
   h.serializeArchive.mockReturnValue(SER);
+  h.parseArchive.mockReturnValue([]);
+  h.verifyArchiveChain.mockReturnValue({ ok: true });
   // Default: Objekt existiert noch nicht (HeadObject → NotFound), PUT klappt
   h.s3Send.mockImplementation(async (cmd: unknown) => {
     if (cmd instanceof HeadObjectCommand) throw notFound();
@@ -208,6 +218,7 @@ describe('Upload + Archiv-Eintrag', () => {
     expect((puts[0] as PutObjectCommand).input).toEqual({
       Bucket: 'gobd-bucket',
       Key: `tenants/${TENANT}/audit-archive/2026/01/6-7.ndjson`,
+      IfNoneMatch: '*',
       Body: NDJSON,
       ContentLength: NDJSON.length,
       ContentType: 'application/x-ndjson',
@@ -242,13 +253,18 @@ describe('Upload + Archiv-Eintrag', () => {
 
 describe('N-8: Forward-Recovery nach Crash zwischen PUT und DB-Insert', () => {
   it('Objekt existiert bereits → kein zweiter PUT, DB-Eintrag wird nachgezogen', async () => {
-    h.s3Send.mockResolvedValue({}); // HeadObject findet das Objekt
+    h.s3Send.mockImplementation(async (cmd: unknown) =>
+      cmd instanceof GetObjectCommand
+        ? { ContentLength: NDJSON.length, Body: Readable.from([NDJSON]) }
+        : {},
+    );
 
     const result = await run();
 
     const cmds = sentCommands();
-    expect(cmds).toHaveLength(1);
+    expect(cmds).toHaveLength(2);
     expect(cmds[0]).toBeInstanceOf(HeadObjectCommand);
+    expect(cmds[1]).toBeInstanceOf(GetObjectCommand);
     expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
   });
@@ -264,6 +280,54 @@ describe('N-8: Forward-Recovery nach Crash zwischen PUT und DB-Insert', () => {
     await expect(run()).rejects.toThrow('internal error');
     expect(h.prismaOwner.auditArchive.create).not.toHaveBeenCalled();
   });
+});
+
+describe('AUDIT-ARCHIVE-001: Segment vor Upload und Recovery vollständig prüfen', () => {
+  it.each([false, true])('prüft reale Kettenzeilen (manipuliert: %s)', async (tampered) => {
+    const actual =
+      await vi.importActual<typeof import('@taxtronik/evidence')>('@taxtronik/evidence');
+    h.serializeArchive.mockImplementation(actual.serializeArchive);
+    h.parseArchive.mockImplementation(actual.parseArchive);
+    h.verifyArchiveChain.mockImplementation(actual.verifyArchiveChain);
+    const first = auditRow(6n);
+    first.thisHash = Buffer.from(actual.eventHash(first.prevHash, first));
+    const second = auditRow(7n);
+    second.prevHash = first.thisHash;
+    second.thisHash = Buffer.from(actual.eventHash(second.prevHash, second));
+    if (tampered) second.action = 'tampered.action';
+    h.prismaOwner.auditLog.findMany.mockResolvedValue([first, second]);
+
+    if (tampered) {
+      await expect(run()).rejects.toThrow('AUDIT_ARCHIVE_CHAIN_INVALID');
+      expect(h.s3Send).not.toHaveBeenCalled();
+      expect(h.prismaOwner.auditArchive.create).not.toHaveBeenCalled();
+    } else {
+      await expect(run()).resolves.toEqual({ totalArchived: 2, totalDeleted: 0 });
+      expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it.each(['content', 'size', 'stream-size'])(
+    'registriert bei abweichendem Recovery-Objekt (%s) kein falsches Segment',
+    async (mismatch) => {
+      const changed = Buffer.from(NDJSON);
+      changed[0] = 32;
+      const body = Readable.from([
+        mismatch === 'content' ? changed : NDJSON,
+        ...(mismatch === 'stream-size' ? [Buffer.from('extra')] : []),
+      ]);
+      h.s3Send.mockImplementation(async (cmd: unknown) =>
+        cmd instanceof GetObjectCommand
+          ? { ContentLength: NDJSON.length + (mismatch === 'size' ? 1 : 0), Body: body }
+          : {},
+      );
+
+      await expect(run()).rejects.toThrow('AUDIT_ARCHIVE_RECOVERY_MISMATCH');
+      expect(body.destroyed).toBe(true);
+      expect(h.prismaOwner.auditArchive.create).not.toHaveBeenCalled();
+      expect(sentCommands().some((cmd) => cmd instanceof PutObjectCommand)).toBe(false);
+    },
+  );
 });
 
 describe('F3: optionaler RFC-3161-Stempel', () => {

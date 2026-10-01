@@ -92,7 +92,9 @@ describe('Rechnungsarchiv-Lock – Aufrufer-Reihenfolge', () => {
       'ensureZugferdArchive(',
       'readArchivedXmlCopy(',
     );
-    expect(xrechnungRoute).toContain('streamObject(archive.bucket, archive.key)');
+    expect(xrechnungRoute).toContain(
+      'streamObject(archive.bucket, archive.key, archive.storageVersionId)',
+    );
   });
 
   it('recheckt eine DRAFT-XRechnung nach dem Rendern unter dem Archiv-Lock', () => {

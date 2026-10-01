@@ -57,7 +57,11 @@ export async function loadIdentitySourceTx(
 export type IdentitySource = NonNullable<Awaited<ReturnType<typeof loadIdentitySourceTx>>>;
 
 export async function readIdentitySourceBytes(source: IdentitySource): Promise<Buffer> {
-  const bytes = await fetchObjectBytes(source.version.storageBucket, source.version.storageKey);
+  const bytes = await fetchObjectBytes(
+    source.version.storageBucket,
+    source.version.storageKey,
+    source.version.storageVersionId,
+  );
   const digest = createHash('sha256').update(bytes).digest();
   if (BigInt(bytes.length) !== source.version.sizeBytes || !digest.equals(source.version.sha256)) {
     throw new Error('Die Originaldatei stimmt nicht mit der gebundenen Version überein.');

@@ -52,9 +52,11 @@ code_refs:
   - packages/tax/src/index.ts
   - packages/tax/src/legal-assessments.ts
   - packages/tax/src/materialize.ts
+  - apps/web/src/server/settings/tax-region.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-assessment.ts
   - packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql
 test_refs:
+  - packages/db/src/__tests__/tax-deadline-materialize-consistency.test.ts
   - packages/tax/src/__tests__/engine.test.ts
   - packages/tax/src/__tests__/legal-assessments.test.ts
   - packages/tax/src/__tests__/plausibility-engine.test.ts
@@ -206,6 +208,14 @@ Daneben verwendet die allgemeine Steuertermin-Engine weiterhin
 `shiftToNextWorkday` mit der Tenant-Steuerregion. Dieser Pfad kennt weder die
 vorgelagerte Einordnung nach § 108 Abs. 3 bis 6 AO noch einen konkreten
 Feiertagsort je Vorgang. Seine Ergebnisse bleiben Kontrollvorschläge.
+
+Die Kandidatenanlage liest diesen Standardkalender unter demselben
+tenantgebundenen Transaktions-Gate wie Schedule-Änderungen und der
+Steuerregions-Writer. Eine spätere Regionsänderung datiert bestehende Termine
+gemäß der ausdrücklich angezeigten Produktpolicy weiterhin nicht automatisch
+neu; das Gate sichert die Reihenfolge für neu angelegte Kandidaten. Der
+PostgreSQL-Parallelitätstest belegt diese technische Grenze, keine neue
+fachliche Kalender- oder Ortsfreigabe.
 
 ## Bekannte Abweichungen und Grenzen
 

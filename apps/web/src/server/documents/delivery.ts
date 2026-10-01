@@ -16,6 +16,7 @@ export interface DocumentDeliverySource {
   clientId: string | null;
   bucket: string;
   key: string;
+  storageVersionId?: string | null;
   isPoaDocument: boolean;
 }
 
@@ -84,6 +85,7 @@ export async function loadDocumentDelivery(
           select: {
             storageBucket: true,
             storageKey: true,
+            storageVersionId: true,
             scanStatus: true,
             scanCompletedAt: true,
           },
@@ -115,6 +117,7 @@ export async function loadDocumentDelivery(
       clientId: candidate.clientId,
       bucket: version.storageBucket,
       key: version.storageKey,
+      storageVersionId: version.storageVersionId,
       isPoaDocument: Boolean(powerOfAttorney),
     };
   });
@@ -133,7 +136,7 @@ export async function documentDownloadResponse(
   document: DocumentDeliverySource,
   options: { mimeSource: 'validated-document' | 'storage-when-present' },
 ): Promise<NextResponse> {
-  const object = await streamObject(document.bucket, document.key);
+  const object = await streamObject(document.bucket, document.key, document.storageVersionId);
   const mimeInput =
     options.mimeSource === 'storage-when-present'
       ? { ...document, mimeType: object.contentType ?? document.mimeType }

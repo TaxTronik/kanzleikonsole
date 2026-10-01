@@ -29,8 +29,8 @@ import { toActionError, ForbiddenError } from '@/server/auth/rbac';
 import { readModules } from '@/server/settings/modules';
 import {
   readIbmToken,
-  writeIbmToken,
-  deleteIbmToken,
+  writeIbmTokenTx,
+  deleteIbmTokenTx,
   getIbmTokenStatus,
   type IbmTokenStatus,
 } from '@/server/settings/quantenlos';
@@ -39,12 +39,16 @@ import {
   buildLosRahmen,
   zieheLosStichprobe,
   holeLosAb,
+  resumeLosStart,
+  resumeLosStartProof,
+  releaseLosStart,
   pruefeLosNachweis,
   LosRahmenLeerError,
   LosNachweisInkonsistentError,
   type LosZiehungErgebnis,
   type LosPruefErgebnis,
 } from '@/server/risk';
+import { LosStateConflictError } from '@/server/risk/los-state';
 
 const PFAD = '/staff/admin/quantenlos';
 
@@ -68,8 +72,12 @@ function errorCauseCode(e: Error): string | null {
   return null;
 }
 
+function isLosConsistencyError(e: unknown): e is Error {
+  return e instanceof LosNachweisInkonsistentError || e instanceof LosStateConflictError;
+}
+
 function toQuantenlosActionError(e: unknown): ActionResult {
-  if (e instanceof LosRahmenLeerError || e instanceof LosNachweisInkonsistentError) {
+  if (e instanceof LosRahmenLeerError || isLosConsistencyError(e)) {
     return { ok: false, error: e.message };
   }
   if (e instanceof RiskLayerNotConfiguredError) {
@@ -163,8 +171,8 @@ async function guard(): Promise<
 }
 
 const ZeitraumSchema = z.object({
-  von: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum YYYY-MM-DD'),
-  bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum YYYY-MM-DD'),
+  von: z.string().date(),
+  bis: z.string().date(),
 });
 
 const RahmenTypSchema = z.enum(['subsumtion', 'audit']);
@@ -234,6 +242,63 @@ const PruefenSchema = z.object({
   online: z.boolean().optional(),
 });
 
+export async function losStartWiederaufnehmenAction(input: {
+  attemptId: string;
+  jobId: string;
+  proofJson?: string;
+}): Promise<ActionResult & { ergebnis?: LosZiehungErgebnis }> {
+  try {
+    const parsed = z
+      .object({
+        attemptId: z.string().uuid(),
+        jobId: z.string().trim().max(200),
+        proofJson: z.string().max(1_000_000).optional(),
+      })
+      .refine((v) => Boolean(v.jobId) !== Boolean(v.proofJson?.trim()), {
+        message: 'Job-ID oder gespeicherten Nachweis angeben.',
+      })
+      .parse(input);
+    const g = await guard();
+    if (!g.ok) return g;
+    const ergebnis = parsed.proofJson?.trim()
+      ? await resumeLosStartProof(g.ctx, {
+          attemptId: parsed.attemptId,
+          proof: JSON.parse(parsed.proofJson),
+        })
+      : await resumeLosStart(g.ctx, {
+          ...parsed,
+          ibmToken: (await readIbmToken(g.ctx)) ?? undefined,
+        });
+    revalidatePath(PFAD);
+    return { ok: true, ergebnis };
+  } catch (e) {
+    return toQuantenlosActionError(e);
+  }
+}
+
+export async function losStartFreigebenAction(input: {
+  attemptId: string;
+  reason: string;
+  confirmedNotExecuted: boolean;
+}): Promise<ActionResult> {
+  try {
+    const parsed = z
+      .object({
+        attemptId: z.string().uuid(),
+        reason: z.string().trim().min(30).max(2000),
+        confirmedNotExecuted: z.literal(true),
+      })
+      .parse(input);
+    const g = await guard();
+    if (!g.ok) return g;
+    await releaseLosStart(g.ctx, parsed);
+    revalidatePath(PFAD);
+    return { ok: true };
+  } catch (e) {
+    return toQuantenlosActionError(e);
+  }
+}
+
 export async function losPruefenAction(
   input: z.infer<typeof PruefenSchema>,
 ): Promise<ActionResult & { ergebnis?: LosPruefErgebnis }> {
@@ -267,8 +332,8 @@ export async function ibmTokenSpeichernAction(
     const parsed = TokenSchema.parse(input);
     const g = await guard();
     if (!g.ok) return g;
-    await writeIbmToken(g.ctx, parsed.token);
     await withTenantContext(g.ctx, async (tx) => {
+      await writeIbmTokenTx(tx, g.ctx, parsed.token);
       await evidenceService.record(tx, {
         tenantId: g.ctx.tenantId,
         actorType: g.ctx.actorType,
@@ -293,8 +358,8 @@ export async function ibmTokenEntfernenAction(): Promise<
   try {
     const g = await guard();
     if (!g.ok) return g;
-    await deleteIbmToken(g.ctx);
     await withTenantContext(g.ctx, async (tx) => {
+      await deleteIbmTokenTx(tx, g.ctx);
       await evidenceService.record(tx, {
         tenantId: g.ctx.tenantId,
         actorType: g.ctx.actorType,

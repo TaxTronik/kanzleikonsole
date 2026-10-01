@@ -132,6 +132,12 @@ saubere Version öffnet diesen Abruf nicht. Das gilt für Preview-Metadaten und
 den separat angefragten Byte-Stream; eine vorher erhaltene Preview-URL umgeht
 die erneute Prüfung nicht.
 
+Bei akzeptierten Inbox-Anlagen gilt dieselbe Abschlussprüfung für die neueste
+Version des verknüpften Archivdokuments. Der frühere saubere Staging-Status
+allein öffnet keinen Download einer inzwischen gesperrten Archivfassung.
+Vorhandene S3-Version-IDs werden bei Staging- und Archivabrufen weitergegeben
+(`DOC-VERSION-IMMUTABILITY-001`).
+
 Beide Portal-Routen filtern in der tenantgebundenen Transaktion auf
 `clientId`, `deletedAt: null` und `sharedWithClientAt != null`. Die Staff-
 Action erlaubt die Freigabe nur nach aktuellem Mandantenzugriff und auditiert
@@ -179,3 +185,5 @@ Er prüft außerdem unvollständige oder gesperrte neueste Versionen trotz
 vorhandenem früherem sauberem Stand, jeweils ohne Audit und Storage-Zugriff.
 MIME-Tests belegen Positivliste, Attachment-Fallback und CSP-Sandbox. Die Tests
 bewerten keine Dokumentinhalte und keine fachliche Freigabeentscheidung.
+Die Inbox-Delivery-Regression belegt die Version-ID-Weitergabe und die erneute
+Scanstatusprüfung akzeptierter Dokumente für Staff und Portal.

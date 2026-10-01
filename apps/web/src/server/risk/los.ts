@@ -35,12 +35,10 @@
 // =============================================================================
 
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
-import {
-  deleteTenantSettingValue,
-  readTenantSettingValue,
-  writeTenantSettingValue,
-} from '@taxtronik/db/tenant-settings';
+import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   RiskLayerClient,
   LosNachweisSchema,
@@ -50,6 +48,15 @@ import {
 import { evidenceService } from '@/server/container';
 import { ACTION_LABELS } from '@/server/audit/labels';
 import { log } from '@/server/logger';
+import {
+  claimLosPendingTx,
+  claimLosStartTx,
+  reserveLosStartTx,
+  saveLosStartResponseTx,
+  LOS_PENDING_KEY,
+  LOS_START_KEY,
+  LosStateConflictError,
+} from './los-state';
 
 // P3-29c: Struktur-Validierung des JSONB-Settings statt roher Cast — ein
 // beschädigter/veralteter Eintrag ergibt null statt eines TypeError später.
@@ -72,7 +79,7 @@ export type LosZiehClient = Pick<RiskLayerClient, 'losZiehen'>;
 export type LosAbholClient = Pick<RiskLayerClient, 'losAbholen'>;
 export type LosPruefClient = Pick<RiskLayerClient, 'losPruefen'>;
 
-const PENDING_KEY = 'quantenlos.pending';
+const PENDING_KEY = LOS_PENDING_KEY;
 const REVIEW_DUE_DAYS = 14;
 // Obergrenze für den Audit-Rahmen: die ID-Liste wandert als JSON zur Engine —
 // jenseits davon den Zeitraum verkürzen statt Multi-Megabyte-Payloads bauen.
@@ -100,6 +107,28 @@ export interface PendingLos {
   zeitraum: LosZeitraum;
   beantragtAm: string;
   beantragtVon: string | null;
+}
+
+const LosStartSchema = z.object({
+  attemptId: z.string().uuid(),
+  backend: z.enum(['qpu', 'simulator', 'csprng']),
+  k: z.number().int().positive(),
+  rahmen: z.array(z.string()).min(1),
+  rahmenTyp: z.enum(['subsumtion', 'audit']),
+  zeitraum: z.object({ von: z.string().date(), bis: z.string().date() }),
+  beantragtAm: z.string().datetime(),
+  beantragtVon: z.string(),
+  engineResponse: z.record(z.string(), z.unknown()).optional(),
+});
+export type LosStart = z.infer<typeof LosStartSchema>;
+
+export async function getLosStart(ctx: TenantContext): Promise<LosStart | null> {
+  const value = await withTenantContext(ctx, (tx) =>
+    readTenantSettingValue(tx, ctx.tenantId, LOS_START_KEY),
+  );
+  if (value === undefined) return null;
+  // Invalid reservations must fail closed, never silently open another draw.
+  return LosStartSchema.parse(value);
 }
 
 /** Stichproben-Eintrag (Rahmen-Typ `subsumtion`), mit Anzeige-Daten. */
@@ -183,6 +212,9 @@ export async function buildLosRahmen(
   zeitraum: LosZeitraum,
   typ: LosRahmenTyp = 'subsumtion',
 ): Promise<string[]> {
+  z.object({ von: z.string().date(), bis: z.string().date() })
+    .refine((v) => v.von <= v.bis, { message: 'Zeitraum: Beginn muss vor oder am Ende liegen.' })
+    .parse(zeitraum);
   if (typ === 'audit') {
     const rows = await withTenantContext(ctx, (tx) =>
       tx.auditLog.findMany({
@@ -233,15 +265,36 @@ export async function zieheLosStichprobe(
     throw new Error(`k muss zwischen 1 und ${rahmen.length} (Rahmengröße) liegen.`);
   }
 
+  if (!ctx.actorId) throw new Error('Quantenlos erfordert einen Staff-Kontext (actorId).');
+  const start = LosStartSchema.parse({
+    attemptId: randomUUID(),
+    backend: input.backend,
+    k: input.k,
+    rahmen,
+    rahmenTyp,
+    zeitraum: input.zeitraum,
+    beantragtAm: new Date().toISOString(),
+    beantragtVon: ctx.actorId,
+  });
+  await withTenantContext(ctx, (tx) => reserveLosStartTx(tx, ctx.tenantId, start, ctx.actorId!));
+
   const c = client ?? new RiskLayerClient();
+  // No automatic release on an ambiguous remote error: the engine may have
+  // accepted this draw. Admin recovery polls a known job, never redraws it.
   const res = await c.losZiehen({
     rahmen,
     k: input.k,
     backend: input.backend,
     ...(input.ibmToken ? { ibmToken: input.ibmToken } : {}),
   });
+  await withTenantContext(ctx, (tx) => saveLosStartResponseTx(tx, ctx.tenantId, start, res));
+  start.engineResponse = res;
 
   if (res.status === 'wartet') {
+    if (input.backend !== 'qpu' || res.k !== input.k)
+      throw new LosNachweisInkonsistentError(
+        'Die wartende Stichprobengröße oder Quellenklasse weicht vom Auftrag ab.',
+      );
     const pending: PendingLos = {
       jobId: res.job_id,
       backend: res.backend,
@@ -254,6 +307,7 @@ export async function zieheLosStichprobe(
       beantragtVon: ctx.actorId,
     };
     await withTenantContext(ctx, async (tx) => {
+      await claimLosStartTx(tx, ctx.tenantId, start.attemptId, start);
       await writeTenantSettingValue(tx, {
         tenantId: ctx.tenantId,
         key: PENDING_KEY,
@@ -276,6 +330,7 @@ export async function zieheLosStichprobe(
           n: rahmen.length,
           zeitraum: input.zeitraum,
           rahmenTyp,
+          attemptId: start.attemptId,
         },
       });
     });
@@ -287,7 +342,7 @@ export async function zieheLosStichprobe(
     res.nachweis,
     rahmen,
     input.zeitraum,
-    null,
+    { start },
     rahmenTyp,
   );
   return { status: 'fertig', ziehung };
@@ -337,10 +392,184 @@ export async function holeLosAb(
     res.nachweis,
     pending.rahmen,
     pending.zeitraum,
-    pending.jobId,
+    { pending },
     pending.rahmenTyp ?? 'subsumtion',
   );
   return { status: 'fertig', ziehung };
+}
+
+/** Operator recovery: poll the identified remote job against the ORIGINAL frame. */
+export async function resumeLosStart(
+  ctx: TenantContext,
+  input: { attemptId: string; jobId: string; ibmToken?: string },
+  client?: LosAbholClient,
+): Promise<LosZiehungErgebnis> {
+  const start = await getLosStart(ctx);
+  if (!start || start.attemptId !== input.attemptId) throw new LosStateConflictError();
+  if (start.backend !== 'qpu')
+    throw new LosNachweisInkonsistentError(
+      'Nur ein QPU-Auftrag kann über eine Remote-Job-ID wiederaufgenommen werden.',
+    );
+  assertRecoveredJob(start, input.jobId);
+  const c = client ?? new RiskLayerClient();
+  const res = await c.losAbholen({
+    jobId: input.jobId,
+    rahmen: start.rahmen,
+    k: start.k,
+    ...(input.ibmToken ? { ibmToken: input.ibmToken } : {}),
+  });
+  if (res.status === 'wartet') {
+    if (res.job_id !== input.jobId || res.k !== start.k)
+      throw new LosNachweisInkonsistentError(
+        'Job-ID oder Stichprobengröße passen nicht zum wiederaufgenommenen Auftrag.',
+      );
+    const pending: PendingLos = {
+      jobId: res.job_id,
+      backend: res.backend,
+      commitment: res.commitment,
+      k: start.k,
+      rahmen: start.rahmen,
+      rahmenTyp: start.rahmenTyp,
+      zeitraum: start.zeitraum,
+      beantragtAm: start.beantragtAm,
+      beantragtVon: start.beantragtVon,
+    };
+    await withTenantContext(ctx, async (tx) => {
+      await claimLosStartTx(tx, ctx.tenantId, start.attemptId, start);
+      await writeTenantSettingValue(tx, {
+        tenantId: ctx.tenantId,
+        key: PENDING_KEY,
+        value: pending,
+        updatedBy: ctx.actorId,
+      });
+      await evidenceService.record(tx, {
+        tenantId: ctx.tenantId,
+        actorType: ctx.actorType,
+        actorId: ctx.actorId,
+        action: 'risk.los.beantragt',
+        resourceType: 'quantenlos',
+        resourceId: res.commitment,
+        after: { ...pending, recoveredAttemptId: start.attemptId },
+      });
+    });
+    return { status: 'wartet', pending };
+  }
+  if (res.nachweis.entropie.job_id !== input.jobId)
+    throw new LosNachweisInkonsistentError('Nachweis gehört zu einer anderen Remote-Job-ID.');
+  assertRecoveredProof(start, res.nachweis);
+  const ziehung = await finalisiereZiehung(
+    ctx,
+    res.nachweis,
+    start.rahmen,
+    start.zeitraum,
+    { start },
+    start.rahmenTyp,
+  );
+  return { status: 'fertig', ziehung };
+}
+
+/** Release only after an operator has verified and documented non-execution. */
+export async function releaseLosStart(
+  ctx: TenantContext,
+  input: { attemptId: string; reason: string; confirmedNotExecuted: true },
+): Promise<void> {
+  if (input.confirmedNotExecuted !== true || input.reason.trim().length < 30)
+    throw new Error('Nichtausführung bestätigen und mit mindestens 30 Zeichen begründen.');
+  const start = await getLosStart(ctx);
+  if (!start || start.attemptId !== input.attemptId) throw new LosStateConflictError();
+  if (start.engineResponse !== undefined) {
+    throw new LosNachweisInkonsistentError(
+      'Eine gespeicherte Engine-Antwort belegt die Annahme. Diesen Auftrag wiederaufnehmen, nicht als unausgeführt freigeben.',
+    );
+  }
+  await withTenantContext(ctx, async (tx) => {
+    await claimLosStartTx(tx, ctx.tenantId, start.attemptId, start);
+    await evidenceService.record(tx, {
+      tenantId: ctx.tenantId,
+      actorType: ctx.actorType,
+      actorId: ctx.actorId,
+      action: 'risk.los.start_released',
+      resourceType: 'quantenlos',
+      resourceId: start.attemptId,
+      before: start,
+      after: { reason: input.reason.trim(), confirmedNotExecuted: true },
+    });
+  });
+}
+
+/** Recover a completed response retained by the operator; verify, never redraw. */
+export async function resumeLosStartProof(
+  ctx: TenantContext,
+  input: { attemptId: string; proof: unknown },
+  client?: LosPruefClient,
+): Promise<LosZiehungErgebnis> {
+  const start = await getLosStart(ctx);
+  if (!start || start.attemptId !== input.attemptId) throw new LosStateConflictError();
+  const nachweis = LosNachweisSchema.parse(input.proof);
+  assertRecoveredProof(start, nachweis);
+  const checked = await (client ?? new RiskLayerClient()).losPruefen({
+    nachweis,
+    rahmen: start.rahmen,
+    online: false,
+  });
+  if (!checked.gueltig)
+    throw new LosNachweisInkonsistentError(
+      'Der wiederhergestellte Nachweis wurde vom Risk-Layer abgelehnt.',
+    );
+  return {
+    status: 'fertig',
+    ziehung: await finalisiereZiehung(
+      ctx,
+      nachweis,
+      start.rahmen,
+      start.zeitraum,
+      { start },
+      start.rahmenTyp,
+    ),
+  };
+}
+
+function assertRecoveredProof(start: LosStart, proof: LosNachweis) {
+  const saved = start.engineResponse;
+  if (saved?.status === 'fertig' && !isDeepStrictEqual(saved.nachweis, proof)) {
+    throw new LosNachweisInkonsistentError(
+      'Nachweis weicht von der bereits gespeicherten Engine-Antwort ab.',
+    );
+  }
+  if (
+    saved?.status === 'wartet' &&
+    (proof.entropie.job_id !== saved.job_id || proof.rahmen.commitment !== saved.commitment)
+  ) {
+    throw new LosNachweisInkonsistentError(
+      'Nachweis passt nicht zum bereits gespeicherten Remote-Job.',
+    );
+  }
+  const drawnAt = new Date(proof.gezogen_am).getTime();
+  // The engine does not echo our attempt UUID. This rejects stale/future
+  // evidence while allowing small clock skew; operator attribution is still
+  // required and is not a cryptographic attempt binding.
+  const clockSkew = 5 * 60 * 1000;
+  if (
+    !Number.isFinite(drawnAt) ||
+    drawnAt < new Date(start.beantragtAm).getTime() - clockSkew ||
+    drawnAt > Date.now() + clockSkew
+  ) {
+    throw new LosNachweisInkonsistentError(
+      'Zeitpunkt des Nachweises passt nicht zum gespeicherten Auftrag.',
+    );
+  }
+}
+
+function assertRecoveredJob(start: LosStart, jobId: string) {
+  const saved = start.engineResponse;
+  if (!saved) return;
+  const proof = LosNachweisSchema.safeParse(saved.nachweis);
+  const expectedJob =
+    saved.status === 'wartet' ? saved.job_id : proof.success ? proof.data.entropie.job_id : null;
+  if (expectedJob !== jobId)
+    throw new LosNachweisInkonsistentError(
+      'Job-ID weicht von der bereits gespeicherten Engine-Antwort ab.',
+    );
 }
 
 /**
@@ -353,10 +582,35 @@ async function finalisiereZiehung(
   nachweis: LosNachweis,
   rahmen: string[],
   zeitraum: LosZeitraum,
-  pendingJobId: string | null,
+  claim: { pending: PendingLos } | { start: LosStart },
   rahmenTyp: LosRahmenTyp,
 ): Promise<LosZiehung> {
   const rahmenSet = new Set(rahmen);
+  const expectedK = 'pending' in claim ? claim.pending.k : claim.start.k;
+  if (
+    nachweis.k !== expectedK ||
+    nachweis.stichprobe.length !== expectedK ||
+    new Set(nachweis.stichprobe).size !== expectedK
+  ) {
+    throw new LosNachweisInkonsistentError(
+      'Stichprobengröße und eindeutige Treffer passen nicht zum Auftrag.',
+    );
+  }
+  if ('pending' in claim && nachweis.rahmen.commitment !== claim.pending.commitment) {
+    throw new LosNachweisInkonsistentError('Commitment weicht vom wartenden Auftrag ab.');
+  }
+  const source = 'pending' in claim ? 'qpu' : claim.start.backend;
+  if (
+    nachweis.entropie.quelle_klasse !== source ||
+    (source === 'qpu' && !nachweis.entropie.job_id)
+  ) {
+    throw new LosNachweisInkonsistentError(
+      'Entropiequelle oder QPU-Job-ID passt nicht zum Auftrag.',
+    );
+  }
+  if ('pending' in claim && nachweis.entropie.job_id !== claim.pending.jobId) {
+    throw new LosNachweisInkonsistentError('Nachweis gehört zu einer anderen Remote-Job-ID.');
+  }
   const fremd = nachweis.stichprobe.filter((id) => !rahmenSet.has(id));
   if (fremd.length > 0) {
     throw new LosNachweisInkonsistentError(
@@ -374,6 +628,8 @@ async function finalisiereZiehung(
   const hinweise: string[] = [];
 
   const { auditId, eintraege, nachschau } = await withTenantContext(ctx, async (tx) => {
+    if ('pending' in claim) await claimLosPendingTx(tx, ctx.tenantId, claim.pending);
+    else await claimLosStartTx(tx, ctx.tenantId, claim.start.attemptId, claim.start);
     let eintraege: LosStichprobeEintrag[] = [];
     let nachschau: LosNachschauEintrag[] = [];
     const reminderIds: string[] = [];
@@ -448,12 +704,17 @@ async function finalisiereZiehung(
       action: 'risk.los.gezogen',
       resourceType: 'quantenlos',
       resourceId: nachweis.rahmen.commitment,
-      after: { nachweis, rahmen, zeitraum, rahmenTyp, reviewAufgaben: reminderIds },
+      after: {
+        nachweis,
+        rahmen,
+        zeitraum,
+        rahmenTyp,
+        reviewAufgaben: reminderIds,
+        ...('start' in claim
+          ? { attemptId: claim.start.attemptId }
+          : { jobId: claim.pending.jobId }),
+      },
     });
-
-    if (pendingJobId) {
-      await deleteTenantSettingValue(tx, ctx.tenantId, PENDING_KEY);
-    }
 
     return { auditId: ev.id, eintraege, nachschau };
   });

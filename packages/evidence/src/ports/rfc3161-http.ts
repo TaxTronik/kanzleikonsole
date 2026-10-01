@@ -245,6 +245,9 @@ export class Rfc3161HttpAdapter implements TimestampPort {
         tsaSerial: meta.serialHex,
       };
     } finally {
+      // Release unread error/oversized responses as well as the pinned agent.
+      // Clearing the timer alone leaves those streams without a cancellation.
+      ctrl.abort();
       clearTimeout(to);
     }
   }

@@ -12,6 +12,7 @@
     "./prisma-client": "./src/prisma-client.ts",
     "./prisma-adapter": "./src/prisma-adapter.ts",
     "./tenant-context": "./src/tenant-context.ts",
+    "./risk-analysis": "./src/risk-analysis.ts",
     "./notification": "./src/notification.ts",
     "./staff-client-access": "./src/staff-client-access.ts",
     "./tenant-settings": "./src/tenant-settings.ts",

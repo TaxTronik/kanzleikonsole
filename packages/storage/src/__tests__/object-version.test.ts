@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   ListObjectVersionsCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
@@ -20,6 +21,8 @@ import {
   deleteObjectVersion,
   prepareBytesCommitWithTier,
   recoverPreparedBytesCommit,
+  fetchObjectBytes,
+  streamObject,
 } from '../service';
 
 beforeEach(() => {
@@ -27,6 +30,47 @@ beforeEach(() => {
 });
 
 describe('S3-Objektversionen', () => {
+  it.each(['bytes', 'stream'])(
+    'DOC-VERSION-IMMUTABILITY-001: liest gebundene Bytes trotz neuerer S3-Version (%s)',
+    async (mode) => {
+      const original = Buffer.from('bound original');
+      h.send.mockImplementation(async (command: GetObjectCommand) => {
+        const bytes =
+          command.input.VersionId === 'bound-version'
+            ? original
+            : Buffer.from('new malicious version');
+        return { Body: Readable.from([bytes]), ContentLength: bytes.length };
+      });
+      const bytes =
+        mode === 'bytes'
+          ? await fetchObjectBytes('gobd', 'same-key', 'bound-version')
+          : Buffer.from(
+              await new Response(
+                (await streamObject('gobd', 'same-key', 'bound-version')).body,
+              ).arrayBuffer(),
+            );
+      expect(bytes).toEqual(original);
+      expect(h.send.mock.calls[0]![0].input).toEqual({
+        Bucket: 'gobd',
+        Key: 'same-key',
+        VersionId: 'bound-version',
+      });
+    },
+  );
+
+  it.each(['bytes', 'stream'])(
+    'DOC-VERSION-IMMUTABILITY-001: kein Fallback bei fehlender gebundener Version (%s)',
+    async (mode) => {
+      h.send.mockRejectedValueOnce(new Error('NoSuchVersion'));
+      await expect(
+        mode === 'bytes'
+          ? fetchObjectBytes('gobd', 'same-key', 'missing-version')
+          : streamObject('gobd', 'same-key', 'missing-version'),
+      ).rejects.toThrow('NoSuchVersion');
+      expect(h.send).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('übernimmt die VersionId eines geschützten Uploads in das Commit-Ergebnis', async () => {
     h.send.mockResolvedValueOnce({ VersionId: 'version-123' });
 

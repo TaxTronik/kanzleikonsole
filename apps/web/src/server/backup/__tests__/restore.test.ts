@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { Readable } from 'node:stream';
 
 vi.mock('@taxtronik/config', () => ({
   env: {
@@ -23,7 +28,56 @@ vi.mock('@/server/db/prisma-owner', () => ({
   },
 }));
 
-import { parseRestoreArgs, PRODUCTION_RESTORE_CONFIRMATION, targetIsEmpty } from '../restore';
+import {
+  parseRestoreArgs,
+  PRODUCTION_RESTORE_CONFIRMATION,
+  spoolRestoreFile,
+  targetIsEmpty,
+} from '../restore';
+
+describe('private restore download', () => {
+  it('spools concurrent dumps into distinct private files and removes only its own directory', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'restore-test-'));
+    try {
+      const bytes = Buffer.from('database dump');
+      const [first, second] = await Promise.all([
+        spoolRestoreFile(Readable.from([bytes]), parent),
+        spoolRestoreFile(Readable.from([bytes]), parent),
+      ]);
+      expect(first.path).not.toBe(second.path);
+      expect(await readFile(first.path)).toEqual(bytes);
+      expect(first.sha).toBe(createHash('sha256').update(bytes).digest('hex'));
+      expect(first.size).toBe(bytes.length);
+      if (process.platform !== 'win32') {
+        expect((await stat(dirname(first.path))).mode & 0o777).toBe(0o700);
+        expect((await stat(first.path)).mode & 0o777).toBe(0o600);
+      }
+      await first.cleanup();
+      expect(await readFile(second.path)).toEqual(bytes);
+      await second.cleanup();
+      expect(await readdir(parent)).toEqual([]);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it('removes sensitive partial bytes after a download failure', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'restore-test-'));
+    try {
+      const body = Readable.from(
+        (async function* () {
+          yield Buffer.from('partial database dump');
+          throw new Error('download interrupted');
+        })(),
+      );
+      await expect(spoolRestoreFile(body, parent)).rejects.toThrow('download interrupted');
+      expect(body.destroyed).toBe(true);
+      expect(await readdir(parent)).toEqual([]);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('parseRestoreArgs', () => {
   it('accepts read-only list without a target', () => {

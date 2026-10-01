@@ -22,7 +22,8 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, unlinkSync } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -229,25 +230,41 @@ async function listBackups(): Promise<Array<{ key: string; size: number; modifie
   return out.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }
 
-async function fetchToTempFile(key: string): Promise<{ path: string; sha: string; size: number }> {
+async function fetchToTempFile(key: string) {
   const s3 = s3Client();
   const r = await s3.send(new GetObjectCommand({ Bucket: BACKUP_BUCKET, Key: key }));
-  const body = r.Body as Readable;
+  return spoolRestoreFile(r.Body as Readable);
+}
 
+export async function spoolRestoreFile(body: Readable, parent = tmpdir()) {
   // P-6: nicht den ganzen Dump in den RAM laden (OOM bei großen Backups).
-  // Streamen → Datei, Hash + Size via PassThrough nebenbei berechnen.
-  // Mode 0o600 verhindert, dass andere lokale User die DB-Replikation
-  // inkl. aller Passwort-Hashes lesen können, bevor unlinkSync greift.
-  const path = join(tmpdir(), `taxtronik-restore-${Date.now()}.dump`);
-  const hash = createHash('sha256');
-  let size = 0;
-  const tap = new PassThrough();
-  tap.on('data', (c: Buffer) => {
-    hash.update(c);
-    size += c.length;
-  });
-  await pipeline(body, tap, createWriteStream(path, { mode: 0o600 }));
-  return { path, sha: hash.digest('hex'), size };
+  // Private random directory + exclusive creation prevent following an existing
+  // path/symlink. Interrupted downloads must also remove sensitive partial dumps.
+  let directory: string | undefined;
+  try {
+    directory = await mkdtemp(join(parent, 'taxtronik-restore-'));
+    const path = join(directory, 'restore.dump');
+    const hash = createHash('sha256');
+    let size = 0;
+    const tap = new PassThrough();
+    tap.on('data', (c: Buffer) => {
+      hash.update(c);
+      size += c.length;
+    });
+    await pipeline(body, tap, createWriteStream(path, { flags: 'wx', mode: 0o600 }));
+    const ownedDirectory = directory;
+    return {
+      path,
+      sha: hash.digest('hex'),
+      size,
+      cleanup: () => rm(ownedDirectory, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    if (directory) await rm(directory, { recursive: true, force: true });
+    throw error;
+  } finally {
+    body.destroy();
+  }
 }
 
 /**
@@ -450,7 +467,7 @@ async function main() {
   // `cleanup`  = ob die Datei nach dem Restore gelöscht wird (nur Temp-Downloads,
   //              NICHT die vom Anwender bereitgestellte --file-Quelle).
   let path: string;
-  let cleanup: boolean;
+  let cleanup: (() => Promise<void>) | undefined;
 
   if (args.file) {
     // P-6-Hinweis: Im Datei-Modus entfällt die Hash-Verifikation gegen den
@@ -464,7 +481,7 @@ async function main() {
       `  HINWEIS: Datei-Quelle → keine Hash-Verifikation gegen BackupRecord (DB-Referenz entfällt).\n`,
     );
     path = args.file;
-    cleanup = false;
+    cleanup = undefined;
   } else {
     let key = args.key;
     if (!key && args.latest) {
@@ -493,7 +510,7 @@ async function main() {
     if (expectedSha) {
       if (expectedSha !== dl.sha) {
         try {
-          unlinkSync(dl.path);
+          await dl.cleanup();
         } catch {
           console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', dl.path);
         }
@@ -509,7 +526,7 @@ async function main() {
       );
     }
     path = dl.path;
-    cleanup = true;
+    cleanup = dl.cleanup;
   }
 
   try {
@@ -528,7 +545,7 @@ async function main() {
     // Anwender und bleibt erhalten.
     if (cleanup) {
       try {
-        unlinkSync(path);
+        await cleanup();
       } catch {
         console.warn('[restore] Temp-Datei konnte nicht gelöscht werden:', path);
       }

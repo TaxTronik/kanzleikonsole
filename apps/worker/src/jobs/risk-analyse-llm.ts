@@ -14,6 +14,7 @@
 import { Worker, UnrecoverableError } from 'bullmq';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
+import { lockRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type RiskAnalyseLlmJob } from '../queues';
 import { withWorkerTenantContext } from '../tenant-context';
@@ -71,6 +72,18 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
       return;
     }
 
+    // A queued payload can outlive archive/anonymization. Do not send stale
+    // personal data to the engine, and recheck again after its external I/O.
+    const currentSourceIsWritable = () =>
+      withWorkerTenantContext(tenantId, async (tx) => {
+        const current = await lockRiskAnalysisTx(tx, tenantId, analysisId);
+        return current !== null && !current.archivedAt && current.sourceText === sourceText;
+      });
+    if (!(await currentSourceIsWritable())) {
+      log.info({ analysisId, tenantId }, 'risk-analyse-llm: Stand nicht mehr bearbeitbar, skip');
+      return;
+    }
+
     const client = new RiskLayerClient();
 
     // Schicht 2 bei Bedarf hochfahren + auf Bereitschaft warten (auto, on-demand).
@@ -87,6 +100,13 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
     if (ready === 'timeout') {
       // Warmlauf zu langsam → werfen, BullMQ-Retry pollt beim nächsten Versuch erneut.
       throw new Error('risk-analyse-llm: llama-server nicht rechtzeitig bereit (Warmlauf-Timeout)');
+    }
+
+    // Warmup can take ten minutes. Its initial check cannot authorize sending a
+    // queued source that was archived/redacted while waiting for the model.
+    if (!(await currentSourceIsWritable())) {
+      log.info({ analysisId, tenantId }, 'risk-analyse-llm: Stand während Warmlauf geändert, skip');
+      return;
     }
 
     let result;
@@ -107,6 +127,11 @@ export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
     }
 
     await withWorkerTenantContext(tenantId, async (tx) => {
+      const current = await lockRiskAnalysisTx(tx, tenantId, analysisId);
+      if (!current || current.archivedAt || current.sourceText !== sourceText) {
+        log.info({ analysisId, tenantId }, 'risk-analyse-llm: Stand geändert, Ergebnis verworfen');
+        return;
+      }
       // tenantId re-asserten: der Owner-Client hat BYPASSRLS — die id aus dem
       // Job-Payload darf nicht allein über die Zugehörigkeit entscheiden.
       const analysis = await tx.riskAnalysis.findFirst({

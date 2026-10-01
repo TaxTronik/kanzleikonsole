@@ -57,10 +57,19 @@ und erzeugte Rechnungs-PDF-/XML-Archive setzen beide Abschlussfelder. Bereits
 finalisierte historische Dokumente bleiben ohne zusätzliche Forderung nach
 einer Storage-Version-ID lesbar. Unbekannte Altstände ohne Abschlussdaten
 werden nicht pauschal freigeschaltet oder nachträglich als geprüft markiert.
+Vorhandene Storage-Version-IDs werden dagegen verbindlich an S3-GET
+weitergereicht: Ein späterer PUT auf denselben Key darf keinen Download,
+Preview, Export, Vollmachts-Snapshot oder Retag-Quellinhalt austauschen.
+Eine nicht mehr verfügbare gebundene Version führt zum Fehler ohne Key-Fallback.
+Wissensanlagen und akzeptierte Inbox-Anlagen prüfen dieselbe aktuelle
+Dokument-Scanfreigabe; der öffentliche Vollmachtsabruf prüft die gebundene Version.
 Relevante Nachweise sind `delivery-lifecycle.test.ts`, die Staff-/Portal-
 Routentests, `bulk-download-readiness.test.ts`, der DATEV-Export-Routentest und
 der Rechnungsarchivtest; sie prüfen echte Handler und tatsächliche ZIP-Inhalte
 mit synthetischem Storage/DB-Zugriff.
+`packages/storage/src/__tests__/object-version.test.ts` unterscheidet die
+Bytes des aktuellen Schlüssels von einer gebundenen S3-Version und prüft beide
+Auslieferungsarten; die Route-/Delivery-Tests belegen die Weitergabe der ID.
 
 Staff-Explorer (+ neue Version, mit Race-Schutz 409), Portal-Upload
 (Feature-Flag, Rate-Limit, auto-geteilt), Formular-Anhänge (10 MB),

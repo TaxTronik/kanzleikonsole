@@ -16,20 +16,17 @@
 // Technik:
 //   - pg_restore kommt aus dem Worker-Image (postgresql18-client, Dockerfile.
 //     worker) — Client-Major MUSS >= Server-Major sein.
-//   - Der Dump wird aus S3 DIREKT in pg_restore-stdin gestreamt: /tmp ist ein
-//     64-MB-tmpfs (read_only-Container), reale Dumps sind größer. Custom-
-//     Format aus stdin ist ohne -j (parallel) erlaubt.
-//   - SHA-256 wird beim Streamen mitgerechnet und gegen BackupRecord.sha256
-//     geprüft — ein korruptes Backup-Objekt fällt im Drill auf, nicht erst
-//     im Ernstfall.
+//   - Der Dump wird in eine private lokale Datei auf dem Backup-Volume
+//     gestreamt und VOR pg_restore gegen BackupRecord.sha256/sizeBytes geprüft.
+//     Dumps enthalten ausführbares SQL; eine Prüfung nach Restore wäre zu spät.
+//     /tmp bleibt ein 64-MB-tmpfs, der Spool liegt unter BACKUP_DRILL_TMP_DIR.
 //   - DROP/CREATE DATABASE laufen als Owner-Rolle über prismaOwner
 //     ($executeRawUnsafe, statische Statements — kein User-Input im SQL).
 // =============================================================================
 
 import { spawn } from 'node:child_process';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
@@ -51,8 +48,7 @@ import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
 import { log } from '../logger';
 import { timestampPortFor } from '../tsa-port';
-
-const DRILL_DB = 'taxtronik_drill';
+import { withVerifiedDrillFile } from './backup-drill-file';
 
 // Chain-Walk hasht jede audit_log-Zeile — gleiches großzügiges Timeout wie
 // audit-verify-check (P-1).
@@ -109,34 +105,46 @@ export function missingTenantResult(
   return { ok: false, error: 'Tenant fehlt im wiederhergestellten Backup (Backup lückenhaft?)' };
 }
 
-async function recreateDrillDb(): Promise<void> {
-  await prismaOwner.$executeRawUnsafe(`DROP DATABASE IF EXISTS ${DRILL_DB} WITH (FORCE)`);
-  await prismaOwner.$executeRawUnsafe(`CREATE DATABASE ${DRILL_DB}`);
+async function recreateDrillDb(database: string): Promise<void> {
+  await prismaOwner.$executeRawUnsafe(`CREATE DATABASE ${database}`);
 }
 
-async function dropDrillDb(): Promise<void> {
+async function dropDrillDb(database: string): Promise<void> {
   await prismaOwner
-    .$executeRawUnsafe(`DROP DATABASE IF EXISTS ${DRILL_DB} WITH (FORCE)`)
+    .$executeRawUnsafe(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`)
     .catch((e: unknown) =>
       log.warn({ err: (e as Error).message }, 'backup-drill: drop drill db failed'),
     );
 }
 
-/** S3-Objekt → pg_restore-stdin streamen; SHA-256 nebenbei gegen den Record prüfen. */
+/** BACKUP-DRILL-INTEGRITY-001: verify an exclusive local copy before invoking pg_restore. */
 async function restoreIntoDrill(
   bucket: string,
   key: string,
   expectedSha: Uint8Array | null,
+  expectedSize: bigint | null,
+  database: string,
 ): Promise<void> {
   const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const body = res.Body as Readable;
+  if (!res.Body) throw new Error('Backup-Objekt enthält keinen lesbaren Dump-Body.');
+  await withVerifiedDrillFile({
+    body: res.Body as Readable,
+    expectedSha,
+    expectedSize,
+    restore: async (path) => {
+      await recreateDrillDb(database);
+      await restoreVerifiedFile(path, database);
+    },
+  });
+}
 
-  const conn = pgConnArgs(withDbName(env.DATABASE_URL, DRILL_DB));
+async function restoreVerifiedFile(path: string, database: string): Promise<void> {
+  const conn = pgConnArgs(withDbName(env.DATABASE_URL, database));
   const pgRestorePath = process.env['PG_RESTORE_PATH'] ?? 'pg_restore';
   const child = spawn(
     pgRestorePath,
-    // Identische Flags wie der Produktiv-Restore (restore.ts) — nur ohne
-    // Datei-Argument: ohne Pfad liest pg_restore von stdin.
+    // Identische Flags wie der Produktiv-Restore (restore.ts), einschließlich
+    // der bereits vollständig gegen den BackupRecord geprüften Datei.
     // ACLs/REVOKEs gehoeren zum wiederhergestellten Sicherheitszustand. Die
     // clusterweite Rolle taxtronik_app existiert in der Produktivinstanz und
     // muss deshalb auch im Drill-Ziel die archivierten Grants erhalten.
@@ -147,12 +155,13 @@ async function restoreIntoDrill(
       '--single-transaction',
       '--exit-on-error',
       ...conn.args,
+      path,
     ],
-    { stdio: ['pipe', 'ignore', 'pipe'], env: { ...process.env, ...conn.env } },
+    { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...conn.env } },
   );
   let stderr = '';
   child.stderr.on('data', (c: Buffer) => {
-    stderr += c.toString('utf8');
+    if (stderr.length < 1500) stderr += c.toString('utf8').slice(0, 1500 - stderr.length);
   });
   // Spawn-Fehler (ENOENT: pg_restore nicht im PATH / falscher PG_RESTORE_PATH)
   // emittiert 'error' — ohne Listener würde das unbehandelte Event den GESAMTEN
@@ -167,26 +176,11 @@ async function restoreIntoDrill(
     });
   });
 
-  const hash = createHash('sha256');
-  body.on('data', (c: Buffer) => hash.update(c));
-  try {
-    await pipeline(body, child.stdin);
-  } catch {
-    // EPIPE, wenn pg_restore vorzeitig stirbt — der Exit-Code unten trägt die
-    // eigentliche Fehlermeldung (stderr).
-  }
   const code = await exit;
   if (spawnState.error) {
     throw new Error(`pg_restore konnte nicht gestartet werden: ${spawnState.error.message}`);
   }
   if (code !== 0) throw new Error(`pg_restore exit ${code}: ${stderr.slice(0, 1500)}`);
-
-  if (expectedSha && expectedSha.length === 32) {
-    const got = hash.digest();
-    if (!timingSafeEqual(got, Buffer.from(expectedSha))) {
-      throw new Error('SHA-256 des Dumps weicht vom BackupRecord ab — Backup-Objekt beschädigt?');
-    }
-  }
 }
 
 /** Ergebnis persistieren + in der Produktiv-Chain verankern + ggf. alarmieren. */
@@ -236,6 +230,9 @@ async function persistTenantResult(tenantId: string, result: PersistedDrillResul
 }
 
 async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
+  // Per-run names prevent a retry/second worker from dropping another active
+  // drill. Only this internally generated ASCII identifier reaches DDL.
+  const database = `taxtronik_drill_${randomBytes(12).toString('hex')}`;
   const checkedAt = new Date().toISOString();
   const tenants = await prismaOwner.tenant.findMany({ select: { id: true, createdAt: true } });
 
@@ -261,28 +258,33 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
     backupFinishedAt: latest.finishedAt?.toISOString() ?? null,
   };
 
+  let drillPrisma: InstanceType<typeof PrismaClient> | undefined;
   try {
-    await recreateDrillDb();
-    await restoreIntoDrill(latest.bucket, latest.key, latest.sha256 ?? null);
-  } catch (err) {
-    const result: PersistedDrillResult = {
-      checkedAt,
-      ...base,
-      ok: false,
-      auditChecked: 0,
-      error: `Restore fehlgeschlagen: ${(err as Error).message}`,
-    };
-    for (const t of tenants) await persistTenantResult(t.id, result);
-    await dropDrillDb();
-    return { ok: false, tenants: tenants.length };
-  }
+    try {
+      await restoreIntoDrill(
+        latest.bucket,
+        latest.key,
+        latest.sha256 ?? null,
+        latest.sizeBytes ?? null,
+        database,
+      );
+    } catch (err) {
+      const result: PersistedDrillResult = {
+        checkedAt,
+        ...base,
+        ok: false,
+        auditChecked: 0,
+        error: `Restore fehlgeschlagen: ${(err as Error).message}`,
+      };
+      for (const t of tenants) await persistTenantResult(t.id, result);
+      return { ok: false, tenants: tenants.length };
+    }
 
-  // Verifikation auf der WIEDERHERGESTELLTEN DB (eigener Prisma-Client).
-  const drillPrisma = new PrismaClient({
-    adapter: createPostgresAdapter(withDbName(env.DATABASE_URL, DRILL_DB)),
-  });
-  let allOk = true;
-  try {
+    // Verifikation auf der WIEDERHERGESTELLTEN DB (eigener Prisma-Client).
+    drillPrisma = new PrismaClient({
+      adapter: createPostgresAdapter(withDbName(env.DATABASE_URL, database)),
+    });
+    let allOk = true;
     for (const t of tenants) {
       let result: PersistedDrillResult;
       try {
@@ -321,11 +323,16 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
       if (!result.ok) allOk = false;
       await persistTenantResult(t.id, result);
     }
+    return { ok: allOk, tenants: tenants.length };
   } finally {
-    await drillPrisma.$disconnect();
-    await dropDrillDb();
+    // Result/audit writes and disconnect can fail independently of restore.
+    // Neither may bypass cleanup of this run's private scratch database.
+    try {
+      await drillPrisma?.$disconnect();
+    } finally {
+      await dropDrillDb(database);
+    }
   }
-  return { ok: allOk, tenants: tenants.length };
 }
 
 export const backupDrillWorker = new Worker<ChecksJob>(

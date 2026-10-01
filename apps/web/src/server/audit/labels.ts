@@ -480,6 +480,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.research.saved_to_shelf': 'Rechercheergebnis im Aktenregal abgelegt',
   'risk.los.beantragt': 'Quantenlos beantragt (QPU-Queue)',
   'risk.los.gezogen': 'Quantenlos-Stichprobe gezogen',
+  'risk.los.start_released': 'Quantenlos-Start nach bestätigter Nichtausführung freigegeben',
   'risk.embedding.refresh.triggered': 'Signal-Embedding-Aktualisierung gestartet',
   'risk.embedding.refresh.cancel.requested':
     'Abbruch der Signal-Embedding-Aktualisierung angefordert',

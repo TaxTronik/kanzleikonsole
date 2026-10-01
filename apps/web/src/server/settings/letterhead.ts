@@ -6,6 +6,7 @@
 // extern hochgeladene/signierte PDFs bleiben unverändert.
 // =============================================================================
 
+import type { TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
@@ -45,18 +46,25 @@ export async function readLetterhead(ctx: TenantContext): Promise<LetterheadConf
 }
 
 export async function writeLetterhead(ctx: TenantContext, cfg: LetterheadConfig): Promise<void> {
+  await withTenantContext(ctx, (tx) => writeLetterheadTx(tx, ctx, cfg));
+}
+
+/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+export async function writeLetterheadTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  cfg: LetterheadConfig,
+): Promise<void> {
   const stored: LetterheadConfig = {
     organisationName: cfg.organisationName.trim(),
     addressLines: cfg.addressLines.trim(),
     contactLine: cfg.contactLine.trim(),
     footnote: cfg.footnote.trim(),
   };
-  await withTenantContext(ctx, async (tx) => {
-    await writeTenantSettingValue(tx, {
-      tenantId: ctx.tenantId,
-      key: KEY,
-      value: stored as object,
-      updatedBy: ctx.actorId,
-    });
+  await writeTenantSettingValue(tx, {
+    tenantId: ctx.tenantId,
+    key: KEY,
+    value: stored as object,
+    updatedBy: ctx.actorId,
   });
 }

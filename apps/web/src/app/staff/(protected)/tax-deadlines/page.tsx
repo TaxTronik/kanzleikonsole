@@ -154,7 +154,14 @@ async function renderMonth(
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl">
-      <PageHeader view="month" scope={scope} month={currentMonthQs} q={q} queued={queued} />
+      <PageHeader
+        view="month"
+        scope={scope}
+        month={currentMonthQs}
+        q={q}
+        queued={queued}
+        session={session}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
@@ -303,7 +310,14 @@ async function renderList(
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl">
-      <PageHeader view="list" scope={scope} month={currentMonthQs} q={q} queued={queued} />
+      <PageHeader
+        view="list"
+        scope={scope}
+        month={currentMonthQs}
+        q={q}
+        queued={queued}
+        session={session}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Überfällig" value={overdue.length} accent="red" />
@@ -341,12 +355,14 @@ function PageHeader({
   month,
   q,
   queued,
+  session,
 }: {
   view: 'month' | 'list';
   scope: 'mine' | 'all';
   month: string;
   q: string;
   queued: boolean;
+  session: StaffSession;
 }) {
   return (
     <div className="mb-6">
@@ -427,7 +443,7 @@ function PageHeader({
         )}
       </form>
       <div className="mt-3">
-        <SavedViews />
+        <SavedViews tenantId={session.user.tenantId} staffId={session.user.staffId} />
       </div>
     </div>
   );

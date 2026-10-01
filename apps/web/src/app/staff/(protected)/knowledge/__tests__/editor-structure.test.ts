@@ -75,7 +75,11 @@ describe('Wissensanhänge', () => {
 
   it('liefert nur saubere Anhänge mandanten- und entwurfsgebunden aus', () => {
     expect(attachmentRoute).toContain('tenantId: guard.tenantId');
-    expect(attachmentRoute).toContain("scanStatus !== 'CLEAN'");
+    expect(attachmentRoute).toContain('!isDocumentVersionReady(entry.document.versions[0])');
+    expect(attachmentRoute).toContain('scanCompletedAt: true');
+    expect(attachmentRoute).toMatch(
+      /streamObject\(\s*version\.storageBucket,\s*version\.storageKey,\s*version\.storageVersionId,?\s*\)/,
+    );
     expect(attachmentRoute).toContain(
       'entry.articleId === null && entry.uploadedBy !== guard.staffId',
     );
