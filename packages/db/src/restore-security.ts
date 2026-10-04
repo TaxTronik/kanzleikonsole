@@ -10,8 +10,11 @@ export async function assertRestoreTargetSecurity(
 ): Promise<void> {
   const probe = createProbe(targetUrl);
   try {
-    // Same 22 effective privilege invariants as scripts/restore-selftest.sh:
-    // the original 17 plus five for the counter and permanent ticket links.
+    // Same 30 effective privilege invariants as scripts/restore-selftest.sh:
+    // the original 17, five for the counter and permanent ticket links, seven
+    // for the append-only rolling anchors (audit_anchor) and the owner-only
+    // verification checkpoints (audit_verify_checkpoint), and one for the
+    // owner-only anchor lease (audit_anchor_lease).
     // Target default privileges may re-grant permissions while pg_restore
     // recreates tables; a successful process exit does not prove safe ACLs.
     const rows = await probe.$queryRaw<Array<{ aclState: string }>>`
@@ -48,6 +51,15 @@ SELECT concat_ws('|',
   (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'UPDATE'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'DELETE'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'INSERT'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor_lease',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.document_version', 'DELETE'))::text,
   (NOT EXISTS (
     SELECT 1
@@ -75,7 +87,7 @@ SELECT concat_ws('|',
     AND NOT has_function_privilege('taxtronik_app', 'app.guard_reminder_ticket_identity()', 'EXECUTE'))::text
 ) AS "aclState";
     `;
-    if (rows.length !== 1 || rows[0]?.aclState !== Array(22).fill('true').join('|')) {
+    if (rows.length !== 1 || rows[0]?.aclState !== Array(30).fill('true').join('|')) {
       throw new Error('Rollen-/Grant-/REVOKE-Invarianten verletzt.');
     }
     // Match verify-rls.ts's documented global exceptions. Include partitioned

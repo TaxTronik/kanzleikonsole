@@ -100,7 +100,7 @@ Bytes, SHA-256, Berechtigungen, getrennte Parallelkopien und Fehler-Cleanup.
 
 Ein vorbereiteter Zielserver kann über Defaultprivilegien beim Neuanlegen der
 Tabellen Rechte vergeben, die im Quellsystem entzogen waren. Deshalb prüft
-`restore-security.ts` nach `pg_restore` die 22 effektiven Rollen-/ACL-/REVOKE-
+`restore-security.ts` nach `pg_restore` die 30 effektiven Rollen-/ACL-/REVOKE-
 Invarianten des CI-Selbsttests, einschließlich erreichbarer privilegierter
 `SET ROLE`-Ziele, sowie ENABLE/FORCE RLS und Policies aller
 normalen und partitionierten öffentlichen Tenanttabellen. Die dokumentierten
@@ -115,6 +115,18 @@ selbst. Ein Backup vor dieser Migration muss daher mit dem passenden alten
 Softwarestand wiederhergestellt und anschließend kontrolliert aktualisiert
 werden. Mit der aktuellen CLI wird ein Dump ohne die erwarteten Ticketobjekte
 bei der Sicherheitsabnahme abgewiesen.
+
+Sieben weitere Prüfungen sichern die Schreibsperren der Audit-Nachweise wie bei
+`audit_log`, `audit_seal` und `audit_archive`: Die Anwendung darf Rolling
+Anchors (`audit_anchor`) nur lesen und anfügen, aber weder ändern, löschen noch
+leeren. Die Prüf-Checkpoints der Kettenprüfung (`audit_verify_checkpoint`,
+Migration `20261004140000`) darf sie nur lesen; Anlegen, Ändern, Löschen und
+Leeren bleiben dem Owner vorbehalten. Eine weitere Prüfung stellt sicher, dass
+die Anwendung am Tenant-Lease des Rolling-Anchor-Workers (`audit_anchor_lease`,
+Migration `20261004140100`) keinerlei Tabellenrechte hat. Ein Dump vor diesen
+Migrationen enthält die Tabellen nicht und wird mit der aktuellen CLI ebenfalls
+abgewiesen; er ist wie oben mit dem passenden alten Softwarestand
+wiederherzustellen.
 
 Schlägt die Abnahme fehl, meldet die CLI keinen erfolgreichen Restore und
 endet mit Fehler. **Der Restore wurde dann bereits angewendet; die Abnahme

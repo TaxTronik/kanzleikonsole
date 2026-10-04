@@ -226,6 +226,15 @@ SELECT concat_ws('|',
   (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'UPDATE'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'DELETE'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.audit_archive', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'INSERT'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'UPDATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'DELETE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_verify_checkpoint', 'TRUNCATE'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.audit_anchor_lease',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.document_version', 'DELETE'))::text,
   (NOT EXISTS (
     SELECT 1
@@ -254,7 +263,7 @@ SELECT concat_ws('|',
 );
 SQL
 )"
-EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
+EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
 [[ "$ACL_STATE" == "$EXPECTED_ACL_STATE" ]] || \
   die "ACL-/REVOKE-Pruefung fehlgeschlagen: $ACL_STATE"
 

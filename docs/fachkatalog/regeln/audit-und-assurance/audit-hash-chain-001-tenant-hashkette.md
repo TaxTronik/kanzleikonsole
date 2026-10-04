@@ -189,7 +189,9 @@ eine lineare Vorgängerfolge entsteht.
 ## Umsetzung in TaxTronik
 
 Die Restore-CLI prüft vor jeder Erfolgsmeldung auch die effektiven
-Schreibsperren auf `audit_log`, `audit_seal` und `audit_archive`. Beim
+Schreibsperren auf `audit_log`, `audit_seal`, `audit_archive` und
+`audit_anchor` sowie auf die nur vom Owner beschreibbaren Prüf-Checkpoints
+`audit_verify_checkpoint`. Beim
 Wiederherstellen können Ziel-Defaultprivilegien sonst entzogene Rechte erneut
 erteilen, obwohl der Dump die ursprünglichen ACLs enthält. Diese obligatorische
 Sicherheitsabnahme bleibt bei `--no-smoke-test` aktiv. Abweichungen sperren die

@@ -808,6 +808,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Die Restore-Sicherheitsabnahme und der CI-Restore-Selbsttest
+  prüfen zusätzlich, dass die Anwendung Rolling-Anker weder ändern, löschen
+  noch leeren, Prüf-Checkpoints der Kettenprüfung weder anlegen, ändern,
+  löschen noch leeren und die Anker-Lease-Tabelle gar nicht nutzen darf
+  (30 statt 22 Invarianten). Dumps vor Migration `20261004140000` werden
+  abgewiesen (`ACCESS-TENANT-RLS-001`, `AUDIT-HASH-CHAIN-001`).
 - **[Scope]** Prüf-Checkpoints der Audit-Kettenprüfung liegen in der neuen
   Tabelle `audit_verify_checkpoint`, die die Anwendung nur lesen darf, und
   tragen eine HMAC-Prüfsumme mit eigenem, aus dem Secret-Box-Schlüssel

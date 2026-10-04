@@ -237,8 +237,14 @@ effektiven Rollen-/Grant-/REVOKE-Invarianten und fünf zusätzliche Invarianten
 für dauerhafte Wiedervorlagen-Tickets (`REMINDER-TICKET-001`). Der
 tenantgebundene Nummernzähler bleibt vollständig ohne App-Tabellenrechte;
 Referenzkanten erlauben nur SELECT und INSERT. Die beiden Ticket-Triggerfunktionen
-sind weder für PUBLIC noch die App-Rolle direkt ausführbar. Die
-Restore-Selbsttest-Assertion prüft denselben Satz von insgesamt 22 Invarianten.
+sind weder für PUBLIC noch die App-Rolle direkt ausführbar. Sieben weitere
+Invarianten sichern die Schreibsperren der Audit-Nachweise: Rolling Anchors
+(`audit_anchor`) darf die App-Rolle weder ändern, löschen noch leeren, die
+Prüf-Checkpoints (`audit_verify_checkpoint`) zusätzlich nicht anlegen; dort
+schreibt nur der Owner. Eine weitere Invariante belegt, dass die App-Rolle am
+Anchor-Lease (`audit_anchor_lease`) keinerlei Tabellenrechte hat. Die
+Restore-Selbsttest-Assertion prüft denselben Satz von insgesamt 30
+Invarianten.
 Die Rollenprüfung umfasst zusätzlich per `SET ROLE` erreichbare privilegierte
 Rollen und Tabellenowner. Audit-Tabellen werden ausdrücklich im Schema
 `public` geprüft, unabhängig vom `search_path` der Verbindung.
@@ -522,12 +528,14 @@ Host-Isolation.
 
 Die PostgreSQL-Regression führt den tatsächlichen Sicherheitsprüfer gegen
 isolierte Datenbanken aus. Sie prüft sichere Rechte vor und nach den stets
-zurückgerollten Abweichungen, zusätzliche Audit-/Dokument-Schreibrechte,
+zurückgerollten Abweichungen, zusätzliche Audit-/Dokument-Schreibrechte
+einschließlich Rolling Anchors, Prüf-Checkpoints und Anchor-Lease,
 öffentliches TRUNCATE und Definer-Ausführung, erreichbare privilegierte
 SET-ROLE-Ziele, fehlende Funktionsausführung, deaktiviertes oder nicht
 erzwungenes RLS sowie neue ungeschützte normale und partitionierte Tabellen.
 Probe-Units weisen fehlende, verkürzte und null-Ergebnisse sowie Queryfehler
-ab. Ein echter Dump-/Restore-Gegenlauf prüft jeweils mit und ohne optionalen
+ab und belegen, dass Restore-CLI und CI-Selbsttest dieselben 30 Invarianten
+prüfen. Ein echter Dump-/Restore-Gegenlauf prüft jeweils mit und ohne optionalen
 Datensmoke ein leeres Ziel und ein durch den CI-Bootstrap vorbereitetes Ziel:
 identische Daten können unterschiedliche effektive Rechte haben; nur das
 sichere Ziel darf Erfolg melden. Fehlende Rollen/Schemaobjekte, ausschließlich
