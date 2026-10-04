@@ -429,6 +429,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Benachrichtigungsglocke von rund 100 s auf unter 0,5 s; Treffermengen,
   Policies und Grants bleiben unverändert (`ACCESS-NOTIFICATION-RECIPIENT-001`,
   `ACCESS-TENANT-RLS-001`, `FK-EXC-20261004-001`).
+- Der PostgreSQL-Nachweis `service-db.test.ts` für `MANDATE-STRUCTURE-001`,
+  `GWG-BENEFICIAL-OWNERS-001`, `GWG-RISK-REVIEW-001` und
+  `GWG-RETENTION-DESTRUCTION-001` lief bisher in keiner Pipeline. Der
+  blockierende DB-CI-Job führt ihn jetzt gegen eine frische, isolierte
+  Datenbank aus und lädt das Protokoll hoch; ein Guard-Test verhindert, dass
+  der Schritt wieder herausfällt (`FK-EXC-20261004-003`).
 - Datenbankfehler in Server-Actions erscheinen im Server-Log. Bisher meldete
   `toActionError` etwa Transaktions-Timeouts (P2028), Serialisierungskonflikte
   (P2034) oder einen erschöpften Pool (P2024) nur als „Datenbankfehler.“ im UI.

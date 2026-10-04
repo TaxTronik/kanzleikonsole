@@ -261,6 +261,39 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/invoicing/__tests__/invoice-concurrency-db.test.ts 2>&1 | tee testbericht-invoice-concurrency.log
 
+      # service-db.test.ts ist Nachweis für MANDATE-STRUCTURE-001,
+      # GWG-BENEFICIAL-OWNERS-001, GWG-RISK-REVIEW-001 und
+      # GWG-RETENTION-DESTRUCTION-001. Die Suite verlangt eine ausdrücklich
+      # isolierte Datenbank (Name mit taxtronik_expansion_) und räumt sie nicht
+      # selbst ab; der Schritt legt sie frisch an und entfernt sie danach.
+      - name: Mandate services against an isolated PostgreSQL app role
+        env:
+          MANDATE_SERVICE_DB_TEST: '1'
+          EXPANSION_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_expansion_ci?schema=public
+          EXPANSION_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik_expansion_ci?schema=public
+        run: |
+          set -euo pipefail
+
+          cleanup_expansion_database() {
+            PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d postgres \
+              -v ON_ERROR_STOP=1 \
+              -c 'DROP DATABASE IF EXISTS taxtronik_expansion_ci WITH (FORCE)' \
+              >/dev/null 2>&1 || true
+          }
+          trap cleanup_expansion_database EXIT
+
+          cleanup_expansion_database
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE taxtronik_expansion_ci'
+          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik_expansion_ci \
+            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+
+          export DATABASE_URL="$EXPANSION_DATABASE_URL"
+          export DATABASE_APP_URL="$EXPANSION_DATABASE_APP_URL"
+          pnpm --filter @taxtronik/db exec prisma migrate deploy
+          pnpm --filter @taxtronik/web exec vitest run src/server/mandate-expansion/__tests__/service-db.test.ts 2>&1 | tee testbericht-mandate-services.log
+
       - name: Testnachweis hochladen
         if: always()
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
@@ -273,6 +306,7 @@ jobs:
             testbericht-invoice-selection.log
             testbericht-settings-atomicity.log
             testbericht-invoice-concurrency.log
+            testbericht-mandate-services.log
           if-no-files-found: ignore
 
       - name: Schema drift check

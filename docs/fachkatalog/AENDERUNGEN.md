@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-003
+    date: '2026-10-04'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - MANDATE-STRUCTURE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-RISK-REVIEW-001
+      - GWG-RETENTION-DESTRUCTION-001
+    reason: >-
+      Der blockierende DB-Job führt den bereits als Nachweis katalogisierten
+      PostgreSQL-Test service-db.test.ts zusätzlich gegen eine frische,
+      isolierte Datenbank aus und lädt dessen Protokoll mit den übrigen
+      DB-Testberichten hoch. Bestehende Schritte, Gates und Release-Nachweise
+      bleiben unverändert; Regeln, Testinhalte und Produktverhalten ändern sich
+      nicht. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/mandate-expansion/__tests__/service-db-ci.test.ts
+      - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-002
     date: '2026-10-04'
     paths:
@@ -841,6 +862,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-003` dokumentiert, dass der DB-CI-Job den
+  katalogisierten Nachweis `service-db.test.ts` jetzt tatsächlich ausführt.
+  Regeln und Produktverhalten bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-002` dokumentiert das zusätzliche Logging
   bekannter Prisma-Fehler in `toActionError`. Rückgaben, UI-Meldungen und
