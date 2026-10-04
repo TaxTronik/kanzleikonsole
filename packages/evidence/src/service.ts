@@ -20,7 +20,7 @@
 
 import { createHash } from 'node:crypto';
 import type { PrismaClient, AuditActorType } from '@prisma/client';
-import { eventHash, chainValue } from './chain';
+import { eventHash, chainValue, type ChainEvent } from './chain';
 import { anchorGenesisHash, anchorPayload, anchorTokenHash } from './anchor';
 import type { TimestampPort } from './ports/timestamp';
 
@@ -458,6 +458,71 @@ export class EvidenceService {
     tenantId: string,
     opts: VerifyChainOptions = {},
   ): Promise<VerificationResult> {
+    const result = this.newVerificationResult(opts);
+
+    // Seals VORAB laden — ihre top_audit_id steuert, welchen rekonstruierten
+    // Ketten-Hash wir während des Walks festhalten müssen (Punkt 2: der TSA-
+    // Imprint wird gegen DIESEN Wert geprüft, nie gegen die gespeicherte Spalte).
+    const seals = await tx.$queryRaw<SealRow[]>`
+      SELECT seal_date, top_audit_id, top_hash, tsa_response_blob
+      FROM audit_seal
+      WHERE tenant_id = ${tenantId}::uuid
+      ORDER BY seal_date ASC
+    `;
+    const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
+    const anchors = await tx.$queryRaw<RollingAnchorRow[]>`
+      SELECT id, from_audit_id, top_audit_id, top_hash,
+             previous_anchor_hash, anchor_hash, tsa_response_blob
+      FROM audit_anchor
+      WHERE tenant_id = ${tenantId}::uuid
+      ORDER BY id ASC
+    `;
+    const anchorTopIds = new Set<bigint>(anchors.map((a) => a.top_audit_id));
+    const lastAnchoredAuditId = initializeAnchorSummary(result, anchors);
+    const recomputedTops = new Map<bigint, Buffer>();
+
+    // 1. Audit-Chain durchgehen (gemeinsamer Walker, R-15). RF-5: cursor-basiert
+    //    in 1000er-Chunks nach id; der Walk läuft strikt id-aufsteigend über ALLE
+    //    Zeilen des Tenants. Den AUS DER KETTE REKONSTRUIERTEN Spitzen-Hash
+    //    versiegelter/verankerter Einträge festhalten — er (nicht die DB-Spalte)
+    //    ist der Prüfwert unten.
+    const walk = await walkChain(
+      tx,
+      tenantId,
+      { afterAuditId: BigInt(-1), expectedPrev: genesisHash(tenantId) },
+      (row, computed) =>
+        trackAuditCheckpoint(
+          result,
+          recomputedTops,
+          sealTopIds,
+          anchorTopIds,
+          lastAnchoredAuditId,
+          row,
+          computed,
+        ),
+    );
+    result.checked = walk.checked;
+    result.lastAuditId = walk.lastAuditId;
+    if (walk.firstBreak) {
+      result.ok = false;
+      result.firstBreak = walk.firstBreak;
+      return result;
+    }
+
+    // 2. Tages-Stempel verifizieren — gegen den REKONSTRUIERTEN Ketten-Hash.
+    //    NIE gegen audit_seal.top_hash (gespeicherte Spalte): das wäre DB-gegen-DB
+    //    und ließe einen Angreifer, der die History konsistent umschreibt, passieren.
+    //    Der Prüfwert kommt ausschließlich aus dem SHA-256-Walk oben.
+    await this.verifySeals(seals, recomputedTops, result, FULL_CHAIN_SEAL_REASONS);
+
+    await this.verifyRollingAnchors(tenantId, anchors, recomputedTops, result);
+    applyUnanchoredAgePolicy(result, opts.maxUnanchoredAgeMs);
+
+    return result;
+  }
+
+  /** Leeres Prüfergebnis inkl. Produktiv-Policy für Self-Timestamps (R-15). */
+  private newVerificationResult(opts: VerifyChainOptions): VerificationResult {
     const result: VerificationResult = {
       ok: true,
       checked: 0,
@@ -484,106 +549,21 @@ export class EvidenceService {
           'externe RFC-3161-TSA erforderlich (TIMESTAMP_AUTHORITY_URL setzen).',
       );
     }
+    return result;
+  }
 
-    // Seals VORAB laden — ihre top_audit_id steuert, welchen rekonstruierten
-    // Ketten-Hash wir während des Walks festhalten müssen (Punkt 2: der TSA-
-    // Imprint wird gegen DIESEN Wert geprüft, nie gegen die gespeicherte Spalte).
-    const seals = await tx.$queryRaw<
-      Array<{
-        seal_date: Date;
-        top_audit_id: bigint;
-        top_hash: Buffer;
-        tsa_response_blob: Buffer | null;
-      }>
-    >`
-      SELECT seal_date, top_audit_id, top_hash, tsa_response_blob
-      FROM audit_seal
-      WHERE tenant_id = ${tenantId}::uuid
-      ORDER BY seal_date ASC
-    `;
-    const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
-    const anchors = await tx.$queryRaw<RollingAnchorRow[]>`
-      SELECT id, from_audit_id, top_audit_id, top_hash,
-             previous_anchor_hash, anchor_hash, tsa_response_blob
-      FROM audit_anchor
-      WHERE tenant_id = ${tenantId}::uuid
-      ORDER BY id ASC
-    `;
-    const anchorTopIds = new Set<bigint>(anchors.map((a) => a.top_audit_id));
-    const lastAnchoredAuditId = initializeAnchorSummary(result, anchors);
-    const recomputedTops = new Map<bigint, Buffer>();
-
-    // 1. Audit-Chain durchgehen. RF-5: cursor-basiert in 1000er-Chunks nach id
-    //    statt alle Rows auf einmal — der Speicherbedarf wächst sonst linear
-    //    mit der audit_log-Größe. Semantik identisch: der Walk läuft weiterhin
-    //    strikt id-aufsteigend über ALLE Zeilen des Tenants.
-    let expectedPrev = genesisHash(tenantId);
-    let cursor = BigInt(-1);
-    for (;;) {
-      const rows = await fetchAuditBatch(tx, tenantId, cursor, BATCH_SIZE);
-      if (rows.length === 0) break;
-
-      for (const r of rows) {
-        // prev_hash muss mit erwartetem Vorgänger übereinstimmen
-        if (!Buffer.from(r.prev_hash).equals(expectedPrev)) {
-          result.ok = false;
-          result.firstBreak = {
-            auditId: r.id,
-            occurredAt: r.occurred_at,
-            expectedHash: expectedPrev.toString('hex'),
-            actualHash: Buffer.from(r.prev_hash).toString('hex'),
-          };
-          return result;
-        }
-
-        const computed = eventHash(expectedPrev, {
-          tenantId,
-          occurredAt: r.occurred_at,
-          actorType: r.actor_type,
-          actorId: r.actor_id,
-          action: r.action,
-          resourceType: r.resource_type,
-          resourceId: r.resource_id,
-          before: r.before,
-          after: r.after,
-        });
-
-        if (!computed.equals(Buffer.from(r.this_hash))) {
-          result.ok = false;
-          result.firstBreak = {
-            auditId: r.id,
-            occurredAt: r.occurred_at,
-            expectedHash: computed.toString('hex'),
-            actualHash: Buffer.from(r.this_hash).toString('hex'),
-          };
-          return result;
-        }
-
-        // Den AUS DER KETTE REKONSTRUIERTEN Spitzen-Hash dieses Eintrags festhalten,
-        // falls er versiegelt wurde — er (nicht die DB-Spalte) ist der Prüfwert unten.
-        trackAuditCheckpoint(
-          result,
-          recomputedTops,
-          sealTopIds,
-          anchorTopIds,
-          lastAnchoredAuditId,
-          r,
-          computed,
-        );
-
-        expectedPrev = Buffer.from(r.this_hash);
-        result.checked++;
-        result.lastAuditId = r.id;
-      }
-
-      cursor = rows[rows.length - 1]!.id;
-      if (rows.length < BATCH_SIZE) break;
-    }
-
-    // 2. Tages-Stempel verifizieren — gegen den REKONSTRUIERTEN Ketten-Hash.
-    //    NIE gegen audit_seal.top_hash (gespeicherte Spalte): das wäre DB-gegen-DB
-    //    und ließe einen Angreifer, der die History konsistent umschreibt, passieren.
-    //    Der Prüfwert kommt ausschließlich aus dem SHA-256-Walk oben.
+  /**
+   * Gemeinsame Siegelprüfung von verifyChain und verifyRecoverySegment (R-15).
+   * Jedes Siegel wird gegen den im Walk REKONSTRUIERTEN Spitzen-Hash geprüft:
+   * fehlender Spitzen-Eintrag, abweichende Spalte und gescheiterte TSA-Bindung
+   * sind Brüche; nur der Begründungstext hängt vom Prüfkontext ab.
+   */
+  private async verifySeals(
+    seals: SealRow[],
+    recomputedTops: Map<bigint, Buffer>,
+    result: VerificationResult,
+    reasons: SealBreakReasons,
+  ): Promise<void> {
     for (const s of seals) {
       result.sealsChecked++;
       const recomputed = recomputedTops.get(s.top_audit_id);
@@ -591,10 +571,7 @@ export class EvidenceService {
         // Der versiegelte Spitzen-Eintrag existiert nicht mehr in der rekonstruierten
         // Kette (gelöscht/abgeschnitten) — der Stempel hängt in der Luft.
         result.ok = false;
-        result.sealBreaks.push({
-          sealDate: s.seal_date,
-          reason: `versiegelter Spitzen-Eintrag (audit_id ${s.top_audit_id}) fehlt in der rekonstruierten Kette`,
-        });
+        result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.missing(s.top_audit_id) });
         continue;
       }
       // Spalten-Integrität: gespeicherter top_hash MUSS dem rekonstruierten Hash
@@ -602,11 +579,7 @@ export class EvidenceService {
       // keinen kryptografischen verify() leistet (verify() gibt dort immer true).
       if (!recomputed.equals(Buffer.from(s.top_hash))) {
         result.ok = false;
-        result.sealBreaks.push({
-          sealDate: s.seal_date,
-          reason:
-            'gespeicherter top_hash weicht vom rekonstruierten Ketten-Hash ab (DB-Manipulationsverdacht)',
-        });
+        result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.topHashMismatch });
         continue;
       }
       // TSA-Bindung: der messageImprint im Token muss an den rekonstruierten Hash
@@ -622,17 +595,9 @@ export class EvidenceService {
       }
       if (!sealRes.ok) {
         result.ok = false;
-        result.sealBreaks.push({
-          sealDate: s.seal_date,
-          reason: 'TSA-Verifikation gegen rekonstruierten Ketten-Spitzen-Hash fehlgeschlagen',
-        });
+        result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.tsaFailed });
       }
     }
-
-    await this.verifyRollingAnchors(tenantId, anchors, recomputedTops, result);
-    applyUnanchoredAgePolicy(result, opts.maxUnanchoredAgeMs);
-
-    return result;
   }
 
   /**
@@ -724,30 +689,10 @@ export class EvidenceService {
     checkpointAuditId: bigint,
     opts: VerifyChainOptions = {},
   ): Promise<VerificationResult> {
-    const result: VerificationResult = {
-      ok: true,
-      checked: 0,
-      lastAuditId: null,
-      sealsChecked: 0,
-      sealBreaks: [],
-      anchorsChecked: 0,
-      anchorBreaks: [],
-      anchorsTrustAnchored: 0,
-      lastAnchorId: null,
-      lastAnchoredAuditId: null,
-      unanchoredEntries: 0,
-      oldestUnanchoredAt: null,
-      tsaMode: this.timestampPort.mode,
-      policyBreaks: [],
-    };
-
-    if (opts.requireExternalTsa && this.timestampPort.mode === 'local') {
-      result.ok = false;
-      result.policyBreaks.push(
-        'Self-Timestamp (LocalTimestampAdapter) im Produktivmodus unzulässig — ' +
-          'externe RFC-3161-TSA erforderlich (TIMESTAMP_AUTHORITY_URL setzen).',
-      );
-    }
+    // Bewusst wie bisher: Die Recovery-Teilkette prüft Hash-Kette und Siegel ab
+    // dem Checkpoint, aber weder Rolling-Anker noch maxUnanchoredAgeMs (R-15:
+    // nur gemeinsamer Walker/Siegelprüfung, keine Änderung des Prüfumfangs).
+    const result = this.newVerificationResult(opts);
 
     const anchor = await tx.$queryRaw<Array<{ id: bigint; prev_hash: Buffer; occurred_at: Date }>>`
       SELECT id, prev_hash, occurred_at
@@ -764,14 +709,7 @@ export class EvidenceService {
       return result;
     }
 
-    const seals = await tx.$queryRaw<
-      Array<{
-        seal_date: Date;
-        top_audit_id: bigint;
-        top_hash: Buffer;
-        tsa_response_blob: Buffer | null;
-      }>
-    >`
+    const seals = await tx.$queryRaw<SealRow[]>`
       SELECT seal_date, top_audit_id, top_hash, tsa_response_blob
       FROM audit_seal
       WHERE tenant_id = ${tenantId}::uuid
@@ -781,94 +719,28 @@ export class EvidenceService {
     const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
     const recomputedTops = new Map<bigint, Buffer>();
 
-    const startCursor = checkpointAuditId - BigInt(1);
-    let expectedPrev = Buffer.from(anchor[0]!.prev_hash);
-    let cursor = startCursor;
-    for (;;) {
-      const rows = await fetchAuditBatch(tx, tenantId, cursor, BATCH_SIZE);
-      if (rows.length === 0) break;
-
-      for (const r of rows) {
-        if (!Buffer.from(r.prev_hash).equals(expectedPrev)) {
-          result.ok = false;
-          result.firstBreak = {
-            auditId: r.id,
-            occurredAt: r.occurred_at,
-            expectedHash: expectedPrev.toString('hex'),
-            actualHash: Buffer.from(r.prev_hash).toString('hex'),
-          };
-          return result;
-        }
-
-        const computed = eventHash(expectedPrev, {
-          tenantId,
-          occurredAt: r.occurred_at,
-          actorType: r.actor_type,
-          actorId: r.actor_id,
-          action: r.action,
-          resourceType: r.resource_type,
-          resourceId: r.resource_id,
-          before: r.before,
-          after: r.after,
-        });
-
-        if (!computed.equals(Buffer.from(r.this_hash))) {
-          result.ok = false;
-          result.firstBreak = {
-            auditId: r.id,
-            occurredAt: r.occurred_at,
-            expectedHash: computed.toString('hex'),
-            actualHash: Buffer.from(r.this_hash).toString('hex'),
-          };
-          return result;
-        }
-
-        if (sealTopIds.has(r.id)) recomputedTops.set(r.id, computed);
-
-        expectedPrev = Buffer.from(r.this_hash);
-        result.checked++;
-        result.lastAuditId = r.id;
-      }
-
-      cursor = rows[rows.length - 1]!.id;
-      if (rows.length < BATCH_SIZE) break;
+    // Gemeinsamer Walker (R-15) ab dem Checkpoint; der gespeicherte prev_hash
+    // des Checkpoints ist der neue Vertrauensanker.
+    const walk = await walkChain(
+      tx,
+      tenantId,
+      {
+        afterAuditId: checkpointAuditId - BigInt(1),
+        expectedPrev: Buffer.from(anchor[0]!.prev_hash),
+      },
+      (row, computed) => {
+        if (sealTopIds.has(row.id)) recomputedTops.set(row.id, computed);
+      },
+    );
+    result.checked = walk.checked;
+    result.lastAuditId = walk.lastAuditId;
+    if (walk.firstBreak) {
+      result.ok = false;
+      result.firstBreak = walk.firstBreak;
+      return result;
     }
 
-    for (const s of seals) {
-      result.sealsChecked++;
-      const recomputed = recomputedTops.get(s.top_audit_id);
-      if (!recomputed) {
-        result.ok = false;
-        result.sealBreaks.push({
-          sealDate: s.seal_date,
-          reason: `versiegelter Spitzen-Eintrag (audit_id ${s.top_audit_id}) fehlt in der Recovery-Teilkette`,
-        });
-        continue;
-      }
-      if (!recomputed.equals(Buffer.from(s.top_hash))) {
-        result.ok = false;
-        result.sealBreaks.push({
-          sealDate: s.seal_date,
-          reason: 'gespeicherter top_hash weicht vom rekonstruierten Recovery-Ketten-Hash ab',
-        });
-        continue;
-      }
-      const sealRes = await this.verifySealBinding(
-        recomputed,
-        s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
-      );
-      if (sealRes.trustAnchored !== null) {
-        result.sealsTrustAnchored =
-          (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
-      }
-      if (!sealRes.ok) {
-        result.ok = false;
-        result.sealBreaks.push({
-          sealDate: s.seal_date,
-          reason: 'TSA-Verifikation gegen Recovery-Ketten-Spitzen-Hash fehlgeschlagen',
-        });
-      }
-    }
+    await this.verifySeals(seals, recomputedTops, result, RECOVERY_SEAL_REASONS);
 
     return result;
   }
@@ -893,6 +765,127 @@ interface AuditChainRow {
 }
 
 const BATCH_SIZE = 1000;
+
+interface SealRow {
+  seal_date: Date;
+  top_audit_id: bigint;
+  top_hash: Buffer;
+  tsa_response_blob: Buffer | null;
+}
+
+/** Begründungstexte der Siegelprüfung je Prüfkontext (R-15). */
+interface SealBreakReasons {
+  missing: (topAuditId: bigint) => string;
+  topHashMismatch: string;
+  tsaFailed: string;
+}
+
+const FULL_CHAIN_SEAL_REASONS: SealBreakReasons = {
+  missing: (topAuditId) =>
+    `versiegelter Spitzen-Eintrag (audit_id ${topAuditId}) fehlt in der rekonstruierten Kette`,
+  topHashMismatch:
+    'gespeicherter top_hash weicht vom rekonstruierten Ketten-Hash ab (DB-Manipulationsverdacht)',
+  tsaFailed: 'TSA-Verifikation gegen rekonstruierten Ketten-Spitzen-Hash fehlgeschlagen',
+};
+
+const RECOVERY_SEAL_REASONS: SealBreakReasons = {
+  missing: (topAuditId) =>
+    `versiegelter Spitzen-Eintrag (audit_id ${topAuditId}) fehlt in der Recovery-Teilkette`,
+  topHashMismatch: 'gespeicherter top_hash weicht vom rekonstruierten Recovery-Ketten-Hash ab',
+  tsaFailed: 'TSA-Verifikation gegen Recovery-Ketten-Spitzen-Hash fehlgeschlagen',
+};
+
+/** Startpunkt eines Ketten-Walks (R-15). */
+interface ChainWalkStart {
+  /** Der Walk beginnt mit der ersten Zeile, deren ID größer ist. */
+  afterAuditId: bigint;
+  /** Erwarteter prev_hash dieser ersten Zeile (Genesis bzw. Vertrauensanker). */
+  expectedPrev: Buffer;
+}
+
+interface ChainWalkOutcome {
+  /** Lückenlos geprüfte Zeilen (vor einem etwaigen Bruch). */
+  checked: number;
+  /** Letzte intakt geprüfte Audit-ID; null, wenn keine Zeile geprüft wurde. */
+  lastAuditId: bigint | null;
+  /** Erster Vorgänger- oder Hash-Bruch; beendet den Walk. */
+  firstBreak?: NonNullable<VerificationResult['firstBreak']>;
+}
+
+/**
+ * R-15: EIN SHA-256-Kettendurchlauf für verifyChain und verifyRecoverySegment.
+ *
+ * Liest die Kette cursor-basiert in BATCH_SIZE-Chunks strikt id-aufsteigend
+ * (RF-5). Jede Zeile muss an den erwarteten Vorgänger binden und ihren
+ * gespeicherten this_hash aus dem kanonischen Ereignis reproduzieren; der erste
+ * Bruch beendet den Walk. `onRow` erhält für jede intakte Zeile den
+ * REKONSTRUIERTEN Hash (Prüfwert für Siegel und Anker).
+ */
+async function walkChain(
+  tx: Tx,
+  tenantId: string,
+  start: ChainWalkStart,
+  onRow: (row: AuditChainRow, computed: Buffer) => void,
+): Promise<ChainWalkOutcome> {
+  const outcome: ChainWalkOutcome = { checked: 0, lastAuditId: null };
+  let expectedPrev = start.expectedPrev;
+  let cursor = start.afterAuditId;
+  for (;;) {
+    const rows = await fetchAuditBatch(tx, tenantId, cursor, BATCH_SIZE);
+    if (rows.length === 0) break;
+
+    for (const r of rows) {
+      // prev_hash muss mit erwartetem Vorgänger übereinstimmen
+      if (!Buffer.from(r.prev_hash).equals(expectedPrev)) {
+        outcome.firstBreak = chainBreak(r, expectedPrev, r.prev_hash);
+        return outcome;
+      }
+
+      const computed = eventHash(expectedPrev, chainEventOf(tenantId, r));
+      if (!computed.equals(Buffer.from(r.this_hash))) {
+        outcome.firstBreak = chainBreak(r, computed, r.this_hash);
+        return outcome;
+      }
+
+      onRow(r, computed);
+      expectedPrev = Buffer.from(r.this_hash);
+      outcome.checked++;
+      outcome.lastAuditId = r.id;
+    }
+
+    cursor = rows[rows.length - 1]!.id;
+    if (rows.length < BATCH_SIZE) break;
+  }
+  return outcome;
+}
+
+/** Kanonisches Ereignis einer gespeicherten Zeile (dieselbe Abbildung wie record()). */
+function chainEventOf(tenantId: string, r: AuditChainRow): ChainEvent {
+  return {
+    tenantId,
+    occurredAt: r.occurred_at,
+    actorType: r.actor_type,
+    actorId: r.actor_id,
+    action: r.action,
+    resourceType: r.resource_type,
+    resourceId: r.resource_id,
+    before: r.before,
+    after: r.after,
+  };
+}
+
+function chainBreak(
+  r: Pick<AuditChainRow, 'id' | 'occurred_at'>,
+  expected: Buffer,
+  actual: Uint8Array,
+): NonNullable<VerificationResult['firstBreak']> {
+  return {
+    auditId: r.id,
+    occurredAt: r.occurred_at,
+    expectedHash: expected.toString('hex'),
+    actualHash: Buffer.from(actual).toString('hex'),
+  };
+}
 
 function initializeAnchorSummary(
   result: VerificationResult,

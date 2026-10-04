@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-005
+    date: '2026-10-04'
+    paths:
+      - packages/evidence/src/service.ts
+      - packages/evidence/src/__tests__/chain-walk.test.ts
+    rule_ids:
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-RFC3161-ANCHOR-001
+    reason: >-
+      verifyChain und verifyRecoverySegment nutzen einen gemeinsamen
+      Kettendurchlauf walkChain und eine gemeinsame Siegelprüfung verifySeals
+      statt zweier kopierter Implementierungen. Ergebnisfelder, Bruchdetails mit
+      erwartetem und tatsächlichem Hash, der frühe Abbruch vor Siegel- und
+      Ankerprüfung, die Siegelzählung und der Umfang des Recovery-Segments ohne
+      Rolling-Anker und ohne Unanchored-Policy bleiben unverändert. Die neuen
+      Tests bestehen auch gegen die vorherige Implementierung. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/evidence/src/__tests__/chain-walk.test.ts
+      - packages/evidence/src/__tests__/service-anchor.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-004
     date: '2026-10-04'
     paths:
@@ -881,6 +902,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-005` dokumentiert die Zusammenführung von
+  Kettendurchlauf und Siegelprüfung im EvidenceService. Prüfergebnisse,
+  Bruchmeldungen und der Umfang der Recovery-Prüfung bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-004` dokumentiert die schwächere, für den
   Paar-Guard ausreichende Sperre FOR KEY SHARE. Die Paarinvariante und die

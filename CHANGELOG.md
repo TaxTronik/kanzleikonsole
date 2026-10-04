@@ -217,6 +217,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Die tägliche Kettenprüfung und die Prüfung eines
+  Wiederherstellungssegments nutzen denselben Kettendurchlauf und dieselbe
+  Siegelprüfung statt zweier Kopien. Ergebnisse und Bruchmeldungen bleiben
+  unverändert (`AUDIT-HASH-CHAIN-001`, `FK-EXC-20261004-005`).
 - Arbeitskorb mit einem gemeinsamen Leerzustand und kurzer Zusammenfassung
   leerer Fälligkeitsgruppen hinter den tatsächlich anstehenden Aufgaben.
   Bei leerem Filterergebnis führt eine direkte Aktion zurück zu allen Einträgen
