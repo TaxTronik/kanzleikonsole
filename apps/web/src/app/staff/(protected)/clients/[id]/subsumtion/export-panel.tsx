@@ -7,11 +7,14 @@
 // Feintuning. Die laufende Nr. entspricht der im Export; nicht gewählte Stellen
 // erscheinen im Sachverhalt als normaler Text. Die Download-Links hängen die
 // Auswahl als `?marks=` an (entfällt, wenn alle gewählt sind → ganzer Bericht).
+// Geladen wird per fetch: Fehler der Route (z. B. 422 bei nicht darstellbaren
+// PDF-Zeichen) erscheinen im Panel statt als JSON-Seite.
 // =============================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileDown, FileText, FileType, ChevronDown } from 'lucide-react';
 import { type MarkingDTO, type Herkunft, HERKUNFT_LABEL, herkunftColor } from './_ui';
+import { downloadFromRoute } from '@/lib/route-download';
 
 const HERKUNFT_ORDER: Herkunft[] = [
   'WOERTLICH',
@@ -55,6 +58,8 @@ export function ExportPanel({
   );
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(() => new Set(ordered.map((m) => m.id)));
+  const [busy, setBusy] = useState<'docx' | 'pdf' | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -122,6 +127,15 @@ export function ExportPanel({
   const marksParam = allSelected ? '' : `&marks=${[...sel].join(',')}`;
   const href = (fmt: 'docx' | 'pdf') =>
     `/api/staff/clients/${clientId}/subsumtion/${analysisId}/export?format=${fmt}${marksParam}`;
+  async function download(fmt: 'docx' | 'pdf') {
+    if (busy) return;
+    setBusy(fmt);
+    setDownloadError(null);
+    const error = await downloadFromRoute(href(fmt), `Subsumtion.${fmt}`);
+    setBusy(null);
+    if (error) setDownloadError(error);
+    else setOpen(false);
+  }
 
   return (
     <div className="relative">
@@ -264,20 +278,33 @@ export function ExportPanel({
                   <a
                     href={href('docx')}
                     className="ml-auto btn-secondary text-xs"
-                    onClick={() => setOpen(false)}
+                    aria-disabled={busy !== null}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void download('docx');
+                    }}
                   >
-                    <FileText className="h-3.5 w-3.5" /> DOCX
+                    <FileText className="h-3.5 w-3.5" /> {busy === 'docx' ? '…' : 'DOCX'}
                   </a>
                   <a
                     href={href('pdf')}
                     className="btn-secondary text-xs"
-                    onClick={() => setOpen(false)}
+                    aria-disabled={busy !== null}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void download('pdf');
+                    }}
                   >
-                    <FileType className="h-3.5 w-3.5" /> PDF
+                    <FileType className="h-3.5 w-3.5" /> {busy === 'pdf' ? '…' : 'PDF'}
                   </a>
                 </>
               )}
             </div>
+            {downloadError && (
+              <p role="alert" className="text-xs text-red-700 dark:text-red-400">
+                {downloadError}
+              </p>
+            )}
           </div>
         </>
       )}

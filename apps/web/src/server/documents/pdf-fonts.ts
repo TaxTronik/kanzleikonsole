@@ -4,17 +4,19 @@ import path from 'node:path';
 import manifest from '../../../public/fonts/noto/manifest.json';
 import { ActionError } from '../actions/action-error';
 
-type Face =
+export type PdfFontFace =
   | 'NotoSans-Regular.ttf'
   | 'NotoSans-Bold.ttf'
   | 'NotoSansSC-Regular.otf'
   | 'NotoSansSC-Bold.otf';
+type Face = PdfFontFace;
 type Run = { face: Face; text: string };
 const files = new Map(manifest.fonts.map((f) => [f.file, f]));
 const buffers = new Map<Face, Buffer>();
 const segmenter = new Intl.Segmenter('und', { granularity: 'grapheme' });
 const installed = new WeakSet<PDFKit.PDFDocument>();
-const lineControls = new Set([9, 10, 13]);
+// LF/CR brechen die Zeile (PDFKit/pdf-lib); TAB wird vorher zu einem Leerzeichen.
+const lineControls = new Set([10, 13]);
 
 export class UnsupportedPdfTextError extends ActionError {
   constructor(codepoints: number[]) {
@@ -34,14 +36,23 @@ function covered(face: Face, cp: number): boolean {
     lineControls.has(cp) || files.get(face)!.coverage.some(([from, to]) => cp >= from! && cp <= to!)
   );
 }
-/** An entire grapheme uses one face; combining marks must not be separated from their base. */
-export function pdfFontRuns(text: string, bold = false): Run[] {
+/** An entire grapheme uses one face; combining marks must not be separated from their base.
+ * TAB has no glyph in Noto Sans (a visible .notdef box) and is set as one space for every
+ * user. `fallback: false` restricts the runs to Noto Sans, e.g. where the CJK face cannot
+ * be embedded; graphemes it does not cover then fail like any other unsupported text. */
+export function pdfFontRuns(
+  text: string,
+  bold = false,
+  { fallback = true }: { fallback?: boolean } = {},
+): Run[] {
   const preferred: Face = bold ? 'NotoSans-Bold.ttf' : 'NotoSans-Regular.ttf';
-  const fallback: Face = bold ? 'NotoSansSC-Bold.otf' : 'NotoSansSC-Regular.otf';
+  const faces: Face[] = fallback
+    ? [preferred, bold ? 'NotoSansSC-Bold.otf' : 'NotoSansSC-Regular.otf']
+    : [preferred];
   const result: Run[] = [];
-  for (const { segment } of segmenter.segment(text)) {
+  for (const { segment } of segmenter.segment(text.replace(/\t/g, ' '))) {
     const codepoints = [...segment].map((c) => c.codePointAt(0)!);
-    const face = [preferred, fallback].find((font) => codepoints.every((cp) => covered(font, cp)));
+    const face = faces.find((font) => codepoints.every((cp) => covered(font, cp)));
     if (!face) throw new UnsupportedPdfTextError(codepoints);
     const last = result.at(-1);
     if (last?.face === face) last.text += segment;
@@ -49,7 +60,8 @@ export function pdfFontRuns(text: string, bold = false): Run[] {
   }
   return result;
 }
-function fontBytes(face: Face): Buffer {
+/** Hash-checked font file (manifest.json), also for PDF libraries other than PDFKit. */
+export function pdfFontBytes(face: PdfFontFace): Buffer {
   let bytes = buffers.get(face);
   if (bytes) return bytes;
   // Both supported launch locations: Next's apps/web cwd and repository/standalone root.
@@ -67,15 +79,22 @@ function fontBytes(face: Face): Buffer {
 }
 
 /** Install before the first text operation. Existing Helvetica/Helvetica-Bold
- * calls retain their weight; text uses embedded Noto faces with checked fallback.
- * This opt-in adapter does not change the other historical PDF generators. */
+ * calls retain their weight; text and width measurement use embedded Noto faces with
+ * checked fallback. This opt-in adapter does not change the other historical PDF generators. */
 export function installUnicodePdfFonts(doc: PDFKit.PDFDocument): PDFKit.PDFDocument {
   if (installed.has(doc)) return doc;
   for (const face of files.keys() as IterableIterator<Face>)
-    doc.registerFont(face, fontBytes(face));
+    doc.registerFont(face, pdfFontBytes(face));
   const originalFont = doc.font.bind(doc);
   const originalText = doc.text.bind(doc);
+  const originalWidth = doc.widthOfString.bind(doc);
   let bold = false;
+  // Every face switch goes through `selectFace`, so a measurement can restore the exact face.
+  let active: Face = 'NotoSans-Regular.ttf';
+  const selectFace = (face: Face, size?: number) => {
+    active = face;
+    return size === undefined ? originalFont(face) : originalFont(face, size);
+  };
   doc.font = ((
     font: Parameters<PDFKit.PDFDocument['font']>[0],
     familyOrSize?: string | number,
@@ -88,12 +107,29 @@ export function installUnicodePdfFonts(doc: PDFKit.PDFDocument): PDFKit.PDFDocum
       throw new Error('PDF-Generator fordert eine nicht freigegebene Schrift an.');
     bold = font === 'Helvetica-Bold' || font === 'NotoSans-Bold.ttf';
     const selected: Face = bold ? 'NotoSans-Bold.ttf' : 'NotoSans-Regular.ttf';
-    return typeof familyOrSize === 'number'
-      ? originalFont(selected, familyOrSize)
-      : typeof size === 'number'
-        ? originalFont(selected, size)
-        : originalFont(selected);
+    return selectFace(selected, typeof familyOrSize === 'number' ? familyOrSize : size);
   }) as typeof doc.font;
+  // Width per run in its actual face: fallback glyphs (CJK, symbols) must not be measured
+  // as .notdef of Noto Sans. PDFKit's own wrapping (text width, heightOfString) also
+  // measures through this method, always within one run and its face.
+  doc.widthOfString = ((value: string, options?: PDFKit.Mixins.TextOptions) => {
+    let runs: Run[];
+    try {
+      runs = pdfFontRuns(String(value ?? ''), bold);
+    } catch {
+      return originalWidth(value, options); // Measuring never blocks; drawing checks the text.
+    }
+    if (runs.every((run) => run.face === active))
+      return originalWidth(runs.map((run) => run.text).join(''), options);
+    const previous = active;
+    let width = 0;
+    for (const run of runs) {
+      selectFace(run.face);
+      width += originalWidth(run.text, options);
+    }
+    selectFace(previous);
+    return width;
+  }) as typeof doc.widthOfString;
   doc.text = ((
     value: string,
     xOrOptions?: number | PDFKit.Mixins.TextOptions,
@@ -109,16 +145,16 @@ export function installUnicodePdfFonts(doc: PDFKit.PDFDocument): PDFKit.PDFDocum
         : originalText(text, opts);
     for (let i = 0; i < runs.length; i++) {
       const run = runs[i]!;
-      originalFont(run.face);
+      selectFace(run.face);
       const runOptions = { ...opts, continued: i < runs.length - 1 || opts?.continued === true };
       if (i === 0 && typeof xOrOptions === 'number')
         originalText(run.text, xOrOptions, y, runOptions);
       else originalText(run.text, runOptions);
     }
-    originalFont(bold ? 'NotoSans-Bold.ttf' : 'NotoSans-Regular.ttf');
+    selectFace(bold ? 'NotoSans-Bold.ttf' : 'NotoSans-Regular.ttf');
     return doc;
   }) as typeof doc.text;
-  originalFont('NotoSans-Regular.ttf');
+  selectFace('NotoSans-Regular.ttf');
   installed.add(doc);
   return doc;
 }

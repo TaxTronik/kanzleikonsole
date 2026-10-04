@@ -455,6 +455,19 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** ZUGFeRD-Rechnungen und Korrekturbelege sowie der
+  Subsumtions-PDF-Export setzen Namen und Texte mit Zeichen außerhalb von
+  WinAnsi (z. B. ı, Ş, ğ, Ł, ř) korrekt. Ausstellung und Storno scheiterten
+  daran bisher mit `WinAnsi cannot encode`, der Subsumtions-Export
+  verstümmelte sie still. Eingebettet werden die geprüften Noto-Schriften
+  über die neue Abhängigkeit `@pdf-lib/fontkit` 1.1.1 (ohne
+  Installationsskripte); bereits archivierte Rechnungsfassungen bleiben
+  byte-identisch. Nicht darstellbare Zeichen wie Emoji, in Rechnungen auch
+  CJK, sperren die Erzeugung mit Angabe der betroffenen Zeichen; im
+  Subsumtions-Export erscheint der Hinweis direkt im Exportfenster.
+  Tabulatoren erscheinen in PDF-Ausgaben als Leerzeichen statt als
+  Ersatzkästchen (`INV-ARCHIVE-EINVOICE-001`, `FK-EXC-20261004-009`,
+  `FK-EXC-20261004-010`).
 - **[Scope]** Sammel-Download und DATEV-Belegexport streamen das ZIP direkt
   aus dem Object-Store in die Antwort, statt bis zu 1 GiB mehrfach im
   Webprozess zu puffern; ein großer Mandantenordner kann den Webprozess nicht

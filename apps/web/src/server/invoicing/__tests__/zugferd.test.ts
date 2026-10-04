@@ -1,8 +1,16 @@
+// Fachkatalog: INV-ARCHIVE-EINVOICE-001
+// Fachkatalog: INV-STORNO-REFERENCE-001
 import { describe, it, expect } from 'vitest';
 import { extractFacturXXml, generateZugferdPdf } from '../zugferd';
 import { generateXRechnungCii } from '../xrechnung';
-import { SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER } from '../sample-fixture';
+import {
+  SAMPLE_INVOICE,
+  SAMPLE_SELLER,
+  SAMPLE_BUYER,
+  SAMPLE_STORNO_INVOICE,
+} from '../sample-fixture';
 import { extractText, getDocumentProxy } from 'unpdf';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 
 describe('generateZugferdPdf — Factur-X-Hybrid (iter/P2-8)', () => {
   it('INV-ARCHIVE-EINVOICE-001: preserves long multi-page descriptions inside their column', async () => {
@@ -48,7 +56,7 @@ describe('generateZugferdPdf — Factur-X-Hybrid (iter/P2-8)', () => {
     expect(raw).toContain('<fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>');
     expect(raw).toContain('<fx:DocumentType>INVOICE</fx:DocumentType>');
     expect(raw).toContain('<fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>');
-    // BEWUSST kein PDF/A-3-Anspruch (nicht eingebettete Standard-Fonts) — die
+    // BEWUSST kein PDF/A-3-Anspruch (kein OutputIntent/ICC) — die
     // XMP darf kein pdfaid:part behaupten.
     expect(raw).not.toContain('pdfaid:part');
   });
@@ -84,5 +92,41 @@ describe('generateZugferdPdf — Factur-X-Hybrid (iter/P2-8)', () => {
     const pdfBytes = await generateZugferdPdf(SAMPLE_INVOICE, SAMPLE_SELLER, SAMPLE_BUYER, cii);
 
     await expect(extractFacturXXml(pdfBytes)).resolves.toEqual(Buffer.from(cii, 'utf8'));
+  });
+});
+
+describe('generateZugferdPdf — eingebettete Unicode-Schriften (F-02)', () => {
+  const NAMES = ['Yıldız Bau GmbH', 'Şahin', 'Łódź', 'Dvořák', 'Müller', 'Çelik'];
+  // Synthetische Stammdaten; jeder Name steht an einer anderen gezeichneten Stelle.
+  const buyer = { ...SAMPLE_BUYER, name: 'Yıldız Bau GmbH', street: 'Şahin Sokak 3', city: 'Łódź' };
+  const seller = { ...SAMPLE_SELLER, name: 'Kanzlei Dvořák', bankName: 'Bank Müller' };
+
+  it.each([
+    ['Rechnung', SAMPLE_INVOICE],
+    ['Storno', SAMPLE_STORNO_INVOICE],
+  ])('setzt Namen außerhalb von WinAnsi in der %s-PDF', async (_kind, base) => {
+    const invoice = {
+      ...base,
+      positions: base.positions.map((p) => ({ ...p, description: `${p.description} für Çelik` })),
+    };
+    const cii = generateXRechnungCii(invoice, seller, buyer);
+    const pdfBytes = await generateZugferdPdf(invoice, seller, buyer, cii);
+    await expect(extractFacturXXml(pdfBytes)).resolves.toEqual(Buffer.from(cii, 'utf8'));
+    const { text } = await extractText(await getDocumentProxy(pdfBytes), { mergePages: true });
+    for (const name of NAMES) expect(text, name).toContain(name);
+    expect(text).toContain(`Rechnung ${invoice.number}`);
+  });
+
+  it('sperrt Emoji und nur von der CJK-Ersatzschrift abgedeckte Zeichen ausdrücklich', async () => {
+    for (const [name, codepoint] of [
+      ['Yıldız Bau GmbH 😀', 'U+1F600'],
+      ['李明 GmbH', 'U+674E'],
+    ] as const) {
+      const unsupported = { ...SAMPLE_BUYER, name };
+      const cii = generateXRechnungCii(SAMPLE_INVOICE, SAMPLE_SELLER, unsupported);
+      const pending = generateZugferdPdf(SAMPLE_INVOICE, SAMPLE_SELLER, unsupported, cii);
+      await expect(pending).rejects.toThrow(UnsupportedPdfTextError);
+      await expect(pending).rejects.toThrow(codepoint);
+    }
   });
 });

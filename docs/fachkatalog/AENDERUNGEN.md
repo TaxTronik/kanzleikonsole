@@ -1,5 +1,42 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-010
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/server/invoicing/zugferd.ts
+      - apps/web/src/server/invoicing/__tests__/zugferd.test.ts
+      - apps/web/src/server/documents/pdf-fonts.ts
+      - apps/web/src/server/documents/__tests__/pdf-fonts.test.ts
+      - apps/web/src/server/risk/export/to-pdf.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/export-panel.tsx
+    rule_ids:
+      - INV-ARCHIVE-EINVOICE-001
+      - STBVV-CALCULATION-001
+      - CLIENT-ASSISTANCE-001
+      - CLIENT-OFFBOARDING-001
+      - MANDATE-STRUCTURE-001
+      - PAYROLL-INTAKE-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+    reason: >-
+      Neu erzeugte ZUGFeRD-PDFs für Rechnungen und Korrekturbelege betten die
+      hashgeprüften Noto-Schriften als Teilmenge ein statt WinAnsi-Helvetica zu
+      nutzen. Namen und Texte mit ı, Ş, ğ, Ł oder ř brechen Ausstellung und
+      Storno nicht mehr ab; nicht abgedeckte Zeichen wie Emoji oder CJK sperren
+      die Erzeugung weiterhin, jetzt mit Angabe der Zeichen. Positionen,
+      Beträge, factur-x.xml und XMP-Metadaten bleiben unverändert; archivierte
+      Fassungen werden weiter byte-identisch ausgeliefert und nicht neu
+      gerendert. Der gemeinsame PDF-Schrifthelfer setzt Tabulatoren als
+      Leerzeichen und misst Ersatzglyphen in ihrer tatsächlichen Schrift, was
+      Zeilenumbrüche in Lohn-, Mandanten-, Mandatsstruktur- und
+      Offboarding-PDFs nur bei bisher zu schmal gemessenen Zeichen ändert. Der
+      Subsumtions-Export zeigt nicht darstellbare Zeichen im Exportfenster an.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/invoicing/__tests__/zugferd.test.ts
+      - apps/web/src/server/documents/__tests__/pdf-fonts.test.ts
+      - apps/web/src/server/risk/export/__tests__/to-pdf.test.ts
+      - apps/web/src/lib/__tests__/route-download.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-009
     date: '2026-10-04'
     paths:
@@ -1011,6 +1048,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-010` dokumentiert eingebettete Unicode-Schriften
+  in neu erzeugten ZUGFeRD-PDFs und die genauere Breitenmessung des
+  gemeinsamen PDF-Schrifthelfers. Archivierte Rechnungsfassungen, Beträge und
+  XML bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-009` dokumentiert die Unicode-Schriften im
   PDF-Export der Subsumtionsanalyse. Bisher verstümmelte Zeichen erscheinen

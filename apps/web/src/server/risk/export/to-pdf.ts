@@ -24,12 +24,6 @@ function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   });
 }
 
-/** Tabulatoren als Leerraum setzen: Noto Sans hat für U+0009 keine Glyphe, das
- *  Ersatzkästchen (.notdef) wäre sichtbar. Der Inhalt bleibt sonst unverändert. */
-function tabsAsSpaces(s: string): string {
-  return s.replace(/\t/g, ' ');
-}
-
 // Annotierten Sachverhalt selbst Wort für Wort setzen (KEIN pdfkit-`continued`):
 // dessen Inline-Fluss verrutscht, sobald Tokens Zeilenumbrüche (Absätze) tragen —
 // daher die überlappenden Stellen. Hier deterministisch: Wörter messen, bei
@@ -63,10 +57,7 @@ function drawAnnotated(
     if (ctx.x + w > right && ctx.x > left) newline(); // Zeilenumbruch vor zu breitem Wort
     ensure();
     doc.fillColor(color).text(s, ctx.x, ctx.y, { lineBreak: false });
-    // Tatsächlich gesetzte Breite: `w` misst nur mit der Grundschrift; Zeichen
-    // aus der Ersatzschrift (CJK, Symbole) sind breiter und dürfen das nächste
-    // Wort nicht überlappen. Für reine Noto-Sans-Wörter gilt doc.x === ctx.x + w.
-    ctx.x = doc.x;
+    ctx.x += w;
   };
 
   for (const tok of tokens) {
@@ -78,7 +69,7 @@ function drawAnnotated(
     const lines = tok.text.split('\n');
     for (let li = 0; li < lines.length; li++) {
       if (li > 0) newline(); // jedes \n = Umbruch (\n\n → Leerzeile)
-      const words = tabsAsSpaces(lines[li]!).split(' ');
+      const words = lines[li]!.split(' ');
       for (let wi = 0; wi < words.length; wi++) {
         if (wi > 0) ctx.x += spaceW; // Leerzeichen zwischen den Wörtern
         if (words[wi]) piece(words[wi]!, color, false);
@@ -117,13 +108,13 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
     .font('Helvetica-Bold')
     .fontSize(18)
     .fillColor('#111111')
-    .text(tabsAsSpaces(model.title), { width: contentWidth });
+    .text(model.title, { width: contentWidth });
   doc.moveDown(0.3);
   doc
     .font('Helvetica')
     .fontSize(8)
     .fillColor('#666666')
-    .text(tabsAsSpaces(metaLine(model)), { width: contentWidth });
+    .text(metaLine(model), { width: contentWidth });
   doc.moveDown(0.9);
 
   // --- Sachverhalt (annotiert: markierte Stellen farbig + Marker [n]) ---
@@ -207,7 +198,7 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
       `${m.herkunftLabel}\n${m.statusLabel}`,
       (m.governanceLabel ?? '—') + (risiko ? `\nRisiko: ${risiko}` : ''),
       [m.notiz, m.kontrolle ? 'Maßnahme: ' + m.kontrolle : null].filter(Boolean).join('\n') || '—',
-    ].map(tabsAsSpaces);
+    ];
 
     doc.font('Helvetica').fontSize(8);
     const heights = cells.map((t, i) => doc.heightOfString(t, { width: cols[i]!.width - 2 * pad }));

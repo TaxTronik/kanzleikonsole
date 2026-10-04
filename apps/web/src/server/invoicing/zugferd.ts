@@ -9,6 +9,10 @@
 //   2. die XMP-Metadaten Factur-X erkennen lassen,
 //   3. die Konformitätsstufe EN16931 deklariert ist.
 //
+// Text nutzt eingebettete Noto-Sans-Teilmengen statt Helvetica/WinAnsi, damit
+// Namen wie „Yıldız" oder „Dvořák" darstellbar sind; nicht abgedeckte Zeichen
+// sperren die Erzeugung mit UnsupportedPdfTextError.
+//
 // Profil: EN 16931 ("Factur-X / ZUGFeRD 2.x — EN 16931")
 //   urn:cen.eu:en16931:2017
 // =============================================================================
@@ -25,25 +29,30 @@ import {
   decodePDFRawStream,
   PDFRef,
   AFRelationship,
-  StandardFonts,
+  cleanText,
+  lineSplit,
   rgb,
   type PDFFont,
   type PDFImage,
+  type PDFPage,
 } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
 import { computeVatTotals } from './vat';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
 import type { LetterheadConfig } from '@/server/settings/letterhead';
+import { pdfFontBytes, pdfFontRuns, type PdfFontFace } from '@/server/documents/pdf-fonts';
 
 import { fmtDateShort, fmtDecimal, fmtEUR } from '@/lib/fmt';
 // re-export für External Imports
 export type { XRechnungInvoice, XRechnungBuyer };
 
+type InvoiceFonts = ReadonlyMap<PdfFontFace, PDFFont>;
+
 interface PageContext {
   doc: PDFDocument;
-  font: PDFFont;
-  fontBold: PDFFont;
-  page: import('pdf-lib').PDFPage;
+  fonts: InvoiceFonts;
+  page: PDFPage;
   y: number;
   pageWidth: number;
   pageHeight: number;
@@ -74,6 +83,61 @@ const FONT_SIZE_NORMAL = 9;
 const FONT_SIZE_SMALL = 8;
 const FONT_SIZE_TITLE = 16;
 const FONT_SIZE_HEADING = 11;
+
+// Nur Noto Sans Regular/Bold (TrueType) werden eingebettet. Die CJK-Ersatzschrift
+// Noto Sans SC (CFF) teilt @pdf-lib/fontkit 1.1.1 fehlerhaft: Poppler verwirft die
+// Teilmenge, PDFium zeichnet nichts, und ungenutzt bleibt save() hängen. Zeichen,
+// die nur sie abdeckt (CJK, einzelne Symbole), sperren die Rechnung deshalb mit
+// UnsupportedPdfTextError, statt eine unlesbare Archivkopie zu erzeugen.
+const INVOICE_FONT_FACES: readonly PdfFontFace[] = ['NotoSans-Regular.ttf', 'NotoSans-Bold.ttf'];
+// pdf-lib-Standard (PDFPage.lineHeight) für Zeilenumbrüche innerhalb eines drawText.
+const PDF_LIB_LINE_HEIGHT = 24;
+const graphemes = new Intl.Segmenter('und', { granularity: 'grapheme' });
+
+async function embedInvoiceFonts(doc: PDFDocument): Promise<InvoiceFonts> {
+  doc.registerFontkit(fontkit);
+  const fonts = new Map<PdfFontFace, PDFFont>();
+  for (const face of INVOICE_FONT_FACES)
+    fonts.set(face, await doc.embedFont(pdfFontBytes(face), { subset: true }));
+  return fonts;
+}
+
+/** Schriftläufe einer Zeile in den eingebetteten Schnitten; wirft für nicht
+ *  abgedeckte Zeichen, bevor irgendetwas gezeichnet wird. */
+function invoiceRuns(fonts: InvoiceFonts, line: string, bold: boolean) {
+  return pdfFontRuns(line, bold, { fallback: false }).map((run) => ({
+    font: fonts.get(run.face)!,
+    text: run.text,
+  }));
+}
+
+function textWidth(fonts: InvoiceFonts, text: string, size: number): number {
+  return invoiceRuns(fonts, cleanText(text), false).reduce(
+    (width, run) => width + run.font.widthOfTextAtSize(run.text, size),
+    0,
+  );
+}
+
+/** Wie page.drawText (gleiche Bereinigung und Zeilentrennung von pdf-lib), aber je
+ *  Schriftlauf mit eingebetteter Noto-Schrift. Prüft den ganzen Text vor dem Zeichnen. */
+function drawUnicodeText(
+  page: PDFPage,
+  fonts: InvoiceFonts,
+  text: string,
+  opts: { x: number; y: number; size: number; bold?: boolean; color: ReturnType<typeof rgb> },
+): void {
+  const lines = lineSplit(cleanText(text)).map((line) =>
+    invoiceRuns(fonts, line, opts.bold ?? false),
+  );
+  lines.forEach((runs, index) => {
+    const y = opts.y - index * PDF_LIB_LINE_HEIGHT;
+    let x = opts.x;
+    for (const run of runs) {
+      page.drawText(run.text, { x, y, size: opts.size, font: run.font, color: opts.color });
+      x += run.font.widthOfTextAtSize(run.text, opts.size);
+    }
+  });
+}
 
 function fmtNum(n: number): string {
   return fmtDecimal(n);
@@ -168,17 +232,16 @@ function drawLetterheadSender(ctx: PageContext, layout: LetterheadLayout): void 
 }
 
 function drawLetterheadFooterDetails(
-  page: import('pdf-lib').PDFPage,
+  page: PDFPage,
   layout: LetterheadLayout,
-  font: PDFFont,
+  fonts: InvoiceFonts,
   margin: number,
 ): void {
   layout.footerDetailLines.forEach((line, lineIndex) => {
-    page.drawText(line, {
+    drawUnicodeText(page, fonts, line, {
       x: margin,
       y: layout.footerDetailsY + (layout.footerDetailLines.length - lineIndex - 1) * 8,
       size: 7,
-      font,
       color: rgb(0.5, 0.5, 0.5),
     });
   });
@@ -198,13 +261,11 @@ function drawText(
   y: number,
   opts: { bold?: boolean; size?: number; color?: ReturnType<typeof rgb> } = {},
 ): void {
-  const size = opts.size ?? FONT_SIZE_NORMAL;
-  const font = opts.bold ? ctx.fontBold : ctx.font;
-  ctx.page.drawText(text, {
+  drawUnicodeText(ctx.page, ctx.fonts, text, {
     x,
     y,
-    size,
-    font,
+    size: opts.size ?? FONT_SIZE_NORMAL,
+    bold: opts.bold,
     color: opts.color ?? rgb(0.1, 0.1, 0.1),
   });
 }
@@ -260,21 +321,22 @@ function drawInvoiceBuyer(ctx: PageContext, buyer: XRechnungBuyer): void {
 }
 
 /** Preserve the full fee description, including long source URLs, inside
- * the description column. No truncation or overlap with amounts. */
-function wrapInvoiceDescription(font: PDFFont, text: string, width: number): string[] {
+ * the description column. No truncation or overlap with amounts. Widths are
+ * measured per font run; overlong words split between graphemes only. */
+function wrapInvoiceDescription(fonts: InvoiceFonts, text: string, width: number): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split(/\r?\n/)) {
     let line = '';
     for (const word of paragraph.split(/\s+/).filter(Boolean)) {
       const candidate = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(candidate, FONT_SIZE_NORMAL) <= width) {
+      if (textWidth(fonts, candidate, FONT_SIZE_NORMAL) <= width) {
         line = candidate;
         continue;
       }
       if (line) lines.push(line);
       line = '';
-      for (const character of word) {
-        if (font.widthOfTextAtSize(line + character, FONT_SIZE_NORMAL) > width) {
+      for (const { segment: character } of graphemes.segment(word)) {
+        if (textWidth(fonts, line + character, FONT_SIZE_NORMAL) > width) {
           lines.push(line);
           line = '';
         }
@@ -294,8 +356,7 @@ export async function generateZugferdPdf(
   presentation: InvoicePdfPresentation = {},
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fonts = await embedInvoiceFonts(doc);
 
   const logoImg = await embedInvoiceLogo(doc, presentation.logoDataUrl);
 
@@ -308,8 +369,7 @@ export async function generateZugferdPdf(
 
   const ctx: PageContext = {
     doc,
-    font,
-    fontBold,
+    fonts,
     page,
     y: pageHeight - margin,
     pageWidth,
@@ -419,7 +479,11 @@ export async function generateZugferdPdf(
     drawText(ctx, `${fmtNum(p.quantity)} ${p.unit}`, colQty - 30, ctx.y);
     drawText(ctx, fmtEUR(p.unitPrice), colPrice - 60, ctx.y);
     drawText(ctx, fmtEUR(p.netAmount), colNet - 50, ctx.y);
-    const descriptionLines = wrapInvoiceDescription(ctx.font, p.description, colQty - 38 - colDesc);
+    const descriptionLines = wrapInvoiceDescription(
+      ctx.fonts,
+      p.description,
+      colQty - 38 - colDesc,
+    );
     for (const line of descriptionLines) {
       newPageIfNeeded(ctx, 12);
       drawText(ctx, line, colDesc, ctx.y);
@@ -507,28 +571,25 @@ export async function generateZugferdPdf(
       thickness: 0.4,
       color: rgb(0.75, 0.75, 0.75),
     });
-    p.drawText(letterheadLayout.footerSellerLine, {
+    drawUnicodeText(p, fonts, letterheadLayout.footerSellerLine, {
       x: margin,
       y: letterheadLayout.footerSellerY,
       size: 7,
-      font,
       color: rgb(0.5, 0.5, 0.5),
     });
-    p.drawText(`Seite ${i + 1} von ${pageCount}`, {
+    drawUnicodeText(p, fonts, `Seite ${i + 1} von ${pageCount}`, {
       x: pageWidth - margin - 60,
       y: letterheadLayout.footerSellerY,
       size: 7,
-      font,
       color: rgb(0.5, 0.5, 0.5),
     });
-    drawLetterheadFooterDetails(p, letterheadLayout, font, margin);
-    p.drawText('Diese PDF enthält eine maschinenlesbare ZUGFeRD/Factur-X-XML (Profil EN 16931).', {
-      x: margin,
-      y: letterheadLayout.footerMachineY,
-      size: 7,
-      font,
-      color: rgb(0.5, 0.5, 0.5),
-    });
+    drawLetterheadFooterDetails(p, letterheadLayout, fonts, margin);
+    drawUnicodeText(
+      p,
+      fonts,
+      'Diese PDF enthält eine maschinenlesbare ZUGFeRD/Factur-X-XML (Profil EN 16931).',
+      { x: margin, y: letterheadLayout.footerMachineY, size: 7, color: rgb(0.5, 0.5, 0.5) },
+    );
   });
 
   // ----- XML-Anhang einbetten ----------------------------------------------
@@ -598,7 +659,7 @@ function xmlEsc(s: string): string {
  * konforme Rechnungsverarbeiter (DATEV etc.) das Hybrid-Dokument erkennen.
  *
  * BEWUSST OHNE pdfaid:part=3-Behauptung: Diese PDF ist KEIN strikt validiertes
- * PDF/A-3 (nicht eingebettete Standard-Fonts, kein OutputIntent/ICC). Ein
+ * PDF/A-3 (Schriften zwar eingebettet, aber kein OutputIntent/ICC). Ein
  * falsches pdfaid würde einen strengen Validator scheitern lassen. Die
  * Factur-X-Erkennung (Attachment „Alternative" + fx-XMP) funktioniert dennoch.
  */
@@ -656,7 +717,7 @@ function buildFacturXXmp(invoiceNumber: string): string {
 /**
  * Setzt Document-Info + den Factur-X-XMP-Metadatenstrom am Katalog. Erkennung
  * durch Factur-X-Verarbeiter, ohne strikte PDF/A-3-Konformität zu behaupten
- * (s. buildFacturXXmp — eingebettete Fonts/OutputIntent fehlen bewusst).
+ * (s. buildFacturXXmp — OutputIntent/ICC fehlen bewusst).
  */
 function setFacturXMetadata(doc: PDFDocument, invoiceNumber: string): void {
   doc.setTitle(`Rechnung ${invoiceNumber}`);
