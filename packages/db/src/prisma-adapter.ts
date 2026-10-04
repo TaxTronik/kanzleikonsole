@@ -107,9 +107,45 @@ function poolMaxFromEnv(): number | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-export function createPostgresAdapter(connectionString: string): PrismaPg {
+/**
+ * Serverseitige Grenzen je Verbindung. Ohne sie läuft eine Abfrage weiter,
+ * nachdem Prisma die interaktive Transaktion längst abgebrochen hat, und hält
+ * Connection und Locks (gemessen: 128 s statt der 15 s aus TX_OPTIONS).
+ */
+export interface PostgresSessionLimits {
+  /** `statement_timeout` in Millisekunden; deckt auch Wartezeiten auf Locks ab. */
+  statementTimeoutMs?: number;
+  /** `idle_in_transaction_session_timeout` in Millisekunden. */
+  idleInTransactionSessionTimeoutMs?: number;
+}
+
+/**
+ * Grenzen für den App-Client im Request-Pfad. Beide Werte liegen bewusst über
+ * dem Transaktionslimit TX_OPTIONS.timeout (15 s): Was heute rechtzeitig
+ * fertig wird, bleibt unberührt; von Prisma aufgegebene Arbeit endet
+ * spätestens 5 s später auch in der Datenbank. Owner-, Migrations- und
+ * Worker-Verbindungen mit längeren Transaktionen bleiben ohne Limit.
+ */
+export const APP_SESSION_LIMITS = {
+  statementTimeoutMs: 20_000,
+  idleInTransactionSessionTimeoutMs: 30_000,
+} as const satisfies PostgresSessionLimits;
+
+export function createPostgresAdapter(
+  connectionString: string,
+  limits: PostgresSessionLimits = {},
+): PrismaPg {
   const max = poolMaxFromEnv();
   return serializeAdapterFactory(
-    new PrismaPg({ connectionString, ...(max !== undefined ? { max } : {}) }),
+    new PrismaPg({
+      connectionString,
+      ...(max !== undefined ? { max } : {}),
+      ...(limits.statementTimeoutMs !== undefined
+        ? { statement_timeout: limits.statementTimeoutMs }
+        : {}),
+      ...(limits.idleInTransactionSessionTimeoutMs !== undefined
+        ? { idle_in_transaction_session_timeout: limits.idleInTransactionSessionTimeoutMs }
+        : {}),
+    }),
   );
 }

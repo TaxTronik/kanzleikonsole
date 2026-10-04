@@ -440,6 +440,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   (P2034) oder einen erschöpften Pool (P2024) nur als „Datenbankfehler.“ im UI.
   P2025 und P2002 werden als Warnung, alle übrigen Codes als Fehler geloggt,
   ohne Zeilenwerte aus den Postgres-Details (`FK-EXC-20261004-002`).
+- Abfragen des App-Clients enden jetzt auch in der Datenbank: `statement_timeout`
+  20 s und `idle_in_transaction_session_timeout` 30 s, beide über dem
+  Transaktionslimit von 15 s. Bisher lief eine von Prisma aufgegebene Abfrage
+  serverseitig weiter und hielt ihre Verbindung. Owner-, Migrations- und
+  Worker-Verbindungen bleiben ohne Limit.
+- PostgreSQL protokolliert Abfragen ab 1 s (`POSTGRES_LOG_MIN_DURATION_MS`)
+  und Lock-Wartezeiten, ohne Bind-Parameter und damit ohne Mandantendaten.
 - Die E2E-Bereinigung respektiert die Redis-Datenbank aus der URL und sendet
   `FLUSHDB` erst nach bestätigtem `SELECT`. Neue verpflichtende Helper-Tests
   verhindern das versehentliche Leeren von Datenbank 0 sowie übrig gebliebene

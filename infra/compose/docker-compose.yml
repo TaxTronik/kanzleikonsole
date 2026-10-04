@@ -68,6 +68,15 @@ services:
       - work_mem=16MB
       - -c
       - maintenance_work_mem=128MB
+      # Langsame Abfragen samt Dauer ins Log, aber ohne Bind-Parameter: Suchbegriffe
+      # und andere Mandantendaten gehören nicht ins Postgres-Log. Lock-Wartezeiten
+      # über deadlock_timeout (1 s) werden ebenfalls protokolliert.
+      - -c
+      - log_min_duration_statement=${POSTGRES_LOG_MIN_DURATION_MS:-1000}
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_lock_waits=on
     # Postgres braucht CHOWN/SETUID/SETGID nur in seinem initdb-Pfad; das
     # offizielle Image wechselt mit gosu auf den postgres-User. CHOWN/SETUID/
     # SETGID + FOWNER für das Daten-Volume.

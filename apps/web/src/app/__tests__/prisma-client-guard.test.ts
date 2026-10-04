@@ -164,6 +164,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // RLS-Ressourcensuche per UUID: Owner legt Fixtures an und liest die
   // aktuellen Funktionsdefinitionen; die App-Rolle prüft die Treffer.
   'packages/db/src/__tests__/rls-resource-uuid-lookup.test.ts',
+  // Session-Limits: eigene Clients mit und ohne Grenzen beweisen, dass nur der
+  // App-Client statement_timeout und idle_in_transaction_session_timeout setzt.
+  'packages/db/src/__tests__/app-session-limits.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill

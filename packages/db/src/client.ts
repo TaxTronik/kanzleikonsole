@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { PrismaClient as PrismaClientCtor, type PrismaClientInstance } from './prisma-client';
-import { createPostgresAdapter, optionalDatabaseUrl } from './prisma-adapter';
+import { APP_SESSION_LIMITS, createPostgresAdapter, optionalDatabaseUrl } from './prisma-adapter';
 
 export type PrismaClient = PrismaClientInstance;
 
@@ -48,7 +48,7 @@ function buildClient(): PrismaClient {
   const datasourceUrl = resolveAppDatasourceUrl(process.env);
 
   return new PrismaClientCtor({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(datasourceUrl)),
+    adapter: createPostgresAdapter(optionalDatabaseUrl(datasourceUrl), APP_SESSION_LIMITS),
     log:
       process.env['NODE_ENV'] === 'development'
         ? [{ emit: 'event', level: 'query' }, 'warn', 'error']
