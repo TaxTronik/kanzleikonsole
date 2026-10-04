@@ -535,6 +535,7 @@
         "packages/db/prisma/migrations/20260903008000_fido_mds_policy_binding/migration.sql",
         "packages/db/prisma/migrations/20260903009000_staff_recovery_role_floor/migration.sql",
         "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql",
+        "packages/db/prisma/migrations/20261004140000_audit_verify_checkpoint/migration.sql",
         "apps/web/src/instrumentation.ts",
         "apps/web/src/server/auth/staff-account-recovery-lock.ts",
         "apps/web/src/server/auth/webauthn.ts",
@@ -571,6 +572,7 @@
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/staff-webauthn-migration.test.ts",
         "packages/db/src/__tests__/staff-webauthn-rls.test.ts",
+        "packages/db/src/__tests__/audit-verify-checkpoint.test.ts",
         "apps/web/src/server/auth/__tests__/webauthn.test.ts",
         "apps/web/src/server/auth/__tests__/admin-break-glass.test.ts",
         "apps/web/src/server/auth/__tests__/staff-auth-state.test.ts",
@@ -873,6 +875,8 @@
         "packages/evidence/src/__tests__/hash-chain.test.ts",
         "packages/evidence/src/__tests__/canonical-json.property.test.ts",
         "packages/evidence/src/__tests__/canonical-json-keys.test.ts",
+        "packages/evidence/src/__tests__/chain-walk.test.ts",
+        "packages/evidence/src/__tests__/verify-checkpoint-db.test.ts",
         "apps/web/src/server/audit/__tests__/query.test.ts",
         "apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts",
         "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
@@ -953,6 +957,7 @@
         "packages/evidence/src/__tests__/rfc3161-verify.test.ts",
         "packages/evidence/src/__tests__/service-verifychain.test.ts",
         "packages/evidence/src/__tests__/service-seal-trust.test.ts",
+        "packages/evidence/src/__tests__/verify-checkpoint-db.test.ts",
         "apps/worker/src/jobs/__tests__/evidence-seal.test.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/rolling-anchor-card.test.tsx"
       ],
@@ -981,7 +986,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker-, Policy- und Laufzeitfehler. Checkpoints grenzen nur den konkret dokumentierten Altbefund ab; neue Fehler bleiben alarmiert und einmal beobachtete Spitzen werden monoton erhalten."
+        "summary": "Der tenantweise Prüflauf erkennt Kettenfehler, Spitzenverkürzungen sowie Anker-, Policy- und Laufzeitfehler. Täglich rechnet er nur den Zuwachs ab einem gegen die Kette abgeglichenen Prüf-Checkpoint nach; eine fortsetzbare Vollprüfung ab Genesis folgt frühestens sieben Tage nach der letzten und bei jedem manuellen Lauf. Recovery-Checkpoints grenzen nur den konkret dokumentierten Altbefund ab; neue Fehler bleiben alarmiert und einmal beobachtete Spitzen werden monoton erhalten."
       },
       "sources": [
         {
@@ -1004,13 +1009,25 @@
         "apps/web/src/app/staff/(protected)/admin/audit/actions.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-chain-status.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts",
-        "apps/web/src/server/audit/status.ts"
+        "apps/web/src/server/audit/status.ts",
+        "packages/evidence/src/verify-checkpoint.ts",
+        "packages/evidence/src/service.ts",
+        "packages/evidence/src/verify-status.ts",
+        "packages/evidence/src/index.ts",
+        "packages/db/prisma/migrations/20261004140000_audit_verify_checkpoint/migration.sql",
+        ".forgejo/workflows/ci.yml"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/audit-verify-check.test.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx",
-        "apps/web/src/server/audit/__tests__/status.test.ts"
+        "apps/web/src/server/audit/__tests__/status.test.ts",
+        "packages/evidence/src/__tests__/verify-checkpoint.test.ts",
+        "packages/evidence/src/__tests__/verify-checkpoint-db.test.ts",
+        "packages/evidence/src/__tests__/verify-checkpoint-ci.test.ts",
+        "packages/evidence/src/__tests__/chain-walk.test.ts",
+        "packages/db/src/__tests__/audit-verify-checkpoint.test.ts",
+        "packages/crypto/src/__tests__/audit-checkpoint-key.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -1019,7 +1036,7 @@
       "related_rules": ["AUDIT-HASH-CHAIN-001", "AUDIT-RFC3161-ANCHOR-001", "AUDIT-ARCHIVE-001"],
       "tags": ["audit", "verifikation", "alarm", "monitoring"],
       "path": "docs/fachkatalog/regeln/audit-und-assurance/audit-verify-alert-001-prueflauf-und-alarm.md",
-      "summary": "Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet."
+      "summary": "Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Täglich gleicht er den gespeicherten Prüf-Checkpoint mit der Kette ab und rechnet nur den Zuwachs nach; eine Vollprüfung ab Genesis folgt frühestens sieben Tage nach der letzten abgeschlossenen Vollprüfung und bei jedem manuellen Lauf. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze, einen nicht zur Kette passenden Prüf-Checkpoint sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet."
     },
     {
       "id": "BACKUP-DRILL-INTEGRITY-001",

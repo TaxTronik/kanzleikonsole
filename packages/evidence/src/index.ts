@@ -4,18 +4,37 @@
 
 export {
   EvidenceService,
+  DEFAULT_SEGMENT_LIMITS,
+  genesisCursor,
   type AuditEventInput,
   type RecordedEvent,
   type AnchorLatestOptions,
   type AnchorLatestResult,
   type VerificationResult,
+  type IncrementalVerificationInfo,
+  type ChainCursor,
+  type SegmentBounds,
+  type SegmentLimits,
+  type SegmentOutcome,
 } from './service';
+export {
+  verifyChainWithCheckpoints,
+  checkpointIntegrityProblem,
+  loadVerifyCheckpoint,
+  type CheckpointFindings,
+  type CheckpointedVerifyOptions,
+  type LoadedVerifyCheckpoint,
+  type StoredVerifyCheckpoint,
+  type VerifyCheckpointKind,
+  type VerifyTxRunner,
+} from './verify-checkpoint';
 export {
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   AUDIT_ANCHOR_STATUS_SETTING_KEY,
   BACKUP_DRILL_RESULT_SETTING_KEY,
   toPersistedVerifyResult,
+  type PersistedIncrementalInfo,
   type PersistedVerifyResult,
   type PersistedRecoveryCheckpoint,
   type PersistedAnchorStatus,

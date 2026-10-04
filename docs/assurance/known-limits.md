@@ -83,6 +83,32 @@ TSA-Antwort bleibt jedoch ein sichtbares, nicht vollständig eliminierbares
 Fenster. Bei TSA-/Netzausfall wächst der im Admin-Status überwachte Rückstand.
 Der zusätzliche tägliche Seal ersetzt diese rollende Verankerung nicht.
 
+Der tägliche Prüflauf rechnet nur den Zuwachs ab einem gespeicherten
+Prüf-Checkpoint nach. Eine Änderung an bereits geprüfter Historie, die den
+Checkpoint-Abgleich nicht berührt, meldet erst die nächste Vollprüfung; sie
+beginnt, sobald die letzte mindestens sieben Tage zurückliegt (im täglichen
+Takt in der Regel nach acht Tagen), oder sofort bei einem manuellen Prüflauf
+(`AUDIT-VERIFY-ALERT-001`). Ebenso verzögert erscheint ein geändertes
+Prüfergebnis bereits verarbeiteter Siegel und Anker, etwa nach einem Wechsel
+des TSA-Trust-Stores. Die Prüf-Checkpoints tragen eine HMAC-Prüfsumme mit einem
+aus dem Worker-Geheimnis abgeleiteten Schlüssel. Wer dieses Geheimnis und
+zugleich Owner-Rechte an der Datenbank besitzt, kann authentische, aber
+falsche Checkpoints schreiben und Befunde in bereits geprüfter Historie bis zu
+einer Prüfung ohne Checkpoint (`pnpm verify:chain`) verbergen. Ohne das
+Geheimnis bleiben nur wieder eingespielte ältere authentische Zeilen. Alle
+drei Zeilen einer laufenden Vollprüfung gemeinsam wieder eingespielt
+(Prüf-Checkpoint mit ihrer Kennung, Fortschritt kurz vor dem Abschluss und
+Ziel) können innerhalb der Dreitagesfrist einmalig ihren Abschluss
+vortäuschen; die nächste echte Vollprüfung erkennt eine Manipulation, der
+Gewinn ist auf etwa ein Intervall begrenzt. Wiederholt durch frühere, weniger
+als drei Tage alte Stände ersetzt, lässt sich eine laufende Vollprüfung
+erheblich verlangsamen, ohne dass „Vollprüfung stockt“ (drei Tage ohne
+Fortschritt) oder „Vollprüfung überfällig“ (21 Tage ohne laufende
+Vollprüfung) gemeldet wird. Die App-Rolle darf Tagessiegel anlegen; füllt sie
+die 1.000 gespeicherten Siegelbefunde mit ungültigen Siegeln, werden spätere
+echte Siegelbefunde nur gezählt und nicht einzeln aufgeführt, der Status
+bleibt negativ.
+
 ## 9. Open Source bedeutet nicht automatisch sicher
 
 Der Code ist offen einsehbar. Das ermöglicht unabhängige Prüfungen, bedeutet

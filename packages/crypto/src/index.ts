@@ -72,6 +72,21 @@ function deriveKeyV2(): Buffer {
   return Buffer.from(ab);
 }
 
+// AUDIT-VERIFY-ALERT-001: Schlüssel für die HMAC-Prüfsumme der Prüf-Checkpoints
+// der Audit-Kettenprüfung. Dasselbe IKM wie die Secret-Box, aber ein eigenes
+// Info-Label → unabhängiger Schlüssel (RFC 5869); kein neues Pflicht-Secret.
+const AUDIT_CHECKPOINT_MAC_INFO = Buffer.from('taxtronik-audit-verify-checkpoint-mac-v1', 'utf8');
+
+/**
+ * 32-Byte-Schlüssel für die HMAC-Prüfsumme der Prüf-Checkpoints
+ * (`audit_verify_checkpoint.mac`). Wechselt SECRET_BOX_KEY (bzw. ohne ihn
+ * AUTH_SECRET), werden bestehende Checkpoints einmalig als nicht authentisch
+ * gemeldet und die Kette ab Genesis neu geprüft.
+ */
+export function deriveAuditCheckpointMacKey(): Buffer {
+  return Buffer.from(hkdfSync('sha256', secretBoxIkm(), HKDF_SALT, AUDIT_CHECKPOINT_MAC_INFO, 32));
+}
+
 function deriveKeyFor(version: string): Buffer {
   if (version === 'v2') return deriveKeyV2();
   if (version === 'v1') return deriveKeyV1();

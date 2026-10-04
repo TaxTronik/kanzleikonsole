@@ -3,11 +3,14 @@
 //
 // Verifiziert die Hash-Chain pro Tenant. Bei Bruch → SYSTEM_AUDIT_BREAK
 // Notification an alle ADMIN/PARTNER. Idempotent (notify dedupliziert).
+// P-04: täglich der Zuwachs ab dem Prüf-Checkpoint, periodisch bzw. manuell
+// eine fortsetzbare Vollprüfung ab Genesis (packages/evidence/verify-checkpoint).
 // =============================================================================
 
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { deriveAuditCheckpointMacKey } from '@taxtronik/crypto';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { prismaOwner } from '../prisma-owner';
 import {
@@ -15,6 +18,8 @@ import {
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
   toPersistedVerifyResult,
+  verifyChainWithCheckpoints,
+  type CheckpointedVerifyOptions,
   type PersistedRecoveryCheckpoint,
   type PersistedVerifyResult,
   type VerificationResult,
@@ -31,11 +36,34 @@ import { timestampPortFor } from '../tsa-port';
 const requireExternalTsa =
   env.NODE_ENV === 'production' || process.env['EVIDENCE_REQUIRE_TSA'] === 'true';
 
-// P-1: verifyChain hasht JEDE audit_log-Zeile (SHA-256) — bei 500k+ Einträgen
-// dauert der Walk Minuten. Der Prisma-Default (5 s) riss hier P2028 lange
-// bevor der Lauf fertig war. Großzügiges Timeout nach dem Muster von
-// TX_OPTIONS (@taxtronik/db), nur für den Verify-Walk dimensioniert.
+// P-1/P-04: Der Prisma-Default (5 s) riss beim Walk P2028. Seit P-04 läuft
+// jeder Prüfabschnitt (höchstens 5.000 Einträge bzw. 250 Rolling-Anker) in
+// einer eigenen Transaktion; 120 s bleiben die großzügige Obergrenze je
+// Abschnitt und für die unveränderte Recovery-Teilkettenprüfung.
 const VERIFY_TX_OPTIONS = { timeout: 120_000, maxWait: 5_000 } as const;
+
+// P-04 (AUDIT-VERIFY-ALERT-001): Täglich wird nur der Zuwachs ab dem
+// Prüf-Checkpoint nachgerechnet. Liegt die letzte abgeschlossene Vollprüfung
+// mindestens diese Frist zurück — und bei jedem manuellen Prüflauf —, beginnt
+// eine Vollprüfung ab Genesis, die den Checkpoint bestätigen muss. Weil die
+// vorige Vollprüfung erst nach Laufbeginn abschließt, ist das im täglichen Takt
+// in der Regel der achte Lauf.
+export const FULL_VERIFY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+// Zeitbudget je Tenant und Lauf für die fortsetzbare Vollprüfung; der Rest
+// folgt im nächsten Lauf ab dem gespeicherten Fortschritt.
+export const FULL_VERIFY_BUDGET_MS = 10 * 60 * 1000;
+
+export function checkpointedVerifyOptions(manual: boolean): CheckpointedVerifyOptions {
+  return {
+    requireExternalTsa,
+    // HMAC-Schlüssel der Prüf-Checkpoints: HKDF aus dem vorhandenen
+    // Worker-Geheimnis (SECRET_BOX_KEY bzw. AUTH_SECRET), eigenes Info-Label.
+    checkpointKey: deriveAuditCheckpointMacKey(),
+    fullVerifyIntervalMs: FULL_VERIFY_INTERVAL_MS,
+    fullVerifyBudgetMs: FULL_VERIFY_BUDGET_MS,
+    forceFullVerify: manual,
+  };
+}
 
 // P-1: Ergebnis des Laufs persistieren (tenant_setting `audit_verify_result`)
 // — die Admin-Audit-Seite zeigt NUR dieses Ergebnis, statt bei jedem Render
@@ -225,6 +253,8 @@ interface AuditVerifyEntry {
   tenantId: string;
   ok: boolean;
   broken?: string;
+  /** Vollprüfung nach diesem Lauf noch nicht abgeschlossen. */
+  fullVerificationPending?: boolean;
 }
 
 interface TenantVerificationRun {
@@ -253,12 +283,18 @@ async function verifyTenantChain(
   tenantId: string,
   previous: PersistedVerifyResult | null,
   checkedAt: Date,
+  manual: boolean,
 ): Promise<TenantVerificationRun> {
   const timestampPort = await timestampPortFor(tenantId);
   const evidenceService = new EvidenceService(timestampPort);
-  const result = await prismaOwner.$transaction(
-    async (tx) => evidenceService.verifyChain(tx, tenantId, { requireExternalTsa }),
-    VERIFY_TX_OPTIONS,
+  // P-04: Zuwachs ab Prüf-Checkpoint plus fällige Vollprüfung, je Abschnitt
+  // eine Owner-Transaktion. Das Ergebnis hat dieselbe Bedeutung wie
+  // verifyChain (kumulierte Zähler, geprüfte Kettenspitze, Brüche).
+  const result = await verifyChainWithCheckpoints(
+    evidenceService,
+    (work) => prismaOwner.$transaction((tx) => work(tx), VERIFY_TX_OPTIONS),
+    tenantId,
+    checkpointedVerifyOptions(manual),
   );
   const checkpointValue = await withWorkerTenantContext(tenantId, (tx) =>
     readTenantSettingValue(tx, tenantId, AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY),
@@ -335,6 +371,93 @@ function evaluateTenantVerification(
   };
 }
 
+/**
+ * P-04: Fortschritt einer nach diesem Lauf noch nicht abgeschlossenen
+ * Vollprüfung (null = keine offen). Solange sie läuft, ist der Lauf nicht
+ * abgeschlossen: keine Abschlussmeldung, offene Bruchmeldungen bleiben.
+ */
+export function pendingFullVerification(
+  result: Pick<VerificationResult, 'incremental'>,
+): { auditId: bigint; targetAuditId: bigint } | null {
+  const running = result.incremental?.fullVerification;
+  return running ? { auditId: running.auditId, targetAuditId: running.targetAuditId } : null;
+}
+
+/** Hinweis an den Auslöser eines manuellen Laufs, solange die Vollprüfung läuft. */
+export function manualProgressMessage(progress: { auditId: bigint; targetAuditId: bigint }): {
+  title: string;
+  body: string;
+} {
+  return {
+    title: 'Audit-Vollpruefung laeuft',
+    body:
+      `Manuelle Pruefung: Zuwachs geprueft, Vollpruefung ab Genesis bis Audit-ID ` +
+      `${progress.auditId} von ${progress.targetAuditId}. Sie wird im naechsten Lauf ` +
+      'fortgesetzt; die Abschlussmeldung folgt erst danach.',
+  };
+}
+
+type NotificationTx = Parameters<Parameters<typeof withWorkerTenantContext>[1]>[0];
+
+async function notifyManualRequester(
+  tx: NotificationTx,
+  input: { tenantId: string; requestedByStaffId: string | null },
+  message: { title: string; body: string },
+): Promise<void> {
+  let recipients = input.requestedByStaffId
+    ? await tx.staffUser.findMany({
+        where: { tenantId: input.tenantId, id: input.requestedByStaffId, active: true },
+        select: { id: true },
+      })
+    : await tx.staffUser.findMany({
+        where: {
+          tenantId: input.tenantId,
+          active: true,
+          roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+        },
+        select: { id: true },
+      });
+  if (recipients.length === 0) {
+    recipients = await tx.staffUser.findMany({
+      where: {
+        tenantId: input.tenantId,
+        active: true,
+        roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+      },
+      select: { id: true },
+    });
+  }
+  for (const recipient of recipients) {
+    const existing = await tx.notification.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        staffId: recipient.id,
+        kind: 'SYSTEM_AUDIT_OK',
+        resourceType: 'audit_log',
+        readAt: null,
+      },
+    });
+    const data = {
+      tenantId: input.tenantId,
+      staffId: recipient.id,
+      kind: 'SYSTEM_AUDIT_OK' as const,
+      title: message.title,
+      body: message.body,
+      href: '/staff/admin/audit',
+      resourceType: 'audit_log',
+      resourceId: null,
+    };
+    if (existing) {
+      await tx.notification.update({
+        where: { id: existing.id },
+        data: { ...data, createdAt: new Date() },
+      });
+    } else {
+      await tx.notification.create({ data });
+    }
+  }
+}
+
 async function clearBreakAndNotifySuccess(input: {
   tenantId: string;
   manualSingleTenant: boolean;
@@ -348,67 +471,36 @@ async function clearBreakAndNotifySuccess(input: {
       data: { readAt: new Date() },
     });
     if (!input.manualSingleTenant) return;
-
-    let recipients = input.requestedByStaffId
-      ? await tx.staffUser.findMany({
-          where: { tenantId: input.tenantId, id: input.requestedByStaffId, active: true },
-          select: { id: true },
-        })
-      : await tx.staffUser.findMany({
-          where: {
-            tenantId: input.tenantId,
-            active: true,
-            roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
-          },
-          select: { id: true },
-        });
-    if (recipients.length === 0) {
-      recipients = await tx.staffUser.findMany({
-        where: {
-          tenantId: input.tenantId,
-          active: true,
-          roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
-        },
-        select: { id: true },
-      });
-    }
-    for (const recipient of recipients) {
-      const existing = await tx.notification.findFirst({
-        where: {
-          tenantId: input.tenantId,
-          staffId: recipient.id,
-          kind: 'SYSTEM_AUDIT_OK',
-          resourceType: 'audit_log',
-          readAt: null,
-        },
-      });
-      const data = {
-        tenantId: input.tenantId,
-        staffId: recipient.id,
-        kind: 'SYSTEM_AUDIT_OK' as const,
-        title: input.recovered
-          ? 'Audit-Chain mit Recovery-Checkpoint geprueft'
-          : 'Audit-Chain intakt',
-        body: input.recovered
-          ? `Manuelle Pruefung abgeschlossen: historischer Bruch bleibt abgegrenzt, ${input.result.checked} Audit-Eintraege geprueft.`
-          : `Manuelle Pruefung abgeschlossen: ${input.result.checked} Audit-Eintraege und ${input.result.sealsChecked} Siegel geprueft.`,
-        href: '/staff/admin/audit',
-        resourceType: 'audit_log',
-        resourceId: null,
-      };
-      if (existing) {
-        await tx.notification.update({
-          where: { id: existing.id },
-          data: { ...data, createdAt: new Date() },
-        });
-      } else {
-        await tx.notification.create({ data });
-      }
-    }
+    await notifyManualRequester(tx, input, {
+      title: input.recovered
+        ? 'Audit-Chain mit Recovery-Checkpoint geprueft'
+        : 'Audit-Chain intakt',
+      body: input.recovered
+        ? `Manuelle Pruefung abgeschlossen: historischer Bruch bleibt abgegrenzt, ${input.result.checked} Audit-Eintraege geprueft.`
+        : `Manuelle Pruefung abgeschlossen: ${input.result.checked} Audit-Eintraege und ${input.result.sealsChecked} Siegel geprueft.`,
+    });
   }).catch((error) =>
     log.warn(
       { tenantId: input.tenantId, err: (error as Error).message },
       'audit-verify: clear-notification failed',
+    ),
+  );
+}
+
+/** Manueller Lauf mit noch laufender Vollprüfung: nur Fortschritt melden. */
+async function notifyFullVerificationRunning(input: {
+  tenantId: string;
+  manualSingleTenant: boolean;
+  requestedByStaffId: string | null;
+  progress: { auditId: bigint; targetAuditId: bigint };
+}): Promise<void> {
+  if (!input.manualSingleTenant) return;
+  await withWorkerTenantContext(input.tenantId, (tx) =>
+    notifyManualRequester(tx, input, manualProgressMessage(input.progress)),
+  ).catch((error) =>
+    log.warn(
+      { tenantId: input.tenantId, err: (error as Error).message },
+      'audit-verify: progress-notification failed',
     ),
   );
 }
@@ -464,7 +556,12 @@ async function processAuditVerifyTenant(input: {
   try {
     const checkedAt = new Date();
     previous = await loadPreviousVerifyResult(input.tenantId);
-    const run = await verifyTenantChain(input.tenantId, previous, checkedAt);
+    const run = await verifyTenantChain(
+      input.tenantId,
+      previous,
+      checkedAt,
+      input.manualSingleTenant,
+    );
     const outcome = evaluateTenantVerification(previous, run, input.requestId);
     await persistVerifyResult(input.tenantId, outcome.persisted);
 
@@ -484,6 +581,13 @@ async function processAuditVerifyTenant(input: {
       };
     }
 
+    const progress = pendingFullVerification(run.result);
+    if (progress) {
+      // Vollprüfung nicht abgeschlossen: keine Abschlussmeldung, offene
+      // Bruchmeldungen bleiben bis zu einem abgeschlossenen sauberen Lauf.
+      await notifyFullVerificationRunning({ ...input, progress });
+      return { tenantId: input.tenantId, ok: true, fullVerificationPending: true };
+    }
     await clearBreakAndNotifySuccess({
       tenantId: input.tenantId,
       manualSingleTenant: input.manualSingleTenant,
@@ -493,6 +597,8 @@ async function processAuditVerifyTenant(input: {
     });
     return { tenantId: input.tenantId, ok: true };
   } catch (error) {
+    // P-04: Kein Lauf wird übersprungen. Ein paralleler Lauf desselben Tenants
+    // wird im Prüflauf selbst übernommen; jede Exception ist ein Alarm.
     return handleTenantVerifyError({ ...input, previous, error });
   }
 }

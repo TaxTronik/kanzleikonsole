@@ -217,6 +217,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Die tägliche Integritätsprüfung der Audit-Kette rechnet nur noch
+  die seit dem letzten Prüf-Checkpoint hinzugekommenen Einträge, Siegel und
+  Rolling-Anker nach, in Abschnitten von höchstens 5.000 Einträgen statt in
+  einer einzigen 120-Sekunden-Transaktion; TSA-Antworten werden in Blöcken
+  geladen. Jeder Lauf prüft den Checkpoint vorher gegen die gespeicherte
+  Kette. Mindestens alle sieben Tage und bei jedem manuellen Prüflauf folgt
+  eine fortsetzbare Vollprüfung ab Genesis, die den Checkpoint bestätigen
+  muss. Änderungen an bereits geprüfter Historie meldet erst die nächste
+  Vollprüfung (in der Regel nach acht Tagen, sofort bei manuellem Prüflauf).
+  Alarme, Benachrichtigungstexte und Audit-Aktionen bleiben unverändert
+  (`AUDIT-VERIFY-ALERT-001`, `AUDIT-HASH-CHAIN-001`).
 - **[Scope]** Die tägliche Kettenprüfung und die Prüfung eines
   Wiederherstellungssegments nutzen denselben Kettendurchlauf und dieselbe
   Siegelprüfung statt zweier Kopien. Ergebnisse und Bruchmeldungen bleiben
@@ -788,6 +799,16 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Prüf-Checkpoints der Audit-Kettenprüfung liegen in der neuen
+  Tabelle `audit_verify_checkpoint`, die die Anwendung nur lesen darf, und
+  tragen eine HMAC-Prüfsumme mit eigenem, aus dem Secret-Box-Schlüssel
+  abgeleiteten Schlüssel. Ein fehlender, verfälschter oder durch einen
+  älteren Stand ersetzter Checkpoint gilt als Manipulationsverdacht und
+  erzwingt eine Neuprüfung ab Genesis. Eine Vollprüfung ohne Fortschritt über
+  drei Tage meldet „Vollprüfung stockt“ und beginnt neu; läuft keine, meldet
+  jeder Lauf nach 21 Tagen ohne abgeschlossene Vollprüfung „Vollprüfung
+  überfällig“. Siegel- und Ankerbefunde halten die Prüfung nicht mehr an,
+  sondern werden bei jedem Lauf erneut gemeldet (`AUDIT-VERIFY-ALERT-001`).
 - **[Scope]** Eigenes kontogebundenes TOTP-/Backup-Code-Budget verhindert
   Umgehungen durch reine Passwortprüfungen und wechselnde IPs. Magic-Link-
   Vorschau und Bestätigung werden an den tatsächlichen Einstiegspunkten

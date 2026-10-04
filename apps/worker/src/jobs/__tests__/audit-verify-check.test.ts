@@ -13,6 +13,9 @@ vi.mock('bullmq', () => ({
 vi.mock('@taxtronik/config', () => ({
   env: { AUDIT_VERIFY_REQUIRE_EXTERNAL_TSA: false, TSA_URL: '' },
 }));
+vi.mock('@taxtronik/crypto', () => ({
+  deriveAuditCheckpointMacKey: () => Buffer.alloc(32, 7),
+}));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {},
   LocalTimestampAdapter: class {},
@@ -28,9 +31,14 @@ vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import {
+  FULL_VERIFY_BUDGET_MS,
+  FULL_VERIFY_INTERVAL_MS,
   acceptsPreviousTailRecovery,
+  checkpointedVerifyOptions,
   detectAnchorTailTruncation,
   detectTailTruncation,
+  manualProgressMessage,
+  pendingFullVerification,
   preserveMonotonicId,
 } from '../audit-verify-check';
 
@@ -128,6 +136,40 @@ describe('AUDIT-VERIFY-ALERT-001: persistierte Monotonie und Recovery', () => {
         createdAt: '2026-08-31T08:00:00.000Z',
       } as never),
     ).toBe(false);
+  });
+
+  it('prüft täglich ab dem Prüf-Checkpoint und erzwingt bei manuellen Läufen die Vollprüfung', () => {
+    // P-04: fortsetzbare Vollprüfung ab Genesis, sobald die letzte mindestens
+    // sieben Tage zurückliegt; zehn Minuten Budget je Lauf.
+    expect(FULL_VERIFY_INTERVAL_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(FULL_VERIFY_BUDGET_MS).toBe(10 * 60 * 1000);
+    expect(checkpointedVerifyOptions(false)).toEqual({
+      requireExternalTsa: false,
+      checkpointKey: Buffer.alloc(32, 7),
+      fullVerifyIntervalMs: FULL_VERIFY_INTERVAL_MS,
+      fullVerifyBudgetMs: FULL_VERIFY_BUDGET_MS,
+      forceFullVerify: false,
+    });
+    expect(checkpointedVerifyOptions(true).forceFullVerify).toBe(true);
+  });
+
+  it('meldet eine nicht abgeschlossene Vollprüfung als laufend statt abgeschlossen', () => {
+    expect(pendingFullVerification({})).toBeNull();
+    expect(
+      pendingFullVerification({
+        incremental: {
+          mode: 'incremental',
+          startAuditId: 10n,
+          rowsHashed: 5,
+          lastFullVerifiedAt: null,
+          fullVerification: { startedAt: new Date(), auditId: 70n, targetAuditId: 900n },
+        },
+      }),
+    ).toEqual({ auditId: 70n, targetAuditId: 900n });
+    const message = manualProgressMessage({ auditId: 70n, targetAuditId: 900n });
+    expect(message.title).toBe('Audit-Vollpruefung laeuft');
+    expect(message.body).toContain('bis Audit-ID 70 von 900');
+    expect(message.body).not.toContain('abgeschlossen:');
   });
 
   it('grenzt Lauf-Exceptions nicht per Checkpoint als Recovery ab', () => {

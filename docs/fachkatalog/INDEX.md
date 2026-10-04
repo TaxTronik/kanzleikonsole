@@ -48,7 +48,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
-- Kurzfassung: Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet.
+- Kurzfassung: Ein täglicher und manuell auslösbarer Worker prüft die Audit-Kette jedes Kanzlei-Tenants. Täglich gleicht er den gespeicherten Prüf-Checkpoint mit der Kette ab und rechnet nur den Zuwachs nach; eine Vollprüfung ab Genesis folgt frühestens sieben Tage nach der letzten abgeschlossenen Vollprüfung und bei jedem manuellen Lauf. Er erkennt Hash- oder Vorgängerfehler, eine gegenüber dem letzten erfolgreichen Lauf verkürzte lokale oder externe Spitze, einen nicht zur Kette passenden Prüf-Checkpoint sowie Fehler bei Versiegelung, Ankerkette und externer TSA-Policy. Das Ergebnis wird persistiert und bei Abweichungen an interne Admin-/Partner-Rollen gemeldet.
 
 ### [BACKUP-DRILL-INTEGRITY-001 — Automatische Restore-Drills nur mit vorab verifizierten Dumpbytes ausführen](regeln/audit-und-assurance/backup-drill-integrity-001-verifizierte-laufkopie.md)
 

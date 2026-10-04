@@ -56,6 +56,7 @@ model Tenant {
   auditAnchors                   AuditAnchor[]
   auditLogs                      AuditLog[]
   auditSeals                     AuditSeal[]
+  auditVerifyCheckpoints         AuditVerifyCheckpoint[]
   backupRecords                  BackupRecord[]
   bwaPeriods                     BwaPeriod[]
   bwaPlans                       BwaPlan[]
@@ -2433,6 +2434,40 @@ model AuditAnchor {
   @@index([tenantId, id])
   @@index([tenantId, tsaGenTime])
   @@map("audit_anchor")
+}
+
+// P-04: Owner-only Prüf-Checkpoints der Audit-Kettenprüfung (abgeleiteter
+// Zustand, kein Beweismittel). kind: INCREMENTAL (tägliche Zuwachsprüfung),
+// FULL (laufende fortsetzbare Vollprüfung), FULL_TARGET (bei Start der
+// Vollprüfung eingefrorener INCREMENTAL-Stand). CHECK-Constraints, RLS und die
+// SELECT-only-Rechte der App-Rolle stehen in der Migration.
+model AuditVerifyCheckpoint {
+  tenantId             String    @map("tenant_id") @db.Uuid
+  kind                 String
+  auditId              BigInt    @map("audit_id")
+  auditHash            Bytes     @map("audit_hash")
+  auditCount           BigInt    @map("audit_count")
+  sealId               BigInt    @map("seal_id")
+  sealsChecked         BigInt    @map("seals_checked")
+  sealsTrustAnchored   BigInt?   @map("seals_trust_anchored")
+  anchorId             BigInt    @map("anchor_id")
+  anchorHash           Bytes     @map("anchor_hash")
+  anchorTopAuditId     BigInt    @map("anchor_top_audit_id")
+  anchorsChecked       BigInt    @map("anchors_checked")
+  anchorsTrustAnchored BigInt    @map("anchors_trust_anchored")
+  startedAt            DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  verifiedAt           DateTime  @default(now()) @map("verified_at") @db.Timestamptz(6)
+  completedAt          DateTime? @map("completed_at") @db.Timestamptz(6)
+  /// Siegel-/Ankerbefunde bis zur Position (werden in jedem Lauf erneut gemeldet).
+  findings             Json
+  /// FULL/FULL_TARGET: Kennung ihrer Vollprüfung; INCREMENTAL: laufende Vollprüfung oder null.
+  sweepId              String?   @map("sweep_id") @db.Uuid
+  /// HMAC-SHA256 über alle Felder (Schlüssel per HKDF aus dem Worker-Geheimnis).
+  mac                  Bytes
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, kind])
+  @@map("audit_verify_checkpoint")
 }
 
 model Request {

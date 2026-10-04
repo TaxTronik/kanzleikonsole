@@ -68,6 +68,18 @@ export interface PersistedVerifyResult {
    *  prüfbarer Antwort. Optional, weil vor Einführung geschriebene Ergebnisse
    *  das Feld nicht tragen. */
   tsaMode?: 'local' | 'rfc3161';
+  /** P-04: Prüfumfang des Laufs bei checkpointgestützter Prüfung (Transparenz:
+   *  `checked` bleibt die kumulierte Zahl ab Genesis, `rowsHashed` die in
+   *  diesem Lauf nachgerechneten Einträge). Fehlt bei älteren Ergebnissen. */
+  incremental?: PersistedIncrementalInfo;
+}
+
+export interface PersistedIncrementalInfo {
+  mode: 'incremental' | 'full';
+  startAuditId: string | null;
+  rowsHashed: number;
+  lastFullVerifiedAt: string | null;
+  fullVerification: { startedAt: string; auditId: string; targetAuditId: string } | null;
 }
 
 export interface PersistedRecoveryCheckpoint {
@@ -137,5 +149,24 @@ export function toPersistedVerifyResult(
     lastAnchoredAuditId: r.lastAnchoredAuditId === null ? null : String(r.lastAnchoredAuditId),
     unanchoredEntries: r.unanchoredEntries,
     oldestUnanchoredAt: r.oldestUnanchoredAt?.toISOString() ?? null,
+    ...(r.incremental ? { incremental: toPersistedIncrementalInfo(r.incremental) } : {}),
+  };
+}
+
+function toPersistedIncrementalInfo(
+  info: NonNullable<VerificationResult['incremental']>,
+): PersistedIncrementalInfo {
+  return {
+    mode: info.mode,
+    startAuditId: info.startAuditId === null ? null : String(info.startAuditId),
+    rowsHashed: info.rowsHashed,
+    lastFullVerifiedAt: info.lastFullVerifiedAt?.toISOString() ?? null,
+    fullVerification: info.fullVerification
+      ? {
+          startedAt: info.fullVerification.startedAt.toISOString(),
+          auditId: String(info.fullVerification.auditId),
+          targetAuditId: String(info.fullVerification.targetAuditId),
+        }
+      : null,
   };
 }

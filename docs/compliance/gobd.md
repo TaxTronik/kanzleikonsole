@@ -92,7 +92,12 @@ aber nicht durch einen globalen Schreib-Lock vergrößert.
 - **Täglicher automatischer Lauf** über `audit-verify-check`-Worker um
   02:45 UTC (siehe [`apps/worker/src/scheduler.ts`](../../apps/worker/src/scheduler.ts)).
   Bei Hash-Bruch wird eine `SYSTEM_AUDIT_BREAK`-Notification an alle
-  ADMIN/PARTNER versendet (idempotent pro `auditId`).
+  ADMIN/PARTNER versendet (idempotent pro `auditId`). Der Lauf gleicht einen
+  gespeicherten Prüf-Checkpoint mit der Kette ab und rechnet nur den Zuwachs
+  nach; die vollständige Nachrechnung ab Genesis folgt, sobald die letzte
+  mindestens sieben Tage zurückliegt, und bei jedem manuellen Lauf. Änderungen
+  an bereits geprüfter Historie, die den Checkpoint-Abgleich nicht berühren,
+  meldet erst diese Vollprüfung (`AUDIT-VERIFY-ALERT-001`).
 - Das Prüf-Ergebnis wird persistiert (`tenant_setting`-Key
   `audit_verify_result`) und auf `/staff/admin/audit` angezeigt; der
   „Jetzt prüfen"-Button stößt dort einen neuen Verifikationslauf als

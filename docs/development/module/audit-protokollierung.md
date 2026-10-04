@@ -25,8 +25,44 @@ Tagesversiegelung und unveränderlicher Langzeit-Archivierung.
 5. `verifyChain()` rechnet jede Zeile nach (cursor-basiert, 1000er-Chunks)
    und prüft Anchor-Kette und Tagesversiegelungen kryptografisch (pkijs) gegen den
    **rekonstruierten** Spitzen-Hash; `requireExternalTsa` macht
-   Self-Timestamps in Produktion zum Verstoß.
-6. Wöchentliche Archiv-Rotation: deterministische NDJSON-Segmente in den
+   Self-Timestamps in Produktion zum Verstoß. TSA-Antworten der Anker werden
+   blockweise geladen. CLI, Prüfer-Link und Backup-Drill nutzen diese
+   checkpointfreie Vollprüfung.
+6. Tägliche Prüfung mit Prüf-Checkpoint (`verify-checkpoint.ts`, Tabelle
+   `audit_verify_checkpoint`, Schreiben nur Owner, App-Rolle nur SELECT):
+   Der Worker prüft zuerst, ob der gespeicherte Stand noch zur Kette passt
+   (Zeile und Hash an seiner Position, Anzahl Einträge/Siegel/Anker, letzter
+   Anker), und rechnet dann nur den Zuwachs nach — abschnittsweise
+   (`verifyChainSegment`, höchstens 5.000 Einträge bzw. 250 Anker je
+   Transaktion), Fortschritt nach jedem Abschnitt gespeichert. Nachträglich
+   angelegte Siegel/Anker unterhalb des Checkpoints werden per
+   Einzel-Nachrechnung geprüft. Sobald die letzte abgeschlossene Vollprüfung
+   mindestens 7 Tage zurückliegt (im täglichen Takt in der Regel im achten
+   Lauf), und bei jedem manuellen Lauf folgt eine fortsetzbare Vollprüfung ab
+   Genesis (10 Minuten Budget je Lauf), die den beim Start eingefrorenen
+   Checkpoint exakt bestätigen muss.
+   Jede Abweichung ist ein negativer Befund; ein nicht bestätigter Checkpoint
+   wird verworfen und die Kette ab Genesis neu geprüft. Siegel- und
+   Ankerbefunde stoppen die Prüfung wie bei `verifyChain` nicht; der
+   Checkpoint hält sie (`findings`) und jeder Lauf meldet sie erneut, ein
+   Kettenbruch hat Vorrang. Jede Zeile trägt eine HMAC-SHA256-Prüfsumme
+   (`mac`, Schlüssel per HKDF aus `SECRET_BOX_KEY` bzw. `AUTH_SECRET`,
+   `deriveAuditCheckpointMacKey`); fehlende/falsche Prüfsumme oder
+   Zeitstempel in der Zukunft gelten als Manipulationsverdacht. Fortgeschrieben
+   wird per Compare-and-set, jeder Schreibvorgang setzt `verified_at` streng
+   später: Ein parallel überholter Lauf übernimmt den authentischen, später
+   geschriebenen Stand und prüft weiter (kein Überspringen); eine während des
+   Laufs gelöschte, verfälschte oder durch einen älteren Stand ersetzte Zeile
+   ist Manipulationsverdacht. Die Kennung der laufenden Vollprüfung steht
+   prüfsummengeschützt im Zuwachs-Checkpoint; ein fehlender, fremder oder
+   wieder eingespielter Vollprüfungsstand ist ein Befund. Eine laufende
+   Vollprüfung ohne Fortschritt seit drei Tagen meldet „Vollprüfung stockt“
+   und beginnt neu; ohne laufende Vollprüfung meldet jeder Lauf mehr als
+   21 Tage nach der letzten abgeschlossenen „Vollprüfung überfällig“. Siegel mit Spitze jenseits des Kettenendes zählen und melden
+   wie bei `verifyChain`, gehen aber nicht in den Prüfstand ein; gespeichert
+   werden je Art die 1.000 Befunde mit den niedrigsten IDs. Ein manueller Lauf
+   meldet bis zum Abschluss der Vollprüfung nur ihren Fortschritt.
+7. Wöchentliche Archiv-Rotation: deterministische NDJSON-Segmente in den
    GOBD-Bucket (Object-Lock COMPLIANCE 10 J.), Segment-Verifikation mit
    derselben Hash-Funktion (keine Record/Verify-Drift). Vorhandene externe
    RFC-3161-Tokens werden gegen den tatsächlichen Datei-Hash und konfigurierte
@@ -56,8 +92,9 @@ Regressionen und Property-Tests bilden diese Grenzen ab
 ### Laufende Dienste und Ansichten
 
 - Worker: `audit-anchor` (alle 2 Sekunden, Rechnung/GwG bevorzugt, Backoff),
-  `evidence-seal` (02:30 UTC), `audit-verify-check` (02:45 UTC,
-  persistiert Ergebnis als `tenant_setting`, Notification an Admins bei
+  `evidence-seal` (02:30 UTC), `audit-verify-check` (02:45 UTC, Zuwachs ab
+  Prüf-Checkpoint plus fällige Vollprüfung, persistiert Ergebnis als
+  `tenant_setting` inkl. Prüfumfang `incremental`, Notification an Admins bei
   Bruch **und bei einer Exception des Prüflaufs**), `audit-rotate` (So 03:00 UTC). HARD-Mode (DB-Kürzung) bewusst
   nicht implementiert.
 - Admin-UI: getrennte Status-Karten für lokalen Verify und externen
@@ -125,9 +162,18 @@ Kettenabbruch oder Lauf-Exception monoton erhalten (`AUDIT-VERIFY-ALERT-001`).
 | Jede record-Action hat ein Label                                           | labels.ts                       | `audit-label-coverage.test.ts` (AST-Guard)                                  |
 | Restore-Beweis auf wiederhergestellter DB                                  | backup-drill + restore-selftest | CI-Job `restore` + Drill-E2E (verifiziert 2026-06-10)                       |
 | Monotone Spitzen, Recovery-Abgrenzung und Exception-Alarm                  | audit-verify-check              | `audit-verify-check.test.ts` (`AUDIT-VERIFY-ALERT-001`)                     |
+| Checkpoint-Prüfung gleichwertig zu verifyChain, Manipulation erkannt       | verify-checkpoint/service       | `verify-checkpoint-db.test.ts`, `audit-verify-checkpoint.test.ts`           |
 
 ## Bekannte Grenzen
 
 `audit_log` wächst unbegrenzt (SOFT-Rotation behält DB-Zeilen); Prüfer-Link
 nur global widerrufbar; `audit-verify-check` prüft TSA-Policy gegen die
-ENV-/Default-TSA (bewusst — verify validiert nur).
+ENV-/Default-TSA (bewusst — verify validiert nur). Eine Manipulation unterhalb
+des Prüf-Checkpoints, die weder dessen Zeile noch die Zähler verändert, findet
+erst die nächste Vollprüfung (in der Regel im achten täglichen Lauf nach der
+letzten, plus deren Laufzeit; ein manueller Lauf startet sie sofort); ebenso
+ein geändertes Prüfergebnis bereits verarbeiteter Siegel/Anker (z. B.
+Trust-Store-Wechsel). Wer Worker-Geheimnis und Owner-Rechte besitzt, kann
+authentische, aber falsche Checkpoints schreiben. Liegt ein
+Bruch vor einem Recovery-Checkpoint, wird die Recovery-Teilkette weiterhin bei
+jedem Lauf vollständig nachgerechnet.

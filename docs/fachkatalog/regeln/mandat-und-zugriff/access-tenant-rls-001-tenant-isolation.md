@@ -91,6 +91,7 @@ code_refs:
   - packages/db/prisma/migrations/20260903008000_fido_mds_policy_binding/migration.sql
   - packages/db/prisma/migrations/20260903009000_staff_recovery_role_floor/migration.sql
   - packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql
+  - packages/db/prisma/migrations/20261004140000_audit_verify_checkpoint/migration.sql
   - apps/web/src/instrumentation.ts
   - apps/web/src/server/auth/staff-account-recovery-lock.ts
   - apps/web/src/server/auth/webauthn.ts
@@ -126,6 +127,7 @@ test_refs:
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/staff-webauthn-migration.test.ts
   - packages/db/src/__tests__/staff-webauthn-rls.test.ts
+  - packages/db/src/__tests__/audit-verify-checkpoint.test.ts
   - apps/web/src/server/auth/__tests__/webauthn.test.ts
   - apps/web/src/server/auth/__tests__/admin-break-glass.test.ts
   - apps/web/src/server/auth/__tests__/staff-auth-state.test.ts
@@ -374,6 +376,14 @@ ersetzen keinen Parallelitätstest gegen einen echten PostgreSQL-Server.
 serialisiert Queries auf der Verbindung. Die Migration aktiviert und erzwingt
 RLS. `verify-rls.ts` inventarisiert Tabellen, RLS-Flags und Policies; der
 Cross-Tenant-Test verwendet getrennte App-Sessions für Lesen und Mutieren.
+
+Die Prüf-Checkpoints der Audit-Kettenprüfung (`audit_verify_checkpoint`,
+`AUDIT-VERIFY-ALERT-001`) sind tenantgebunden und durch ENABLE/FORCE RLS sowie
+eine Tenant-Policy geschützt. Die App-Rolle erhält nur SELECT; Anlegen,
+Fortschreiben und Löschen bleiben der Owner-Verbindung des Prüf-Workers
+vorbehalten, deren Abfragen den Tenant ausdrücklich binden. Der Migrationstest
+belegt Rechte, erzwungene RLS und das Lesen ausschließlich des eigenen
+Checkpoints im Tenantkontext.
 
 Persönliche RSS-Abonnements verwenden zusätzlich zur tenantweiten RLS bei
 Aktivierung und Löschung die aus der Sitzung abgeleitete Mitarbeiter-ID.

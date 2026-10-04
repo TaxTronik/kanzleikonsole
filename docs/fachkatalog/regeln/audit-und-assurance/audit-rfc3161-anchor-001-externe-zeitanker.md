@@ -46,6 +46,7 @@ test_refs:
   - packages/evidence/src/__tests__/rfc3161-verify.test.ts
   - packages/evidence/src/__tests__/service-verifychain.test.ts
   - packages/evidence/src/__tests__/service-seal-trust.test.ts
+  - packages/evidence/src/__tests__/verify-checkpoint-db.test.ts
   - apps/worker/src/jobs/__tests__/evidence-seal.test.ts
   - apps/web/src/app/staff/(protected)/admin/audit/__tests__/rolling-anchor-card.test.tsx
 feature_refs:
@@ -132,6 +133,14 @@ Tagesspitzen-Hash in Tagesversiegelungen. Die Worker führen Netzwerkaufrufe
 außerhalb der Fachtransaktion aus und persistieren Erfolg oder Rückstand
 explizit.
 
+Die Kettenprüfung lädt die gespeicherten TSA-Antworten der Rolling Anchors
+blockweise statt vollständig auf einmal. Der tägliche Prüflauf
+(`AUDIT-VERIFY-ALERT-001`) verifiziert kryptografisch nur die seit dem
+Prüf-Checkpoint neu gespeicherten Anker einschließlich ihrer Verkettung mit dem
+zuletzt geprüften Anker; Anzahl und letzter geprüfter Anker werden in jedem
+Lauf abgeglichen. Alle Anker werden erst in der periodischen Vollprüfung erneut
+kryptografisch geprüft.
+
 Die Audit-Oberfläche stellt den gespeicherten externen Rolling-Anker neben
 der lokalen Kettenspitze dar. Ohne Anker bleibt die Anzeige neutral. Ein
 grünes Symbol setzt einen vorhandenen, als vertrauensverankert gespeicherten
@@ -159,7 +168,13 @@ erreichbare TSA und korrekt gepflegte Trust Roots bleibt lediglich lokale
 Evidenz. Der Produktionsmodus meldet diesen Zustand als Policy-Verstoß, ersetzt
 ihn aber nicht durch einen behaupteten externen Nachweis. Eine laufende
 OCSP-/CRL-Abfrage und eine umfassende Langzeitvalidierung nach Ende der
-Zertifikatsgültigkeit sind in diesem Prüfpfad nicht implementiert.
+Zertifikatsgültigkeit sind in diesem Prüfpfad nicht implementiert. Eine
+Änderung an einem bereits geprüften Anker, die weder die Zahl der Anker noch den
+zuletzt geprüften Anker berührt, meldet erst die nächste Vollprüfung
+(`AUDIT-VERIFY-ALERT-001`). Dasselbe gilt, wenn sich das Prüfergebnis bereits
+geprüfter Anker oder Tagesversiegelungen ohne Datenänderung ändert, etwa nach
+einem Wechsel des TSA-Trust-Stores; bis dahin bleiben die früheren Befunde
+maßgeblich.
 
 ## Fachliche Prüffragen
 
@@ -176,7 +191,10 @@ Zertifikatsgültigkeit sind in diesem Prüfpfad nicht implementiert.
 Die RFC-Fixture- und Negativtests prüfen Imprint, Signatur, Zertifikatskette,
 EKU und Trust-Policy. Service- und Worker-Tests prüfen die Bindung an die
 rekonstruierte Kettenspitze, lokales gegenüber externem Vertrauen, Backfill und
-Fehlerbehandlung.
+Fehlerbehandlung. Die PostgreSQL-Regression der Checkpoint-Prüfung belegt das
+blockweise Laden der Ankerantworten, die Prüfung nachträglicher Anker gegen die
+einzeln nachgerechnete Spitze und die Erkennung eines unterhalb des
+Checkpoints gelöschten Ankers.
 
 Transportregressionen verwenden echte Web-Streams bei simulierter HTTP-Grenze
 und prüfen begrenztes Vorab-Lesen, Abbruchweitergabe, Timeout, vollständige

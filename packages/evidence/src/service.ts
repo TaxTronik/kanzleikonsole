@@ -16,6 +16,8 @@
 //
 // Verifikation (CLI / Wirtschaftsprüfer):
 //   verifyChain(tenantId) rechnet beide Ketten nach und prüft TSA-Stempel.
+//   Der tägliche Worker prüft abschnittsweise ab Prüf-Checkpoints
+//   (verifyChainSegment, verify-checkpoint.ts) mit periodischer Vollprüfung.
 // =============================================================================
 
 import { createHash } from 'node:crypto';
@@ -25,6 +27,9 @@ import { anchorGenesisHash, anchorPayload, anchorTokenHash } from './anchor';
 import type { TimestampPort } from './ports/timestamp';
 
 type Tx = Pick<PrismaClient, '$queryRaw' | '$queryRawUnsafe' | '$executeRaw'>;
+
+/** Transaktions-Client der Evidence-Funktionen (Prisma-Client oder interaktive TX). */
+export type EvidenceTx = Tx;
 
 const GENESIS_PREFIX = Buffer.from('taxtronik-genesis:', 'utf8');
 
@@ -104,6 +109,29 @@ export interface VerificationResult {
   tsaMode: 'local' | 'rfc3161';
   /** Policy-Verstöße (z. B. Self-Timestamp im Produktivmodus). */
   policyBreaks: string[];
+  /**
+   * P-04: nur bei der checkpointgestützten Prüfung (verifyChainWithCheckpoints)
+   * gesetzt — weist aus, welcher Teil in diesem Lauf neu gehasht wurde und wann
+   * die Kette zuletzt vollständig ab Genesis bestätigt wurde.
+   */
+  incremental?: IncrementalVerificationInfo;
+}
+
+export interface IncrementalVerificationInfo {
+  /**
+   * 'full': In diesem Lauf wurde die Kette lückenlos ab Genesis bestätigt.
+   * 'incremental': Neu gehasht wurde nur der Zuwachs ab dem Prüf-Checkpoint
+   * (plus ggf. ein Abschnitt einer laufenden Vollprüfung).
+   */
+  mode: 'incremental' | 'full';
+  /** Prüf-Checkpoint bei Laufbeginn (null = Prüfung begann bei Genesis). */
+  startAuditId: bigint | null;
+  /** In diesem Lauf nachgerechnete Audit-Einträge (Zuwachs und Vollprüfung). */
+  rowsHashed: number;
+  /** Abschluss der letzten vollständigen Prüfung ab Genesis. */
+  lastFullVerifiedAt: Date | null;
+  /** Fortschritt einer noch nicht abgeschlossenen Vollprüfung. */
+  fullVerification: { startedAt: Date; auditId: bigint; targetAuditId: bigint } | null;
 }
 
 export interface VerifyChainOptions {
@@ -119,14 +147,155 @@ export interface VerifyChainOptions {
   maxUnanchoredAgeMs?: number;
 }
 
-interface RollingAnchorRow {
+/** Rolling-Anker ohne TSA-Antwort (P-04: Blobs werden blockweise nachgeladen). */
+interface RollingAnchorMeta {
   id: bigint;
   from_audit_id: bigint;
   top_audit_id: bigint;
   top_hash: Buffer;
   previous_anchor_hash: Buffer;
   anchor_hash: Buffer;
+}
+
+interface RollingAnchorRow extends RollingAnchorMeta {
   tsa_response_blob: Buffer;
+}
+
+/**
+ * P-04: Kettenposition, an der eine Prüfung fortgesetzt werden kann (persistiert
+ * als Prüf-Checkpoint in `audit_verify_checkpoint`). Zähler laufen ab Genesis.
+ */
+export interface ChainCursor {
+  /** Zuletzt geprüfte Audit-ID; 0n = vor dem ersten Eintrag. */
+  auditId: bigint;
+  /** Rekonstruierter Ketten-Hash an auditId (bei 0n der Genesis-Wert). */
+  auditHash: Buffer;
+  /** Geprüfte Audit-Einträge ab Genesis. */
+  auditCount: number;
+  /** Verarbeitet sind genau die Siegel mit id ≤ sealId UND top_audit_id ≤ auditId. */
+  sealId: bigint;
+  sealsChecked: number;
+  /** null, solange der Adapter keine Verankerungs-Auskunft geliefert hat. */
+  sealsTrustAnchored: number | null;
+  /** Zuletzt verarbeiteter Rolling-Anker; 0n = keiner. */
+  anchorId: bigint;
+  /** anchor_hash des letzten gültigen Ankers = erwarteter previous_anchor_hash. */
+  anchorHash: Buffer;
+  /** top_audit_id des letzten gültigen Ankers (0n ohne Anker). */
+  anchorTopAuditId: bigint;
+  anchorsChecked: number;
+  anchorsTrustAnchored: number;
+}
+
+/** Grenzen eines Prüfabschnitts; Siegel-/Anker-Grenzen VOR dem Walk ermittelt. */
+export interface SegmentBounds {
+  /** Inklusive Obergrenze der Audit-IDs; null = bis zum aktuellen Kettenende. */
+  maxAuditId: bigint | null;
+  /** Nur Siegel mit id ≤ maxSealId berücksichtigen. */
+  maxSealId: bigint;
+  /** Nur Rolling-Anker mit id ≤ maxAnchorId berücksichtigen. */
+  maxAnchorId: bigint;
+}
+
+/** Größe eines Prüfabschnitts (je Abschnitt eine Transaktion im Worker). */
+export interface SegmentLimits {
+  maxRows: number;
+  maxAnchors: number;
+}
+
+/**
+ * Gemessen (Testcontainer, 2 Kerne): 5.000 Zeilen lesen und hashen ≈ 0,15–0,25 s,
+ * eine RFC-3161-Prüfung ≈ 17 ms, 250 Anker also ≈ 4–5 s. Ein Abschnitt bleibt
+ * damit weit unter dem 120-s-Transaktionsbudget des Workers.
+ */
+export const DEFAULT_SEGMENT_LIMITS: SegmentLimits = { maxRows: 5_000, maxAnchors: 250 };
+
+/** Siegelbefund eines Abschnitts mit Siegel-ID und Spitze (für Checkpoint-Befunde). */
+export interface SegmentSealBreak {
+  sealId: bigint;
+  sealDate: Date;
+  topAuditId: bigint;
+  reason: string;
+}
+
+export interface SegmentOutcome {
+  /**
+   * Fortgeschriebener Prüfstand. Bei einem Kettenbruch steht er auf der letzten
+   * intakten Zeile und zählt die bis dahin geprüften Elemente.
+   */
+  cursor: ChainCursor;
+  /**
+   * false nur bei einem Hash-/Vorgängerbruch (`firstBreak`). Siegel- und
+   * Ankerbefunde stoppen die Prüfung wie bei verifyChain nicht: Der Prüfstand
+   * wird fortgeschrieben, die Befunde stehen in sealBreaks/anchorBreaks.
+   */
+  ok: boolean;
+  /** Obergrenze bzw. Kettenende erreicht und alle Siegel/Anker der Grenzen verarbeitet. */
+  complete: boolean;
+  /** In diesem Abschnitt neu gehashte Zeilen. */
+  rowsChecked: number;
+  firstBreak?: NonNullable<VerificationResult['firstBreak']>;
+  sealBreaks: SegmentSealBreak[];
+  /**
+   * Siegel, deren Spitze jenseits des geprüften Kettenendes liegt (gelöscht,
+   * abgeschnitten oder nie vorhanden). Wie bei verifyChain ein Befund, aber
+   * nicht als verarbeitet gezählt: Sie bleiben offen und werden an jedem
+   * Kettenende erneut gemeldet. So zählen Prüfstand und Checkpoint-Abgleich
+   * die Siegel nach derselben Regel (id ≤ sealId UND top_audit_id ≤ auditId).
+   */
+  danglingSeals: SegmentSealBreak[];
+  anchorBreaks: VerificationResult['anchorBreaks'];
+}
+
+/** Prüfstand am Kettenanfang (Genesis). `sealId` bindet eine feste Siegelgrenze. */
+export function genesisCursor(tenantId: string, sealId: bigint = BigInt(0)): ChainCursor {
+  return {
+    auditId: BigInt(0),
+    auditHash: genesisHash(tenantId),
+    auditCount: 0,
+    sealId,
+    sealsChecked: 0,
+    sealsTrustAnchored: null,
+    anchorId: BigInt(0),
+    anchorHash: anchorGenesisHash(tenantId),
+    anchorTopAuditId: BigInt(0),
+    anchorsChecked: 0,
+    anchorsTrustAnchored: 0,
+  };
+}
+
+/** Leeres Prüfergebnis inkl. Produktiv-Policy für Self-Timestamps (R-15/P-04). */
+export function createVerificationResult(
+  tsaMode: VerificationResult['tsaMode'],
+  opts: VerifyChainOptions,
+): VerificationResult {
+  const result: VerificationResult = {
+    ok: true,
+    checked: 0,
+    lastAuditId: null,
+    sealsChecked: 0,
+    sealBreaks: [],
+    anchorsChecked: 0,
+    anchorBreaks: [],
+    anchorsTrustAnchored: 0,
+    lastAnchorId: null,
+    lastAnchoredAuditId: null,
+    unanchoredEntries: 0,
+    oldestUnanchoredAt: null,
+    tsaMode,
+    policyBreaks: [],
+  };
+
+  // Policy: Self-Timestamp im Produktivmodus ist kein Drittnachweis → harter Fail.
+  // (Der Modus wird oben unabhängig davon IMMER im Report ausgewiesen.)
+  if (opts.requireExternalTsa && tsaMode === 'local') {
+    result.ok = false;
+    result.policyBreaks.push(
+      'Self-Timestamp (LocalTimestampAdapter) im Produktivmodus unzulässig — ' +
+        'externe RFC-3161-TSA erforderlich (TIMESTAMP_AUTHORITY_URL setzen).',
+    );
+  }
+  return result;
 }
 
 export class EvidenceService {
@@ -470,9 +639,11 @@ export class EvidenceService {
       ORDER BY seal_date ASC
     `;
     const sealTopIds = new Set<bigint>(seals.map((s) => s.top_audit_id));
-    const anchors = await tx.$queryRaw<RollingAnchorRow[]>`
+    // P-04: nur Anker-Metadaten vorab; die mehrere KB großen TSA-Antworten
+    // lädt verifyRollingAnchors blockweise (vorher alle Blobs in einer Abfrage).
+    const anchors = await tx.$queryRaw<RollingAnchorMeta[]>`
       SELECT id, from_audit_id, top_audit_id, top_hash,
-             previous_anchor_hash, anchor_hash, tsa_response_blob
+             previous_anchor_hash, anchor_hash
       FROM audit_anchor
       WHERE tenant_id = ${tenantId}::uuid
       ORDER BY id ASC
@@ -515,41 +686,20 @@ export class EvidenceService {
     //    Der Prüfwert kommt ausschließlich aus dem SHA-256-Walk oben.
     await this.verifySeals(seals, recomputedTops, result, FULL_CHAIN_SEAL_REASONS);
 
-    await this.verifyRollingAnchors(tenantId, anchors, recomputedTops, result);
+    await this.verifyRollingAnchors(tx, tenantId, anchors, recomputedTops, result);
     applyUnanchoredAgePolicy(result, opts.maxUnanchoredAgeMs);
 
     return result;
   }
 
+  /** Zeitstempel-Modus des Adapters (für Prüfergebnisse außerhalb der Klasse). */
+  get tsaMode(): VerificationResult['tsaMode'] {
+    return this.timestampPort.mode;
+  }
+
   /** Leeres Prüfergebnis inkl. Produktiv-Policy für Self-Timestamps (R-15). */
   private newVerificationResult(opts: VerifyChainOptions): VerificationResult {
-    const result: VerificationResult = {
-      ok: true,
-      checked: 0,
-      lastAuditId: null,
-      sealsChecked: 0,
-      sealBreaks: [],
-      anchorsChecked: 0,
-      anchorBreaks: [],
-      anchorsTrustAnchored: 0,
-      lastAnchorId: null,
-      lastAnchoredAuditId: null,
-      unanchoredEntries: 0,
-      oldestUnanchoredAt: null,
-      tsaMode: this.timestampPort.mode,
-      policyBreaks: [],
-    };
-
-    // Policy: Self-Timestamp im Produktivmodus ist kein Drittnachweis → harter Fail.
-    // (Der Modus wird oben unabhängig davon IMMER im Report ausgewiesen.)
-    if (opts.requireExternalTsa && this.timestampPort.mode === 'local') {
-      result.ok = false;
-      result.policyBreaks.push(
-        'Self-Timestamp (LocalTimestampAdapter) im Produktivmodus unzulässig — ' +
-          'externe RFC-3161-TSA erforderlich (TIMESTAMP_AUTHORITY_URL setzen).',
-      );
-    }
-    return result;
+    return createVerificationResult(this.timestampPort.mode, opts);
   }
 
   /**
@@ -561,42 +711,51 @@ export class EvidenceService {
   private async verifySeals(
     seals: SealRow[],
     recomputedTops: Map<bigint, Buffer>,
-    result: VerificationResult,
+    result: SealTally,
     reasons: SealBreakReasons,
   ): Promise<void> {
     for (const s of seals) {
-      result.sealsChecked++;
-      const recomputed = recomputedTops.get(s.top_audit_id);
-      if (!recomputed) {
-        // Der versiegelte Spitzen-Eintrag existiert nicht mehr in der rekonstruierten
-        // Kette (gelöscht/abgeschnitten) — der Stempel hängt in der Luft.
-        result.ok = false;
-        result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.missing(s.top_audit_id) });
-        continue;
-      }
-      // Spalten-Integrität: gespeicherter top_hash MUSS dem rekonstruierten Hash
-      // entsprechen. Fängt DB-Manipulation auch dann, wenn ein lokaler Adapter
-      // keinen kryptografischen verify() leistet (verify() gibt dort immer true).
-      if (!recomputed.equals(Buffer.from(s.top_hash))) {
-        result.ok = false;
-        result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.topHashMismatch });
-        continue;
-      }
-      // TSA-Bindung: der messageImprint im Token muss an den rekonstruierten Hash
-      // binden. Schlägt fehl, sobald die History umgeschrieben wurde (Token trägt
-      // den alten Imprint, die Kette rechnet jetzt einen anderen Spitzen-Hash).
-      const sealRes = await this.verifySealBinding(
-        recomputed,
-        s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
-      );
-      if (sealRes.trustAnchored !== null) {
-        result.sealsTrustAnchored =
-          (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
-      }
-      if (!sealRes.ok) {
-        result.ok = false;
-        result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.tsaFailed });
-      }
+      await this.verifySeal(s, recomputedTops.get(s.top_audit_id), result, reasons);
+    }
+  }
+
+  /** Prüft EIN Siegel gegen den rekonstruierten Spitzen-Hash (undefined = fehlt). */
+  private async verifySeal(
+    s: SealRow,
+    recomputed: Buffer | undefined,
+    result: SealTally,
+    reasons: SealBreakReasons,
+  ): Promise<void> {
+    result.sealsChecked++;
+    if (!recomputed) {
+      // Der versiegelte Spitzen-Eintrag existiert nicht mehr in der rekonstruierten
+      // Kette (gelöscht/abgeschnitten) — der Stempel hängt in der Luft.
+      result.ok = false;
+      result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.missing(s.top_audit_id) });
+      return;
+    }
+    // Spalten-Integrität: gespeicherter top_hash MUSS dem rekonstruierten Hash
+    // entsprechen. Fängt DB-Manipulation auch dann, wenn ein lokaler Adapter
+    // keinen kryptografischen verify() leistet (verify() gibt dort immer true).
+    if (!recomputed.equals(Buffer.from(s.top_hash))) {
+      result.ok = false;
+      result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.topHashMismatch });
+      return;
+    }
+    // TSA-Bindung: der messageImprint im Token muss an den rekonstruierten Hash
+    // binden. Schlägt fehl, sobald die History umgeschrieben wurde (Token trägt
+    // den alten Imprint, die Kette rechnet jetzt einen anderen Spitzen-Hash).
+    const sealRes = await this.verifySealBinding(
+      recomputed,
+      s.tsa_response_blob ? Buffer.from(s.tsa_response_blob) : null,
+    );
+    if (sealRes.trustAnchored !== null) {
+      result.sealsTrustAnchored =
+        (result.sealsTrustAnchored ?? 0) + (sealRes.trustAnchored ? 1 : 0);
+    }
+    if (!sealRes.ok) {
+      result.ok = false;
+      result.sealBreaks.push({ sealDate: s.seal_date, reason: reasons.tsaFailed });
     }
   }
 
@@ -617,61 +776,93 @@ export class EvidenceService {
     return { ok: await port.verify(recomputed, blob), trustAnchored: null };
   }
 
-  /** Verifies the sparse external chain against reconstructed local tips. */
+  /**
+   * Verifies the sparse external chain against reconstructed local tips.
+   * P-04: TSA responses are loaded in id ranges of ANCHOR_BATCH_SIZE instead of
+   * one query for all blobs; order and checks are unchanged.
+   */
   private async verifyRollingAnchors(
+    tx: Tx,
     tenantId: string,
-    anchors: RollingAnchorRow[],
+    anchors: RollingAnchorMeta[],
     recomputedTops: Map<bigint, Buffer>,
     result: VerificationResult,
   ): Promise<void> {
-    let expectedPreviousAnchorHash = anchorGenesisHash(tenantId);
-    let previousTopAuditId = BigInt(0);
-    for (const anchor of anchors) {
-      result.anchorsChecked++;
-      const structuralError = anchorStructureError(
-        anchor,
-        previousTopAuditId,
-        expectedPreviousAnchorHash,
-      );
-      if (structuralError) {
-        addAnchorBreak(result, anchor, structuralError);
-        continue;
-      }
-
-      const recomputed = recomputedTops.get(anchor.top_audit_id);
-      const localTipError = anchorLocalTipError(anchor, recomputed);
-      if (localTipError || !recomputed) {
-        addAnchorBreak(result, anchor, localTipError ?? 'verankerter Spitzen-Eintrag fehlt');
-        continue;
-      }
-
-      const response = Buffer.from(anchor.tsa_response_blob);
-      const computedAnchorHash = anchorTokenHash(response);
-      if (!computedAnchorHash.equals(Buffer.from(anchor.anchor_hash))) {
-        addAnchorBreak(
+    const state: AnchorChainState = {
+      expectedPreviousAnchorHash: anchorGenesisHash(tenantId),
+      previousTopAuditId: BigInt(0),
+    };
+    for (let i = 0; i < anchors.length; i += ANCHOR_BATCH_SIZE) {
+      const batch = anchors.slice(i, i + ANCHOR_BATCH_SIZE);
+      const blobs = await fetchAnchorBlobs(tx, tenantId, batch);
+      for (const anchor of batch) {
+        await this.verifyRollingAnchor(
+          tenantId,
+          withBlob(anchor, blobs),
+          recomputedTops.get(anchor.top_audit_id),
+          state,
           result,
-          anchor,
-          'anchor_hash stimmt nicht mit dem gespeicherten TSA-Token überein',
         );
-        continue;
       }
-      const payload = anchorPayload({
-        tenantId,
-        fromAuditId: anchor.from_audit_id,
-        topAuditId: anchor.top_audit_id,
-        topHash: recomputed,
-        previousAnchorHash: expectedPreviousAnchorHash,
-      });
-      const verification = await this.verifySealBinding(payload, response);
-      if (!verification.ok) {
-        addAnchorBreak(result, anchor, 'RFC-3161-Verifikation des Rolling-Ankers fehlgeschlagen');
-        continue;
-      }
-      if (verification.trustAnchored) result.anchorsTrustAnchored++;
-
-      expectedPreviousAnchorHash = computedAnchorHash;
-      previousTopAuditId = anchor.top_audit_id;
     }
+  }
+
+  /**
+   * Prüft EINEN Rolling-Anker gegen den rekonstruierten lokalen Spitzen-Hash
+   * (undefined = Spitzen-Eintrag fehlt). Die externe Vorgängerkette (`state`)
+   * wird nur bei Erfolg fortgeschrieben; ein Bruch lässt sie auf dem letzten
+   * gültigen Anker stehen.
+   */
+  private async verifyRollingAnchor(
+    tenantId: string,
+    anchor: RollingAnchorRow,
+    recomputed: Buffer | undefined,
+    state: AnchorChainState,
+    result: AnchorTally,
+  ): Promise<void> {
+    result.anchorsChecked++;
+    const structuralError = anchorStructureError(
+      anchor,
+      state.previousTopAuditId,
+      state.expectedPreviousAnchorHash,
+    );
+    if (structuralError) {
+      addAnchorBreak(result, anchor, structuralError);
+      return;
+    }
+
+    const localTipError = anchorLocalTipError(anchor, recomputed);
+    if (localTipError || !recomputed) {
+      addAnchorBreak(result, anchor, localTipError ?? 'verankerter Spitzen-Eintrag fehlt');
+      return;
+    }
+
+    const response = Buffer.from(anchor.tsa_response_blob);
+    const computedAnchorHash = anchorTokenHash(response);
+    if (!computedAnchorHash.equals(Buffer.from(anchor.anchor_hash))) {
+      addAnchorBreak(
+        result,
+        anchor,
+        'anchor_hash stimmt nicht mit dem gespeicherten TSA-Token überein',
+      );
+      return;
+    }
+    const payload = anchorPayload({
+      tenantId,
+      fromAuditId: anchor.from_audit_id,
+      topAuditId: anchor.top_audit_id,
+      topHash: recomputed,
+      previousAnchorHash: state.expectedPreviousAnchorHash,
+    });
+    const verification = await this.verifySealBinding(payload, response);
+    if (!verification.ok) {
+      addAnchorBreak(result, anchor, 'RFC-3161-Verifikation des Rolling-Ankers fehlgeschlagen');
+      return;
+    }
+    if (verification.trustAnchored) result.anchorsTrustAnchored++;
+
+    state.expectedPreviousAnchorHash = computedAnchorHash;
+    state.previousTopAuditId = anchor.top_audit_id;
   }
 
   /**
@@ -744,11 +935,261 @@ export class EvidenceService {
 
     return result;
   }
+
+  /**
+   * P-04: prüft einen Abschnitt der Gesamtkette ab einem Prüfstand (`start`).
+   *
+   * Dieselben Prüfungen wie verifyChain — Vorgänger-Link und Ereignis-Hash
+   * jeder Zeile, Siegel und Rolling-Anker gegen den REKONSTRUIERTEN Hash,
+   * externe Vorgängerkette —, aber begrenzt auf `limits` je Abschnitt, damit
+   * jeder Abschnitt in einer eigenen kurzen Transaktion läuft. Rolling-Anker
+   * werden blockweise per id-Cursor geladen; ein voller Ankerblock begrenzt den
+   * Walk auf seinen höchsten Spitzen-Eintrag.
+   *
+   * Verarbeitet werden genau die Elemente zwischen altem und neuem Prüfstand:
+   * Zeilen mit start.auditId < id ≤ neuer auditId; Siegel mit id ≤ maxSealId,
+   * deren Spitze im gelesenen Bereich liegt, sowie nachträglich angelegte
+   * Siegel (id > start.sealId) mit Spitze unterhalb von start.auditId; Anker in
+   * id-Reihenfolge bis maxAnchorId. Spitzen unterhalb von start.auditId stammen
+   * aus einem früheren Walk und werden per Einzel-Nachrechnung bestätigt.
+   * Siegel mit Spitze jenseits des gelesenen Kettenendes werden nur gemeldet
+   * (`danglingSeals`), nicht als verarbeitet gezählt.
+   */
+  async verifyChainSegment(
+    tx: Tx,
+    tenantId: string,
+    start: ChainCursor,
+    bounds: SegmentBounds,
+    limits: SegmentLimits = DEFAULT_SEGMENT_LIMITS,
+  ): Promise<SegmentOutcome> {
+    if (limits.maxRows < 1 || limits.maxAnchors < 1) {
+      throw new RangeError('Prüfabschnitte brauchen mindestens eine Zeile und einen Anker.');
+    }
+    const cursor: ChainCursor = { ...start };
+    const outcome: SegmentOutcome = {
+      cursor,
+      ok: true,
+      complete: false,
+      rowsChecked: 0,
+      sealBreaks: [],
+      danglingSeals: [],
+      anchorBreaks: [],
+    };
+
+    // 1. Nächster Ankerblock (nur Metadaten) und daraus die Walk-Grenze.
+    const anchors = await fetchAnchorMetaAfter(
+      tx,
+      tenantId,
+      start.anchorId,
+      bounds.maxAnchorId,
+      limits.maxAnchors,
+    );
+    const limit = segmentWalkLimit(anchors, bounds, limits);
+
+    // 2. Walk ab dem Prüfstand; jeder rekonstruierte Hash des Abschnitts bleibt
+    //    für Siegel/Anker verfügbar (höchstens limits.maxRows Einträge).
+    const recomputed = new Map<bigint, Buffer>();
+    const walk = await walkChain(
+      tx,
+      tenantId,
+      { afterAuditId: start.auditId, expectedPrev: start.auditHash },
+      (row, computed) => recomputed.set(row.id, computed),
+      { maxRows: limits.maxRows, untilAuditId: limit.until },
+    );
+    outcome.rowsChecked = walk.checked;
+    cursor.auditId = walk.lastAuditId ?? start.auditId;
+    cursor.auditHash = walk.lastHash;
+    cursor.auditCount = start.auditCount + walk.checked;
+    if (walk.firstBreak) {
+      outcome.ok = false;
+      outcome.firstBreak = walk.firstBreak;
+      return outcome;
+    }
+
+    const scope: SegmentScope = {
+      below: start.auditId,
+      // Abschließend gelesen bis hier (null = Kettenende): Spitzen in diesem
+      // Bereich ohne gelesene Zeile fehlen tatsächlich.
+      coveredUpTo: walk.exhausted ? limit.until : cursor.auditId,
+      segmentEnd: walk.exhausted && !limit.anchorLimited,
+      recomputed,
+    };
+    // 3. Siegel, 4. Rolling-Anker; false = Bruch unterhalb des Prüfstands.
+    if (!(await this.verifySegmentSeals(tx, tenantId, scope, bounds, outcome))) return outcome;
+    if (!(await this.verifySegmentAnchors(tx, tenantId, scope, anchors, outcome))) return outcome;
+
+    // Am Abschnittsende sind alle geladenen Anker verarbeitet; ein voller Block
+    // kann weitere Anker haben, die der nächste Abschnitt lädt.
+    outcome.complete = scope.segmentEnd && !limit.anchorBatchFull;
+    return outcome;
+  }
+
+  /**
+   * Siegel eines Abschnitts in Datumsreihenfolge wie verifyChain; false =
+   * Kettenbruch unterhalb des Prüfstands. Siegelbefunde stoppen nicht.
+   */
+  private async verifySegmentSeals(
+    tx: Tx,
+    tenantId: string,
+    scope: SegmentScope,
+    bounds: SegmentBounds,
+    outcome: SegmentOutcome,
+  ): Promise<boolean> {
+    const cursor = outcome.cursor;
+    const seals = await fetchSegmentSeals(tx, tenantId, {
+      below: scope.below,
+      upTo: scope.segmentEnd ? null : scope.coveredUpTo,
+      sealIdAfter: cursor.sealId,
+      maxSealId: bounds.maxSealId,
+    });
+    const tally: SealTally = {
+      ok: true,
+      sealsChecked: cursor.sealsChecked,
+      sealsTrustAnchored: cursor.sealsTrustAnchored ?? undefined,
+      sealBreaks: [],
+    };
+    for (const seal of seals) {
+      const hash = await segmentHashAt(tx, tenantId, scope, seal.top_audit_id, outcome);
+      if (hash === 'broken') return false;
+      if (hash === undefined && seal.top_audit_id > cursor.auditId) {
+        // Spitze jenseits des gelesenen Kettenendes: Befund wie verifyChain,
+        // aber nicht gezählt; das Siegel bleibt offen (siehe danglingSeals).
+        outcome.danglingSeals.push({
+          sealId: seal.id,
+          sealDate: seal.seal_date,
+          topAuditId: seal.top_audit_id,
+          reason: FULL_CHAIN_SEAL_REASONS.missing(seal.top_audit_id),
+        });
+        continue;
+      }
+      const before = tally.sealBreaks.length;
+      await this.verifySeal(seal, hash, tally, FULL_CHAIN_SEAL_REASONS);
+      // Befund mit Siegel-ID und Spitze festhalten; er stoppt die Prüfung nicht.
+      const found = tally.sealBreaks[before];
+      if (found) {
+        outcome.sealBreaks.push({
+          sealId: seal.id,
+          sealDate: found.sealDate,
+          topAuditId: seal.top_audit_id,
+          reason: found.reason,
+        });
+      }
+    }
+    if (bounds.maxSealId > cursor.sealId) cursor.sealId = bounds.maxSealId;
+    cursor.sealsChecked = tally.sealsChecked;
+    cursor.sealsTrustAnchored = tally.sealsTrustAnchored ?? null;
+    return true;
+  }
+
+  /**
+   * Rolling-Anker eines Abschnitts in id-Reihenfolge; false = Kettenbruch
+   * unterhalb des Prüfstands. Ankerbefunde stoppen nicht; die externe
+   * Vorgängerkette bleibt wie bei verifyChain auf dem letzten gültigen Anker.
+   */
+  private async verifySegmentAnchors(
+    tx: Tx,
+    tenantId: string,
+    scope: SegmentScope,
+    anchors: RollingAnchorMeta[],
+    outcome: SegmentOutcome,
+  ): Promise<boolean> {
+    const cursor = outcome.cursor;
+    const due = dueAnchors(anchors, scope);
+    const blobs = await fetchAnchorBlobs(tx, tenantId, due);
+    const state: AnchorChainState = {
+      expectedPreviousAnchorHash: cursor.anchorHash,
+      previousTopAuditId: cursor.anchorTopAuditId,
+    };
+    const tally: AnchorTally = {
+      ok: true,
+      anchorsChecked: cursor.anchorsChecked,
+      anchorsTrustAnchored: cursor.anchorsTrustAnchored,
+      anchorBreaks: outcome.anchorBreaks,
+    };
+    for (const anchor of due) {
+      const hash = await segmentHashAt(tx, tenantId, scope, anchor.top_audit_id, outcome);
+      if (hash === 'broken') return false;
+      await this.verifyRollingAnchor(tenantId, withBlob(anchor, blobs), hash, state, tally);
+      cursor.anchorId = anchor.id;
+    }
+    cursor.anchorHash = state.expectedPreviousAnchorHash;
+    cursor.anchorTopAuditId = state.previousTopAuditId;
+    cursor.anchorsChecked = tally.anchorsChecked;
+    cursor.anchorsTrustAnchored = tally.anchorsTrustAnchored;
+    return true;
+  }
 }
 
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+
+/** Bereich, den ein Prüfabschnitt abschließend gelesen hat (P-04). */
+interface SegmentScope {
+  /** Prüfstand vor dem Abschnitt; Spitzen ≤ below stammen aus früheren Walks. */
+  below: bigint;
+  /** Abschließend gelesen bis hier; null = Kettenende. */
+  coveredUpTo: bigint | null;
+  /** Obergrenze bzw. Kettenende erreicht: Spitzen dahinter fehlen. */
+  segmentEnd: boolean;
+  /** Im Abschnitt rekonstruierte Hashes je Audit-ID. */
+  recomputed: Map<bigint, Buffer>;
+}
+
+/**
+ * Walk-Grenze eines Abschnitts: Ist der Ankerblock voll, endet der Walk an
+ * seinem höchsten Spitzen-Eintrag, damit jeder geladene Anker im selben
+ * Abschnitt geprüft werden kann und keiner zur Einzel-Nachrechnung abrutscht.
+ */
+function segmentWalkLimit(
+  anchors: RollingAnchorMeta[],
+  bounds: SegmentBounds,
+  limits: SegmentLimits,
+): { until: bigint | null; anchorLimited: boolean; anchorBatchFull: boolean } {
+  const anchorBatchFull = anchors.length === limits.maxAnchors;
+  if (!anchorBatchFull) return { until: bounds.maxAuditId, anchorLimited: false, anchorBatchFull };
+  const highestTop = anchors.reduce(
+    (max, a) => (a.top_audit_id > max ? a.top_audit_id : max),
+    BigInt(0),
+  );
+  if (bounds.maxAuditId !== null && highestTop >= bounds.maxAuditId) {
+    return { until: bounds.maxAuditId, anchorLimited: false, anchorBatchFull };
+  }
+  return { until: highestTop, anchorLimited: true, anchorBatchFull };
+}
+
+/** Anker in id-Reihenfolge, deren Spitze der Abschnitt abschließend gelesen hat. */
+function dueAnchors(anchors: RollingAnchorMeta[], scope: SegmentScope): RollingAnchorMeta[] {
+  if (scope.segmentEnd || scope.coveredUpTo === null) return anchors;
+  const due: RollingAnchorMeta[] = [];
+  for (const anchor of anchors) {
+    if (anchor.top_audit_id > scope.coveredUpTo) break;
+    due.push(anchor);
+  }
+  return due;
+}
+
+/**
+ * Rekonstruierter Hash einer Siegel-/Ankerspitze: aus dem Walk des Abschnitts
+ * oder, unterhalb des Prüfstands, per Einzel-Nachrechnung. undefined = fehlt;
+ * 'broken' = gespeicherte Zeile reproduziert ihren Hash nicht (Bruch gesetzt).
+ */
+async function segmentHashAt(
+  tx: Tx,
+  tenantId: string,
+  scope: SegmentScope,
+  auditId: bigint,
+  outcome: SegmentOutcome,
+): Promise<Buffer | undefined | 'broken'> {
+  if (auditId > scope.below) return scope.recomputed.get(auditId);
+  const stored = await recomputeStoredRow(tx, tenantId, auditId);
+  if (stored.kind === 'broken') {
+    outcome.ok = false;
+    outcome.firstBreak = stored.firstBreak;
+    return 'broken';
+  }
+  return stored.kind === 'ok' ? stored.hash : undefined;
+}
 
 interface AuditChainRow {
   id: bigint;
@@ -808,12 +1249,25 @@ interface ChainWalkOutcome {
   checked: number;
   /** Letzte intakt geprüfte Audit-ID; null, wenn keine Zeile geprüft wurde. */
   lastAuditId: bigint | null;
+  /** Hash der letzten intakten Zeile (ohne geprüfte Zeile: expectedPrev). */
+  lastHash: Buffer;
+  /** true: keine weitere Zeile bis zur Obergrenze bzw. zum Kettenende. */
+  exhausted: boolean;
   /** Erster Vorgänger- oder Hash-Bruch; beendet den Walk. */
   firstBreak?: NonNullable<VerificationResult['firstBreak']>;
 }
 
+/** Optionale Begrenzung eines Walks (P-04: fortsetzbare Abschnitte). */
+interface ChainWalkLimits {
+  /** Höchstens so viele Zeilen prüfen. */
+  maxRows?: number;
+  /** Nur Zeilen bis einschließlich dieser Audit-ID; null = bis zum Kettenende. */
+  untilAuditId?: bigint | null;
+}
+
 /**
- * R-15: EIN SHA-256-Kettendurchlauf für verifyChain und verifyRecoverySegment.
+ * R-15: EIN SHA-256-Kettendurchlauf für verifyChain, verifyRecoverySegment und
+ * die abschnittsweise Prüfung (verifyChainSegment).
  *
  * Liest die Kette cursor-basiert in BATCH_SIZE-Chunks strikt id-aufsteigend
  * (RF-5). Jede Zeile muss an den erwarteten Vorgänger binden und ihren
@@ -826,12 +1280,25 @@ async function walkChain(
   tenantId: string,
   start: ChainWalkStart,
   onRow: (row: AuditChainRow, computed: Buffer) => void,
+  limits: ChainWalkLimits = {},
 ): Promise<ChainWalkOutcome> {
-  const outcome: ChainWalkOutcome = { checked: 0, lastAuditId: null };
+  const outcome: ChainWalkOutcome = {
+    checked: 0,
+    lastAuditId: null,
+    lastHash: start.expectedPrev,
+    exhausted: false,
+  };
+  const maxRows = limits.maxRows ?? Number.POSITIVE_INFINITY;
+  const until = limits.untilAuditId ?? null;
   let expectedPrev = start.expectedPrev;
   let cursor = start.afterAuditId;
   for (;;) {
-    const rows = await fetchAuditBatch(tx, tenantId, cursor, BATCH_SIZE);
+    const want = Math.min(BATCH_SIZE, maxRows - outcome.checked);
+    if (want <= 0) return outcome;
+    const rows =
+      until === null
+        ? await fetchAuditBatch(tx, tenantId, cursor, want)
+        : await fetchAuditBatchUntil(tx, tenantId, cursor, until, want);
     if (rows.length === 0) break;
 
     for (const r of rows) {
@@ -851,11 +1318,13 @@ async function walkChain(
       expectedPrev = Buffer.from(r.this_hash);
       outcome.checked++;
       outcome.lastAuditId = r.id;
+      outcome.lastHash = computed;
     }
 
     cursor = rows[rows.length - 1]!.id;
-    if (rows.length < BATCH_SIZE) break;
+    if (rows.length < want) break;
   }
+  outcome.exhausted = true;
   return outcome;
 }
 
@@ -887,9 +1356,103 @@ function chainBreak(
   };
 }
 
+/** Zähler und Brüche der Siegelprüfung (VerificationResult oder Abschnitt). */
+type SealTally = Pick<
+  VerificationResult,
+  'ok' | 'sealsChecked' | 'sealsTrustAnchored' | 'sealBreaks'
+>;
+
+/** Zähler und Brüche der Ankerprüfung (VerificationResult oder Abschnitt). */
+type AnchorTally = Pick<
+  VerificationResult,
+  'ok' | 'anchorsChecked' | 'anchorsTrustAnchored' | 'anchorBreaks'
+>;
+
+/** Erwarteter Vorgänger des nächsten Rolling-Ankers. */
+interface AnchorChainState {
+  expectedPreviousAnchorHash: Buffer;
+  previousTopAuditId: bigint;
+}
+
+/** TSA-Antworten je Abfrage (P-04: keine Abfrage über alle Anker-Blobs). */
+const ANCHOR_BATCH_SIZE = 200;
+
+/** Lädt die TSA-Antworten eines id-aufsteigenden Ankerblocks. */
+async function fetchAnchorBlobs(
+  tx: Tx,
+  tenantId: string,
+  batch: RollingAnchorMeta[],
+): Promise<Map<bigint, Buffer>> {
+  const blobs = new Map<bigint, Buffer>();
+  if (batch.length === 0) return blobs;
+  const rows = await tx.$queryRaw<Array<{ id: bigint; tsa_response_blob: Buffer }>>`
+    SELECT id, tsa_response_blob
+    FROM audit_anchor
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id >= ${batch[0]!.id}
+      AND id <= ${batch[batch.length - 1]!.id}
+    ORDER BY id ASC
+  `;
+  for (const row of rows) blobs.set(row.id, Buffer.from(row.tsa_response_blob));
+  return blobs;
+}
+
+/** P-04: nächster Block Anker-Metadaten nach `afterId` bis einschließlich `maxId`. */
+async function fetchAnchorMetaAfter(
+  tx: Tx,
+  tenantId: string,
+  afterId: bigint,
+  maxId: bigint,
+  limit: number,
+): Promise<RollingAnchorMeta[]> {
+  return tx.$queryRaw<RollingAnchorMeta[]>`
+    SELECT id, from_audit_id, top_audit_id, top_hash,
+           previous_anchor_hash, anchor_hash
+    FROM audit_anchor
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id > ${afterId}
+      AND id <= ${maxId}
+    ORDER BY id ASC
+    LIMIT ${limit}
+  `;
+}
+
+/**
+ * P-04: Siegel eines Prüfabschnitts. Spitze im gelesenen Bereich (below, upTo]
+ * (upTo null = ohne Obergrenze; Spitzen jenseits des Kettenendes fehlen) oder
+ * nachträglich angelegt (id > sealIdAfter) mit Spitze ≤ below — jeweils nur bis
+ * zur vorab ermittelten Siegelgrenze maxSealId.
+ */
+async function fetchSegmentSeals(
+  tx: Tx,
+  tenantId: string,
+  range: { below: bigint; upTo: bigint | null; sealIdAfter: bigint; maxSealId: bigint },
+): Promise<Array<SealRow & { id: bigint }>> {
+  return tx.$queryRaw<Array<SealRow & { id: bigint }>>`
+    SELECT id, seal_date, top_audit_id, top_hash, tsa_response_blob
+    FROM audit_seal
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id <= ${range.maxSealId}
+      AND (
+        (top_audit_id > ${range.below}
+          AND (${range.upTo}::bigint IS NULL OR top_audit_id <= ${range.upTo}::bigint))
+        OR (top_audit_id <= ${range.below} AND id > ${range.sealIdAfter})
+      )
+    ORDER BY seal_date ASC, id ASC
+  `;
+}
+
+/**
+ * Ergänzt die TSA-Antwort. Fehlt sie (Zeile zwischen den Abfragen entfernt),
+ * scheitert die anchor_hash-Prüfung an der leeren Antwort statt still zu passen.
+ */
+function withBlob(anchor: RollingAnchorMeta, blobs: Map<bigint, Buffer>): RollingAnchorRow {
+  return { ...anchor, tsa_response_blob: blobs.get(anchor.id) ?? Buffer.alloc(0) };
+}
+
 function initializeAnchorSummary(
   result: VerificationResult,
-  anchors: RollingAnchorRow[],
+  anchors: RollingAnchorMeta[],
 ): bigint | null {
   const latest = anchors.at(-1);
   result.lastAnchorId = latest?.id ?? null;
@@ -916,7 +1479,7 @@ function trackAuditCheckpoint(
 }
 
 function anchorStructureError(
-  anchor: RollingAnchorRow,
+  anchor: RollingAnchorMeta,
   previousTopAuditId: bigint,
   expectedPreviousAnchorHash: Buffer,
 ): string | null {
@@ -930,7 +1493,7 @@ function anchorStructureError(
 }
 
 function anchorLocalTipError(
-  anchor: RollingAnchorRow,
+  anchor: RollingAnchorMeta,
   recomputed: Buffer | undefined,
 ): string | null {
   if (!recomputed) return `verankerter Spitzen-Eintrag audit_id ${anchor.top_audit_id} fehlt`;
@@ -940,11 +1503,7 @@ function anchorLocalTipError(
   return null;
 }
 
-function addAnchorBreak(
-  result: VerificationResult,
-  anchor: RollingAnchorRow,
-  reason: string,
-): void {
+function addAnchorBreak(result: AnchorTally, anchor: RollingAnchorMeta, reason: string): void {
   result.ok = false;
   result.anchorBreaks.push({
     anchorId: anchor.id,
@@ -953,7 +1512,7 @@ function addAnchorBreak(
   });
 }
 
-function applyUnanchoredAgePolicy(
+export function applyUnanchoredAgePolicy(
   result: VerificationResult,
   maxUnanchoredAgeMs: number | undefined,
 ): void {
@@ -985,7 +1544,63 @@ async function fetchAuditBatch(
   `;
 }
 
-function genesisHash(tenantId: string): Buffer {
+/** P-04: wie fetchAuditBatch, aber nur bis zur inklusiven Obergrenze `until`. */
+async function fetchAuditBatchUntil(
+  tx: Tx,
+  tenantId: string,
+  cursor: bigint,
+  until: bigint,
+  limit: number,
+): Promise<AuditChainRow[]> {
+  return tx.$queryRaw<AuditChainRow[]>`
+    SELECT id, occurred_at, actor_type, actor_id, action,
+           resource_type, resource_id, "before", "after",
+           prev_hash, this_hash
+    FROM audit_log
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id > ${cursor}
+      AND id <= ${until}
+    ORDER BY id ASC
+    LIMIT ${limit}
+  `;
+}
+
+/** Ergebnis der Einzel-Nachrechnung einer gespeicherten Zeile. */
+export type StoredRowCheck =
+  | { kind: 'ok'; hash: Buffer }
+  | { kind: 'missing' }
+  | { kind: 'broken'; firstBreak: NonNullable<VerificationResult['firstBreak']> };
+
+/**
+ * P-04: rechnet EINE gespeicherte Zeile aus ihrem Inhalt und ihrem gespeicherten
+ * prev_hash nach. Dient für Kettenpositionen unterhalb eines Prüf-Checkpoints,
+ * die ein früherer Walk bereits lückenlos verknüpft hat (Checkpoint-Zeile,
+ * nachträglich angelegte Siegel/Anker). Die Verknüpfung zum Vorgänger bestätigt
+ * erst wieder die periodische Vollprüfung.
+ */
+export async function recomputeStoredRow(
+  tx: Tx,
+  tenantId: string,
+  auditId: bigint,
+): Promise<StoredRowCheck> {
+  const rows = await tx.$queryRaw<AuditChainRow[]>`
+    SELECT id, occurred_at, actor_type, actor_id, action,
+           resource_type, resource_id, "before", "after",
+           prev_hash, this_hash
+    FROM audit_log
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id = ${auditId}
+  `;
+  const row = rows[0];
+  if (!row) return { kind: 'missing' };
+  const computed = eventHash(Buffer.from(row.prev_hash), chainEventOf(tenantId, row));
+  if (!computed.equals(Buffer.from(row.this_hash))) {
+    return { kind: 'broken', firstBreak: chainBreak(row, computed, row.this_hash) };
+  }
+  return { kind: 'ok', hash: computed };
+}
+
+export function genesisHash(tenantId: string): Buffer {
   return createHash('sha256').update(GENESIS_PREFIX).update(Buffer.from(tenantId, 'utf8')).digest();
 }
 

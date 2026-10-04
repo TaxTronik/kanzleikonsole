@@ -85,6 +85,8 @@ test_refs:
   - packages/evidence/src/__tests__/hash-chain.test.ts
   - packages/evidence/src/__tests__/canonical-json.property.test.ts
   - packages/evidence/src/__tests__/canonical-json-keys.test.ts
+  - packages/evidence/src/__tests__/chain-walk.test.ts
+  - packages/evidence/src/__tests__/verify-checkpoint-db.test.ts
   - apps/web/src/server/audit/__tests__/query.test.ts
   - apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts
   - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
@@ -200,7 +202,10 @@ zusätzlich zur gesonderten inhaltlichen Kettenprüfung erforderlich
 `service.ts` setzt Zeitpunkt und Vorgänger unter dem Tenant-Lock und schreibt
 den Audit-Datensatz. `canonical-json.ts` normalisiert den Ereignisinhalt;
 `chain.ts` berechnet Genesis- und Folgewerte. Die Verifikation rekonstruiert
-dieselbe Ereignisform aus den gespeicherten Spalten.
+dieselbe Ereignisform aus den gespeicherten Spalten. `verifyChain` rechnet die
+Kette ab Genesis nach. Der tägliche Prüflauf rechnet mit derselben Abbildung
+nur den Zuwachs ab einem Prüf-Checkpoint nach und die gesamte Kette erst in der
+periodischen Vollprüfung erneut (`AUDIT-VERIFY-ALERT-001`).
 
 Die Objektaufbereitung verwendet ein Wörterbuch ohne geerbte Setter.
 Dadurch bleibt auch ein eigener JSON-Schlüssel `__proto__` vollständig in
@@ -296,7 +301,9 @@ Anker ist eine vollständig neu erzeugte lokale Historie nicht allein durch
 diese Regel von einer ursprünglichen Historie unterscheidbar.
 Der `SYSTEM`-Akteur des Owner-CLI-Resets identifiziert den ausgeführten Prozess,
 nicht die natürliche Person am Host; dafür bleiben betriebliche Zugriffs- und
-Ausführungsnachweise erforderlich.
+Ausführungsnachweise erforderlich. Änderungen an bereits geprüften Einträgen
+meldet der tägliche Prüflauf erst mit der nächsten Vollprüfung, sofern sie den
+Abgleich des Prüf-Checkpoints nicht berühren (`AUDIT-VERIFY-ALERT-001`).
 
 Historische Ereignisse mit einem eigenen `__proto__`-Schlüssel waren unter
 der früheren Implementierung insoweit nicht hashgebunden. Sind diese Daten
@@ -320,7 +327,11 @@ serialisierte Archivkopien können fehlende Daten nicht rekonstruieren
 ## Technische Nachweise
 
 Die Service- und Hash-Ketten-Tests prüfen Vorgängerbindung, Tenant-Serialisierung
-und Brucherkennung. Property-Tests variieren Schlüsselreihenfolgen und
+und Brucherkennung. Der Walker-Test belegt, dass Vollprüfung und
+Recovery-Teilkette Hash- und Vorgängerbrüche über dieselbe Iteration identisch
+melden; die PostgreSQL-Regression der Checkpoint-Prüfung belegt, dass das
+abschnittsweise Nachrechnen dieselben Befunde wie `verifyChain` liefert.
+Property-Tests variieren Schlüsselreihenfolgen und
 unterstützte Werttypen, damit Aufzeichnung und Nachrechnung dieselbe kanonische
 Darstellung verwenden.
 
