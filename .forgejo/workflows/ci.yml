@@ -228,6 +228,13 @@ jobs:
       - name: Migration ledger checksum gate
         run: pnpm verify:migration-ledger
 
+      # Dieselben versionierten SQL-Dateien (packages/db/invariants) prueft
+      # scripts/ops-lib.sh nach jeder Kundenmigration, bevor schreibende Dienste
+      # starten. Hier laufen sie gegen die echte, frisch migrierte DB:
+      # Exit 1 = Invariante verletzt, Exit 2 = SQL-/Verbindungsfehler.
+      - name: GwG-DB-Invarianten gegen die migrierte DB prüfen
+        run: pnpm --filter @taxtronik/db verify:invariants
+
       - name: RLS tests
         run: |
           set -o pipefail
@@ -818,6 +825,11 @@ jobs:
       - name: Aktuelle Migrationen darauf anwenden (= Kunden-Update)
         if: steps.last.outputs.tag != ''
         run: pnpm --filter @taxtronik/db exec prisma migrate deploy
+
+      # Genau diese Pruefung entscheidet beim Kunden-Update ueber den Writer-Start.
+      - name: GwG-DB-Invarianten nach dem Kunden-Update prüfen
+        if: steps.last.outputs.tag != ''
+        run: pnpm --filter @taxtronik/db verify:invariants
 
       - name: Migrationsstatus muss sauber sein
         if: steps.last.outputs.tag != ''

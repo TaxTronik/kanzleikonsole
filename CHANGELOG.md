@@ -455,6 +455,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die GwG-Schutzinvarianten, die beim Deploy und Kunden-Update über den Start
+  schreibender Dienste entscheiden, liefen in CI nie gegen eine echte
+  Datenbank; die Tests ersetzten `compose` durch eine Funktion, die immer
+  „erfüllt“ meldete. Die Prüfungen liegen jetzt versioniert unter
+  `packages/db/invariants/gwg` und laufen beim Deploy (psql im
+  Postgres-Container, nur lesend) sowie in CI im db- und upgrade-path-Job
+  (`pnpm --filter @taxtronik/db verify:invariants`) gegen die echte Datenbank.
+  Ein SQL- oder Verbindungsfehler wird nicht mehr als „Schutz unvollständig“
+  gemeldet, sondern mit der psql-Fehlermeldung; verletzte Invarianten werden
+  einzeln benannt. Schreibende Dienste bleiben in beiden Fällen gestoppt
+  (`FK-EXC-20261004-012`).
 - **[Scope]** ZUGFeRD-Rechnungen und Korrekturbelege sowie der
   Subsumtions-PDF-Export setzen Namen und Texte mit Zeichen außerhalb von
   WinAnsi (z. B. ı, Ş, ğ, Ł, ř) korrekt. Ausstellung und Storno scheiterten

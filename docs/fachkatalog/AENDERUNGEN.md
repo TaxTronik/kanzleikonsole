@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-012
+    date: '2026-10-04'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - GWG-ACTIVATION-GATE-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-SELF-ONBOARDING-001
+    reason: >-
+      Der db-Job und der upgrade-path-Job prüfen nach der Migration zusätzlich
+      die GwG-Schutzinvarianten aus packages/db/invariants gegen die echte
+      Datenbank. Es sind dieselben Prüfungen, mit denen ops-lib.sh beim
+      Kunden-Update über den Start schreibender Dienste entscheidet; Inhalt
+      und Ergebnis der Prüfungen sind unverändert. Bestehende Schritte, Gates
+      und Release-Nachweise bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/db-invariants-ci.test.ts
+      - packages/db/src/__tests__/db-invariants.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-011
     date: '2026-10-04'
     paths:
@@ -1099,6 +1120,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-012` dokumentiert, dass CI die GwG-
+  Schutzinvarianten des Deploy-Gates jetzt gegen die echte, migrierte
+  Datenbank prüft. Prüfinhalt und Deploy-Verhalten bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-011` dokumentiert, dass jede Mandanten-
   Detailseite die bestehende Zugriffsentscheidung selbst prüft statt nur im

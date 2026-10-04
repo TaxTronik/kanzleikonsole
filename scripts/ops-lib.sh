@@ -1868,11 +1868,16 @@ run_migrations() {
   # One-Shot-Container statt Host-Prisma: das Worker-Image enthaelt Prisma-CLI
   # + Migrationen. Der Server braucht fuer Migrationen weder node_modules noch
   # einen publizierten Postgres-Port.
+  local gwg_status=0
   begin_migration_transition
   info "DB-Migrationen anwenden (migrate-Container)"
   compose run --rm migrate
-  database_has_gwg_invariants_for_checkout || \
-    die "DB-Migrationen sind journalisiert, aber der GwG-Datenbankschutz ist unvollstaendig; neue Writer werden nicht aktiviert."
+  database_has_gwg_invariants_for_checkout || gwg_status=$?
+  case "$gwg_status" in
+    0) ;;
+    2) die "DB-Migrationen sind journalisiert, aber der GwG-Datenbankschutz konnte wegen eines SQL-/Verbindungsfehlers nicht geprueft werden (siehe oben); neue Writer werden nicht aktiviert." ;;
+    *) die "DB-Migrationen sind journalisiert, aber der GwG-Datenbankschutz ist unvollstaendig; neue Writer werden nicht aktiviert." ;;
+  esac
 }
 
 backup_before_migrations() {
@@ -1960,8 +1965,12 @@ smoke_public_frontend() {
 # Container-Endpunkten. Mit Retry: frisches ClamAV laedt die Signaturen (EICAR)
 # ggf. erst nach dem TCP-Up per freshclam.
 deploy_readiness() {
-  local s3_hp clam_hp s3_endpoint clam_host clam_port
-  if ! database_has_gwg_invariants_for_checkout; then
+  local s3_hp clam_hp s3_endpoint clam_host clam_port gwg_status=0
+  database_has_gwg_invariants_for_checkout || gwg_status=$?
+  if (( gwg_status == 2 )); then
+    warn "Deploy-Readiness fehlgeschlagen: GwG-Datenbankschutz konnte wegen eines SQL-/Verbindungsfehlers nicht geprueft werden (siehe oben)."
+    return 1
+  elif (( gwg_status != 0 )); then
     warn "Deploy-Readiness fehlgeschlagen: GwG-Datenbankschutz entspricht nicht dem Migrationsstand dieses Checkouts."
     return 1
   fi
@@ -3546,332 +3555,73 @@ database_has_recoverable_gwg_034_failure() {
   [[ "$result" == "yes" ]]
 }
 
-database_has_gwg_034_invariants() {
-  local result
-  result="$(compose --infra exec -T postgres \
-    psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -Atc "
-      /* gwg_034_schema_invariants */
-      SELECT CASE WHEN
-        NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('gwg_check', 'legal_form', 'text', FALSE),
-                ('gwg_check', 'register_number', 'text', FALSE),
-                ('gwg_check', 'register_authority', 'text', FALSE),
-                ('gwg_check', 'no_register_entry', 'bool', TRUE),
-                ('gwg_check', 'representative_names', '_text', TRUE),
-                ('gwg_check', 'ownership_structure_notes', 'text', FALSE),
-                ('document', 'gwg_onboarding_invite_id', 'uuid', FALSE),
-                ('document', 'gwg_destruction_requested_at', 'timestamptz', FALSE),
-                ('document', 'gwg_destruction_requested_by', 'uuid', FALSE),
-                ('document', 'gwg_destruction_error', 'text', FALSE),
-                ('document', 'gwg_destroyed_at', 'timestamptz', FALSE)
-            ) expected(table_name, column_name, udt_name, must_be_not_null)
-            LEFT JOIN information_schema.columns c
-              ON c.table_schema = 'public'
-             AND c.table_name = expected.table_name
-             AND c.column_name = expected.column_name
-             AND c.udt_name = expected.udt_name
-           WHERE c.column_name IS NULL
-              OR (expected.must_be_not_null AND c.is_nullable <> 'NO')
-        )
-        AND pg_catalog.to_regclass('public.document_gwg_invite_idx') IS NOT NULL
-        AND EXISTS (
-          SELECT 1
-            FROM pg_catalog.pg_constraint con
-           WHERE con.conname = 'document_gwg_invite_fk'
-             AND con.contype = 'f'
-             AND con.conrelid = pg_catalog.to_regclass('public.document')
-        )
-        AND EXISTS (
-          SELECT 1
-            FROM pg_catalog.pg_constraint con
-           WHERE con.conname = 'gwg_invite_check_fkey'
-             AND con.contype = 'f'
-             AND con.conrelid = pg_catalog.to_regclass('public.gwg_onboarding_invite')
-        )
-        AND NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('app.guard_gwg_document_invite_and_claim()', FALSE),
-                ('app.guard_gwg_id_document_scope_and_claim()', FALSE),
-                ('app.guard_gwg_invite_check_scope_and_claim()', FALSE),
-                ('app.freeze_gwg_claim_references()', FALSE),
-                ('app.enforce_client_active_for_document()', FALSE),
-                ('app.enforce_client_allow_active_requires_gwg()', FALSE),
-                ('app.protect_verified_gwg_legal_snapshot()', FALSE),
-                ('app.protect_verified_gwg_beneficial_owner()', FALSE),
-                ('app.guard_gwg_check_hard_delete()', FALSE),
-                ('app.gwg_deactivate_client_without_valid_check()', FALSE),
-                ('app.destroy_gwg_check(uuid)', TRUE),
-                ('app.protect_immutable_document_version()', FALSE),
-                ('app.assert_gwg_document_destruction_due(uuid)', TRUE),
-                ('app.destroy_gwg_document_versions(uuid)', TRUE),
-                ('app.block_version_during_gwg_destruction()', FALSE)
-            ) expected(signature, must_be_security_definer)
-            LEFT JOIN pg_catalog.pg_proc p
-              ON p.oid = pg_catalog.to_regprocedure(expected.signature)
-           WHERE p.oid IS NULL
-              OR (expected.must_be_security_definer AND NOT p.prosecdef)
-        )
-        AND NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('document', 'document_gwg_invite_scope_and_claim', 'app.guard_gwg_document_invite_and_claim()'),
-                ('gwg_id_document', 'gwg_id_document_scope_and_claim', 'app.guard_gwg_id_document_scope_and_claim()'),
-                ('gwg_onboarding_invite', 'gwg_invite_check_scope_and_claim', 'app.guard_gwg_invite_check_scope_and_claim()'),
-                ('client', 'client_freeze_gwg_claim', 'app.freeze_gwg_claim_references()'),
-                ('gwg_check', 'gwg_check_freeze_gwg_claim', 'app.freeze_gwg_claim_references()'),
-                ('gwg_check', 'gwg_check_verified_legal_snapshot_immutable', 'app.protect_verified_gwg_legal_snapshot()'),
-                ('gwg_beneficial_owner', 'gwg_beneficial_owner_verified_snapshot_immutable', 'app.protect_verified_gwg_beneficial_owner()'),
-                ('gwg_check', 'gwg_check_no_hard_delete', 'app.guard_gwg_check_hard_delete()'),
-                ('gwg_check', 'gwg_check_fail_closed_client', 'app.gwg_deactivate_client_without_valid_check()'),
-                ('document_version', 'document_version_block_gwg_destruction', 'app.block_version_during_gwg_destruction()')
-            ) expected(table_name, trigger_name, function_signature)
-            LEFT JOIN pg_catalog.pg_trigger t
-              ON t.tgname = expected.trigger_name
-             AND t.tgrelid = pg_catalog.to_regclass('public.' || expected.table_name)
-             AND t.tgfoid = pg_catalog.to_regprocedure(expected.function_signature)
-             AND NOT t.tgisinternal
-             AND t.tgenabled IN ('O', 'A')
-           WHERE t.oid IS NULL
-        )
-        AND COALESCE((
-          SELECT bool_and(pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE'))
-            FROM pg_catalog.pg_roles r
-            CROSS JOIN unnest(ARRAY[
-              pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)'),
-              pg_catalog.to_regprocedure('app.assert_gwg_document_destruction_due(uuid)'),
-              pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
-            ]) AS functions(function_oid)
-            JOIN pg_catalog.pg_proc p ON p.oid = function_oid
-           WHERE r.rolname = 'taxtronik_app'
-        ), FALSE)
-        AND COALESCE((
-          SELECT NOT pg_catalog.has_table_privilege(r.oid, c.oid, 'DELETE')
-            FROM pg_catalog.pg_roles r
-            CROSS JOIN pg_catalog.pg_class c
-            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-           WHERE r.rolname = 'taxtronik_app'
-             AND n.nspname = 'public'
-             AND c.relname = 'document_version'
-        ), FALSE)
-        AND NOT EXISTS (
-          SELECT 1
-            FROM unnest(ARRAY[
-              pg_catalog.to_regprocedure('app.destroy_gwg_check(uuid)'),
-              pg_catalog.to_regprocedure('app.assert_gwg_document_destruction_due(uuid)'),
-              pg_catalog.to_regprocedure('app.destroy_gwg_document_versions(uuid)')
-            ]) AS functions(function_oid)
-            JOIN pg_catalog.pg_proc p ON p.oid = function_oid
-            CROSS JOIN LATERAL pg_catalog.aclexplode(
-              COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
-            ) acl
-           WHERE acl.grantee = 0
-             AND acl.privilege_type = 'EXECUTE'
-        )
-        THEN 'yes' ELSE 'no'
-      END" 2>/dev/null)" || return 1
-  [[ "$result" == "yes" ]]
+# GwG-Datenbankschutz: Single Source of Truth sind die versionierten SQL-Dateien
+# unter packages/db/invariants/gwg. Jede Datei liefert genau eine Zeile je
+# verletzter Invariante (stabiler Name); keine Zeile bedeutet "erfuellt". CI
+# fuehrt dieselben Dateien mit packages/db/scripts/check-db-invariants.mjs gegen
+# die echte, migrierte Datenbank aus (db- und upgrade-path-Job). Der Host
+# braucht dafuer kein Node: Die Datei wird unveraendert per stdin an psql im
+# Postgres-Container uebergeben und dort ausschliesslich read-only ausgefuehrt.
+GWG_INVARIANTS_034="034-fail-closed-and-destruction.sql"
+GWG_INVARIANTS_IDENTITY="043-identity-subjects-and-document-sets.sql"
+GWG_INVARIANTS_044="044-legacy-guard-recovery.sql"
+
+# run_gwg_invariant_check <datei unter packages/db/invariants/gwg>
+#   0 = alle Invarianten erfuellt
+#   1 = mindestens eine Invariante verletzt (Namen werden ausgegeben)
+#   2 = SQL-, Verbindungs- oder Dateifehler; beweist nichts ueber den Schutz
+#       und wird deshalb weder als erfuellt noch als "verletzt" gemeldet.
+run_gwg_invariant_check() {
+  local name="$1" file errors output violation status=0
+  file="$ROOT/packages/db/invariants/gwg/$name"
+  if [[ ! -f "$file" || ! -r "$file" ]]; then
+    warn "GwG-Invariantenpruefung $name nicht ausfuehrbar: Datei fehlt im Checkout ($file)."
+    return 2
+  fi
+  errors="$(mktemp)" || {
+    warn "GwG-Invariantenpruefung $name nicht ausfuehrbar: keine temporaere Fehlerdatei."
+    return 2
+  }
+  # Der angehaengte Punkt bewahrt abschliessende Zeilenumbrueche: Auch eine
+  # Verletzung mit leerem Namen bleibt eine Zeile und gilt nie als erfuellt.
+  output="$(compose --infra exec -T -e 'PGOPTIONS=-c default_transaction_read_only=on' postgres \
+    psql -X -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -At -f - \
+    <"$file" 2>"$errors" && printf '.')" || status=$?
+  if (( status != 0 )); then
+    warn "GwG-Invariantenpruefung $name: SQL-/Verbindungsfehler (Exit $status), keine Aussage ueber den Schutz:"
+    sed 's/^/    /' "$errors" >&2 || true
+    rm -f -- "$errors"
+    return 2
+  fi
+  rm -f -- "$errors"
+  output="${output%.}"
+  [[ -n "$output" ]] || return 0
+  warn "GwG-Invariante verletzt ($name):"
+  while IFS= read -r violation; do
+    printf '    %s\n' "${violation:-<Verletzung ohne Namen>}" >&2
+  done <<<"${output%$'\n'}"
+  return 1
 }
 
-database_has_gwg_identity_invariants() {
-  local result
-  result="$(compose --infra exec -T postgres \
-    psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -Atc "
-      /* gwg_043_schema_invariants */
-      SELECT CASE WHEN
-        pg_catalog.to_regclass('public.gwg_representative') IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('gwg_check', 'identity_assignment_required', 'bool', TRUE),
-                ('gwg_id_document', 'document_set_id', 'uuid', TRUE),
-                ('gwg_id_document', 'natural_client_subject_id', 'uuid', FALSE),
-                ('gwg_id_document', 'beneficial_owner_subject_id', 'uuid', FALSE),
-                ('gwg_id_document', 'representative_subject_id', 'uuid', FALSE),
-                ('gwg_id_document', 'identity_assignment_confirmed_at', 'timestamptz', FALSE),
-                ('gwg_id_document', 'identity_assignment_confirmed_by', 'uuid', FALSE),
-                ('gwg_representative', 'id', 'uuid', TRUE),
-                ('gwg_representative', 'gwg_check_id', 'uuid', TRUE),
-                ('gwg_representative', 'full_name', 'text', TRUE),
-                ('gwg_representative', 'position', 'int4', TRUE),
-                ('gwg_representative', 'created_at', 'timestamptz', TRUE),
-                ('gwg_representative', 'updated_at', 'timestamptz', TRUE)
-            ) expected(table_name, column_name, udt_name, must_be_not_null)
-            LEFT JOIN information_schema.columns c
-              ON c.table_schema = 'public'
-             AND c.table_name = expected.table_name
-             AND c.column_name = expected.column_name
-             AND c.udt_name = expected.udt_name
-           WHERE c.column_name IS NULL
-              OR (expected.must_be_not_null AND c.is_nullable <> 'NO')
-        )
-        AND NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('gwg_check', 'gwg_check_identity_assignment_required_state', 'c'),
-                ('gwg_representative', 'gwg_representative_pkey', 'p'),
-                ('gwg_representative', 'gwg_representative_name_not_blank', 'c'),
-                ('gwg_representative', 'gwg_representative_position_nonnegative', 'c'),
-                ('gwg_representative', 'gwg_representative_gwg_check_id_position_key', 'u'),
-                ('gwg_representative', 'gwg_representative_gwg_check_id_fkey', 'f'),
-                ('gwg_id_document', 'gwg_id_document_gwg_check_id_document_id_key', 'u'),
-                ('gwg_id_document', 'gwg_id_document_natural_client_subject_id_fkey', 'f'),
-                ('gwg_id_document', 'gwg_id_document_beneficial_owner_subject_id_fkey', 'f'),
-                ('gwg_id_document', 'gwg_id_document_representative_subject_id_fkey', 'f'),
-                ('gwg_id_document', 'gwg_id_document_identity_subject_count', 'c'),
-                ('gwg_id_document', 'gwg_id_document_identity_subject_personal_type', 'c'),
-                ('gwg_id_document', 'gwg_id_document_identity_confirmation_complete', 'c')
-            ) expected(table_name, constraint_name, constraint_type)
-            LEFT JOIN pg_catalog.pg_constraint con
-              ON con.conname = expected.constraint_name
-             AND con.contype = expected.constraint_type::"char"
-             AND con.conrelid = pg_catalog.to_regclass('public.' || expected.table_name)
-             AND con.convalidated
-           WHERE con.oid IS NULL
-        )
-        AND NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('public.gwg_representative_gwg_check_id_idx'),
-                ('public.gwg_id_document_gwg_check_id_document_set_id_idx'),
-                ('public.gwg_id_document_natural_client_subject_id_idx'),
-                ('public.gwg_id_document_beneficial_owner_subject_id_idx'),
-                ('public.gwg_id_document_representative_subject_id_idx')
-            ) expected(index_name)
-           WHERE pg_catalog.to_regclass(expected.index_name) IS NULL
-        )
-        AND COALESCE((
-          SELECT c.relrowsecurity AND c.relforcerowsecurity
-            FROM pg_catalog.pg_class c
-           WHERE c.oid = pg_catalog.to_regclass('public.gwg_representative')
-        ), FALSE)
-        AND EXISTS (
-          SELECT 1
-            FROM pg_catalog.pg_policy policy
-           WHERE policy.polname = 'gwg_representative_isolation'
-             AND policy.polrelid = pg_catalog.to_regclass('public.gwg_representative')
-        )
-        AND NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('app.guard_gwg_id_document_subject_and_set()'),
-                ('app.enforce_gwg_document_set_consistency()'),
-                ('app.protect_verified_gwg_representative()'),
-                ('app.purge_gwg_representatives_after_destruction()'),
-                ('app.invalidate_gwg_beneficial_owner_identity_assignment()'),
-                ('app.gwg_check_has_confirmed_identity(uuid)'),
-                ('app.enforce_gwg_identity_assignment_on_verification()')
-            ) expected(signature)
-            LEFT JOIN pg_catalog.pg_proc p
-              ON p.oid = pg_catalog.to_regprocedure(expected.signature)
-           WHERE p.oid IS NULL
-        )
-        AND NOT EXISTS (
-          SELECT 1
-            FROM (
-              VALUES
-                ('gwg_id_document', 'gwg_id_document_subject_and_set_guard', 'app.guard_gwg_id_document_subject_and_set()'),
-                ('gwg_id_document', 'gwg_document_set_consistency', 'app.enforce_gwg_document_set_consistency()'),
-                ('gwg_representative', 'gwg_representative_verified_snapshot_immutable', 'app.protect_verified_gwg_representative()'),
-                ('gwg_check', 'gwg_check_purge_representatives_after_destruction', 'app.purge_gwg_representatives_after_destruction()'),
-                ('gwg_beneficial_owner', 'gwg_beneficial_owner_identity_assignment_invalidate', 'app.invalidate_gwg_beneficial_owner_identity_assignment()'),
-                ('gwg_check', '00_gwg_check_identity_verification_guard', 'app.enforce_gwg_identity_assignment_on_verification()')
-            ) expected(table_name, trigger_name, function_signature)
-            LEFT JOIN pg_catalog.pg_trigger t
-              ON t.tgname = expected.trigger_name
-             AND t.tgrelid = pg_catalog.to_regclass('public.' || expected.table_name)
-             AND t.tgfoid = pg_catalog.to_regprocedure(expected.function_signature)
-             AND NOT t.tgisinternal
-             AND t.tgenabled IN ('O', 'A')
-           WHERE t.oid IS NULL
-        )
-        AND EXISTS (
-          SELECT 1
-            FROM pg_catalog.pg_trigger t
-           WHERE t.tgname = 'gwg_document_set_consistency'
-             AND t.tgrelid = pg_catalog.to_regclass('public.gwg_id_document')
-             AND t.tgfoid = pg_catalog.to_regprocedure('app.enforce_gwg_document_set_consistency()')
-             AND NOT t.tgisinternal
-             AND t.tgenabled IN ('O', 'A')
-             AND t.tgconstraint <> 0
-             AND t.tgdeferrable
-             AND t.tginitdeferred
-        )
-        AND COALESCE((
-          SELECT pg_catalog.has_function_privilege(
-                   r.oid,
-                   pg_catalog.to_regprocedure('app.gwg_check_has_confirmed_identity(uuid)'),
-                   'EXECUTE'
-                 )
-            FROM pg_catalog.pg_roles r
-           WHERE r.rolname = 'taxtronik_app'
-        ), FALSE)
-        AND NOT EXISTS (
-          SELECT 1
-            FROM pg_catalog.pg_proc p
-            CROSS JOIN LATERAL pg_catalog.aclexplode(
-              COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
-            ) acl
-           WHERE p.oid = pg_catalog.to_regprocedure('app.gwg_check_has_confirmed_identity(uuid)')
-             AND acl.grantee = 0
-             AND acl.privilege_type = 'EXECUTE'
-        )
-        THEN 'yes' ELSE 'no'
-      END" 2>/dev/null)" || return 1
-  [[ "$result" == "yes" ]]
-}
+database_has_gwg_034_invariants() { run_gwg_invariant_check "$GWG_INVARIANTS_034"; }
+database_has_gwg_identity_invariants() { run_gwg_invariant_check "$GWG_INVARIANTS_IDENTITY"; }
+database_has_gwg_044_invariants() { run_gwg_invariant_check "$GWG_INVARIANTS_044"; }
 
-database_has_gwg_044_invariants() {
-  local result
-  result="$(compose --infra exec -T postgres \
-    psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -Atc "
-      /* gwg_044_schema_invariants */
-      SELECT CASE WHEN
-        EXISTS (
-          SELECT 1
-           FROM pg_catalog.pg_proc p
-           WHERE p.oid = pg_catalog.to_regprocedure('app.block_version_during_gwg_destruction()')
-             AND pg_catalog.strpos(p.prosrc, 'public.\"gwg_id_document\"') > 0
-             AND pg_catalog.strpos(p.prosrc, 'app.gwg_destroy_document_id') > 0
-             AND pg_catalog.strpos(p.prosrc, 'authorized_delete') > 0
-             AND pg_catalog.strpos(p.prosrc, 'FOR UPDATE') > 0
-        )
-        AND EXISTS (
-          SELECT 1
-            FROM pg_catalog.pg_trigger t
-           WHERE t.tgname = 'document_version_block_gwg_destruction'
-             AND t.tgrelid = pg_catalog.to_regclass('public.document_version')
-             AND t.tgfoid = pg_catalog.to_regprocedure('app.block_version_during_gwg_destruction()')
-             AND NOT t.tgisinternal
-             AND t.tgenabled IN ('O', 'A')
-        )
-        THEN 'yes' ELSE 'no'
-      END" 2>/dev/null)" || return 1
-  [[ "$result" == "yes" ]]
-}
-
+# 0 = erfuellt, 1 = verletzt, 2 = nicht pruefbar (SQL-/Verbindungsfehler). Die
+# erste nicht erfuellte Pruefung bestimmt das Ergebnis.
 database_has_gwg_invariants_for_checkout() {
   local migrations="$ROOT/packages/db/prisma/migrations"
 
   if [[ -d "$migrations/20260801003400_gwg_fail_closed_and_destruction" ||
         -d "$migrations/20260801004400_legacy_gwg_guard_recovery" ]]; then
-    database_has_gwg_034_invariants || return 1
+    database_has_gwg_034_invariants || return $?
   fi
   if [[ -d "$migrations/20260801004300_gwg_identity_subjects_and_document_sets" ||
         -d "$migrations/20260801004400_legacy_gwg_guard_recovery" ]]; then
-    database_has_gwg_identity_invariants || return 1
+    database_has_gwg_identity_invariants || return $?
   fi
   if [[ -d "$migrations/20260801004400_legacy_gwg_guard_recovery" ]]; then
-    database_has_gwg_044_invariants || return 1
+    database_has_gwg_044_invariants || return $?
   fi
 }
 
@@ -3928,9 +3678,11 @@ database_is_fully_migrated_for_commit() {
   # vollstaendig vorhanden sein; ab 043 gilt das zusaetzlich fuer die stabile
   # Subject-/Dokumentsatz-Zuordnung. Aeltere Releases behalten ihren damaligen
   # Vertrag und werden nicht nachtraeglich an spaetere Schemaobjekte gebunden.
-  (( requires_gwg_034 == 0 )) || database_has_gwg_034_invariants || return 1
-  (( requires_gwg_identity == 0 )) || database_has_gwg_identity_invariants || return 1
-  (( requires_gwg_044 == 0 )) || database_has_gwg_044_invariants || return 1
+  # Ein SQL-/Verbindungsfehler der Invariantenpruefung (2) wird weitergegeben
+  # und vorher als solcher ausgegeben; er gilt nie als vollstaendig migriert.
+  (( requires_gwg_034 == 0 )) || database_has_gwg_034_invariants || return $?
+  (( requires_gwg_identity == 0 )) || database_has_gwg_identity_invariants || return $?
+  (( requires_gwg_044 == 0 )) || database_has_gwg_044_invariants || return $?
 }
 
 can_retarget_verified_non_migration_transition() {

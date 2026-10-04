@@ -221,6 +221,16 @@ läuft unmittelbar nach `migrate deploy` vor der Aktivierung neuer Writer und
 nochmals in der Deploy-Readiness; bei Abweichungen bleibt die Aktivierung
 fail-closed.
 
+Die geprüften Invarianten liegen versioniert unter `packages/db/invariants/gwg`.
+Der Operator leitet diese Dateien unverändert an `psql` im Postgres-Container
+(read-only, ohne Node auf dem Host); CI führt dieselben Dateien mit
+`pnpm --filter @taxtronik/db verify:invariants` gegen die echte Datenbank aus.
+Bei einer Abweichung nennt das Log die verletzten Invarianten der ersten
+abweichenden Datei mit stabilem Namen, z. B.
+`gwg_034.trigger:gwg_check.gwg_check_no_hard_delete`. Ein SQL- oder
+Verbindungsfehler wird getrennt davon mit der psql-Meldung ausgegeben und sagt
+nichts über den Schutz aus; auch dann starten keine Writer.
+
 ### Recovery des GwG-Migrationsfehlers `03400` (P3018/42883)
 
 Eine vor dem ersten Release kurzzeitig auf `main` vorhandene Fassung von

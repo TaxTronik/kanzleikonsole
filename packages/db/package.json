@@ -40,6 +40,7 @@
     "test:migration-ledger": "node --test scripts/migration-ledger.node-test.mjs",
     "test:migrate-deploy": "node --test scripts/migrate-deploy.node-test.mjs",
     "verify:migration-line-endings": "node scripts/check-migration-line-endings.mjs",
+    "verify:invariants": "node --env-file-if-exists=../../.env scripts/check-db-invariants.mjs",
     "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts",
     "verify:rls": "tsx --env-file-if-exists=../../.env scripts/verify-rls.ts"
   },

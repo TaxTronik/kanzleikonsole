@@ -95,6 +95,68 @@ pass() {
   printf 'ok %s - %s\n' "$TESTS_RUN" "$1"
 }
 
+# ---------------------------------------------------------------------------
+# GwG-Invarianten: Ersatz nur fuer `docker compose exec postgres psql`.
+# Der echte Aufrufpfad (run_gwg_invariant_check) bleibt aktiv; der Stub prueft
+# den exakten psql-Aufruf, verlangt auf stdin byte-genau eine versionierte Datei
+# aus packages/db/invariants/gwg und antwortet wie psql -At: eine Zeile je
+# Verletzung, keine Zeile = erfuellt. Antworten je Datei kommen aus
+# GWG_ANSWER_034/043/044 (leer = erfuellt, EMPTY_ROW = Zeile ohne Namen,
+# ERROR = SQL-Fehler mit psql-Exit 3). GWG_CALLS protokolliert die Dateien.
+# Gegen eine echte Datenbank laufen dieselben Dateien in
+# packages/db/src/__tests__/db-invariants.test.ts.
+# ---------------------------------------------------------------------------
+GWG_INVARIANT_DIR="$REPO_ROOT/packages/db/invariants/gwg"
+GWG_INVARIANT_PSQL=(--infra exec -T -e 'PGOPTIONS=-c default_transaction_read_only=on' postgres
+  psql -X -U taxtronik -d taxtronik -v ON_ERROR_STOP=1 -At -f -)
+
+is_gwg_invariant_psql() {
+  local index=0 arg
+  [[ "$#" -eq "${#GWG_INVARIANT_PSQL[@]}" ]] || return 1
+  for arg in "$@"; do
+    [[ "$arg" == "${GWG_INVARIANT_PSQL[$index]}" ]] || return 1
+    index=$((index + 1))
+  done
+}
+
+gwg_invariant_from_stdin() {
+  local sql file
+  sql="$(cat; printf .)"
+  for file in "$GWG_INVARIANT_DIR"/*.sql; do
+    if [[ "$sql" == "$(cat "$file"; printf .)" ]]; then
+      printf '%s\n' "${file##*/}"
+      return 0
+    fi
+  done
+  printf 'stdin ist keine versionierte GwG-Invariantendatei\n' >&2
+  return 1
+}
+
+fake_gwg_invariant_psql() {
+  local file answer
+  if ! is_gwg_invariant_psql "$@"; then
+    printf 'unerwarteter compose-Aufruf: %s\n' "$*" >&2
+    return 1
+  fi
+  file="$(gwg_invariant_from_stdin)" || return 1
+  printf '%s\n' "$file" >>"${GWG_CALLS:-/dev/null}"
+  case "$file" in
+    034-*) answer="${GWG_ANSWER_034:-}" ;;
+    043-*) answer="${GWG_ANSWER_043:-}" ;;
+    044-*) answer="${GWG_ANSWER_044:-}" ;;
+    *) answer="" ;;
+  esac
+  case "$answer" in
+    "") ;;
+    EMPTY_ROW) printf '\n' ;;
+    ERROR)
+      printf 'psql:<stdin>:7: ERROR:  relation "information_schema.columns" does not exist\n' >&2
+      return 3
+      ;;
+    *) printf '%s\n' "$answer" ;;
+  esac
+}
+
 write_prod_env() {
   local file="$1"
   cat >"$file" <<'EOF'
@@ -1596,24 +1658,46 @@ test_deploy_readiness_rejects_missing_hostports() {
 test_deploy_readiness_rejects_gwg_schema_drift() {
   local out="$TMP_DIR/readiness-gwg-drift.out"
   if (
-    database_has_gwg_invariants_for_checkout() { return 1; }
+    GWG_ANSWER_043='gwg_043.policy:gwg_representative.gwg_representative_isolation'
+    compose() { fake_gwg_invariant_psql "$@"; }
     docker() { test_fail "host ports must not be inspected after GwG schema drift"; }
     deploy_readiness
   ) >"$out" 2>&1; then
     test_fail "deploy_readiness accepted an incomplete GwG protection schema"
   fi
+  assert_contains "$out" "gwg_043.policy:gwg_representative.gwg_representative_isolation"
   assert_contains "$out" "GwG-Datenbankschutz entspricht nicht dem Migrationsstand"
   pass "deploy readiness fails closed on GwG schema drift"
+}
+
+test_deploy_readiness_reports_gwg_sql_error_separately() {
+  local out="$TMP_DIR/readiness-gwg-error.out"
+  if (
+    GWG_ANSWER_043=ERROR
+    compose() { fake_gwg_invariant_psql "$@"; }
+    docker() { test_fail "host ports must not be inspected without a verified GwG schema"; }
+    deploy_readiness
+  ) >"$out" 2>&1; then
+    test_fail "deploy_readiness accepted an unverifiable GwG protection schema"
+  fi
+  assert_contains "$out" "GwG-Datenbankschutz konnte wegen eines SQL-/Verbindungsfehlers nicht geprueft werden"
+  assert_not_contains "$out" "entspricht nicht dem Migrationsstand"
+  assert_not_contains "$out" "GwG-Invariante verletzt"
+  pass "deploy readiness reports GwG SQL errors separately from schema drift"
 }
 
 test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start() {
   local out="$TMP_DIR/migrate-gwg-drift.out" steps="$TMP_DIR/migrate-gwg-drift.steps"
   if (
+    GWG_ANSWER_034='gwg_034.trigger:gwg_check.gwg_check_no_hard_delete'
     begin_migration_transition() { printf 'pending\n' >>"$steps"; }
-    compose() { printf 'migrate\n' >>"$steps"; }
-    database_has_gwg_invariants_for_checkout() {
-      printf 'gwg-integrity\n' >>"$steps"
-      return 1
+    compose() {
+      if [[ "$*" == "run --rm migrate" ]]; then
+        printf 'migrate\n' >>"$steps"
+      else
+        printf 'gwg-integrity\n' >>"$steps"
+        fake_gwg_invariant_psql "$@"
+      fi
     }
     run_migrations
     printf 'writer-start\n' >>"$steps"
@@ -1622,9 +1706,38 @@ test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start() {
   fi
 
   assert_file_equals "$steps" $'pending\nmigrate\ngwg-integrity'
+  assert_contains "$out" "gwg_034.trigger:gwg_check.gwg_check_no_hard_delete"
   assert_contains "$out" "GwG-Datenbankschutz ist unvollstaendig; neue Writer werden nicht aktiviert"
   assert_not_contains "$steps" "writer-start"
   pass "migration flow validates GwG guards before any writer can start"
+}
+
+test_run_migrations_reports_gwg_sql_error_before_writer_start() {
+  local out="$TMP_DIR/migrate-gwg-error.out" steps="$TMP_DIR/migrate-gwg-error.steps"
+  if (
+    GWG_ANSWER_034=ERROR
+    begin_migration_transition() { printf 'pending\n' >>"$steps"; }
+    compose() {
+      if [[ "$*" == "run --rm migrate" ]]; then
+        printf 'migrate\n' >>"$steps"
+      else
+        printf 'gwg-integrity\n' >>"$steps"
+        fake_gwg_invariant_psql "$@"
+      fi
+    }
+    run_migrations
+    printf 'writer-start\n' >>"$steps"
+  ) >"$out" 2>&1; then
+    test_fail "run_migrations accepted an unverifiable GwG protection schema"
+  fi
+
+  assert_file_equals "$steps" $'pending\nmigrate\ngwg-integrity'
+  assert_contains "$out" "SQL-/Verbindungsfehler (Exit 3), keine Aussage ueber den Schutz"
+  assert_contains "$out" 'relation "information_schema.columns" does not exist'
+  assert_contains "$out" "GwG-Datenbankschutz konnte wegen eines SQL-/Verbindungsfehlers nicht geprueft werden"
+  assert_not_contains "$out" "GwG-Datenbankschutz ist unvollstaendig"
+  assert_not_contains "$out" "GwG-Invariante verletzt"
+  pass "migration flow reports an unverifiable GwG schema as SQL error and starts no writer"
 }
 
 test_backup_manifest_detects_tampering() {
@@ -2419,28 +2532,30 @@ EOF
 }
 
 test_manual_gwg_034_resolution_requires_schema_invariants() {
-  local old_target_commit
+  local old_target_commit calls="$TMP_DIR/gwg-034-resolution.calls"
   old_target_commit="$(printf 'c%.0s' {1..40})"
 
   if (
+    GWG_CALLS="$calls"
+    # Simuliert `prisma migrate resolve --applied`, ohne die 034-DDL
+    # tatsaechlich ausgefuehrt zu haben: Die versionierte Pruefung meldet die
+    # fehlende Vernichtungsfunktion.
+    GWG_ANSWER_034='gwg_034.function:app.destroy_gwg_check(uuid)'
     git() { printf '%s\n' 20260801003400_gwg_fail_closed_and_destruction; }
     compose() {
       if [[ "$*" == *"finished_at IS NULL"* ]]; then
         printf 'no'
       elif [[ "$*" == *"SELECT migration_name"* ]]; then
         printf '%s\n' 20260801003400_gwg_fail_closed_and_destruction
-      elif [[ "$*" == *"gwg_034_schema_invariants"* ]]; then
-        # Simuliert `prisma migrate resolve --applied`, ohne die 034-DDL
-        # tatsaechlich ausgefuehrt zu haben.
-        printf 'no'
       else
-        return 1
+        fake_gwg_invariant_psql "$@"
       fi
     }
     database_is_fully_migrated_for_commit "$old_target_commit"
-  ); then
+  ) >/dev/null 2>&1; then
     test_fail "finished GwG 034 journal without schema invariants was accepted"
   fi
+  assert_file_equals "$calls" "034-fail-closed-and-destruction.sql"
 
   (
     git() { printf '%s\n' 20260801003300_pre_gwg_hardening; }
@@ -2460,79 +2575,83 @@ test_manual_gwg_034_resolution_requires_schema_invariants() {
 }
 
 test_gwg_identity_invariant_contract_covers_schema_and_guards() {
-  local query="$TMP_DIR/gwg-identity-invariants.sql"
+  local file="$GWG_INVARIANT_DIR/043-identity-subjects-and-document-sets.sql"
+  local calls="$TMP_DIR/gwg-identity.calls" out="$TMP_DIR/gwg-identity.out" status=0
+
+  # Inhalt der versionierten Datei; gegen die echte DB laeuft sie in
+  # packages/db/src/__tests__/db-invariants.test.ts und im CI-Pruefer.
+  assert_contains "$file" "identity_assignment_required"
+  assert_contains "$file" "document_set_id"
+  assert_contains "$file" "natural_client_subject_id"
+  assert_contains "$file" "beneficial_owner_subject_id"
+  assert_contains "$file" "representative_subject_id"
+  assert_contains "$file" "identity_assignment_confirmed_at"
+  assert_contains "$file" "identity_assignment_confirmed_by"
+  assert_contains "$file" "public.gwg_representative"
+  assert_contains "$file" "app.guard_gwg_id_document_subject_and_set()"
+  assert_contains "$file" "app.enforce_gwg_document_set_consistency()"
+  assert_contains "$file" "app.gwg_check_has_confirmed_identity(uuid)"
+  assert_contains "$file" "app.enforce_gwg_identity_assignment_on_verification()"
+  assert_contains "$file" "app.invalidate_gwg_beneficial_owner_identity_assignment()"
+  assert_contains "$file" "gwg_id_document_subject_and_set_guard"
+  assert_contains "$file" "gwg_document_set_consistency"
+  assert_contains "$file" "00_gwg_check_identity_verification_guard"
+  assert_contains "$file" "gwg_beneficial_owner_identity_assignment_invalidate"
 
   (
-    compose() {
-      printf '%s\n' "$*" >"$query"
-      printf 'yes\n'
-    }
+    GWG_CALLS="$calls"
+    compose() { fake_gwg_invariant_psql "$@"; }
     database_has_gwg_identity_invariants
   ) || test_fail "complete GwG identity invariant probe was rejected"
+  assert_file_equals "$calls" "043-identity-subjects-and-document-sets.sql"
 
-  assert_contains "$query" "gwg_043_schema_invariants"
-  assert_contains "$query" "identity_assignment_required"
-  assert_contains "$query" "document_set_id"
-  assert_contains "$query" "natural_client_subject_id"
-  assert_contains "$query" "beneficial_owner_subject_id"
-  assert_contains "$query" "representative_subject_id"
-  assert_contains "$query" "identity_assignment_confirmed_at"
-  assert_contains "$query" "identity_assignment_confirmed_by"
-  assert_contains "$query" "public.gwg_representative"
-  assert_contains "$query" "app.guard_gwg_id_document_subject_and_set()"
-  assert_contains "$query" "app.enforce_gwg_document_set_consistency()"
-  assert_contains "$query" "app.gwg_check_has_confirmed_identity(uuid)"
-  assert_contains "$query" "app.enforce_gwg_identity_assignment_on_verification()"
-  assert_contains "$query" "app.invalidate_gwg_beneficial_owner_identity_assignment()"
-  assert_contains "$query" "gwg_id_document_subject_and_set_guard"
-  assert_contains "$query" "gwg_document_set_consistency"
-  assert_contains "$query" "00_gwg_check_identity_verification_guard"
-  assert_contains "$query" "gwg_beneficial_owner_identity_assignment_invalidate"
-
-  if (
-    compose() { printf 'no\n'; }
+  (
+    GWG_ANSWER_043='gwg_043.forced_rls:gwg_representative'
+    compose() { fake_gwg_invariant_psql "$@"; }
     database_has_gwg_identity_invariants
-  ); then
-    test_fail "GwG identity invariant probe accepted a negative database result"
-  fi
+  ) >"$out" 2>&1 || status=$?
+  [[ "$status" == 1 ]] || test_fail "GwG identity violation must return 1, got $status"
+  assert_contains "$out" "GwG-Invariante verletzt (043-identity-subjects-and-document-sets.sql)"
+  assert_contains "$out" "gwg_043.forced_rls:gwg_representative"
 
   pass "GwG identity invariant contract covers schema, functions and active guards"
 }
 
 test_gwg_044_invariant_requires_immutable_evidence_versions() {
-  local query="$TMP_DIR/gwg-044-invariants.sql"
+  local file="$GWG_INVARIANT_DIR/044-legacy-guard-recovery.sql"
+  local calls="$TMP_DIR/gwg-044.calls" out="$TMP_DIR/gwg-044.out" status=0
+
+  assert_contains "$file" "app.block_version_during_gwg_destruction()"
+  assert_contains "$file" "public.\"gwg_id_document\""
+  assert_contains "$file" "app.gwg_destroy_document_id"
+  assert_contains "$file" "authorized_delete"
+  assert_contains "$file" "FOR UPDATE"
+  assert_contains "$file" "document_version_block_gwg_destruction"
 
   (
-    compose() {
-      printf '%s\n' "$*" >"$query"
-      printf 'yes\n'
-    }
+    GWG_CALLS="$calls"
+    compose() { fake_gwg_invariant_psql "$@"; }
     database_has_gwg_044_invariants
   ) || test_fail "complete GwG 044 invariant probe was rejected"
+  assert_file_equals "$calls" "044-legacy-guard-recovery.sql"
 
-  assert_contains "$query" "gwg_044_schema_invariants"
-  assert_contains "$query" "app.block_version_during_gwg_destruction()"
-  assert_contains "$query" "public.\"gwg_id_document\""
-  assert_contains "$query" "app.gwg_destroy_document_id"
-  assert_contains "$query" "authorized_delete"
-  assert_contains "$query" "FOR UPDATE"
-  assert_contains "$query" "document_version_block_gwg_destruction"
-
-  if (
-    compose() { printf 'no\n'; }
+  (
+    GWG_ANSWER_044='gwg_044.function_body:app.block_version_during_gwg_destruction().document_row_lock'
+    compose() { fake_gwg_invariant_psql "$@"; }
     database_has_gwg_044_invariants
-  ); then
-    test_fail "GwG 044 invariant probe accepted the legacy evidence-version guard"
-  fi
+  ) >"$out" 2>&1 || status=$?
+  [[ "$status" == 1 ]] || test_fail "GwG 044 violation must return 1, got $status"
+  assert_contains "$out" "gwg_044.function_body:app.block_version_during_gwg_destruction().document_row_lock"
 
   pass "GwG 044 invariant requires immutable assigned evidence versions"
 }
 
 test_manual_gwg_identity_resolution_requires_schema_invariants() {
-  local target_commit reached_044="$TMP_DIR/gwg-044-recovery-reached"
+  local target_commit calls="$TMP_DIR/gwg-identity-resolution.calls"
   target_commit="$(printf 'c%.0s' {1..40})"
 
   if (
+    GWG_ANSWER_043='gwg_043.table:gwg_representative'
     git() {
       printf '%s\n' \
         20260801003400_gwg_fail_closed_and_destruction \
@@ -2547,20 +2666,17 @@ test_manual_gwg_identity_resolution_requires_schema_invariants() {
           20260801003400_gwg_fail_closed_and_destruction \
           20260801004300_gwg_identity_subjects_and_document_sets \
           20260801004400_legacy_gwg_guard_recovery
-      elif [[ "$*" == *"gwg_034_schema_invariants"* ]]; then
-        printf 'yes\n'
-      elif [[ "$*" == *"gwg_043_schema_invariants"* ]]; then
-        printf 'no\n'
       else
-        return 1
+        fake_gwg_invariant_psql "$@"
       fi
     }
     database_is_fully_migrated_for_commit "$target_commit"
-  ); then
+  ) >/dev/null 2>&1; then
     test_fail "finished GwG 043/044 journal without identity schema invariants was accepted"
   fi
 
   (
+    GWG_CALLS="$calls"
     git() {
       printf '%s\n' \
         20260801003400_gwg_fail_closed_and_destruction \
@@ -2575,21 +2691,123 @@ test_manual_gwg_identity_resolution_requires_schema_invariants() {
           20260801003400_gwg_fail_closed_and_destruction \
           20260801004300_gwg_identity_subjects_and_document_sets \
           20260801004400_legacy_gwg_guard_recovery
-      elif [[ "$*" == *"gwg_034_schema_invariants"* ||
-              "$*" == *"gwg_043_schema_invariants"* ]]; then
-        printf 'yes\n'
-      elif [[ "$*" == *"gwg_044_schema_invariants"* ]]; then
-        printf 'seen\n' >"$reached_044"
-        printf 'yes\n'
       else
-        return 1
+        fake_gwg_invariant_psql "$@"
       fi
     }
     database_is_fully_migrated_for_commit "$target_commit"
   ) || test_fail "complete GwG 043/044 schema invariants were rejected"
-  [[ -s "$reached_044" ]] || test_fail "GwG 044 recovery skipped its version-guard invariant"
+  assert_file_equals "$calls" $'034-fail-closed-and-destruction.sql\n043-identity-subjects-and-document-sets.sql\n044-legacy-guard-recovery.sql'
 
   pass "manual GwG 043/044 resolution requires the real identity protection schema"
+}
+
+test_gwg_invariants_are_versioned_single_source() {
+  local file name
+  # Jede versionierte Datei ist im Deploy-Gate verdrahtet und umgekehrt; CI
+  # prueft genau diese Dateien mit packages/db/scripts/check-db-invariants.mjs.
+  for file in "$GWG_INVARIANT_DIR"/*.sql; do
+    name="${file##*/}"
+    grep -Fq "=\"$name\"" "$REPO_ROOT/scripts/ops-lib.sh" || \
+      test_fail "versioned GwG invariant $name is not wired into ops-lib.sh"
+  done
+  for name in "$GWG_INVARIANTS_034" "$GWG_INVARIANTS_IDENTITY" "$GWG_INVARIANTS_044"; do
+    [[ -f "$GWG_INVARIANT_DIR/$name" ]] || test_fail "ops-lib.sh references missing invariant $name"
+  done
+  # Kein zweiter, eingebetteter SQL-Stand der Invarianten im Operator.
+  for name in gwg_check_no_hard_delete gwg_representative_isolation \
+              gwg_document_set_consistency authorized_delete; do
+    grep -Fq -- "$name" "$GWG_INVARIANT_DIR"/*.sql || \
+      test_fail "versioned GwG invariants no longer check $name"
+    assert_not_contains "$REPO_ROOT/scripts/ops-lib.sh" "$name"
+  done
+  pass "GwG invariants live only in versioned SQL files wired into the deploy gate"
+}
+
+test_gwg_invariant_sql_error_is_not_reported_as_violation() {
+  local out="$TMP_DIR/gwg-sql-error.out" status=0
+
+  (
+    GWG_ANSWER_034=ERROR
+    compose() { fake_gwg_invariant_psql "$@"; }
+    database_has_gwg_invariants_for_checkout
+  ) >"$out" 2>&1 || status=$?
+  [[ "$status" == 2 ]] || test_fail "GwG SQL error must return 2, got $status"
+  assert_contains "$out" "GwG-Invariantenpruefung 034-fail-closed-and-destruction.sql: SQL-/Verbindungsfehler (Exit 3)"
+  assert_contains "$out" 'relation "information_schema.columns" does not exist'
+  assert_not_contains "$out" "GwG-Invariante verletzt"
+
+  status=0
+  (
+    compose() { printf 'service "postgres" is not running\n' >&2; return 1; }
+    database_has_gwg_invariants_for_checkout
+  ) >"$out" 2>&1 || status=$?
+  [[ "$status" == 2 ]] || test_fail "unreachable postgres must return 2, got $status"
+  assert_contains "$out" 'service "postgres" is not running'
+  assert_not_contains "$out" "GwG-Invariante verletzt"
+
+  status=0
+  (
+    GWG_ANSWER_034=EMPTY_ROW
+    compose() { fake_gwg_invariant_psql "$@"; }
+    database_has_gwg_invariants_for_checkout
+  ) >"$out" 2>&1 || status=$?
+  [[ "$status" == 1 ]] || test_fail "an unnamed violation row must never count as success, got $status"
+  assert_contains "$out" "<Verletzung ohne Namen>"
+
+  pass "GwG invariant SQL errors are reported as such and never count as success"
+}
+
+gwg_binding_root() {
+  local root="$TMP_DIR/gwg-binding-$1" migration
+  shift
+  mkdir -p "$root/packages/db/prisma/migrations" "$root/packages/db/invariants"
+  cp -R "$GWG_INVARIANT_DIR" "$root/packages/db/invariants/"
+  for migration in "$@"; do mkdir -p "$root/packages/db/prisma/migrations/$migration"; done
+  printf '%s' "$root"
+}
+
+assert_gwg_binding() {
+  local name="$1" expected="$2" root calls="$TMP_DIR/gwg-binding-$1.calls"
+  shift 2
+  root="$(gwg_binding_root "$name" "$@")"
+  (
+    ROOT="$root"
+    GWG_CALLS="$calls"
+    compose() { fake_gwg_invariant_psql "$@"; }
+    database_has_gwg_invariants_for_checkout
+  ) || test_fail "GwG binding $name rejected a complete protection schema"
+  assert_file_equals "$calls" "$expected"
+}
+
+test_gwg_invariants_keep_migration_presence_conditions() {
+  local f034=034-fail-closed-and-destruction.sql
+  local f043=043-identity-subjects-and-document-sets.sql
+  local f044=044-legacy-guard-recovery.sql
+  local m034=20260801003400_gwg_fail_closed_and_destruction
+  local m043=20260801004300_gwg_identity_subjects_and_document_sets
+  local m044=20260801004400_legacy_gwg_guard_recovery
+  local root calls="$TMP_DIR/gwg-binding-stop.calls" status=0
+
+  assert_gwg_binding pre-gwg ""
+  assert_gwg_binding only-034 "$f034" "$m034"
+  assert_gwg_binding only-043 "$f043" "$m043"
+  assert_gwg_binding 034-043 "$f034"$'\n'"$f043" "$m034" "$m043"
+  assert_gwg_binding recovery-044 "$f034"$'\n'"$f043"$'\n'"$f044" "$m044"
+
+  # Die erste nicht erfuellte Pruefung beendet den Lauf und bestimmt den Status.
+  root="$(gwg_binding_root stop "$m034" "$m043" "$m044")"
+  (
+    ROOT="$root"
+    GWG_CALLS="$calls"
+    GWG_ANSWER_034='gwg_034.trigger:gwg_check.gwg_check_no_hard_delete'
+    compose() { fake_gwg_invariant_psql "$@"; }
+    database_has_gwg_invariants_for_checkout
+  ) >/dev/null 2>&1 || status=$?
+  [[ "$status" == 1 ]] || test_fail "first violated GwG invariant must return 1, got $status"
+  assert_file_equals "$calls" "$f034"
+
+  pass "GwG invariant files keep the migration-presence binding of the checkout"
 }
 
 test_gwg_034_retarget_requires_exact_forward_state() {
@@ -2613,10 +2831,8 @@ test_gwg_034_retarget_requires_exact_forward_state() {
         printf '%s\n' \
           20260801003400_gwg_fail_closed_and_destruction \
           20260801004000_poa_created_at_db_clock
-      elif [[ "$*" == *"gwg_034_schema_invariants"* ]]; then
-        printf 'yes'
       else
-        return 1
+        fake_gwg_invariant_psql "$@"
       fi
     }
     # Eine neue Migration im aktuellen Vorwaerts-Checkout darf die bestaetigte
@@ -3108,7 +3324,9 @@ test_isolated_restore_does_not_stop_production_writers
 test_smoke_health_rejects_degraded
 test_deploy_readiness_rejects_missing_hostports
 test_deploy_readiness_rejects_gwg_schema_drift
+test_deploy_readiness_reports_gwg_sql_error_separately
 test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start
+test_run_migrations_reports_gwg_sql_error_before_writer_start
 test_backup_manifest_detects_tampering
 test_host_tool_deps_refresh_stale_checkout
 test_run_backup_uses_resolved_host_path
@@ -3137,6 +3355,9 @@ test_manual_gwg_034_resolution_requires_schema_invariants
 test_gwg_identity_invariant_contract_covers_schema_and_guards
 test_gwg_044_invariant_requires_immutable_evidence_versions
 test_manual_gwg_identity_resolution_requires_schema_invariants
+test_gwg_invariants_are_versioned_single_source
+test_gwg_invariant_sql_error_is_not_reported_as_violation
+test_gwg_invariants_keep_migration_presence_conditions
 test_gwg_034_retarget_requires_exact_forward_state
 test_compose_writer_passthrough_is_blocked_by_recovery_markers
 test_internal_writer_activation_is_bound_to_exact_contract
