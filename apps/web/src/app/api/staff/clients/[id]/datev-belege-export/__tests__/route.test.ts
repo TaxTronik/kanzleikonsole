@@ -21,8 +21,19 @@ vi.mock('@/server/rate-limit', () => ({
   checkStaffExportLimit: h.checkStaffExportLimit,
 }));
 vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: h.fetchObjectBytes }));
+// Echter ZIP-Writer; nur der Build-Slot ist für den 429-Pfad steuerbar.
+vi.mock('@/server/export/zip', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/export/zip')>();
+  return { ...actual, acquireZipBuildSlot: vi.fn(actual.acquireZipBuildSlot) };
+});
 
 import { GET } from '../route';
+import {
+  acquireZipBuildSlot,
+  ZipBusyError,
+  ZIP_MAX_ENTRIES,
+  ZIP_MAX_TOTAL_BYTES,
+} from '@/server/export/zip';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const call = (query = '') =>
@@ -183,5 +194,84 @@ describe('DATEV-Belege-Export: echte Datumsgrenzen', () => {
         }),
       }),
     );
+  });
+});
+
+describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
+  // Fachkatalog: DOC-UPLOAD-JOURNAL-001 (Abrufnachweis nur für ausgelieferte Sammelausgaben).
+  const readyDocument = (index: number, sizeBytes: bigint) => ({
+    id: `document-${index}`,
+    title: `Beleg ${index}`,
+    mimeType: 'application/pdf',
+    classification: 'GOBD_TAX',
+    createdAt: new Date('2026-09-07T09:00:00Z'),
+    invoiceAttachments: [],
+    versions: [
+      {
+        storageBucket: 'synthetic',
+        storageKey: `beleg-${index}`,
+        sizeBytes,
+        sha256: new Uint8Array(32),
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+      },
+    ],
+  });
+
+  it('413 zip_too_large aus der DB-Größe: kein Audit, kein Slot, keine Bytes', async () => {
+    h.tx.document.findMany.mockResolvedValue([
+      readyDocument(1, BigInt(ZIP_MAX_TOTAL_BYTES)),
+      readyDocument(2, 1n),
+    ]);
+    const response = await call();
+    expect(response.status).toBe(413);
+    expect((await response.json()).error).toBe('zip_too_large');
+    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+  });
+
+  it('413 zip_too_many_entries vorab statt nach Audit und Objekt-Loads', async () => {
+    // Belege + index.csv + manifest.txt überschreiten das 16-Bit-EOCD-Feld.
+    h.tx.document.findMany.mockResolvedValue(
+      Array.from({ length: ZIP_MAX_ENTRIES - 1 }, (_, index) => readyDocument(index, 1n)),
+    );
+    const response = await call();
+    expect(response.status).toBe(413);
+    expect((await response.json()).error).toBe('zip_too_many_entries');
+    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+  });
+
+  it('429 zip_busy: kein Audit und keine Bytes', async () => {
+    vi.mocked(acquireZipBuildSlot).mockRejectedValueOnce(new ZipBusyError());
+    h.tx.document.findMany.mockResolvedValue([readyDocument(1, 5n)]);
+    const response = await call();
+    expect(response.status).toBe(429);
+    expect((await response.json()).error).toBe('zip_busy');
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+  });
+
+  it('auditiert genau einmal nach dem Slot-Erwerb und vor dem ersten Objekt-Load', async () => {
+    h.tx.document.findMany.mockResolvedValue([readyDocument(1, 5n)]);
+    h.fetchObjectBytes.mockResolvedValue(Buffer.from('bytes'));
+    const response = await call('?from=2026-09-01&to=2026-09-30');
+    expect(response.status).toBe(200);
+    expect(h.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(h.evidenceRecord.mock.calls[0]![1]).toMatchObject({
+      action: 'client.belege.export',
+      resourceType: 'client',
+      resourceId: CLIENT_ID,
+      after: { documents: 1, from: '2026-09-01', to: '2026-09-30' },
+    });
+    const [slotOrder] = vi.mocked(acquireZipBuildSlot).mock.invocationCallOrder;
+    const [auditOrder] = h.evidenceRecord.mock.invocationCallOrder;
+    const [loadOrder] = h.fetchObjectBytes.mock.invocationCallOrder;
+    expect(slotOrder).toBeLessThan(auditOrder!);
+    expect(auditOrder).toBeLessThan(loadOrder!);
+    // Lesen (mit Zugriffsprüfung) und Audit laufen in getrennten Transaktionen.
+    expect(h.withTenantContext).toHaveBeenCalledTimes(2);
   });
 });

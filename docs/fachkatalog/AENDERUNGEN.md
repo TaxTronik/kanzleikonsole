@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-006
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts
+      - apps/web/src/app/api/staff/documents/download/route.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+    rule_ids:
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      DATEV-Belegexport und Sammel-Download schreiben ihren Abrufnachweis erst,
+      nachdem Größen-, Eintrags- und Slot-Prüfung bestanden sind, und vor dem
+      Laden des ersten Objekts. Mit 413 oder 429 abgelehnte Exporte erscheinen
+      dadurch nicht mehr als Abruf im Prüfprotokoll. Die Eintragszahl wird jetzt
+      vor dem Laden geprüft statt erst beim ZIP-Bau. Audit-Inhalt,
+      Zugriffsprüfung, Versionsbindung und gelieferte Dateien bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-005
     date: '2026-10-04'
     paths:
@@ -902,6 +923,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-006` dokumentiert, dass ZIP-Exporte ihren
+  Abrufnachweis erst nach Größen-, Eintrags- und Slot-Prüfung schreiben.
+  Abgelehnte Exporte erscheinen nicht mehr als Abruf; Audit-Inhalt und
+  Zugriffsprüfung bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-005` dokumentiert die Zusammenführung von
   Kettendurchlauf und Siegelprüfung im EvidenceService. Prüfergebnisse,

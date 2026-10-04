@@ -26,6 +26,7 @@ import {
   ZipBusyError,
   ZipTooLargeError,
   ZipTooManyEntriesError,
+  ZIP_MAX_ENTRIES,
   ZIP_MAX_TOTAL_BYTES,
   type ZipEntry,
 } from '@/server/export/zip';
@@ -148,22 +149,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
       const docs = candidates.filter((doc) => isDocumentVersionReady(doc.versions[0]));
 
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'client.belege.export',
-        resourceType: 'client',
-        resourceId: clientId,
-        after: {
-          documents: docs.length,
-          from: parsedQs.data.from ?? null,
-          to: parsedQs.data.to ?? null,
-        },
-        ip: getClientIp(req.headers),
-        userAgent: req.headers.get('user-agent'),
-      });
-
       return { client, docs };
     },
   );
@@ -192,6 +177,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       { status: 413 },
     );
   }
+  // F-18: Die Eintragszahl (Belege + index.csv + manifest.txt) steht ebenfalls
+  // vorab fest — vor dem Audit prüfen statt erst nach dem Laden in buildZip.
+  if (docs.length + 2 > ZIP_MAX_ENTRIES) {
+    const e = new ZipTooManyEntriesError(docs.length + 2, ZIP_MAX_ENTRIES);
+    return NextResponse.json(
+      { error: 'zip_too_many_entries', message: e.message },
+      { status: 413 },
+    );
+  }
 
   // P-6: Build-Slot — max. 2 parallele ZIP-Builds pro Instanz (RAM-Schutz).
   let releaseZipSlot: () => void;
@@ -204,6 +198,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     throw err;
   }
   try {
+    // F-18: Audit erst NACH Größen-, Eintrags- und Slot-Prüfung (Muster der
+    // Schwester-Route api/staff/documents/download). Vorher stand der Eintrag in
+    // der Lese-Transaktion — das Prüfprotokoll wies so auch Exporte aus, die
+    // anschließend mit 413/429 abgelehnt und nie ausgeliefert wurden.
+    await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+      evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'client.belege.export',
+        resourceType: 'client',
+        resourceId: clientId,
+        after: {
+          documents: docs.length,
+          from: parsedQs.data.from ?? null,
+          to: parsedQs.data.to ?? null,
+        },
+        ip: getClientIp(req.headers),
+        userAgent: req.headers.get('user-agent'),
+      }),
+    );
+
     // Belege als Bytes laden — sequentiell, um S3 nicht zu überfluten
     const fileEntries: ZipEntry[] = [];
     const indexRows: string[] = [];

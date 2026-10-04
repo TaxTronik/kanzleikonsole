@@ -20,6 +20,7 @@ import {
   ZipBusyError,
   ZipTooLargeError,
   ZipTooManyEntriesError,
+  ZIP_MAX_ENTRIES,
   ZIP_MAX_TOTAL_BYTES,
   type ZipEntry,
 } from '@/server/export/zip';
@@ -201,9 +202,12 @@ export async function GET(req: NextRequest) {
     const e = new ZipTooLargeError(Number(totalBytes), ZIP_MAX_TOTAL_BYTES);
     return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
   }
-
-  // Befund 15: Machbarkeit steht fest → jetzt auditieren, dann ausliefern.
-  await recordDownloadAudits([...usableLoose, ...usableFolder.map((x) => x.doc)]);
+  // Die Eintragszahl steht ebenfalls vorab fest (vorher erst in buildZip, nach Audit).
+  const entryCount = usableLoose.length + usableFolder.length;
+  if (entryCount > ZIP_MAX_ENTRIES) {
+    const e = new ZipTooManyEntriesError(entryCount, ZIP_MAX_ENTRIES);
+    return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
+  }
 
   // P-6: Build-Slot — max. 2 parallele ZIP-Builds pro Instanz (RAM-Schutz),
   // umfasst Bytes-Laden UND buildZip (siehe server/export/zip.ts).
@@ -218,6 +222,11 @@ export async function GET(req: NextRequest) {
   }
   let zip: Buffer;
   try {
+    // Befund 15 / F-18: Machbarkeit (Größe UND Build-Slot) steht fest → jetzt
+    // auditieren, dann ausliefern. Vor dem Slot hätte ein 429 zip_busy einen
+    // Abruf protokolliert, der nie stattfand.
+    await recordDownloadAudits([...usableLoose, ...usableFolder.map((x) => x.doc)]);
+
     const allocatePath = createZipEntryPathAllocator(usableFolder.map((x) => x.path));
     const entries: ZipEntry[] = [];
     const addEntry = async (

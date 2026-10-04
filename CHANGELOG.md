@@ -447,6 +447,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Der DATEV-Belegexport protokolliert `client.belege.export` erst
+  nach Größen-, Eintrags- und Slot-Prüfung; mit 413 oder 429 abgelehnte
+  Exporte erscheinen nicht mehr im Prüfprotokoll. Der Sammel-Download schreibt
+  seinen Abrufnachweis ebenfalls erst nach dem Slot-Erwerb
+  (`DOC-UPLOAD-JOURNAL-001`, `FK-EXC-20261004-006`).
 - **[Scope]** Die RLS-Prüfungen für Benachrichtigungen, Lohnakten und
   Mandatsartefakte suchen Ressourcen per UUID-Index statt per
   Textvergleich. Mit 200.000 Dokumenten sinkt die Abfrage der

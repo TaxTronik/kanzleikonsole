@@ -24,7 +24,18 @@ vi.mock('@taxtronik/storage', () => ({
   streamObject: h.stream,
   sanitizeFilenameForHeader: (value: string) => value,
 }));
+// Echter ZIP-Writer; nur der Build-Slot ist für den 429-Pfad steuerbar.
+vi.mock('@/server/export/zip', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/export/zip')>();
+  return { ...actual, acquireZipBuildSlot: vi.fn(actual.acquireZipBuildSlot) };
+});
 import { GET } from '../download/route';
+import {
+  acquireZipBuildSlot,
+  ZipBusyError,
+  ZIP_MAX_ENTRIES,
+  ZIP_MAX_TOTAL_BYTES,
+} from '@/server/export/zip';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const folderId = '22222222-2222-4222-8222-222222222222';
@@ -77,5 +88,56 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: bulk download r
     expect(Object.keys(files)).toEqual(['loose.pdf', 'Belege/folder.pdf']);
     expect(h.fetch.mock.calls.map((call) => call[1])).toEqual(['loose', 'folder']);
     expect(h.audit.mock.calls.map((call) => call[1].resourceId)).toEqual(['loose', 'folder']);
+  });
+});
+
+describe('F-18 / Befund 15: Abrufnachweis erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
+  // Fachkatalog: DOC-UPLOAD-JOURNAL-001 (Abrufnachweis nur für ausgelieferte Sammelausgaben).
+  const sized = (key: string, sizeBytes: bigint) => {
+    const doc = document(key);
+    doc.versions[0]!.sizeBytes = sizeBytes;
+    return doc;
+  };
+
+  it('413 aus der DB-Größe: kein Audit, kein Slot, keine Bytes', async () => {
+    h.read.mockResolvedValue([sized('a', BigInt(ZIP_MAX_TOTAL_BYTES)), sized('b', 1n)]);
+    const response = await call();
+    expect(response.status).toBe(413);
+    expect((await response.json()).error).toBe('zip_too_large');
+    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it('413 bei zu vielen Einträgen vorab statt nach Audit und Objekt-Loads', async () => {
+    h.read.mockResolvedValue(
+      Array.from({ length: ZIP_MAX_ENTRIES + 1 }, (_, index) => document(`doc-${index}`)),
+    );
+    const response = await call();
+    expect(response.status).toBe(413);
+    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it('429 zip_busy: kein Abrufnachweis für einen nie ausgelieferten Download', async () => {
+    vi.mocked(acquireZipBuildSlot).mockRejectedValueOnce(new ZipBusyError());
+    h.read.mockResolvedValue([document('a'), document('b')]);
+    const response = await call();
+    expect(response.status).toBe(429);
+    expect((await response.json()).error).toBe('zip_busy');
+    expect(h.audit).not.toHaveBeenCalled();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it('auditiert nach dem Slot-Erwerb und vor dem ersten Objekt-Load', async () => {
+    h.read.mockResolvedValue([document('a'), document('b')]);
+    const response = await call();
+    expect(response.status).toBe(200);
+    const [slotOrder] = vi.mocked(acquireZipBuildSlot).mock.invocationCallOrder;
+    const [auditOrder] = h.audit.mock.invocationCallOrder;
+    const [loadOrder] = h.fetch.mock.invocationCallOrder;
+    expect(slotOrder).toBeLessThan(auditOrder!);
+    expect(auditOrder).toBeLessThan(loadOrder!);
   });
 });
