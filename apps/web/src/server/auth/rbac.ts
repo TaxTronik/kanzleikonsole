@@ -342,6 +342,45 @@ export interface ActionErrorResult {
   error: string;
 }
 
+function stringOrStringList(value: unknown): string | string[] | undefined {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value;
+  return undefined;
+}
+
+function objectField(source: unknown, key: string): Record<string, unknown> | undefined {
+  if (source === null || typeof source !== 'object') return undefined;
+  const value = (source as Record<string, unknown>)[key];
+  return value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/**
+ * Log-Felder für bekannte Prisma-Fehler. `meta` wird bewusst nicht roh
+ * geloggt: Bei Driver-Adapter-Fehlern kann es die DETAIL-Zeile von Postgres
+ * und damit Zeilenwerte enthalten („Failing row contains …“). Die Fehlerstelle
+ * in der Action steht in Message und Stack.
+ */
+function prismaErrorLogFields(e: InstanceType<typeof Prisma.PrismaClientKnownRequestError>) {
+  const modelName = e.meta?.['modelName'];
+  const cause = objectField(objectField(e.meta, 'driverAdapterError'), 'cause');
+  const sqlState = cause?.['originalCode'];
+  const constraint = objectField(cause, 'constraint');
+  return {
+    component: 'action-error',
+    prismaCode: e.code,
+    modelName: typeof modelName === 'string' ? modelName : undefined,
+    sqlState: typeof sqlState === 'string' ? sqlState : undefined,
+    constraint:
+      stringOrStringList(constraint?.['fields']) ??
+      stringOrStringList(constraint?.['index']) ??
+      stringOrStringList(e.meta?.['target']),
+    err: e.message,
+    stack: e.stack,
+  };
+}
+
 /**
  * Wrapper für Server-Actions, die `{ ok, error }` zurückgeben: fängt
  * `UnauthorizedError`, `ForbiddenError` und Prisma-Errors und mappt sie auf
@@ -353,6 +392,11 @@ export interface ActionErrorResult {
  * 500-Stack-Trace im Log + generischer Fehler im UI. Jetzt: sauberes
  * { ok: false, error: 'Datensatz nicht gefunden' }. Auch P2002 (unique)
  * und P2003 (FK) bekommen menschenlesbare Meldungen.
+ *
+ * Bekannte Prisma-Fehler werden zusätzlich geloggt: P2025 und P2002 sind
+ * erwartbare Konflikte (warn). Alles andere, etwa Transaktions-Timeout
+ * (P2028), Serialisierungskonflikt (P2034) oder erschöpfter Pool (P2024),
+ * landet als error im Log, statt nur als „Datenbankfehler.“ im UI.
  */
 export function toActionError(e: unknown): ActionErrorResult {
   if (
@@ -370,6 +414,11 @@ export function toActionError(e: unknown): ActionErrorResult {
     };
   }
   if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    if (e.code === 'P2025' || e.code === 'P2002') {
+      log.warn(prismaErrorLogFields(e), 'toActionError: erwartbarer Prisma-Konflikt');
+    } else {
+      log.error(prismaErrorLogFields(e), 'toActionError: Prisma-Fehler');
+    }
     switch (e.code) {
       case 'P2025':
         return { ok: false, error: 'Datensatz nicht gefunden oder bereits geändert.' };

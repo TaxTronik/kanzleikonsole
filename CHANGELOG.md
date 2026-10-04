@@ -429,6 +429,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Benachrichtigungsglocke von rund 100 s auf unter 0,5 s; Treffermengen,
   Policies und Grants bleiben unverändert (`ACCESS-NOTIFICATION-RECIPIENT-001`,
   `ACCESS-TENANT-RLS-001`, `FK-EXC-20261004-001`).
+- Datenbankfehler in Server-Actions erscheinen im Server-Log. Bisher meldete
+  `toActionError` etwa Transaktions-Timeouts (P2028), Serialisierungskonflikte
+  (P2034) oder einen erschöpften Pool (P2024) nur als „Datenbankfehler.“ im UI.
+  P2025 und P2002 werden als Warnung, alle übrigen Codes als Fehler geloggt,
+  ohne Zeilenwerte aus den Postgres-Details (`FK-EXC-20261004-002`).
 - Die E2E-Bereinigung respektiert die Redis-Datenbank aus der URL und sendet
   `FLUSHDB` erst nach bestätigtem `SELECT`. Neue verpflichtende Helper-Tests
   verhindern das versehentliche Leeren von Datenbank 0 sowie übrig gebliebene

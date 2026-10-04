@@ -8,9 +8,9 @@
 // werfen einfach `error: e.message` zurück, dann sehen wir die Ursache
 // schneller im UI").
 //
-// Verwendet vi.mock, um den pino-Logger zu kapseln — der Test prüft nur
-// das Rückgabeverhalten, nicht den Log-Side-Effect (Log-Inhalt wird im
-// Production-Setup von Operations geprüft).
+// Verwendet vi.mock, um den pino-Logger zu kapseln. Geprüft werden das
+// Rückgabeverhalten und, für Ops-relevante Fehler, Level und Felder des
+// Log-Eintrags; Zeilenwerte aus Datenbankfehlern dürfen nicht ins Log.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -121,6 +121,83 @@ describe('toActionError', () => {
       component: 'action-error',
       err: 'Original-Message für Ops',
     });
+  });
+
+  it('Prisma P2025/P2002 → als erwartbarer Konflikt mit warn im Log', () => {
+    for (const code of ['P2025', 'P2002']) {
+      toActionError(
+        new Prisma.PrismaClientKnownRequestError(`Konflikt ${code}`, {
+          code,
+          clientVersion: 'test',
+          meta: { modelName: 'Document' },
+        }),
+      );
+    }
+    expect(log.error).not.toHaveBeenCalled();
+    expect(vi.mocked(log.warn).mock.calls.map(([fields]) => fields)).toEqual([
+      expect.objectContaining({
+        component: 'action-error',
+        prismaCode: 'P2025',
+        modelName: 'Document',
+      }),
+      expect.objectContaining({
+        component: 'action-error',
+        prismaCode: 'P2002',
+        modelName: 'Document',
+      }),
+    ]);
+  });
+
+  it('Prisma-Timeout, Serialisierungskonflikt, Pool → error im Log, UI bleibt generisch', () => {
+    for (const code of ['P2028', 'P2034', 'P2024']) {
+      const r = toActionError(
+        new Prisma.PrismaClientKnownRequestError(`Fehler ${code}`, {
+          code,
+          clientVersion: 'test',
+        }),
+      );
+      expect(r).toEqual({ ok: false, error: 'Datenbankfehler.' });
+    }
+    expect(log.warn).not.toHaveBeenCalled();
+    expect(vi.mocked(log.error).mock.calls.map(([fields]) => fields)).toEqual(
+      ['P2028', 'P2034', 'P2024'].map((code) =>
+        expect.objectContaining({
+          component: 'action-error',
+          prismaCode: code,
+          err: `Fehler ${code}`,
+        }),
+      ),
+    );
+  });
+
+  it('Driver-Adapter-Fehler → SQLSTATE und Constraint im Log, aber keine Zeilenwerte', () => {
+    toActionError(
+      new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `23514`.', {
+        code: 'P2010',
+        clientVersion: 'test',
+        meta: {
+          modelName: 'Client',
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              originalCode: '23514',
+              kind: 'postgres',
+              detail: 'Failing row contains (mueller@example.test, Geheim GmbH).',
+              constraint: { index: 'client_name_check' },
+            },
+          },
+        },
+      }),
+    );
+    expect(log.error).toHaveBeenCalledOnce();
+    const [fields] = vi.mocked(log.error).mock.calls[0]!;
+    expect(fields).toMatchObject({
+      prismaCode: 'P2010',
+      modelName: 'Client',
+      sqlState: '23514',
+      constraint: 'client_name_check',
+    });
+    expect(JSON.stringify(fields)).not.toMatch(/mueller@example\.test|Geheim GmbH/);
   });
 
   it('Nicht-Error-Wurf (etwa string oder number) → generische Meldung', () => {

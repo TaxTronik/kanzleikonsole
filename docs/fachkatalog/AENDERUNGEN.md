@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-002
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/server/auth/rbac.ts
+    rule_ids:
+      - ACCESS-STAFF-PERMISSION-001
+      - ACCESS-CLIENT-MODE-001
+    reason: >-
+      toActionError protokolliert bekannte Prisma-Fehler zusätzlich im
+      Server-Log: P2025 und P2002 als warn, alle übrigen Codes als error, jeweils
+      mit Prisma-Code, Modell, SQLSTATE, Constraint, Meldung und Stack, aber ohne
+      die rohen meta-Daten mit möglichen Zeilenwerten. Rückgabewerte,
+      UI-Meldungen, Rollen- und Rechteprüfungen sowie der Mandantenzugriff
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/rbac.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-001
     date: '2026-10-04'
     paths:
@@ -824,6 +841,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-002` dokumentiert das zusätzliche Logging
+  bekannter Prisma-Fehler in `toActionError`. Rückgaben, UI-Meldungen und
+  Zugriffsentscheidungen bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-001` dokumentiert die Umstellung der
   RLS-Lookup-Funktionen für Benachrichtigungen, Lohnakten und Mandatsartefakte
