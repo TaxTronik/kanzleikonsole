@@ -18,9 +18,10 @@ import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { readModules } from '@/server/settings/modules';
-import { buildReportModel } from '@/server/risk/export/report-model';
+import { buildReportModel, type ReportModel } from '@/server/risk/export/report-model';
 import { renderDocx } from '@/server/risk/export/to-docx';
 import { renderPdf } from '@/server/risk/export/to-pdf';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,20 @@ function safeFilename(title: string, ext: string): string {
       .join('')
       .trim() || 'Subsumtion';
   return `${base}.${ext}`;
+}
+
+/** Zeichen außerhalb der eingebetteten PDF-Schriften (z. B. Emoji) sperren den
+ *  PDF-Export ausdrücklich; der Grund geht an den Nutzer statt eines generischen 500. */
+async function renderReport(model: ReportModel, isPdf: boolean): Promise<Buffer | NextResponse> {
+  try {
+    return isPdf ? await renderPdf(model) : await renderDocx(model);
+  } catch (error) {
+    if (!(error instanceof UnsupportedPdfTextError)) throw error;
+    return NextResponse.json(
+      { error: 'unsupported_text', message: error.message },
+      { status: 422 },
+    );
+  }
 }
 
 export async function GET(
@@ -106,7 +121,8 @@ export async function GET(
 
   const format = req.nextUrl.searchParams.get('format') === 'pdf' ? 'pdf' : 'docx';
   const isPdf = format === 'pdf';
-  const buf = isPdf ? await renderPdf(model) : await renderDocx(model);
+  const buf = await renderReport(model, isPdf);
+  if (buf instanceof NextResponse) return buf; // ohne erzeugten Report kein Audit-Eintrag
   const filename = safeFilename(model.title, isPdf ? 'pdf' : 'docx');
 
   // Audit-Eintrag erst nach erfolgreichem Aufbau (Compliance: wer hat wann

@@ -3,11 +3,17 @@
 //
 // pdfkit ist serverExternalPackages (next.config) — lädt seine Standard-Fonts
 // zur Laufzeit aus node_modules, darf nicht gebündelt werden.
+//
+// Text läuft über die eingebetteten Noto-Schriften (installUnicodePdfFonts):
+// Helvetica/WinAnsi hat Zeichen wie ı, Ş, Ł oder ř bisher still verstümmelt.
+// Nicht abgedeckte Zeichen (z. B. Emoji) sperren den Export mit
+// UnsupportedPdfTextError, statt Namen oder Sachverhalt zu verfälschen.
 // =============================================================================
 
 import PDFDocument from 'pdfkit';
 import { type ReportModel, type ReportToken } from './report-types';
 import { fmtDateShort } from '@/lib/fmt';
+import { installUnicodePdfFonts } from '@/server/documents/pdf-fonts';
 
 function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -16,6 +22,12 @@ function toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
   });
+}
+
+/** Tabulatoren als Leerraum setzen: Noto Sans hat für U+0009 keine Glyphe, das
+ *  Ersatzkästchen (.notdef) wäre sichtbar. Der Inhalt bleibt sonst unverändert. */
+function tabsAsSpaces(s: string): string {
+  return s.replace(/\t/g, ' ');
 }
 
 // Annotierten Sachverhalt selbst Wort für Wort setzen (KEIN pdfkit-`continued`):
@@ -51,7 +63,10 @@ function drawAnnotated(
     if (ctx.x + w > right && ctx.x > left) newline(); // Zeilenumbruch vor zu breitem Wort
     ensure();
     doc.fillColor(color).text(s, ctx.x, ctx.y, { lineBreak: false });
-    ctx.x += w;
+    // Tatsächlich gesetzte Breite: `w` misst nur mit der Grundschrift; Zeichen
+    // aus der Ersatzschrift (CJK, Symbole) sind breiter und dürfen das nächste
+    // Wort nicht überlappen. Für reine Noto-Sans-Wörter gilt doc.x === ctx.x + w.
+    ctx.x = doc.x;
   };
 
   for (const tok of tokens) {
@@ -63,7 +78,7 @@ function drawAnnotated(
     const lines = tok.text.split('\n');
     for (let li = 0; li < lines.length; li++) {
       if (li > 0) newline(); // jedes \n = Umbruch (\n\n → Leerzeile)
-      const words = lines[li]!.split(' ');
+      const words = tabsAsSpaces(lines[li]!).split(' ');
       for (let wi = 0; wi < words.length; wi++) {
         if (wi > 0) ctx.x += spaceW; // Leerzeichen zwischen den Wörtern
         if (words[wi]) piece(words[wi]!, color, false);
@@ -90,6 +105,7 @@ function metaLine(model: ReportModel): string {
 export async function renderPdf(model: ReportModel): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
   const done = toBuffer(doc);
+  installUnicodePdfFonts(doc);
 
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
@@ -101,25 +117,26 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
     .font('Helvetica-Bold')
     .fontSize(18)
     .fillColor('#111111')
-    .text(model.title, { width: contentWidth });
+    .text(tabsAsSpaces(model.title), { width: contentWidth });
   doc.moveDown(0.3);
   doc
     .font('Helvetica')
     .fontSize(8)
     .fillColor('#666666')
-    .text(metaLine(model), { width: contentWidth });
+    .text(tabsAsSpaces(metaLine(model)), { width: contentWidth });
   doc.moveDown(0.9);
 
   // --- Sachverhalt (annotiert: markierte Stellen farbig + Marker [n]) ---
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Sachverhalt');
   doc.moveDown(0.2);
+  // Kursiv als synthetische Schrägstellung: Noto Sans ist nur Regular/Bold eingebettet.
   doc
-    .font('Helvetica-Oblique')
+    .font('Helvetica')
     .fontSize(8)
     .fillColor('#888888')
     .text(
       'Markierte Stellen sind farbig und mit [Nr.] nummeriert — dieselbe Nr. steht in der Tabelle „Markierungen".',
-      { width: contentWidth },
+      { width: contentWidth, oblique: true },
     );
   doc.moveDown(0.3);
 
@@ -132,7 +149,11 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
   doc.moveDown(0.4);
 
   if (model.markings.length === 0) {
-    doc.font('Helvetica-Oblique').fontSize(10).fillColor('#666666').text('Keine Markierungen.');
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .fillColor('#666666')
+      .text('Keine Markierungen.', { oblique: true });
     doc.end();
     return done;
   }
@@ -186,7 +207,7 @@ export async function renderPdf(model: ReportModel): Promise<Buffer> {
       `${m.herkunftLabel}\n${m.statusLabel}`,
       (m.governanceLabel ?? '—') + (risiko ? `\nRisiko: ${risiko}` : ''),
       [m.notiz, m.kontrolle ? 'Maßnahme: ' + m.kontrolle : null].filter(Boolean).join('\n') || '—',
-    ];
+    ].map(tabsAsSpaces);
 
     doc.font('Helvetica').fontSize(8);
     const heights = cells.map((t, i) => doc.heightOfString(t, { width: cols[i]!.width - 2 * pad }));

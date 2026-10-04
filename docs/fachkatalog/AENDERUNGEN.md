@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-009
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/server/risk/export/to-pdf.ts
+      - apps/web/src/server/risk/export/__tests__/to-pdf.test.ts
+      - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts
+    rule_ids:
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - ACCESS-CLIENT-MODE-001
+    reason: >-
+      Der PDF-Export der Subsumtionsanalyse setzt Texte mit den vorhandenen,
+      hashgeprüften Noto-Schriften statt mit WinAnsi-Helvetica. Zeichen wie ı,
+      Ş, ğ, Ł oder ř wurden bisher still verstümmelt und erscheinen jetzt
+      korrekt; nicht abgedeckte Zeichen wie Emoji sperren den PDF-Export mit
+      HTTP 422 und Angabe der Zeichen, ohne Audit-Eintrag, statt fehlerhafter
+      Ausgabe. Inhalt, Gliederung, Zugriffsprüfung, Archivstand und der
+      DOCX-Export bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/risk/export/__tests__/to-pdf.test.ts
+      - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/__tests__/route.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-008
     date: '2026-10-04'
     paths:
@@ -990,6 +1011,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-009` dokumentiert die Unicode-Schriften im
+  PDF-Export der Subsumtionsanalyse. Bisher verstümmelte Zeichen erscheinen
+  korrekt, nicht darstellbare sperren den Export; Inhalt und Zugriff bleiben
+  unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-008` dokumentiert die gestreamte Erzeugung von
   Sammel-Download und DATEV-Belegexport. Auswahl, Auslieferbarkeitsprüfung,

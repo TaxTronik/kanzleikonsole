@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { extractText, getDocumentProxy } from 'unpdf';
 import { renderPdf } from '../to-pdf';
 import type { ReportModel } from '../report-model';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 
 // Synthetisches Modell (keine Echtdaten) — deckt die heikle annotierte
 // Sachverhalt-Ausgabe ab: markierte Stellen, Marker [n] und Absätze (\n\n).
@@ -69,5 +71,62 @@ describe('renderPdf', () => {
     m.counts = { gesamt: 0, eigen: 0 };
     const buf = await renderPdf(m);
     expect(buf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+});
+
+const NAMES = ['Yıldız Bau GmbH', 'Şahin', 'Łódź', 'Dvořák', 'Müller', 'Çelik'];
+
+async function pdfText(buf: Buffer): Promise<string> {
+  const { text } = await extractText(new Uint8Array(buf), { mergePages: true });
+  return text;
+}
+
+describe('renderPdf — eingebettete Unicode-Schriften (F-02)', () => {
+  it('setzt Namen außerhalb von WinAnsi in Kopf, Sachverhalt und Tabelle verlustfrei', async () => {
+    const m = model();
+    m.clientName = NAMES.join(', ');
+    m.tokens = [
+      { kind: 'text', text: `Gesellschafter ${NAMES.join(', ')}.`, color: null, streitig: false },
+    ];
+    m.markings = [{ ...m.markings[0]!, streitig: true, notiz: NAMES.join(' / ') }];
+    const text = await pdfText(await renderPdf(m));
+    // Je Name genau dreimal: Metazeile, wortweise gesetzter Sachverhalt, umbrochene Zelle.
+    for (const name of NAMES) expect(text.split(name).length - 1, name).toBe(3);
+    expect(text).toContain('⚠ streitig'); // Symbol aus der geprüften Ersatzschrift
+  });
+
+  it('setzt das Folgewort hinter Zeichen der Ersatzschrift ohne Überlappung', async () => {
+    const m = model();
+    m.tokens = [
+      { kind: 'text', text: 'Vertrag mit 李明 vom Januar', color: null, streitig: false },
+    ];
+    const pdf = await getDocumentProxy(new Uint8Array(await renderPdf(m)));
+    const content = await (await pdf.getPage(1)).getTextContent();
+    const items = content.items.flatMap((item) => ('str' in item && item.str.trim() ? [item] : []));
+    const index = items.findIndex((item) => item.str === '李明');
+    expect(index).toBeGreaterThan(-1);
+    const [glyphs, next] = [items[index]!, items[index + 1]!];
+    expect(next.str).toMatch(/^vom/);
+    expect(next.transform[4]).toBeGreaterThanOrEqual(glyphs.transform[4] + glyphs.width);
+  });
+
+  it('setzt Tabulatoren als Leerraum statt als Ersatzkästchen', async () => {
+    const m = model();
+    m.tokens = [{ kind: 'text', text: 'Spalte\tWert', color: null, streitig: false }];
+    m.markings = [{ ...m.markings[0]!, notiz: 'Notiz\tmit Tab' }];
+    const text = await pdfText(await renderPdf(m));
+    expect(text).toContain('Spalte Wert');
+    expect(text).toContain('Notiz mit Tab');
+    expect(text).not.toContain('\u0000');
+  });
+
+  it('sperrt nicht abgedeckte Zeichen ausdrücklich statt stillen Zeichensalats', async () => {
+    const inText = model();
+    inText.tokens = [{ kind: 'text', text: 'Mandant Müller 😀', color: null, streitig: false }];
+    await expect(renderPdf(inText)).rejects.toThrow(UnsupportedPdfTextError);
+    await expect(renderPdf(inText)).rejects.toThrow('U+1F600');
+    const inTable = model();
+    inTable.markings = [{ ...inTable.markings[0]!, notiz: 'مرحبا' }];
+    await expect(renderPdf(inTable)).rejects.toThrow(UnsupportedPdfTextError);
   });
 });

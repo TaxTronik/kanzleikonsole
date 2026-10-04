@@ -45,6 +45,7 @@ vi.mock('@taxtronik/config', () => ({
 }));
 
 import { GET } from '../route';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 
 const TITLE = 'Analyse 分析 Отчёт';
 const BYTES = Buffer.from('synthetic rendered report');
@@ -127,6 +128,21 @@ describe('authorized report export with international filenames', () => {
     expect(response.headers.get('content-disposition')).toBe(
       `attachment; filename="${'A'.repeat(79)}__.docx"; filename*=UTF-8''${encodeURIComponent(`${'A'.repeat(79)}𠮷.docx`)}`,
     );
+  });
+
+  it('reports characters outside the embedded PDF fonts as 422 without auditing', async () => {
+    h.renderPdf.mockRejectedValue(new UnsupportedPdfTextError([0x1f600]));
+    const response = await call('pdf');
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: 'unsupported_text',
+      message: expect.stringContaining('U+1F600'),
+    });
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+
+    h.renderPdf.mockRejectedValue(new Error('renderer defect'));
+    await expect(call('pdf')).rejects.toThrow('renderer defect');
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('does not render or audit a confidential analysis without write access', async () => {
