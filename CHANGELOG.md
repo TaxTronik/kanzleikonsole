@@ -447,6 +447,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Worker-Verbindungen bleiben ohne Limit.
 - PostgreSQL protokolliert Abfragen ab 1 s (`POSTGRES_LOG_MIN_DURATION_MS`)
   und Lock-Wartezeiten, ohne Bind-Parameter und damit ohne Mandantendaten.
+- Stammdaten-Änderungen eines Mandanten warten nicht mehr auf parallele
+  Einfügungen in eine der 49 Kindtabellen. Der Paar-Guard sperrt den Mandanten
+  mit `FOR KEY SHARE` statt `FOR SHARE`; Löschung, Schlüsseländerungen und
+  explizites `FOR UPDATE` bleiben serialisiert (`ACCESS-TENANT-RLS-001`,
+  `FK-EXC-20261004-004`).
 - Die E2E-Bereinigung respektiert die Redis-Datenbank aus der URL und sendet
   `FLUSHDB` erst nach bestätigtem `SELECT`. Neue verpflichtende Helper-Tests
   verhindern das versehentliche Leeren von Datenbank 0 sowie übrig gebliebene

@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-004
+    date: '2026-10-04'
+    paths:
+      - packages/db/prisma/migrations/20261004121000_tenant_client_pair_key_share_lock/migration.sql
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Der Paar-Guard app.enforce_tenant_client_pair_integrity sperrt den
+      Mandanten mit FOR KEY SHARE statt FOR SHARE; Prüfung, Fehlercodes,
+      search_path und Rechte bleiben identisch. FOR KEY SHARE blockiert
+      weiterhin Löschung, Schlüsseländerungen und explizites SELECT FOR UPDATE,
+      mit denen Anonymisierung, Offboarding und Stammdatenpflege serialisieren.
+      Nur gewöhnliche Stammdaten-Updates warten nicht mehr auf parallele
+      Kind-Inserts. Die Tenant-/Mandanten-Paarinvariante ändert sich nicht.
+      Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/tenant-client-pair-lock.test.ts
+      - packages/db/src/__tests__/rls-cross-tenant.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-003
     date: '2026-10-04'
     paths:
@@ -862,6 +881,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-004` dokumentiert die schwächere, für den
+  Paar-Guard ausreichende Sperre FOR KEY SHARE. Die Paarinvariante und die
+  Serialisierung mit Löschung und FOR UPDATE bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-003` dokumentiert, dass der DB-CI-Job den
   katalogisierten Nachweis `service-db.test.ts` jetzt tatsächlich ausführt.

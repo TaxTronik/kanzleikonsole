@@ -167,6 +167,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Session-Limits: eigene Clients mit und ohne Grenzen beweisen, dass nur der
   // App-Client statement_timeout und idle_in_transaction_session_timeout setzt.
   'packages/db/src/__tests__/app-session-limits.test.ts',
+  // Paar-Guard-Sperre: zwei Owner-Verbindungen halten einen Kind-Insert offen
+  // und beweisen, welche parallelen Zugriffe auf den Mandanten warten.
+  'packages/db/src/__tests__/tenant-client-pair-lock.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill
