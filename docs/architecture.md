@@ -48,9 +48,10 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
 
 3. **Manipulationsevidenz via Hash-Chain + RFC-3161** — jede compliance-
    relevante Schreiboperation landet in `audit_log`, hash-verkettet pro Tenant.
-   Der Worker verankert den neuesten committeten Kettenpräfix im Regelfall alle
-   zwei Sekunden in einer separaten, ebenfalls append-only geführten
-   RFC-3161-Ankerkette. Eine tägliche Versiegelung der Tageskettenspitze bleibt
+   Der Worker verankert den neuesten committeten Kettenpräfix je Tenant
+   höchstens einmal pro Minute, bei offenen Rechnungs- und GwG-Ereignissen im
+   nächsten Zwei-Sekunden-Takt, in einer separaten, ebenfalls append-only
+   geführten RFC-3161-Ankerkette. Eine tägliche Versiegelung der Tageskettenspitze bleibt
    als unabhängiger zusätzlicher Nachweis bestehen. Verifikation per CLI
    (`pnpm verify:chain`).
 

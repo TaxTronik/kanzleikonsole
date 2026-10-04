@@ -41,7 +41,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
-- Kurzfassung: TaxTronik kann Spitzen der lokalen Audit-Kette und Tagesabschlüsse mit RFC-3161-Antworten verankern. Eine Antwort gilt erst nach Prüfung von Message-Imprint, CMS-Signatur, Zertifikatskette, Timestamping-EKU, Zertifikatsbindung und Erzeugungszeit als vertrauenswürdiger externer Anker. Lokale Entwicklungsstempel werden nicht als externe Evidenz ausgegeben.
+- Kurzfassung: TaxTronik kann Spitzen der lokalen Audit-Kette und Tagesabschlüsse mit RFC-3161-Antworten verankern. Eine Antwort gilt erst nach Prüfung von Message-Imprint, CMS-Signatur, Zertifikatskette, Timestamping-EKU, Zertifikatsbindung und Erzeugungszeit als vertrauenswürdiger externer Anker. Rolling Anchors entstehen je Kanzlei-Tenant höchstens einmal je Minute, bei offenen Rechnungs- und GwG-Ereignissen sofort. Lokale Entwicklungsstempel werden nicht als externe Evidenz ausgegeben.
 
 ### [AUDIT-VERIFY-ALERT-001 — Audit-Ketten regelmäßig prüfen und Abweichungen alarmieren](regeln/audit-und-assurance/audit-verify-alert-001-prueflauf-und-alarm.md)
 

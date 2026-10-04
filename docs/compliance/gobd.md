@@ -68,9 +68,10 @@ Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
    `prev_hash || canonical_json(event)`. Postgres-Trigger blocken UPDATE,
    DELETE und TRUNCATE auf `audit_log`, `audit_seal`, `audit_archive`.
 3. **Zeitnahe externe Verankerung** über eine zweite, dünne Anchor-Kette:
-   `audit-anchor` stempelt den neuesten committeten lokalen Präfix im Regelfall
-   alle zwei Sekunden per RFC 3161. Jeder Anchor bindet auch den vorherigen
-   TSA-Token. Die Anfrage läuft außerhalb der Fachtransaktion; neue Buchungen
+   `audit-anchor` stempelt den neuesten committeten lokalen Präfix per
+   RFC 3161: bei offenen Rechnungs- und GwG-Ereignissen im nächsten
+   Zwei-Sekunden-Takt, sonst je Tenant höchstens einmal pro Minute. Jeder
+   Anchor bindet auch den vorherigen TSA-Token. Die Anfrage läuft außerhalb der Fachtransaktion; neue Buchungen
    und Audit-Einträge bleiben möglich. TSA-Ausfälle werden nachgezogen,
    sichtbar ausgewiesen und bei anhaltendem Rückstand betrieblich alarmiert.
 4. **Tägliche Versiegelung** via RFC-3161-Zeitstempel (`evidence-seal`-
@@ -81,8 +82,9 @@ Aufbewahrungs-Stichtag; eine COMPLIANCE-Über-Aufbewahrung von Rechnungen
 Die TSA-`genTime` belegt jeweils, dass der gebundene Ketten-Präfix spätestens
 zu diesem Zeitpunkt existierte. Sie ersetzt den lokalen `occurred_at` nicht
 und attestiert nicht den exakten Zeitpunkt eines einzelnen Ereignisses. Das
-kurze Fenster bis zur asynchronen Antwort ist technisch unvermeidbar, wird
-aber nicht durch einen globalen Schreib-Lock vergrößert.
+Fenster bis zur asynchronen Antwort (bis zu rund einer Minute außerhalb von
+Rechnungs- und GwG-Ereignissen) ist technisch unvermeidbar, wird aber nicht
+durch einen globalen Schreib-Lock vergrößert.
 
 **Verifikation**:
 

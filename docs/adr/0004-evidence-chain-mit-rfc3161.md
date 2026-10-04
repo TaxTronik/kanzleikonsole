@@ -1,6 +1,7 @@
 # ADR 0004 — Manipulationsevidenz: Hash-Chain + RFC-3161
 
-**Status**: Akzeptiert (Iteration 1, Rolling-Anker ergänzt 2026-08-21)
+**Status**: Akzeptiert (Iteration 1, Rolling-Anker ergänzt 2026-08-21,
+Mindestabstand je Tenant ergänzt 2026-10-04)
 **Datum**: 2026-05-10
 **Kontext**: § 146 AO, GoBD Tz. 58 ff. — die Steuerberatungssoftware muss
 nachweislich gewährleisten, dass aufzeichnungspflichtige Daten unveränderlich
@@ -24,10 +25,14 @@ Vier-Schicht-Modell:
 
 3. **Nicht blockierende externe Anchor-Kette mit RFC 3161**
    - Worker `audit-anchor` läuft alle zwei Sekunden und stempelt den neuesten
-     bereits committeten lokalen Ketten-Präfix; Rechnungs- und GwG-Ereignisse
-     werden bei Rückstand zuerst verarbeitet
+     bereits committeten lokalen Ketten-Präfix je Tenant höchstens einmal pro
+     Minute; offene Rechnungs- und GwG-Ereignisse werden ohne Mindestabstand
+     und zuerst verarbeitet
    - Der TSA-Aufruf läuft außerhalb der Fachtransaktion und hält den lokalen
-     Advisory-Lock nicht. Neue Einträge bleiben während der Anfrage möglich
+     Advisory-Lock nicht. Neue Einträge bleiben während der Anfrage möglich.
+     Ein kurz committeter Tenant-Lease (`audit_anchor_lease`) verhindert,
+     dass überlappende Läufe dieselbe Spitze erneut bei der TSA anfragen;
+     während der Anfrage hält der Worker keine Datenbankverbindung
    - `audit_anchor` ist selbst append-only. Jeder Payload enthält Tenant,
      lokalen ID-Bereich, rekonstruierten lokalen Spitzen-Hash und den Hash des
      vorherigen TSA-Tokens; damit bilden die externen Checkpoints eine zweite,
@@ -57,7 +62,8 @@ Vier-Schicht-Modell:
   TSA eine externe vertrauenswürdige Quelle ist.
 - Wirtschaftsprüfer können die Kette unabhängig nachrechnen.
 - Das bisher bis zur Tagesversiegelung offene Fenster schrumpft im Normalfall
-  auf die Laufzeit von Scheduler und TSA. Es kann prinzipbedingt nicht auf null
+  auf höchstens rund eine Minute, bei Rechnungs- und GwG-Ereignissen auf die
+  Laufzeit von Scheduler und TSA. Es kann prinzipbedingt nicht auf null
   fallen; die TSA-`genTime` ist eine vertrauenswürdige obere Existenzgrenze,
   keine Attestierung des exakten lokalen Ereigniszeitpunkts.
 

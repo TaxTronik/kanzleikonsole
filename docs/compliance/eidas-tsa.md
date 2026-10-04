@@ -3,7 +3,8 @@
 Stand: 2026-08-23
 
 taxtronik nutzt RFC-3161-Zeitstempel für zwei gekoppelte Nachweise: rollende
-Audit-Anker im Regelfall alle zwei Sekunden und eine zusätzliche tägliche
+Audit-Anker (je Tenant höchstens einmal pro Minute, bei offenen Rechnungs- und
+GwG-Ereignissen im nächsten Zwei-Sekunden-Takt) und eine zusätzliche tägliche
 Versiegelung der Tageskettenspitze. Diese Datei klärt:
 
 - Welche TSAs sind unterstützt?

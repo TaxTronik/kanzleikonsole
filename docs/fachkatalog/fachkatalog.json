@@ -536,6 +536,7 @@
         "packages/db/prisma/migrations/20260903009000_staff_recovery_role_floor/migration.sql",
         "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql",
         "packages/db/prisma/migrations/20261004140000_audit_verify_checkpoint/migration.sql",
+        "packages/db/prisma/migrations/20261004140100_audit_anchor_lease/migration.sql",
         "apps/web/src/instrumentation.ts",
         "apps/web/src/server/auth/staff-account-recovery-lock.ts",
         "apps/web/src/server/auth/webauthn.ts",
@@ -573,6 +574,7 @@
         "packages/db/src/__tests__/staff-webauthn-migration.test.ts",
         "packages/db/src/__tests__/staff-webauthn-rls.test.ts",
         "packages/db/src/__tests__/audit-verify-checkpoint.test.ts",
+        "packages/db/src/__tests__/audit-anchor-lease.test.ts",
         "apps/web/src/server/auth/__tests__/webauthn.test.ts",
         "apps/web/src/server/auth/__tests__/admin-break-glass.test.ts",
         "apps/web/src/server/auth/__tests__/staff-auth-state.test.ts",
@@ -946,10 +948,15 @@
         "packages/http-utils/src/index.ts",
         "packages/evidence/src/ports/rfc3161-http.ts",
         "packages/evidence/src/service.ts",
+        "packages/evidence/src/anchor-schedule.ts",
+        "packages/evidence/src/anchor-lease.ts",
+        "packages/db/prisma/migrations/20261004140100_audit_anchor_lease/migration.sql",
+        "packages/evidence/src/index.ts",
         "packages/evidence/src/ports/rfc3161-verify.ts",
         "apps/worker/src/jobs/audit-anchor.ts",
         "apps/worker/src/jobs/evidence-seal.ts",
-        "apps/web/src/app/staff/(protected)/admin/audit/rolling-anchor-card.tsx"
+        "apps/web/src/app/staff/(protected)/admin/audit/rolling-anchor-card.tsx",
+        ".forgejo/workflows/ci.yml"
       ],
       "test_refs": [
         "packages/http-utils/src/__tests__/response-stream.test.ts",
@@ -957,6 +964,9 @@
         "packages/evidence/src/__tests__/rfc3161-verify.test.ts",
         "packages/evidence/src/__tests__/service-verifychain.test.ts",
         "packages/evidence/src/__tests__/service-seal-trust.test.ts",
+        "packages/evidence/src/__tests__/service-anchor.test.ts",
+        "packages/evidence/src/__tests__/anchor-schedule-db.test.ts",
+        "packages/evidence/src/__tests__/evidence-db-ci.test.ts",
         "packages/evidence/src/__tests__/verify-checkpoint-db.test.ts",
         "apps/worker/src/jobs/__tests__/evidence-seal.test.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/__tests__/rolling-anchor-card.test.tsx"
@@ -968,7 +978,7 @@
       "related_rules": ["AUDIT-HASH-CHAIN-001", "AUDIT-VERIFY-ALERT-001", "AUDIT-ARCHIVE-001"],
       "tags": ["audit", "rfc3161", "tsa", "zeitanker"],
       "path": "docs/fachkatalog/regeln/audit-und-assurance/audit-rfc3161-anchor-001-externe-zeitanker.md",
-      "summary": "TaxTronik kann Spitzen der lokalen Audit-Kette und Tagesabschlüsse mit RFC-3161-Antworten verankern. Eine Antwort gilt erst nach Prüfung von Message-Imprint, CMS-Signatur, Zertifikatskette, Timestamping-EKU, Zertifikatsbindung und Erzeugungszeit als vertrauenswürdiger externer Anker. Lokale Entwicklungsstempel werden nicht als externe Evidenz ausgegeben."
+      "summary": "TaxTronik kann Spitzen der lokalen Audit-Kette und Tagesabschlüsse mit RFC-3161-Antworten verankern. Eine Antwort gilt erst nach Prüfung von Message-Imprint, CMS-Signatur, Zertifikatskette, Timestamping-EKU, Zertifikatsbindung und Erzeugungszeit als vertrauenswürdiger externer Anker. Rolling Anchors entstehen je Kanzlei-Tenant höchstens einmal je Minute, bei offenen Rechnungs- und GwG-Ereignissen sofort. Lokale Entwicklungsstempel werden nicht als externe Evidenz ausgegeben."
     },
     {
       "id": "AUDIT-VERIFY-ALERT-001",
@@ -1024,7 +1034,7 @@
         "apps/web/src/server/audit/__tests__/status.test.ts",
         "packages/evidence/src/__tests__/verify-checkpoint.test.ts",
         "packages/evidence/src/__tests__/verify-checkpoint-db.test.ts",
-        "packages/evidence/src/__tests__/verify-checkpoint-ci.test.ts",
+        "packages/evidence/src/__tests__/evidence-db-ci.test.ts",
         "packages/evidence/src/__tests__/chain-walk.test.ts",
         "packages/db/src/__tests__/audit-verify-checkpoint.test.ts",
         "packages/crypto/src/__tests__/audit-checkpoint-key.test.ts"

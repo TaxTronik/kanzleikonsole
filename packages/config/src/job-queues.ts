@@ -61,7 +61,7 @@ export const JOB_QUEUES = {
       schedulerId: 'rolling-audit-anchor',
       repeat: { every: 2 * SECOND },
       expectedMaxGapMs: 2 * SECOND,
-      logLabel: 'audit-anchor @ every 2 sec',
+      logLabel: 'audit-anchor @ every 2 sec, per tenant >= 60 sec unless invoice/gwg',
     },
   },
   evidenceSeal: {
@@ -252,6 +252,14 @@ export const JOB_QUEUES = {
 } as const satisfies Record<string, QueueDefinition>;
 
 export type QueueName = (typeof JOB_QUEUES)[keyof typeof JOB_QUEUES]['name'];
+
+/**
+ * P-05: Mindestabstand zwischen zwei Rolling-Ankern desselben Tenants. Der
+ * 2-Sekunden-Takt bleibt, damit offene Rechnungs- und GwG-Ereignisse sofort
+ * extern verankert werden; alle übrigen Einträge eines Tenants fasst höchstens
+ * ein RFC-3161-Stempel je Intervall zusammen.
+ */
+export const AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS = MINUTE;
 
 export interface EvidenceSealJob {
   tenantId?: string;

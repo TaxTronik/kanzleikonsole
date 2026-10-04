@@ -77,10 +77,11 @@ leaken.
 
 Die lokale Hash-Chain verhindert keine Manipulation durch einen Angreifer, der
 gleichzeitig Anwendung, Datenbank und Hostuhr kontrolliert. Der Worker bindet
-den neuesten committeten Kettenpräfix zwar im Regelfall alle zwei Sekunden an
-einen externen RFC-3161-Anker; zwischen lokalem Commit und erfolgreicher
-TSA-Antwort bleibt jedoch ein sichtbares, nicht vollständig eliminierbares
-Fenster. Bei TSA-/Netzausfall wächst der im Admin-Status überwachte Rückstand.
+den neuesten committeten Kettenpräfix zwar an einen externen RFC-3161-Anker,
+bei offenen Rechnungs- und GwG-Ereignissen im nächsten Zwei-Sekunden-Takt,
+sonst je Tenant höchstens einmal pro Minute; zwischen lokalem Commit und
+erfolgreicher TSA-Antwort bleibt jedoch ein sichtbares, nicht vollständig
+eliminierbares Fenster von bis zu rund einer Minute. Bei TSA-/Netzausfall wächst der im Admin-Status überwachte Rückstand.
 Der zusätzliche tägliche Seal ersetzt diese rollende Verankerung nicht.
 
 Der tägliche Prüflauf rechnet nur den Zuwachs ab einem gespeicherten

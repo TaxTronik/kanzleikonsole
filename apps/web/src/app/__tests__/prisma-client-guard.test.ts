@@ -83,9 +83,15 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // AUDIT-VERIFY-ALERT-001: Owner legt Prüf-Checkpoints an; die App-Verbindung
   // belegt SELECT-only-Rechte und Mandantentrennung der Tabelle.
   'packages/db/src/__tests__/audit-verify-checkpoint.test.ts',
+  // AUDIT-RFC3161-ANCHOR-001: Owner prüft nur Rechte, RLS und Policy des
+  // owner-only Anchor-Leases.
+  'packages/db/src/__tests__/audit-anchor-lease.test.ts',
   // AUDIT-VERIFY-ALERT-001: ausdrücklich zugeschaltete Owner-Verbindung; alle
   // Audit-/Checkpoint-Fixtures und Manipulationen werden zurückgerollt.
   'packages/evidence/src/__tests__/verify-checkpoint-db.test.ts',
+  // AUDIT-RFC3161-ANCHOR-001: zugeschaltete Owner-Verbindungen belegen
+  // Anker-Takt und Tenant-Sperre parallel; alle Fixtures werden zurückgerollt.
+  'packages/evidence/src/__tests__/anchor-schedule-db.test.ts',
   // MAIL-INBOX-001: Owner legt synthetische Dokumenttypen in einer stets
   // zurückgerollten Transaktion an; der echte Web-Reader belegt SQL-NULL- und
   // Typfilter. Kein App-Request-Client und kein Ersatz für den RLS-Nachweis.

@@ -57,6 +57,24 @@ export interface AnchorLatestOptions {
   /** Reject a cryptographically valid token whose signer chain is not rooted
    * in the configured TSA trust store. Production workers set this to true. */
   requireTrustAnchor?: boolean;
+  /**
+   * P-05: Tenant-Lease (anchor-lease.ts). Er wird unmittelbar vor der
+   * TSA-Anfrage bestätigt; ohne gültigen Lease keine Anfrage. Nach der Antwort
+   * wird er erneut bestätigt, sonst wird das Token verworfen; das Insert ist
+   * zusätzlich an den noch gültigen Lease gebunden.
+   */
+  lease?: { holder: string; confirm(): Promise<boolean> };
+}
+
+/**
+ * P-05: Fehler der TSA-Anfrage oder der Prüfung ihrer Antwort. Nur diese
+ * Fehler zählen für den TSA-Backoff; Datenbank- und Pool-Fehler nicht.
+ */
+export class TsaAnchorError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'TsaAnchorError';
+  }
 }
 
 export type AnchorLatestResult =
@@ -454,31 +472,20 @@ export class EvidenceService {
       topHash: pending.top_hash,
       previousAnchorHash,
     });
-    const stamp = await this.timestampPort.timestamp(payload);
-    if (!stamp.tsaRequestBlob || !stamp.tsaResponseBlob) {
-      throw new Error('RFC-3161-TSA lieferte keinen vollständigen Request-/Response-Nachweis.');
+    // P-05: Nur mit frisch bestätigtem Lease fragen; zwischen zwei Läufen liegt
+    // damit stets eine abgeschlossene Anfrage (TSA-Timeout 10 s < Lease-Dauer).
+    if (opts.lease && !(await opts.lease.confirm())) {
+      return { anchored: false, reason: ANCHOR_LEASE_LOST_REASON };
     }
-
-    const response = Buffer.from(stamp.tsaResponseBlob);
-    let verified: { ok: boolean; trustAnchored: boolean };
-    if (this.timestampPort.verifyDetailed) {
-      verified = await this.timestampPort.verifyDetailed(payload, response);
-    } else {
-      verified = {
-        ok: await this.timestampPort.verify(payload, response),
-        trustAnchored: false,
-      };
-    }
-    if (!verified.ok) {
-      throw new Error('RFC-3161-Token konnte nicht gegen den Rolling-Anchor verifiziert werden.');
-    }
-    if (opts.requireTrustAnchor && !verified.trustAnchored) {
-      throw new Error('RFC-3161-Token ist kryptografisch gültig, aber nicht trust-verankert.');
-    }
-
-    const tsaGenTime = new Date(stamp.timestampedAt);
-    if (Number.isNaN(tsaGenTime.getTime())) {
-      throw new Error('RFC-3161-Token enthält keine gültige TSA-genTime.');
+    const { requestBlob, serial, response, verified, tsaGenTime } = await this.stampAndVerify(
+      payload,
+      opts,
+    );
+    // Eine Antwort, die erst nach Ablauf des Leases eintrifft, nie speichern:
+    // Ein anderer Lauf kann ihn inzwischen übernommen haben. Das Insert bleibt
+    // zusätzlich an den gültigen Lease gebunden (kein Fenster bis zum Insert).
+    if (opts.lease && !(await opts.lease.confirm())) {
+      return { anchored: false, reason: ANCHOR_LEASE_EXPIRED_REASON };
     }
     const nextAnchorHash = anchorTokenHash(response);
 
@@ -496,9 +503,9 @@ export class EvidenceService {
         ${pending.top_hash},
         ${previousAnchorHash},
         ${nextAnchorHash},
-        ${Buffer.from(stamp.tsaRequestBlob)},
+        ${requestBlob},
         ${response},
-        ${stamp.tsaSerial},
+        ${serial},
         ${tsaGenTime},
         ${verified.trustAnchored}
       WHERE COALESCE(
@@ -510,6 +517,15 @@ export class EvidenceService {
           SELECT 1 FROM audit_anchor
           WHERE tenant_id = ${tenantId}::uuid
             AND top_audit_id = ${pending.top_audit_id}
+        )
+        AND (
+          ${opts.lease?.holder ?? null}::uuid IS NULL
+          OR EXISTS (
+            SELECT 1 FROM audit_anchor_lease
+            WHERE tenant_id = ${tenantId}::uuid
+              AND holder = ${opts.lease?.holder ?? null}::uuid
+              AND expires_at > clock_timestamp()
+          )
         )
       ON CONFLICT DO NOTHING
     `;
@@ -527,6 +543,51 @@ export class EvidenceService {
       tsaGenTime,
       trustAnchored: verified.trustAnchored,
     };
+  }
+
+  /**
+   * TSA-Anfrage und Prüfung der Antwort. Jeder Fehler hier ist ein
+   * TsaAnchorError (zählt für den TSA-Backoff), kein Datenbankfehler.
+   */
+  private async stampAndVerify(
+    payload: Uint8Array,
+    opts: AnchorLatestOptions,
+  ): Promise<{
+    requestBlob: Buffer;
+    serial: string | null;
+    response: Buffer;
+    verified: { ok: boolean; trustAnchored: boolean };
+    tsaGenTime: Date;
+  }> {
+    try {
+      const stamp = await this.timestampPort.timestamp(payload);
+      if (!stamp.tsaRequestBlob || !stamp.tsaResponseBlob) {
+        throw new Error('RFC-3161-TSA lieferte keinen vollständigen Request-/Response-Nachweis.');
+      }
+      const response = Buffer.from(stamp.tsaResponseBlob);
+      const verified = this.timestampPort.verifyDetailed
+        ? await this.timestampPort.verifyDetailed(payload, response)
+        : { ok: await this.timestampPort.verify(payload, response), trustAnchored: false };
+      if (!verified.ok) {
+        throw new Error('RFC-3161-Token konnte nicht gegen den Rolling-Anchor verifiziert werden.');
+      }
+      if (opts.requireTrustAnchor && !verified.trustAnchored) {
+        throw new Error('RFC-3161-Token ist kryptografisch gültig, aber nicht trust-verankert.');
+      }
+      const tsaGenTime = new Date(stamp.timestampedAt);
+      if (Number.isNaN(tsaGenTime.getTime())) {
+        throw new Error('RFC-3161-Token enthält keine gültige TSA-genTime.');
+      }
+      return {
+        requestBlob: Buffer.from(stamp.tsaRequestBlob),
+        serial: stamp.tsaSerial ?? null,
+        response,
+        verified,
+        tsaGenTime,
+      };
+    } catch (error) {
+      throw error instanceof TsaAnchorError ? error : new TsaAnchorError(error);
+    }
   }
 
   /**
@@ -1608,6 +1669,18 @@ function dateOnly(d: Date): string {
   // YYYY-MM-DD in UTC für Date-Spalten.
   return d.toISOString().slice(0, 10);
 }
+
+/** P-05: Antwort, wenn ein paralleler Lauf den Lease dieses Tenants hält. */
+export const ANCHOR_LOCKED_REASON =
+  'Rolling-Anchor dieses Tenants läuft bereits in einem anderen Lauf';
+
+/** P-05: Lease vor der TSA-Anfrage nicht mehr gültig (abgelaufen/übernommen). */
+export const ANCHOR_LEASE_LOST_REASON =
+  'Rolling-Anchor-Lease dieses Tenants ist nicht mehr gültig; keine TSA-Anfrage';
+
+/** P-05: Lease während der TSA-Anfrage abgelaufen oder übernommen. */
+export const ANCHOR_LEASE_EXPIRED_REASON =
+  'Rolling-Anchor-Lease dieses Tenants ist während der TSA-Anfrage abgelaufen; Token verworfen';
 
 function computeLockKey(tenantId: string): bigint {
   // 64-Bit-Lock-Key aus den ersten 8 Bytes des SHA-256 von "audit-chain:<tenantId>".

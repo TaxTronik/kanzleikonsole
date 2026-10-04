@@ -1601,7 +1601,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `app.current_actor_id` / `app.current_actor_type` via `SET LOCAL`
 - Doppelte Verteidigung: App-Filter + RLS-Policy + DB-Trigger
 - BullMQ-Worker für Hintergrund-Jobs (22 Worker):
-  `audit-anchor` (alle 2 Sekunden; nicht blockierende RFC-3161-Checkpoints),
+  `audit-anchor` (Takt alle 2 Sekunden, je Tenant höchstens ein Stempel pro
+  Minute, Rechnung/GwG sofort; nicht blockierende RFC-3161-Checkpoints),
   `evidence-seal`, `gwg-expiry-check`,
   `invoice-overdue-check`, `audit-verify-check`,
   `tax-deadline-materialize` (07:30 Berlin, materialisiert Termine, legt

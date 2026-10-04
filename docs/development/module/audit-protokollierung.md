@@ -20,6 +20,16 @@ Tagesversiegelung und unveränderlicher Langzeit-Archivierung.
    ID-Bereich, rekonstruierten Spitzen-Hash und vorheriges TSA-Token; ein
    bedingtes Insert plus Unique-Constraint auf Tenant/Vorgänger-Hash verhindert
    Zweige auch bei parallelen Läufen mit demselben MVCC-Snapshot.
+   `anchorLatestWithLease` hält dabei je Tenant einen committeten Lease
+   (`audit_anchor_lease`, 30 s, vor der Anfrage und nach der Antwort
+   bestätigt, sonst wird das Token verworfen; Insert daran gebunden), aber
+   während der TSA-Anfrage weder Transaktion noch Verbindung,
+   sodass überlappende Läufe dieselbe Spitze nicht erneut bei der TSA anfragen;
+   nur TSA-/Tokenfehler starten den Backoff. `tenantsDueForAnchoring` wählt
+   Tenants mit Mindestabstand (60 s) zum letzten Anker; Rechnungs- und
+   GwG-Aktionen (`IMMEDIATE_ANCHOR_ACTIONS`: `invoice.*`, `gwg.*`,
+   `stbvv.invoice.*`, `client.update.gwg_relevant`,
+   `client.deactivate.gwg_expired`) ohne Wartezeit.
 4. Tagesversiegelung (`sealDay`): RFC-3161-Zeitstempel über den
    Tages-Spitzen-Hash in `audit_seal` (idempotent, Backfill verpasster Tage).
 5. `verifyChain()` rechnet jede Zeile nach (cursor-basiert, 1000er-Chunks)
@@ -91,7 +101,9 @@ Regressionen und Property-Tests bilden diese Grenzen ab
 
 ### Laufende Dienste und Ansichten
 
-- Worker: `audit-anchor` (alle 2 Sekunden, Rechnung/GwG bevorzugt, Backoff),
+- Worker: `audit-anchor` (Takt alle 2 Sekunden; je Tenant höchstens ein
+  Stempel pro Minute, offene Rechnungs-/GwG-Einträge sofort und bevorzugt;
+  committeter Tenant-Lease während des TSA-Aufrufs; Backoff nur bei TSA-Fehlern),
   `evidence-seal` (02:30 UTC), `audit-verify-check` (02:45 UTC, Zuwachs ab
   Prüf-Checkpoint plus fällige Vollprüfung, persistiert Ergebnis als
   `tenant_setting` inkl. Prüfumfang `incremental`, Notification an Admins bei

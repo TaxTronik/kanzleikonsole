@@ -4,16 +4,27 @@
 // The worker only reads committed audit rows. The TSA HTTP request never runs
 // inside a business transaction and never holds the local audit advisory lock,
 // so writers continue appending while an older prefix is being timestamped.
+//
+// P-05: per tenant at most one anchor per AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS
+// unless invoice/GwG entries are pending. A committed per-tenant lease
+// (audit_anchor_lease) is held across the TSA call so overlapping runs never
+// request a token for the same chain tip; no transaction or pooled connection
+// is held during the HTTP request. Only TSA errors count for the backoff.
 // =============================================================================
 
 import { Worker } from 'bullmq';
 import { env } from '@taxtronik/config';
-import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS, JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
+  ANCHOR_LOCKED_REASON,
   AUDIT_ANCHOR_STATUS_SETTING_KEY,
   EvidenceService,
+  anchorLatestWithLease,
+  tenantsDueForAnchoring,
+  type AnchorAttempt,
   type PersistedAnchorStatus,
+  type SettledAnchorAttempt,
 } from '@taxtronik/evidence';
 import { connection, type AuditAnchorJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
@@ -28,52 +39,15 @@ const MAX_RETRY_MS = 5 * 60_000;
 const REQUIRE_TRUST_ANCHOR =
   env.NODE_ENV === 'production' || process.env['EVIDENCE_REQUIRE_TSA'] === 'true';
 
-interface PendingTenant {
-  tenant_id: string;
-  critical: boolean;
-  oldest_pending_at: Date;
-}
-
-async function pendingTenantIds(): Promise<string[]> {
-  const rows = await prismaOwner.$queryRaw<PendingTenant[]>`
-    WITH last_anchor AS (
-      SELECT DISTINCT ON (tenant_id) tenant_id, top_audit_id
-      FROM audit_anchor
-      ORDER BY tenant_id, id DESC
-    )
-    SELECT
-      t.id AS tenant_id,
-      EXISTS (
-        SELECT 1
-        FROM audit_log critical_log
-        WHERE critical_log.tenant_id = t.id
-          AND critical_log.id > COALESCE(a.top_audit_id, 0)
-          AND (
-            critical_log.action LIKE 'invoice.%'
-            OR critical_log.action LIKE 'gwg.%'
-          )
-      ) AS critical,
-      first_pending.occurred_at AS oldest_pending_at
-    FROM tenant t
-    LEFT JOIN last_anchor a ON a.tenant_id = t.id
-    JOIN LATERAL (
-      SELECT occurred_at
-      FROM audit_log pending_log
-      WHERE pending_log.tenant_id = t.id
-        AND pending_log.id > COALESCE(a.top_audit_id, 0)
-      ORDER BY pending_log.id ASC
-      LIMIT 1
-    ) first_pending ON true
-    LEFT JOIN tenant_setting s
-      ON s.tenant_id = t.id AND s.key = ${AUDIT_ANCHOR_STATUS_SETTING_KEY}
-    WHERE
-      s.value IS NULL
-      OR COALESCE(s.value->>'nextRetryAt', '') = ''
-      OR (s.value->>'nextRetryAt')::timestamptz <= now()
-    ORDER BY critical DESC, oldest_pending_at ASC
-    LIMIT ${TENANT_BATCH}
-  `;
-  return rows.map((row) => row.tenant_id);
+/**
+ * Tenants with pending entries that may be stamped now: invoice/GwG entries
+ * immediately, everything else at most once per minimum interval per tenant.
+ */
+function pendingTenantIds(): Promise<string[]> {
+  return tenantsDueForAnchoring(prismaOwner, {
+    minIntervalMs: AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS,
+    limit: TENANT_BATCH,
+  });
 }
 
 async function previousStatus(tenantId: string): Promise<PersistedAnchorStatus | null> {
@@ -167,42 +141,81 @@ function delayedStatus(
   };
 }
 
-async function anchorTenant(tenantId: string): Promise<{
+interface AnchorTenantResult {
   tenantId: string;
   anchored: boolean;
   topAuditId?: string;
   reason?: string;
-}> {
-  const attemptedAt = new Date();
-  const previous = await previousStatus(tenantId);
-  try {
-    const port = await timestampPortFor(tenantId);
-    const service = new EvidenceService(port);
-    const result = await service.anchorLatest(prismaOwner, tenantId, {
-      requireTrustAnchor: REQUIRE_TRUST_ANCHOR,
-    });
+}
 
-    if (!result.anchored && result.reason.includes('keine externe')) {
-      await persistStatus(tenantId, localOnlyStatus(attemptedAt, previous, result.reason));
-      return { tenantId, anchored: false, reason: result.reason };
-    }
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
+/**
+ * Speichert den Ausgang noch unter dem Tenant-Lease. Nur TSA-Fehler starten
+ * den Backoff; Datenbank- und Pool-Fehler lassen den Status unverändert.
+ */
+async function persistAttempt(
+  tenantId: string,
+  attemptedAt: Date,
+  previous: PersistedAnchorStatus | null,
+  attempt: SettledAnchorAttempt,
+): Promise<void> {
+  if (attempt.status === 'done') {
+    const result = attempt.result;
     if (result.anchored) {
       await persistStatus(tenantId, successStatus(attemptedAt, result));
-      return {
-        tenantId,
-        anchored: true,
-        topAuditId: String(result.topAuditId),
-      };
+    } else if (result.reason.includes('keine externe')) {
+      await persistStatus(tenantId, localOnlyStatus(attemptedAt, previous, result.reason));
     }
-    return { tenantId, anchored: false, reason: result.reason };
-  } catch (err) {
+    return;
+  }
+  if (attempt.status === 'tsa-failed') {
     const failures = (previous?.consecutiveFailures ?? 0) + 1;
     const delay = Math.min(BASE_RETRY_MS * 2 ** Math.min(failures - 1, 6), MAX_RETRY_MS);
-    const message = (err as Error).message;
+    const message = attempt.error.message;
     await persistStatus(tenantId, delayedStatus(attemptedAt, previous, failures, delay, message));
     log.error({ tenantId, err: message, retryMs: delay }, 'audit-anchor: tenant delayed');
-    return { tenantId, anchored: false, reason: message };
+  }
+}
+
+function summarize(tenantId: string, attempt: AnchorAttempt): AnchorTenantResult {
+  switch (attempt.status) {
+    case 'locked':
+      return { tenantId, anchored: false, reason: ANCHOR_LOCKED_REASON };
+    case 'done':
+      return attempt.result.anchored
+        ? { tenantId, anchored: true, topAuditId: String(attempt.result.topAuditId) }
+        : { tenantId, anchored: false, reason: attempt.result.reason };
+    case 'tsa-failed':
+      return { tenantId, anchored: false, reason: attempt.error.message };
+    case 'failed':
+      // Infrastrukturfehler: kein TSA-Backoff, nächster Takt versucht erneut.
+      log.warn({ tenantId, err: errorMessage(attempt.error) }, 'audit-anchor: tenant skipped');
+      return { tenantId, anchored: false, reason: errorMessage(attempt.error) };
+  }
+}
+
+async function anchorTenant(tenantId: string): Promise<AnchorTenantResult> {
+  const attemptedAt = new Date();
+  try {
+    const previous = await previousStatus(tenantId);
+    const service = new EvidenceService(await timestampPortFor(tenantId));
+    // A run that does not get the tenant lease returns without a TSA request
+    // and without touching the persisted status.
+    const attempt = await anchorLatestWithLease(
+      service,
+      prismaOwner,
+      tenantId,
+      { requireTrustAnchor: REQUIRE_TRUST_ANCHOR },
+      (settled) => persistAttempt(tenantId, attemptedAt, previous, settled),
+    );
+    return summarize(tenantId, attempt);
+  } catch (err) {
+    // Datenbank-/Pool-Fehler (Status, Konfiguration): kein TSA-Backoff.
+    log.warn({ tenantId, err: errorMessage(err) }, 'audit-anchor: tenant skipped');
+    return { tenantId, anchored: false, reason: errorMessage(err) };
   }
 }
 
@@ -219,8 +232,9 @@ async function processInChunks(tenantIds: string[]) {
 export const auditAnchorWorker = new Worker<AuditAnchorJob>(
   JOB_QUEUES.auditAnchor.name,
   async (job) => {
-    // The conditional DB insert in EvidenceService prevents anchor branches if
-    // reconciliation ticks overlap across worker replicas.
+    // The per-tenant lease avoids duplicate TSA requests; the conditional DB
+    // insert in EvidenceService still prevents anchor branches if a run
+    // without the lease (e.g. during a rolling deploy) overlaps.
     const tenantIds = job.data.tenantId ? [job.data.tenantId] : await pendingTenantIds();
     const results = await processInChunks(tenantIds);
     if (results.length > 0) {

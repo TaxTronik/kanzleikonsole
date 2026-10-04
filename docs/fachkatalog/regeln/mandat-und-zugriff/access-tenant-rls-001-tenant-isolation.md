@@ -92,6 +92,7 @@ code_refs:
   - packages/db/prisma/migrations/20260903009000_staff_recovery_role_floor/migration.sql
   - packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql
   - packages/db/prisma/migrations/20261004140000_audit_verify_checkpoint/migration.sql
+  - packages/db/prisma/migrations/20261004140100_audit_anchor_lease/migration.sql
   - apps/web/src/instrumentation.ts
   - apps/web/src/server/auth/staff-account-recovery-lock.ts
   - apps/web/src/server/auth/webauthn.ts
@@ -128,6 +129,7 @@ test_refs:
   - packages/db/src/__tests__/staff-webauthn-migration.test.ts
   - packages/db/src/__tests__/staff-webauthn-rls.test.ts
   - packages/db/src/__tests__/audit-verify-checkpoint.test.ts
+  - packages/db/src/__tests__/audit-anchor-lease.test.ts
   - apps/web/src/server/auth/__tests__/webauthn.test.ts
   - apps/web/src/server/auth/__tests__/admin-break-glass.test.ts
   - apps/web/src/server/auth/__tests__/staff-auth-state.test.ts
@@ -384,6 +386,13 @@ Fortschreiben und Löschen bleiben der Owner-Verbindung des Prüf-Workers
 vorbehalten, deren Abfragen den Tenant ausdrücklich binden. Der Migrationstest
 belegt Rechte, erzwungene RLS und das Lesen ausschließlich des eigenen
 Checkpoints im Tenantkontext.
+
+Der Tenant-Lease des Rolling-Anchor-Workers (`audit_anchor_lease`,
+`AUDIT-RFC3161-ANCHOR-001`) ist ebenfalls tenantgebunden und durch
+ENABLE/FORCE RLS sowie eine Tenant-Policy geschützt. Die App-Rolle erhält
+keinerlei Tabellenrechte; nur die Owner-Verbindung des Workers beansprucht,
+verlängert und löscht Leases mit ausdrücklicher Tenantbindung. Der Test belegt
+Rechteentzug, erzwungene RLS und die Policy.
 
 Persönliche RSS-Abonnements verwenden zusätzlich zur tenantweiten RLS bei
 Aktivierung und Löschung die aus der Sitzung abgeleitete Mitarbeiter-ID.

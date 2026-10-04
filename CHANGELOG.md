@@ -217,6 +217,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Rolling-RFC-3161-Anker werden je Kanzlei höchstens einmal pro
+  Minute angefordert; offene Rechnungs- und GwG-Ereignisse weiterhin sofort.
+  Gewöhnliche Einträge sind damit bis zu etwa 60 s nach dem vorigen Anker
+  extern verankert statt innerhalb eines Ticks. Überlappende Läufe und
+  Worker-Replikate fragen dieselbe Kettenspitze nicht mehr mehrfach bei der
+  TSA an: Ein Tenant-Lease mit 30 s Laufzeit ersetzt die Datenbanktransaktion
+  während des TSA-Aufrufs, eine erst nach Ablauf eintreffende Antwort wird
+  verworfen. Nur TSA-Fehler lösen den Backoff aus, Datenbank- und Poolfehler
+  nicht mehr (`AUDIT-RFC3161-ANCHOR-001`).
 - **[Scope]** Die tägliche Integritätsprüfung der Audit-Kette rechnet nur noch
   die seit dem letzten Prüf-Checkpoint hinzugekommenen Einträge, Siegel und
   Rolling-Anker nach, in Abschnitten von höchstens 5.000 Einträgen statt in

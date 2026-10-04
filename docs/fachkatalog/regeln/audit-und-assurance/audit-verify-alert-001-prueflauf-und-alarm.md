@@ -46,7 +46,7 @@ test_refs:
   - apps/web/src/server/audit/__tests__/status.test.ts
   - packages/evidence/src/__tests__/verify-checkpoint.test.ts
   - packages/evidence/src/__tests__/verify-checkpoint-db.test.ts
-  - packages/evidence/src/__tests__/verify-checkpoint-ci.test.ts
+  - packages/evidence/src/__tests__/evidence-db-ci.test.ts
   - packages/evidence/src/__tests__/chain-walk.test.ts
   - packages/db/src/__tests__/audit-verify-checkpoint.test.ts
   - packages/crypto/src/__tests__/audit-checkpoint-key.test.ts

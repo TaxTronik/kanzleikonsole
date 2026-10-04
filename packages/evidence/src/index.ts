@@ -4,7 +4,11 @@
 
 export {
   EvidenceService,
+  ANCHOR_LEASE_LOST_REASON,
+  ANCHOR_LEASE_EXPIRED_REASON,
+  ANCHOR_LOCKED_REASON,
   DEFAULT_SEGMENT_LIMITS,
+  TsaAnchorError,
   genesisCursor,
   type AuditEventInput,
   type RecordedEvent,
@@ -17,6 +21,20 @@ export {
   type SegmentLimits,
   type SegmentOutcome,
 } from './service';
+export {
+  IMMEDIATE_ANCHOR_ACTIONS,
+  isImmediateAnchorAction,
+  tenantsDueForAnchoring,
+  type AnchorScheduleOptions,
+} from './anchor-schedule';
+export {
+  ANCHOR_LEASE_TTL_MS,
+  anchorLatestWithLease,
+  claimAnchorLease,
+  type AnchorAttempt,
+  type AnchorLease,
+  type SettledAnchorAttempt,
+} from './anchor-lease';
 export {
   verifyChainWithCheckpoints,
   checkpointIntegrityProblem,

@@ -57,6 +57,7 @@ model Tenant {
   auditLogs                      AuditLog[]
   auditSeals                     AuditSeal[]
   auditVerifyCheckpoints         AuditVerifyCheckpoint[]
+  auditAnchorLease               AuditAnchorLease?
   backupRecords                  BackupRecord[]
   bwaPeriods                     BwaPeriod[]
   bwaPlans                       BwaPlan[]
@@ -2468,6 +2469,19 @@ model AuditVerifyCheckpoint {
 
   @@id([tenantId, kind])
   @@map("audit_verify_checkpoint")
+}
+
+/// P-05 (AUDIT-RFC3161-ANCHOR-001): Tenant-Lease des Rolling-Anchor-Workers.
+/// Owner-only; während des TSA-Aufrufs hält der Worker weder Transaktion noch
+/// Verbindung, nur diesen committeten Lease mit Ablaufzeit.
+model AuditAnchorLease {
+  tenantId   String   @id @map("tenant_id") @db.Uuid
+  holder     String   @db.Uuid
+  acquiredAt DateTime @map("acquired_at") @db.Timestamptz(6)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("audit_anchor_lease")
 }
 
 model Request {

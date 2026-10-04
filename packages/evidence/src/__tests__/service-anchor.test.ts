@@ -1,7 +1,14 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { EvidenceService } from '../service';
+import {
+  ANCHOR_LEASE_EXPIRED_REASON,
+  ANCHOR_LEASE_LOST_REASON,
+  EvidenceService,
+  TsaAnchorError,
+} from '../service';
+import { ANCHOR_LEASE_TTL_MS } from '../anchor-lease';
 import { anchorGenesisHash } from '../anchor';
+import { immediateAnchorLikePatterns, isImmediateAnchorAction } from '../anchor-schedule';
 import {
   LocalTimestampAdapter,
   type TimestampPort,
@@ -94,5 +101,110 @@ describe('anchorLatest', () => {
     expect(result.reason).toMatch(/keine externe/);
     expect(queryRaw).not.toHaveBeenCalled();
     expect(executeRaw).not.toHaveBeenCalled();
+  });
+});
+
+// Fachkatalog: AUDIT-RFC3161-ANCHOR-001 — P-05: Tenant-Lease um den TSA-Aufruf.
+describe('anchorLatest mit Tenant-Lease', () => {
+  const holder = '00000000-0000-4000-8000-00000000a11e';
+
+  it('bestätigt den Lease unmittelbar vor der TSA-Anfrage und bindet das Insert daran', async () => {
+    const port = new AnchorTsa();
+    const { tx, executeRaw } = txFor();
+    const confirm = vi.fn(async () => {
+      // Vor der Anfrage und erneut nach der Antwort, beides vor dem Insert.
+      expect(port.timestamp).toHaveBeenCalledTimes(confirm.mock.calls.length - 1);
+      expect(executeRaw).not.toHaveBeenCalled();
+      return true;
+    });
+
+    const result = await new EvidenceService(port).anchorLatest(tx, tenantId, {
+      lease: { holder, confirm },
+    });
+
+    expect(result).toMatchObject({ anchored: true, topAuditId: 12n });
+    expect(confirm).toHaveBeenCalledTimes(2);
+    const insertSql = (executeRaw.mock.calls[0]![0] as TemplateStringsArray).join('?');
+    expect(insertSql).toContain('FROM audit_anchor_lease');
+    expect(executeRaw.mock.calls[0]).toContain(holder);
+  });
+
+  it('fragt ohne gültigen Lease weder TSA an noch fügt ein', async () => {
+    const port = new AnchorTsa();
+    const { tx, executeRaw } = txFor();
+
+    const result = await new EvidenceService(port).anchorLatest(tx, tenantId, {
+      lease: { holder, confirm: async () => false },
+    });
+
+    expect(result).toEqual({ anchored: false, reason: ANCHOR_LEASE_LOST_REASON });
+    expect(port.timestamp).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('verwirft das Token, wenn der Lease während der TSA-Anfrage abläuft', async () => {
+    const port = new AnchorTsa();
+    const { tx, executeRaw } = txFor();
+    const confirm = vi.fn(async () => confirm.mock.calls.length === 1);
+
+    const result = await new EvidenceService(port).anchorLatest(tx, tenantId, {
+      lease: { holder, confirm },
+    });
+
+    expect(result).toEqual({ anchored: false, reason: ANCHOR_LEASE_EXPIRED_REASON });
+    expect(port.timestamp).toHaveBeenCalledTimes(1);
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('begrenzt die Sperre durch einen abgestürzten Halter auf 30 s über dem TSA-Timeout', () => {
+    expect(ANCHOR_LEASE_TTL_MS).toBe(30_000);
+    expect(ANCHOR_LEASE_TTL_MS).toBeGreaterThan(10_000);
+  });
+
+  it('meldet TSA-Fehler als TsaAnchorError, Datenbankfehler unverändert', async () => {
+    const port = new AnchorTsa();
+    port.timestamp.mockRejectedValueOnce(new Error('TSA HTTP 503'));
+    await expect(new EvidenceService(port).anchorLatest(txFor().tx, tenantId)).rejects.toThrow(
+      TsaAnchorError,
+    );
+
+    const untrusted = new AnchorTsa();
+    untrusted.verifyDetailed.mockResolvedValueOnce({ ok: true, trustAnchored: false });
+    await expect(
+      new EvidenceService(untrusted).anchorLatest(txFor().tx, tenantId, {
+        requireTrustAnchor: true,
+      }),
+    ).rejects.toBeInstanceOf(TsaAnchorError);
+
+    const poolError = new Error('Unable to start a transaction in the given time.');
+    const { tx, executeRaw } = txFor();
+    executeRaw.mockRejectedValueOnce(poolError);
+    await expect(new EvidenceService(new AnchorTsa()).anchorLatest(tx, tenantId)).rejects.toBe(
+      poolError,
+    );
+  });
+});
+
+// Fachkatalog: AUDIT-RFC3161-ANCHOR-001 — Klassen ohne Mindestabstand (eine Definition).
+describe('Sofort zu verankernde Aktionen', () => {
+  it.each([
+    'invoice.send',
+    'gwg.check.verify',
+    'client.update.gwg_relevant',
+    'client.deactivate.gwg_expired',
+    'stbvv.invoice.draft',
+  ])('verankert %s ohne Mindestabstand', (action) => {
+    expect(isImmediateAnchorAction(action)).toBe(true);
+  });
+
+  it.each(['client.update', 'client.update.gwgXrelevant', 'stbvv.quote.create', 'invoices'])(
+    'wartet bei %s den Mindestabstand ab',
+    (action) => {
+      expect(isImmediateAnchorAction(action)).toBe(false);
+    },
+  );
+
+  it('bildet für jedes Präfix ein LIKE-Muster', () => {
+    expect(immediateAnchorLikePatterns()).toEqual(['invoice.%', 'gwg.%', 'stbvv.invoice.%']);
   });
 });

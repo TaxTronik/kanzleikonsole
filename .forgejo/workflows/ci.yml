@@ -261,14 +261,15 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/invoicing/__tests__/invoice-concurrency-db.test.ts 2>&1 | tee testbericht-invoice-concurrency.log
 
-      # AUDIT-VERIFY-ALERT-001: checkpointgestützte Kettenprüfung (P-04) gegen
-      # echtes PostgreSQL; alle Fixtures werden zurückgerollt.
-      - name: Audit verification checkpoints against PostgreSQL
+      # AUDIT-VERIFY-ALERT-001 / AUDIT-RFC3161-ANCHOR-001: checkpointgestützte
+      # Kettenprüfung (P-04) und Rolling-Anchor-Takt (P-05) gegen echtes
+      # PostgreSQL; alle Fixtures werden zurückgerollt.
+      - name: Audit evidence services against PostgreSQL
         env:
           EVIDENCE_DB_TEST: '1'
         run: |
           set -o pipefail
-          pnpm --filter @taxtronik/evidence exec vitest run src/__tests__/verify-checkpoint-db.test.ts 2>&1 | tee testbericht-evidence-checkpoints.log
+          pnpm --filter @taxtronik/evidence exec vitest run src/__tests__/verify-checkpoint-db.test.ts src/__tests__/anchor-schedule-db.test.ts 2>&1 | tee testbericht-evidence-db.log
 
       # service-db.test.ts ist Nachweis für MANDATE-STRUCTURE-001,
       # GWG-BENEFICIAL-OWNERS-001, GWG-RISK-REVIEW-001 und
@@ -315,7 +316,7 @@ jobs:
             testbericht-invoice-selection.log
             testbericht-settings-atomicity.log
             testbericht-invoice-concurrency.log
-            testbericht-evidence-checkpoints.log
+            testbericht-evidence-db.log
             testbericht-mandate-services.log
           if-no-files-found: ignore
 
