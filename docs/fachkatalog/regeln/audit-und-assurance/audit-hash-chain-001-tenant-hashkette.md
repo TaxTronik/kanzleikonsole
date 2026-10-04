@@ -168,7 +168,9 @@ als auch das neue Kettenende zurückrollen; Erfolgsfälle müssen genau das
 zugehörige Audit-Ereignis und eine weiterhin gültige Hashkette liefern.
 
 `BigInt` wird als Dezimaltext, binäre Daten werden hexadezimal und Datumswerte
-werden als ISO-Zeitpunkt kanonisiert. IP-Adresse und User-Agent können am
+werden als ISO-Zeitpunkt kanonisiert. Die Zahl `-0` wird wie im JSON-Datenmodell
+und in `jsonb` als `0` dargestellt; Aufzeichnung, gespeicherter Wert und
+Nachrechnung ergeben dafür denselben Hash. IP-Adresse und User-Agent können am
 Audit-Datensatz stehen, gehören aber bewusst nicht zum gehashten Ereignis.
 Ereignisse verschiedener Kanzlei-Tenants bilden getrennte Ketten.
 
@@ -343,7 +345,11 @@ sowie reale Ereignis- und Archivfunktionen. Eine Änderung nur innerhalb dieses
 Schlüssels muss den Hash ändern und die Archivprüfung scheitern lassen.
 Alte Hashes, die einen weiterhin vorhandenen Schlüssel ausließen, werden
 nicht als gültig bestätigt. Der Property-Generator erzeugt diese Sondernamen
-ausdrücklich und prüft zusätzlich den verlustfreien JSON-Roundtrip.
+ausdrücklich und prüft zusätzlich den verlustfreien Roundtrip gegenüber dem
+JSON-Datenmodell, in dem auch `jsonb` speichert; dazu erzeugt er ausdrücklich
+`-0`. Deterministische Tests belegen, dass `-0` und `0` identisch kanonisiert
+und gehasht werden und `record()` den Wert als `0` speichert und genau den
+gespeicherten Wert hasht.
 
 `admin-break-glass.test.ts` belegt, dass der ADMIN-Owner-Reset das Audit vor
 der Credential-Ausgabe schreibt, erst danach committen darf und bei einem

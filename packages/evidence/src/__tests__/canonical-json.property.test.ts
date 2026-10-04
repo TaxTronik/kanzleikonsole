@@ -10,6 +10,7 @@
 //   C2: Schlüsselreihenfolge irrelevant ({a:1,b:2} == {b:2,a:1})
 //   C3: undefined wird ausgelassen, null bleibt erhalten
 //   C4: Verschachtelung: alle Ebenen folgen denselben Regeln
+//   J1: Roundtrip verlustfrei im JSON-Datenmodell (wie jsonb: -0 wird 0)
 //   H1: eventHash ist deterministisch
 //   H2: Verschiedene Events → verschiedene Hashes (keine Kollision)
 // =============================================================================
@@ -18,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 import * as crypto from 'node:crypto';
 import * as fc from 'fast-check';
 import { canonicalJson } from '../canonical-json';
-import { eventHash, type ChainEvent } from '../chain';
+import { chainValue, eventHash, type ChainEvent } from '../chain';
 
 // ---------------------------------------------------------------------------
 // Arbitraries: Generatoren für Zufallsdaten, die fast-check nutzt.
@@ -29,6 +30,8 @@ const jsonValueArb: fc.Arbitrary<unknown> = fc.oneof(
   fc.string({ minLength: 0, maxLength: 20 }),
   fc.integer({ min: -1000, max: 1000 }),
   fc.double({ min: -100, max: 100, noNaN: true }),
+  // fc.double liefert -0 nur gelegentlich; J1 soll den Fall in jedem Lauf sehen.
+  fc.constant(-0),
   fc.boolean(),
   fc.constant(null),
   fc.array(fc.string({ minLength: 1, maxLength: 10 })),
@@ -116,9 +119,54 @@ describe('canonicalJson — Property-Based', () => {
   it('AUDIT-HASH-CHAIN-001: behält alle eigenen JSON-Schlüssel und Werte', () => {
     fc.assert(
       fc.property(shuffledObjectArb, (obj) => {
-        expect(JSON.parse(canonicalJson(obj))).toEqual(obj);
+        // J1: Maßstab ist das JSON-Datenmodell, in dem auch jsonb speichert. Es
+        // kennt kein -0 (JSON.stringify(-0) === '0'); toEqual vergleicht Zahlen
+        // aber per Object.is und wertete -0 gegenüber 0 sonst als Verlust.
+        const persisted: unknown = JSON.parse(JSON.stringify(obj));
+        expect(JSON.parse(canonicalJson(obj))).toEqual(persisted);
+        expect(canonicalJson(persisted)).toBe(canonicalJson(obj));
       }),
     );
+  });
+});
+
+describe('AUDIT-HASH-CHAIN-001: -0 im JSON-Datenmodell', () => {
+  const previous = Buffer.alloc(32, 7);
+  const event: ChainEvent = {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    occurredAt: '2026-10-04T00:00:00.000Z',
+    actorType: 'STAFF',
+    actorId: null,
+    action: 'invoice.update',
+    resourceType: 'invoice',
+    resourceId: null,
+    before: null,
+    after: null,
+  };
+
+  it('kanonisiert -0 und 0 auf allen Ebenen identisch als 0', () => {
+    expect(canonicalJson(-0)).toBe('0');
+    expect(canonicalJson({ a: -0, b: [-0, 0], c: { d: -0 } })).toBe(
+      '{"a":0,"b":[0,0],"c":{"d":0}}',
+    );
+    expect(canonicalJson({ a: -0, b: [-0, 0], c: { d: -0 } })).toBe(
+      canonicalJson({ a: 0, b: [0, 0], c: { d: 0 } }),
+    );
+  });
+
+  it('hasht -0 vor der Speicherung wie den jsonb-Roundtrip bei der Prüfung', () => {
+    const recorded = { ...event, after: { discount: -0, lines: [-0, 1.5] } };
+    // Record speichert JSON.stringify(chainValue(after)); die Prüfung liest den
+    // geparsten jsonb-Wert zurück.
+    const stored: unknown = JSON.parse(JSON.stringify(chainValue(recorded.after)));
+    expect(stored).toEqual({ discount: 0, lines: [0, 1.5] });
+    expect(Object.is((stored as { discount: number }).discount, 0)).toBe(true);
+
+    const atRecord = eventHash(previous, recorded);
+    expect(atRecord.equals(eventHash(previous, { ...event, after: stored }))).toBe(true);
+    expect(
+      atRecord.equals(eventHash(previous, { ...event, after: { discount: 0, lines: [0, 1.5] } })),
+    ).toBe(true);
   });
 });
 
