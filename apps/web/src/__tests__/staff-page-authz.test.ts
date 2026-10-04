@@ -30,8 +30,12 @@ describe('staff page authorization guardrail', () => {
     const violations = pages.flatMap((path) => {
       const source = readFileSync(path, 'utf8');
       const relativePath = relative(PROTECTED_DIR, path).replaceAll('\\', '/');
+      // requireClientPageAccess und guardSubsumtionPage rufen requireStaffPage
+      // selbst (client-page-authz.test.ts prüft die Mandanten-Seiten im Detail).
       const usesCentralGuard =
-        source.includes('requireStaffPage(') || source.includes('guardSubsumtionPage(');
+        source.includes('requireStaffPage(') ||
+        source.includes('requireClientPageAccess(') ||
+        source.includes('guardSubsumtionPage(');
 
       return usesCentralGuard && !source.includes('staffAuth(') ? [] : [relativePath];
     });

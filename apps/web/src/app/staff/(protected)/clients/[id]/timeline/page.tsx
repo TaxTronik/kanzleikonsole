@@ -1,4 +1,4 @@
-﻿import { requireStaffPage } from '@/server/auth/staff-page';
+﻿import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -134,9 +134,8 @@ export default async function ClientTimelinePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ limit?: string }>;
 }) {
-  const session = await requireStaffPage();
-
   const { id } = await params;
+  const session = await requireClientPageAccess(id);
   const sp = await searchParams;
   const requestedLimit = Number(sp.limit ?? '100');
   const limit = Number.isFinite(requestedLimit)

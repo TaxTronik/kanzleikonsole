@@ -1,7 +1,7 @@
 ﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { computeBwaKpis } from '@/server/bwa/addison-parser';
 import type { LegalForm } from '@/server/bwa/tax-estimator';
@@ -13,9 +13,8 @@ export default async function BwaPeriodDetailPage({
 }: {
   params: Promise<{ id: string; periodId: string }>;
 }) {
-  const session = await requireStaffPage();
-
   const { id: clientId, periodId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

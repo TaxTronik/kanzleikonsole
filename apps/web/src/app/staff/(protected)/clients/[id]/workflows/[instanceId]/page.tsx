@@ -22,7 +22,7 @@ import {
   ListChecks,
   ExternalLink,
 } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { SkillBadge } from '@/components/skill-badge';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -50,8 +50,8 @@ export default async function WorkflowInstanceDetail({
 }: {
   params: Promise<{ id: string; instanceId: string }>;
 }) {
-  const session = await requireStaffPage();
   const { id: clientId, instanceId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

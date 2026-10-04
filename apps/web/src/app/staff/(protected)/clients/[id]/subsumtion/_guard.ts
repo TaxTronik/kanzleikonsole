@@ -1,15 +1,19 @@
 // Gemeinsamer Page-Guard für den Subsumtions-Workspace.
 // Zugang über die zentrale `canAccessClient`-Policy (OPEN-Default: jeder aktive
-// Mitarbeiter; vertrauliche Mandanten nur Admin/Partner + Zugeordnete); zudem
-// muss das Modul `risk` aktiv sein. Lädt nebenbei die Staff-Optionen (für die
-// Panels) und ob die Engine konfiguriert ist. Redirect bei fehlender Berechtigung.
+// Mitarbeiter; vertrauliche Mandanten nur Admin/Partner + Zugeordnete) via
+// `requireClientPageAccess` — derselbe request-gecachte Seiten-Guard wie im
+// Layout und allen anderen Mandanten-Seiten; zudem muss das Modul `risk` aktiv
+// sein. Lädt nebenbei die Staff-Optionen (für die Panels) und ob die Engine
+// konfiguriert ist. Redirect bei fehlender Berechtigung.
 //
 // EINE Tenant-Transaktion für alle Guard-Reads (Zugriff, Staff-Optionen,
-// Rechtestufe) — vorher öffnete jeder Schritt seine eigene. Die Listen-Seite
-// braucht keine Zuweisungs-Dropdowns und überspringt die Staff-Queries komplett.
+// Rechtestufe) — vorher öffnete jeder Schritt seine eigene. Die Zugriffsprüfung
+// darin bleibt als Backstop in derselben Transaktion wie die Folge-Reads. Die
+// Listen-Seite braucht keine Zuweisungs-Dropdowns und überspringt die
+// Staff-Queries komplett.
 
 import { redirect } from 'next/navigation';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { canAccessClientTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { loadSubsumtionRights, type SubsumtionRights } from '@/server/risk/rights';
 import { readModules } from '@/server/settings/modules';
@@ -47,7 +51,7 @@ export async function guardSubsumtionPage(
     staffOptions?: boolean;
   },
 ): Promise<SubsumtionPageContext> {
-  const session = await requireStaffPage();
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId, fullName } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
 

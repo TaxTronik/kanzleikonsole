@@ -13,7 +13,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { CustomFieldsForm } from './custom-fields-form';
@@ -35,8 +35,8 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export default async function ClientEditPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireStaffPage();
   const { id } = await params;
+  const session = await requireClientPageAccess(id);
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

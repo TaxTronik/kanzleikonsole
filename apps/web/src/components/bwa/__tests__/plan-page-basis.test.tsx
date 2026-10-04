@@ -21,8 +21,10 @@ vi.mock('@/server/auth/portal', () => ({
     user: { tenantId: 'tenant-test', contactId: 'contact-test', clientId: 'client-test' },
   }),
 }));
-vi.mock('@/server/auth/staff-page', () => ({
-  requireStaffPage: async () => ({ user: { tenantId: 'tenant-test', staffId: 'staff-test' } }),
+vi.mock('@/server/auth/client-page-access', () => ({
+  requireClientPageAccess: async () => ({
+    user: { tenantId: 'tenant-test', staffId: 'staff-test' },
+  }),
 }));
 vi.mock('@/server/settings/portal-features', () => ({
   readPortalFeatures: async () => ({ bwaPlanning: true }),

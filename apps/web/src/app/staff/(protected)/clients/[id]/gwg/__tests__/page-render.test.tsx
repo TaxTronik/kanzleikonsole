@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  staff: vi.fn(),
+  access: vi.fn(),
   context: vi.fn(),
   client: vi.fn(),
   check: vi.fn(),
@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   documents: vi.fn(),
   uploads: vi.fn(),
 }));
-vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: mocks.staff }));
+vi.mock('@/server/auth/client-page-access', () => ({ requireClientPageAccess: mocks.access }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.context }));
 vi.mock('@/server/gwg/evidence-documents', () => ({
   findCleanGwgEvidenceDocumentsTx: mocks.documents,
@@ -161,7 +161,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(now);
-  mocks.staff.mockResolvedValue({ user: { tenantId, staffId, roles: ['ADMIN'] } });
+  mocks.access.mockResolvedValue({ user: { tenantId, staffId, roles: ['ADMIN'] } });
   mocks.client.mockResolvedValue({
     id: clientId,
     tenantId,
@@ -294,9 +294,18 @@ describe('GWG-RISK-REVIEW-001 / GWG-SELF-ONBOARDING-001: page workflow and revie
     expect(html).not.toContain('Verifizieren und Mandant aktivieren');
     expect(html).not.toContain('name="reviewSnapshotHash"');
   });
-  it('does not load any tenant data before the staff guard succeeds', async () => {
-    mocks.staff.mockRejectedValue(new Error('unauthenticated'));
-    await expect(renderPage()).rejects.toThrow('unauthenticated');
+  // Fachkatalog: ACCESS-CLIENT-MODE-001
+  it('checks access to the URL client before loading any tenant data', async () => {
+    await renderPage();
+    expect(mocks.access).toHaveBeenCalledWith(clientId);
+    expect(mocks.access.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.context.mock.invocationCallOrder[0]!,
+    );
+  });
+  // Fachkatalog: ACCESS-CLIENT-MODE-001
+  it('does not load any tenant data before the client access guard succeeds', async () => {
+    mocks.access.mockRejectedValue(new Error('redirect:/staff/clients?denied=1'));
+    await expect(renderPage()).rejects.toThrow('redirect:/staff/clients?denied=1');
     expect(mocks.context).not.toHaveBeenCalled();
   });
   it('stops loading when the client does not exist', async () => {

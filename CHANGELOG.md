@@ -847,6 +847,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Alle Mandanten-Detailseiten unter `/staff/clients/[id]` prüfen
+  den Mandantenzugriff (Vertraulichkeit, RESTRICTED-Modus) jetzt selbst über
+  einen request-gecachten Seiten-Guard statt nur im Segment-Layout. Für 16
+  Seiten, darunter GwG, Bescheide, Zeitstrahl, BWA, Datenschutz und
+  Workflows, prüfte bisher nur das Layout, das bei Navigation zwischen
+  Unterseiten und bei gezielten RSC-Requests nicht erneut läuft. Ein
+  Strukturtest erzwingt den Guard vor jedem Datenzugriff jeder Seite
+  (`ACCESS-CLIENT-MODE-001`, `FK-EXC-20261004-011`).
 - **[Scope]** Die Restore-Sicherheitsabnahme und der CI-Restore-Selbsttest
   prüfen zusätzlich, dass die Anwendung Rolling-Anker weder ändern, löschen
   noch leeren, Prüf-Checkpoints der Kettenprüfung weder anlegen, ändern,

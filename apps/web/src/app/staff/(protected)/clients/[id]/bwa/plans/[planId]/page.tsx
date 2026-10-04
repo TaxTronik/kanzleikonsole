@@ -1,7 +1,7 @@
 ﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { PlanEditor } from '@/app/portal/(protected)/bwa/plan/[id]/editor';
 import { ActorBadge } from '@/app/portal/(protected)/bwa/plan/plan-comparison';
@@ -13,8 +13,8 @@ export default async function StaffPlanDetailPage({
 }: {
   params: Promise<{ id: string; planId: string }>;
 }) {
-  const session = await requireStaffPage();
   const { id: clientId, planId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId } = session.user;
 
   const plan = await withTenantContext(

@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineEvent } from '@/server/timeline/build';
 
 const mocks = vi.hoisted(() => ({
-  requireStaffPage: vi.fn(),
+  requireClientPageAccess: vi.fn(),
   withTenantContext: vi.fn(),
   buildClientTimeline: vi.fn(),
 }));
-vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: mocks.requireStaffPage }));
+vi.mock('@/server/auth/client-page-access', () => ({
+  requireClientPageAccess: mocks.requireClientPageAccess,
+}));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/timeline/build', () => ({ buildClientTimeline: mocks.buildClientTimeline }));
 
@@ -33,9 +35,29 @@ async function render(limit?: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireStaffPage.mockResolvedValue({ user: { tenantId: 'tenant', staffId: 'staff' } });
+  mocks.requireClientPageAccess.mockResolvedValue({
+    user: { tenantId: 'tenant', staffId: 'staff' },
+  });
   mocks.withTenantContext.mockResolvedValue({ id: 'client', name: 'Testmandant' });
   mocks.buildClientTimeline.mockResolvedValue([]);
+});
+
+// Fachkatalog: ACCESS-CLIENT-MODE-001
+describe('Timeline-Seite: eigener Mandanten-Zugriffscheck', () => {
+  it('prüft die Mandanten-ID aus der URL vor dem ersten Datenzugriff', async () => {
+    await render();
+    expect(mocks.requireClientPageAccess).toHaveBeenCalledWith('client');
+    expect(mocks.requireClientPageAccess.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.withTenantContext.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('lädt bei verweigertem Zugriff weder Mandant noch Ereignisse', async () => {
+    mocks.requireClientPageAccess.mockRejectedValue(new Error('redirect:/staff/clients?denied=1'));
+    await expect(render()).rejects.toThrow('redirect:/staff/clients?denied=1');
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+    expect(mocks.buildClientTimeline).not.toHaveBeenCalled();
+  });
 });
 
 describe('Timeline-Seite: gültige Seiten und einheitliche Datumsanzeige', () => {

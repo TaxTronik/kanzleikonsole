@@ -2,13 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { FeeCalculation } from '@taxtronik/tax';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { assertClientAccessTx, hasStaffPermission } from '@/server/auth/rbac';
 import { assertModuleEnabled, readModules } from '@/server/settings/modules';
 import { FeeCalculatorForm, FeeDraftForm } from '../../../stbvv/calculator-form';
 export default async function ClientStbvvPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params,
-    session = await requireStaffPage();
+    session = await requireClientPageAccess(id);
   const ctx: TenantContext = {
     tenantId: session.user.tenantId,
     actorId: session.user.staffId,

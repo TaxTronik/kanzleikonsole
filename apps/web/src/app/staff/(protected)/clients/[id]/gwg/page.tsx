@@ -1,4 +1,4 @@
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { GwgStructurePanel } from '@/server/mandate-expansion/gwg-structure-panel';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -23,8 +23,8 @@ export default async function GwgPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ from?: string }>;
 }) {
-  const session = await requireStaffPage();
   const { id: clientId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { from } = await searchParams;
   const data = await loadGwgPageData({
     clientId,

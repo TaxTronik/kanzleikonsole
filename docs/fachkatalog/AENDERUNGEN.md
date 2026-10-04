@@ -1,5 +1,56 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-011
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/bwa/[periodId]/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/change-requests/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guard.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/page.tsx
+    rule_ids:
+      - ACCESS-CLIENT-MODE-001
+      - BWA-TAX-ESTIMATE-001
+      - BWA-IMPORT-MAPPING-001
+      - BWA-PROJECTION-001
+      - TAX-MASTER-DATA-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-REPRESENTATIVE-AUTHORITY-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-RISK-REVIEW-001
+      - GWG-SELF-ONBOARDING-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - TAX-CONTROL-STATUS-001
+      - ACCESS-SEARCH-SCOPE-001
+      - DSGVO-CONSENT-SNAPSHOT-001
+    reason: >-
+      Alle Seiten unter /staff/clients/[id] rufen vor jedem Datenzugriff den
+      request-gecachten Seiten-Guard requireClientPageAccess auf, der dieselbe
+      canAccessClient-Entscheidung wie bisher das Segment-Layout trifft und bei
+      Verweigerung wie bisher auf die Mandantenliste umleitet. Bisher prüfte
+      für 16 Seiten nur das Layout, das bei Navigation zwischen Unterseiten
+      nicht erneut läuft. Die Entscheidungstabelle von ACCESS-CLIENT-MODE-001,
+      Seiteninhalte und alle fachlichen Abläufe bleiben unverändert; an den
+      Seiten ändern sich nur Import und Reihenfolge des Guards. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/web/src/__tests__/client-page-authz.test.ts
+      - apps/web/src/server/auth/__tests__/client-page-access.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/page.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-010
     date: '2026-10-04'
     paths:
@@ -1048,6 +1099,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-011` dokumentiert, dass jede Mandanten-
+  Detailseite die bestehende Zugriffsentscheidung selbst prüft statt nur im
+  Layout. Entscheidungstabelle und Seiteninhalte bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-010` dokumentiert eingebettete Unicode-Schriften
   in neu erzeugten ZUGFeRD-PDFs und die genauere Breitenmessung des

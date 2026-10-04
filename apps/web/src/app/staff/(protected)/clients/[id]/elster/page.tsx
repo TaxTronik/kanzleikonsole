@@ -9,7 +9,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Landmark } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { isElsterConfigured } from '@taxtronik/elster';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -23,8 +23,8 @@ const ART_LABELS: Record<string, string> = {
 };
 
 export default async function ElsterPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireStaffPage();
   const { id: clientId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

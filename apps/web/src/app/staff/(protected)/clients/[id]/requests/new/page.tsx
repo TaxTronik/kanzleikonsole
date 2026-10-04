@@ -2,15 +2,14 @@
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { NewRequestForm } from './form';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 
 export default async function NewRequestPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireStaffPage();
-
   const { id } = await params;
+  const session = await requireClientPageAccess(id);
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

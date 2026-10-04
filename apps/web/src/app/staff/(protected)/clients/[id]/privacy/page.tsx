@@ -10,7 +10,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, Settings } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -84,8 +84,8 @@ function grantedConsentLabels(consent: ConsentSelections): string[] {
 }
 
 export default async function ClientPrivacyPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireStaffPage();
   const { id: clientId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId } = session.user;
   const admin = isStaffAdmin(session);
 

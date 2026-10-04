@@ -1,6 +1,6 @@
 import { Suspense, type ReactNode } from 'react';
 import { randomUUID } from 'node:crypto';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -77,10 +77,10 @@ export default async function ClientDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<ClientDetailSearchParams>;
 }) {
-  const session = await requireStaffPage();
+  const [{ id }, search] = await Promise.all([params, searchParams]);
+  const session = await requireClientPageAccess(id);
   const now = new Date();
 
-  const [{ id }, search] = await Promise.all([params, searchParams]);
   const documentsPage = parseClientDocumentsPage(search.docsPage);
   const documentsDeleted = parseClientDocumentsDeleted(search.docsDeleted);
   const { tenantId, staffId } = session.user;

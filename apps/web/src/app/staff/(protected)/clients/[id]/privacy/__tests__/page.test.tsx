@@ -2,11 +2,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyConsent, type ConsentSelections } from '@/server/privacy/consent';
 
-const mocks = vi.hoisted(() => ({ withTenantContext: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  withTenantContext: vi.fn(),
+  requireClientPageAccess: vi.fn(),
+}));
 
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
-vi.mock('@/server/auth/staff-page', () => ({
-  requireStaffPage: vi.fn().mockResolvedValue({ user: { tenantId: 'tenant', staffId: 'staff' } }),
+vi.mock('@/server/auth/client-page-access', () => ({
+  requireClientPageAccess: mocks.requireClientPageAccess,
 }));
 vi.mock('@/server/auth/rbac', () => ({ isStaffAdmin: () => false }));
 vi.mock('@/server/privacy/service', () => ({ renderNoticeForTenantTx: vi.fn() }));
@@ -61,7 +64,31 @@ async function renderPage(consents: ConsentSelections, isRevocation: boolean) {
   );
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.requireClientPageAccess.mockResolvedValue({
+    user: { tenantId: 'tenant', staffId: 'staff' },
+  });
+});
+
+// Fachkatalog: ACCESS-CLIENT-MODE-001
+describe('Datenschutz-Seite: eigener Mandanten-Zugriffscheck', () => {
+  it('prüft die Mandanten-ID aus der URL vor dem Laden der Einwilligungen', async () => {
+    await renderPage(requiredConfirmation(), false);
+    expect(mocks.requireClientPageAccess).toHaveBeenCalledWith('client');
+    expect(mocks.requireClientPageAccess.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.withTenantContext.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('lädt bei verweigertem Zugriff keine Einwilligungen', async () => {
+    mocks.requireClientPageAccess.mockRejectedValue(new Error('redirect:/staff/clients?denied=1'));
+    await expect(ClientPrivacyPage({ params: Promise.resolve({ id: 'client' }) })).rejects.toThrow(
+      'redirect:/staff/clients?denied=1',
+    );
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+  });
+});
 
 describe('DSGVO-CONSENT-SNAPSHOT-001: Datenschutz-Auswahl in der Kanzleiansicht', () => {
   it('bietet nach einem Teilwiderruf den Widerruf verbleibender Pflicht-Kontakt- und Marketingauswahlen an', async () => {

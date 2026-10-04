@@ -2,14 +2,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { sourceIsFresh } from '@taxtronik/tax';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { latestScreeningContextTx } from '@/server/screening/gwg-gate';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertModuleEnabled } from '@/server/settings/modules';
 import { ScreeningForms, ScreeningReviewForm } from './forms';
 export default async function ScreeningPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await requireStaffPage();
+  const session = await requireClientPageAccess(id);
   const ctx: TenantContext = {
     tenantId: session.user.tenantId,
     actorId: session.user.staffId,

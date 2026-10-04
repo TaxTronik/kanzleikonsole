@@ -1,16 +1,15 @@
 ﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Clock } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { BillingForm } from './billing-form';
 import { fmtDateShort } from '@/lib/fmt';
 
 export default async function ClientBillingPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireStaffPage();
-
   const { id: clientId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

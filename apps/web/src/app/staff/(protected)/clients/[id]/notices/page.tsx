@@ -8,7 +8,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileWarning, Plus, FileText } from 'lucide-react';
-import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { FilingsSection } from './filings/filings-section';
 import { NoticeStatusSelect } from './status-select';
@@ -273,8 +273,8 @@ function hasCompletePartialReliefEvidence(receivedAt: Date | null, receivedBy: s
 }
 
 export default async function ClientNoticesPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireStaffPage();
   const { id: clientId } = await params;
+  const session = await requireClientPageAccess(clientId);
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(
