@@ -1,7 +1,8 @@
 // =============================================================================
 // DATEV-Belege-Export — ZIP für einen Mandanten
 //
-// Lädt alle GoBD-Belege (Rechnungen, Verträge, Steuer-Belege) als ZIP mit:
+// Streamt alle GoBD-Belege (Rechnungen, Verträge, Steuer-Belege) als ZIP mit
+// (in dieser Reihenfolge, P-03):
 //   - belege/<lfd-nr>_<title>.<ext>     (Original-Dateien)
 //   - index.csv                          (DATEV-kompatible Begleitliste)
 //   - manifest.txt                       (Lesbare Zusammenfassung)
@@ -17,18 +18,18 @@ import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { fetchObjectBytes } from '@taxtronik/storage';
+import { MAX_UPLOAD_BYTES, streamObject, type ObjectStream } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import {
-  acquireZipBuildSlot,
-  buildZip,
+  acquireZipStreamSlot,
+  createZipStream,
   sanitizeZipFileName,
   ZipBusyError,
   ZipTooLargeError,
   ZipTooManyEntriesError,
   ZIP_MAX_ENTRIES,
   ZIP_MAX_TOTAL_BYTES,
-  type ZipEntry,
+  type ZipStreamEntry,
 } from '@/server/export/zip';
 import { escapeCsvCell } from '@/server/export/csv';
 import { fmtDateShort, fmtDateTimeLong } from '@/lib/fmt';
@@ -187,10 +188,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     );
   }
 
-  // P-6: Build-Slot — max. 2 parallele ZIP-Builds pro Instanz (RAM-Schutz).
+  // P-6/P-03: Slot aus dem Pool für gestreamte Exporte (ZIP_MAX_PARALLEL_STREAMS).
+  // Er bleibt belegt, bis das Archiv übertragen, fehlgeschlagen oder vom Client
+  // abgebrochen ist (onSettled), nicht nur bis die Response zurückgeht.
   let releaseZipSlot: () => void;
   try {
-    releaseZipSlot = await acquireZipBuildSlot();
+    releaseZipSlot = await acquireZipStreamSlot();
   } catch (err) {
     if (err instanceof ZipBusyError) {
       return NextResponse.json({ error: 'zip_busy', message: err.message }, { status: 429 });
@@ -220,151 +223,157 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }),
     );
 
-    // Belege als Bytes laden — sequentiell, um S3 nicht zu überfluten
-    const fileEntries: ZipEntry[] = [];
-    const indexRows: string[] = [];
-    indexRows.push(
-      [
-        'Lfd-Nr',
-        'Datum',
-        'Belegart',
-        'Titel',
-        'Belegnummer',
-        'Betrag (EUR)',
-        'Dateiname',
-        'SHA-256',
-      ]
-        .map(escapeCsvCell)
-        .join(';'),
+    // P-03: ZIP streamen statt puffern. Die Belege werden nacheinander erst dann
+    // aus S3 gelesen, wenn der Client die vorherigen Bytes abgenommen hat;
+    // index.csv und manifest.txt folgen am Ende, weil sie fehlende Belege
+    // ("FEHLT") und die tatsächlich gelieferte Anzahl ausweisen.
+    // P-2: Der Backstop für tatsächlich gelesene Bytes (falls
+    // DocumentVersion.sizeBytes von der Objektgröße abweicht) bricht den Stream
+    // ab (maxSourceBytes), statt erst alles in den RAM zu laden.
+    const exportedAt = new Date();
+    const body = createZipStream(
+      datevBelegeEntries({
+        docs,
+        client,
+        exportedAt,
+        exportedBy: session.user.fullName ?? session.user.email,
+        from: parsedQs.data.from,
+        to: parsedQs.data.to,
+      }),
+      {
+        signal: req.signal,
+        onSettled: releaseZipSlot,
+        maxEntryBytes: MAX_UPLOAD_BYTES,
+        maxSourceBytes: ZIP_MAX_TOTAL_BYTES,
+      },
     );
 
-    // P-2: laufende Summe der TATSÄCHLICH geladenen Bytes als Backstop —
-    // falls DocumentVersion.sizeBytes von der Objektgröße abweicht.
-    let loadedBytes = 0;
-    let lfd = 0;
-    for (const doc of docs) {
-      lfd += 1;
-      const v = doc.versions[0];
-      if (!v) continue;
-      const ext = mimeToExtension(doc.mimeType);
-      const seq = String(lfd).padStart(4, '0');
-      const safeTitle = sanitizeZipFileName(doc.title, 80);
-      const fileName = `belege/${seq}_${safeTitle}.${ext}`;
+    const zipName = `datev-belege_${(client.datevNo ?? 'mandant').replace(/[^A-Za-z0-9_-]/g, '_')}_${exportedAt.toISOString().slice(0, 10)}.zip`;
 
-      let bytes: Buffer;
-      try {
-        bytes = await fetchObjectBytes(v.storageBucket, v.storageKey, v.storageVersionId);
-      } catch {
-        // Fehlende Datei: Eintrag überspringen, im Index markieren
-        indexRows.push(
-          [
-            seq,
-            fmtDateShort(doc.createdAt),
-            exportClassificationLabels[doc.classification] ?? doc.classification,
-            doc.title,
-            doc.invoiceAttachments[0]?.number ?? '',
-            doc.invoiceAttachments[0]?.totalAmount?.toString().replace('.', ',') ?? '',
-            'FEHLT',
-            '',
-          ]
-            .map((v) => escapeCsvCell(String(v)))
-            .join(';'),
-        );
-        continue;
-      }
-
-      loadedBytes += bytes.length;
-      if (loadedBytes > ZIP_MAX_TOTAL_BYTES) {
-        const e = new ZipTooLargeError(loadedBytes, ZIP_MAX_TOTAL_BYTES);
-        return NextResponse.json(
-          {
-            error: 'zip_too_large',
-            message: e.message,
-            totalBytes: e.totalBytes,
-            limitBytes: e.limitBytes,
-          },
-          { status: 413 },
-        );
-      }
-
-      fileEntries.push({ name: fileName, data: bytes, modifiedAt: doc.createdAt });
-      indexRows.push(
-        [
-          seq,
-          fmtDateShort(doc.createdAt),
-          exportClassificationLabels[doc.classification] ?? doc.classification,
-          doc.title,
-          doc.invoiceAttachments[0]?.number ?? '',
-          doc.invoiceAttachments[0]?.totalAmount?.toString().replace('.', ',') ?? '',
-          fileName,
-          Buffer.from(v.sha256).toString('hex'),
-        ]
-          .map((v) => escapeCsvCell(String(v)))
-          .join(';'),
-      );
-    }
-
-    // index.csv (UTF-8-BOM + CRLF für Excel-Kompatibilität)
-    const indexCsv = '﻿' + indexRows.join('\r\n');
-
-    // manifest.txt — menschenlesbare Übersicht
-    const manifest = [
-      `Mandant: ${client.name}`,
-      `DATEV-Nr.: ${client.datevNo ?? '—'}`,
-      `Export erstellt: ${fmtDateTimeLong(new Date())}`,
-      `Erstellt von: ${session.user.fullName ?? session.user.email}`,
-      `Zeitraum: ${parsedQs.data.from ?? '*'} bis ${parsedQs.data.to ?? '*'}`,
-      `Anzahl Belege: ${fileEntries.length} (von ${docs.length} insgesamt)`,
-      '',
-      'Hinweis: Die SHA-256-Hashes in index.csv können gegen den taxtronik-Audit-Log',
-      'verifiziert werden (audit_log.action = document.commit).',
-      '',
-    ].join('\r\n');
-
-    const allEntries: ZipEntry[] = [
-      { name: 'index.csv', data: Buffer.from(indexCsv, 'utf8') },
-      { name: 'manifest.txt', data: Buffer.from(manifest, 'utf8') },
-      ...fileEntries,
-    ];
-
-    let zipBytes: Buffer;
-    try {
-      zipBytes = buildZip(allEntries);
-    } catch (err) {
-      if (err instanceof ZipTooLargeError) {
-        // T-4: Klare Fehlermeldung statt OOM. UI sollte den Hinweis anzeigen
-        // und den Admin auf engere Datumsbereiche lenken.
-        return NextResponse.json(
-          {
-            error: 'zip_too_large',
-            message: err.message,
-            totalBytes: err.totalBytes,
-            limitBytes: err.limitBytes,
-          },
-          { status: 413 },
-        );
-      }
-      if (err instanceof ZipTooManyEntriesError) {
-        return NextResponse.json(
-          { error: 'zip_too_many_entries', message: err.message },
-          { status: 413 },
-        );
-      }
-      throw err;
-    }
-
-    const zipName = `datev-belege_${(client.datevNo ?? 'mandant').replace(/[^A-Za-z0-9_-]/g, '_')}_${new Date().toISOString().slice(0, 10)}.zip`;
-
-    return new Response(new Uint8Array(zipBytes), {
+    // Ohne Content-Length: die Archivgröße steht erst nach dem Streamen fest.
+    return new Response(body, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${zipName}"`,
-        'Content-Length': String(zipBytes.length),
         'Cache-Control': 'no-store',
       },
     });
-  } finally {
+  } catch (err) {
     releaseZipSlot();
+    throw err;
   }
+}
+
+interface DatevBelegDocument {
+  title: string;
+  mimeType: string;
+  classification: string;
+  createdAt: Date;
+  invoiceAttachments: { number: string | null; totalAmount: { toString(): string } | null }[];
+  versions: {
+    storageBucket: string;
+    storageKey: string;
+    storageVersionId: string | null;
+    sha256: Uint8Array;
+  }[];
+}
+
+const INDEX_HEADER = [
+  'Lfd-Nr',
+  'Datum',
+  'Belegart',
+  'Titel',
+  'Belegnummer',
+  'Betrag (EUR)',
+  'Dateiname',
+  'SHA-256',
+]
+  .map(escapeCsvCell)
+  .join(';');
+
+function indexRow(doc: DatevBelegDocument, seq: string, fileName: string, sha256: string): string {
+  return [
+    seq,
+    fmtDateShort(doc.createdAt),
+    exportClassificationLabels[doc.classification] ?? doc.classification,
+    doc.title,
+    doc.invoiceAttachments[0]?.number ?? '',
+    doc.invoiceAttachments[0]?.totalAmount?.toString().replace('.', ',') ?? '',
+    fileName,
+    sha256,
+  ]
+    .map((v) => escapeCsvCell(String(v)))
+    .join(';');
+}
+
+/**
+ * P-03: Liefert die ZIP-Einträge in Archivreihenfolge. Jeder Beleg wird erst
+ * geöffnet, wenn der Stream ihn schreibt (sequentiell, um S3 nicht zu
+ * überfluten). Ein nicht abrufbares oder zu großes Objekt wird wie bisher
+ * übersprungen und im Index als FEHLT markiert — auch wenn das Lesen erst
+ * mittendrin scheitert (onReadError; der Writer schreibt einen Eintrag erst nach
+ * dem vollständigen Lesen).
+ */
+async function* datevBelegeEntries(input: {
+  docs: DatevBelegDocument[];
+  client: { name: string; datevNo: string | null };
+  exportedAt: Date;
+  exportedBy: string;
+  from: string | undefined;
+  to: string | undefined;
+}): AsyncGenerator<ZipStreamEntry> {
+  const indexRows = [INDEX_HEADER];
+  let delivered = 0;
+  let lfd = 0;
+  for (const doc of input.docs) {
+    lfd += 1;
+    const v = doc.versions[0];
+    if (!v) continue;
+    const ext = mimeToExtension(doc.mimeType);
+    const seq = String(lfd).padStart(4, '0');
+    const safeTitle = sanitizeZipFileName(doc.title, 80);
+    const fileName = `belege/${seq}_${safeTitle}.${ext}`;
+
+    let object: ObjectStream;
+    try {
+      // DOC-VERSION-IMMUTABILITY-001: gebundene S3-Version, kein Key-Fallback.
+      object = await streamObject(v.storageBucket, v.storageKey, v.storageVersionId);
+    } catch {
+      // Fehlende Datei: Eintrag überspringen, im Index markieren
+      indexRows.push(indexRow(doc, seq, 'FEHLT', ''));
+      continue;
+    }
+    delivered += 1;
+    const sha256 = Buffer.from(v.sha256).toString('hex');
+    const rowIndex = indexRows.push(indexRow(doc, seq, fileName, sha256)) - 1;
+    yield {
+      name: fileName,
+      data: object.body,
+      modifiedAt: doc.createdAt,
+      onReadError: () => {
+        // index.csv entsteht erst nach allen Belegen: Zeile nachträglich umstellen.
+        indexRows[rowIndex] = indexRow(doc, seq, 'FEHLT', '');
+        delivered -= 1;
+      },
+    };
+  }
+
+  // index.csv (UTF-8-BOM + CRLF für Excel-Kompatibilität)
+  yield { name: 'index.csv', data: Buffer.from('\uFEFF' + indexRows.join('\r\n'), 'utf8') };
+
+  // manifest.txt — menschenlesbare Übersicht
+  const manifest = [
+    `Mandant: ${input.client.name}`,
+    `DATEV-Nr.: ${input.client.datevNo ?? '—'}`,
+    `Export erstellt: ${fmtDateTimeLong(input.exportedAt)}`,
+    `Erstellt von: ${input.exportedBy}`,
+    `Zeitraum: ${input.from ?? '*'} bis ${input.to ?? '*'}`,
+    `Anzahl Belege: ${delivered} (von ${input.docs.length} insgesamt)`,
+    '',
+    'Hinweis: Die SHA-256-Hashes in index.csv können gegen den taxtronik-Audit-Log',
+    'verifiziert werden (audit_log.action = document.commit).',
+    '',
+  ].join('\r\n');
+  yield { name: 'manifest.txt', data: Buffer.from(manifest, 'utf8') };
 }

@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { strToU8, unzipSync, zipSync } from 'fflate';
+import { readZipLikeStreamReader } from '@/server/export/__tests__/zip-format';
 
 const h = vi.hoisted(() => ({
   staffAuth: vi.fn(),
   canAccessClientTx: vi.fn(),
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
-  fetchObjectBytes: vi.fn(),
+  streamObject: vi.fn(),
   checkStaffExportLimit: vi.fn(),
   tx: { client: { findFirst: vi.fn() }, document: { findMany: vi.fn() } },
 }));
@@ -20,22 +21,31 @@ vi.mock('@/server/rate-limit', () => ({
   getClientIp: () => '127.0.0.1',
   checkStaffExportLimit: h.checkStaffExportLimit,
 }));
-vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: h.fetchObjectBytes }));
+vi.mock('@taxtronik/storage', () => ({
+  MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
+  streamObject: h.streamObject,
+}));
 // Echter ZIP-Writer; nur der Build-Slot ist für den 429-Pfad steuerbar.
 vi.mock('@/server/export/zip', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/export/zip')>();
-  return { ...actual, acquireZipBuildSlot: vi.fn(actual.acquireZipBuildSlot) };
+  return { ...actual, acquireZipStreamSlot: vi.fn(actual.acquireZipStreamSlot) };
 });
 
 import { GET } from '../route';
 import {
-  acquireZipBuildSlot,
+  acquireZipStreamSlot,
   ZipBusyError,
   ZIP_MAX_ENTRIES,
   ZIP_MAX_TOTAL_BYTES,
 } from '@/server/export/zip';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
+/** Frischer S3-Body je Abruf (streamObject liefert einen Web-ReadableStream). */
+const objectStream = (bytes: Uint8Array | string) => ({
+  body: new Response(typeof bytes === 'string' ? bytes : new Uint8Array(bytes)).body!,
+  contentLength: null,
+  contentType: null,
+});
 const call = (query = '') =>
   GET(
     new NextRequest(
@@ -92,13 +102,15 @@ describe('DATEV-Belege-Export: Dateityp und Originalinhalt', () => {
         ],
       },
     ]);
-    h.fetchObjectBytes.mockResolvedValue(original);
+    h.streamObject.mockImplementation(async () => objectStream(original));
 
     const response = await call();
     expect(response.status).toBe(200);
     const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
     const name = `belege/0001_Beleg.${extension}`;
-    expect(Object.keys(files)).toEqual(['index.csv', 'manifest.txt', name]);
+    // P-03: index.csv/manifest.txt am Ende — sie weisen erst nach dem Streamen
+    // aus, welche Belege tatsächlich geliefert wurden.
+    expect(Object.keys(files)).toEqual([name, 'index.csv', 'manifest.txt']);
     expect(Buffer.from(files[name]!)).toEqual(original);
     expect(Buffer.from(files['index.csv']!).toString('utf8')).toContain(name);
   });
@@ -107,7 +119,7 @@ describe('DATEV-Belege-Export: Dateityp und Originalinhalt', () => {
     h.canAccessClientTx.mockResolvedValue(false);
     expect((await call()).status).toBe(404);
     expect(h.tx.document.findMany).not.toHaveBeenCalled();
-    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(h.streamObject).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
   });
 });
@@ -150,17 +162,17 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: only completed 
           ],
         },
       ]);
-      h.fetchObjectBytes.mockResolvedValue(Buffer.from('ready'));
+      h.streamObject.mockImplementation(async () => objectStream('ready'));
       const response = await call();
       expect(response.status).toBe(200);
       const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
       expect(Object.keys(files)).toEqual([
+        'belege/0001_Freigegeben.pdf',
         'index.csv',
         'manifest.txt',
-        'belege/0001_Freigegeben.pdf',
       ]);
       expect(Buffer.from(files['index.csv']!).toString()).not.toContain('Unvollstaendig');
-      expect(h.fetchObjectBytes).toHaveBeenCalledExactlyOnceWith('synthetic', 'ready', undefined);
+      expect(h.streamObject).toHaveBeenCalledExactlyOnceWith('synthetic', 'ready', undefined);
       expect(h.evidenceRecord.mock.calls[0]![1].after.documents).toBe(1);
     },
   );
@@ -177,11 +189,14 @@ describe('DATEV-Belege-Export: echte Datumsgrenzen', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: 'invalid_query' });
     expect(h.withTenantContext).not.toHaveBeenCalled();
-    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(h.streamObject).not.toHaveBeenCalled();
   });
 
   it('behält gültige inklusive UTC-Filter einschließlich Schalttag bei', async () => {
-    expect((await call('?from=2024-02-29&to=2024-02-29')).status).toBe(200);
+    const response = await call('?from=2024-02-29&to=2024-02-29');
+    expect(response.status).toBe(200);
+    // Body abnehmen: der gestreamte Export hält seinen Slot bis zum Ende.
+    await response.arrayBuffer();
     expect(h.tx.document.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -226,9 +241,9 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
     const response = await call();
     expect(response.status).toBe(413);
     expect((await response.json()).error).toBe('zip_too_large');
-    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(acquireZipStreamSlot).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
-    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(h.streamObject).not.toHaveBeenCalled();
   });
 
   it('413 zip_too_many_entries vorab statt nach Audit und Objekt-Loads', async () => {
@@ -239,26 +254,27 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
     const response = await call();
     expect(response.status).toBe(413);
     expect((await response.json()).error).toBe('zip_too_many_entries');
-    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(acquireZipStreamSlot).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
-    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(h.streamObject).not.toHaveBeenCalled();
   });
 
   it('429 zip_busy: kein Audit und keine Bytes', async () => {
-    vi.mocked(acquireZipBuildSlot).mockRejectedValueOnce(new ZipBusyError());
+    vi.mocked(acquireZipStreamSlot).mockRejectedValueOnce(new ZipBusyError());
     h.tx.document.findMany.mockResolvedValue([readyDocument(1, 5n)]);
     const response = await call();
     expect(response.status).toBe(429);
     expect((await response.json()).error).toBe('zip_busy');
     expect(h.evidenceRecord).not.toHaveBeenCalled();
-    expect(h.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(h.streamObject).not.toHaveBeenCalled();
   });
 
   it('auditiert genau einmal nach dem Slot-Erwerb und vor dem ersten Objekt-Load', async () => {
     h.tx.document.findMany.mockResolvedValue([readyDocument(1, 5n)]);
-    h.fetchObjectBytes.mockResolvedValue(Buffer.from('bytes'));
+    h.streamObject.mockImplementation(async () => objectStream('bytes'));
     const response = await call('?from=2026-09-01&to=2026-09-30');
     expect(response.status).toBe(200);
+    await response.arrayBuffer();
     expect(h.evidenceRecord).toHaveBeenCalledTimes(1);
     expect(h.evidenceRecord.mock.calls[0]![1]).toMatchObject({
       action: 'client.belege.export',
@@ -266,12 +282,153 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
       resourceId: CLIENT_ID,
       after: { documents: 1, from: '2026-09-01', to: '2026-09-30' },
     });
-    const [slotOrder] = vi.mocked(acquireZipBuildSlot).mock.invocationCallOrder;
+    const [slotOrder] = vi.mocked(acquireZipStreamSlot).mock.invocationCallOrder;
     const [auditOrder] = h.evidenceRecord.mock.invocationCallOrder;
-    const [loadOrder] = h.fetchObjectBytes.mock.invocationCallOrder;
+    const [loadOrder] = h.streamObject.mock.invocationCallOrder;
     expect(slotOrder).toBeLessThan(auditOrder!);
     expect(auditOrder).toBeLessThan(loadOrder!);
     // Lesen (mit Zugriffsprüfung) und Audit laufen in getrennten Transaktionen.
     expect(h.withTenantContext).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('P-03: DATEV-Belegexport als Stream', () => {
+  // Fachkatalog: DOC-VERSION-IMMUTABILITY-001 (gebundene Version, unveränderte Originalbytes).
+  const beleg = (index: number) => ({
+    id: `document-${index}`,
+    title: `Beleg ${index}`,
+    mimeType: 'application/pdf',
+    classification: 'GOBD_INVOICE',
+    createdAt: new Date('2026-09-07T09:00:00Z'),
+    invoiceAttachments: [],
+    versions: [
+      {
+        storageBucket: 'synthetic',
+        storageKey: `beleg-${index}`,
+        storageVersionId: `version-${index}`,
+        sizeBytes: 16n,
+        sha256: new Uint8Array(32).fill(index),
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+      },
+    ],
+  });
+
+  it('streamt die Belege, markiert fehlende im Index und gibt den Slot erst am Ende frei', async () => {
+    const release = vi.fn();
+    vi.mocked(acquireZipStreamSlot).mockResolvedValueOnce(release);
+    h.tx.document.findMany.mockResolvedValue([beleg(1), beleg(2), beleg(3)]);
+    h.streamObject.mockImplementation(async (_bucket: string, key: string) => {
+      if (key === 'beleg-2') throw new Error('NoSuchKey');
+      return objectStream(`bytes of ${key}`);
+    });
+
+    const response = await call();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Length')).toBeNull();
+    expect(release).not.toHaveBeenCalled();
+    const zip = new Uint8Array(await response.arrayBuffer());
+    expect(release).toHaveBeenCalledExactlyOnceWith('completed', undefined);
+    // Wie ein Stream-Leser (z. B. Javas ZipInputStream in Importwerkzeugen):
+    // exakte Local Header mit CRC-32 und Größen, kein Data Descriptor.
+    expect(readZipLikeStreamReader(zip).map((entry) => entry.name)).toEqual([
+      'belege/0001_Beleg 1.pdf',
+      'belege/0003_Beleg 3.pdf',
+      'index.csv',
+      'manifest.txt',
+    ]);
+    const files = unzipSync(zip);
+    expect(Buffer.from(files['belege/0003_Beleg 3.pdf']!).toString()).toBe('bytes of beleg-3');
+    const indexRows = Buffer.from(files['index.csv']!).toString('utf8').split('\r\n');
+    expect(indexRows).toHaveLength(4);
+    expect(indexRows[2]).toMatch(/^0002;.*;FEHLT;$/);
+    expect(indexRows[3]).toContain(`belege/0003_Beleg 3.pdf;${'03'.repeat(32)}`);
+    expect(Buffer.from(files['manifest.txt']!).toString()).toContain(
+      'Anzahl Belege: 2 (von 3 insgesamt)',
+    );
+    expect(h.streamObject.mock.calls).toEqual(
+      [1, 2, 3].map((index) => ['synthetic', `beleg-${index}`, `version-${index}`]),
+    );
+  });
+
+  it('bricht das Lesen eines Belegs mittendrin ab: wie bisher FEHLT im Index, Export läuft weiter', async () => {
+    h.tx.document.findMany.mockResolvedValue([beleg(1), beleg(2), beleg(3)]);
+    h.streamObject.mockImplementation(async (_bucket: string, key: string) => {
+      if (key !== 'beleg-2') return objectStream(`bytes of ${key}`);
+      let sent = false;
+      return {
+        body: new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (sent) return controller.error(new Error('S3-Verbindung zurückgesetzt'));
+            sent = true;
+            controller.enqueue(new Uint8Array(10));
+          },
+        }),
+        contentLength: null,
+        contentType: null,
+      };
+    });
+
+    const response = await call();
+    const zip = new Uint8Array(await response.arrayBuffer());
+
+    expect(readZipLikeStreamReader(zip).map((entry) => entry.name)).toEqual([
+      'belege/0001_Beleg 1.pdf',
+      'belege/0003_Beleg 3.pdf',
+      'index.csv',
+      'manifest.txt',
+    ]);
+    const files = unzipSync(zip);
+    const indexRows = Buffer.from(files['index.csv']!).toString('utf8').split('\r\n');
+    expect(indexRows[2]).toMatch(/^0002;.*;FEHLT;$/);
+    expect(Buffer.from(files['manifest.txt']!).toString()).toContain(
+      'Anzahl Belege: 2 (von 3 insgesamt)',
+    );
+  });
+
+  it('Client-Disconnect gibt den Slot frei und schließt das gerade gelesene Objekt', async () => {
+    const release = vi.fn();
+    vi.mocked(acquireZipStreamSlot).mockResolvedValueOnce(release);
+    h.tx.document.findMany.mockResolvedValue([beleg(1), beleg(2)]);
+    let cancelled = 0;
+    // Langsames S3: ein Chunk, dann hängt das Objekt, während der Writer puffert.
+    h.streamObject.mockImplementation(async () => {
+      let sent = false;
+      return {
+        body: new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              if (sent) return new Promise<void>(() => undefined);
+              sent = true;
+              controller.enqueue(new Uint8Array(64 * 1024));
+            },
+            cancel() {
+              cancelled += 1;
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        contentLength: null,
+        contentType: null,
+      };
+    });
+    const disconnect = new AbortController();
+
+    const response = await GET(
+      new NextRequest(`https://local.test/api/staff/clients/${CLIENT_ID}/datev-belege-export`, {
+        signal: disconnect.signal,
+      }),
+      { params: Promise.resolve({ id: CLIENT_ID }) },
+    );
+    const reader = response.body!.getReader();
+    const pendingRead = reader.read();
+    await vi.waitFor(() => expect(h.streamObject).toHaveBeenCalledTimes(1));
+    disconnect.abort();
+
+    expect(release).toHaveBeenCalledExactlyOnceWith('cancelled', expect.anything());
+    await expect(pendingRead).rejects.toBeDefined();
+    await vi.waitFor(() => expect(cancelled).toBe(1));
+    expect(h.streamObject).toHaveBeenCalledTimes(1);
   });
 });

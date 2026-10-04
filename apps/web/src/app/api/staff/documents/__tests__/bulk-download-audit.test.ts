@@ -11,7 +11,6 @@ const h = vi.hoisted(() => ({
   read: vi.fn(),
   folders: vi.fn(),
   audit: vi.fn(),
-  fetch: vi.fn(),
   stream: vi.fn(),
 }));
 vi.mock('@/server/auth/staff', () => ({
@@ -22,7 +21,7 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: h.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
 vi.mock('@taxtronik/storage', () => ({
-  fetchObjectBytes: h.fetch,
+  MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
   streamObject: h.stream,
   sanitizeFilenameForHeader: (value: string) => value,
 }));
@@ -56,8 +55,11 @@ beforeEach(() => {
   );
   h.folders.mockResolvedValue([{ id: FOLDER_ID, name: 'Belege', parentId: null }]);
   h.audit.mockResolvedValue({});
-  h.fetch.mockImplementation(async (_bucket: string, key: string) => Buffer.from(key));
-  h.stream.mockResolvedValue({ body: 'bytes', contentLength: 5, contentType: 'application/pdf' });
+  h.stream.mockImplementation(async (_bucket: string, key: string) => ({
+    body: new Response(key).body,
+    contentLength: key.length,
+    contentType: 'application/pdf',
+  }));
 });
 
 describe('P-12: ein Abrufnachweis pro Sammel-Export', () => {
@@ -119,6 +121,7 @@ describe('P-12: ein Abrufnachweis pro Sammel-Export', () => {
     const response = await call(`ids=${single.id}`);
 
     expect(response.status).toBe(200);
+    expect(await response.text()).toBe('key-7');
     expect(h.audit).toHaveBeenCalledTimes(1);
     expect(h.audit.mock.calls[0]![1]).toMatchObject({
       action: 'document.download',

@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   inaccessibleClientIdsFor: vi.fn(),
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
-  fetchObjectBytes: vi.fn(),
+  streamObject: vi.fn(),
   tx: { document: { findMany: vi.fn() }, documentFolder: { findMany: vi.fn() } },
 }));
 
@@ -21,8 +21,8 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }))
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
 vi.mock('@taxtronik/storage', () => ({
-  fetchObjectBytes: mocks.fetchObjectBytes,
-  streamObject: vi.fn(),
+  MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
+  streamObject: mocks.streamObject,
   sanitizeFilenameForHeader: (value: string) => value,
 }));
 
@@ -37,9 +37,11 @@ beforeEach(() => {
   );
   mocks.evidenceRecord.mockResolvedValue({});
   mocks.tx.documentFolder.findMany.mockResolvedValue([]);
-  mocks.fetchObjectBytes.mockImplementation(async (_bucket: string, key: string) =>
-    Buffer.from(`original bytes of ${key}`),
-  );
+  mocks.streamObject.mockImplementation(async (_bucket: string, key: string) => ({
+    body: new Response(`original bytes of ${key}`).body,
+    contentLength: null,
+    contentType: null,
+  }));
 });
 
 describe('Sammeldownload: Dateien dürfen keine benötigten Verzeichnispfade belegen', () => {

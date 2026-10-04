@@ -455,6 +455,19 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Sammel-Download und DATEV-Belegexport streamen das ZIP direkt
+  aus dem Object-Store in die Antwort, statt bis zu 1 GiB mehrfach im
+  Webprozess zu puffern; ein großer Mandantenordner kann den Webprozess nicht
+  mehr per Speichermangel neu starten. Der Export-Slot bleibt bis zum Ende der
+  Übertragung belegt und wird bei Abbruch freigegeben; gestreamte Exporte
+  haben einen eigenen Pool mit vier Slots. ZIP-Einträge tragen exakte Local
+  Header ohne Data Descriptor und sind damit auch für Stream-Leser wie Javas
+  `ZipInputStream` lesbar. Im DATEV-Export stehen `index.csv` und
+  `manifest.txt` am Ende des Archivs. Ein Fehler nach Beginn der Übertragung
+  bricht den Download ab, statt ein unvollständiges Archiv zu liefern.
+  Gepufferte ZIP-Erzeugung (Lohnexport, Mandatsartefakte) richtet ihre
+  Größengrenze nach dem Container-Speicherlimit: höchstens 1 GiB, bei 2 GB
+  Speicher 256 MiB (`DOC-UPLOAD-JOURNAL-001`, `FK-EXC-20261004-008`).
 - **[Scope]** Der DATEV-Belegexport protokolliert `client.belege.export` erst
   nach Größen-, Eintrags- und Slot-Prüfung; mit 413 oder 429 abgelehnte
   Exporte erscheinen nicht mehr im Prüfprotokoll. Der Sammel-Download schreibt

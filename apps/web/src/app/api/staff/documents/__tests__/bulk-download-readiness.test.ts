@@ -6,7 +6,6 @@ const h = vi.hoisted(() => ({
   read: vi.fn(),
   audit: vi.fn(),
   stream: vi.fn(),
-  fetch: vi.fn(),
   folders: vi.fn(),
 }));
 vi.mock('@/server/auth/staff', () => ({
@@ -20,18 +19,18 @@ vi.mock('@taxtronik/db', () => ({
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
 vi.mock('@taxtronik/storage', () => ({
-  fetchObjectBytes: h.fetch,
+  MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
   streamObject: h.stream,
   sanitizeFilenameForHeader: (value: string) => value,
 }));
 // Echter ZIP-Writer; nur der Build-Slot ist für den 429-Pfad steuerbar.
 vi.mock('@/server/export/zip', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/export/zip')>();
-  return { ...actual, acquireZipBuildSlot: vi.fn(actual.acquireZipBuildSlot) };
+  return { ...actual, acquireZipStreamSlot: vi.fn(actual.acquireZipStreamSlot) };
 });
 import { GET } from '../download/route';
 import {
-  acquireZipBuildSlot,
+  acquireZipStreamSlot,
   ZipBusyError,
   ZIP_MAX_ENTRIES,
   ZIP_MAX_TOTAL_BYTES,
@@ -54,8 +53,12 @@ const call = (query = `ids=${id}`) =>
   GET(new NextRequest(`https://local.test/api/staff/documents/download?${query}`));
 beforeEach(() => {
   vi.clearAllMocks();
-  h.fetch.mockResolvedValue(Buffer.from('ready'));
-  h.stream.mockResolvedValue({ body: 'ready', contentLength: 5, contentType: 'application/pdf' });
+  // Frischer S3-Body je Abruf; der ZIP-Export streamt ihn, der Einzeldownload reicht ihn durch.
+  h.stream.mockImplementation(async () => ({
+    body: new Response('ready').body,
+    contentLength: 5,
+    contentType: 'application/pdf',
+  }));
   h.folders.mockResolvedValue([{ id: folderId, name: 'Belege', parentId: null }]);
 });
 
@@ -72,7 +75,6 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: bulk download r
       h.read.mockResolvedValue([blocked]);
       expect((await call()).status).toBe(404);
       expect(h.audit).not.toHaveBeenCalled();
-      expect(h.fetch).not.toHaveBeenCalled();
       expect(h.stream).not.toHaveBeenCalled();
     },
   );
@@ -86,7 +88,7 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: bulk download r
     expect(response.status).toBe(200);
     const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
     expect(Object.keys(files)).toEqual(['loose.pdf', 'Belege/folder.pdf']);
-    expect(h.fetch.mock.calls.map((call) => call[1])).toEqual(['loose', 'folder']);
+    expect(h.stream.mock.calls.map((call) => call[1])).toEqual(['loose', 'folder']);
     // P-12: EIN Abrufnachweis mit genau den ausgelieferten Dokumenten.
     expect(h.audit).toHaveBeenCalledTimes(1);
     expect(h.audit.mock.calls[0]![1]).toMatchObject({
@@ -110,9 +112,9 @@ describe('F-18 / Befund 15: Abrufnachweis erst nach Größen-, Eintrags- und Slo
     const response = await call();
     expect(response.status).toBe(413);
     expect((await response.json()).error).toBe('zip_too_large');
-    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(acquireZipStreamSlot).not.toHaveBeenCalled();
     expect(h.audit).not.toHaveBeenCalled();
-    expect(h.fetch).not.toHaveBeenCalled();
+    expect(h.stream).not.toHaveBeenCalled();
   });
 
   it('413 bei zu vielen Einträgen vorab statt nach Audit und Objekt-Loads', async () => {
@@ -121,28 +123,29 @@ describe('F-18 / Befund 15: Abrufnachweis erst nach Größen-, Eintrags- und Slo
     );
     const response = await call();
     expect(response.status).toBe(413);
-    expect(acquireZipBuildSlot).not.toHaveBeenCalled();
+    expect(acquireZipStreamSlot).not.toHaveBeenCalled();
     expect(h.audit).not.toHaveBeenCalled();
-    expect(h.fetch).not.toHaveBeenCalled();
+    expect(h.stream).not.toHaveBeenCalled();
   });
 
   it('429 zip_busy: kein Abrufnachweis für einen nie ausgelieferten Download', async () => {
-    vi.mocked(acquireZipBuildSlot).mockRejectedValueOnce(new ZipBusyError());
+    vi.mocked(acquireZipStreamSlot).mockRejectedValueOnce(new ZipBusyError());
     h.read.mockResolvedValue([document('a'), document('b')]);
     const response = await call();
     expect(response.status).toBe(429);
     expect((await response.json()).error).toBe('zip_busy');
     expect(h.audit).not.toHaveBeenCalled();
-    expect(h.fetch).not.toHaveBeenCalled();
+    expect(h.stream).not.toHaveBeenCalled();
   });
 
   it('auditiert nach dem Slot-Erwerb und vor dem ersten Objekt-Load', async () => {
     h.read.mockResolvedValue([document('a'), document('b')]);
     const response = await call();
     expect(response.status).toBe(200);
-    const [slotOrder] = vi.mocked(acquireZipBuildSlot).mock.invocationCallOrder;
+    await response.arrayBuffer();
+    const [slotOrder] = vi.mocked(acquireZipStreamSlot).mock.invocationCallOrder;
     const [auditOrder] = h.audit.mock.invocationCallOrder;
-    const [loadOrder] = h.fetch.mock.invocationCallOrder;
+    const [loadOrder] = h.stream.mock.invocationCallOrder;
     expect(slotOrder).toBeLessThan(auditOrder!);
     expect(auditOrder).toBeLessThan(loadOrder!);
   });

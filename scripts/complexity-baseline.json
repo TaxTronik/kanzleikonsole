@@ -1,11 +1,10 @@
 {
-  "apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts::Async function 'GET'#1": 38,
   "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts::Async arrow function#1": 23,
   "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts::Async function 'POST'#1": 26,
   "apps/web/src/app/api/staff/documents/commit/route.ts::Async arrow function#1": 26,
   "apps/web/src/app/api/staff/documents/commit/route.ts::Async arrow function#2": 27,
   "apps/web/src/app/api/staff/documents/commit/route.ts::Async function 'POST'#1": 21,
-  "apps/web/src/app/api/staff/documents/download/route.ts::Async function 'GET'#1": 24,
+  "apps/web/src/app/api/staff/documents/download/route.ts::Async function 'GET'#1": 21,
   "apps/web/src/app/gwg-onboarding/actions.ts::Async function 'uploadIdImageAction'#1": 24,
   "apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx::Function 'renderField'#1": 30,
   "apps/web/src/app/staff/(protected)/admin/audit/[id]/page.tsx::Async function 'AuditEntryPage'#1": 26,

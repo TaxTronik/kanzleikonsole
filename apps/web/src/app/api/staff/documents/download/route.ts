@@ -11,19 +11,19 @@ import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { fetchObjectBytes, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
+import { MAX_UPLOAD_BYTES, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
 import {
-  acquireZipBuildSlot,
-  buildZip,
+  acquireZipStreamSlot,
   createZipEntryPathAllocator,
+  createZipStream,
   sanitizeZipFileName,
   ZipBusyError,
   ZipTooLargeError,
   ZipTooManyEntriesError,
   ZIP_MAX_ENTRIES,
   ZIP_MAX_TOTAL_BYTES,
-  type ZipEntry,
+  type ZipStreamEntry,
 } from '@/server/export/zip';
 import { evidenceService } from '@/server/container';
 import { isUuid } from '@/lib/uuid';
@@ -203,9 +203,9 @@ export async function GET(req: NextRequest) {
   }
 
   // DoS-Mitigation: Gesamt-Größe AUS DER DB summieren und cappen, BEVOR auch nur
-  // ein Objekt geladen wird. Vorher holte die Route erst alle Bytes in den RAM und
-  // buildZip cappte danach — der Speicher war da längst belegt. (Voller Streaming-
-  // ZIP / Async-Export-Job für sehr große Sammlungen: siehe Backlog.)
+  // ein Objekt geladen wird. Seit P-03 wird das ZIP gestreamt; die Grenze ist
+  // damit ein Produktlimit für Sync-Downloads (Async-Export-Job für sehr große
+  // Sammlungen: siehe Backlog) und sichert das ZIP32-Format.
   let totalBytes = 0n;
   for (const d of usableLoose) totalBytes += d.versions[0]!.sizeBytes;
   for (const x of usableFolder) totalBytes += x.doc.versions[0]!.sizeBytes;
@@ -220,18 +220,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
   }
 
-  // P-6: Build-Slot — max. 2 parallele ZIP-Builds pro Instanz (RAM-Schutz),
-  // umfasst Bytes-Laden UND buildZip (siehe server/export/zip.ts).
+  // P-6/P-03: Slot aus dem Pool für gestreamte Exporte (ZIP_MAX_PARALLEL_STREAMS).
+  // Er bleibt belegt, bis das Archiv übertragen, fehlgeschlagen oder vom Client
+  // abgebrochen ist (onSettled), nicht nur bis die Response zurückgeht.
   let releaseZipSlot: () => void;
   try {
-    releaseZipSlot = await acquireZipBuildSlot();
+    releaseZipSlot = await acquireZipStreamSlot();
   } catch (e) {
     if (e instanceof ZipBusyError) {
       return NextResponse.json({ error: 'zip_busy', message: e.message }, { status: 429 });
     }
     throw e;
   }
-  let zip: Buffer;
   try {
     // Befund 15 / F-18: Machbarkeit (Größe UND Build-Slot) steht fest → jetzt
     // auditieren, dann ausliefern. Vor dem Slot hätte ein 429 zip_busy einen
@@ -241,46 +241,54 @@ export async function GET(req: NextRequest) {
       ...new Set([...usableLoose.map((d) => d.id), ...usableFolder.map((x) => x.doc.id)]),
     ]);
 
+    // P-03: Pfade vorab vergeben (Reihenfolge wie bisher: lose Dokumente, dann
+    // Ordnerinhalte); die Objekte selbst öffnet erst der ZIP-Stream, eines nach
+    // dem anderen, sobald der Client die vorherigen Bytes abgenommen hat.
     const allocatePath = createZipEntryPathAllocator(usableFolder.map((x) => x.path));
-    const entries: ZipEntry[] = [];
-    const addEntry = async (
-      prefix: string,
-      d: {
-        title: string;
-        mimeType: string;
-        versions: { storageBucket: string; storageKey: string; storageVersionId: string | null }[];
+    const objects = [
+      ...usableLoose.map((doc) => ({ prefix: '', doc })),
+      ...usableFolder.map((x) => ({ prefix: x.path, doc: x.doc })),
+    ].map(({ prefix, doc }) => ({
+      name: allocatePath(prefix, filenameWithExtension(doc.title, doc.mimeType)),
+      version: doc.versions[0]!,
+    }));
+    const body = createZipStream(storedObjectEntries(objects), {
+      signal: req.signal,
+      onSettled: releaseZipSlot,
+      maxEntryBytes: MAX_UPLOAD_BYTES,
+      maxSourceBytes: ZIP_MAX_TOTAL_BYTES,
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    // Ohne content-length: die Archivgröße steht erst nach dem Streamen fest.
+    return new NextResponse(body, {
+      status: 200,
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="dokumente_${stamp}.zip"`,
+        'cache-control': 'private, no-store',
       },
-    ) => {
-      const v = d.versions[0]!;
-      const bytes = await fetchObjectBytes(v.storageBucket, v.storageKey, v.storageVersionId);
-      entries.push({
-        name: allocatePath(prefix, filenameWithExtension(d.title, d.mimeType)),
-        data: bytes,
-      });
-    };
-    for (const d of usableLoose) await addEntry('', d);
-    for (const x of usableFolder) await addEntry(x.path, x.doc);
-
-    try {
-      zip = buildZip(entries);
-    } catch (e) {
-      if (e instanceof ZipTooLargeError || e instanceof ZipTooManyEntriesError) {
-        return NextResponse.json({ error: 'zip_too_large', message: e.message }, { status: 413 });
-      }
-      throw e;
-    }
-  } finally {
+    });
+  } catch (e) {
     releaseZipSlot();
+    throw e;
   }
+}
 
-  const stamp = new Date().toISOString().slice(0, 10);
-  return new NextResponse(new Uint8Array(zip), {
-    status: 200,
-    headers: {
-      'content-type': 'application/zip',
-      'content-disposition': `attachment; filename="dokumente_${stamp}.zip"`,
-      'content-length': String(zip.length),
-      'cache-control': 'private, no-store',
-    },
-  });
+/** P-03: Öffnet jedes Objekt erst, wenn der ZIP-Stream den Eintrag tatsächlich schreibt. */
+async function* storedObjectEntries(
+  objects: {
+    name: string;
+    version: { storageBucket: string; storageKey: string; storageVersionId: string | null };
+  }[],
+): AsyncGenerator<ZipStreamEntry> {
+  for (const { name, version } of objects) {
+    // DOC-VERSION-IMMUTABILITY-001: gebundene S3-Version, kein Key-Fallback.
+    const object = await streamObject(
+      version.storageBucket,
+      version.storageKey,
+      version.storageVersionId,
+    );
+    yield { name, data: object.body };
+  }
 }

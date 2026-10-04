@@ -1,5 +1,33 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-008
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts
+      - apps/web/src/app/api/staff/documents/download/route.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-audit.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-stream.test.ts
+    rule_ids:
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Sammel-Download und DATEV-Belegexport erzeugen das ZIP als Datenstrom aus
+      dem Object-Store statt es bis zu 1 GiB mehrfach im Webprozess zu puffern;
+      der Export-Slot bleibt bis zum Ende der Übertragung belegt. Auswahl,
+      Auslieferbarkeitsprüfung vor Abrufnachweis und Store-Zugriff,
+      Versionsbindung, Größen- und Eintragsgrenzen sowie Dateiinhalte bleiben
+      unverändert. Im DATEV-Export stehen index.csv und manifest.txt am Ende
+      des Archivs, weil sie fehlende Belege melden; ihr Inhalt bleibt gleich.
+      Ein Fehler nach Beginn der Übertragung bricht den Download ab, statt ein
+      unvollständiges Archiv zu liefern. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-stream.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+      - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/__tests__/route.test.ts
+      - apps/web/src/server/export/__tests__/zip-stream.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-007
     date: '2026-10-04'
     paths:
@@ -962,6 +990,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-008` dokumentiert die gestreamte Erzeugung von
+  Sammel-Download und DATEV-Belegexport. Auswahl, Auslieferbarkeitsprüfung,
+  Abrufnachweis und Dateiinhalte bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-007` dokumentiert den gebündelten
   Abrufnachweis `document.download.bulk` für Sammel-Downloads und die
