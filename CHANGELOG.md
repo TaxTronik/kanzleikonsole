@@ -423,6 +423,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Die RLS-Prüfungen für Benachrichtigungen, Lohnakten und
+  Mandatsartefakte suchen Ressourcen per UUID-Index statt per
+  Textvergleich. Mit 200.000 Dokumenten sinkt die Abfrage der
+  Benachrichtigungsglocke von rund 100 s auf unter 0,5 s; Treffermengen,
+  Policies und Grants bleiben unverändert (`ACCESS-NOTIFICATION-RECIPIENT-001`,
+  `ACCESS-TENANT-RLS-001`, `FK-EXC-20261004-001`).
 - Die E2E-Bereinigung respektiert die Redis-Datenbank aus der URL und sendet
   `FLUSHDB` erst nach bestätigtem `SELECT`. Neue verpflichtende Helper-Tests
   verhindern das versehentliche Leeren von Datenbank 0 sowie übrig gebliebene

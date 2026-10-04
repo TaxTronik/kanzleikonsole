@@ -161,6 +161,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Reminders-Daily-Source-Lock: Owner fuer Fixtures, App-Rolle als Beweis —
   // selbes Muster wie die uebrigen RLS-Regressionstests.
   'packages/db/src/__tests__/reminders-daily-source-lock.test.ts',
+  // RLS-Ressourcensuche per UUID: Owner legt Fixtures an und liest die
+  // aktuellen Funktionsdefinitionen; die App-Rolle prüft die Treffer.
+  'packages/db/src/__tests__/rls-resource-uuid-lookup.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill

@@ -1,5 +1,35 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-001
+    date: '2026-10-04'
+    paths:
+      - packages/db/prisma/migrations/20261004120000_rls_resource_uuid_lookup/migration.sql
+    rule_ids:
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - PORTAL-INBOX-SUBMISSION-001
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-STAFF-PERMISSION-001
+      - DOC-PORTAL-SHARING-001
+      - MANDATE-STRUCTURE-001
+      - CLIENT-OFFBOARDING-001
+    reason: >-
+      Die Migration ersetzt in app.notification_resource_scope,
+      app.mandate_artifact_document_allowed und
+      app.document_payroll_scope_allowed ausschließlich den ID-Vergleich
+      `id::text = p` durch `id = app.canonical_uuid_or_null(p)`. Der Helfer
+      akzeptiert nur die kanonische Textform, die uuid::text immer liefert;
+      jede Eingabe trifft daher dieselben Zeilen wie bisher, und
+      Nicht-UUID-Werte wie BIGINT-Audit-IDs treffen weiterhin nichts.
+      Signaturen, Policies und Grants sowie Empfänger-, Mandanten-, Lohn- und
+      Artefaktentscheidungen bleiben unverändert; Primär- und Unique-Indizes
+      werden lediglich nutzbar. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/rls-resource-uuid-lookup.test.ts
+      - packages/db/src/__tests__/notification-client-scope-rls.test.ts
+      - packages/db/src/__tests__/portal-inbox-rls.test.ts
+      - packages/db/src/__tests__/mailbox-rls.test.ts
+      - packages/db/src/__tests__/rls-cross-tenant.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20260914-001
     date: '2026-09-14'
     paths:
@@ -794,6 +824,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-001` dokumentiert die Umstellung der
+  RLS-Lookup-Funktionen für Benachrichtigungen, Lohnakten und Mandatsartefakte
+  auf indexfähige UUID-Vergleiche. Treffermengen, Policies und Grants bleiben
+  unverändert; keine fachliche Freigabe wurde erteilt oder verändert.
 
 - 2026-09-10: `FK-EXC-20260910-001` dokumentiert den reinen
   Vitest-Sicherheitswechsel im von `GWG-SCREENING-001` referenzierten
