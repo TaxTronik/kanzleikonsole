@@ -39,6 +39,21 @@ export interface LoadDocumentDeliveryOptions {
   auditFailure?: 'reject' | 'ignore';
 }
 
+/** Eine Vorschau besteht aus Metadaten-Request (JSON mit Stream-URL) und Byte-Request. */
+function isPreviewStreamRequest(request: NextRequest): boolean {
+  return request.nextUrl.searchParams.get('stream') === '1';
+}
+
+/**
+ * P-12: Abrufnachweis nur für den Request, der Dokumentbytes ausliefert. Der
+ * Metadaten-Request einer Vorschau liefert Titel, Typ und die Stream-URL; die
+ * Bytes folgen im `?stream=1`-Request, der weiterhin vollständig geprüft und
+ * auditiert wird. Vorher entstanden pro Vorschau zwei `document.preview`-Einträge.
+ */
+function auditsAccess(options: LoadDocumentDeliveryOptions): boolean {
+  return options.action !== 'document.preview' || isPreviewStreamRequest(options.request);
+}
+
 async function recordAccess(tx: TxClient, options: LoadDocumentDeliveryOptions): Promise<void> {
   await evidenceService.record(tx, {
     tenantId: options.tenantId,
@@ -68,6 +83,7 @@ export async function loadDocumentDelivery(
     actorType: options.actorType,
   } as const;
   const ignoreAuditFailure = options.auditFailure === 'ignore';
+  const auditThisRequest = auditsAccess(options);
 
   const document = await withTenantContext(ctx, async (tx) => {
     const candidate = await tx.document.findFirst({
@@ -103,7 +119,7 @@ export async function loadDocumentDelivery(
     }
     if (options.authorize && !(await options.authorize(tx, candidate))) return null;
 
-    if (!ignoreAuditFailure) await recordAccess(tx, options);
+    if (auditThisRequest && !ignoreAuditFailure) await recordAccess(tx, options);
 
     const powerOfAttorney = await tx.powerOfAttorney.findFirst({
       where: { tenantId: options.tenantId, documentId: candidate.id },
@@ -122,7 +138,7 @@ export async function loadDocumentDelivery(
     };
   });
 
-  if (document && ignoreAuditFailure) {
+  if (document && auditThisRequest && ignoreAuditFailure) {
     // Eigene Transaktion: Ein SQL-Fehler setzt eine Postgres-Transaktion auf
     // aborted. Nur die Trennung macht "Preview trotz Audit-Fehler" wirklich
     // best effort, statt den anschliessenden Commit doch scheitern zu lassen.
@@ -155,7 +171,7 @@ export async function documentPreviewResponse(
   request: NextRequest,
   document: DocumentDeliverySource,
 ): Promise<NextResponse> {
-  if (request.nextUrl.searchParams.get('stream') === '1') {
+  if (isPreviewStreamRequest(request)) {
     try {
       const preview = await loadDocumentPreview(document);
       return new NextResponse(new Uint8Array(preview.bytes), {

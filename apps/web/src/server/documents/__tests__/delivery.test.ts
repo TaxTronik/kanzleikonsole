@@ -51,14 +51,16 @@ function transaction() {
   };
 }
 
-function options() {
+const PREVIEW_URL = 'http://localhost/api/staff/documents/document-1/preview-url';
+
+function options(url = PREVIEW_URL) {
   return {
     tenantId: 'tenant-1',
     actorId: 'staff-1',
     actorType: 'STAFF' as const,
     documentId: 'document-1',
     action: 'document.preview' as const,
-    request: new NextRequest('http://localhost/api/staff/documents/document-1/preview-url'),
+    request: new NextRequest(url),
     where: { id: 'document-1', tenantId: 'tenant-1', deletedAt: null },
   };
 }
@@ -140,7 +142,9 @@ describe('document delivery pipeline', () => {
     );
     mocks.evidenceRecord.mockRejectedValue(new Error('audit unavailable'));
 
-    await expect(loadDocumentDelivery(options())).rejects.toThrow('audit unavailable');
+    await expect(loadDocumentDelivery(options(`${PREVIEW_URL}?stream=1`))).rejects.toThrow(
+      'audit unavailable',
+    );
     expect(mocks.withTenantContext).toHaveBeenCalledTimes(1);
   });
 
@@ -152,9 +156,41 @@ describe('document delivery pipeline', () => {
     mocks.evidenceRecord.mockRejectedValue(new Error('audit unavailable'));
 
     await expect(
-      loadDocumentDelivery({ ...options(), auditFailure: 'ignore' }),
+      loadDocumentDelivery({ ...options(`${PREVIEW_URL}?stream=1`), auditFailure: 'ignore' }),
     ).resolves.toMatchObject({ title: 'Dokument', clientId: 'client-1' });
     expect(mocks.withTenantContext).toHaveBeenCalledTimes(2);
     expect(mocks.evidenceRecord).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['reject', 'ignore'] as const)(
+    'P-12: Vorschau-Metadaten ohne, Byte-Stream mit genau einem Abrufnachweis (auditFailure=%s)',
+    async (auditFailure) => {
+      const tx = transaction();
+      mocks.withTenantContext.mockImplementation(
+        async (_ctx: unknown, callback: (value: unknown) => unknown) => callback(tx),
+      );
+
+      // Metadaten: dieselben Zugriffs- und Readiness-Prüfungen, aber kein Audit.
+      await expect(loadDocumentDelivery({ ...options(), auditFailure })).resolves.toMatchObject({
+        title: 'Dokument',
+      });
+      expect(tx.document.findFirst).toHaveBeenCalledTimes(1);
+      expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+      expect(mocks.withTenantContext).toHaveBeenCalledTimes(1);
+
+      // Byte-Stream der Vorschau: genau ein document.preview.
+      await loadDocumentDelivery({ ...options(`${PREVIEW_URL}?stream=1`), auditFailure });
+      expect(mocks.evidenceRecord).toHaveBeenCalledTimes(1);
+      expect(mocks.evidenceRecord.mock.calls[0]![1]).toMatchObject({
+        action: 'document.preview',
+        resourceType: 'document',
+        resourceId: 'document-1',
+      });
+
+      // Downloads liefern immer Bytes und bleiben unabhängig vom Query auditiert.
+      await loadDocumentDelivery({ ...options(), action: 'document.download', auditFailure });
+      expect(mocks.evidenceRecord).toHaveBeenCalledTimes(2);
+      expect(mocks.evidenceRecord.mock.calls[1]![1].action).toBe('document.download');
+    },
+  );
 });

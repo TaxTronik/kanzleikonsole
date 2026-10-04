@@ -87,7 +87,13 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: bulk download r
     const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
     expect(Object.keys(files)).toEqual(['loose.pdf', 'Belege/folder.pdf']);
     expect(h.fetch.mock.calls.map((call) => call[1])).toEqual(['loose', 'folder']);
-    expect(h.audit.mock.calls.map((call) => call[1].resourceId)).toEqual(['loose', 'folder']);
+    // P-12: EIN Abrufnachweis mit genau den ausgelieferten Dokumenten.
+    expect(h.audit).toHaveBeenCalledTimes(1);
+    expect(h.audit.mock.calls[0]![1]).toMatchObject({
+      action: 'document.download.bulk',
+      resourceId: null,
+      after: { documentCount: 2, documentIds: ['loose', 'folder'], folderIds: [folderId] },
+    });
   });
 });
 

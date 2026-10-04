@@ -66,6 +66,53 @@ describe('AUDIT-HASH-CHAIN-001 / ACCESS-STAFF-PERMISSION-001: audit export selec
       }),
     );
   });
+  it('P-12: weist Anzahl und alle Dokument-IDs eines Sammel-Downloads in „Details“ aus', async () => {
+    const first = '00000000-0000-4000-8000-000000000001';
+    const second = '00000000-0000-4000-8000-000000000002';
+    const row = (id: bigint, action: string, resourceId: string | null, after: unknown) => ({
+      id,
+      occurredAt: new Date('2026-10-04T10:00:00Z'),
+      actorType: 'STAFF',
+      actorId: 'staff',
+      action,
+      resourceType: 'document',
+      resourceId,
+      after,
+      ip: null,
+      thisHash: Buffer.alloc(32, 1),
+      prevHash: Buffer.alloc(32, 2),
+    });
+    mocks.findMany.mockResolvedValue([
+      row(2n, 'document.download.bulk', null, {
+        documentCount: 2,
+        documentIds: [first, second],
+        folderIds: [],
+      }),
+      row(1n, 'document.download', first, null),
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/staff/admin/audit/export'));
+
+    const [header, bulk, single] = (await response.text()).replace(/^\uFEFF/, '').split('\r\n');
+    // Neue Spalte hinten; bestehende Spalten behalten ihre Position.
+    expect(header!.split(';')).toEqual([
+      'ID',
+      'Zeitpunkt',
+      'Akteur-Typ',
+      'Akteur-ID',
+      'Action',
+      'Bereich',
+      'Ressource',
+      'Ressourcen-ID',
+      'IP',
+      'Hash',
+      'Vorgänger-Hash',
+      'Details',
+    ]);
+    expect(bulk!.split(';').at(-1)).toBe(`2 Dokumente: ${first} ${second}`);
+    expect(single!.split(';').at(-1)).toBe('');
+    expect(single!.split(';')[7]).toBe(first);
+  });
   it('rejects invalid filters without reading or exporting the full log', async () => {
     expect(
       (await GET(new NextRequest('http://localhost/api/staff/admin/audit/export?category=invalid')))

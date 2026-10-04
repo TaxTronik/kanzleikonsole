@@ -1,5 +1,44 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-007
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/api/staff/documents/download/route.ts
+      - apps/web/src/server/documents/delivery.ts
+      - apps/web/src/server/audit/labels.ts
+      - apps/web/src/app/api/staff/admin/audit/export/route.ts
+      - apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-audit.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts
+      - apps/web/src/server/documents/__tests__/delivery.test.ts
+    rule_ids:
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - DOC-PORTAL-SHARING-001
+      - ACCESS-STAFF-PERMISSION-001
+      - AUDIT-HASH-CHAIN-001
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      Ein Sammel-Download als ZIP schreibt statt eines document.download je
+      Dokument genau ein Ereignis document.download.bulk, dessen Nachher-Zustand
+      alle gelieferten Dokument-IDs vollständig, dedupliziert und in
+      Archivreihenfolge sowie Anzahl und Ordner enthält; Einzeldownloads bleiben
+      bei document.download. Vorschauen werden nur noch beim Byte-Abruf
+      protokolliert, nicht zusätzlich bei der Metadatenanfrage; Zugriffs- und
+      Auslieferbarkeitsprüfung laufen für beide Anfragen unverändert. Gesperrte
+      Versionen erscheinen weiterhin weder im Archiv noch im Abrufnachweis. Der
+      Audit-CSV-Export erhält eine Spalte Details mit Anzahl und IDs, die neue
+      Aktion ein Label. Die Form des Abrufnachweises ändert sich, Umfang und
+      Zugriffsentscheidungen nicht. Keine fachliche Freigabe; Compliance und
+      Archiv sollen die neue Nachweisform bestätigen.
+    tests:
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-audit.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+      - apps/web/src/server/documents/__tests__/delivery.test.ts
+      - apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-006
     date: '2026-10-04'
     paths:
@@ -923,6 +962,12 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-007` dokumentiert den gebündelten
+  Abrufnachweis `document.download.bulk` für Sammel-Downloads und die
+  einfache Protokollierung von Vorschauen beim Byte-Abruf. Umfang des
+  Nachweises und Zugriffsentscheidungen bleiben unverändert; die neue
+  Nachweisform ist fachlich noch zu bestätigen.
 
 - 2026-10-04: `FK-EXC-20261004-006` dokumentiert, dass ZIP-Exporte ihren
   Abrufnachweis erst nach Größen-, Eintrags- und Slot-Prüfung schreiben.

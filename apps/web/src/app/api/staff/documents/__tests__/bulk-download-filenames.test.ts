@@ -159,7 +159,11 @@ describe('Sammeldownload: Dateien dürfen keine benötigten Verzeichnispfade bel
       expect(basename(directory).startsWith('taxtronik-bulk-download-')).toBe(true);
       await rm(directory, { recursive: true, force: true });
     }
-    expect(mocks.evidenceRecord).toHaveBeenCalledTimes(documents.length);
+    // P-12: ein Abrufnachweis für den ganzen Export, IDs in Archivreihenfolge.
+    expect(mocks.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(mocks.evidenceRecord.mock.calls[0]![1].after.documentIds).toEqual(
+      documents.map((document) => document.id),
+    );
   });
 });
 
@@ -218,6 +222,9 @@ describe('Sammeldownload: Dateinamen dürfen keine anderen Dokumentbytes beim En
     ).toEqual(
       documents.map((document) => `original bytes of ${document.versions[0]!.storageKey}`).sort(),
     );
-    expect(mocks.evidenceRecord).toHaveBeenCalledTimes(documents.length);
+    expect(mocks.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(mocks.evidenceRecord.mock.calls[0]![1].after.documentIds).toEqual(
+      documents.map((document) => document.id),
+    );
   });
 });

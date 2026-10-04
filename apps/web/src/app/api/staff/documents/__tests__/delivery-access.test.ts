@@ -37,9 +37,12 @@ function params() {
   return { params: Promise.resolve({ id: DOCUMENT_ID }) };
 }
 
+// P-12: Nur Requests, die Dokumentbytes ausliefern, schreiben einen Abrufnachweis;
+// der Metadaten-Request der Vorschau (ohne ?stream=1) nicht.
 const ROUTES = [
   {
     name: 'preview-stream',
+    audits: 1,
     call: () =>
       previewGet(
         new NextRequest(`http://localhost/api/staff/documents/${DOCUMENT_ID}/preview-url?stream=1`),
@@ -48,6 +51,7 @@ const ROUTES = [
   },
   {
     name: 'download',
+    audits: 1,
     call: () =>
       downloadGet(
         new NextRequest(`http://localhost/api/staff/documents/${DOCUMENT_ID}/download`),
@@ -56,6 +60,7 @@ const ROUTES = [
   },
   {
     name: 'preview',
+    audits: 0,
     call: () =>
       previewGet(
         new NextRequest(`http://localhost/api/staff/documents/${DOCUMENT_ID}/preview-url`),
@@ -92,7 +97,7 @@ beforeEach(() => {
   mocks.fetchObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.7'));
 });
 
-describe.each(ROUTES)('Staff document delivery: $name', ({ call }) => {
+describe.each(ROUTES)('Staff document delivery: $name', ({ call, audits }) => {
   // DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001.
   it.each(['PENDING', 'INFECTED', 'ERROR', 'MISSING_COMPLETION'])(
     'blocks the newest %s version before audit or object access',
@@ -127,7 +132,7 @@ describe.each(ROUTES)('Staff document delivery: $name', ({ call }) => {
       }),
     );
     expect(mocks.canAccessClientTx).toHaveBeenCalledWith(mocks.tx, SESSION, 'client-1');
-    expect(mocks.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(mocks.evidenceRecord).toHaveBeenCalledTimes(audits);
   });
 
   it('antwortet bei entzogenem Mandantenzugriff mit 404 vor Audit und Storage', async () => {

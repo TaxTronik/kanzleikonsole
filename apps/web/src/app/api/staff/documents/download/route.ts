@@ -2,7 +2,8 @@
 // GET /api/staff/documents/download?ids=<uuid>,<uuid>,...
 //
 // Sammel-Download. Eine Datei → direkt (unkomprimiert). Mehrere → ZIP.
-// Tenant-scoped (RLS + expliziter Filter), Audit pro Dokument.
+// Tenant-scoped (RLS + expliziter Filter). Abrufnachweis: Einzeldatei als
+// `document.download`, ZIP als EIN `document.download.bulk` mit allen IDs.
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -158,27 +159,37 @@ export async function GET(req: NextRequest) {
   // obwohl der Download anschließend mit 413 zip_too_large abgelehnt wurde —
   // der Audit-Trail behauptete Downloads, die nie stattfanden). Auditiert
   // werden nur Dokumente, die tatsächlich ausgeliefert werden (usable).
-  const recordDownloadAudits = (docs: { id: string }[]) =>
-    withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
-      for (const d of docs) {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'document.download',
-          resourceType: 'document',
-          resourceId: d.id,
-          ip: getClientIp(req.headers),
-          userAgent: req.headers.get('user-agent'),
-        });
-      }
-    });
+  //
+  // P-12: genau EIN Abrufnachweis pro Auslieferung. Ein ZIP-Export listet alle
+  // enthaltenen Dokument-IDs in einem `document.download.bulk`-Ereignis. Vorher
+  // entstand je Dokument ein `document.download`, jedes unter dem Tenant-Lock der
+  // Hash-Kette bis zum Commit (2.000 Dateien ≈ 6.000 Statements, während derer
+  // alle auditierten Schreibvorgänge der Kanzlei warteten). Die Liste bleibt
+  // vollständig: Sie ist durch ZIP_MAX_ENTRIES begrenzt (≤ 65.535 IDs, rund
+  // 2,5 MB JSON); packages/evidence kennt keine Größengrenze für `after`.
+  const recordDownloadAudit = (delivery: 'file' | 'zip', documentIds: string[]) =>
+    withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
+      evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: delivery === 'zip' ? 'document.download.bulk' : 'document.download',
+        resourceType: 'document',
+        resourceId: delivery === 'zip' ? null : documentIds[0],
+        after:
+          delivery === 'zip'
+            ? { documentCount: documentIds.length, documentIds, folderIds }
+            : undefined,
+        ip: getClientIp(req.headers),
+        userAgent: req.headers.get('user-agent'),
+      }),
+    );
 
   // Genau eine lose Datei, keine Ordner → unkomprimiert durchstreamen (O(1)).
   if (usableLoose.length === 1 && usableFolder.length === 0 && folderIds.length === 0) {
     const d = usableLoose[0]!;
     const v = d.versions[0]!;
-    await recordDownloadAudits([d]);
+    await recordDownloadAudit('file', [d.id]);
     const obj = await streamObject(v.storageBucket, v.storageKey, v.storageVersionId);
     const headers: Record<string, string> = {
       'content-type': d.mimeType || 'application/octet-stream',
@@ -224,8 +235,11 @@ export async function GET(req: NextRequest) {
   try {
     // Befund 15 / F-18: Machbarkeit (Größe UND Build-Slot) steht fest → jetzt
     // auditieren, dann ausliefern. Vor dem Slot hätte ein 429 zip_busy einen
-    // Abruf protokolliert, der nie stattfand.
-    await recordDownloadAudits([...usableLoose, ...usableFolder.map((x) => x.doc)]);
+    // Abruf protokolliert, der nie stattfand. IDs in Archivreihenfolge; ein
+    // zugleich einzeln und per Ordner gewähltes Dokument erscheint einmal.
+    await recordDownloadAudit('zip', [
+      ...new Set([...usableLoose.map((d) => d.id), ...usableFolder.map((x) => x.doc.id)]),
+    ]);
 
     const allocatePath = createZipEntryPathAllocator(usableFolder.map((x) => x.path));
     const entries: ZipEntry[] = [];

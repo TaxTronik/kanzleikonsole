@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
@@ -18,6 +19,23 @@ import {
   auditCategory,
   auditWhere,
 } from '@/server/audit/query';
+
+/**
+ * P-12: Ein Sammel-Download trägt seine Dokumente nicht in resource_id, sondern
+ * im Nachher-Zustand (`document.download.bulk`: documentCount, documentIds).
+ * Weil der Export before/after sonst nicht enthält, fehlten die IDs hier;
+ * diese Spalte weist Anzahl und alle IDs aus. Andere Ereignisse bleiben leer.
+ */
+function auditDetails(row: { action: string; after: Prisma.JsonValue }): string {
+  const after = row.after;
+  if (row.action !== 'document.download.bulk') return '';
+  if (!after || typeof after !== 'object' || Array.isArray(after)) return '';
+  const ids = Array.isArray(after['documentIds'])
+    ? after['documentIds'].filter((id): id is string => typeof id === 'string')
+    : [];
+  const count = typeof after['documentCount'] === 'number' ? after['documentCount'] : ids.length;
+  return `${count} Dokumente: ${ids.join(' ')}`;
+}
 
 export async function GET(req: NextRequest) {
   const session = await staffAuth();
@@ -106,6 +124,8 @@ export async function GET(req: NextRequest) {
       label: 'Vorgänger-Hash',
       accessor: (r) => Buffer.from(r.prevHash).toString('hex'),
     },
+    // Hinten angefügt: bestehende Spaltenpositionen bleiben unverändert.
+    { key: 'details', label: 'Details', accessor: auditDetails },
   ];
 
   return csvResponse(

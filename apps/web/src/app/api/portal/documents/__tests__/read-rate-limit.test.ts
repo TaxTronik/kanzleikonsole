@@ -5,7 +5,9 @@
 //
 // Download- und Preview-Route schreiben pro Abruf einen Audit-Eintrag
 // (evidenceService.record) — das Limit pro Session-Kontakt muss deshalb VOR
-// dem DB-Zugriff greifen, sonst bleibt der Audit-Spam-Vektor offen.
+// dem DB-Zugriff greifen, sonst bleibt der Audit-Spam-Vektor offen. Seit P-12
+// auditiert die Vorschau nur den Byte-Request (?stream=1), nicht zusätzlich
+// den Metadaten-Request; das Limit greift weiterhin für beide.
 //
 // Prisma/Storage/Auth/Rate-Limit komplett gemockt (Muster: magic-link.test.ts);
 // die Route-Handler laufen echt.
@@ -13,7 +15,7 @@
 // Abgedeckt (je Route):
 //   - keine Session → 401, Limiter wird NICHT konsumiert
 //   - Limit überschritten → 429 mit retryAfter, KEIN DB-Zugriff, KEIN Audit
-//   - Happy Path → Limiter mit contactId konsumiert, Audit geschrieben
+//   - Happy Path → Limiter mit contactId konsumiert, Audit nur bei Byte-Auslieferung
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -108,6 +110,7 @@ beforeEach(() => {
 const ROUTES = [
   {
     name: 'preview-stream',
+    audits: 1,
     call: (id?: string) =>
       previewGet(
         new NextRequest('http://portal.example.de/api/portal/documents/doc-1/preview-url?stream=1'),
@@ -116,6 +119,7 @@ const ROUTES = [
   },
   {
     name: 'download',
+    audits: 1,
     call: (id?: string) =>
       downloadGet(
         new NextRequest('http://portal.example.de/api/portal/documents/doc-1/download'),
@@ -124,6 +128,7 @@ const ROUTES = [
   },
   {
     name: 'preview-url',
+    audits: 0,
     call: (id?: string) =>
       previewGet(
         new NextRequest('http://portal.example.de/api/portal/documents/doc-1/preview-url'),
@@ -132,7 +137,7 @@ const ROUTES = [
   },
 ] as const;
 
-describe.each(ROUTES)('Portal-Read-Limit: $name-Route', ({ call }) => {
+describe.each(ROUTES)('Portal-Read-Limit: $name-Route', ({ call, audits }) => {
   // DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001.
   it.each(['PENDING', 'INFECTED', 'ERROR', 'MISSING_COMPLETION'])(
     'blocks the newest %s version despite an older clean version',
@@ -175,12 +180,12 @@ describe.each(ROUTES)('Portal-Read-Limit: $name-Route', ({ call }) => {
     expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 
-  it('Happy Path → Limiter mit Session-contactId konsumiert, Audit geschrieben', async () => {
+  it('Happy Path → Limiter mit Session-contactId konsumiert, Audit nur bei Byte-Auslieferung', async () => {
     const res = await call();
     expect(res.status).toBe(200);
     expect(m.checkPortalReadLimit).toHaveBeenCalledTimes(1);
     expect(m.checkPortalReadLimit).toHaveBeenCalledWith('contact-1');
-    expect(m.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(m.evidenceRecord).toHaveBeenCalledTimes(audits);
   });
 });
 

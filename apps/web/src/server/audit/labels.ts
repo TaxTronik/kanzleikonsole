@@ -73,6 +73,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'document.upload.pending': 'Dokument-Upload vorgemerkt',
   'document.upload.complete': 'Dokument-Upload abgeschlossen',
   'document.download': 'Dokument heruntergeladen',
+  'document.download.bulk': 'Dokumente gesammelt als ZIP heruntergeladen',
   'document.preview': 'Dokument angesehen',
   'document.version.add': 'Neue Dokument-Version',
   'document.delete': 'Dokument gelöscht (ausgeblendet)',

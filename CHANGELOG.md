@@ -217,6 +217,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Sammel-Downloads als ZIP erzeugen ein einziges Audit-Ereignis
+  `document.download.bulk` mit allen gelieferten Dokument-IDs statt eines
+  `document.download` je Dokument; die Hash-Kette der Kanzlei bleibt dadurch
+  nicht mehr für Tausende Statements gesperrt. Vorschauen werden nur noch beim
+  Byte-Abruf (`?stream=1`) als `document.preview` protokolliert. Der
+  Audit-CSV-Export weist bei Sammel-Downloads Anzahl und Dokument-IDs in der
+  neuen Spalte „Details“ aus (`DOC-UPLOAD-JOURNAL-001`,
+  `FK-EXC-20261004-007`).
 - **[Scope]** Rolling-RFC-3161-Anker werden je Kanzlei höchstens einmal pro
   Minute angefordert; offene Rechnungs- und GwG-Ereignisse weiterhin sofort.
   Gewöhnliche Einträge sind damit bis zu etwa 60 s nach dem vorigen Anker
