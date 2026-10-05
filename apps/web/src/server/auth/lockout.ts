@@ -15,6 +15,16 @@
 // hin, in dem Fall ist Account-Lockout das richtige Werkzeug.
 //
 // Schwellwerte: 5 distinkte Quell-IPs in 30 min → 30 min Sperre.
+//
+// S-03: Ohne vertrauenswürdige Client-IP (Produktion ohne
+// TRUST_PROXY_REQUIRED) gibt es KEINE harte Sperre mehr. Vorher fiel der Pfad
+// auf reines Zählen zurück: fünf anonyme Fehlversuche sperrten jedes bekannte
+// Konto 30 min, auch für den Inhaber mit korrektem Passwort und TOTP. Den
+// Brute-Force-Schutz tragen dann die kontogebundenen Limits vor bcrypt bzw.
+// vor der Codeprüfung (20 Passwortversuche/10 min, 5 TOTP-/Backup-Code-Versuche
+// je 5 min, siehe server/rate-limit). Ein Angreifer kann damit höchstens die
+// Passwortanmeldung eines bekannten Kontos drosseln, solange er das Limit
+// laufend ausschöpft — aber keine 30-min-Sperre mehr auslösen.
 // =============================================================================
 
 import type { PrismaClient } from '@prisma/client';
@@ -24,14 +34,14 @@ export const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 export const LOCK_DURATION_MS = 30 * 60 * 1000;
 const DISTINCT_IP_WINDOW_SEC = 30 * 60;
 
-async function countDistinctFailIps(userId: string, ip: string | null): Promise<number | null> {
+/** `null` und der Legacy-Sentinel 'unknown' bedeuten: keine vertrauenswürdige Client-IP. */
+function isKnownClientIp(ip: string | null): ip is string {
+  return Boolean(ip) && ip !== 'unknown';
+}
+
+async function countDistinctFailIps(userId: string, ip: string): Promise<number | null> {
   const r = getRedis();
   if (!r) return null;
-  // Wenn `getClientIp` keinen Header findet, gibt sie 'unknown' zurück. In dem
-  // Fall können wir nicht zwischen Quell-IPs unterscheiden → fallback auf den
-  // count-basierten Lockout (sonst würde eine Proxy-Fehlkonfiguration den
-  // Lockout komplett deaktivieren).
-  if (!ip || ip === 'unknown') return null;
   const key = `staff-fail-ips:${userId}`;
   try {
     await r.sadd(key, ip);
@@ -62,6 +72,9 @@ async function resetDistinctFailIps(userId: string): Promise<void> {
  * zu binden. Single-IP-Spam fängt das IP-Rate-Limit ab, ohne den Account zu
  * sperren — kein Lockout-DoS mehr durch bekannte E-Mail-Adresse.
  *
+ * S-03: Ohne bekannte IP wird nur gezählt, nie gesperrt (siehe Kopfkommentar).
+ * Der Count-Fallback bleibt allein für Redis-Ausfälle MIT bekannter IP.
+ *
  * Wird mit `prismaOwner` (BYPASSRLS) aufgerufen, weil der Login-Flow
  * vor dem RLS-Context läuft.
  *
@@ -81,13 +94,18 @@ export async function recordFailedLogin(
     select: { failedLoginCount: true },
   });
 
+  // S-03: Ohne vertrauenswürdige Client-IP lässt sich ein verteilter Angriff
+  // nicht von einem einzelnen anonymen Angreifer unterscheiden. Keine Sperre;
+  // die kontogebundenen Rate-Limits begrenzen die Versuche.
+  if (!isKnownClientIp(ip)) return { locked: false };
+
   const distinctIps = await countDistinctFailIps(staffUserId, ip);
 
-  // Lock-Logik:
-  // - Wenn Redis verfügbar und IP bekannt: lock erst bei ≥ N distinkten IPs.
-  // - Wenn Redis aus oder IP unbekannt: fallback auf reinen Failed-Count
-  //   (alte Semantik). Verhindert dass ein Redis-Ausfall den Defense-Layer
-  //   komplett deaktiviert.
+  // Lock-Logik (IP bekannt):
+  // - Wenn Redis verfügbar: lock erst bei ≥ N distinkten IPs.
+  // - Wenn Redis aus: fallback auf reinen Failed-Count (alte Semantik).
+  //   Verhindert dass ein Redis-Ausfall den Defense-Layer komplett
+  //   deaktiviert.
   const shouldLock =
     distinctIps !== null
       ? distinctIps >= MAX_FAILED_LOGIN_ATTEMPTS

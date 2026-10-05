@@ -45,12 +45,10 @@ export async function GET(req: NextRequest) {
   if (!token) return notFound();
 
   // Rate-Limit wie der unauthentifizierte Token-Lookup in loadPoaForSigning.
-  const rl = await checkIpOrGlobalLimit(
-    'poa-doc',
-    getClientIp(req.headers),
-    { max: 30, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  const rl = await checkIpOrGlobalLimit('poa-doc', getClientIp(req.headers), {
+    max: 30,
+    windowSec: 600,
+  });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const owner = prismaOwner;

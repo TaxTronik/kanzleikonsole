@@ -27,6 +27,16 @@ Firewallregeln und Zertifikate werden nicht übernommen oder verändert.
 Diese Variante ist die richtige Wahl, sobald die Maschine nicht zweifelsfrei
 leer ist.
 
+Das Setup setzt hier `TRUST_PROXY_REQUIRED=false`. Die App sieht dann keine
+Client-IP: Login-Limits greifen nur pro Konto bzw. E-Mail plus einer
+großzügigen globalen Obergrenze, Fehlversuche sperren Konten nicht, und
+Audit-Einträge tragen keine IP. Ist die App ausschließlich über den eigenen
+Proxy erreichbar und setzt dieser `X-Forwarded-For` wie das
+[nginx-Beispiel](../../infra/nginx/taxtronik.conf.example) (überschreiben oder
+die eigene Gegenstelle anhängen), `TRUST_PROXY_REQUIRED=true` und
+`TRUST_PROXY_HOPS` (Anzahl anhängender Proxys vor der App, meist `1`) setzen.
+`./taxtronik doctor` weist bis dahin mit einer Warnung darauf hin.
+
 ### 1-Klick mit Traefik
 
 Der 1-Klick-Pfad richtet zusätzlich einen gehärteten Traefik mit automatischen

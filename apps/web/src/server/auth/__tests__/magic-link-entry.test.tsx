@@ -75,18 +75,8 @@ describe('ACCESS-TENANT-RLS-001: public magic-link ingress', () => {
     await expect(verifyMagicLinkAction('token', contact.id)).resolves.toEqual({ ok: true });
     await expect(authorize('token')).resolves.toMatchObject({ contactId: contact.id });
     expect(h.limit.mock.calls).toEqual([
-      [
-        'portal-authorize',
-        '203.0.113.12',
-        { max: 10, windowSec: 600 },
-        { max: 200, windowSec: 600 },
-      ],
-      [
-        'portal-authorize',
-        '203.0.113.12',
-        { max: 10, windowSec: 600 },
-        { max: 200, windowSec: 600 },
-      ],
+      ['portal-authorize', '203.0.113.12', { max: 10, windowSec: 600 }],
+      ['portal-authorize', '203.0.113.12', { max: 10, windowSec: 600 }],
     ]);
     expect(h.writeSession).toHaveBeenCalledExactlyOnceWith(contact);
     expect(h.verify).toHaveBeenNthCalledWith(1, 'token', contact.id);
@@ -106,12 +96,10 @@ describe('ACCESS-TENANT-RLS-001: public magic-link ingress', () => {
   it('limits GET inspection separately and never consumes a link while rendering profiles', async () => {
     const page = await VerifyMagicLinkPage({ searchParams: Promise.resolve({ token: 'token' }) });
     expect(renderToStaticMarkup(page)).toContain('Mandat A');
-    expect(h.limit).toHaveBeenCalledExactlyOnceWith(
-      'portal-inspect',
-      '203.0.113.12',
-      { max: 30, windowSec: 600 },
-      { max: 400, windowSec: 600 },
-    );
+    expect(h.limit).toHaveBeenCalledExactlyOnceWith('portal-inspect', '203.0.113.12', {
+      max: 30,
+      windowSec: 600,
+    });
     expect(h.inspect).toHaveBeenCalledExactlyOnceWith('token');
     expect(h.verify).not.toHaveBeenCalled();
     expect(h.writeSession).not.toHaveBeenCalled();
@@ -124,19 +112,14 @@ describe('ACCESS-TENANT-RLS-001: public magic-link ingress', () => {
     expect(h.inspect).not.toHaveBeenCalled();
   });
 
-  it('uses the global bucket without a trusted IP and preserves explicit profile selection', async () => {
+  it('falls back to the storm ceiling without a trusted IP and preserves explicit profile selection', async () => {
     h.ip.mockReturnValue(null);
     const form = new FormData();
     form.set('token', 'token');
     form.set('contactId', contact.id);
     form.set('returnTo', '/portal/requests');
     await confirmMagicLinkAction(form);
-    expect(h.limit).toHaveBeenCalledWith(
-      'portal-authorize',
-      null,
-      { max: 10, windowSec: 600 },
-      { max: 200, windowSec: 600 },
-    );
+    expect(h.limit).toHaveBeenCalledWith('portal-authorize', null, { max: 10, windowSec: 600 });
     expect(h.verify).toHaveBeenCalledWith('token', contact.id);
     expect(h.redirect).toHaveBeenCalledExactlyOnceWith('/portal/requests');
   });

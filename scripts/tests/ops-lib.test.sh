@@ -194,7 +194,7 @@ run_doctor_with_env() {
     unset AUTH_SECRET SECRET_BOX_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX TAXTRONIK_VERSION NEXTAUTH_URL
-    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED SIGNAL_DEPLOYMENT SIGNAL_DEPLOY_CHANNEL SIGNAL_IMAGE
+    unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED TRUST_PROXY_HOPS SIGNAL_DEPLOYMENT SIGNAL_DEPLOY_CHANNEL SIGNAL_IMAGE
     unset SIGNAL_GIT_URL SIGNAL_GIT_REF SIGNAL_GIT_DIR SIGNAL_BUILD_MEMORY_LIMIT SIGNAL_BUILD_MEMORY_RESERVE SIGNAL_BUILD_CPUS SIGNAL_LLM_DIR
     unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL N8N_HOST N8N_WEBHOOK_URL N8N_PROXY_HOPS
     unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE RISK_LAYER_LLM_BACKEND RISK_LAYER_LLM_TIMEOUT SMTP_HOST SMTP_PORT
@@ -295,6 +295,39 @@ test_doctor_rejects_unsafe_traefik_proxy_trust() {
   fi
   assert_contains "$out" "Traefik-Pfad braucht exakt true"
   pass "doctor rejects Traefik without explicit proxy trust"
+}
+
+# S-03: Ohne Proxy-Vertrauen fehlt die Client-IP; das ist zulässig, aber
+# Login-Limits greifen dann nur pro Konto/E-Mail.
+test_doctor_warns_without_proxy_trust() {
+  local env_file="$TMP_DIR/own-proxy-trust.env" out="$TMP_DIR/own-proxy-trust.out"
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" TRUST_PROXY_REQUIRED false
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor hard-failed TRUST_PROXY_REQUIRED=false for an own reverse proxy"
+  }
+  assert_contains "$out" "WARN     TRUST_PROXY_REQUIRED"
+  assert_contains "$out" "Login-Limits nur pro Konto/E-Mail"
+  assert_not_contains "$out" "TRUST_PROXY_HOPS"
+  pass "doctor warns without failing when proxy trust is disabled"
+}
+
+test_doctor_validates_trust_proxy_hops() {
+  local env_file="$TMP_DIR/proxy-hops.env" out="$TMP_DIR/proxy-hops.out"
+  write_prod_env "$env_file"
+  printf 'TRUST_PROXY_HOPS=2\n' >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor rejected TRUST_PROXY_HOPS=2"
+  }
+  assert_contains "$out" "OK       TRUST_PROXY_HOPS"
+  set_env_file_value "$env_file" TRUST_PROXY_HOPS 0
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted TRUST_PROXY_HOPS=0 although the app refuses to start"
+  fi
+  assert_contains "$out" "FEHLT    TRUST_PROXY_HOPS"
+  pass "doctor validates TRUST_PROXY_HOPS like the app schema"
 }
 
 test_doctor_rejects_n8n_on_an_application_domain() {
@@ -1269,6 +1302,14 @@ test_hardware_aaguid_allowlist_is_forwarded_to_app() {
   assert_contains "$service" \
     'WEBAUTHN_HARDWARE_POLICY_REVISION: ${WEBAUTHN_HARDWARE_POLICY_REVISION:-1}'
   pass "Hardware AAGUID allowlist is forwarded to the production app container"
+}
+
+test_trust_proxy_hops_is_forwarded_to_app() {
+  local service="$TMP_DIR/app-compose-service-proxy-hops.yml"
+  sed -n '/^  app:/,/^  worker:/p' \
+    "$REPO_ROOT/infra/compose/docker-compose.app.yml" >"$service"
+  assert_contains "$service" 'TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}'
+  pass "TRUST_PROXY_HOPS is forwarded to the production app container"
 }
 
 test_windows_signal_dev_start_provisions_embedding_operator() {
@@ -3265,6 +3306,8 @@ test_doctor_rejects_loopback_mailhog_port
 test_doctor_rejects_disabled_auth_host_trust
 test_doctor_accepts_complete_traefik_contract
 test_doctor_rejects_unsafe_traefik_proxy_trust
+test_doctor_warns_without_proxy_trust
+test_doctor_validates_trust_proxy_hops
 test_doctor_rejects_n8n_on_an_application_domain
 test_initial_setup_confirmation_and_atomic_plan_application
 test_deploy_provisions_managed_n8n_in_acp
@@ -3305,6 +3348,7 @@ test_managed_signal_source_update_skips_unchanged_image_unless_requested
 test_managed_signal_source_update_honors_interactive_rebuild_choice
 test_signal_embedding_compose_contract_is_self_contained_and_offline
 test_hardware_aaguid_allowlist_is_forwarded_to_app
+test_trust_proxy_hops_is_forwarded_to_app
 test_windows_signal_dev_start_provisions_embedding_operator
 test_prune_build_cache_calls_docker_builder_prune
 test_prune_build_cache_can_be_disabled

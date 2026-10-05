@@ -23,6 +23,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const m = vi.hoisted(() => ({
   sendTemplateMail: vi.fn(),
   checkRateLimit: vi.fn(),
+  emailRateLimitKey: vi.fn(),
   notifyMany: vi.fn(),
   filterStaffAccessClientTx: vi.fn(),
   resolveNotificationsTx: vi.fn(),
@@ -52,7 +53,10 @@ vi.mock('@taxtronik/db/notification', () => ({
 }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: m.notifyMany }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
-vi.mock('@/server/rate-limit', () => ({ checkRateLimit: m.checkRateLimit }));
+vi.mock('@/server/rate-limit', () => ({
+  checkRateLimit: m.checkRateLimit,
+  emailRateLimitKey: m.emailRateLimitKey,
+}));
 vi.mock('@/server/auth/rbac', () => ({
   filterStaffAccessClientTx: m.filterStaffAccessClientTx,
 }));
@@ -80,6 +84,7 @@ beforeEach(() => {
   vi.setSystemTime(FIXED_NOW);
   // Happy-Path-Defaults — einzelne Tests verstellen gezielt.
   m.checkRateLimit.mockResolvedValue({ ok: true });
+  m.emailRateLimitKey.mockReturnValue('email-subject-hmac');
   m.prismaOwner.tenant.findUnique.mockResolvedValue(TENANT);
   m.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'staff-1' }, { id: 'staff-2' }]);
   m.prismaOwner.clientContact.findFirst.mockResolvedValue(CONTACT);
@@ -253,6 +258,92 @@ describe('requestMagicLink — Anti-Enumeration (immer ok:true)', () => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// requestMagicLink — S-03: Versandobergrenze ohne Client-IP
+// -----------------------------------------------------------------------------
+
+describe('requestMagicLink — S-03 Versandobergrenze ohne Client-IP', () => {
+  const MAIL_CEILING = { max: 100, windowSec: 900 };
+
+  function ceilingReached() {
+    m.checkRateLimit.mockImplementation(async (key: string) =>
+      key === 'magic-link-mail:global' ? { ok: false, retryAfter: 120 } : { ok: true },
+    );
+  }
+
+  it('versendet unterhalb der Obergrenze normal und zählt die Sendung', async () => {
+    const res = await withTimersFlushed(
+      requestMagicLink({
+        tenantId: 'tenant-1',
+        email: 'mandant@example.de',
+        mailCeiling: MAIL_CEILING,
+      }),
+    );
+    expect(res).toEqual({ ok: true });
+    expect(m.checkRateLimit).toHaveBeenCalledWith('magic-link-mail:global', MAIL_CEILING);
+    expect(m.sendTemplateMail).toHaveBeenCalledTimes(1);
+  });
+
+  it('erreicht → gleiche Antwort wie für unbekannte Adressen, kein Token, keine Mail', async () => {
+    ceilingReached();
+    const res = await withTimersFlushed(
+      requestMagicLink({
+        tenantId: 'tenant-1',
+        email: 'mandant@example.de',
+        mailCeiling: MAIL_CEILING,
+      }),
+    );
+    expect(res).toEqual({ ok: true });
+    expect(m.prismaOwner.magicLink.create).not.toHaveBeenCalled();
+    expect(m.sendTemplateMail).not.toHaveBeenCalled();
+    expect(m.log.warn).toHaveBeenCalledWith(
+      { tenantId: 'tenant-1', retryAfter: 120 },
+      expect.stringContaining('Versandobergrenze'),
+    );
+  });
+
+  it('erreicht → dieselbe Anti-Timing-Verzögerung wie bei unbekannten Adressen', async () => {
+    ceilingReached();
+    let settled = false;
+    const pending = requestMagicLink({
+      tenantId: 'tenant-1',
+      email: 'mandant@example.de',
+      mailCeiling: MAIL_CEILING,
+    }).then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(249);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(300);
+    await pending;
+    expect(settled).toBe(true);
+  });
+
+  it('unbekannte Adressen verbrauchen die Obergrenze nicht', async () => {
+    m.prismaOwner.clientContact.findMany.mockResolvedValue([]);
+    await withTimersFlushed(
+      requestMagicLink({
+        tenantId: 'tenant-1',
+        email: 'unbekannt@example.de',
+        mailCeiling: MAIL_CEILING,
+      }),
+    );
+    expect(m.checkRateLimit).not.toHaveBeenCalledWith('magic-link-mail:global', expect.anything());
+  });
+
+  it('ohne Obergrenze (Client-IP bekannt, Staff-Versand) wird sie nicht geprüft', async () => {
+    await withTimersFlushed(
+      requestMagicLink({
+        tenantId: 'tenant-1',
+        email: 'mandant@example.de',
+        contactId: CONTACT.id,
+      }),
+    );
+    expect(m.checkRateLimit).toHaveBeenCalledTimes(1);
+    expect(m.sendTemplateMail).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('requestMagicLink — Happy Path', () => {
   it('speichert NUR den SHA-256-Hash, TTL 30 min; roher Token nur im Mail-Link', async () => {
     const res = await withTimersFlushed(
@@ -301,14 +392,18 @@ describe('requestMagicLink — Happy Path', () => {
     expect(JSON.stringify(createArgs)).not.toContain(rawToken);
   });
 
-  it('E-Mail wird für Lookup und Throttle-Key lowercased', async () => {
+  it('E-Mail wird für Lookup lowercased, der Throttle-Key enthält nur ihren HMAC (S-03)', async () => {
     await withTimersFlushed(
       requestMagicLink({ tenantId: 'tenant-1', email: 'Mandant@Example.DE' }),
     );
-    expect(m.checkRateLimit).toHaveBeenCalledWith(
-      'magic-link-issue:tenant-1:mandant@example.de',
-      expect.anything(),
-    );
+    expect(m.emailRateLimitKey).toHaveBeenCalledWith('mandant@example.de');
+    expect(m.checkRateLimit).toHaveBeenCalledWith('magic-link-issue:tenant-1:email-subject-hmac', {
+      max: 1,
+      windowSec: 60,
+    });
+    for (const [key] of m.checkRateLimit.mock.calls) {
+      expect(String(key)).not.toMatch(/@|mandant/i);
+    }
     expect(m.prismaOwner.clientContact.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tenant-1',

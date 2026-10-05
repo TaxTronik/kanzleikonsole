@@ -3,10 +3,12 @@
 //
 // recordFailedLogin/resetFailedLogin bekommen den Prisma-Client per Parameter
 // (DI) — nur `getRedis` ist fest verdrahtet und wird gemockt. Abgedeckt:
-//   - Fallback-Semantik ohne Redis: Lock bei failedLoginCount ≥ Schwelle
+//   - Fallback-Semantik ohne Redis (IP bekannt): Lock bei failedLoginCount ≥ Schwelle
 //   - L-4: mit Redis zählt die Anzahl DISTINKTER Quell-IPs — Single-IP-Spam
 //     sperrt den Account NICHT (kein Lockout-DoS), erst ≥ 5 verschiedene IPs
-//   - ip null/'unknown' und Redis-Fehler → Fallback auf den Count
+//   - Redis-Fehler (IP bekannt) → Fallback auf den Count
+//   - S-03: ip null/'unknown' → nur zählen, NIE sperren (sonst sperrten fünf
+//     anonyme Fehlversuche jedes bekannte Konto 30 min)
 //   - Lock setzt lockedUntil = now + LOCK_DURATION_MS und resettet den Zähler
 //   - resetFailedLogin: Zähler + Distinct-IP-Set zurück, lockedUntil bleibt
 //
@@ -103,21 +105,14 @@ describe('recordFailedLogin — L-4: Distinct-IP-Semantik mit Redis', () => {
     expect(redis.del).toHaveBeenCalledWith(`staff-fail-ips:${USER_ID}`);
   });
 
-  it('ip null → Distinct-IP-Zählung übersprungen, Fallback auf Count', async () => {
+  it('Redis-Ausfall nach der IP-Erfassung → Fallback auf Count bleibt mit bekannter IP', async () => {
     const redis = makeRedis(1);
+    redis.scard.mockRejectedValue(new Error('redis down'));
     getRedisMock.mockReturnValue(redis);
     const { prisma, update } = makePrisma(MAX_FAILED_LOGIN_ATTEMPTS);
-    await recordFailedLogin(prisma, USER_ID, null);
-    expect(redis.scard).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledTimes(2); // Lock über Count-Fallback
-  });
-
-  it("ip 'unknown' (Proxy-Fehlkonfiguration) → Fallback auf Count", async () => {
-    const redis = makeRedis(1);
-    getRedisMock.mockReturnValue(redis);
-    const { prisma, update } = makePrisma(MAX_FAILED_LOGIN_ATTEMPTS);
-    await recordFailedLogin(prisma, USER_ID, 'unknown');
-    expect(redis.sadd).not.toHaveBeenCalled();
+    await expect(recordFailedLogin(prisma, USER_ID, '203.0.113.1')).resolves.toEqual({
+      locked: true,
+    });
     expect(update).toHaveBeenCalledTimes(2);
   });
 
@@ -135,6 +130,54 @@ describe('recordFailedLogin — L-4: Distinct-IP-Semantik mit Redis', () => {
     const { prisma, update } = makePrisma(1);
     await recordFailedLogin(prisma, USER_ID, '203.0.113.4');
     expect(update).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('recordFailedLogin — S-03: ohne vertrauenswürdige Client-IP keine harte Sperre', () => {
+  it('ip null → zählt den Fehlversuch, sperrt aber auch weit über der Schwelle nicht', async () => {
+    const redis = makeRedis(MAX_FAILED_LOGIN_ATTEMPTS);
+    getRedisMock.mockReturnValue(redis);
+    const { prisma, update } = makePrisma(MAX_FAILED_LOGIN_ATTEMPTS * 10);
+    await expect(recordFailedLogin(prisma, USER_ID, null)).resolves.toEqual({ locked: false });
+    expect(update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: USER_ID },
+      data: { failedLoginCount: { increment: 1 } },
+      select: { failedLoginCount: true },
+    });
+    expect(redis.sadd).not.toHaveBeenCalled();
+    expect(redis.del).not.toHaveBeenCalled();
+  });
+
+  it("ip 'unknown' (Legacy-Sentinel) → ebenfalls keine Sperre", async () => {
+    const redis = makeRedis(1);
+    getRedisMock.mockReturnValue(redis);
+    const { prisma, update } = makePrisma(MAX_FAILED_LOGIN_ATTEMPTS);
+    await expect(recordFailedLogin(prisma, USER_ID, 'unknown')).resolves.toEqual({
+      locked: false,
+    });
+    expect(redis.sadd).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('ohne IP und ohne Redis → keine Sperre (kein Count-Fallback für anonyme Versuche)', async () => {
+    const { prisma, update } = makePrisma(MAX_FAILED_LOGIN_ATTEMPTS);
+    await expect(recordFailedLogin(prisma, USER_ID)).resolves.toEqual({ locked: false });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('fünf und mehr anonyme Fehlversuche in Folge sperren das Konto nie', async () => {
+    let failedLoginCount = 0;
+    const update = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      if (data['lockedUntil']) throw new Error('Konto darf ohne IP nicht gesperrt werden');
+      failedLoginCount += 1;
+      return { failedLoginCount };
+    });
+    const prisma = { staffUser: { update } } as unknown as PrismaClient;
+    getRedisMock.mockReturnValue(makeRedis(0));
+    for (let attempt = 0; attempt < MAX_FAILED_LOGIN_ATTEMPTS * 4; attempt++) {
+      await expect(recordFailedLogin(prisma, USER_ID, null)).resolves.toEqual({ locked: false });
+    }
+    expect(failedLoginCount).toBe(MAX_FAILED_LOGIN_ATTEMPTS * 4);
   });
 });
 

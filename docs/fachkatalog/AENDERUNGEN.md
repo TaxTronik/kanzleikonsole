@@ -1,5 +1,46 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-013
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/server/rate-limit/index.ts
+      - apps/web/src/server/auth/staff.ts
+      - apps/web/src/server/auth/magic-link-entry.ts
+      - apps/web/src/app/portal/(auth)/login/actions.ts
+      - apps/web/src/app/staff/(auth)/login/actions.ts
+      - apps/web/src/app/gwg-onboarding/actions.ts
+      - apps/web/src/app/gwg-onboarding/page.tsx
+      - apps/web/src/app/poa/sign/document/route.ts
+      - apps/web/src/app/staff/(protected)/poa/sign-actions.ts
+      - apps/web/src/server/payroll/capability.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - GWG-SELF-ONBOARDING-001
+      - GWG-OCR-ASSIST-001
+      - DOC-UPLOAD-JOURNAL-001
+      - POA-SIGNING-SNAPSHOT-001
+      - POA-SIGNING-CONFIRMATION-001
+      - POA-LIFECYCLE-001
+      - PAYROLL-INTAKE-001
+    reason: >-
+      Ohne vertrauenswürdige Client-IP fallen die öffentlichen Rate-Limits nicht
+      mehr auf einen kleinen gemeinsamen Zähler aller Nutzer zurück, sondern auf
+      konto- beziehungsweise E-Mail-gebundene Zähler (HMAC statt Klartext) und
+      eine großzügige globale Sturm-Obergrenze; Fehlversuche ohne Client-IP
+      sperren Staff-Konten nicht mehr 30 Minuten, die kontogebundenen Limits vor
+      Passwort- und TOTP-Prüfung bleiben. Mit Proxy-Vertrauen stammt die
+      Client-IP vom rechten Ende von X-Forwarded-For (TRUST_PROXY_HOPS) statt
+      aus dem vom Client setzbaren linken Eintrag; dieselbe Adresse landet in
+      Vollmacht-, GwG- und Lohn-Nachweisen. Token-, OTP- und Signaturgrenzen,
+      Nachweisinhalte und fachliche Abläufe bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/web/src/server/rate-limit/__tests__/client-ip.test.ts
+      - apps/web/src/server/rate-limit/__tests__/ip-or-global-limit.test.ts
+      - apps/web/src/server/auth/__tests__/staff-login-without-client-ip.test.ts
+      - apps/web/src/server/auth/__tests__/magic-link-request-limit.test.ts
+      - apps/web/src/server/auth/__tests__/lockout.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-012
     date: '2026-10-04'
     paths:
@@ -1120,6 +1161,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-013` dokumentiert konto- und E-Mail-gebundene
+  Login-Limits ohne Client-IP, den Verzicht auf die harte Kontosperre ohne
+  vertrauenswürdige IP und die IP-Ermittlung vom rechten Ende von
+  `X-Forwarded-For`. Token-, OTP- und Signaturgrenzen bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-012` dokumentiert, dass CI die GwG-
   Schutzinvarianten des Deploy-Gates jetzt gegen die echte, migrierte

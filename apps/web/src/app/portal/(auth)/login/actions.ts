@@ -8,8 +8,18 @@ import { requestMagicLink, verifyMagicLink } from '@/server/auth/magic-link';
 import { writePortalSession } from '@/server/auth/portal-session';
 import { checkMagicLinkEntryLimit } from '@/server/auth/magic-link-entry';
 import { prismaOwner } from '@/server/db/prisma-owner';
-import { checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
+import { checkIpOrGlobalLimit, emailRateLimitKey, getClientIp } from '@/server/rate-limit';
 import { parseFormData } from '@/server/actions/form-data';
+
+const MAGIC_LINK_REQUEST_LIMIT = { max: 5, windowSec: 900 };
+/**
+ * S-03: Ohne Client-IP deckelt diese Versandobergrenze die Login-Mails aller
+ * Self-Service-Anfragen. 100 je 15 min entspricht der bisherigen globalen
+ * Quote, zählt aber nur tatsächlich versendete Mails: Ausschöpfen verlangt
+ * mindestens 20 verschiedene existierende Portal-Adressen (je Adresse höchstens
+ * fünf Anfragen je 15 min) statt beliebiger Anfragen.
+ */
+const MAGIC_LINK_MAIL_CEILING_WITHOUT_IP = { max: 100, windowSec: 900 };
 
 const RequestSchema = z.object({
   email: z.string().email(),
@@ -28,24 +38,26 @@ export async function requestMagicLinkAction(
   _prev: RequestLinkResult | null,
   formData: FormData,
 ): Promise<RequestLinkResult> {
-  // Rate-Limit — Per-IP 5/15min wenn bekannt, sonst globaler Sturm-Bucket.
+  const parsed = parseFormData(RequestSchema, formData);
+  if (!parsed.ok) {
+    return { ok: false, error: 'Bitte gültige E-Mail-Adresse eingeben.' };
+  }
+
+  // Rate-Limit (S-03) — Per-IP 5/15 min, wenn die IP bekannt ist, und immer
+  // 5/15 min pro E-Mail-Hash, damit weder rotierende IPs noch fehlende
+  // Client-IPs zu einem gemeinsamen, billig erschöpfbaren Zähler führen. Der
+  // Schlüssel entsteht vor jedem Lookup, existierende und unbekannte Adressen
+  // werden identisch gedrosselt (gleiche Meldung, kein Enumerations-Orakel).
   const ip = getClientIp(await headers());
-  const rl = await checkIpOrGlobalLimit(
-    'portal-magic',
-    ip,
-    { max: 5, windowSec: 900 },
-    { max: 100, windowSec: 900 },
-  );
+  const rl = await checkIpOrGlobalLimit('portal-magic', ip, MAGIC_LINK_REQUEST_LIMIT, {
+    key: emailRateLimitKey(parsed.data.email),
+    limit: MAGIC_LINK_REQUEST_LIMIT,
+  });
   if (!rl.ok) {
     return {
       ok: false,
       error: `Zu viele Anfragen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
     };
-  }
-
-  const parsed = parseFormData(RequestSchema, formData);
-  if (!parsed.ok) {
-    return { ok: false, error: 'Bitte gültige E-Mail-Adresse eingeben.' };
   }
 
   const tenant = await prismaOwner.tenant.findFirst({
@@ -61,6 +73,7 @@ export async function requestMagicLinkAction(
     tenantId: tenant.id,
     email: parsed.data.email,
     returnTo: returnTo === '/portal/dashboard' ? undefined : returnTo,
+    ...(ip ? {} : { mailCeiling: MAGIC_LINK_MAIL_CEILING_WITHOUT_IP }),
   });
   return { ok: true };
 }

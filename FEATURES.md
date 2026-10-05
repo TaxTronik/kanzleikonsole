@@ -1742,7 +1742,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Bearer-Token genutzt, erlaubt interne IPs/Loopback und blockt Redirects
 - **Rate-Limiting** auf Login, Passwortänderung, TOTP, Magic-Link, GwG-Upload,
   PoA-Sign, Portal-Write — fail-CLOSED in Production bei Redis-Ausfall;
-  `checkIpOrGlobalLimit` deckelt sowohl Per-IP als auch globalen Sturm;
+  `checkIpOrGlobalLimit` deckelt per IP und ohne Client-IP nur mit einer
+  großzügigen Sturm-Obergrenze (10 Anfragen/s je Endpunkt); Magic-Link-
+  Anforderungen zusätzlich pro E-Mail-HMAC, Staff-Logins pro Konto;
   per-User-Limits auf der Staff-Suche (30/min) und allen CSV-/ZIP-Exporten
   (5 pro 10 min je Export-Art: clients, audit, requests, invoices,
   datev-belege) → `429 { error: 'rate_limited' }`; öffentliche
@@ -1750,7 +1752,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   derselben generischen Fehlansicht wie bei ungültigem Token (kein
   Token-Probing-Orakel)
 - **Reverse-Proxy-Trust-Boundary**: `TRUST_PROXY_REQUIRED`-ENV gate für
-  `getClientIp` — kein blindes XFF-Vertrauen ohne explizite Operator-Zusage
+  `getClientIp` — kein blindes XFF-Vertrauen ohne explizite Operator-Zusage;
+  mit Zusage zählt der `TRUST_PROXY_HOPS`-te X-Forwarded-For-Eintrag von
+  rechts (validiert, IPv4-mapped IPv6 normalisiert), nie der vom Client
+  setzbare linke
 - **Mail-Pipeline**: HMAC-Outbound für n8n inkl. Event, stabiler
   `eventId`/`deliveryId` + 128-Bit-Nonce; Empfänger
   deduplizieren at-least-once-Retries nach `deliveryId`,

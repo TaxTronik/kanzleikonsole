@@ -46,6 +46,7 @@ const BACKUP_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
 const BACKUP_CODE_LENGTH = 10;
 const TOTP_SETUP_TTL_MS = 60 * 60 * 1000;
 const TOTP_ENROLLMENT_LIMIT = { max: 5, windowSec: 300 } as const;
+const STAFF_PASSWORD_IP_LIMIT = { max: 10, windowSec: 600 } as const;
 const GENERIC_LOGIN_ERROR = 'Ungültige Anmeldedaten.';
 
 type PasswordBoundAccount = Pick<StaffUser, 'id' | 'tenantId' | 'passwordHash' | 'authRevision'> & {
@@ -107,15 +108,10 @@ export async function checkPasswordAction(
     return { ok: false, error: 'E-Mail und Passwort sind Pflichtfelder.' };
   }
 
-  // Rate-Limit pro IP — 10 Versuche / 10 Minuten. Per-IP wenn bekannt,
-  // sonst globaler Sturm-Bucket (H-2/N-3).
+  // Rate-Limit pro IP — 10 Versuche / 10 Minuten. Ohne IP nur die großzügige
+  // Sturm-Obergrenze (S-03); pro Konto deckelt checkStaffPasswordAccountLimit.
   const ip = getClientIp(await headers());
-  const rl = await checkIpOrGlobalLimit(
-    'staff-pw',
-    ip,
-    { max: 10, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  const rl = await checkIpOrGlobalLimit('staff-pw', ip, STAFF_PASSWORD_IP_LIMIT);
   if (!rl.ok) {
     return {
       ok: false,
@@ -158,7 +154,8 @@ export async function checkPasswordAction(
   if (!passwordOk) {
     // Account-gebundener Lockout (S2 + L-4): Lockout greift erst bei N _distinkten_
     // Quell-IPs in einem rollierenden Fenster. Single-IP-Spam fängt das IP-RL ab,
-    // ohne den Account zu sperren — kein Lockout-DoS via bekannte E-Mail.
+    // ohne den Account zu sperren — kein Lockout-DoS via bekannte E-Mail. Ohne
+    // bekannte IP wird nur gezählt, nicht gesperrt (S-03).
     // RF-12: zählt UND schreibt auth.login.failure(/.lockout) in die Audit-Chain.
     await recordFailedLoginAudited({
       tenantId: tenant.id,
@@ -186,8 +183,9 @@ export async function checkPasswordAction(
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
-  // Erfolg → Counter zurücksetzen (IP-RL + Account-Counter)
-  await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
+  // Erfolg → Counter zurücksetzen (IP-RL + Account-Counter). Die gemeinsame
+  // Sturm-Obergrenze ohne IP leert ein einzelner Login nicht (S-03).
+  if (ip) await resetRateLimit(`staff-pw:${ip}`);
   await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
   resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
 
@@ -320,21 +318,11 @@ export async function confirmTotpEnrollmentAction(
   // neben checkPasswordAction und MUSS dieselben Schranken tragen — sonst
   // verteiltes Brute-Force / bcrypt-CPU-Erschöpfung über bekannte E-Mails.
   const ip = getClientIp(await headers());
-  const enrollmentIpRl = await checkIpOrGlobalLimit(
-    'staff-totp-enroll',
-    ip,
-    TOTP_ENROLLMENT_LIMIT,
-    { max: 50, windowSec: 300 },
-  );
+  const enrollmentIpRl = await checkIpOrGlobalLimit('staff-totp-enroll', ip, TOTP_ENROLLMENT_LIMIT);
   if (!enrollmentIpRl.ok) {
     return { ok: false, error: 'Zu viele Bestätigungsversuche. Bitte kurz warten.' };
   }
-  const rl = await checkIpOrGlobalLimit(
-    'staff-pw',
-    ip,
-    { max: 10, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  const rl = await checkIpOrGlobalLimit('staff-pw', ip, STAFF_PASSWORD_IP_LIMIT);
   if (!rl.ok) {
     return {
       ok: false,
@@ -449,10 +437,11 @@ export async function confirmTotpEnrollmentAction(
   }
 
   // Erst der vollständig erfolgreiche Einmal-Claim darf die Versuchszähler
-  // leeren. Bei falschem TOTP bleiben alle Buckets erhalten.
-  await resetRateLimit(ip ? `staff-pw:${ip}` : 'staff-pw:global');
+  // leeren. Bei falschem TOTP bleiben alle Buckets erhalten. Die gemeinsame
+  // Sturm-Obergrenze ohne IP bleibt unberührt (S-03).
+  if (ip) await resetRateLimit(`staff-pw:${ip}`);
   await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
-  await resetRateLimit(ip ? `staff-totp-enroll:${ip}` : 'staff-totp-enroll:global');
+  if (ip) await resetRateLimit(`staff-totp-enroll:${ip}`);
   await resetRateLimit(enrollmentAccountKey);
   resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
 
@@ -484,12 +473,7 @@ export async function hardwareLoginAvailabilityAction(): Promise<{ available: bo
 
 export async function beginHardwareLoginAction(): Promise<BeginHardwareLoginResult> {
   const ip = getClientIp(await headers());
-  const rate = await checkIpOrGlobalLimit(
-    'staff-hardware-begin',
-    ip,
-    { max: 20, windowSec: 300 },
-    { max: 400, windowSec: 300 },
-  );
+  const rate = await checkIpOrGlobalLimit('staff-hardware-begin', ip, { max: 20, windowSec: 300 });
   if (!rate.ok) return { error: 'Zu viele Anmeldeversuche. Bitte kurz warten.' };
   try {
     return await beginHardwareLogin();
@@ -528,16 +512,12 @@ export async function loginHardwareAction(input: {
 
 export async function loginAction(formData: FormData): Promise<LoginResult> {
   // Rate-Limit pro IP — 5 TOTP-Versuche / 5 Minuten. TOTP-Brute-Force ist
-  // teuer (Replay-Schutz + Per-Token-One-Time-Use), bei null-IP weiter
-  // globaler Sturm-Bucket.
+  // teuer (Replay-Schutz + Per-Token-One-Time-Use); pro Konto deckelt
+  // checkStaffSecondFactorAccountLimit, ohne IP gilt zusätzlich nur die
+  // Sturm-Obergrenze (S-03).
   const ip = getClientIp(await headers());
   if (!DEV_SKIP_TOTP) {
-    const rl = await checkIpOrGlobalLimit(
-      'staff-totp',
-      ip,
-      { max: 5, windowSec: 300 },
-      { max: 100, windowSec: 300 },
-    );
+    const rl = await checkIpOrGlobalLimit('staff-totp', ip, { max: 5, windowSec: 300 });
     if (!rl.ok) {
       return {
         ok: false,
@@ -556,8 +536,8 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
       tenantSlug: (formData.get('tenantSlug') as string) || 'default',
       redirect: false,
     });
-    if (!DEV_SKIP_TOTP) {
-      await resetRateLimit(ip ? `staff-totp:${ip}` : 'staff-totp:global');
+    if (!DEV_SKIP_TOTP && ip) {
+      await resetRateLimit(`staff-totp:${ip}`);
     }
   } catch (error) {
     if (error instanceof AuthError) {

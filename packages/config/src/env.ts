@@ -106,8 +106,8 @@ const envSchema = z.object({
         .optional(),
     )
     .optional(),
-  // R-3 / H-2: Wenn `true`, vertraut die App den XFF/Real-IP/CF-Connecting-IP-
-  // Headern. Sonst (Default) ignoriert getClientIp die Headers in Production
+  // R-3 / H-2: Wenn `true`, leitet die App die Client-IP aus X-Forwarded-For ab.
+  // Sonst (Default) ignoriert getClientIp die Headers in Production
   // komplett — kein Spoofing möglich. Opt-in über die .env.
   TRUST_PROXY_REQUIRED: z
     .preprocess(
@@ -115,6 +115,20 @@ const envSchema = z.object({
       z.union([z.literal('true'), z.literal('false')]).optional(),
     )
     .transform((s) => s === 'true'),
+  // S-03: Anzahl vertrauenswürdiger Proxy-Hops vor der App, die jeweils ihre
+  // Gegenstelle an X-Forwarded-For anhängen (oder den Header überschreiben).
+  // Die Client-IP ist der n-te Eintrag von RECHTS; alles links davon ist vom
+  // Client frei setzbar. 1 = ein Proxy (mitgeliefertes nginx/Traefik), 2 = z. B.
+  // CDN + eigener Proxy. Nur relevant mit TRUST_PROXY_REQUIRED=true.
+  TRUST_PROXY_HOPS: z
+    .preprocess(
+      (v) => (v === '' || v === undefined ? undefined : v),
+      z
+        .string()
+        .regex(/^[1-9]$/, 'TRUST_PROXY_HOPS muss eine ganze Zahl von 1 bis 9 sein')
+        .optional(),
+    )
+    .transform((s) => (s === undefined ? 1 : Number(s))),
 
   // --- Object-Store / S3 -----------------------------------------------------------
   // Ausschließlich interner Endpoint (App/Worker ↔ SeaweedFS, Docker-Netz):

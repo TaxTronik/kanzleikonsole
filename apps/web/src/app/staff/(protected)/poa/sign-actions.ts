@@ -62,12 +62,7 @@ export async function loadPoaForSigning(rawToken: string): Promise<
   // Action direkt erreichbar — pro IP 30 Validierungen / 10 min. Bei
   // Überschreitung DIESELBE generische Meldung wie bei ungültigem Token.
   const loadIp = getClientIp(await headers());
-  const loadRl = await checkIpOrGlobalLimit(
-    'poa-load',
-    loadIp,
-    { max: 30, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  const loadRl = await checkIpOrGlobalLimit('poa-load', loadIp, { max: 30, windowSec: 600 });
   if (!loadRl.ok) return { ok: false, error: GENERIC_TOKEN_ERROR };
 
   const tokenHash = hashToken(rawToken);
@@ -298,13 +293,9 @@ export async function signPoaAction(input: {
   // Fehlversuchen + N-5 Hard-Cap der OTP-Issues machen Brute-Force schon teuer,
   // aber ohne IP-Bremse könnte ein Angreifer mit Tausenden Versuchen pro Minute
   // an die Schwelle rennen. 20 Versuche / 10 min ist mehr als jeder legitime
-  // Nutzer braucht.
-  const ipLimit = await checkIpOrGlobalLimit(
-    'poa-sign',
-    ip,
-    { max: 20, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  // Nutzer braucht. Ohne Client-IP gilt nur die Sturm-Obergrenze (S-03); die
+  // OTP-Fehlversuchsgrenzen pro Link bleiben davon unabhängig.
+  const ipLimit = await checkIpOrGlobalLimit('poa-sign', ip, { max: 20, windowSec: 600 });
   if (!ipLimit.ok) {
     return {
       ok: false,

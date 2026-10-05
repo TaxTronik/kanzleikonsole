@@ -10,6 +10,8 @@
 // =============================================================================
 
 // L-5: Singleton-Redis statt eigener Verbindung pro Modul.
+import { createHmac, hkdfSync } from 'node:crypto';
+import { isIPv4, isIPv6 } from 'node:net';
 import { env } from '@taxtronik/config';
 import { log } from '@/server/logger';
 import { getRedis } from '@/server/redis';
@@ -209,27 +211,108 @@ export async function checkRateLimit(key: string, cfg: RateLimitConfig): Promise
 }
 
 /**
- * Convenience-Wrapper für „per-IP-wenn-bekannt, sonst globaler Bucket".
+ * S-03: Sturm-Obergrenze für Anfragen OHNE vertrauenswürdige Client-IP —
+ * 10 Anfragen/s Dauerlast je Präfix (Fenster wie das Per-IP-Limit).
+ *  - Die frühere globale Quote (100–200 je Fenster) war mit einer Anfrage alle
+ *    3–9 s erschöpfbar und sperrte dann sämtliche Logins. Jetzt braucht es eine
+ *    dauerhafte Flut (≥ 864.000 Anfragen/Tag); das Doppelte der Login-Rate je
+ *    Quell-IP im nginx-Beispiel (limit_req 5 r/s), eine einzelne Quelle hinter
+ *    diesem Proxy erschöpft sie auf den Login-Pfaden also nicht.
+ *  - Legitime Spitzen einer Kanzlei-Instanz liegen um Größenordnungen darunter
+ *    (z. B. 100 Portal-Logins in 15 min ≈ 0,1/s).
+ *  - Die Arbeit je Anfrage bleibt auch bei 10/s klein: ein bis zwei indizierte
+ *    Lookups bzw. eine HMAC-Prüfung. bcrypt läuft nur für existierende Konten
+ *    und ist pro Konto gedeckelt; Login-Mails haben eine eigene
+ *    Versandobergrenze (requestMagicLink).
+ */
+export const STORM_CEILING_PER_SECOND = 10;
+
+export function stormCeiling(windowSec: number): RateLimitConfig {
+  return { max: STORM_CEILING_PER_SECOND * windowSec, windowSec };
+}
+
+declare const rateLimitSubjectKeyBrand: unique symbol;
+
+/** Pseudonymer Bucket-Schlüssel; nur über die Helfer dieses Moduls erzeugbar. */
+export type RateLimitSubjectKey = string & { readonly [rateLimitSubjectKeyBrand]: true };
+
+/** Fachlicher Bucket (E-Mail, Konto) für checkIpOrGlobalLimit. */
+export interface RateLimitSubject {
+  key: RateLimitSubjectKey;
+  limit: RateLimitConfig;
+}
+
+let subjectKeyMaterial: { secret: string; key: Buffer } | null = null;
+
+function subjectHmacKey(): Buffer {
+  const secret = env.AUTH_SECRET;
+  if (subjectKeyMaterial?.secret !== secret) {
+    subjectKeyMaterial = {
+      secret,
+      key: Buffer.from(
+        hkdfSync(
+          'sha256',
+          secret,
+          Buffer.from('taxtronik-rate-limit-salt', 'utf8'),
+          Buffer.from('taxtronik-rate-limit-subject-v1', 'utf8'),
+          32,
+        ),
+      ),
+    };
+  }
+  return subjectKeyMaterial.key;
+}
+
+/**
+ * S-03: Bucket-Schlüssel für eine E-Mail-Adresse. HMAC-SHA-256 (Schlüssel per
+ * HKDF aus AUTH_SECRET) über die getrimmte, kleingeschriebene Adresse, auf
+ * 128 Bit gekürzt: Redis sieht nie die Adresse, und ohne AUTH_SECRET lässt sich
+ * der Schlüssel nicht per Wörterbuch zurückrechnen. Bekannte und unbekannte
+ * Adressen werden identisch behandelt (kein Enumerations-Orakel).
+ */
+export function emailRateLimitKey(email: string): RateLimitSubjectKey {
+  return createHmac('sha256', subjectHmacKey())
+    .update(`email:${email.trim().toLowerCase()}`)
+    .digest('hex')
+    .slice(0, 32) as RateLimitSubjectKey;
+}
+
+/**
+ * Limit für öffentliche Einstiege (Login, Magic-Link, Token-Links).
  *
- * Hintergrund (H-2 / N-3 / K-1): `getClientIp` kann `null` zurückgeben,
- * wenn TRUST_PROXY_REQUIRED nicht gesetzt ist. Würden wir naiv
- * `prefix:${ip}` als Key bauen, landen alle null-Aufrufer in einem
- * gemeinsamen Bucket — Single-IP-Spam sperrt dann alle.
+ * S-03 (vorher H-2 / N-3 / K-1): `getClientIp` liefert in Produktion `null`,
+ * solange TRUST_PROXY_REQUIRED nicht `true` ist. Früher fiel dann jedes Limit
+ * auf einen kleinen gemeinsamen Bucket, den ein Angreifer mit wenigen Anfragen
+ * für alle Nutzer erschöpfte. Jetzt:
+ *  - Mit IP: erst `prefix:<ip>` (perIp), dann — falls übergeben — der
+ *    Subjekt-Bucket `prefix:subject:<key>`, damit rotierende IPs ihn nicht
+ *    umgehen. Eine einzelne Quelle verbraucht so höchstens `perIp.max` vom
+ *    Subjekt-Kontingent.
+ *  - Ohne IP: erst der Subjekt-Bucket (wer eine Adresse flutet, verbraucht die
+ *    gemeinsame Obergrenze nicht), dann nur noch die großzügige
+ *    Sturm-Obergrenze `prefix:global` (stormCeiling, Fenster wie perIp).
  *
- * Stattdessen: bei null nehmen wir den weiteren globalen Bucket
- * `prefix:global` mit größerer Quota — Sturm-Schutz statt Per-User-Lockout-
- * Surface.
+ * Den Subjekt-Schlüssel für existierende und unbekannte Konten/Adressen gleich
+ * bilden (z. B. emailRateLimitKey vor jedem Lookup). Kontogebundene Limits nach
+ * dem Lookup (checkStaffPasswordAccountLimit & Co.) gelten unabhängig davon.
  */
 export async function checkIpOrGlobalLimit(
   prefix: string,
   ip: string | null,
   perIp: RateLimitConfig,
-  global: RateLimitConfig,
+  subject?: RateLimitSubject,
 ): Promise<RateLimitResult> {
+  const checkSubject = (s: RateLimitSubject) =>
+    checkRateLimit(`${prefix}:subject:${s.key}`, s.limit);
   if (ip) {
-    return checkRateLimit(`${prefix}:${ip}`, perIp);
+    const ipResult = await checkRateLimit(`${prefix}:${ip}`, perIp);
+    return ipResult.ok && subject ? checkSubject(subject) : ipResult;
   }
-  return checkRateLimit(`${prefix}:global`, global);
+  if (subject) {
+    const subjectResult = await checkSubject(subject);
+    if (!subjectResult.ok) return subjectResult;
+  }
+  return checkRateLimit(`${prefix}:global`, stormCeiling(perIp.windowSec));
 }
 
 /**
@@ -247,37 +330,104 @@ export async function resetRateLimit(key: string): Promise<void> {
   }
 }
 
+const BRACKETED_IPV6 = /^\[([^\]]+)\](?::\d{1,5})?$/;
+const IPV4_WITH_PORT = /^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/;
+const IPV4_MAPPED_IPV6 = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/;
+
 /**
- * Liest die Client-IP aus üblichen Proxy-Headern (Vercel/Cloudflare/Nginx).
+ * Validiert und kanonisiert einen Adress-Eintrag aus X-Forwarded-For (S-03).
+ * Erlaubt sind IPv4, IPv6, IPv6 in eckigen Klammern (optional mit Port) und
+ * IPv4 mit Port. IPv6 wird kanonisch ausgegeben (klein, komprimiert), damit
+ * dieselbe Adresse immer denselben Bucket trifft; IPv4-mapped IPv6
+ * (`::ffff:192.0.2.1`, so meldet Node Dual-Stack-Sockets) wird zu IPv4.
+ * Zonen-IDs (`fe80::1%eth0`) und alles andere ergeben `null`.
+ */
+export function normalizeIpAddress(raw: string): string | null {
+  let value = raw.trim();
+  if (!value || value.length > 64) return null;
+  const bracketed = BRACKETED_IPV6.exec(value);
+  if (bracketed) {
+    value = bracketed[1] ?? '';
+    if (!isIPv6(value)) return null;
+  } else {
+    value = IPV4_WITH_PORT.exec(value)?.[1] ?? value;
+  }
+  if (isIPv4(value)) return value;
+  if (!isIPv6(value)) return null;
+  let canonical: string;
+  try {
+    // Der WHATWG-URL-Parser serialisiert IPv6 kanonisch und lehnt Zonen-IDs ab.
+    canonical = new URL(`http://[${value}]/`).hostname.slice(1, -1);
+  } catch {
+    return null;
+  }
+  const mapped = IPV4_MAPPED_IPV6.exec(canonical);
+  if (!mapped) return canonical;
+  const high = Number.parseInt(mapped[1] ?? '', 16);
+  const low = Number.parseInt(mapped[2] ?? '', 16);
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
+/**
+ * Client-Adresse aus einer X-Forwarded-For-Kette (S-03). Jeder
+ * vertrauenswürdige Proxy hängt seine Gegenstelle RECHTS an (oder überschreibt
+ * den Header); die Client-IP ist deshalb der `trustedHops`-te Eintrag von
+ * rechts. Alles links davon kann der Client frei setzen und wird nie gelesen.
+ * Enthält die Kette weniger Einträge als Hops (Request hat nicht alle Proxys
+ * passiert) oder ist der Eintrag ungültig, gibt es keine Adresse.
+ */
+export function clientIpFromForwardedFor(
+  forwardedFor: string | null,
+  trustedHops: number,
+): string | null {
+  if (!forwardedFor || !Number.isInteger(trustedHops) || trustedHops < 1) return null;
+  const entries = forwardedFor.split(',');
+  if (entries.length < trustedHops) return null;
+  return normalizeIpAddress(entries[entries.length - trustedHops] ?? '');
+}
+
+function trustedProxyHops(): number {
+  const hops = env.TRUST_PROXY_HOPS;
+  // Einige Unit-Tests mocken `env` ohne den Schlüssel; Schema-Default ist 1.
+  return Number.isInteger(hops) && hops >= 1 ? hops : 1;
+}
+
+/**
+ * Liest die Client-IP aus X-Forwarded-For.
  *
- * H2: Trust-Boundary anhand `TRUST_PROXY_REQUIRED`. Returnt `null` (nicht
- * mehr den 'unknown'-Sentinel) wenn keine vertrauenswürdige IP zu ermitteln
- * ist — der TypeScript-Checker erinnert Aufrufer daran, den Fall zu
- * behandeln.
+ * H2 / S-03: Trust-Boundary anhand `TRUST_PROXY_REQUIRED`. In Produktion ohne
+ * diese Zusage → `null`; Aufrufer limitieren dann pro Konto bzw. E-Mail-Hash
+ * plus Sturm-Obergrenze (checkIpOrGlobalLimit) und sperren Konten nicht hart
+ * (recordFailedLogin).
  *
- * Caller-Pattern:
- *   const ip = getClientIp(req.headers);
- *   if (ip) {
- *     await checkRateLimit(`login:${ip}`, ...);
- *   } else {
- *     // Globaler Sturm-Schutz, kein Per-IP-Bucket.
- *   }
+ * Mit Zusage zählt der TRUST_PROXY_HOPS-te Eintrag von rechts (siehe
+ * clientIpFromForwardedFor) — nicht mehr der linke, den der Client setzt,
+ * sobald ein Proxy anhängt statt zu überschreiben.
  *
- * Siehe docs/compliance/tenancy-model.md / R-3 / H-2 für Hintergrund.
+ * Nur X-Forwarded-For wird ausgewertet. Next.js setzt den Header selbst auf die
+ * TCP-Gegenstelle, wenn er fehlt (base-server: `x-forwarded-for ??=
+ * socket.remoteAddress`); ein Fallback auf X-Real-IP oder CF-Connecting-IP
+ * wäre in Produktion daher nie erreichbar, böte aber zusätzliche
+ * Spoofing-Fläche. Hinter Cloudflare liefert TRUST_PROXY_HOPS=2 (Cloudflare
+ * und eigener Proxy hängen an) dieselbe Adresse wie CF-Connecting-IP, ohne
+ * einem vom Client setzbaren Header zu vertrauen.
  */
 export function getClientIp(headers: Headers): string | null {
   if (env.NODE_ENV === 'production' && !env.TRUST_PROXY_REQUIRED) {
     return null;
   }
-  const xff = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  const realIp = headers.get('x-real-ip');
-  const cfIp = headers.get('cf-connecting-ip');
-  const ip = xff || realIp || cfIp;
+  const forwardedFor = headers.get('x-forwarded-for');
+  const trustedHops = trustedProxyHops();
+  const ip = clientIpFromForwardedFor(forwardedFor, trustedHops);
   if (ip) return ip;
   if (env.NODE_ENV === 'production') {
     log.warn(
-      { component: 'rate-limit' },
-      'getClientIp: keine Client-IP-Header gefunden — Reverse-Proxy-Config prüfen',
+      {
+        component: 'rate-limit',
+        trustedHops,
+        forwardedEntries: forwardedFor ? forwardedFor.split(',').length : 0,
+      },
+      'getClientIp: keine gültige Client-IP in X-Forwarded-For — Reverse-Proxy-Config und TRUST_PROXY_HOPS prüfen',
     );
   }
   return null;

@@ -858,6 +858,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Ohne vertrauenswürdige Client-IP (Standard bei eigenem
+  Reverse-Proxy, `TRUST_PROXY_REQUIRED=false`) fallen Login-Limits nicht mehr
+  auf kleine globale Zähler zurück, mit denen eine Anfrage alle neun Sekunden
+  sämtliche Portal-Logins blockierte. Magic-Link-Anforderungen werden
+  zusätzlich pro E-Mail-Adresse (HMAC) begrenzt, Staff-Logins weiterhin pro
+  Konto; global greift nur noch eine großzügige Sturm-Obergrenze.
+  Fehlversuche ohne Client-IP sperren Staff-Konten nicht mehr 30 Minuten. Mit
+  `TRUST_PROXY_REQUIRED=true` stammt die Client-IP vom rechten Ende von
+  `X-Forwarded-For` statt aus dem vom Client setzbaren linken Eintrag;
+  `X-Real-IP` und `CF-Connecting-IP` werden nicht mehr ausgewertet. Neue
+  Variable `TRUST_PROXY_HOPS` (Standard 1); `./taxtronik doctor` warnt bei
+  `TRUST_PROXY_REQUIRED=false` (`ACCESS-TENANT-RLS-001`, `FK-EXC-20261004-013`).
 - **[Scope]** Alle Mandanten-Detailseiten unter `/staff/clients/[id]` prüfen
   den Mandantenzugriff (Vertraulichkeit, RESTRICTED-Modus) jetzt selbst über
   einen request-gecachten Seiten-Guard statt nur im Segment-Layout. Für 16

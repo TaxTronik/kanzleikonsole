@@ -26,14 +26,9 @@ export default async function AuditVerifyPage({ params }: { params: Promise<{ to
   // vorliegt. Roh interpoliert ergaebe das den Schluessel "…:null" — alle
   // anonymen Aufrufer teilten sich einen Bucket mit 20 Abrufen, und ein
   // einzelner Spammer sperrte die Verifikation fuer saemtliche externen
-  // Pruefer. checkIpOrGlobalLimit faellt stattdessen auf eine weitere globale
-  // Quota zurueck: Sturm-Schutz statt Lockout-Surface.
-  const ipLimit = await checkIpOrGlobalLimit(
-    'audit-verify-ip',
-    ip,
-    { max: 20, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  // Pruefer. checkIpOrGlobalLimit faellt stattdessen auf eine grosszuegige
+  // Sturm-Obergrenze zurueck (S-03): Sturm-Schutz statt Lockout-Surface.
+  const ipLimit = await checkIpOrGlobalLimit('audit-verify-ip', ip, { max: 20, windowSec: 600 });
   if (!ipLimit.ok) return <RateLimitShell />;
 
   const decoded = verifyAuditToken(token);

@@ -84,6 +84,9 @@ services:
       # R2/H2: bewusstes Opt-in. Nur true setzen, wenn der vorgeschaltete Proxy
       # client-supplied Forwarded-Header verwirft und selbst neu setzt.
       TRUST_PROXY_REQUIRED: ${TRUST_PROXY_REQUIRED:?TRUST_PROXY_REQUIRED muss explizit true oder false sein}
+      # S-03: Anzahl anhängender Proxy-Hops vor der App (Client-IP = n-ter
+      # X-Forwarded-For-Eintrag von rechts). Beispiel-nginx und Traefik: 1.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       # Object-Store nur intern erreichbar — App streamt Up-/Downloads selbst.
       S3_ENDPOINT: http://seaweedfs:8333
       S3_REGION: us-east-1

@@ -141,7 +141,11 @@ bleibt erreichbar; „Mandant aufnehmen“ wird nur mit `CLIENT_CREATE` angebote
 - **Lockout/Rate-Limits:** IP-Limits je Login-Schritt; Kontosperre erst bei
   Fehlversuchen von ≥5 **distinkten** Quell-IPs (kein Fremd-Lockout);
   fail-closed bei Redis-Ausfall in Produktion; X-Forwarded-For wird ohne
-  `TRUST_PROXY_REQUIRED` nicht vertraut.
+  `TRUST_PROXY_REQUIRED` nicht vertraut, mit Zusage zählt der
+  `TRUST_PROXY_HOPS`-te Eintrag von rechts. Ohne Client-IP greifen
+  kontogebundene Limits (Passwort, zweiter Faktor), Magic-Link-Anforderungen
+  pro E-Mail-HMAC und je Endpunkt nur eine großzügige Sturm-Obergrenze;
+  Konten werden dann nicht hart gesperrt.
 - **Sessions:** `__Host-`-Cookies, getrennte Auth.js-Instanzen je Surface,
   per-Request-Revalidierung (aktiv? GwG-Freigabe? anonymisiert?). Staff-Tokens
   sind zusätzlich an `authRevision` und den zum Kontomodus passenden

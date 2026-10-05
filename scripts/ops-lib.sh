@@ -1302,7 +1302,18 @@ doctor() {
     _dr_row "FEHLT" "TRUST_PROXY_REQUIRED" "Traefik-Pfad braucht exakt true"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   elif [[ "${TRUST_PROXY_REQUIRED:-}" != "true" && "${TRUST_PROXY_REQUIRED:-}" != "false" ]]; then
     _dr_row "FEHLT" "TRUST_PROXY_REQUIRED" "explizit true/false setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "${TRUST_PROXY_REQUIRED:-}" == "false" ]]; then
+    # S-03: sicherer Default, aber ohne Client-IP greifen Login-Limits nur pro
+    # Konto/E-Mail plus globaler Sturmgrenze, und Konten werden nie hart gesperrt.
+    _dr_row "WARN" "TRUST_PROXY_REQUIRED" "false: Login-Limits nur pro Konto/E-Mail; Proxy setzt X-Forwarded-For? Dann true"
+    _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else _dr_row "OK" "TRUST_PROXY_REQUIRED" "$TRUST_PROXY_REQUIRED"; fi
+  # Die App lehnt andere Werte beim Start ab (packages/config/src/env.ts).
+  if [[ -n "${TRUST_PROXY_HOPS:-}" && ! "${TRUST_PROXY_HOPS}" =~ ^[1-9]$ ]]; then
+    _dr_row "FEHLT" "TRUST_PROXY_HOPS" "ganze Zahl 1-9 (anhaengende Proxy-Hops vor der App)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "${TRUST_PROXY_REQUIRED:-}" == "true" ]]; then
+    _dr_row "OK" "TRUST_PROXY_HOPS" "${TRUST_PROXY_HOPS:-1}"
+  fi
 
   # Risk-Layer (optional): URL und Basis-Token MÜSSEN als Paar gesetzt werden.
   # Das getrennte Operator-Token aktiviert schreibende Betriebsfunktionen. Bei

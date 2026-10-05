@@ -265,9 +265,9 @@ const staffConfig: NextAuthConfig = {
         const totpCode = (credentials?.totpCode as string | undefined) ?? '';
         const tenantSlug = (credentials?.tenantSlug as string | undefined) ?? 'default';
 
-        // L-4: IP für IP-basierten Distinct-Lockout extrahieren. Wenn die
-        // Request-Headers fehlen (z. B. Test-Pfad), bleibt es null und der
-        // Lockout fällt automatisch auf den count-basierten Fallback zurück.
+        // L-4: IP für IP-basierten Distinct-Lockout extrahieren. Ohne
+        // vertrauenswürdige IP (oder ohne Request-Headers) bleibt es null:
+        // dann wird nur gezählt, nicht gesperrt (S-03, lockout.ts).
         const ip = (() => {
           try {
             return request?.headers ? getClientIp(request.headers) : null;
@@ -279,14 +279,10 @@ const staffConfig: NextAuthConfig = {
         if (!email || !password) return null;
 
         // K1+N3: Pre-bcrypt-IP-Rate-Limit am NextAuth-callback. Per-IP eng,
-        // bei null-IP weiter globaler Sturm-Bucket (kein Per-Account-DoS).
+        // bei null-IP nur die großzügige Sturm-Obergrenze (S-03); pro Konto
+        // deckeln checkStaffPasswordAccountLimit und das Second-Factor-Limit.
         // Hintergrund siehe docs/compliance/tenancy-model.md.
-        const rl = await checkIpOrGlobalLimit(
-          'staff-authorize',
-          ip,
-          { max: 10, windowSec: 600 },
-          { max: 200, windowSec: 600 },
-        );
+        const rl = await checkIpOrGlobalLimit('staff-authorize', ip, { max: 10, windowSec: 600 });
         if (!rl.ok) {
           log.warn(
             { ip, bucket: ip ? 'per-ip' : 'global' },
@@ -341,7 +337,7 @@ const staffConfig: NextAuthConfig = {
             { staffId: staffUser.id },
             'staff-auth: DEV_SKIP_TOTP aktiv — TOTP übersprungen (NUR Dev!)',
           );
-          await resetRateLimit(ip ? `staff-authorize:${ip}` : 'staff-authorize:global');
+          if (ip) await resetRateLimit(`staff-authorize:${ip}`);
           await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
           await resetFailedLogin(prismaOwner, staffUser.id);
           // RF-12: auch der Dev-Login landet in der Chain (method markiert ihn).
@@ -510,7 +506,8 @@ const staffConfig: NextAuthConfig = {
         // (auth.login.success) — in DERSELBEN Tx wie der lastLoginAt-Write
         // (Record-Muster wie überall) und deshalb awaited statt fire-and-forget.
         await resetFailedLogin(prismaOwner, staffUser.id);
-        await resetRateLimit(ip ? `staff-authorize:${ip}` : 'staff-authorize:global');
+        // Die gemeinsame Sturm-Obergrenze ohne IP leert ein Login nicht (S-03).
+        if (ip) await resetRateLimit(`staff-authorize:${ip}`);
         await prismaOwner.$transaction(async (tx) => {
           await tx.staffUser.update({
             where: { id: staffUser.id },
@@ -563,17 +560,17 @@ const staffConfig: NextAuthConfig = {
             return null;
           }
         })();
-        const rateKey = ip ? `staff-hardware-login:${ip}` : 'staff-hardware-login:global';
-        const rate = await checkIpOrGlobalLimit(
-          'staff-hardware-login',
-          ip,
-          { max: 10, windowSec: 300 },
-          { max: 200, windowSec: 300 },
-        );
+        // WebAuthn-Assertions sind nicht erratbar; das Limit schützt nur
+        // Lookups. Ohne IP gilt allein die Sturm-Obergrenze (S-03) — ein
+        // Bucket je Credential-ID ließe Fremde gezielt sperren.
+        const rate = await checkIpOrGlobalLimit('staff-hardware-login', ip, {
+          max: 10,
+          windowSec: 300,
+        });
         if (!rate.ok) return null;
         try {
           const user = await authenticateStaffHardwareCredential({ ceremonyId, responseJson, ip });
-          if (user) await resetRateLimit(rateKey);
+          if (user && ip) await resetRateLimit(`staff-hardware-login:${ip}`);
           return user;
         } catch (error) {
           log.warn(

@@ -27,13 +27,9 @@ export default async function GwgOnboardingPage({
   // Write pro Request, Muster wie gwg-upload-ip in actions.ts). Bei
   // Überschreitung DIESELBE generische Fehlansicht wie bei ungültigem Token —
   // eine eigene „zu viele Versuche"-Meldung wäre ein Token-Probing-Orakel.
+  // Ohne Client-IP gilt nur die großzügige Sturm-Obergrenze (S-03).
   const ip = getClientIp(await headers());
-  const rl = await checkIpOrGlobalLimit(
-    'gwg-invite-load',
-    ip,
-    { max: 30, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  const rl = await checkIpOrGlobalLimit('gwg-invite-load', ip, { max: 30, windowSec: 600 });
   const result = rl.ok
     ? await loadInviteByRawToken(token)
     : { ok: false as const, error: GENERIC_TOKEN_ERROR };

@@ -243,12 +243,7 @@ export async function uploadIdImageAction(input: {
   // missbrauchen. 20 Uploads pro 10 Min ist großzügig für ein Onboarding
   // (typisch 4-8 Dateien), aber bremst ein Skript hart.
   const ip = getClientIp(await headers());
-  const ipRl = await checkIpOrGlobalLimit(
-    'gwg-upload-ip',
-    ip,
-    { max: 30, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  const ipRl = await checkIpOrGlobalLimit('gwg-upload-ip', ip, { max: 30, windowSec: 600 });
   if (!ipRl.ok) {
     return {
       ok: false,
@@ -567,12 +562,10 @@ export async function loadOnboardingIdentitySourceAction(input: {
     .object({ token: z.string().min(10).max(500), documentId: z.string().uuid() })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: GENERIC_TOKEN_ERROR };
-  const ipLimit = await checkIpOrGlobalLimit(
-    'gwg-source-ip',
-    getClientIp(await headers()),
-    { max: 60, windowSec: 600 },
-    { max: 200, windowSec: 600 },
-  );
+  const ipLimit = await checkIpOrGlobalLimit('gwg-source-ip', getClientIp(await headers()), {
+    max: 60,
+    windowSec: 600,
+  });
   if (!ipLimit.ok) return { ok: false, error: 'Zu viele Abrufe. Bitte später erneut versuchen.' };
   const tokenHash = hashInviteToken(parsed.data.token);
   const limit = await checkRateLimit(`gwg-source-token:${tokenHash.slice(0, 16)}`, {

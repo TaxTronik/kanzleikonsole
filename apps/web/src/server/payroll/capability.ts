@@ -64,16 +64,8 @@ export async function requireGuestHash(): Promise<string> {
 export async function guardPayrollEmployeeEntry(raw: unknown): Promise<boolean> {
   if (typeof raw !== 'string' || !/^[a-f0-9]{64}$/.test(raw)) return false;
   const ip = getClientIp(await headers());
-  if (
-    !(
-      await checkIpOrGlobalLimit(
-        'payroll-invite',
-        ip,
-        { max: 10, windowSec: 600 },
-        { max: 60, windowSec: 600 },
-      )
-    ).ok
-  )
+  // S-03: ohne Client-IP nur die großzügige Sturm-Obergrenze statt 60/10 min für alle.
+  if (!(await checkIpOrGlobalLimit('payroll-invite', ip, { max: 10, windowSec: 600 })).ok)
     return false;
   const token = newPayrollToken();
   const hash = tokenHash(token);

@@ -91,7 +91,12 @@ server {
     # ---- H-2/R-2: X-Forwarded-For sauber befüllen ----
     # client-supplied XFF-Header IGNORIEREN — Node-App liest x-forwarded-for
     # via getClientIp und vertraut dem nur wenn TRUST_PROXY_REQUIRED=true.
-    # NGINX überschreibt den Header und hängt nur $remote_addr an.
+    # NGINX überschreibt den Header und setzt nur $remote_addr. Die App nimmt
+    # den TRUST_PROXY_HOPS-ten Eintrag von rechts (hier: TRUST_PROXY_HOPS=1).
+    # X-Real-IP und CF-Connecting-IP wertet die App nicht aus. Hinter einem CDN
+    # entweder $remote_addr per realip-Modul (set_real_ip_from <CDN-Netze>)
+    # auf die Client-Adresse setzen oder $proxy_add_x_forwarded_for verwenden
+    # und TRUST_PROXY_HOPS=2 setzen.
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Real-IP       $remote_addr;
     # Auth.js benötigt trustHost=true. Deshalb Host und X-Forwarded-Host auf
@@ -134,6 +139,15 @@ server {
     }
 
     location ~ ^/api/auth/(staff|portal)/callback/ {
+        limit_req zone=taxtronik_login burst=10 nodelay;
+        proxy_pass http://taxtronik_app;
+    }
+
+    # Magic-Link-Anforderung und -Bestätigung (Server-Actions auf den Seiten).
+    # Der Proxy kennt die Client-IP auch dann, wenn die App ohne
+    # TRUST_PROXY_REQUIRED nur pro E-Mail und global drosseln kann (S-03).
+    location ~ ^/portal/login(?:/verify)?$ {
+        client_max_body_size 64k;
         limit_req zone=taxtronik_login burst=10 nodelay;
         proxy_pass http://taxtronik_app;
     }

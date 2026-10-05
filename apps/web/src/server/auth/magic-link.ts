@@ -7,7 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { notifyMany } from '@/server/notifications/service';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { log } from '@/server/logger';
-import { checkRateLimit } from '@/server/rate-limit';
+import { checkRateLimit, emailRateLimitKey, type RateLimitConfig } from '@/server/rate-limit';
 import { filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { findEligiblePortalProfilesByEmail, type PortalProfileOption } from './portal-profiles';
 
@@ -192,13 +192,20 @@ export async function requestMagicLink(input: {
   contactId?: string;
   /** Optionaler /portal/…-Deeplink, auf dem der Nutzer nach dem Login landet. */
   returnTo?: string;
+  /**
+   * S-03: globale Versandobergrenze (Self-Service ohne Client-IP). Zählt nur
+   * Mails, die tatsächlich versendet würden; bei Überschreitung dieselbe
+   * Antwort samt Verzögerung wie für unbekannte Adressen.
+   */
+  mailCeiling?: RateLimitConfig;
 }): Promise<{ ok: boolean }> {
   const emailKey = input.email.toLowerCase();
 
-  const rl = await checkRateLimit(`magic-link-issue:${input.tenantId}:${emailKey}`, {
-    max: 1,
-    windowSec: 60,
-  });
+  // S-03: Redis-Schlüssel nur mit HMAC der Adresse, nie mit der Adresse selbst.
+  const rl = await checkRateLimit(
+    `magic-link-issue:${input.tenantId}:${emailRateLimitKey(emailKey)}`,
+    { max: 1, windowSec: 60 },
+  );
   if (!rl.ok) {
     await antiTimingDelay();
     return { ok: true };
@@ -220,6 +227,18 @@ export async function requestMagicLink(input: {
   if (eligibleProfiles.length === 0) {
     await antiTimingDelay();
     return { ok: true };
+  }
+
+  if (input.mailCeiling) {
+    const ceiling = await checkRateLimit('magic-link-mail:global', input.mailCeiling);
+    if (!ceiling.ok) {
+      log.warn(
+        { tenantId: input.tenantId, retryAfter: ceiling.retryAfter },
+        'magic-link: globale Versandobergrenze ohne Client-IP erreicht - Mail nicht versendet',
+      );
+      await antiTimingDelay();
+      return { ok: true };
+    }
   }
 
   await sendMagicLink({
