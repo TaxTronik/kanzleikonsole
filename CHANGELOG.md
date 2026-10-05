@@ -579,6 +579,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- „Erneut versuchen“ auf Fehlerseiten lädt die Serverdaten neu, statt nur die
+  Oberfläche neu zu zeichnen. Deutsche 404-Seiten für Kanzleibereich, Portal
+  und unbekannte Adressen sowie eine eigene Seite für Fehler im Grundlayout
+  ersetzen die englischen Next.js-Standardseiten.
 - Dark Mode: Explizite `dark:`-Angaben werden nicht mehr von globalen
   Overrides überstimmt; Status- und Markenfarben schalten über Theme-Tokens
   um. Der Glaseffekt des modernen Modus liegt nur noch auf der Kopfleiste statt
