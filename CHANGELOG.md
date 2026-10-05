@@ -949,6 +949,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Die Mitarbeiteranmeldung verrät weder über die Meldung noch über
+  die Antwortzeit, ob eine Kanzlei oder ein Konto existiert, deaktiviert,
+  gesperrt oder auf Hardware-Schlüssel umgestellt ist; bisher kehrten diese
+  Fälle vor dem Passwortvergleich zurück (`ACCESS-TENANT-RLS-001`,
+  `FK-EXC-20261005-013`).
 - **[Scope]** Session-Cookies von Kanzlei und Mandantenportal werden nur noch
   über eine Session-Fabrik je Oberfläche gelesen, ausgestellt und gelöscht; in
   Produktion akzeptiert der Server ausschließlich den konfigurierten

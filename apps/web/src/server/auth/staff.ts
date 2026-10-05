@@ -25,6 +25,7 @@ import {
 } from '@/server/rate-limit';
 import { authenticateStaffHardwareCredential } from './webauthn';
 import { staffTokenMatchesCurrentAuthState, type StaffAuthMethod } from './staff-auth-state';
+import { passwordLoginAccount, verifyStaffPassword } from './staff-password';
 
 // DEV-/E2E-only: TOTP-Bypass fuer lokale Entwicklung und den lokalen CI-E2E-
 // Lauf. In echter Produktion bleibt der Bypass aus; der CI-Sonderfall braucht
@@ -187,16 +188,6 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
   return session;
 }
 
-function passwordAuthenticationBlocked(account: {
-  hardwareOnlyEnabledAt: Date | null;
-  lockedUntil: Date | null;
-}): boolean {
-  return (
-    Boolean(account.hardwareOnlyEnabledAt) ||
-    Boolean(account.lockedUntil && account.lockedUntil > new Date())
-  );
-}
-
 async function mayVerifySecondFactor(staffId: string, code: string): Promise<boolean> {
   if (!code) return false;
   // ACCESS-TENANT-RLS-001: Kenntnis des Passworts genügt nicht, um
@@ -252,31 +243,32 @@ const staffConfig: NextAuthConfig = {
           return null;
         }
 
-        // Tenant via Owner-Verbindung laden (kein RLS-Kontext nötig)
+        // Tenant und Mitarbeiter via Owner-Verbindung laden (kein RLS-Kontext nötig)
         const tenant = await prismaOwner.tenant.findFirst({
           where: { slug: tenantSlug },
         });
-        if (!tenant) return null;
-
-        // Mitarbeiter laden
-        const staffUser = await prismaOwner.staffUser.findFirst({
-          where: { tenantId: tenant.id, email },
-          include: { roles: true, permissions: true },
-        });
-        if (!staffUser || !staffUser.active) return null;
+        const candidate = tenant
+          ? await prismaOwner.staffUser.findFirst({
+              where: { tenantId: tenant.id, email },
+              include: { roles: true, permissions: true },
+            })
+          : null;
 
         // Hardware-only ist eine serverseitige Kontoeigenschaft. Weder das
         // Passwort noch DEV_SKIP_TOTP dürfen als versteckter Fallback dienen.
-        if (passwordAuthenticationBlocked(staffUser)) return null;
-
-        // Passwort prüfen
-        const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
-        if (!accountRl.ok) {
-          log.warn({ staffId: staffUser.id }, 'staff-auth: account password-rate-limit hit');
-          return null;
+        // S-09: Unzulässige oder unbekannte Konten kosten trotzdem genau einen
+        // bcrypt-Vergleich (Dummy-Hash), damit die Antwortzeit nichts verrät.
+        const staffUser = passwordLoginAccount(candidate);
+        if (staffUser) {
+          const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
+          if (!accountRl.ok) {
+            log.warn({ staffId: staffUser.id }, 'staff-auth: account password-rate-limit hit');
+            return null;
+          }
         }
 
-        const passwordOk = await compare(password, staffUser.passwordHash);
+        const passwordOk = await verifyStaffPassword(password, staffUser);
+        if (!tenant || !staffUser) return null;
         if (!passwordOk) {
           // Account-gebundener Lockout (S2): IP-RL allein hilft nicht gegen
           // verteilte Brute-Force. Fehler werden geloggt, nicht geschluckt.

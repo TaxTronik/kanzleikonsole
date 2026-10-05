@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-013
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/staff/(auth)/login/actions.ts
+      - apps/web/src/server/auth/staff.ts
+      - apps/web/src/server/rate-limit/index.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Die Mitarbeiteranmeldung antwortet für unbekannte Kanzlei, unbekanntes,
+      deaktiviertes, gesperrtes oder auf Hardware-Schlüssel umgestelltes Konto und
+      falsches Passwort mit derselben Meldung und führt in jedem Fall genau einen
+      bcrypt-Vergleich aus, bei nicht zulässigen Konten gegen einen festen
+      Dummy-Hash gleicher Kosten. Konto- und E-Mail-gebundene Limits sowie die
+      Sperrlogik bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/staff-login-enumeration.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-012
     date: '2026-10-05'
     paths:
@@ -1719,6 +1737,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-013` dokumentiert einheitliche Antworten und
+  genau einen Passwortvergleich je Anmeldeversuch. Limits und Sperrlogik
+  bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-012` dokumentiert die zentrale Session-Fabrik
   je Oberfläche und das Entfernen des ungenutzten Portal-Credentials-Logins.

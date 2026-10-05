@@ -17,6 +17,11 @@ import {
 import { staffSignIn, DEV_SKIP_TOTP } from '@/server/auth/staff';
 import { resetFailedLogin } from '@/server/auth/lockout';
 import { recordFailedLoginAudited } from '@/server/auth/login-audit';
+import {
+  passwordAuthenticationBlocked,
+  passwordLoginAccount,
+  verifyStaffPassword,
+} from '@/server/auth/staff-password';
 import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
@@ -40,7 +45,7 @@ import {
   isHardwareAccessConfigured,
 } from '@/server/auth/webauthn';
 
-const { compare, hash } = bcrypt;
+const { hash } = bcrypt;
 
 // Crockford-Base32 ohne verwechselbare Glyphen (kein I/L/O/U).
 // 32 Zeichen → 5 Bit pro Zeichen. 10 Zeichen = 50 Bit Entropie pro Backup-Code.
@@ -89,16 +94,6 @@ async function recordFailedPasswordAttempt(
       'staff-login: Fehlversuch weder gezählt noch auditiert (Lockout-Zähler)',
     );
   }
-}
-
-function passwordAuthenticationBlocked(account: {
-  hardwareOnlyEnabledAt: Date | null;
-  lockedUntil: Date | null;
-}): boolean {
-  return (
-    Boolean(account.hardwareOnlyEnabledAt) ||
-    Boolean(account.lockedUntil && account.lockedUntil > new Date())
-  );
 }
 
 function generateBackupCode(): string {
@@ -153,37 +148,30 @@ export async function checkPasswordAction(
   }
 
   const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
-  if (!tenant) {
-    return { ok: false, error: 'Kanzlei nicht gefunden.' };
+  const candidate = tenant
+    ? await prismaOwner.staffUser.findFirst({
+        where: { tenantId: tenant.id, email: email.toLowerCase() },
+      })
+    : null;
+
+  // S-09/M2: Anti-Enumeration. Unbekannte Kanzlei, unbekanntes, deaktiviertes,
+  // gesperrtes oder Hardware-only-Konto und falsches Passwort liefern dieselbe
+  // Meldung und kosten genau einen bcrypt-Vergleich (sonst gegen den
+  // Dummy-Hash). Kein Passwort-, TOTP-, Backup-Code- oder DEV-Bypass-Fallback
+  // für bewusst auf Hardware-only umgestellte Konten; die generische Meldung
+  // verhindert zugleich eine Enumeration des gewählten Anmeldemodus.
+  let staffUser = passwordLoginAccount(candidate);
+  if (staffUser) {
+    const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
+    if (!accountRl.ok) {
+      return { ok: false, error: GENERIC_LOGIN_ERROR };
+    }
   }
 
-  let staffUser = await prismaOwner.staffUser.findFirst({
-    where: { tenantId: tenant.id, email: email.toLowerCase() },
-  });
-
-  // Absichtlich keine Unterscheidung zwischen "User nicht gefunden" und "Passwort falsch"
-  if (!staffUser || !staffUser.active) {
+  const passwordOk = await verifyStaffPassword(password, staffUser);
+  if (!tenant || !staffUser) {
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
-
-  // M2: Anti-Enumeration. Vorher unterschied der Code "Konto gesperrt" von
-  // "Ungültige Anmeldedaten" — ein Angreifer konnte daran existierende
-  // Accounts erkennen (nach 5 Versuchen Lockout-Meldung). Jetzt einheitlich,
-  // mit dezentem Hinweis zur Wartezeit ohne preisgeben, dass der Account
-  // existiert/gesperrt ist.
-  // Kein Passwort-, TOTP-, Backup-Code- oder DEV-Bypass-Fallback für bewusst
-  // auf Hardware-only umgestellte Konten. Die generische Meldung verhindert
-  // zugleich eine Enumeration des gewählten Anmeldemodus.
-  if (passwordAuthenticationBlocked(staffUser)) {
-    return { ok: false, error: GENERIC_LOGIN_ERROR };
-  }
-
-  const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
-  if (!accountRl.ok) {
-    return { ok: false, error: GENERIC_LOGIN_ERROR };
-  }
-
-  const passwordOk = await compare(password, staffUser.passwordHash);
   if (!passwordOk) {
     // Account-gebundener Lockout (S2 + L-4): Lockout greift erst bei N _distinkten_
     // Quell-IPs in einem rollierenden Fenster. Single-IP-Spam fängt das IP-RL ab,
@@ -367,21 +355,21 @@ export async function confirmTotpEnrollmentAction(
   }
 
   const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
-  if (!tenant) return { ok: false, error: 'Kanzlei nicht gefunden.' };
-
-  const staffUser = await prismaOwner.staffUser.findFirst({
-    where: { tenantId: tenant.id, email: email.toLowerCase() },
-  });
-  // Anti-Enumeration: einheitliche Meldung (wie checkPasswordAction).
-  if (!staffUser || !staffUser.active) return { ok: false, error: 'Ungültige Daten.' };
-
-  if (passwordAuthenticationBlocked(staffUser)) {
-    return { ok: false, error: 'Ungültige Daten.' };
+  const candidate = tenant
+    ? await prismaOwner.staffUser.findFirst({
+        where: { tenantId: tenant.id, email: email.toLowerCase() },
+      })
+    : null;
+  // S-09: Anti-Enumeration wie checkPasswordAction — einheitliche Meldung und
+  // genau ein bcrypt-Vergleich, auch für Kanzlei und Konto, die es nicht gibt.
+  const staffUser = passwordLoginAccount(candidate);
+  if (staffUser) {
+    const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
+    if (!accountRl.ok) return { ok: false, error: 'Ungültige Daten.' };
   }
-  const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
-  if (!accountRl.ok) return { ok: false, error: 'Ungültige Daten.' };
 
-  const passwordOk = await compare(password, staffUser.passwordHash);
+  const passwordOk = await verifyStaffPassword(password, staffUser);
+  if (!tenant || !staffUser) return { ok: false, error: 'Ungültige Daten.' };
   if (!passwordOk) {
     await recordFailedPasswordAttempt(
       {

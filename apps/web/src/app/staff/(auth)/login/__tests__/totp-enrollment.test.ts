@@ -68,6 +68,7 @@ import {
   checkPasswordAction,
   confirmTotpEnrollmentAction,
 } from '../actions';
+import { DUMMY_PASSWORD_HASH } from '@/server/auth/staff-password';
 
 const NOW = new Date('2026-07-12T12:00:00.000Z');
 const STAFF_ID = '11111111-1111-4111-8111-111111111111';
@@ -211,7 +212,8 @@ describe('confirmTotpEnrollmentAction security gates', () => {
     );
 
     expect(result).toEqual({ ok: false, error: 'Ungültige Daten.' });
-    expect(m.compare).not.toHaveBeenCalled();
+    // S-09: ein Vergleich nur gegen den Dummy-Hash, nie gegen den Kontohash.
+    expect(m.compare).toHaveBeenCalledExactlyOnceWith('correct-password', DUMMY_PASSWORD_HASH);
     expect(m.transaction).not.toHaveBeenCalled();
   });
 
@@ -234,13 +236,14 @@ describe('confirmTotpEnrollmentAction security gates', () => {
 });
 
 describe('Hardware-only Passwort-Fallback', () => {
-  it('weist bereits den Passwort-Vorschritt generisch und vor bcrypt ab', async () => {
+  it('weist bereits den Passwort-Vorschritt generisch und nur gegen den Dummy-Hash ab', async () => {
     m.staffFindFirst.mockResolvedValue(staff({ hardwareOnlyEnabledAt: NOW }));
 
     const result = await checkPasswordAction('admin@example.test', 'correct-password');
 
     expect(result).toEqual({ ok: false, error: 'Ungültige Anmeldedaten.' });
-    expect(m.compare).not.toHaveBeenCalled();
+    // S-09: gleiche Rechenzeit wie ein falsches Passwort, aber kein Kontohash.
+    expect(m.compare).toHaveBeenCalledExactlyOnceWith('correct-password', DUMMY_PASSWORD_HASH);
     expect(m.resetFailedLogin).not.toHaveBeenCalled();
   });
 });

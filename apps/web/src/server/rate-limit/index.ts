@@ -230,10 +230,14 @@ export async function checkRateLimit(key: string, cfg: RateLimitConfig): Promise
  *    diesem Proxy erschöpft sie auf den Login-Pfaden also nicht.
  *  - Legitime Spitzen einer Kanzlei-Instanz liegen um Größenordnungen darunter
  *    (z. B. 100 Portal-Logins in 15 min ≈ 0,1/s).
- *  - Die Arbeit je Anfrage bleibt auch bei 10/s klein: ein bis zwei indizierte
- *    Lookups bzw. eine HMAC-Prüfung. bcrypt läuft nur für existierende Konten
- *    und ist pro Konto gedeckelt; Login-Mails haben eine eigene
- *    Versandobergrenze (requestMagicLink).
+ *  - Die Arbeit je Anfrage bleibt meist klein: ein bis zwei indizierte
+ *    Lookups bzw. eine HMAC-Prüfung; Login-Mails haben eine eigene
+ *    Versandobergrenze (requestMagicLink). Ausnahme ist der Staff-
+ *    Passwortschritt: Seit S-09 kostet dort jede Anfrage genau einen
+ *    bcrypt-Vergleich (Dummy-Hash für unbekannte oder unzulässige Konten),
+ *    damit die Antwortzeit kein Konto verrät. Ohne Client-IP bedeuten 10/s
+ *    dort spürbare CPU-Last; nur existierende Konten deckelt zusätzlich ihr
+ *    Passwortkontingent vor bcrypt.
  */
 export const STORM_CEILING_PER_SECOND = 10;
 

@@ -86,6 +86,7 @@ vi.mock('@/server/db/prisma-owner', () => ({
 
 import { checkPasswordAction } from '@/app/staff/(auth)/login/actions';
 import { staffSecondFactorAccountRateLimitKey } from '@/server/rate-limit';
+import { DUMMY_PASSWORD_HASH } from '../staff-password';
 
 const STAFF_ID = '11111111-1111-4111-8111-111111111111';
 const SECOND_FACTOR_KEY = `rl:${staffSecondFactorAccountRateLimitKey(STAFF_ID)}`;
@@ -242,7 +243,11 @@ describe('ACCESS-TENANT-RLS-001: account second-factor attempts survive password
     account.hardwareOnlyEnabledAt = NOW;
     await expect(login('123456')).resolves.toBeNull();
     await expect(login('RECOVERY23')).resolves.toBeNull();
-    expect(h.compare).not.toHaveBeenCalled();
+    // S-09: je Versuch genau ein Vergleich, aber nie gegen den Kontohash.
+    expect(h.compare.mock.calls.map(([, hash]) => hash)).toEqual([
+      DUMMY_PASSWORD_HASH,
+      DUMMY_PASSWORD_HASH,
+    ]);
     expect(counters.has(SECOND_FACTOR_KEY)).toBe(false);
   });
 });
