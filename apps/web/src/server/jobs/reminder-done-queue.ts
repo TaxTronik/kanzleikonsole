@@ -10,7 +10,11 @@
 // Die Queue kommt aus dem zentralen Web-BullMQ-Registry.
 // =============================================================================
 
-import { JOB_QUEUES, type ReminderDoneNotifyJob } from '@taxtronik/config/job-queues';
+import {
+  JOB_QUEUES,
+  REMINDER_DONE_NOTIFY_JOB_OPTIONS,
+  type ReminderDoneNotifyJob,
+} from '@taxtronik/config/job-queues';
 import { withTimeout } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
 import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
@@ -32,6 +36,9 @@ function jobIdFor(reminderId: string): string {
  * Plant die Benachrichtigung ein. Rückgabe `false`, wenn Redis nicht erreichbar
  * war — dann muss der Aufrufer sofort benachrichtigen, statt die Rückmeldung
  * still zu verlieren (die delegierende Person wartet darauf).
+ *
+ * S-06: In Redis landen nur IDs (Betreff und Namen liest der Worker beim
+ * Zustellen aus der Datenbank) mit Altersgrenzen für erledigte/gescheiterte Jobs.
  */
 export async function scheduleReminderDoneNotification(
   job: ReminderDoneNotifyJob,
@@ -51,14 +58,17 @@ export async function scheduleReminderDoneNotification(
         'reminder-done-queue: vorheriger Job nicht entfernt (läuft noch oder Redis langsam)',
       );
     });
+    // Explizit nur die IDs, auch wenn ein Aufrufer mehr Felder mitgibt.
+    const payload: ReminderDoneNotifyJob = {
+      tenantId: job.tenantId,
+      reminderId: job.reminderId,
+      staffId: job.staffId,
+    };
     await withTimeout(
-      queue.add('notify', job, {
+      queue.add('notify', payload, {
         jobId,
         delay: REMINDER_DONE_NOTIFY_DELAY_MS,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 30_000 },
-        removeOnComplete: 100,
-        removeOnFail: 200,
+        ...REMINDER_DONE_NOTIFY_JOB_OPTIONS,
       }),
       WEB_QUEUE_TIMEOUT_MS,
     );

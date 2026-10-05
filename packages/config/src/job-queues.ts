@@ -374,15 +374,41 @@ export type N8nDeliverJob =
   | { deliveryId: string; outboxId?: never }
   | { outboxId: string; deliveryId?: never };
 
-/** Delayed completion notification to the delegating staff member. */
+/**
+ * Delayed completion notification to the delegating staff member (`staffId`).
+ * S-06 follow-up: the job only carries ids. The worker loads subject, client
+ * and the name of the completing staff member from the reminder when it
+ * delivers, so neither the subject nor a name is kept in Redis (AOF on disk).
+ */
 export interface ReminderDoneNotifyJob {
   tenantId: string;
   reminderId: string;
   staffId: string;
+}
+
+/**
+ * Payload of jobs enqueued before the S-06 follow-up (subject and name in
+ * Redis). The worker still accepts it for queued jobs but reads the current
+ * values from the database; producers must not create it anymore.
+ */
+export interface LegacyReminderDoneNotifyJob extends ReminderDoneNotifyJob {
   clientId: string | null;
   subject: string;
   doneByName: string;
 }
+
+/**
+ * S-06 follow-up: job options of the delayed completion notification (the
+ * delay itself is the producer's undo window). A completed job is kept 24 h,
+ * a failed one 7 days for diagnosis; the former count caps (100/200) still
+ * bound the queue. `age` is in seconds.
+ */
+export const REMINDER_DONE_NOTIFY_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 30 * SECOND },
+  removeOnComplete: { age: DAY / SECOND, count: 100 },
+  removeOnFail: { age: (7 * DAY) / SECOND, count: 200 },
+} as const;
 
 /**
  * S-06: the job only references the analysis. The worker loads the facts from

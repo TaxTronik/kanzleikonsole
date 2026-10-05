@@ -278,7 +278,7 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
     await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
-      select: { ...REMINDER_ACCESS_SELECT, subject: true, doneAt: true },
+      select: { ...REMINDER_ACCESS_SELECT, doneAt: true },
     });
     if (!rem) throw new ActionError('Wiedervorlage nicht gefunden.');
     await assertReminderAccessTx(tx, session, rem);
@@ -303,22 +303,12 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
     });
 
     // Nur bei echter Delegation — wer seine eigene Notiz abhakt, schickt sich
-    // selbst keine Rueckmeldung.
+    // selbst keine Rueckmeldung. S-06: Der Job traegt nur IDs; Betreff und
+    // Namen liest der Worker beim Zustellen aus der Datenbank.
     if (rem.createdByStaff === staffId) return { clientId: rem.clientId, notify: null };
-    const me = await tx.staffUser.findUnique({
-      where: { id: staffId },
-      select: { fullName: true },
-    });
     return {
       clientId: rem.clientId,
-      notify: {
-        tenantId,
-        reminderId: parsed.data.id,
-        staffId: rem.createdByStaff,
-        clientId: rem.clientId,
-        subject: rem.subject,
-        doneByName: me?.fullName ?? 'Ein Mitarbeiter',
-      },
+      notify: { tenantId, reminderId: parsed.data.id, staffId: rem.createdByStaff },
     };
   });
 
@@ -331,7 +321,13 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
         await lockReminderTx(tx, geplant.tenantId, geplant.reminderId);
         const reminder = await tx.clientReminder.findFirst({
           where: { id: geplant.reminderId, tenantId: geplant.tenantId },
-          select: { doneAt: true, clientId: true, subject: true, archivedAt: true },
+          select: {
+            doneAt: true,
+            doneByStaff: true,
+            clientId: true,
+            subject: true,
+            archivedAt: true,
+          },
         });
         if (!reminder?.doneAt || reminder.archivedAt) return;
         if (reminder.clientId) {
@@ -343,12 +339,19 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
           );
           if (!allowed.has(geplant.staffId)) return;
         }
+        // Wie der Worker: Name der erledigenden Person aus der Datenbank.
+        const doneBy = reminder.doneByStaff
+          ? await tx.staffUser.findUnique({
+              where: { id: reminder.doneByStaff },
+              select: { fullName: true },
+            })
+          : null;
         await notify(tx, {
           tenantId: geplant.tenantId,
           staffId: geplant.staffId,
           kind: 'CLIENT_REMINDER_DONE',
           title: `Wiedervorlage erledigt: ${reminder.subject}`,
-          body: `${geplant.doneByName} hat die von dir delegierte Wiedervorlage abgeschlossen.`,
+          body: `${doneBy?.fullName ?? 'Ein Mitarbeiter'} hat die von dir delegierte Wiedervorlage abgeschlossen.`,
           href: reminder.clientId ? `/staff/clients/${reminder.clientId}` : '/staff/reminders',
           resourceType: 'client_reminder',
           resourceId: geplant.reminderId,

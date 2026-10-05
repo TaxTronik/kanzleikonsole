@@ -17,7 +17,7 @@ import { log } from './logger';
 // auseinander (backup-run fehlte zeitweise im Ready-Log). R-13: die Registry
 // leitet sich aus JOB_QUEUES ab; `.name` ist der Queue-Name.
 import { ALL_WORKERS } from './worker-registry';
-import { trimRiskAnalyseJobHistory } from './job-retention';
+import { trimReminderDoneJobHistory, trimRiskAnalyseJobHistory } from './job-retention';
 
 // Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s ins
 // plattformgerechte Temp-Verzeichnis; im Container bleibt das /tmp, lokal unter
@@ -62,6 +62,12 @@ async function main() {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
       'worker: risk-analyse-llm-Historie nicht bereinigt',
+    ),
+  );
+  await trimReminderDoneJobHistory().catch((err: unknown) =>
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'worker: reminder-done-notify-Historie nicht bereinigt',
     ),
   );
   log.info({ workers: ALL_WORKERS.map((w) => w.name) }, 'worker: ready');

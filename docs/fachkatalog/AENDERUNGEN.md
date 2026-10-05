@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-024
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+      - apps/worker/src/jobs/reminder-done-notify.ts
+    rule_ids:
+      - REMINDER-TICKET-001
+    reason: >-
+      Der verzögerte Auftrag „Wiedervorlage erledigt“ trägt in Redis nur noch
+      Tenant, Wiedervorlage und Mitarbeitenden; Betreff und Name lädt der Worker aus
+      der Datenbank. Erledigte Aufträge werden nach 24 Stunden, fehlgeschlagene
+      nach 7 Tagen entfernt, Altaufträge beim Worker-Start bereinigt und im alten
+      Format weiterhin verarbeitet. Empfänger, Zeitpunkt und Inhalt der
+      Benachrichtigung bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/reminder-done-notify.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-023
     date: '2026-10-05'
     paths:
@@ -1996,6 +2013,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-024` dokumentiert, dass Aufträge für erledigte
+  Wiedervorlagen nur Kennungen tragen und befristet gespeichert werden.
+  Empfänger und Inhalt bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-023` dokumentiert das Entfernen doppelter
   Fehler-Handler und protokollierte Queue-Entfernungen. Joblogik und Ergebnisse

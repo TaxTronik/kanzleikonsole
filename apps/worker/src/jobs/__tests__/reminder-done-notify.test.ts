@@ -7,11 +7,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // die Wiedervorlage zwischenzeitlich zurückgeholt, darf NICHTS rausgehen — auch
 // wenn der Job bereits gesperrt war und `remove` deshalb nicht mehr griff. Die
 // Datenbank ist die Wahrheit, nicht der Job.
+//
+// S-06 (Folgearbeit): Der Job trägt nur IDs; Betreff, Mandant und den Namen
+// der erledigenden Person liest der Worker beim Zustellen. Jobs der Vorversion
+// (mit Betreff/Namen) werden weiter verarbeitet, aber mit den DB-Werten.
 // =============================================================================
 
 const h = vi.hoisted(() => ({
   notify: vi.fn(),
   findFirst: vi.fn(),
+  staffFindFirst: vi.fn(),
   filterStaffAccessClientTx: vi.fn(),
   moduleEnabled: vi.fn(),
   lock: vi.fn(),
@@ -29,7 +34,11 @@ vi.mock('@taxtronik/db/staff-client-access', () => ({
 }));
 vi.mock('../../tenant-context', () => ({
   withWorkerTenantContext: (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
-    fn({ $queryRaw: h.lock, clientReminder: { findFirst: h.findFirst } }),
+    fn({
+      $queryRaw: h.lock,
+      clientReminder: { findFirst: h.findFirst },
+      staffUser: { findFirst: h.staffFindFirst },
+    }),
 }));
 vi.mock('../../module-gate', () => ({
   isWorkerTenantModuleEnabled: h.moduleEnabled,
@@ -38,14 +47,14 @@ vi.mock('../../module-gate', () => ({
 import { processors } from './mocks/bullmq';
 import '../reminder-done-notify';
 
-const JOB = {
+const JOB = { data: { tenantId: 'tenant-1', reminderId: 'rem-1', staffId: 'partner-1' } };
+/** Auftrag der Vorversion: Betreff und Name lagen in Redis. */
+const LEGACY_JOB = {
   data: {
-    tenantId: 'tenant-1',
-    reminderId: 'rem-1',
-    staffId: 'partner-1',
+    ...JOB.data,
     clientId: 'client-1',
-    subject: 'Risiko-Recherche: Bargeschäfte',
-    doneByName: 'Maria Mitarbeiterin',
+    subject: 'Alter Betreff aus Redis',
+    doneByName: 'Alter Name aus Redis',
   },
 };
 
@@ -55,6 +64,7 @@ beforeEach(() => {
   h.filterStaffAccessClientTx.mockImplementation(
     async (_tx: unknown, _tenantId: string, ids: readonly string[]) => new Set(ids),
   );
+  h.staffFindFirst.mockResolvedValue({ fullName: 'Maria Mitarbeiterin' });
 });
 
 describe('reminder-done-notify', () => {
@@ -88,15 +98,20 @@ describe('reminder-done-notify', () => {
     expect(h.notify).not.toHaveBeenCalled();
   });
 
-  it('stellt zu, wenn die Wiedervorlage noch erledigt ist', async () => {
+  it('stellt zu, wenn die Wiedervorlage noch erledigt ist (Betreff und Name aus der DB)', async () => {
     h.findFirst.mockResolvedValue({
       doneAt: new Date(),
+      doneByStaff: 'staff-done',
       clientId: 'client-current',
       subject: 'Aktueller Titel',
     });
 
     await processors.get('reminder-done-notify')!(JOB);
 
+    expect(h.staffFindFirst).toHaveBeenCalledWith({
+      where: { id: 'staff-done', tenantId: 'tenant-1' },
+      select: { fullName: true },
+    });
     expect(h.notify).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -105,8 +120,45 @@ describe('reminder-done-notify', () => {
         resourceId: 'rem-1',
         href: '/staff/clients/client-current',
         title: 'Wiedervorlage erledigt: Aktueller Titel',
+        body: 'Maria Mitarbeiterin hat die von dir delegierte Wiedervorlage abgeschlossen.',
       }),
     );
+  });
+
+  it('verarbeitet einen Auftrag der Vorversion mit den aktuellen DB-Werten', async () => {
+    h.findFirst.mockResolvedValue({
+      doneAt: new Date(),
+      doneByStaff: 'staff-done',
+      clientId: null,
+      subject: 'Aktueller Betreff',
+    });
+
+    await processors.get('reminder-done-notify')!(LEGACY_JOB);
+
+    const written = JSON.stringify(h.notify.mock.calls[0]![1]);
+    expect(written).toContain('Aktueller Betreff');
+    expect(written).toContain('Maria Mitarbeiterin');
+    expect(written).not.toContain('aus Redis');
+    expect(h.notify.mock.calls[0]![1]).toMatchObject({
+      staffId: 'partner-1',
+      href: '/staff/reminders',
+    });
+  });
+
+  it('nennt ohne bekannten Bearbeiter neutral „Ein Mitarbeiter"', async () => {
+    h.findFirst.mockResolvedValue({
+      doneAt: new Date(),
+      doneByStaff: null,
+      clientId: null,
+      subject: 'X',
+    });
+
+    await processors.get('reminder-done-notify')!(JOB);
+
+    expect(h.staffFindFirst).not.toHaveBeenCalled();
+    expect(h.notify.mock.calls[0]![1]).toMatchObject({
+      body: 'Ein Mitarbeiter hat die von dir delegierte Wiedervorlage abgeschlossen.',
+    });
   });
 
   it('verwirft einen gequeueten Empfaenger nach OPEN→RESTRICTED/Vertraulich-Umschaltung', async () => {

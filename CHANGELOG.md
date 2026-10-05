@@ -990,6 +990,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Der verzögerte Auftrag „Wiedervorlage erledigt“ legt in der Warteschlange
+  nur noch Kennungen statt Betreff und Namen ab; erledigte und fehlgeschlagene
+  Aufträge werden nach 24 Stunden beziehungsweise 7 Tagen entfernt
+  (`REMINDER-TICKET-001`, `FK-EXC-20261005-024`).
 - Alle Hintergrundbenachrichtigungen des Workers laufen über einen gemeinsamen
   Pfad mit Textbereinigung, auch die bisher unbereinigten Titel externer
   RSS-Feeds. Eine Kettenbruch-Meldung zu einer neuen Bruchstelle bricht den

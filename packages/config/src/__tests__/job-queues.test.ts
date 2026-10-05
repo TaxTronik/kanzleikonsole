@@ -5,6 +5,7 @@ import {
   JOB_QUEUE_KEYS,
   QUEUE_HEALTH,
   QUEUE_STATUS_HISTORY_RETENTION_SECONDS,
+  REMINDER_DONE_NOTIFY_JOB_OPTIONS,
   RISK_ANALYSE_LLM_JOB_OPTIONS,
   SCHEDULE_LOG_LABELS,
   scheduleLogLabel,
@@ -63,13 +64,10 @@ describe('shared BullMQ metadata', () => {
       tenantId: 'tenant-1',
       reminderId: 'reminder-1',
       staffId: 'staff-1',
-      clientId: null,
-      subject: 'Wiedervorlage',
-      doneByName: 'Erika Muster',
     } satisfies QueueJobDataByName[typeof JOB_QUEUES.reminderDoneNotify.name];
 
     expect(riskJob.analysisId).toBe('analysis-1');
-    expect(reminderJob.clientId).toBeNull();
+    expect(reminderJob.reminderId).toBe('reminder-1');
   });
 
   it('F-17 names an explicit time zone for every cron schedule', () => {
@@ -150,6 +148,21 @@ describe('shared BullMQ metadata', () => {
     expect(RISK_ANALYSE_LLM_JOB_OPTIONS).toEqual({
       attempts: 2,
       backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: { age: 24 * 60 * 60, count: 100 },
+      removeOnFail: { age: 7 * 24 * 60 * 60, count: 200 },
+    });
+  });
+
+  it('S-06 keeps reminder-done jobs to ids and bounds their history by age and count', () => {
+    const doneJob: QueueJobDataByName[typeof JOB_QUEUES.reminderDoneNotify.name] = {
+      tenantId: 'tenant-1',
+      reminderId: 'reminder-1',
+      staffId: 'staff-1',
+    };
+    expect(Object.keys(doneJob).sort()).toEqual(['reminderId', 'staffId', 'tenantId']);
+    expect(REMINDER_DONE_NOTIFY_JOB_OPTIONS).toEqual({
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 30_000 },
       removeOnComplete: { age: 24 * 60 * 60, count: 100 },
       removeOnFail: { age: 7 * 24 * 60 * 60, count: 200 },
     });

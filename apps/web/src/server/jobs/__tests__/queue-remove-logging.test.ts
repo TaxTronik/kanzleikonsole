@@ -49,9 +49,6 @@ describe('F-05: queue.remove-Fehler werden protokolliert', () => {
         tenantId: 'tenant-1',
         reminderId: 'reminder-1',
         staffId: 'staff-1',
-        clientId: 'client-1',
-        subject: 'Betreff',
-        doneByName: 'Erika',
       }),
     ).resolves.toBe(true);
 

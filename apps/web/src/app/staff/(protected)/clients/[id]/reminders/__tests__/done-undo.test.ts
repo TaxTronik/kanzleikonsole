@@ -120,9 +120,13 @@ describe('markReminderDoneAction', () => {
     expect(tx.clientReminder.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ doneByStaff: ICH }) }),
     );
-    expect(m.schedule).toHaveBeenCalledWith(
-      expect.objectContaining({ reminderId: REMINDER, staffId: DELEGIERT_VON }),
-    );
+    // S-06: nur IDs in den Job — Betreff und Namen liest der Worker aus der DB.
+    expect(m.schedule).toHaveBeenCalledWith({
+      tenantId: 'tenant',
+      reminderId: REMINDER,
+      staffId: DELEGIERT_VON,
+    });
+    expect(JSON.stringify(m.schedule.mock.calls)).not.toContain('Bargeschäfte');
     // Nichts geht sofort raus — sonst waere das Zurueckholen wertlos.
     expect(m.notify).not.toHaveBeenCalled();
   });
