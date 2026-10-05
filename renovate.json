@@ -1,0 +1,74 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Selbst gehostetes Renovate für Forgejo (.forgejo/workflows/renovate.yml).",
+  "extends": ["config:recommended", "docker:pinDigests", "helpers:pinGitHubActionDigestsToSemver"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 7am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 6,
+  "prHourlyLimit": 0,
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    {
+      "description": "pnpm-workspace.yaml verlangt minimumReleaseAge 7 Tage (minimumReleaseAgeStrict); jüngere Versionen könnte pnpm gar nicht installieren.",
+      "matchManagers": ["npm"],
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "npm: Minor- und Patch-Updates als ein wöchentlicher PR.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm minor/patch"
+    },
+    {
+      "description": "Forgejo-Actions: neue Commit-SHAs (mit Versionskommentar) gesammelt.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "Forgejo-Actions"
+    },
+    {
+      "description": "Digest-gepinnte Container-Images (Dockerfiles, Compose, CI-Services, Hilfs-Images) gesammelt.",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "Container-Images"
+    },
+    {
+      "description": "Major-Updates nur nach Freigabe im Dependency Dashboard (z. B. actions/upload-artifact v3: Forgejo-Artefakt-Protokoll prüfen).",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Node- und pnpm-Laufzeitpins nur nach Freigabe: .nvmrc muss HOST_NODE_VERSION samt SHA-256 in scripts/ops-lib.sh entsprechen, packageManager HOST_PNPM_VERSION und scripts/check-pnpm-supply-chain.sh.",
+      "matchManagers": ["nvm"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Siehe vorige Regel (pnpm-Pin in packageManager).",
+      "matchDepTypes": ["packageManager"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "engines.node bleibt die bewusst gewählte LTS-Spanne.",
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Digest-gepinnte Images außerhalb der nativ erkannten Stellen: docker run/create in Workflows, dockerfile_inline in Compose, Defaults in Shell-Skripten, .env.example und Betriebsdoku.",
+      "managerFilePatterns": [
+        "/^\\.forgejo/workflows/[^/]+\\.ya?ml$/",
+        "/^infra/compose/[^/]+\\.ya?ml$/",
+        "/^scripts/.+\\.sh$/",
+        "/^\\.env\\.example$/",
+        "/^docs/operations/[^/]+\\.md$/"
+      ],
+      "matchStrings": [
+        "(?:^|\\n)[ \\t]*(?:FROM[ \\t]+)?(?<depName>[a-z0-9][a-z0-9._/-]*):(?<currentValue>[A-Za-z0-9][A-Za-z0-9._-]*)@(?<currentDigest>sha256:[a-f0-9]{64})",
+        "_IMAGE(?:_DEFAULT)?[=:][ \\t]*[\"']?(?<depName>[a-z0-9][a-z0-9._/-]*):(?<currentValue>[A-Za-z0-9][A-Za-z0-9._-]*)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ]
+}

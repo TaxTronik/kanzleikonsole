@@ -34,6 +34,16 @@ aktueller Einarbeitungs- und Übergabepfad in
   (BullMQ), `apps/e2e` (Playwright), `packages/*` mit klaren Verträgen.
   Versionsstände aller Abhängigkeiten sind über `pnpm-lock.yaml` fixiert;
   Installation ausschließlich mit `--frozen-lockfile`.
+- **Abhängigkeits-Updates:** Ein selbst gehostetes Renovate
+  (`.forgejo/workflows/renovate.yml`, Regeln in `renovate.json`) öffnet
+  montags gruppierte Update-PRs für npm (frühestens 7 Tage nach
+  Veröffentlichung, wie `minimumReleaseAge` in `pnpm-workspace.yaml`),
+  digest-gepinnte Container-Images und SHA-gepinnte Actions. Major-Updates und
+  die Node-/pnpm-Laufzeitpins entstehen erst nach Freigabe im Dependency
+  Dashboard, weil sie mit `scripts/ops-lib.sh` und den Guards synchron bleiben
+  müssen. Voraussetzungen (Bot-Konto, Secret `RENOVATE_TOKEN`, Variable
+  `RENOVATE_ENABLED`, digest-gepinntes `RENOVATE_IMAGE`) stehen im Kopf des
+  Workflows. Jedes Update durchläuft dieselben CI-Gates wie andere Änderungen.
 - **Programmierstandards werden maschinell erzwungen**, nicht nur empfohlen:
   TypeScript strict (`tsconfig.base.json`), ESLint (`eslint.config.mjs`),
   Prettier (`.prettierrc`), EditorConfig. Verstöße brechen die CI.

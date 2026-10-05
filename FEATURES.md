@@ -1663,8 +1663,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Postgres-Service · Browser-E2E via Playwright mit Smoke-, Auth-, Action-,
   Compliance-, RBAC-, Concurrency- und Upload-Negativtests), `security.yml` (pnpm-audit +
   gitleaks-Secret-Scan, täglicher Cron), `build-images.yml` (Web-/Worker-
-  Image-Build, build-only); GitHub-Mirror läuft ohne Actions, `dependabot.yml`
-  liegt ebenfalls unter `.forgejo/`
+  Image-Build, build-only), `renovate.yml` (selbst gehostetes Renovate mit
+  `renovate.json`: npm-Mindestalter, Image-Digests, Action-SHAs);
+  GitHub-Mirror läuft ohne Actions
 - React-Grid-Layout v2 als einzige UI-Library außerhalb shadcn/ui-Stack
   (Dashboard-Widget-Grid mit Reflow)
 - Sortable-List-Komponente eigenständig (Pointer-Events, ~80 Zeilen)

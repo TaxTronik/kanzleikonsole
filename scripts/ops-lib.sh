@@ -38,7 +38,7 @@ DB_RESTORE_AUTHORIZATION="$ROOT/.taxtronik.database-restored"
 INSTALL_PENDING="$ROOT/.taxtronik.install-pending"
 UPDATE_HANDOFF="$ROOT/.taxtronik.update-handoff"
 AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
-ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 # Der Wert wird zusammen mit einem TaxTronik-Release getestet und angehoben.
 # `SIGNAL_IMAGE=auto` folgt genau diesem Pin; ein externer/nativer Dienst wird
 # dagegen niemals ueber diesen Pfad angefasst.
@@ -1096,11 +1096,12 @@ _n8n_config_encryption_key() {
   if [[ -n "${cid:-}" ]]; then
     image="$(docker inspect -f '{{.Config.Image}}' "$cid" 2>/dev/null || true)"
   fi
-  image="${image:-alpine:3.20}"
+  # Fallback und Zweitversuch nur mit dem digest-gepinnten Alpine-Helfer.
+  image="${image:-${TAXTRONIK_ALPINE_BACKUP_IMAGE:-$ALPINE_BACKUP_IMAGE_DEFAULT}}"
   docker run --rm --entrypoint node -v "$volume:/data:ro" "$image" -p \
     "const fs=require('fs'); const p='/data/config'; fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p,'utf8')).encryptionKey || '') : ''" \
     2>/dev/null || \
-  docker run --rm -v "$volume:/data:ro" alpine:3.20 sh -c \
+  docker run --rm -v "$volume:/data:ro" "${TAXTRONIK_ALPINE_BACKUP_IMAGE:-$ALPINE_BACKUP_IMAGE_DEFAULT}" sh -c \
     "test -f /data/config && sed -n 's/.*\"encryptionKey\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p' /data/config | head -n1" \
     2>/dev/null || true
 }

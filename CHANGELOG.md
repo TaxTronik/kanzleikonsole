@@ -1096,6 +1096,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Abhängigkeiten: Selbst gehostetes Renovate (`renovate.json`,
+  `.forgejo/workflows/renovate.yml`) ersetzt die wirkungslose
+  Dependabot-Konfiguration (npm mit 7 Tagen Mindestalter, Image-Digests,
+  Action-SHAs); aktiv erst mit Bot-Konto, Secret `RENOVATE_TOKEN` und Variable
+  `RENOVATE_ENABLED`. Das Alpine-Hilfsimage für Volume-Backups ist auf 3.24
+  digest-gepinnt (3.20 ohne Sicherheitsupdates) und wird nirgends mehr
+  ungepinnt verwendet (`FK-EXC-20261005-043`).
 - CI/Container: exakte Node-Version 24.19.0 in `.nvmrc` für alle Workflows;
   Web- und Worker-Image auf derselben digest-gepinnten Basis
   (`NODE_BASE_IMAGE`, Alpine 3.23), pnpm aus `packageManager`. CI und Images

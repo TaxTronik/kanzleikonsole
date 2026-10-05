@@ -8,8 +8,10 @@ on:
   schedule:
     # Taeglich statt woechentlich: Advisories erscheinen jederzeit, und ein
     # 7-Tage-Fenster war laenger als die Reaktionszeit, die wir uns geben
-    # wollen. Dependabot bleibt woechentlich — es liefert die Fixes, dieser
-    # Lauf liefert die Kenntnis.
+    # wollen. Die Update-PRs liefert das selbst gehostete Renovate
+    # (renovate.yml, montags; renovate.json), dieser Lauf liefert die Kenntnis.
+    # Ein hier gemeldeter Fix juenger als 7 Tage braucht die dokumentierte
+    # minimumReleaseAgeExclude-Ausnahme in pnpm-workspace.yaml.
     - cron: '17 3 * * *'
 
 permissions:
@@ -29,11 +31,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -60,7 +62,7 @@ jobs:
 
       - name: Dependency-audit evidence upload
         if: always()
-        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
         with:
           name: security-audit-prod
           retention-days: 90
@@ -74,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
@@ -97,7 +99,7 @@ jobs:
 
       - name: Secret-scan evidence upload
         if: always()
-        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
         with:
           name: security-gitleaks
           retention-days: 90

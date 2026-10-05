@@ -1,0 +1,78 @@
+# =============================================================================
+# Renovate — selbst gehostete Abhängigkeits-Updates für Forgejo.
+#
+# Ersetzt die frühere .forgejo/dependabot.yml, die keine Plattform ausgewertet
+# hat. Die Regeln stehen in renovate.json im Repository-Root: npm frühestens
+# 7 Tage nach Veröffentlichung (wie minimumReleaseAge in pnpm-workspace.yaml),
+# digest-gepinnte Container-Images und SHA-gepinnte Actions, gruppiert,
+# montags vor 7 Uhr (Europe/Berlin). Majors sowie Node-/pnpm-Laufzeitpins erst
+# nach Freigabe im Dependency Dashboard (Issue im Repository).
+#
+# Einmalige Einrichtung in Forgejo (Admin):
+#   1. Bot-Konto, z. B. `renovate-bot`, mit vollständigem Namen und E-Mail;
+#      Collaborator mit Schreibrecht auf dieses Repository.
+#   2. Personal Access Token dieses Kontos mit den Scopes repository (read and
+#      write), user (read), issue (read and write) und organization (read).
+#      Als Repository-Secret RENOVATE_TOKEN hinterlegen.
+#   3. Optional: Secret RENOVATE_GITHUB_COM_TOKEN (GitHub-Token ohne Scopes)
+#      gegen GitHub-API-Ratelimits bei Action-Tags und Changelogs.
+#   4. RENOVATE_IMAGE unten ist per @sha256-Digest gepinnt (Docker Hub,
+#      renovate/renovate, Manifest-Liste); der Lauf verweigert jedes
+#      ungepinnte Image. Renovate aktualisiert die Zeile selbst (Regex-Manager
+#      für *_IMAGE in renovate.json).
+#   5. Repository-Variable RENOVATE_ENABLED=true setzen. Ohne sie wird der Job
+#      übersprungen, statt ohne Bot-Konto rot zu laufen.
+# Manuell starten (workflow_dispatch) verarbeitet u. a. Freigaben aus dem
+# Dependency Dashboard sofort statt erst am nächsten Montag.
+# =============================================================================
+name: Renovate
+
+on:
+  schedule:
+    # Montags 03:23 UTC (04:23 MEZ / 05:23 MESZ) und damit im Renovate-Zeitfenster.
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    name: Renovate
+    if: vars.RENOVATE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RENOVATE_IMAGE: renovate/renovate:44.115.13@sha256:0c04185c9e7ea5284da22ea0b2a2c88dcd3687badd8feb6c71691659b380df9b
+    steps:
+      - name: Renovate-Image muss per Digest gepinnt sein
+        run: |
+          if ! printf '%s\n' "$RENOVATE_IMAGE" | grep -Eq '^[^[:space:]]+@sha256:[0-9a-f]{64}$'; then
+            echo "::error::RENOVATE_IMAGE ist nicht per @sha256-Digest gepinnt: $RENOVATE_IMAGE"
+            exit 1
+          fi
+
+      - name: Renovate ausführen
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          GITHUB_COM_TOKEN: ${{ secrets.RENOVATE_GITHUB_COM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RENOVATE_TOKEN" ]; then
+            echo "::error::Repository-Secret RENOVATE_TOKEN fehlt (siehe Kopf dieser Datei)."
+            exit 1
+          fi
+          docker run --rm --network host \
+            -e RENOVATE_PLATFORM=forgejo \
+            -e RENOVATE_ENDPOINT="${GITHUB_SERVER_URL%/}/api/v1" \
+            -e RENOVATE_REPOSITORIES="$GITHUB_REPOSITORY" \
+            -e RENOVATE_REQUIRE_CONFIG=required \
+            -e RENOVATE_ONBOARDING=false \
+            -e RENOVATE_TOKEN \
+            -e GITHUB_COM_TOKEN \
+            -e LOG_LEVEL=info \
+            "$RENOVATE_IMAGE"

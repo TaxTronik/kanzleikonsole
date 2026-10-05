@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-043
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - .forgejo/workflows/release.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Die von keiner Plattform gelesene .forgejo/dependabot.yml entfällt; ein
+      selbst gehostetes Renovate (renovate.json, Workflow renovate.yml) schlägt
+      npm-Updates frühestens nach 7 Tagen sowie neue Image-Digests und Action-SHAs
+      vor. In ci.yml und release.yml erhalten die SHA-gepinnten Actions nur ihren
+      Release-Tag als Kommentar; die Pins selbst, Release-Gates, Testnachweise,
+      RFC-3161-Anker und Prüfalarme bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - scripts/release/tests/check-release-gates.test.mjs
+      - scripts/tests/check-docker-bases-pinned.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-042
     date: '2026-10-05'
     paths:
@@ -2503,6 +2523,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-043` dokumentiert Renovate statt Dependabot
+  und kommentierte Action-Pins in den Workflows. Pins und Nachweise bleiben
+  unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-042` dokumentiert die parallelen CI-Jobs
   auf eigenen PostgreSQL-Ports und den zusammengelegten E2E-Job. Prüf- und
