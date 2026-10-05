@@ -21,9 +21,14 @@ describe('Quick-Anforderungsdialog', () => {
 
     expect(source).toContain("mode === 'quick' ? createQuickRequestAction : createRequestAction");
     expect(source).toContain('Mandant suchen');
-    expect(source).toContain('role="combobox"');
-    expect(source).toContain('searchRequestClientsAction(clientSearch)');
-    expect(source).toContain('Noch nicht auswählbar: GwG-Prüfung ausstehend');
+    // Gemeinsame Serversuche statt eigener Server-Action im Formular.
+    expect(source).toContain('<ClientCombobox');
+    expect(source).toContain('inactive="disabled"');
+    expect(source).toContain("filters={['notAnonymized']}");
+    expect(source).not.toContain('searchRequestClientsAction');
+    const combobox = read('components/ui/client-combobox.tsx');
+    expect(combobox).toContain('role="combobox"');
+    expect(combobox).toContain('Noch nicht auswählbar: GwG-Prüfung ausstehend');
     expect(source).toContain('name="clientId"');
     expect(source).toContain('name="requestId"');
     expect(source).toContain('name="title"');

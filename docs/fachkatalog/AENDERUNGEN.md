@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-016
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/new/form.tsx
+      - apps/web/src/server/rate-limit/index.ts
+    rule_ids:
+      - REQ-LIFECYCLE-001
+      - REQ-INTERNAL-COMMENT-001
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-SEARCH-SCOPE-001
+    reason: >-
+      Die Mandantenauswahl der Anfrageerfassung nutzt die neue gemeinsame
+      serverseitige Mandantensuche (GET /api/staff/clients/search) mit derselben
+      Sichtbarkeitsregel accessibleClientsWhereFor statt der bisherigen eigenen
+      Such-Action, die entfällt. Die Suche hat ein eigenes Rate-Limit je
+      Mitarbeitendem. Anlage, Prüfung, Statusübergänge und Kommentare von Anfragen
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/clients/__tests__/picker.test.ts
+      - apps/web/src/app/api/staff/clients/search/__tests__/route.test.ts
+      - apps/web/src/components/ui/__tests__/client-combobox.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-015
     date: '2026-10-04'
     paths:
@@ -1281,6 +1306,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-016` dokumentiert die gemeinsame
+  serverseitige Mandantensuche, die die eigene Such-Action der
+  Anfrageerfassung ersetzt. Sichtbarkeitsregel und Anfrageablauf bleiben
+  unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-015` dokumentiert die Rückgabe von Fehlern an
   das Formular für die übrigen Server-Actions und die Auswertung bisher

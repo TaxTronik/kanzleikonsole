@@ -110,6 +110,16 @@ export async function checkStaffSearchLimit(staffId: string): Promise<RateLimitR
 }
 
 /**
+ * Eigener Bucket für die Mandantenauswahl (ClientCombobox): eine einzelne,
+ * gedeckelte Abfrage je Request, aber auf vielen Formularen. 120/min trägt
+ * normales Tippen in mehreren Auswahlfeldern, ohne das Kontingent der
+ * globalen Suche zu verbrauchen, und bremst systematisches Abgrasen.
+ */
+export async function checkStaffClientPickerLimit(staffId: string): Promise<RateLimitResult> {
+  return checkRateLimit(`client-picker:${staffId}`, { max: 120, windowSec: 60 });
+}
+
+/**
  * Per-User-Limit für Export-Routen (CSV-Volltabellen, ZIP-Builds — teuer und
  * datenreich): 5 pro 10 min und Export-Art. Key pro Routen-Art (`kind`),
  * damit ein Mandanten-CSV nicht das Audit-Export-Kontingent verbraucht.

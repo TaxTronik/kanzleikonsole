@@ -74,7 +74,6 @@ import {
   createQuickRequestAction,
   createRequestAction,
   reopenRequestAction,
-  searchRequestClientsAction,
 } from '../actions';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -425,83 +424,6 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
 
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith(`/staff/requests/${REQUEST_ID}?reopenConflict=1`);
-  });
-});
-
-describe('Mandantensuche für Quick-Anforderungen', () => {
-  it('sucht serverseitig und liefert aktive wie GwG-ausstehende Mandanten mit Status', async () => {
-    const tx = makeTx();
-    tx.client.findMany.mockResolvedValue([
-      {
-        id: CLIENT_ID,
-        name: 'Aktive GmbH',
-        datevNo: '1001',
-        addisonNo: null,
-        allowActive: true,
-      },
-      {
-        id: '44444444-4444-4444-8444-444444444444',
-        name: 'Onboarding GbR',
-        datevNo: null,
-        addisonNo: null,
-        allowActive: false,
-      },
-    ]);
-    const accessWhere = {
-      responsibilities: { some: { staffId: 'staff-1' } },
-    };
-    mocks.accessibleClientsWhereFor.mockResolvedValue(accessWhere);
-    mocks.withTenantContext.mockImplementation(
-      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
-    );
-
-    const result = await searchRequestClientsAction('gmbh');
-
-    expect(result).toEqual({
-      ok: true,
-      clients: [
-        {
-          id: CLIENT_ID,
-          name: 'Aktive GmbH',
-          datevNo: '1001',
-          addisonNo: null,
-          allowActive: true,
-        },
-        {
-          id: '44444444-4444-4444-8444-444444444444',
-          name: 'Onboarding GbR',
-          datevNo: null,
-          addisonNo: null,
-          allowActive: false,
-        },
-      ],
-      limited: false,
-    });
-    expect(mocks.accessibleClientsWhereFor).toHaveBeenCalledWith(tx, expect.anything());
-    expect(tx.client.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          anonymizedAt: null,
-          AND: [accessWhere],
-          OR: [
-            { name: { contains: 'gmbh', mode: 'insensitive' } },
-            { datevNo: { contains: 'gmbh', mode: 'insensitive' } },
-            { addisonNo: { contains: 'gmbh', mode: 'insensitive' } },
-          ],
-        }),
-        orderBy: [{ allowActive: 'desc' }, { name: 'asc' }],
-        take: 21,
-        select: expect.objectContaining({ allowActive: true }),
-      }),
-    );
-  });
-
-  it('weist überlange Suchbegriffe vor Auth und Datenbankzugriff ab', async () => {
-    const result = await searchRequestClientsAction('x'.repeat(101));
-
-    expect(result).toEqual({ ok: false, error: 'Der Suchbegriff ist zu lang.' });
-    expect(mocks.staffActionGuard).not.toHaveBeenCalled();
-    expect(mocks.withTenantContext).not.toHaveBeenCalled();
   });
 });
 
