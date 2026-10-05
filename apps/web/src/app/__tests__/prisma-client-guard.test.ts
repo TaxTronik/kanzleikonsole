@@ -190,6 +190,8 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/__tests__/rls-current-tenant-helper.test.ts',
   // D-05: Owner liest nur Katalogdaten (pg_constraint, pg_index) für das FK-Index-Gate.
   'packages/db/src/__tests__/fk-index-gate.test.ts',
+  // D-06: Owner liest nur Katalogdaten (pg_index) gegen redundante Indizes.
+  'packages/db/src/__tests__/redundant-indexes.test.ts',
   // Session-Limits: eigene Clients mit und ohne Grenzen beweisen, dass nur der
   // App-Client statement_timeout und idle_in_transaction_session_timeout setzt.
   'packages/db/src/__tests__/app-session-limits.test.ts',

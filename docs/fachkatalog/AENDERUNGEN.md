@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-009
+    date: '2026-10-05'
+    paths:
+      - packages/db/prisma/migrations/20261005100500_drop_redundant_indexes/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - AUDIT-HASH-CHAIN-001
+      - TAX-CONTROL-STATUS-001
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Die Migration entfernt 18 B-Tree-Indizes, die jeweils vollständig durch einen
+      anderen Index mit denselben führenden Spalten gedeckt sind, darunter
+      document_version_document_id_idx und audit_seal_tenant_id_seal_date_idx.
+      Alle Unique-Constraints bleiben; der redundante, aber von der
+      GwG-Invariante 043 verlangte Index gwg_representative_gwg_check_id_idx bleibt.
+      Abfragen nutzen die deckenden Indizes; Daten, Regeln und Zugriffe bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/redundant-indexes.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-008
     date: '2026-10-05'
     paths:
@@ -1624,6 +1644,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-009` dokumentiert das Entfernen von 18
+  redundanten Indizes. Unique-Constraints, Daten und Regeln bleiben
+  unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-008` dokumentiert drei Fremdschlüssel-Indizes
   und die CI-Prüfung auf Fremdschlüssel ohne führenden Index. Regeln und

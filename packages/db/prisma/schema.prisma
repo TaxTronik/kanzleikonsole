@@ -681,7 +681,6 @@ model StaffUser {
 
   @@unique([tenantId, email])
   @@unique([tenantId, id])
-  @@index([tenantId])
   @@map("staff_user")
 }
 
@@ -873,7 +872,6 @@ model GwgIdDocument {
   // PostgreSQL erlaubt mehrere NULL-Werte: Ein konkreter Aktenbeleg kann je
   // Check aber nur genau einem Ausweissatz/Nachweis zugeordnet sein.
   @@unique([gwgCheckId, documentId])
-  @@index([gwgCheckId])
   @@index([gwgCheckId, documentSetId])
   @@index([gwgCheckId, supersededAt])
   @@index([documentId])
@@ -1499,7 +1497,6 @@ model BwaPosition {
   period   BwaPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
 
   @@unique([periodId, number])
-  @@index([periodId])
   @@map("bwa_position")
 }
 
@@ -1847,7 +1844,6 @@ model ClientTaxRegistration {
   elsterQueries ElsterKontoabfrage[]
 
   @@unique([tenantId, clientId, id])
-  @@index([tenantId, clientId])
   @@map("client_tax_registration")
 }
 
@@ -1954,7 +1950,6 @@ model Client {
 
   @@unique([tenantId, datevNo])
   @@unique([tenantId, id], map: "client_tenant_id_id_key")
-  @@index([tenantId])
   @@index([tenantId, onboardingCompletedAt], map: "client_tenant_onboarding_completed_idx")
   @@index([tenantId, priority], map: "client_tenant_priority_idx")
   // iter71: pg_trgm-GIN für die globale Suche (ILIKE '%q%' index-gestützt)
@@ -2162,7 +2157,6 @@ model ClientContact {
   portalInboxReads              PortalInboxRead[]
 
   @@unique([tenantId, clientId, email])
-  @@index([tenantId, clientId])
   @@index([tenantId, email], map: "client_contact_tenant_email_idx")
   @@map("client_contact")
 }
@@ -2387,7 +2381,6 @@ model DocumentVersion {
   assistanceExternalRevisions ClientAssistanceRevision[]   @relation("assistance_revision_external")
 
   @@unique([documentId, versionNo])
-  @@index([documentId])
   @@index([storageBucket, storageKey, storageVersionId], map: "document_version_storage_identity_idx")
   @@map("document_version")
 }
@@ -2851,7 +2844,6 @@ model AuditSeal {
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction)
 
   @@unique([tenantId, sealDate])
-  @@index([tenantId, sealDate])
   @@map("audit_seal")
 }
 
@@ -2881,7 +2873,6 @@ model TaxScheduleConfig {
   tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tax_schedule_config_tenant_fkey")
 
   @@unique([tenantId, clientId, kind])
-  @@index([tenantId, clientId])
   @@map("tax_schedule_config")
 }
 
@@ -2986,7 +2977,6 @@ model TaxFiling {
   notices          TaxNotice[]   @relation("FilingNotices")
 
   @@unique([tenantId, clientId, kind, period], map: "tax_filing_tenant_client_kind_period_key")
-  @@index([tenantId, clientId], map: "tax_filing_tenant_client_idx")
   @@index([tenantId, documentId])
   @@map("tax_filing")
 }
@@ -3125,7 +3115,6 @@ model TaxNotice {
   // Einspruchsfrist aus — mehrere Bescheide müssen erfassbar sein (1:n
   // Filing→Notices). Nicht-uniquer Index bleibt für den Lesepfad erhalten.
   @@index([tenantId, clientId, kind, period])
-  @@index([tenantId, clientId])
   @@index([tenantId, status, appealDeadline])
   @@index([tenantId, documentId])
   // D-05: Bescheide einer Erklärung (Relation) und SET NULL beim Löschen.
@@ -3153,7 +3142,6 @@ model DeadlineDailyReview {
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "deadline_daily_review_tenant_fk")
 
   @@unique([tenantId, reviewDate], map: "deadline_daily_review_tenant_date_key")
-  @@index([tenantId, reviewDate(sort: Desc)], map: "deadline_daily_review_tenant_date_idx")
   @@map("deadline_daily_review")
 }
 
@@ -3245,7 +3233,6 @@ model StaffSkill {
   workflowTemplateDefaults WorkflowTemplate[]     @relation("WorkflowTemplateDefaultSkill")
 
   @@unique([tenantId, slug])
-  @@index([tenantId])
   @@map("staff_skill")
 }
 
@@ -3258,7 +3245,6 @@ model StaffSkillAssignment {
   staff     StaffUser  @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "staff_skill_assignment_staff_fkey")
 
   @@unique([staffId, skillId])
-  @@index([staffId])
   @@index([skillId])
   @@map("staff_skill_assignment")
 }
@@ -3279,7 +3265,6 @@ model WorkflowTemplate {
   tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_template_tenant_fkey")
 
   @@unique([tenantId, name])
-  @@index([tenantId])
   @@map("workflow_template")
 }
 
@@ -3300,7 +3285,6 @@ model WorkflowStep {
   template       WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "workflow_step_template_fkey")
 
   @@unique([templateId, position])
-  @@index([templateId])
   @@index([skillId])
   @@map("workflow_step")
 }
@@ -3709,7 +3693,6 @@ model FormTemplate {
   requestTemplates RequestTemplate[]
 
   @@unique([tenantId, name])
-  @@index([tenantId])
   @@map("form_template")
 }
 
@@ -3730,7 +3713,6 @@ model FormField {
 
   @@unique([templateId, position])
   @@unique([templateId, key])
-  @@index([templateId])
   @@map("form_field")
 }
 

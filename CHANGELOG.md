@@ -220,6 +220,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** 18 vollständig durch andere Indizes gedeckte Indizes entfernt;
+  das senkt die Schreiblast, vor allem bei Dokumentversionen. Alle
+  Unique-Constraints bleiben (`FK-EXC-20261005-009`).
 - **[Scope]** Indizes für `time_entry.invoice_id`,
   `workflow_dependency.successor_item_id` und `tax_notice.filing_id`
   beschleunigen Storno, Workflow-Bereitschaft und Bescheidzuordnung
