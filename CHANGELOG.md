@@ -502,6 +502,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Nicht weitergeleitete n8n-Übergaben aus Workflows (Ereignis nicht
+  abonniert, n8n aus, Route inaktiv) werden abschließend verbucht statt
+  minütlich ohne Grenze wiederholt; ab 100 solcher Zeilen blieben echte
+  Schreibfehler bisher liegen. Schreibfehler werden jetzt mit Backoff
+  nachgezogen (`WORKFLOW-LIFECYCLE-001`, `FK-EXC-20261005-017`).
 - GwG- und Vollmachts-Ablaufwarnungen gehen nur noch an aktive Mitarbeitende
   mit aktuellem Mandantenzugriff; ist niemand mehr zuständig, an aktive
   Admins und Partner. Bisher erreichten die Vorwarnungen nach einem

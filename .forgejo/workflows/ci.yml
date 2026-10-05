@@ -287,6 +287,16 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/evidence exec vitest run src/__tests__/verify-checkpoint-db.test.ts src/__tests__/anchor-schedule-db.test.ts 2>&1 | tee testbericht-evidence-db.log
 
+      # WORKFLOW-LIFECYCLE-001: Reconciler der Worker-Jobs gegen echtes
+      # PostgreSQL (F-11: endgültig verbuchte n8n-Handoffs verdrängen echte
+      # Fehlerfälle nicht). Nur externe Übergaben sind Attrappen; eigener Tenant.
+      - name: Worker jobs against PostgreSQL
+        env:
+          WORKER_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/worker exec vitest run src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts 2>&1 | tee testbericht-worker-db.log
+
       # service-db.test.ts ist Nachweis für MANDATE-STRUCTURE-001,
       # GWG-BENEFICIAL-OWNERS-001, GWG-RISK-REVIEW-001 und
       # GWG-RETENTION-DESTRUCTION-001. Die Suite verlangt eine ausdrücklich
@@ -334,6 +344,7 @@ jobs:
             testbericht-settings-atomicity.log
             testbericht-invoice-concurrency.log
             testbericht-evidence-db.log
+            testbericht-worker-db.log
             testbericht-mandate-services.log
           if-no-files-found: ignore
 

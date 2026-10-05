@@ -1,8 +1,15 @@
+// Fachkatalog: WORKFLOW-LIFECYCLE-001
+// F-11: SKIPPED/UNROUTED/INVALID_EVENT werden endgültig verbucht statt jede
+// Minute erneut versucht; WRITE_FAILED bleibt mit begrenztem Abstand offen;
+// ein nach Admin-Replay nicht mehr UNROUTED-Ereignis wird wieder aufgenommen.
+// Die Abfragesemantik mit >100 verworfenen Zeilen belegt
+// workflow-n8n-dispatch-db.test.ts gegen PostgreSQL.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   findMany: vi.fn(),
   updateMany: vi.fn(),
+  queryRaw: vi.fn(),
   dispatchUpdateMany: vi.fn(),
   itemUpdateMany: vi.fn(),
   withWorkerTenantContext: vi.fn(),
@@ -16,6 +23,7 @@ vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({
   prismaOwner: {
     workflowN8nDispatch: { findMany: h.findMany, updateMany: h.updateMany },
+    $queryRaw: h.queryRaw,
   },
 }));
 vi.mock('../../logger', () => ({ log: h.log }));
@@ -30,7 +38,7 @@ vi.mock('@taxtronik/evidence', () => ({
   LocalTimestampAdapter: class {},
 }));
 
-import { runWorkflowN8nDispatch } from '../workflow-n8n-dispatch';
+import { runWorkflowN8nDispatch, writeFailedRetryDelayMs } from '../workflow-n8n-dispatch';
 
 const NOW = new Date('2026-08-23T12:00:00.000Z');
 const CANDIDATE = {
@@ -40,13 +48,17 @@ const CANDIDATE = {
   actorStaffId: 'staff-1',
   event: 'workflow.step.email.sent',
   payload: { itemId: 'item-1' },
+  attemptCount: 0,
   item: { kind: 'CLIENT_EMAIL' },
 };
 
 describe('workflow n8n dispatch reconciliation', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
     h.findMany.mockResolvedValue([]);
+    h.queryRaw.mockResolvedValue([]);
     h.updateMany.mockResolvedValue({ count: 1 });
     h.dispatchUpdateMany.mockResolvedValue({ count: 1 });
     h.itemUpdateMany.mockResolvedValue({ count: 1 });
@@ -61,13 +73,14 @@ describe('workflow n8n dispatch reconciliation', () => {
     h.emit.mockResolvedValue({ eventId: 'outbox-1', status: 'PENDING', deliveryCount: 1 });
   });
 
-  it('scannt CLIENT_EMAIL erst nach doneAt und andere Kinds sofort', async () => {
+  it('scannt nur fällige, nicht endgültig verbuchte Zeilen; CLIENT_EMAIL erst nach doneAt', async () => {
     await runWorkflowN8nDispatch(NOW);
 
     expect(h.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           enqueuedAt: null,
+          settledAt: null,
           AND: [
             {
               OR: [
@@ -75,6 +88,7 @@ describe('workflow n8n dispatch reconciliation', () => {
                 { claimedAt: { lte: new Date('2026-08-23T11:55:00.000Z') } },
               ],
             },
+            { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: NOW } }] },
             {
               item: {
                 is: {
@@ -84,12 +98,14 @@ describe('workflow n8n dispatch reconciliation', () => {
             },
           ],
         },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 100,
       }),
     );
   });
 
-  it('lässt WRITE_FAILED pending und retrybar', async () => {
-    h.findMany.mockResolvedValue([CANDIDATE]);
+  it('WRITE_FAILED bleibt offen und wird mit wachsendem Abstand erneut versucht', async () => {
+    h.findMany.mockResolvedValue([{ ...CANDIDATE, attemptCount: 2 }]);
     h.emit.mockResolvedValue({
       eventId: null,
       status: 'WRITE_FAILED',
@@ -100,21 +116,32 @@ describe('workflow n8n dispatch reconciliation', () => {
     await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
       claimed: 1,
       enqueued: 0,
+      settled: 0,
       failed: 1,
     });
-    expect(h.updateMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        data: {
-          claimedAt: null,
-          attemptCount: { increment: 1 },
-          lastError: 'database unavailable',
-        },
-      }),
-    );
+    expect(h.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'dispatch-1', enqueuedAt: null, claimedAt: NOW },
+      data: {
+        claimedAt: null,
+        attemptCount: { increment: 1 },
+        lastError: 'database unavailable',
+        // dritter Versuch → 4 Minuten
+        nextAttemptAt: new Date(NOW.getTime() + 4 * 60_000),
+        settledStatus: null,
+        settledAt: null,
+      },
+    });
+  });
+
+  it('begrenzt den Abstand nach Schreibfehlern auf eine Stunde', () => {
+    expect([1, 2, 3, 6, 7, 50].map(writeFailedRetryDelayMs)).toEqual([
+      60_000, 120_000, 240_000, 1_920_000, 3_600_000, 3_600_000,
+    ]);
+    expect(writeFailedRetryDelayMs(0)).toBe(60_000);
   });
 
   it.each(['UNROUTED', 'SKIPPED'] as const)(
-    'lässt N8N_TRIGGER bei %s pending und schließt das Item nicht ab',
+    'verbucht N8N_TRIGGER bei %s endgültig und schließt das Item nicht ab',
     async (status) => {
       h.findMany.mockResolvedValue([{ ...CANDIDATE, item: { kind: 'N8N_TRIGGER' } }]);
       h.emit.mockResolvedValue({
@@ -127,18 +154,41 @@ describe('workflow n8n dispatch reconciliation', () => {
       await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
         claimed: 1,
         enqueued: 0,
-        failed: 1,
+        settled: 1,
+        failed: 0,
       });
-      expect(h.updateMany).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ claimedAt: null, lastError: 'Keine zustellbare Route' }),
-        }),
-      );
+      expect(h.updateMany).toHaveBeenLastCalledWith({
+        where: { id: 'dispatch-1', enqueuedAt: null, claimedAt: NOW },
+        data: {
+          claimedAt: null,
+          attemptCount: { increment: 1 },
+          lastError: 'Keine zustellbare Route',
+          nextAttemptAt: null,
+          settledStatus: status,
+          settledAt: NOW,
+          outboxId: 'outbox-1',
+        },
+      });
       expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
       expect(h.itemUpdateMany).not.toHaveBeenCalled();
       expect(h.evidenceRecord).not.toHaveBeenCalled();
     },
   );
+
+  it('verbucht ein unzulässiges Event endgültig ohne Outbox-Bezug', async () => {
+    h.findMany.mockResolvedValue([CANDIDATE]);
+    h.emit.mockResolvedValue({
+      eventId: null,
+      status: 'INVALID_EVENT',
+      deliveryCount: 0,
+      error: "Event 'x' ist nicht freigegeben",
+    });
+
+    await expect(runWorkflowN8nDispatch(NOW)).resolves.toMatchObject({ settled: 1, failed: 0 });
+    const data = h.updateMany.mock.calls.at(-1)![0].data as Record<string, unknown>;
+    expect(data).toMatchObject({ settledStatus: 'INVALID_EVENT', settledAt: NOW });
+    expect(data).not.toHaveProperty('outboxId');
+  });
 
   it('behandelt einen deduplizierten Outbox-Eintrag als erfolgreichen Handoff', async () => {
     h.findMany.mockResolvedValue([CANDIDATE]);
@@ -151,7 +201,17 @@ describe('workflow n8n dispatch reconciliation', () => {
     await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
       claimed: 1,
       enqueued: 1,
+      settled: 0,
       failed: 0,
+    });
+    expect(h.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'dispatch-1',
+        enqueuedAt: null,
+        OR: [{ claimedAt: null }, { claimedAt: { lte: new Date('2026-08-23T11:55:00.000Z') } }],
+        settledAt: null,
+      },
+      data: { claimedAt: NOW },
     });
     expect(h.emit).toHaveBeenCalledWith(CANDIDATE.event, CANDIDATE.payload, {
       tenantId: 'tenant-1',
@@ -162,6 +222,9 @@ describe('workflow n8n dispatch reconciliation', () => {
         data: expect.objectContaining({
           enqueuedAt: expect.any(Date),
           outboxId: 'outbox-existing',
+          nextAttemptAt: null,
+          settledStatus: null,
+          settledAt: null,
         }),
       }),
     );
@@ -185,6 +248,7 @@ describe('workflow n8n dispatch reconciliation', () => {
       await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
         claimed: 1,
         enqueued: 1,
+        settled: 0,
         failed: 0,
       });
 
@@ -220,8 +284,51 @@ describe('workflow n8n dispatch reconciliation', () => {
     await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
       claimed: 1,
       enqueued: 1,
+      settled: 0,
       failed: 0,
     });
     expect(h.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('nimmt UNROUTED nach Admin-Replay wieder auf und schließt den Schritt ab', async () => {
+    h.queryRaw.mockResolvedValue([{ id: 'dispatch-1' }]);
+    h.findMany
+      .mockResolvedValueOnce([]) // fällige Zeilen
+      .mockResolvedValueOnce([{ ...CANDIDATE, item: { kind: 'N8N_TRIGGER' } }]);
+    h.emit.mockResolvedValue({ eventId: 'outbox-1', status: 'DUPLICATE', deliveryCount: 1 });
+
+    await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
+      claimed: 1,
+      enqueued: 1,
+      settled: 0,
+      failed: 0,
+    });
+    expect(h.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: { in: ['dispatch-1'] } } }),
+    );
+    // Der Claim verlangt weiterhin den UNROUTED-Endzustand.
+    expect(h.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'dispatch-1',
+        enqueuedAt: null,
+        OR: [{ claimedAt: null }, { claimedAt: { lte: new Date('2026-08-23T11:55:00.000Z') } }],
+        settledStatus: 'UNROUTED',
+      },
+      data: { claimedAt: NOW },
+    });
+    expect(h.itemUpdateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('zählt eine von einem anderen Lauf gehaltene Zeile nicht', async () => {
+    h.findMany.mockResolvedValue([CANDIDATE]);
+    h.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(runWorkflowN8nDispatch(NOW)).resolves.toEqual({
+      claimed: 0,
+      enqueued: 0,
+      settled: 0,
+      failed: 0,
+    });
+    expect(h.emit).not.toHaveBeenCalled();
   });
 });

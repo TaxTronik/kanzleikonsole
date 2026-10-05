@@ -3417,25 +3417,33 @@ model WorkflowEmailRecipient {
 /// der fachliche Schritteffekt angelegt und durch App oder Worker mit einem
 /// stabilen n8n-Outbox-Dedupe-Key verarbeitet.
 model WorkflowN8nDispatch {
-  id           String       @id(map: "wf_n8n_dispatch_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  itemId       String       @unique(map: "wf_n8n_dispatch_item_uq") @map("item_id") @db.Uuid
-  tenantId     String       @map("tenant_id") @db.Uuid
+  id            String       @id(map: "wf_n8n_dispatch_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId        String       @unique(map: "wf_n8n_dispatch_item_uq") @map("item_id") @db.Uuid
+  tenantId      String       @map("tenant_id") @db.Uuid
   /// Staff-Akteur der ursprünglichen, dauerhaft gespeicherten Ausführungsabsicht.
   /// Bewusst ohne FK: Audit-/Recovery-Zuordnung muss ausgeschiedene Nutzer überleben.
-  actorStaffId String       @map("actor_staff_id") @db.Uuid
-  event        String
-  payload      Json
-  claimedAt    DateTime?    @map("claimed_at") @db.Timestamptz(6)
-  enqueuedAt   DateTime?    @map("enqueued_at") @db.Timestamptz(6)
-  outboxId     String?      @map("outbox_id") @db.Uuid
-  attemptCount Int          @default(0) @map("attempt_count")
-  lastError    String?      @map("last_error")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  item         WorkflowItem @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "wf_n8n_dispatch_item_fk")
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "wf_n8n_dispatch_tenant_fk")
+  actorStaffId  String       @map("actor_staff_id") @db.Uuid
+  event         String
+  payload       Json
+  claimedAt     DateTime?    @map("claimed_at") @db.Timestamptz(6)
+  enqueuedAt    DateTime?    @map("enqueued_at") @db.Timestamptz(6)
+  outboxId      String?      @map("outbox_id") @db.Uuid
+  attemptCount  Int          @default(0) @map("attempt_count")
+  lastError     String?      @map("last_error")
+  /// F-11: frühester nächster Versuch nach einem technischen Fehler (WRITE_FAILED).
+  nextAttemptAt DateTime?    @map("next_attempt_at") @db.Timestamptz(6)
+  /// F-11: endgültiger Handoff-Ausgang ohne Zustellung (SKIPPED, UNROUTED,
+  /// INVALID_EVENT; CHECK in der Migration). Kein automatischer Neuversuch,
+  /// UNROUTED nur nach einem Admin-Replay des Outbox-Ereignisses.
+  settledStatus String?      @map("settled_status")
+  settledAt     DateTime?    @map("settled_at") @db.Timestamptz(6)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  item          WorkflowItem @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "wf_n8n_dispatch_item_fk")
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "wf_n8n_dispatch_tenant_fk")
 
-  @@index([enqueuedAt, claimedAt, createdAt], map: "wf_n8n_dispatch_pending_idx")
+  // Die Reconciler-Indizes sind Teilindizes (wf_n8n_dispatch_due_idx,
+  // wf_n8n_dispatch_unrouted_idx) und stehen nur in der Migration 20261005110000.
   @@map("workflow_n8n_dispatch")
 }
 

@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-017
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - packages/db/prisma/migrations/20261005110000_workflow_n8n_dispatch_settlement/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - WORKFLOW-LIFECYCLE-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Workflow-Übergaben an n8n, die nicht abonniert sind, bei abgeschaltetem n8n
+      anfallen oder keine aktive Route haben (SKIPPED, UNROUTED, INVALID_EVENT),
+      werden mit settled_status und settled_at abschließend verbucht statt
+      minütlich erneut geholt; UNROUTED öffnet erst ein Admin-Replay wieder.
+      Echte Schreibfehler werden mit Backoff von einer Minute bis einer Stunde
+      wiederholt und auch bei vielen verbuchten Einträgen nachgezogen. Der
+      DB-CI-Job führt die neuen Worker-DB-Tests aus. Workflow-Status und
+      Ereignisinhalte bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/workflow-n8n-dispatch.test.ts
+      - apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts
+      - apps/worker/src/__tests__/worker-db-ci.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-016
     date: '2026-10-05'
     paths:
@@ -1801,6 +1825,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-017` dokumentiert das abschließende Verbuchen
+  nicht weitergeleiteter n8n-Workflow-Übergaben. Workflow-Status und
+  Ereignisinhalte bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-016` dokumentiert, dass Ablaufwarnungen nur an
   aktive, zugriffsberechtigte Zuständige und sonst an Admins und Partner gehen.
