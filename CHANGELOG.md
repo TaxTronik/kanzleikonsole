@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- CI: DB-, Restore-, Upgrade- und E2E-Job laufen parallel nach dem
+  Quality-Job auf eigenen PostgreSQL-Ports (kritischer Pfad 60 statt 140
+  Minuten Timeout); der separate E2E-Smoke-Job ist in `e2e-paranoid`
+  aufgegangen, das gemeinsame Job-Setup steht in `scripts/ci/setup.sh`
+  (`ASSURANCE-RELEASE-EVIDENCE-001`, `FK-EXC-20261005-042`).
 - Build: `pnpm typecheck` und `pnpm test` prüfen die Pakettypen nicht mehr
   doppelt (15 statt 27 Turbo-Aufgaben); die Root-`.env` invalidiert im
   Turbo-Cache nur noch Web-Build und DB-Tests.

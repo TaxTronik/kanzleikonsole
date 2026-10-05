@@ -23,7 +23,7 @@ Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
    und dass der Commit Bestandteil von `main` ist.
 2. Ruft im selben Release-DAG die vollständigen Workflows `ci.yml` und
    `security.yml` auf genau diesem Tag-Commit auf. Damit sind Quality, DB/RLS,
-   Backup→Restore, Upgrade-Pfad ab dem vorherigen Tag, Smoke- und Paranoid-E2E,
+   Backup→Restore, Upgrade-Pfad ab dem vorherigen Tag, die vollständige E2E-Suite,
    KoSIT-XRechnung, Deploy-Readiness, Dependency-Audit und Gitleaks zwingende
    Promotion-Gates.
 3. Baut erst danach `web` + `worker` mit `APP_VERSION=0.2.1` und dem Commit-SHA als

@@ -30,6 +30,57 @@ function topLevelBlock(workflow, name) {
   return workflow.slice(start, nextBlock ? start + match[0].length + nextBlock.index : undefined);
 }
 
+function indentedSection(block, key) {
+  const match = new RegExp(`^ {4}${key}:\\s*$`, 'm').exec(block);
+  if (!match) return '';
+  const rest = block.slice(match.index + match[0].length);
+  const end = /^ {4}\S/m.exec(rest);
+  return end ? rest.slice(0, end.index) : rest;
+}
+
+function serviceHostPorts(block) {
+  return [
+    ...indentedSection(block, 'services').matchAll(/^\s+-\s*['"]?(\d+):(\d+)['"]?\s*$/gm),
+  ].map((match) => ({ host: match[1], container: match[2] }));
+}
+
+// Forgejo startet Services eines wiederverwendeten Workflows im Host-Netz. Die
+// servicebasierten Jobs laufen parallel nach quality und brauchen deshalb
+// eindeutige Host-Ports. PostgreSQL hoert per PGPORT genau auf dem Port, den
+// Mapping, Job-env und DATABASE_URL des Jobs verwenden.
+const CI_SERVICE_JOBS = ['db', 'restore', 'upgrade-path', 'e2e-paranoid'];
+
+function requireIsolatedServicePorts(ci, jobs) {
+  const owners = new Map();
+  for (const job of jobs) {
+    for (const { host } of serviceHostPorts(jobBlock(ci, job))) {
+      invariant(
+        !owners.has(host),
+        `ci.yml: Host-Port ${host} wird von ${owners.get(host)} und ${job} belegt; parallele Jobs kollidieren im Host-Netz`,
+      );
+      owners.set(host, job);
+    }
+  }
+  for (const job of CI_SERVICE_JOBS) {
+    const block = jobBlock(ci, job);
+    invariant(
+      /^ {4}needs: (?:quality|\[[^\]\n]*\bquality\b[^\]\n]*\])\s*$/m.test(block),
+      `ci.yml: ${job} muss quality benoetigen`,
+    );
+    const port = /^\s+PGPORT: '?(\d+)'?\s*$/m.exec(indentedSection(block, 'services'))?.[1];
+    const env = indentedSection(block, 'env');
+    invariant(
+      port !== undefined &&
+        serviceHostPorts(block).some(
+          ({ host, container }) => host === port && container === port,
+        ) &&
+        new RegExp(`^ {6}PGPORT: '?${port}'?\\s*$`, 'm').test(env) &&
+        new RegExp(`^ {6}DATABASE_URL: \\S+@localhost:${port}/`, 'm').test(env),
+      `ci.yml: ${job} muss PostgreSQL per PGPORT auf einem eigenen Host-Port betreiben und PGPORT/DATABASE_URL im Job-env darauf ausrichten`,
+    );
+  }
+}
+
 function requireWorkflowCall(workflow, name) {
   const onBlock = /^on:\s*$([\s\S]*?)(?=^[A-Za-z][A-Za-z0-9_-]*:\s*$)/m.exec(workflow)?.[1] ?? '';
   invariant(/^ {2}workflow_call:\s*$/m.test(onBlock), `${name}: on.workflow_call fehlt`);
@@ -128,31 +179,17 @@ export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
     /grep -vx "\$CURRENT_TAG"/.test(ci),
     'ci.yml: Upgrade-Pfad schließt den aktuellen Release-Tag nicht aus',
   );
-  for (const job of [
+  const ciJobs = [
     'quality',
     'db',
     'restore',
     'upgrade-path',
-    'e2e-smoke',
     'e2e-paranoid',
     'e-rechnung',
     'deploy-readiness',
-  ]) {
-    jobBlock(ci, job);
-  }
-  const db = jobBlock(ci, 'db');
-  const restore = jobBlock(ci, 'restore');
-  const upgradePath = jobBlock(ci, 'upgrade-path');
-  const e2eSmoke = jobBlock(ci, 'e2e-smoke');
-  const e2eParanoid = jobBlock(ci, 'e2e-paranoid');
-  invariant(
-    /needs: quality/.test(db) &&
-      /needs: db/.test(restore) &&
-      /needs: restore/.test(upgradePath) &&
-      /needs: upgrade-path/.test(e2eSmoke) &&
-      /needs: e2e-smoke/.test(e2eParanoid),
-    'ci.yml: servicebasierte Jobs muessen fuer Forgejo-Host-Netz-Ports serialisiert bleiben',
-  );
+  ];
+  for (const job of ciJobs) jobBlock(ci, job);
+  requireIsolatedServicePorts(ci, ciJobs);
   for (const job of ['dependencies', 'secrets']) jobBlock(security, job);
   invariant(
     !/^\s+continue-on-error:/m.test(ci) && !/^\s+continue-on-error:/m.test(security),

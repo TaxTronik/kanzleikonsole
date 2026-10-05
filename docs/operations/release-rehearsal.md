@@ -32,7 +32,7 @@ pnpm verify:chain
 ```
 
 Der Kandidat darf erst weiter, wenn diese lokalen Checks grün sind und CI auf
-dem Commit grün ist, inklusive `restore`, `e2e-smoke` und `e2e-paranoid`.
+dem Commit grün ist, inklusive `restore`, `upgrade-path` und `e2e-paranoid`.
 
 ## Schritt 2: `[Unreleased]` prüfen
 

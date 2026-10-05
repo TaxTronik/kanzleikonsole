@@ -83,7 +83,6 @@ Ausfüllen gegen den gebundenen Workflow-Commit zu prüfen.
 | Migrations, RLS, Drift                      | `…`          | `…`      | `…`             | `testbericht-db`: `…`             | `…`                                                     |
 | Backup→Restore Roundtrip                    | `…`          | `…`      | `…`             | `testbericht-restore`: `…`        | `…`                                                     |
 | Upgrade-Pfad                                | `…`          | `…`      | `…`             | `…`                               | Ausgangsrelease: `…`                                    |
-| Browser E2E                                 | `…`          | `…`      | `…`             | `playwright-report`: `…`          | `…`                                                     |
 | E2E Paranoid                                | `…`          | `…`      | `…`             | `playwright-report-paranoid`: `…` | `…`                                                     |
 | XRechnung-Konformität (KoSIT)               | `…`          | `…`      | `…`             | `kosit-pruefbericht`: `…`         | Details in Abschnitt 5                                  |
 | Deploy-Readiness                            | `…`          | `…`      | `…`             | `…`                               | `…`                                                     |

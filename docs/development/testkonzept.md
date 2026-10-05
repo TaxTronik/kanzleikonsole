@@ -20,7 +20,7 @@ Ist-Zustand; Änderungen am Testverfahren werden hier nachgezogen.
 | Migrations-/Drift-Tests           | Prisma + Drift-Check-Skript                                                                                  | Migrationshistorie erzeugt exakt das deklarierte Schema                                                                                             | CI-Job `db`                                                              |
 | Restore-Roundtrip                 | `scripts/restore-selftest.sh` (echter Produktionscode-Pfad)                                                  | Backup ist wiederherstellbar UND inhaltlich intakt (Zeilenzahlen, Audit-Hash-Chain auf der wiederhergestellten DB)                                  | CI-Job `restore`                                                         |
 | Upgrade-Pfad-Test                 | CI-Job `upgrade-path`; Altbestandstests über `scripts/ci/migration-cutoff.sh`                                | Kunden-Update: Release-Migrationsstand → aktueller Stand → RLS-Tests; Altbestand vor einer Datenmigration (Cutoff) → Asserts                        | jeder CI-Lauf (Release-Teil aktiv ab erstem Release-Tag)                 |
-| End-to-End-Smoke                  | Playwright (`apps/e2e`)                                                                                      | kritische Browserpfade gegen die gebaute App (Login, Kernnavigation)                                                                                | CI-Job `e2e-smoke`                                                       |
+| End-to-End-Smoke                  | Playwright (`apps/e2e`)                                                                                      | kritische Browserpfade gegen die gebaute App (Login, Kernnavigation)                                                                                | CI-Job `e2e-paranoid` (Teil der vollständigen Suite)                     |
 | Negativtests („gegen das System") | in allen obigen Ebenen                                                                                       | abgelehnte Eingaben, Rückwärts-Übergänge, manipulierte Signaturen, fremde IDs (IDOR), kaputte Tokens — Fehlerfälle sind gleichberechtigte Testfälle | jeder CI-Lauf                                                            |
 | Schnittstellentests               | Vitest (HMAC-Signaturen n8n, Engine-Vertragstests gegen eingefrorene Fixtures, XRechnung-/ZUGFeRD-Erzeugung) | Ein-/Ausgangsschnittstellen mit definierten Erwartungswerten                                                                                        | jeder CI-Lauf                                                            |
 | Parametertests                    | ENV-Schema-Tests (`@taxtronik/config`), Modul-Konfigurationstests                                            | variable Steuerungsparameter werden validiert und im Verhalten getestet                                                                             | jeder CI-Lauf                                                            |
@@ -202,11 +202,12 @@ Vollständigkeit, Abweichungen):
 - **Kein Coverage-Prozentziel:** Maßstab ist die funktionale Abdeckung je
   Scope-Modul (Abschnitt 2) plus verpflichtende Negativ- und
   Regressionstests — ein Zeilenprozentwert erzeugt Scheinsicherheit.
-- **E2E zweistufig:** `e2e-smoke` bleibt schnell und klein; die umfangreiche
-  `e2e-paranoid`-Suite bleibt als breite Release-Regression bestehen
+- **E2E in einem Job:** `e2e-paranoid` führt die vollständige Playwright-Suite
+  aus, einschließlich der Smoke-Specs, als breite Release-Regression
   (Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency,
-  Upload-Fuzz). Fachliche Detailtiefe liegt zusätzlich in Unit-/Integrations-
-  tests, wo Fehlerursachen präzise lokalisierbar sind.
+  Upload-Fuzz). Ein separater Smoke-Job mit eigenem `next build` entfällt; die
+  DB-Jobs laufen parallel dazu. Fachliche Detailtiefe liegt zusätzlich in
+  Unit-/Integrationstests, wo Fehlerursachen präzise lokalisierbar sind.
 - **Lasttests:** bisher nicht etabliert. Ob und in welchem Umfang sie für den
   konkreten Prüfungsauftrag und das zugesagte Mengengerüst erforderlich sind,
   ist risikobasiert mit dem Prüfer festzulegen; bis dahin bleiben

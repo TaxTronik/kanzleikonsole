@@ -62,11 +62,15 @@ describe('required mandate service evidence in CI', () => {
     ].map((fragment) => run.indexOf(fragment));
     expect(order.every((position) => position >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    const generated = db.steps.findIndex(
-      (item) => item.run?.trim() === 'pnpm --filter @taxtronik/db exec prisma generate',
+    // Der Prisma-Client entsteht im gemeinsamen Job-Setup (Phase `prisma`).
+    const generated = db.steps.findIndex((item) =>
+      /^bash scripts\/ci\/setup\.sh(?: [a-z-]+)* prisma(?: |$)/.test(item.run?.trim() ?? ''),
     );
     expect(generated).toBeGreaterThanOrEqual(0);
     expect(db.steps.indexOf(step)).toBeGreaterThan(generated);
+    expect(
+      readFileSync(new URL('../../../../../../scripts/ci/setup.sh', import.meta.url), 'utf8'),
+    ).toContain('pnpm --filter @taxtronik/db exec prisma generate');
   });
 
   it('does not activate database work in the ordinary quality job', () => {

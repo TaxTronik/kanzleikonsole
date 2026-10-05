@@ -81,7 +81,7 @@ jobs:
         run: pnpm fachkatalog:diff
 
       - name: Generate Prisma client
-        run: pnpm --filter @taxtronik/db exec prisma generate
+        run: bash scripts/ci/setup.sh prisma
 
       - name: Guard real DATEV identifiers
         run: sh scripts/check-no-real-datev.sh
@@ -150,9 +150,12 @@ jobs:
           if-no-files-found: ignore
 
   # Forgejo `act_runner` startet Services eines wiederverwendeten Workflows im
-  # Host-Netz. Deshalb muessen alle Jobs mit PostgreSQL/Redis/weiteren festen
-  # Service-Ports eine Kette bilden; parallele Starts kollidieren sonst trotz
-  # getrennter Job-Container auf demselben Runner-Host.
+  # Host-Netz. Jeder Job mit PostgreSQL-Service nutzt deshalb einen eigenen
+  # Port (PGPORT des Service = Host-Port = PGPORT/DATABASE_URL im Job-env),
+  # Redis, MailHog und ClamAV nutzt nur e2e-paranoid. So laufen db, restore,
+  # upgrade-path und e2e-paranoid parallel nach quality, ohne dass sich ihre
+  # Services auf demselben Runner-Host ins Gehege kommen. Die Eindeutigkeit
+  # der Host-Ports prueft scripts/release/check-release-gates.mjs.
   db:
     name: Migrations, RLS, Drift
     runs-on: ubuntu-latest
@@ -165,17 +168,25 @@ jobs:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
           POSTGRES_DB: taxtronik
+          # Eigener Port je Job: Server, Healthcheck und Host-Mapping nutzen
+          # denselben Wert, auch wenn der Runner Services im Host-Netz startet.
+          PGPORT: '15433'
         ports:
-          - 5432:5432
+          - 15433:15433
         options: >-
           --health-cmd "pg_isready -U taxtronik"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
-      SHADOW_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_shadow?schema=public
+      PGHOST: localhost
+      PGPORT: '15433'
+      PGUSER: taxtronik
+      PGPASSWORD: taxtronik
+      PGDATABASE: taxtronik
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15433/taxtronik?schema=public
+      SHADOW_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik_shadow?schema=public
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -186,35 +197,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: pnpm --filter @taxtronik/db exec prisma generate
-
-      - name: Install PostgreSQL client
-        run: |
-          if ! command -v psql >/dev/null 2>&1 || \
-             ! command -v createdb >/dev/null 2>&1 || \
-             ! command -v dropdb >/dev/null 2>&1; then
-            if command -v sudo >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y postgresql-client
-            else
-              apt-get update
-              apt-get install -y postgresql-client
-            fi
-          fi
+      # Abhaengigkeiten (gepruefte Hooks), Prisma-Client, PostgreSQL-Client und
+      # Rollen/Extensions der Job-DB: gemeinsames Setup aller DB-Jobs.
+      - name: Setup (Abhängigkeiten, Prisma-Client, PostgreSQL-Client, Bootstrap)
+        run: bash scripts/ci/setup.sh install prisma pg-client pg-bootstrap
 
       - name: Create shadow database
         run: |
           PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d postgres \
             -v ON_ERROR_STOP=1 -c "CREATE DATABASE taxtronik_shadow"
-
-      - name: Bootstrap roles and extensions
-        run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
-            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
 
       - name: Apply migrations
         run: pnpm db:migrate:deploy
@@ -318,8 +309,8 @@ jobs:
       - name: Mandate services against an isolated PostgreSQL app role
         env:
           MANDATE_SERVICE_DB_TEST: '1'
-          EXPANSION_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_expansion_ci?schema=public
-          EXPANSION_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik_expansion_ci?schema=public
+          EXPANSION_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik_expansion_ci?schema=public
+          EXPANSION_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15433/taxtronik_expansion_ci?schema=public
         run: |
           set -euo pipefail
 
@@ -384,8 +375,8 @@ jobs:
       - name: Known pre-release ledger drift upgrade
         env:
           LEGACY_DB_NAME: taxtronik_known_legacy_drift
-          LEGACY_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_known_legacy_drift?schema=public
-          LEGACY_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik_known_legacy_drift?schema=public
+          LEGACY_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik_known_legacy_drift?schema=public
+          LEGACY_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15433/taxtronik_known_legacy_drift?schema=public
         run: sh packages/db/scripts/tests/known-legacy-drift-upgrade.sh
 
       # Der Dev-Seed ist ein eigener Integrationspfad und wird von den DB-Tests
@@ -395,8 +386,8 @@ jobs:
       - name: Dev seed smoke (fresh database, idempotent)
         env:
           ADMIN_PASSWORD: ci-db-seed-smoke-admin-pw
-          SEED_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik_seed_smoke?schema=public
-          SEED_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik_seed_smoke?schema=public
+          SEED_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik_seed_smoke?schema=public
+          SEED_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15433/taxtronik_seed_smoke?schema=public
         run: |
           set -euo pipefail
 
@@ -427,7 +418,7 @@ jobs:
   restore:
     name: Backup→Restore Roundtrip
     runs-on: ubuntu-latest
-    needs: db
+    needs: quality
     timeout-minutes: 20
     services:
       postgres:
@@ -436,16 +427,24 @@ jobs:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
           POSTGRES_DB: taxtronik
+          # Eigener Port je Job: Server, Healthcheck und Host-Mapping nutzen
+          # denselben Wert, auch wenn der Runner Services im Host-Netz startet.
+          PGPORT: '15434'
         ports:
-          - 5432:5432
+          - 15434:15434
         options: >-
           --health-cmd "pg_isready -U taxtronik"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+      PGHOST: localhost
+      PGPORT: '15434'
+      PGUSER: taxtronik
+      PGPASSWORD: taxtronik
+      PGDATABASE: taxtronik
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15434/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15434/taxtronik?schema=public
       # Seed fix-codiertes Admin-Passwort → vermeidet das Schreiben von
       # .admin-credentials.txt und den zufälligen Passwort-Output in CI.
       ADMIN_PASSWORD: ci-restore-selftest-admin-pw
@@ -459,49 +458,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: pnpm --filter @taxtronik/db exec prisma generate
-
       # Dieser Job ist der EINZIGE mit pg_dump/pg_restore (via runner.ts/
       # restore.ts). Anders als psql bricht pg_dump hart ab, wenn der Server
       # neuer ist als der Client („aborting because of server version
       # mismatch") — die Distro-Pakete (postgresql-client) sind älter als der
-      # Postgres-18-Service. Daher Client 18 aus dem PGDG-Repo.
-      - name: Install PostgreSQL 18 client (pg_dump/pg_restore)
-        run: |
-          # command -v-Guard: der Runner fährt run-Steps mit set -e -o pipefail.
-          # Fehlt pg_dump komplett, würde `pg_dump --version | …` den Step
-          # sofort mit 127 (command not found) beenden, bevor die Installation
-          # überhaupt erreicht wird.
-          MAJOR=0
-          if command -v pg_dump >/dev/null 2>&1; then
-            MAJOR="$(pg_dump --version | awk '{print $3}' | cut -d. -f1)"
-          fi
-          if [ "${MAJOR:-0}" -ge 18 ]; then
-            echo "vorhanden: $(pg_dump --version)"
-            exit 0
-          fi
-          SUDO=""
-          if command -v sudo >/dev/null 2>&1; then SUDO=sudo; fi
-          $SUDO apt-get update
-          $SUDO apt-get install -y curl ca-certificates
-          $SUDO install -d /usr/share/postgresql-common/pgdg
-          $SUDO curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-            https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          . /etc/os-release
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
-            | $SUDO tee /etc/apt/sources.list.d/pgdg.list
-          $SUDO apt-get update
-          $SUDO apt-get install -y postgresql-client-18
-          pg_dump --version
-
-      - name: Bootstrap roles and extensions
-        run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
-            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+      # Postgres-18-Service. PG_CLIENT_MAJOR=18 holt den Client aus dem PGDG-Repo.
+      - name: Setup (Abhängigkeiten, Prisma-Client, PostgreSQL-18-Client, Bootstrap)
+        env:
+          PG_CLIENT_MAJOR: '18'
+        run: bash scripts/ci/setup.sh install prisma pg-client pg-bootstrap
 
       - name: Apply migrations
         run: pnpm --filter @taxtronik/db exec prisma migrate deploy
@@ -539,7 +504,7 @@ jobs:
   upgrade-path:
     name: Upgrade-Pfad (letztes Release → HEAD)
     runs-on: ubuntu-latest
-    needs: restore
+    needs: quality
     timeout-minutes: 20
     services:
       postgres:
@@ -548,16 +513,24 @@ jobs:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
           POSTGRES_DB: taxtronik
+          # Eigener Port je Job: Server, Healthcheck und Host-Mapping nutzen
+          # denselben Wert, auch wenn der Runner Services im Host-Netz startet.
+          PGPORT: '15435'
         ports:
-          - 5432:5432
+          - 15435:15435
         options: >-
           --health-cmd "pg_isready -U taxtronik"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+      PGHOST: localhost
+      PGPORT: '15435'
+      PGUSER: taxtronik
+      PGPASSWORD: taxtronik
+      PGDATABASE: taxtronik
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15435/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15435/taxtronik?schema=public
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -589,35 +562,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        if: steps.last.outputs.tag != ''
-        run: pnpm --filter @taxtronik/db exec prisma generate
-
-      - name: Install PostgreSQL client
-        run: |
-          if ! command -v psql >/dev/null 2>&1 || \
-             ! command -v createdb >/dev/null 2>&1 || \
-             ! command -v dropdb >/dev/null 2>&1; then
-            if command -v sudo >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y postgresql-client
-            else
-              apt-get update
-              apt-get install -y postgresql-client
-            fi
-          fi
+      # Unabhaengig vom Tag: die Cutoff-Tests brauchen Abhaengigkeiten (Ledger-
+      # Pruefung) und den PostgreSQL-Client; der Prisma-Client dient den
+      # tag-gebundenen Release-Schritten.
+      - name: Setup (Abhängigkeiten, Prisma-Client, PostgreSQL-Client)
+        run: bash scripts/ci/setup.sh install prisma pg-client
 
       # Fachkatalog: GWG-ACTIVATION-GATE-001 (Migration 034 beendet
       # unvollständige Alt-Checks fail-closed und legt einen Folge-Review an).
       - name: Altbestand vor GwG-Migration 034 (Cutoff-Test)
-        env:
-          PGHOST: localhost
-          PGPORT: '5432'
-          PGUSER: taxtronik
-          PGPASSWORD: taxtronik
         run: |
           bash scripts/ci/migration-cutoff.sh 20260801003300_invoice_storno_unique \
             scripts/ci/migration-cutoff/gwg-034-fixtures.sql \
@@ -626,11 +579,6 @@ jobs:
       # Fachkatalog: GWG-SELF-ONBOARDING-001 (Backfill des Onboarding-
       # Abschlusses nur bei aktivem Kontakt und tatsächlich verifizierter Prüfung).
       - name: Altbestand vor Onboarding-Backfill 041 (Cutoff-Test)
-        env:
-          PGHOST: localhost
-          PGPORT: '5432'
-          PGUSER: taxtronik
-          PGPASSWORD: taxtronik
         run: |
           bash scripts/ci/migration-cutoff.sh 20260801004000_poa_created_at_db_clock \
             scripts/ci/migration-cutoff/onboarding-041-fixtures.sql \
@@ -638,9 +586,7 @@ jobs:
 
       - name: Bootstrap roles and extensions
         if: steps.last.outputs.tag != ''
-        run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
-            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
+        run: bash scripts/ci/setup.sh pg-bootstrap
 
       - name: Migrationsstand des letzten Releases herstellen
         if: steps.last.outputs.tag != ''
@@ -682,119 +628,19 @@ jobs:
         if: steps.last.outputs.tag != ''
         run: pnpm --filter @taxtronik/db test
 
-  e2e-smoke:
-    name: Browser E2E
-    runs-on: ubuntu-latest
-    needs: upgrade-path
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
-        env:
-          POSTGRES_USER: taxtronik
-          POSTGRES_PASSWORD: taxtronik
-          POSTGRES_DB: taxtronik
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U taxtronik"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-      redis:
-        image: redis:7-alpine@sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
-      REDIS_URL: redis://localhost:6379
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: pnpm --filter @taxtronik/db exec prisma generate
-
-      - name: Install PostgreSQL client
-        run: |
-          if ! command -v psql >/dev/null 2>&1; then
-            if command -v sudo >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y postgresql-client
-            else
-              apt-get update
-              apt-get install -y postgresql-client
-            fi
-          fi
-
-      - name: Bootstrap database
-        run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
-            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
-          pnpm --filter @taxtronik/db exec prisma migrate deploy
-
-      - name: Build web app
-        run: pnpm --filter @taxtronik/web build
-
-      - name: Install Playwright browser
-        run: pnpm --filter @taxtronik/e2e exec playwright install chromium --with-deps
-
-      - name: Start web app
-        run: |
-          pnpm --filter @taxtronik/web start > web.log 2>&1 &
-          echo $! > web.pid
-
-          for i in {1..60}; do
-            status="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/health || true)"
-            if [ "$status" = "200" ] || [ "$status" = "503" ]; then
-              exit 0
-            fi
-            sleep 2
-          done
-
-          cat web.log
-          exit 1
-
-      - name: Run E2E smoke tests
-        run: pnpm --filter @taxtronik/e2e exec playwright test tests/01-smoke.spec.ts
-
-      # immer hochladen (nicht nur bei Fehlschlag): der Report ist der
-      # E2E-Testnachweis je Lauf (Testkonzept Abschnitt 4).
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
-        with:
-          name: playwright-report
-          retention-days: 90
-          path: apps/e2e/playwright-report/
-          if-no-files-found: ignore
-
   # ===========================================================================
-  # E2E-Paranoid: härteter Teilsuite-Test (Rate-Limit, Walkthrough, Actions,
-  # Compliance) — läuft nach dem vollen E2E-Smoke als zusätzlicher
-  # Sicherheitsgurt im PR-Workflow. Trennung vom Smoke-Job, damit die gesamte
-  # Compliance-+Security-Testsuite ihre eigenen Timeouts, Retries und Reports
-  # bekommt, ohne den Smoke-Lauf zu verlangsamen.
+  # E2E-Paranoid: die vollständige Playwright-Suite (Smoke, Auth/RBAC,
+  # Rate-Limit, Walkthrough, Actions, Compliance, Differential, Concurrency,
+  # Upload-Fuzz, A11Y) gegen die gebaute App mit produktionsnaher Infrastruktur
+  # (SeaweedFS mit Object-Lock, ClamAV, MailHog, Redis). Der frühere separate
+  # Smoke-Job ist hier aufgegangen: tests/01-smoke.spec.ts läuft als Teil der
+  # vollständigen Suite, ein zweites `next build` und eine zweite Spec-Liste
+  # entfallen.
   # ===========================================================================
   e2e-paranoid:
     name: E2E Paranoid (Rate-Limit, Actions, Compliance)
     runs-on: ubuntu-latest
-    needs: e2e-smoke
+    needs: quality
     timeout-minutes: 45
     services:
       postgres:
@@ -803,8 +649,11 @@ jobs:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
           POSTGRES_DB: taxtronik
+          # Eigener Port je Job: Server, Healthcheck und Host-Mapping nutzen
+          # denselben Wert, auch wenn der Runner Services im Host-Netz startet.
+          PGPORT: '15436'
         ports:
-          - 5432:5432
+          - 15436:15436
         options: >-
           --health-cmd "pg_isready -U taxtronik"
           --health-interval 5s
@@ -835,8 +684,13 @@ jobs:
           --health-timeout 10s
           --health-retries 15
     env:
-      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/taxtronik?schema=public
-      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik?schema=public
+      PGHOST: localhost
+      PGPORT: '15436'
+      PGUSER: taxtronik
+      PGPASSWORD: taxtronik
+      PGDATABASE: taxtronik
+      DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15436/taxtronik?schema=public
+      DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15436/taxtronik?schema=public
       REDIS_URL: redis://localhost:6379
       ADMIN_PASSWORD: dev-password-123
       DEV_SKIP_TOTP: 'true'
@@ -869,29 +723,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Setup (Abhängigkeiten, Prisma-Client, PostgreSQL-Client, Bootstrap)
+        run: bash scripts/ci/setup.sh install prisma pg-client pg-bootstrap
 
-      - name: Generate Prisma client
-        run: pnpm --filter @taxtronik/db exec prisma generate
-
-      - name: Install PostgreSQL client
-        run: |
-          if ! command -v psql >/dev/null 2>&1; then
-            if command -v sudo >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y postgresql-client
-            else
-              apt-get update
-              apt-get install -y postgresql-client
-            fi
-          fi
-
-      - name: Bootstrap database
-        run: |
-          PGPASSWORD=taxtronik psql -h localhost -U taxtronik -d taxtronik \
-            -v ON_ERROR_STOP=1 -f packages/db/prisma/init/01_bootstrap.sql
-          pnpm --filter @taxtronik/db exec prisma migrate deploy
+      - name: Apply migrations
+        run: pnpm --filter @taxtronik/db exec prisma migrate deploy
 
       - name: Seed database
         run: pnpm --filter @taxtronik/db seed
@@ -1076,8 +912,8 @@ jobs:
           fi
 
       - name: Run E2E paranoid tests
-        # Playwright discovers every spec, including newly added and nested files.
-        # Keep the early smoke job above; do not maintain a second file list here.
+        # Playwright discovers every spec, including newly added and nested files
+        # and the smoke spec; do not maintain a second file list here.
         run: pnpm --filter @taxtronik/e2e exec playwright test
 
       - name: Upload Playwright report
@@ -1125,7 +961,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bash scripts/ci/setup.sh install
 
       - name: Java + unzip + curl installieren
         run: |
@@ -1238,7 +1074,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bash scripts/ci/setup.sh install
 
       - name: Render SeaweedFS-S3-Config (wie im Deploy)
         run: |

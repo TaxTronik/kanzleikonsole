@@ -37,7 +37,7 @@ Erwartung:
    auch Dev-Abhängigkeiten sowie niedrigere Schweregrade — dort aufgelaufene
    Befunde gehören in die Planung, brechen den Lauf aber nicht ab.
 2. Letzten erfolgreichen CI-Lauf zu `main` prüfen: `quality`, `db`, `restore`,
-   `e2e-smoke`, `e2e-paranoid`.
+   `upgrade-path`, `e2e-paranoid`.
 3. Backup-Status in der Admin-Oberfläche prüfen: letzter Lauf `SUCCESS`,
    Größe plausibel, SHA-256 vorhanden.
 4. Speicher prüfen:

@@ -1,5 +1,31 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-042
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - scripts/release/check-release-gates.mjs
+      - scripts/release/tests/check-release-gates.test.mjs
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Die CI-Jobs db, restore, upgrade-path und e2e-paranoid laufen nach dem
+      Quality-Job parallel, jeder mit eigenem PostgreSQL-Port, statt nur wegen
+      desselben Host-Ports als serielle Kette. Der separate e2e-smoke-Job geht in
+      e2e-paranoid auf, das die Smoke-Spec ohnehin mit ausführt; die wiederholten
+      Setup-Schritte bündelt scripts/ci/setup.sh. check-release-gates.mjs prüft
+      statt der Serialisierung eindeutige Ports, konsistente Datenbank-URLs und die
+      Abhängigkeit vom Quality-Job. Alle bisherigen Prüf-, Test- und
+      Nachweisschritte bleiben erhalten; der Testnachweis „Browser E2E“ entfällt
+      zugunsten des unveränderten Nachweises „E2E Paranoid“. Keine fachliche
+      Freigabe.
+    tests:
+      - scripts/release/tests/check-release-gates.test.mjs
+      - packages/db/src/__tests__/migration-cutoff-ci.test.ts
+      - apps/web/src/server/mandate-expansion/__tests__/service-db-ci.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-041
     date: '2026-10-05'
     paths:
@@ -2477,6 +2503,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-042` dokumentiert die parallelen CI-Jobs
+  auf eigenen PostgreSQL-Ports und den zusammengelegten E2E-Job. Prüf- und
+  Nachweisschritte bleiben erhalten.
 
 - 2026-10-05: `FK-EXC-20261005-041` dokumentiert Node aus `.nvmrc` und
   Installationen mit geprüften Install-Skripten in allen Workflows.

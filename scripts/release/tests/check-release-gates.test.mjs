@@ -166,13 +166,39 @@ assert.throws(
   /preflight: Manifest-Git-Zugriff muss den Forgejo-Akteur als Benutzernamen verwenden/,
 );
 
+// Parallele servicebasierte Jobs: eindeutige Host-Ports, PGPORT/DATABASE_URL
+// passend zum Service und Start erst nach quality.
 assert.throws(
   () =>
     checkReleaseGates({
       ...workflows,
-      ci: workflows.ci.replace('needs: restore', 'needs: quality'),
+      ci: workflows.ci.replaceAll('15434', '15433'),
     }),
-  /servicebasierte Jobs muessen fuer Forgejo-Host-Netz-Ports serialisiert bleiben/,
+  /Host-Port 15433 wird von db und restore belegt/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      ci: workflows.ci.replace(
+        'DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15435/',
+        'DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:5432/',
+      ),
+    }),
+  /upgrade-path muss PostgreSQL per PGPORT auf einem eigenen Host-Port betreiben/,
+);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      ci: workflows.ci.replace(
+        '    needs: quality\n    timeout-minutes: 45\n',
+        '    needs: db\n    timeout-minutes: 45\n',
+      ),
+    }),
+  /e2e-paranoid muss quality benoetigen/,
 );
 
 assert.throws(
@@ -217,4 +243,4 @@ assert.throws(
   /Trivy muss im Forgejo-Job nativ/,
 );
 
-process.stdout.write('21 release-gate structure tests passed.\n');
+process.stdout.write('23 release-gate structure tests passed.\n');

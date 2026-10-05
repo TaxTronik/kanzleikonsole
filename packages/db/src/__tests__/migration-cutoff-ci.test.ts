@@ -53,9 +53,15 @@ describe('Altbestandstests mit Migrations-Cutoff im CI', () => {
       expect(step.if).toBeUndefined();
       expect(step['continue-on-error']).toBeFalsy();
     }
-    const client = job.steps.findIndex((step) => step.name === 'Install PostgreSQL client');
-    expect(client).toBeGreaterThanOrEqual(0);
-    expect(client).toBeLessThan(job.steps.indexOf(steps[0]!));
+    // Abhaengigkeiten (Ledger-Pruefung) und PostgreSQL-Client kommen aus dem
+    // gemeinsamen, ebenfalls unbedingten Job-Setup.
+    const setup = job.steps.findIndex((step) => {
+      const phases = /^bash scripts\/ci\/setup\.sh((?: [a-z-]+)+)$/.exec(step.run?.trim() ?? '');
+      return phases !== null && ['install', 'pg-client'].every((p) => phases[1]!.includes(` ${p}`));
+    });
+    expect(setup).toBeGreaterThanOrEqual(0);
+    expect(job.steps[setup]!.if).toBeUndefined();
+    expect(setup).toBeLessThan(job.steps.indexOf(steps[0]!));
   });
 
   it.each(cases)('$underTest: Cutoff direkt davor, SQL-Dateien vorhanden', (testCase) => {

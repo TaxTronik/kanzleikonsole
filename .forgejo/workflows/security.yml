@@ -42,7 +42,7 @@ jobs:
         run: sh scripts/check-pnpm-supply-chain.sh
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bash scripts/ci/setup.sh install
 
       - name: Audit production dependencies
         run: |

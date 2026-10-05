@@ -84,7 +84,7 @@ zu `isStaffAdmin(session)`. AST-Guard (`server-action-authz.test.ts`)
 | **Property-Based**         | fast-check                  | Policy-, Hash- und Fachinvarianten                             | Jeder Commit (in vitest)        |
 | **Operator CLI**           | Bash                        | `doctor`, SMTP, Risk-Layer, Build-Cache-Prune                  | CI `quality` Job                |
 | **Integration (DB)**       | vitest + Postgres           | RLS, Festschreibung, GwG und Concurrency                       | CI `db` Job                     |
-| **E2E Smoke**              | Playwright                  | separate öffentliche/authentifizierte Smoke-Suite              | CI `e2e-smoke` Job              |
+| **E2E Smoke**              | Playwright                  | öffentliche/authentifizierte Smoke-Specs (`01-smoke`)          | In paranoid Suite               |
 | **E2E Paranoid (Release)** | Playwright                  | Auth, Actions, Compliance, RBAC, Differential und Negativfälle | CI `e2e-paranoid` Job           |
 | **Differential**           | Playwright + Referenz       | API-/DB-/Storage-/UI-Invarianten                               | In paranoid Suite               |
 | **Concurrency**            | Playwright + `Promise.all`  | parallele Dokument- und Versionsschreibvorgänge                | In paranoid Suite               |
