@@ -220,6 +220,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- `inbound_message.status` und `bwa_plan.status` lassen per CHECK nur noch die
+  vom Code geschriebenen Werte zu; die Migration bricht bei abweichendem
+  Bestand mit Werten und Anzahl ab (`MAIL-INBOX-001`, `BWA-PROJECTION-001`,
+  `FK-EXC-20261005-010`).
 - **[Scope]** 18 vollständig durch andere Indizes gedeckte Indizes entfernt;
   das senkt die Schreiblast, vor allem bei Dokumentversionen. Alle
   Unique-Constraints bleiben (`FK-EXC-20261005-009`).

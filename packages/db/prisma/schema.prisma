@@ -563,6 +563,9 @@ model InboundMailbox {
   @@map("inbound_mailbox")
 }
 
+// D-07: status ist Text mit CHECK inbound_message_status_check (PENDING,
+// BLOCKED, COMPLETE; geschrieben in packages/mail/src/imap.ts). Neue Werte
+// brauchen eine Migration, die den CHECK erweitert.
 model InboundMessage {
   id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   mailboxId   String              @map("mailbox_id") @db.Uuid
@@ -1451,6 +1454,9 @@ model BwaPeriod {
   @@map("bwa_period")
 }
 
+// D-07: status ist Text mit CHECK bwa_plan_status_check (DRAFT, FINAL; wie
+// CreateBwaPlanSchema/UpdateBwaPlanSchema). Neue Werte brauchen eine
+// Migration, die den CHECK erweitert.
 model BwaPlan {
   id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String        @map("tenant_id") @db.Uuid

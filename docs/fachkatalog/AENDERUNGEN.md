@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-010
+    date: '2026-10-05'
+    paths:
+      - packages/db/prisma/migrations/20261005100600_status_text_checks/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - MAIL-INBOX-001
+      - BWA-PROJECTION-001
+    reason: >-
+      inbound_message.status und bwa_plan.status erhalten CHECK-Constraints mit
+      genau den Werten, die der Code schreibt (PENDING, BLOCKED, COMPLETE
+      beziehungsweise DRAFT, FINAL). Eine vorgeschaltete Datenprüfung bricht die
+      Migration bei abweichendem Bestand mit Werten und Anzahl ab. Schreibpfade,
+      Statusübergänge und Regeln bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/status-text-checks.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-009
     date: '2026-10-05'
     paths:
@@ -1644,6 +1661,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-010` dokumentiert CHECK-Constraints für zwei
+  bisher ungeprüfte Statusfelder. Schreibpfade und Statusübergänge bleiben
+  unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-009` dokumentiert das Entfernen von 18
   redundanten Indizes. Unique-Constraints, Daten und Regeln bleiben
