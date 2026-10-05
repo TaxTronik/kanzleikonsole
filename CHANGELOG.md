@@ -502,6 +502,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die tägliche Erinnerungsrunde (Bescheide, Wiedervorlagen, Pendelordner)
+  verarbeitet Mandanten in Abschnitten von 200 in kurzen Transaktionen statt
+  alle Kandidaten einer Kanzlei in einer gesperrten 15-Sekunden-Transaktion;
+  große Kanzleien laufen nicht mehr ins Transaktionslimit, und die Sperren
+  blockieren morgens keine Bearbeitungen mehr (`TAX-NOTICE-APPEAL-001`,
+  `FK-EXC-20261005-019`).
 - **[Scope]** Audit-Archiv: Scheitert der RFC-3161-Stempel, wird das Segment
   als ausstehend archiviert und später nach Prüfung des gespeicherten Objekts
   nachgestempelt; bisher blieb es dauerhaft ohne externen Zeitnachweis. Die

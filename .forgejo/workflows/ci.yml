@@ -287,15 +287,16 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/evidence exec vitest run src/__tests__/verify-checkpoint-db.test.ts src/__tests__/anchor-schedule-db.test.ts 2>&1 | tee testbericht-evidence-db.log
 
-      # WORKFLOW-LIFECYCLE-001: Reconciler der Worker-Jobs gegen echtes
+      # WORKFLOW-LIFECYCLE-001 / TAX-CONTROL-STATUS-001: Worker-Jobs gegen echtes
       # PostgreSQL (F-11: endgültig verbuchte n8n-Handoffs verdrängen echte
-      # Fehlerfälle nicht). Nur externe Übergaben sind Attrappen; eigener Tenant.
+      # Fehlerfälle nicht; P-15: reminders-daily in Mandantenabschnitten mit
+      # gleichem Ergebnis). Nur externe Übergaben sind Attrappen; eigene Tenants.
       - name: Worker jobs against PostgreSQL
         env:
           WORKER_DB_TEST: '1'
         run: |
           set -o pipefail
-          pnpm --filter @taxtronik/worker exec vitest run src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts 2>&1 | tee testbericht-worker-db.log
+          pnpm --filter @taxtronik/worker exec vitest run src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts src/jobs/__tests__/reminders-daily-db.test.ts 2>&1 | tee testbericht-worker-db.log
 
       # service-db.test.ts ist Nachweis für MANDATE-STRUCTURE-001,
       # GWG-BENEFICIAL-OWNERS-001, GWG-RISK-REVIEW-001 und

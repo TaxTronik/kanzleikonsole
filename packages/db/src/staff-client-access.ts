@@ -108,6 +108,90 @@ export async function filterStaffAccessClientTx(
   return allowed;
 }
 
+/**
+ * Batch-Variante von filterStaffAccessClientTx für viele Mandanten (P-15):
+ * dieselbe Entscheidung je Mandant/Mitarbeiter-Paar, aber aktive Mitarbeiter
+ * samt Rollen, die Tenant-Policy, die Vertraulichkeit der Mandanten und die
+ * Zuständigkeiten werden je Aufruf einmal gelesen statt einmal je Mandant.
+ *
+ * Liefert für jeden übergebenen Mandanten einen (ggf. leeren) Eintrag.
+ */
+export async function filterStaffAccessClientsTx(
+  tx: TxClient,
+  tenantId: string,
+  staffIdsByClient: ReadonlyMap<string, readonly string[]>,
+): Promise<Map<string, Set<string>>> {
+  const allowedByClient = new Map<string, Set<string>>();
+  const requested = new Map<string, string[]>();
+  for (const [clientId, staffIds] of staffIdsByClient) {
+    allowedByClient.set(clientId, new Set());
+    const unique = [...new Set(staffIds)].filter(Boolean);
+    if (clientId && unique.length > 0) requested.set(clientId, unique);
+  }
+  const allStaffIds = [...new Set([...requested.values()].flat())];
+  if (allStaffIds.length === 0) return allowedByClient;
+
+  const staff = await tx.staffUser.findMany({
+    where: { id: { in: allStaffIds }, tenantId, active: true },
+    select: { id: true, roles: { select: { role: true } } },
+  });
+  if (staff.length === 0) return allowedByClient;
+  const adminById = new Map<string, boolean>();
+  for (const entry of staff) {
+    let isAdmin = false;
+    for (const { role } of entry.roles) {
+      if (role === 'ADMIN' || role === 'PARTNER') {
+        isAdmin = true;
+        break;
+      }
+    }
+    adminById.set(entry.id, isAdmin);
+  }
+
+  const policy = await readAccessPolicyTx(tx, tenantId);
+  const clients = await tx.client.findMany({
+    where: { id: { in: [...requested.keys()] }, tenantId },
+    select: { id: true, vertraulich: true },
+  });
+  const restrictedClientIds = clients
+    .filter((client) => policy.clientAccessMode === 'RESTRICTED' || client.vertraulich)
+    .map((client) => client.id);
+  const responsible = new Set(
+    restrictedClientIds.length === 0
+      ? []
+      : (
+          await tx.clientResponsibility.findMany({
+            where: {
+              tenantId,
+              clientId: { in: restrictedClientIds },
+              staffId: { in: [...adminById.keys()] },
+              role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] },
+            },
+            select: { clientId: true, staffId: true },
+          })
+        ).map((entry) => `${entry.clientId}\u0000${entry.staffId}`),
+  );
+
+  for (const client of clients) {
+    const allowed = allowedByClient.get(client.id)!;
+    for (const staffId of requested.get(client.id) ?? []) {
+      const isAdmin = adminById.get(staffId);
+      if (isAdmin === undefined) continue;
+      if (
+        decideClientAccess({
+          isAdmin,
+          mode: policy.clientAccessMode,
+          vertraulich: client.vertraulich,
+          isResponsible: responsible.has(`${client.id}\u0000${staffId}`),
+        })
+      ) {
+        allowed.add(staffId);
+      }
+    }
+  }
+  return allowedByClient;
+}
+
 export async function canStaffAccessClientTx(
   tx: TxClient,
   tenantId: string,

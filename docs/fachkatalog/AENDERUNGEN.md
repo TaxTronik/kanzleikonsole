@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-019
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/worker/src/jobs/reminders-daily.ts
+      - packages/db/src/staff-client-access.ts
+    rule_ids:
+      - TAX-NOTICE-APPEAL-001
+      - TAX-CONTROL-STATUS-001
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - ACCESS-CLIENT-MODE-001
+      - REMINDER-TICKET-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Die tägliche Erinnerungsrunde verarbeitet je Kanzlei Abschnitte von 200
+      Mandanten in eigenen kurzen Transaktionen und prüft den Mandantenzugriff der
+      Empfänger mit der neuen Batch-Variante filterStaffAccessClientsTx, die Policy
+      und Rollen einmal liest; ein Datenbanktest belegt paarweise Gleichheit mit
+      der Einzelprüfung und dieselben Benachrichtigungen wie der bisherige Lauf.
+      Der DB-CI-Job führt die neuen Worker-DB-Tests aus. Fälligkeiten, Empfänger
+      und Benachrichtigungsinhalte bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/staff-client-access-batch.test.ts
+      - apps/worker/src/jobs/__tests__/reminders-daily-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-018
     date: '2026-10-05'
     paths:
@@ -1859,6 +1884,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-019` dokumentiert die abschnittsweise tägliche
+  Erinnerungsrunde mit gebündelter Zugriffsprüfung. Fälligkeiten, Empfänger
+  und Inhalte bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-018` dokumentiert die gemeinsame Wahl der
   Zeitstempelstelle und das Nachstempeln ausstehender Archivsegmente.

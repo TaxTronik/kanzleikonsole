@@ -6,9 +6,18 @@
 //   - Wiedervorlagen (ClientReminder.dueDate): heute fällig + überfällig
 //   - Pendelordner (PendingBinder.expectedReturnAt): überfällig
 //
-// Idempotent über die `notification`-Tabelle: heutige Dedupe-Keys werden pro
-// Tenant einmal als Set geladen; die verbleibenden Einträge gehen sanitisiert
-// per createMany(skipDuplicates) in den Daily-Dedupe-Index.
+// Idempotent über die `notification`-Tabelle: heutige Dedupe-Keys werden je
+// Abschnitt einmal als Set geladen; die verbleibenden Einträge gehen
+// sanitisiert per createMany(skipDuplicates) in den Daily-Dedupe-Index.
+//
+// P-15: Ein Tenant wird in Abschnitten von höchstens CLIENT_CHUNK_SIZE
+// Mandanten verarbeitet, jeder in einer eigenen kurzen Transaktion (Sperren,
+// Revalidierung, Zugriffsfilter, Insert). Vorher lief der ganze Tenant in einer
+// 15-s-Transaktion mit FOR UPDATE auf alle Quellzeilen und 3–4 Zugriffsabfragen
+// je Mandant; ab einigen tausend Mandanten riss das Limit und der Tageslauf
+// fiel komplett aus. Der Zugriffsfilter liest Policy, Rollen, Vertraulichkeit
+// und Zuständigkeiten jetzt einmal je Abschnitt (filterStaffAccessClientsTx).
+// Die Entscheidung je Empfänger bleibt dieselbe.
 //
 // Fachregeln: TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001
 // =============================================================================
@@ -18,7 +27,7 @@ import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { NotificationKind } from '@prisma/client';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { sanitizeNotificationText } from '@taxtronik/db/notification';
-import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
+import { filterStaffAccessClientsTx } from '@taxtronik/db/staff-client-access';
 import type { TxClient } from '@taxtronik/db/tenant-context';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
@@ -29,6 +38,10 @@ import { readWorkerTenantModules } from '../module-gate';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CREATE_MANY_BATCH_SIZE = 1000;
+/** Mandanten je Abschnittstransaktion (P-15). */
+export const CLIENT_CHUNK_SIZE = 200;
+/** Abschnittsschlüssel interner Wiedervorlagen ohne Mandant. */
+const INTERNAL_CHUNK_KEY = '';
 const APPEAL_REMINDER_DAYS = [1, 7, 14] as const;
 const CLOSED_APPEAL_NOTICE_STATUSES = [
   'EINSPRUCH',
@@ -165,6 +178,10 @@ async function createDailyNotifications(
         tenantId,
         createdAt: { gte: createdAtGte, lt: createdAtLt },
         kind: { in: Array.from(new Set(candidates.map((candidate) => candidate.kind))) },
+        // Der Dedupe-Schlüssel enthält die Ressource: nur die dieses Abschnitts lesen.
+        resourceId: {
+          in: Array.from(new Set(candidates.map((candidate) => candidate.resourceId))),
+        },
       },
       select: { staffId: true, kind: true, resourceId: true },
     });
@@ -207,6 +224,45 @@ async function createDailyNotifications(
 
     return insertedCounts;
   });
+}
+
+/**
+ * P-15: verteilt die Kandidaten eines Tenants auf Abschnitte von höchstens
+ * CLIENT_CHUNK_SIZE Mandanten (interne Wiedervorlagen bilden einen eigenen
+ * Schlüssel) und schreibt jeden Abschnitt in einer eigenen Transaktion. Eine
+ * Ressource gehört genau einem Mandanten, die Dedupe-Schlüssel der Abschnitte
+ * überschneiden sich daher nicht. Die Reihenfolge ist stabil (sortierte
+ * Mandanten-IDs), sodass überlappende Läufe in derselben Folge sperren.
+ */
+export function chunkDailyNotificationsByClient(
+  groups: DailyNotification[][],
+  chunkSize: number = CLIENT_CHUNK_SIZE,
+): DailyNotification[][][] {
+  const keyOf = (candidate: DailyNotification) => candidate.clientId ?? INTERNAL_CHUNK_KEY;
+  const keys = [...new Set(groups.flat().map(keyOf))].sort();
+  const chunks: DailyNotification[][][] = [];
+  for (let offset = 0; offset < keys.length; offset += chunkSize) {
+    const chunkKeys = new Set(keys.slice(offset, offset + chunkSize));
+    chunks.push(
+      groups.map((group) => group.filter((candidate) => chunkKeys.has(keyOf(candidate)))),
+    );
+  }
+  return chunks;
+}
+
+async function createDailyNotificationsInChunks(
+  tenantId: string,
+  now: Date,
+  groups: DailyNotification[][],
+): Promise<number[]> {
+  const totals = groups.map(() => 0);
+  for (const chunk of chunkDailyNotificationsByClient(groups)) {
+    const counts = await createDailyNotifications(tenantId, now, chunk);
+    counts.forEach((count, index) => {
+      totals[index] = (totals[index] ?? 0) + count;
+    });
+  }
+  return totals;
 }
 
 /**
@@ -415,13 +471,11 @@ async function resolveTaxNoticeDeadlineRecipientsTx(
     ids.add(current.reviewedBy);
     preferredByClient.set(current.clientId, ids);
   }
-  const allowedPreferredByClient = new Map<string, Set<string>>();
-  for (const [clientId, staffIds] of preferredByClient) {
-    allowedPreferredByClient.set(
-      clientId,
-      await filterStaffAccessClientTx(tx, tenantId, [...staffIds], clientId),
-    );
-  }
+  const allowedPreferredByClient = await filterStaffAccessClientsTx(
+    tx,
+    tenantId,
+    new Map([...preferredByClient].map(([clientId, staffIds]) => [clientId, [...staffIds]])),
+  );
 
   const fallbackClientIds = [
     ...new Set(
@@ -451,12 +505,18 @@ async function resolveTaxNoticeDeadlineRecipientsTx(
       ids.push(responsibility.staffId);
       hauptbearbeiterByClient.set(responsibility.clientId, ids);
     }
-    for (const clientId of fallbackClientIds) {
-      const ids = [...new Set(hauptbearbeiterByClient.get(clientId) ?? [])];
-      const allowed = await filterStaffAccessClientTx(tx, tenantId, ids, clientId);
+    const candidatesByClient = new Map(
+      fallbackClientIds.map((clientId) => [
+        clientId,
+        [...new Set(hauptbearbeiterByClient.get(clientId) ?? [])],
+      ]),
+    );
+    const allowedByClient = await filterStaffAccessClientsTx(tx, tenantId, candidatesByClient);
+    for (const [clientId, ids] of candidatesByClient) {
+      const allowed = allowedByClient.get(clientId);
       hauptbearbeiterByClient.set(
         clientId,
-        ids.filter((staffId) => allowed.has(staffId)),
+        ids.filter((staffId) => allowed?.has(staffId) ?? false),
       );
     }
   }
@@ -475,11 +535,16 @@ async function resolveTaxNoticeDeadlineRecipientsTx(
       select: { id: true },
     });
     const adminPartnerIds = [...new Set(activeAdminPartners.map((staff) => staff.id))];
+    const allowedByClient = await filterStaffAccessClientsTx(
+      tx,
+      tenantId,
+      new Map(adminFallbackClientIds.map((clientId) => [clientId, adminPartnerIds])),
+    );
     for (const clientId of adminFallbackClientIds) {
-      const allowed = await filterStaffAccessClientTx(tx, tenantId, adminPartnerIds, clientId);
+      const allowed = allowedByClient.get(clientId);
       adminsByClient.set(
         clientId,
-        adminPartnerIds.filter((staffId) => allowed.has(staffId)),
+        adminPartnerIds.filter((staffId) => allowed?.has(staffId) ?? false),
       );
     }
   }
@@ -541,13 +606,11 @@ async function filterCurrentRecipientsTx(
     candidatesByClient.set(candidate.clientId, ids);
   }
 
-  const allowedByClient = new Map<string, Set<string>>();
-  for (const [clientId, staffIds] of candidatesByClient) {
-    allowedByClient.set(
-      clientId,
-      await filterStaffAccessClientTx(tx, tenantId, [...staffIds], clientId),
-    );
-  }
+  const allowedByClient = await filterStaffAccessClientsTx(
+    tx,
+    tenantId,
+    new Map([...candidatesByClient].map(([clientId, staffIds]) => [clientId, [...staffIds]])),
+  );
   const activeInternalStaff = new Set(
     internalStaffIds.size === 0
       ? []
@@ -721,11 +784,11 @@ export const remindersDailyWorker = createWorker<ChecksJob>(
         });
       }
 
-      const [appeal, reminderCount, binderCount] = await createDailyNotifications(tenantId, now, [
-        appealNotifications,
-        reminderNotifications,
-        binderNotifications,
-      ]);
+      const [appeal, reminderCount, binderCount] = await createDailyNotificationsInChunks(
+        tenantId,
+        now,
+        [appealNotifications, reminderNotifications, binderNotifications],
+      );
       counts.appeal += appeal ?? 0;
       counts.reminders += reminderCount ?? 0;
       counts.binders += binderCount ?? 0;

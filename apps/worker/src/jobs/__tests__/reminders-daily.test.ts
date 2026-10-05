@@ -1,4 +1,8 @@
 // Fachregeln: TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001
+// Fachkatalog: ACCESS-NOTIFICATION-RECIPIENT-001
+// P-15: Abschnitte von höchstens 200 Mandanten mit eigener Transaktion und
+// einem gebündelten Zugriffsfilter je Phase; reminders-daily-db.test.ts belegt
+// dieselben Ergebnisse gegen PostgreSQL.
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,7 +30,9 @@ const h = vi.hoisted(() => {
     tx,
     withWorkerTenantContext,
     readWorkerTenantModules: vi.fn(),
-    filterStaffAccessClientTx: vi.fn(),
+    filterStaffAccessClientsTx: vi.fn(),
+    // Zugriffsentscheidung je Mitarbeiter/Mandant für den gebündelten Filter.
+    allow: { fn: (_staffId: string, _clientId: string): boolean => true },
   };
 });
 
@@ -43,11 +49,11 @@ vi.mock('../../module-gate', () => ({
   readWorkerTenantModules: h.readWorkerTenantModules,
 }));
 vi.mock('@taxtronik/db/staff-client-access', () => ({
-  filterStaffAccessClientTx: h.filterStaffAccessClientTx,
+  filterStaffAccessClientsTx: h.filterStaffAccessClientsTx,
 }));
 
 import { processors } from './mocks/bullmq';
-import '../reminders-daily';
+import { chunkDailyNotificationsByClient } from '../reminders-daily';
 
 const TENANT_ID = 'tenant-1';
 const NOW = new Date('2026-07-16T10:00:00.000Z');
@@ -88,8 +94,15 @@ beforeEach(() => {
   h.tx.notification.createMany.mockImplementation(async ({ data }: { data: unknown[] }) => ({
     count: data.length,
   }));
-  h.filterStaffAccessClientTx.mockImplementation(
-    async (_tx: unknown, _tenantId: string, ids: readonly string[]) => new Set(ids),
+  h.allow.fn = () => true;
+  h.filterStaffAccessClientsTx.mockImplementation(
+    async (_tx: unknown, _tenantId: string, byClient: ReadonlyMap<string, readonly string[]>) =>
+      new Map(
+        [...byClient].map(([clientId, ids]) => [
+          clientId,
+          new Set(ids.filter((id) => h.allow.fn(id, clientId))),
+        ]),
+      ),
   );
   h.withWorkerTenantContext.mockImplementation(
     async (_tenantId: string, fn: (value: typeof h.tx) => Promise<unknown>) => fn(h.tx),
@@ -345,10 +358,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
       h.tx.clientResponsibility.findMany.mockResolvedValue([
         { clientId: 'client-vertraulich', staffId: 'hb-aktuell' },
       ]);
-      h.filterStaffAccessClientTx.mockImplementation(
-        async (_tx: unknown, _tenantId: string, ids: readonly string[]) =>
-          new Set(ids.filter((id) => id === 'hb-aktuell')),
-      );
+      h.allow.fn = (id) => id === 'hb-aktuell';
 
       await expect(run()).resolves.toEqual({ appeal: 1, reminders: 0, binders: 0 });
 
@@ -491,15 +501,14 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
           assignees: [{ staffId: 'staff-alt' }],
         },
       ]);
-      h.filterStaffAccessClientTx.mockResolvedValue(new Set());
+      h.allow.fn = () => false;
 
       await expect(run()).resolves.toEqual({ appeal: 0, reminders: 0, binders: 0 });
 
-      expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(
+      expect(h.filterStaffAccessClientsTx).toHaveBeenCalledWith(
         h.tx,
         TENANT_ID,
-        ['staff-alt'],
-        'client-vertraulich',
+        new Map([['client-vertraulich', ['staff-alt']]]),
       );
       expect(h.tx.notification.createMany).not.toHaveBeenCalled();
     },
@@ -617,7 +626,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
           expectedReturnAt: new Date('2026-07-15T00:00:00.000Z'),
         },
       ]);
-      h.filterStaffAccessClientTx.mockResolvedValue(new Set());
+      h.allow.fn = () => false;
 
       await expect(run()).resolves.toEqual({ appeal: 0, reminders: 0, binders: 0 });
 
@@ -630,13 +639,90 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
           }),
         }),
       );
-      expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(
+      expect(h.filterStaffAccessClientsTx).toHaveBeenCalledWith(
         h.tx,
         TENANT_ID,
-        ['staff-alt'],
-        'client-vertraulich',
+        new Map([['client-vertraulich', ['staff-alt']]]),
       );
       expect(h.tx.notification.createMany).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('P-15: Abschnitte je 200 Mandanten mit eigener Transaktion', () => {
+  function dueReminder(index: number) {
+    const clientId = `client-${String(index).padStart(3, '0')}`;
+    return {
+      id: `reminder-${index}`,
+      clientId,
+      dueDate: new Date('2026-07-16T00:00:00.000Z'),
+      subject: `Aufgabe ${index}`,
+      assignees: [{ staffId: 'staff-1' }],
+      createdByStaff: 'staff-creator',
+      client: { id: clientId, name: `Mandant ${index}` },
+    };
+  }
+
+  it('teilt Kandidaten stabil nach Mandanten auf, interne Wiedervorlagen zuerst', () => {
+    const candidate = (clientId: string | null, resourceId: string) => ({
+      staffId: 'staff-1',
+      kind: 'CLIENT_REMINDER_DUE' as const,
+      resourceType: 'client_reminder',
+      resourceId,
+      title: 't',
+      body: 'b',
+      href: '/',
+      clientId,
+    });
+    const groups = [
+      [candidate('client-b', 'n1'), candidate('client-a', 'n2')],
+      [candidate(null, 'r1'), candidate('client-c', 'r2'), candidate('client-a', 'r3')],
+    ];
+
+    const chunks = chunkDailyNotificationsByClient(groups, 2);
+
+    expect(chunks.map((chunk) => chunk.map((group) => group.map((c) => c.resourceId)))).toEqual([
+      [['n2'], ['r1', 'r3']],
+      [['n1'], ['r2']],
+    ]);
+  });
+
+  it('schreibt 450 Mandanten in drei kurzen Transaktionen mit gebündeltem Zugriffsfilter', async () => {
+    const reminders = Array.from({ length: 450 }, (_, index) => dueReminder(index));
+    h.prismaOwner.clientReminder.findMany.mockResolvedValue(reminders);
+    h.tx.clientReminder.findMany.mockImplementation(
+      async ({ where }: { where: { id: { in: string[] } } }) =>
+        reminders
+          .filter((reminder) => where.id.in.includes(reminder.id))
+          .map(({ id, clientId, dueDate, createdByStaff, assignees }) => ({
+            id,
+            clientId,
+            dueDate,
+            createdByStaff,
+            assignees,
+          })),
+    );
+
+    await expect(run()).resolves.toEqual({ appeal: 0, reminders: 450, binders: 0 });
+
+    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(3);
+    const lockedIds = h.tx.$queryRaw.mock.calls.map((call) =>
+      (call[0] as { values: string[] }).values.slice(1),
+    );
+    expect(lockedIds.map((ids) => ids.length)).toEqual([200, 200, 50]);
+    expect(new Set(lockedIds.flat()).size).toBe(450);
+    // Ein Zugriffsfilter je Abschnitt statt drei bis vier Abfragen je Mandant.
+    expect(h.filterStaffAccessClientsTx).toHaveBeenCalledTimes(3);
+    expect(
+      h.filterStaffAccessClientsTx.mock.calls.map(
+        (call) => (call[2] as ReadonlyMap<string, unknown>).size,
+      ),
+    ).toEqual([200, 200, 50]);
+    // Die Dedupe-Abfrage liest nur die Ressourcen des jeweiligen Abschnitts.
+    for (const call of h.tx.notification.findMany.mock.calls) {
+      expect(
+        (call[0] as { where: { resourceId: { in: string[] } } }).where.resourceId.in.length,
+      ).toBeLessThanOrEqual(200);
+    }
+  });
 });

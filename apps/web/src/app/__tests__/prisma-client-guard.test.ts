@@ -104,6 +104,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/__tests__/portal-inbox-rls.test.ts',
   // MAIL-INBOX-001: isolated owner fixtures, real app transaction proves OAuth role/module revocation.
   'packages/db/src/__tests__/mailbox-oauth-cache.test.ts',
+  // ACCESS-CLIENT-MODE-001: Owner-Fixtures in eigenen Tenants vergleichen den
+  // gebündelten Zugriffsfilter (P-15) mit der Einzelprüfung; kein App-Request-Pfad.
+  'packages/db/src/__tests__/staff-client-access-batch.test.ts',
   // Isolated synthetic fixtures; assertions use the restricted App connection.
   'packages/db/src/__tests__/mandate-assistance-expansion.test.ts',
   'packages/db/src/__tests__/payroll-intake.test.ts',
