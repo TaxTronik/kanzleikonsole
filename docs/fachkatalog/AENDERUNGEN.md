@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-023
+    date: '2026-10-05'
+    paths:
+      - apps/worker/src/jobs/audit-rotate.ts
+      - apps/worker/src/jobs/gwg-expiry-check.ts
+      - apps/worker/src/jobs/poa-expiry-check.ts
+      - apps/worker/src/jobs/reminders-daily.ts
+    rule_ids:
+      - AUDIT-ARCHIVE-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - POA-LIFECYCLE-001
+      - TAX-NOTICE-APPEAL-001
+      - REMINDER-TICKET-001
+    reason: >-
+      Fünf Worker-Jobs registrieren ihren eigenen failed-Handler nicht mehr
+      zusätzlich zur Worker-Fabrik, sodass Job-Fehler nicht doppelt im Log stehen.
+      Die Web-Hilfen für Steuertermin-Materialisierung und erledigte
+      Wiedervorlagen protokollieren fehlgeschlagene Entfernungen eingeplanter
+      Aufträge, statt sie zu verschlucken. Joblogik, Zeitpläne und Ergebnisse
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/__tests__/worker-registry.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-022
     date: '2026-10-05'
     paths:
@@ -1973,6 +1996,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-023` dokumentiert das Entfernen doppelter
+  Fehler-Handler und protokollierte Queue-Entfernungen. Joblogik und Ergebnisse
+  bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-022` dokumentiert den gemeinsamen
   Benachrichtigungspfad des Workers mit Textbereinigung. Empfängerregeln und

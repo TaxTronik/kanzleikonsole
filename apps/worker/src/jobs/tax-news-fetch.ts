@@ -223,7 +223,3 @@ export const taxNewsFetchWorker = createWorker<ChecksJob>(
   },
   { connection, concurrency: 1 },
 );
-
-taxNewsFetchWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'tax-news-fetch failed');
-});

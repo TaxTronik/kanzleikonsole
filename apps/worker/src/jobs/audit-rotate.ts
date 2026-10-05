@@ -579,7 +579,3 @@ export const auditRotateWorker: Worker<ChecksJob> = createWorker<ChecksJob>(
     runAuditRotate(job.data, startRunBudget({ stop: () => isWorkerClosing(auditRotateWorker) })),
   { connection, concurrency: 1 },
 );
-
-auditRotateWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'audit-rotate: failed');
-});

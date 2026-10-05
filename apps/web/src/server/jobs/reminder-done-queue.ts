@@ -39,7 +39,18 @@ export async function scheduleReminderDoneNotification(
   try {
     const queue = getWebQueue(JOB_QUEUES.reminderDoneNotify.name);
     const jobId = jobIdFor(job.reminderId);
-    await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch(() => {});
+    // F-05: Ein laufender (gesperrter) Vorgänger lässt remove scheitern; das add
+    // unten ist dann ein No-Op (ID existiert). Protokollieren statt verschlucken.
+    await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch((err: unknown) => {
+      log.warn(
+        {
+          component: 'reminder-done-queue',
+          reminderId: job.reminderId,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'reminder-done-queue: vorheriger Job nicht entfernt (läuft noch oder Redis langsam)',
+      );
+    });
     await withTimeout(
       queue.add('notify', job, {
         jobId,
@@ -65,12 +76,21 @@ export async function scheduleReminderDoneNotification(
  * Nimmt eine eingeplante Benachrichtigung zurück (Rückgängig im Zeitfenster).
  * Best-effort: läuft der Job gerade, schlägt `remove` fehl — dann ist die
  * Benachrichtigung bereits draussen und das Zurückholen bleibt trotzdem gültig.
+ * Der Worker prüft vor dem Zustellen den Ist-Zustand; der Fehler wird nur
+ * protokolliert (F-05).
  */
 export async function cancelReminderDoneNotification(reminderId: string): Promise<void> {
   try {
     const queue = getWebQueue(JOB_QUEUES.reminderDoneNotify.name);
     await withTimeout(queue.remove(jobIdFor(reminderId)), WEB_QUEUE_TIMEOUT_MS);
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    log.warn(
+      {
+        component: 'reminder-done-queue',
+        reminderId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'reminder-done-queue: eingeplante Benachrichtigung nicht zurückgenommen (läuft bereits oder Redis nicht erreichbar)',
+    );
   }
 }

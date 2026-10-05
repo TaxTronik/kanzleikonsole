@@ -513,6 +513,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Fehler beim Entfernen eingeplanter Aufträge werden protokolliert statt
+  verschluckt; Job-Fehler erscheinen nicht mehr doppelt im Log
+  (`FK-EXC-20261005-023`).
 - Die tägliche Erinnerungsrunde (Bescheide, Wiedervorlagen, Pendelordner)
   verarbeitet Mandanten in Abschnitten von 200 in kurzen Transaktionen statt
   alle Kandidaten einer Kanzlei in einer gesperrten 15-Sekunden-Transaktion;

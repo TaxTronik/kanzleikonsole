@@ -10,6 +10,7 @@
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 
 import { withTimeout } from '@/lib/with-timeout';
+import { log } from '@/server/logger';
 import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
 
 /** Reiht die Materialisierung für EINEN Tenant ein. Idempotent über jobId. */
@@ -18,7 +19,18 @@ export async function enqueueTaxDeadlineMaterialize(tenantId: string): Promise<v
   // BullMQ verbietet ':' in Custom-Job-IDs — daher '-'. Mehrfach-Klicks während
   // ein Lauf aussteht sind No-Ops (ID existiert); alte Jobs vorher räumen.
   const jobId = `tax-deadline-manual-${tenantId}`;
-  await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch(() => {});
+  // F-05: Läuft der vorherige Job noch (gesperrt), schlägt remove fehl und das
+  // add unten ist ein No-Op (ID existiert) — protokollieren statt verschlucken.
+  await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch((err: unknown) => {
+    log.warn(
+      {
+        component: 'tax-deadline-materialize-queue',
+        tenantId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'tax-deadline-materialize-queue: vorheriger Job nicht entfernt (läuft noch oder Redis langsam)',
+    );
+  });
   await withTimeout(
     queue.add(
       JOB_QUEUES.taxDeadlineMaterialize.name,

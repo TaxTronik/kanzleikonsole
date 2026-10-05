@@ -133,7 +133,3 @@ export const poaExpiryWorker = createWorker<ChecksJob>(
   },
   { connection, concurrency: 1 },
 );
-
-poaExpiryWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'poa-expiry: failed');
-});
