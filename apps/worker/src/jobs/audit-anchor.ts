@@ -201,7 +201,7 @@ async function anchorTenant(tenantId: string): Promise<AnchorTenantResult> {
   const attemptedAt = new Date();
   try {
     const previous = await previousStatus(tenantId);
-    const service = new EvidenceService(await timestampPortFor(tenantId));
+    const service = new EvidenceService(await timestampPortFor(tenantId, 'stamp'));
     // A run that does not get the tenant lease returns without a TSA request
     // and without touching the persisted status.
     const attempt = await anchorLatestWithLease(

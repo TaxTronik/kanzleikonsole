@@ -80,7 +80,8 @@ const auditRecorder = new EvidenceService(new LocalTimestampAdapter());
 
 /** Tenant-spezifischer Produktionsadapter; exportiert als schmaler Regressionstest-Seam. */
 export async function restoreEvidenceServiceFor(tenantId: string): Promise<EvidenceService> {
-  return new EvidenceService(await timestampPortFor(tenantId));
+  // F-12: reine Prüfung der wiederhergestellten Kette — in Produktion ohne Netz.
+  return new EvidenceService(await timestampPortFor(tenantId, 'verify'));
 }
 
 /** Gleiche Verbindung, anderer DB-Name (Query — z. B. ?schema= — bleibt erhalten). */

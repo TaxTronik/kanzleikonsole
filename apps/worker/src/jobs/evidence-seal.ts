@@ -87,7 +87,7 @@ export const evidenceSealWorker = createWorker<EvidenceSealJob>(
           : await pendingSealDays(tenantId);
         if (days.length === 0) continue;
 
-        const port = await timestampPortFor(tenantId);
+        const port = await timestampPortFor(tenantId, 'stamp');
         const service = new EvidenceService(port);
         for (const sealDate of days) {
           // RF-4: bewusst KEINE Transaktion mehr um sealDay — der TSA-HTTP-Call

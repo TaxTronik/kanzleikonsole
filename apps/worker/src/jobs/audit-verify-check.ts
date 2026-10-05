@@ -285,7 +285,8 @@ async function verifyTenantChain(
   checkedAt: Date,
   manual: boolean,
 ): Promise<TenantVerificationRun> {
-  const timestampPort = await timestampPortFor(tenantId);
+  // F-12: reine Prüfung — in Produktion ohne Netz- oder DNS-Zugriff.
+  const timestampPort = await timestampPortFor(tenantId, 'verify');
   const evidenceService = new EvidenceService(timestampPort);
   // P-04: Zuwachs ab Prüf-Checkpoint plus fällige Vollprüfung, je Abschnitt
   // eine Owner-Transaktion. Das Ergebnis hat dieselbe Bedeutung wie

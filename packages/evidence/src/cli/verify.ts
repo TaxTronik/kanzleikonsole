@@ -129,6 +129,9 @@ async function reportArchiveTimestamp(input: {
   toAuditId: bigint;
   actualFileSha256: Buffer;
   tsaResponseBlob: Uint8Array | null;
+  /** F-12: STAMPED, PENDING oder STAMPED_LATE (nachträglicher Stempel). */
+  tsaStatus: string;
+  tsaStampedAt: Date | null;
   requireExternalTsa: boolean;
   priorOk: boolean;
 }): Promise<boolean> {
@@ -146,14 +149,20 @@ async function reportArchiveTimestamp(input: {
     return false;
   }
   if (status === 'valid') {
+    // Ein nachträglicher Stempel belegt die Existenz erst ab seiner genTime.
+    const late =
+      input.tsaStatus === 'STAMPED_LATE'
+        ? ` Nachträglich gestempelt${input.tsaStampedAt ? ` am ${input.tsaStampedAt.toISOString()}` : ''}.`
+        : '';
     process.stdout.write(
-      `  ✓ Archiv ${input.archiveId}: RFC-3161-Token ist an den tatsächlichen Datei-Hash und einen Trust-Anchor gebunden.\n`,
+      `  ✓ Archiv ${input.archiveId}: RFC-3161-Token ist an den tatsächlichen Datei-Hash und einen Trust-Anchor gebunden.${late}\n`,
     );
     return input.priorOk;
   }
   if (status === 'missing') {
     process.stdout.write(
       `  ${input.requireExternalTsa ? '✗' : '⚠'} Archiv ${input.archiveId}: kein externer RFC-3161-Nachweis` +
+        (input.tsaStatus === 'PENDING' ? ', Nachstempel durch audit-rotate ausstehend' : '') +
         (input.requireExternalTsa ? ' (externe TSA ist per Policy verpflichtend).\n' : '.\n'),
     );
     return archiveTimestampMeetsPolicy(status, input.requireExternalTsa) ? input.priorOk : false;
@@ -304,6 +313,8 @@ async function main() {
           toAuditId: a.toAuditId,
           actualFileSha256: actualSha,
           tsaResponseBlob: a.tsaResponseBlob,
+          tsaStatus: a.tsaStatus,
+          tsaStampedAt: a.tsaStampedAt,
           requireExternalTsa,
           priorOk: allOk,
         });

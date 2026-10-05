@@ -1,5 +1,39 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-018
+    date: '2026-10-05'
+    paths:
+      - apps/worker/src/jobs/audit-anchor.ts
+      - apps/worker/src/jobs/audit-rotate.ts
+      - apps/worker/src/jobs/audit-verify-check.ts
+      - apps/worker/src/jobs/backup-drill.ts
+      - apps/worker/src/jobs/evidence-seal.ts
+      - packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql
+      - packages/db/prisma/schema.prisma
+      - packages/evidence/src/cli/verify.ts
+    rule_ids:
+      - AUDIT-ARCHIVE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - BACKUP-DRILL-INTEGRITY-001
+      - AUDIT-HASH-CHAIN-001
+    reason: >-
+      Alle Worker-Pfade wählen die Zeitstempelstelle über eine gemeinsame Funktion
+      resolveTsa(tenantId, 'stamp' | 'verify') in derselben Reihenfolge (Kanzlei,
+      TIMESTAMP_AUTHORITY_URL, Standard-TSA); die Prüfung vorhandener Tokens braucht
+      in Produktion kein Netz. Scheitert beim Archivieren der RFC-3161-Stempel,
+      wird das Segment wie bisher ohne Token archiviert, jetzt aber als PENDING
+      geführt und von einem späteren Lauf nach Prüfung von Größe, SHA-256 und Kette
+      des gesperrten Objekts nachgestempelt (STAMPED_LATE). Der Update-Trigger
+      erlaubt ausschließlich diesen einmaligen Übergang und nur für die Token-
+      Felder; Segmentgrenzen, Kettenanker, Datei-Hash und Speicherort bleiben
+      unveränderlich. Keine fachliche Freigabe; die Prüffrage zur Nachholung bleibt
+      offen.
+    tests:
+      - packages/db/src/__tests__/audit-archive-tsa-status.test.ts
+      - apps/worker/src/__tests__/tsa-port.test.ts
+      - apps/worker/src/jobs/__tests__/audit-rotate.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-017
     date: '2026-10-05'
     paths:
@@ -1825,6 +1859,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-018` dokumentiert die gemeinsame Wahl der
+  Zeitstempelstelle und das Nachstempeln ausstehender Archivsegmente.
+  Segmentgrenzen, Kettenanker und Datei-Hash bleiben unveränderlich.
 
 - 2026-10-05: `FK-EXC-20261005-017` dokumentiert das abschließende Verbuchen
   nicht weitergeleiteter n8n-Workflow-Übergaben. Workflow-Status und

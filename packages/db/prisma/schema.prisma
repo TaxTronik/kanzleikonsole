@@ -3951,6 +3951,10 @@ model AuditArchive {
   storageKey      String           @map("storage_key")
   tsaResponseBlob Bytes?           @map("tsa_response_blob")
   tsaSerial       String?          @map("tsa_serial")
+  /// F-12: STAMPED, PENDING (Nachstempel ausstehend) oder STAMPED_LATE; CHECK und
+  /// Update-Guard (nur PENDING -> STAMPED_LATE) in Migration 20261005110100.
+  tsaStatus       String           @map("tsa_status")
+  tsaStampedAt    DateTime?        @map("tsa_stamped_at") @db.Timestamptz(6)
   mode            AuditArchiveMode @default(SOFT)
   // RF-6 (iter77): timestamptz, siehe AuditLog.occurredAt
   archivedAt      DateTime         @default(now()) @map("archived_at") @db.Timestamptz(6)
@@ -3958,6 +3962,7 @@ model AuditArchive {
 
   @@unique([tenantId, fromAuditId])
   @@index([tenantId, archivedAt])
+  // audit_archive_tsa_pending_idx ist ein Teilindex (nur in der Migration).
   @@map("audit_archive")
 }
 

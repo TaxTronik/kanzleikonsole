@@ -92,7 +92,8 @@ describe('Restore-TSA-Policy', () => {
     mocks.timestampPortFor.mockResolvedValueOnce(port);
 
     await expect(restoreEvidenceServiceFor('tenant-1')).resolves.toBeDefined();
-    expect(mocks.timestampPortFor).toHaveBeenCalledWith('tenant-1');
+    // F-12: reine Prüfung — in Produktion ohne Netz- oder DNS-Zugriff.
+    expect(mocks.timestampPortFor).toHaveBeenCalledWith('tenant-1', 'verify');
   });
 
   it('erzwingt im Produktivmodus oder bei expliziter Vorgabe eine externe TSA', () => {

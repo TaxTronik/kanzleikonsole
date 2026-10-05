@@ -502,6 +502,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Audit-Archiv: Scheitert der RFC-3161-Stempel, wird das Segment
+  als ausstehend archiviert und später nach Prüfung des gespeicherten Objekts
+  nachgestempelt; bisher blieb es dauerhaft ohne externen Zeitnachweis. Die
+  Zeitstempelstelle wird in allen Worker-Pfaden gleich gewählt, und die
+  Prüfung vorhandener Stempel braucht in Produktion kein Netz mehr
+  (`AUDIT-ARCHIVE-001`, `AUDIT-RFC3161-ANCHOR-001`, `FK-EXC-20261005-018`).
 - Nicht weitergeleitete n8n-Übergaben aus Workflows (Ereignis nicht
   abonniert, n8n aus, Route inaktiv) werden abschließend verbucht statt
   minütlich ohne Grenze wiederholt; ab 100 solcher Zeilen blieben echte

@@ -11,9 +11,12 @@
 //   - N-8 Forward-Recovery: Objekt existiert bereits → kein zweiter PUT,
 //     DB-Eintrag wird nachgezogen
 //   - echte S3-Fehler beim HeadObject propagieren (nur NotFound ist erwartet)
-//   - F3: optionaler RFC-3161-Stempel; Fehlschlag → tsaResponseBlob NULL
+//   - F3/F-12: RFC-3161-Stempel über resolveTsa (wie Siegel und Anker);
+//     Fehlschlag → tsaResponseBlob NULL + tsa_status PENDING, späterer Lauf
+//     stempelt nach geprüftem Objekt nach (STAMPED_LATE)
 //   - RF-13: AUDIT_ARCHIVE_MODE=HARD wird ehrlich als SOFT persistiert
 //     (DB-Cleanup nicht implementiert — kein irreführender HARD-Nachweis)
+// Fachkatalog: AUDIT-ARCHIVE-001, AUDIT-RFC3161-ANCHOR-001
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -23,7 +26,7 @@ import { Readable } from 'node:stream';
 const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    auditArchive: { findFirst: vi.fn(), create: vi.fn() },
+    auditArchive: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
     auditLog: { aggregate: vi.fn(), findMany: vi.fn() },
     tenantSetting: { findUnique: vi.fn() },
   };
@@ -33,7 +36,7 @@ const h = vi.hoisted(() => {
   const verifyArchiveChain = vi.fn();
   const tsaTimestamp = vi.fn();
   const tsaVerify = vi.fn();
-  const assertPublicHost = vi.fn();
+  const resolveTsa = vi.fn();
   const retention = new Date('2036-12-31T23:59:59.000Z');
   // RF-13: hoisted, damit der Logger auch nach vi.resetModules() (HARD-Test
   // unten) objekt-identisch geteilt bleibt und Warn-Assertions möglich sind.
@@ -46,7 +49,7 @@ const h = vi.hoisted(() => {
     verifyArchiveChain,
     tsaTimestamp,
     tsaVerify,
-    assertPublicHost,
+    resolveTsa,
     retention,
     log,
   };
@@ -56,7 +59,7 @@ vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({ log: h.log }));
-vi.mock('../../http/ssrf-guard', () => ({ assertPublicHost: h.assertPublicHost }));
+vi.mock('../../tsa-port', () => ({ resolveTsa: h.resolveTsa }));
 vi.mock('@taxtronik/config', () => ({ env: { S3_BUCKET_GOBD: 'gobd-bucket' } }));
 vi.mock('@taxtronik/storage', () => ({
   s3: { send: h.s3Send },
@@ -66,9 +69,6 @@ vi.mock('@taxtronik/evidence', () => ({
   serializeArchive: h.serializeArchive,
   parseArchive: h.parseArchive,
   verifyArchiveChain: h.verifyArchiveChain,
-  createRfc3161Adapter: () => ({ timestamp: h.tsaTimestamp, verify: h.tsaVerify }),
-  resolveTsaUrl: (providerId: string | null, customUrl: string | null) =>
-    customUrl ?? (providerId ? `https://tsa.example.com/${providerId}` : null),
 }));
 
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -96,7 +96,12 @@ const SER = {
 interface RotateResult {
   totalArchived: number;
   totalDeleted: number;
+  restamped: number;
+  restampRejected: number;
 }
+
+const ROTATED = { totalArchived: 2, totalDeleted: 0, restamped: 0, restampRejected: 0 };
+const NOTHING = { totalArchived: 0, totalDeleted: 0, restamped: 0, restampRejected: 0 };
 
 function run(): Promise<RotateResult> {
   return processors.get('audit-rotate')!({ data: { tenantId: TENANT } }) as Promise<RotateResult>;
@@ -139,6 +144,8 @@ beforeEach(() => {
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.auditArchive.findFirst.mockResolvedValue({ toAuditId: 5n });
   h.prismaOwner.auditArchive.create.mockResolvedValue({});
+  h.prismaOwner.auditArchive.findMany.mockResolvedValue([]);
+  h.prismaOwner.auditArchive.updateMany.mockResolvedValue({ count: 1 });
   h.prismaOwner.auditLog.aggregate.mockResolvedValue({ _max: { id: 7n } });
   h.prismaOwner.auditLog.findMany.mockResolvedValue([auditRow(6n), auditRow(7n)]);
   h.prismaOwner.tenantSetting.findUnique.mockResolvedValue(null);
@@ -150,8 +157,15 @@ beforeEach(() => {
     if (cmd instanceof HeadObjectCommand) throw notFound();
     return {};
   });
-  h.assertPublicHost.mockResolvedValue(undefined);
-  h.tsaTimestamp.mockResolvedValue({ tsaResponseBlob: Buffer.from('tsa-stamp') });
+  h.resolveTsa.mockResolvedValue({
+    port: { mode: 'rfc3161', timestamp: h.tsaTimestamp, verify: h.tsaVerify },
+    url: 'https://tsa.example.com/globalsign',
+    source: 'default',
+  });
+  h.tsaTimestamp.mockResolvedValue({
+    tsaResponseBlob: Buffer.from('tsa-stamp'),
+    tsaSerial: '0a1b',
+  });
   h.tsaVerify.mockResolvedValue(true);
 });
 
@@ -173,7 +187,7 @@ describe('RF-11: Segment-Selektion als reine id-Range', () => {
       orderBy: { id: 'asc' },
       take: 5000,
     });
-    expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+    expect(result).toEqual(ROTATED);
   });
 
   it('noch nie archiviert → Range startet bei id > 0', async () => {
@@ -196,7 +210,7 @@ describe('RF-11: Segment-Selektion als reine id-Range', () => {
     expect(h.prismaOwner.auditLog.findMany).not.toHaveBeenCalled();
     expect(h.s3Send).not.toHaveBeenCalled();
     expect(h.prismaOwner.auditArchive.create).not.toHaveBeenCalled();
-    expect(result).toEqual({ totalArchived: 0, totalDeleted: 0 });
+    expect(result).toEqual(NOTHING);
   });
 
   it('alles bereits archiviert (maxId <= sinceId) → kein neues Segment', async () => {
@@ -205,7 +219,7 @@ describe('RF-11: Segment-Selektion als reine id-Range', () => {
     const result = await run();
 
     expect(h.prismaOwner.auditLog.findMany).not.toHaveBeenCalled();
-    expect(result).toEqual({ totalArchived: 0, totalDeleted: 0 });
+    expect(result).toEqual(NOTHING);
   });
 });
 
@@ -235,7 +249,10 @@ describe('Upload + Archiv-Eintrag', () => {
         fileSizeBytes: BigInt(NDJSON.length),
         storageBucket: 'gobd-bucket',
         storageKey: `tenants/${TENANT}/audit-archive/2026/01/6-7.ndjson`,
-        tsaResponseBlob: expect.any(Uint8Array), // verifizierter GlobalSign-Default
+        tsaResponseBlob: expect.any(Uint8Array), // gegen Datei-Hash verifizierter Token
+        tsaSerial: '0a1b',
+        tsaStatus: 'STAMPED',
+        tsaStampedAt: FIXED_NOW,
         mode: 'SOFT',
       }),
     });
@@ -266,7 +283,7 @@ describe('N-8: Forward-Recovery nach Crash zwischen PUT und DB-Insert', () => {
     expect(cmds[0]).toBeInstanceOf(HeadObjectCommand);
     expect(cmds[1]).toBeInstanceOf(GetObjectCommand);
     expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+    expect(result).toEqual(ROTATED);
   });
 
   it('echter S3-Fehler beim HeadObject propagiert (nur NotFound ist erwartet)', async () => {
@@ -302,7 +319,7 @@ describe('AUDIT-ARCHIVE-001: Segment vor Upload und Recovery vollständig prüfe
       expect(h.s3Send).not.toHaveBeenCalled();
       expect(h.prismaOwner.auditArchive.create).not.toHaveBeenCalled();
     } else {
-      await expect(run()).resolves.toEqual({ totalArchived: 2, totalDeleted: 0 });
+      await expect(run()).resolves.toEqual(ROTATED);
       expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledTimes(1);
     }
   });
@@ -330,46 +347,59 @@ describe('AUDIT-ARCHIVE-001: Segment vor Upload und Recovery vollständig prüfe
   );
 });
 
-describe('F3: optionaler RFC-3161-Stempel', () => {
-  it('ohne Override nutzt das Archiv denselben GlobalSign-Default wie die Tagessiegel', async () => {
+describe('F3/F-12: RFC-3161-Stempel und Nachstempel', () => {
+  it('wählt die TSA über resolveTsa wie Tagessiegel und Rolling Anchors', async () => {
     await run();
 
-    expect(h.assertPublicHost).toHaveBeenCalledWith('https://tsa.example.com/globalsign', {
-      mode: 'public',
-    });
+    expect(h.resolveTsa).toHaveBeenCalledWith(TENANT, 'stamp');
     expect(h.tsaTimestamp).toHaveBeenCalledWith(SER.fileSha256);
     expect(h.tsaVerify).toHaveBeenCalledWith(SER.fileSha256, Buffer.from('tsa-stamp'));
-  });
-
-  it('Tenant-TSA konfiguriert → Stempel über fileSha256, Blob landet im Archiv', async () => {
-    h.prismaOwner.tenantSetting.findUnique.mockResolvedValue({
-      value: { customUrl: 'https://tsa.example.com/tsr' },
-    });
-
-    await run();
-
-    expect(h.assertPublicHost).toHaveBeenCalledWith('https://tsa.example.com/tsr', {
-      mode: 'public',
-    });
-    expect(h.tsaTimestamp).toHaveBeenCalledWith(SER.fileSha256);
     const data = h.prismaOwner.auditArchive.create.mock.calls[0]![0].data as {
       tsaResponseBlob: Uint8Array;
     };
     expect(Buffer.from(data.tsaResponseBlob).toString()).toBe('tsa-stamp');
   });
 
-  it('TSA-Fehlschlag → tsaResponseBlob NULL, Archivierung läuft trotzdem durch', async () => {
-    h.prismaOwner.tenantSetting.findUnique.mockResolvedValue({
-      value: { customUrl: 'https://tsa.example.com/tsr' },
-    });
+  it('TSA-Fehlschlag → PENDING ohne Token, Archivierung läuft trotzdem durch', async () => {
     h.tsaTimestamp.mockRejectedValue(new Error('TSA timeout'));
 
     const result = await run();
 
     expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ tsaResponseBlob: null }),
+      data: expect.objectContaining({
+        tsaResponseBlob: null,
+        tsaSerial: null,
+        tsaStatus: 'PENDING',
+        tsaStampedAt: null,
+      }),
     });
-    expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+    expect(result).toEqual(ROTATED);
+  });
+
+  it('nicht auflösbare TSA in Produktion (resolveTsa wirft) → PENDING statt Abbruch', async () => {
+    h.resolveTsa.mockRejectedValue(new Error('getaddrinfo EAI_AGAIN tsa.example.com'));
+
+    const result = await run();
+
+    expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tsaResponseBlob: null, tsaStatus: 'PENDING' }),
+    });
+    expect(result).toEqual(ROTATED);
+  });
+
+  it('Dev-Self-Timestamp gilt nicht als externer Stempel', async () => {
+    h.resolveTsa.mockResolvedValue({
+      port: { mode: 'local', timestamp: h.tsaTimestamp, verify: h.tsaVerify },
+      url: 'https://tsa.intern.example/tsr',
+      source: 'tenant',
+    });
+
+    await run();
+
+    expect(h.tsaTimestamp).not.toHaveBeenCalled();
+    expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tsaResponseBlob: null, tsaStatus: 'PENDING' }),
+    });
   });
 
   it('untrusted oder an einen anderen Imprint gebundene Antwort wird nicht persistiert', async () => {
@@ -379,13 +409,107 @@ describe('F3: optionaler RFC-3161-Stempel', () => {
 
     expect(h.tsaVerify).toHaveBeenCalledWith(SER.fileSha256, Buffer.from('tsa-stamp'));
     expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ tsaResponseBlob: null }),
+      data: expect.objectContaining({ tsaResponseBlob: null, tsaStatus: 'PENDING' }),
     });
     expect(h.log.warn).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: TENANT }),
       expect.stringContaining('TSA-Stempel fehlgeschlagen'),
     );
-    expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+    expect(result).toEqual(ROTATED);
+  });
+
+  describe('Nachstempel von PENDING-Segmenten', () => {
+    const PENDING_KEY = `tenants/${TENANT}/audit-archive/2025/12/1-5.ndjson`;
+    function pendingSegment(id: bigint, overrides: Record<string, unknown> = {}) {
+      return {
+        id,
+        fromAuditId: id,
+        toAuditId: id + 1n,
+        storageKey: PENDING_KEY,
+        fileSha256: SER.fileSha256,
+        fileSizeBytes: BigInt(NDJSON.length),
+        firstPrevHash: SER.firstPrevHash,
+        lastThisHash: SER.lastThisHash,
+        ...overrides,
+      };
+    }
+    function serveStored(body: Buffer = NDJSON) {
+      h.s3Send.mockImplementation(async (cmd: unknown) => {
+        if (cmd instanceof GetObjectCommand) {
+          return { ContentLength: body.length, Body: Readable.from([body]) };
+        }
+        if (cmd instanceof HeadObjectCommand) throw notFound();
+        return {};
+      });
+    }
+
+    it('prüft das gesperrte Objekt und stempelt PENDING → STAMPED_LATE nach', async () => {
+      h.prismaOwner.auditArchive.findMany.mockResolvedValue([pendingSegment(1n)]);
+      h.parseArchive.mockReturnValue([{ id: 1n }]);
+      serveStored();
+
+      const result = await run();
+
+      expect(h.prismaOwner.auditArchive.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { tenantId: TENANT, tsaStatus: 'PENDING' },
+          orderBy: { fromAuditId: 'asc' },
+          take: 100,
+        }),
+      );
+      const get = sentCommands().find((cmd) => cmd instanceof GetObjectCommand) as GetObjectCommand;
+      expect(get.input).toEqual({ Bucket: 'gobd-bucket', Key: PENDING_KEY });
+      expect(h.parseArchive).toHaveBeenCalledWith(NDJSON);
+      expect(h.verifyArchiveChain).toHaveBeenCalledWith([{ id: 1n }], {
+        firstPrevHash: SER.firstPrevHash,
+        lastThisHash: SER.lastThisHash,
+      });
+      expect(h.tsaTimestamp).toHaveBeenCalledWith(SER.fileSha256);
+      expect(h.prismaOwner.auditArchive.updateMany).toHaveBeenCalledWith({
+        where: { id: 1n, tenantId: TENANT, tsaStatus: 'PENDING' },
+        data: {
+          tsaResponseBlob: expect.any(Uint8Array),
+          tsaSerial: '0a1b',
+          tsaStatus: 'STAMPED_LATE',
+          tsaStampedAt: FIXED_NOW,
+        },
+      });
+      expect(result).toEqual({ ...ROTATED, restamped: 1 });
+    });
+
+    it.each([
+      ['abweichender Inhalt', Buffer.from('{"id":"9"}\n{"id":"7"}\n'), { ok: true }],
+      ['gebrochene Kette', NDJSON, { ok: false, reason: 'lastThisHash mismatch' }],
+    ])('stempelt bei %s nicht nach und meldet den Befund', async (_case, body, chain) => {
+      h.prismaOwner.auditArchive.findMany.mockResolvedValue([pendingSegment(1n)]);
+      serveStored(body);
+      h.verifyArchiveChain.mockReturnValueOnce(chain).mockReturnValue({ ok: true });
+
+      const result = await run();
+
+      expect(h.prismaOwner.auditArchive.updateMany).not.toHaveBeenCalled();
+      expect(h.log.error).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: TENANT, archiveId: '1', storageKey: PENDING_KEY }),
+        expect.stringContaining('kein Nachstempel'),
+      );
+      expect(result).toEqual({ ...ROTATED, restampRejected: 1 });
+    });
+
+    it('beendet den Nachstempel beim ersten TSA-Fehler', async () => {
+      h.prismaOwner.auditArchive.findMany.mockResolvedValue([
+        pendingSegment(1n),
+        pendingSegment(3n),
+      ]);
+      serveStored();
+      h.tsaTimestamp.mockRejectedValueOnce(new Error('TSA timeout'));
+
+      const result = await run();
+
+      // ein Versuch für Segment 1, danach nur noch der Stempel des neuen Segments
+      expect(h.tsaTimestamp).toHaveBeenCalledTimes(2);
+      expect(h.prismaOwner.auditArchive.updateMany).not.toHaveBeenCalled();
+      expect(result).toEqual(ROTATED);
+    });
   });
 });
 
@@ -412,7 +536,7 @@ describe('RF-13: AUDIT_ARCHIVE_MODE=HARD wird ehrlich als SOFT persistiert', () 
       expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ mode: 'SOFT' }),
       });
-      expect(result).toEqual({ totalArchived: 2, totalDeleted: 0 });
+      expect(result).toEqual(ROTATED);
     } finally {
       vi.unstubAllEnvs();
       vi.resetModules();
