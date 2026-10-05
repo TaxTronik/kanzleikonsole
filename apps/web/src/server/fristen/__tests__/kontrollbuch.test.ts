@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  inaccessibleClientIdsFor: vi.fn(),
+  accessibleClientsWhereFor: vi.fn(),
 }));
 
 vi.mock('@/server/auth/rbac', () => ({
-  inaccessibleClientIdsFor: mocks.inaccessibleClientIdsFor,
+  accessibleClientsWhereFor: mocks.accessibleClientsWhereFor,
 }));
 
 vi.mock('@/lib/fmt', () => ({
@@ -18,6 +18,11 @@ vi.mock('@/server/container', () => ({
 
 import { loadKontrollbuch } from '../kontrollbuch';
 import { prepareDailyReview } from '../tagesabschluss';
+
+// OPEN-Regel eines Nicht-Admins (Form wie accessibleClientsWhereFor).
+const clientAccess = {
+  OR: [{ vertraulich: false }, { responsibilities: { some: { staffId: 'staff-1' } } }],
+};
 
 function createTx() {
   return {
@@ -35,7 +40,7 @@ describe('loadKontrollbuch query bounds', () => {
   // Fachkatalog: TAX-CONTROL-STATUS-001
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.inaccessibleClientIdsFor.mockResolvedValue(['denied-client']);
+    mocks.accessibleClientsWhereFor.mockResolvedValue(clientAccess);
   });
 
   it('zieht nurOffene und nurStaffId in alle Quellabfragen und nutzt minimale Selects', async () => {
@@ -57,14 +62,13 @@ describe('loadKontrollbuch query bounds', () => {
     const deadlineArgs = tx.taxDeadline.findMany.mock.calls[0]![0];
     expect(deadlineArgs).toEqual({
       where: {
-        clientId: { notIn: ['denied-client'] },
         dueDate: { lte: horizont },
         OR: [
           { status: { not: 'DONE' } },
           { status: 'DONE', completedAt: null },
           { status: 'DONE', completedByStaff: null },
         ],
-        client: responsibleClient,
+        client: { AND: [clientAccess, responsibleClient] },
       },
       select: {
         id: true,
@@ -81,7 +85,6 @@ describe('loadKontrollbuch query bounds', () => {
 
     const noticeArgs = tx.taxNotice.findMany.mock.calls[0]![0];
     expect(noticeArgs.where).toEqual({
-      clientId: { notIn: ['denied-client'] },
       appealDeadline: { lte: horizont },
       AND: [
         { OR: [{ appealFiledAt: null }, { appealFiledBy: null }] },
@@ -94,7 +97,7 @@ describe('loadKontrollbuch query bounds', () => {
           ],
         },
       ],
-      client: responsibleClient,
+      client: { AND: [clientAccess, responsibleClient] },
     });
     expect(Object.keys(noticeArgs.select).sort()).toEqual(
       [
@@ -118,7 +121,6 @@ describe('loadKontrollbuch query bounds', () => {
 
     const klageArgs = tx.taxNotice.findMany.mock.calls[1]![0];
     expect(klageArgs.where).toEqual({
-      clientId: { notIn: ['denied-client'] },
       klageDeadline: { lte: horizont },
       status: {
         in: [
@@ -140,7 +142,7 @@ describe('loadKontrollbuch query bounds', () => {
           ],
         },
       ],
-      client: responsibleClient,
+      client: { AND: [clientAccess, responsibleClient] },
     });
     expect(Object.keys(klageArgs.select).sort()).toEqual(
       [
@@ -163,11 +165,10 @@ describe('loadKontrollbuch query bounds', () => {
 
     const riskNoticeArgs = tx.taxNotice.findMany.mock.calls[2]![0];
     expect(riskNoticeArgs.where).toEqual({
-      clientId: { notIn: ['denied-client'] },
       appealDeadline: null,
       internalRiskDeadline: { lte: horizont },
       deadlineCalculationStatus: { in: ['MANUAL_REVIEW', 'RISK_ONLY'] },
-      client: responsibleClient,
+      client: { AND: [clientAccess, responsibleClient] },
     });
     expect(Object.keys(riskNoticeArgs.select).sort()).toEqual(
       [
@@ -184,14 +185,13 @@ describe('loadKontrollbuch query bounds', () => {
     const requestArgs = tx.request.findMany.mock.calls[0]![0];
     expect(requestArgs).toEqual({
       where: {
-        clientId: { notIn: ['denied-client'] },
         dueAt: { lte: horizont },
         OR: [
           { status: { not: 'CLOSED' } },
           { status: 'CLOSED', closedAt: null },
           { status: 'CLOSED', closedByStaff: null },
         ],
-        client: responsibleClient,
+        client: { AND: [clientAccess, responsibleClient] },
       },
       select: {
         id: true,
@@ -208,10 +208,11 @@ describe('loadKontrollbuch query bounds', () => {
     const reminderArgs = tx.clientReminder.findMany.mock.calls[0]![0];
     expect(reminderArgs).toEqual({
       where: {
-        clientId: { notIn: ['denied-client'] },
+        client: clientAccess,
         AND: [
           // Interne Aufgaben (ohne Mandant) gehoeren nicht ins Fristenbuch —
-          // als AND-Zweig, damit der notIn-Filter oben erhalten bleibt.
+          // als eigener AND-Zweig (fuer Admin/Partner setzt der
+          // Relationsfilter keine Bedingung).
           { NOT: { clientId: null } },
           {
             dueDate: { lte: horizont },

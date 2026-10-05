@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 
 const mocks = vi.hoisted(() => ({
   staffAuth: vi.fn(),
-  inaccessibleClientIdsFor: vi.fn(),
+  accessibleClientsWhereFor: vi.fn(),
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
   streamObject: vi.fn(),
@@ -16,7 +16,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/server/auth/staff', () => ({ staffAuth: mocks.staffAuth }));
-vi.mock('@/server/auth/rbac', () => ({ inaccessibleClientIdsFor: mocks.inaccessibleClientIdsFor }));
+vi.mock('@/server/auth/rbac', () => ({
+  accessibleClientsWhereFor: mocks.accessibleClientsWhereFor,
+}));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
@@ -31,7 +33,7 @@ import { GET } from '../download/route';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.staffAuth.mockResolvedValue({ user: { tenantId: 'tenant-1', staffId: 'staff-1' } });
-  mocks.inaccessibleClientIdsFor.mockResolvedValue([]);
+  mocks.accessibleClientsWhereFor.mockResolvedValue({});
   mocks.withTenantContext.mockImplementation(
     async (_context: unknown, callback: (tx: unknown) => unknown) => callback(mocks.tx),
   );

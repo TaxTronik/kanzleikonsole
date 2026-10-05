@@ -1,4 +1,9 @@
 import type { TxClient } from '@taxtronik/db';
+import {
+  clientAccessFilter,
+  optionalClientAccessFilter,
+  type ClientAccessWhere,
+} from '@/server/auth/client-access-filter';
 
 const DEFAULT_MY_DAY_LIMIT = 20;
 
@@ -55,12 +60,6 @@ const ALL_MY_DAY_SOURCES: MyDaySources = {
   phoneNotes: true,
 };
 
-function nullableClientVisibility(deniedClientIds: string[] | undefined) {
-  return deniedClientIds?.length
-    ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
-    : {};
-}
-
 /**
  * Begrenzt die Kandidaten je Quelle, bevor die jeweilige Ansicht priorisiert.
  * Enthält nur Objekte, für die der aktuelle Mitarbeiter tatsächlich zuständig ist.
@@ -68,7 +67,7 @@ function nullableClientVisibility(deniedClientIds: string[] | undefined) {
 export async function loadMyDayCandidates(
   tx: TxClient,
   staffId: string,
-  deniedClientIds?: string[],
+  clientAccess?: ClientAccessWhere,
   now = new Date(),
   sources: MyDaySources = ALL_MY_DAY_SOURCES,
   limit = DEFAULT_MY_DAY_LIMIT,
@@ -80,7 +79,9 @@ export async function loadMyDayCandidates(
       { assignees: { none: {} }, createdByStaff: staffId },
     ],
   };
-  const reminderVisibility = nullableClientVisibility(deniedClientIds);
+  // clientId nullable (Wiedervorlagen, Termine, Telefonzettel): Einträge ohne
+  // Mandantenbezug bleiben sichtbar.
+  const nullableClientVisibility = optionalClientAccessFilter(clientAccess);
 
   const [workflowItems, reminders, appointments, phoneNotes] = await Promise.all([
     sources.workflows
@@ -90,7 +91,7 @@ export async function loadMyDayCandidates(
             doneAt: null,
             instance: {
               status: 'ACTIVE',
-              ...(deniedClientIds?.length ? { clientId: { notIn: deniedClientIds } } : {}),
+              ...clientAccessFilter(clientAccess),
             },
           },
           orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
@@ -109,8 +110,8 @@ export async function loadMyDayCandidates(
       ? tx.clientReminder.findMany({
           where: {
             doneAt: null,
-            ...(deniedClientIds?.length
-              ? { AND: [reminderAssignment, reminderVisibility] }
+            ...(nullableClientVisibility.OR
+              ? { AND: [reminderAssignment, nullableClientVisibility] }
               : reminderAssignment),
           },
           orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
@@ -129,7 +130,7 @@ export async function loadMyDayCandidates(
             ownerStaffId: staffId,
             status: { not: 'CANCELLED' },
             endsAt: { gte: now },
-            ...nullableClientVisibility(deniedClientIds),
+            ...nullableClientVisibility,
           },
           orderBy: { startsAt: 'asc' },
           take: queryLimit,
@@ -148,7 +149,7 @@ export async function loadMyDayCandidates(
           where: {
             forwardToStaff: staffId,
             doneAt: null,
-            ...nullableClientVisibility(deniedClientIds),
+            ...nullableClientVisibility,
           },
           orderBy: { createdAt: 'asc' },
           take: queryLimit,
@@ -210,13 +211,13 @@ export async function loadMyDayCandidates(
 export async function loadMyDayEntries(
   tx: TxClient,
   staffId: string,
-  deniedClientIds?: string[],
+  clientAccess?: ClientAccessWhere,
   now = new Date(),
   sources: MyDaySources = ALL_MY_DAY_SOURCES,
   limit = DEFAULT_MY_DAY_LIMIT,
 ): Promise<MyDayEntry[]> {
   const queryLimit = Math.max(1, Math.min(200, Math.trunc(limit)));
-  const entries = await loadMyDayCandidates(tx, staffId, deniedClientIds, now, sources, queryLimit);
+  const entries = await loadMyDayCandidates(tx, staffId, clientAccess, now, sources, queryLimit);
   return entries
     .sort((a, b) => {
       if (a.sortAt === null) return b.sortAt === null ? a.title.localeCompare(b.title, 'de') : 1;

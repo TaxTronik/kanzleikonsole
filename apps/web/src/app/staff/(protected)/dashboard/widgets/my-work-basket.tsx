@@ -13,13 +13,13 @@ export async function MyWorkBasket({
   tenantId,
   staffId,
   modules,
-  deniedClientIds,
+  clientAccess,
   portalInboxEnabled,
 }: RenderCtx) {
   const items = await loadWorkBasket({
     tx,
     staffId,
-    deniedClientIds,
+    clientAccess,
     slot: 'mine',
     limit: WORK_BASKET_LOAD_LIMIT,
     sources: {

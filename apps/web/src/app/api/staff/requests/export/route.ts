@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
@@ -32,10 +33,9 @@ export async function GET(req: NextRequest) {
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderungen
       // gesperrter Mandanten tauchen nicht im CSV auf.
-      const denied = await inaccessibleClientIdsFor(tx, session);
       const list = await tx.request.findMany({
         where: {
-          ...(denied.length ? { clientId: { notIn: denied } } : {}),
+          ...clientAccessFilter(await accessibleClientsWhereFor(tx, session)),
           ...(status && ['OPEN', 'IN_PROGRESS', 'RESPONDED', 'CLOSED', 'CANCELLED'].includes(status)
             ? { status: status as 'OPEN' | 'IN_PROGRESS' | 'RESPONDED' | 'CLOSED' | 'CANCELLED' }
             : {}),

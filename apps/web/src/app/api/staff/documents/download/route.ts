@@ -9,7 +9,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
 import { MAX_UPLOAD_BYTES, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
@@ -86,10 +87,7 @@ export async function GET(req: NextRequest) {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Dokumente gesperrter
       // Mandanten aus dem Set filtern — auditiert werden nur die tatsächlich
       // gelieferten (usable*). clientId = null (Kanzlei-Dokumente) bleibt frei.
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      const accessWhere = denied.length
-        ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] }
-        : {};
+      const accessWhere = optionalClientAccessFilter(await accessibleClientsWhereFor(tx, session));
 
       const looseDocs = ids.length
         ? await tx.document.findMany({

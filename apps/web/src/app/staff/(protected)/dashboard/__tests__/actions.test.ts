@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
   withStaff: vi.fn(),
-  inaccessibleClientIdsFor: vi.fn(),
+  accessibleClientsWhereFor: vi.fn(),
   isStaffAdmin: vi.fn(),
   renderWidget: vi.fn(),
   readBooleanTenantModules: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('@taxtronik/db/tenant-modules', () => ({
   readBooleanTenantModules: m.readBooleanTenantModules,
 }));
 vi.mock('@/server/auth/rbac', () => ({
-  inaccessibleClientIdsFor: m.inaccessibleClientIdsFor,
+  accessibleClientsWhereFor: m.accessibleClientsWhereFor,
   isStaffAdmin: m.isStaffAdmin,
   hasStaffPermission: m.hasStaffPermission,
 }));
@@ -28,6 +28,9 @@ vi.mock('@/server/settings/portal-features', () => ({
 vi.mock('../widgets', () => ({ renderWidget: m.renderWidget }));
 
 import { addDashboardWidgetAction, saveDashboardLayoutAction } from '../actions';
+
+// RESTRICTED-Regel eines Nicht-Admins (Form wie accessibleClientsWhereFor).
+const restrictedAccess = { responsibilities: { some: { staffId: 'staff-1' } } };
 
 const widget = {
   id: 'w-test',
@@ -43,7 +46,7 @@ describe('Dashboard-Layout-Actions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    m.inaccessibleClientIdsFor.mockResolvedValue(['restricted-client']);
+    m.accessibleClientsWhereFor.mockResolvedValue(restrictedAccess);
     m.isStaffAdmin.mockReturnValue(true);
     m.hasStaffPermission.mockReturnValue(false);
     m.readPortalFeaturesTx.mockResolvedValue({ clientInbox: false });
@@ -92,7 +95,7 @@ describe('Dashboard-Layout-Actions', () => {
         tx,
         staffId: 'staff-1',
         isAdmin: true,
-        deniedClientIds: ['restricted-client'],
+        clientAccess: restrictedAccess,
       }),
     );
   });
@@ -124,7 +127,7 @@ describe('Dashboard-Layout-Actions', () => {
         tenantId: 'tenant-1',
         staffId: 'staff-1',
         modules: expect.objectContaining({ reminders: true, workflows: true }),
-        deniedClientIds: ['restricted-client'],
+        clientAccess: restrictedAccess,
         portalInboxEnabled: feature && permission,
       }),
     );

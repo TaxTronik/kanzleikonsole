@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ListChecks } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { hasStaffPermission, inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { hasStaffPermission, accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { readPortalFeatures } from '@/server/settings/portal-features';
@@ -281,11 +281,11 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
   const selectedKind = selectedKindFrom(query.kind);
   const slot = workSlot(query.scope, inboxEnabled);
   const items = await withTenantContext(ctx, async (tx) => {
-    const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
+    const clientAccess = await accessibleClientsWhereFor(tx, session);
     return loadWorkBasket({
       tx,
       staffId,
-      deniedClientIds,
+      clientAccess,
       sources: moduleSources(modules, selectedKind),
       slot,
       limit: 100,

@@ -14,7 +14,8 @@ import Link from 'next/link';
 import { Workflow, Activity, User as UserIcon, AlertCircle, Plus } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { hasClientPickerOptionTx, loadClientPickerOptionTx } from '@/server/clients/picker';
 import { ClientCombobox } from '@/components/ui/client-combobox';
 import { fmtDateShort } from '@/lib/fmt';
@@ -39,21 +40,17 @@ export default async function ActiveWorkflowsPage({
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Gesperrte/vertrauliche Mandanten aus dieser globalen Workflow-Liste
-      // ausblenden. Der optionale Dropdown-Filter (clientFilterId) und der
-      // denied-Ausschluss werden über AND kombiniert — ein zweiter clientId-Key
-      // im Objektliteral würde den Dropdown-Filter überschreiben.
-      // WorkflowInstance.clientId ist NOT NULL → plain notIn.
-      const denied = await inaccessibleClientIdsFor(tx, session);
+      // ausblenden: Sichtbarkeitsregel als Relationsfilter (`client`), der
+      // optionale Dropdown-Filter (clientFilterId) bleibt ein eigener
+      // clientId-Zweig im AND. WorkflowInstance.clientId ist NOT NULL.
+      const visibleClient = clientAccessFilter(await accessibleClientsWhereFor(tx, session));
       const baseWhere = {
         status: 'ACTIVE' as const,
         ...(filter === 'mineStart' ? { startedByStaff: staffId } : {}),
         ...(filter === 'mine'
           ? { items: { some: { assigneeStaffId: staffId, doneAt: null } } }
           : {}),
-        AND: [
-          ...(clientFilterId ? [{ clientId: clientFilterId }] : []),
-          ...(denied.length ? [{ clientId: { notIn: denied } }] : []),
-        ],
+        AND: [...(clientFilterId ? [{ clientId: clientFilterId }] : []), visibleClient],
       };
       return Promise.all([
         tx.workflowInstance.findMany({

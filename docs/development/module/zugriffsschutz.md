@@ -243,7 +243,8 @@ Rollenmodell implizit.
 
 - Mandantenzugriff: Policy OPEN (alle aktiven Staff außer vertrauliche
   Mandanten) oder RESTRICTED (nur Zuständige laut `ClientResponsibility`);
-  zentral `canAccessClient(Tx)` + `inaccessibleClientIdsFor` für Mengen.
+  zentral `canAccessClient(Tx)`, für Mengen `accessibleClientsWhereFor` als
+  Relationsfilter (`client-access-filter.ts`, keine NOT-IN-Listen).
 - **RLS-Backstop:** App-Rolle `taxtronik_app` ohne BYPASSRLS; jede Query
   via `withTenantContext` (`set_config('app.current_tenant_id', …)`) gegen
   FORCE-RLS-Policies; Owner-Verbindung nur Migration/CLI/Worker; App-Client

@@ -9,7 +9,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { checkStaffSearchLimit } from '@/server/rate-limit';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
@@ -55,21 +56,25 @@ export async function GET(req: NextRequest) {
 
   const results = await withTenantContext(ctx, async (tx) => {
     // Zugriffsmodell (vertraulich-Flag / RESTRICTED): EINMAL pro Request die
-    // gesperrten Mandanten ermitteln und alle client-gebundenen Treffer-
-    // Queries filtern. Im OPEN-Normalfall (keine vertraulichen Mandanten)
-    // ist `denied` leer und es entsteht keine Zusatz-Bedingung.
-    const denied = await inaccessibleClientIdsFor(tx, session);
-    const clientNotDenied = denied.length ? { clientId: { notIn: denied } } : {};
+    // Sichtbarkeitsregel lesen und als Relationsfilter an alle client-
+    // gebundenen Treffer-Queries hängen. Admin/Partner: keine Zusatz-Bedingung.
+    const clientAccess = await accessibleClientsWhereFor(tx, session);
+    const viaVisibleClient = clientAccessFilter(clientAccess);
 
     const [clients, requests, documents, invoices, kbArticles] = await Promise.all([
       tx.client.findMany({
         where: {
-          ...(denied.length ? { id: { notIn: denied } } : {}),
-          OR: [
-            { name: { contains: likeTerm, mode: 'insensitive' } },
-            { datevNo: { contains: likeTerm, mode: 'insensitive' } },
-            { addisonNo: { contains: likeTerm, mode: 'insensitive' } },
-            { vatId: { contains: likeTerm, mode: 'insensitive' } },
+          // AND statt Spread: die Regel kann selbst ein OR enthalten.
+          AND: [
+            clientAccess,
+            {
+              OR: [
+                { name: { contains: likeTerm, mode: 'insensitive' } },
+                { datevNo: { contains: likeTerm, mode: 'insensitive' } },
+                { addisonNo: { contains: likeTerm, mode: 'insensitive' } },
+                { vatId: { contains: likeTerm, mode: 'insensitive' } },
+              ],
+            },
           ],
         },
         select: { id: true, name: true, datevNo: true, addisonNo: true },
@@ -78,7 +83,7 @@ export async function GET(req: NextRequest) {
       }),
       tx.request.findMany({
         where: {
-          ...clientNotDenied,
+          ...viaVisibleClient,
           OR: [
             { title: { contains: likeTerm, mode: 'insensitive' } },
             { description: { contains: likeTerm, mode: 'insensitive' } },
@@ -93,7 +98,7 @@ export async function GET(req: NextRequest) {
           title: { contains: likeTerm, mode: 'insensitive' },
           deletedAt: null,
           // clientId = null (Kanzlei-Dokumente) bleibt sichtbar.
-          ...(denied.length ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] } : {}),
+          ...optionalClientAccessFilter(clientAccess),
         },
         select: {
           id: true,
@@ -109,7 +114,7 @@ export async function GET(req: NextRequest) {
       modules.invoiceMode !== 'OFF'
         ? tx.invoice.findMany({
             where: {
-              ...clientNotDenied,
+              ...viaVisibleClient,
               OR: [
                 { number: { contains: likeTerm, mode: 'insensitive' } },
                 { subject: { contains: likeTerm, mode: 'insensitive' } },

@@ -25,6 +25,7 @@ import type { TxClient } from '@taxtronik/db';
 import { filterStaffAccessClientTx as filterStaffAccessClientSharedTx } from '@taxtronik/db/staff-client-access';
 import { ActionError } from '@/server/actions/action-error';
 import { readAccessPolicyTx, decideClientAccess } from '@/server/settings/access-policy';
+import type { ClientAccessWhere } from './client-access-filter';
 import { staffAuth, type StaffSession } from './staff';
 import { log } from '@/server/logger';
 
@@ -191,45 +192,24 @@ export async function filterStaffAccessClientTx(
 }
 
 /**
- * Menge der Mandanten-IDs, die der Mitarbeiter NICHT sehen darf — für
- * Mengen-Endpunkte (Suche, CSV-Exporte, Bulk-ZIP), die nicht pro Treffer
- * `canAccessClient` rufen können. Eine leichte Query pro Request:
- *  - Admin/Partner → leer (keine Zusatzlast).
- *  - OPEN: nur vertraulich markierte Mandanten ohne eigene Zuordnung — im
- *    Normalfall (keine vertraulichen Mandanten) ist das Ergebnis sofort leer.
- *  - RESTRICTED: alle Mandanten ohne eigene Zuordnung.
+ * Sichtbare Mandanten als positive Prisma-Bedingung auf `client` — für
+ * Mengen-Endpunkte (Listen, Suche, CSV-Exporte, Bulk-ZIP, Dashboard), die nicht
+ * pro Treffer `canAccessClient` rufen können. Mandantengebundene Modelle hängen
+ * sie über `clientAccessFilter`/`optionalClientAccessFilter` an
+ * (client-access-filter.ts). Eine leichte Query pro Request (Policy):
+ *  - Admin/Partner → `{}` (keine Einschränkung, keine Query).
+ *  - OPEN: nicht vertrauliche Mandanten oder eigene Zuordnung.
+ *  - RESTRICTED: nur Mandanten mit eigener Zuordnung.
  * Semantik exakt wie `decideClientAccess` (Zuordnung = Berufsträger/
- * Hauptbearbeiter via ClientResponsibility).
- */
-export async function inaccessibleClientIdsFor(
-  tx: TxClient,
-  session: StaffSession,
-): Promise<string[]> {
-  if (isStaffAdmin(session)) return [];
-  const { tenantId, staffId } = session.user;
-  const policy = await readAccessPolicyTx(tx, tenantId);
-  const rows = await tx.client.findMany({
-    where: {
-      ...(policy.clientAccessMode === 'OPEN' ? { vertraulich: true } : {}),
-      responsibilities: {
-        none: { staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-      },
-    },
-    select: { id: true },
-  });
-  return rows.map((r) => r.id);
-}
-
-/**
- * Positive Prisma-Bedingung für skalierbare Mandanten-Suchen. Anders als
- * `inaccessibleClientIdsFor` materialisiert sie im RESTRICTED-Modus nicht den
- * nahezu gesamten Bestand als tausende `NOT IN`-Parameter, sondern lässt
- * PostgreSQL die vorhandene Responsibility-Relation direkt filtern.
+ * Hauptbearbeiter via ClientResponsibility). Anders als eine Liste gesperrter
+ * IDs materialisiert sie im RESTRICTED-Modus nicht den nahezu gesamten Bestand
+ * als tausende `NOT IN`-Parameter, sondern lässt PostgreSQL die vorhandene
+ * Responsibility-Relation direkt filtern.
  */
 export async function accessibleClientsWhereFor(
   tx: TxClient,
   session: StaffSession,
-): Promise<PrismaTypes.ClientWhereInput> {
+): Promise<ClientAccessWhere> {
   if (isStaffAdmin(session)) return {};
   const { tenantId, staffId } = session.user;
   const policy = await readAccessPolicyTx(tx, tenantId);

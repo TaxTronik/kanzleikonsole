@@ -17,7 +17,8 @@ import { SavedViews } from '@/components/saved-views';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { StaffSession } from '@/server/auth/staff';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
@@ -49,7 +50,8 @@ export default async function TaxDeadlinesPage({
 
   const { staffId } = session.user;
 
-  // Client-Filter aufbauen — scope + Volltext-Suche kombinierbar.
+  // Client-Filter aufbauen — scope + Volltext-Suche kombinierbar. Die
+  // Sichtbarkeitsregel kommt erst in der Tenant-Tx per AND dazu.
   const clientWhere: Prisma.ClientWhereInput = {};
   if (scope === 'mine') {
     clientWhere.responsibilities = { some: { staffId } };
@@ -61,15 +63,12 @@ export default async function TaxDeadlinesPage({
       { addisonNo: { contains: q, mode: 'insensitive' } },
     ];
   }
-  const clientFilter: Prisma.TaxDeadlineWhereInput =
-    Object.keys(clientWhere).length > 0 ? { client: clientWhere } : {};
-
   const queued = sp.queued === '1';
 
   if (view === 'month') {
-    return renderMonth(session, year, month0, scope, q, clientFilter, queued);
+    return renderMonth(session, year, month0, scope, q, clientWhere, queued);
   }
-  return renderList(session, year, month0, scope, q, clientFilter, queued);
+  return renderList(session, year, month0, scope, q, clientWhere, queued);
 }
 
 async function renderMonth(
@@ -78,7 +77,7 @@ async function renderMonth(
   month0: number,
   scope: 'mine' | 'all',
   q: string,
-  clientFilter: Prisma.TaxDeadlineWhereInput,
+  clientFilter: Prisma.ClientWhereInput,
   queued: boolean,
 ) {
   const { tenantId, staffId } = session.user;
@@ -91,11 +90,9 @@ async function renderMonth(
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
       // Mandanten ausblenden.
-      const denied = await inaccessibleClientIdsFor(tx, session);
       return tx.taxDeadline.findMany({
         where: {
-          ...clientFilter,
-          ...(denied.length ? { clientId: { notIn: denied } } : {}),
+          ...clientAccessFilter(await accessibleClientsWhereFor(tx, session), clientFilter),
           dueDate: { gte: start, lte: end },
         },
         orderBy: { dueDate: 'asc' },
@@ -273,7 +270,7 @@ async function renderList(
   month0: number,
   scope: 'mine' | 'all',
   q: string,
-  clientFilter: Prisma.TaxDeadlineWhereInput,
+  clientFilter: Prisma.ClientWhereInput,
   queued: boolean,
 ) {
   const { tenantId, staffId } = session.user;
@@ -282,20 +279,21 @@ async function renderList(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
-      // Mandanten ausblenden.
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
+      // Mandanten ausblenden; Regel und Seitenfilter in EINEM `client`-Filter.
+      const visible = clientAccessFilter(
+        await accessibleClientsWhereFor(tx, session),
+        clientFilter,
+      );
       return Promise.all([
         tx.taxDeadline.findMany({
-          where: { ...clientFilter, ...notDenied, status: 'OVERDUE' },
+          where: { ...visible, status: 'OVERDUE' },
           orderBy: { dueDate: 'asc' },
           include: { client: { select: { id: true, name: true } } },
           take: 100,
         }),
         tx.taxDeadline.findMany({
           where: {
-            ...clientFilter,
-            ...notDenied,
+            ...visible,
             status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'SUBMITTED'] },
           },
           orderBy: { dueDate: 'asc' },
@@ -303,7 +301,7 @@ async function renderList(
           take: 200,
         }),
         tx.taxDeadline.count({
-          where: { ...clientFilter, ...notDenied, status: 'DONE', completedAt: { not: null } },
+          where: { ...visible, status: 'DONE', completedAt: { not: null } },
         }),
       ]);
     },

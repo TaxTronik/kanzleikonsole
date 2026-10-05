@@ -4,7 +4,8 @@ import { withTenantContext } from '@taxtronik/db';
 import { Phone } from 'lucide-react';
 import { NewPhoneNoteForm } from './new-form';
 import { PhoneNotesList } from '@/app/staff/(protected)/clients/[id]/phone-notes-list';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { berlinYmd } from '@/lib/fmt';
 
 export default async function PhoneNotesPage() {
@@ -17,12 +18,9 @@ export default async function PhoneNotesPage() {
     async (tx) => {
       // Telefonnotizen gesperrter/vertraulicher Mandanten in dieser globalen
       // Liste ausblenden. clientId ist NULLABLE (mandantenlose Notizen) — die
-      // OR-Form behält NULL-Zeilen, die ein reines notIn (NULL NOT IN → nicht
-      // wahr) sonst verschluckte.
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      const clientScope = denied.length
-        ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] }
-        : undefined;
+      // OR-Form behält NULL-Zeilen, die ein reiner Relationsfilter sonst
+      // verschluckte.
+      const clientScope = optionalClientAccessFilter(await accessibleClientsWhereFor(tx, session));
       return Promise.all([
         tx.phoneNote.findMany({
           where: clientScope,

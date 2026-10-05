@@ -1,5 +1,62 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-004
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-audit.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-filenames.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
+      - apps/web/src/app/api/staff/documents/__tests__/bulk-download-stream.test.ts
+      - apps/web/src/app/api/staff/documents/download/route.ts
+      - apps/web/src/app/api/staff/invoices/export/__tests__/module-gate.test.ts
+      - apps/web/src/app/api/staff/invoices/export/route.ts
+      - apps/web/src/app/api/staff/search/route.ts
+      - apps/web/src/app/staff/(protected)/clients/page.tsx
+      - apps/web/src/app/staff/(protected)/dashboard/actions.ts
+      - apps/web/src/app/staff/(protected)/dashboard/page.tsx
+      - apps/web/src/app/staff/(protected)/dashboard/widgets/my-work-basket.tsx
+      - apps/web/src/app/staff/(protected)/documents/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/invoices/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/page.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
+      - apps/web/src/server/auth/rbac.ts
+      - apps/web/src/server/dashboard/my-day.ts
+      - apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts
+      - apps/web/src/server/fristen/kontrollbuch.ts
+      - apps/web/src/server/work/basket.ts
+    rule_ids:
+      - ACCESS-CLIENT-MODE-001
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-SEARCH-SCOPE-001
+      - ACCESS-STAFF-PERMISSION-001
+      - REMINDER-TICKET-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - INV-DUE-OVERDUE-001
+      - PORTAL-INBOX-SUBMISSION-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+    reason: >-
+      Die Mandantensichtbarkeit (vertrauliche Mandanten, RESTRICTED-Modus) wird in
+      Listen, Kalender, Dashboard, Arbeitskorb, Fristenkontrollbuch, Exporten,
+      ZIP-Download und globaler Suche als Relationsfilter accessibleClientsWhereFor
+      statt über NOT-IN-Listen aller gesperrten Mandanten-IDs geprüft; der alte
+      Helfer entfällt. Ein PostgreSQL-Test belegt identische sichtbare Zeilen für
+      OPEN und RESTRICTED, Admin und Mitarbeitende. Einzige beabsichtigte Änderung:
+      Das Dashboard-Widget zeigt interne Wiedervorlagen ohne Mandant auch dann,
+      wenn ein Mandant gesperrt ist. Der DB-CI-Job führt den neuen Test aus.
+      Zugriffsentscheidungen bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/client-access-filter.test.ts
+      - apps/web/src/server/auth/__tests__/client-access-filter-db.test.ts
+      - apps/web/src/server/auth/__tests__/client-access-filter-ci.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-003
     date: '2026-10-05'
     paths:
@@ -1484,6 +1541,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-004` dokumentiert die Mandantensichtbarkeit als
+  Relationsfilter statt NOT-IN-Listen. Sichtbare Zeilen und
+  Zugriffsentscheidungen bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-003` dokumentiert, dass ein Worker-Job
   pausierte Workflows mit erreichtem Termin fortsetzt statt das Rendern der

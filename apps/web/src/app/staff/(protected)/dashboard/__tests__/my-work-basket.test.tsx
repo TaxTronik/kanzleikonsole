@@ -35,6 +35,9 @@ vi.mock('../widgets/personal', () => ({
 vi.mock('../widgets/calendar', () => ({ CalendarWidget: vi.fn() }));
 vi.mock('../widgets/tax-news', () => ({ TaxNews: vi.fn() }));
 
+// RESTRICTED-Regel eines Nicht-Admins (Form wie accessibleClientsWhereFor).
+const clientAccess = { responsibilities: { some: { staffId: 'staff-a' } } };
+
 function context() {
   const db = {
     workflowItem: { findMany: vi.fn().mockResolvedValue([]) },
@@ -47,7 +50,7 @@ function context() {
     tx: db as unknown as RenderCtx['tx'],
     tenantId: 'tenant-a',
     staffId: 'staff-a',
-    deniedClientIds: ['client-denied'],
+    clientAccess,
     modules: {
       ...DEFAULT_BOOLEAN_TENANT_MODULES,
       workflows: false,
@@ -105,7 +108,7 @@ describe('Mein Arbeitskorb im Dashboard', () => {
         where: {
           assigneeStaffId: 'staff-a',
           doneAt: null,
-          instance: { status: 'ACTIVE', clientId: { notIn: ['client-denied'] } },
+          instance: { status: 'ACTIVE', client: clientAccess },
         },
       }),
     );
@@ -141,7 +144,17 @@ describe('Mein Arbeitskorb im Dashboard', () => {
         where: expect.objectContaining({
           tenantId: 'tenant-a',
           assignedStaffId: 'staff-a',
-          clientId: { notIn: ['client-denied'] },
+          client: {
+            AND: [
+              clientAccess,
+              {
+                tenantId: 'tenant-a',
+                allowActive: true,
+                anonymizedAt: null,
+                mandateEndedAt: null,
+              },
+            ],
+          },
           status: 'OPEN',
           attention: 'STAFF',
         }),

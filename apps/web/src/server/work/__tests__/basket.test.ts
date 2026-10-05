@@ -125,7 +125,7 @@ describe('PORTAL-INBOX-SUBMISSION-001: Arbeitskorb', () => {
       const result = await loadWorkBasket({
         tx: tx as never,
         staffId: 'staff-1',
-        deniedClientIds: ['restricted-client'],
+        clientAccess: { responsibilities: { some: { staffId: 'staff-1' } } },
         now,
         sources: { workflows: true, reminders: true, appointments: true, phoneNotes: true },
         limit,

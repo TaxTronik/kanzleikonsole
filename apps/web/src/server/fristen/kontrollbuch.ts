@@ -13,15 +13,17 @@
 // (Kontrollsicht der jüngeren Vergangenheit). Der CSV-Export ist ein
 // auditierter Kontrollauszug, aber kein Nachweis der fristwahrenden Handlung.
 //
-// Zugriffsmodell: RESTRICTED-/vertrauliche Mandanten werden über das
-// denied-Set ausgeblendet (identisch zu Kalender/Exporten).
+// Zugriffsmodell: RESTRICTED-/vertrauliche Mandanten werden über die
+// Sichtbarkeitsregel (Relationsfilter) ausgeblendet (identisch zu
+// Kalender/Exporten).
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import type { StaffSession } from '@/server/auth/staff';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
 import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
 import {
@@ -78,8 +80,7 @@ export async function loadKontrollbuch(
   const rueckschau = new Date(heute.getTime() - opts.tage * 86400000);
   const sources = { taxNotices: true, reminders: true, ...opts.sources };
 
-  const denied = await inaccessibleClientIdsFor(tx, session);
-  const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
+  const clientAccess = await accessibleClientsWhereFor(tx, session);
   const responsibleClient: Prisma.ClientWhereInput | undefined = opts.nurStaffId
     ? {
         responsibilities: {
@@ -87,6 +88,9 @@ export async function loadKontrollbuch(
         },
       }
     : undefined;
+  // Sichtbarkeitsregel und optionale Zuständigkeit in EINEM `client`-Filter: ein
+  // zweiter `client`-Schlüssel im Objekt-Spread würde die Regel überschreiben.
+  const visibleClient = clientAccessFilter(clientAccess, responsibleClient);
 
   // Prisma kann zwei Spalten in einem normalen Where-Objekt nicht portabel
   // gegeneinander vergleichen. Die tenant-/RLS-gebundenen Vorabfragen liefern
@@ -295,9 +299,8 @@ export async function loadKontrollbuch(
     queryWhenEnabled(sources.taxNotices, () =>
       tx.taxDeadline.findMany({
         where: {
-          ...notDenied,
           ...deadlineWindow,
-          ...(responsibleClient ? { client: responsibleClient } : {}),
+          ...visibleClient,
         },
         select: {
           id: true,
@@ -315,10 +318,9 @@ export async function loadKontrollbuch(
     queryWhenEnabled(sources.taxNotices, () =>
       tx.taxNotice.findMany({
         where: {
-          ...notDenied,
           appealDeadline: { not: null },
           ...noticeWindow,
-          ...(responsibleClient ? { client: responsibleClient } : {}),
+          ...visibleClient,
         },
         select: {
           id: true,
@@ -345,10 +347,9 @@ export async function loadKontrollbuch(
     queryWhenEnabled(sources.taxNotices, () =>
       tx.taxNotice.findMany({
         where: {
-          ...notDenied,
           klageDeadline: { not: null },
           ...klageWindow,
-          ...(responsibleClient ? { client: responsibleClient } : {}),
+          ...visibleClient,
         },
         select: {
           id: true,
@@ -371,9 +372,8 @@ export async function loadKontrollbuch(
     queryWhenEnabled(sources.taxNotices, () =>
       tx.taxNotice.findMany({
         where: {
-          ...notDenied,
           ...noticeRiskWindow,
-          ...(responsibleClient ? { client: responsibleClient } : {}),
+          ...visibleClient,
         },
         select: {
           id: true,
@@ -388,10 +388,9 @@ export async function loadKontrollbuch(
     ),
     tx.request.findMany({
       where: {
-        ...notDenied,
         dueAt: { not: null },
         ...requestWindow,
-        ...(responsibleClient ? { client: responsibleClient } : {}),
+        ...visibleClient,
       },
       select: {
         id: true,
@@ -407,15 +406,12 @@ export async function loadKontrollbuch(
     queryWhenEnabled(sources.reminders, () =>
       tx.clientReminder.findMany({
         where: {
-          ...notDenied,
+          ...clientAccessFilter(clientAccess),
           AND: [
             // Das Fristenbuch fuehrt MANDANTEN-Fristen. Interne Aufgaben ohne
             // Mandantenbezug haben darin nichts zu suchen (und keinen Platz: der
-            // Eintrag verlangt Mandant + Name).
-            //
-            // Bewusst im AND und NICHT als eigener `clientId`-Schluessel: der
-            // wuerde per Objekt-Spread den `notIn`-Filter aus `notDenied`
-            // ueberschreiben — gesperrte Mandanten waeren wieder sichtbar.
+            // Eintrag verlangt Mandant + Name). Fuer Admin/Partner (Regel `{}`)
+            // setzt der Relationsfilter keine Bedingung, daher explizit.
             { NOT: { clientId: null } },
             reminderWindow,
             ...(reminderStaff ? [reminderStaff] : []),

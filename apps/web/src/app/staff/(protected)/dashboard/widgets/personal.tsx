@@ -26,7 +26,8 @@ import { NotificationOpenLink } from '@/components/notification-open-link';
 import { BookmarkRemoveButton } from '../bookmark-remove-button';
 import { MyDayToggle } from '../my-day-toggle';
 import { NotesEditor } from '../notes-editor';
-import { ListShell, notDeniedClient, type RenderCtx } from './_shared';
+import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
+import { ListShell, type RenderCtx } from './_shared';
 
 // --- Bookmarks ---------------------------------------------------------------
 
@@ -190,13 +191,8 @@ export async function PersonalNotes({ tx, staffId }: RenderCtx): Promise<ReactNo
 
 // --- MyDay (persönliche Aufgaben und Termine) --------------------------------
 
-export async function MyDay({
-  tx,
-  staffId,
-  deniedClientIds,
-  modules,
-}: RenderCtx): Promise<ReactNode> {
-  const items = await loadMyDayEntries(tx, staffId, deniedClientIds, new Date(), {
+export async function MyDay({ tx, staffId, clientAccess, modules }: RenderCtx): Promise<ReactNode> {
+  const items = await loadMyDayEntries(tx, staffId, clientAccess, new Date(), {
     workflows: modules.workflows,
     reminders: modules.reminders,
     appointments: modules.appointments,
@@ -288,11 +284,11 @@ export async function MyDay({
 
 // --- MyWorkflows -------------------------------------------------------------
 
-export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function MyWorkflows({ tx, staffId, clientAccess }: RenderCtx): Promise<ReactNode> {
   const instances = await tx.workflowInstance.findMany({
     where: {
       status: 'ACTIVE',
-      ...notDeniedClient(deniedClientIds),
+      ...clientAccessFilter(clientAccess),
       OR: [
         { startedByStaff: staffId },
         { items: { some: { assigneeStaffId: staffId, doneAt: null } } },
@@ -377,11 +373,13 @@ export async function MyWorkflows({ tx, staffId, deniedClientIds }: RenderCtx): 
 
 // --- MyReminders (Wiedervorlagen) --------------------------------------------
 
-export async function MyReminders({ tx, staffId, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function MyReminders({ tx, staffId, clientAccess }: RenderCtx): Promise<ReactNode> {
   const reminders = await tx.clientReminder.findMany({
     where: {
       doneAt: null,
-      ...notDeniedClient(deniedClientIds),
+      // clientId nullable: interne Aufgaben ohne Mandant bleiben für Beteiligte
+      // sichtbar (REMINDER-TICKET-001, wie „Mein Tag“ und die Ticketübersicht).
+      AND: [optionalClientAccessFilter(clientAccess)],
       OR: [
         { assignees: { some: { staffId } } },
         { assignees: { none: {} }, createdByStaff: staffId },

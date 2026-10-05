@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@/server/auth/staff', () => ({
   staffAuth: async () => ({ user: { tenantId: 'tenant-1', staffId: 'staff-1' } }),
 }));
-vi.mock('@/server/auth/rbac', () => ({ inaccessibleClientIdsFor: async () => [] }));
+vi.mock('@/server/auth/rbac', () => ({ accessibleClientsWhereFor: async () => ({}) }));
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, run: (tx: unknown) => Promise<unknown>) =>
     run({ document: { findMany: h.read }, documentFolder: { findMany: h.folders } }),

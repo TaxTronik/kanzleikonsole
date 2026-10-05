@@ -1,3 +1,4 @@
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import type { WorkBasketExtension, WorkBasketItem } from '@/server/work/basket';
 
 // Fachkatalog: ACCESS-SEARCH-SCOPE-001 (Entwurf),
@@ -16,15 +17,13 @@ export function portalInboxWorkExtension(tenantId: string): WorkBasketExtension 
           ...(context.slot === 'mine'
             ? { assignedStaffId: context.staffId }
             : { assignedStaffId: null }),
-          ...(context.deniedClientIds?.length
-            ? { clientId: { notIn: context.deniedClientIds } }
-            : {}),
-          client: {
+          // Sichtbarkeitsregel und Mandatsstatus in EINEM `client`-Filter.
+          ...clientAccessFilter(context.clientAccess, {
             tenantId,
             allowActive: true,
             anonymizedAt: null,
             mandateEndedAt: null,
-          },
+          }),
         },
         orderBy: [{ lastMessageAt: 'asc' }, { id: 'asc' }],
         take: context.limit,

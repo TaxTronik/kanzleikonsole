@@ -16,7 +16,7 @@ import {
   withStaff,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
-import { inaccessibleClientIdsFor, isStaffAdmin, hasStaffPermission } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor, isStaffAdmin, hasStaffPermission } from '@/server/auth/rbac';
 import { readPortalFeaturesTx } from '@/server/settings/portal-features';
 import { renderWidget } from './widgets';
 
@@ -84,7 +84,7 @@ export async function addDashboardWidgetAction(
     if (!isDashboardWidgetEnabled(widget.type, modules)) {
       throw new ActionError('Dieses Dashboard-Widget ist für die deaktivierte Funktion gesperrt.');
     }
-    const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
+    const clientAccess = await accessibleClientsWhereFor(tx, session);
     const portalInboxEnabled =
       widget.type === 'my_work_basket' &&
       hasStaffPermission(session, 'PORTAL_INBOX_MANAGE') &&
@@ -98,7 +98,7 @@ export async function addDashboardWidgetAction(
       tenantId,
       staffId,
       isAdmin: isStaffAdmin(session),
-      deniedClientIds,
+      clientAccess,
       modules,
       portalInboxEnabled,
     });

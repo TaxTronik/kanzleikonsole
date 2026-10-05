@@ -40,7 +40,6 @@ import {
   canOtherStaffAccessClientTx,
   filterStaffAccessClientTx,
   accessibleClientsWhereFor,
-  inaccessibleClientIdsFor,
   hasStaffPermission,
 } from '../rbac';
 import type { StaffSession } from '../staff';
@@ -209,7 +208,7 @@ describe('toActionError', () => {
 });
 
 // =============================================================================
-// canAccessClientTx / inaccessibleClientIdsFor — Vertraulich-/RESTRICTED-Gate
+// canAccessClientTx / accessibleClientsWhereFor — Vertraulich-/RESTRICTED-Gate
 // auf Stub-Tx (kein DB-Zugriff). Die reine Entscheidungslogik testet
 // access-policy (decideClientAccess); hier geht es um die Tx-Orchestrierung:
 // Policy lesen → Mandant lesen → Responsibility nur wenn nötig.
@@ -261,25 +260,16 @@ interface StubTxConfig {
   mode?: 'OPEN' | 'RESTRICTED';
   client?: { vertraulich: boolean } | null;
   responsible?: boolean;
-  deniedIds?: string[];
-}
-
-interface ClientFindManyArgs {
-  where: {
-    vertraulich?: boolean;
-    responsibilities: { none: { staffId: string; role: { in: string[] } } };
-  };
 }
 
 function makeTx(cfg: StubTxConfig) {
-  const clientFindMany = vi.fn(async (_args: ClientFindManyArgs) =>
-    (cfg.deniedIds ?? []).map((id) => ({ id })),
-  );
   const responsibilityFindFirst = vi.fn(async () => (cfg.responsible ? { id: 'r1' } : null));
+  const settingFindUnique = vi.fn(async () =>
+    cfg.mode ? { value: { clientAccessMode: cfg.mode } } : null,
+  );
+  const clientFindMany = vi.fn(async () => []);
   const tx = {
-    tenantSetting: {
-      findUnique: vi.fn(async () => (cfg.mode ? { value: { clientAccessMode: cfg.mode } } : null)),
-    },
+    tenantSetting: { findUnique: settingFindUnique },
     client: {
       findUnique: vi.fn(async () => cfg.client ?? null),
       findMany: clientFindMany,
@@ -287,7 +277,7 @@ function makeTx(cfg: StubTxConfig) {
     clientResponsibility: { findFirst: responsibilityFindFirst },
   };
   // Cast über never: Stub deckt nur die von den Helfern berührte Tx-Fläche ab.
-  return { tx: tx as never, clientFindMany, responsibilityFindFirst };
+  return { tx: tx as never, clientFindMany, responsibilityFindFirst, settingFindUnique };
 }
 
 describe('canAccessClientTx', () => {
@@ -334,37 +324,24 @@ describe('canAccessClientTx', () => {
   });
 });
 
-describe('inaccessibleClientIdsFor', () => {
-  it('Admin/Partner → leer, keine Query (kein Zusatz-Load)', async () => {
-    const { tx, clientFindMany } = makeTx({});
-    await expect(inaccessibleClientIdsFor(tx, makeSession(['PARTNER']))).resolves.toEqual([]);
-    expect(clientFindMany).not.toHaveBeenCalled();
-  });
-
-  it('OPEN → nur vertrauliche Mandanten ohne eigene Zuordnung', async () => {
-    const { tx, clientFindMany } = makeTx({ mode: 'OPEN', deniedIds: ['c9'] });
-    await expect(inaccessibleClientIdsFor(tx, makeSession(['STAFF']))).resolves.toEqual(['c9']);
-    const where = clientFindMany.mock.calls[0]![0]!.where;
-    expect(where.vertraulich).toBe(true);
-    expect(where.responsibilities.none.staffId).toBe('s1');
-  });
-
-  it('RESTRICTED → alle Mandanten ohne eigene Zuordnung (kein vertraulich-Filter)', async () => {
-    const { tx, clientFindMany } = makeTx({ mode: 'RESTRICTED', deniedIds: ['c1', 'c2'] });
-    await expect(inaccessibleClientIdsFor(tx, makeSession(['STAFF']))).resolves.toEqual([
-      'c1',
-      'c2',
-    ]);
-    const where = clientFindMany.mock.calls[0]![0]!.where;
-    expect(where).not.toHaveProperty('vertraulich');
-    expect(where.responsibilities.none.role.in).toContain('HAUPTBEARBEITER');
-  });
-});
-
 describe('accessibleClientsWhereFor', () => {
-  it('Admin/Partner erhalten keinen zusätzlichen Filter', async () => {
-    const { tx } = makeTx({});
-    await expect(accessibleClientsWhereFor(tx, makeSession(['ADMIN']))).resolves.toEqual({});
+  it('Admin/Partner erhalten keinen zusätzlichen Filter und lösen keine Query aus', async () => {
+    for (const role of ['ADMIN', 'PARTNER']) {
+      const { tx, settingFindUnique, clientFindMany } = makeTx({ mode: 'RESTRICTED' });
+      await expect(accessibleClientsWhereFor(tx, makeSession([role]))).resolves.toEqual({});
+      expect(settingFindUnique).not.toHaveBeenCalled();
+      expect(clientFindMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it('lädt keine Mandanten-IDs (keine NOT-IN-Liste, P-09)', async () => {
+    for (const mode of ['OPEN', 'RESTRICTED'] as const) {
+      const { tx, clientFindMany, settingFindUnique } = makeTx({ mode });
+      const where = await accessibleClientsWhereFor(tx, makeSession(['STAFF']));
+      expect(clientFindMany).not.toHaveBeenCalled();
+      expect(settingFindUnique).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(where)).not.toContain('notIn');
+    }
   });
 
   it('OPEN erlaubt öffentliche Mandanten oder eine eigene Verantwortung', async () => {

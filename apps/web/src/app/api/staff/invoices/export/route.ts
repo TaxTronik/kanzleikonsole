@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
@@ -35,10 +36,9 @@ export async function GET(req: NextRequest) {
   const { rows, truncated } = await withTenantContext(ctx, async (tx) => {
     // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnungen gesperrter
     // Mandanten tauchen nicht im CSV auf.
-    const denied = await inaccessibleClientIdsFor(tx, session);
     const list = await tx.invoice.findMany({
       where: {
-        ...(denied.length ? { clientId: { notIn: denied } } : {}),
+        ...clientAccessFilter(await accessibleClientsWhereFor(tx, session)),
         ...(status && ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'].includes(status)
           ? { status: status as 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' }
           : {}),

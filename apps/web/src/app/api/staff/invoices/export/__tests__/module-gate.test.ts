@@ -17,7 +17,7 @@ vi.mock('@/server/rate-limit', () => ({
   getClientIp: vi.fn(),
 }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
-vi.mock('@/server/auth/rbac', () => ({ inaccessibleClientIdsFor: vi.fn() }));
+vi.mock('@/server/auth/rbac', () => ({ accessibleClientsWhereFor: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 
 import { GET } from '../route';

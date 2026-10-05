@@ -2,7 +2,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import type { ClientKind, DocumentProtectionTier } from '@prisma/client';
-import { inaccessibleClientIdsFor, canAccessClientTx } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor, canAccessClientTx } from '@/server/auth/rbac';
 import { DocumentExplorer, type Entry, type Crumb } from '@/components/document-explorer';
 
 const KIND_LABEL: Record<string, string> = {
@@ -86,9 +86,8 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         // Gesperrte/vertrauliche Mandanten (bzw. im RESTRICTED-Modus alle nicht
         // zugeordneten) aus der globalen Liste ausblenden — der Layout-Guard
         // unter clients/[id] greift hier nicht.
-        const denied = await inaccessibleClientIdsFor(tx, session);
         return tx.client.findMany({
-          where: { kind: typeParam, ...(denied.length ? { id: { notIn: denied } } : {}) },
+          where: { AND: [{ kind: typeParam }, await accessibleClientsWhereFor(tx, session)] },
           select: { id: true, name: true },
           orderBy: { name: 'asc' },
         });

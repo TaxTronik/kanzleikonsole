@@ -16,7 +16,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@/server/auth/staff', () => ({
   staffAuth: async () => ({ user: { tenantId: 'tenant-1', staffId: 'staff-1' } }),
 }));
-vi.mock('@/server/auth/rbac', () => ({ inaccessibleClientIdsFor: async () => [] }));
+vi.mock('@/server/auth/rbac', () => ({ accessibleClientsWhereFor: async () => ({}) }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));

@@ -12,7 +12,7 @@ const fixture = vi.hoisted(() => ({
 vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: fixture.requireStaffPage }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: fixture.withTenantContext }));
 vi.mock('@/server/auth/rbac', () => ({
-  inaccessibleClientIdsFor: vi.fn(async () => []),
+  accessibleClientsWhereFor: vi.fn(async () => ({})),
   hasStaffPermission: vi.fn(() => false),
 }));
 

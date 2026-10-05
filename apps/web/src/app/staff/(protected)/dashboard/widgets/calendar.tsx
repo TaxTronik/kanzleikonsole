@@ -8,13 +8,10 @@ import { CalendarDays } from 'lucide-react';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { fmtDateShort, fmtTimeShort } from '@/lib/fmt';
 import { CALENDAR_PAST_MS } from '@/lib/consts';
-import { ListShell, notDeniedClient, type RenderCtx } from './_shared';
+import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
+import { ListShell, type RenderCtx } from './_shared';
 
-export async function CalendarWidget({
-  tx,
-  deniedClientIds,
-  modules,
-}: RenderCtx): Promise<ReactNode> {
+export async function CalendarWidget({ tx, clientAccess, modules }: RenderCtx): Promise<ReactNode> {
   const now = new Date();
   const horizon = new Date(now);
   horizon.setDate(horizon.getDate() + 30);
@@ -26,9 +23,7 @@ export async function CalendarWidget({
             endsAt: { gte: now },
             startsAt: { lte: horizon },
             // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
-            ...(deniedClientIds?.length
-              ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
-              : {}),
+            ...optionalClientAccessFilter(clientAccess),
           },
           orderBy: { startsAt: 'asc' },
           take: 20,
@@ -49,7 +44,7 @@ export async function CalendarWidget({
           where: {
             status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
             dueDate: { gte: new Date(now.getTime() - CALENDAR_PAST_MS), lte: horizon },
-            ...notDeniedClient(deniedClientIds),
+            ...clientAccessFilter(clientAccess),
           },
           orderBy: { dueDate: 'asc' },
           take: 20,

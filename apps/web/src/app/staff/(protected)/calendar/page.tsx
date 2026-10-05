@@ -14,7 +14,8 @@ import { berlinMonthBoundsUtc, parseMonth, shortKind } from '@/lib/tax-calendar'
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox, AlertTriangle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { NewAppointmentDialog } from './new-appointment-dialog';
@@ -45,10 +46,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
-      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): EIN denied-Set pro
-      // Render, an alle mandantengebundenen Queries durchgereicht.
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      const notDenied = denied.length ? { clientId: { notIn: denied } } : {};
+      // Zugriffsmodell (vertraulich-Flag / RESTRICTED): EINE Sichtbarkeitsregel
+      // pro Render, als Relationsfilter an alle mandantengebundenen Queries.
+      const clientAccess = await accessibleClientsWhereFor(tx, session);
+      const viaVisibleClient = clientAccessFilter(clientAccess);
       const [
         deadlines,
         appointments,
@@ -60,7 +61,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       ] = await Promise.all([
         tx.taxDeadline.groupBy({
           by: ['dueDate', 'kind', 'period', 'status'],
-          where: { dueDate: { gte: dateStart, lte: dateEnd }, ...notDenied },
+          where: { dueDate: { gte: dateStart, lte: dateEnd }, ...viaVisibleClient },
           orderBy: { dueDate: 'asc' },
           _count: { _all: true },
         }),
@@ -70,7 +71,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             endsAt: { gte: appointmentStart },
             status: { not: 'CANCELLED' },
             // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
-            ...(denied.length ? { OR: [{ clientId: null }, { clientId: { notIn: denied } }] } : {}),
+            ...optionalClientAccessFilter(clientAccess),
           },
           orderBy: { startsAt: 'asc' },
           include: {
@@ -79,7 +80,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           },
         }),
         tx.appointmentRequest.findMany({
-          where: { status: 'PENDING', ...notDenied },
+          where: { status: 'PENDING', ...viaVisibleClient },
           orderBy: { createdAt: 'desc' },
           include: {
             client: { select: { id: true, name: true } },

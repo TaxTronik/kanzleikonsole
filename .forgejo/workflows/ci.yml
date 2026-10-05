@@ -254,6 +254,15 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/invoice-selection-db.test.tsx 2>&1 | tee testbericht-invoice-selection.log
 
+      # ACCESS-CLIENT-MODE-001: Relationsfilter der Mandanten-Sichtbarkeit
+      # liefern dieselben Zeilen wie die frühere NOT-IN-Liste (P-09).
+      - name: Client access relation filters against the PostgreSQL app role
+        env:
+          CLIENT_ACCESS_FILTER_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/client-access-filter-db.test.ts 2>&1 | tee testbericht-client-access-filter.log
+
       - name: Settings and audit atomicity against the PostgreSQL app role
         env:
           SETTINGS_ATOMICITY_DB_TEST: '1'
@@ -321,6 +330,7 @@ jobs:
             testbericht-db.log
             testbericht-reminder-services.log
             testbericht-invoice-selection.log
+            testbericht-client-access-filter.log
             testbericht-settings-atomicity.log
             testbericht-invoice-concurrency.log
             testbericht-evidence-db.log

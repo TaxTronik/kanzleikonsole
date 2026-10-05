@@ -1,4 +1,5 @@
 import type { TxClient } from '@taxtronik/db';
+import type { ClientAccessWhere } from '@/server/auth/client-access-filter';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
 import { loadMyDayCandidates, type MyDayEntry, type MyDaySources } from '@/server/dashboard/my-day';
 
@@ -39,7 +40,8 @@ export type WorkItemView = WorkBasketItem;
 export interface WorkBasketLoadContext {
   tx: TxClient;
   staffId: string;
-  deniedClientIds?: string[];
+  /** Sichtbarkeitsregel aus `accessibleClientsWhereFor`. */
+  clientAccess?: ClientAccessWhere;
   now: Date;
   slot: WorkBasketSlot;
   limit: number;
@@ -54,7 +56,7 @@ export interface WorkBasketExtension {
 export interface LoadWorkBasketInput {
   tx: TxClient;
   staffId: string;
-  deniedClientIds?: string[];
+  clientAccess?: ClientAccessWhere;
   now?: Date;
   slot?: WorkBasketSlot;
   sources: MyDaySources;
@@ -118,7 +120,7 @@ export async function loadWorkBasket(input: LoadWorkBasketInput): Promise<WorkBa
   const context: WorkBasketLoadContext = {
     tx: input.tx,
     staffId: input.staffId,
-    deniedClientIds: input.deniedClientIds,
+    clientAccess: input.clientAccess,
     now,
     slot,
     limit,
@@ -130,7 +132,7 @@ export async function loadWorkBasket(input: LoadWorkBasketInput): Promise<WorkBa
           await loadMyDayCandidates(
             input.tx,
             input.staffId,
-            input.deniedClientIds,
+            input.clientAccess,
             now,
             input.sources,
             limit,

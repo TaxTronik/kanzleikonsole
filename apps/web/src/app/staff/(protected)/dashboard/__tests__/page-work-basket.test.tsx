@@ -6,7 +6,7 @@ import { DEFAULT_BOOLEAN_TENANT_MODULES } from '@taxtronik/db/tenant-modules';
 const m = vi.hoisted(() => ({
   requireStaffPage: vi.fn(),
   withTenantContext: vi.fn(),
-  inaccessibleClientIdsFor: vi.fn(),
+  accessibleClientsWhereFor: vi.fn(),
   hasStaffPermission: vi.fn(),
   readModules: vi.fn(),
   readPortalFeatures: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: m.requireStaffPag
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/auth/rbac', () => ({
   isStaffAdmin: () => false,
-  inaccessibleClientIdsFor: m.inaccessibleClientIdsFor,
+  accessibleClientsWhereFor: m.accessibleClientsWhereFor,
   hasStaffPermission: m.hasStaffPermission,
 }));
 vi.mock('@/server/settings/modules', () => ({ readModules: m.readModules }));
@@ -31,12 +31,13 @@ describe('Initialer Dashboard-Arbeitskorb', () => {
   const session = { user: { tenantId: 'tenant-a', staffId: 'staff-a', fullName: 'Person A' } };
   const tx = { staffUser: { findUnique: vi.fn() } };
   const modules = { ...DEFAULT_BOOLEAN_TENANT_MODULES, reminders: false };
+  const clientAccess = { OR: [{ vertraulich: false }] };
 
   beforeEach(() => {
     vi.clearAllMocks();
     m.requireStaffPage.mockResolvedValue(session);
     m.withTenantContext.mockImplementation(async (_ctx, run) => run(tx));
-    m.inaccessibleClientIdsFor.mockResolvedValue(['client-denied']);
+    m.accessibleClientsWhereFor.mockResolvedValue(clientAccess);
     m.readModules.mockResolvedValue(modules);
     tx.staffUser.findUnique.mockResolvedValue({
       dashboardLayout: {
@@ -63,7 +64,7 @@ describe('Initialer Dashboard-Arbeitskorb', () => {
       tenantId: 'tenant-a',
       staffId: 'staff-a',
       isAdmin: false,
-      deniedClientIds: ['client-denied'],
+      clientAccess,
       modules,
       portalInboxEnabled: feature && permission,
     });

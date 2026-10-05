@@ -1,5 +1,5 @@
 ﻿import { requireStaffPage } from '@/server/auth/staff-page';
-import { isStaffAdmin, inaccessibleClientIdsFor, hasStaffPermission } from '@/server/auth/rbac';
+import { isStaffAdmin, accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 
 import Link from 'next/link';
@@ -47,20 +47,20 @@ export default async function DashboardPage() {
   const isAdmin = isStaffAdmin(session);
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
 
-  // 1. Layout laden (eine kurze Tx) + EIN denied-Set für alle Widgets
+  // 1. Layout laden (eine kurze Tx) + EINE Sichtbarkeitsregel für alle Widgets
   // (Zugriffsmodell: vertraulich-Flag / RESTRICTED).
-  const [{ storedLayout, deniedClientIds }, modules] = await Promise.all([
+  const [{ storedLayout, clientAccess }, modules] = await Promise.all([
     withTenantContext(ctx, async (tx) => {
-      const [staff, deniedClientIds] = await Promise.all([
+      const [staff, clientAccess] = await Promise.all([
         tx.staffUser.findUnique({
           where: { id: staffId },
           select: { dashboardLayout: true },
         }),
-        inaccessibleClientIdsFor(tx, session),
+        accessibleClientsWhereFor(tx, session),
       ]);
       return {
         storedLayout: staff?.dashboardLayout ? parseLayout(staff.dashboardLayout) : DEFAULT_LAYOUT,
-        deniedClientIds,
+        clientAccess,
       };
     }),
     readModules(ctx),
@@ -83,7 +83,7 @@ export default async function DashboardPage() {
         tenantId,
         staffId,
         isAdmin,
-        deniedClientIds,
+        clientAccess,
         modules,
         portalInboxEnabled,
       }),

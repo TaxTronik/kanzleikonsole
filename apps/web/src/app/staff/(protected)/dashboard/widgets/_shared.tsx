@@ -12,6 +12,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { TxClient } from '@taxtronik/db';
 import type { BooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { CountUp } from '@/components/count-up';
+import type { ClientAccessWhere } from '@/server/auth/client-access-filter';
 
 // Prisma-Transaktions-Client aus withTenantContext (RLS-gebunden).
 export type Tx = TxClient;
@@ -25,23 +26,15 @@ export interface RenderCtx {
   isAdmin?: boolean;
   modules: BooleanTenantModules;
   /**
-   * Zugriffsmodell (vertraulich-Flag / RESTRICTED): Mandanten-IDs, die der
-   * Mitarbeiter nicht sehen darf — EINMAL pro Dashboard-Render berechnet und
-   * an alle Widgets durchgereicht, die Mandantennamen/-inhalte zeigen.
+   * Zugriffsmodell (vertraulich-Flag / RESTRICTED): Sichtbarkeitsregel aus
+   * `accessibleClientsWhereFor` — EINMAL pro Dashboard-Render gelesen und an
+   * alle Widgets durchgereicht, die Mandantennamen/-inhalte zeigen. Widgets
+   * mit Pflicht-`clientId` nutzen `clientAccessFilter`, solche mit nullable
+   * `clientId` (Termine, Telefonzettel, Wiedervorlagen)
+   * `optionalClientAccessFilter`, damit Einträge ohne Mandantenbezug sichtbar
+   * bleiben.
    */
-  deniedClientIds?: string[];
-}
-
-/**
- * Where-Fragment für Widgets mit Pflicht-`clientId`: blendet Datensätze
- * gesperrter Mandanten aus. Für nullable `clientId` (Termine, Telefonzettel)
- * stattdessen die OR-Variante inline nutzen, damit Einträge ohne
- * Mandantenbezug sichtbar bleiben.
- */
-export function notDeniedClient(deniedClientIds: string[] | undefined): {
-  clientId?: { notIn: string[] };
-} {
-  return deniedClientIds?.length ? { clientId: { notIn: deniedClientIds } } : {};
+  clientAccess?: ClientAccessWhere;
 }
 
 export { NOTICE_KIND_LABELS } from '@/lib/domain-labels';

@@ -217,6 +217,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Die Mandantensichtbarkeit (vertraulich, RESTRICTED-Modus) wird in
+  Listen, Kalender, Dashboard, Arbeitskorb, Fristenkontrollbuch, Exporten,
+  ZIP-Download und globaler Suche als Relationsfilter geprüft statt über
+  NOT-IN-Listen aller gesperrten Mandanten (bei 5.000 Mandanten rund 4.800
+  Parameter je Abfrage); sichtbare Zeilen bleiben gleich
+  (`ACCESS-CLIENT-MODE-001`, `FK-EXC-20261005-004`).
 - Vollmacht-, Rechnungs- und StBVV-Formulare wählen keinen Mandanten mehr
   still vor. Ein getippter, aber nicht ausgewählter Mandantenname blockiert
   das Absenden, damit kein Formular ohne den gemeinten Mandanten gespeichert
@@ -462,6 +468,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Das Dashboard-Widget „Wiedervorlagen“ blendet interne Wiedervorlagen ohne
+  Mandant nicht mehr aus, sobald ein Mandant gesperrt ist
+  (`REMINDER-TICKET-001`).
 - Pausierte Workflows mit erreichtem Wiederaufnahmedatum setzt der Worker alle
   fünf Minuten fort; bisher geschah das erst, wenn jemand die Workflow-Seite
   des Mandanten öffnete, und bis dahin blieben sie in Übersicht, Dashboard und

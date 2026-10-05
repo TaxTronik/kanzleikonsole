@@ -13,7 +13,8 @@ import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { GWG_EXPIRY_WINDOW_MS } from '@/lib/consts';
 import { actionLabel, resourceLabel } from '@/server/audit/labels';
 import { PhoneNoteRow } from '../phone-note-check';
-import { ListShell, NOTICE_KIND_LABELS, notDeniedClient, type RenderCtx } from './_shared';
+import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
+import { ListShell, NOTICE_KIND_LABELS, type RenderCtx } from './_shared';
 
 // --- Recent Activity ----------------------------------------------------------
 
@@ -116,12 +117,12 @@ export async function RecentActivity({ tx }: RenderCtx): Promise<ReactNode> {
 
 // --- Upcoming Requests --------------------------------------------------------
 
-export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function UpcomingRequests({ tx, clientAccess }: RenderCtx): Promise<ReactNode> {
   const items = await tx.request.findMany({
     where: {
       status: { in: ['OPEN', 'IN_PROGRESS'] },
       dueAt: { not: null },
-      ...notDeniedClient(deniedClientIds),
+      ...clientAccessFilter(clientAccess),
     },
     orderBy: { dueAt: 'asc' },
     take: 20,
@@ -155,11 +156,11 @@ export async function UpcomingRequests({ tx, deniedClientIds }: RenderCtx): Prom
 
 // --- GwG läuft bald aus -------------------------------------------------------
 
-export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function GwgExpiring({ tx, clientAccess }: RenderCtx): Promise<ReactNode> {
   const now = new Date();
   const cutoff = new Date(now.getTime() + GWG_EXPIRY_WINDOW_MS);
   const checks = await tx.gwgCheck.findMany({
-    where: { status: 'VERIFIED', validUntil: { lte: cutoff }, ...notDeniedClient(deniedClientIds) },
+    where: { status: 'VERIFIED', validUntil: { lte: cutoff }, ...clientAccessFilter(clientAccess) },
     orderBy: { validUntil: 'asc' },
     take: 20,
     include: { client: { select: { id: true, name: true } } },
@@ -194,9 +195,9 @@ export async function GwgExpiring({ tx, deniedClientIds }: RenderCtx): Promise<R
 
 // --- Ungeprüfte Bescheide -----------------------------------------------------
 
-export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function UnreviewedNotices({ tx, clientAccess }: RenderCtx): Promise<ReactNode> {
   const items = await tx.taxNotice.findMany({
-    where: { status: 'NEU', ...notDeniedClient(deniedClientIds) },
+    where: { status: 'NEU', ...clientAccessFilter(clientAccess) },
     orderBy: { createdAt: 'desc' },
     take: 20,
     include: { client: { select: { id: true, name: true } } },
@@ -234,11 +235,11 @@ export async function UnreviewedNotices({ tx, deniedClientIds }: RenderCtx): Pro
 
 // --- Steuertermine ------------------------------------------------------------
 
-export async function TaxDeadlines({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function TaxDeadlines({ tx, clientAccess }: RenderCtx): Promise<ReactNode> {
   const items = await tx.taxDeadline.findMany({
     where: {
       status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-      ...notDeniedClient(deniedClientIds),
+      ...clientAccessFilter(clientAccess),
     },
     orderBy: { dueDate: 'asc' },
     take: 20,
@@ -280,14 +281,12 @@ export async function TaxDeadlines({ tx, deniedClientIds }: RenderCtx): Promise<
 
 // --- Telefonzettel ------------------------------------------------------------
 
-export async function PhoneNotesWidget({ tx, deniedClientIds }: RenderCtx): Promise<ReactNode> {
+export async function PhoneNotesWidget({ tx, clientAccess }: RenderCtx): Promise<ReactNode> {
   const items = await tx.phoneNote.findMany({
     where: {
       doneAt: null,
       // clientId nullable: Zettel ohne Mandantenbezug bleiben sichtbar.
-      ...(deniedClientIds?.length
-        ? { OR: [{ clientId: null }, { clientId: { notIn: deniedClientIds } }] }
-        : {}),
+      ...optionalClientAccessFilter(clientAccess),
     },
     orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
     take: 20,

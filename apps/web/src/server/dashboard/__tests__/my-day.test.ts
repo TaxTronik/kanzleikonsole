@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadMyDayEntries } from '../my-day';
 
+// RESTRICTED-Regel eines Nicht-Admins (Form wie accessibleClientsWhereFor).
+const restrictedAccess = { responsibilities: { some: { staffId: 'staff-1' } } };
+
 function createTx() {
   return {
     workflowItem: { findMany: vi.fn() },
@@ -66,7 +69,7 @@ describe('PORTAL-INBOX-SUBMISSION-001: loadMyDayEntries', () => {
     const result = await loadMyDayEntries(
       tx as never,
       'staff-1',
-      ['restricted-client'],
+      restrictedAccess,
       new Date('2026-08-05T12:00:00.000Z'),
     );
 
@@ -94,14 +97,14 @@ describe('PORTAL-INBOX-SUBMISSION-001: loadMyDayEntries', () => {
   it('grenzt jede Quelle auf Zuständigkeit und sichtbare Mandanten ein', async () => {
     const now = new Date('2026-08-05T12:00:00.000Z');
 
-    await loadMyDayEntries(tx as never, 'staff-1', ['restricted-client'], now);
+    await loadMyDayEntries(tx as never, 'staff-1', restrictedAccess, now);
 
     expect(tx.workflowItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           assigneeStaffId: 'staff-1',
           doneAt: null,
-          instance: { status: 'ACTIVE', clientId: { notIn: ['restricted-client'] } },
+          instance: { status: 'ACTIVE', client: restrictedAccess },
         },
       }),
     );
@@ -117,7 +120,7 @@ describe('PORTAL-INBOX-SUBMISSION-001: loadMyDayEntries', () => {
               ],
             },
             {
-              OR: [{ clientId: null }, { clientId: { notIn: ['restricted-client'] } }],
+              OR: [{ clientId: null }, { client: restrictedAccess }],
             },
           ]),
         }),
@@ -129,6 +132,7 @@ describe('PORTAL-INBOX-SUBMISSION-001: loadMyDayEntries', () => {
           ownerStaffId: 'staff-1',
           status: { not: 'CANCELLED' },
           endsAt: { gte: now },
+          OR: [{ clientId: null }, { client: restrictedAccess }],
         }),
       }),
     );
@@ -137,13 +141,14 @@ describe('PORTAL-INBOX-SUBMISSION-001: loadMyDayEntries', () => {
         where: expect.objectContaining({
           forwardToStaff: 'staff-1',
           doneAt: null,
+          OR: [{ clientId: null }, { client: restrictedAccess }],
         }),
       }),
     );
   });
 
   it('fragt deaktivierte Teilmodule nicht ab', async () => {
-    await loadMyDayEntries(tx as never, 'staff-1', [], new Date(), {
+    await loadMyDayEntries(tx as never, 'staff-1', {}, new Date(), {
       workflows: false,
       reminders: true,
       appointments: false,

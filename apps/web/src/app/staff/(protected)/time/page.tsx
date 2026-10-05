@@ -5,8 +5,8 @@ import { StartTimerForm } from './start-form';
 import { stopTimerAction, deleteTimeEntryAction } from './actions';
 import { ActionForm } from '@/components/action-form';
 import { fmtMinutes, fmtTimeShort } from '@/lib/fmt';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
-import { buildTimePageAccessFilters } from './access';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { buildTimePageClientQueries, withoutHiddenClients } from './access';
 
 export default async function TimeTrackingPage() {
   const session = await requireStaffPage();
@@ -18,27 +18,37 @@ export default async function TimeTrackingPage() {
     async (tx) => {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
-      const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
-      const { timeEntryWhere, clientWhere } = buildTimePageAccessFilters(deniedClientIds);
-      const [runningEntry, entries] = await Promise.all([
-        tx.timeEntry.findFirst({
-          where: { staffId, endedAt: null, ...timeEntryWhere },
-        }),
+      const [runningEntries, entries] = await Promise.all([
+        tx.timeEntry.findMany({ where: { staffId, endedAt: null } }),
         tx.timeEntry.findMany({
-          where: { staffId, startedAt: { gte: startOfDay }, ...timeEntryWhere },
+          where: { staffId, startedAt: { gte: startOfDay } },
           orderBy: { startedAt: 'desc' },
         }),
       ]);
       // Namen nur für die heute gebuchten Mandanten — die Auswahl selbst sucht
-      // serverseitig (früher: erste 500 Mandanten, danach „Mandant").
-      const ids = [...new Set(entries.flatMap((e) => (e.clientId ? [e.clientId] : [])))];
-      const named = ids.length
-        ? await tx.client.findMany({
-            where: { AND: [{ id: { in: ids } }, clientWhere ?? {}] },
-            select: { id: true, name: true },
-          })
-        : [];
-      return [runningEntry, entries, new Map(named.map((c) => [c.id, c.name]))] as const;
+      // serverseitig (früher: erste 500 Mandanten, danach „Mandant"). Dieselben
+      // wenigen IDs entscheiden, welche Einträge gesperrter Mandanten entfallen.
+      const ids = [
+        ...new Set(
+          [...runningEntries, ...entries].flatMap((e) => (e.clientId ? [e.clientId] : [])),
+        ),
+      ];
+      const { visibleWhere, hiddenWhere } = buildTimePageClientQueries(
+        ids,
+        await accessibleClientsWhereFor(tx, session),
+      );
+      const [named, hidden] = ids.length
+        ? await Promise.all([
+            tx.client.findMany({ where: visibleWhere, select: { id: true, name: true } }),
+            hiddenWhere ? tx.client.findMany({ where: hiddenWhere, select: { id: true } }) : [],
+          ])
+        : [[], []];
+      const hiddenIds = new Set(hidden.map((c) => c.id));
+      return [
+        withoutHiddenClients(runningEntries, hiddenIds)[0] ?? null,
+        withoutHiddenClients(entries, hiddenIds),
+        new Map(named.map((c) => [c.id, c.name])),
+      ] as const;
     },
   );
 

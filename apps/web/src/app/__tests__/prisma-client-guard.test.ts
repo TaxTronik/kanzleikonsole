@@ -62,6 +62,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-CLIENT-MODE-001: Owner erzeugt isolierte Mandantenfixtures; die
   // separate App-Rolle prüft echte Seitenabfrage, OPEN/RESTRICTED und RLS.
   'apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx',
+  // ACCESS-CLIENT-MODE-001: Owner-Fixtures in einem frischen Tenant; die App-Rolle
+  // vergleicht Relationsfilter und frühere NOT-IN-Liste unter echter RLS (P-09).
+  'apps/web/src/server/auth/__tests__/client-access-filter-db.test.ts',
   // Fachkatalog: REMINDER-TICKET-001. Isolierte Owner-Fixtures und eine
   // separate App-Verbindung belegen Nummernvergabe, RLS, FK- und Archivrennen.
   'packages/db/src/__tests__/reminder-tickets.test.ts',

@@ -10,7 +10,8 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CalendarDays, CheckCheck, OctagonPause } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { SCHEDULE_LABELS, berlinCalendarDate } from '@taxtronik/tax';
@@ -101,20 +102,17 @@ export default async function TaxDeadlineGroupPage({
       { addisonNo: { contains: q, mode: 'insensitive' } },
     ];
   }
-  const where: Prisma.TaxDeadlineWhereInput = { kind, period };
-  if (Object.keys(clientWhere).length > 0) {
-    where.client = clientWhere;
-  }
-
   const deadlines = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
-      // Mandanten ausblenden.
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      if (denied.length) where.clientId = { notIn: denied };
+      // Mandanten ausblenden; Regel und Seitenfilter in EINEM `client`-Filter.
       return tx.taxDeadline.findMany({
-        where,
+        where: {
+          kind,
+          period,
+          ...clientAccessFilter(await accessibleClientsWhereFor(tx, session), clientWhere),
+        },
         orderBy: [{ status: 'asc' }, { client: { name: 'asc' } }],
         include: {
           client: { select: { id: true, name: true } },

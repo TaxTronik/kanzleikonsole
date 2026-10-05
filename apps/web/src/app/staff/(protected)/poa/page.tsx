@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, ScrollText, Plus } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { inaccessibleClientIdsFor, isStaffAdmin } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor, isStaffAdmin } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { fmtDateShort } from '@/lib/fmt';
 import { isUuid } from '@/lib/uuid';
 
@@ -31,24 +32,20 @@ export default async function PoaListPage({
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Vollmachten gesperrter/vertraulicher Mandanten aus dieser globalen
-      // Liste ausblenden. PowerOfAttorney.clientId ist NOT NULL → plain notIn.
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      if (clientId && denied.includes(clientId)) return null;
+      // Liste ausblenden (Relationsfilter, PowerOfAttorney.clientId ist NOT
+      // NULL). Ein gesperrter Mandant im Filter verhält sich wie ein fehlender.
+      const clientAccess = await accessibleClientsWhereFor(tx, session);
 
       const filteredClient = clientId
         ? await tx.client.findFirst({
-            where: { id: clientId, tenantId },
+            where: { AND: [{ id: clientId, tenantId }, clientAccess] },
             select: { id: true, name: true },
           })
         : null;
       if (clientId && !filteredClient) return null;
 
       const poas = await tx.powerOfAttorney.findMany({
-        where: clientId
-          ? { clientId }
-          : denied.length
-            ? { clientId: { notIn: denied } }
-            : undefined,
+        where: clientId ? { clientId } : clientAccessFilter(clientAccess),
         orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
         include: { client: { select: { id: true, name: true } } },
         // Die globale Übersicht bleibt gecappt; im Mandantenkontext werden

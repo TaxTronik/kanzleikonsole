@@ -4,7 +4,7 @@ const m = vi.hoisted(() => ({
   staffAuth: vi.fn(),
   rateLimit: vi.fn(),
   readModules: vi.fn(),
-  deniedIds: vi.fn(),
+  clientAccess: vi.fn(),
   withTenantContext: vi.fn(),
   client: vi.fn(),
   request: vi.fn(),
@@ -16,10 +16,15 @@ const m = vi.hoisted(() => ({
 vi.mock('@/server/auth/staff', () => ({ staffAuth: m.staffAuth }));
 vi.mock('@/server/rate-limit', () => ({ checkStaffSearchLimit: m.rateLimit }));
 vi.mock('@/server/settings/modules', () => ({ readModules: m.readModules }));
-vi.mock('@/server/auth/rbac', () => ({ inaccessibleClientIdsFor: m.deniedIds }));
+vi.mock('@/server/auth/rbac', () => ({ accessibleClientsWhereFor: m.clientAccess }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 
 import { GET } from '../route';
+
+// OPEN-Regel eines Nicht-Admins (Form wie accessibleClientsWhereFor).
+const access = {
+  OR: [{ vertraulich: false }, { responsibilities: { some: { staffId: 'staff-1' } } }],
+};
 
 const request = (q = 'muster') =>
   ({ nextUrl: { searchParams: new URLSearchParams({ q }) } }) as never;
@@ -31,7 +36,7 @@ describe('GET /api/staff/search — Modul- und Mandanten-Gates', () => {
       user: { tenantId: 'tenant-1', staffId: 'staff-1' },
     });
     m.rateLimit.mockResolvedValue({ ok: true });
-    m.deniedIds.mockResolvedValue(['client-denied']);
+    m.clientAccess.mockResolvedValue(access);
     m.client.mockResolvedValue([]);
     m.request.mockResolvedValue([]);
     m.document.mockResolvedValue([]);
@@ -58,29 +63,41 @@ describe('GET /api/staff/search — Modul- und Mandanten-Gates', () => {
     await expect(response.json()).resolves.toEqual({ count: 0, results: [] });
   });
 
-  it('wendet das denied-Mandantenset auf jede client-gebundene Quelle an', async () => {
+  it('wendet die Sichtbarkeitsregel als Relationsfilter auf jede client-gebundene Quelle an', async () => {
     m.readModules.mockResolvedValue({ invoiceMode: 'EXTERNAL', knowledge: false });
 
     await GET(request());
 
     expect(m.client).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: { notIn: ['client-denied'] } }),
+        where: { AND: [access, { OR: expect.any(Array) }] },
       }),
     );
     for (const query of [m.request, m.invoice]) {
       expect(query).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ clientId: { notIn: ['client-denied'] } }),
-        }),
+        expect.objectContaining({ where: expect.objectContaining({ client: access }) }),
       );
     }
     expect(m.document).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          OR: [{ clientId: null }, { clientId: { notIn: ['client-denied'] } }],
-        }),
+        where: expect.objectContaining({ OR: [{ clientId: null }, { client: access }] }),
       }),
     );
+    // Keine NOT-IN-Liste gesperrter Mandanten mehr (P-09).
+    expect(JSON.stringify(m.client.mock.calls)).not.toContain('notIn');
+  });
+
+  it('hängt für Admin/Partner (Regel `{}`) keinen Mandantenfilter an', async () => {
+    m.readModules.mockResolvedValue({ invoiceMode: 'EXTERNAL', knowledge: false });
+    m.clientAccess.mockResolvedValue({});
+
+    await GET(request());
+
+    for (const query of [m.request, m.invoice, m.document]) {
+      const where = query.mock.calls[0]![0].where;
+      expect(where).not.toHaveProperty('client');
+      expect(where).not.toHaveProperty('clientId');
+    }
+    expect(m.document.mock.calls[0]![0].where).not.toHaveProperty('OR');
   });
 });

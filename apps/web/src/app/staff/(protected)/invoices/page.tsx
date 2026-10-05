@@ -2,7 +2,8 @@
 
 import { Receipt, Plus, FileDown } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { inaccessibleClientIdsFor, hasStaffPermission } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
+import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
@@ -35,8 +36,7 @@ export default async function InvoicesPage({
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Rechnungen
       // gesperrter Mandanten ausblenden (konsistent zum CSV-Export).
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      if (denied.length) where.clientId = { notIn: denied };
+      Object.assign(where, clientAccessFilter(await accessibleClientsWhereFor(tx, session)));
       return Promise.all([
         tx.invoice.findMany({
           where,

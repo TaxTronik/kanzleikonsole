@@ -1,7 +1,7 @@
 ﻿import { requireStaffPage } from '@/server/auth/staff-page';
 import { hasStaffPermission } from '@/server/auth/rbac';
 import { randomUUID } from 'node:crypto';
-import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 
 import Link from 'next/link';
@@ -87,11 +87,13 @@ export default async function ClientsPage({
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): gesperrte Mandanten
       // erscheinen gar nicht erst in der Liste (konsistent zu Suche/Export).
-      const denied = await inaccessibleClientIdsFor(tx, session);
-      if (denied.length) where.id = { notIn: denied };
+      // AND statt Spread: Filter und Regel können beide ein OR enthalten.
+      const visible: Prisma.ClientWhereInput = {
+        AND: [where, await accessibleClientsWhereFor(tx, session)],
+      };
       return Promise.all([
         tx.client.findMany({
-          where,
+          where: visible,
           orderBy: clientOrderBy(sort, dir),
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
@@ -117,7 +119,7 @@ export default async function ClientsPage({
             },
           },
         }),
-        tx.client.count({ where }),
+        tx.client.count({ where: visible }),
         readRequestCreationOptionsTx(tx),
       ]);
     },
