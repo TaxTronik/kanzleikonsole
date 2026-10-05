@@ -220,6 +220,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Kanzleioberfläche und Portal zeigen Seitenrahmen und Ladeplatzhalter
+  sofort; das Mandanten-Cockpit zeigt Kopf und Navigation zuerst und lädt die
+  übrigen Karten nach, statt vor dem ersten Byte auf alle 13 Abfragen zu
+  warten (`ACCESS-SEARCH-SCOPE-001`, `FK-EXC-20261005-037`).
 - Automatische Aktualisierung nur noch auf Seiten mit Live-Zustand
   (Dashboard, Arbeitskorb, Job-Monitor, Portal-Startseite und -Nachrichten);
   im Hintergrund pausiert sie, nach der Rückkehr lädt sie erst nach mindestens

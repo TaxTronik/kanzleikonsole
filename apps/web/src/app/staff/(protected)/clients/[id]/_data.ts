@@ -1,42 +1,57 @@
-import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { MANAGED_DOC_SELECT, toManagedDoc } from '@/server/documents/managed-docs';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
+import type { ModuleConfig } from '@/server/settings/modules';
 
 export const CLIENT_REQUESTS_CAP = 50;
 export const CLIENT_DOCUMENTS_PAGE_SIZE = 50;
 
-export async function loadClientDashboard(
+// =============================================================================
+// Mandanten-Cockpit in drei Transaktionen (Review-Befund P-07):
+//   1. Kopf (blockierend): Mandant, Zuständige, Ansprechpartner, GwG-Status,
+//      Zähler für Navigation/Onboarding, Custom-Felder und Anforderungsvorlagen.
+//   2. Blöcke (gestreamt): Termine, Anforderungen, Wiedervorlagen, Workflows,
+//      Telefonnotizen, Ordner und Übergaben — startet parallel zum Kopf.
+//   3. Dokumente (gestreamt, loadClientDocumentsPage) — nach dem Kopf.
+// Vorher liefen alle Abfragen nacheinander in EINER Transaktion, bevor das
+// erste Byte kam. Jede Transaktion prüft den Zugriff selbst (Backstop).
+// =============================================================================
+
+/** Module, nach denen die Blockabfragen gewählt werden (abgeschaltet = keine Abfrage). */
+export type CockpitModules = Pick<
+  ModuleConfig,
+  'taxNotices' | 'appointments' | 'workflows' | 'reminders' | 'binders' | 'handovers' | 'phoneNotes'
+>;
+
+/**
+ * Positiver Tenant- und RESTRICTED-/Vertraulichkeits-Backstop in derselben
+ * Transaktion wie die Daten. Layout, Seite und gestreamte Blöcke rendern
+ * parallel; kein Loader darf allein auf den Layout-Guard bauen.
+ */
+async function accessibleClientWhereTx(
+  tx: TxClient,
   ctx: TenantContext,
   session: StaffSession,
   clientId: string,
-  now: Date = new Date(),
+) {
+  return {
+    id: clientId,
+    tenantId: ctx.tenantId,
+    ...(await accessibleClientsWhereFor(tx, session)),
+  };
+}
+
+export async function loadClientCockpitHeader(
+  ctx: TenantContext,
+  session: StaffSession,
+  clientId: string,
 ) {
   return withTenantContext(ctx, async (tx) => {
-    // Positiver Tenant- und RESTRICTED-/Vertraulichkeits-Backstop in derselben
-    // Transaktion wie die Cockpit-Daten. Layout und Page können parallel
-    // rendern; der Loader darf deshalb nicht allein auf den Layout-Guard bauen.
-    const accessWhere = await accessibleClientsWhereFor(tx, session);
     const client = await tx.client.findFirst({
-      where: { id: clientId, tenantId: ctx.tenantId, ...accessWhere },
+      where: await accessibleClientWhereTx(tx, ctx, session, clientId),
       include: {
-        requests: {
-          orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-          take: CLIENT_REQUESTS_CAP,
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-            dueAt: true,
-            responses: {
-              take: 1,
-              orderBy: { createdAt: 'desc' },
-              select: { createdAt: true },
-            },
-          },
-        },
         contacts: { where: { active: true }, orderBy: { fullName: 'asc' } },
         gwgChecks: { orderBy: { createdAt: 'desc' }, take: 1 },
         responsibilities: {
@@ -47,6 +62,7 @@ export async function loadClientDashboard(
             poas: true,
             gwgInvites: true,
             gwgChecks: true,
+            requests: true,
           },
         },
       },
@@ -59,139 +75,200 @@ export async function loadClientDashboard(
       return exists ? ({ status: 'forbidden' } as const) : ({ status: 'not_found' } as const);
     }
 
-    const [
-      phoneNotes,
-      taxDeadlines,
-      pendingChangeRequests,
-      customDefs,
-      customValues,
-      staffList,
-      workflowInstances,
-      reminders,
-      binders,
-      upcomingAppointments,
-      pendingAppointmentRequests,
-      handovers,
-      requestCreationOptions,
-    ] = await Promise.all([
-      tx.phoneNote.findMany({
-        where: { clientId },
-        orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
-        take: 20,
-        include: {
-          reminders: {
-            orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
-            select: { id: true, subject: true, dueDate: true, doneAt: true },
-          },
-        },
-      }),
-      tx.taxDeadline.findMany({
-        where: {
-          clientId,
-          status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-        },
-        orderBy: { dueDate: 'asc' },
-        take: 12,
-      }),
-      tx.clientMasterChangeRequest.count({
-        where: { clientId, status: 'PENDING' },
-      }),
-      tx.clientCustomFieldDef.findMany({
-        where: { active: true },
-        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-      }),
-      tx.clientCustomFieldValue.findMany({
-        where: { clientId },
-      }),
-      tx.staffUser.findMany({
-        where: { active: true },
-        orderBy: { fullName: 'asc' },
-        select: { id: true, fullName: true },
-      }),
-      tx.workflowInstance.findMany({
-        where: { clientId, status: 'ACTIVE' },
-        orderBy: { startedAt: 'desc' },
-        take: 6,
-        include: {
-          items: { select: { id: true, doneAt: true, dueDate: true } },
-        },
-      }),
-      tx.clientReminder.findMany({
-        where: { clientId, archivedAt: null },
-        orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
-        take: 50,
-        include: {
-          riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
-          assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
-        },
-      }),
-      tx.pendingBinder.findMany({
-        where: { clientId },
-        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-        take: 50,
-      }),
-      tx.appointment.findMany({
-        where: { clientId, status: { not: 'CANCELLED' }, endsAt: { gte: now } },
-        orderBy: { startsAt: 'asc' },
-        take: 5,
-        select: {
-          id: true,
-          title: true,
-          startsAt: true,
-          endsAt: true,
-          location: true,
-          status: true,
-          owner: { select: { id: true, fullName: true } },
-        },
-      }),
-      tx.appointmentRequest.findMany({
-        where: { clientId, status: 'PENDING' },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        select: {
-          id: true,
-          subject: true,
-          notes: true,
-          createdAt: true,
-          preferredStaffId: true,
-          proposedSlots: true,
-          createdByContactRel: { select: { fullName: true } },
-        },
-      }),
-      tx.clientHandover.findMany({
-        where: { clientId },
-        orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
-        take: 50,
-      }),
-      readRequestCreationOptionsTx(tx),
-    ]);
+    const [pendingChangeRequests, customDefs, customValues, requestCreationOptions] =
+      await Promise.all([
+        tx.clientMasterChangeRequest.count({
+          where: { clientId, status: 'PENDING' },
+        }),
+        tx.clientCustomFieldDef.findMany({
+          where: { active: true },
+          orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+        }),
+        tx.clientCustomFieldValue.findMany({
+          where: { clientId },
+        }),
+        readRequestCreationOptionsTx(tx),
+      ]);
 
     return {
       status: 'ok' as const,
       data: {
         client,
-        phoneNotes,
-        taxDeadlines,
         pendingChangeRequests,
         customDefs,
         customValues,
-        staffList,
-        workflowInstances,
-        reminders,
-        binders,
-        upcomingAppointments,
-        pendingAppointmentRequests,
-        handovers,
         ...requestCreationOptions,
       },
     };
   });
 }
 
-export type ClientDashboardData = Extract<
-  Awaited<ReturnType<typeof loadClientDashboard>>,
-  { status: 'ok' }
->['data'];
+const STAFF_OPTION_QUERY = {
+  where: { active: true },
+  orderBy: { fullName: 'asc' },
+  select: { id: true, fullName: true },
+} as const;
+
+/**
+ * Daten der gestreamten Blöcke in EINER Transaktion. `null`, wenn der Zugriff
+ * (inzwischen) fehlt — die Blöcke rendern dann nichts. Abfragen abgeschalteter
+ * Module entfallen.
+ */
+export async function loadClientCockpitBlocks(
+  ctx: TenantContext,
+  session: StaffSession,
+  clientId: string,
+  modules: CockpitModules,
+  now: Date = new Date(),
+) {
+  return withTenantContext(ctx, async (tx) => {
+    const accessible = await tx.client.findFirst({
+      where: await accessibleClientWhereTx(tx, ctx, session, clientId),
+      select: { id: true },
+    });
+    if (!accessible) return null;
+
+    const [
+      requests,
+      taxDeadlines,
+      upcomingAppointments,
+      pendingAppointmentRequests,
+      staffList,
+      workflowInstances,
+      reminders,
+      phoneNotes,
+      binders,
+      handovers,
+    ] = await Promise.all([
+      tx.request.findMany({
+        where: { clientId },
+        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+        take: CLIENT_REQUESTS_CAP,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          dueAt: true,
+          responses: {
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
+          },
+        },
+      }),
+      modules.taxNotices
+        ? tx.taxDeadline.findMany({
+            where: {
+              clientId,
+              status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
+            },
+            orderBy: { dueDate: 'asc' },
+            take: 12,
+          })
+        : Promise.resolve([]),
+      modules.appointments
+        ? tx.appointment.findMany({
+            where: { clientId, status: { not: 'CANCELLED' }, endsAt: { gte: now } },
+            orderBy: { startsAt: 'asc' },
+            take: 5,
+            select: {
+              id: true,
+              title: true,
+              startsAt: true,
+              endsAt: true,
+              location: true,
+              status: true,
+              owner: { select: { id: true, fullName: true } },
+            },
+          })
+        : Promise.resolve([]),
+      modules.appointments
+        ? tx.appointmentRequest.findMany({
+            where: { clientId, status: 'PENDING' },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: {
+              id: true,
+              subject: true,
+              notes: true,
+              createdAt: true,
+              preferredStaffId: true,
+              proposedSlots: true,
+              createdByContactRel: { select: { fullName: true } },
+            },
+          })
+        : Promise.resolve([]),
+      // Mitarbeiterauswahl für Terminanfragen, Wiedervorlagen und Telefonnotizen.
+      modules.appointments || modules.reminders || modules.phoneNotes
+        ? tx.staffUser.findMany(STAFF_OPTION_QUERY)
+        : Promise.resolve([]),
+      modules.workflows
+        ? tx.workflowInstance.findMany({
+            where: { clientId, status: 'ACTIVE' },
+            orderBy: { startedAt: 'desc' },
+            take: 6,
+            include: {
+              items: { select: { id: true, doneAt: true, dueDate: true } },
+            },
+          })
+        : Promise.resolve([]),
+      modules.reminders
+        ? tx.clientReminder.findMany({
+            where: { clientId, archivedAt: null },
+            orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
+            take: 50,
+            include: {
+              riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
+              assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
+            },
+          })
+        : Promise.resolve([]),
+      modules.phoneNotes
+        ? tx.phoneNote.findMany({
+            where: { clientId },
+            orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
+            take: 20,
+            include: {
+              reminders: {
+                orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
+                select: { id: true, subject: true, dueDate: true, doneAt: true },
+              },
+            },
+          })
+        : Promise.resolve([]),
+      modules.binders
+        ? tx.pendingBinder.findMany({
+            where: { clientId },
+            orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+            take: 50,
+          })
+        : Promise.resolve([]),
+      modules.handovers
+        ? tx.clientHandover.findMany({
+            where: { clientId },
+            orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
+            take: 50,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    return {
+      requests,
+      taxDeadlines,
+      upcomingAppointments,
+      pendingAppointmentRequests,
+      staffList,
+      workflowInstances,
+      reminders,
+      phoneNotes,
+      binders,
+      handovers,
+    };
+  });
+}
+
+export type ClientCockpitBlocks = NonNullable<Awaited<ReturnType<typeof loadClientCockpitBlocks>>>;
 
 export function parseClientDocumentsPage(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;

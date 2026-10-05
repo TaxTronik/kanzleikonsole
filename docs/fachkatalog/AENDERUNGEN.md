@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-037
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/_data.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - REMINDER-TICKET-001
+    reason: >-
+      Das Mandanten-Cockpit lädt seine Daten in drei Transaktionen mit je eigenem
+      Tenant-Kontext und derselben positiven Zugriffsprüfung wie bisher: Kopf
+      (blockierend), Kartenblöcke (parallel gestartet, Abfragen abgeschalteter
+      Module entfallen) und Dokumente (unverändert). Die Karten streamen in
+      eigenen Suspense-Grenzen nach Kopf und Navigation. Die
+      Wiedervorlagen-Abfrage und alle Sichtbarkeitsregeln bleiben unverändert;
+      höchstens drei gleichzeitige Transaktionen je Aufruf. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/__tests__/data.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/__tests__/page-streaming.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/__tests__/page-structure.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-036
     date: '2026-10-05'
     paths:
@@ -2373,6 +2395,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-037` dokumentiert das gestreamte
+  Mandanten-Cockpit in drei Transaktionen. Zugriffsprüfung und
+  Wiedervorlagen-Abfrage bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-036` dokumentiert die per groupBy gezählte
   Monatsansicht der Steuertermine und ihren DB-Test im CI. Fristberechnung

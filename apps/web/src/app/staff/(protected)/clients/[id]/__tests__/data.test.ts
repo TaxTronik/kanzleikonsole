@@ -16,6 +16,7 @@ const h = vi.hoisted(() => {
     appointment: { findMany: vi.fn() },
     appointmentRequest: { findMany: vi.fn() },
     clientHandover: { findMany: vi.fn() },
+    request: { findMany: vi.fn() },
     documentFolder: { findMany: vi.fn() },
     document: { count: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
   };
@@ -41,10 +42,12 @@ vi.mock('@/server/auth/rbac', () => ({
 import {
   CLIENT_DOCUMENTS_PAGE_SIZE,
   CLIENT_REQUESTS_CAP,
-  loadClientDashboard,
+  loadClientCockpitBlocks,
+  loadClientCockpitHeader,
   loadClientDocumentsPage,
   parseClientDocumentsDeleted,
   parseClientDocumentsPage,
+  type CockpitModules,
 } from '../_data';
 
 const ctx = {
@@ -69,27 +72,48 @@ function managedDocumentRow(id: string) {
   };
 }
 
-function prepareDashboardRows() {
+const ALL_MODULES: CockpitModules = {
+  taxNotices: true,
+  appointments: true,
+  workflows: true,
+  reminders: true,
+  binders: true,
+  handovers: true,
+  phoneNotes: true,
+};
+const NO_MODULES: CockpitModules = {
+  taxNotices: false,
+  appointments: false,
+  workflows: false,
+  reminders: false,
+  binders: false,
+  handovers: false,
+  phoneNotes: false,
+};
+const BLOCK_QUERIES = [
+  h.tx.phoneNote.findMany,
+  h.tx.taxDeadline.findMany,
+  h.tx.staffUser.findMany,
+  h.tx.workflowInstance.findMany,
+  h.tx.clientReminder.findMany,
+  h.tx.pendingBinder.findMany,
+  h.tx.appointment.findMany,
+  h.tx.appointmentRequest.findMany,
+  h.tx.clientHandover.findMany,
+  h.tx.request.findMany,
+];
+
+function prepareHeaderRows() {
   h.tx.client.findFirst.mockResolvedValue({
     id: 'client-1',
-    requests: [],
     contacts: [],
     gwgChecks: [],
     responsibilities: [],
-    _count: { poas: 0, gwgInvites: 0, gwgChecks: 0 },
+    _count: { poas: 0, gwgInvites: 0, gwgChecks: 0, requests: 3 },
   });
-  h.tx.phoneNote.findMany.mockResolvedValue([]);
-  h.tx.taxDeadline.findMany.mockResolvedValue([]);
-  h.tx.clientMasterChangeRequest.count.mockResolvedValue(0);
+  h.tx.clientMasterChangeRequest.count.mockResolvedValue(2);
   h.tx.clientCustomFieldDef.findMany.mockResolvedValue([]);
   h.tx.clientCustomFieldValue.findMany.mockResolvedValue([]);
-  h.tx.staffUser.findMany.mockResolvedValue([]);
-  h.tx.workflowInstance.findMany.mockResolvedValue([]);
-  h.tx.clientReminder.findMany.mockResolvedValue([]);
-  h.tx.pendingBinder.findMany.mockResolvedValue([]);
-  h.tx.appointment.findMany.mockResolvedValue([]);
-  h.tx.appointmentRequest.findMany.mockResolvedValue([]);
-  h.tx.clientHandover.findMany.mockResolvedValue([]);
   h.readRequestCreationOptionsTx.mockResolvedValue({
     requestTemplates: [],
     requestFormTemplates: [],
@@ -98,17 +122,22 @@ function prepareDashboardRows() {
   });
 }
 
+function prepareBlockRows() {
+  h.tx.client.findFirst.mockResolvedValue({ id: 'client-1' });
+  for (const query of BLOCK_QUERIES) query.mockResolvedValue([]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   h.accessibleClientsWhereFor.mockResolvedValue({ vertraulich: false });
 });
 
-describe('loadClientDashboard', () => {
+describe('loadClientCockpitHeader', () => {
   it('behält den Tenant-Backstop und startet nach einem Miss keine Folgeabfragen', async () => {
     h.tx.client.findFirst.mockResolvedValue(null);
     h.tx.client.findUnique.mockResolvedValue(null);
 
-    const result = await loadClientDashboard(ctx, session, 'client-foreign');
+    const result = await loadClientCockpitHeader(ctx, session, 'client-foreign');
 
     expect(result).toEqual({ status: 'not_found' });
     expect(h.tx.client.findFirst).toHaveBeenCalledWith(
@@ -116,37 +145,68 @@ describe('loadClientDashboard', () => {
         where: { id: 'client-foreign', tenantId: 'tenant-1', vertraulich: false },
       }),
     );
-    expect(h.tx.phoneNote.findMany).not.toHaveBeenCalled();
-    expect(h.tx.document.findMany).not.toHaveBeenCalled();
+    expect(h.tx.clientMasterChangeRequest.count).not.toHaveBeenCalled();
+    expect(h.readRequestCreationOptionsTx).not.toHaveBeenCalled();
   });
 
   it('liefert bei RESTRICTED-Verweigerung fail-closed keine Cockpit-Daten', async () => {
     h.tx.client.findFirst.mockResolvedValue(null);
     h.tx.client.findUnique.mockResolvedValue({ id: 'client-restricted' });
 
-    const result = await loadClientDashboard(ctx, session, 'client-restricted');
+    const result = await loadClientCockpitHeader(ctx, session, 'client-restricted');
 
     expect(result).toEqual({ status: 'forbidden' });
-    expect(h.tx.phoneNote.findMany).not.toHaveBeenCalled();
-    expect(h.tx.document.findMany).not.toHaveBeenCalled();
+    expect(h.tx.clientMasterChangeRequest.count).not.toHaveBeenCalled();
   });
 
-  it('lädt das Cockpit ohne Dokumentzeilen und behält den Request-Cap/Select', async () => {
-    prepareDashboardRows();
+  it('lädt nur Kopfdaten: keine Blocklisten, Dokumente oder Anforderungszeilen', async () => {
+    prepareHeaderRows();
 
-    const result = await loadClientDashboard(
+    const result = await loadClientCockpitHeader(ctx, session, 'client-1');
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('Kopf wurde nicht geladen.');
+    expect(result.data).toMatchObject({ pendingChangeRequests: 2, templatesLimited: false });
+    const clientArgs = h.tx.client.findFirst.mock.calls[0]![0];
+    expect(clientArgs.include).not.toHaveProperty('requests');
+    expect(clientArgs.include).not.toHaveProperty('documentFolders');
+    // Onboarding zählt Anforderungen statt eine gekappte Liste zu laden.
+    expect(clientArgs.include._count.select).toMatchObject({ requests: true, poas: true });
+    for (const query of BLOCK_QUERIES) expect(query).not.toHaveBeenCalled();
+    expect(h.tx.document.findMany).not.toHaveBeenCalled();
+    expect(h.tx.document.count).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadClientCockpitBlocks', () => {
+  it('prüft den Zugriff in der eigenen Transaktion und lädt ohne Zugriff nichts', async () => {
+    h.tx.client.findFirst.mockResolvedValue(null);
+
+    const result = await loadClientCockpitBlocks(ctx, session, 'client-restricted', ALL_MODULES);
+
+    expect(result).toBeNull();
+    expect(h.tx.client.findFirst).toHaveBeenCalledWith({
+      where: { id: 'client-restricted', tenantId: 'tenant-1', vertraulich: false },
+      select: { id: true },
+    });
+    for (const query of BLOCK_QUERIES) expect(query).not.toHaveBeenCalled();
+  });
+
+  it('lädt Anforderungen mit Cap/Select und die Blocklisten aktiver Module', async () => {
+    prepareBlockRows();
+
+    const result = await loadClientCockpitBlocks(
       ctx,
       session,
       'client-1',
+      ALL_MODULES,
       new Date('2026-07-16T10:00:00.000Z'),
     );
 
-    expect(result.status).toBe('ok');
-    if (result.status !== 'ok') throw new Error('Cockpit wurde nicht geladen.');
-    expect(result.data.client.id).toBe('client-1');
-    const clientArgs = h.tx.client.findFirst.mock.calls[0]![0];
-    expect(clientArgs.include).not.toHaveProperty('documentFolders');
-    expect(clientArgs.include.requests).toMatchObject({
+    expect(result).not.toBeNull();
+    expect(h.tx.request.findMany).toHaveBeenCalledWith({
+      where: { clientId: 'client-1' },
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
       take: CLIENT_REQUESTS_CAP,
       select: {
         id: true,
@@ -154,7 +214,7 @@ describe('loadClientDashboard', () => {
         status: true,
         priority: true,
         dueAt: true,
-        responses: expect.objectContaining({ select: { createdAt: true } }),
+        responses: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true } },
       },
     });
     expect(h.tx.phoneNote.findMany).toHaveBeenCalledWith(
@@ -166,9 +226,29 @@ describe('loadClientDashboard', () => {
         },
       }),
     );
+    expect(h.tx.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          clientId: 'client-1',
+          status: { not: 'CANCELLED' },
+          endsAt: { gte: new Date('2026-07-16T10:00:00.000Z') },
+        },
+      }),
+    );
+    for (const query of BLOCK_QUERIES) expect(query).toHaveBeenCalledTimes(1);
     expect(h.tx.document.findMany).not.toHaveBeenCalled();
-    expect(h.tx.document.count).not.toHaveBeenCalled();
-    expect(h.tx.documentFolder.findMany).not.toHaveBeenCalled();
+  });
+
+  it('fragt abgeschaltete Module nicht ab (Anforderungen immer)', async () => {
+    prepareBlockRows();
+
+    const result = await loadClientCockpitBlocks(ctx, session, 'client-1', NO_MODULES);
+
+    expect(result).toMatchObject({ requests: [], reminders: [], staffList: [] });
+    expect(h.tx.request.findMany).toHaveBeenCalledTimes(1);
+    for (const query of BLOCK_QUERIES.filter((q) => q !== h.tx.request.findMany)) {
+      expect(query).not.toHaveBeenCalled();
+    }
   });
 });
 

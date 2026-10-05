@@ -9,12 +9,14 @@ describe('Wiedervorlagen an Telefonnotizen', () => {
   it('lädt die Relation in globaler Liste und Mandanten-Cockpit', () => {
     const globalPage = read('phone-notes/page.tsx');
     const clientData = read('clients/[id]/_data.ts');
-    const clientPage = read('clients/[id]/page.tsx');
+    // P-07: Die Cockpit-Karten (inkl. Telefonnotizen) rendern als gestreamte
+    // Blöcke in cockpit-blocks.tsx.
+    const clientBlocks = read('clients/[id]/cockpit-blocks.tsx');
 
     expect(globalPage).toContain('reminders: {');
     expect(globalPage).toContain('reminders: n.reminders.map');
     expect(clientData).toContain('reminders: {');
-    expect(clientPage).toContain('reminders: p.reminders.map');
+    expect(clientBlocks).toContain('reminders: p.reminders.map');
   });
 
   it('zeigt Link, Status und Fälligkeit auch bei erledigten Telefonnotizen', () => {

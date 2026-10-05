@@ -10,7 +10,8 @@ describe('Mandanten-Cockpit Datenaufteilung', () => {
   it('hält DB-Orchestrierung aus page.tsx heraus und streamt Dokumente separat', () => {
     const page = readRouteFile('page.tsx');
 
-    expect(page).toContain('loadClientDashboard(settingsCtx, session, id)');
+    expect(page).toContain('loadClientCockpitHeader(settingsCtx, session, id)');
+    expect(page).toContain('loadClientCockpitBlocks(settingsCtx, session, id, modules, now)');
     expect(page).not.toContain('withTenantContext');
     expect(page).not.toContain('tx.document');
     expect(page).toMatch(
@@ -31,5 +32,41 @@ describe('Mandanten-Cockpit Datenaufteilung', () => {
     expect(block).toContain('deletedHref: clientDocumentsPageHref(client.id, 1, true)');
     expect(block).toContain('← Zurück');
     expect(block).toContain('Weiter →');
+  });
+
+  it('streamt Kopf vor den Blöcken und lässt den Engine-Healthcheck nur die Pill aufhalten (P-07)', () => {
+    const page = readRouteFile('page.tsx');
+    const blocks = readRouteFile('cockpit-blocks.tsx');
+
+    // Blockdaten starten vor dem Warten auf den Kopf und werden nicht abgewartet.
+    expect(page.indexOf('loadClientCockpitBlocks(')).toBeLessThan(
+      page.indexOf('loadClientCockpitHeader('),
+    );
+    expect(page).not.toMatch(/await\s+loadClientCockpitBlocks/);
+    for (const block of [
+      'UpcomingCockpitBlock',
+      'WorkflowsCockpitBlock',
+      'RemindersCockpitBlock',
+      'BindersCockpitBlock',
+      'HandoversCockpitBlock',
+      'PhoneNotesCockpitBlock',
+      'RequestsCockpitBlock',
+    ]) {
+      expect(page).toMatch(
+        new RegExp(`<Suspense fallback=\\{<CockpitBlockSkeleton[^}]*\\}>\\s*<${block}`),
+      );
+      expect(blocks).toContain(`export async function ${block}(`);
+    }
+    expect(blocks).toContain('const data = await blocks;');
+    expect(page.match(/isRiskLayerAvailable\(\)/g)).toHaveLength(1);
+    expect(page).toContain('<SubsumtionNavLink clientId={client.id} />');
+  });
+
+  it('hat Ladezustände auf (protected)-Ebene (P-07)', () => {
+    const appDir = resolve(routeDir, '../../../..');
+    for (const file of ['staff/(protected)/loading.tsx', 'portal/(protected)/loading.tsx']) {
+      const source = readFileSync(resolve(appDir, file), 'utf8');
+      expect(source).toMatch(/export default function \w+Loading\(\)/);
+    }
   });
 });
