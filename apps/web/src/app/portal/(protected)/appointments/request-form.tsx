@@ -1,9 +1,9 @@
 ﻿'use client';
 
 import { useActionState, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { Plus, X, CalendarPlus, Trash2 } from 'lucide-react';
-import { DateTimePicker } from '@/components/datetime-picker';
 import {
   FieldError,
   FormErrorSummary,
@@ -11,6 +11,28 @@ import {
   fieldErrorProps,
 } from '@/components/form-errors';
 import { createAppointmentRequestAction, type AppointmentRequestActionResult } from './actions';
+
+// react-datepicker samt date-fns-Locale und CSS erst laden, wenn das
+// standardmäßig geschlossene Formular geöffnet wird (P-25); bis dahin ein
+// gleich großes, gesperrtes Feld. Vorgeladen bei Hover/Fokus von „Anfragen".
+const DateTimePicker = dynamic(
+  () => import('@/components/datetime-picker').then((m) => m.DateTimePicker),
+  {
+    ssr: false,
+    loading: () => (
+      <input
+        className="input text-sm w-full"
+        disabled
+        aria-busy="true"
+        aria-label="Datum + Uhrzeit wird geladen"
+      />
+    ),
+  },
+);
+
+function preloadDateTimePicker() {
+  void import('@/components/datetime-picker');
+}
 
 interface StaffOption {
   id: string;
@@ -66,6 +88,8 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
           <button
             type="button"
             onClick={() => setOpen(true)}
+            onPointerEnter={preloadDateTimePicker}
+            onFocus={preloadDateTimePicker}
             className="btn-primary text-xs inline-flex items-center gap-1"
           >
             <Plus className="h-3.5 w-3.5" />

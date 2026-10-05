@@ -1,15 +1,35 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
-import {
-  NewRequestForm,
-  type RequestClientOption,
-  type RequestFormTemplateOption,
-  type RequestTemplateOption,
+import type {
+  RequestClientOption,
+  RequestFormTemplateOption,
+  RequestTemplateOption,
 } from '@/app/staff/(protected)/clients/[id]/requests/new/form';
+
+// Das Formular zieht react-datepicker, date-fns-Locale und das Picker-CSS nach.
+// Der Dialog ist standardmäßig geschlossen: erst beim Öffnen laden (P-25),
+// vorgeladen bei Hover/Fokus des Auslösers.
+const NewRequestForm = dynamic(
+  () =>
+    import('@/app/staff/(protected)/clients/[id]/requests/new/form').then((m) => m.NewRequestForm),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="text-sm text-muted" role="status">
+        Formular wird geladen …
+      </p>
+    ),
+  },
+);
+
+function preloadForm() {
+  void import('@/app/staff/(protected)/clients/[id]/requests/new/form');
+}
 
 interface Props {
   requestId: string;
@@ -76,6 +96,8 @@ export function QuickRequestDialog({
             setCreated(false);
             setOpen(true);
           }}
+          onPointerEnter={creationBlocked ? undefined : preloadForm}
+          onFocus={creationBlocked ? undefined : preloadForm}
           aria-haspopup="dialog"
           disabled={creationBlocked}
           title={

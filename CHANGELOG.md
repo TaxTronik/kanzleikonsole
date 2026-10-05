@@ -220,6 +220,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Der Dialog „Anforderung erstellen“ und die Terminanfrage im Portal laden
+  Formular und Datumsauswahl erst beim Öffnen; der Start-JavaScript-Code sinkt
+  dort von 142 auf 89 kB bzw. von 80 auf 32 kB (gzip).
 - Dashboard: Die Widgets erscheinen direkt mit dem Seitenaufbau als
   serverseitiges Raster und stehen auf Smartphones untereinander; der
   Drag-&-Drop-Editor und sein CSS werden erst im Modus „Anpassen“ geladen.
