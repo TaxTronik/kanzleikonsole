@@ -63,15 +63,25 @@ const nextConfig = {
   // nichts mehr aus node_modules separat kopieren.
   outputFileTracingRoot: path.join(__dirname, '../../'),
 
+  // P-22/P-13: Parser der begrenzten Worker-Threads samt Abhängigkeiten
+  // (WORKER_PARSER_PACKAGES oben).
+  // S-10: Die eingebetteten PDF-Schriften (Noto, 18 MB) liest nur der Server.
+  // Sie liegen deshalb in assets/ statt public/ und sind ohne Sitzung nicht
+  // abrufbar. pdf-fonts.ts öffnet sie über einen variablen Dateinamen, den das
+  // Tracing nicht sicher erkennt: explizit für alle Routen ins Standalone-Paket
+  // aufnehmen (inklusive Lizenztexte und manifest.json mit den Prüfsummen).
+  // Ein einziger Schlüssel: ein zweites outputFileTracingIncludes im selben
+  // Objekt würde das erste still ersetzen.
+  outputFileTracingIncludes: {
+    '/**': [...workerParserTraceIncludes(), './assets/fonts/noto/**/*'],
+  },
+
   // pg_dump is an external operator binary (PATH/PG_DUMP_PATH), not an app
   // asset. Its deliberately configurable process path makes static tracing
   // conservative. This route used to launch pg_dump; since P-22 it only
   // enqueues the worker job backup-run. The exclusions stay as a leak guard:
   // source/config/backup data must never be traced for it. A post-build
   // verifier guards this contract against future broadening.
-  outputFileTracingIncludes: {
-    '/**': workerParserTraceIncludes(),
-  },
   outputFileTracingExcludes: {
     '/api/staff/admin/backups/run': [
       'src/**/*',

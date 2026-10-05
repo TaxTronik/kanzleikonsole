@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import manifest from '../../../public/fonts/noto/manifest.json';
+import manifest from '../../../assets/fonts/noto/manifest.json';
 import { ActionError } from '../actions/action-error';
+
+/** Server-only font directory relative to apps/web (never below public/, S-10). */
+export const PDF_FONT_DIRECTORY = 'assets/fonts/noto';
 
 export type PdfFontFace =
   | 'NotoSans-Regular.ttf'
@@ -65,9 +68,10 @@ export function pdfFontBytes(face: PdfFontFace): Buffer {
   let bytes = buffers.get(face);
   if (bytes) return bytes;
   // Both supported launch locations: Next's apps/web cwd and repository/standalone root.
+  // S-10: server-only assets (not public/); next.config.mjs traces them into standalone.
   const candidates = [
-    path.join(process.cwd(), 'public/fonts/noto', face),
-    path.join(process.cwd(), 'apps/web/public/fonts/noto', face),
+    path.join(process.cwd(), PDF_FONT_DIRECTORY, face),
+    path.join(process.cwd(), 'apps/web', PDF_FONT_DIRECTORY, face),
   ];
   const filename = candidates.find((file) => existsSync(file));
   if (!filename) throw new Error('PDF-Schriftdateien fehlen in der Installation.');

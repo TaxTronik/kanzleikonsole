@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, relative, resolve, sep } from 'node:path';
@@ -115,6 +116,37 @@ const forbiddenStandaloneFiles = [
   ),
 ];
 
+// S-10: Die PDF-Schriften liest nur der Server. Sie dürfen nicht unter public/
+// liegen (sonst ohne Sitzung abrufbar) und müssen unverändert, samt Manifest
+// und Lizenztexten, im Standalone-Paket stehen (outputFileTracingIncludes).
+const fontSourceRoot = resolve(webRoot, 'assets/fonts/noto');
+const standaloneFontRoot = resolve(standaloneAppRoot, 'assets/fonts/noto');
+const fontManifest = JSON.parse(readFileSync(resolve(fontSourceRoot, 'manifest.json'), 'utf8'));
+const notoHashes = new Set(fontManifest.fonts.map(({ sha256 }) => sha256));
+const fontProblems = [
+  ...fontManifest.fonts
+    .filter(({ file, sha256 }) => {
+      const traced = resolve(standaloneFontRoot, file);
+      return (
+        !existsSync(traced) ||
+        createHash('sha256').update(readFileSync(traced)).digest('hex') !== sha256
+      );
+    })
+    .map(({ file }) => `fehlt oder weicht ab: ${file}`),
+  ...['manifest.json', 'OFL.txt', 'OFL-NotoSans.txt']
+    .filter((file) => !existsSync(resolve(standaloneFontRoot, file)))
+    .map((file) => `fehlt: ${file}`),
+  ...(existsSync(resolve(webRoot, 'public/fonts')) ? ['public/fonts existiert wieder'] : []),
+  // public/identity-assets enthält bewusst öffentliche PDF.js-Standardschriften;
+  // geprüft wird gezielt, dass keine der eingebetteten Noto-Dateien öffentlich liegt.
+  ...regularFilesBelow(resolve(webRoot, 'public'))
+    .filter((path) => notoHashes.has(createHash('sha256').update(readFileSync(path)).digest('hex')))
+    .map((path) => `öffentlich abrufbar: ${relative(repoRoot, path)}`),
+];
+if (fontProblems.length > 0) {
+  throw new Error(`[standalone-trace] PDF-Schriften:\n  - ${fontProblems.join('\n  - ')}`);
+}
+
 const violations = [...new Set([...forbiddenTraceEntries, ...forbiddenStandaloneFiles])];
 if (violations.length > 0) {
   const details = violations.map((path) => `  - ${relative(repoRoot, path)}`).join('\n');
@@ -124,5 +156,6 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `[standalone-trace] OK: ${manifest.files.length} Dateien, keine Backup-/Quellbaum-Leaks.`,
+  `[standalone-trace] OK: ${manifest.files.length} Dateien, keine Backup-/Quellbaum-Leaks, ` +
+    `${fontManifest.fonts.length} PDF-Schriften serverseitig im Standalone-Paket.`,
 );

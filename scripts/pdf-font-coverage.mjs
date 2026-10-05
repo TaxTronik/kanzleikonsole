@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 const require = createRequire(import.meta.url);
 const fontkit = createRequire(require.resolve('pdfkit'))('fontkit');
-const directory = path.resolve('apps/web/public/fonts/noto');
+const directory = path.resolve('apps/web/assets/fonts/noto');
 const manifest = JSON.parse(readFileSync(path.join(directory, 'upstream.json'), 'utf8'));
 for (const item of manifest.fonts) {
   const bytes = readFileSync(path.join(directory, item.file));

@@ -1028,6 +1028,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Die für die PDF-Erzeugung eingebetteten Noto-Schriften (18 MB) liegen nicht
+  mehr im öffentlichen Verzeichnis der Web-App; `/fonts/noto/*` war bisher ohne
+  Sitzung abrufbar. Prüfskript und Web-Image sichern Ablage und Prüfsummen im
+  Produktionspaket (`INV-ARCHIVE-EINVOICE-001`, `RISK-ARCHIVE-SNAPSHOT-001`,
+  `FK-EXC-20261005-032`).
 - Gespeicherte Geheimnisse (SMTP-Passwort, Quantenlos-Token, n8n-Schlüssel,
   Postfach-Zugangsdaten, OAuth-State) sind per AAD an Kanzlei, Ablageort und
   Feld gebunden und tragen eine Schlüssel-ID (Format v3); ein in der Datenbank

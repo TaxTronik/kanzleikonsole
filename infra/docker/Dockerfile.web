@@ -116,6 +116,15 @@ ENV NODE_ENV=production \
 COPY --from=builder /repo/apps/web/.next/standalone ./
 COPY --from=builder /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /repo/apps/web/public ./apps/web/public
+# S-10: Die PDF-Schriften kommen nur über das Standalone-Paket (Tracing) ins
+# Image und dürfen nicht öffentlich unter /fonts liegen. Prüfsummen prüft die
+# App vor der ersten Einbettung.
+RUN set -eu; \
+    for file in NotoSans-Regular.ttf NotoSans-Bold.ttf NotoSansSC-Regular.otf \
+      NotoSansSC-Bold.otf manifest.json OFL.txt OFL-NotoSans.txt; do \
+      test -r "/app/apps/web/assets/fonts/noto/$file"; \
+    done; \
+    test ! -e /app/apps/web/public/fonts
 
 EXPOSE 3000
 USER node

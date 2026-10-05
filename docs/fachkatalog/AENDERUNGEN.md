@@ -1,5 +1,34 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-032
+    date: '2026-10-05'
+    paths:
+      - apps/web/next.config.mjs
+      - apps/web/scripts/verify-standalone-trace.mjs
+      - apps/web/src/server/documents/__tests__/pdf-font-location.test.ts
+      - apps/web/src/server/documents/pdf-fonts.ts
+    rule_ids:
+      - INV-ARCHIVE-EINVOICE-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - CLIENT-ASSISTANCE-001
+      - CLIENT-OFFBOARDING-001
+      - MANDATE-STRUCTURE-001
+      - PAYROLL-INTAKE-001
+      - MAIL-INBOX-001
+    reason: >-
+      Die eingebetteten Noto-Schriften für Rechnungs-, Lohn-, Mandanten-,
+      Mandatsstruktur-, Offboarding- und Subsumtions-PDFs liegen nicht mehr unter
+      apps/web/public, sondern unter apps/web/assets/fonts/noto, und sind damit ohne
+      Sitzung nicht mehr abrufbar. pdf-fonts.ts liest sie dort und prüft weiter die
+      SHA-256-Werte aus manifest.json; eine übrig gebliebene Kopie unter public
+      wird nicht verwendet. next.config.mjs nimmt das Verzeichnis für alle Routen
+      ins Standalone-Paket auf, Prüfskript und Web-Image sichern Vorhandensein und
+      Prüfsummen. Schriftdateien, Zeichenabdeckung und erzeugte PDFs bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/documents/__tests__/pdf-font-location.test.ts
+      - apps/web/src/server/documents/__tests__/pdf-fonts.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-031
     date: '2026-10-05'
     paths:
@@ -2246,6 +2275,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-032` dokumentiert die Ablage der
+  PDF-Schriften außerhalb des öffentlichen Verzeichnisses. Schriften und
+  erzeugte PDFs bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-031` dokumentiert die kontextgebundene
   Secret-Box (v3) mit Schlüsselbund und Re-Wrap. Postfachabruf, Versand und
