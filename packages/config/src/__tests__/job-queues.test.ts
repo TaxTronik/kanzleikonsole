@@ -6,7 +6,9 @@ import {
   QUEUE_HEALTH,
   QUEUE_STATUS_HISTORY_RETENTION_SECONDS,
   SCHEDULE_LOG_LABELS,
+  scheduleLogLabel,
   type QueueJobDataByName,
+  type QueueScheduleDefinition,
 } from '../job-queues';
 
 describe('shared BullMQ metadata', () => {
@@ -68,5 +70,72 @@ describe('shared BullMQ metadata', () => {
 
     expect(riskJob.analysisId).toBe('analysis-1');
     expect(reminderJob.clientId).toBeNull();
+  });
+
+  it('F-17 names an explicit time zone for every cron schedule', () => {
+    const zones = Object.values(JOB_QUEUES).flatMap((queue) => {
+      const schedule: QueueScheduleDefinition | null = queue.schedule;
+      return schedule != null && 'pattern' in schedule.repeat
+        ? [[queue.name, schedule.repeat.tz]]
+        : [];
+    });
+    expect(Object.fromEntries(zones)).toEqual({
+      'sanctions-refresh': 'Europe/Berlin',
+      'evidence-seal': 'UTC',
+      'audit-verify-check': 'UTC',
+      'audit-rotate': 'UTC',
+      'gwg-expiry-check': 'Europe/Berlin',
+      'invoice-overdue-check': 'Europe/Berlin',
+      'tax-deadline-materialize': 'Europe/Berlin',
+      'tax-news-fetch': 'Europe/Berlin',
+      'reminders-daily': 'Europe/Berlin',
+      'magic-link-cleanup': 'UTC',
+      'dsgvo-retention': 'UTC',
+      'poa-expiry-check': 'Europe/Berlin',
+      'backup-run': 'UTC',
+      'backup-drill': 'UTC',
+      'n8n-retention': 'UTC',
+    });
+  });
+
+  it('F-17 derives the log labels from the registered repeat options', () => {
+    expect(SCHEDULE_LOG_LABELS).toEqual([
+      'mailbox-poll @ every 5 min',
+      'sanctions-refresh @ 05:15 Berlin daily',
+      'audit-anchor @ every 2 sec, per tenant >= 60 sec unless invoice/gwg',
+      'evidence-seal @ 02:30 UTC daily',
+      'audit-verify-check @ 02:45 UTC daily',
+      'audit-rotate @ 03:00 UTC sundays',
+      'gwg-expiry-check @ 07:00 Berlin daily',
+      'invoice-overdue-check @ 07:15 Berlin daily',
+      'tax-deadline-materialize @ 07:30 Berlin daily',
+      'tax-news-fetch @ every 2 h, 06:30-20:30 Berlin',
+      'reminders-daily @ 07:45 Berlin daily',
+      'magic-link-cleanup @ 03:30 UTC daily',
+      'dsgvo-retention @ 04:00 UTC daily',
+      'poa-expiry-check @ 07:20 Berlin daily',
+      'backup-run @ 01:00 UTC daily',
+      'backup-drill @ 05:00 UTC 1st of month',
+      'health-alert @ every 5 min',
+      'n8n-outbox-reconcile @ every 5 min',
+      'workflow-n8n-dispatch @ every 1 min',
+      'workflow-feedback @ every 1 min',
+      'storage-orphan-cleanup @ every 6 h',
+      'portal-inbox-cleanup @ every 6 h',
+      'n8n-retention @ 03:45 UTC daily',
+    ]);
+
+    const schedule = (repeat: QueueScheduleDefinition['repeat']): QueueScheduleDefinition => ({
+      schedulerId: 'probe',
+      repeat,
+      expectedMaxGapMs: 1,
+    });
+    // A changed time zone or pattern changes the label with it.
+    expect(
+      scheduleLogLabel('probe', schedule({ pattern: '30 2 * * *', tz: 'Europe/Berlin' })),
+    ).toBe('probe @ 02:30 Berlin daily');
+    expect(scheduleLogLabel('probe', schedule({ pattern: '5 */4 * * 1-5', tz: 'UTC' }))).toBe(
+      'probe @ cron "5 */4 * * 1-5" UTC',
+    );
   });
 });

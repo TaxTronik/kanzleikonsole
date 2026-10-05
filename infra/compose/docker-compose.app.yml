@@ -216,8 +216,10 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      # Zeitzone fix (Defense-in-Depth): der Worker terminiert Fristen/POA/Backup
-      # explizit in Europe/Berlin (date-util.ts), TZ deckt Rest-Stellen ab.
+      # Zeitzone fix (Defense-in-Depth): der Worker rechnet Fristen/POA explizit
+      # in Europe/Berlin (date-util.ts), TZ deckt Rest-Stellen ab. Die Cron-
+      # Zeitpläne hängen nicht davon ab: jeder nennt seine Zeitzone selbst
+      # (packages/config/src/job-queues.ts, nächtliche Wartung in UTC).
       TZ: Europe/Berlin
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public

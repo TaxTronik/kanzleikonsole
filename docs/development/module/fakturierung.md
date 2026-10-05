@@ -56,7 +56,7 @@ deaktiviert das Modul.
   `branding.letterhead` in die menschenlesbare PDF ein; die eingebettete XML
   verwendet weiterhin die fachlichen Verkäufer-Stammdaten. Bestehende Archive
   werden nicht neu gerendert; EXTERNAL-PDFs bleiben unverändert.
-- **Worker:** `invoice-overdue-check` (täglich 06:15 UTC): SENT + überfällig
+- **Worker:** `invoice-overdue-check` (täglich 07:15 Europe/Berlin): SENT + überfällig
   → OVERDUE + Audit (SYSTEM) + interne Notification.
 - **Überfälligkeitsanzeige (`INV-DUE-OVERDUE-001`):** Staff- und Portalübersicht
   vergleichen `dueDate` als `@db.Date` mit `berlinTodayUtcMidnight()` aus

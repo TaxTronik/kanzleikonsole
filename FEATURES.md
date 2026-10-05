@@ -851,7 +851,7 @@ Pro Mitarbeiter abonnierte RSS-Feeds — aus dem ursprünglichen
 - `RssFeed` pro Mitarbeiter: Name, URL, Farbwahl, sort_order, active-Flag
 - **BFH + BMF werden für bestehende und neue Staff automatisch geseedet**
   (`seedDefaultRssFeeds` läuft in der Migration und im `createUserAction`)
-- Worker `tax-news-fetch` (05:30 UTC täglich) zieht **distinct URLs** aus
+- Worker `tax-news-fetch` (alle 2 h, 06:30–20:30 Europe/Berlin) zieht **distinct URLs** aus
   allen aktiven Abos — BMF wird nicht 20× geholt, auch wenn 20 User es
   abonnieren
 - `tax_news_item` bleibt globaler Item-Cache mit `source = feedUrl`

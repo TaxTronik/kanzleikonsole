@@ -462,6 +462,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Cron-Zeitpläne nennen ihre Zeitzone. Die acht nächtlichen Wartungsjobs
+  (u. a. Kettenprüfung, Audit-Rotation, DSGVO-Aufbewahrung, Backup und
+  Restore-Drill) laufen wie dokumentiert in UTC; bisher liefen sie in den
+  Containern nach Berliner Ortszeit und damit eine bzw. zwei Stunden früher als
+  dokumentiert. Tagesbezogene Jobs laufen weiterhin in Europe/Berlin.
+  Log-Beschriftungen werden aus den Zeitplänen erzeugt.
 - Fehlgeschlagene Hintergrundjobs und Worker-Fehler werden für alle Worker
   protokolliert; bisher hatten 11 von 26 Workern keinen Fehler-Handler. Fehler
   beim Zählen fehlgeschlagener Staff-Anmeldungen werden geloggt statt

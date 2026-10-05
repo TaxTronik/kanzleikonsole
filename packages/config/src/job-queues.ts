@@ -17,20 +17,38 @@ export interface ScheduledJobOptions {
   backoff: { type: 'exponential'; delay: number };
 }
 
+/**
+ * F-17: every cron pattern names its time zone. Without `tz` BullMQ evaluates the
+ * pattern in the process time zone (TZ=Europe/Berlin in the containers, UTC or
+ * anything else elsewhere), so labels and documentation said UTC while the
+ * production worker ran on Berlin local time.
+ *
+ * - UTC: nightly maintenance (backup, audit sealing/verification/rotation,
+ *   retention and cleanup). These times have always been documented in UTC
+ *   (labels, scheduler comments, GoBD/DSGVO documentation, ADR-0004) and
+ *   evidence-seal seals UTC days. UTC has no daylight-saving gaps, so the
+ *   02:30/02:45 runs are neither shifted nor duplicated on switch days.
+ * - Europe/Berlin: jobs tied to the office day (reminders, expiry checks,
+ *   deadline materialisation, feeds). None of them lies in the 02:00-03:00
+ *   switch window.
+ */
+export type ScheduleTimeZone = 'UTC' | 'Europe/Berlin';
+
 export interface QueueScheduleDefinition {
   schedulerId: string;
   repeat: Readonly<
     | { every: number }
     | {
         pattern: string;
-        tz?: string;
+        tz: ScheduleTimeZone;
       }
   >;
   /** Retry policy of the scheduled runs; omitted = a single attempt. */
   jobOptions?: Readonly<ScheduledJobOptions>;
   /** Longest normal gap between two scheduled runs (cron windows included). */
   expectedMaxGapMs: number;
-  logLabel: string;
+  /** Extra text for the generated log label (the timing part is derived from `repeat`). */
+  labelNote?: string;
 }
 
 interface QueueDefinition {
@@ -39,6 +57,15 @@ interface QueueDefinition {
 }
 
 const BERLIN = 'Europe/Berlin';
+const UTC = 'UTC';
+
+/**
+ * P-05: Mindestabstand zwischen zwei Rolling-Ankern desselben Tenants. Der
+ * 2-Sekunden-Takt bleibt, damit offene Rechnungs- und GwG-Ereignisse sofort
+ * extern verankert werden; alle übrigen Einträge eines Tenants fasst höchstens
+ * ein RFC-3161-Stempel je Intervall zusammen.
+ */
+export const AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS = MINUTE;
 
 // RF-2: Gemeinsame Retry-Policy für periodische Wartungs-Jobs. Ein transienter
 // Redis-/DB-/Netz-Fehler um die nächtliche Laufzeit soll den Job nicht bis zum
@@ -73,7 +100,6 @@ export const JOB_QUEUES = {
       schedulerId: 'periodic-mailbox-poll',
       repeat: { every: 5 * MINUTE },
       expectedMaxGapMs: 5 * MINUTE,
-      logLabel: 'mailbox-poll @ every 5 min',
     },
   },
   sanctionsRefresh: {
@@ -83,7 +109,6 @@ export const JOB_QUEUES = {
       repeat: { pattern: '15 5 * * *', tz: BERLIN },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'sanctions-refresh @ 05:15 Berlin daily',
     },
   },
   auditAnchor: {
@@ -95,40 +120,37 @@ export const JOB_QUEUES = {
       schedulerId: 'rolling-audit-anchor',
       repeat: { every: 2 * SECOND },
       expectedMaxGapMs: 2 * SECOND,
-      logLabel: 'audit-anchor @ every 2 sec, per tenant >= 60 sec unless invoice/gwg',
+      labelNote: `per tenant >= ${AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS / SECOND} sec unless invoice/gwg`,
     },
   },
   evidenceSeal: {
     name: 'evidence-seal',
     schedule: {
       schedulerId: 'daily-seal',
-      repeat: { pattern: '30 2 * * *' },
+      repeat: { pattern: '30 2 * * *', tz: UTC },
       // RF-2: Retries für den Versiegelungslauf — ein transienter Fehler
       // (TSA/DB kurz weg) soll nicht bis zum nächsten Kalendertag warten.
       // Verpasste Tage holt der Lauf ohnehin per Backfill nach.
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'evidence-seal @ 02:30 UTC daily',
     },
   },
   auditVerify: {
     name: 'audit-verify-check',
     schedule: {
       schedulerId: 'daily-audit-verify',
-      repeat: { pattern: '45 2 * * *' },
+      repeat: { pattern: '45 2 * * *', tz: UTC },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'audit-verify-check @ 02:45 UTC daily',
     },
   },
   auditRotate: {
     name: 'audit-rotate',
     schedule: {
       schedulerId: 'weekly-audit-rotate',
-      repeat: { pattern: '0 3 * * 0' },
+      repeat: { pattern: '0 3 * * 0', tz: UTC },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: 7 * DAY,
-      logLabel: 'audit-rotate @ 03:00 UTC sundays',
     },
   },
   gwgExpiry: {
@@ -138,7 +160,6 @@ export const JOB_QUEUES = {
       repeat: { pattern: '0 7 * * *', tz: BERLIN },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'gwg-expiry-check @ 07:00 Berlin daily',
     },
   },
   invoiceOverdue: {
@@ -148,7 +169,6 @@ export const JOB_QUEUES = {
       repeat: { pattern: '15 7 * * *', tz: BERLIN },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'invoice-overdue-check @ 07:15 Berlin daily',
     },
   },
   taxDeadlineMaterialize: {
@@ -158,7 +178,6 @@ export const JOB_QUEUES = {
       repeat: { pattern: '30 7 * * *', tz: BERLIN },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'tax-deadline-materialize @ 07:30 Berlin daily',
     },
   },
   taxNewsFetch: {
@@ -172,7 +191,6 @@ export const JOB_QUEUES = {
       jobOptions: DAILY_RETRY,
       // 20:30 to 06:30 is the longest intentional overnight pause.
       expectedMaxGapMs: 10 * HOUR,
-      logLabel: 'tax-news-fetch @ every 2 h, 06:30-20:30 Berlin',
     },
   },
   remindersDaily: {
@@ -184,7 +202,6 @@ export const JOB_QUEUES = {
       repeat: { pattern: '45 7 * * *', tz: BERLIN },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'reminders-daily @ 07:45 Berlin daily',
     },
   },
   magicLinkCleanup: {
@@ -192,10 +209,9 @@ export const JOB_QUEUES = {
     schedule: {
       // H6: Die Magic-Link-Tabelle wächst sonst unbegrenzt.
       schedulerId: 'daily-magic-link-cleanup',
-      repeat: { pattern: '30 3 * * *' },
+      repeat: { pattern: '30 3 * * *', tz: UTC },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'magic-link-cleanup @ 03:30 UTC daily',
     },
   },
   dsgvoRetention: {
@@ -204,10 +220,9 @@ export const JOB_QUEUES = {
       // Löscht Notifications (>1J), Phone-Notes (>3J) und nullt
       // client_contact.lastLoginAt (>2J). Siehe dsgvo-konzept.md 2.2.
       schedulerId: 'daily-dsgvo-retention',
-      repeat: { pattern: '0 4 * * *' },
+      repeat: { pattern: '0 4 * * *', tz: UTC },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'dsgvo-retention @ 04:00 UTC daily',
     },
   },
   poaExpiry: {
@@ -218,7 +233,6 @@ export const JOB_QUEUES = {
       repeat: { pattern: '20 7 * * *', tz: BERLIN },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'poa-expiry-check @ 07:20 Berlin daily',
     },
   },
   backupRun: {
@@ -229,10 +243,9 @@ export const JOB_QUEUES = {
       // Installationen faktisch kein aktuelles Backup; der Staleness-Alarm in
       // health-alert schlägt an, falls dieser Lauf ausfällt.
       schedulerId: 'daily-backup-run',
-      repeat: { pattern: '0 1 * * *' },
+      repeat: { pattern: '0 1 * * *', tz: UTC },
       jobOptions: BACKUP_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'backup-run @ 01:00 UTC daily',
     },
   },
   backupDrill: {
@@ -241,10 +254,9 @@ export const JOB_QUEUES = {
       // Restore-Drill: beweisbarer Wirksamkeitsnachweis der Sicherung
       // (Art. 32 DSGVO / GoBD).
       schedulerId: 'monthly-backup-drill',
-      repeat: { pattern: '0 5 1 * *' },
+      repeat: { pattern: '0 5 1 * *', tz: UTC },
       jobOptions: BACKUP_RETRY,
       expectedMaxGapMs: 31 * DAY,
-      logLabel: 'backup-drill @ 05:00 UTC 1st of month',
     },
   },
   healthAlert: {
@@ -255,7 +267,6 @@ export const JOB_QUEUES = {
       schedulerId: 'health-alert',
       repeat: { every: 5 * MINUTE },
       expectedMaxGapMs: 5 * MINUTE,
-      logLabel: 'health-alert @ every 5 min',
     },
   },
   n8nDeliver: { name: 'n8n-deliver', schedule: null },
@@ -267,7 +278,6 @@ export const JOB_QUEUES = {
       schedulerId: 'n8n-outbox-reconcile',
       repeat: { every: 5 * MINUTE },
       expectedMaxGapMs: 5 * MINUTE,
-      logLabel: 'n8n-outbox-reconcile @ every 5 min',
     },
   },
   workflowN8nDispatch: {
@@ -278,7 +288,6 @@ export const JOB_QUEUES = {
       schedulerId: 'workflow-n8n-dispatch-reconcile',
       repeat: { every: MINUTE },
       expectedMaxGapMs: MINUTE,
-      logLabel: 'workflow-n8n-dispatch @ every 1 min',
     },
   },
   workflowFeedback: {
@@ -287,7 +296,6 @@ export const JOB_QUEUES = {
       schedulerId: 'workflow-feedback',
       repeat: { every: MINUTE },
       expectedMaxGapMs: MINUTE,
-      logLabel: 'workflow-feedback @ every 1 min',
     },
   },
   storageOrphanCleanup: {
@@ -297,7 +305,6 @@ export const JOB_QUEUES = {
       repeat: { every: 6 * HOUR },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: 6 * HOUR,
-      logLabel: 'storage-orphan-cleanup @ every 6 h',
     },
   },
   portalInboxCleanup: {
@@ -307,7 +314,6 @@ export const JOB_QUEUES = {
       repeat: { every: 6 * HOUR },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: 6 * HOUR,
-      logLabel: 'portal-inbox-cleanup @ every 6 h',
     },
   },
   n8nRetention: {
@@ -316,10 +322,9 @@ export const JOB_QUEUES = {
       // Begrenzte n8n-Historie: normale Terminal-Events 90 Tage, Fehler/Partial
       // 180 Tage. Der Worker löscht nur weiterhin terminale Reihen in Batches.
       schedulerId: 'daily-n8n-retention',
-      repeat: { pattern: '45 3 * * *' },
+      repeat: { pattern: '45 3 * * *', tz: UTC },
       jobOptions: DAILY_RETRY,
       expectedMaxGapMs: DAY,
-      logLabel: 'n8n-retention @ 03:45 UTC daily',
     },
   },
   riskAnalyseLlm: { name: 'risk-analyse-llm', schedule: null },
@@ -334,14 +339,6 @@ export const JOB_QUEUE_KEYS: readonly JobQueueKey[] = Object.freeze(
 );
 
 export type QueueName = (typeof JOB_QUEUES)[keyof typeof JOB_QUEUES]['name'];
-
-/**
- * P-05: Mindestabstand zwischen zwei Rolling-Ankern desselben Tenants. Der
- * 2-Sekunden-Takt bleibt, damit offene Rechnungs- und GwG-Ereignisse sofort
- * extern verankert werden; alle übrigen Einträge eines Tenants fasst höchstens
- * ein RFC-3161-Stempel je Intervall zusammen.
- */
-export const AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS = MINUTE;
 
 export interface EvidenceSealJob {
   tenantId?: string;
@@ -459,8 +456,57 @@ export const QUEUE_HEALTH: readonly QueueHealthDefinition[] = Object.freeze(
  */
 export const QUEUE_STATUS_HISTORY_RETENTION_SECONDS = (60 * DAY) / SECOND;
 
+const TIME_ZONE_LABELS: Readonly<Record<ScheduleTimeZone, string>> = {
+  UTC: 'UTC',
+  'Europe/Berlin': 'Berlin',
+};
+
+function describeEvery(ms: number): string {
+  if (ms % HOUR === 0) return `every ${ms / HOUR} h`;
+  if (ms % MINUTE === 0) return `every ${ms / MINUTE} min`;
+  return `every ${ms / SECOND} sec`;
+}
+
+function clock(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+/** Human description of the cron forms used in JOB_QUEUES; anything else stays verbatim. */
+function describePattern(pattern: string, tz: ScheduleTimeZone): string {
+  const zone = TIME_ZONE_LABELS[tz];
+  const [minute, hour, dayOfMonth, month, dayOfWeek, ...rest] = pattern.split(' ');
+  const fixedMinute = /^\d{1,2}$/.test(minute ?? '') ? Number(minute) : null;
+  if (fixedMinute != null && month === '*' && rest.length === 0) {
+    if (/^\d{1,2}$/.test(hour ?? '')) {
+      const at = `${clock(Number(hour), fixedMinute)} ${zone}`;
+      if (dayOfMonth === '*' && dayOfWeek === '*') return `${at} daily`;
+      if (dayOfMonth === '*' && dayOfWeek === '0') return `${at} sundays`;
+      if (dayOfMonth === '1' && dayOfWeek === '*') return `${at} 1st of month`;
+    }
+    const range = /^(\d{1,2})-(\d{1,2})\/(\d{1,2})$/.exec(hour ?? '');
+    if (range && dayOfMonth === '*' && dayOfWeek === '*') {
+      const [first, last, step] = range.slice(1).map(Number) as [number, number, number];
+      const lastRun = first + Math.floor((last - first) / step) * step;
+      return `every ${step} h, ${clock(first, fixedMinute)}-${clock(lastRun, fixedMinute)} ${zone}`;
+    }
+  }
+  return `cron "${pattern}" ${zone}`;
+}
+
+/**
+ * F-17: log label of a scheduled queue, derived from its repeat definition so the
+ * displayed time and time zone cannot drift from what the scheduler registers.
+ */
+export function scheduleLogLabel(name: string, schedule: QueueScheduleDefinition): string {
+  const { repeat } = schedule;
+  const timing =
+    'every' in repeat ? describeEvery(repeat.every) : describePattern(repeat.pattern, repeat.tz);
+  return `${name} @ ${timing}${schedule.labelNote ? `, ${schedule.labelNote}` : ''}`;
+}
+
 export const SCHEDULE_LOG_LABELS: readonly string[] = Object.freeze(
-  Object.values(JOB_QUEUES).flatMap((queue) =>
-    queue.schedule == null ? [] : [queue.schedule.logLabel],
-  ),
+  Object.values(JOB_QUEUES).flatMap((queue) => {
+    const schedule: QueueScheduleDefinition | null = queue.schedule;
+    return schedule == null ? [] : [scheduleLogLabel(queue.name, schedule)];
+  }),
 );

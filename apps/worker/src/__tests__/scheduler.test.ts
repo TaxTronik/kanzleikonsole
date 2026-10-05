@@ -27,19 +27,21 @@ const MINUTE = 60_000;
 const DAILY_RETRY = { attempts: 3, backoff: { type: 'exponential', delay: 5 * MINUTE } };
 const BACKUP_RETRY = { attempts: 2, backoff: { type: 'exponential', delay: 30 * MINUTE } };
 const BERLIN = 'Europe/Berlin';
+// F-17: the eight nightly jobs that had no `tz` now name UTC explicitly.
+const UTC = 'UTC';
 
 /**
  * Frozen copy of the 23 hand-written upsertJobScheduler calls that existed before
  * R-13 (scheduler ID, repeat options, retry options). The generated scheduler
- * must register exactly these.
+ * must register exactly these; the only change since is the explicit `tz` (F-17).
  */
 const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   mailboxPoll: ['periodic-mailbox-poll', { every: 5 * MINUTE }, undefined],
   sanctionsRefresh: ['daily-sanctions-refresh', { pattern: '15 5 * * *', tz: BERLIN }, DAILY_RETRY],
   auditAnchor: ['rolling-audit-anchor', { every: 2_000 }, undefined],
-  evidenceSeal: ['daily-seal', { pattern: '30 2 * * *' }, DAILY_RETRY],
-  auditVerify: ['daily-audit-verify', { pattern: '45 2 * * *' }, DAILY_RETRY],
-  auditRotate: ['weekly-audit-rotate', { pattern: '0 3 * * 0' }, DAILY_RETRY],
+  evidenceSeal: ['daily-seal', { pattern: '30 2 * * *', tz: UTC }, DAILY_RETRY],
+  auditVerify: ['daily-audit-verify', { pattern: '45 2 * * *', tz: UTC }, DAILY_RETRY],
+  auditRotate: ['weekly-audit-rotate', { pattern: '0 3 * * 0', tz: UTC }, DAILY_RETRY],
   gwgExpiry: ['daily-gwg-expiry', { pattern: '0 7 * * *', tz: BERLIN }, DAILY_RETRY],
   invoiceOverdue: ['daily-invoice-overdue', { pattern: '15 7 * * *', tz: BERLIN }, DAILY_RETRY],
   taxDeadlineMaterialize: [
@@ -49,18 +51,18 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   ],
   taxNewsFetch: ['daily-tax-news-fetch', { pattern: '30 6-20/2 * * *', tz: BERLIN }, DAILY_RETRY],
   remindersDaily: ['daily-reminders', { pattern: '45 7 * * *', tz: BERLIN }, DAILY_RETRY],
-  magicLinkCleanup: ['daily-magic-link-cleanup', { pattern: '30 3 * * *' }, DAILY_RETRY],
-  dsgvoRetention: ['daily-dsgvo-retention', { pattern: '0 4 * * *' }, DAILY_RETRY],
+  magicLinkCleanup: ['daily-magic-link-cleanup', { pattern: '30 3 * * *', tz: UTC }, DAILY_RETRY],
+  dsgvoRetention: ['daily-dsgvo-retention', { pattern: '0 4 * * *', tz: UTC }, DAILY_RETRY],
   poaExpiry: ['daily-poa-expiry', { pattern: '20 7 * * *', tz: BERLIN }, DAILY_RETRY],
-  backupRun: ['daily-backup-run', { pattern: '0 1 * * *' }, BACKUP_RETRY],
-  backupDrill: ['monthly-backup-drill', { pattern: '0 5 1 * *' }, BACKUP_RETRY],
+  backupRun: ['daily-backup-run', { pattern: '0 1 * * *', tz: UTC }, BACKUP_RETRY],
+  backupDrill: ['monthly-backup-drill', { pattern: '0 5 1 * *', tz: UTC }, BACKUP_RETRY],
   healthAlert: ['health-alert', { every: 5 * MINUTE }, undefined],
   n8nOutboxReconcile: ['n8n-outbox-reconcile', { every: 5 * MINUTE }, undefined],
   workflowN8nDispatch: ['workflow-n8n-dispatch-reconcile', { every: MINUTE }, undefined],
   workflowFeedback: ['workflow-feedback', { every: MINUTE }, undefined],
   storageOrphanCleanup: ['storage-orphan-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
   portalInboxCleanup: ['portal-inbox-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
-  n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *' }, DAILY_RETRY],
+  n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *', tz: UTC }, DAILY_RETRY],
 };
 
 describe('R-13 generated repeat schedulers', () => {

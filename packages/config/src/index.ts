@@ -17,6 +17,7 @@ export {
   QUEUE_STATUS_HISTORY_RETENTION_SECONDS,
   QUEUE_HEALTH,
   SCHEDULE_LOG_LABELS,
+  scheduleLogLabel,
   type AuditAnchorJob,
   type ChecksJob,
   type EvidenceSealJob,
@@ -30,4 +31,5 @@ export {
   type ReminderDoneNotifyJob,
   type RiskAnalyseLlmJob,
   type ScheduledJobOptions,
+  type ScheduleTimeZone,
 } from './job-queues';
