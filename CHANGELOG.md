@@ -502,6 +502,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- GwG- und Vollmachts-Ablaufwarnungen gehen nur noch an aktive Mitarbeitende
+  mit aktuellem Mandantenzugriff; ist niemand mehr zuständig, an aktive
+  Admins und Partner. Bisher erreichten die Vorwarnungen nach einem
+  Personalwechsel niemanden (`GWG-REVERIFICATION-VALIDITY-001`,
+  `FK-EXC-20261005-016`).
 - **[Scope]** Sechs RLS-Policies lesen den Tenant-Kontext über
   `app.current_tenant_id()`; ein fehlender oder geleerter Kontext liefert keine
   Zeilen statt eines Fehlers 500. Die Kontextfunktionen sind `PARALLEL SAFE`

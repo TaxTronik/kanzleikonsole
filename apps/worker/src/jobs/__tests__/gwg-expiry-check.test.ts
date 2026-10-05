@@ -15,6 +15,9 @@
 //     (linkedGwgIdDocumentId), HIGH/7-Tage-Frist wenn bereits abgelaufen
 //   - GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE an ADMIN/PARTNER,
 //     sobald löschreife Belege/Aufzeichnungen existieren (resource_id = Tenant)
+//   - F-10: Zuständige nur, solange aktiv und zugriffsberechtigt; sonst
+//     aktive ADMIN/PARTNER (gemeinsamer Empfängerfilter)
+// Fachkatalog: GWG-REVERIFICATION-VALIDITY-001, ACCESS-NOTIFICATION-RECIPIENT-001
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -32,7 +35,15 @@ const h = vi.hoisted(() => {
   const tx = {
     gwgCheck: { updateMany: vi.fn(), findFirst: vi.fn() },
     client: { findUnique: vi.fn(), updateMany: vi.fn() },
+    // Fallback-Empfänger in der Tenant-Transaktion (notification-recipients.ts)
+    staffUser: { findMany: vi.fn() },
   };
+  // F-10: Mitarbeiter, die deaktiviert sind oder den Mandanten nicht sehen dürfen.
+  const withoutAccess = new Set<string>();
+  const filterStaffAccessClientTx = vi.fn(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[], _clientId: string) =>
+      new Set(ids.filter((id) => !withoutAccess.has(id))),
+  );
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
   );
@@ -46,6 +57,8 @@ const h = vi.hoisted(() => {
   return {
     prismaOwner,
     tx,
+    withoutAccess,
+    filterStaffAccessClientTx,
     withWorkerTenantContext,
     record,
     upsertNotification,
@@ -64,6 +77,9 @@ vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTe
 vi.mock('../../notify', () => ({ upsertNotification: h.upsertNotification }));
 vi.mock('@taxtronik/db/notification', () => ({
   resolveNotificationsTx: h.resolveNotificationsTx,
+}));
+vi.mock('@taxtronik/db/staff-client-access', () => ({
+  filterStaffAccessClientTx: h.filterStaffAccessClientTx,
 }));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {
@@ -138,6 +154,12 @@ beforeEach(() => {
   );
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }]);
+  h.tx.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }]);
+  h.withoutAccess.clear();
+  h.filterStaffAccessClientTx.mockImplementation(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[]) =>
+      new Set(ids.filter((id) => !h.withoutAccess.has(id))),
+  );
   h.prismaOwner.gwgCheck.findMany.mockResolvedValue([]);
   h.prismaOwner.gwgCheck.count.mockResolvedValue(0);
   h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([]);
@@ -248,6 +270,93 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
   });
 });
 
+describe('F-10: Empfänger nur aktiv und zugriffsberechtigt, sonst ADMIN/PARTNER', () => {
+  it('STAGE1: deaktivierter Hauptbearbeiter → aktive ADMIN/PARTNER statt niemand', async () => {
+    h.withoutAccess.add('hb-1');
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() + 90 * DAY)),
+    ]);
+
+    const result = await run();
+
+    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['admin-1']);
+    expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(h.tx, TENANT, ['hb-1'], 'client-1');
+    expect(result.stage1).toBe(1);
+  });
+
+  it('STAGE2: nur der noch aktive Berufsträger, kein Fallback nötig', async () => {
+    h.withoutAccess.add('hb-1');
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() + 30 * DAY)),
+    ]);
+
+    const result = await run();
+
+    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['bt-1']);
+    expect(h.tx.staffUser.findMany).not.toHaveBeenCalled();
+    expect(result.stage2).toBe(1);
+  });
+
+  it('STAGE2: beide Zuständigen ausgeschieden → ADMIN/PARTNER mit Zugriff', async () => {
+    h.withoutAccess.add('hb-1').add('bt-1').add('admin-inactive');
+    h.tx.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-inactive' }]);
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() + 30 * DAY)),
+    ]);
+
+    await run();
+
+    expect(h.tx.staffUser.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId: TENANT,
+          active: true,
+          roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+        },
+      }),
+    );
+    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['admin-1']);
+  });
+
+  it('STAGE3: ausgeschiedene Zuständige fallen heraus, ADMIN/PARTNER bleiben', async () => {
+    h.withoutAccess.add('hb-1');
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(FIXED_NOW)]);
+
+    const result = await run();
+
+    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['bt-1', 'admin-1']);
+    expect(result.stage3).toBe(2);
+  });
+
+  it('Ausweis-Ablauf: deaktivierter Bearbeiter → ADMIN/PARTNER-Fallback', async () => {
+    h.withoutAccess.add('hb-1');
+    h.prismaOwner.gwgIdDocument.findMany.mockResolvedValue([
+      idDoc(new Date(FIXED_NOW.getTime() + 30 * DAY)),
+    ]);
+
+    const result = await run();
+
+    expect(h.upsertNotification).toHaveBeenCalledWith(
+      TENANT,
+      'admin-1',
+      expect.objectContaining({ kind: 'GWG_ID_EXPIRY_SOON', resourceId: 'doc-1' }),
+    );
+    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['admin-1']);
+    expect(result.idDocReminders).toBe(1);
+  });
+
+  it('ohne jeden berechtigten Empfänger entsteht kein Hinweis, die Eskalation läuft trotzdem', async () => {
+    h.withoutAccess.add('hb-1').add('bt-1').add('admin-1');
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(FIXED_NOW)]);
+
+    const result = await run();
+
+    expect(h.tx.gwgCheck.updateMany).toHaveBeenCalled();
+    expect(h.upsertNotification).not.toHaveBeenCalled();
+    expect(result.stage3).toBe(0);
+  });
+});
+
 describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
   it('setzt Check auf EXPIRED, deaktiviert Mandanten und auditiert beides in derselben Tx', async () => {
     h.prismaOwner.gwgCheck.findMany.mockResolvedValue([gwgCheck(FIXED_NOW)]); // daysLeft = 0
@@ -255,8 +364,9 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     const result = await run();
 
     // Ablauf und Notification-Auflösung laufen gemeinsam; die zweite
-    // Tenant-Transaktion räumt einen eventuell alten Löschhinweis auf.
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(2);
+    // Tenant-Transaktion ermittelt die aktuellen Empfänger (F-10), die dritte
+    // räumt einen eventuell alten Löschhinweis auf.
+    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(3);
     expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
 
     // Statuswechsel guarded (nur aus VERIFIED) — Race-sicher

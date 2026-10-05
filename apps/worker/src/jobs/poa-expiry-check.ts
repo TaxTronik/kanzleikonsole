@@ -5,11 +5,11 @@ import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/notification';
-import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
 const evidence = new EvidenceService(new LocalTimestampAdapter());
@@ -49,24 +49,11 @@ async function processPoa(tenantId: string, poaId: string, todayMidnight: Date) 
 
     // ACCESS-NOTIFICATION-RECIPIENT-001: historical assignments alone do not
     // establish an active recipient. Fall back only after the current access filter.
-    let recipients = await filterStaffAccessClientTx(
-      tx,
+    const recipients = await resolveClientWarningRecipientsTx(tx, {
       tenantId,
-      poa.client.responsibilities.map((entry) => entry.staffId),
-      poa.clientId,
-    );
-    if (recipients.size === 0) {
-      const admins = await tx.staffUser.findMany({
-        where: { tenantId, active: true, roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } } },
-        select: { id: true },
-      });
-      recipients = await filterStaffAccessClientTx(
-        tx,
-        tenantId,
-        admins.map((entry) => entry.id),
-        poa.clientId,
-      );
-    }
+      clientId: poa.clientId,
+      staffIds: poa.client.responsibilities.map((entry) => entry.staffId),
+    });
 
     if (isExpired) {
       const updated = await tx.powerOfAttorney.updateMany({
@@ -112,8 +99,8 @@ async function processPoa(tenantId: string, poaId: string, todayMidnight: Date) 
       });
     }
     return isExpired
-      ? { soon: 0, expired: recipients.size }
-      : { soon: recipients.size, expired: 0 };
+      ? { soon: 0, expired: recipients.length }
+      : { soon: recipients.length, expired: 0 };
   });
 }
 

@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-016
+    date: '2026-10-05'
+    paths:
+      - apps/worker/src/jobs/gwg-expiry-check.ts
+      - apps/worker/src/jobs/poa-expiry-check.ts
+    rule_ids:
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - POA-LIFECYCLE-001
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+    reason: >-
+      GwG- und Vollmachts-Ablaufwarnungen gehen nur noch an zuständige
+      Mitarbeitende, die aktiv sind und den Mandanten nach der bestehenden
+      Zugriffsregel sehen dürfen; bleibt niemand übrig, an aktive ADMIN/PARTNER mit
+      Zugriff. Bisher erhielten deaktivierte oder nicht mehr berechtigte Zuständige
+      die Warnung, und der Admin-Fallback griff nur ohne jede Zuständigkeit.
+      Fristen, Stufen und Inhalte der Warnungen bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/worker/src/__tests__/notification-recipients.test.ts
+      - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-015
     date: '2026-10-05'
     paths:
@@ -1779,6 +1801,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-016` dokumentiert, dass Ablaufwarnungen nur an
+  aktive, zugriffsberechtigte Zuständige und sonst an Admins und Partner gehen.
+  Fristen und Inhalte bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-015` dokumentiert die absolute Obergrenze von
   24 Stunden ab Anmeldung für alle Sitzungserneuerungen. Widerrufs- und

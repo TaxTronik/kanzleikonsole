@@ -9,6 +9,11 @@
 //   - 30 Tage vor Ablauf:  Stufe 2 — zusätzlich Berufsträger informieren
 //   - Bei/nach Ablauf:     Stufe 3 — alle ADMIN/PARTNER + Mandant deaktivieren
 //
+// Empfänger (F-10, ACCESS-NOTIFICATION-RECIPIENT-001): Zuständige zählen nur,
+// solange sie aktiv sind und den Mandanten aktuell sehen dürfen; bleibt niemand,
+// gehen Stufe 1/2 und Ausweis-Hinweise an die aktiven ADMIN/PARTNER
+// (notification-recipients.ts, gemeinsam mit poa-expiry-check).
+//
 // ID-Document-Ablauf:
 //   - 60 Tage vor expiry_date: Auto-Anforderung an Mandant erzeugen
 //     („Bitte neuen Personalausweis hochladen") + Notification an Bearbeiter
@@ -31,6 +36,7 @@ import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 import { upsertNotification } from '../notify';
+import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
 // RF-8: record() braucht nur den Tx (der TimestampPort dient dem Versiegeln,
@@ -89,7 +95,6 @@ export function idDocumentExpiryTitleSuffix(daysLeft: number): string {
 async function processExpiringIdDocuments(
   tenantId: string,
   now: Date,
-  adminPartners: Array<{ id: string }>,
   systemStaff: { id: string },
 ): Promise<{ idDocReminders: number; idDocRequests: number }> {
   let idDocReminders = 0;
@@ -147,9 +152,14 @@ async function processExpiringIdDocuments(
     const daysLeft = wholeDaysBetween(berlinToday, doc.expiryDate);
     const isExpired = daysLeft < 0;
 
-    // Notification an Bearbeiter (auch ADMIN/PARTNER als Fallback)
-    const respIds = doc.check.client.responsibilities.map((r) => r.staffId);
-    const recipients = respIds.length > 0 ? respIds : adminPartners.map((s) => s.id);
+    // Notification an aktive, berechtigte Bearbeiter; sonst ADMIN/PARTNER (F-10)
+    const recipients = await withWorkerTenantContext(tenantId, (tx) =>
+      resolveClientWarningRecipientsTx(tx, {
+        tenantId,
+        clientId: doc.check.clientId,
+        staffIds: doc.check.client.responsibilities.map((r) => r.staffId),
+      }),
+    );
     const titleSuffix = idDocumentExpiryTitleSuffix(daysLeft);
     await resolveIdDocumentWarning(tenantId, doc.id, isExpired);
     for (const staffId of recipients) {
@@ -211,7 +221,9 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
     for (const tenantId of tenantIds) {
       const now = new Date();
 
-      // System-Staff für Auto-Anforderungen + Fallback-Empfänger
+      // System-Staff für Auto-Anforderungen + Empfänger der Lösch-Queue. Den
+      // Fallback mandantenbezogener Hinweise löst resolveClientWarningRecipientsTx
+      // je Mandant mit aktuellem Zugriffsstand auf.
       const adminPartners = await prismaOwner.staffUser.findMany({
         where: {
           tenantId,
@@ -260,7 +272,6 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
         const stage = stageForDaysLeft(daysLeft);
         if (!stage) continue;
 
-        const recipients = recipientsForStage(stage, check.client.responsibilities, adminPartners);
         const kind = NOTIFICATION_KIND_FOR_STAGE[stage];
 
         if (stage === 'STAGE3') {
@@ -363,6 +374,15 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
 
         await resolveObsoleteStageNotifications(tenantId, check.id, stage);
 
+        // F-10: erst nach dem Statuswechsel und auf dem dann aktuellen Stand.
+        const recipients = await withWorkerTenantContext(tenantId, (tx) =>
+          resolveClientWarningRecipientsTx(tx, {
+            tenantId,
+            clientId: check.clientId,
+            staffIds: responsibleStaffForStage(stage, check.client.responsibilities),
+            includeAdminPartners: stage === 'STAGE3',
+          }),
+        );
         const title = titleForStage(stage, daysLeft, check.client.name);
         const body = bodyForStage(stage, check.riskLevel ?? null);
         for (const staffId of recipients) {
@@ -383,12 +403,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       // ----------------------------------------------------------------------
       // 2. Personalausweis-Ablauf
       // ----------------------------------------------------------------------
-      const idDocuments = await processExpiringIdDocuments(
-        tenantId,
-        now,
-        adminPartners,
-        systemStaff,
-      );
+      const idDocuments = await processExpiringIdDocuments(tenantId, now, systemStaff);
       idDocReminders += idDocuments.idDocReminders;
       idDocRequests += idDocuments.idDocRequests;
 
@@ -558,30 +573,24 @@ function stageForDaysLeft(daysLeft: number): Stage | null {
   return null;
 }
 
-function recipientsForStage(
+/**
+ * Zuständige je Stufe (GWG-REVERIFICATION-VALIDITY-001): Stufe 1 nur
+ * Hauptbearbeiter, ab Stufe 2 zusätzlich Berufsträger. Aktivität, Zugriff und
+ * der ADMIN/PARTNER-Fallback bzw. (Stufe 3) die ADMIN/PARTNER-Eskalation folgen
+ * in resolveClientWarningRecipientsTx.
+ */
+function responsibleStaffForStage(
   stage: Stage,
   responsibilities: Array<{ staffId: string; role: string }>,
-  adminPartners: Array<{ id: string }>,
 ): string[] {
   const bearbeiter = responsibilities
     .filter((r) => r.role === 'HAUPTBEARBEITER')
     .map((r) => r.staffId);
+  if (stage === 'STAGE1') return bearbeiter;
   const berufstraeger = responsibilities
     .filter((r) => r.role === 'BERUFSTRAEGER')
     .map((r) => r.staffId);
-
-  let ids: string[];
-  if (stage === 'STAGE1') {
-    ids = bearbeiter.length > 0 ? bearbeiter : adminPartners.map((s) => s.id);
-  } else if (stage === 'STAGE2') {
-    const combined = [...bearbeiter, ...berufstraeger];
-    ids = combined.length > 0 ? combined : adminPartners.map((s) => s.id);
-  } else {
-    // STAGE3 — alle relevanten Adressaten
-    const combined = [...bearbeiter, ...berufstraeger, ...adminPartners.map((s) => s.id)];
-    ids = combined;
-  }
-  return Array.from(new Set(ids));
+  return [...bearbeiter, ...berufstraeger];
 }
 
 function titleForStage(stage: Stage, daysLeft: number, clientName: string): string {
