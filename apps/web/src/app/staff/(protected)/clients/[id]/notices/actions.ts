@@ -3,13 +3,15 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { berlinCalendarDate } from '@taxtronik/tax';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, isStaffAdmin, toActionError } from '@/server/auth/rbac';
-import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { ActionError, staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { validationFailure, type FormDataParseResult } from '@/server/actions/form-data';
+import type { StaffSession } from '@/server/auth/staff';
 import { planNoticeTransition } from './notice-transition';
 import {
   assessNoticeEvidence,
@@ -210,13 +212,13 @@ function localHolidayDates(value: string | null | undefined, label: string): Dat
   for (const entry of unique) {
     const parsed = YmdSchema.safeParse(entry);
     if (!parsed.success) {
-      throw new Error(`${label}: „${entry}“ ist kein gültiges Datum im Format JJJJ-MM-TT.`);
+      throw new ActionError(`${label}: „${entry}“ ist kein gültiges Datum im Format JJJJ-MM-TT.`);
     }
   }
   return unique.map((entry) => new Date(`${entry}T00:00:00.000Z`));
 }
 
-function parseCreateNoticeInput(formData: FormData): CreateNoticeInput {
+function parseCreateNoticeInput(formData: FormData): FormDataParseResult<CreateNoticeInput> {
   const parsed = Schema.safeParse({
     clientId: formData.get('clientId'),
     kind: formData.get('kind'),
@@ -265,11 +267,12 @@ function parseCreateNoticeInput(formData: FormData): CreateNoticeInput {
     reviewNotes: formData.get('reviewNotes'),
   });
   if (!parsed.success) {
-    throw new Error(
+    return validationFailure(
+      parsed.error.issues,
       'Validierungsfehler: ' + parsed.error.issues.map((issue) => issue.message).join('; '),
     );
   }
-  return parsed.data;
+  return { ok: true, data: parsed.data };
 }
 
 function validateDeliveryDatesAndEvidence(
@@ -279,16 +282,16 @@ function validateDeliveryDatesAndEvidence(
   today: Date,
 ): void {
   if (noticeDate > today) {
-    throw new Error('Ausgangsdatum darf nicht in der Zukunft liegen.');
+    throw new ActionError('Ausgangsdatum darf nicht in der Zukunft liegen.');
   }
   if (receivedAt && receivedAt > today) {
-    throw new Error('Bekanntgabe-/Zugangstag darf nicht in der Zukunft liegen.');
+    throw new ActionError('Bekanntgabe-/Zugangstag darf nicht in der Zukunft liegen.');
   }
   if (receivedAt && receivedAt.getTime() < noticeDate.getTime()) {
-    throw new Error('Zugangsdatum darf nicht vor dem Bescheid-/Ausgangsdatum liegen.');
+    throw new ActionError('Zugangsdatum darf nicht vor dem Bescheid-/Ausgangsdatum liegen.');
   }
   if (!determinedAccessDateIsConsistent({ dateBasis: data.dateBasis, noticeDate, receivedAt })) {
-    throw new Error(
+    throw new ActionError(
       'Beim fachlich festgestellten Bekanntgabetag müssen Ausgangs- und Zugangstag übereinstimmen.',
     );
   }
@@ -296,13 +299,13 @@ function validateDeliveryDatesAndEvidence(
     data.deliveryEvidenceStatus !== 'CLAIMED' &&
     (data.deliveryEvidenceNote?.trim().length ?? 0) < 3
   ) {
-    throw new Error('Der Nachweis des Ausgangsdatums muss kurz beschrieben werden.');
+    throw new ActionError('Der Nachweis des Ausgangsdatums muss kurz beschrieben werden.');
   }
   if (data.accessEvidenceStatus && (data.accessEvidenceNote?.trim().length ?? 0) < 3) {
-    throw new Error('Der Zugangsnachweis muss kurz beschrieben werden.');
+    throw new ActionError('Der Zugangsnachweis muss kurz beschrieben werden.');
   }
   if (data.accessStatus !== 'UNCONTESTED' && !data.accessEvidenceStatus) {
-    throw new Error(
+    throw new ActionError(
       'Nichtzugang oder eine Zugangsabweichung benötigt einen dokumentierten Nachweisstatus.',
     );
   }
@@ -311,7 +314,7 @@ function validateDeliveryDatesAndEvidence(
     data.dateBasis !== 'ACTUAL_ACCESS_DETERMINED' &&
     data.accessEvidenceStatus
   ) {
-    throw new Error(
+    throw new ActionError(
       'Ein Zugangsnachweis darf nur zu einer dokumentierten Abweichung oder einem festgestellten Zugangstag gespeichert werden.',
     );
   }
@@ -325,18 +328,20 @@ function validateSpecialDeliveryMethodEvidence(
     ['FORMAL', 'PERSONAL', 'OTHER'].includes(data.deliveryMethod) &&
     data.dateBasis !== 'ACTUAL_ACCESS_DETERMINED'
   ) {
-    throw new Error('Dieser Bekanntgabeweg benötigt einen fachlich festgestellten Zugangstag.');
+    throw new ActionError(
+      'Dieser Bekanntgabeweg benötigt einen fachlich festgestellten Zugangstag.',
+    );
   }
   if (
     ['FORMAL', 'PERSONAL', 'OTHER'].includes(data.deliveryMethod) &&
     (!receivedAt || data.accessEvidenceStatus !== 'PROFESSIONALLY_DETERMINED')
   ) {
-    throw new Error(
+    throw new ActionError(
       'Der Bekanntgabetag muss mit fachlich festgestelltem Zugangsnachweis dokumentiert werden.',
     );
   }
   if (data.deliveryMethod === 'DATA_RETRIEVAL' && receivedAt) {
-    throw new Error(
+    throw new ActionError(
       'Beim Datenabruf ist das allgemeine Zugangsdatum nicht anwendbar; verwenden Sie gegebenenfalls den tatsächlichen Abruftag.',
     );
   }
@@ -346,28 +351,30 @@ function validateSpecialDeliveryMethodEvidence(
       data.accessEvidenceStatus !== undefined ||
       Boolean(data.accessEvidenceNote?.trim()))
   ) {
-    throw new Error(
+    throw new ActionError(
       'Beim Datenabruf sind allgemeine Zugangseinwendungen nicht anwendbar; verwenden Sie die getrennten §-122a-Felder für Benachrichtigung und Abruf.',
     );
   }
   if (data.deliveryMethod === 'DATA_RETRIEVAL' && data.dateBasis !== 'PROVISION_DATE') {
-    throw new Error('Beim Datenabruf muss das Ausgangsdatum die Bereitstellung bezeichnen.');
+    throw new ActionError('Beim Datenabruf muss das Ausgangsdatum die Bereitstellung bezeichnen.');
   }
   if (data.deliveryMethod !== 'DATA_RETRIEVAL' && data.dateBasis === 'PROVISION_DATE') {
-    throw new Error('Bereitstellung ist nur beim Bekanntgabeweg Datenabruf zulässig.');
+    throw new ActionError('Bereitstellung ist nur beim Bekanntgabeweg Datenabruf zulässig.');
   }
 }
 
 function validateAccessDeviationEvidence(data: CreateNoticeInput, receivedAt: Date | null): void {
   if (data.accessStatus === 'NOT_RECEIVED_DISPUTED' && receivedAt) {
-    throw new Error('Bei vollständig bestrittenem Zugang darf kein Zugangstag festgelegt werden.');
+    throw new ActionError(
+      'Bei vollständig bestrittenem Zugang darf kein Zugangstag festgelegt werden.',
+    );
   }
   if (
     data.accessStatus === 'UNCONTESTED' &&
     receivedAt &&
     data.dateBasis !== 'ACTUAL_ACCESS_DETERMINED'
   ) {
-    throw new Error(
+    throw new ActionError(
       'Ein erfasster Zugangstag muss als früherer/späterer Zugang eingeordnet oder als fachlich festgestellter Bekanntgabetag verwendet werden.',
     );
   }
@@ -377,13 +384,17 @@ function validateAccessDeviationEvidence(data: CreateNoticeInput, receivedAt: Da
     ) &&
     !receivedAt
   ) {
-    throw new Error('Für die dokumentierte Zugangsabweichung ist ein Zugangstag erforderlich.');
+    throw new ActionError(
+      'Für die dokumentierte Zugangsabweichung ist ein Zugangstag erforderlich.',
+    );
   }
   if (
     data.accessStatus === 'LATER_RECEIPT_DETERMINED' &&
     data.accessEvidenceStatus !== 'PROFESSIONALLY_DETERMINED'
   ) {
-    throw new Error('Ein festgestellter späterer Zugang benötigt die fachliche Feststellung.');
+    throw new ActionError(
+      'Ein festgestellter späterer Zugang benötigt die fachliche Feststellung.',
+    );
   }
   if (
     ['EARLIER_RECEIPT_RECORDED', 'LATER_RECEIPT_CLAIMED', 'LATER_RECEIPT_DETERMINED'].includes(
@@ -391,7 +402,7 @@ function validateAccessDeviationEvidence(data: CreateNoticeInput, receivedAt: Da
     ) &&
     data.dateBasis !== 'DISPATCH_DATE'
   ) {
-    throw new Error(
+    throw new ActionError(
       'Eine Zugangsabweichung zur gesetzlichen Fiktion benötigt den nachgewiesenen Aufgabe-/Übermittlungstag als Ausgangsbasis.',
     );
   }
@@ -402,7 +413,7 @@ function validateDeterminedAccessEvidence(data: CreateNoticeInput, receivedAt: D
     data.dateBasis === 'ACTUAL_ACCESS_DETERMINED' &&
     (!receivedAt || data.accessEvidenceStatus !== 'PROFESSIONALLY_DETERMINED')
   ) {
-    throw new Error(
+    throw new ActionError(
       'Der festgestellte Bekanntgabetag benötigt Zugangstag und fachliche Feststellung.',
     );
   }
@@ -410,12 +421,12 @@ function validateDeterminedAccessEvidence(data: CreateNoticeInput, receivedAt: D
     data.dateBasis === 'ACTUAL_ACCESS_DETERMINED' &&
     data.deliveryEvidenceStatus !== 'PROFESSIONALLY_DETERMINED'
   ) {
-    throw new Error(
+    throw new ActionError(
       'Der als Ausgangsdatum verwendete tatsächliche Zugang muss fachlich festgestellt sein.',
     );
   }
   if (data.dateBasis === 'ACTUAL_ACCESS_DETERMINED' && data.accessStatus !== 'UNCONTESTED') {
-    throw new Error(
+    throw new ActionError(
       'Beim bereits fachlich festgestellten Bekanntgabetag darf keine zusätzliche Fiktionsabweichung ausgewählt sein.',
     );
   }
@@ -444,22 +455,26 @@ function validateHolidayContext(
 ): void {
   if (status === 'CONFIRMED_FOR_DATE_AND_LOCATION') {
     if (countryCode !== 'DE') {
-      throw new Error(
+      throw new ActionError(
         label + ': Ausländische Feiertagskalender werden nicht automatisch berechnet.',
       );
     }
-    if (!region) throw new Error(label + ': Bundesland ist für die Berechnung erforderlich.');
+    if (!region) throw new ActionError(label + ': Bundesland ist für die Berechnung erforderlich.');
     if ((locality?.trim().length ?? 0) < 2) {
-      throw new Error(
+      throw new ActionError(
         label + ': Ort/Gemeinde ist für den bestätigten Feiertagskontext erforderlich.',
       );
     }
     if (region === 'DE-BY' && bavariaAssumption === 'UNKNOWN') {
-      throw new Error(label + ': Die örtliche Geltung von Mariä Himmelfahrt muss feststehen.');
+      throw new ActionError(
+        label + ': Die örtliche Geltung von Mariä Himmelfahrt muss feststehen.',
+      );
     }
   }
   if ((note?.trim().length ?? 0) < 3) {
-    throw new Error(label + ': Kalenderquelle oder Prüfnachweis muss kurz dokumentiert werden.');
+    throw new ActionError(
+      label + ': Kalenderquelle oder Prüfnachweis muss kurz dokumentiert werden.',
+    );
   }
 }
 
@@ -467,8 +482,8 @@ function toBavariaAssumption(value: string): boolean | null {
   return value === 'YES' ? true : value === 'NO' ? false : null;
 }
 
-function prepareCreateNotice(formData: FormData): PreparedCreateNotice {
-  const data = parseCreateNoticeInput(formData);
+/** Plausibilitätsregeln der Bescheiderfassung; Verstöße werfen ActionError. */
+function prepareCreateNotice(data: CreateNoticeInput): PreparedCreateNotice {
   const noticeDate = new Date(`${data.noticeDate}T00:00:00.000Z`);
   // Tatsächlicher Zugang: nur plausible Werte übernehmen (nicht vor dem
   // Versand-/Bereitstellungstag — ein Bescheid kann nicht vorher zugehen).
@@ -520,7 +535,7 @@ function prepareCreateNotice(formData: FormData): PreparedCreateNotice {
     notificationStatus: data.retrievalNotificationStatus,
     today,
   });
-  if (!retrievalValidation.ok) throw new Error(retrievalValidation.error);
+  if (!retrievalValidation.ok) throw new ActionError(retrievalValidation.error);
 
   const assessment = assessNoticeEvidence({
     deliveryMethod: data.deliveryMethod,
@@ -575,12 +590,40 @@ function prepareCreateNotice(formData: FormData): PreparedCreateNotice {
   };
 }
 
-export async function createNoticeAction(formData: FormData): Promise<void> {
-  // void/throw-Form-Action: Gate liefert die Fehlermeldung als Wurf (Vertrag bleibt).
+export async function createNoticeAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ module: 'taxNotices' });
-  if (!g.ok) throw new Error(g.error);
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
-  const {
+  const parsed = parseCreateNoticeInput(formData);
+  if (!parsed.ok) return parsed;
+  let prepared: PreparedCreateNotice;
+  try {
+    prepared = prepareCreateNotice(parsed.data);
+  } catch (error) {
+    // Plausibilitätsregeln kommen als ActionError ins Formular zurück; die
+    // Eingaben bleiben dort stehen (vorher: error.tsx, Eingaben verloren).
+    return toActionError(error);
+  }
+
+  try {
+    await createNoticeTx(ctx, session, { tenantId, staffId }, prepared);
+  } catch (error) {
+    return toActionError(error);
+  }
+
+  const { clientId } = prepared.data;
+  revalidatePath(`/staff/clients/${clientId}/notices`);
+  redirect(`/staff/clients/${clientId}/notices`);
+}
+
+async function createNoticeTx(
+  ctx: TenantContext,
+  session: StaffSession,
+  { tenantId, staffId }: { tenantId: string; staffId: string },
+  {
     data: d,
     noticeDate,
     receivedAt,
@@ -592,8 +635,8 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
     authorityLocalHolidayDates,
     assessment,
     legalRemedyInstructionValid,
-  } = prepareCreateNotice(formData);
-
+  }: PreparedCreateNotice,
+): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, session, d.clientId);
     // Q-5: clientId muss im aktuellen Tenant existieren — sonst kann ein
@@ -687,9 +730,6 @@ export async function createNoticeAction(formData: FormData): Promise<void> {
       after: taxNoticeCreateAudit(created),
     });
   });
-
-  revalidatePath(`/staff/clients/${d.clientId}/notices`);
-  redirect(`/staff/clients/${d.clientId}/notices`);
 }
 
 const NOTICE_STATUS_VALUES = [

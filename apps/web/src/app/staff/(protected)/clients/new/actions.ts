@@ -3,15 +3,12 @@
 import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-review';
 
 import { redirect } from 'next/navigation';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { z } from 'zod';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
-
-function redirectWithError(message: string): never {
-  redirect(`/staff/clients/new?error=${encodeURIComponent(message)}`);
-}
+import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { validationFailure } from '@/server/actions/form-data';
 
 const createClientSchema = z
   .object({
@@ -40,15 +37,18 @@ const createClientSchema = z
     }
   });
 
-export async function createClientAction(formData: FormData) {
+export async function createClientAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // Mandanten anlegen ist Admin/Partner vorbehalten; einzelne Mitarbeitende
   // koennen das Recht CLIENT_CREATE explizit erhalten (Benutzerverwaltung).
   const g = await staffActionGuard({ requirePermission: 'CLIENT_CREATE' });
-  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — bleibt außerhalb try/catch
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
   // Mandanten-Anlage berührt Stammdaten + GwG-Schranke (allow_active) — nur ADMIN/PARTNER.
   if (!isStaffAdmin(session)) {
-    throw new ActionError('Nur ADMIN/PARTNER darf neue Mandanten anlegen.');
+    return { ok: false, error: 'Nur ADMIN/PARTNER darf neue Mandanten anlegen.' };
   }
 
   const confirmDuplicate = formData.get('confirmDuplicate') === '1';
@@ -66,7 +66,10 @@ export async function createClientAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirectWithError(parsed.error.issues.map((i) => i.message).join(', '));
+    return validationFailure(
+      parsed.error.issues,
+      parsed.error.issues.map((i) => i.message).join(', '),
+    );
   }
 
   const {
@@ -180,13 +183,12 @@ export async function createClientAction(formData: FormData) {
       return client.id;
     });
   } catch (e) {
-    if (e instanceof ActionError) redirectWithError(e.message);
     // P2-22: Unique-Konflikt (DATEV-Nr. je Tenant) freundlich melden statt
     // unbehandeltem Serverfehler.
-    if ((e as { code?: string }).code === 'P2002') {
-      redirectWithError('DATEV-Nr. ist in dieser Kanzlei bereits vergeben.');
+    if (!(e instanceof ActionError) && (e as { code?: string }).code === 'P2002') {
+      return { ok: false, error: 'DATEV-Nr. ist in dieser Kanzlei bereits vergeben.' };
     }
-    throw e;
+    return toActionError(e);
   }
 
   redirect(`/staff/clients/${clientId}`);

@@ -13,16 +13,27 @@ import { Stepper } from '../stepper';
 import { stepsForTenant } from '../steps';
 import { createOnboardingClientAction } from './actions';
 import { ResponsibilityFields } from '../../responsibility-fields';
+import { ActionForm } from '@/components/action-form';
 
-export default async function OnboardingStartPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
+// Zod-Feldname → Element-ID für die verlinkte Fehlerzusammenfassung.
+const FIELD_IDS: Record<string, string> = Object.fromEntries(
+  [
+    'name',
+    'kind',
+    'datevNo',
+    'addisonNo',
+    'street',
+    'postalCode',
+    'city',
+    'countryIso',
+    'invoiceEmail',
+  ].map((name) => [name, name]),
+);
+
+export default async function OnboardingStartPage() {
   const session = await requireStaffPage();
   // Server Actions sind der harte Schutz — hier nur kein totes Formular zeigen.
   if (!hasStaffPermission(session, 'CLIENT_CREATE')) redirect('/staff/clients');
-  const sp = await searchParams;
   const { tenantId, staffId } = session.user;
 
   const [modules, staff] = await Promise.all([
@@ -57,9 +68,11 @@ export default async function OnboardingStartPage({
 
       <div className="card p-6">
         <h2 className="text-sm font-medium text-primary mb-4">Stammdaten</h2>
-        <form action={createOnboardingClientAction} className="space-y-4">
-          {sp.error && <div className="alert-error-sm">{sp.error}</div>}
-
+        <ActionForm
+          action={createOnboardingClientAction}
+          fieldIds={FIELD_IDS}
+          className="space-y-4"
+        >
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="label" htmlFor="name">
@@ -150,7 +163,7 @@ export default async function OnboardingStartPage({
               Anlegen &amp; weiter
             </button>
           </div>
-        </form>
+        </ActionForm>
       </div>
 
       <p className="text-xs text-muted mt-4">

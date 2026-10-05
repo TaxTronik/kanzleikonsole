@@ -701,11 +701,17 @@ const RevokeSchema = z.object({
   reason: z.string().min(1).max(2000),
 });
 
-export async function revokePoaAction(formData: FormData): Promise<void> {
+export async function revokePoaAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const parsed = parseFormData(RevokeSchema, formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
 
-  await withStaff(
+  // Das Ergebnis des Wrappers ist der Rückkanal: Rolle, fehlende Vollmacht,
+  // bereits widerrufen oder verlorener Lock kommen als { ok: false } beim
+  // Client an, der nur bei ok Erfolg meldet.
+  return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       if (!isStaffAdmin(session)) {
         throw new ActionError('Vollmachten dürfen nur von ADMIN/PARTNER widerrufen werden.');

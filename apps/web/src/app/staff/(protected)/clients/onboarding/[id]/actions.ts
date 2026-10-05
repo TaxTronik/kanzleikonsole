@@ -14,9 +14,9 @@ import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/se
 import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
 import { prepareGwgInviteBindingTx } from '@/server/gwg-onboarding/invite-binding';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
-import { assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
-import { parseFormData } from '@/server/actions/form-data';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { parseFormData, validationFailure } from '@/server/actions/form-data';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
 import { startManualGwgCaptureTx } from '@/server/gwg-onboarding/manual-capture';
 
@@ -25,9 +25,8 @@ export interface WizardResult {
   error?: string;
 }
 
-function redirectToContact(clientId: string, error?: string): never {
-  const suffix = error ? `&error=${encodeURIComponent(error)}` : '';
-  redirect(`/staff/clients/onboarding/${clientId}?step=contact${suffix}`);
+function invalidInput(issues: readonly { path: readonly PropertyKey[]; message: string }[]) {
+  return validationFailure(issues, issues.map((i) => i.message).join(', '));
 }
 
 // ---------------------------------------------------------------------------
@@ -43,12 +42,13 @@ const ContactSchema = z.object({
   sendPortalInvite: z.string().optional(),
 });
 
-export async function onboardingAddContactAction(formData: FormData) {
+export async function onboardingAddContactAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
-  const rawClientId =
-    typeof formData.get('clientId') === 'string' ? String(formData.get('clientId')) : '';
 
   const parsed = ContactSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -58,12 +58,7 @@ export async function onboardingAddContactAction(formData: FormData) {
     role: formData.get('role') ?? '',
     sendPortalInvite: formData.get('sendPortalInvite') ?? '',
   });
-  if (!parsed.success) {
-    if (/^[a-f0-9-]{36}$/.test(rawClientId)) {
-      redirectToContact(rawClientId, parsed.error.issues.map((i) => i.message).join(', '));
-    }
-    throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
-  }
+  if (!parsed.success) return invalidInput(parsed.error.issues);
 
   const sendInvite = parsed.data.sendPortalInvite === 'on' || parsed.data.sendPortalInvite === '1';
 
@@ -131,8 +126,7 @@ export async function onboardingAddContactAction(formData: FormData) {
     contactEmail = result.email;
     clientAllowsPortal = result.allowActive;
   } catch (e) {
-    if (e instanceof ActionError) redirectToContact(parsed.data.clientId, e.message);
-    throw e;
+    return toActionError(e);
   }
 
   if (sendInvite && clientAllowsPortal) {
@@ -157,9 +151,12 @@ const GwgSchema = z.object({
   expectedLatestInviteId: z.string().uuid().optional().or(z.literal('')).nullable(),
 });
 
-export async function onboardingSendGwgAction(formData: FormData) {
+export async function onboardingSendGwgAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
 
   const parsed = GwgSchema.safeParse({
@@ -168,71 +165,74 @@ export async function onboardingSendGwgAction(formData: FormData) {
     inviteEmail: formData.get('inviteEmail'),
     expectedLatestInviteId: formData.get('expectedLatestInviteId'),
   });
-  if (!parsed.success) {
-    throw new ActionError(parsed.error.issues.map((i) => i.message).join(', '));
-  }
+  if (!parsed.success) return invalidInput(parsed.error.issues);
 
   const { raw, hash } = generateInviteToken();
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  const issuedInvite = await withTenantContext(ctx, async (tx) => {
-    await assertClientAccessTx(tx, g.session, parsed.data.clientId);
-    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: parsed.data.clientId });
-    const latestInvite = await tx.gwgOnboardingInvite.findFirst({
-      where: { tenantId, clientId: parsed.data.clientId },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true },
-    });
-    if ((latestInvite?.id ?? '') !== (parsed.data.expectedLatestInviteId || '')) {
-      throw new ActionError(
-        'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie den Schritt neu.',
-      );
-    }
-    const binding = await prepareGwgInviteBindingTx(tx, {
-      tenantId,
-      clientId: parsed.data.clientId,
-      bindLatestDraft: true,
-    });
-    if (!binding.ok) throw new ActionError(binding.error);
-    const issue = await prepareGwgInviteIssueTx(tx, {
-      tenantId,
-      clientId: parsed.data.clientId,
-      cancelledByStaff: staffId,
-    });
-    const inv = await tx.gwgOnboardingInvite.create({
-      data: {
+  let issuedInvite: { id: string; gwgCheckId: string | null };
+  try {
+    issuedInvite = await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, g.session, parsed.data.clientId);
+      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: parsed.data.clientId });
+      const latestInvite = await tx.gwgOnboardingInvite.findFirst({
+        where: { tenantId, clientId: parsed.data.clientId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true },
+      });
+      if ((latestInvite?.id ?? '') !== (parsed.data.expectedLatestInviteId || '')) {
+        throw new ActionError(
+          'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie den Schritt neu.',
+        );
+      }
+      const binding = await prepareGwgInviteBindingTx(tx, {
         tenantId,
         clientId: parsed.data.clientId,
-        inviteName: parsed.data.inviteName,
-        inviteEmail: parsed.data.inviteEmail,
-        tokenHash: hash,
-        expiresAt,
-        createdByStaff: staffId,
-        createdAt: issue.createdAt,
-        gwgCheckId: binding.gwgCheckId,
-        boundCheckRevision: binding.boundCheckRevision,
-        boundClientRevision: binding.boundClientRevision,
-      },
+        bindLatestDraft: true,
+      });
+      if (!binding.ok) throw new ActionError(binding.error);
+      const issue = await prepareGwgInviteIssueTx(tx, {
+        tenantId,
+        clientId: parsed.data.clientId,
+        cancelledByStaff: staffId,
+      });
+      const inv = await tx.gwgOnboardingInvite.create({
+        data: {
+          tenantId,
+          clientId: parsed.data.clientId,
+          inviteName: parsed.data.inviteName,
+          inviteEmail: parsed.data.inviteEmail,
+          tokenHash: hash,
+          expiresAt,
+          createdByStaff: staffId,
+          createdAt: issue.createdAt,
+          gwgCheckId: binding.gwgCheckId,
+          boundCheckRevision: binding.boundCheckRevision,
+          boundClientRevision: binding.boundClientRevision,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'gwg.onboarding.invite',
+        resourceType: 'gwg_onboarding_invite',
+        resourceId: inv.id,
+        after: {
+          inviteEmail: parsed.data.inviteEmail,
+          expiresAt: expiresAt.toISOString(),
+          onboarding: true,
+          gwgCheckId: binding.gwgCheckId,
+          boundCheckRevision: binding.boundCheckRevision,
+          boundClientRevision: binding.boundClientRevision,
+          supersededInviteCount: issue.supersededInviteCount,
+        },
+      });
+      return { id: inv.id, gwgCheckId: binding.gwgCheckId };
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'gwg.onboarding.invite',
-      resourceType: 'gwg_onboarding_invite',
-      resourceId: inv.id,
-      after: {
-        inviteEmail: parsed.data.inviteEmail,
-        expiresAt: expiresAt.toISOString(),
-        onboarding: true,
-        gwgCheckId: binding.gwgCheckId,
-        boundCheckRevision: binding.boundCheckRevision,
-        boundClientRevision: binding.boundClientRevision,
-        supersededInviteCount: issue.supersededInviteCount,
-      },
-    });
-    return { id: inv.id, gwgCheckId: binding.gwgCheckId };
-  });
+  } catch (e) {
+    return toActionError(e);
+  }
   const inviteId = issuedInvite.id;
 
   const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
@@ -276,35 +276,45 @@ export async function onboardingSendGwgAction(formData: FormData) {
 // Skip-Action: zum nächsten Schritt springen (für optionale Schritte)
 // ---------------------------------------------------------------------------
 
-export async function onboardingCaptureGwgInOfficeAction(formData: FormData): Promise<void> {
+export async function onboardingCaptureGwgInOfficeAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const guard = await staffActionGuard();
-  if (!guard.ok) throw new ActionError(guard.error);
+  if (!guard.ok) return guard;
   const parsed = parseFormData(z.object({ clientId: z.string().uuid() }), formData);
-  if (!parsed.ok) throw new ActionError('Ungültiger Mandant.');
+  if (!parsed.ok) return { ok: false, error: 'Ungültiger Mandant.' };
   const { clientId } = parsed.data;
-  await withTenantContext(guard.ctx, async (tx) => {
-    await assertClientAccessTx(tx, guard.session, clientId);
-    await startManualGwgCaptureTx(tx, {
-      tenantId: guard.tenantId,
-      clientId,
-      staffId: guard.staffId,
+  try {
+    await withTenantContext(guard.ctx, async (tx) => {
+      await assertClientAccessTx(tx, guard.session, clientId);
+      await startManualGwgCaptureTx(tx, {
+        tenantId: guard.tenantId,
+        clientId,
+        staffId: guard.staffId,
+      });
     });
-  });
+  } catch (e) {
+    return toActionError(e);
+  }
   revalidatePath(`/staff/clients/onboarding/${clientId}`);
   revalidatePath(`/staff/clients/${clientId}/gwg`);
   redirect(`/staff/clients/${clientId}/gwg?from=onboarding`);
 }
 
-export async function onboardingSkipAction(formData: FormData) {
+export async function onboardingSkipAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) redirect('/staff/login'); // redirect wirft (never)
+  if (!g.ok) return g;
   const clientId = formData.get('clientId');
   const next = formData.get('next');
   if (typeof clientId !== 'string' || typeof next !== 'string') {
-    throw new ActionError('Ungültige Parameter.');
+    return { ok: false, error: 'Ungültige Parameter.' };
   }
   if (!/^[a-f0-9-]{36}$/.test(clientId) || !/^[a-z_]+$/.test(next)) {
-    throw new ActionError('Ungültige Parameter.');
+    return { ok: false, error: 'Ungültige Parameter.' };
   }
   redirect(`/staff/clients/onboarding/${clientId}?step=${next}`);
 }
@@ -313,81 +323,88 @@ export async function onboardingSkipAction(formData: FormData) {
 // Schritt "done": Onboarding abschließen
 // ---------------------------------------------------------------------------
 
-export async function onboardingCompleteAction(formData: FormData) {
+export async function onboardingCompleteAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — außerhalb try/catch
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx } = g;
   const clientId = formData.get('clientId');
   if (typeof clientId !== 'string' || !/^[a-f0-9-]{36}$/.test(clientId)) {
-    throw new ActionError('Ungültige Parameter.');
+    return { ok: false, error: 'Ungültige Parameter.' };
   }
 
-  await withTenantContext(ctx, async (tx) => {
-    await assertClientAccessTx(tx, g.session, clientId);
-    const client = await tx.client.findUnique({
-      where: { id: clientId },
-      select: { allowActive: true, onboardingCompletedAt: true },
-    });
-    if (!client) throw new ActionError('Mandant nicht gefunden.');
-
-    // Idempotent: ein erneuter Klick darf den historischen Abschlusszeitpunkt
-    // nicht verändern und benötigt auch keine erneute GwG-Prüfung.
-    if (client.onboardingCompletedAt) return;
-
-    const [latestCheck, activeContacts] = await Promise.all([
-      tx.gwgCheck.findFirst({
-        where: { clientId },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: {
-          id: true,
-          status: true,
-          validUntil: true,
-          verifiedAt: true,
-          verifiedBy: true,
-          reviewSubmittedAt: true,
-          reviewSubmittedBy: true,
-        },
-      }),
-      tx.clientContact.count({ where: { clientId, active: true } }),
-    ]);
-    if (activeContacts === 0) {
-      throw new ActionError(
-        'Das Onboarding kann erst mit mindestens einem aktiven Ansprechpartner abgeschlossen werden.',
-      );
-    }
-    if (!client.allowActive || !latestCheck || !isGwgProfessionallyReviewed(latestCheck)) {
-      throw new ActionError(
-        'Das Onboarding kann erst nach einer ausdrücklich eingereichten und durch den verantwortlichen Berufsträger dokumentierten GwG-Freigabe abgeschlossen werden.',
-      );
-    }
-
-    const completedAt = new Date();
-    const claim = await tx.client.updateMany({
-      where: { id: clientId, allowActive: true, onboardingCompletedAt: null },
-      data: { onboardingCompletedAt: completedAt, onboardingCompletedBy: staffId },
-    });
-    if (claim.count === 0) {
-      const current = await tx.client.findUnique({
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, g.session, clientId);
+      const client = await tx.client.findUnique({
         where: { id: clientId },
-        select: { onboardingCompletedAt: true },
+        select: { allowActive: true, onboardingCompletedAt: true },
       });
-      // Gleichzeitiger Doppelklick: der Gewinner hat Marker und Audit bereits
-      // geschrieben. Der zweite Aufruf bleibt ohne doppelten Nachweis idempotent.
-      if (current?.onboardingCompletedAt) return;
-      throw new ActionError(
-        'Der Mandantenstatus hat sich parallel geändert. Bitte Onboarding neu laden.',
-      );
-    }
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'client.onboarding.complete',
-      resourceType: 'client',
-      resourceId: clientId,
-      after: { onboardingCompletedAt: completedAt.toISOString(), gwgCheckId: latestCheck.id },
+      if (!client) throw new ActionError('Mandant nicht gefunden.');
+
+      // Idempotent: ein erneuter Klick darf den historischen Abschlusszeitpunkt
+      // nicht verändern und benötigt auch keine erneute GwG-Prüfung.
+      if (client.onboardingCompletedAt) return;
+
+      const [latestCheck, activeContacts] = await Promise.all([
+        tx.gwgCheck.findFirst({
+          where: { clientId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            status: true,
+            validUntil: true,
+            verifiedAt: true,
+            verifiedBy: true,
+            reviewSubmittedAt: true,
+            reviewSubmittedBy: true,
+          },
+        }),
+        tx.clientContact.count({ where: { clientId, active: true } }),
+      ]);
+      if (activeContacts === 0) {
+        throw new ActionError(
+          'Das Onboarding kann erst mit mindestens einem aktiven Ansprechpartner abgeschlossen werden.',
+        );
+      }
+      if (!client.allowActive || !latestCheck || !isGwgProfessionallyReviewed(latestCheck)) {
+        throw new ActionError(
+          'Das Onboarding kann erst nach einer ausdrücklich eingereichten und durch den verantwortlichen Berufsträger dokumentierten GwG-Freigabe abgeschlossen werden.',
+        );
+      }
+
+      const completedAt = new Date();
+      const claim = await tx.client.updateMany({
+        where: { id: clientId, allowActive: true, onboardingCompletedAt: null },
+        data: { onboardingCompletedAt: completedAt, onboardingCompletedBy: staffId },
+      });
+      if (claim.count === 0) {
+        const current = await tx.client.findUnique({
+          where: { id: clientId },
+          select: { onboardingCompletedAt: true },
+        });
+        // Gleichzeitiger Doppelklick: der Gewinner hat Marker und Audit bereits
+        // geschrieben. Der zweite Aufruf bleibt ohne doppelten Nachweis idempotent.
+        if (current?.onboardingCompletedAt) return;
+        throw new ActionError(
+          'Der Mandantenstatus hat sich parallel geändert. Bitte Onboarding neu laden.',
+        );
+      }
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'client.onboarding.complete',
+        resourceType: 'client',
+        resourceId: clientId,
+        after: { onboardingCompletedAt: completedAt.toISOString(), gwgCheckId: latestCheck.id },
+      });
     });
-  });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath('/staff/clients');
   revalidatePath(`/staff/clients/${clientId}`);

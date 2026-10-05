@@ -4,14 +4,11 @@ import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-re
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
-import { isStaffAdmin } from '@/server/auth/rbac';
+import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
-
-function redirectWithError(message: string): never {
-  redirect(`/staff/clients/onboarding/new?error=${encodeURIComponent(message)}`);
-}
+import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { validationFailure } from '@/server/actions/form-data';
 
 const Schema = z.object({
   name: z.string().min(1, 'Name ist Pflichtfeld').max(200),
@@ -27,14 +24,17 @@ const Schema = z.object({
   hauptbearbeiterIds: z.array(z.string().uuid()),
 });
 
-export async function createOnboardingClientAction(formData: FormData) {
+export async function createOnboardingClientAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // Mandanten anlegen ist Admin/Partner vorbehalten; einzelne Mitarbeitende
   // koennen das Recht CLIENT_CREATE explizit erhalten (Benutzerverwaltung).
   const g = await staffActionGuard({ requirePermission: 'CLIENT_CREATE' });
-  if (!g.ok) redirect('/staff/login'); // redirect wirft (never) — bleibt außerhalb try/catch
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
   if (!isStaffAdmin(session)) {
-    throw new ActionError('Nur ADMIN/PARTNER darf neue Mandanten anlegen.');
+    return { ok: false, error: 'Nur ADMIN/PARTNER darf neue Mandanten anlegen.' };
   }
 
   const parsed = Schema.safeParse({
@@ -51,7 +51,10 @@ export async function createOnboardingClientAction(formData: FormData) {
     hauptbearbeiterIds: formData.getAll('hauptbearbeiterIds').map(String),
   });
   if (!parsed.success) {
-    redirectWithError(parsed.error.issues.map((i) => i.message).join(', '));
+    return validationFailure(
+      parsed.error.issues,
+      parsed.error.issues.map((i) => i.message).join(', '),
+    );
   }
   const berufstraegerIds = Array.from(new Set(parsed.data.berufstraegerIds));
   const hauptbearbeiterIds = Array.from(new Set(parsed.data.hauptbearbeiterIds));
@@ -124,8 +127,7 @@ export async function createOnboardingClientAction(formData: FormData) {
       return client.id;
     });
   } catch (e) {
-    if (e instanceof ActionError) redirectWithError(e.message);
-    throw e;
+    return toActionError(e);
   }
 
   redirect(`/staff/clients/onboarding/${clientId}?step=contact`);

@@ -32,6 +32,7 @@ import {
   ActionError,
   parseFormData,
   type ActionResult as BaseActionResult,
+  type StaffCtx,
 } from '@/server/actions/staff-action';
 import type { TenantContext } from '@taxtronik/db';
 
@@ -664,11 +665,16 @@ export async function markSentAction(
   return { ok: true };
 }
 
-export async function markPaidAction(formData: FormData): Promise<void> {
+export async function markPaidAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const parsed = parseFormData(StatusSchema, formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return { ok: false, error: 'Ungültige Rechnungs-ID.' };
 
-  const r = await withStaff(
+  // Ablehnung (z. B. unzulässiger Statuswechsel bei veralteter Seite) geht als
+  // Ergebnis an die UI — der Dialog zeigt den Grund statt eines No-ops.
+  return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       // iter85: Precondition (UI verbirgt den Button, die Action prüft selbst;
       // der DB-Trigger ist der Backstop).
@@ -676,7 +682,7 @@ export async function markPaidAction(formData: FormData): Promise<void> {
         where: { id: parsed.data.invoiceId },
         select: { status: true, clientId: true },
       });
-      if (!current) return;
+      if (!current) throw new ActionError('Rechnung nicht gefunden.');
       await assertClientAccessTx(tx, session, current.clientId);
       if (!isValidInvoiceTransition(current.status, 'PAID')) {
         throw new ActionError(`Statuswechsel ${current.status} → PAID ist nicht zulässig.`);
@@ -707,22 +713,32 @@ export async function markPaidAction(formData: FormData): Promise<void> {
       revalidate: ['/staff/invoices', `/staff/invoices/${parsed.data.invoiceId}`],
     },
   );
-  // Ablehnung (z. B. unzulässiger Statuswechsel bei veralteter Seite) darf nicht
-  // still verpuffen — werfen, damit die UI den Grund zeigt statt eines No-ops.
-  if (!r.ok) throw new ActionError(r.error ?? 'Aktion fehlgeschlagen.');
 }
 
-export async function cancelInvoiceAction(formData: FormData): Promise<void> {
+export async function cancelInvoiceAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({
     requirePermission: 'INVOICE_MANAGE',
     modeModule: 'invoices',
   });
-  if (!g.ok) throw new ActionError(g.error ?? 'Nicht berechtigt.');
-  const { tenantId, staffId, ctx, session } = g;
+  if (!g.ok) return { ok: false, error: g.error ?? 'Nicht berechtigt.' };
   const parsed = parseFormData(StatusSchema, formData);
-  if (!parsed.ok) return;
-  const invoiceId = parsed.data.invoiceId;
+  if (!parsed.ok) return { ok: false, error: 'Ungültige Rechnungs-ID.' };
+  try {
+    await cancelInvoice(g, parsed.data.invoiceId);
+  } catch (e) {
+    return toActionError(e);
+  }
+  return { ok: true };
+}
 
+/** Storno-Ablauf; Fachfehler werfen ActionError und kommen über cancelInvoiceAction zurück. */
+async function cancelInvoice(
+  { tenantId, staffId, ctx, session }: StaffCtx,
+  invoiceId: string,
+): Promise<void> {
   // Tx A erzeugt bei einer bereits ausgestellten Rechnung NUR den
   // Korrekturbeleg-Entwurf. Das Original bleibt aktiv, bis der Beleg unten
   // revisionssicher erzeugt und auf SENT festgeschrieben ist. Ein nie

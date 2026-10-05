@@ -1,13 +1,31 @@
 import type { output, ZodType } from 'zod';
 
-export type FormDataParseResult<T> =
-  | { ok: true; data: T }
-  | {
-      ok: false;
-      error: string;
-      errorCode: 'VALIDATION_ERROR';
-      fieldErrors: Record<string, string[]>;
-    };
+export type ValidationFailure = {
+  ok: false;
+  error: string;
+  errorCode: 'VALIDATION_ERROR';
+  fieldErrors: Record<string, string[]>;
+};
+
+export type FormDataParseResult<T> = { ok: true; data: T } | ValidationFailure;
+
+const DEFAULT_VALIDATION_ERROR = 'Bitte prüfen Sie die markierten Angaben.';
+
+/**
+ * Zod-Issues → Validierungsfehler mit Feldzuordnung (Pfad `a.b`, ohne Pfad
+ * `_form`). Für Actions, die ihr Schema bewusst selbst aus FormData befüllen.
+ */
+export function validationFailure(
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
+  error: string = DEFAULT_VALIDATION_ERROR,
+): ValidationFailure {
+  const fieldErrors: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const key = issue.path.join('.') || '_form';
+    (fieldErrors[key] ??= []).push(issue.message);
+  }
+  return { ok: false, error, errorCode: 'VALIDATION_ERROR', fieldErrors };
+}
 
 /**
  * Standardisiert FormData → Zod für Server-Actions.
@@ -35,17 +53,7 @@ export function parseFormData<TSchema extends ZodType>(
 
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
-    const fieldErrors: Record<string, string[]> = {};
-    for (const issue of parsed.error.issues) {
-      const key = issue.path.join('.') || '_form';
-      (fieldErrors[key] ??= []).push(issue.message);
-    }
-    return {
-      ok: false,
-      error: options.errorMessage ?? 'Bitte prüfen Sie die markierten Angaben.',
-      errorCode: 'VALIDATION_ERROR',
-      fieldErrors,
-    };
+    return validationFailure(parsed.error.issues, options.errorMessage);
   }
   return { ok: true, data: parsed.data };
 }

@@ -5,14 +5,28 @@ import { redirect } from 'next/navigation';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
-import { assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, withStaffModule, ActionError } from '@/server/actions/staff-action';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+import {
+  staffActionGuard,
+  withStaffModule,
+  ActionError,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 
 const withTaxNoticesStaff = withStaffModule('taxNotices');
 const BLOCKING_AUTO_REQUEST_STATUSES = ['OPEN', 'IN_PROGRESS'] as const;
 
 function hasBlockingAutoRequest(request: { status: string } | null): boolean {
   return request?.status === 'OPEN' || request?.status === 'IN_PROGRESS';
+}
+
+const IdSchema = z.string().uuid();
+const IdsSchema = z.array(z.string().uuid());
+const INVALID_ID: ActionResult = { ok: false, error: 'Ungültige Termin-ID.' };
+const NO_SELECTION: ActionResult = { ok: false, error: 'Bitte mindestens einen Termin auswählen.' };
+
+function selectedIds(formData: FormData) {
+  return IdsSchema.safeParse(formData.getAll('ids').map((v) => String(v)));
 }
 
 function noBlockingAutoRequestWhere() {
@@ -24,10 +38,15 @@ function noBlockingAutoRequestWhere() {
   };
 }
 
-export async function markDeadlineDoneAction(formData: FormData): Promise<void> {
-  const id = z.string().uuid().parse(formData.get('id'));
+export async function markDeadlineDoneAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const parsedId = IdSchema.safeParse(formData.get('id'));
+  if (!parsedId.success) return INVALID_ID;
+  const id = parsedId.data;
 
-  await withTaxNoticesStaff(
+  return withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.taxDeadline.findUnique({
         where: { id },
@@ -73,11 +92,16 @@ export async function markDeadlineDoneAction(formData: FormData): Promise<void> 
   );
 }
 
-export async function markDeadlinesDoneAction(formData: FormData): Promise<void> {
-  const ids = z.array(z.string().uuid()).parse(formData.getAll('ids').map((v) => String(v)));
-  if (ids.length === 0) return;
+export async function markDeadlinesDoneAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const parsedIds = selectedIds(formData);
+  if (!parsedIds.success) return INVALID_ID;
+  const ids = parsedIds.data;
+  if (ids.length === 0) return NO_SELECTION;
 
-  await withTaxNoticesStaff(
+  return withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       // Nur offene Termine schließen — bereits erledigte/übersprungene nicht
       // anfassen (kein doppelter Audit-Eintrag, idempotent bei Mehrfachklick).
@@ -143,9 +167,9 @@ export async function markDeadlinesDoneAction(formData: FormData): Promise<void>
 // (requestId null) und der Termin noch offen (PLANNED). Ein gestoppter
 // Termin läuft regulär weiter (OVERDUE/DONE), nur der automatische Versand
 // unterbleibt; der Stopp ist über unsuppressAutoRequestAction aufhebbar.
-async function suppressDeadlines(ids: string[]): Promise<void> {
-  if (ids.length === 0) return;
-  await withTaxNoticesStaff(
+async function suppressDeadlines(ids: string[]): Promise<ActionResult> {
+  if (ids.length === 0) return NO_SELECTION;
+  return withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const toSuppress = await tx.taxDeadline.findMany({
         where: {
@@ -203,19 +227,32 @@ async function suppressDeadlines(ids: string[]): Promise<void> {
   );
 }
 
-export async function suppressAutoRequestAction(formData: FormData): Promise<void> {
-  const id = z.string().uuid().parse(formData.get('id'));
-  await suppressDeadlines([id]);
+export async function suppressAutoRequestAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const parsedId = IdSchema.safeParse(formData.get('id'));
+  if (!parsedId.success) return INVALID_ID;
+  return suppressDeadlines([parsedId.data]);
 }
 
-export async function suppressDeadlinesAction(formData: FormData): Promise<void> {
-  const ids = z.array(z.string().uuid()).parse(formData.getAll('ids').map((v) => String(v)));
-  await suppressDeadlines(ids);
+export async function suppressDeadlinesAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const parsedIds = selectedIds(formData);
+  if (!parsedIds.success) return INVALID_ID;
+  return suppressDeadlines(parsedIds.data);
 }
 
-export async function unsuppressAutoRequestAction(formData: FormData): Promise<void> {
-  const id = z.string().uuid().parse(formData.get('id'));
-  await withTaxNoticesStaff(
+export async function unsuppressAutoRequestAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const parsedId = IdSchema.safeParse(formData.get('id'));
+  if (!parsedId.success) return INVALID_ID;
+  const id = parsedId.data;
+  return withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.taxDeadline.findUnique({
         where: { id },
@@ -227,7 +264,9 @@ export async function unsuppressAutoRequestAction(formData: FormData): Promise<v
           autoRequestSuppressedByStaff: true,
         },
       });
-      if (!before || before.autoRequestSuppressedAt === null) return;
+      if (!before) throw new ActionError('Termin nicht gefunden.');
+      // Bereits aufgehoben: idempotent, wie bisher kein zweites Audit.
+      if (before.autoRequestSuppressedAt === null) return;
       await assertClientAccessTx(tx, session, before.clientId);
       const changed = await tx.taxDeadline.updateMany({
         // Exakter Snapshot-CAS: Ein paralleles Entsperren und erneutes Stoppen
@@ -254,14 +293,21 @@ export async function unsuppressAutoRequestAction(formData: FormData): Promise<v
   );
 }
 
-export async function rematerializeAction(formData: FormData): Promise<void> {
+export async function rematerializeAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ module: 'taxNotices' });
-  if (!g.ok) return;
+  if (!g.ok) return g;
 
   // P-4: tenant-weite Materialisierung gehört nicht in eine interaktive
   // 15-s-Server-Action-Tx (P2028 bei vielen Mandanten) → BullMQ-Job; der
   // Worker (tax-deadline-materialize) übernimmt nur diesen Tenant.
-  await enqueueTaxDeadlineMaterialize(g.tenantId);
+  try {
+    await enqueueTaxDeadlineMaterialize(g.tenantId);
+  } catch (error) {
+    return toActionError(error);
+  }
 
   // UI-Feedback „Berechnung angestoßen" + aktuelle Ansicht beibehalten.
   const qs = new URLSearchParams({ queued: '1' });

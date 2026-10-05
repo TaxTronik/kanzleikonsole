@@ -244,7 +244,7 @@ describe('contact identity changes revoke independent iCal capabilities', () => 
       if (entryPoint === 'contacts') {
         expect(await inviteContactAction(null, form)).toEqual({ ok: true });
       } else {
-        await expect(onboardingAddContactAction(form)).rejects.toThrow(
+        await expect(onboardingAddContactAction(null, form)).rejects.toThrow(
           `NEXT_REDIRECT:/staff/clients/onboarding/${CLIENT_ID}?step=gwg`,
         );
       }

@@ -25,7 +25,13 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceReco
 vi.mock('@/server/jobs/tax-deadline-materialize-queue', () => ({
   enqueueTaxDeadlineMaterialize: h.enqueueMaterialize,
 }));
-vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: h.assertClientAccessTx }));
+vi.mock('@/server/auth/rbac', () => ({
+  assertClientAccessTx: h.assertClientAccessTx,
+  toActionError: (error: unknown) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
+  }),
+}));
 vi.mock('@/server/actions/staff-action', () => ({
   ActionError: h.ActionError,
   staffActionGuard: h.staffActionGuard,
@@ -35,6 +41,8 @@ vi.mock('@/server/actions/staff-action', () => ({
 import {
   markDeadlineDoneAction,
   markDeadlinesDoneAction,
+  rematerializeAction,
+  suppressAutoRequestAction,
   suppressDeadlinesAction,
   unsuppressAutoRequestAction,
 } from '../actions';
@@ -87,7 +95,11 @@ describe('Steuertermin-Actions — atomare Lifecycle-Claims', () => {
       const form = new FormData();
       form.set('id', DEADLINE_1);
 
-      await markDeadlineDoneAction(form);
+      // Review-Befund F-01: die Regel kommt als Ergebnis an (vorher verworfen).
+      await expect(markDeadlineDoneAction(null, form)).resolves.toEqual({
+        ok: false,
+        error: 'Die offene Mandantenanforderung muss vor dem Erledigen abgeschlossen werden.',
+      });
 
       expect(tx.taxDeadline.updateMany).not.toHaveBeenCalled();
       expect(h.resolveNotificationsTx).not.toHaveBeenCalled();
@@ -111,7 +123,7 @@ describe('Steuertermin-Actions — atomare Lifecycle-Claims', () => {
     const form = new FormData();
     form.set('id', DEADLINE_1);
 
-    await markDeadlineDoneAction(form);
+    await markDeadlineDoneAction(null, form);
 
     expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith({
       where: {
@@ -144,7 +156,7 @@ describe('Steuertermin-Actions — atomare Lifecycle-Claims', () => {
     };
     h.currentTx = tx;
 
-    await markDeadlinesDoneAction(formWithIds(DEADLINE_1, DEADLINE_2));
+    await markDeadlinesDoneAction(null, formWithIds(DEADLINE_1, DEADLINE_2));
 
     expect(tx.taxDeadline.updateMany).toHaveBeenCalledTimes(2);
     expect(h.resolveNotificationsTx).toHaveBeenCalledWith(tx, {
@@ -177,7 +189,7 @@ describe('Steuertermin-Actions — atomare Lifecycle-Claims', () => {
     };
     h.currentTx = tx;
 
-    await suppressDeadlinesAction(formWithIds(DEADLINE_1, DEADLINE_2));
+    await suppressDeadlinesAction(null, formWithIds(DEADLINE_1, DEADLINE_2));
 
     expect(tx.taxDeadline.updateMany).toHaveBeenCalledTimes(2);
     expect(h.resolveNotificationsTx).toHaveBeenCalledWith(tx, {
@@ -212,7 +224,7 @@ describe('Steuertermin-Actions — atomare Lifecycle-Claims', () => {
     const form = new FormData();
     form.set('id', DEADLINE_1);
 
-    await unsuppressAutoRequestAction(form);
+    await unsuppressAutoRequestAction(null, form);
 
     expect(tx.taxDeadline.updateMany).toHaveBeenCalledWith({
       where: {
@@ -223,5 +235,98 @@ describe('Steuertermin-Actions — atomare Lifecycle-Claims', () => {
       data: { autoRequestSuppressedAt: null, autoRequestSuppressedByStaff: null },
     });
     expect(h.evidenceRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('Steuertermin-Actions — Rückkanal (Review-Befund F-01)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ['markDeadlineDoneAction', markDeadlineDoneAction],
+    ['suppressAutoRequestAction', suppressAutoRequestAction],
+    ['unsuppressAutoRequestAction', unsuppressAutoRequestAction],
+  ] as const)('%s meldet eine ungültige Termin-ID statt zu werfen', async (_name, action) => {
+    const form = new FormData();
+    form.set('id', 'keine-uuid');
+
+    await expect(action(null, form)).resolves.toEqual({
+      ok: false,
+      error: 'Ungültige Termin-ID.',
+    });
+    expect(h.withStaff).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['markDeadlinesDoneAction', markDeadlinesDoneAction],
+    ['suppressDeadlinesAction', suppressDeadlinesAction],
+  ] as const)('%s meldet eine leere Auswahl, statt still nichts zu tun', async (_name, action) => {
+    await expect(action(null, formWithIds())).resolves.toEqual({
+      ok: false,
+      error: 'Bitte mindestens einen Termin auswählen.',
+    });
+    expect(h.withStaff).not.toHaveBeenCalled();
+  });
+
+  it('gibt die Ablehnung des Wrappers weiter, statt sie zu verwerfen', async () => {
+    h.withStaff.mockResolvedValue({ ok: false, error: 'Das Modul ist deaktiviert.' });
+    const form = new FormData();
+    form.set('id', DEADLINE_1);
+
+    await expect(markDeadlineDoneAction(null, form)).resolves.toEqual({
+      ok: false,
+      error: 'Das Modul ist deaktiviert.',
+    });
+    await expect(suppressDeadlinesAction(null, formWithIds(DEADLINE_1))).resolves.toEqual({
+      ok: false,
+      error: 'Das Modul ist deaktiviert.',
+    });
+  });
+
+  it('meldet einen unbekannten Termin beim Aufheben des Stopps', async () => {
+    h.withStaff.mockImplementation(
+      async (fn: (tx: unknown, context: unknown) => Promise<unknown>) => {
+        try {
+          await fn(
+            { taxDeadline: { findUnique: vi.fn().mockResolvedValue(null), updateMany: vi.fn() } },
+            { tenantId: 'tenant-1', staffId: 'staff-1', session: {} },
+          );
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : 'Fehler.' };
+        }
+      },
+    );
+    const form = new FormData();
+    form.set('id', DEADLINE_1);
+
+    await expect(unsuppressAutoRequestAction(null, form)).resolves.toEqual({
+      ok: false,
+      error: 'Termin nicht gefunden.',
+    });
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('meldet die Ablehnung des Gates beim Neuberechnen, ohne einen Job einzureihen', async () => {
+    h.staffActionGuard.mockResolvedValue({ ok: false, error: 'Nicht eingeloggt.' });
+
+    await expect(rematerializeAction(null, new FormData())).resolves.toEqual({
+      ok: false,
+      error: 'Nicht eingeloggt.',
+    });
+    expect(h.enqueueMaterialize).not.toHaveBeenCalled();
+    expect(h.redirect).not.toHaveBeenCalled();
+  });
+
+  it('meldet eine nicht erreichbare Job-Queue statt einer Fehlerseite', async () => {
+    h.staffActionGuard.mockResolvedValue({ ok: true, tenantId: 'tenant-1' });
+    h.enqueueMaterialize.mockRejectedValue(new Error('Redis nicht erreichbar.'));
+
+    await expect(rematerializeAction(null, new FormData())).resolves.toEqual({
+      ok: false,
+      error: 'Redis nicht erreichbar.',
+    });
+    expect(h.redirect).not.toHaveBeenCalled();
   });
 });

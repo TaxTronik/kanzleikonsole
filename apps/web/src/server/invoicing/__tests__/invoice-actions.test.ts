@@ -59,6 +59,7 @@ vi.mock('@/server/actions/staff-action', () => ({
 }));
 
 import {
+  cancelInvoiceAction,
   createInvoiceAction,
   markPaidAction,
   uploadExternalInvoiceAction,
@@ -155,14 +156,66 @@ describe('INV-LIFECYCLE-FREEZE-001: Zahlungsaction', () => {
     m.tx.invoice.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
     const form = new FormData();
     form.set('invoiceId', invoiceId);
-    const results = await Promise.allSettled([markPaidAction(form), markPaidAction(form)]);
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    const results = await Promise.all([markPaidAction(null, form), markPaidAction(null, form)]);
+    // Review-Befund F-01: der verlorene Claim kommt als Ergebnis zurück, nicht als Wurf.
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([
+      { ok: false, error: 'Der Rechnungsstatus hat sich geändert. Bitte die Rechnung neu laden.' },
+    ]);
     expect(m.resolve).toHaveBeenCalledTimes(1);
     expect(m.record).toHaveBeenCalledTimes(1);
     expect(m.record).toHaveBeenCalledWith(
       m.tx,
       expect.objectContaining({ action: 'invoice.paid' }),
     );
+  });
+});
+
+describe('Review-Befund F-01: Rechnungsstatus meldet Ablehnungen als Ergebnis', () => {
+  function statusForm(): FormData {
+    const form = new FormData();
+    form.set('invoiceId', invoiceId);
+    return form;
+  }
+
+  it('meldet einen unzulässigen Zahlungsstatuswechsel ohne Claim und Audit', async () => {
+    m.tx.invoice.findUnique.mockResolvedValue({ status: 'DRAFT', clientId });
+
+    await expect(markPaidAction(null, statusForm())).resolves.toEqual({
+      ok: false,
+      error: 'Statuswechsel DRAFT → PAID ist nicht zulässig.',
+    });
+    expect(m.tx.invoice.updateMany).not.toHaveBeenCalled();
+    expect(m.record).not.toHaveBeenCalled();
+  });
+
+  it('meldet eine unbekannte Rechnung, statt still Erfolg zu melden', async () => {
+    m.tx.invoice.findUnique.mockResolvedValue(null);
+
+    await expect(markPaidAction(null, statusForm())).resolves.toEqual({
+      ok: false,
+      error: 'Rechnung nicht gefunden.',
+    });
+    expect(m.tx.invoice.updateMany).not.toHaveBeenCalled();
+    expect(m.resolve).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen unzulässigen Storno ohne Korrekturbeleg', async () => {
+    const executeRaw = vi.fn();
+    Object.assign(m.tx, { $executeRaw: executeRaw });
+    m.tx.invoice.findUnique.mockResolvedValue({
+      id: invoiceId,
+      status: 'CANCELLED',
+      clientId,
+      positions: [],
+    });
+
+    await expect(cancelInvoiceAction(null, statusForm())).resolves.toEqual({
+      ok: false,
+      error: 'Statuswechsel CANCELLED → CANCELLED ist nicht zulässig.',
+    });
+    expect(executeRaw).toHaveBeenCalled();
+    expect(m.tx.invoice.create).not.toHaveBeenCalled();
+    expect(m.record).not.toHaveBeenCalled();
   });
 });

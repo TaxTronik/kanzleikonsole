@@ -22,8 +22,16 @@ import {
   unsuppressAutoRequestAction,
 } from '../actions';
 import { fmtDateShort } from '@/lib/fmt';
+import { ActionForm } from '@/components/action-form';
 import { TAX_DEADLINE_STATUS_LABELS } from '@/lib/domain-labels';
 import { deriveAutoRequestPipeline, type AutoRequestPipeline } from '@/lib/tax-deadline-pipeline';
+
+// Weitere Actions des Sammelformulars; der Submit-Button wählt per data-action.
+const BULK_FORM_ACTIONS = {
+  suppressSelected: suppressDeadlinesAction,
+  suppress: suppressAutoRequestAction,
+  unsuppress: unsuppressAutoRequestAction,
+};
 
 const GROUP_STATUS_LABELS: Readonly<Record<string, string>> = {
   ...TAX_DEADLINE_STATUS_LABELS,
@@ -208,12 +216,12 @@ export default async function TaxDeadlineGroupPage({
         </form>
       </div>
 
-      <form action={markDeadlinesDoneAction}>
+      <ActionForm action={markDeadlinesDoneAction} actions={BULK_FORM_ACTIONS}>
         {groups['OVERDUE']!.length + groups['OPEN']!.length > 0 && (
           <div className="flex items-center justify-end gap-2 mb-3">
             <button
               type="submit"
-              formAction={suppressDeadlinesAction}
+              data-action="suppressSelected"
               className="btn-secondary text-xs"
               title="Stoppt die automatische Anforderung der ausgewählten Termine (nur solange sie noch nicht versendet ist)."
             >
@@ -230,7 +238,7 @@ export default async function TaxDeadlineGroupPage({
           <Section title="Überfällig" rows={groups['OVERDUE']!} accent="red" selectable />
         )}
         <Section title="Offen / In Bearbeitung" rows={groups['OPEN']!} selectable />
-      </form>
+      </ActionForm>
       {groups['DONE']!.length > 0 && (
         <Section title="Erledigt" rows={groups['DONE']!} accent="emerald" />
       )}
@@ -373,7 +381,7 @@ function AutoRequestControl({ row, selectable }: { row: GroupDeadlineRow; select
     return (
       <button
         type="submit"
-        formAction={unsuppressAutoRequestAction}
+        data-action="unsuppress"
         name="id"
         value={row.id}
         className="text-xs text-muted hover:text-brand-700"
@@ -386,7 +394,7 @@ function AutoRequestControl({ row, selectable }: { row: GroupDeadlineRow; select
   return (
     <button
       type="submit"
-      formAction={suppressAutoRequestAction}
+      data-action="suppress"
       name="id"
       value={row.id}
       className="text-xs text-muted hover:text-red-700"
@@ -409,15 +417,15 @@ function DeadlineActions({ row, selectable }: { row: GroupDeadlineRow; selectabl
         </Link>
       )}
       {/* Zeilen liegen im äußeren Bulk-Formular — verschachtelte Formulare
-          sind invalide, deshalb formAction + name/value am Button. */}
+          sind invalide, deshalb data-action + name/value am Button. */}
       <AutoRequestControl row={row} selectable={selectable} />
       {!selectable && row.status !== 'DONE' && row.status !== 'SKIPPED' && (
-        <form action={markDeadlineDoneAction} className="inline">
+        <ActionForm action={markDeadlineDoneAction} errorDisplay="inline" className="inline">
           <input type="hidden" name="id" value={row.id} />
           <button type="submit" className="text-xs text-muted hover:text-emerald-700">
             ✓ Erledigt
           </button>
-        </form>
+        </ActionForm>
       )}
     </div>
   );

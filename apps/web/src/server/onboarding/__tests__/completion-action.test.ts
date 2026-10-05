@@ -27,15 +27,24 @@ vi.mock('@/server/gwg-onboarding/service', () => ({
   generateInviteToken: vi.fn(() => ({ raw: 'raw', hash: 'hash' })),
   INVITE_TTL_DAYS: 7,
 }));
-vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: mocks.assertClientAccessTx }));
+vi.mock('@/server/auth/rbac', () => ({
+  assertClientAccessTx: mocks.assertClientAccessTx,
+  toActionError: (error: unknown) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
+  }),
+}));
 vi.mock('@/server/actions/staff-action', () => ({
   ActionError: class ActionError extends Error {},
   staffActionGuard: mocks.staffActionGuard,
 }));
 
 import {
+  onboardingAddContactAction,
   onboardingCompleteAction,
   onboardingCaptureGwgInOfficeAction,
+  onboardingSendGwgAction,
+  onboardingSkipAction,
 } from '@/app/staff/(protected)/clients/onboarding/[id]/actions';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -93,7 +102,7 @@ describe('Onboarding-Abschluss', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await expect(onboardingCompleteAction(formData())).rejects.toThrow('NEXT_REDIRECT');
+    await expect(onboardingCompleteAction(null, formData())).rejects.toThrow('NEXT_REDIRECT');
 
     expect(mocks.assertClientAccessTx).toHaveBeenCalledWith(tx, expect.anything(), CLIENT_ID);
     expect(tx.client.updateMany).toHaveBeenCalledWith({
@@ -119,9 +128,11 @@ describe('Onboarding-Abschluss', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await expect(onboardingCompleteAction(formData())).rejects.toThrow(
-      'mindestens einem aktiven Ansprechpartner',
-    );
+    // Review-Befund F-01: der Fachfehler kommt als Ergebnis zurück, nicht als Wurf.
+    await expect(onboardingCompleteAction(null, formData())).resolves.toEqual({
+      ok: false,
+      error: expect.stringContaining('mindestens einem aktiven Ansprechpartner'),
+    });
 
     expect(tx.client.updateMany).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
@@ -138,7 +149,7 @@ describe('Onboarding-Abschluss', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await expect(onboardingCompleteAction(formData())).rejects.toThrow('NEXT_REDIRECT');
+    await expect(onboardingCompleteAction(null, formData())).rejects.toThrow('NEXT_REDIRECT');
 
     expect(tx.clientContact.count).not.toHaveBeenCalled();
     expect(tx.gwgCheck.findFirst).not.toHaveBeenCalled();
@@ -156,7 +167,7 @@ describe('Onboarding-Abschluss', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await expect(onboardingCompleteAction(formData())).rejects.toThrow('NEXT_REDIRECT');
+    await expect(onboardingCompleteAction(null, formData())).rejects.toThrow('NEXT_REDIRECT');
 
     expect(tx.client.updateMany).toHaveBeenCalledOnce();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
@@ -169,7 +180,9 @@ describe('GWG-SELF-ONBOARDING-001: manual collection action', () => {
     mocks.withTenantContext.mockImplementation(
       async (_ctx: unknown, fn: (value: typeof tx) => unknown) => fn(tx),
     );
-    await expect(onboardingCaptureGwgInOfficeAction(formData())).rejects.toThrow('NEXT_REDIRECT');
+    await expect(onboardingCaptureGwgInOfficeAction(null, formData())).rejects.toThrow(
+      'NEXT_REDIRECT',
+    );
     expect(mocks.assertClientAccessTx).toHaveBeenCalledWith(tx, expect.anything(), CLIENT_ID);
     expect(mocks.manualCapture).toHaveBeenCalledWith(tx, {
       tenantId: 'tenant-1',
@@ -184,14 +197,89 @@ describe('GWG-SELF-ONBOARDING-001: manual collection action', () => {
   });
   it('cannot be used without a staff session or with denied client access', async () => {
     mocks.staffActionGuard.mockResolvedValueOnce({ ok: false, error: 'unauthorized' });
-    await expect(onboardingCaptureGwgInOfficeAction(formData())).rejects.toThrow('unauthorized');
+    await expect(onboardingCaptureGwgInOfficeAction(null, formData())).resolves.toEqual({
+      ok: false,
+      error: 'unauthorized',
+    });
     expect(mocks.manualCapture).not.toHaveBeenCalled();
     const tx = makeTx();
     mocks.withTenantContext.mockImplementation(
       async (_ctx: unknown, fn: (value: typeof tx) => unknown) => fn(tx),
     );
     mocks.assertClientAccessTx.mockRejectedValueOnce(new Error('forbidden'));
-    await expect(onboardingCaptureGwgInOfficeAction(formData())).rejects.toThrow('forbidden');
+    await expect(onboardingCaptureGwgInOfficeAction(null, formData())).resolves.toEqual({
+      ok: false,
+      error: 'forbidden',
+    });
     expect(mocks.manualCapture).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+});
+
+describe('Review-Befund F-01: Wizard-Schritte melden Fehler im Formular', () => {
+  it('meldet ungültige Kontaktdaten mit Feldzuordnung und schreibt nichts', async () => {
+    const data = formData();
+    data.set('fullName', 'Erika Musterfrau');
+    data.set('email', 'keine-mail');
+
+    const result = await onboardingAddContactAction(null, data);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { email: [expect.any(String)] },
+    });
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it('meldet ungültige Einladungsdaten, ohne eine Einladung anzulegen', async () => {
+    const data = formData();
+    data.set('inviteName', 'E');
+    data.set('inviteEmail', 'erika@example.test');
+
+    const result = await onboardingSendGwgAction(null, data);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { inviteName: [expect.any(String)] },
+    });
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+    expect(mocks.emitN8nEvent).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen Fachfehler beim Einladen ohne Redirect', async () => {
+    const tx = {
+      $executeRaw: vi.fn(),
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      gwgOnboardingInvite: { findFirst: vi.fn().mockResolvedValue({ id: 'neu' }) },
+    };
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (value: typeof tx) => unknown) => fn(tx),
+    );
+    const data = formData();
+    data.set('inviteName', 'Erika Musterfrau');
+    data.set('inviteEmail', 'erika@example.test');
+    data.set('expectedLatestInviteId', '');
+
+    await expect(onboardingSendGwgAction(null, data)).resolves.toEqual({
+      ok: false,
+      error:
+        'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie den Schritt neu.',
+    });
+    expect(mocks.emitN8nEvent).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it('meldet manipulierte Sprungziele statt zu werfen', async () => {
+    const data = formData();
+    data.set('next', '../gwg');
+
+    await expect(onboardingSkipAction(null, data)).resolves.toEqual({
+      ok: false,
+      error: 'Ungültige Parameter.',
+    });
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 });

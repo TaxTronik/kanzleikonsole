@@ -18,7 +18,10 @@ describe('destructive staff actions', () => {
     expect(page).not.toContain('action={revokePoaAction}');
     expect(control).toContain('<ConfirmModal');
     expect(control).toMatch(/<ConfirmModal\s+danger/);
-    expect(control).toContain('await revokePoaAction(formData)');
+    expect(control).toContain('await revokePoaAction(null, formData)');
+    // Review-Befund F-01: Erfolg nur, wenn der Wrapper ok meldet.
+    expect(control).toContain('if (result.ok) return { ok: true };');
+    expect(control).not.toMatch(/await revokePoaAction\([^)]*\);\s*return \{ ok: true \}/);
     expect(control).toContain('htmlFor={reasonId}');
     expect(control).toContain('aria-describedby={hintId}');
     expect(control).toContain('disabled={!trimmedReason}');
@@ -52,7 +55,11 @@ describe('destructive staff actions', () => {
     expect(page).not.toContain('action={anonymizeContactAction}');
     expect(control).toContain('<ConfirmModal');
     expect(control).toMatch(/<ConfirmModal\s+danger/);
-    expect(control).toContain('await anonymizeContactAction(formData)');
+    expect(control).toContain('await anonymizeContactAction(null, formData)');
+    // Erfolg nur bei bestätigtem Ergebnis (Review-Befund F-01).
+    expect(control).toContain(
+      'if (!result.ok) return { ok: false, error: result.error ?? ANONYMIZE_FAILED };',
+    );
     expect(control).toContain('router.refresh()');
     expect(control).toContain('type="button"');
     expect(control).toContain('Dieser Teilschritt lässt sich nicht rückgängig machen');

@@ -1,5 +1,63 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-014
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/[id]/anonymize-contact-button.tsx
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/create-notice-action.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/[id]/invoice-status-actions.tsx
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/app/staff/(protected)/poa/[id]/revoke-poa-form.tsx
+      - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/poa/actions.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+    rule_ids:
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-CONTROL-STATUS-001
+      - DSGVO-REQUEST-DEADLINE-001
+      - DSGVO-REQUEST-EVIDENCE-001
+      - DSGVO-CONTACT-EXPORT-001
+      - INV-LIFECYCLE-FREEZE-001
+      - INV-STORNO-REFERENCE-001
+      - INV-VAT-TOTALS-001
+      - POA-LIFECYCLE-001
+      - POA-SIGNING-CONFIRMATION-001
+      - POA-SIGNING-SNAPSHOT-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-SEARCH-SCOPE-001
+    reason: >-
+      Server-Actions der Bescheid- und Fristerfassung, der DSGVO-Anträge, der
+      Mandantenanlage und des Onboardings, des Rechnungsstatus und des
+      Vollmachtswiderrufs geben Validierungs-, Berechtigungs- und Fachfehler als
+      ActionResult an das Formular zurück, statt sie zu werfen oder zu
+      verwerfen; die Eingaben bleiben erhalten. Der Vollmachtswiderruf meldet
+      Erfolg nur noch, wenn der Wrapper ihn bestätigt. Prüfregeln, Fehlertexte,
+      Berechtigungsprüfungen, Audit-Ereignisse und Datenänderungen bleiben
+      unverändert; geändert ist nur der Rückweg des Fehlers in die Oberfläche.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/create-notice-action.test.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/__tests__/action-result-contract.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-013
     date: '2026-10-04'
     paths:
@@ -1161,6 +1219,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-014` dokumentiert, dass die Kern-Formulare
+  (Bescheide, Fristen, DSGVO, Mandantenanlage, Rechnungsstatus,
+  Vollmachtswiderruf) Fehler an das Formular zurückgeben statt sie zu werfen.
+  Prüfregeln, Berechtigungen und Audit bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-013` dokumentiert konto- und E-Mail-gebundene
   Login-Limits ohne Client-IP, den Verzicht auf die harte Kontosperre ohne

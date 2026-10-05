@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { CheckCircle2, X } from 'lucide-react';
 import { ConfirmModal } from '@/components/ui/modal';
-import { markPaidAction, cancelInvoiceAction } from '../actions';
+import { markPaidAction, cancelInvoiceAction, type ActionResult } from '../actions';
 
 type Dialog = null | 'paid' | 'cancel';
 
@@ -31,16 +31,19 @@ export function InvoiceStatusActions({
 }) {
   const [dialog, setDialog] = useState<Dialog>(null);
 
+  // Erfolg nur bei bestätigtem Ergebnis; eine Ablehnung bleibt im Dialog sichtbar.
   const run = async (
-    action: (fd: FormData) => Promise<void>,
+    action: (previous: ActionResult | null, fd: FormData) => Promise<ActionResult>,
   ): Promise<{ ok: boolean; error?: string }> => {
     const fd = new FormData();
     fd.set('invoiceId', invoiceId);
     try {
-      await action(fd);
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: (e as Error)?.message ?? 'Aktion fehlgeschlagen.' };
+      const result = await action(null, fd);
+      return result.ok
+        ? { ok: true }
+        : { ok: false, error: result.error ?? 'Aktion fehlgeschlagen.' };
+    } catch {
+      return { ok: false, error: 'Aktion fehlgeschlagen.' };
     }
   };
 

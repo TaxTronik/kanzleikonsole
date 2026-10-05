@@ -7,16 +7,19 @@ import { ArrowLeft } from 'lucide-react';
 import { createClientAction } from './actions';
 import { withTenantContext } from '@taxtronik/db';
 import { ResponsibilityFields } from '../responsibility-fields';
+import { ActionForm } from '@/components/action-form';
 
-export default async function NewClientPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
+// Zod-Feldname → Element-ID für die verlinkte Fehlerzusammenfassung.
+const FIELD_IDS: Record<string, string> = Object.fromEntries(
+  ['name', 'kind', 'datevNo', 'street', 'postalCode', 'city', 'countryIso', 'invoiceEmail'].map(
+    (name) => [name, name],
+  ),
+);
+
+export default async function NewClientPage() {
   const session = await requireStaffPage();
   // Server Actions sind der harte Schutz — hier nur kein totes Formular zeigen.
   if (!hasStaffPermission(session, 'CLIENT_CREATE')) redirect('/staff/clients');
-  const sp = await searchParams;
   const { tenantId, staffId } = session.user;
   const staff = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
     tx.staffUser.findMany({
@@ -40,9 +43,7 @@ export default async function NewClientPage({
       </div>
 
       <div className="card p-4 sm:p-6">
-        <form action={createClientAction} className="space-y-6">
-          {sp.error && <div className="alert-error-sm">{sp.error}</div>}
-
+        <ActionForm action={createClientAction} fieldIds={FIELD_IDS} className="space-y-6">
           <div>
             <label className="label" htmlFor="name">
               Name / Firma *
@@ -162,7 +163,7 @@ export default async function NewClientPage({
               Abbrechen
             </Link>
           </div>
-        </form>
+        </ActionForm>
       </div>
     </div>
   );

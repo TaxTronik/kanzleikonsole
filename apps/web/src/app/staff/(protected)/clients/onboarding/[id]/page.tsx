@@ -37,6 +37,7 @@ import {
   type GwgSubmissionSummaryData,
 } from '@/components/gwg-submission-summary';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { ActionForm } from '@/components/action-form';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 import type {
   RequestFormTemplateOption,
@@ -45,10 +46,21 @@ import type {
 
 interface Search {
   step?: string;
-  error?: string;
 }
 
 const VALID_STEPS: StepKey[] = ['contact', 'gwg', 'poa', 'first_request', 'done'];
+
+// Zod-Feldname → Element-ID für die verlinkte Fehlerzusammenfassung.
+const CONTACT_FIELD_IDS: Record<string, string> = {
+  fullName: 'fullName',
+  email: 'email',
+  phone: 'phone',
+  role: 'role',
+};
+const GWG_INVITE_FIELD_IDS: Record<string, string> = {
+  inviteName: 'inviteName',
+  inviteEmail: 'inviteEmail',
+};
 
 function parseStep(s: string | undefined): StepKey {
   if (s && (VALID_STEPS as string[]).includes(s)) return s as StepKey;
@@ -284,7 +296,6 @@ export default async function OnboardingStepPage({
           contactName={firstContact?.fullName ?? ''}
           contactEmail={firstContact?.email ?? ''}
           allowActive={client.allowActive}
-          error={sp.error}
         />
       )}
 
@@ -345,13 +356,11 @@ function ContactStep({
   contactName,
   contactEmail,
   allowActive,
-  error,
 }: {
   clientId: string;
   contactName: string;
   contactEmail: string;
   allowActive: boolean;
-  error?: string;
 }) {
   const contactFormId = `onboarding-contact-${clientId}`;
 
@@ -362,8 +371,12 @@ function ContactStep({
         Mindestens ein Ansprechpartner ermöglicht später Portal-Login, Anforderungen und
         Magic-Link-Mails.
       </p>
-      <form id={contactFormId} action={onboardingAddContactAction} className="space-y-4">
-        {error && <div className="alert-error-sm">{error}</div>}
+      <ActionForm
+        id={contactFormId}
+        action={onboardingAddContactAction}
+        fieldIds={CONTACT_FIELD_IDS}
+        className="space-y-4"
+      >
         <input type="hidden" name="clientId" value={clientId} />
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -438,7 +451,7 @@ function ContactStep({
             )}
           </span>
         </label>
-      </form>
+      </ActionForm>
       <div className="flex justify-end gap-2 pt-3 mt-4 border-t border-subtle">
         <SkipButton clientId={clientId} next="gwg" label="Überspringen" />
         <button type="submit" form={contactFormId} className="btn-primary text-sm">
@@ -478,8 +491,9 @@ function GwgStep({
         verifizierter Identitätsprüfung wird der Mandant intern auf <em>aktiv</em> geschaltet.
       </p>
       {!professionallyReviewed && (
-        <form
+        <ActionForm
           action={onboardingCaptureGwgInOfficeAction}
+          errorDisplay="inline"
           className="mb-4 rounded-md border border-default p-4"
         >
           <input type="hidden" name="clientId" value={clientId} />
@@ -495,7 +509,7 @@ function GwgStep({
           <button type="submit" className="btn-secondary text-sm">
             In der Kanzlei erfassen
           </button>
-        </form>
+        </ActionForm>
       )}
 
       {existingInvite && (
@@ -514,7 +528,12 @@ function GwgStep({
       )}
 
       {!professionallyReviewed && !hasVerifiedStatus && (
-        <form id={sendFormId} action={onboardingSendGwgAction} className="space-y-4">
+        <ActionForm
+          id={sendFormId}
+          action={onboardingSendGwgAction}
+          fieldIds={GWG_INVITE_FIELD_IDS}
+          className="space-y-4"
+        >
           <input type="hidden" name="clientId" value={clientId} />
           <input type="hidden" name="expectedLatestInviteId" value={existingInvite?.id ?? ''} />
           <div className="grid grid-cols-2 gap-3">
@@ -547,7 +566,7 @@ function GwgStep({
               />
             </div>
           </div>
-        </form>
+        </ActionForm>
       )}
       <div className="flex justify-end gap-2 pt-3 mt-4 border-t border-subtle">
         {professionallyReviewed ? (
@@ -800,14 +819,14 @@ function DoneStep({
           </Link>
         </div>
       ) : summary.allowActive && summary.gwgProfessionallyReviewed ? (
-        <form action={onboardingCompleteAction}>
+        <ActionForm action={onboardingCompleteAction}>
           <input type="hidden" name="clientId" value={clientId} />
           <div className="flex justify-end pt-3 border-t border-subtle">
             <button type="submit" className="btn-primary text-sm">
               Onboarding abschließen &amp; zur Mandantenakte
             </button>
           </div>
-        </form>
+        </ActionForm>
       ) : (
         <div className="flex items-center justify-between gap-3 pt-3 border-t border-subtle">
           <p className="text-xs text-amber-700">
@@ -828,12 +847,12 @@ function DoneStep({
 
 function SkipButton({ clientId, next, label }: { clientId: string; next: string; label: string }) {
   return (
-    <form action={onboardingSkipAction} className="inline">
+    <ActionForm action={onboardingSkipAction} errorDisplay="inline" className="inline">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="next" value={next} />
       <button type="submit" className="btn-secondary text-sm">
         {label}
       </button>
-    </form>
+    </ActionForm>
   );
 }

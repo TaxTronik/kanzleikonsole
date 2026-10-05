@@ -4,10 +4,23 @@ import { ArrowLeft, Download, UserX } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 
 import { withTenantContext } from '@taxtronik/db';
+import { ActionForm } from '@/components/action-form';
 import { updateStatusAction } from '../actions';
 import { ExportContactButton } from './export-button';
 import { AnonymizeContactButton } from './anonymize-contact-button';
 import { fmtDateShort } from '@/lib/fmt';
+
+// Zod-Feldname → Element-ID für die verlinkte Fehlerzusammenfassung.
+const STATUS_FIELD_IDS: Record<string, string> = Object.fromEntries(
+  [
+    'status',
+    'notes',
+    'resultDocumentId',
+    'responseSentAt',
+    'responseMethod',
+    'rejectionReason',
+  ].map((name) => [name, name]),
+);
 
 const typeLabels: Record<string, string> = {
   ACCESS: 'Auskunft (Art. 15)',
@@ -159,7 +172,7 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
       {req.status !== 'COMPLETED' && req.status !== 'REJECTED' && (
         <div className="card p-6">
           <h2 className="text-sm font-medium text-primary mb-3">Bearbeitung</h2>
-          <form action={updateStatusAction} className="space-y-3">
+          <ActionForm action={updateStatusAction} fieldIds={STATUS_FIELD_IDS} className="space-y-3">
             <input type="hidden" name="requestId" value={req.id} />
             <div>
               <label className="label" htmlFor="status">
@@ -270,7 +283,7 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
             <button type="submit" className="btn-primary">
               Speichern
             </button>
-          </form>
+          </ActionForm>
         </div>
       )}
 

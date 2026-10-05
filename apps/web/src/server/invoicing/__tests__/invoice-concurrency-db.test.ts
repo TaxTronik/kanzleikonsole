@@ -228,7 +228,7 @@ function form(invoiceId: string) {
         }
         return evidence.record(tx, event);
       };
-      const payment = markPaidAction(form(original.id));
+      const payment = markPaidAction(null, form(original.id));
       // Attach rejection handlers immediately while the controlled interleaving runs.
       const paymentResult = Promise.allSettled([payment]);
       const paymentPid = await paymentReady.promise;
@@ -246,7 +246,7 @@ function form(invoiceId: string) {
       }
       const [paid, sent] = await Promise.all([paymentResult, sendResult]);
       expect(blocked).toBe(true);
-      expect(paid[0]).toMatchObject({ status: 'fulfilled' });
+      expect(paid[0]).toMatchObject({ status: 'fulfilled', value: { ok: true } });
       expect(
         sent[0],
         sent[0]?.status === 'rejected' ? String(sent[0].reason) : undefined,
@@ -293,7 +293,7 @@ function form(invoiceId: string) {
       onTransaction = async (tx) => {
         paymentReady.resolve(await backendId(tx));
       };
-      const paymentResult = Promise.allSettled([markPaidAction(form(original.id))]);
+      const paymentResult = Promise.allSettled([markPaidAction(null, form(original.id))]);
       let blocked: boolean;
       try {
         blocked = await waitsFor(await paymentReady.promise, sendPid);
@@ -306,9 +306,11 @@ function form(invoiceId: string) {
         sent[0],
         sent[0]?.status === 'rejected' ? String(sent[0].reason) : undefined,
       ).toMatchObject({ status: 'fulfilled', value: { ok: true } });
-      expect(paid[0]).toMatchObject({ status: 'rejected' });
-      if (paid[0]?.status === 'rejected')
-        expect(String(paid[0].reason)).toMatch(/Rechnungsstatus hat sich geändert/);
+      // Review-Befund F-01: der verlorene Zahlungsclaim kommt als Ergebnis zurück.
+      expect(paid[0]).toMatchObject({
+        status: 'fulfilled',
+        value: { ok: false, error: expect.stringMatching(/Rechnungsstatus hat sich geändert/) },
+      });
       const stored = await owner.invoice.findUniqueOrThrow({ where: { id: original.id } });
       expect(stored.status).toBe('CANCELLED');
       expect(stored.paidAt).toBeNull();

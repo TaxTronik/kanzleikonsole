@@ -6,11 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ConfirmModal } from '@/components/ui/modal';
 import { anonymizeContactAction } from '../actions';
 
-function actionError(error: unknown): string {
-  return error instanceof Error && error.message
-    ? error.message
-    : 'Der Portal-Kontakt konnte nicht anonymisiert werden.';
-}
+const ANONYMIZE_FAILED = 'Der Portal-Kontakt konnte nicht anonymisiert werden.';
 
 export function AnonymizeContactButton({
   contactId,
@@ -27,11 +23,14 @@ export function AnonymizeContactButton({
     formData.set('contactId', contactId);
 
     try {
-      await anonymizeContactAction(formData);
+      // Erfolg nur melden, wenn die Action ihn bestätigt — eine Ablehnung (Rolle,
+      // ungültige ID, Kontakt fehlt) bleibt im Dialog sichtbar.
+      const result = await anonymizeContactAction(null, formData);
+      if (!result.ok) return { ok: false, error: result.error ?? ANONYMIZE_FAILED };
       router.refresh();
       return { ok: true };
-    } catch (error) {
-      return { ok: false, error: actionError(error) };
+    } catch {
+      return { ok: false, error: ANONYMIZE_FAILED };
     }
   }
 

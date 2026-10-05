@@ -9,7 +9,7 @@ describe('Ansprechpartner-Schritt im Onboarding', () => {
   it('verschachtelt die Ueberspringen-Aktion nicht im Kontaktformular', () => {
     const source = readFileSync(resolve(onboardingRoot, '[id]', 'page.tsx'), 'utf8');
     const formStart = source.indexOf('id={contactFormId}');
-    const formEnd = source.indexOf('</form>', formStart);
+    const formEnd = source.indexOf('</ActionForm>', formStart);
     const skipButton = source.indexOf(
       '<SkipButton clientId={clientId} next="gwg" label="Überspringen" />',
       formStart,

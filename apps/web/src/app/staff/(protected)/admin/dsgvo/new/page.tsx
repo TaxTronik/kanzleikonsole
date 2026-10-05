@@ -1,8 +1,20 @@
 ﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { ActionForm } from '@/components/action-form';
 
 import { createDsgvoRequestAction } from '../actions';
+
+// Zod-Feldname → Element-ID für die verlinkte Fehlerzusammenfassung.
+const FIELD_IDS: Record<string, string> = {
+  type: 'type',
+  subjectType: 'subjectType',
+  subjectName: 'subjectName',
+  subjectEmail: 'subjectEmail',
+  subjectRefId: 'subjectRefId',
+  description: 'description',
+  receivedAt: 'receivedAt',
+};
 
 export default async function NewDsgvoRequestPage() {
   await requireStaffPage({ admin: true });
@@ -20,7 +32,11 @@ export default async function NewDsgvoRequestPage() {
         <h1 className="text-2xl font-bold text-primary">Neue DSGVO-Anfrage</h1>
       </div>
 
-      <form action={createDsgvoRequestAction} className="card p-6 space-y-4">
+      <ActionForm
+        action={createDsgvoRequestAction}
+        fieldIds={FIELD_IDS}
+        className="card p-6 space-y-4"
+      >
         <div>
           <label className="label" htmlFor="type">
             Typ der Anfrage
@@ -129,7 +145,7 @@ export default async function NewDsgvoRequestPage() {
         <button type="submit" className="btn-primary">
           Anfrage erfassen
         </button>
-      </form>
+      </ActionForm>
     </div>
   );
 }

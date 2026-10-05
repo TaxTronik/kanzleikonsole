@@ -656,6 +656,18 @@ describe('sendForSignatureAction', () => {
 });
 
 describe('revokePoaAction — Rollen-Gate', () => {
+  // Wie der echte withStaff: Fehler im Callback werden zum Ergebnis { ok: false }.
+  function wrapperResult(tx: unknown) {
+    m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) => {
+      try {
+        const data = await fn(tx, { tenantId: 'tenant-1', staffId: 'staff-1', session: {} });
+        return { ok: true, ...((data as object | undefined) ?? {}) };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : 'Fehler.' };
+      }
+    });
+  }
+
   it('verweigert Widerruf für Nicht-ADMIN/PARTNER vor dem Datensatz-Lookup', async () => {
     const tx = {
       $queryRaw: vi.fn(),
@@ -665,22 +677,31 @@ describe('revokePoaAction — Rollen-Gate', () => {
       },
     };
     m.isStaffAdmin.mockReturnValue(false);
-    m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
-      fn(tx, {
-        tenantId: 'tenant-1',
-        staffId: 'staff-1',
-        session: {},
-      }),
-    );
+    wrapperResult(tx);
     const fd = new FormData();
     fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
     fd.set('reason', 'Mandant hat widerrufen');
 
-    await expect(revokePoaAction(fd)).rejects.toThrow(
-      'Vollmachten dürfen nur von ADMIN/PARTNER widerrufen werden.',
-    );
+    // Review-Befund F-01: die Ablehnung des Wrappers kommt beim Client an.
+    await expect(revokePoaAction(null, fd)).resolves.toEqual({
+      ok: false,
+      error: 'Vollmachten dürfen nur von ADMIN/PARTNER widerrufen werden.',
+    });
     expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(tx.powerOfAttorney.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen fehlenden Widerrufsgrund, ohne den Wrapper aufzurufen', async () => {
+    const fd = new FormData();
+    fd.set('poaId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
+    fd.set('reason', '');
+
+    await expect(revokePoaAction(null, fd)).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { reason: [expect.any(String)] },
+    });
+    expect(m.withStaff).not.toHaveBeenCalled();
   });
 
   it('schreibt den Widerrufszeitpunkt atomar mit der PostgreSQL-Uhr', async () => {
@@ -698,18 +719,12 @@ describe('revokePoaAction — Rollen-Gate', () => {
       },
       notification: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     };
-    m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
-      fn(tx, {
-        tenantId: 'tenant-1',
-        staffId: 'staff-1',
-        session: {},
-      }),
-    );
+    wrapperResult(tx);
     const fd = new FormData();
     fd.set('poaId', poaId);
     fd.set('reason', 'Mandant hat widerrufen');
 
-    await revokePoaAction(fd);
+    await expect(revokePoaAction(null, fd)).resolves.toEqual({ ok: true });
 
     expect(queryRaw).toHaveBeenCalledTimes(2);
     const lockSql = (queryRaw.mock.calls[0]![0] as TemplateStringsArray).join('');
@@ -738,20 +753,15 @@ describe('revokePoaAction — Rollen-Gate', () => {
         .mockResolvedValueOnce([{ clientId: 'client-1', status: 'SENT' }])
         .mockResolvedValueOnce([]),
     };
-    m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
-      fn(tx, {
-        tenantId: 'tenant-1',
-        staffId: 'staff-1',
-        session: {},
-      }),
-    );
+    wrapperResult(tx);
     const fd = new FormData();
     fd.set('poaId', poaId);
     fd.set('reason', 'Mandant hat widerrufen');
 
-    await expect(revokePoaAction(fd)).rejects.toThrow(
-      'Vollmacht konnte nicht widerrufen werden. Bitte laden Sie neu.',
-    );
+    await expect(revokePoaAction(null, fd)).resolves.toEqual({
+      ok: false,
+      error: 'Vollmacht konnte nicht widerrufen werden. Bitte laden Sie neu.',
+    });
     expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 });

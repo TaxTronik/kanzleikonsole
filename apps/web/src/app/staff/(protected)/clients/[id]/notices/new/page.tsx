@@ -4,7 +4,54 @@ import { ArrowLeft } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { REGION_LABELS } from '@taxtronik/tax';
+import { ActionForm } from '@/components/action-form';
 import { createNoticeAction } from '../actions';
+
+// Zod-Feldname → Element-ID: Validierungsfehler verlinken in der Zusammenfassung.
+const LOCATION_FIELDS = [
+  ['Name', 'name'],
+  ['CountryCode', 'country-code'],
+  ['LocalHolidayDates', 'local-holiday-dates'],
+  ['Region', 'region'],
+  ['Locality', 'locality'],
+  ['HolidayContextStatus', 'holiday-context-status'],
+  ['BavariaAssumption', 'bavaria-assumption'],
+] as const;
+const NOTICE_FIELD_IDS: Record<string, string> = {
+  kind: 'notice-kind',
+  period: 'notice-period',
+  noticeDate: 'notice-date',
+  dateBasis: 'notice-date-basis',
+  deliveryEvidenceStatus: 'notice-delivery-evidence-status',
+  deliveryEvidenceNote: 'notice-delivery-evidence-note',
+  fileNumber: 'notice-file-number',
+  deliveryMethod: 'notice-delivery-method',
+  legalRemedyInstruction: 'notice-legal-remedy-instruction',
+  legalRemedyInstructionNote: 'notice-legal-remedy-instruction-note',
+  holidayContextNote: 'notice-holiday-context-note',
+  retrievalIssuedAt: 'notice-retrieval-issued-at',
+  retrievalConsentStatus: 'notice-retrieval-consent-status',
+  retrievalEligibility2027Status: 'notice-retrieval-eligibility-2027-status',
+  retrievalPostalRequestStatus: 'notice-retrieval-postal-request-status',
+  retrievalPostalRequestReceivedAt: 'notice-retrieval-postal-request-received-at',
+  retrievalNotificationStatus: 'notice-retrieval-notification-status',
+  retrievalNotificationDate: 'notice-retrieval-notification-date',
+  retrievedAt: 'notice-retrieved-at',
+  accessStatus: 'notice-access-status',
+  receivedAt: 'notice-received-at',
+  accessEvidenceStatus: 'notice-access-evidence-status',
+  accessEvidenceNote: 'notice-access-evidence-note',
+  assessedAmount: 'notice-assessed-amount',
+  expectedAmount: 'notice-expected-amount',
+  prepaidAmount: 'notice-prepaid-amount',
+  payAmount: 'notice-pay-amount',
+  reviewNotes: 'notice-review-notes',
+  ...Object.fromEntries(
+    (['recipient', 'authority'] as const).flatMap((prefix) =>
+      LOCATION_FIELDS.map(([field, id]) => [prefix + field, `notice-${prefix}-${id}`]),
+    ),
+  ),
+};
 
 const KIND_OPTIONS: Array<[string, string]> = [
   ['USTA', 'USt-Voranmeldung'],
@@ -40,7 +87,11 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
         <p className="text-muted text-sm">{client.name}</p>
       </div>
 
-      <form action={createNoticeAction} className="card p-6 space-y-4">
+      <ActionForm
+        action={createNoticeAction}
+        fieldIds={NOTICE_FIELD_IDS}
+        className="card p-6 space-y-4"
+      >
         <input type="hidden" name="clientId" value={clientId} />
 
         <div className="grid grid-cols-2 gap-4">
@@ -536,7 +587,7 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
             Bescheid speichern
           </button>
         </div>
-      </form>
+      </ActionForm>
     </div>
   );
 }

@@ -61,8 +61,11 @@ export function RevokePoaForm({ poaId, subject }: { poaId: string; subject: stri
     formData.set('reason', trimmedReason);
 
     try {
-      await revokePoaAction(formData);
-      return { ok: true };
+      // Erfolg nur melden, wenn der Widerruf bestätigt ist — eine Ablehnung
+      // (Rolle, Status, Lock-Konflikt) bleibt im Dialog sichtbar.
+      const result = await revokePoaAction(null, formData);
+      if (result.ok) return { ok: true };
+      return { ok: false, error: result.error ?? 'Die Vollmacht konnte nicht widerrufen werden.' };
     } catch (error) {
       return {
         ok: false,

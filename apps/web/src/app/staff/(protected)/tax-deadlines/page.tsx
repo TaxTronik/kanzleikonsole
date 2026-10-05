@@ -22,6 +22,7 @@ import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { rematerializeAction, markDeadlineDoneAction } from './actions';
+import { ActionForm } from '@/components/action-form';
 import { fmtDateShort, fmtMonthYear, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 import { TAX_DEADLINE_STATUS_LABELS } from '@/lib/domain-labels';
@@ -404,7 +405,7 @@ function PageHeader({
             <ViewLink active={view === 'month'} view="month" scope={scope} q={q} label="Monat" />
             <ViewLink active={view === 'list'} view="list" scope={scope} q={q} label="Liste" />
           </div>
-          <form action={rematerializeAction}>
+          <ActionForm action={rematerializeAction} errorDisplay="inline">
             {/* Ansicht beibehalten — die Action redirectet mit queued=1 zurück */}
             <input type="hidden" name="view" value={view} />
             <input type="hidden" name="scope" value={scope} />
@@ -413,7 +414,7 @@ function PageHeader({
               <ListChecks className="h-4 w-4" />
               Neu berechnen
             </button>
-          </form>
+          </ActionForm>
         </div>
       </div>
       {queued && (
@@ -607,12 +608,16 @@ function DeadlineTable({
                       Anforderung
                     </Link>
                   )}
-                  <form action={markDeadlineDoneAction} className="inline">
+                  <ActionForm
+                    action={markDeadlineDoneAction}
+                    errorDisplay="inline"
+                    className="inline"
+                  >
                     <input type="hidden" name="id" value={d.id} />
                     <button type="submit" className="text-xs text-muted hover:text-emerald-700">
                       ✓ Erledigt
                     </button>
-                  </form>
+                  </ActionForm>
                 </div>
               </td>
             </tr>

@@ -14,12 +14,8 @@ import { serializeDsgvoExport } from '@/server/dsgvo/export-package';
 import { readPrivacyConfigTx, renderPrivacyNotice } from '@/server/privacy/notice';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
 import { prismaBytes } from '@/server/db/prisma-bytes';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
-
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { validationFailure } from '@/server/actions/form-data';
 
 // DSGVO-Anträge sind eine Compliance-Hoheit (Art. 12 ff.) — durchweg
 // ADMIN/PARTNER. Eigene, präzisere Meldung als das Standard-Gate.
@@ -43,11 +39,14 @@ const CreateSchema = z.object({
   receivedAt: YmdSchema,
 });
 
-export async function createDsgvoRequestAction(formData: FormData): Promise<void> {
+export async function createDsgvoRequestAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) throw new ActionError(g.error);
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
-  if (!isStaffAdmin(session)) throw new ActionError(DSGVO_ADMIN_MSG);
+  if (!isStaffAdmin(session)) return { ok: false, error: DSGVO_ADMIN_MSG };
 
   const parsed = CreateSchema.safeParse({
     type: formData.get('type'),
@@ -58,7 +57,7 @@ export async function createDsgvoRequestAction(formData: FormData): Promise<void
     description: formData.get('description'),
     receivedAt: formData.get('receivedAt'),
   });
-  if (!parsed.success) throw new ActionError('Validierungsfehler.');
+  if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
 
   const data = parsed.data;
   // Frist nach Art. 12 Abs. 3 DSGVO: 1 Monat. Monatsende-sicher (§ 188 Abs. 3
@@ -66,78 +65,83 @@ export async function createDsgvoRequestAction(formData: FormData): Promise<void
   // täuscht Bearbeitungszeit vor, die nicht besteht.
   const receivedAt = new Date(`${data.receivedAt}T00:00:00.000Z`);
   if (receivedAt > berlinTodayUtcMidnight()) {
-    throw new ActionError('Der Eingangstag darf nicht in der Zukunft liegen.');
+    return { ok: false, error: 'Der Eingangstag darf nicht in der Zukunft liegen.' };
   }
   const dueDate = dsgvoResponseDeadline(receivedAt);
 
-  const id = await withTenantContext(ctx, async (tx) => {
-    let subjectName = data.subjectName.trim();
-    let subjectEmail = data.subjectEmail.toLowerCase();
+  let id: string;
+  try {
+    id = await withTenantContext(ctx, async (tx) => {
+      let subjectName = data.subjectName.trim();
+      let subjectEmail = data.subjectEmail.toLowerCase();
 
-    // Eine gesetzte Referenz muss im Tenant und zum gewählten Betroffenen-Typ
-    // existieren. Bei Personen übernehmen wir die kanonischen Stammdaten,
-    // damit ein Tippfehler die Auskunft nicht der falschen Person zuordnet.
-    if (data.subjectRefId) {
-      if (data.subjectType === 'CLIENT_CONTACT') {
-        const subject = await tx.clientContact.findUnique({
-          where: { id: data.subjectRefId },
-          select: { fullName: true, email: true },
-        });
-        if (!subject) throw new ActionError('Referenzierter Mandantenkontakt nicht gefunden.');
-        subjectName = subject.fullName;
-        subjectEmail = subject.email.toLowerCase();
-      } else if (data.subjectType === 'STAFF_USER') {
-        const subject = await tx.staffUser.findUnique({
-          where: { id: data.subjectRefId },
-          select: { fullName: true, email: true },
-        });
-        if (!subject) throw new ActionError('Referenzierte Mitarbeiterperson nicht gefunden.');
-        subjectName = subject.fullName;
-        subjectEmail = subject.email.toLowerCase();
-      } else if (data.subjectType === 'CLIENT') {
-        const subject = await tx.client.findUnique({
-          where: { id: data.subjectRefId },
-          select: { name: true, invoiceEmail: true },
-        });
-        if (!subject) throw new ActionError('Referenzierter Mandant nicht gefunden.');
-        subjectName = subject.name;
-        subjectEmail = subject.invoiceEmail?.toLowerCase() ?? subjectEmail;
-      } else {
-        throw new ActionError('Externe Personen dürfen keine interne Referenz-ID tragen.');
+      // Eine gesetzte Referenz muss im Tenant und zum gewählten Betroffenen-Typ
+      // existieren. Bei Personen übernehmen wir die kanonischen Stammdaten,
+      // damit ein Tippfehler die Auskunft nicht der falschen Person zuordnet.
+      if (data.subjectRefId) {
+        if (data.subjectType === 'CLIENT_CONTACT') {
+          const subject = await tx.clientContact.findUnique({
+            where: { id: data.subjectRefId },
+            select: { fullName: true, email: true },
+          });
+          if (!subject) throw new ActionError('Referenzierter Mandantenkontakt nicht gefunden.');
+          subjectName = subject.fullName;
+          subjectEmail = subject.email.toLowerCase();
+        } else if (data.subjectType === 'STAFF_USER') {
+          const subject = await tx.staffUser.findUnique({
+            where: { id: data.subjectRefId },
+            select: { fullName: true, email: true },
+          });
+          if (!subject) throw new ActionError('Referenzierte Mitarbeiterperson nicht gefunden.');
+          subjectName = subject.fullName;
+          subjectEmail = subject.email.toLowerCase();
+        } else if (data.subjectType === 'CLIENT') {
+          const subject = await tx.client.findUnique({
+            where: { id: data.subjectRefId },
+            select: { name: true, invoiceEmail: true },
+          });
+          if (!subject) throw new ActionError('Referenzierter Mandant nicht gefunden.');
+          subjectName = subject.name;
+          subjectEmail = subject.invoiceEmail?.toLowerCase() ?? subjectEmail;
+        } else {
+          throw new ActionError('Externe Personen dürfen keine interne Referenz-ID tragen.');
+        }
       }
-    }
 
-    const req = await tx.dsgvoRequest.create({
-      data: {
+      const req = await tx.dsgvoRequest.create({
+        data: {
+          tenantId,
+          type: data.type,
+          subjectType: data.subjectType,
+          subjectRefId: data.subjectRefId || null,
+          subjectEmail,
+          subjectName,
+          description: data.description,
+          receivedAt,
+          dueDate,
+          createdByStaff: staffId,
+        },
+      });
+      await evidenceService.record(tx, {
         tenantId,
-        type: data.type,
-        subjectType: data.subjectType,
-        subjectRefId: data.subjectRefId || null,
-        subjectEmail,
-        subjectName,
-        description: data.description,
-        receivedAt,
-        dueDate,
-        createdByStaff: staffId,
-      },
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'dsgvo.request.create',
+        resourceType: 'dsgvo_request',
+        resourceId: req.id,
+        after: {
+          type: data.type,
+          subjectType: data.subjectType,
+          subjectEmail,
+          receivedAt: data.receivedAt,
+          dueDate: dueDate.toISOString().slice(0, 10),
+        },
+      });
+      return req.id;
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'dsgvo.request.create',
-      resourceType: 'dsgvo_request',
-      resourceId: req.id,
-      after: {
-        type: data.type,
-        subjectType: data.subjectType,
-        subjectEmail,
-        receivedAt: data.receivedAt,
-        dueDate: dueDate.toISOString().slice(0, 10),
-      },
-    });
-    return req.id;
-  });
+  } catch (error) {
+    return toActionError(error);
+  }
 
   revalidatePath('/staff/admin/dsgvo');
   redirect(`/staff/admin/dsgvo/${id}`); // wirft (never) — NACH der Tx
@@ -155,11 +159,14 @@ const UpdateStatusSchema = z.object({
   rejectionNoticeComplete: z.literal('on').optional(),
 });
 
-export async function updateStatusAction(formData: FormData): Promise<void> {
+export async function updateStatusAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) throw new ActionError(g.error);
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
-  if (!isStaffAdmin(session)) throw new ActionError(DSGVO_ADMIN_MSG);
+  if (!isStaffAdmin(session)) return { ok: false, error: DSGVO_ADMIN_MSG };
 
   const parsed = UpdateStatusSchema.safeParse({
     requestId: formData.get('requestId'),
@@ -172,110 +179,120 @@ export async function updateStatusAction(formData: FormData): Promise<void> {
     resultReviewConfirmed: formData.get('resultReviewConfirmed') ?? undefined,
     rejectionNoticeComplete: formData.get('rejectionNoticeComplete') ?? undefined,
   });
-  if (!parsed.success) throw new ActionError('Validierungsfehler.');
+  if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
   const data = parsed.data;
 
-  await withTenantContext(ctx, async (tx) => {
-    const before = await tx.dsgvoRequest.findUnique({ where: { id: data.requestId } });
-    if (!before) throw new ActionError('DSGVO-Antrag nicht gefunden.');
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const before = await tx.dsgvoRequest.findUnique({ where: { id: data.requestId } });
+      if (!before) throw new ActionError('DSGVO-Antrag nicht gefunden.');
 
-    const responseSentAt = data.responseSentAt
-      ? new Date(`${data.responseSentAt}T00:00:00.000Z`)
-      : null;
-    if (responseSentAt && responseSentAt > berlinTodayUtcMidnight()) {
-      throw new ActionError('Der Antworttag darf nicht in der Zukunft liegen.');
-    }
-    if (responseSentAt && responseSentAt < before.receivedAt) {
-      throw new ActionError('Der Antworttag darf nicht vor dem Eingangstag liegen.');
-    }
+      const responseSentAt = data.responseSentAt
+        ? new Date(`${data.responseSentAt}T00:00:00.000Z`)
+        : null;
+      if (responseSentAt && responseSentAt > berlinTodayUtcMidnight()) {
+        throw new ActionError('Der Antworttag darf nicht in der Zukunft liegen.');
+      }
+      if (responseSentAt && responseSentAt < before.receivedAt) {
+        throw new ActionError('Der Antworttag darf nicht vor dem Eingangstag liegen.');
+      }
 
-    let resultDocumentId = data.resultDocumentId || before.resultDocumentId;
-    if (data.resultDocumentId) {
-      const document = await tx.document.findFirst({
-        where: { id: data.resultDocumentId, tenantId, deletedAt: null },
-        select: { id: true },
+      let resultDocumentId = data.resultDocumentId || before.resultDocumentId;
+      if (data.resultDocumentId) {
+        const document = await tx.document.findFirst({
+          where: { id: data.resultDocumentId, tenantId, deletedAt: null },
+          select: { id: true },
+        });
+        if (!document) throw new ActionError('Ergebnisdokument nicht gefunden.');
+        resultDocumentId = document.id;
+      }
+
+      const notes = data.notes || before.notes || '';
+      const resultChanged = Boolean(
+        data.resultDocumentId && data.resultDocumentId !== before.resultDocumentId,
+      );
+      const previouslyReviewedCurrentResult = Boolean(before.resultReviewedAt && !resultChanged);
+      const workflowError = validateDsgvoStatusEvidence({
+        from: before.status,
+        to: data.status,
+        type: before.type,
+        notes,
+        responseSentAt,
+        responseMethod: data.responseMethod ?? '',
+        rejectionReason: data.rejectionReason ?? '',
+        rejectionNoticeComplete: data.rejectionNoticeComplete === 'on',
+        hasResultArtifact: Boolean(before.resultSha256 || resultDocumentId),
+        // Prüfung und Versand müssen als getrennte, zeitlich belastbare Schritte
+        // vorliegen. Ein ausgetauschtes Ergebnis entwertet die frühere Prüfung.
+        resultReviewed: previouslyReviewedCurrentResult,
+        resultReviewedOn: before.resultReviewedAt
+          ? berlinTodayUtcMidnight(before.resultReviewedAt)
+          : null,
       });
-      if (!document) throw new ActionError('Ergebnisdokument nicht gefunden.');
-      resultDocumentId = document.id;
-    }
+      if (workflowError) throw new ActionError(workflowError);
 
-    const notes = data.notes || before.notes || '';
-    const resultChanged = Boolean(
-      data.resultDocumentId && data.resultDocumentId !== before.resultDocumentId,
-    );
-    const previouslyReviewedCurrentResult = Boolean(before.resultReviewedAt && !resultChanged);
-    const workflowError = validateDsgvoStatusEvidence({
-      from: before.status,
-      to: data.status,
-      type: before.type,
-      notes,
-      responseSentAt,
-      responseMethod: data.responseMethod ?? '',
-      rejectionReason: data.rejectionReason ?? '',
-      rejectionNoticeComplete: data.rejectionNoticeComplete === 'on',
-      hasResultArtifact: Boolean(before.resultSha256 || resultDocumentId),
-      // Prüfung und Versand müssen als getrennte, zeitlich belastbare Schritte
-      // vorliegen. Ein ausgetauschtes Ergebnis entwertet die frühere Prüfung.
-      resultReviewed: previouslyReviewedCurrentResult,
-      resultReviewedOn: before.resultReviewedAt
-        ? berlinTodayUtcMidnight(before.resultReviewedAt)
-        : null,
+      const updated = await tx.dsgvoRequest.update({
+        where: { id: data.requestId },
+        data: {
+          status: data.status,
+          notes: notes || null,
+          resultDocumentId,
+          ...(resultChanged ? { resultReviewedAt: null, resultReviewedBy: null } : {}),
+          ...(data.resultReviewConfirmed &&
+          data.status !== 'COMPLETED' &&
+          data.status !== 'REJECTED'
+            ? { resultReviewedAt: new Date(), resultReviewedBy: staffId }
+            : {}),
+          ...(data.status === 'COMPLETED'
+            ? {
+                responseSentAt,
+                responseMethod: (data.responseMethod ?? '').trim(),
+                rejectionReason: null,
+              }
+            : {}),
+          ...(data.status === 'REJECTED'
+            ? {
+                rejectionReason: (data.rejectionReason ?? '').trim(),
+                responseSentAt,
+                responseMethod: (data.responseMethod ?? '').trim(),
+              }
+            : {}),
+          completedAt:
+            data.status === 'COMPLETED' || data.status === 'REJECTED' ? new Date() : null,
+          completedByStaff:
+            data.status === 'COMPLETED' || data.status === 'REJECTED' ? staffId : null,
+        },
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: `dsgvo.request.${data.status.toLowerCase()}`,
+        resourceType: 'dsgvo_request',
+        resourceId: updated.id,
+        before: { status: before.status },
+        after: {
+          status: updated.status,
+          responseSentAt: updated.responseSentAt?.toISOString().slice(0, 10) ?? null,
+          responseMethod: updated.responseMethod,
+          rejectionReason: updated.rejectionReason,
+          resultDocumentId: updated.resultDocumentId,
+          hasGeneratedResult: Boolean(updated.resultSha256),
+          resultReviewedAt: updated.resultReviewedAt?.toISOString() ?? null,
+          rejectionNoticeComplete:
+            data.status === 'REJECTED' ? data.rejectionNoticeComplete === 'on' : null,
+        },
+      });
     });
-    if (workflowError) throw new ActionError(workflowError);
-
-    const updated = await tx.dsgvoRequest.update({
-      where: { id: data.requestId },
-      data: {
-        status: data.status,
-        notes: notes || null,
-        resultDocumentId,
-        ...(resultChanged ? { resultReviewedAt: null, resultReviewedBy: null } : {}),
-        ...(data.resultReviewConfirmed && data.status !== 'COMPLETED' && data.status !== 'REJECTED'
-          ? { resultReviewedAt: new Date(), resultReviewedBy: staffId }
-          : {}),
-        ...(data.status === 'COMPLETED'
-          ? {
-              responseSentAt,
-              responseMethod: (data.responseMethod ?? '').trim(),
-              rejectionReason: null,
-            }
-          : {}),
-        ...(data.status === 'REJECTED'
-          ? {
-              rejectionReason: (data.rejectionReason ?? '').trim(),
-              responseSentAt,
-              responseMethod: (data.responseMethod ?? '').trim(),
-            }
-          : {}),
-        completedAt: data.status === 'COMPLETED' || data.status === 'REJECTED' ? new Date() : null,
-        completedByStaff:
-          data.status === 'COMPLETED' || data.status === 'REJECTED' ? staffId : null,
-      },
-    });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: `dsgvo.request.${data.status.toLowerCase()}`,
-      resourceType: 'dsgvo_request',
-      resourceId: updated.id,
-      before: { status: before.status },
-      after: {
-        status: updated.status,
-        responseSentAt: updated.responseSentAt?.toISOString().slice(0, 10) ?? null,
-        responseMethod: updated.responseMethod,
-        rejectionReason: updated.rejectionReason,
-        resultDocumentId: updated.resultDocumentId,
-        hasGeneratedResult: Boolean(updated.resultSha256),
-        resultReviewedAt: updated.resultReviewedAt?.toISOString() ?? null,
-        rejectionNoticeComplete:
-          data.status === 'REJECTED' ? data.rejectionNoticeComplete === 'on' : null,
-      },
-    });
-  });
+  } catch (error) {
+    // Workflow-Nachweise (validateDsgvoStatusEvidence) melden sich als
+    // ActionError und erscheinen im Formular; die Eingaben bleiben stehen.
+    return toActionError(error);
+  }
 
   revalidatePath(`/staff/admin/dsgvo/${data.requestId}`);
   revalidatePath('/staff/admin/dsgvo');
+  return { ok: true };
 }
 
 /**
@@ -652,37 +669,45 @@ export async function exportContactDataAction(
  * Achtung: GoBD-pflichtige Belege (Rechnungen etc.) bleiben unverändert — die
  * Lösch-Pflicht greift nur, soweit keine gesetzliche Aufbewahrungspflicht besteht.
  */
-export async function anonymizeContactAction(formData: FormData): Promise<void> {
+export async function anonymizeContactAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) throw new ActionError(g.error);
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
-  if (!isStaffAdmin(session)) throw new ActionError(DSGVO_ADMIN_MSG);
+  if (!isStaffAdmin(session)) return { ok: false, error: DSGVO_ADMIN_MSG };
 
   const contactIdRaw = formData.get('contactId');
   // NEW5: Input via Zod statt nur typeof — Prisma akzeptiert sonst beliebige
   // Strings für UUID-Spalten und wirft erst zur Laufzeit.
   const parsed = z.object({ contactId: z.string().uuid() }).safeParse({ contactId: contactIdRaw });
-  if (!parsed.success) return;
+  if (!parsed.success) return { ok: false, error: 'Ungültige Kontakt-ID.' };
   const { contactId } = parsed.data;
 
   // Geteilte Anonymisierungs-Logik (auch von der Mandanten-Anonymisierung in
   // admin/dsgvo-retention genutzt). Keine gelöschten Klardaten erneut in die
   // unveränderliche Audit-Chain kopieren; Antrag-ID und Kontakt-ID liefern den
   // Rechenschaftsnachweis ohne eine zweite, unbegrenzt persistente PII-Kopie.
-  await withTenantContext(ctx, async (tx) => {
-    const target = await tx.clientContact.findUnique({
-      where: { id: contactId },
-      select: { id: true },
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const target = await tx.clientContact.findUnique({
+        where: { id: contactId },
+        select: { id: true },
+      });
+      if (!target) throw new ActionError('Ansprechpartner nicht gefunden.');
+      await revokeAllSessions('portal', contactId);
+      await anonymizeContactInTx(tx, {
+        tenantId,
+        staffId,
+        contactId,
+        personalDataInAudit: false,
+      });
     });
-    if (!target) throw new ActionError('Ansprechpartner nicht gefunden.');
-    await revokeAllSessions('portal', contactId);
-    await anonymizeContactInTx(tx, {
-      tenantId,
-      staffId,
-      contactId,
-      personalDataInAudit: false,
-    });
-  });
+  } catch (error) {
+    return toActionError(error);
+  }
 
   revalidatePath('/staff/admin/dsgvo');
+  return { ok: true };
 }
