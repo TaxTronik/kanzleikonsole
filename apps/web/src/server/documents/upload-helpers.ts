@@ -107,6 +107,8 @@ export async function createDocumentWithVersion(
     >;
     /** Staff-ID bzw. Contact-ID, die die Version erfasst hat. */
     createdById: string;
+    /** P-13: beim Upload ermittelte Seitenzahl einer PDF-Ausweisquelle. */
+    pdfPageCount?: number | null;
   },
 ) {
   const document = await tx.document.create({
@@ -131,6 +133,7 @@ export async function createDocumentWithVersion(
       immutable: opts.commit.immutable,
       scanStatus: 'CLEAN',
       scanCompletedAt: new Date(),
+      pdfPageCount: opts.pdfPageCount ?? null,
       createdById: opts.createdById,
     },
   });
@@ -148,6 +151,8 @@ export async function createPendingDocumentWithVersion(
     documentData: Prisma.DocumentUncheckedCreateInput;
     prepared: PreparedBytesCommit;
     createdById: string;
+    /** P-13: beim Upload ermittelte Seitenzahl einer PDF-Ausweisquelle. */
+    pdfPageCount?: number | null;
   },
 ) {
   const document = await tx.document.create({
@@ -172,6 +177,7 @@ export async function createPendingDocumentWithVersion(
       immutable: opts.prepared.immutable,
       scanStatus: 'PENDING',
       scanCompletedAt: null,
+      pdfPageCount: opts.pdfPageCount ?? null,
       createdById: opts.createdById,
     },
   });

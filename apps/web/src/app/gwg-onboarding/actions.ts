@@ -26,9 +26,15 @@ import {
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
 import {
   IdentitySourceStorageError,
+  identityViewsNeedPageCheck,
+  loadIdentitySourcesForPageCheckTx,
   loadIdentitySourceTx,
+  NO_IDENTITY_PDF_PAGE_COUNTS,
+  prepareIdentityPdfPageCounts,
   readIdentitySourceBytes,
+  type IdentityPdfPageCounts,
 } from '@/server/gwg/identity-source';
+import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 import { log } from '@/server/logger';
 import { PortalConsentSelectionsSchema } from '@/server/privacy/consent';
 import {
@@ -49,7 +55,10 @@ import {
   FINALIZED_INVITE_UPLOAD_IDS,
   inviteUploadIds,
 } from '@/server/gwg-onboarding/invite-uploads';
-import { OnboardingIdentitySetConflictError } from '@/server/gwg-onboarding/identity-persistence';
+import {
+  OnboardingIdentitySetConflictError,
+  onboardingIdentityViewSelections,
+} from '@/server/gwg-onboarding/identity-persistence';
 import {
   BoundInviteDraftChangedError,
   runOnboardingSubmissionTransactionTx,
@@ -346,6 +355,13 @@ export async function uploadIdImageAction(input: {
       classification,
       tenantId: invite.tenantId,
     });
+    // P-13: PDF-Seitenzahl einmalig nach dem Virenscan aus genau diesen Bytes
+    // (begrenzter Worker-Thread); die spätere Ausschnittsprüfung liest sie nur.
+    const pdfPageCount = await identityPdfPageCountForUpload({
+      classification,
+      mimeType,
+      bytes: fileData,
+    });
 
     // Der feste Bucket/Key und Hash werden vor dem ersten S3-PUT dauerhaft
     // journalisiert. Auch ein Prozessabbruch nach dem PUT hinterlässt damit
@@ -386,6 +402,7 @@ export async function uploadIdImageAction(input: {
         },
         prepared: prepared!,
         createdById: invite.createdByStaff,
+        pdfPageCount,
       });
     });
     pendingDocumentId = pending.document.id;
@@ -920,6 +937,54 @@ const SubmitSchema = z.object({
   }),
 });
 
+type SubmittedInput = z.infer<typeof SubmitSchema>;
+
+/**
+ * P-13: PDF-Seitenzahlen von Ausweisquellen ohne gespeicherten Upload-Wert
+ * (Altbestand) vor der Einreichungstransaktion ermitteln. Der Preflight hat
+ * die Dateien bereits auf Uploads dieser Einladung und Belege des gebundenen
+ * Checks beschränkt; gelesen wird nur im Mandantenscope der Einladung.
+ */
+async function prepareOnboardingIdentityPageCounts(
+  invite: { tenantId: string; clientId: string },
+  owners: SubmittedInput['owners'],
+  representatives: SubmittedInput['representatives'],
+): Promise<IdentityPdfPageCounts> {
+  const selections = onboardingIdentityViewSelections([
+    ...owners.map((owner) => ({
+      documentIds: [owner.idFrontDocumentId, owner.idBackDocumentId] as const,
+      viewports: [owner.idFrontViewport, owner.idBackViewport] as const,
+    })),
+    ...representatives.flatMap((representative) =>
+      !representative.linkedOwnerLocalId &&
+      representative.idFrontDocumentId &&
+      representative.idBackDocumentId
+        ? [
+            {
+              documentIds: [
+                representative.idFrontDocumentId,
+                representative.idBackDocumentId,
+              ] as const,
+              viewports: [representative.idFrontViewport, representative.idBackViewport] as const,
+            },
+          ]
+        : [],
+    ),
+  ]);
+  if (!selections.some((selection) => identityViewsNeedPageCheck(selection.views))) {
+    return NO_IDENTITY_PDF_PAGE_COUNTS;
+  }
+  return prepareIdentityPdfPageCounts(() =>
+    withSystemContext(invite.tenantId, (tx) =>
+      loadIdentitySourcesForPageCheckTx(
+        tx,
+        { tenantId: invite.tenantId, clientId: invite.clientId },
+        selections,
+      ),
+    ),
+  );
+}
+
 export async function submitOnboardingAction(
   input: z.infer<typeof SubmitSchema>,
 ): Promise<ActionResult> {
@@ -961,6 +1026,11 @@ export async function submitOnboardingAction(
   });
   if (!preflight.ok) return { ok: false, error: preflight.error };
   const { linkedOwnerLocalIds } = preflight;
+  const identityPdfPageCounts = await prepareOnboardingIdentityPageCounts(
+    invite,
+    owners,
+    parsed.data.representatives,
+  );
 
   try {
     const submitResult = await withSystemContext(invite.tenantId, (tx) =>
@@ -983,6 +1053,7 @@ export async function submitOnboardingAction(
         representatives: parsed.data.representatives,
         extraDocuments: parsed.data.extraDocuments,
         consent: parsed.data.consent,
+        identityPdfPageCounts,
       }),
     );
     if (!submitResult.ok) {

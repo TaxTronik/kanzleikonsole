@@ -1,3 +1,4 @@
+// Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001, GWG-SELF-ONBOARDING-001
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
@@ -6,9 +7,14 @@ const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: mocks.fetch }));
 import {
   IdentitySourceStorageError,
+  identityViewsNeedPageCheck,
+  loadIdentitySourcesForPageCheckTx,
   loadIdentitySourceTx,
+  NO_IDENTITY_PDF_PAGE_COUNTS,
+  prepareIdentityPdfPageCounts,
   readIdentitySourceBytes,
   validateIdentityViewportsTx,
+  type IdentitySource,
 } from '../identity-source';
 
 const VERSION_ID = '11111111-1111-4111-8111-111111111111';
@@ -28,6 +34,7 @@ function documentFixture() {
         scanCompletedAt: new Date(),
         sha256: createHash('sha256').update(bytes).digest(),
         sizeBytes: BigInt(bytes.length),
+        pdfPageCount: null as number | null,
       },
     ],
   };
@@ -47,6 +54,22 @@ const view = {
   height: 1,
   rotation: 0 as const,
 };
+const crop = { ...view, width: 0.5 };
+async function pdfWithPages(pages: number): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  for (let page = 0; page < pages; page += 1) pdf.addPage();
+  return Buffer.from(await pdf.save());
+}
+function pdfDocumentFixture(pdfBytes: Buffer) {
+  const doc = documentFixture();
+  doc.mimeType = 'application/pdf';
+  doc.versions[0]!.sha256 = createHash('sha256').update(pdfBytes).digest();
+  doc.versions[0]!.sizeBytes = BigInt(pdfBytes.length);
+  return doc;
+}
+async function sourceOf(doc: ReturnType<typeof documentFixture>): Promise<IdentitySource> {
+  return (await loadIdentitySourceTx(transaction(doc).tx, input))!;
+}
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.fetch.mockResolvedValue(bytes);
@@ -104,55 +127,191 @@ describe('GWG-IDENTIFICATION-EVIDENCE-001 / GWG-SELF-ONBOARDING-001: source vers
   it('rejects a crop for a stale version or unavailable source before reading storage', async () => {
     const { tx } = transaction();
     await expect(
-      validateIdentityViewportsTx(tx, {
-        ...input,
-        views: [{ ...view, versionId: '22222222-2222-4222-8222-222222222222' }],
-      }),
+      validateIdentityViewportsTx(
+        tx,
+        {
+          ...input,
+          views: [{ ...view, versionId: '22222222-2222-4222-8222-222222222222' }],
+        },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
     ).rejects.toThrow('geändert');
     await expect(
-      validateIdentityViewportsTx(transaction(null).tx, { ...input, views: [view] }),
+      validateIdentityViewportsTx(
+        transaction(null).tx,
+        { ...input, views: [view] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
     ).rejects.toThrow('geändert');
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
-  it('validates PDF page counts against hash-verified original bytes', async () => {
-    const pdf = await PDFDocument.create();
-    pdf.addPage();
-    const pdfBytes = Buffer.from(await pdf.save());
-    const doc = documentFixture();
-    doc.mimeType = 'application/pdf';
-    doc.versions[0]!.sha256 = createHash('sha256').update(pdfBytes).digest();
-    doc.versions[0]!.sizeBytes = BigInt(pdfBytes.length);
-    mocks.fetch.mockResolvedValue(pdfBytes);
+  it('P-13 uses the page count stored at upload without reading or parsing the source', async () => {
+    const doc = pdfDocumentFixture(Buffer.from('never-read'));
+    doc.versions[0]!.pdfPageCount = 1;
     await expect(
-      validateIdentityViewportsTx(transaction(doc).tx, { ...input, views: [{ ...view, page: 2 }] }),
+      validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [{ ...view, page: 2 }] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
     ).rejects.toThrow('PDF-Seite');
     expect(
-      await validateIdentityViewportsTx(transaction(doc).tx, { ...input, views: [view] }),
-    ).toEqual([view]);
+      await validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [crop] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
+    ).toEqual([crop]);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+  it('P-13 counts pages of legacy PDFs before the transaction and only compares version and hash inside', async () => {
+    const pdfBytes = await pdfWithPages(1);
+    const doc = pdfDocumentFixture(pdfBytes);
+    mocks.fetch.mockResolvedValue(pdfBytes);
+    const pageCounts = await prepareIdentityPdfPageCounts(async () => [
+      { source: await sourceOf(doc), views: [crop] },
+    ]);
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+    expect(pageCounts.get(VERSION_ID)).toMatchObject({ outcome: { ok: true, pages: 1 } });
+    await expect(
+      validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [{ ...crop, page: 2 }] },
+        pageCounts,
+      ),
+    ).rejects.toThrow('PDF-Seite');
+    expect(
+      await validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [crop] },
+        pageCounts,
+      ),
+    ).toEqual([crop]);
+    // Die Transaktion selbst liest keine Bytes.
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+  it('P-13 rejects a legacy PDF crop as a changed source without a matching pre-count', async () => {
+    const pdfBytes = await pdfWithPages(2);
+    const doc = pdfDocumentFixture(pdfBytes);
+    await expect(
+      validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [crop] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
+    ).rejects.toThrow('geändert');
+    mocks.fetch.mockResolvedValue(pdfBytes);
+    const pageCounts = await prepareIdentityPdfPageCounts(async () => [
+      { source: await sourceOf(doc), views: [crop] },
+    ]);
+    const rehashed = pdfDocumentFixture(pdfBytes);
+    rehashed.versions[0]!.sha256 = createHash('sha256').update('other bytes').digest();
+    await expect(
+      validateIdentityViewportsTx(
+        transaction(rehashed).tx,
+        { ...input, views: [crop] },
+        pageCounts,
+      ),
+    ).rejects.toThrow('geändert');
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+  it('P-13 keeps rejecting unreadable and tampered PDF sources', async () => {
+    const garbage = Buffer.from('%PDF-1.7 not really a pdf');
+    const doc = pdfDocumentFixture(garbage);
+    mocks.fetch.mockResolvedValue(garbage);
+    const unreadable = await prepareIdentityPdfPageCounts(async () => [
+      { source: await sourceOf(doc), views: [crop] },
+    ]);
+    await expect(
+      validateIdentityViewportsTx(transaction(doc).tx, { ...input, views: [crop] }, unreadable),
+    ).rejects.toThrow('nicht gelesen');
+
+    const pdfBytes = await pdfWithPages(1);
+    const tampered = pdfDocumentFixture(pdfBytes);
+    mocks.fetch.mockResolvedValue(Buffer.alloc(pdfBytes.length, 0));
+    const mismatch = await prepareIdentityPdfPageCounts(async () => [
+      { source: await sourceOf(tampered), views: [crop] },
+    ]);
+    await expect(
+      validateIdentityViewportsTx(transaction(tampered).tx, { ...input, views: [crop] }, mismatch),
+    ).rejects.toThrow('gebundenen Version');
+  });
+  it('P-13 pre-counts only PDF crops without stored count, once per version, and ignores reader failures', async () => {
+    const pdfBytes = await pdfWithPages(3);
+    mocks.fetch.mockResolvedValue(pdfBytes);
+    const legacy = await sourceOf(pdfDocumentFixture(pdfBytes));
+    const stored = await sourceOf(pdfDocumentFixture(pdfBytes));
+    stored.version.pdfPageCount = 3;
+    const image = await sourceOf(documentFixture());
+    const pageCounts = await prepareIdentityPdfPageCounts(async () => [
+      { source: legacy, views: [view] },
+      { source: stored, views: [crop] },
+      { source: image, views: [crop] },
+      { source: legacy, views: [{ ...crop, versionId: '22222222-2222-4222-8222-222222222222' }] },
+      { source: null, views: [crop] },
+      { source: legacy, views: [crop] },
+      { source: legacy, views: [{ ...crop, side: 'back' as const, page: 3 }] },
+    ]);
+    expect([...pageCounts.keys()]).toEqual([VERSION_ID]);
+    expect(pageCounts.get(VERSION_ID)?.outcome).toEqual({ ok: true, pages: 3 });
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+
+    const failed = await prepareIdentityPdfPageCounts(async () => {
+      throw new Error('connection lost');
+    });
+    expect(failed.size).toBe(0);
+  });
+  it('P-13 loads sources only for selections that need a page check', async () => {
+    const { tx, findFirst } = transaction(pdfDocumentFixture(Buffer.from('x')));
+    expect(identityViewsNeedPageCheck([view])).toBe(false);
+    expect(identityViewsNeedPageCheck([])).toBe(false);
+    expect(identityViewsNeedPageCheck([{ ...view, rotation: 90 }])).toBe(true);
+    expect(identityViewsNeedPageCheck([{ ...view, page: 2 }])).toBe(true);
+    expect(identityViewsNeedPageCheck('kaputt')).toBe(false);
+    const candidates = await loadIdentitySourcesForPageCheckTx(tx, input, [
+      { documentId: 'manual', views: [view] },
+      { documentId: 'document', views: [crop] },
+    ]);
+    expect(candidates).toHaveLength(1);
+    expect(findFirst).toHaveBeenCalledOnce();
+    expect(findFirst.mock.calls[0]![0].where).toMatchObject({ id: 'document', clientId: 'client' });
   });
   it('GWG-SELF-ONBOARDING-001 permits manual full-original PDF capture without decoding, but rejects unverified crops', async () => {
     const doc = documentFixture();
     doc.mimeType = 'application/pdf';
     await expect(
-      validateIdentityViewportsTx(transaction(doc).tx, { ...input, views: [view] }),
+      validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [view] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
     ).resolves.toEqual([view]);
     expect(mocks.fetch).not.toHaveBeenCalled();
     await expect(
-      validateIdentityViewportsTx(transaction(doc).tx, {
-        ...input,
-        views: [{ ...view, width: 0.5 }],
-      }),
+      validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [{ ...view, width: 0.5 }] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
     ).rejects.toThrow();
-    expect(mocks.fetch).toHaveBeenCalledOnce();
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it('rejects out-of-range crops and unsupported document formats', async () => {
     await expect(
-      validateIdentityViewportsTx(transaction().tx, { ...input, views: [{ ...view, x: 0.5 }] }),
+      validateIdentityViewportsTx(
+        transaction().tx,
+        { ...input, views: [{ ...view, x: 0.5 }] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
     ).rejects.toThrow('außerhalb');
     const doc = documentFixture();
     doc.mimeType = 'text/html';
     await expect(
-      validateIdentityViewportsTx(transaction(doc).tx, { ...input, views: [view] }),
+      validateIdentityViewportsTx(
+        transaction(doc).tx,
+        { ...input, views: [view] },
+        NO_IDENTITY_PDF_PAGE_COUNTS,
+      ),
     ).rejects.toThrow('nur bei');
   });
 });
@@ -177,15 +336,15 @@ describe('F-05 GWG-IDENTIFICATION-EVIDENCE-001: storage failures are not evidenc
     expect((error as Error).message).toContain('gebundenen Version');
   });
 
-  it('propagates the storage error out of the viewport validation', async () => {
+  it('propagates the storage error of the pre-count out of the viewport validation', async () => {
     mocks.fetch.mockRejectedValueOnce(new Error('socket hang up'));
     const doc = { ...documentFixture(), mimeType: 'application/pdf' };
+    const pageCounts = await prepareIdentityPdfPageCounts(async () => [
+      { source: await sourceOf(doc), views: [crop] },
+    ]);
 
     await expect(
-      validateIdentityViewportsTx(transaction(doc).tx, {
-        ...input,
-        views: [{ ...view, width: 0.5 }],
-      }),
+      validateIdentityViewportsTx(transaction(doc).tx, { ...input, views: [crop] }, pageCounts),
     ).rejects.toBeInstanceOf(IdentitySourceStorageError);
   });
 });

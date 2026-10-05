@@ -177,6 +177,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // GWG-RETENTION-DESTRUCTION-001 (P-21): Owner-Fixtures je Fristzweig; die App-Rolle
   // vergleicht COUNT-Filter und JS-Fristlogik der Löschqueue unter RLS.
   'packages/db/src/__tests__/gwg-retention-count.test.ts',
+  // GWG-IDENTIFICATION-EVIDENCE-001 (P-13): Owner-Fixtures; die App-Rolle schreibt die
+  // Upload-Seitenzahl unter RLS, CHECK und GwG-Zuordnung halten sie gültig.
+  'packages/db/src/__tests__/document-version-pdf-page-count.test.ts',
   'packages/db/src/__tests__/invoice-xrechnung-document-link.test.ts',
   // Integrationsbeweis fuer die deferrable TaxDeadline/Request-Pointer-Trigger:
   // Owner legt gezielt inkonsistente Mutationen vor; die App-Rolle prueft

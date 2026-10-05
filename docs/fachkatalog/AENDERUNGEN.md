@@ -1,5 +1,53 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-030
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts
+      - apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts
+      - apps/web/src/app/api/staff/documents/commit/route.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+      - apps/web/src/app/gwg-onboarding/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
+      - apps/web/src/server/documents/upload-helpers.ts
+      - apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts
+      - apps/web/src/server/gwg-onboarding/identity-persistence.ts
+      - apps/web/src/server/gwg-onboarding/submission-transaction.ts
+      - apps/web/src/server/gwg/__tests__/identity-pdf-pages.test.ts
+      - apps/web/src/server/gwg/__tests__/identity-source.test.ts
+      - apps/web/src/server/gwg/identity-pdf-pages.ts
+      - apps/web/src/server/gwg/identity-source.ts
+      - packages/db/prisma/migrations/20261005140000_document_version_pdf_page_count/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-SELF-ONBOARDING-001
+      - GWG-OCR-ASSIST-001
+      - GWG-PERSON-LINKS-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - DOC-OBJECT-LOCK-001
+    reason: >-
+      Die Seitenzahl einer PDF-Ausweisquelle wird beim Upload (Staff-Upload, neue
+      Version, Onboarding) einmalig aus genau diesen Bytes im begrenzten
+      Worker-Thread gezählt und in der neuen, nullbaren Spalte
+      document_version.pdf_page_count gespeichert (Migration 20261005140000, CHECK
+      >= 0, kein Backfill). Die Prüfung der Ausweisausschnitte unter Lifecycle-Lock
+      liest keine Originalbytes mehr; Altbestand ohne Wert wird vor der Transaktion
+      gezählt und nur für dieselbe Version-ID und denselben SHA-256 akzeptiert.
+      Speicherfehler, Hash-Abweichungen und unlesbare PDFs führen an derselben
+      Stelle zur selben Ablehnung; eine PDF jenseits der Worker-Grenzen gilt als
+      unlesbar. Trigger und Unveränderlichkeitsschutz von document_version bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/gwg/__tests__/identity-pdf-pages.test.ts
+      - apps/web/src/server/gwg/__tests__/identity-source.test.ts
+      - apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+      - packages/db/src/__tests__/document-version-pdf-page-count.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-029
     date: '2026-10-05'
     paths:
@@ -2167,6 +2215,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-030` dokumentiert die beim Upload gezählte
+  Seitenzahl von PDF-Ausweisquellen. Annahme- und Ablehnungsentscheidungen
+  bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-029` dokumentiert die Textextraktion der
   Subsumtionsakte im begrenzten Worker-Thread. Anhangsregeln und

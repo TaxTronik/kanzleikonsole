@@ -42,6 +42,7 @@ import {
   createDocumentWithVersion,
 } from '@/server/documents/upload-helpers';
 import { carrierClassification } from '@/server/storage/document-type';
+import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { log } from '@/server/logger';
@@ -250,6 +251,14 @@ export async function POST(req: NextRequest) {
   }
 
   const fileData = Buffer.from(await file.arrayBuffer());
+  // P-13: Seitenzahl einer PDF-Ausweisquelle einmalig aus genau diesen Bytes
+  // (begrenzter Worker-Thread, nur GWG_EVIDENCE). Vor dem Storage-Commit, damit
+  // das Fenster zwischen Object-Write und DB-Insert nicht wächst.
+  const pdfPageCount = await identityPdfPageCountForUpload({
+    classification,
+    mimeType,
+    bytes: fileData,
+  });
 
   // 1. Storage-Commit (Scan + Object-Lock-Upload, intern zu SeaweedFS) —
   // tier-getrieben (Bucket/Lock/Frist hängen an der Schutzstufe).
@@ -338,6 +347,7 @@ export async function POST(req: NextRequest) {
           },
           commit,
           createdById: staffId,
+          pdfPageCount,
         });
         // Anhang einer Wiedervorlage: Beteiligte informieren (in derselben
         // Transaktion wie der Insert — kein Anhang ohne Meldung und umgekehrt).

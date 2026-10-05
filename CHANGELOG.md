@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die Seitenzahl von PDF-Ausweisquellen wird beim Upload im begrenzten
+  Worker-Thread gezählt und an der Dokumentversion gespeichert; die Prüfung
+  der Ausweisausschnitte lädt und parst die Originaldatei (bis 25 MiB) nicht
+  mehr unter Lifecycle-Lock und Zeilensperren (Migration `20261005140000`,
+  `GWG-IDENTIFICATION-EVIDENCE-001`, `GWG-SELF-ONBOARDING-001`,
+  `FK-EXC-20261005-030`).
 - Der Sicherungs-Button der Admin-Übersicht reiht den Hintergrundjob
   `backup-run` ein und zeigt dessen Fortschritt, statt `pg_dump`, Prüfsumme und
   Upload im Web-Request auszuführen (bisher HTTP 504 nach dem Proxy-Timeout);

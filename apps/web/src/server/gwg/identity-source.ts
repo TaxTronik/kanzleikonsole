@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { PDFDocument } from 'pdf-lib';
 import type { TxClient } from '@taxtronik/db';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { IdentityViewportsSchema, type IdentityViewport } from '@/lib/gwg/identity-viewport';
+import { countIdentityPdfPages } from './identity-pdf-pages';
 
 /**
  * F-05: Die gebundene Ausweisdatei war im Objektspeicher nicht lesbar (S3-/Netzfehler).
@@ -50,6 +50,7 @@ export async function loadIdentitySourceTx(
           scanCompletedAt: true,
           sha256: true,
           sizeBytes: true,
+          pdfPageCount: true,
         },
       },
     },
@@ -86,7 +87,151 @@ export async function readIdentitySourceBytes(source: IdentitySource): Promise<B
   return bytes;
 }
 
-/** GWG-IDENTIFICATION-EVIDENCE-001: caller must hold document/lifecycle locks. */
+const SOURCE_CHANGED =
+  'Die Ausweisdatei wurde geändert oder ist nicht verfügbar. Bitte neu auswählen.';
+const PDF_UNREADABLE =
+  'Die PDF-Datei der Ausweisquelle konnte nicht gelesen werden (beschädigt, verschlüsselt oder zu komplex).';
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/**
+ * P-13: Seitenzahl einer PDF-Quelle ohne beim Upload gespeicherten Wert,
+ * außerhalb jeder Transaktion ermittelt (Download, Hashprüfung, begrenzter
+ * Worker-Thread). `outcome` enthält entweder die Seitenzahl oder den Fehler,
+ * den die Prüfung in der Transaktion an derselben Stelle wirft wie bisher
+ * (Speicherfehler, Hashabweichung, nicht lesbare PDF).
+ */
+export interface IdentityPdfPageCountProbe {
+  versionId: string;
+  sha256: Buffer;
+  outcome: { ok: true; pages: number } | { ok: false; error: Error };
+}
+/** Vorab ermittelte Seitenzahlen je Dokumentversion (Schlüssel: Version-ID). */
+export type IdentityPdfPageCounts = ReadonlyMap<string, IdentityPdfPageCountProbe>;
+export const NO_IDENTITY_PDF_PAGE_COUNTS: IdentityPdfPageCounts = new Map();
+
+/** Ausweisansichten einer Datei, wie sie die Transaktion anschließend prüft. */
+export interface IdentityViewSelection {
+  documentId: string;
+  views: unknown;
+}
+
+/**
+ * Manueller Verweis auf das ganze Original (Seite 1, voller Ausschnitt, keine
+ * Drehung): braucht keine PDF-Dekodierung. Ausschnitte, Drehung und
+ * Folgeseiten werden gegen die Seitenzahl der Quelle geprüft.
+ */
+function isManualOriginal(views: IdentityViewport[]): boolean {
+  return views.every(
+    (view) =>
+      view.page === 1 &&
+      view.x === 0 &&
+      view.y === 0 &&
+      view.width === 1 &&
+      view.height === 1 &&
+      view.rotation === 0,
+  );
+}
+
+/** Ob diese Ansichten bei einer PDF-Quelle eine Seitenprüfung brauchen (ohne DB-Zugriff). */
+export function identityViewsNeedPageCheck(views: unknown): boolean {
+  const parsed = IdentityViewportsSchema.safeParse(views);
+  return parsed.success && parsed.data.length > 0 && !isManualOriginal(parsed.data);
+}
+
+/** Liest die Quellen der Auswahl, deren Ansichten eine Seitenprüfung brauchen. */
+export async function loadIdentitySourcesForPageCheckTx(
+  tx: TxClient,
+  scope: { tenantId: string; clientId: string },
+  selections: readonly IdentityViewSelection[],
+): Promise<Array<{ source: IdentitySource | null; views: unknown }>> {
+  const candidates = [];
+  for (const selection of selections) {
+    if (!identityViewsNeedPageCheck(selection.views)) continue;
+    candidates.push({
+      source: await loadIdentitySourceTx(tx, { ...scope, documentId: selection.documentId }),
+      views: selection.views,
+    });
+  }
+  return candidates;
+}
+
+export async function probeIdentityPdfPageCount(
+  source: IdentitySource,
+): Promise<IdentityPdfPageCountProbe> {
+  const probe = { versionId: source.version.id, sha256: Buffer.from(source.version.sha256) };
+  let bytes: Buffer;
+  try {
+    bytes = await readIdentitySourceBytes(source);
+  } catch (error) {
+    return { ...probe, outcome: { ok: false, error: error as Error } };
+  }
+  const pages = await countIdentityPdfPages(bytes);
+  return {
+    ...probe,
+    outcome: pages === null ? { ok: false, error: new Error(PDF_UNREADABLE) } : { ok: true, pages },
+  };
+}
+
+/**
+ * P-13: Vorbereitung vor der gesperrten Transaktion. `readCandidates` liest in
+ * einer kurzen, autorisierten Lesetransaktion die Quellen (z. B.
+ * loadIdentitySourcesForPageCheckTx); gezählt werden danach ohne Transaktion
+ * nur PDF-Quellen ohne beim Upload gespeicherte Seitenzahl. Fehler dieser
+ * Vorbereitung entscheiden nichts: Ohne Ergebnis lehnt die Transaktion, die
+ * Zugriff, Status und Quelle erneut prüft, einen solchen Ausschnitt als
+ * geänderte Quelle ab.
+ */
+export async function prepareIdentityPdfPageCounts(
+  readCandidates: () => Promise<
+    ReadonlyArray<{ source: IdentitySource | null; views: unknown }> | null | undefined
+  >,
+): Promise<IdentityPdfPageCounts> {
+  let candidates: ReadonlyArray<{ source: IdentitySource | null; views: unknown }>;
+  try {
+    candidates = (await readCandidates()) ?? [];
+  } catch {
+    return NO_IDENTITY_PDF_PAGE_COUNTS;
+  }
+  const probes = new Map<string, IdentityPdfPageCountProbe>();
+  for (const { source, views } of candidates) {
+    const parsed = IdentityViewportsSchema.safeParse(views);
+    if (
+      !source ||
+      !parsed.success ||
+      probes.has(source.version.id) ||
+      source.mimeType !== 'application/pdf' ||
+      typeof source.version.pdfPageCount === 'number' ||
+      parsed.data.length === 0 ||
+      parsed.data.some((view) => view.versionId !== source.version.id) ||
+      isManualOriginal(parsed.data)
+    ) {
+      continue;
+    }
+    // Nacheinander: höchstens eine Originaldatei samt Parser gleichzeitig im Speicher.
+    probes.set(source.version.id, await probeIdentityPdfPageCount(source));
+  }
+  return probes;
+}
+
+/**
+ * In der Transaktion nur Version-ID und SHA-256 vergleichen: Die Seitenzahl
+ * stammt vom Upload derselben Version oder aus der Vorabzählung genau dieser
+ * Version und dieses Hashs.
+ */
+function pdfPageCountTx(source: IdentitySource, pageCounts: IdentityPdfPageCounts): number {
+  const stored = source.version.pdfPageCount;
+  if (typeof stored === 'number') return stored;
+  const probe = pageCounts.get(source.version.id);
+  if (!probe || !probe.sha256.equals(source.version.sha256)) throw new Error(SOURCE_CHANGED);
+  if (!probe.outcome.ok) throw probe.outcome.error;
+  return probe.outcome.pages;
+}
+
+/**
+ * GWG-IDENTIFICATION-EVIDENCE-001: caller must hold document/lifecycle locks.
+ * P-13: liest keine Bytes und parst nichts; PDF-Seitenzahlen kommen vom Upload
+ * oder aus prepareIdentityPdfPageCounts (vor der Transaktion).
+ */
 export async function validateIdentityViewportsTx(
   tx: TxClient,
   input: {
@@ -95,35 +240,18 @@ export async function validateIdentityViewportsTx(
     documentId: string;
     views: IdentityViewport[];
   },
+  pageCounts: IdentityPdfPageCounts,
 ): Promise<IdentityViewport[]> {
   const views = IdentityViewportsSchema.parse(input.views);
   if (!views.length) return [];
   const source = await loadIdentitySourceTx(tx, input);
   if (!source || views.some((view) => view.versionId !== source.version.id)) {
-    throw new Error(
-      'Die Ausweisdatei wurde geändert oder ist nicht verfügbar. Bitte neu auswählen.',
-    );
+    throw new Error(SOURCE_CHANGED);
   }
   let pages = 1;
   if (source.mimeType === 'application/pdf') {
-    // A manual full-original reference needs no PDF decoding. Explicit crops,
-    // rotation and later pages still require validation against the source PDF.
-    const manualOriginal = views.every(
-      (view) =>
-        view.page === 1 &&
-        view.x === 0 &&
-        view.y === 0 &&
-        view.width === 1 &&
-        view.height === 1 &&
-        view.rotation === 0,
-    );
-    if (!manualOriginal) {
-      const pdf = await PDFDocument.load(await readIdentitySourceBytes(source), {
-        updateMetadata: false,
-      });
-      pages = pdf.getPageCount();
-    }
-  } else if (!['image/jpeg', 'image/png', 'image/webp'].includes(source.mimeType)) {
+    if (!isManualOriginal(views)) pages = pdfPageCountTx(source, pageCounts);
+  } else if (!IMAGE_TYPES.includes(source.mimeType)) {
     throw new Error('Ausschnitte sind nur bei JPG, PNG und PDF verfügbar.');
   }
   if (views.some((view) => view.page > pages))

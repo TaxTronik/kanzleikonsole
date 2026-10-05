@@ -93,6 +93,16 @@ Zusätzlich werden Länge und SHA-256 gegen die gespeicherte Quellversion geprü
 ein abweichendes Objekt wird abgewiesen, niemals stillschweigend verwendet.
 Eine spätere Erweiterung um explizite Objectstore-Version-Reads wäre sinnvoll.
 
+Die Seitenzahl einer PDF-Ausweisquelle wird beim Upload (Staff-Upload, neue
+Version, Onboarding) einmalig aus genau diesen Bytes im begrenzten
+Worker-Thread gezählt und an der Dokumentversion gespeichert
+(`document_version.pdf_page_count`, P-13). Die Ausschnittsprüfung unter
+Lifecycle-Lock liest deshalb keine Bytes mehr. Für Altbestand ohne
+gespeicherten Wert zählt die Aktion vor der Transaktion (Download, Längen- und
+Hashprüfung, Worker-Thread); die Transaktion vergleicht nur Version-ID und
+SHA-256. Eine PDF, die die Grenzen des Worker-Threads überschreitet, gilt als
+nicht lesbar.
+
 ## Tests und Grenzen
 
 Unit-/Action-/Route-Tests decken alle 16 Länderformate, Revisionen, Freigaberechte,

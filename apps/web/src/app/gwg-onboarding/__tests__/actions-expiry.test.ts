@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
@@ -210,6 +211,60 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       expect.objectContaining({
         documentData: expect.objectContaining({ folderId: 'gwg-person-folder-1' }),
       }),
+    );
+  });
+
+  it('P-13 GWG-SELF-ONBOARDING-001: speichert die Seitenzahl einer hochgeladenen Ausweis-PDF an der Version', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    pdf.addPage();
+    const base64 = Buffer.from(await pdf.save()).toString('base64');
+    const invite = {
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    };
+    m.findFirst.mockResolvedValue(invite);
+    m.revalidateInvite.mockResolvedValue(true);
+    m.commitPreparedBytes.mockResolvedValue({
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-123',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'application/pdf',
+    });
+    const upload = (mimeType: string, data: string) =>
+      uploadIdImageAction({
+        token: 'valid-looking-raw-token',
+        fileName: 'ausweis',
+        mimeType,
+        base64: data,
+        kind: 'ID_DOCUMENT',
+      });
+
+    await expect(upload('application/pdf', base64)).resolves.toMatchObject({ ok: true });
+    expect(m.createPendingDocumentWithVersion).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ pdfPageCount: 2 }),
+    );
+    // Unlesbare PDF: Upload bleibt möglich, die Ausschnittsprüfung zählt später erneut.
+    await expect(upload('application/pdf', 'YQ==')).resolves.toMatchObject({ ok: true });
+    expect(m.createPendingDocumentWithVersion).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ pdfPageCount: null }),
+    );
+    await expect(upload('image/png', 'YQ==')).resolves.toMatchObject({ ok: true });
+    expect(m.createPendingDocumentWithVersion).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ pdfPageCount: null }),
     );
   });
 

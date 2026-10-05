@@ -13,10 +13,15 @@ vi.mock('@/server/gwg/evidence-documents', () => ({
 
 import {
   OnboardingIdentitySetConflictError,
+  onboardingIdentityViewSelections,
   persistOnboardingIdentitySetTx,
   type ExistingOnboardingDocument,
 } from '../identity-persistence';
-import { IdentitySourceStorageError } from '@/server/gwg/identity-source';
+import {
+  IdentitySourceStorageError,
+  NO_IDENTITY_PDF_PAGE_COUNTS,
+  type IdentityPdfPageCounts,
+} from '@/server/gwg/identity-source';
 
 beforeEach(() => {
   h.validate.mockReset();
@@ -148,5 +153,48 @@ describe('persistOnboardingIdentitySetTx', () => {
     ).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(OnboardingIdentitySetConflictError);
     expect((error as Error).cause).toBe(invalid);
+  });
+});
+
+describe('P-13 Vorabzählung im Onboarding', () => {
+  it('GWG-SELF-ONBOARDING-001 wählt genau die Dateien und Ansichten, die die Transaktion prüft', () => {
+    const version = '00000000-0000-4000-8000-000000000010';
+    const back = { ...fullIdentityViewport(version, 'back'), page: 2 };
+    expect(
+      onboardingIdentityViewSelections([
+        {
+          documentIds: ['pdf', 'pdf'],
+          viewports: [fullIdentityViewport(version, 'front'), back],
+        },
+        identity,
+      ]),
+    ).toEqual([
+      { documentId: 'pdf', views: [fullIdentityViewport(version, 'front'), back] },
+      { documentId: 'front', views: [identity.viewports[0]] },
+      { documentId: 'back', views: [identity.viewports[1]] },
+    ]);
+  });
+
+  it('reicht die vorab ermittelten Seitenzahlen an die Ausschnittsprüfung weiter', async () => {
+    const pageCounts: IdentityPdfPageCounts = new Map([
+      [
+        '00000000-0000-4000-8000-000000000011',
+        {
+          versionId: '00000000-0000-4000-8000-000000000011',
+          sha256: Buffer.alloc(32),
+          outcome: { ok: true, pages: 1 },
+        },
+      ],
+    ]);
+    await persistOnboardingIdentitySetTx(txMock(), 'check', new Map(), {
+      ...identity,
+      pdfPageCounts: pageCounts,
+    });
+    expect(h.validate).toHaveBeenCalledTimes(2);
+    for (const call of h.validate.mock.calls) expect(call[2]).toBe(pageCounts);
+
+    h.validate.mockClear();
+    await persistOnboardingIdentitySetTx(txMock(), 'check', new Map(), identity);
+    for (const call of h.validate.mock.calls) expect(call[2]).toBe(NO_IDENTITY_PDF_PAGE_COUNTS);
   });
 });

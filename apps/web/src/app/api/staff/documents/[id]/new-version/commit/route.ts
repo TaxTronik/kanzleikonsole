@@ -22,6 +22,7 @@ import {
 } from '@/server/documents/upload-helpers';
 import { evidenceService } from '@/server/container';
 import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 
 const Schema = z.object({
   mimeType: z.string().min(1).max(255).default('application/octet-stream'),
@@ -126,6 +127,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Storage-Commit (Scan + Upload, intern zu SeaweedFS)
   const fileData = Buffer.from(await file.arrayBuffer());
+  // P-13: Seitenzahl einer noch nicht zugeordneten PDF-Ausweisquelle (nur
+  // GWG_EVIDENCE) einmalig aus genau diesen Bytes, vor dem Storage-Commit.
+  const pdfPageCount = await identityPdfPageCountForUpload({
+    classification: doc.classification,
+    mimeType: parsed.data.mimeType,
+    bytes: fileData,
+  });
   let commit;
   try {
     const tier = (doc.documentType?.tier ??
@@ -255,6 +263,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             immutable: commit.immutable,
             scanStatus: 'CLEAN',
             scanCompletedAt: new Date(),
+            pdfPageCount,
             createdById: staffId,
           },
         });

@@ -2377,6 +2377,9 @@ model DocumentVersion {
   immutable                   Boolean                      @default(false)
   scanStatus                  String                       @default("PENDING") @map("scan_status")
   scanCompletedAt             DateTime?                    @map("scan_completed_at")
+  /// P-13: Seitenzahl einer PDF-Ausweisquelle, beim Upload aus genau diesen
+  /// Bytes ermittelt (NULL: kein PDF, nicht lesbar oder Altbestand).
+  pdfPageCount                Int?                         @map("pdf_page_count")
   createdById                 String                       @map("created_by_id") @db.Uuid
   createdAt                   DateTime                     @default(now()) @map("created_at")
   document                    Document                     @relation(fields: [documentId], references: [id], onDelete: Cascade)

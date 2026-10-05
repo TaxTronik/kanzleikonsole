@@ -1,4 +1,6 @@
-// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
+// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001, GWG-SELF-ONBOARDING-001
+import { createHash } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { consentForNewDeclaration } from '@/server/privacy/consent';
 import { checkRateLimit } from '@/server/rate-limit';
@@ -17,6 +19,7 @@ const m = vi.hoisted(() => ({
   ensureGwgPersonFolder: vi.fn(),
   lockEvidence: vi.fn(),
   logError: vi.fn(),
+  fetchObjectBytes: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
@@ -24,6 +27,7 @@ vi.mock('@taxtronik/storage', () => ({
   prepareBytesCommitWithTier: vi.fn(),
   commitPreparedBytes: vi.fn(),
   deleteObjectVersion: vi.fn(),
+  fetchObjectBytes: m.fetchObjectBytes,
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
 }));
 vi.mock('@taxtronik/db', () => ({ withSystemContext: m.withSystemContext }));
@@ -181,6 +185,93 @@ function validSubmission(): Parameters<typeof submitOnboardingAction>[0] {
   };
 }
 
+type DocumentLookup = (args: { where: { id: string } }) => Promise<unknown>;
+
+function imageSource({ where }: { where: { id: string } }) {
+  return Promise.resolve({
+    id: where.id,
+    title: 'Ausweis',
+    mimeType: 'image/png',
+    versions: [
+      {
+        id: versionFor(where.id),
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+        storageVersionId: 'storage-version',
+        storageBucket: 'test',
+        storageKey: where.id,
+        sha256: Buffer.alloc(32),
+        sizeBytes: 42n,
+      },
+    ],
+  });
+}
+
+function submissionTx(findDocument: DocumentLookup = imageSource) {
+  const existingDocuments = DOCUMENT_IDS.map((documentId, index) => ({
+    id: `6${String(index + 1).repeat(7)}-${String(index + 1).repeat(4)}-4${String(index + 1).repeat(3)}-8${String(index + 1).repeat(3)}-${String(index + 1).repeat(12)}`,
+    documentId,
+    documentSetId:
+      index < 2
+        ? '70000000-0000-4000-8000-000000000001'
+        : index < 4
+          ? '70000000-0000-4000-8000-000000000002'
+          : index < 6
+            ? '70000000-0000-4000-8000-000000000003'
+            : '70000000-0000-4000-8000-000000000004',
+    type:
+      index === 6
+        ? 'GESELLSCHAFTSVERTRAG'
+        : index === 2 || index === 3
+          ? 'REISEPASS'
+          : 'PERSONALAUSWEIS',
+  }));
+  const tx = {
+    $executeRaw: vi.fn(),
+    client: {
+      findFirst: vi.fn().mockResolvedValue({
+        kind: 'PERSGES',
+        name: 'Muster GbR',
+        street: 'Musterweg 1',
+        postalCode: '10115',
+        city: 'Berlin',
+        countryIso: 'DE',
+        vatId: null,
+      }),
+      update: vi.fn(),
+    },
+    gwgCheck: { update: vi.fn().mockResolvedValue({}) },
+    clientConsent: { create: vi.fn().mockResolvedValue({ id: 'consent-1' }) },
+    gwgBeneficialOwner: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: OWNER_ONE, notes: 'Kanzleivermerk Owner 1' },
+        { id: OWNER_TWO, notes: 'Kanzleivermerk Owner 2' },
+      ]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+      createMany: vi.fn().mockResolvedValue({ count: 2 }),
+    },
+    gwgRepresentative: {
+      findMany: vi.fn().mockResolvedValue([{ id: REP_ONE }, { id: REP_TWO }]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+      createMany: vi.fn().mockResolvedValue({ count: 2 }),
+    },
+    gwgIdDocument: {
+      findMany: vi.fn().mockResolvedValue(existingDocuments),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      createMany: vi.fn(),
+      create: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    gwgOnboardingInvite: { update: vi.fn() },
+    document: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirst: vi.fn().mockImplementation(findDocument),
+    },
+    clientResponsibility: { findMany: vi.fn().mockResolvedValue([]) },
+  };
+  return tx;
+}
+
 describe('gebundener GwG-DRAFT Submit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -234,83 +325,7 @@ describe('gebundener GwG-DRAFT Submit', () => {
   });
 
   it('erhält Owner-/Vertreter-IDs und Dokument-FKs bei Kenntnisnahme ohne freiwillige Einwilligungen', async () => {
-    const existingDocuments = DOCUMENT_IDS.map((documentId, index) => ({
-      id: `6${String(index + 1).repeat(7)}-${String(index + 1).repeat(4)}-4${String(index + 1).repeat(3)}-8${String(index + 1).repeat(3)}-${String(index + 1).repeat(12)}`,
-      documentId,
-      documentSetId:
-        index < 2
-          ? '70000000-0000-4000-8000-000000000001'
-          : index < 4
-            ? '70000000-0000-4000-8000-000000000002'
-            : index < 6
-              ? '70000000-0000-4000-8000-000000000003'
-              : '70000000-0000-4000-8000-000000000004',
-      type:
-        index === 6
-          ? 'GESELLSCHAFTSVERTRAG'
-          : index === 2 || index === 3
-            ? 'REISEPASS'
-            : 'PERSONALAUSWEIS',
-    }));
-    const tx = {
-      $executeRaw: vi.fn(),
-      client: {
-        findFirst: vi.fn().mockResolvedValue({
-          kind: 'PERSGES',
-          name: 'Muster GbR',
-          street: 'Musterweg 1',
-          postalCode: '10115',
-          city: 'Berlin',
-          countryIso: 'DE',
-          vatId: null,
-        }),
-        update: vi.fn(),
-      },
-      gwgCheck: { update: vi.fn().mockResolvedValue({}) },
-      clientConsent: { create: vi.fn().mockResolvedValue({ id: 'consent-1' }) },
-      gwgBeneficialOwner: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: OWNER_ONE, notes: 'Kanzleivermerk Owner 1' },
-          { id: OWNER_TWO, notes: 'Kanzleivermerk Owner 2' },
-        ]),
-        deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
-        createMany: vi.fn().mockResolvedValue({ count: 2 }),
-      },
-      gwgRepresentative: {
-        findMany: vi.fn().mockResolvedValue([{ id: REP_ONE }, { id: REP_TWO }]),
-        deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
-        createMany: vi.fn().mockResolvedValue({ count: 2 }),
-      },
-      gwgIdDocument: {
-        findMany: vi.fn().mockResolvedValue(existingDocuments),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        createMany: vi.fn(),
-        create: vi.fn(),
-        deleteMany: vi.fn(),
-      },
-      gwgOnboardingInvite: { update: vi.fn() },
-      document: {
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        findFirst: vi.fn().mockImplementation(async ({ where }) => ({
-          id: where.id,
-          title: 'Ausweis',
-          mimeType: 'image/png',
-          versions: [
-            {
-              id: versionFor(where.id),
-              scanStatus: 'CLEAN',
-              scanCompletedAt: new Date(),
-              storageVersionId: 'storage-version',
-              storageBucket: 'test',
-              storageKey: where.id,
-              sha256: Buffer.alloc(32),
-              sizeBytes: 42n,
-            },
-          ],
-        })),
-      },
-      clientResponsibility: { findMany: vi.fn().mockResolvedValue([]) },
-    };
+    const tx = submissionTx();
     m.withSystemContext.mockImplementation(async (_tenantId, callback) => callback(tx));
     m.inviteFindFirst.mockResolvedValue({
       id: 'invite-1',
@@ -396,6 +411,76 @@ describe('gebundener GwG-DRAFT Submit', () => {
       expect(call[0]?.data).not.toHaveProperty('notes');
     }
   });
+
+  it.each([
+    { pages: 2, cropPage: 2, expected: { ok: true } },
+    {
+      pages: 1,
+      cropPage: 2,
+      expected: {
+        ok: false,
+        error:
+          'Der GwG-Datenstand wurde zwischenzeitlich geändert. Bitte fordern Sie bei Ihrer Kanzlei eine neue Einladung an.',
+      },
+    },
+  ])(
+    'P-13: zählt eine Alt-PDF ohne Upload-Seitenzahl vor der Einreichungstransaktion ($pages Seite[n])',
+    async ({ pages, cropPage, expected }) => {
+      const pdf = await PDFDocument.create();
+      for (let page = 0; page < pages; page += 1) pdf.addPage();
+      const pdfBytes = Buffer.from(await pdf.save());
+      const legacyPdf = DOCUMENT_IDS[0];
+      const tx = submissionTx(({ where }) =>
+        where.id === legacyPdf
+          ? Promise.resolve({
+              id: legacyPdf,
+              title: 'Ausweis.pdf',
+              mimeType: 'application/pdf',
+              versions: [
+                {
+                  id: versionFor(legacyPdf),
+                  scanStatus: 'CLEAN',
+                  scanCompletedAt: new Date(),
+                  storageVersionId: 'storage-version',
+                  storageBucket: 'test',
+                  storageKey: legacyPdf,
+                  sha256: createHash('sha256').update(pdfBytes).digest(),
+                  sizeBytes: BigInt(pdfBytes.length),
+                  pdfPageCount: null,
+                },
+              ],
+            })
+          : imageSource({ where }),
+      );
+      m.withSystemContext.mockImplementation(async (_tenantId, callback) => callback(tx));
+      m.fetchObjectBytes.mockResolvedValueOnce(pdfBytes);
+      m.inviteFindFirst.mockResolvedValue({
+        id: 'invite-1',
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        status: 'STARTED',
+        expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+        gwgCheckId: CHECK_ID,
+        createdByStaff: 'staff-1',
+        uploadedDocuments: [],
+        gwgCheck: { idDocuments: DOCUMENT_IDS.map((documentId) => ({ documentId })) },
+        client: { id: 'client-1', kind: 'PERSGES', name: 'Muster GbR' },
+      });
+      const submission = validSubmission();
+      submission.owners[0]!.idFrontViewport = {
+        ...fullIdentityViewport(versionFor(legacyPdf), 'front'),
+        page: cropPage,
+        height: 0.5,
+      };
+
+      expect(await submitOnboardingAction(submission)).toEqual(expected);
+      // Download und Zählung laufen vor der Transaktion, die die Einladung beansprucht.
+      expect(m.fetchObjectBytes).toHaveBeenCalledOnce();
+      expect(m.fetchObjectBytes.mock.invocationCallOrder[0]).toBeLessThan(
+        m.claimInvite.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
 
   it.each([undefined, false])(
     'weist fehlende Kenntnisnahme (%s) trotz aller freiwilligen Einwilligungen vor Nebenwirkungen ab',

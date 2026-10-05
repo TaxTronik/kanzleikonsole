@@ -4,6 +4,7 @@ import { Prisma, type ClientKind } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 
 import { evidenceService } from '@/server/container';
+import type { IdentityPdfPageCounts } from '@/server/gwg/identity-source';
 import { startFreshGwgReviewTx } from '@/server/gwg/reverification';
 import { log } from '@/server/logger';
 import { notifyMany } from '@/server/notifications/service';
@@ -63,6 +64,8 @@ export interface OnboardingSubmissionTransactionInput {
   representatives: GwgOnboardingRepresentativeInput[];
   extraDocuments: OnboardingExtraDocument[];
   consent: OnboardingSubmissionConsentInput;
+  /** P-13: vor der Transaktion ermittelte PDF-Seitenzahlen der Ausweisquellen. */
+  identityPdfPageCounts?: IdentityPdfPageCounts;
 }
 
 export type OnboardingSubmissionTransactionResult =
@@ -330,6 +333,7 @@ async function persistSubmittedIdentitySetsTx(
     owners: OnboardingSubmissionOwner[];
     representatives: GwgOnboardingRepresentativeInput[];
     people: SubmittedPeoplePhase;
+    pdfPageCounts?: IdentityPdfPageCounts;
   },
 ): Promise<void> {
   for (const owner of input.owners) {
@@ -350,6 +354,7 @@ async function persistSubmittedIdentitySetsTx(
       expiryDate: owner.idExpiryDate ? new Date(`${owner.idExpiryDate}T00:00:00.000Z`) : null,
       beneficialOwnerSubjectId,
       representativeSubjectId,
+      pdfPageCounts: input.pdfPageCounts,
     });
   }
 
@@ -371,6 +376,7 @@ async function persistSubmittedIdentitySetsTx(
         : null,
       representativeSubjectId: input.people.representativeDbIds.get(representative.localId)!,
       notePrefix: 'Vertretung',
+      pdfPageCounts: input.pdfPageCounts,
     });
   }
 }
@@ -695,6 +701,7 @@ export async function runOnboardingSubmissionTransactionTx(
     owners: submission.owners,
     representatives: submission.representatives,
     people,
+    pdfPageCounts: submission.identityPdfPageCounts,
   });
   await persistSubmittedEntityEvidenceTx(tx, {
     checkId: review.checkId,

@@ -5,7 +5,10 @@ import { distinctIdentityViews } from '@/lib/gwg/identity-viewport';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import {
   IdentitySourceStorageError,
+  NO_IDENTITY_PDF_PAGE_COUNTS,
   validateIdentityViewportsTx,
+  type IdentityPdfPageCounts,
+  type IdentityViewSelection,
 } from '@/server/gwg/identity-source';
 import { lockCleanGwgEvidenceDocumentsTx } from '@/server/gwg/evidence-documents';
 
@@ -40,6 +43,32 @@ export interface OnboardingIdentitySetInput {
   beneficialOwnerSubjectId?: string | null;
   representativeSubjectId?: string | null;
   notePrefix?: string;
+  /** P-13: vor der Einreichungstransaktion ermittelte PDF-Seitenzahlen (Altbestand). */
+  pdfPageCounts?: IdentityPdfPageCounts;
+}
+
+function onboardingDocumentViews(
+  input: Pick<OnboardingIdentitySetInput, 'documentIds' | 'viewports'>,
+  documentId: string,
+): IdentityViewport[] {
+  return (input.viewports ?? []).flatMap((view, index) =>
+    view && input.documentIds[index] === documentId ? [view] : [],
+  );
+}
+
+/**
+ * P-13: Dateien und Ansichten genau so, wie persistOnboardingIdentitySetTx sie
+ * später prüft, für die Vorabzählung von PDF-Seiten vor der Transaktion.
+ */
+export function onboardingIdentityViewSelections(
+  sets: ReadonlyArray<Pick<OnboardingIdentitySetInput, 'documentIds' | 'viewports'>>,
+): IdentityViewSelection[] {
+  return sets.flatMap((input) =>
+    [...new Set(input.documentIds)].map((documentId) => ({
+      documentId,
+      views: onboardingDocumentViews(input, documentId),
+    })),
+  );
 }
 
 async function validateOnboardingDocumentViews(
@@ -47,9 +76,7 @@ async function validateOnboardingDocumentViews(
   input: OnboardingIdentitySetInput,
   documentId: string,
 ) {
-  const views = (input.viewports ?? []).flatMap((view, index) =>
-    view && input.documentIds[index] === documentId ? [view] : [],
-  );
+  const views = onboardingDocumentViews(input, documentId);
   if (!views.length) return views;
   if (!input.sourceScope) throw new OnboardingIdentitySetConflictError();
   if (
@@ -61,7 +88,11 @@ async function validateOnboardingDocumentViews(
     throw new OnboardingIdentitySetConflictError();
   }
   try {
-    await validateIdentityViewportsTx(tx, { ...input.sourceScope, documentId, views });
+    await validateIdentityViewportsTx(
+      tx,
+      { ...input.sourceScope, documentId, views },
+      input.pdfPageCounts ?? NO_IDENTITY_PDF_PAGE_COUNTS,
+    );
   } catch (error) {
     // F-05: Speicher- und Datenbankfehler sind kein geänderter Datenstand; sie
     // laufen unverändert zum Fehler-Mapping der Action (Log + eigene Meldung).

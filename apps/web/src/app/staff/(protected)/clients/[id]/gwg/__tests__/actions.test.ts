@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
@@ -1403,6 +1405,97 @@ describe('atomare GwG-Bearbeitung', () => {
     });
   });
 
+  it.each([
+    { pages: 2, expected: { ok: true } },
+    { pages: 1, expected: { ok: false, error: 'Die gewählte PDF-Seite existiert nicht.' } },
+  ])(
+    'P-13 GWG-IDENTIFICATION-EVIDENCE-001: zählt eine Alt-PDF ohne Upload-Seitenzahl vor der gesperrten Transaktion ($pages Seite[n])',
+    async ({ pages, expected }) => {
+      const documentId = '55555555-5555-4555-8555-555555555556';
+      const versionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3';
+      const pdf = await PDFDocument.create();
+      for (let page = 0; page < pages; page += 1) pdf.addPage();
+      const pdfBytes = Buffer.from(await pdf.save());
+      const tx = {
+        gwgCheck: {
+          findFirst: vi.fn().mockResolvedValue({
+            status: 'DRAFT',
+            representativeNames: ['Rey Koxha'],
+            representatives: [
+              { id: '33333333-3333-4333-8333-333333333333', fullName: 'Rey Koxha', position: 0 },
+            ],
+            client: { id: CLIENT_ID, name: 'Muster GbR', kind: 'PERSGES' },
+            beneficialOwners: [],
+          }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        document: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: documentId,
+            title: 'Ausweis.pdf',
+            mimeType: 'application/pdf',
+            versions: [
+              {
+                id: versionId,
+                storageBucket: 'gwg',
+                storageKey: 'tenant-1/alt.pdf',
+                storageVersionId: 's3-version-3',
+                scanStatus: 'CLEAN',
+                scanCompletedAt: new Date('2026-07-01T00:00:00Z'),
+                sha256: createHash('sha256').update(pdfBytes).digest(),
+                sizeBytes: BigInt(pdfBytes.length),
+                pdfPageCount: null,
+              },
+            ],
+          }),
+        },
+        gwgIdDocument: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockResolvedValue({ id: 'id-document-1' }),
+          createMany: vi.fn(),
+        },
+      };
+      runWithStaffOn(tx);
+      m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn(tx),
+      );
+      vi.mocked(fetchObjectBytes).mockResolvedValueOnce(pdfBytes);
+      const crop = { documentId, versionId, x: 0, y: 0, width: 1, height: 0.5, rotation: 0 };
+      const data = formData();
+      data.set('type', 'PERSONALAUSWEIS');
+      data.set('subjectKey', 'representative:33333333-3333-4333-8333-333333333333');
+      data.set('number', 'L01X00T47');
+      data.set('issuedBy', 'Stadt Berlin');
+      data.set('issueDate', '2025-01-01');
+      data.set('expiryDate', '2035-01-01');
+      data.append('documentIds', documentId);
+      data.set(
+        'viewports',
+        JSON.stringify([
+          { ...crop, side: 'front', page: 1 },
+          { ...crop, side: 'back', page: 2 },
+        ]),
+      );
+
+      expect(await addIdDocumentAction(null, data)).toEqual(expected);
+      expect(fetchObjectBytes).toHaveBeenCalledOnce();
+      expect(vi.mocked(fetchObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
+        m.withStaff.mock.invocationCallOrder[0]!,
+      );
+      if (expected.ok) {
+        expect(tx.gwgIdDocument.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            documentId,
+            viewports: [expect.objectContaining({ page: 1 }), expect.objectContaining({ page: 2 })],
+          }),
+        });
+      } else {
+        expect(tx.gwgIdDocument.create).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it('ordnet Vorder- und Rückseite aus der Akte einem gemeinsamen neuen Ausweissatz zu', async () => {
     const frontId = '55555555-5555-4555-8555-555555555555';
     const backId = '77777777-7777-4777-8777-777777777777';
@@ -2245,6 +2338,10 @@ describe('atomare GwG-Bearbeitung', () => {
       },
     };
     runWithStaffOn(tx);
+    // P-13: Die Vorabzählung liest in einer eigenen kurzen Lesetransaktion.
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
     m.lockCleanGwgDocuments.mockResolvedValue(true);
     vi.mocked(fetchObjectBytes).mockRejectedValueOnce(
       Object.assign(new Error('503 SlowDown'), { name: 'SlowDown' }),
@@ -2277,6 +2374,110 @@ describe('atomare GwG-Bearbeitung', () => {
       }),
       'gwg-identity: Ausweisdatei im Dokumentenspeicher nicht lesbar',
     );
+    // P-13: Der Objektspeicher wird vor der gesperrten Transaktion gelesen,
+    // genau einmal für die gemeinsame Version beider Seiten.
+    expect(fetchObjectBytes).toHaveBeenCalledOnce();
+    expect(vi.mocked(fetchObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
+      m.withStaff.mock.invocationCallOrder[0]!,
+    );
+    expect(m.lockCleanGwgDocuments).toHaveBeenCalled();
+  });
+  it('P-13 GWG-IDENTIFICATION-EVIDENCE-001: bestätigt einen PDF-Ausschnitt mit beim Upload gespeicherter Seitenzahl ohne Speicherzugriff', async () => {
+    const documentSetId = '99999999-9999-4999-8999-999999999992';
+    const versionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2';
+    const savedDocuments = (['front', 'back'] as const).map((side, index) => ({
+      id: `7777777${index}-7777-4777-8777-777777777772`,
+      gwgCheckId: CHECK_ID,
+      documentSetId,
+      documentId: 'document-pdf',
+      type: 'PERSONALAUSWEIS',
+      ownerName: 'Rey Koxha',
+      number: 'NEU-123',
+      issuedBy: 'Stadt Berlin',
+      issueDate: new Date('2025-01-01'),
+      expiryDate: new Date('2035-01-01'),
+      verifiedAt: null,
+      naturalClientSubjectId: null,
+      beneficialOwnerSubjectId: null,
+      representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+      viewports: [
+        { side, versionId, page: index + 1, x: 0, y: 0, width: 1, height: 0.5, rotation: 0 },
+      ],
+      document: {
+        id: 'document-pdf',
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        classification: 'GWG_EVIDENCE',
+        deletedAt: null,
+        gwgDestructionRequestedAt: null,
+        gwgDestroyedAt: null,
+      },
+    }));
+    const pdfSource = (pdfPageCount: number) => ({
+      id: 'document-pdf',
+      title: 'Ausweis.pdf',
+      mimeType: 'application/pdf',
+      versions: [
+        {
+          id: versionId,
+          storageBucket: 'gwg',
+          storageKey: 'tenant-1/ausweis.pdf',
+          storageVersionId: 's3-version-2',
+          scanStatus: 'CLEAN',
+          scanCompletedAt: new Date('2026-07-01T00:00:00Z'),
+          sha256: Buffer.alloc(32),
+          sizeBytes: 42n,
+          pdfPageCount,
+        },
+      ],
+    });
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          representativeNames: ['Rey Koxha'],
+          representatives: [
+            { id: '33333333-3333-4333-8333-333333333333', fullName: 'Rey Koxha', position: 0 },
+          ],
+          client: { id: CLIENT_ID, name: 'Muster GbR', kind: 'PERSGES' },
+          beneficialOwners: [],
+          idDocuments: savedDocuments,
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgIdDocument: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      document: { findFirst: vi.fn().mockResolvedValue(pdfSource(2)) },
+    };
+    runWithStaffOn(tx);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+    const data = formData();
+    data.set('documentSetId', documentSetId);
+    data.set('type', 'PERSONALAUSWEIS');
+    data.set('subjectKey', 'representative:33333333-3333-4333-8333-333333333333');
+    data.set('number', 'NEU-123');
+    data.set('issuedBy', 'Stadt Berlin');
+    data.set('issueDate', '2025-01-01');
+    data.set('expiryDate', '2035-01-01');
+    data.set('expectedRevision', gwgIdentityDocumentSetRevision(savedDocuments));
+    data.set('intent', 'confirm');
+
+    expect(await updateIdDocumentsAction(null, data)).toMatchObject({ ok: true, verified: true });
+    expect(fetchObjectBytes).not.toHaveBeenCalled();
+
+    // Dieselbe Entscheidung wie bisher: Seite 2 einer einseitigen PDF existiert nicht.
+    tx.document.findFirst.mockResolvedValue(pdfSource(1));
+    tx.gwgIdDocument.updateMany.mockClear();
+    expect(await updateIdDocumentsAction(null, data)).toMatchObject({
+      ok: false,
+      error:
+        'Die gespeicherte Ausweisansicht passt nicht mehr zur Quelle. Bitte den Nachweis neu erfassen.',
+    });
+    expect(tx.gwgIdDocument.updateMany).not.toHaveBeenCalled();
+    expect(fetchObjectBytes).not.toHaveBeenCalled();
   });
   it('speichert die Risikobewertung samt Review-Reset mit genau einem CAS-Update', async () => {
     const tx = {

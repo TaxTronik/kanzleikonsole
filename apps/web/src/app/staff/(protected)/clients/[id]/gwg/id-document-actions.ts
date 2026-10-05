@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import type { GwgIdDocumentType } from '@prisma/client';
 import { z } from 'zod';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
@@ -20,7 +21,13 @@ import { gwgIdentityDocumentSetRevision } from '@/server/gwg/revisions';
 import { IdentitySourceViewsSchema, identityViewports } from '@/lib/gwg/identity-viewport';
 import {
   IdentitySourceStorageError,
+  identityViewsNeedPageCheck,
+  loadIdentitySourcesForPageCheckTx,
+  NO_IDENTITY_PDF_PAGE_COUNTS,
+  prepareIdentityPdfPageCounts,
   validateIdentityViewportsTx,
+  type IdentityPdfPageCounts,
+  type IdentityViewSelection,
 } from '@/server/gwg/identity-source';
 import { log } from '@/server/logger';
 import { Prisma } from '@taxtronik/db/prisma-client';
@@ -29,7 +36,12 @@ import {
   validateIdentityDates,
 } from '@/server/gwg/identity-date-validation';
 import { organizeGwgDocumentsTx } from '@/server/gwg-onboarding/document-folders';
-import { withStaff, ActionError, parseFormData } from '@/server/actions/staff-action';
+import {
+  withStaff,
+  ActionError,
+  parseFormData,
+  staffActionGuard,
+} from '@/server/actions/staff-action';
 
 import {
   isPersonalIdType,
@@ -309,10 +321,55 @@ function identityValidationFailure(
   return new ActionError(sourceMessage);
 }
 
+function newIdentityViewsFor(data: NewIdDocumentData, documentId: string) {
+  return data.viewports
+    .filter((view) => view.documentId === documentId)
+    .map(({ documentId: _documentId, ...view }) => view);
+}
+
+/**
+ * P-13: PDF-Seitenzahlen, die beim Upload nicht gespeichert wurden (Altbestand),
+ * vor der gesperrten Transaktion ermitteln: kurze Lesetransaktion mit
+ * Mandantenzugriff, dann Download, Hashprüfung und Zählung im begrenzten
+ * Worker-Thread ohne Transaktion. Die Transaktion vergleicht danach nur
+ * Version-ID und SHA-256.
+ */
+function prepareStaffIdentityPageCounts(
+  clientId: string,
+  readSelections: (tx: TxClient) => Promise<IdentityViewSelection[]>,
+): Promise<IdentityPdfPageCounts> {
+  return prepareIdentityPdfPageCounts(async () => {
+    const guard = await staffActionGuard();
+    if (!guard.ok) return [];
+    return withTenantContext(guard.ctx, async (tx) => {
+      await assertClientAccessTx(tx, guard.session, clientId);
+      return loadIdentitySourcesForPageCheckTx(
+        tx,
+        { tenantId: guard.tenantId, clientId },
+        await readSelections(tx),
+      );
+    });
+  });
+}
+
+async function prepareNewIdentityPageCounts(
+  data: NewIdDocumentData,
+): Promise<IdentityPdfPageCounts> {
+  const selections = data.documentIds.map((documentId) => ({
+    documentId,
+    views: newIdentityViewsFor(data, documentId),
+  }));
+  if (!selections.some((selection) => identityViewsNeedPageCheck(selection.views))) {
+    return NO_IDENTITY_PDF_PAGE_COUNTS;
+  }
+  return prepareStaffIdentityPageCounts(data.clientId, async () => selections);
+}
+
 async function validateNewIdentityViews(
   tx: Parameters<typeof validateIdentityViewportsTx>[0],
   tenantId: string,
   data: NewIdDocumentData,
+  pageCounts: IdentityPdfPageCounts,
 ) {
   if (data.viewports.some((view) => !data.documentIds.includes(view.documentId))) {
     throw new ActionError('Der Ausschnitt gehört nicht zur ausgewählten Ausweisdatei.');
@@ -323,14 +380,16 @@ async function validateNewIdentityViews(
   >();
   for (const documentId of data.documentIds) {
     try {
-      const views = await validateIdentityViewportsTx(tx, {
-        tenantId,
-        clientId: data.clientId,
-        documentId,
-        views: data.viewports
-          .filter((view) => view.documentId === documentId)
-          .map(({ documentId: _documentId, ...view }) => view),
-      });
+      const views = await validateIdentityViewportsTx(
+        tx,
+        {
+          tenantId,
+          clientId: data.clientId,
+          documentId,
+          views: newIdentityViewsFor(data, documentId),
+        },
+        pageCounts,
+      );
       viewsByDocument.set(documentId, views);
     } catch (error) {
       throw identityValidationFailure(
@@ -383,6 +442,7 @@ export async function addIdDocumentAction(
     };
   }
   const data = parsed.data;
+  const pageCounts = await prepareNewIdentityPageCounts(data);
 
   return withStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -506,7 +566,7 @@ export async function addIdDocumentAction(
       }
 
       const documentSetId = randomUUID();
-      const viewsByDocument = await validateNewIdentityViews(tx, tenantId, data);
+      const viewsByDocument = await validateNewIdentityViews(tx, tenantId, data, pageCounts);
       const sharedData = newIdentityDocumentSharedData(
         data,
         subject,
@@ -909,6 +969,29 @@ const UpdateIdDocumentsSchema = z
     }
   });
 
+/** P-13: Vorabzählung für die beim Bestätigen erneut geprüften gespeicherten Ansichten. */
+async function prepareSavedIdentityPageCounts(
+  data: z.infer<typeof UpdateIdDocumentsSchema>,
+): Promise<IdentityPdfPageCounts> {
+  if (data.intent !== 'confirm') return NO_IDENTITY_PDF_PAGE_COUNTS;
+  return prepareStaffIdentityPageCounts(data.clientId, async (tx) => {
+    const check = await tx.gwgCheck.findFirst({
+      where: { id: data.checkId, clientId: data.clientId },
+      select: {
+        idDocuments: {
+          where: { documentSetId: data.documentSetId, supersededAt: null },
+          select: { documentId: true, viewports: true },
+        },
+      },
+    });
+    return (check?.idDocuments ?? []).flatMap((entry) =>
+      entry.documentId
+        ? [{ documentId: entry.documentId, views: identityViewports(entry.viewports) }]
+        : [],
+    );
+  });
+}
+
 /**
  * Bestätigt oder korrigiert einen zusammengehörigen Ausweissatz (z. B.
  * Vorder- und Rückseite) in einem atomaren Schritt. Die Person kommt niemals
@@ -953,6 +1036,7 @@ export async function updateIdDocumentsAction(
     };
   }
   const data = parsed.data;
+  const pageCounts = await prepareSavedIdentityPageCounts(data);
 
   return withStaff(async (tx, { tenantId, staffId, session }) => {
     await assertClientAccessTx(tx, session, data.clientId);
@@ -1095,12 +1179,16 @@ export async function updateIdDocumentsAction(
       }
       for (const entry of check.idDocuments) {
         try {
-          await validateIdentityViewportsTx(tx, {
-            tenantId,
-            clientId: data.clientId,
-            documentId: entry.document!.id,
-            views: identityViewports(entry.viewports),
-          });
+          await validateIdentityViewportsTx(
+            tx,
+            {
+              tenantId,
+              clientId: data.clientId,
+              documentId: entry.document!.id,
+              views: identityViewports(entry.viewports),
+            },
+            pageCounts,
+          );
         } catch (error) {
           throw identityValidationFailure(
             error,

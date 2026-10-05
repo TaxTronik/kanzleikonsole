@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
+import { PDFDocument } from 'pdf-lib';
 
 const m = vi.hoisted(() => ({
   staffAuth: vi.fn(),
@@ -215,6 +216,76 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
           documentTypeId: DOCUMENT_TYPE_ID,
         }),
       }),
+    );
+  });
+
+  // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
+  it('P-13: speichert die Seitenzahl einer GwG-PDF beim Upload (vor dem Storage-Commit gezählt)', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    pdf.addPage();
+    pdf.addPage();
+    const pdfBytes = new Uint8Array(await pdf.save());
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          documentType: {
+            findFirst: vi
+              .fn()
+              .mockResolvedValue({ id: DOCUMENT_TYPE_ID, tier: 'GWG', retentionYears: 5 }),
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({}));
+    m.createDocumentWithVersion.mockResolvedValue({
+      document: { id: '33333333-3333-4333-8333-333333333333' },
+    });
+    m.evidenceRecord.mockResolvedValue(undefined);
+    const fd = new FormData();
+    fd.set('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'ausweis.pdf');
+    fd.set('title', 'Ausweis');
+    fd.set('classification', 'GWG_EVIDENCE');
+    fd.set('mimeType', 'application/pdf');
+
+    const res = await POST(
+      new NextRequest('http://localhost:3000/api/staff/documents/commit', {
+        method: 'POST',
+        headers: { origin: 'http://localhost:3000' },
+        body: fd,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(m.createDocumentWithVersion).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        documentData: expect.objectContaining({ classification: 'GWG_EVIDENCE' }),
+        pdfPageCount: 3,
+      }),
+    );
+  });
+
+  it('P-13: zählt keine Seiten außerhalb von GwG-Belegen', async () => {
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({
+          documentType: {
+            findFirst: vi
+              .fn()
+              .mockResolvedValue({ id: DOCUMENT_TYPE_ID, tier: 'GOBD', retentionYears: 8 }),
+          },
+        }),
+      )
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({}));
+    m.createDocumentWithVersion.mockResolvedValue({
+      document: { id: '33333333-3333-4333-8333-333333333333' },
+    });
+    m.evidenceRecord.mockResolvedValue(undefined);
+
+    expect((await POST(makeClassificationRequest())).status).toBe(200);
+    expect(m.createDocumentWithVersion).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ pdfPageCount: null }),
     );
   });
 
