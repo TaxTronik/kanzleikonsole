@@ -9,6 +9,7 @@ import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateNumeric } from '@/lib/fmt';
 import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
+import { isPortalFormOpen, isPortalFormRequestClosed } from '@/server/portal/form-open';
 
 const PORTAL_FORM_STATUS_LABELS: Readonly<Record<string, string>> = {
   ...FORM_SUBMISSION_STATUS_LABELS,
@@ -37,18 +38,10 @@ export default async function PortalFormsPage() {
       }),
   );
 
-  const requestClosed = (submission: (typeof submissions)[number]) => {
-    const requests = submission.requestId
-      ? submission.requests.filter((candidate) => candidate.id === submission.requestId)
-      : submission.requests;
-    if (submission.requestId && requests.length !== 1) return true;
-    return requests.some((request) => !['OPEN', 'IN_PROGRESS'].includes(request.status));
-  };
-  const open = submissions.filter(
-    (s) => (s.status === 'PENDING' || s.status === 'DRAFT') && !requestClosed(s),
-  );
+  // REQ-LIFECYCLE-001: dieselbe Regel wie die Startseite (server/portal/form-open).
+  const open = submissions.filter(isPortalFormOpen);
   const done = submissions.filter(
-    (s) => s.status === 'SUBMITTED' || s.status === 'REVIEWED' || requestClosed(s),
+    (s) => s.status === 'SUBMITTED' || s.status === 'REVIEWED' || isPortalFormRequestClosed(s),
   );
 
   return (
@@ -109,7 +102,7 @@ export default async function PortalFormsPage() {
                   {s.name}
                 </Link>
                 <span className="text-xs text-muted">
-                  {requestClosed(s) && (s.status === 'PENDING' || s.status === 'DRAFT')
+                  {isPortalFormRequestClosed(s) && (s.status === 'PENDING' || s.status === 'DRAFT')
                     ? 'Geschlossen'
                     : PORTAL_FORM_STATUS_LABELS[s.status]}
                   {s.submittedAt && ` · ${fmtDateNumeric(s.submittedAt)}`}

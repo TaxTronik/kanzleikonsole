@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-044
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/portal/(protected)/forms/page.tsx
+    rule_ids:
+      - REQ-LIFECYCLE-001
+      - TAX-NOTICE-DECISION-001
+    reason: >-
+      Die Formularliste des Portals nutzt für „offen“ und „Geschlossen“ eine
+      gemeinsame Funktion (server/portal/form-open.ts) mit unveränderter Logik:
+      Ein Formular ist nur offen, solange es PENDING/DRAFT ist und seine gebundene
+      Anforderung offen ist; ohne gebundene Anforderung fail-closed über alle
+      verknüpften Anforderungen. Die Portal-Startseite verwendet dieselbe Regel
+      und zählt an persönliche Rückfragen gebundene Anforderungen wie
+      /portal/requests nicht als allgemeine Anforderung; der gebundene Kontakt
+      sieht seine offene Rückfrage als eigenes To-do. Antwortrechte, Status und
+      Fristen bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/portal/__tests__/form-open.test.ts
+      - apps/web/src/app/portal/(protected)/dashboard/__tests__/page.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-043
     date: '2026-10-05'
     paths:
@@ -2523,6 +2544,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-044` dokumentiert die gemeinsame Regel für
+  offene Portal-Formulare und die Startseite ohne Rückfrage-Anforderungen.
+  Antwortrechte und Fristen bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-043` dokumentiert Renovate statt Dependabot
   und kommentierte Action-Pins in den Workflows. Pins und Nachweise bleiben

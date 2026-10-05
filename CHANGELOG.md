@@ -1096,6 +1096,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Portal-Startseite: An persönliche Bescheid- oder Feedback-Rückfragen
+  gebundene Anforderungen erscheinen wie unter „Anforderungen“ nicht mehr als
+  allgemeine Anforderung, sodass andere Kontakte desselben Mandats Titel und
+  Anzahl nicht mehr sehen; der angefragte Kontakt sieht seine offene
+  Rückfrage als eigenes To-do. Formulare mit geschlossener Anforderung zählen
+  wie in der Formularliste nicht mehr als offen (`REQ-LIFECYCLE-001`,
+  `TAX-NOTICE-DECISION-001`, `FK-EXC-20261005-044`).
 - Abhängigkeiten: Selbst gehostetes Renovate (`renovate.json`,
   `.forgejo/workflows/renovate.yml`) ersetzt die wirkungslose
   Dependabot-Konfiguration (npm mit 7 Tagen Mindestalter, Image-Digests,

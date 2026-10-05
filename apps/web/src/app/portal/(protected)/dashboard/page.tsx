@@ -10,63 +10,101 @@ import {
   MessageSquarePlus,
   MessagesSquare,
   Receipt,
+  UserCheck,
 } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
-import { readModules } from '@/server/settings/modules';
+import { readModules, type ModuleConfig } from '@/server/settings/modules';
 import { portalDashboardVisibility } from '@/server/dashboard/portal-visibility';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { countPortalInboxNeedsClientTx } from '@/server/inbox/queries';
+import { isPortalFormOpen, PORTAL_FORM_OPEN_STATUSES } from '@/server/portal/form-open';
+import { noticeDecisionSnapshot } from '@/server/workflows/interactions';
 
 // Startseite zeigt nur einen Ausschnitt; die vollständigen Listen liegen unter
 // /portal/requests, /portal/forms und /portal/invoices.
 const TODO_LIST_CAP = 10;
 const OPEN_INVOICES_CAP = 5;
+const FEEDBACK_INTERACTION_TITLE = 'Wie zufrieden sind Sie mit unserer Zusammenarbeit?';
 
-export default async function PortalDashboardPage() {
-  const session = await portalAuth();
-  if (!session?.user) redirect('/portal/login');
+function interactionTitle(kind: string, snapshot: unknown): string {
+  if (kind !== 'NOTICE') return FEEDBACK_INTERACTION_TITLE;
+  const parsed = noticeDecisionSnapshot.safeParse(snapshot);
+  return parsed.success ? parsed.data.title : 'Rückfrage zu Ihrem Bescheid';
+}
 
-  const { tenantId, contactId, clientId } = session.user;
-  const ctx = { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' as const };
-  const [visibility, portalFeatures] = await Promise.all([
-    readModules(ctx).then(portalDashboardVisibility),
-    readPortalFeatures(ctx),
-  ]);
+type PortalContactContext = {
+  tenantId: string;
+  actorId: string;
+  actorType: 'CLIENT_CONTACT';
+};
 
-  // F-14: Badges zählen per count() mit exakt den Filtern der (gekappten) Listen.
-  const openRequestWhere: Prisma.RequestWhereInput = {
-    clientId,
-    status: { in: ['OPEN', 'IN_PROGRESS'] },
-  };
-  const openFormWhere: Prisma.FormSubmissionWhereInput = {
-    clientId,
-    status: { in: ['PENDING', 'DRAFT'] },
-  };
+/**
+ * Daten der Startseite in einer Tenant-Transaktion. Zähler und gekappte Listen
+ * nutzen jeweils denselben Filter (F-14); Modulschalter entscheiden, was
+ * überhaupt abgefragt wird.
+ */
+async function loadPortalDashboard(
+  ctx: PortalContactContext,
+  clientId: string,
+  modules: ModuleConfig,
+  clientInbox: boolean,
+) {
+  const { tenantId, actorId: contactId } = ctx;
+  const visibility = portalDashboardVisibility(modules);
+  // Persönliche Rückfragen: dieselben Modulschalter wie /portal/interactions.
+  const interactionKinds = [
+    ...(modules.noticeDecisions && modules.taxNotices ? ['NOTICE'] : []),
+    ...(modules.feedbackSurveys ? ['FEEDBACK'] : []),
+  ];
   const openInvoiceWhere: Prisma.InvoiceWhereInput = {
     clientId,
     status: { in: ['SENT', 'OVERDUE'] },
+  };
+  const openInteractionWhere: Prisma.ClientInteractionWhereInput = {
+    clientId,
+    contactId,
+    status: 'OPEN',
+    expiresAt: { gt: new Date() },
+    kind: { in: interactionKinds },
   };
   const [
     openRequestCount,
     documentCount,
     recentRequests,
     todoRequests,
-    todoForms,
-    openFormCount,
+    formCandidates,
     openInvoices,
     openInvoiceCount,
     inboxNeedsClientCount,
-  ] = await withTenantContext(ctx, async (tx) =>
-    Promise.all([
+    todoInteractions,
+    openInteractionCount,
+  ] = await withTenantContext(ctx, async (tx) => {
+    // Fachkatalog REQ-LIFECYCLE-001 / TAX-NOTICE-DECISION-001: persönlich
+    // gebundene Bescheid- und Feedbackanfragen laufen ausschließlich über
+    // ihren kontaktgebundenen Portalpfad. Wie /portal/requests zählt und listet
+    // die Startseite sie nicht als allgemeine Anforderung — sonst sähen auch
+    // andere Kontakte desselben Mandats Titel und Anzahl. Der Kontakt selbst
+    // sieht seine offenen Rückfragen als eigenes To-do.
+    const interactionRequests = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT r.id FROM public.request r
+      WHERE r.client_id = ${clientId}::uuid AND app.interaction_request(r.id)`;
+    const clientRequestWhere: Prisma.RequestWhereInput = interactionRequests.length
+      ? { clientId, id: { notIn: interactionRequests.map((row) => row.id) } }
+      : { clientId };
+    const openRequestWhere: Prisma.RequestWhereInput = {
+      ...clientRequestWhere,
+      status: { in: ['OPEN', 'IN_PROGRESS'] },
+    };
+    return Promise.all([
       tx.request.count({ where: openRequestWhere }),
       // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
       tx.document.count({
         where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } },
       }),
       tx.request.findMany({
-        where: { clientId },
+        where: clientRequestWhere,
         orderBy: { createdAt: 'desc' },
         take: 5,
         select: { id: true, title: true, status: true, dueAt: true },
@@ -78,15 +116,26 @@ export default async function PortalDashboardPage() {
         orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
         take: TODO_LIST_CAP,
       }),
+      // Offen heißt wie unter /portal/forms: Formular PENDING/DRAFT UND seine
+      // Anforderung noch offen. Die Kandidaten (wenige je Mandant) werden
+      // vollständig geladen, damit Zähler und Liste dieselbe Regel nutzen.
       visibility.forms
         ? tx.formSubmission.findMany({
-            where: openFormWhere,
-            select: { id: true, template: { select: { name: true } } },
+            where: { clientId, status: { in: [...PORTAL_FORM_OPEN_STATUSES] } },
+            select: {
+              id: true,
+              status: true,
+              requestId: true,
+              template: { select: { name: true } },
+              requests: {
+                where: { tenantId, clientId },
+                select: { id: true, status: true },
+                orderBy: { id: 'asc' },
+              },
+            },
             orderBy: { createdAt: 'desc' },
-            take: TODO_LIST_CAP,
           })
         : Promise.resolve([]),
-      visibility.forms ? tx.formSubmission.count({ where: openFormWhere }) : Promise.resolve(0),
       // Offene Rechnungen (versendet / überfällig) — Mandant sieht sie im
       // Portal; hier als Überblick auf der Startseite.
       visibility.invoices
@@ -98,14 +147,63 @@ export default async function PortalDashboardPage() {
           })
         : Promise.resolve([]),
       visibility.invoices ? tx.invoice.count({ where: openInvoiceWhere }) : Promise.resolve(0),
-      portalFeatures.clientInbox
+      clientInbox
         ? countPortalInboxNeedsClientTx(tx, { tenantId, clientId, contactId })
         : Promise.resolve(0),
-    ]),
-  );
+      interactionKinds.length
+        ? tx.clientInteraction.findMany({
+            where: openInteractionWhere,
+            select: { id: true, kind: true, snapshot: true, expiresAt: true },
+            orderBy: { expiresAt: 'asc' },
+            take: TODO_LIST_CAP,
+          })
+        : Promise.resolve([]),
+      interactionKinds.length
+        ? tx.clientInteraction.count({ where: openInteractionWhere })
+        : Promise.resolve(0),
+    ]);
+  });
+  const openForms = formCandidates.filter(isPortalFormOpen);
+  return {
+    visibility,
+    openRequestCount,
+    documentCount,
+    recentRequests,
+    todoRequests,
+    openFormCount: openForms.length,
+    todoForms: openForms.slice(0, TODO_LIST_CAP),
+    openInvoices,
+    openInvoiceCount,
+    inboxNeedsClientCount,
+    todoInteractions,
+    openInteractionCount,
+  };
+}
 
-  const todoCount = openRequestCount + openFormCount;
-  const todoShown = todoRequests.length + todoForms.length;
+export default async function PortalDashboardPage() {
+  const session = await portalAuth();
+  if (!session?.user) redirect('/portal/login');
+
+  const { tenantId, contactId, clientId } = session.user;
+  const ctx = { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' as const };
+  const [modules, portalFeatures] = await Promise.all([readModules(ctx), readPortalFeatures(ctx)]);
+  const {
+    visibility,
+    openRequestCount,
+    documentCount,
+    recentRequests,
+    todoRequests,
+    openFormCount,
+    todoForms,
+    openInvoices,
+    openInvoiceCount,
+    inboxNeedsClientCount,
+    todoInteractions,
+    openInteractionCount,
+  } = await loadPortalDashboard(ctx, clientId, modules, portalFeatures.clientInbox);
+
+  const todoCount = openRequestCount + openFormCount + openInteractionCount;
+  const todoShown = todoRequests.length + todoForms.length + todoInteractions.length;
 
   return (
     <div className="p-8">
@@ -138,6 +236,25 @@ export default async function PortalDashboardPage() {
           </div>
         ) : (
           <ul className="divide-y divide-border-subtle">
+            {todoInteractions.map((interaction) => (
+              <li
+                key={`interaction-${interaction.id}`}
+                className="px-6 py-3 flex items-center justify-between gap-3"
+              >
+                <Link
+                  href="/portal/interactions"
+                  className="flex items-center gap-3 min-w-0 hover:underline"
+                >
+                  <UserCheck className="h-4 w-4 text-brand-600 shrink-0" />
+                  <span className="text-sm text-primary truncate">
+                    {interactionTitle(interaction.kind, interaction.snapshot)}
+                  </span>
+                </Link>
+                <span className="text-xs text-muted shrink-0">
+                  Antwort bis {fmtDateShort(interaction.expiresAt)}
+                </span>
+              </li>
+            ))}
             {todoRequests.map((r) => (
               <li key={`req-${r.id}`} className="px-6 py-3 flex items-center justify-between gap-3">
                 <Link
@@ -170,25 +287,27 @@ export default async function PortalDashboardPage() {
               ))}
           </ul>
         )}
-        {todoCount > todoShown && (
-          <div className="card-footer">
-            <span>
-              {todoShown.toLocaleString('de-DE')} von {todoCount.toLocaleString('de-DE')} angezeigt
-            </span>
-            <span className="flex flex-wrap items-center gap-3">
-              {openRequestCount > todoRequests.length && (
-                <Link href="/portal/requests" className="text-brand-700 hover:underline">
-                  Alle Anforderungen
-                </Link>
-              )}
-              {openFormCount > todoForms.length && (
-                <Link href="/portal/forms" className="text-brand-700 hover:underline">
-                  Alle Formulare
-                </Link>
-              )}
-            </span>
-          </div>
-        )}
+        <TodoListFooter
+          shown={todoShown}
+          total={todoCount}
+          links={[
+            {
+              href: '/portal/requests',
+              label: 'Alle Anforderungen',
+              more: openRequestCount > todoRequests.length,
+            },
+            {
+              href: '/portal/forms',
+              label: 'Alle Formulare',
+              more: openFormCount > todoForms.length,
+            },
+            {
+              href: '/portal/interactions',
+              label: 'Alle Rückmeldungen',
+              more: openInteractionCount > todoInteractions.length,
+            },
+          ]}
+        />
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -281,6 +400,35 @@ export default async function PortalDashboardPage() {
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Hinweis „x von y angezeigt“ mit Links auf die vollständigen Listen. */
+function TodoListFooter({
+  shown,
+  total,
+  links,
+}: {
+  shown: number;
+  total: number;
+  links: ReadonlyArray<{ href: string; label: string; more: boolean }>;
+}) {
+  if (total <= shown) return null;
+  return (
+    <div className="card-footer">
+      <span>
+        {shown.toLocaleString('de-DE')} von {total.toLocaleString('de-DE')} angezeigt
+      </span>
+      <span className="flex flex-wrap items-center gap-3">
+        {links
+          .filter((link) => link.more)
+          .map((link) => (
+            <Link key={link.href} href={link.href} className="text-brand-700 hover:underline">
+              {link.label}
+            </Link>
+          ))}
+      </span>
     </div>
   );
 }
