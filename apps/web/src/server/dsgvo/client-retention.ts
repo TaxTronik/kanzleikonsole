@@ -16,6 +16,7 @@
 // Fristmechanik analog server/gwg/retention.ts (Jahresende-Rundung).
 // =============================================================================
 
+import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import { GWG_RETENTION_YEARS } from '@/server/gwg/retention';
 import { POA_PERSONAL_DATA_PRESENT_WHERE } from '@/server/dsgvo/anonymize-client-data';
@@ -75,15 +76,32 @@ export interface PoaSignerAnonymizationItem {
  * SQL-Vorfilter über das Jahr, exakte Prüfung via isClientAnonymizationDue.
  * `tx` wird übergeben → kein Modul-Level-DB-Import (testbar).
  */
+/**
+ * Datenbankfilter der Anonymisierungs-Queue. Mandatsende vor dem 1.1. des
+ * Jahres (now − 10) ist genau isClientAnonymizationDue: Fälligkeit ab dem
+ * 1.1. des elften Folgejahres des Mandatsende-Jahres.
+ */
+export function dueClientAnonymizationsWhere(now: Date = new Date()): Prisma.ClientWhereInput {
+  const cutoff = new Date(Date.UTC(now.getUTCFullYear() - CLIENT_ANONYMIZATION_YEARS, 0, 1));
+  return { kind: 'NATPERS', anonymizedAt: null, mandateEndedAt: { lt: cutoff } };
+}
+
+/** P-21: Anzahl für die Admin-Kachel per COUNT statt Laden aller Mandanten. */
+export async function countDueClientAnonymizations(
+  tx: TxClient,
+  now: Date = new Date(),
+): Promise<number> {
+  return tx.client.count({ where: dueClientAnonymizationsWhere(now) });
+}
+
 export async function findDueClientAnonymizations(
   tx: TxClient,
   now: Date = new Date(),
 ): Promise<ClientAnonymizationItem[]> {
-  // Grobfilter: Mandat endete vor dem 1.1. des Jahres (now - 10). Die exakte
-  // Jahresende-Rundung macht isClientAnonymizationDue.
-  const cutoff = new Date(Date.UTC(now.getUTCFullYear() - CLIENT_ANONYMIZATION_YEARS, 0, 1));
+  // Exakter Filter (dueClientAnonymizationsWhere); isClientAnonymizationDue
+  // unten bleibt als Absicherung derselben Jahresende-Rundung.
   const clients = await tx.client.findMany({
-    where: { kind: 'NATPERS', anonymizedAt: null, mandateEndedAt: { lt: cutoff } },
+    where: dueClientAnonymizationsWhere(now),
     select: {
       id: true,
       name: true,

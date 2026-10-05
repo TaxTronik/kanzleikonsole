@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./env": "./src/env.ts",
     "./job-queues": "./src/job-queues.ts",
-    "./logger": "./src/logger.ts"
+    "./logger": "./src/logger.ts",
+    "./update-manifest": "./src/update-manifest.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

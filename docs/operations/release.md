@@ -211,7 +211,11 @@ konfiguriertem `UPDATE_MANIFEST_URL` + `UPDATE_PUBLIC_KEY` zeigen dann in der
 Admin-UI „Update verfügbar" — inklusive Release-Notes (Tag-Annotation) und
 `migrationsRequired` (automatisch aus dem Migrations-Diff zum Vortag-Release).
 Die Signaturprüfung ist fail-closed: ohne gültige Signatur wird kein Update
-angezeigt. Es gibt bewusst **kein Auto-Update** — einspielen bleibt
+angezeigt. Den Abruf übernimmt der Worker-Job `update-check` alle sechs Stunden;
+die Admin-Übersicht zeigt nur dessen gespeichertes Ergebnis samt Prüfzeitpunkt
+und wartet nie auf den Update-Server. `UPDATE_MANIFEST_URL` und
+`UPDATE_PUBLIC_KEY` müssen deshalb auch im Worker gesetzt sein (Compose reicht
+beide durch). Es gibt bewusst **kein Auto-Update** — einspielen bleibt
 `./taxtronik update`.
 
 **Einmaliges Vendor-Setup:**

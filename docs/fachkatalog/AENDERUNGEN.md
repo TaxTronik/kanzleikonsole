@@ -1,5 +1,36 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-028
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/server/dsgvo/__tests__/client-retention.test.ts
+      - apps/web/src/server/dsgvo/client-retention.ts
+      - apps/web/src/server/gwg/retention.ts
+      - apps/web/src/server/update/manifest.ts
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - DSGVO-MANDATE-ANONYMIZATION-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - POA-SIGNER-RETENTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+    reason: >-
+      Die Admin-Übersicht ruft den Update-Server nicht mehr bei jedem Aufruf ab;
+      die unveränderte Prüfung des signierten Manifests (Signatur, striktes Schema,
+      Größen- und Zeitgrenzen) wandert nach @taxtronik/config und läuft als
+      Hintergrundjob alle sechs Stunden, die Seite liest das gespeicherte Ergebnis.
+      Die Kacheln zählen löschreife GwG-Belege und fällige Anonymisierungen per
+      COUNT. Der Anonymisierungsfilter ist genau isClientAnonymizationDue, der
+      GwG-Filter bildet Fristbeginn und Löschfrist von findDueGwgDeletionDocs nach;
+      ein PostgreSQL-Test prüft die Gleichheit zu fünf Stichtagen. Fristlogik,
+      Review-Queues und Löschentscheidungen bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/update-check.test.ts
+      - packages/config/src/__tests__/update-check-result.test.ts
+      - packages/db/src/__tests__/gwg-retention-count.test.ts
+      - apps/web/src/server/dsgvo/__tests__/client-retention.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-027
     date: '2026-10-05'
     paths:
@@ -2106,6 +2137,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-028` dokumentiert den Update-Check als
+  Hintergrundjob und die COUNT-Kacheln der Admin-Übersicht. Fristlogik und
+  Review-Queues bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-027` dokumentiert die seitenweise
   Jahreswechsel-Übersicht und den gesammelten Rollout. Kampagnenlogik und

@@ -269,6 +269,17 @@ export const JOB_QUEUES = {
       expectedMaxGapMs: 5 * MINUTE,
     },
   },
+  updateCheck: {
+    name: 'update-check',
+    schedule: {
+      // P-21: signiertes Update-Manifest abrufen und das Ergebnis je Tenant
+      // speichern; die Admin-Übersicht liest nur noch dieses Ergebnis.
+      schedulerId: 'update-check',
+      repeat: { every: 6 * HOUR },
+      jobOptions: DAILY_RETRY,
+      expectedMaxGapMs: 6 * HOUR,
+    },
+  },
   n8nDeliver: { name: 'n8n-deliver', schedule: null },
   n8nOutboxReconcile: {
     name: 'n8n-outbox-reconcile',
@@ -468,6 +479,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.backupRun.name]: ChecksJob;
   [JOB_QUEUES.backupDrill.name]: ChecksJob;
   [JOB_QUEUES.healthAlert.name]: ChecksJob;
+  [JOB_QUEUES.updateCheck.name]: EmptyJob;
   [JOB_QUEUES.n8nDeliver.name]: N8nDeliverJob;
   [JOB_QUEUES.n8nOutboxReconcile.name]: EmptyJob;
   [JOB_QUEUES.workflowN8nDispatch.name]: EmptyJob;

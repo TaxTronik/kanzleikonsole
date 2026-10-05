@@ -174,6 +174,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/__tests__/form-upload-discard-rls.test.ts',
   'packages/db/src/__tests__/gwg-id-document-request-lifecycle.test.ts',
   'packages/db/src/__tests__/gwg-open-first-check-retention.test.ts',
+  // GWG-RETENTION-DESTRUCTION-001 (P-21): Owner-Fixtures je Fristzweig; die App-Rolle
+  // vergleicht COUNT-Filter und JS-Fristlogik der Löschqueue unter RLS.
+  'packages/db/src/__tests__/gwg-retention-count.test.ts',
   'packages/db/src/__tests__/invoice-xrechnung-document-link.test.ts',
   // Integrationsbeweis fuer die deferrable TaxDeadline/Request-Pointer-Trigger:
   // Owner legt gezielt inkonsistente Mutationen vor; die App-Rolle prueft

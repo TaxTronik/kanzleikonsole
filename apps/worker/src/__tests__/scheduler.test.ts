@@ -58,6 +58,8 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   backupRun: ['daily-backup-run', { pattern: '0 1 * * *', tz: UTC }, BACKUP_RETRY],
   backupDrill: ['monthly-backup-drill', { pattern: '0 5 1 * *', tz: UTC }, BACKUP_RETRY],
   healthAlert: ['health-alert', { every: 5 * MINUTE }, undefined],
+  // P-21: new scheduler for the stored update check.
+  updateCheck: ['update-check', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
   n8nOutboxReconcile: ['n8n-outbox-reconcile', { every: 5 * MINUTE }, undefined],
   workflowN8nDispatch: ['workflow-n8n-dispatch-reconcile', { every: MINUTE }, undefined],
   workflowFeedback: ['workflow-feedback', { every: MINUTE }, undefined],

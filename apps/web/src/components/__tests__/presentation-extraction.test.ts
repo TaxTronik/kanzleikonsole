@@ -17,6 +17,14 @@ describe('Verhaltensneutrale Darstellungsextraktionen', () => {
       'readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY)',
     );
     expect(admin).toContain('<AuditStatusCard verifyResult={verifyResult} />');
+    // P-21: kein Update-Server-Aufruf im Render-Pfad, Zählungen per COUNT.
+    expect(admin).not.toContain('checkForUpdates(');
+    expect(admin).toContain(
+      'readTenantSettingValue(tx, tenantId, UPDATE_CHECK_RESULT_SETTING_KEY)',
+    );
+    expect(admin).toContain('countDueGwgDeletionDocs(tx)');
+    expect(admin).toContain('countDueClientAnonymizations(tx)');
+    expect(admin).not.toContain('findDueGwgDeletionDocs');
     expect(admin).toContain('<BackupStatusCard lastBackup={lastBackup} drill={drill} />');
     expect(cards).not.toContain('withTenantContext(');
     expect(cards).not.toContain('await ');

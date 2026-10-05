@@ -220,6 +220,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die Admin-Übersicht zeigt das gespeicherte Ergebnis des Update-Checks
+  (Hintergrunddienst alle sechs Stunden) mit Prüfzeitpunkt und wartet nicht
+  mehr bei jedem Aufruf auf den Update-Server; die Kacheln für löschreife
+  GwG-Belege und fällige Anonymisierungen zählen per COUNT, die Ladevorgänge
+  laufen parallel (`ASSURANCE-RELEASE-EVIDENCE-001`,
+  `GWG-RETENTION-DESTRUCTION-001`, `DSGVO-MANDATE-ANONYMIZATION-001`,
+  `FK-EXC-20261005-028`).
 - Die Jahreswechsel-Übersicht blättert Kampagnen und Einträge seitenweise und
   zeigt die Statusverteilung je Kampagne, statt alle Kampagnen, Einträge und
   Einreichungen zu laden und im Render quadratisch abzugleichen. Der Rollout

@@ -8,6 +8,8 @@ import {
   isClientAnonymizationDue,
   findDueClientAnonymizations,
   findDuePoaSignerAnonymizations,
+  countDueClientAnonymizations,
+  dueClientAnonymizationsWhere,
   CLIENT_ANONYMIZATION_YEARS,
   HAND_FILE_RETENTION_YEARS,
 } from '../client-retention';
@@ -117,6 +119,42 @@ describe('findDueClientAnonymizations — Review-Queue (NATPERS, Fristablauf)', 
     ]);
 
     expect(await findDueClientAnonymizations(tx, NOW)).toEqual([]);
+  });
+});
+
+describe('countDueClientAnonymizations — Admin-Kachel per COUNT (P-21)', () => {
+  it('zählt mit genau dem Filter der Review-Queue', async () => {
+    const NOW = new Date('2037-06-01T00:00:00Z');
+    const count = vi.fn().mockResolvedValue(3);
+    const tx = { client: { count } } as unknown as TxClient;
+
+    expect(await countDueClientAnonymizations(tx, NOW)).toBe(3);
+    expect(count).toHaveBeenCalledWith({ where: dueClientAnonymizationsWhere(NOW) });
+    expect(dueClientAnonymizationsWhere(NOW)).toEqual({
+      kind: 'NATPERS',
+      anonymizedAt: null,
+      mandateEndedAt: { lt: new Date(Date.UTC(2027, 0, 1)) },
+    });
+  });
+
+  it('der Datenbankfilter entspricht exakt isClientAnonymizationDue', () => {
+    const nows = ['2036-12-31T23:59:59Z', '2037-01-01T00:00:00Z', '2037-06-01T00:00:00Z'];
+    const ends = [
+      '2025-12-31T23:59:59Z',
+      '2026-01-01T00:00:00Z',
+      '2026-06-15T12:00:00Z',
+      '2026-12-31T23:59:59Z',
+      '2027-01-01T00:00:00Z',
+    ];
+    for (const nowIso of nows)
+      for (const endIso of ends) {
+        const now = new Date(nowIso);
+        const end = new Date(endIso);
+        const where = dueClientAnonymizationsWhere(now) as { mandateEndedAt: { lt: Date } };
+        expect(end < where.mandateEndedAt.lt, `${endIso} @ ${nowIso}`).toBe(
+          isClientAnonymizationDue(end, now),
+        );
+      }
   });
 });
 

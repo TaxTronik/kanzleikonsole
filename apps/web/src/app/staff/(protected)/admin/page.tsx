@@ -34,11 +34,15 @@ import {
   AUDIT_VERIFY_RESULT_SETTING_KEY,
   type PersistedVerifyResult,
 } from '@taxtronik/evidence';
-import { checkForUpdates, type CheckResult } from '@/server/update/manifest';
+import {
+  evaluateStoredUpdateCheck,
+  UPDATE_CHECK_RESULT_SETTING_KEY,
+  type StoredUpdateStatus,
+} from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus, type SetupStatus } from '@/server/setup/status';
-import { findDueGwgDeletionDocs } from '@/server/gwg/retention';
-import { findDueClientAnonymizations } from '@/server/dsgvo/client-retention';
+import { countDueGwgDeletionDocs } from '@/server/gwg/retention';
+import { countDueClientAnonymizations } from '@/server/dsgvo/client-retention';
 import { LicenseCard } from './license-card';
 import { BackupRunButton } from './backup-run-button';
 import { CountUp } from '@/components/count-up';
@@ -70,51 +74,55 @@ export default async function AdminPage() {
 
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
+  // P-21: unabhängige Loader parallel; kein Aufruf des Update-Servers im
+  // Render-Pfad (Ergebnis des Worker-Jobs update-check), Zählungen per COUNT.
   const [
-    verifySetting,
-    lastBackup,
-    drillSetting,
-    openDsgvoCount,
-    providerCount,
-    contactCount,
-    gwgDueCount,
-    anonDueCount,
-    legacyStorageVersionCount,
-  ] = await withTenantContext(ctx, async (tx) =>
-    Promise.all([
-      // P-1: Chain-Verifikation läuft NICHT im Render-Pfad (SHA-256 über den
-      // ganzen Log; Sekunden bei 200k, P2028 ab ~500k). Nur das vom täglichen
-      // Worker-Job (audit-verify-check) persistierte Ergebnis lesen — wie die
-      // Audit-Seite (admin/audit/page.tsx).
-      readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
-      tx.backupRecord.findFirst({
-        orderBy: { startedAt: 'desc' },
-      }),
-      // Letztes Restore-Drill-Ergebnis (monatlicher Worker-Job — Art. 32
-      // DSGVO Wirksamkeitsnachweis). Nur lesen, nie hier rechnen.
-      readTenantSettingValue(tx, tenantId, BACKUP_DRILL_RESULT_SETTING_KEY),
-      tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
-      tx.serviceProvider.count(),
-      tx.clientContact.count({ where: { active: true } }),
-      findDueGwgDeletionDocs(tx).then((d) => d.length),
-      findDueClientAnonymizations(tx).then((d) => d.length),
-      tx.documentVersion.count({
-        where: { immutable: true, storageVersionId: null },
-      }),
-    ]),
-  );
+    [
+      verifySetting,
+      lastBackup,
+      drillSetting,
+      openDsgvoCount,
+      providerCount,
+      contactCount,
+      gwgDueCount,
+      anonDueCount,
+      legacyStorageVersionCount,
+      updateSetting,
+    ],
+    setup,
+    license,
+  ] = await Promise.all([
+    withTenantContext(ctx, async (tx) =>
+      Promise.all([
+        // P-1: Chain-Verifikation läuft NICHT im Render-Pfad (SHA-256 über den
+        // ganzen Log; Sekunden bei 200k, P2028 ab ~500k). Nur das vom täglichen
+        // Worker-Job (audit-verify-check) persistierte Ergebnis lesen — wie die
+        // Audit-Seite (admin/audit/page.tsx).
+        readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
+        tx.backupRecord.findFirst({
+          orderBy: { startedAt: 'desc' },
+        }),
+        // Letztes Restore-Drill-Ergebnis (monatlicher Worker-Job — Art. 32
+        // DSGVO Wirksamkeitsnachweis). Nur lesen, nie hier rechnen.
+        readTenantSettingValue(tx, tenantId, BACKUP_DRILL_RESULT_SETTING_KEY),
+        tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
+        tx.serviceProvider.count(),
+        tx.clientContact.count({ where: { active: true } }),
+        countDueGwgDeletionDocs(tx),
+        countDueClientAnonymizations(tx),
+        tx.documentVersion.count({
+          where: { immutable: true, storageVersionId: null },
+        }),
+        readTenantSettingValue(tx, tenantId, UPDATE_CHECK_RESULT_SETTING_KEY),
+      ]),
+    ),
+    getSetupStatus(ctx),
+    getLicenseInfo(),
+  ]);
 
   const drill = (drillSetting ?? null) as PersistedDrillResult | null;
   const verifyResult = (verifySetting ?? null) as PersistedVerifyResult | null;
-
-  const setup = await getSetupStatus(ctx);
-
-  // Update-Check (best effort, blockt nicht)
-  const updateCheck = await checkForUpdates(APP_VERSION).catch(
-    (): CheckResult => ({ ok: false, error: 'Update-Server nicht erreichbar.' }),
-  );
-
-  const license = await getLicenseInfo();
+  const updateCheck = evaluateStoredUpdateCheck(updateSetting, APP_VERSION);
 
   // --- Systemstatus-Aggregation (nur Darstellung der bereits geladenen Daten) ---
   const issues: StatusIssue[] = [];
@@ -135,10 +143,10 @@ export default async function AdminPage() {
   if (drill && !drill.ok) {
     issues.push({ href: '#backup', label: 'Restore-Test fehlgeschlagen' });
   }
-  if (updateCheck.ok && 'hasUpdate' in updateCheck && updateCheck.hasUpdate) {
+  if (updateCheck.hasUpdate) {
     issues.push({
       href: '#updates',
-      label: `${updateCheck.newer?.length ?? 1} neuere Version${(updateCheck.newer?.length ?? 0) === 1 ? '' : 'en'} verfügbar`,
+      label: `${updateCheck.newerCount} neuere Version${updateCheck.newerCount === 1 ? '' : 'en'} verfügbar`,
     });
   }
   if (openDsgvoCount > 0) {
@@ -361,17 +369,11 @@ export default async function AdminPage() {
   );
 }
 
-function UpdateStatusCard({ updateCheck }: { updateCheck: CheckResult }) {
+function UpdateStatusCard({ updateCheck }: { updateCheck: StoredUpdateStatus }) {
   return (
     <div id="updates" className="card p-6 scroll-mt-6">
       <div className="flex items-start gap-3 mb-2">
-        <span
-          className={`kpi-chip ${
-            updateCheck.ok && 'hasUpdate' in updateCheck && updateCheck.hasUpdate
-              ? 'chip-amber'
-              : 'chip-green'
-          }`}
-        >
+        <span className={`kpi-chip ${updateCheck.hasUpdate ? 'chip-amber' : 'chip-green'}`}>
           <Package className="h-4 w-4" />
         </span>
         <div className="flex-1">
@@ -379,11 +381,15 @@ function UpdateStatusCard({ updateCheck }: { updateCheck: CheckResult }) {
           <StatusLine tone="gray">
             Installiert: <strong>{APP_VERSION}</strong>
           </StatusLine>
-          {updateCheck.ok ? (
-            'hasUpdate' in updateCheck && updateCheck.hasUpdate ? (
+          {updateCheck.checkedAt === null ? (
+            <StatusLine tone="gray">
+              Noch nicht geprüft — der Hintergrunddienst prüft alle 6 Stunden.
+            </StatusLine>
+          ) : updateCheck.ok ? (
+            updateCheck.hasUpdate ? (
               <StatusLine tone="amber">
-                {updateCheck.newer?.length} neuere Version
-                {updateCheck.newer && updateCheck.newer.length === 1 ? '' : 'en'} verfügbar
+                {updateCheck.newerCount} neuere Version
+                {updateCheck.newerCount === 1 ? '' : 'en'} verfügbar
               </StatusLine>
             ) : (
               <StatusLine tone="green">Aktuell auf dem neuesten Stand.</StatusLine>
@@ -391,6 +397,15 @@ function UpdateStatusCard({ updateCheck }: { updateCheck: CheckResult }) {
           ) : (
             <StatusLine tone="gray">
               {updateCheck.warning ?? updateCheck.error ?? 'Update-Server nicht konfiguriert.'}
+            </StatusLine>
+          )}
+          {updateCheck.ok && updateCheck.warning && (
+            <StatusLine tone="gray">{updateCheck.warning}</StatusLine>
+          )}
+          {updateCheck.checkedAt && (
+            <StatusLine tone={updateCheck.stale ? 'amber' : 'gray'}>
+              Zuletzt geprüft: {fmtDateTimeShort(updateCheck.checkedAt)}
+              {updateCheck.stale ? ' — veraltet, Hintergrunddienst prüfen' : ''}
             </StatusLine>
           )}
         </div>

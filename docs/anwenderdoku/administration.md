@@ -309,5 +309,7 @@ Einbindung eines Dienstleisters bleiben unabhängig davon zu prüfen.
   dem IST-Zustand des Systems (Quick-Link auf der Admin-Startseite); bei
   wesentlichen Konfigurationsänderungen neu erzeugen und ablegen.
 - **Updates:** Die Karte „Versionen/Updates" zeigt die installierte Version
-  und verfügbare Releases (signiertes Update-Manifest). Eingespielt wird
-  ausschließlich vom Server-Betreiber.
+  und verfügbare Releases (signiertes Update-Manifest) mit dem Zeitpunkt der
+  letzten Prüfung. Der Hintergrunddienst prüft alle sechs Stunden; ein
+  Ergebnis, das älter als zwei Tage ist, wird als veraltet markiert. Eingespielt
+  wird ausschließlich vom Server-Betreiber.

@@ -17,6 +17,7 @@
 // bestätigt der Berufsträger (kein stilles Auto-Delete von Rechtsbelegen).
 // =============================================================================
 
+import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 
 export const GWG_RETENTION_YEARS = 5;
@@ -124,6 +125,51 @@ export function gwgDocumentEffectiveStart(
   // berücksichtigt.
   void now;
   return context.createdAt;
+}
+
+/**
+ * Erster Fristbeginn, der zum Zeitpunkt `now` NICHT mehr löschreif ist:
+ * gwgDeletionDeadline(start) <= now  ⇔  start < 1.1.(Jahr(now) − 5) (UTC).
+ */
+function gwgDueStartCutoff(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear() - GWG_RETENTION_YEARS, 0, 1));
+}
+
+const VERIFIED_GWG_CHECK: Prisma.GwgCheckWhereInput = {
+  OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }],
+};
+
+/**
+ * P-21: dieselbe Auswahl wie findDueGwgDeletionDocs als Datenbankfilter, damit
+ * Kacheln zählen können, ohne alle Belege zu laden. Bildet
+ * gwgDocumentEffectiveStart + gwgDeletionDeadline exakt nach (Gleichheit prüft
+ * gwg-retention-count.test.ts gegen PostgreSQL): Fristbeginn ist das
+ * Mandatsende, sonst — ohne zustande gekommene Beziehung und ohne verifizierten
+ * verknüpften Check — die Erfassung des Belegs.
+ */
+export function dueGwgDeletionDocsWhere(now: Date = new Date()): Prisma.DocumentWhereInput {
+  const cutoff = gwgDueStartCutoff(now);
+  return {
+    classification: 'GWG_EVIDENCE',
+    deletedAt: null,
+    OR: [
+      { client: { is: { mandateEndedAt: { lt: cutoff } } } },
+      {
+        createdAt: { lt: cutoff },
+        client: { is: { mandateEndedAt: null, allowActive: false, onboardingCompletedAt: null } },
+        gwgIdDocuments: { none: { check: { is: VERIFIED_GWG_CHECK } } },
+        NOT: { gwgOnboardingInvite: { is: { gwgCheck: { is: VERIFIED_GWG_CHECK } } } },
+      },
+    ],
+  };
+}
+
+/** Anzahl der löschreifen GwG-Belege (Admin-Kachel) per COUNT statt Volllast. */
+export async function countDueGwgDeletionDocs(
+  tx: TxClient,
+  now: Date = new Date(),
+): Promise<number> {
+  return tx.document.count({ where: dueGwgDeletionDocsWhere(now) });
 }
 
 export interface GwgDeletionItem {
