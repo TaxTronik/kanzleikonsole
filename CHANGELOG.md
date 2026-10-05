@@ -23,6 +23,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- CI-Prüfung `pnpm verify:fk-indexes` meldet Fremdschlüssel ohne führenden
+  Index; bestehende Ausnahmen stehen in einer begründeten Allowlist
+  (`FK-EXC-20261005-008`).
 - Dashboard-Widget „Mein Arbeitskorb“ mit den persönlichen Aufgaben, Terminen
   und Eingängen, ihren Fälligkeiten und direktem Link zum Arbeitskorb. Es nutzt
   dieselben Modul- und Zugriffsfilter wie die Arbeitskorbseite
@@ -217,6 +220,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Indizes für `time_entry.invoice_id`,
+  `workflow_dependency.successor_item_id` und `tax_notice.filing_id`
+  beschleunigen Storno, Workflow-Bereitschaft und Bescheidzuordnung
+  (`FK-EXC-20261005-008`).
 - **[Scope]** Neue Indizes auf `audit_log` nach Aktion und Akteur beschleunigen
   Los-Liste, Vier-Augen-Prüfung des Risikokatalogs, Kategoriefilter der
   Audit-Seite und DSGVO-Kontaktauskunft; bei 3 Mio. Einträgen von bis zu

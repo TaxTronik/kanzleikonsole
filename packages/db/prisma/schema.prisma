@@ -346,6 +346,8 @@ model WorkflowDependency {
   creator           StaffUser    @relation(fields: [createdBy], references: [id], onDelete: NoAction)
 
   @@unique([predecessorItemId, successorItemId])
+  // D-05: Vorgänger eines Schritts (Bereitschaft) und Cascade beim Löschen.
+  @@index([successorItemId])
   @@map("workflow_dependency")
 }
 
@@ -1424,6 +1426,8 @@ model TimeEntry {
   @@index([tenantId, staffId, startedAt])
   @@index([tenantId, clientId, startedAt])
   @@index([tenantId, clientId, billable, invoiceId])
+  // D-05: Storno gibt Leistungen per invoice_id frei; FK-Prüfung beim Löschen.
+  @@index([invoiceId])
   @@map("time_entry")
 }
 
@@ -3124,6 +3128,8 @@ model TaxNotice {
   @@index([tenantId, clientId])
   @@index([tenantId, status, appealDeadline])
   @@index([tenantId, documentId])
+  // D-05: Bescheide einer Erklärung (Relation) und SET NULL beim Löschen.
+  @@index([filingId])
   @@map("tax_notice")
 }
 

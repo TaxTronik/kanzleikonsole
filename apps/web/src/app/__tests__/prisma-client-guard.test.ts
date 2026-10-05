@@ -188,6 +188,8 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-TENANT-RLS-001: Owner-Fixtures in einem frischen Tenant; die App-Rolle prüft
   // die sechs Policies mit leerem/fehlendem Kontext und im parallelen Worker (D-04).
   'packages/db/src/__tests__/rls-current-tenant-helper.test.ts',
+  // D-05: Owner liest nur Katalogdaten (pg_constraint, pg_index) für das FK-Index-Gate.
+  'packages/db/src/__tests__/fk-index-gate.test.ts',
   // Session-Limits: eigene Clients mit und ohne Grenzen beweisen, dass nur der
   // App-Client statement_timeout und idle_in_transaction_session_timeout setzt.
   'packages/db/src/__tests__/app-session-limits.test.ts',
@@ -203,6 +205,8 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // RLS-Drift-Gate: introspectiert pg_catalog für ENABLE/FORCE RLS + Policies.
   // Owner-Verbindung (BYPASSRLS), bewusst kein App-Request-Pfad.
   'packages/db/scripts/verify-rls.ts',
+  // D-05: CI-Gate „FK ohne führenden Index“ liest nur Katalogdaten der migrierten DB.
+  'packages/db/scripts/verify-fk-indexes.ts',
 ]);
 
 function walk(dir: string, acc: string[]): void {

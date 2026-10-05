@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-008
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - packages/db/prisma/migrations/20261005100400_fk_indexes_followup/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - INV-STORNO-REFERENCE-001
+      - INV-TIME-ENTRY-CLAIM-001
+      - WORKFLOW-DEPENDENCY-001
+      - TAX-NOTICE-APPEAL-001
+    reason: >-
+      Neue Indizes auf time_entry.invoice_id, workflow_dependency.successor_item_id
+      und tax_notice.filing_id beschleunigen Fremdschlüsselprüfungen bei Storno und
+      Löschung sowie Workflow-Bereitschaft und Bescheidzuordnung. Die neue
+      CI-Prüfung verify:fk-indexes läuft im db-Job direkt nach verify:rls und meldet
+      Fremdschlüssel ohne führenden Index mit begründeter Allowlist. Bestehende
+      Gates, Regeln und Datenzugriffe bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/fk-index-gate.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-007
     date: '2026-10-05'
     paths:
@@ -1602,6 +1624,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-008` dokumentiert drei Fremdschlüssel-Indizes
+  und die CI-Prüfung auf Fremdschlüssel ohne führenden Index. Regeln und
+  Datenzugriffe bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-007` dokumentiert, dass alle RLS-Policies den
   Tenant-Kontext über `app.current_tenant_id()` lesen. Sichtbare Zeilen

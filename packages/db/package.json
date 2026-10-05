@@ -42,7 +42,8 @@
     "verify:migration-line-endings": "node scripts/check-migration-line-endings.mjs",
     "verify:invariants": "node --env-file-if-exists=../../.env scripts/check-db-invariants.mjs",
     "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts",
-    "verify:rls": "tsx --env-file-if-exists=../../.env scripts/verify-rls.ts"
+    "verify:rls": "tsx --env-file-if-exists=../../.env scripts/verify-rls.ts",
+    "verify:fk-indexes": "tsx --env-file-if-exists=../../.env scripts/verify-fk-indexes.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

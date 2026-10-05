@@ -346,6 +346,12 @@ jobs:
       - name: RLS drift gate
         run: pnpm verify:rls
 
+      # D-05: Fremdschlüssel ohne führenden Index (FK-Prüfung und Joins lesen
+      # sonst die ganze Kindtabelle). Allowlist und Regel stehen in
+      # packages/db/scripts/fk-index-coverage.ts.
+      - name: FK index gate
+        run: pnpm verify:fk-indexes
+
       - name: Evidence chain CLI
         run: pnpm verify:chain
 
