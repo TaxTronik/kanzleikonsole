@@ -44,6 +44,11 @@ import {
   GwgOnboardingRepresentativeSchema,
 } from '@/server/gwg-onboarding/representative-submission';
 import { validateOnboardingSubmission } from '@/server/gwg-onboarding/submission-validation';
+import {
+  FINALIZED_INVITE_UPLOAD,
+  FINALIZED_INVITE_UPLOAD_IDS,
+  inviteUploadIds,
+} from '@/server/gwg-onboarding/invite-uploads';
 import { OnboardingIdentitySetConflictError } from '@/server/gwg-onboarding/identity-persistence';
 import {
   BoundInviteDraftChangedError,
@@ -181,6 +186,8 @@ async function loadInviteForWrite(rawToken: string) {
           idDocuments: { select: { documentId: true } },
         },
       },
+      // D-08: Uploads der Einladung allein über document.gwg_onboarding_invite_id.
+      uploadedDocuments: FINALIZED_INVITE_UPLOAD_IDS,
     },
   });
   if (!inv) throw new Error(GENERIC_TOKEN_ERROR);
@@ -411,9 +418,12 @@ export async function uploadIdImageAction(input: {
         resourceId: pendingDocumentId!,
         after: { fileName, mimeType, inviteId: invite.id, kind },
       });
-      // Liste und Document werden zusammen committed, waehrend der Invite bis
-      // zum Transaktionsende FOR UPDATE gesperrt bleibt. Ein Submit sieht
-      // damit entweder den kompletten Upload oder wartet und laeuft danach.
+      // Finalisierte Version und Einladungsstatus werden zusammen committed,
+      // waehrend der Invite bis zum Transaktionsende FOR UPDATE gesperrt bleibt.
+      // Ein Submit sieht damit entweder den kompletten Upload oder wartet und
+      // laeuft danach. Die Zuordnung steht im Fremdschluessel des Dokuments
+      // (D-08); uploaded_document_ids wird nicht mehr gelesen und nur fuer einen
+      // App-Rollback auf das vorige Release weiter gepflegt.
       await tx.$executeRaw`
         UPDATE gwg_onboarding_invite
         SET uploaded_document_ids = uploaded_document_ids || ${JSON.stringify([pendingDocumentId])}::jsonb,
@@ -615,14 +625,12 @@ export async function loadOnboardingIdentitySourceAction(input: {
       const current = await tx.gwgOnboardingInvite.findFirst({
         where: { id: invite.id, tenantId: invite.tenantId, tokenHash },
         select: {
-          uploadedDocumentIds: true,
+          uploadedDocuments: FINALIZED_INVITE_UPLOAD_IDS,
           gwgCheck: { select: { idDocuments: { select: { documentId: true } } } },
         },
       });
       const allowed = new Set([
-        ...(Array.isArray(current?.uploadedDocumentIds)
-          ? current.uploadedDocumentIds.filter((id): id is string => typeof id === 'string')
-          : []),
+        ...inviteUploadIds(current),
         ...(current?.gwgCheck?.idDocuments.flatMap((entry) =>
           entry.documentId ? [entry.documentId] : [],
         ) ?? []),
@@ -740,14 +748,18 @@ async function discardOpenInviteDocumentTx(
   `;
 
   if (versions.length === 0) {
-    const current = await tx.gwgOnboardingInvite.findUnique({
-      where: { id: invite.id },
-      select: { uploadedDocumentIds: true },
+    // Ein verworfener Upload hat keine Dokumentzeile mehr. Besteht der
+    // finalisierte Upload dieser Einladung noch, ist er nicht verwerfbar.
+    const stillUploaded = await tx.document.count({
+      where: {
+        id: documentId,
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
+        gwgOnboardingInviteId: invite.id,
+        ...FINALIZED_INVITE_UPLOAD,
+      },
     });
-    const stillListed =
-      Array.isArray(current?.uploadedDocumentIds) &&
-      current.uploadedDocumentIds.includes(documentId);
-    if (!stillListed) return 'ALREADY_DISCARDED';
+    if (stillUploaded === 0) return 'ALREADY_DISCARDED';
     throw new OnboardingDocumentDiscardError();
   }
   if (versions.length !== 1) throw new OnboardingDocumentDiscardError();
@@ -940,7 +952,7 @@ export async function submitOnboardingAction(
 
   const preflight = validateOnboardingSubmission({
     clientKind: invite.client.kind,
-    uploadedDocumentIds: invite.uploadedDocumentIds,
+    inviteDocumentIds: inviteUploadIds(invite),
     existingCheckDocumentIds: invite.gwgCheck?.idDocuments.map((entry) => entry.documentId) ?? [],
     owners,
     representatives: parsed.data.representatives,

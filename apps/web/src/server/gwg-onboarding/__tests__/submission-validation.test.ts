@@ -36,7 +36,7 @@ describe('onboarding submission preflight', () => {
   it('accepts only invite-bound documents and returns linked dual roles', () => {
     const result = validateOnboardingSubmission({
       clientKind: 'JURPERS',
-      uploadedDocumentIds: [
+      inviteDocumentIds: [
         '00000000-0000-4000-8000-000000000001',
         '00000000-0000-4000-8000-000000000002',
         '00000000-0000-4000-8000-000000000003',
@@ -77,7 +77,7 @@ describe('onboarding submission preflight', () => {
   it('fails closed for a document not uploaded through this invite', () => {
     const result = validateOnboardingSubmission({
       clientKind: 'NATPERS',
-      uploadedDocumentIds: ['00000000-0000-4000-8000-000000000001'],
+      inviteDocumentIds: ['00000000-0000-4000-8000-000000000001'],
       existingCheckDocumentIds: [],
       owners: [owner()],
       representatives: [],
@@ -95,7 +95,7 @@ describe('onboarding submission preflight', () => {
     const duplicate = '00000000-0000-4000-8000-000000000001';
     const result = validateOnboardingSubmission({
       clientKind: 'NATPERS',
-      uploadedDocumentIds: [duplicate],
+      inviteDocumentIds: [duplicate],
       existingCheckDocumentIds: [],
       owners: [owner({ idFrontDocumentId: duplicate, idBackDocumentId: duplicate })],
       representatives: [],
@@ -119,7 +119,7 @@ describe('onboarding submission preflight', () => {
     });
     const input = {
       clientKind: 'NATPERS' as const,
-      uploadedDocumentIds: [id],
+      inviteDocumentIds: [id],
       existingCheckDocumentIds: [],
       owners: [person],
       representatives: [],

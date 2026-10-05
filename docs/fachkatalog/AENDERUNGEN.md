@@ -1,5 +1,38 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-011
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts
+      - apps/web/src/app/gwg-onboarding/actions.ts
+      - apps/web/src/server/gwg-onboarding/__tests__/invite-uploads.test.ts
+      - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
+      - apps/web/src/server/gwg-onboarding/invite-uploads.ts
+      - apps/web/src/server/gwg-onboarding/submission-validation.ts
+      - packages/db/prisma/migrations/20261005100700_gwg_invite_uploads_by_fk/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - GWG-SELF-ONBOARDING-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-OCR-ASSIST-001
+      - DOC-UPLOAD-JOURNAL-001
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Alle Lesepfade des GwG-Onboardings ordnen Uploads der Einladung über den
+      Fremdschlüssel document.gwg_onboarding_invite_id zu, beschränkt auf Dokumente
+      mit sauberer Version; für offene Einladungen ist das genau die bisherige
+      Menge. Die Verwerfen-Funktion prüft nicht mehr das JSON-Array; Attribute,
+      Rechte und Meldungen bleiben. Das Array uploaded_document_ids wird nach dem
+      Expand/Contract-Verfahren für Rollbacks weiter gepflegt, aber nicht mehr
+      gelesen. Die Onboarding-Übersicht der Kanzlei zeigt einzeln vernichtete
+      Belege nicht mehr an. Zulässige Uploads und Verwerfen-Regeln des anonymen
+      Ablaufs bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/gwg-onboarding/__tests__/invite-uploads.test.ts
+      - packages/db/src/__tests__/gwg-onboarding-document-discard.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-010
     date: '2026-10-05'
     paths:
@@ -1661,6 +1694,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-011` dokumentiert die Zuordnung von
+  Onboarding-Uploads über den Fremdschlüssel statt über das JSON-Array der
+  Einladung. Zulässige Uploads und Verwerfen-Regeln bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-010` dokumentiert CHECK-Constraints für zwei
   bisher ungeprüfte Statusfelder. Schreibpfade und Statusübergänge bleiben

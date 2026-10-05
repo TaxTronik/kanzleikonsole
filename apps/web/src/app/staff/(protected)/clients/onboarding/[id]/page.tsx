@@ -23,6 +23,7 @@ import { canAccessClient } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
+import { loadInviteUploadedDocumentsTx } from '@/server/gwg-onboarding/invite-uploads';
 import { Stepper } from '../stepper';
 import { stepsForTenant, type StepKey } from '../steps';
 import {
@@ -116,7 +117,6 @@ export default async function OnboardingStepPage({
               createdAt: true,
               expiresAt: true,
               submittedAt: true,
-              uploadedDocumentIds: true,
             },
           }),
           tx.gwgCheck.findFirst({
@@ -141,19 +141,10 @@ export default async function OnboardingStepPage({
                 formTemplatesLimited: false,
               }),
         ]);
-      const uploadedIds = Array.isArray(gwgInvite?.uploadedDocumentIds)
-        ? (gwgInvite.uploadedDocumentIds as unknown[]).filter(
-            (docId): docId is string => typeof docId === 'string',
-          )
+      // D-08: Uploads der Einladung über document.gwg_onboarding_invite_id.
+      const uploadedDocuments = gwgInvite
+        ? await loadInviteUploadedDocumentsTx(tx, { clientId: id, inviteId: gwgInvite.id })
         : [];
-      const uploadedDocuments =
-        uploadedIds.length > 0
-          ? await tx.document.findMany({
-              where: { clientId: id, id: { in: uploadedIds } },
-              select: { id: true, title: true, createdAt: true },
-              orderBy: { createdAt: 'desc' },
-            })
-          : [];
       const firstContact = await tx.clientContact.findFirst({
         where: { clientId: id, active: true },
         orderBy: { createdAt: 'asc' },

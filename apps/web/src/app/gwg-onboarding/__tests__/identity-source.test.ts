@@ -56,6 +56,7 @@ import { GENERIC_TOKEN_ERROR, hashInviteToken } from '@/server/gwg-onboarding/se
 import { IdentitySourceStorageError } from '@/server/gwg/identity-source';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
+const OTHER_UPLOAD_ID = '22222222-2222-4222-8222-222222222222';
 const TOKEN = 'valid-secret-invitation-token';
 const input = { token: TOKEN, documentId: DOCUMENT_ID };
 const tx = { gwgOnboardingInvite: { findFirst: m.currentInvite } };
@@ -71,7 +72,7 @@ function invite() {
     clientId: 'client-from-token',
     status: 'STARTED',
     expiresAt: new Date('2099-01-01T00:00:00Z'),
-    uploadedDocumentIds: [DOCUMENT_ID],
+    uploadedDocuments: [{ id: DOCUMENT_ID }],
   };
 }
 beforeEach(() => {
@@ -85,7 +86,7 @@ beforeEach(() => {
   );
   m.revalidateInvite.mockResolvedValue(true);
   m.currentInvite.mockResolvedValue({
-    uploadedDocumentIds: [DOCUMENT_ID],
+    uploadedDocuments: [{ id: DOCUMENT_ID }],
     gwgCheck: { idDocuments: [] },
   });
   m.loadSource.mockResolvedValue({
@@ -120,6 +121,14 @@ describe('GWG-SELF-ONBOARDING-001 / GWG-IDENTIFICATION-EVIDENCE-001: token-bound
         where: { id: 'invite-1', tenantId: 'tenant-from-token', tokenHash: hashInviteToken(TOKEN) },
       }),
     );
+    // D-08: Uploads der Einladung nur über den Fremdschlüssel und nur finalisiert.
+    expect(m.currentInvite.mock.calls[0]![0].select).toEqual({
+      uploadedDocuments: {
+        where: { versions: { some: { scanStatus: 'CLEAN' } } },
+        select: { id: true },
+      },
+      gwgCheck: { select: { idDocuments: { select: { documentId: true } } } },
+    });
     expect(m.revalidateInvite.mock.invocationCallOrder[0]).toBeLessThan(
       m.currentInvite.mock.invocationCallOrder[0]!,
     );
@@ -147,7 +156,7 @@ describe('GWG-SELF-ONBOARDING-001 / GWG-IDENTIFICATION-EVIDENCE-001: token-bound
   });
   it('allows a currently bound original from the check even when it is not a new invite upload', async () => {
     m.currentInvite.mockResolvedValue({
-      uploadedDocumentIds: [],
+      uploadedDocuments: [],
       gwgCheck: { idDocuments: [{ documentId: DOCUMENT_ID }, { documentId: null }] },
     });
     expect(await loadOnboardingIdentitySourceAction(input)).toMatchObject({ ok: true });
@@ -185,8 +194,11 @@ describe('GWG-SELF-ONBOARDING-001 / GWG-IDENTIFICATION-EVIDENCE-001: token-bound
   });
   it.each([
     null,
-    { uploadedDocumentIds: [], gwgCheck: null },
-    { uploadedDocumentIds: [42], gwgCheck: { idDocuments: [{ documentId: null }] } },
+    { uploadedDocuments: [], gwgCheck: null },
+    {
+      uploadedDocuments: [{ id: OTHER_UPLOAD_ID }],
+      gwgCheck: { idDocuments: [{ documentId: null }] },
+    },
   ])(
     'rejects a foreign/unbound source using the current relation, not the earlier invite snapshot: %o',
     async (current) => {

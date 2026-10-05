@@ -32,7 +32,8 @@ export type OnboardingSubmissionValidation =
 /** Pure preflight for every cross-reference submitted by the public wizard. */
 export function validateOnboardingSubmission(input: {
   clientKind: ClientKind;
-  uploadedDocumentIds: unknown;
+  /** Finalisierte Uploads dieser Einladung (document.gwg_onboarding_invite_id, D-08). */
+  inviteDocumentIds: readonly string[];
   existingCheckDocumentIds: Array<string | null>;
   owners: OnboardingSubmissionOwner[];
   representatives: GwgOnboardingRepresentativeInput[];
@@ -55,9 +56,7 @@ export function validateOnboardingSubmission(input: {
     representative.linkedOwnerLocalId ? [representative.linkedOwnerLocalId] : [],
   );
   const allowedDocumentIds = new Set([
-    ...(Array.isArray(input.uploadedDocumentIds)
-      ? input.uploadedDocumentIds.filter((id): id is string => typeof id === 'string')
-      : []),
+    ...input.inviteDocumentIds,
     ...input.existingCheckDocumentIds.filter((id): id is string => id !== null),
   ]);
   const people = [

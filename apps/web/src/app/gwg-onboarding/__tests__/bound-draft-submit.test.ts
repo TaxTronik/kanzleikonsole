@@ -199,6 +199,40 @@ describe('gebundener GwG-DRAFT Submit', () => {
     m.lockEvidence.mockResolvedValue(true);
   });
 
+  // D-08: Referenzierbar sind nur finalisierte Uploads der Einladung
+  // (document.gwg_onboarding_invite_id); die JSON-Liste gewährt nichts mehr.
+  it('lehnt ein nicht über die Einladung hochgeladenes Dokument vor jeder Transaktion ab', async () => {
+    m.inviteFindFirst.mockResolvedValue({
+      id: 'invite-1',
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      status: 'STARTED',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      gwgCheckId: CHECK_ID,
+      createdByStaff: 'staff-1',
+      uploadedDocumentIds: [...DOCUMENT_IDS],
+      uploadedDocuments: DOCUMENT_IDS.slice(0, 6).map((id) => ({ id })),
+      gwgCheck: { idDocuments: [] },
+      client: { id: 'client-1', kind: 'PERSGES', name: 'Muster GbR' },
+    });
+
+    expect(await submitOnboardingAction(validSubmission())).toEqual({
+      ok: false,
+      error: 'Referenziertes Dokument wurde nicht über diesen Onboarding-Link hochgeladen.',
+    });
+    expect(m.inviteFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          uploadedDocuments: {
+            where: { versions: { some: { scanStatus: 'CLEAN' } } },
+            select: { id: true },
+          },
+        }),
+      }),
+    );
+    expect(m.withSystemContext).not.toHaveBeenCalled();
+  });
+
   it('erhält Owner-/Vertreter-IDs und Dokument-FKs bei Kenntnisnahme ohne freiwillige Einwilligungen', async () => {
     const existingDocuments = DOCUMENT_IDS.map((documentId, index) => ({
       id: `6${String(index + 1).repeat(7)}-${String(index + 1).repeat(4)}-4${String(index + 1).repeat(3)}-8${String(index + 1).repeat(3)}-${String(index + 1).repeat(12)}`,
@@ -286,7 +320,7 @@ describe('gebundener GwG-DRAFT Submit', () => {
       expiresAt: new Date('2099-01-01T00:00:00.000Z'),
       gwgCheckId: CHECK_ID,
       createdByStaff: 'staff-1',
-      uploadedDocumentIds: [],
+      uploadedDocuments: [],
       gwgCheck: { idDocuments: DOCUMENT_IDS.map((documentId) => ({ documentId })) },
       client: {
         id: 'client-1',
@@ -422,7 +456,7 @@ describe('F-05 storage errors during the bound submit', () => {
       expiresAt: new Date('2099-01-01T00:00:00.000Z'),
       gwgCheckId: CHECK_ID,
       createdByStaff: 'staff-1',
-      uploadedDocumentIds: [],
+      uploadedDocuments: [],
       gwgCheck: { idDocuments: DOCUMENT_IDS.map((documentId) => ({ documentId })) },
       client: { id: 'client-1', kind: 'PERSGES', name: 'Muster GbR' },
     });

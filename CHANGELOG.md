@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** GwG-Onboarding-Uploads werden der Einladung nur noch über den
+  Fremdschlüssel am Dokument zugeordnet; die JSON-Liste der Einladung wird
+  nicht mehr gelesen und bis zur Contract-Migration nur für Rollbacks
+  gepflegt. Die Onboarding-Übersicht der Kanzlei zeigt einzeln vernichtete
+  Belege nicht mehr an (`GWG-SELF-ONBOARDING-001`, `FK-EXC-20261005-011`).
 - `inbound_message.status` und `bwa_plan.status` lassen per CHECK nur noch die
   vom Code geschriebenen Werte zu; die Migration bricht bei abweichendem
   Bestand mit Werten und Anzahl ab (`MAIL-INBOX-001`, `BWA-PROJECTION-001`,

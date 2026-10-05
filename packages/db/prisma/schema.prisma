@@ -2220,7 +2220,9 @@ model Document {
   gwgDestructionError         String?                @map("gwg_destruction_error")
   gwgDestroyedAt              DateTime?              @map("gwg_destroyed_at") @db.Timestamptz(6)
   /// Explizite Herkunft von über das anonyme GwG-Onboarding hochgeladenen
-  /// Belegen. Ersetzt für Retention-Zwecke die bisherige lose JSON-ID-Liste.
+  /// Belegen und einzige Quelle der Zuordnung Upload → Einladung (D-08). Wird
+  /// schon beim Upload-Journal gesetzt; verwendbar ist ein Upload erst mit
+  /// finalisierter (CLEAN) Version.
   gwgOnboardingInviteId       String?                @map("gwg_onboarding_invite_id") @db.Uuid
   /// Anhang einer Wiedervorlage. Analog workflowItemId/analysisId; SET NULL,
   /// damit das Löschen der Aufgabe die Datei in der Akte belässt.
@@ -3840,9 +3842,11 @@ model GwgOnboardingInvite {
   /// Baseline der Mandantenstammdaten bei einer echten Ersteinladung ohne
   /// Check. Genau eines der beiden Revisionsfelder ist bei offenen Links gesetzt.
   boundClientRevision String?         @map("bound_client_revision")
-  // H-1: Liste der via diesem Invite hochgeladenen document.id-UUIDs.
-  // Beim submit prüfen wir, dass alle referenzierten Doc-IDs hier vorkommen
-  // (verhindert Cross-Tenant-Verlinkung über erratene UUIDs).
+  // Veraltet seit D-08, nicht mehr gelesen: Die Zuordnung Upload → Einladung
+  // (H-1, Schutz vor erratenen Dokument-UUIDs) prüft document.gwgOnboardingInviteId.
+  // Upload, Verwerfen und GwG-Vernichtung pflegen die Liste nur weiter, damit
+  // ein App-Rollback auf das vorige Release funktioniert; Entfernen per
+  // Contract-Migration.
   uploadedDocumentIds Json            @default("[]") @map("uploaded_document_ids")
   createdByStaff      String          @map("created_by_staff") @db.Uuid
   cancelledByStaff    String?         @map("cancelled_by_staff") @db.Uuid

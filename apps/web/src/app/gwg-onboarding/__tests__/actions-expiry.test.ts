@@ -19,7 +19,7 @@ const m = vi.hoisted(() => ({
   ensureGwgRootFolder: vi.fn(),
   ensureGwgPersonFolder: vi.fn(),
   queryRaw: vi.fn(),
-  findInviteById: vi.fn(),
+  countDocument: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: m.headers }));
@@ -78,9 +78,8 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         fn({
           $executeRaw: vi.fn(),
           $queryRaw: m.queryRaw,
-          document: { deleteMany: m.deleteDocument },
+          document: { deleteMany: m.deleteDocument, count: m.countDocument },
           documentVersion: { findUnique: m.findVersion },
-          gwgOnboardingInvite: { findUnique: m.findInviteById },
         }),
     );
     m.ensureGwgRootFolder.mockResolvedValue('gwg-folder-1');
@@ -453,7 +452,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       tenantId: 'tenant-1',
       clientId: 'client-1',
       createdByStaff: 'staff-1',
-      uploadedDocumentIds: [documentId],
+      uploadedDocuments: [{ id: documentId }],
       client: { id: 'client-1', kind: 'JURPERS' },
     });
     m.revalidateInvite.mockResolvedValue(true);
@@ -485,4 +484,53 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       }),
     );
   });
+
+  // D-08: Ob der Upload noch besteht, entscheidet der Fremdschlüssel des Dokuments;
+  // die JSON-Liste der Einladung (hier noch mit der ID) wird nicht gelesen.
+  it.each([
+    ['bereits verworfen', 0, { ok: true }],
+    [
+      'noch vorhanden, aber nicht verwerfbar',
+      1,
+      {
+        ok: false,
+        error: 'Die Datei konnte nicht entfernt werden. Bitte versuchen Sie es erneut.',
+      },
+    ],
+  ])(
+    'prüft ohne verwerfbare Version über den Fremdschlüssel: %s',
+    async (_case, remaining, expected) => {
+      const documentId = '00000000-0000-4000-8000-000000000002';
+      m.findFirst.mockResolvedValueOnce({
+        id: 'invite-1',
+        tokenHash: 'token-hash',
+        status: 'STARTED',
+        expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        createdByStaff: 'staff-1',
+        uploadedDocumentIds: [documentId],
+        uploadedDocuments: [],
+        client: { id: 'client-1', kind: 'JURPERS' },
+      });
+      m.revalidateInvite.mockResolvedValue(true);
+      m.queryRaw.mockResolvedValueOnce([]);
+      m.countDocument.mockResolvedValueOnce(remaining);
+
+      await expect(
+        discardOnboardingUploadAction({ token: 'valid-looking-raw-token', documentId }),
+      ).resolves.toEqual(expected);
+      expect(m.countDocument).toHaveBeenCalledWith({
+        where: {
+          id: documentId,
+          tenantId: 'tenant-1',
+          clientId: 'client-1',
+          gwgOnboardingInviteId: 'invite-1',
+          versions: { some: { scanStatus: 'CLEAN' } },
+        },
+      });
+      expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+      expect(m.evidenceRecord).not.toHaveBeenCalled();
+    },
+  );
 });
