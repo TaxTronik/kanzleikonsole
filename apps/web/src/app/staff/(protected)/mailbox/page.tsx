@@ -6,8 +6,15 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { accessibleClientsWhereFor, isStaffAdmin } from '@/server/auth/rbac';
 import { connectMicrosoft, importAttachment, saveMailbox, setMailboxEnabled } from './actions';
 import { ActionForm } from '@/components/action-form';
-import { suggestInboundClients } from '@/server/mailbox/suggestions';
+import { suggestInboundClientsTx } from '@/server/mailbox/suggestions';
 import { loadMailboxDocumentTypesTx } from '@/server/mailbox/document-types';
+import { loadClientPickerOptionsTx } from '@/server/clients/picker';
+import { ClientCombobox } from '@/components/ui/client-combobox';
+import type { ClientPickerFilter } from '@/lib/client-picker';
+
+// Ablage nur in zugängliche, aktive, nicht beendete und nicht anonymisierte
+// Mandate — dieselbe Schranke wie importAttachment.
+const MAILBOX_CLIENT_FILTERS: ClientPickerFilter[] = ['active', 'notEnded', 'notAnonymized'];
 
 // Zod-Feldname → Element-ID für die verlinkte Fehlerzusammenfassung.
 const MAILBOX_FIELD_IDS: Record<string, string> = {
@@ -41,43 +48,45 @@ export default async function MailboxPage({
       </div>
     );
   const query = await searchParams;
-  const data = await withTenantContext(g.ctx, async (tx) => ({
-    accounts: await tx.inboundMailbox.findMany({
-      where: { tenantId: g.tenantId },
-      select: {
-        id: true,
-        name: true,
-        provider: true,
-        username: true,
-        enabled: true,
-        lastSuccessAt: true,
-        lastError: true,
-      },
-      orderBy: { name: 'asc' },
-    }),
-    messages: await tx.inboundMessage.findMany({
+  const data = await withTenantContext(g.ctx, async (tx) => {
+    const messages = await tx.inboundMessage.findMany({
       where: { mailbox: { tenantId: g.tenantId } },
       include: { attachments: true, mailbox: { select: { name: true } } },
       orderBy: { receivedAt: 'desc' },
       take: 100,
-    }),
-    clients: await tx.client.findMany({
-      where: {
-        ...(await accessibleClientsWhereFor(tx, g.session)),
-        tenantId: g.tenantId,
-        allowActive: true,
-        anonymizedAt: null,
-        mandateEndedAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        contacts: { where: { active: true }, select: { email: true } },
-      },
-      orderBy: { name: 'asc' },
-    }),
-    types: await loadMailboxDocumentTypesTx(tx, g.tenantId),
-  }));
+    });
+    const accessWhere = await accessibleClientsWhereFor(tx, g.session);
+    return {
+      accounts: await tx.inboundMailbox.findMany({
+        where: { tenantId: g.tenantId },
+        select: {
+          id: true,
+          name: true,
+          provider: true,
+          username: true,
+          enabled: true,
+          lastSuccessAt: true,
+          lastError: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      messages,
+      // Vorschläge per SQL gegen Kontaktadressen statt aller Kontakte im Speicher.
+      suggestions: await suggestInboundClientsTx(
+        tx,
+        { tenantId: g.tenantId, accessWhere },
+        messages,
+      ),
+      // Nur die Namen bereits vorgemerkter Zuordnungen (z. B. begonnener Import).
+      preselected: await loadClientPickerOptionsTx(
+        tx,
+        g.session,
+        messages.flatMap((m) => m.attachments.map((a) => a.clientId)),
+        MAILBOX_CLIENT_FILTERS,
+      ),
+      types: await loadMailboxDocumentTypesTx(tx, g.tenantId),
+    };
+  });
   return (
     <div className="space-y-6 p-6 sm:p-8">
       <header>
@@ -201,9 +210,8 @@ export default async function MailboxPage({
               </p>
               <p className="alert-info-sm leading-relaxed">
                 Unbestätigte Zuordnungsvorschläge aus Kontaktadressen:{' '}
-                {suggestInboundClients(m.sender, m.recipients, data.clients)
-                  .map((c) => c.name)
-                  .join(', ') || 'keine eindeutigen Adressübereinstimmungen'}
+                {(data.suggestions.get(m.id) ?? []).map((c) => c.name).join(', ') ||
+                  'keine eindeutigen Adressübereinstimmungen'}
                 . Bitte den tatsächlichen Mandanten ausdrücklich auswählen.
               </p>
               <pre className="whitespace-pre-wrap break-words rounded-lg bg-surface-raised p-4 font-sans text-sm leading-relaxed text-secondary">
@@ -232,11 +240,8 @@ export default async function MailboxPage({
                         Geprüften Anhang herunterladen
                       </a>
                     )}
-                    {a.status === 'IMPORTED' && (
-                      <Link
-                        className="btn-secondary"
-                        href={'/staff/clients/' + a.clientId + '/documents'}
-                      >
+                    {a.status === 'IMPORTED' && a.documentId && (
+                      <Link className="btn-secondary" href={'/staff/documents/' + a.documentId}>
                         <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
                         Archivdokument anzeigen
                       </Link>
@@ -253,20 +258,14 @@ export default async function MailboxPage({
                           <label className="label" htmlFor={'mailbox-client-' + a.id}>
                             Mandant
                           </label>
-                          <select
+                          {/* Serversuche statt eines <select> mit allen Mandanten je Anhang. */}
+                          <ClientCombobox
                             id={'mailbox-client-' + a.id}
-                            className="input"
                             name="clientId"
+                            filters={MAILBOX_CLIENT_FILTERS}
+                            defaultValue={a.clientId ? data.preselected.get(a.clientId) : null}
                             required
-                            defaultValue={a.clientId ?? ''}
-                          >
-                            <option value="">Auswählen</option>
-                            {data.clients.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </div>
                         <div>
                           <label className="label" htmlFor={'mailbox-type-' + a.id}>

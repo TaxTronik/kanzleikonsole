@@ -217,6 +217,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Vollmacht-, Rechnungs- und StBVV-Formulare wählen keinen Mandanten mehr
+  still vor. Ein getippter, aber nicht ausgewählter Mandantenname blockiert
+  das Absenden, damit kein Formular ohne den gemeinten Mandanten gespeichert
+  wird.
 - Fehlende Berechtigung bei Mandantenanlage und Onboarding zeigt eine Meldung
   im Formular statt zur Anmeldung umzuleiten; Validierungsfehler erscheinen im
   Formular statt über `?error=` in der Adresszeile.
@@ -458,6 +462,16 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Mandantenauswahlen (Termin, Wiedervorlage, Zeiterfassung, Telefonnotiz,
+  Mandanten-Assistent, Vollmacht, Rechnung, Lohn, StBVV, Jahreswechsel,
+  Workflows, GwG-Kontrollliste, Mandatsorganisation, Anfragen) suchen
+  serverseitig mit derselben Zugriffsregel, statt den ganzen Bestand oder nur
+  die ersten 500 beziehungsweise 1.000 Mandanten zu laden; spätere Mandanten
+  sind wieder auswählbar. Ohne Suchbegriff schlägt die Auswahl die eigenen
+  zugeordneten Mandanten vor. Der Posteingang ermittelt Zuordnungsvorschläge
+  per Datenbankabfrage und bietet je Anhang die Mandantensuche statt einer
+  vollständigen Liste; „Archivdokument anzeigen“ öffnet die Dokumentansicht
+  (`FK-EXC-20261004-016` bis `FK-EXC-20261004-018`).
 - Formulare der Kanzlei und des Mandantenportals melden Eingabe-,
   Berechtigungs- und Fachfehler jetzt direkt im Formular; die Eingaben bleiben
   erhalten. Bisher endeten etwa die Plausibilitätsprüfungen der
@@ -873,6 +887,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Der Startdialog der Workflow-Vorlagen zeigt nur noch Mandanten, die der
+  Mitarbeitende sehen darf; bisher listete er alle Mandanten der Kanzlei
+  einschließlich vertraulicher (`ACCESS-CLIENT-MODE-001`).
 - **[Scope]** Ohne vertrauenswürdige Client-IP (Standard bei eigenem
   Reverse-Proxy, `TRUST_PROXY_REQUIRED=false`) fallen Login-Limits nicht mehr
   auf kleine globale Zähler zurück, mit denen eine Anfrage alle neun Sekunden

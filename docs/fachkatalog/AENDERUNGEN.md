@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-018
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/staff/(protected)/mailbox/page.tsx
+    rule_ids:
+      - MAIL-INBOX-001
+      - ACCESS-SEARCH-SCOPE-001
+    reason: >-
+      Der Posteingang ermittelt Zuordnungsvorschläge je Seite mit einer
+      Datenbankabfrage (E-Mail-Abgleich mit derselben Zugriffs- und Aktivregel wie
+      der Import) statt alle Kontakte zu laden, bietet je Anhang die serverseitige
+      Mandantensuche statt einer vollständigen Auswahlliste und verlinkt importierte
+      Dokumente auf die bestehende Dokumentansicht. Import, Prüfungen und Ablage
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/mailbox/__tests__/page.test.tsx
+      - apps/web/src/server/mailbox/__tests__/suggestions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-017
     date: '2026-10-04'
     paths:
@@ -1357,6 +1375,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-018` dokumentiert SQL-basierte
+  Zuordnungsvorschläge und die Mandantensuche je Anhang im Posteingang.
+  Import und Ablage bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-017` dokumentiert die serverseitige
   Mandantensuche in allen Mandantenauswahlen statt gekappter oder

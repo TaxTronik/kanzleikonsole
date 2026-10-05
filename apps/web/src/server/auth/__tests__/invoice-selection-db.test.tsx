@@ -1,4 +1,4 @@
-// Fachkatalog: ACCESS-CLIENT-MODE-001, ACCESS-STAFF-PERMISSION-001, ACCESS-SEARCH-SCOPE-001
+// Fachkatalog: ACCESS-CLIENT-MODE-001, ACCESS-STAFF-PERMISSION-001, ACCESS-SEARCH-SCOPE-001, MAIL-INBOX-001
 // Real page query, client search route and RBAC against PostgreSQL's app role;
 // only request auth, rate limiting, module configuration and downstream
 // editing forms are replaced.
@@ -39,6 +39,8 @@ vi.mock('@/app/staff/(protected)/invoices/new/external-form', () => ({
 }));
 import NewInvoicePage from '@/app/staff/(protected)/invoices/new/page';
 import { GET as searchClients } from '@/app/api/staff/clients/search/route';
+import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { suggestInboundClientsTx } from '@/server/mailbox/suggestions';
 
 // Quality has URL placeholders but no database service. The required db-job
 // step opts in explicitly; missing/invalid URLs must then fail, never skip.
@@ -114,6 +116,15 @@ async function searchNames(params: Record<string, string>): Promise<string[]> {
           registerNumber: 'HRB-' + suffix,
         });
         await owner.client.update({ where: { id: client.id }, data: { allowActive: true } });
+        // Dieselbe Adresse an beiden Mandanten, abweichende Schreibweise (citext).
+        await owner.clientContact.create({
+          data: {
+            tenantId,
+            clientId: client.id,
+            email: `Shared.Contact+${suffix}@Example.test`,
+            fullName: `${name} contact`,
+          },
+        });
         if (vertraulich) confidentialId = client.id;
       }
       // Nicht freigegeben (GwG offen) und ein gleichnamiger fremder Tenant.
@@ -218,6 +229,34 @@ async function searchNames(params: Record<string, string>): Promise<string[]> {
       expect(html).toContain('Rechnungsformular');
       expect(html).not.toContain('Kein auswählbarer Mandant');
       expect(await searchNames({ q: 'fixture', filter: 'active' })).toEqual([
+        'Confidential fixture',
+        'Public fixture',
+      ]);
+    });
+
+    it('matches mailbox suggestions in SQL (citext) under the same visibility rule', async () => {
+      await openMode();
+      const contact = await owner.clientContact.findFirstOrThrow({
+        where: { tenantId, clientId: confidentialId },
+        select: { email: true },
+      });
+      const messages = [
+        { id: 'm1', sender: `Absender <${contact.email.toUpperCase()}>`, recipients: '' },
+        { id: 'm2', sender: 'unbekannt@example.test', recipients: '' },
+      ];
+      const suggest = () =>
+        fixture.run({}, async (tx) =>
+          suggestInboundClientsTx(
+            tx,
+            { tenantId, accessWhere: await accessibleClientsWhereFor(tx, fixture.session) },
+            messages,
+          ),
+        ) as Promise<Map<string, Array<{ name: string }>>>;
+      const employee = await suggest();
+      expect(employee.get('m1')?.map((c) => c.name)).toEqual(['Public fixture']);
+      expect(employee.get('m2')).toEqual([]);
+      fixture.session.user.roles = ['ADMIN'];
+      expect((await suggest()).get('m1')?.map((c) => c.name)).toEqual([
         'Confidential fixture',
         'Public fixture',
       ]);
