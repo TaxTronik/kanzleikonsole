@@ -7,22 +7,28 @@
 // Das ist ein PRÄSENZ-Check, kein Korrektheits-Beweis (richtiger Tenant/Owner
 // prüfen die RLS-/Action-Tests). Aber er verhindert die häufigste Regression:
 // eine Action, die gar nicht mehr autorisiert.
+//
+// Geprüft wird JEDE Datei unter src/, deren Direktiven-Prolog 'use server'
+// enthält (gemeinsame Erkennung mit action-result-contract.test.ts), und darin
+// JEDE exportierte Funktion: Next.js macht beides unabhängig von Datei- und
+// Funktionsnamen per POST aufrufbar.
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
+import { hasUseServerDirective, serverActionSourceFiles } from './use-server-sources';
 
-const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'app');
+const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Bewusste Ausnahmen (Datei-Ebene): Auth-Eintrittspunkte etablieren erst
 // Identität (Login / öffentlicher Token), haben also KEINE Session zu prüfen.
 const ALLOWLIST_FILES = [
-  'gwg-onboarding/actions.ts', // öffentlicher GwG-Onboarding-Token (Magic-Link)
-  'portal/(auth)/login/actions.ts', // Magic-Link-Login
-  'staff/(auth)/login/actions.ts', // Passwort/TOTP-Login
+  'app/gwg-onboarding/actions.ts', // öffentlicher GwG-Onboarding-Token (Magic-Link)
+  'app/portal/(auth)/login/actions.ts', // Magic-Link-Login
+  'app/staff/(auth)/login/actions.ts', // Passwort/TOTP-Login
 ];
 
 // Bewusste Ausnahmen (Funktions-Ebene): token-basierte öffentliche Actions in
@@ -30,8 +36,11 @@ const ALLOWLIST_FILES = [
 const ALLOWLIST_FNS = new Set([
   // öffentlicher PoA-Signatur-Flow per rawToken (+ OTP) — keine vorgelagerte
   // Session; autorisiert über Token-Besitz (elektronischer PoA-Bestätigungsprozess).
-  'staff/(protected)/poa/sign-actions.ts::signPoaAction',
-  'staff/(protected)/poa/sign-actions.ts::requestSigningOtpAction',
+  'app/staff/(protected)/poa/sign-actions.ts::signPoaAction',
+  'app/staff/(protected)/poa/sign-actions.ts::requestSigningOtpAction',
+  // Lädt die Signaturansicht desselben öffentlichen Flows: Lookup über den Hash
+  // des rawToken (Ablauf, Status), rate-limitiert, ebenfalls ohne Session.
+  'app/staff/(protected)/poa/sign-actions.ts::loadPoaForSigning',
 ]);
 
 // Bekannte Autorisierungs-Primitive (Session/Tenant/Ownership) inkl. der
@@ -81,16 +90,6 @@ function payrollCapabilityImports(src: ts.SourceFile): Set<string> {
 // liegt — ein beliebiger lokaler `fooAction(`-Aufruf wäre sonst ein Freifahrtschein.
 const DELEGATION_CALL = /\b(\w+Action)\s*\(/g;
 
-function walkActionFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) out.push(...walkActionFiles(p));
-    else if (/actions\.ts$/.test(entry)) out.push(p);
-  }
-  return out;
-}
-
 interface Fn {
   name: string;
   exported: boolean;
@@ -125,9 +124,8 @@ function topLevelFns(src: ts.SourceFile): Fn[] {
   return fns;
 }
 
-const files = walkActionFiles(APP_DIR).filter((f) =>
-  readFileSync(f, 'utf8').includes("'use server'"),
-);
+const files = serverActionSourceFiles(SRC_DIR);
+const srcRelative = (file: string) => relative(SRC_DIR, file).replace(/\\/g, '/');
 
 // ---------------------------------------------------------------------------
 // Import-Aufloesung fuer geteilte Guards: Beim Aufteilen grosser Action-Dateien
@@ -298,8 +296,31 @@ describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
     expect(files.length).toBeGreaterThan(40);
   });
 
+  it('erkennt Server-Action-Module an der Direktive, nicht am Dateinamen', () => {
+    const parse = (source: string) =>
+      ts.createSourceFile('fixture.ts', source, ts.ScriptTarget.Latest, true);
+    expect(hasUseServerDirective(parse("'use server';\nexport async function a() {}"))).toBe(true);
+    expect(hasUseServerDirective(parse('\uFEFF"use server";\nexport const b = 1;'))).toBe(true);
+    expect(hasUseServerDirective(parse("'use strict';\n'use server';\nlet c;"))).toBe(true);
+    // Kommentar oder Direktive im Funktionskörper machen die Datei nicht zum Modul.
+    expect(hasUseServerDirective(parse("// Bewusst OHNE 'use server'.\nexport const d = 1;"))).toBe(
+      false,
+    );
+    expect(
+      hasUseServerDirective(parse("import x from 'y';\n'use server';\nexport const e = x;")),
+    ).toBe(false);
+    expect(hasUseServerDirective(parse("export async function f() { 'use server'; }"))).toBe(false);
+
+    const rels = files.map(srcRelative);
+    // Ausserhalb von app/ und ohne *actions.ts-Namen — vor der Umstellung ungeprüft.
+    expect(rels).toContain('server/actions/accessible-display.ts');
+    // Helfer, die 'use server' nur im Kommentar nennen, und das Barrel ohne Direktive.
+    expect(rels).not.toContain('app/staff/(protected)/clients/[id]/gwg/_action-helpers.ts');
+    expect(rels).not.toContain('app/staff/(protected)/admin/settings/actions.ts');
+  });
+
   for (const { file, fns } of parsedFiles) {
-    const rel = relative(APP_DIR, file).replace(/\\/g, '/');
+    const rel = srcRelative(file);
     if (ALLOWLIST_FILES.some((a) => rel === a || rel.endsWith('/' + a))) continue;
 
     // Auth-tragende Helfer derselben Datei (z. B. `guard`, `guardAnalysis`): ihr
@@ -318,9 +339,9 @@ describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
       delegatesToKnownAction(fn.body, fn.name) ||
       authHelpers.some((h) => new RegExp(`\\b${h}\\b`).test(fn.body));
 
-    const actions = fns.filter(
-      (f) => f.exported && /Action$/.test(f.name) && !ALLOWLIST_FNS.has(`${rel}::${f.name}`),
-    );
+    // Jede exportierte Funktion ist eine Server-Action — auch ohne `Action`-Suffix
+    // (z. B. saveMailbox, searchArticles).
+    const actions = fns.filter((f) => f.exported && !ALLOWLIST_FNS.has(`${rel}::${f.name}`));
 
     it(`${rel}: alle Actions referenzieren eine Autorisierung`, () => {
       const missing = actions.filter((a) => !authorized(a)).map((a) => a.name);

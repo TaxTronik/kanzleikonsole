@@ -9,11 +9,11 @@
 // Baseline bewusst mit abgesenkt, statt den freien Platz später wiederzuverwenden.
 // =============================================================================
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as ts from 'typescript';
+import { hasUseServerDirective, parseSource, walkProductSources } from './use-server-sources';
 
 const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CENTRAL_ACTION_RESULT = 'server/actions/types.ts';
@@ -91,23 +91,8 @@ const LEGACY_UNMAPPED_VALIDATION_ERRORS: Readonly<Record<string, number>> = {
   'app/staff/(protected)/workflows/actions.ts': 3,
 };
 
-const SKIP_DIRS = new Set(['__tests__', 'node_modules', '.next', 'coverage']);
 const GENERIC_VALIDATION_MESSAGE =
   /Validierungsfehler|Bitte\s+pr(?:ü|ue)fen\s+Sie\s+(?:die\s+)?(?:markierten\s+)?(?:Angaben|Eingaben)/iu;
-
-function walkProductSources(dir: string): string[] {
-  const result: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    if (SKIP_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) {
-      result.push(...walkProductSources(path));
-    } else if (/\.(?:ts|tsx)$/.test(entry) && !/\.d\.ts$/.test(entry)) {
-      result.push(path);
-    }
-  }
-  return result;
-}
 
 function propertyName(node: ts.PropertyName | undefined): string | null {
   if (!node) return null;
@@ -217,30 +202,21 @@ function repoRelative(file: string): string {
   return relative(SRC_DIR, file).split(sep).join('/');
 }
 
-function parse(file: string): ts.SourceFile {
-  return ts.createSourceFile(
-    file,
-    readFileSync(file, 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
-}
-
 function nonZeroCounts(
   files: readonly string[],
   inspect: (source: ts.SourceFile) => number,
 ): Record<string, number> {
   return Object.fromEntries(
     files
-      .map((file) => [repoRelative(file), inspect(parse(file))] as const)
+      .map((file) => [repoRelative(file), inspect(parseSource(file))] as const)
       .filter((entry) => entry[1] > 0)
       .sort(([left], [right]) => left.localeCompare(right)),
   );
 }
 
+/** Server-Action-Module: dieselbe Direktiven-Erkennung wie server-action-authz.test.ts. */
 function actionSources(files: readonly string[]): string[] {
-  return files.filter((file) => readFileSync(file, 'utf8').includes("'use server'"));
+  return files.filter((file) => hasUseServerDirective(parseSource(file)));
 }
 
 function expectBaseline(
