@@ -35,7 +35,8 @@ vi.mock('@/server/rate-limit', () => ({
   getClientIp: vi.fn(),
   checkIpOrGlobalLimit: vi.fn(),
 }));
-vi.mock('../session-cookie', () => ({
+vi.mock('../session-cookie', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../session-cookie')>()),
   PORTAL_SESSION_COOKIE: 'portal-session',
   PORTAL_SESSION_COOKIE_BASE: 'portal-session',
   PORTAL_SESSION_JWT_DECODE_SALTS: ['portal-session'],
@@ -47,7 +48,6 @@ vi.mock('../session-cookie', () => ({
     names: string[],
   ) => names.map((name) => jar.get(name)?.value).find(Boolean) ?? null,
 }));
-vi.mock('../session-jwt', () => ({ createStableSessionJwtOptions: () => ({}) }));
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: { clientContact: { findUnique: m.findUnique } },
 }));

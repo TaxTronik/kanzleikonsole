@@ -9,14 +9,7 @@ const h = vi.hoisted(() => ({
   inspect: vi.fn(),
   writeSession: vi.fn(),
   redirect: vi.fn(),
-  config: null as unknown as {
-    providers: {
-      authorize: (
-        credentials: Record<string, string>,
-        request: Request,
-      ) => Promise<{ contactId: string } | null>;
-    }[];
-  },
+  config: null as unknown as { providers: unknown[] },
 }));
 
 vi.mock('next/headers', () => ({ headers: async () => new Headers(), cookies: vi.fn() }));
@@ -26,7 +19,10 @@ vi.mock('@/server/auth/magic-link', () => ({
   verifyMagicLink: h.verify,
   inspectMagicLink: h.inspect,
 }));
-vi.mock('@/server/auth/portal-session', () => ({ writePortalSession: h.writeSession }));
+vi.mock('@/server/auth/portal-session', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/auth/portal-session')>()),
+  writePortalSession: h.writeSession,
+}));
 vi.mock('@/server/rate-limit', () => ({
   getClientIp: h.ip,
   checkIpOrGlobalLimit: h.limit,
@@ -34,9 +30,7 @@ vi.mock('@/server/rate-limit', () => ({
 vi.mock('@/server/db/prisma-owner', () => ({ prismaOwner: {} }));
 vi.mock('@taxtronik/config', () => ({ env: { AUTH_SECRET: 'test-secret', NODE_ENV: 'test' } }));
 vi.mock('@/server/auth/revocation', () => ({ isTokenRevoked: vi.fn() }));
-vi.mock('@/server/auth/session-jwt', () => ({ createStableSessionJwtOptions: () => ({}) }));
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn() } }));
-vi.mock('next-auth/providers/credentials', () => ({ default: (config: unknown) => config }));
 vi.mock('next-auth', () => ({
   default: (config: typeof h.config) => {
     h.config = config;
@@ -55,9 +49,6 @@ const contact = {
   fullName: 'Portal Contact',
   email: 'portal@example.test',
 };
-const request = () =>
-  new Request('https://portal.example.test/api/auth/portal/callback/credentials');
-const authorize = (token: string) => h.config.providers[0]!.authorize({ token }, request());
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,24 +62,24 @@ beforeEach(() => {
 });
 
 describe('ACCESS-TENANT-RLS-001: public magic-link ingress', () => {
-  it('shares the verification bucket between server action and Auth.js callback', async () => {
+  // S-05: Der frühere Auth.js-Credentials-Provider war ein zweiter, ungenutzter
+  // Login-Pfad. Einziger Einstieg ist jetzt die Bestätigungs-Action.
+  it('accepts magic links only through the confirmation action, not through Auth.js', async () => {
+    expect(h.config.providers).toEqual([]);
     await expect(verifyMagicLinkAction('token', contact.id)).resolves.toEqual({ ok: true });
-    await expect(authorize('token')).resolves.toMatchObject({ contactId: contact.id });
     expect(h.limit.mock.calls).toEqual([
-      ['portal-authorize', '203.0.113.12', { max: 10, windowSec: 600 }],
       ['portal-authorize', '203.0.113.12', { max: 10, windowSec: 600 }],
     ]);
     expect(h.writeSession).toHaveBeenCalledExactlyOnceWith(contact);
-    expect(h.verify).toHaveBeenNthCalledWith(1, 'token', contact.id);
+    expect(h.verify).toHaveBeenCalledExactlyOnceWith('token', contact.id);
   });
 
-  it('blocks both POST ingress paths before token lookup, consumption or cookie creation', async () => {
+  it('blocks the POST ingress before token lookup, consumption or cookie creation', async () => {
     h.limit.mockResolvedValue({ ok: false, retryAfter: 60 });
     await expect(verifyMagicLinkAction('token', contact.id)).resolves.toMatchObject({
       ok: false,
       rateLimited: true,
     });
-    await expect(authorize('token')).resolves.toBeNull();
     expect(h.verify).not.toHaveBeenCalled();
     expect(h.writeSession).not.toHaveBeenCalled();
   });

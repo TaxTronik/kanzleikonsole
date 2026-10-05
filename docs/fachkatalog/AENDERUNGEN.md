@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-012
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/api/portal/logout/route.ts
+      - apps/web/src/app/staff/(auth)/login/password/route.ts
+      - apps/web/src/server/auth/portal-session.ts
+      - apps/web/src/server/auth/portal.ts
+      - apps/web/src/server/auth/staff.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+    reason: >-
+      Session-Cookies von Kanzlei und Mandantenportal werden nur noch über eine
+      Session-Fabrik je Oberfläche gelesen, ausgestellt und gelöscht; Auth.js
+      erhält Sitzungseinstellungen, JWT-Codec und Cookie-Namen aus dieser Fabrik. In
+      Produktion akzeptiert der Server ausschließlich den konfigurierten
+      __Host-/__Secure-Namen. Der ungenutzte Portal-Credentials-Provider entfällt,
+      der über /api/auth/portal/callback/credentials einen zweiten, öffentlich
+      erreichbaren Anmeldeweg bot und einen Magic-Link verbrauchen konnte; der
+      Magic-Link-Ablauf bleibt unverändert. Die wirkungslose Angabe updateAge
+      entfällt. Widerrufs-, Revisions- und Mandatsprüfungen bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/session-factory.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-011
     date: '2026-10-05'
     paths:
@@ -1694,6 +1719,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-012` dokumentiert die zentrale Session-Fabrik
+  je Oberfläche und das Entfernen des ungenutzten Portal-Credentials-Logins.
+  Widerrufs- und Mandatsprüfungen bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-011` dokumentiert die Zuordnung von
   Onboarding-Uploads über den Fremdschlüssel statt über das JSON-Array der

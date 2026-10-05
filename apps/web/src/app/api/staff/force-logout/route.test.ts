@@ -23,7 +23,8 @@ vi.mock('@/server/auth/revocation', () => ({
   revokeAllSessions: mocks.revokeAllSessions,
 }));
 
-vi.mock('@/server/auth/session-cookie', () => ({
+vi.mock('@/server/auth/session-cookie', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/auth/session-cookie')>()),
   STAFF_SESSION_COOKIE_BASE: 'taxtronik_staff_session',
   USE_SECURE_COOKIES: true,
   sessionCookieNameVariants: () => [

@@ -1,12 +1,31 @@
-import { cookies } from 'next/headers';
-import { encode } from 'next-auth/jwt';
+// =============================================================================
+// Portal-Session-Fabrik (S-05) — einzige Instanz für das Mandantenportal.
+// Portal-Sessions entstehen ausschließlich hier: nach bestätigtem Magic-Link
+// (confirmMagicLinkAction) und beim Profilwechsel. Auth.js stellt für das
+// Portal keine Session mehr aus (kein Provider). Siehe session-factory.ts.
+// =============================================================================
+
+import type { JWT } from 'next-auth/jwt';
 import { env } from '@taxtronik/config';
 import { getSessionIssuedAt } from './session-issued-at';
 import {
   PORTAL_SESSION_COOKIE,
+  PORTAL_SESSION_COOKIE_BASE,
+  PORTAL_SESSION_JWT_DECODE_SALTS,
   PORTAL_SESSION_JWT_SALT,
   USE_SECURE_COOKIES,
 } from './session-cookie';
+import { createSessionFactory } from './session-factory';
+
+export const portalSessionFactory = createSessionFactory({
+  cookieName: PORTAL_SESSION_COOKIE,
+  cookieBase: PORTAL_SESSION_COOKIE_BASE,
+  secure: USE_SECURE_COOKIES,
+  domain: env.PORTAL_COOKIE_DOMAIN || undefined,
+  jwtSalt: PORTAL_SESSION_JWT_SALT,
+  jwtDecodeSalts: PORTAL_SESSION_JWT_DECODE_SALTS,
+  secret: env.AUTH_SECRET,
+});
 
 export interface PortalSessionContact {
   id: string;
@@ -21,6 +40,24 @@ export interface PortalSessionIdentity {
   sessionOriginContactId: string;
 }
 
+/** Claims eines Portal-JWT; Profilwechsel übernehmen die ursprüngliche Identität. */
+export function portalSessionToken(
+  contact: PortalSessionContact,
+  identity: PortalSessionIdentity,
+): JWT {
+  return {
+    sub: contact.id,
+    email: contact.email,
+    name: contact.fullName,
+    contactId: contact.id,
+    tenantId: contact.tenantId,
+    clientId: contact.clientId,
+    fullName: contact.fullName,
+    sessionIssuedAt: identity.sessionIssuedAt,
+    sessionOriginContactId: identity.sessionOriginContactId,
+  };
+}
+
 /** New mailbox authentication starts an identity; profile switches preserve it. */
 export async function writePortalSession(
   contact: PortalSessionContact,
@@ -32,30 +69,5 @@ export async function writePortalSession(
   if (getSessionIssuedAt(identity) === undefined || !identity.sessionOriginContactId) {
     throw new Error('Invalid original portal session identity');
   }
-  const sessionToken = await encode({
-    secret: env.AUTH_SECRET,
-    salt: PORTAL_SESSION_JWT_SALT,
-    maxAge: 24 * 60 * 60,
-    token: {
-      sub: contact.id,
-      email: contact.email,
-      name: contact.fullName,
-      contactId: contact.id,
-      tenantId: contact.tenantId,
-      clientId: contact.clientId,
-      fullName: contact.fullName,
-      sessionIssuedAt: identity.sessionIssuedAt,
-      sessionOriginContactId: identity.sessionOriginContactId,
-    },
-  });
-
-  const jar = await cookies();
-  jar.set(PORTAL_SESSION_COOKIE, sessionToken, {
-    httpOnly: true,
-    secure: USE_SECURE_COOKIES,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 24 * 60 * 60,
-    ...(env.PORTAL_COOKIE_DOMAIN ? { domain: env.PORTAL_COOKIE_DOMAIN } : {}),
-  });
+  await portalSessionFactory.issue(portalSessionToken(contact, identity));
 }

@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { encode } from 'next-auth/jwt';
-import { env } from '@taxtronik/config';
 import { prismaOwner } from '@/server/db/prisma-owner';
-import {
-  STAFF_SESSION_COOKIE,
-  STAFF_SESSION_JWT_SALT,
-  USE_SECURE_COOKIES,
-} from '@/server/auth/session-cookie';
+import { staffSessionFactory, staffSessionToken } from '@/server/auth/staff-session';
 import { checkPasswordAction } from '../actions';
 import { evidenceService } from '@/server/container';
 import { auditIp } from '@/server/auth/login-audit';
@@ -90,12 +84,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }),
   );
 
-  const token = await encode({
-    secret: env.AUTH_SECRET,
-    salt: STAFF_SESSION_JWT_SALT,
-    maxAge: 24 * 60 * 60,
-    token: {
-      sub: staffUser.id,
+  // S-05: Cookie-Name, -Optionen, Codec und Claims aus der Staff-Session-
+  // Fabrik — dieselbe Implementierung, mit der Auth.js die Session ausstellt.
+  const response = NextResponse.redirect(new URL(returnTo, req.url), 303);
+  await staffSessionFactory.issue(
+    staffSessionToken({
+      id: staffUser.id,
       email: staffUser.email,
       name: staffUser.fullName,
       staffId: staffUser.id,
@@ -105,18 +99,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       permissions: staffUser.permissions.map((p) => p.permission as string),
       authMethod: 'dev_skip_totp',
       authRevision: staffUser.authRevision,
-      sessionIssuedAt: Math.floor(Date.now() / 1000),
-    },
-  });
-
-  const response = NextResponse.redirect(new URL(returnTo, req.url), 303);
-  response.cookies.set(STAFF_SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: USE_SECURE_COOKIES,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 24 * 60 * 60,
-    ...(env.STAFF_COOKIE_DOMAIN ? { domain: env.STAFF_COOKIE_DOMAIN } : {}),
-  });
+    }),
+    { request: req, response },
+  );
   return response;
 }

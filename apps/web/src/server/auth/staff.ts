@@ -1,7 +1,6 @@
 import { cache } from 'react';
-import { cookies } from 'next/headers';
 import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
-import { decode, type JWT } from 'next-auth/jwt';
+import type { JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
 import { compare } from 'bcryptjs';
 import { env } from '@taxtronik/config';
@@ -10,16 +9,7 @@ import { resetFailedLogin } from './lockout';
 import { recordFailedLoginAudited, auditIp } from './login-audit';
 import { isTokenRevoked } from './revocation';
 import { getSessionIssuedAt } from './session-issued-at';
-import {
-  STAFF_SESSION_COOKIE,
-  STAFF_SESSION_COOKIE_BASE,
-  STAFF_SESSION_JWT_DECODE_SALTS,
-  STAFF_SESSION_JWT_SALT,
-  USE_SECURE_COOKIES,
-  readSessionCookieValue,
-  sessionCookieNameVariants,
-} from './session-cookie';
-import { createStableSessionJwtOptions } from './session-jwt';
+import { staffSessionClaims, staffSessionFactory, type StaffSessionUser } from './staff-session';
 import { evidenceService } from '@/server/container';
 import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
@@ -115,35 +105,6 @@ function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
     (o['authRevision'] === undefined ||
       (typeof o['authRevision'] === 'number' && Number.isSafeInteger(o['authRevision'])))
   );
-}
-
-function unique(values: string[]): string[] {
-  return Array.from(new Set(values));
-}
-
-function staffSessionCookieNames(): string[] {
-  return unique([STAFF_SESSION_COOKIE, ...sessionCookieNameVariants(STAFF_SESSION_COOKIE_BASE)]);
-}
-
-async function readStaffSessionTokenCookie(): Promise<string | null> {
-  const jar = await cookies();
-  return readSessionCookieValue(jar, staffSessionCookieNames());
-}
-
-function hasValidJwtLifetime(token: JWT): boolean {
-  return typeof token.exp === 'number' && token.exp > Math.floor(Date.now() / 1000);
-}
-
-async function decodeStaffSessionToken(rawToken: string): Promise<JWT | null> {
-  for (const salt of unique(STAFF_SESSION_JWT_DECODE_SALTS)) {
-    try {
-      const token = await decode({ token: rawToken, secret: env.AUTH_SECRET, salt });
-      if (token && hasValidJwtLifetime(token)) return token;
-    } catch {
-      // Historical salt miss; try the next candidate.
-    }
-  }
-  return null;
 }
 
 function sessionExpires(token: JWT): string {
@@ -583,56 +544,24 @@ const staffConfig: NextAuthConfig = {
     }),
   ],
 
-  // W-1: explizite Session-TTL. Auth.js-Default ist 30 Tage — die Doku
-  // (revocation.ts, S11) geht aber von 24 h aus. Ohne maxAge wäre der
-  // Revocation-Worst-Case 30 Tage statt einem Tag, was die Compliance-
-  // Aussage „Logout = Sessions sofort invalidiert (max. 24h-Restzeit)"
-  // bricht. updateAge: jedes Mal, wenn das Token innerhalb von 4 h vor
-  // seinem Ablauf benutzt wird, wird es serverseitig erneuert.
-  session: {
-    strategy: 'jwt',
-    maxAge: 24 * 60 * 60,
-    updateAge: 4 * 60 * 60,
-  },
-
-  jwt: createStableSessionJwtOptions(STAFF_SESSION_JWT_SALT, STAFF_SESSION_JWT_DECODE_SALTS),
-
-  cookies: {
-    sessionToken: {
-      // Härtung: __Host- (ohne Cookie-Domain) bzw. __Secure- (mit Domain) in
-      // Production — Name zentral in session-cookie.ts (auch proxy.ts liest
-      // ihn). Die Optionen hier MÜSSEN zur Präfix-Wahl passen: secure (prod),
-      // path '/', domain NUR wenn STAFF_COOKIE_DOMAIN gesetzt (sonst __Host-).
-      name: STAFF_SESSION_COOKIE,
-      options: {
-        httpOnly: true,
-        secure: USE_SECURE_COOKIES,
-        sameSite: 'lax' as const,
-        path: '/',
-        // Optional: Subdomain-Trennung (siehe docs/operations/subdomain-trennung.md)
-        ...(env.STAFF_COOKIE_DOMAIN ? { domain: env.STAFF_COOKIE_DOMAIN } : {}),
-      },
-    },
-  },
+  // W-1: explizite Session-TTL von 24 h (Auth.js-Default wären 30 Tage) —
+  // Laufzeit, JWT-Codec und Cookie (__Host-/__Secure-Name, Optionen passend
+  // zur Präfix-Wahl) kommen aus der Staff-Session-Fabrik, die auch staffAuth(),
+  // Logout und den lokalen Formularpfad bedient. Ein `updateAge` gibt es nicht:
+  // Auth.js wertet es für JWT-Sessions nicht aus; die tatsächliche (fehlende)
+  // Erneuerung beschreibt session-factory.ts.
+  session: staffSessionFactory.authJs.session,
+  jwt: staffSessionFactory.authJs.jwt,
+  cookies: staffSessionFactory.authJs.cookies,
 
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        const u = user as StaffTokenPayload;
-        token.staffId = u.staffId;
-        token.tenantId = u.tenantId;
-        token.fullName = u.fullName;
-        token.roles = u.roles;
-        token.permissions = u.permissions ?? [];
-        token.authMethod = u.authMethod;
-        token.authRevision = u.authRevision;
-        token.sessionIssuedAt = Math.floor(Date.now() / 1000);
-        return token;
-      }
+      // Neue Anmeldung: dieselben Claims wie bei direkter Ausstellung.
+      if (user) return { ...token, ...staffSessionClaims(user as StaffSessionUser) };
       // ACCESS-TENANT-RLS-001: Reject before Auth.js issues another cookie.
       // Preserve the original time even if revocation races with this refresh.
       const issuedAt = getSessionIssuedAt(token);
-      if (issuedAt === undefined || !hasValidJwtLifetime(token)) return null;
+      if (issuedAt === undefined || !staffSessionFactory.isLive(token)) return null;
       const session = await hydrateStaffSessionFromToken(
         { user: {}, expires: sessionExpires(token) } as Session,
         token,
@@ -660,24 +589,20 @@ export const staffSignOut: typeof _staff.signOut = _staff.signOut;
 
 /** Verifizierter JWT-Subject ohne DB-Hydration, insbesondere für Logout. */
 export async function staffSessionSubject(): Promise<string | null> {
-  const rawToken = await readStaffSessionTokenCookie();
-  if (!rawToken) return null;
-  const token = await decodeStaffSessionToken(rawToken);
+  const token = await staffSessionFactory.read();
   return isStaffTokenPayload(token) ? token.staffId : null;
 }
 
-// Harter Server-Gatekeeper fuer Staff-Sessions: Cookie prefix-tolerant lesen,
-// JWT mit stabilen Salts decodieren und dann dieselben Revocation-/DB-Gates
+// Harter Server-Gatekeeper fuer Staff-Sessions: Cookie und JWT ueber die
+// Staff-Session-Fabrik lesen (in Production nur der konfigurierte
+// __Host-/__Secure-Name, stabile Salts) und dann dieselben Revocation-/DB-Gates
 // wie der NextAuth-Session-Callback pruefen. React cache() dedupliziert diese
 // Redis-/DB-Roundtrips request-scoped, ohne Cross-Request-Staleness.
 // CI-Haertung: Der Wrapper decodiert das Cookie selbst mit stabilen Salts, damit
 // gueltige lokale HTTP-E2E-Sessions nicht von NextAuths auth()-Pipeline verloren
 // gehen, bevor unsere eigenen Gates greifen koennen.
 export const staffAuth = cache(async (): Promise<StaffSession | null> => {
-  const rawToken = await readStaffSessionTokenCookie();
-  if (!rawToken) return null;
-
-  const token = await decodeStaffSessionToken(rawToken);
+  const token = await staffSessionFactory.read();
   if (!token) return null;
 
   const baseSession: Session = {

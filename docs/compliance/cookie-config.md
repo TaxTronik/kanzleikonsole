@@ -23,7 +23,12 @@ oder unsicheren Kontexten überschrieben werden. Ist `STAFF_COOKIE_DOMAIN` /
 `PORTAL_COOKIE_DOMAIN` gesetzt (Subdomain-Trennung), lauten die Namen
 `__Secure-taxtronik_*_session` (`__Host-` wäre mit Domain-Attribut ungültig).
 Nur im Dev (HTTP, Browser lehnen Präfix-Cookies ab) bleibt der unpräfixte
-Name `__taxtronik_*_session`.
+Name `__taxtronik_*_session`. Der Server liest die Session in Production wie
+der Proxy ausschließlich unter dem konfigurierten Namen; die übrigen
+Präfix-Varianten werden nur ohne Secure-Cookies (Dev/Test, lokaler HTTP-E2E)
+akzeptiert. Lesen, Ausstellen und Löschen laufen je Oberfläche über eine
+Session-Fabrik (`apps/web/src/server/auth/session-factory.ts`), aus der auch
+Auth.js Cookie-Name, -Optionen, Laufzeit und JWT-Codec erhält.
 
 **Surface-Trennung**: Wenn `STAFF_COOKIE_DOMAIN`/`PORTAL_COOKIE_DOMAIN`
 explizit gesetzt sind (z. B. Subdomain-Setup `staff.kanzlei.de` /
@@ -41,6 +46,14 @@ Schlüsselableitung (`alg=dir`) und `enc=A256CBC-HS512`; Schlüsselwurzel ist
 [auth-secret-rotation.md](./auth-secret-rotation.md)). Die Anwendung delegiert
 Encode/Decode unverändert an Auth.js und ergänzt nur die Session-Claims.
 
+**Laufzeit und Erneuerung**: Ein Session-JWT gilt 24 h ab Ausstellung.
+Seitenaufrufe verlängern es nicht. Neu ausgestellt wird es nur bei der
+Anmeldung, beim Portal-Profilwechsel (der ursprüngliche Anmeldezeitpunkt für
+den Widerruf bleibt erhalten) und bei einem Aufruf des Auth.js-Endpunkts
+`/api/auth/<surface>/session`, den die Oberfläche nicht verwendet. Ein
+`updateAge` ist nicht konfiguriert, weil Auth.js es für JWT-Sessions nicht
+auswertet.
+
 **Session-Revocation**: Server-side via Redis-Key
 `revoke:{surface}:{userId}` mit Timestamp. Wegen der Sekundengenauigkeit des
 JWT-Claims wird die gesamte Sekunde des Widerrufs einschließlich aller Tokens
@@ -55,8 +68,9 @@ In diesem Fall ist die Secret-Rotation die entscheidende Eindämmungsmaßnahme.
 ## Auth.js-Helper-Cookies
 
 Auth.js setzt während eines OAuth-Flows weitere Cookies (`__Host-next-auth.*`).
-taxtronik nutzt aber ausschließlich Credentials-Provider: Passwort + TOTP oder
-physischer Sicherheitsschlüssel für Staff, Magic-Link für Portal. Diese
+taxtronik nutzt für Staff ausschließlich Credentials-Provider (Passwort + TOTP
+oder physischer Sicherheitsschlüssel). Das Portal hat keinen Auth.js-Provider;
+seine Sessions stellt nach bestätigtem Magic-Link nur die Server-Action aus. Diese
 OAuth-Helper-Cookies werden in der Praxis nicht gesetzt. WebAuthn-Challenges
 liegen kurzlebig und einmalig in Redis, nicht in einem zusätzlichen
 Browser-Cookie.

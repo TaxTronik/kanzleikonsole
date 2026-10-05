@@ -11,49 +11,7 @@ import { env } from '@taxtronik/config';
 import { staffSessionSubject, staffSignOut } from '@/server/auth/staff';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
-import {
-  STAFF_SESSION_COOKIE_BASE,
-  sessionCookieNameVariants,
-  USE_SECURE_COOKIES,
-} from '@/server/auth/session-cookie';
-
-function staffCookieNames(req: NextRequest): Set<string> {
-  const variants = sessionCookieNameVariants(STAFF_SESSION_COOKIE_BASE);
-  const names = new Set(variants);
-
-  // Auth.js teilt grosse JWTs in Cookies mit Suffix .0, .1, ... auf. Nur den
-  // Basisnamen zu loeschen laesst diese Chunks als Session im Browser zurueck.
-  for (const cookie of req.cookies.getAll()) {
-    if (
-      variants.some(
-        (base) =>
-          cookie.name.startsWith(`${base}.`) && /^\d+$/.test(cookie.name.slice(base.length + 1)),
-      )
-    ) {
-      names.add(cookie.name);
-    }
-  }
-
-  return names;
-}
-
-function expireStaffSessionCookies(req: NextRequest, response: NextResponse): void {
-  for (const name of staffCookieNames(req)) {
-    const prefixedSecureCookie = name.startsWith('__Host-') || name.startsWith('__Secure-');
-    response.cookies.set(name, '', {
-      httpOnly: true,
-      secure: USE_SECURE_COOKIES || prefixedSecureCookie,
-      sameSite: 'lax',
-      path: '/',
-      expires: new Date(0),
-      maxAge: 0,
-      // __Host-Cookies duerfen laut Browser-Regeln kein Domain-Attribut haben.
-      ...(!name.startsWith('__Host-') && env.STAFF_COOKIE_DOMAIN
-        ? { domain: env.STAFF_COOKIE_DOMAIN }
-        : {}),
-    });
-  }
-}
+import { staffSessionFactory } from '@/server/auth/staff-session';
 
 function staffLoginResponse(): NextResponse {
   // Relative Location ist absichtlich host-neutral: req.url kann hinter einem
@@ -92,7 +50,8 @@ async function logout(req: NextRequest, revoke: boolean): Promise<NextResponse> 
         { status: 503, headers: { 'cache-control': 'no-store' } },
       )
     : staffLoginResponse();
-  expireStaffSessionCookies(req, response);
+  // Alle Namensvarianten samt Auth.js-Chunks (Session-Fabrik, S-05).
+  staffSessionFactory.expire(req, response);
   return response;
 }
 

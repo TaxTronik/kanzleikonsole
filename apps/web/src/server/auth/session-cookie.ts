@@ -74,6 +74,32 @@ export function sessionCookieNameVariants(base: string): string[] {
   return [`__${base}`, `__Host-${base}`, `__Secure-${base}`];
 }
 
+/**
+ * S-05: Namen, unter denen ein Session-Cookie gelesen wird. `strict` (Server in
+ * Production, Proxy fuer jeden nicht-lokalen Request) akzeptiert nur den
+ * konfigurierten __Host-/__Secure-Namen: allein dieses Praefix garantiert, dass
+ * der Host das Cookie selbst ueber HTTPS gesetzt hat. Die uebrigen Varianten
+ * bleiben nur ohne Secure-Cookies (Dev/Test, lokaler HTTP-E2E) lesbar.
+ */
+export function acceptedSessionCookieNames(
+  configured: string,
+  base: string,
+  strict: boolean,
+): string[] {
+  return strict
+    ? [configured]
+    : Array.from(new Set([configured, ...sessionCookieNameVariants(base)]));
+}
+
+/** Eine Namensvariante der Oberflaeche oder einer ihrer Auth.js-Chunks (`.0`, `.1`, ...). */
+export function isSessionCookieName(name: string, base: string): boolean {
+  return sessionCookieNameVariants(base).some(
+    (variant) =>
+      name === variant ||
+      (name.startsWith(`${variant}.`) && /^\d+$/.test(name.slice(variant.length + 1))),
+  );
+}
+
 type SessionCookieReader = {
   get(name: string): { value: string } | undefined;
   getAll(): Array<{ name: string; value: string }>;

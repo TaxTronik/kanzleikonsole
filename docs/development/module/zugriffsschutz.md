@@ -347,6 +347,14 @@ koordinierten Release vor dem externen Wechsel erforderlich machen.
 
 ## Sitzungswiderruf bei Cookie-Erneuerung
 
+S-05: Je Oberfläche gibt es genau eine Session-Fabrik
+(`server/auth/session-factory.ts` mit `staffSessionFactory` und
+`portalSessionFactory`). Auth.js, die Server-Auth, die direkten Ausstellungen,
+Logout und Layout lesen, schreiben und löschen Session-Cookies nur darüber; in
+Production gilt ausschließlich der konfigurierte `__Host-`/`__Secure-`-Name.
+Das Portal besitzt keinen Auth.js-Provider mehr, der öffentliche
+Credentials-Callback stellt dort keine Session aus.
+
 ACCESS-TENANT-RLS-001: JWT-Erneuerung, Session-Callback und direkte Server-Auth
 verwenden dieselbe laufende Konto-/Mandatsprüfung. Ein widerrufenes Token wird
 vor dem Ausstellen eines Ersatzcookies verworfen. `sessionIssuedAt` bleibt als

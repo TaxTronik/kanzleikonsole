@@ -1,35 +1,29 @@
 // =============================================================================
-// Portal-Auth (Mandantenportal) — Magic-Link via Credentials-Provider.
+// Portal-Auth (Mandantenportal) — Magic-Link ohne Auth.js-Provider.
 //
 // Flow:
 //   1. User gibt Email auf /portal/login ein → Server-Action ruft requestMagicLink
 //      → Mail mit Token-Link wird verschickt.
-//   2. User klickt Link → /portal/login/verify?token=...
-//   3. Verify-Page ruft portalSignIn('credentials', { token, ... }) auf.
-//   4. authorize() verifiziert Token via verifyMagicLink, gibt Contact zurück.
-//   5. JWT-Session wird gesetzt (Cookie-Name siehe session-cookie.ts, path=/).
+//   2. User klickt Link → /portal/login/verify?token=... zeigt nur die
+//      Profilauswahl (GET verbraucht den Einmal-Link nicht).
+//   3. Der POST der Profilauswahl (confirmMagicLinkAction) verifiziert und
+//      verbraucht den Token und stellt die Session über writePortalSession aus
+//      (Cookie-Name, Codec und Laufzeit aus der Portal-Session-Fabrik).
+//
+// S-05: Die Auth.js-Instanz hat keinen Provider mehr. Der frühere Credentials-
+// Provider hatte keinen Aufrufer in der Oberfläche, war aber über
+// /api/auth/portal/callback/credentials als zweiter Login-Pfad öffentlich
+// erreichbar. Auth.js bleibt nur für Abmelden (portalSignOut) und den
+// Session-Endpunkt mit denselben Prüfungen wie portalAuth().
 // =============================================================================
 
 import { cache } from 'react';
-import { cookies } from 'next/headers';
 import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
-import { decode, type JWT } from 'next-auth/jwt';
-import Credentials from 'next-auth/providers/credentials';
+import type { JWT } from 'next-auth/jwt';
 import { env } from '@taxtronik/config';
-import { verifyMagicLink } from './magic-link';
 import { isTokenRevoked } from './revocation';
 import { getSessionIssuedAt } from './session-issued-at';
-import { checkMagicLinkEntryLimit } from './magic-link-entry';
-import {
-  PORTAL_SESSION_COOKIE,
-  PORTAL_SESSION_COOKIE_BASE,
-  PORTAL_SESSION_JWT_DECODE_SALTS,
-  PORTAL_SESSION_JWT_SALT,
-  USE_SECURE_COOKIES,
-  readSessionCookieValue,
-  sessionCookieNameVariants,
-} from './session-cookie';
-import { createStableSessionJwtOptions } from './session-jwt';
+import { portalSessionFactory } from './portal-session';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 
@@ -68,35 +62,8 @@ function isPortalTokenPayload(t: unknown): t is PortalTokenPayload {
   );
 }
 
-// Harte Server-Session-Validierung fuer portalAuth: Cookie prefix-tolerant
-// lesen, JWT mit stabilen Salts decodieren und dann Revocation/DB pruefen.
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
-}
-
-function portalSessionCookieNames(): string[] {
-  return unique([PORTAL_SESSION_COOKIE, ...sessionCookieNameVariants(PORTAL_SESSION_COOKIE_BASE)]);
-}
-
-async function readPortalSessionTokenCookie(): Promise<string | null> {
-  const jar = await cookies();
-  return readSessionCookieValue(jar, portalSessionCookieNames());
-}
-
-function hasValidJwtLifetime(token: JWT): boolean {
-  return typeof token.exp === 'number' && token.exp > Math.floor(Date.now() / 1000);
-}
-
-async function decodePortalSessionToken(rawToken: string): Promise<JWT | null> {
-  for (const salt of unique(PORTAL_SESSION_JWT_DECODE_SALTS)) {
-    try {
-      const token = await decode({ token: rawToken, secret: env.AUTH_SECRET, salt });
-      if (token && hasValidJwtLifetime(token)) return token;
-    } catch {
-      // Historical salt miss; try the next candidate.
-    }
-  }
-  return null;
 }
 
 function sessionExpires(token: JWT): string {
@@ -203,85 +170,25 @@ const portalConfig: NextAuthConfig = {
   trustHost: env.NEXTAUTH_TRUST_HOST ?? true,
   secret: env.AUTH_SECRET,
 
-  providers: [
-    Credentials({
-      name: 'magic-link',
-      credentials: {
-        token: { label: 'Magic-Link-Token', type: 'text' },
-      },
-      async authorize(credentials, request) {
-        const token = credentials?.token as string | undefined;
-        if (!token) return null;
+  // S-05: kein Provider — Portal-Sessions stellt ausschließlich
+  // writePortalSession nach bestätigtem Magic-Link aus (portal-session.ts).
+  providers: [],
 
-        // Pre-Lookup-Rate-Limit (symmetrisch zum Staff-Login): der Token ist zwar
-        // 256-bit-Zufall und gehasht (Brute-Force chancenlos), aber ohne Limit
-        // kann ein Angreifer unbegrenzt sha256+DB-Lookups gegen den Callback
-        // fahren. Per-IP eng, bei fehlender IP globaler Sturm-Bucket.
-        const rl = await checkMagicLinkEntryLimit(request?.headers ?? new Headers(), 'verify');
-        if (!rl.ok) {
-          log.warn('portal-auth: authorize-rate-limit hit');
-          return null;
-        }
-
-        const result = await verifyMagicLink(token);
-        if (!result) return null;
-
-        const c = result.contact;
-        return {
-          id: c.id,
-          email: c.email,
-          name: c.fullName,
-          contactId: c.id,
-          tenantId: c.tenantId,
-          clientId: c.clientId,
-          fullName: c.fullName,
-        };
-      },
-    }),
-  ],
-
-  // W-1: explizite Session-TTL — symmetrisch zu staff.ts. Default wäre 30 Tage;
-  // Doku/Revocation-Logik geht von 24 h aus, also pinnen wir das hier hart.
-  session: {
-    strategy: 'jwt',
-    maxAge: 24 * 60 * 60,
-    updateAge: 4 * 60 * 60,
-  },
-
-  jwt: createStableSessionJwtOptions(PORTAL_SESSION_JWT_SALT, PORTAL_SESSION_JWT_DECODE_SALTS),
-
-  cookies: {
-    sessionToken: {
-      // Härtung: __Host-/__Secure-Präfix in Production — Name zentral in
-      // session-cookie.ts (Begründung + Constraints dort, analog staff.ts).
-      name: PORTAL_SESSION_COOKIE,
-      options: {
-        httpOnly: true,
-        secure: USE_SECURE_COOKIES,
-        sameSite: 'lax' as const,
-        path: '/',
-        ...(env.PORTAL_COOKIE_DOMAIN ? { domain: env.PORTAL_COOKIE_DOMAIN } : {}),
-      },
-    },
-  },
+  // Laufzeit, Codec und Cookie aus der Portal-Session-Fabrik; zur (fehlenden)
+  // gleitenden Erneuerung siehe session-factory.ts.
+  session: portalSessionFactory.authJs.session,
+  jwt: portalSessionFactory.authJs.jwt,
+  cookies: portalSessionFactory.authJs.cookies,
 
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        const u = user as PortalTokenPayload;
-        token.contactId = u.contactId;
-        token.tenantId = u.tenantId;
-        token.clientId = u.clientId;
-        token.fullName = u.fullName;
-        token.email = normalizePortalEmail(u.email) ?? '';
-        token.sessionIssuedAt = Math.floor(Date.now() / 1000);
-        token.sessionOriginContactId = u.contactId;
-        return token;
-      }
+      // Ohne Provider meldet Auth.js nie einen Benutzer an; eine Anmeldung an
+      // writePortalSession vorbei wird nicht ausgestellt.
+      if (user) return null;
       // ACCESS-TENANT-RLS-001: Reject before Auth.js issues another cookie.
       // Preserve the original time even if revocation races with this refresh.
       const issuedAt = getSessionIssuedAt(token);
-      if (issuedAt === undefined || !hasValidJwtLifetime(token)) return null;
+      if (issuedAt === undefined || !portalSessionFactory.isLive(token)) return null;
       const session = await hydratePortalSessionFromToken(
         { user: {}, expires: sessionExpires(token) } as Session,
         token,
@@ -308,17 +215,14 @@ const _portal = NextAuth(portalConfig);
 // Explizite typeof-Annotationen: ohne sie versucht TypeScript, die Typen
 // rückwärts aus @auth/core zu inferieren und landet bei einem Pfad
 // `.pnpm/@auth+core@.../...`, den der declaration-emitter als „nicht
-// portabel" ablehnt (TS4023 in pnpm-Workspaces). `typeof _portal.signIn`
+// portabel" ablehnt (TS4023 in pnpm-Workspaces). `typeof _portal.signOut`
 // schaltet die Inferenz ab — der Typ bleibt funktional identisch.
 export const portalHandlers: typeof _portal.handlers = _portal.handlers;
-export const portalSignIn: typeof _portal.signIn = _portal.signIn;
 export const portalSignOut: typeof _portal.signOut = _portal.signOut;
 
 /** Verifizierter JWT-Subject ohne DB-Hydration, insbesondere für Logout. */
 export async function portalSessionSubject(): Promise<string | null> {
-  const rawToken = await readPortalSessionTokenCookie();
-  if (!rawToken) return null;
-  const token = await decodePortalSessionToken(rawToken);
+  const token = await portalSessionFactory.read();
   return isPortalTokenPayload(token) ? portalOriginContactId(token) : null;
 }
 
@@ -327,13 +231,10 @@ export async function portalSessionSubject(): Promise<string | null> {
 // React cache(): request-scoped Dedup (analog staffAuth) — Portal-Layout + Pages
 // rufen portalAuth mehrfach pro Request; cache() spart die redundanten
 // Redis-/DB-Round-Trips ohne Cross-Request-Risiko.
-// Symmetrisch zu staffAuth: direkte Cookie/JWT-Validierung, danach dieselben
-// Revocation- und DB-Gates wie im NextAuth-Session-Callback.
+// Symmetrisch zu staffAuth: Cookie und JWT über die Portal-Session-Fabrik
+// lesen, danach dieselben Revocation- und DB-Gates wie im Session-Callback.
 export const portalAuth = cache(async (): Promise<PortalSession | null> => {
-  const rawToken = await readPortalSessionTokenCookie();
-  if (!rawToken) return null;
-
-  const token = await decodePortalSessionToken(rawToken);
+  const token = await portalSessionFactory.read();
   if (!token) return null;
 
   const baseSession: Session = {

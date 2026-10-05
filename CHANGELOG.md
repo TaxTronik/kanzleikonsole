@@ -949,6 +949,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Session-Cookies von Kanzlei und Mandantenportal werden nur noch
+  über eine Session-Fabrik je Oberfläche gelesen, ausgestellt und gelöscht; in
+  Produktion akzeptiert der Server ausschließlich den konfigurierten
+  `__Host-`/`__Secure-`-Namen. Der ungenutzte zweite Portal-Login über
+  `/api/auth/portal/callback/credentials`, der einen Magic-Link verbrauchen und
+  eine Portal-Sitzung ausstellen konnte, ist entfernt; die wirkungslose Angabe
+  `updateAge` entfällt (`ACCESS-TENANT-RLS-001`, `FK-EXC-20261005-012`).
 - KI-Aufträge der Subsumtion enthalten keinen Sachverhalt mehr, nur Analyse-ID
   und Hash; der Worker liest den Text aus der Datenbank. Erledigte Aufträge
   werden nach 24 Stunden, fehlgeschlagene nach 7 Tagen aus Redis entfernt;

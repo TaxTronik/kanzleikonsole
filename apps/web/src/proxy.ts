@@ -22,7 +22,8 @@ import {
   PORTAL_SESSION_COOKIE,
   STAFF_SESSION_COOKIE_BASE,
   PORTAL_SESSION_COOKIE_BASE,
-  sessionCookieNameVariants,
+  acceptedSessionCookieNames,
+  readSessionCookieValue,
 } from '@/server/auth/session-cookie';
 
 const STAFF_PATH_PREFIX = '/staff';
@@ -204,27 +205,23 @@ function isLocalHttpRequest(request: NextRequest): boolean {
   );
 }
 
-function localHttpSessionCookieNames(surface: Surface): string[] {
-  return sessionCookieNameVariants(sessionCookieBase(surface));
-}
-
-function readSessionCookie(request: NextRequest, surface: Surface): string | undefined {
-  const configured = request.cookies.get(configuredSessionCookieName(surface));
-  if (configured?.value) return configured.value;
-
+function readSessionCookie(request: NextRequest, surface: Surface): string | null {
+  // S-05: dieselbe Namensregel und derselbe Chunk-Leser wie die Server-
+  // Session-Fabrik; im strikten Fall nur der konfigurierte Name.
   // CI/local E2E can run Next's proxy in an environment where non-public env
   // vars are unavailable while Node route handlers still see them. In that
   // case the proxy may compute the secure production prefix while the Node
   // login route correctly emits the local HTTP cookie name. Keep this fallback
   // limited to localhost HTTP so production still requires the configured
   // __Host-/__Secure-prefixed cookie.
-  if (!isLocalHttpRequest(request)) return undefined;
-
-  for (const name of localHttpSessionCookieNames(surface)) {
-    const cookie = request.cookies.get(name);
-    if (cookie?.value) return cookie.value;
-  }
-  return undefined;
+  return readSessionCookieValue(
+    request.cookies,
+    acceptedSessionCookieNames(
+      configuredSessionCookieName(surface),
+      sessionCookieBase(surface),
+      !isLocalHttpRequest(request),
+    ),
+  );
 }
 
 function detectSurface(pathname: string): Surface | null {

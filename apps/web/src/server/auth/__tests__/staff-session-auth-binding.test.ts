@@ -33,7 +33,8 @@ vi.mock('../totp', () => ({ decryptTotpSecret: vi.fn(), verifyTotpCode: vi.fn() 
 vi.mock('../lockout', () => ({ resetFailedLogin: vi.fn() }));
 vi.mock('../login-audit', () => ({ recordFailedLoginAudited: vi.fn(), auditIp: vi.fn() }));
 vi.mock('../revocation', () => ({ isTokenRevoked: mocks.isTokenRevoked }));
-vi.mock('../session-cookie', () => ({
+vi.mock('../session-cookie', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../session-cookie')>()),
   STAFF_SESSION_COOKIE: 'staff-session',
   STAFF_SESSION_COOKIE_BASE: 'staff-session',
   STAFF_SESSION_JWT_DECODE_SALTS: ['staff-session'],
@@ -45,7 +46,6 @@ vi.mock('../session-cookie', () => ({
     names: string[],
   ) => names.map((name) => jar.get(name)?.value).find(Boolean) ?? null,
 }));
-vi.mock('../session-jwt', () => ({ createStableSessionJwtOptions: () => ({}) }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('../totp-replay', () => ({ consumeTotpCode: vi.fn() }));
 vi.mock('@/server/db/prisma-owner', () => ({

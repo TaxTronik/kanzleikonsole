@@ -99,6 +99,41 @@ describe('proxy session cookie gate', () => {
   });
 });
 
+describe('proxy session cookie chunks (S-05)', () => {
+  const productionEnv: NodeJS.ProcessEnv = {
+    NODE_ENV: 'production',
+    NEXTAUTH_URL: 'https://staff.example.test',
+    PORTAL_PUBLIC_URL: undefined,
+    CI: undefined,
+    DEV_SKIP_TOTP: undefined,
+    E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION: undefined,
+    E2E_BASE_URL: undefined,
+  };
+
+  it('accepts a chunked configured cookie like the server-side session reader', async () => {
+    const { proxy } = await loadProxy(productionEnv);
+
+    const response = proxy(
+      request(
+        'https://staff.example.test/staff/dashboard',
+        '__Host-taxtronik_staff_session.0=first; __Host-taxtronik_staff_session.1=second',
+      ),
+    );
+
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('rejects chunks of a non-configured variant on production HTTPS requests', async () => {
+    const { proxy } = await loadProxy(productionEnv);
+
+    const response = proxy(
+      request('https://staff.example.test/portal/dashboard', '__taxtronik_portal_session.0=first'),
+    );
+
+    expect(response.headers.get('location')).toContain('/portal/login');
+  });
+});
+
 describe('proxy legacy n8n gate', () => {
   it.each([undefined, 'false', 'TRUE', '1'])(
     'hides every legacy path and method unless the flag is exact true (%s)',
