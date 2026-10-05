@@ -7,24 +7,18 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { LogOut } from 'lucide-react';
 import { GroupedSidebarNav } from '@/components/sidebar-nav';
 import { GlobalSearch } from '@/components/global-search';
-import { NotificationsBellServer } from '@/components/notifications-bell-server';
+import { NotificationsBell } from '@/components/notifications-bell';
 import { MobileSidebarToggle } from '@/components/mobile-sidebar-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UiModeToggle } from '@/components/ui-mode-toggle';
 import { UserMenu } from '@/components/user-menu';
-import { readBranding } from '@/server/settings/branding';
-import { readModules } from '@/server/settings/modules';
-import { readPortalFeatures } from '@/server/settings/portal-features';
+import { readStaffLayoutData } from '@/server/settings/layout-data';
 import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { resolveStaffNavigation } from '@/lib/navigation-registry';
 import { AccessibleDisplayProvider } from '@/components/accessible-display';
-import {
-  readAccessibleDisplay,
-  readAccessibleDisplayOptions,
-} from '@/server/settings/accessible-display';
 import {
   saveStaffAccessibleDisplayAction,
   saveStaffAccessibleDisplayOptionsAction,
@@ -47,14 +41,15 @@ export default async function StaffLayout({ children }: { children: ReactNode })
     actorId: session.user.staffId,
     actorType: 'STAFF' as const,
   };
-  const [branding, modules, portalFeatures, accessibleDisplay, accessibleDisplayOptions] =
-    await Promise.all([
-      readBranding(ctx),
-      readModules(ctx),
-      readPortalFeatures(ctx),
-      readAccessibleDisplay(ctx),
-      readAccessibleDisplayOptions(ctx),
-    ]);
+  // P-06: Einstellungen, Darstellung und Glocken-Zähler in EINER Transaktion.
+  const {
+    branding,
+    modules,
+    portalFeatures,
+    accessibleDisplay,
+    accessibleDisplayOptions,
+    notifications,
+  } = await readStaffLayoutData(ctx);
   const pathname = (await headers()).get('x-taxtronik-pathname') ?? '';
   if (!isModuleRouteEnabled(modules, 'staff', pathname)) notFound();
 
@@ -154,7 +149,10 @@ export default async function StaffLayout({ children }: { children: ReactNode })
             <div className="flex items-center gap-1">
               <UiModeToggle />
               <ThemeToggle />
-              <NotificationsBellServer />
+              <NotificationsBell
+                initialUnread={notifications.unread}
+                initialLatestUnreadAt={notifications.latestUnreadAt}
+              />
               <span className="topbar-divider" aria-hidden />
               <UserMenu
                 name={session.user.fullName}

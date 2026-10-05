@@ -300,6 +300,30 @@ Konfiguration beim Containerstart flüchtig unter `/run` als UID 1000 mit Modus
 `0400`. Historische generierte Dateien werden entfernt. Die CLI muss unter dem
 Dateieigentümer des Deployment-Checkouts ausgeführt werden.
 
+## Datenbankverbindungen
+
+Jeder Prozess von `app` und `worker` hat zwei Verbindungs-Pools: den App-Pool
+(`DATABASE_APP_URL`, RLS, Request-Transaktionen) und den Owner-Pool
+(`DATABASE_URL`, Login/Auth bzw. Worker-Jobs). Eine Transaktion hält ihre
+Verbindung bis zu 15 s. Die Obergrenzen setzt Compose je Dienst:
+
+| `.env`-Variable            | Compose-Default | Pool                       |
+| -------------------------- | --------------- | -------------------------- |
+| `APP_DB_POOL_MAX`          | 20              | app, App-Pool              |
+| `APP_DB_OWNER_POOL_MAX`    | 5               | app, Owner-Pool            |
+| `WORKER_DB_POOL_MAX`       | 5               | worker, App-Pool           |
+| `WORKER_DB_OWNER_POOL_MAX` | 10              | worker, Owner-Pool         |
+| `POSTGRES_MAX_CONNECTIONS` | 100             | Postgres `max_connections` |
+
+Ohne Compose (Entwicklung, Skripte) gilt je Pool der Code-Default 10
+(`DATABASE_APP_POOL_MAX`/`DATABASE_OWNER_POOL_MAX`, Fallback auf das veraltete
+`DATABASE_CONNECTION_LIMIT`). `./taxtronik doctor` addiert die vier Pools, den
+n8n-Pool (2) und eine Reserve von 10 (superuser_reserved, Migration,
+Backup-Dump, `psql`) und meldet `FEHLT`, wenn die Summe `max_connections`
+übersteigt, ab 80 % `WARN`. Mit den Defaults sind es 52 von 100. Wer die Pools
+erhöht, hebt `POSTGRES_MAX_CONNECTIONS` mit an (je Verbindung einige MB RAM) oder
+setzt PgBouncer davor.
+
 ## SMTP
 
 Mailhog ist nur Dev. Produktion benötigt ein echtes SMTP-Relay:

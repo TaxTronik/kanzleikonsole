@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { assertModuleEnabledTx } from '@/server/settings/modules';
 import { freezeFormSchema } from '@/server/forms/schema-snapshot';
 import { evidenceService } from '@/server/container';
 import { berlinWallClockToUtc } from '@/lib/fmt';
@@ -21,7 +21,7 @@ export async function returnCampaignSubmissionAction(data: FormData) {
     return { ok: false, error: 'Vorgang und mandantensichtbare Rückfrage prüfen.' };
   return withStaff(
     async (tx, g) => {
-      await assertModuleEnabled(g.ctx, 'forms');
+      await assertModuleEnabledTx(tx, g.tenantId, 'forms');
       await returnCampaignSubmissionTx(tx, g, parsed.data);
     },
     {
@@ -43,7 +43,7 @@ export async function createCampaignAction(data: FormData) {
   if (!parsed.success) return { ok: false, error: 'Name, Jahr, Vorlage und Zieltermin prüfen.' };
   return withStaff(
     async (tx, g) => {
-      await assertModuleEnabled(g.ctx, 'forms');
+      await assertModuleEnabledTx(tx, g.tenantId, 'forms');
       await tx.$queryRaw`SELECT id FROM form_template WHERE id=${parsed.data.templateId}::uuid FOR SHARE`;
       const template = await tx.formTemplate.findUnique({
         where: { id: parsed.data.templateId },
@@ -86,7 +86,7 @@ export async function rolloutCampaignAction(data: FormData) {
   if (!parsed.success) return { ok: false, error: 'Kampagne und 1–200 Mandanten auswählen.' };
   return withStaff(
     async (tx, g) => {
-      await assertModuleEnabled(g.ctx, 'forms');
+      await assertModuleEnabledTx(tx, g.tenantId, 'forms');
       const campaign = await tx.yearEndCampaign.findUnique({
         where: { id: parsed.data.campaignId },
       });

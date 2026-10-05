@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { assertModuleEnabledTx } from '@/server/settings/modules';
 import { evidenceService } from '@/server/container';
 import { renderMarkdown } from '@/lib/markdown';
 
@@ -22,8 +22,8 @@ export async function saveKnowledgeContextAction(input: {
   if (!parsed.success) return { ok: false as const, error: 'Ungültige Verknüpfung.' };
   return withStaff(
     async (tx, g) => {
-      await assertModuleEnabled(g.ctx, 'knowledge');
-      if (input.type === 'STEP') await assertModuleEnabled(g.ctx, 'workflows');
+      await assertModuleEnabledTx(tx, g.tenantId, 'knowledge');
+      if (input.type === 'STEP') await assertModuleEnabledTx(tx, g.tenantId, 'workflows');
       const articleIds = [...new Set(parsed.data.articleIds)];
       if (
         (await tx.kbArticle.count({ where: { id: { in: articleIds }, published: true } })) !==
@@ -59,10 +59,10 @@ export async function loadKnowledgeContextAction(input: { type: 'ITEM' | 'REQUES
   if (!parsed.success) return { ok: false as const, error: 'Ungültiger Vorgang.' };
   return withStaff(
     async (tx, g) => {
-      await assertModuleEnabled(g.ctx, 'knowledge');
+      await assertModuleEnabledTx(tx, g.tenantId, 'knowledge');
       let articleIds: string[];
       if (input.type === 'ITEM') {
-        await assertModuleEnabled(g.ctx, 'workflows');
+        await assertModuleEnabledTx(tx, g.tenantId, 'workflows');
         const item = await tx.workflowItem.findUnique({
           where: { id: input.id },
           include: { instance: { select: { clientId: true } } },

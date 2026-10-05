@@ -220,6 +220,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Staff- und Portal-Layout laden ihre Einstellungen samt Glocke
+  beziehungsweise Mandantenprofil in einer Datenbanktransaktion statt in fünf
+  bis sechs parallelen, der Setup-Status in einer statt sieben;
+  Modulprüfungen in laufenden Transaktionen belegen keine zweite Verbindung
+  mehr. Verbindungspools für App und Worker werden über
+  `DATABASE_APP_POOL_MAX` und `DATABASE_OWNER_POOL_MAX` getrennt bemessen,
+  `./taxtronik doctor` prüft die Summe gegen `POSTGRES_MAX_CONNECTIONS`;
+  `DATABASE_CONNECTION_LIMIT` ist veraltet (`FK-EXC-20261005-025`).
 - Audit-Archivierung und Bereinigung verwaister Speicherobjekte arbeiten je
   Lauf bis zu etwa zehn Minuten weiter, bis nichts mehr fällig ist; bisher
   fiel der Archivbestand Woche für Woche weiter zurück. Ein verbleibender

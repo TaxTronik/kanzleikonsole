@@ -19,6 +19,7 @@
 import type { TenantContext, TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
+import { readLayoutSettingsSource, SETTING_KEY_PORTAL_FEATURES } from './layout-settings';
 
 export interface PortalFeatures {
   /** Mandant darf neue Terminanfragen an die Kanzlei senden */
@@ -47,7 +48,7 @@ export const DEFAULT_PORTAL_FEATURES: PortalFeatures = {
   handoversView: true,
 };
 
-const KEY = 'portal.features';
+const KEY = SETTING_KEY_PORTAL_FEATURES;
 
 function normalize(value: unknown): PortalFeatures {
   const v = (value ?? {}) as Partial<PortalFeatures>;
@@ -62,8 +63,14 @@ function normalize(value: unknown): PortalFeatures {
   };
 }
 
+/** Auswertung des gespeicherten Werts; ohne Eintrag gelten die Defaults. */
+export function portalFeaturesFromSetting(value: unknown): PortalFeatures {
+  return value === undefined ? DEFAULT_PORTAL_FEATURES : normalize(value);
+}
+
+/** Request-scoped über die gemeinsamen Layout-Einstellungen (layout-settings.ts). */
 export async function readPortalFeatures(ctx: TenantContext): Promise<PortalFeatures> {
-  return withTenantContext(ctx, (tx) => readPortalFeaturesTx(tx, ctx.tenantId));
+  return portalFeaturesFromSetting((await readLayoutSettingsSource(ctx)).portalFeatures);
 }
 
 /** Verwendet einen bereits autorisierten Tenant-Transaktionskontext. */
@@ -71,8 +78,7 @@ export async function readPortalFeaturesTx(
   tx: TxClient,
   tenantId: string,
 ): Promise<PortalFeatures> {
-  const value = await readTenantSettingValue(tx, tenantId, KEY);
-  return value === undefined ? DEFAULT_PORTAL_FEATURES : normalize(value);
+  return portalFeaturesFromSetting(await readTenantSettingValue(tx, tenantId, KEY));
 }
 
 export async function writePortalFeatures(ctx: TenantContext, cfg: PortalFeatures): Promise<void> {

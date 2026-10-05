@@ -48,22 +48,25 @@ const KEY_SELLER = 'invoicing.seller';
  * Ergänzt um den Tenant-Namen (kommt aus `tenant.name`).
  */
 export async function readSellerInfo(ctx: TenantContext): Promise<SellerInfo> {
-  return withTenantContext(ctx, async (tx) => {
-    const stored = await readTenantSettingValue(tx, ctx.tenantId, KEY_SELLER);
-    const tenant = await tx.tenant.findUnique({
-      where: { id: ctx.tenantId },
-      select: { name: true },
-    });
-    if (stored === undefined) {
-      return { ...DEFAULT_SELLER_INFO, name: tenant?.name ?? '' };
-    }
-    const value = stored as Partial<SellerInfo>;
-    return {
-      ...DEFAULT_SELLER_INFO,
-      ...value,
-      name: value.name || tenant?.name || '',
-    };
+  return withTenantContext(ctx, (tx) => readSellerInfoTx(tx, ctx.tenantId));
+}
+
+/** Verwendet eine bereits geöffnete Tenant-Transaktion (kein zweiter Pool-Slot). */
+export async function readSellerInfoTx(tx: TxClient, tenantId: string): Promise<SellerInfo> {
+  const stored = await readTenantSettingValue(tx, tenantId, KEY_SELLER);
+  const tenant = await tx.tenant.findUnique({
+    where: { id: tenantId },
+    select: { name: true },
   });
+  if (stored === undefined) {
+    return { ...DEFAULT_SELLER_INFO, name: tenant?.name ?? '' };
+  }
+  const value = stored as Partial<SellerInfo>;
+  return {
+    ...DEFAULT_SELLER_INFO,
+    ...value,
+    name: value.name || tenant?.name || '',
+  };
 }
 
 export async function writeSellerInfo(ctx: TenantContext, info: SellerInfo): Promise<void> {

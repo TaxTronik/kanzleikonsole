@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { readModules } from '@/server/settings/modules';
+import { readModulesTx } from '@/server/settings/modules';
 import { createFeeInvoice, validateFeeCalculation, feeJson } from '@/server/stbvv/service';
 import { evidenceService } from '@/server/container';
 export async function saveStbvvQuoteAction(clientId: string, title: string, raw: unknown) {
@@ -55,7 +55,7 @@ export async function createStbvvDraftAction(
   return withStaff(
     async (tx, g) => {
       await assertClientAccessTx(tx, g.session, z.uuid().parse(clientId));
-      const modules = await readModules(g.ctx);
+      const modules = await readModulesTx(tx, g.tenantId);
       if (modules.invoiceMode !== 'IN_APP')
         throw new ActionError('Übernahme ist nur im Rechnungsmodus IN_APP verfügbar.');
       const dates = z

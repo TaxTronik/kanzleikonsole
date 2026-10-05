@@ -19,6 +19,7 @@ import {
   deleteTenantSettingValue,
   readTenantSettingValue,
   writeTenantSettingValue,
+  type TenantSettingReader,
 } from '@taxtronik/db/tenant-settings';
 import { env } from '@taxtronik/config';
 import { encryptSecret, readEncryptedSetting } from '@taxtronik/crypto';
@@ -131,7 +132,15 @@ export async function deleteSmtpConfigTx(tx: TxClient, ctx: TenantContext): Prom
  * Status-Check ohne das Passwort zu entschlüsseln — für UI-Banner.
  */
 export async function getSmtpStatus(ctx: TenantContext): Promise<SmtpStatus> {
-  const value = await withTenantContext(ctx, (tx) => readTenantSettingValue(tx, ctx.tenantId, KEY));
+  return withTenantContext(ctx, (tx) => getSmtpStatusTx(tx, ctx.tenantId));
+}
+
+/** Verwendet eine bereits geöffnete Tenant-Transaktion (kein zweiter Pool-Slot). */
+export async function getSmtpStatusTx(
+  tx: TenantSettingReader,
+  tenantId: string,
+): Promise<SmtpStatus> {
+  const value = await readTenantSettingValue(tx, tenantId, KEY);
   const stored = value as Partial<SmtpStored> | undefined;
   if (stored?.host && stored.from) return { configured: true, fromDb: true };
 

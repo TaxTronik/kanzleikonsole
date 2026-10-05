@@ -26,7 +26,9 @@ export {
 export {
   deleteTenantSettingValue,
   readTenantSettingValue,
+  readTenantSettingValues,
   writeTenantSettingValue,
+  type TenantSettingBatchReader,
   type TenantSettingDb,
   type TenantSettingDeleter,
   type TenantSettingReader,

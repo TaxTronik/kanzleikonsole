@@ -47,7 +47,10 @@ describe('persönlicher barrierearmer Anzeigemodus', () => {
         new URL(`../../app/${scope}/(auth)/layout.tsx`, import.meta.url),
         'utf8',
       );
-      expect(protectedLayout).toContain('readAccessibleDisplay(');
+      // P-06: Darstellung kommt profilgebunden aus der einen Layout-Transaktion.
+      expect(protectedLayout).toContain(
+        scope === 'staff' ? 'readStaffLayoutData(' : 'readPortalLayoutData(',
+      );
       expect(protectedLayout).toContain('initialEnabled={accessibleDisplay}');
       expect(protectedLayout).toContain(`key={\`${scope}:`);
       expect(authLayout).not.toContain('AccessibleDisplayProvider');

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { lockWorkflowInstanceTx } from '@taxtronik/db/workflow-lifecycle';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { assertModuleEnabledTx } from '@/server/settings/modules';
 import { evidenceService } from '@/server/container';
 import {
   createFeedbackInvitationTx,
@@ -76,7 +76,7 @@ export async function inviteNoticeDecisionAction(data: FormData) {
     return { ok: false, error: 'Bescheid, Kontakt, Erläuterung und Antworttermin prüfen.' };
   return withStaff(
     async (tx, g) => {
-      await assertModuleEnabled(g.ctx, 'taxNotices');
+      await assertModuleEnabledTx(tx, g.tenantId, 'taxNotices');
       await tx.$queryRaw`SELECT id FROM tax_notice WHERE id=${parsed.data.noticeId}::uuid FOR UPDATE`;
       const notice = await tx.taxNotice.findUnique({
         where: { id: parsed.data.noticeId },
@@ -167,7 +167,7 @@ export async function configureFeedbackAction(data: FormData) {
   if (!parsed.success) return { ok: false, error: 'Workflow und Kontakt auswählen.' };
   return withStaff(
     async (tx, g) => {
-      await assertModuleEnabled(g.ctx, 'workflows');
+      await assertModuleEnabledTx(tx, g.tenantId, 'workflows');
       // CLIENT-FEEDBACK-001 / WORKFLOW-LIFECYCLE-001: Auswahl und Abschluss
       // teilen denselben Parent-Lock. Ein bereits parallel erfolgter Abschluss
       // muss vor der Entscheidung zwischen Vormerkung und Einladung sichtbar sein.
@@ -210,8 +210,9 @@ export async function reviewInteractionAction(data: FormData) {
     async (tx, g) => {
       const row = await tx.clientInteraction.findUnique({ where: { id: id.data } });
       if (!row) throw new ActionError('Vorgang nicht gefunden.');
-      await assertModuleEnabled(
-        g.ctx,
+      await assertModuleEnabledTx(
+        tx,
+        g.tenantId,
         row.kind === 'NOTICE' ? 'noticeDecisions' : 'feedbackSurveys',
       );
       await assertClientAccessTx(tx, g.session, row.clientId);

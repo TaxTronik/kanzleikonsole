@@ -84,7 +84,8 @@ export async function findPortalProfilesForContact(input: {
   );
 }
 
-async function findPortalProfilesForContactTx(
+/** Variante für eine bereits geöffnete Tenant-Transaktion des Kontakts (Portal-Layout). */
+export async function findPortalProfilesForContactTx(
   tx: TxClient,
   input: { tenantId: string; contactId: string; email: string },
 ): Promise<PortalProfileOption[]> {

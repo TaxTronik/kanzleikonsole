@@ -27,7 +27,7 @@ vi.mock('@/server/actions/staff-action', () => ({
   },
 }));
 vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: vi.fn() }));
-vi.mock('@/server/settings/modules', () => ({ assertModuleEnabled: vi.fn() }));
+vi.mock('@/server/settings/modules', () => ({ assertModuleEnabledTx: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.record } }));
 vi.mock('@/server/workflows/interactions', () => ({
   createFeedbackInvitationTx: h.invite,

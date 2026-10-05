@@ -38,10 +38,13 @@ function normalize(value: unknown): LegalLinks {
 }
 
 export async function readLegal(ctx: TenantContext): Promise<LegalLinks> {
-  return withTenantContext(ctx, async (tx) => {
-    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY);
-    return value === undefined ? DEFAULT_LEGAL : normalize(value);
-  });
+  return withTenantContext(ctx, (tx) => readLegalTx(tx, ctx.tenantId));
+}
+
+/** Verwendet eine bereits geöffnete Tenant-Transaktion (kein zweiter Pool-Slot). */
+export async function readLegalTx(tx: TxClient, tenantId: string): Promise<LegalLinks> {
+  const value = await readTenantSettingValue(tx, tenantId, KEY);
+  return value === undefined ? DEFAULT_LEGAL : normalize(value);
 }
 
 /**

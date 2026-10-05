@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { evidenceService } from '@/server/container';
 import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
 import { startInstanceAction } from '../clients/[id]/workflows/actions';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { assertModuleEnabledTx } from '@/server/settings/modules';
 import {
   withStaffModule,
   ActionError,
@@ -157,9 +157,8 @@ export async function saveTemplateAction(
   const r = await withWorkflowsStaff(
     async (tx, { tenantId, staffId }) => {
       if (parsed.data.steps.some((s) => (s.wikiArticleIds?.length ?? 0) > 0)) {
-        const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-        await assertModuleEnabled(ctx, 'knowledgeContext');
-        await assertModuleEnabled(ctx, 'knowledge');
+        await assertModuleEnabledTx(tx, tenantId, 'knowledgeContext');
+        await assertModuleEnabledTx(tx, tenantId, 'knowledge');
       }
       await tx.workflowTemplate.update({
         where: { id: parsed.data.templateId },

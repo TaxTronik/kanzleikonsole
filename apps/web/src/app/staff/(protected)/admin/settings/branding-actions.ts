@@ -8,7 +8,11 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { writeSellerInfoTx, type SellerInfo } from '@/server/settings/tenant-settings';
-import { writeBrandingTx, type BrandingInfo } from '@/server/settings/branding';
+import {
+  invalidateBrandingCache,
+  writeBrandingTx,
+  type BrandingInfo,
+} from '@/server/settings/branding';
 import { writeLetterheadTx, type LetterheadConfig } from '@/server/settings/letterhead';
 import { writeLegalTx, type LegalLinks } from '@/server/settings/legal';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
@@ -157,6 +161,8 @@ export async function saveBrandingAction(
       },
     });
   });
+  // Prozessweiten Branding-Cache nach dem Commit verwerfen (layout-settings.ts).
+  invalidateBrandingCache(tenantId);
 
   revalidatePath('/staff/admin/settings');
   // Layout cachen: Branding wirkt erst auf der nächsten Anfrage

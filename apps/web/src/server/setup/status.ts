@@ -13,12 +13,12 @@
 import { withTenantContext } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
-import { readSellerInfo } from '@/server/settings/tenant-settings';
-import { readBranding } from '@/server/settings/branding';
-import { readTaxRegion } from '@/server/settings/tax-region';
-import { getSmtpStatus } from '@/server/settings/smtp';
-import { readLegal } from '@/server/settings/legal';
-import { isPrivacyConfigComplete, readPrivacyConfig } from '@/server/privacy/notice';
+import { readSellerInfoTx } from '@/server/settings/tenant-settings';
+import { readBrandingTx } from '@/server/settings/branding';
+import { readTaxRegionSettingTx } from '@/server/settings/tax-region';
+import { getSmtpStatusTx } from '@/server/settings/smtp';
+import { readLegalTx } from '@/server/settings/legal';
+import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
 import { buildSetupItems, isSellerSetupComplete, type SetupItem } from './checklist';
 import { SETUP_DISMISSED_SETTING_KEY } from './constants';
 
@@ -33,34 +33,48 @@ export interface SetupStatus {
 }
 
 export async function getSetupStatus(ctx: TenantContext): Promise<SetupStatus> {
-  const [seller, branding, region, smtp, privacyConfig, legal, counts] = await Promise.all([
-    readSellerInfo(ctx),
-    readBranding(ctx),
-    readTaxRegion(ctx),
-    getSmtpStatus(ctx),
-    readPrivacyConfig(ctx),
-    readLegal(ctx),
-    withTenantContext(ctx, async (tx) => {
-      const [contactCount, activeClientCount, modulesRow, dismissedValue] = await Promise.all([
-        tx.clientContact.count({ where: { active: true } }),
-        tx.client.count({ where: { allowActive: true } }),
-        // readModules liefert Defaults, wenn nie gespeichert wurde — für die
-        // Checkliste zählt die BEWUSSTE Entscheidung, also die Setting-Zeile.
-        tx.tenantSetting.findUnique({
-          where: { tenantId_key: { tenantId: ctx.tenantId, key: 'modules' } },
-          select: { tenantId: true },
-        }),
-        readTenantSettingValue(tx, ctx.tenantId, SETUP_DISMISSED_SETTING_KEY),
-      ]);
+  // P-06: EINE Transaktion statt sieben paralleler (je eigene Pool-Verbindung).
+  // Branding kommt aus dem kurzen Prozess-Cache (layout-settings.ts), sonst aus
+  // derselben Transaktion.
+  const { seller, branding, region, smtp, privacyConfig, legal, counts } = await withTenantContext(
+    ctx,
+    async (tx) => {
+      const seller = await readSellerInfoTx(tx, ctx.tenantId);
+      const branding = await readBrandingTx(tx, ctx.tenantId);
+      const region = (await readTaxRegionSettingTx(tx, ctx.tenantId)).region;
+      const smtp = await getSmtpStatusTx(tx, ctx.tenantId);
+      const privacyConfig = await readPrivacyConfigTx(tx, ctx.tenantId);
+      const legal = await readLegalTx(tx, ctx.tenantId);
+      const contactCount = await tx.clientContact.count({ where: { active: true } });
+      const activeClientCount = await tx.client.count({ where: { allowActive: true } });
+      // readModules liefert Defaults, wenn nie gespeichert wurde — für die
+      // Checkliste zählt die BEWUSSTE Entscheidung, also die Setting-Zeile.
+      const modulesRow = await tx.tenantSetting.findUnique({
+        where: { tenantId_key: { tenantId: ctx.tenantId, key: 'modules' } },
+        select: { tenantId: true },
+      });
+      const dismissedValue = await readTenantSettingValue(
+        tx,
+        ctx.tenantId,
+        SETUP_DISMISSED_SETTING_KEY,
+      );
       const dismissed = dismissedValue as { dismissed?: unknown } | null | undefined;
       return {
-        contactCount,
-        activeClientCount,
-        modulesConfigured: modulesRow !== null,
-        dismissed: dismissed?.dismissed === true,
+        seller,
+        branding,
+        region,
+        smtp,
+        privacyConfig,
+        legal,
+        counts: {
+          contactCount,
+          activeClientCount,
+          modulesConfigured: modulesRow !== null,
+          dismissed: dismissed?.dismissed === true,
+        },
       };
-    }),
-  ]);
+    },
+  );
 
   const items = buildSetupItems({
     brandingComplete: Boolean(branding.displayName) && Boolean(branding.logoDataUrl),

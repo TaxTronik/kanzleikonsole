@@ -199,6 +199,8 @@ run_doctor_with_env() {
     unset DEPLOYMENT_METHOD TRAEFIK_ACME_EMAIL N8N_HOST N8N_WEBHOOK_URL N8N_PROXY_HOPS
     unset RISK_LAYER_URL RISK_LAYER_TOKEN RISK_LAYER_OPERATOR_TOKEN RISK_LAYER_FESTWISSEN_DIR RISK_LAYER_EMB_DEVICE RISK_LAYER_LLM_BACKEND RISK_LAYER_LLM_TIMEOUT SMTP_HOST SMTP_PORT
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
+    unset POSTGRES_MAX_CONNECTIONS APP_DB_POOL_MAX APP_DB_OWNER_POOL_MAX WORKER_DB_POOL_MAX
+    unset WORKER_DB_OWNER_POOL_MAX DATABASE_CONNECTION_LIMIT
     ENVFILE="$env_file"
     # Unit-Test darf nicht vom zufällig vorhandenen lokalen Docker-Volume
     # beziehungsweise dessen echtem n8n-Key abhängen.
@@ -217,6 +219,39 @@ test_doctor_accepts_prod_smtp() {
   assert_contains "$out" "OK       SMTP_HOST"
   assert_contains "$out" "Bereit zum Deploy"
   pass "doctor accepts real production SMTP"
+}
+
+test_doctor_checks_db_pool_sum_against_max_connections() {
+  local env_file="$TMP_DIR/db-pools.env" out="$TMP_DIR/doctor-db-pools.out"
+  write_prod_env "$env_file"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor rejected the default pool sizes"
+  }
+  assert_contains "$out" "OK       DB_POOLS               52 von max_connections 100"
+
+  printf 'APP_DB_POOL_MAX=80\n' >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted pools above max_connections"
+  fi
+  assert_contains "$out" "FEHLT    DB_POOLS               112 > max_connections 100"
+
+  write_prod_env "$env_file"
+  printf 'POSTGRES_MAX_CONNECTIONS=60\nDATABASE_CONNECTION_LIMIT=20\n' >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor blocked a pool sum below max_connections"
+  }
+  assert_contains "$out" "WARN     DB_POOLS               52 von max_connections 60 (>80 %"
+  assert_contains "$out" "WARN     DATABASE_CONNECTION_LIMIT veraltet"
+
+  write_prod_env "$env_file"
+  printf 'WORKER_DB_OWNER_POOL_MAX=zehn\n' >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted a non-numeric pool size"
+  fi
+  assert_contains "$out" "FEHLT    WORKER_DB_OWNER_POOL_MAX positive ganze Zahl erwartet"
+  pass "doctor checks the DB pool sum against max_connections"
 }
 
 test_doctor_rejects_mailhog() {
@@ -3301,6 +3336,7 @@ test_secret_files_are_mode_0600() {
 }
 
 test_doctor_accepts_prod_smtp
+test_doctor_checks_db_pool_sum_against_max_connections
 test_doctor_rejects_mailhog
 test_doctor_rejects_loopback_mailhog_port
 test_doctor_rejects_disabled_auth_host_trust

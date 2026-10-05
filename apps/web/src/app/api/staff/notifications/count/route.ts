@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { staffAuth } from '@/server/auth/staff';
 import { withTenantContext } from '@taxtronik/db';
+import { readUnreadNotificationSummaryTx } from '@/server/notifications/unread-summary';
 
 export async function GET() {
   const session = await staffAuth();
@@ -11,18 +12,13 @@ export async function GET() {
 
   const unreadSummary = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    (tx) =>
-      tx.notification.aggregate({
-        where: { OR: [{ staffId }, { staffId: null }], readAt: null },
-        _count: { _all: true },
-        _max: { createdAt: true },
-      }),
+    (tx) => readUnreadNotificationSummaryTx(tx, staffId),
   );
 
   return NextResponse.json(
     {
-      unread: unreadSummary._count._all,
-      latestUnreadAt: unreadSummary._max.createdAt?.toISOString() ?? null,
+      unread: unreadSummary.unread,
+      latestUnreadAt: unreadSummary.latestUnreadAt,
     },
     {
       headers: {

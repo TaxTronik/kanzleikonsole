@@ -6,14 +6,20 @@ import type { TenantContext } from '@taxtronik/db';
 const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   readTenantSettingValue: vi.fn(),
+  readTenantSettingValues: vi.fn(),
   writeTenantSettingValue: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: mocks.withTenantContext,
 }));
+// Der Request-Pfad liest über die gemeinsamen Layout-Einstellungen (P-06).
+vi.mock('@taxtronik/db/tenant-context', () => ({
+  withTenantContext: mocks.withTenantContext,
+}));
 vi.mock('@taxtronik/db/tenant-settings', () => ({
   readTenantSettingValue: mocks.readTenantSettingValue,
+  readTenantSettingValues: mocks.readTenantSettingValues,
   writeTenantSettingValue: mocks.writeTenantSettingValue,
 }));
 
@@ -29,10 +35,23 @@ const CTX: TenantContext = {
   actorType: 'STAFF',
 };
 
+const layoutTx = {
+  tenant: { findUnique: async () => ({ name: 'Kanzlei' }) },
+  staffUser: { findFirst: async () => null },
+  clientContact: { findFirst: async () => null },
+};
+
+/** Gespeicherter Wert von `portal.features` für den nächsten Layout-Read. */
+function storedPortalFeatures(value: unknown) {
+  mocks.readTenantSettingValues.mockResolvedValueOnce(
+    new Map(value === undefined ? [] : [['portal.features', value]]),
+  );
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.withTenantContext.mockImplementation(
-    async (_ctx: TenantContext, fn: (tx: object) => unknown) => fn({}),
+    async (_ctx: TenantContext, fn: (tx: object) => unknown) => fn(layoutTx),
   );
 });
 
@@ -52,16 +71,16 @@ describe('PortalFeatures.clientInbox', () => {
   });
 
   it('ist für neue und bestehende Tenants ohne gespeicherten Schlüssel opt-in false', async () => {
-    mocks.readTenantSettingValue.mockResolvedValueOnce(undefined).mockResolvedValueOnce({});
+    storedPortalFeatures(undefined);
+    storedPortalFeatures({});
 
     expect(await readPortalFeatures(CTX)).toEqual(DEFAULT_PORTAL_FEATURES);
     expect((await readPortalFeatures(CTX)).clientInbox).toBe(false);
   });
 
   it('wird ausschließlich durch den expliziten booleschen Wert true aktiviert', async () => {
-    mocks.readTenantSettingValue
-      .mockResolvedValueOnce({ clientInbox: true })
-      .mockResolvedValueOnce({ clientInbox: 'true' });
+    storedPortalFeatures({ clientInbox: true });
+    storedPortalFeatures({ clientInbox: 'true' });
 
     expect((await readPortalFeatures(CTX)).clientInbox).toBe(true);
     expect((await readPortalFeatures(CTX)).clientInbox).toBe(false);

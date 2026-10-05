@@ -29,7 +29,11 @@ declare global {
 
 function buildOwnerClient(): PrismaClient {
   return new PrismaClientCtor({
-    adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
+    adapter: createPostgresAdapter(
+      requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL'),
+      {},
+      'owner',
+    ),
     log: ['warn', 'error'],
   });
 }

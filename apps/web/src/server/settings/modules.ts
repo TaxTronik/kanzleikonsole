@@ -15,7 +15,6 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
-import { cache } from 'react';
 import { withTenantContext, type TenantContext } from '@taxtronik/db/tenant-context';
 import type { BooleanTenantModules, BooleanTenantModuleKey } from '@taxtronik/db/tenant-modules';
 import {
@@ -23,6 +22,7 @@ import {
   parseBooleanTenantModules,
 } from '@taxtronik/db/tenant-modules';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
+import { readLayoutSettingsSource, SETTING_KEY_MODULES } from './layout-settings';
 
 export type PoaMode = 'OFF' | 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
 export type InvoiceMode = 'OFF' | 'IN_APP' | 'EXTERNAL';
@@ -83,31 +83,30 @@ export const DEFAULT_MODULES: ModuleConfig = {
   invoicePdfTemplate: null,
 };
 
-const KEY_MODULES = 'modules';
+const KEY_MODULES = SETTING_KEY_MODULES;
 
-// Layout UND Page laden readModules pro Request (Sidebar + Modul-Gate). cache()
-// dedupliziert request-scoped — aber auf PRIMITIVEN (tenantId/actorId/actorType),
-// nicht auf dem ctx-Objekt: Layout und Page bauen separate ctx-Instanzen, und
-// cache() vergleicht Objekt-Argumente per Referenz (würde sonst nie greifen).
-const readModulesCached = cache(
-  (
-    tenantId: string,
-    actorId: TenantContext['actorId'],
-    actorType: TenantContext['actorType'],
-  ): Promise<ModuleConfig> => readModulesByCtx({ tenantId, actorId, actorType }),
-);
-
-function readModulesByCtx(ctx: TenantContext): Promise<ModuleConfig> {
-  return withTenantContext(ctx, async (tx) => {
-    const stored = await readTenantSettingValue(tx, ctx.tenantId, KEY_MODULES);
-    if (stored === undefined) return { ...DEFAULT_MODULES };
-    const value = stored as Partial<ModuleConfig>;
-    return { ...DEFAULT_MODULES, ...value, ...parseBooleanTenantModules(value) };
-  });
+/** Auswertung des gespeicherten Werts; ohne Eintrag gelten die Defaults. */
+export function moduleConfigFromSetting(stored: unknown): ModuleConfig {
+  if (stored === undefined) return { ...DEFAULT_MODULES };
+  const value = stored as Partial<ModuleConfig>;
+  return { ...DEFAULT_MODULES, ...value, ...parseBooleanTenantModules(value) };
 }
 
-export function readModules(ctx: TenantContext): Promise<ModuleConfig> {
-  return readModulesCached(ctx.tenantId, ctx.actorId, ctx.actorType);
+// Layout UND Page laden readModules pro Request (Sidebar + Modul-Gate). Beide
+// teilen die request-scoped Layout-Einstellungen (layout-settings.ts): eine
+// Transaktion je Anfrage und Akteur, kein prozessweiter Cache (Freigaben müssen
+// sofort wirken).
+export async function readModules(ctx: TenantContext): Promise<ModuleConfig> {
+  return moduleConfigFromSetting((await readLayoutSettingsSource(ctx)).modules);
+}
+
+/**
+ * Modul-Konfiguration in einer bereits geöffneten Tenant-Transaktion. Innerhalb
+ * einer Transaktion IMMER diese Variante nutzen: `readModules(ctx)` öffnete dort
+ * eine zweite Transaktion und belegte eine zweite Pool-Verbindung.
+ */
+export async function readModulesTx(tx: TxClient, tenantId: string): Promise<ModuleConfig> {
+  return moduleConfigFromSetting(await readTenantSettingValue(tx, tenantId, KEY_MODULES));
 }
 
 /** Spezialmodule werden nicht mit einem Boolean, sondern mit einem Betriebsmodus geschaltet. */
@@ -152,6 +151,18 @@ export async function assertModuleEnabled(
   module: BooleanModuleKey,
 ): Promise<void> {
   const cfg = await readModules(ctx);
+  if (!cfg[module]) {
+    throw new ModuleDisabledError(module);
+  }
+}
+
+/** Modul-Gate innerhalb einer laufenden Tenant-Transaktion (gleiche Verbindung). */
+export async function assertModuleEnabledTx(
+  tx: TxClient,
+  tenantId: string,
+  module: BooleanModuleKey,
+): Promise<void> {
+  const cfg = await readModulesTx(tx, tenantId);
   if (!cfg[module]) {
     throw new ModuleDisabledError(module);
   }

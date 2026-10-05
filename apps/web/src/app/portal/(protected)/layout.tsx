@@ -2,28 +2,20 @@ import type { ReactNode } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { portalAuth } from '@/server/auth/portal';
-import { withTenantContext } from '@taxtronik/db';
 import { LogOut } from 'lucide-react';
 import { GroupedSidebarNav } from '@/components/sidebar-nav';
 import { MobileSidebarToggle } from '@/components/mobile-sidebar-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UiModeToggle } from '@/components/ui-mode-toggle';
 import { UserMenu } from '@/components/user-menu';
-import { readBranding } from '@/server/settings/branding';
-import { readModules } from '@/server/settings/modules';
+import { readPortalLayoutData } from '@/server/settings/layout-data';
 import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
-import { readPortalFeatures } from '@/server/settings/portal-features';
 import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
-import { findPortalProfilesForContact } from '@/server/auth/portal-profiles';
 import { PortalProfileSwitcher } from './profile-switcher';
 import { resolvePortalNavigation } from '@/lib/navigation-registry';
 import { AccessibleDisplayProvider } from '@/components/accessible-display';
-import {
-  readAccessibleDisplay,
-  readAccessibleDisplayOptions,
-} from '@/server/settings/accessible-display';
 import {
   savePortalAccessibleDisplayAction,
   savePortalAccessibleDisplayOptionsAction,
@@ -37,25 +29,19 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
   const { tenantId, contactId, clientId } = session.user;
 
-  const [
-    client,
+  // P-06: Mandant, Profile, Einstellungen und Darstellung in EINER Transaktion.
+  const {
+    clientName,
     branding,
     modules,
     portalFeatures,
     profiles,
     accessibleDisplay,
     accessibleDisplayOptions,
-  ] = await Promise.all([
-    withTenantContext({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }, (tx) =>
-      tx.client.findUnique({ where: { id: clientId }, select: { name: true } }),
-    ),
-    readBranding({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
-    readModules({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
-    readPortalFeatures({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
-    findPortalProfilesForContact({ tenantId, contactId, email: session.user.email }),
-    readAccessibleDisplay({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
-    readAccessibleDisplayOptions({ tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' }),
-  ]);
+  } = await readPortalLayoutData(
+    { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
+    { clientId, email: session.user.email },
+  );
 
   const navGroups = resolvePortalNavigation({ modules, portalFeatures });
 
@@ -103,7 +89,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
           <div className="px-6 py-4 border-b border-default">
             <p className="eyebrow">Mandant</p>
-            <p className="item-title">{client?.name ?? '—'}</p>
+            <p className="item-title">{clientName ?? '—'}</p>
             <PortalProfileSwitcher currentContactId={contactId} profiles={profiles} />
           </div>
 

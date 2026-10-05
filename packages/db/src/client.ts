@@ -48,7 +48,7 @@ function buildClient(): PrismaClient {
   const datasourceUrl = resolveAppDatasourceUrl(process.env);
 
   return new PrismaClientCtor({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(datasourceUrl), APP_SESSION_LIMITS),
+    adapter: createPostgresAdapter(optionalDatabaseUrl(datasourceUrl), APP_SESSION_LIMITS, 'app'),
     log:
       process.env['NODE_ENV'] === 'development'
         ? [{ emit: 'event', level: 'query' }, 'warn', 'error']

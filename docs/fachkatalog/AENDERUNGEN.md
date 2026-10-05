@@ -1,5 +1,52 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-025
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/portal/(protected)/interactions/actions.ts
+      - apps/web/src/app/portal/(protected)/layout.tsx
+      - apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts
+      - apps/web/src/app/staff/(protected)/interactions/actions.ts
+      - apps/web/src/app/staff/(protected)/knowledge/context/actions.ts
+      - apps/web/src/app/staff/(protected)/stbvv/actions.ts
+      - apps/web/src/app/staff/(protected)/year-end/actions.ts
+      - apps/web/src/server/auth/portal-profiles.ts
+      - apps/web/src/server/settings/branding.ts
+      - apps/web/src/server/settings/legal.ts
+      - apps/web/src/server/settings/modules.ts
+      - apps/web/src/server/settings/portal-features.ts
+      - apps/web/src/server/settings/smtp.ts
+      - apps/web/src/server/settings/tax-region.ts
+      - apps/web/src/server/settings/tenant-settings.ts
+      - packages/mail/src/index.ts
+      - packages/mail/src/smtp-settings.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+      - CLIENT-FEEDBACK-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - KNOWLEDGE-CONTEXT-001
+      - PORTAL-INBOX-SUBMISSION-001
+      - STBVV-CALCULATION-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-DEADLINE-WORKDAY-001
+      - TAX-NOTICE-DECISION-001
+      - WORKFLOW-LIFECYCLE-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Staff- und Portal-Layout laden ihre Einstellungen (Branding, Module,
+      Portal-Funktionen, Darstellung) mit Glocke beziehungsweise Mandantenprofil in
+      einer Transaktion und je Request gecacht; nur das Branding wird prozessweit
+      60 Sekunden gecacht und beim Schreiben geleert. getSetupStatus läuft in einer
+      Transaktion; Modulprüfungen innerhalb laufender Transaktionen nutzen die
+      Tx-Variante statt einer zweiten Verbindung. App- und Owner-Pools werden je
+      Dienst über eigene Variablen bemessen, doctor prüft die Summe gegen
+      max_connections. Geprüfte Einstellungen, Modulentscheidungen und
+      Zugriffsregeln bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/settings/__tests__/layout-settings.test.ts
+      - apps/web/src/server/settings/__tests__/module-checks-in-transactions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-024
     date: '2026-10-05'
     paths:
@@ -2013,6 +2060,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-025` dokumentiert das Laden der
+  Layout-Einstellungen in einer Transaktion und getrennt bemessene Pools.
+  Einstellungen, Modulentscheidungen und Zugriffsregeln bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-024` dokumentiert, dass Aufträge für erledigte
   Wiedervorlagen nur Kennungen tragen und befristet gespeichert werden.

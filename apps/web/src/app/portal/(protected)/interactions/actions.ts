@@ -1,7 +1,7 @@
 'use server';
 import { z } from 'zod';
 import { withPortalContext, ActionError } from '@/server/actions/portal-action';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { assertModuleEnabledTx } from '@/server/settings/modules';
 import { noticeDecisionSnapshot, validInteractionResponse } from '@/server/workflows/interactions';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
@@ -17,7 +17,7 @@ async function assertNoticeInteractionCurrentTx(
   row: ClientInteraction,
 ): Promise<void> {
   if (row.kind !== 'NOTICE') return;
-  await assertModuleEnabled(g.ctx, 'taxNotices');
+  await assertModuleEnabledTx(tx, g.tenantId, 'taxNotices');
   const snapshot = noticeDecisionSnapshot.parse(row.snapshot);
   await tx.$queryRaw`SELECT id FROM tax_notice WHERE id=${row.sourceId}::uuid FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM document WHERE id=${snapshot.documentId}::uuid FOR SHARE`;
@@ -82,8 +82,9 @@ export async function respondInteractionAction(data: FormData) {
       const row = await tx.clientInteraction.findUnique({ where: { id: parsed.data.id } });
       if (!row || row.contactId !== g.contactId || row.clientId !== g.clientId)
         throw new ActionError('Anfrage nicht gefunden.');
-      await assertModuleEnabled(
-        g.ctx,
+      await assertModuleEnabledTx(
+        tx,
+        g.tenantId,
         row.kind === 'NOTICE' ? 'noticeDecisions' : 'feedbackSurveys',
       );
       if (row.status !== 'OPEN' || row.expiresAt <= new Date())

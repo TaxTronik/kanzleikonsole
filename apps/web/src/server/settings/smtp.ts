@@ -13,6 +13,7 @@ export {
   deleteSmtpConfig,
   deleteSmtpConfigTx,
   getSmtpStatus,
+  getSmtpStatusTx,
   DEFAULT_SMTP_CONFIG,
   type SmtpConfig,
   type SmtpStatus,

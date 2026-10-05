@@ -25,14 +25,20 @@ export async function readTaxRegion(ctx: TenantContext): Promise<GermanRegion | 
 }
 
 export async function readTaxRegionSetting(ctx: TenantContext): Promise<TaxRegionSetting> {
-  return withTenantContext(ctx, async (tx) => {
-    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY_TAX_REGION);
-    const v = (value as { region?: string; assumptionHoliday?: boolean } | null) ?? null;
-    return {
-      region: (v?.region as GermanRegion) ?? null,
-      assumptionHoliday: v?.assumptionHoliday !== false,
-    };
-  });
+  return withTenantContext(ctx, (tx) => readTaxRegionSettingTx(tx, ctx.tenantId));
+}
+
+/** Verwendet eine bereits geöffnete Tenant-Transaktion (kein zweiter Pool-Slot). */
+export async function readTaxRegionSettingTx(
+  tx: TxClient,
+  tenantId: string,
+): Promise<TaxRegionSetting> {
+  const value = await readTenantSettingValue(tx, tenantId, KEY_TAX_REGION);
+  const v = (value as { region?: string; assumptionHoliday?: boolean } | null) ?? null;
+  return {
+    region: (v?.region as GermanRegion) ?? null,
+    assumptionHoliday: v?.assumptionHoliday !== false,
+  };
 }
 
 export async function writeTaxRegion(

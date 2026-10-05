@@ -1152,6 +1152,47 @@ _doctor_n8n_volume_key() {
   fi
 }
 
+# P-06: Summe der Verbindungs-Pools aller Dienste gegen max_connections. Pro
+# Prozess gibt es einen App-Pool (DATABASE_APP_URL) und einen Owner-Pool
+# (DATABASE_URL); Defaults wie in infra/compose/docker-compose.app.yml. n8n nutzt
+# seinen eigenen TypeORM-Pool (Default 2). Die Reserve deckt superuser_reserved
+# (3), migrate, pg_dump/Backup-Drill und manuelle psql-Sitzungen ab.
+_DOCTOR_DB_N8N_POOL=2
+_DOCTOR_DB_RESERVE=10
+_doctor_db_connections() {
+  local key val total max limit_warn=0
+  local -A pools=(
+    [APP_DB_POOL_MAX]="${APP_DB_POOL_MAX:-20}"
+    [APP_DB_OWNER_POOL_MAX]="${APP_DB_OWNER_POOL_MAX:-5}"
+    [WORKER_DB_POOL_MAX]="${WORKER_DB_POOL_MAX:-5}"
+    [WORKER_DB_OWNER_POOL_MAX]="${WORKER_DB_OWNER_POOL_MAX:-10}"
+  )
+  max="${POSTGRES_MAX_CONNECTIONS:-100}"
+  for key in POSTGRES_MAX_CONNECTIONS "${!pools[@]}"; do
+    if [[ "$key" == POSTGRES_MAX_CONNECTIONS ]]; then val="$max"; else val="${pools[$key]}"; fi
+    if [[ ! "$val" =~ ^[1-9][0-9]{0,4}$ ]]; then
+      _dr_row "FEHLT" "$key" "positive ganze Zahl erwartet (ist: '${val}')"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      return 0
+    fi
+  done
+  total=$(( pools[APP_DB_POOL_MAX] + pools[APP_DB_OWNER_POOL_MAX] \
+    + pools[WORKER_DB_POOL_MAX] + pools[WORKER_DB_OWNER_POOL_MAX] \
+    + _DOCTOR_DB_N8N_POOL + _DOCTOR_DB_RESERVE ))
+  local detail="app ${pools[APP_DB_POOL_MAX]}+${pools[APP_DB_OWNER_POOL_MAX]}, worker ${pools[WORKER_DB_POOL_MAX]}+${pools[WORKER_DB_OWNER_POOL_MAX]}, n8n ${_DOCTOR_DB_N8N_POOL}, Reserve ${_DOCTOR_DB_RESERVE}"
+  if (( total > max )); then
+    _dr_row "FEHLT" "DB_POOLS" "${total} > max_connections ${max} (${detail})"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif (( total * 10 > max * 8 )); then
+    _dr_row "WARN" "DB_POOLS" "${total} von max_connections ${max} (>80 %; ${detail})"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  else
+    _dr_row "OK" "DB_POOLS" "${total} von max_connections ${max} (${detail})"
+  fi
+  [[ -n "${DATABASE_CONNECTION_LIMIT:-}" ]] && limit_warn=1
+  if (( limit_warn )); then
+    _dr_row "WARN" "DATABASE_CONNECTION_LIMIT" "veraltet, wirkt in Compose nicht mehr; APP_/WORKER_DB_*POOL_MAX setzen"
+    _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  fi
+}
+
 doctor() {
   local fix=0 deploy_channel=""
   [[ "${1:-}" == "--fix" ]] && fix=1
@@ -1212,6 +1253,7 @@ doctor() {
   elif [[ "$DATABASE_URL" == "$DATABASE_APP_URL" ]]; then
     _dr_row "FEHLT" "DATABASE_URL" "== DATABASE_APP_URL (RLS-Backstop!)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else _dr_row "OK" "DATABASE_URL/APP_URL" "unterschiedlich (ok)"; fi
+  _doctor_db_connections
 
   deploy_channel="$(deployment_channel 2>/dev/null || true)"
   if [[ "$deploy_channel" == "source" ]]; then

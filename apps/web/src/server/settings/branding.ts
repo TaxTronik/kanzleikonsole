@@ -7,11 +7,17 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
-import { cache } from 'react';
 import type { TenantContext } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import {
+  invalidateBrandingCache,
+  readBrandingSourceTx,
+  readLayoutSettingsSource,
+  SETTING_KEY_BRANDING,
+  type BrandingSource,
+} from './layout-settings';
 
 export interface BrandingInfo {
   // Anzeige-Name in der Sidebar oben (überschreibt "taxtronik")
@@ -39,38 +45,29 @@ export const DEFAULT_BRANDING: BrandingInfo = {
   logoDataUrlDark: null,
 };
 
-const KEY_BRANDING = 'branding';
+const KEY_BRANDING = SETTING_KEY_BRANDING;
 
-// Wird im Layout gerendert (Sidebar-Logo/Akzentfarbe). cache() request-scoped
-// auf Primitiven (s. modules.ts — Objekt-ctx würde per Referenz nicht greifen).
-const readBrandingCached = cache(
-  (
-    tenantId: string,
-    actorId: TenantContext['actorId'],
-    actorType: TenantContext['actorType'],
-  ): Promise<BrandingInfo> => readBrandingByCtx({ tenantId, actorId, actorType }),
-);
-
-function readBrandingByCtx(ctx: TenantContext): Promise<BrandingInfo> {
-  return withTenantContext(ctx, async (tx) => {
-    const value = await readTenantSettingValue(tx, ctx.tenantId, KEY_BRANDING);
-    if (value === undefined) {
-      const tenant = await tx.tenant.findUnique({
-        where: { id: ctx.tenantId },
-        select: { name: true },
-      });
-      return { ...DEFAULT_BRANDING, displayName: tenant?.name ?? DEFAULT_BRANDING.displayName };
-    }
-    const branding = value as Partial<BrandingInfo>;
-    return {
-      ...DEFAULT_BRANDING,
-      ...branding,
-    };
-  });
+/** Auswertung des gespeicherten Brandings; ohne Eintrag gilt der Tenant-Name. */
+export function brandingFromSource(source: BrandingSource): BrandingInfo {
+  if (source.stored === undefined) {
+    return { ...DEFAULT_BRANDING, displayName: source.tenantName ?? DEFAULT_BRANDING.displayName };
+  }
+  const branding = source.stored as Partial<BrandingInfo>;
+  return {
+    ...DEFAULT_BRANDING,
+    ...branding,
+  };
 }
 
-export function readBranding(ctx: TenantContext): Promise<BrandingInfo> {
-  return readBrandingCached(ctx.tenantId, ctx.actorId, ctx.actorType);
+// Wird im Layout gerendert (Sidebar-Logo/Akzentfarbe). Request-scoped über die
+// gemeinsamen Layout-Einstellungen, prozessweit kurz gecacht (layout-settings.ts).
+export async function readBranding(ctx: TenantContext): Promise<BrandingInfo> {
+  return brandingFromSource((await readLayoutSettingsSource(ctx)).branding);
+}
+
+/** Verwendet eine bereits geöffnete Tenant-Transaktion (kein zweiter Pool-Slot). */
+export async function readBrandingTx(tx: TxClient, tenantId: string): Promise<BrandingInfo> {
+  return brandingFromSource(await readBrandingSourceTx(tx, tenantId));
 }
 
 /**
@@ -90,26 +87,25 @@ export async function readBrandingForSlug(slug: string): Promise<BrandingInfo> {
   });
   if (!tenant) return DEFAULT_BRANDING;
   const value = await readTenantSettingValue(prismaOwner, tenant.id, KEY_BRANDING);
-  if (value === undefined) {
-    return { ...DEFAULT_BRANDING, displayName: tenant.name };
-  }
-  const branding = value as Partial<BrandingInfo>;
-  return {
-    ...DEFAULT_BRANDING,
-    ...branding,
-  };
+  return brandingFromSource({ stored: value, tenantName: tenant.name });
 }
 
 export async function writeBranding(ctx: TenantContext, info: BrandingInfo): Promise<void> {
   await withTenantContext(ctx, (tx) => writeBrandingTx(tx, ctx, info));
+  invalidateBrandingCache(ctx.tenantId);
 }
 
-/** AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together. */
+/**
+ * AUDIT-HASH-CHAIN-001: use the caller transaction to commit setting and audit together.
+ * Der Aufrufer ruft nach dem Commit zusätzlich `invalidateBrandingCache` auf; sonst
+ * kann eine parallele Anfrage den alten Stand bis zum TTL erneut cachen.
+ */
 export async function writeBrandingTx(
   tx: TxClient,
   ctx: TenantContext,
   info: BrandingInfo,
 ): Promise<void> {
+  invalidateBrandingCache(ctx.tenantId);
   await writeTenantSettingValue(tx, {
     tenantId: ctx.tenantId,
     key: KEY_BRANDING,
@@ -117,3 +113,5 @@ export async function writeBrandingTx(
     updatedBy: ctx.actorId,
   });
 }
+
+export { invalidateBrandingCache };

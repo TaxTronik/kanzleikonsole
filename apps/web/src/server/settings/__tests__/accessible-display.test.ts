@@ -21,9 +21,13 @@ const CONTACT: TenantContext = {
   actorId: 'contact-a',
   actorType: 'CLIENT_CONTACT',
 };
+// P-06: das Profil wird zusammen mit den Tenant-Einstellungen des Layouts in
+// derselben Transaktion gelesen; deren Abfragen sind hier neutral.
 const tx = {
   staffUser: { findFirst: mocks.staffFindFirst },
   clientContact: { findFirst: mocks.contactFindFirst },
+  tenantSetting: { findMany: async () => [] },
+  tenant: { findUnique: async () => ({ name: 'Kanzlei' }) },
 };
 
 beforeEach(() => {

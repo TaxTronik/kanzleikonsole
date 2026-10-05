@@ -51,6 +51,32 @@ export async function readTenantSettingValue(
   return row?.value;
 }
 
+export interface TenantSettingBatchReader {
+  tenantSetting: {
+    findMany(args: {
+      where: { tenantId: string; key: { in: string[] } };
+      select: { key: true; value: true };
+    }): Promise<Array<{ key: string; value: unknown }>>;
+  };
+}
+
+/**
+ * Liest mehrere Schluessel eines Tenants mit EINER Abfrage. Fehlende Schluessel
+ * fehlen in der Map, genau wie `readTenantSettingValue` dann `undefined` liefert.
+ */
+export async function readTenantSettingValues(
+  db: TenantSettingBatchReader,
+  tenantId: string,
+  keys: readonly string[],
+): Promise<Map<string, unknown>> {
+  if (keys.length === 0) return new Map();
+  const rows = await db.tenantSetting.findMany({
+    where: { tenantId, key: { in: [...keys] } },
+    select: { key: true, value: true },
+  });
+  return new Map(rows.map((row) => [row.key, row.value]));
+}
+
 export interface WriteTenantSettingInput {
   tenantId: string;
   key: string;

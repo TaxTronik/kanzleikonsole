@@ -144,8 +144,11 @@ services:
       # Optionaler dedizierter Secret-Box-Key (Rotation). Leer → Fallback
       # AUTH_SECRET; ein später gesetzter Wert darf nicht still ignoriert werden.
       SECRET_BOX_KEY: ${SECRET_BOX_KEY:-}
-      # Prisma-Connection-Pool-Größe (Tuning). Leer → Prisma-Default.
-      DATABASE_CONNECTION_LIMIT: ${DATABASE_CONNECTION_LIMIT:-}
+      # P-06: Pool-Obergrenzen je Pool. App-Pool = Request-Transaktionen (RLS),
+      # Owner-Pool = Auth/Login. Summe aller Dienste prüft `./taxtronik doctor`
+      # gegen POSTGRES_MAX_CONNECTIONS (Richtwerte: docs/operations/day-2-operations.md).
+      DATABASE_APP_POOL_MAX: ${APP_DB_POOL_MAX:-20}
+      DATABASE_OWNER_POOL_MAX: ${APP_DB_OWNER_POOL_MAX:-5}
       # Update-Check (server/update): ohne diese Werte meldet die App dauerhaft
       # „nicht konfiguriert" — der Betreiber erführe nie von Updates.
       UPDATE_MANIFEST_URL: ${UPDATE_MANIFEST_URL:-}
@@ -269,7 +272,10 @@ services:
       TIMESTAMP_AUTHORITY_URL: ${TIMESTAMP_AUTHORITY_URL:-}
       TSA_TRUSTED_ROOTS_FILE: ${TSA_TRUSTED_ROOTS_FILE:-}
       SECRET_BOX_KEY: ${SECRET_BOX_KEY:-}
-      DATABASE_CONNECTION_LIMIT: ${DATABASE_CONNECTION_LIMIT:-}
+      # P-06: Worker-Jobs laufen überwiegend über den Owner-Pool; der App-Pool
+      # bedient nur SYSTEM-Kontexte. Summe prüft `./taxtronik doctor`.
+      DATABASE_APP_POOL_MAX: ${WORKER_DB_POOL_MAX:-5}
+      DATABASE_OWNER_POOL_MAX: ${WORKER_DB_OWNER_POOL_MAX:-10}
       # Risk-Layer/LLM: der risk-analyse-llm-Job instanziiert den RiskLayerClient
       # im WORKER — ohne diese Werte wirft er RiskLayerNotConfiguredError und
       # llmEnrichedAt wird nie gesetzt (app hat sie, worker fehlte sie).

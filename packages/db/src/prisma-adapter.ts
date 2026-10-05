@@ -93,18 +93,48 @@ function serializeAdapterFactory<T extends object>(factory: T): T {
 }
 
 /**
- * Pool-Obergrenze. Ohne `max` nutzt der pg-Pool seinen Default (~10). Da jede
- * Anfrage eine Connection für die volle interaktive Transaktion (≤15 s) hält,
- * kann das unter Staff-Concurrency + Worker zu Pool-Erschöpfung führen. Über
- * DATABASE_CONNECTION_LIMIT pro Deployment explizit setzbar (App typischerweise
- * höher als Worker; bei sehr hoher Concurrency PgBouncer davor). Ungesetzt →
- * pg-Default (verhaltensneutral).
+ * Pool-Obergrenzen (P-06). Jeder Prozess hat bis zu zwei Pools: den App-Pool
+ * (DATABASE_APP_URL, RLS, Request-Pfad) und den Owner-Pool (DATABASE_URL, Auth,
+ * Worker-Jobs, Werkzeuge). Eine interaktive Transaktion hält ihre Verbindung bis
+ * zu 15 s; deshalb werden beide Pools je Dienst explizit bemessen:
+ *
+ *   DATABASE_APP_POOL_MAX    App-Pool   (Default 10 = bisheriger pg-Default)
+ *   DATABASE_OWNER_POOL_MAX  Owner-Pool (Default 10 = bisheriger pg-Default)
+ *
+ * Compose setzt beide je Dienst (app 20/5, worker 5/10); `./taxtronik doctor`
+ * prüft die Summe gegen POSTGRES_MAX_CONNECTIONS. Das frühere
+ * DATABASE_CONNECTION_LIMIT gilt nur noch als Fallback, wenn die Pool-spezifische
+ * Variable fehlt (Skripte, Altinstallationen ohne Compose). Clients ohne Rolle
+ * (Restore-Probes, Seeds, Prüfskripte) behalten das bisherige Verhalten.
  */
-function poolMaxFromEnv(): number | undefined {
-  const raw = process.env['DATABASE_CONNECTION_LIMIT'];
-  if (!raw) return undefined;
+export type PostgresPoolRole = 'app' | 'owner';
+
+export const DEFAULT_POOL_MAX: Readonly<Record<PostgresPoolRole, number>> = Object.freeze({
+  app: 10,
+  owner: 10,
+});
+
+export const POOL_MAX_ENV: Readonly<Record<PostgresPoolRole, string>> = Object.freeze({
+  app: 'DATABASE_APP_POOL_MAX',
+  owner: 'DATABASE_OWNER_POOL_MAX',
+});
+
+function positiveInt(raw: string | undefined): number | undefined {
+  if (!raw || !/^\d+$/.test(raw.trim())) return undefined;
   const n = Number.parseInt(raw, 10);
-  return Number.isInteger(n) && n > 0 ? n : undefined;
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
+/** Ungesetzt/ungültig: Rolle → dokumentierter Default; ohne Rolle → pg-Default. */
+export function resolvePoolMax(
+  role: PostgresPoolRole | undefined,
+  env: Record<string, string | undefined> = process.env,
+): number | undefined {
+  const specific = role ? positiveInt(env[POOL_MAX_ENV[role]]) : undefined;
+  if (specific !== undefined) return specific;
+  const legacy = positiveInt(env['DATABASE_CONNECTION_LIMIT']);
+  if (legacy !== undefined) return legacy;
+  return role ? DEFAULT_POOL_MAX[role] : undefined;
 }
 
 /**
@@ -134,8 +164,9 @@ export const APP_SESSION_LIMITS = {
 export function createPostgresAdapter(
   connectionString: string,
   limits: PostgresSessionLimits = {},
+  poolRole?: PostgresPoolRole,
 ): PrismaPg {
-  const max = poolMaxFromEnv();
+  const max = resolvePoolMax(poolRole);
   return serializeAdapterFactory(
     new PrismaPg({
       connectionString,
