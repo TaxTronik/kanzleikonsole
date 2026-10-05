@@ -8,8 +8,8 @@
 // funktioniert. Abgedeckt:
 //   - U-1/RF-8: Status-Update, Audit-Record 'invoice.overdue' und Notification
 //     laufen in EINER Tenant-Context-Tx
-//   - Idempotenz: ungelesene INVOICE_OVERDUE-Notification wird aktualisiert,
-//     nicht dupliziert
+//   - R-11: die Notification läuft über notify() (Upsert mit Sperre und
+//     Sanitizer, siehe packages/db notification-batch); nur Neuanlagen zählen
 //   - P2002 (paralleler Trigger) wird geschluckt, andere Fehler propagieren
 // =============================================================================
 
@@ -29,13 +29,20 @@ const h = vi.hoisted(() => {
   };
   const tx = {
     invoice: { updateMany: vi.fn() },
-    notification: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
   };
+  const notify = vi.fn();
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
   );
   const record = vi.fn();
-  return { PrismaClientKnownRequestError, prismaOwner, tx, withWorkerTenantContext, record };
+  return {
+    PrismaClientKnownRequestError,
+    prismaOwner,
+    tx,
+    withWorkerTenantContext,
+    record,
+    notify,
+  };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -45,6 +52,7 @@ vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('@prisma/client', () => ({
   Prisma: { PrismaClientKnownRequestError: h.PrismaClientKnownRequestError },
 }));
@@ -98,9 +106,7 @@ beforeEach(() => {
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.invoice.findMany.mockResolvedValue([]);
   h.tx.invoice.updateMany.mockResolvedValue({ count: 1 });
-  h.tx.notification.findFirst.mockResolvedValue(null);
-  h.tx.notification.update.mockResolvedValue({});
-  h.tx.notification.create.mockResolvedValue({});
+  h.notify.mockResolvedValue({ created: 1, updated: 0 });
   h.record.mockResolvedValue({});
 });
 
@@ -146,14 +152,15 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
       before: { status: 'SENT' },
       after: { status: 'OVERDUE', daysOverdue: 3 },
     });
-    expect(h.tx.notification.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        staffId: 'staff-1',
-        kind: 'INVOICE_OVERDUE',
-        title: 'Rechnung RE-2026-0001 überfällig (3 Tage)',
-        body: 'Mandant: Muster GmbH · Brutto: 119.00 €',
-        href: '/staff/invoices/inv-1',
-      }),
+    expect(h.notify).toHaveBeenCalledWith(h.tx, {
+      tenantId: TENANT,
+      staffId: 'staff-1',
+      kind: 'INVOICE_OVERDUE',
+      title: 'Rechnung RE-2026-0001 überfällig (3 Tage)',
+      body: 'Mandant: Muster GmbH · Brutto: 119.00 €',
+      href: '/staff/invoices/inv-1',
+      resourceType: 'invoice',
+      resourceId: 'inv-1',
     });
     expect(result).toEqual({ updated: 1, notified: 1 });
   });
@@ -165,36 +172,22 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
 
     await run();
 
-    expect(h.tx.notification.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        title: 'Rechnung RE-2026-0001 überfällig (1 Tag)',
-      }),
-    });
+    expect(h.notify).toHaveBeenCalledWith(
+      h.tx,
+      expect.objectContaining({ title: 'Rechnung RE-2026-0001 überfällig (1 Tag)' }),
+    );
   });
 });
 
 describe('Idempotenz der Notification', () => {
-  it('ungelesene INVOICE_OVERDUE-Notification wird aktualisiert, nicht neu angelegt', async () => {
+  it('ungelesene INVOICE_OVERDUE-Notification wird aktualisiert, nicht neu gezählt', async () => {
     h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
-    h.tx.notification.findFirst.mockResolvedValue({ id: 'notif-1' });
+    // notify() aktualisiert die offene Notification desselben Schlüssels.
+    h.notify.mockResolvedValue({ created: 0, updated: 1 });
 
     const result = await run();
 
-    expect(h.tx.notification.findFirst).toHaveBeenCalledWith({
-      where: {
-        tenantId: TENANT,
-        staffId: 'staff-1',
-        kind: 'INVOICE_OVERDUE',
-        resourceType: 'invoice',
-        resourceId: 'inv-1',
-        readAt: null,
-      },
-    });
-    expect(h.tx.notification.update).toHaveBeenCalledWith({
-      where: { id: 'notif-1' },
-      data: expect.objectContaining({ kind: 'INVOICE_OVERDUE', createdAt: FIXED_NOW }),
-    });
-    expect(h.tx.notification.create).not.toHaveBeenCalled();
+    expect(h.notify).toHaveBeenCalledTimes(1);
     // updated zählt, notified nicht — es gab schon eine offene Notification
     expect(result).toEqual({ updated: 1, notified: 0 });
   });
@@ -210,7 +203,7 @@ describe('Fehlerbehandlung', () => {
     // updateMany(status=SENT) kann nach dem Recheck-Fix kein P2002 mehr werfen
     // (paralleler Treffer ergibt count=0). Den Catch also an seinem echten
     // Auslöser testen.
-    h.tx.notification.create.mockRejectedValueOnce(
+    h.notify.mockRejectedValueOnce(
       new h.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002' }),
     );
 
@@ -218,7 +211,7 @@ describe('Fehlerbehandlung', () => {
 
     // inv-1: Insert kollidierte (geschluckt, nicht gezählt), inv-2 normal.
     expect(result).toEqual({ updated: 1, notified: 1 });
-    expect(h.tx.notification.create).toHaveBeenCalledTimes(2);
+    expect(h.notify).toHaveBeenCalledTimes(2);
   });
 
   it('andere Fehler propagieren (Job schlägt fehl)', async () => {
@@ -239,6 +232,6 @@ describe('Fehlerbehandlung', () => {
 
     expect(result).toEqual({ updated: 0, notified: 0 });
     expect(h.record).not.toHaveBeenCalled();
-    expect(h.tx.notification.create).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 });

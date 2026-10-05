@@ -65,6 +65,16 @@ interface ReminderResult {
   binders: number;
 }
 
+/**
+ * Zeilensperren der Quelltabellen (Prisma.sql). notify() liest zusätzlich den
+ * Actor-Kontext per Tagged Template — der zählt hier nicht mit (R-11).
+ */
+function lockQueries(): Array<{ sql: string; values: string[] }> {
+  return h.tx.$queryRaw.mock.calls
+    .map((call) => call[0] as { sql?: unknown; values?: unknown })
+    .filter((query): query is { sql: string; values: string[] } => typeof query.sql === 'string');
+}
+
 function run(): Promise<ReminderResult> {
   return processors.get('reminders-daily')!({
     data: { tenantId: TENANT_ID },
@@ -148,7 +158,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
     expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
   });
 
-  it('lädt heutige Dedupe-Keys einmal und schreibt sanitisiert per createMany', async () => {
+  it('lädt heutige Dedupe-Keys einmal und schreibt sanitisiert per notify (createMany)', async () => {
     h.prismaOwner.taxNotice.findMany.mockResolvedValue([
       {
         id: 'notice-existing',
@@ -237,8 +247,8 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
     const result = await run();
 
     expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
-    expect(h.tx.$queryRaw).toHaveBeenCalledTimes(3);
-    const lockSql = h.tx.$queryRaw.mock.calls.map((call) => (call[0] as { sql: string }).sql);
+    expect(lockQueries()).toHaveLength(3);
+    const lockSql = lockQueries().map((query) => query.sql);
     expect(lockSql[0]).toContain('FROM public."tax_notice"');
     expect(lockSql[1]).toContain('FROM public."client_reminder"');
     expect(lockSql[2]).toContain('FROM public."pending_binder"');
@@ -706,9 +716,7 @@ describe('P-15: Abschnitte je 200 Mandanten mit eigener Transaktion', () => {
     await expect(run()).resolves.toEqual({ appeal: 0, reminders: 450, binders: 0 });
 
     expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(3);
-    const lockedIds = h.tx.$queryRaw.mock.calls.map((call) =>
-      (call[0] as { values: string[] }).values.slice(1),
-    );
+    const lockedIds = lockQueries().map((query) => query.values.slice(1));
     expect(lockedIds.map((ids) => ids.length)).toEqual([200, 200, 50]);
     expect(new Set(lockedIds.flat()).size).toBe(450);
     // Ein Zugriffsfilter je Abschnitt statt drei bis vier Abfragen je Mandant.

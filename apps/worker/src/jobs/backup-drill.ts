@@ -45,7 +45,7 @@ import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { pgConnArgs } from '../pg-conn';
 import { withWorkerTenantContext } from '../tenant-context';
-import { upsertNotification } from '../notify';
+import { notify } from '../notify';
 import { log } from '../logger';
 import { timestampPortFor } from '../tsa-port';
 import { withVerifiedDrillFile } from './backup-drill-file';
@@ -217,16 +217,21 @@ async function persistTenantResult(tenantId: string, result: PersistedDrillResul
       where: { tenantId, active: true, roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } } },
       select: { id: true },
     });
-    for (const a of admins) {
-      await upsertNotification(tenantId, a.id, {
-        kind: 'SYSTEM_BACKUP_FAILED',
-        title: '⚠ Restore-Test fehlgeschlagen',
-        body: result.error ?? 'Der monatliche Backup-Wiederherstellungstest ist fehlgeschlagen.',
-        href: '/staff/admin',
-        resourceType: 'backup_drill',
-        resourceId: result.backupKey ?? 'none',
-      });
-    }
+    await withWorkerTenantContext(tenantId, (tx) =>
+      notify(
+        tx,
+        admins.map((a) => ({
+          tenantId,
+          staffId: a.id,
+          kind: 'SYSTEM_BACKUP_FAILED' as const,
+          title: '⚠ Restore-Test fehlgeschlagen',
+          body: result.error ?? 'Der monatliche Backup-Wiederherstellungstest ist fehlgeschlagen.',
+          href: '/staff/admin',
+          resourceType: 'backup_drill',
+          resourceId: result.backupKey ?? 'none',
+        })),
+      ),
+    );
   }
 }
 

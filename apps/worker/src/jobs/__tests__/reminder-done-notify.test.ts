@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // =============================================================================
 
 const h = vi.hoisted(() => ({
-  upsertNotificationTx: vi.fn(),
+  notify: vi.fn(),
   findFirst: vi.fn(),
   filterStaffAccessClientTx: vi.fn(),
   moduleEnabled: vi.fn(),
@@ -22,9 +22,8 @@ vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock('@taxtronik/db/notification', () => ({
-  upsertNotificationTx: h.upsertNotificationTx,
-}));
+// R-11: der Job schreibt über notify(tx, input).
+vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('@taxtronik/db/staff-client-access', () => ({
   filterStaffAccessClientTx: h.filterStaffAccessClientTx,
 }));
@@ -78,7 +77,7 @@ describe('reminder-done-notify', () => {
     });
     release();
     await running;
-    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
   it('überspringt den direkten Job-Einstieg bei deaktivierten Wiedervorlagen', async () => {
     h.moduleEnabled.mockResolvedValue(false);
@@ -86,7 +85,7 @@ describe('reminder-done-notify', () => {
     await processors.get('reminder-done-notify')!(JOB);
 
     expect(h.findFirst).not.toHaveBeenCalled();
-    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 
   it('stellt zu, wenn die Wiedervorlage noch erledigt ist', async () => {
@@ -98,7 +97,7 @@ describe('reminder-done-notify', () => {
 
     await processors.get('reminder-done-notify')!(JOB);
 
-    expect(h.upsertNotificationTx).toHaveBeenCalledWith(
+    expect(h.notify).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         kind: 'CLIENT_REMINDER_DONE',
@@ -126,7 +125,7 @@ describe('reminder-done-notify', () => {
       ['partner-1'],
       'client-1',
     );
-    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 
   it('stellt NICHT zu, wenn zwischenzeitlich zurückgeholt wurde', async () => {
@@ -134,7 +133,7 @@ describe('reminder-done-notify', () => {
 
     await processors.get('reminder-done-notify')!(JOB);
 
-    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 
   it('stellt NICHT zu, wenn die Wiedervorlage gelöscht wurde', async () => {
@@ -142,6 +141,6 @@ describe('reminder-done-notify', () => {
 
     await processors.get('reminder-done-notify')!(JOB);
 
-    expect(h.upsertNotificationTx).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 });

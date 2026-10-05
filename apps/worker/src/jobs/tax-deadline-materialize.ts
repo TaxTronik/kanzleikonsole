@@ -16,13 +16,14 @@
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
-import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/notification';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { materializeTenantTaxDeadlines } from '@taxtronik/tax';
 import { notifyAutomaticTaxRequestOpened } from '../mail';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 import { processTaxDeadlineNotifications } from './tax-deadline-notification';
 
@@ -72,7 +73,9 @@ export const taxDeadlineMaterializeWorker = createWorker<ChecksJob>(
             runAtomic: (fn) => withWorkerTenantContext(tenantId, fn),
             recordEvidence: (tx, event) => evidence.record(tx, event),
             // Läuft in derselben withWorkerTenantContext-Tx wie staffNotifiedAt.
-            upsertStaffNotification: (tx, input) => upsertNotificationTx(tx, input),
+            upsertStaffNotification: async (tx, input) => {
+              await notify(tx, input);
+            },
             resolveStaffNotifications: (tx, input) =>
               resolveNotificationsTx(tx, {
                 tenantId: input.tenantId,
@@ -101,7 +104,9 @@ export const taxDeadlineMaterializeWorker = createWorker<ChecksJob>(
           db: prismaOwner,
           runAtomic: (fn) => withWorkerTenantContext(tenantId, fn),
           notifyAutomaticTaxRequestOpened,
-          upsertStaffNotification: (tx, input) => upsertNotificationTx(tx, input),
+          upsertStaffNotification: async (tx, input) => {
+            await notify(tx, input);
+          },
           resolveFailureNotifications: (tx, input) =>
             resolveNotificationsTx(tx, {
               tenantId: input.tenantId,

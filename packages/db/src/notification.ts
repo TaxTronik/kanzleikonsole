@@ -56,6 +56,46 @@ export function sanitizeNotificationText(value: string): string {
   );
 }
 
+type NotificationKeyFields = Pick<
+  NotificationUpsertInput,
+  'tenantId' | 'staffId' | 'kind' | 'resourceType' | 'resourceId'
+>;
+
+/** Advisory-Lock-Schlüssel eines Benachrichtigungsschlüssels (ohne Mandantenscope). */
+function notificationLockKey(input: NotificationKeyFields): string {
+  return `notify:${input.tenantId}:${input.staffId ?? ''}:${input.kind}:${input.resourceType ?? ''}:${input.resourceId ?? ''}`;
+}
+
+/** Suchbedingung einer Benachrichtigung; `clientId` nur, wenn der Producer ihn setzt. */
+function notificationKeyWhere(input: NotificationUpsertInput) {
+  return {
+    tenantId: input.tenantId,
+    ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
+    staffId: input.staffId ?? null,
+    kind: input.kind,
+    resourceType: input.resourceType ?? null,
+    resourceId: input.resourceId ?? null,
+  };
+}
+
+function notificationCreateData(
+  input: NotificationUpsertInput,
+  title: string,
+  body: string | null,
+) {
+  return {
+    tenantId: input.tenantId,
+    clientId: input.clientId ?? null,
+    staffId: input.staffId ?? null,
+    kind: input.kind,
+    title,
+    body,
+    href: input.href ?? null,
+    resourceType: input.resourceType ?? null,
+    resourceId: input.resourceId ?? null,
+  };
+}
+
 async function persistClientContactNotificationIfApplicable(
   tx: TxClient,
   input: NotificationUpsertInput,
@@ -100,18 +140,9 @@ export async function upsertNotificationTx(
   const body = input.body != null ? sanitizeNotificationText(input.body) : null;
   if (await persistClientContactNotificationIfApplicable(tx, input, title, body)) return;
 
-  const where = {
-    tenantId: input.tenantId,
-    ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
-    staffId: input.staffId ?? null,
-    kind: input.kind,
-    resourceType: input.resourceType ?? null,
-    resourceId: input.resourceId ?? null,
-    readAt: null,
-  };
+  const where = { ...notificationKeyWhere(input), readAt: null };
 
-  const lockKey = `notify:${where.tenantId}:${where.staffId ?? ''}:${where.kind}:${where.resourceType ?? ''}:${where.resourceId ?? ''}`;
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${notificationLockKey(input)}, 0))`;
 
   const existing = await tx.notification.findFirst({ where });
   if (existing) {
@@ -127,19 +158,177 @@ export async function upsertNotificationTx(
     return;
   }
 
-  await tx.notification.create({
-    data: {
-      tenantId: input.tenantId,
-      clientId: input.clientId ?? null,
-      staffId: input.staffId ?? null,
-      kind: input.kind,
-      title,
-      body,
-      href: input.href ?? null,
-      resourceType: input.resourceType ?? null,
-      resourceId: input.resourceId ?? null,
+  await tx.notification.create({ data: notificationCreateData(input, title, body) });
+}
+
+/** Ergebnis der gebündelten Worker-Pfade (R-11). */
+export interface NotificationBatchResult {
+  /** Neu angelegte Benachrichtigungen. */
+  created: number;
+  /** Aktualisierte ungelesene Benachrichtigungen desselben Schlüssels. */
+  updated: number;
+}
+
+/** Statements je Abschnitt: Sperren, Bestandsabfrage und Neuanlagen. */
+const NOTIFICATION_BATCH_SIZE = 250;
+
+interface PreparedNotification {
+  input: NotificationUpsertInput;
+  title: string;
+  body: string | null;
+  lockKey: string;
+}
+
+/**
+ * Sanitizer für jeden Eintrag; mehrfach übergebene Schlüssel zählen einmal mit
+ * der letzten Eingabe (wie nacheinander ausgeführte Upserts). Sortiert nach
+ * Lock-Schlüssel, damit überlappende Läufe in derselben Folge sperren.
+ */
+function prepareNotifications(inputs: readonly NotificationUpsertInput[]): PreparedNotification[] {
+  const byIdentity = new Map<string, PreparedNotification>();
+  for (const input of inputs) {
+    const lockKey = notificationLockKey(input);
+    const scope = input.clientId === undefined ? '*' : (input.clientId ?? '-');
+    byIdentity.set(`${lockKey}:${scope}`, {
+      input,
+      title: sanitizeNotificationText(input.title),
+      body: input.body != null ? sanitizeNotificationText(input.body) : null,
+      lockKey,
+    });
+  }
+  return [...byIdentity.values()].sort((a, b) =>
+    a.lockKey < b.lockKey ? -1 : a.lockKey > b.lockKey ? 1 : 0,
+  );
+}
+
+/**
+ * Die gebündelten Pfade schreiben direkt in `notification`. Portal-Kontakte
+ * dürfen das nicht (write-only DB-Funktion, siehe upsertNotificationTx).
+ */
+async function assertBatchActor(tx: TxClient): Promise<void> {
+  const [actorContext] = await tx.$queryRaw<Array<{ actorType: string | null }>>`
+    SELECT app.current_actor_type() AS "actorType"
+  `;
+  if (actorContext?.actorType === 'CLIENT_CONTACT') {
+    throw new Error(
+      'NOTIFICATION_BATCH_CLIENT_CONTACT: im Portal-Kontext upsertNotificationTx verwenden',
+    );
+  }
+}
+
+async function upsertNotificationChunkTx(
+  tx: TxClient,
+  chunk: readonly PreparedNotification[],
+): Promise<NotificationBatchResult> {
+  const lockKeys = [...new Set(chunk.map((entry) => entry.lockKey))];
+  // unnest liefert die (sortierten) Schlüssel in Array-Reihenfolge.
+  await tx.$executeRaw`
+    SELECT pg_advisory_xact_lock(hashtextextended(lock_key, 0))
+      FROM unnest(${lockKeys}::text[]) AS lock_key
+  `;
+  const existing = await tx.notification.findMany({
+    where: { readAt: null, OR: chunk.map((entry) => notificationKeyWhere(entry.input)) },
+    select: {
+      id: true,
+      tenantId: true,
+      clientId: true,
+      staffId: true,
+      kind: true,
+      resourceType: true,
+      resourceId: true,
     },
   });
+  const existingByLockKey = new Map<string, typeof existing>();
+  for (const row of existing) {
+    const key = notificationLockKey(row);
+    existingByLockKey.set(key, [...(existingByLockKey.get(key) ?? []), row]);
+  }
+
+  let updated = 0;
+  const toCreate: Array<ReturnType<typeof notificationCreateData>> = [];
+  for (const entry of chunk) {
+    const match = existingByLockKey
+      .get(entry.lockKey)
+      ?.find(
+        (row) =>
+          entry.input.clientId === undefined || row.clientId === (entry.input.clientId ?? null),
+      );
+    if (!match) {
+      toCreate.push(notificationCreateData(entry.input, entry.title, entry.body));
+      continue;
+    }
+    await tx.notification.update({
+      where: { id: match.id },
+      data: {
+        title: entry.title,
+        body: entry.body,
+        href: entry.input.href ?? null,
+        createdAt: new Date(),
+      },
+    });
+    updated += 1;
+  }
+  // Konflikt mit einem Tages-Dedupe-Index = heute bereits geschrieben (und
+  // inzwischen gelesen): überspringen statt die Transaktion abzubrechen.
+  const created =
+    toCreate.length > 0
+      ? (await tx.notification.createMany({ data: toCreate, skipDuplicates: true })).count
+      : 0;
+  return { created, updated };
+}
+
+/**
+ * R-11: gebündelte Variante von upsertNotificationTx für Worker-Producer.
+ * Je Eintrag gilt dieselbe Semantik — Sanitizer, Advisory-Lock je Schlüssel,
+ * eine ungelesene Benachrichtigung desselben Schlüssels wird aktualisiert
+ * statt dupliziert —, aber Sperren, Bestandsabfrage und Neuanlagen laufen je
+ * Abschnitt gebündelt. Abweichend vom Einzel-Upsert überspringt die Neuanlage
+ * Konflikte mit den Tages-Dedupe-Indizes, statt die Transaktion abzubrechen.
+ */
+export async function upsertNotificationsTx(
+  tx: TxClient,
+  inputs: readonly NotificationUpsertInput[],
+): Promise<NotificationBatchResult> {
+  const result: NotificationBatchResult = { created: 0, updated: 0 };
+  if (inputs.length === 0) return result;
+  await assertBatchActor(tx);
+  const prepared = prepareNotifications(inputs);
+  for (let offset = 0; offset < prepared.length; offset += NOTIFICATION_BATCH_SIZE) {
+    const chunk = await upsertNotificationChunkTx(
+      tx,
+      prepared.slice(offset, offset + NOTIFICATION_BATCH_SIZE),
+    );
+    result.created += chunk.created;
+    result.updated += chunk.updated;
+  }
+  return result;
+}
+
+/**
+ * R-11: legt jede Eingabe neu an (mit Sanitizer) — für tägliche Erinnerungen,
+ * deren Wiederholung pro UTC-Tag die Tages-Dedupe-Indizes begrenzen: ein
+ * Konflikt wird übersprungen. Liefert die Zahl neu angelegter Zeilen.
+ */
+export async function insertNotificationsTx(
+  tx: TxClient,
+  inputs: readonly NotificationUpsertInput[],
+): Promise<number> {
+  if (inputs.length === 0) return 0;
+  await assertBatchActor(tx);
+  let created = 0;
+  for (let offset = 0; offset < inputs.length; offset += NOTIFICATION_BATCH_SIZE) {
+    const data = inputs
+      .slice(offset, offset + NOTIFICATION_BATCH_SIZE)
+      .map((input) =>
+        notificationCreateData(
+          input,
+          sanitizeNotificationText(input.title),
+          input.body != null ? sanitizeNotificationText(input.body) : null,
+        ),
+      );
+    created += (await tx.notification.createMany({ data, skipDuplicates: true })).count;
+  }
+  return created;
 }
 
 /**

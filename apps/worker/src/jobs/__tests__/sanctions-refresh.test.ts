@@ -37,7 +37,13 @@ vi.mock('../../tenant-context', () => ({
 }));
 vi.mock('../../logger', () => ({ log: h.log }));
 vi.mock('@taxtronik/db/tenant-modules', () => ({ readBooleanTenantModules: h.modules }));
-vi.mock('@taxtronik/db/notification', () => ({ upsertNotificationTx: h.notify }));
+// R-11: notify(tx, input[]) — je Eingabe ein Aufruf auf demselben Tx.
+vi.mock('../../notify', () => ({
+  notify: async (tx: unknown, input: unknown) => {
+    for (const entry of [input].flat()) await h.notify(tx, entry);
+    return { created: [input].flat().length, updated: 0 };
+  },
+}));
 vi.mock('@taxtronik/db/staff-client-access', () => ({ filterStaffAccessClientTx: h.filter }));
 vi.mock('@taxtronik/evidence', () => ({
   EvidenceService: class {

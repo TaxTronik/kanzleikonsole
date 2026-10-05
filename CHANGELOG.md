@@ -987,6 +987,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Alle Hintergrundbenachrichtigungen des Workers laufen über einen gemeinsamen
+  Pfad mit Textbereinigung, auch die bisher unbereinigten Titel externer
+  RSS-Feeds. Eine Kettenbruch-Meldung zu einer neuen Bruchstelle bricht den
+  Prüflauf nicht mehr ab (`ACCESS-NOTIFICATION-RECIPIENT-001`,
+  `AUDIT-VERIFY-ALERT-001`, `FK-EXC-20261005-022`).
 - **[Scope]** Sitzungen im Kanzlei- und Mandantenportal enden spätestens
   24 Stunden nach der ursprünglichen Anmeldung. Bisher verlängerte jeder
   Aufruf des Auth.js-Session-Endpunkts eine Sitzung ohne Obergrenze um volle

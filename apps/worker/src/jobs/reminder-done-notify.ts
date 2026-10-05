@@ -13,10 +13,10 @@
 
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
-import { upsertNotificationTx } from '@taxtronik/db/notification';
 import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { connection, type ReminderDoneNotifyJob } from '../queues';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { log } from '../logger';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 
@@ -61,7 +61,7 @@ export const reminderDoneNotifyWorker = createWorker<ReminderDoneNotifyJob>(
         }
       }
 
-      await upsertNotificationTx(tx, {
+      await notify(tx, {
         tenantId,
         staffId,
         kind: 'CLIENT_REMINDER_DONE',

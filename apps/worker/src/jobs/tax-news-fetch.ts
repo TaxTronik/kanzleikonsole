@@ -16,6 +16,7 @@ import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 
 const RSS_FETCH_CONCURRENCY = 5;
@@ -194,13 +195,11 @@ export const taxNewsFetchWorker = createWorker<ChecksJob>(
         row,
       ]);
     }
+    // R-11: RSS-Titel stammen aus externen Feeds — notify() schreibt sie nur
+    // über den gemeinsamen Sanitizer (vorher: createMany ohne Filter).
     for (const [tenantId, rows] of notificationsByTenant) {
-      await withWorkerTenantContext(tenantId, async (tx) => {
-        for (const batch of chunks(rows, DB_BATCH_SIZE)) {
-          const result = await tx.notification.createMany({ data: batch });
-          notifications += result.count;
-        }
-      });
+      const result = await withWorkerTenantContext(tenantId, (tx) => notify(tx, rows));
+      notifications += result.created;
     }
 
     // Lauf-Marker pro Tenant mit aktiven Feeds — das RSS-Widget zeigt daraus

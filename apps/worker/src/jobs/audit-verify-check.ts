@@ -27,6 +27,7 @@ import {
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { timestampPortFor } from '../tsa-port';
 
 // RF-5: Produktivmodus → externe TSA verpflichtend (Self-Timestamp = harter
@@ -178,7 +179,8 @@ export function acceptsPreviousTailRecovery(
   return Date.parse(checkpoint.createdAt) >= Date.parse(previous.checkedAt);
 }
 
-async function notifyAuditBreak(
+/** Meldet einen Ketten- oder Prüflauf-Fehler an aktive ADMIN/PARTNER (exportiert für Tests). */
+export async function notifyAuditBreak(
   tenantId: string,
   input: { title?: string; body: string; resourceId: string | null },
 ): Promise<void> {
@@ -191,17 +193,13 @@ async function notifyAuditBreak(
       },
       select: { id: true },
     });
-    for (const rec of recipients) {
-      const existing = await tx.notification.findFirst({
-        where: {
-          tenantId,
-          staffId: rec.id,
-          kind: 'SYSTEM_AUDIT_BREAK',
-          resourceType: 'audit_log',
-          readAt: null,
-        },
-      });
-      const data = {
+    // R-11: Schlüssel inkl. resourceId (Bruchstelle). Der frühere Upsert
+    // überschrieb resourceId einer offenen Meldung — das verbietet der
+    // Scope-Trigger (Ressourcenlink unveränderlich); eine neue Bruchstelle
+    // bekommt jetzt eine eigene Meldung.
+    await notify(
+      tx,
+      recipients.map((rec) => ({
         tenantId,
         staffId: rec.id,
         kind: 'SYSTEM_AUDIT_BREAK' as const,
@@ -210,16 +208,8 @@ async function notifyAuditBreak(
         href: `/staff/admin/audit`,
         resourceType: 'audit_log',
         resourceId: input.resourceId,
-      };
-      if (existing) {
-        await tx.notification.update({
-          where: { id: existing.id },
-          data: { ...data, createdAt: new Date() },
-        });
-      } else {
-        await tx.notification.create({ data });
-      }
-    }
+      })),
+    );
   });
 }
 
@@ -428,17 +418,9 @@ async function notifyManualRequester(
       select: { id: true },
     });
   }
-  for (const recipient of recipients) {
-    const existing = await tx.notification.findFirst({
-      where: {
-        tenantId: input.tenantId,
-        staffId: recipient.id,
-        kind: 'SYSTEM_AUDIT_OK',
-        resourceType: 'audit_log',
-        readAt: null,
-      },
-    });
-    const data = {
+  await notify(
+    tx,
+    recipients.map((recipient) => ({
       tenantId: input.tenantId,
       staffId: recipient.id,
       kind: 'SYSTEM_AUDIT_OK' as const,
@@ -447,16 +429,8 @@ async function notifyManualRequester(
       href: '/staff/admin/audit',
       resourceType: 'audit_log',
       resourceId: null,
-    };
-    if (existing) {
-      await tx.notification.update({
-        where: { id: existing.id },
-        data: { ...data, createdAt: new Date() },
-      });
-    } else {
-      await tx.notification.create({ data });
-    }
-  }
+    })),
+  );
 }
 
 async function clearBreakAndNotifySuccess(input: {

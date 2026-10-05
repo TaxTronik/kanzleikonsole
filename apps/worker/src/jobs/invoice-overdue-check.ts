@@ -13,6 +13,7 @@ import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
 // RF-8: record() braucht nur den Tx — gleiches Muster wie risk-analyse-llm.ts.
@@ -79,35 +80,18 @@ export const invoiceOverdueWorker = createWorker<ChecksJob>(
               before: { status: 'SENT' },
               after: { status: 'OVERDUE', daysOverdue },
             });
-            const data = {
+            // R-11: gemeinsamer Upsert mit Sperre und Sanitizer (Mandantenname im Text).
+            const result = await notify(tx, {
               tenantId,
               staffId: inv.createdByStaff,
-              kind: 'INVOICE_OVERDUE' as const,
+              kind: 'INVOICE_OVERDUE',
               title: `Rechnung ${inv.number} überfällig (${daysOverdue} Tag${daysOverdue === 1 ? '' : 'e'})`,
               body: `Mandant: ${inv.client.name} · Brutto: ${Number(inv.totalAmount.toString()).toFixed(2)} €`,
               href: `/staff/invoices/${inv.id}`,
               resourceType: 'invoice',
               resourceId: inv.id,
-            };
-            const existing = await tx.notification.findFirst({
-              where: {
-                tenantId,
-                staffId: inv.createdByStaff,
-                kind: 'INVOICE_OVERDUE',
-                resourceType: 'invoice',
-                resourceId: inv.id,
-                readAt: null,
-              },
             });
-            if (existing) {
-              await tx.notification.update({
-                where: { id: existing.id },
-                data: { ...data, createdAt: new Date() },
-              });
-            } else {
-              await tx.notification.create({ data });
-              notified++;
-            }
+            notified += result.created;
             return true;
           });
           if (applied) updated++;

@@ -48,7 +48,7 @@ const h = vi.hoisted(() => {
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
   );
   const record = vi.fn();
-  const upsertNotification = vi.fn();
+  const notify = vi.fn();
   const resolveNotificationsTx = vi.fn();
   // Portal-Session-Revocation: der Worker schreibt `revoke:portal:<contactId>`
   // direkt über die BullMQ-Redis-Verbindung (Key-Schema aus
@@ -61,7 +61,7 @@ const h = vi.hoisted(() => {
     filterStaffAccessClientTx,
     withWorkerTenantContext,
     record,
-    upsertNotification,
+    notify,
     resolveNotificationsTx,
     redisSet,
   };
@@ -74,7 +74,7 @@ vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
-vi.mock('../../notify', () => ({ upsertNotification: h.upsertNotification }));
+vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('@taxtronik/db/notification', () => ({
   resolveNotificationsTx: h.resolveNotificationsTx,
 }));
@@ -106,6 +106,20 @@ interface GwgResult {
 
 function run(): Promise<GwgResult> {
   return processors.get('gwg-expiry-check')!({ data: { tenantId: TENANT } }) as Promise<GwgResult>;
+}
+
+/**
+ * R-11: Der Job schreibt über notify(tx, input[]). Für die Assertions je
+ * Empfänger ein Eintrag im früheren Format (tenantId, staffId, Daten).
+ */
+function upsertCalls(): Array<readonly [string, string, Record<string, unknown>]> {
+  return h.notify.mock.calls.flatMap(([tx, input]) => {
+    expect(tx).toBe(h.tx);
+    return [input as Record<string, unknown>].flat().flatMap((entry) => {
+      const { tenantId, staffId, ...data } = entry as Record<string, unknown>;
+      return [[tenantId as string, staffId as string, data] as const];
+    });
+  });
 }
 
 function gwgCheck(validUntil: Date, overrides: Record<string, unknown> = {}) {
@@ -177,7 +191,10 @@ beforeEach(() => {
   // den AFTER-Trigger; das explizite updateMany trifft deshalb keine Zeile.
   h.tx.client.updateMany.mockResolvedValue({ count: 0 });
   h.record.mockResolvedValue({});
-  h.upsertNotification.mockResolvedValue(undefined);
+  h.notify.mockImplementation(async (_tx: unknown, input: unknown) => ({
+    created: [input].flat().length,
+    updated: 0,
+  }));
   h.redisSet.mockResolvedValue('OK');
 });
 
@@ -207,7 +224,7 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
 
     const result = await run();
 
-    expect(h.upsertNotification).not.toHaveBeenCalled();
+    expect(upsertCalls()).toEqual([]);
     expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
     expect(h.resolveNotificationsTx).toHaveBeenCalledWith(
       h.tx,
@@ -226,12 +243,12 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
 
     const result = await run();
 
-    expect(h.upsertNotification).toHaveBeenCalledTimes(1);
-    expect(h.upsertNotification).toHaveBeenCalledWith(
+    expect(upsertCalls()).toHaveLength(1);
+    expect(upsertCalls()).toContainEqual([
       TENANT,
       'hb-1',
       expect.objectContaining({ kind: 'GWG_EXPIRY_90D', resourceId: 'gwg-1' }),
-    );
+    ]);
     expect(result.stage1).toBe(1);
   });
 
@@ -242,9 +259,9 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
 
     const result = await run();
 
-    const recipients = h.upsertNotification.mock.calls.map((c) => c[1]);
+    const recipients = upsertCalls().map((c) => c[1]);
     expect(recipients.sort()).toEqual(['bt-1', 'hb-1']);
-    for (const call of h.upsertNotification.mock.calls) {
+    for (const call of upsertCalls()) {
       expect((call[2] as { kind: string }).kind).toBe('GWG_EXPIRY_30D');
     }
     expect(result.stage2).toBe(2);
@@ -257,7 +274,7 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
 
     await run();
 
-    expect(h.upsertNotification).toHaveBeenCalledWith(TENANT, 'admin-1', expect.anything());
+    expect(upsertCalls()).toContainEqual([TENANT, 'admin-1', expect.anything()]);
   });
 
   it('ohne ADMIN/PARTNER wird der Tenant komplett übersprungen', async () => {
@@ -266,7 +283,7 @@ describe('Stufenlogik an den Tagesgrenzen', () => {
     await run();
 
     expect(h.prismaOwner.gwgCheck.findMany).not.toHaveBeenCalled();
-    expect(h.upsertNotification).not.toHaveBeenCalled();
+    expect(upsertCalls()).toEqual([]);
   });
 });
 
@@ -279,7 +296,7 @@ describe('F-10: Empfänger nur aktiv und zugriffsberechtigt, sonst ADMIN/PARTNER
 
     const result = await run();
 
-    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['admin-1']);
+    expect(upsertCalls().map((c) => c[1])).toEqual(['admin-1']);
     expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(h.tx, TENANT, ['hb-1'], 'client-1');
     expect(result.stage1).toBe(1);
   });
@@ -292,7 +309,7 @@ describe('F-10: Empfänger nur aktiv und zugriffsberechtigt, sonst ADMIN/PARTNER
 
     const result = await run();
 
-    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['bt-1']);
+    expect(upsertCalls().map((c) => c[1])).toEqual(['bt-1']);
     expect(h.tx.staffUser.findMany).not.toHaveBeenCalled();
     expect(result.stage2).toBe(1);
   });
@@ -315,7 +332,7 @@ describe('F-10: Empfänger nur aktiv und zugriffsberechtigt, sonst ADMIN/PARTNER
         },
       }),
     );
-    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['admin-1']);
+    expect(upsertCalls().map((c) => c[1])).toEqual(['admin-1']);
   });
 
   it('STAGE3: ausgeschiedene Zuständige fallen heraus, ADMIN/PARTNER bleiben', async () => {
@@ -324,7 +341,7 @@ describe('F-10: Empfänger nur aktiv und zugriffsberechtigt, sonst ADMIN/PARTNER
 
     const result = await run();
 
-    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['bt-1', 'admin-1']);
+    expect(upsertCalls().map((c) => c[1])).toEqual(['bt-1', 'admin-1']);
     expect(result.stage3).toBe(2);
   });
 
@@ -336,12 +353,12 @@ describe('F-10: Empfänger nur aktiv und zugriffsberechtigt, sonst ADMIN/PARTNER
 
     const result = await run();
 
-    expect(h.upsertNotification).toHaveBeenCalledWith(
+    expect(upsertCalls()).toContainEqual([
       TENANT,
       'admin-1',
       expect.objectContaining({ kind: 'GWG_ID_EXPIRY_SOON', resourceId: 'doc-1' }),
-    );
-    expect(h.upsertNotification.mock.calls.map((c) => c[1])).toEqual(['admin-1']);
+    ]);
+    expect(upsertCalls().map((c) => c[1])).toEqual(['admin-1']);
     expect(result.idDocReminders).toBe(1);
   });
 
@@ -352,7 +369,7 @@ describe('F-10: Empfänger nur aktiv und zugriffsberechtigt, sonst ADMIN/PARTNER
     const result = await run();
 
     expect(h.tx.gwgCheck.updateMany).toHaveBeenCalled();
-    expect(h.upsertNotification).not.toHaveBeenCalled();
+    expect(upsertCalls()).toEqual([]);
     expect(result.stage3).toBe(0);
   });
 });
@@ -399,9 +416,9 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     });
 
     // alle relevanten Adressaten, dedupliziert
-    const recipients = h.upsertNotification.mock.calls.map((c) => c[1]);
+    const recipients = upsertCalls().map((c) => c[1]);
     expect(recipients.sort()).toEqual(['admin-1', 'bt-1', 'hb-1']);
-    for (const call of h.upsertNotification.mock.calls) {
+    for (const call of upsertCalls()) {
       expect((call[2] as { kind: string }).kind).toBe('GWG_EXPIRED');
     }
     expect(result.stage3).toBe(3);
@@ -435,7 +452,7 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     // (Revocation lief beim tatsächlichen Übergang bzw. in rejectCheckAction)
     expect(h.redisSet).not.toHaveBeenCalled();
     // die (idempotente) Notification geht trotzdem raus
-    expect(h.upsertNotification).toHaveBeenCalled();
+    expect(upsertCalls().length).toBeGreaterThan(0);
   });
 
   it('neuerer gültiger VERIFIED-Check → Alt-Check EXPIRED, aber KEINE Deaktivierung/Eskalation', async () => {
@@ -458,7 +475,7 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     expect(h.record).toHaveBeenCalledTimes(1);
     expect(h.record.mock.calls[0]![1]).toMatchObject({ action: 'gwg.check.expire' });
     // Keine STAGE3-Eskalations-Notification, keine Session-Revocation.
-    expect(h.upsertNotification).not.toHaveBeenCalled();
+    expect(upsertCalls()).toEqual([]);
     expect(h.redisSet).not.toHaveBeenCalled();
     expect(result.stage3).toBe(0);
   });
@@ -471,11 +488,11 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
 
     const result = await run();
 
-    expect(h.upsertNotification).toHaveBeenCalledWith(
+    expect(upsertCalls()).toContainEqual([
       TENANT,
       'hb-1',
       expect.objectContaining({ kind: 'GWG_ID_EXPIRY_SOON', resourceId: 'doc-1' }),
-    );
+    ]);
     // Idempotenz-Match exakt per FK, nicht per Titel-Substring
     expect(h.prismaOwner.request.findMany).toHaveBeenCalledWith({
       where: {
@@ -509,11 +526,11 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
 
     await run();
 
-    expect(h.upsertNotification).toHaveBeenCalledWith(
+    expect(upsertCalls()).toContainEqual([
       TENANT,
       'hb-1',
       expect.objectContaining({ kind: 'GWG_ID_EXPIRED' }),
-    );
+    ]);
     expect(h.prismaOwner.request.createMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
@@ -532,14 +549,14 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
 
     const result = await run();
 
-    expect(h.upsertNotification).toHaveBeenCalledWith(
+    expect(upsertCalls()).toContainEqual([
       TENANT,
       'hb-1',
       expect.objectContaining({
         kind: 'GWG_ID_EXPIRY_SOON',
         title: expect.stringContaining('läuft heute ab'),
       }),
-    );
+    ]);
     expect(h.prismaOwner.request.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ priority: 'NORMAL' })],
       skipDuplicates: true,
@@ -593,7 +610,7 @@ describe('Personalausweis-Ablauf (U-5: Idempotenz per FK)', () => {
 
     const result = await run();
 
-    expect(h.upsertNotification).toHaveBeenCalled();
+    expect(upsertCalls().length).toBeGreaterThan(0);
     expect(h.prismaOwner.request.createMany).not.toHaveBeenCalled();
     expect(result.idDocRequests).toBe(0);
   });
@@ -683,7 +700,7 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
       onboardingInvites: { none: { updatedAt: { gte: cutoff } } },
     });
 
-    const calls = h.upsertNotification.mock.calls.filter(
+    const calls = upsertCalls().filter(
       (c) => (c[2] as { kind: string }).kind === 'GWG_DELETION_DUE',
     );
     expect(calls.map((c) => c[1]).sort()).toEqual(['admin-1', 'partner-1']);
@@ -704,7 +721,7 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
   it('nichts löschreif → keine GWG_DELETION_DUE-Notification', async () => {
     const result = await run();
 
-    const calls = h.upsertNotification.mock.calls.filter(
+    const calls = upsertCalls().filter(
       (c) => (c[2] as { kind: string }).kind === 'GWG_DELETION_DUE',
     );
     expect(calls).toEqual([]);

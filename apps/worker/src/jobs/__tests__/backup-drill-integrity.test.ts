@@ -62,7 +62,7 @@ vi.mock('@taxtronik/evidence', () => ({
 vi.mock('../../tenant-context', () => ({
   withWorkerTenantContext: async (_tenant: string, fn: (tx: object) => unknown) => fn({}),
 }));
-vi.mock('../../notify', () => ({ upsertNotification: vi.fn() }));
+vi.mock('../../notify', () => ({ notify: vi.fn() }));
 vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 

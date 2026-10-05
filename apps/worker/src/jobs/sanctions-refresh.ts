@@ -16,7 +16,6 @@
 // =============================================================================
 
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
-import { upsertNotificationTx } from '@taxtronik/db/notification';
 import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { prepareEuList, type PreparedEuList } from '@taxtronik/tax';
@@ -24,6 +23,7 @@ import { fetchEuSanctions } from '@taxtronik/tax/screening/source';
 import { followupSanctions, storeSanctionsSnapshot } from '@taxtronik/tax/screening/persistence';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { log } from '../logger';
 
 const evidence = new EvidenceService(new LocalTimestampAdapter());
@@ -81,18 +81,20 @@ async function runTenantFollowups(
         // Nur Namenskandidaten verlangen eine Prüfung je Mandant.
         if (!run.candidates) continue;
         const recipients = await filterStaffAccessClientTx(tx, tenantId, admins, run.clientId);
-        for (const staffId of recipients)
-          await upsertNotificationTx(tx, {
+        await notify(
+          tx,
+          [...recipients].map((staffId) => ({
             tenantId,
             clientId: run.clientId,
             staffId,
-            kind: 'SCREENING_REVIEW',
+            kind: 'SCREENING_REVIEW' as const,
             title: 'EU-Screening: neue Trefferhinweise prüfen',
             body: 'Ein neuer unveränderlicher Prüflauf liegt vor. Bestehende GwG-Bewertungen bleiben unverändert.',
             href: `/staff/clients/${run.clientId}/screening`,
             resourceType: 'client',
             resourceId: run.clientId,
-          });
+          })),
+        );
       }
       return result;
     });
@@ -110,17 +112,20 @@ async function runTenantFollowups(
 async function notifyFollowupsWithoutCandidates(tenantId: string, count: number): Promise<void> {
   if (count === 0) return;
   await withWorkerTenantContext(tenantId, async (tx) => {
-    for (const staffId of await activeAdminPartnerIds(tx, tenantId))
-      await upsertNotificationTx(tx, {
+    const admins = await activeAdminPartnerIds(tx, tenantId);
+    await notify(
+      tx,
+      admins.map((staffId) => ({
         tenantId,
         staffId,
-        kind: 'SCREENING_REVIEW',
+        kind: 'SCREENING_REVIEW' as const,
         title: `EU-Screening: ${count} ${count === 1 ? 'Folgeprüfung' : 'Folgeprüfungen'} ohne Namenshinweis`,
         body: 'Zur aktualisierten EU-Liste liegen neue unveränderliche Prüfläufe ohne Namenskandidaten vor. Bestehende GwG-Bewertungen bleiben unverändert; kein Treffer ist keine Freigabe.',
         href: '/staff/admin/screening',
         resourceType: 'tenant',
         resourceId: tenantId,
-      });
+      })),
+    );
   });
 }
 

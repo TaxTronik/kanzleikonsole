@@ -107,6 +107,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-CLIENT-MODE-001: Owner-Fixtures in eigenen Tenants vergleichen den
   // gebündelten Zugriffsfilter (P-15) mit der Einzelprüfung; kein App-Request-Pfad.
   'packages/db/src/__tests__/staff-client-access-batch.test.ts',
+  // ACCESS-NOTIFICATION-RECIPIENT-001: Owner-Fixtures in eigenen Tenants vergleichen
+  // den gebündelten Worker-Notification-Pfad (R-11) mit dem Einzel-Upsert.
+  'packages/db/src/__tests__/notification-batch.test.ts',
   // Isolated synthetic fixtures; assertions use the restricted App connection.
   'packages/db/src/__tests__/mandate-assistance-expansion.test.ts',
   'packages/db/src/__tests__/payroll-intake.test.ts',

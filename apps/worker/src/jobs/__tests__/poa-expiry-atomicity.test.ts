@@ -40,9 +40,14 @@ vi.mock('../../tenant-context', () => ({
     }
   },
 }));
-vi.mock('../../notify', () => ({ upsertNotification: (...args: unknown[]) => h.notify(...args) }));
+// R-11: notify(tx, input[]) — je Eingabe ein Schreibversuch auf demselben Tx.
+vi.mock('../../notify', () => ({
+  notify: async (tx: unknown, input: unknown) => {
+    for (const entry of [input].flat()) await h.notify(tx, entry);
+    return { created: [input].flat().length, updated: 0 };
+  },
+}));
 vi.mock('@taxtronik/db/notification', () => ({
-  upsertNotificationTx: (...args: unknown[]) => h.notify(...args),
   resolveNotificationsTx: h.resolve,
 }));
 vi.mock('@taxtronik/db/staff-client-access', () => ({

@@ -7,8 +7,9 @@
 //   - Pendelordner (PendingBinder.expectedReturnAt): überfällig
 //
 // Idempotent über die `notification`-Tabelle: heutige Dedupe-Keys werden je
-// Abschnitt einmal als Set geladen; die verbleibenden Einträge gehen
-// sanitisiert per createMany(skipDuplicates) in den Daily-Dedupe-Index.
+// Abschnitt einmal als Set geladen; die verbleibenden Einträge legt
+// notify(…, { dedupe: 'daily' }) sanitisiert an (ON CONFLICT DO NOTHING gegen
+// den Daily-Dedupe-Index, R-11).
 //
 // P-15: Ein Tenant wird in Abschnitten von höchstens CLIENT_CHUNK_SIZE
 // Mandanten verarbeitet, jeder in einer eigenen kurzen Transaktion (Sperren,
@@ -26,18 +27,17 @@ import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { NotificationKind } from '@prisma/client';
 import { Prisma } from '@taxtronik/db/prisma-client';
-import { sanitizeNotificationText } from '@taxtronik/db/notification';
 import { filterStaffAccessClientsTx } from '@taxtronik/db/staff-client-access';
 import type { TxClient } from '@taxtronik/db/tenant-context';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 import { readWorkerTenantModules } from '../module-gate';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const CREATE_MANY_BATCH_SIZE = 1000;
 /** Mandanten je Abschnittstransaktion (P-15). */
 export const CLIENT_CHUNK_SIZE = 200;
 /** Abschnittsschlüssel interner Wiedervorlagen ohne Mandant. */
@@ -150,7 +150,7 @@ async function createDailyNotifications(
 
   // Der Daily-Dedupe-Index bucketisiert created_at in UTC-Tage. Mit exakt
   // demselben Fenster eliminiert die Vorab-Abfrage bekannte Keys als Set;
-  // createMany(skipDuplicates) bleibt der Race-Backstop.
+  // das Überspringen von Index-Konflikten in notify() bleibt der Race-Backstop.
   const createdAtGte = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
   );
@@ -200,26 +200,24 @@ async function createDailyNotifications(
         continue;
       }
 
-      let inserted = 0;
-      for (let offset = 0; offset < pending.length; offset += CREATE_MANY_BATCH_SIZE) {
-        const batch = pending.slice(offset, offset + CREATE_MANY_BATCH_SIZE);
-        const result = await tx.notification.createMany({
-          data: batch.map((candidate) => ({
-            tenantId,
-            clientId: candidate.clientId ?? null,
-            staffId: candidate.staffId,
-            kind: candidate.kind,
-            title: sanitizeNotificationText(candidate.title),
-            body: sanitizeNotificationText(candidate.body),
-            href: candidate.href,
-            resourceType: candidate.resourceType,
-            resourceId: candidate.resourceId,
-          })),
-          skipDuplicates: true,
-        });
-        inserted += result.count;
-      }
-      insertedCounts.push(inserted);
+      // R-11: Tages-Dedupe — jede Erinnerung wird angelegt (Sanitizer in notify),
+      // der Tages-Dedupe-Index bleibt Race-Backstop.
+      const result = await notify(
+        tx,
+        pending.map((candidate) => ({
+          tenantId,
+          clientId: candidate.clientId ?? null,
+          staffId: candidate.staffId,
+          kind: candidate.kind,
+          title: candidate.title,
+          body: candidate.body,
+          href: candidate.href,
+          resourceType: candidate.resourceType,
+          resourceId: candidate.resourceId,
+        })),
+        { dedupe: 'daily' },
+      );
+      insertedCounts.push(result.created);
     }
 
     return insertedCounts;

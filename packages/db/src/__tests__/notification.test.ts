@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { TxClient } from '../tenant-context';
 import {
+  insertNotificationsTx,
   resolveClientContactNotificationsTx,
   resolveNotificationsTx,
   sanitizeNotificationText,
   upsertNotificationTx,
+  upsertNotificationsTx,
+  type NotificationUpsertInput,
 } from '../notification';
 
 function notificationTx(existing: { id: string } | null = null) {
@@ -17,6 +20,10 @@ function notificationTx(existing: { id: string } | null = null) {
       update: vi.fn().mockResolvedValue(undefined),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       create: vi.fn().mockResolvedValue(undefined),
+      findMany: vi.fn().mockResolvedValue([]),
+      createMany: vi
+        .fn()
+        .mockImplementation(async ({ data }: { data: unknown[] }) => ({ count: data.length })),
     },
   };
   return tx as unknown as TxClient & typeof tx;
@@ -174,6 +181,146 @@ describe('shared notification persistence', () => {
         kind: { in: ['SYSTEM_BACKUP_FAILED'] },
       },
       data: { readAt: resolvedAt },
+    });
+  });
+});
+
+// R-11: gebündelter Worker-Pfad (DB-Äquivalenz: notification-batch.test.ts).
+describe('upsertNotificationsTx / insertNotificationsTx', () => {
+  const base = { tenantId: 'tenant-id', kind: 'SCREENING_REVIEW' as const, href: '/staff' };
+  const input = (staffId: string, title = 'Hinweis'): NotificationUpsertInput => ({
+    ...base,
+    staffId,
+    title,
+    body: 'Text',
+    resourceType: 'tenant',
+    resourceId: 'tenant-id',
+  });
+
+  it('sperrt alle Schlüssel sortiert in einem Statement, liest Bestände einmal, legt Rest gebündelt an', async () => {
+    const tx = notificationTx();
+    tx.notification.findMany.mockResolvedValue([
+      {
+        id: 'existing-b',
+        tenantId: 'tenant-id',
+        clientId: null,
+        staffId: 'staff-b',
+        kind: 'SCREENING_REVIEW',
+        resourceType: 'tenant',
+        resourceId: 'tenant-id',
+      },
+    ]);
+
+    const result = await upsertNotificationsTx(tx, [
+      input('staff-c', '<c>'),
+      input('staff-b', 'b\u202e'),
+      input('staff-a'),
+    ]);
+
+    expect(result).toEqual({ created: 2, updated: 1 });
+    expect(tx.$executeRaw).toHaveBeenCalledOnce();
+    const lockKeys = tx.$executeRaw.mock.calls[0]!.slice(1)[0] as string[];
+    expect(lockKeys).toEqual([
+      'notify:tenant-id:staff-a:SCREENING_REVIEW:tenant:tenant-id',
+      'notify:tenant-id:staff-b:SCREENING_REVIEW:tenant:tenant-id',
+      'notify:tenant-id:staff-c:SCREENING_REVIEW:tenant:tenant-id',
+    ]);
+    expect(tx.notification.findMany).toHaveBeenCalledOnce();
+    expect(tx.notification.findMany.mock.calls[0]![0].where.readAt).toBeNull();
+    expect(tx.notification.update).toHaveBeenCalledWith({
+      where: { id: 'existing-b' },
+      data: { title: 'b', body: 'Text', href: '/staff', createdAt: expect.any(Date) },
+    });
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ staffId: 'staff-a', title: 'Hinweis', clientId: null }),
+        expect.objectContaining({ staffId: 'staff-c', title: '‹c>' }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('gleicht einen explizit gesetzten Mandantenscope ab und zählt doppelte Schlüssel einmal', async () => {
+    const tx = notificationTx();
+    tx.notification.findMany.mockResolvedValue([
+      {
+        id: 'other-client',
+        tenantId: 'tenant-id',
+        clientId: 'client-2',
+        staffId: 'staff-a',
+        kind: 'SCREENING_REVIEW',
+        resourceType: 'tenant',
+        resourceId: 'tenant-id',
+      },
+    ]);
+
+    const result = await upsertNotificationsTx(tx, [
+      { ...input('staff-a', 'erst'), clientId: 'client-1' },
+      { ...input('staff-a', 'zuletzt'), clientId: 'client-1' },
+    ]);
+
+    // Die offene Notification gehört zu einem anderen Mandanten → neu anlegen,
+    // und zwar einmal mit der letzten Eingabe.
+    expect(result).toEqual({ created: 1, updated: 0 });
+    expect(tx.notification.update).not.toHaveBeenCalled();
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ clientId: 'client-1', title: 'zuletzt' })],
+      skipDuplicates: true,
+    });
+  });
+
+  it('arbeitet große Mengen in Abschnitten zu 250 ab', async () => {
+    const tx = notificationTx();
+    const inputs = Array.from({ length: 600 }, (_, i) =>
+      input(`staff-${String(i).padStart(3, '0')}`),
+    );
+
+    await expect(upsertNotificationsTx(tx, inputs)).resolves.toEqual({ created: 600, updated: 0 });
+
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(3);
+    expect(tx.notification.findMany).toHaveBeenCalledTimes(3);
+    expect(tx.notification.createMany.mock.calls.map((call) => call[0].data.length)).toEqual([
+      250, 250, 100,
+    ]);
+  });
+
+  it('macht ohne Eingaben keine Abfrage', async () => {
+    const tx = notificationTx();
+
+    await expect(upsertNotificationsTx(tx, [])).resolves.toEqual({ created: 0, updated: 0 });
+    await expect(insertNotificationsTx(tx, [])).resolves.toBe(0);
+
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('verweigert die gebündelten Pfade im Portal-Kontext', async () => {
+    const tx = notificationTx();
+    tx.$queryRaw.mockResolvedValue([{ actorType: 'CLIENT_CONTACT' }]);
+
+    await expect(upsertNotificationsTx(tx, [input('staff-a')])).rejects.toThrow(
+      'NOTIFICATION_BATCH_CLIENT_CONTACT',
+    );
+    await expect(insertNotificationsTx(tx, [input('staff-a')])).rejects.toThrow(
+      'NOTIFICATION_BATCH_CLIENT_CONTACT',
+    );
+    expect(tx.notification.createMany).not.toHaveBeenCalled();
+  });
+
+  it('insertNotificationsTx legt jede Eingabe sanitisiert an und überspringt Index-Konflikte', async () => {
+    const tx = notificationTx();
+    tx.notification.createMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      insertNotificationsTx(tx, [input('staff-a', '<a>'), input('staff-b')]),
+    ).resolves.toBe(1);
+
+    expect(tx.notification.findMany).not.toHaveBeenCalled();
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ staffId: 'staff-a', title: '‹a>' }),
+        expect.objectContaining({ staffId: 'staff-b', title: 'Hinweis' }),
+      ],
+      skipDuplicates: true,
     });
   });
 });

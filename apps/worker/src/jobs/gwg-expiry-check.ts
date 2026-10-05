@@ -35,7 +35,7 @@ import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
-import { upsertNotification } from '../notify';
+import { notify } from '../notify';
 import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
@@ -152,26 +152,32 @@ async function processExpiringIdDocuments(
     const daysLeft = wholeDaysBetween(berlinToday, doc.expiryDate);
     const isExpired = daysLeft < 0;
 
-    // Notification an aktive, berechtigte Bearbeiter; sonst ADMIN/PARTNER (F-10)
-    const recipients = await withWorkerTenantContext(tenantId, (tx) =>
-      resolveClientWarningRecipientsTx(tx, {
+    const titleSuffix = idDocumentExpiryTitleSuffix(daysLeft);
+    await resolveIdDocumentWarning(tenantId, doc.id, isExpired);
+    const expiryDate = doc.expiryDate;
+    // Notification an aktive, berechtigte Bearbeiter; sonst ADMIN/PARTNER
+    // (F-10). R-11: Empfänger und Hinweise in derselben Tenant-Transaktion.
+    const recipients = await withWorkerTenantContext(tenantId, async (tx) => {
+      const staffIds = await resolveClientWarningRecipientsTx(tx, {
         tenantId,
         clientId: doc.check.clientId,
         staffIds: doc.check.client.responsibilities.map((r) => r.staffId),
-      }),
-    );
-    const titleSuffix = idDocumentExpiryTitleSuffix(daysLeft);
-    await resolveIdDocumentWarning(tenantId, doc.id, isExpired);
-    for (const staffId of recipients) {
-      await upsertNotification(tenantId, staffId, {
-        kind: (isExpired ? 'GWG_ID_EXPIRED' : 'GWG_ID_EXPIRY_SOON') as NotificationKind,
-        title: `Ausweis von ${doc.ownerName} ${titleSuffix} — ${doc.check.client.name}`,
-        body: `${idDocTypeLabel(doc.type)}, gültig bis ${dateFmt(doc.expiryDate)}.`,
-        href: `/staff/clients/${doc.check.clientId}/gwg`,
-        resourceType: 'gwg_id_document',
-        resourceId: doc.id,
       });
-    }
+      await notify(
+        tx,
+        staffIds.map((staffId) => ({
+          tenantId,
+          staffId,
+          kind: (isExpired ? 'GWG_ID_EXPIRED' : 'GWG_ID_EXPIRY_SOON') as NotificationKind,
+          title: `Ausweis von ${doc.ownerName} ${titleSuffix} — ${doc.check.client.name}`,
+          body: `${idDocTypeLabel(doc.type)}, gültig bis ${dateFmt(expiryDate)}.`,
+          href: `/staff/clients/${doc.check.clientId}/gwg`,
+          resourceType: 'gwg_id_document',
+          resourceId: doc.id,
+        })),
+      );
+      return staffIds;
+    });
     idDocReminders += recipients.length;
 
     // Auto-Anforderung an Mandant — U-5: exakter Idempotenz-Match per FK
@@ -374,27 +380,32 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
 
         await resolveObsoleteStageNotifications(tenantId, check.id, stage);
 
-        // F-10: erst nach dem Statuswechsel und auf dem dann aktuellen Stand.
-        const recipients = await withWorkerTenantContext(tenantId, (tx) =>
-          resolveClientWarningRecipientsTx(tx, {
+        // F-10: erst nach dem Statuswechsel und auf dem dann aktuellen Stand;
+        // R-11: Empfänger und Hinweise in derselben Tenant-Transaktion.
+        const title = titleForStage(stage, daysLeft, check.client.name);
+        const body = bodyForStage(stage, check.riskLevel ?? null);
+        const recipients = await withWorkerTenantContext(tenantId, async (tx) => {
+          const staffIds = await resolveClientWarningRecipientsTx(tx, {
             tenantId,
             clientId: check.clientId,
             staffIds: responsibleStaffForStage(stage, check.client.responsibilities),
             includeAdminPartners: stage === 'STAGE3',
-          }),
-        );
-        const title = titleForStage(stage, daysLeft, check.client.name);
-        const body = bodyForStage(stage, check.riskLevel ?? null);
-        for (const staffId of recipients) {
-          await upsertNotification(tenantId, staffId, {
-            kind,
-            title,
-            body,
-            href: `/staff/clients/${check.clientId}/gwg`,
-            resourceType: 'gwg_check',
-            resourceId: check.id,
           });
-        }
+          await notify(
+            tx,
+            staffIds.map((staffId) => ({
+              tenantId,
+              staffId,
+              kind,
+              title,
+              body,
+              href: `/staff/clients/${check.clientId}/gwg`,
+              resourceType: 'gwg_check',
+              resourceId: check.id,
+            })),
+          );
+          return staffIds;
+        });
         if (stage === 'STAGE1') stage1 += recipients.length;
         if (stage === 'STAGE2') stage2 += recipients.length;
         if (stage === 'STAGE3') stage3 += recipients.length;
@@ -488,21 +499,26 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       const dueTotal = dueDocs + dueChecks;
       if (dueTotal > 0) {
         const itemWord = dueTotal === 1 ? '1 Eintrag' : `${dueTotal} Einträge`;
-        for (const s of adminPartners) {
-          // Idempotent: ungelesene Notification wird aktualisiert; der Daily-
-          // Dedupe-Index (iter81) deckelt zusätzlich auf 1/Tag. resource_id =
-          // Tenant-ID als stabiler Schlüssel für den Tages-Dedupe.
-          await upsertNotification(tenantId, s.id, {
-            kind: 'GWG_DELETION_DUE' as NotificationKind,
-            title: `GwG-Löschprüfung: ${itemWord} löschreif`,
-            body:
-              'Belege/Aufzeichnungen beendeter Mandate oder nie zustande gekommener Beziehungen, ' +
-              'deren Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
-            href: '/staff/admin/gwg-retention',
-            resourceType: 'tenant',
-            resourceId: tenantId,
-          });
-        }
+        // Idempotent: ungelesene Notification wird aktualisiert; der Daily-
+        // Dedupe-Index (iter81) deckelt zusätzlich auf 1/Tag. resource_id =
+        // Tenant-ID als stabiler Schlüssel für den Tages-Dedupe.
+        await withWorkerTenantContext(tenantId, (tx) =>
+          notify(
+            tx,
+            adminPartners.map((s) => ({
+              tenantId,
+              staffId: s.id,
+              kind: 'GWG_DELETION_DUE' as NotificationKind,
+              title: `GwG-Löschprüfung: ${itemWord} löschreif`,
+              body:
+                'Belege/Aufzeichnungen beendeter Mandate oder nie zustande gekommener Beziehungen, ' +
+                'deren Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
+              href: '/staff/admin/gwg-retention',
+              resourceType: 'tenant',
+              resourceId: tenantId,
+            })),
+          ),
+        );
         deletionDueNotices += adminPartners.length;
       } else {
         await withWorkerTenantContext(tenantId, (tx) =>

@@ -1,5 +1,45 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-022
+    date: '2026-10-05'
+    paths:
+      - apps/worker/src/jobs/audit-verify-check.ts
+      - apps/worker/src/jobs/backup-drill.ts
+      - apps/worker/src/jobs/gwg-expiry-check.ts
+      - apps/worker/src/jobs/invoice-overdue-check.ts
+      - apps/worker/src/jobs/poa-expiry-check.ts
+      - apps/worker/src/jobs/reminder-done-notify.ts
+      - apps/worker/src/jobs/reminders-daily.ts
+      - apps/worker/src/jobs/sanctions-refresh.ts
+      - apps/worker/src/jobs/tax-deadline-materialize.ts
+      - packages/db/src/notification.ts
+    rule_ids:
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - AUDIT-VERIFY-ALERT-001
+      - BACKUP-DRILL-INTEGRITY-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-SCREENING-001
+      - INV-DUE-OVERDUE-001
+      - POA-LIFECYCLE-001
+      - REMINDER-TICKET-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-NOTICE-APPEAL-001
+    reason: >-
+      Alle Worker-Benachrichtigungen laufen über eine gemeinsame, batchfähige
+      notify-Funktion auf Basis von upsertNotificationTx mit Textbereinigung, auch
+      die RSS-Titel externer Feeds; Empfänger und Deduplizierung je Tag bleiben.
+      Konflikte mit dem Tages-Deduplizierungsindex brechen die Transaktion nicht
+      mehr ab. Eine Kettenbruch-Warnung zu einer neuen Bruchstelle wird als eigene
+      Meldung geführt, weil die bisherige Aktualisierung der offenen Meldung am
+      Scope-Trigger scheiterte und den Prüflauf abbrach. Empfängerregeln,
+      Benachrichtigungsarten und Inhalte bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/db/src/__tests__/notification-batch.test.ts
+      - apps/worker/src/__tests__/notify.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-021
     date: '2026-10-05'
     paths:
@@ -1933,6 +1973,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-022` dokumentiert den gemeinsamen
+  Benachrichtigungspfad des Workers mit Textbereinigung. Empfängerregeln und
+  Inhalte bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-021` dokumentiert Archivierung und
   Orphan-Bereinigung mit Zeitbudget statt fester Mengen. Prüfungen und

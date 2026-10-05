@@ -27,7 +27,7 @@ const h = vi.hoisted(() => {
   const materialize = vi.fn();
   const processNotifications = vi.fn();
   const notifyAutomaticTaxRequestOpened = vi.fn();
-  const upsertNotificationTx = vi.fn();
+  const notify = vi.fn();
   const resolveNotificationsTx = vi.fn();
   const moduleEnabled = vi.fn();
   return {
@@ -38,7 +38,7 @@ const h = vi.hoisted(() => {
     materialize,
     processNotifications,
     notifyAutomaticTaxRequestOpened,
-    upsertNotificationTx,
+    notify,
     resolveNotificationsTx,
     moduleEnabled,
   };
@@ -57,8 +57,9 @@ vi.mock('../../module-gate', () => ({
 vi.mock('../../mail', () => ({
   notifyAutomaticTaxRequestOpened: h.notifyAutomaticTaxRequestOpened,
 }));
+// R-11: Benachrichtigungen laufen über notify(tx, input).
+vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('@taxtronik/db/notification', () => ({
-  upsertNotificationTx: h.upsertNotificationTx,
   resolveNotificationsTx: h.resolveNotificationsTx,
 }));
 vi.mock('@taxtronik/tax', () => ({ materializeTenantTaxDeadlines: h.materialize }));
@@ -153,15 +154,15 @@ describe('Verdrahtung des DI-Kerns', () => {
     expect(result).toEqual({ created: 2, requests: 1, overdue: 3, warned: 1, mailRecipients: 2 });
   });
 
-  it('upsertStaffNotification delegiert an upsertNotificationTx mit demselben Tx', async () => {
+  it('upsertStaffNotification delegiert an notify mit demselben Tx', async () => {
     await run();
 
     const [deps] = h.materialize.mock.calls[0]!;
     const input = { kind: 'TAX_DEADLINE_REQUEST_PENDING' };
     await deps.upsertStaffNotification(h.tx, input);
-    expect(h.upsertNotificationTx).toHaveBeenCalledTimes(1);
-    expect(h.upsertNotificationTx.mock.calls[0]![0]).toBe(h.tx);
-    expect(h.upsertNotificationTx.mock.calls[0]![1]).toBe(input);
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    expect(h.notify.mock.calls[0]![0]).toBe(h.tx);
+    expect(h.notify.mock.calls[0]![1]).toBe(input);
   });
 
   it('resolveStaffNotifications schließt die Termin-Notification im selben Tx', async () => {

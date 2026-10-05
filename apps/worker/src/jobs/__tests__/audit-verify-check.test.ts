@@ -1,6 +1,8 @@
 // Fachkatalog: AUDIT-VERIFY-ALERT-001
 import { describe, it, expect, vi } from 'vitest';
 
+const h = vi.hoisted(() => ({ notify: vi.fn(), withWorkerTenantContext: vi.fn() }));
+
 // Modul-Import zieht Queue/Redis/Prisma/Evidence — mocken; getestet wird die
 // pure Monotonie-Logik gegen Tail-Truncation der unversiegelten Ketten-Spitze.
 vi.mock('bullmq', () => ({
@@ -26,7 +28,8 @@ vi.mock('@taxtronik/evidence', () => ({
 }));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: {} }));
-vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: vi.fn() }));
+vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -38,6 +41,7 @@ import {
   detectAnchorTailTruncation,
   detectTailTruncation,
   manualProgressMessage,
+  notifyAuditBreak,
   pendingFullVerification,
   preserveMonotonicId,
 } from '../audit-verify-check';
@@ -184,5 +188,40 @@ describe('AUDIT-VERIFY-ALERT-001: persistierte Monotonie und Recovery', () => {
         { auditId: '101', createdAt: '2026-09-01T08:05:00.000Z' } as never,
       ),
     ).toBe(false);
+  });
+});
+
+describe('notifyAuditBreak (R-11)', () => {
+  it('meldet über notify() an aktive ADMIN/PARTNER, Schlüssel inkl. Bruchstelle', async () => {
+    const tx = {
+      staffUser: { findMany: vi.fn().mockResolvedValue([{ id: 'a-1' }, { id: 'p-1' }]) },
+    };
+    h.withWorkerTenantContext.mockImplementation(
+      async (_tenantId: string, fn: (value: unknown) => Promise<unknown>) => fn(tx),
+    );
+    h.notify.mockResolvedValue({ created: 2, updated: 0 });
+
+    await notifyAuditBreak('tenant-1', { body: 'Bruch bei 42', resourceId: '42' });
+
+    expect(tx.staffUser.findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        active: true,
+        roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+      },
+      select: { id: true },
+    });
+    // Früher überschrieb ein Upsert resourceId einer offenen Meldung — das
+    // verbietet der Scope-Trigger. Jetzt gehört die Bruchstelle zum Schlüssel.
+    expect(h.notify).toHaveBeenCalledWith(tx, [
+      expect.objectContaining({
+        staffId: 'a-1',
+        kind: 'SYSTEM_AUDIT_BREAK',
+        resourceType: 'audit_log',
+        resourceId: '42',
+        body: 'Bruch bei 42',
+      }),
+      expect.objectContaining({ staffId: 'p-1', resourceId: '42' }),
+    ]);
   });
 });

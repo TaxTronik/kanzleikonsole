@@ -4,11 +4,12 @@
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
-import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/notification';
+import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
+import { notify } from '../notify';
 import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
@@ -86,18 +87,19 @@ async function processPoa(tenantId: string, poaId: string, todayMidnight: Date) 
     const body = `„${poa.subject}“ (${poa.signerName}), gültig bis ${dateFmt(poa.validUntil)}.${
       isExpired ? ' Bitte bei Bedarf eine neue Vollmacht einholen.' : ''
     }`;
-    for (const staffId of recipients) {
-      await upsertNotificationTx(tx, {
+    await notify(
+      tx,
+      recipients.map((staffId) => ({
         tenantId,
         staffId,
-        kind: isExpired ? 'POA_EXPIRED' : 'POA_EXPIRY_SOON',
+        kind: isExpired ? ('POA_EXPIRED' as const) : ('POA_EXPIRY_SOON' as const),
         title,
         body,
         href: `/staff/poa/${poa.id}`,
         resourceType: 'power_of_attorney',
         resourceId: poa.id,
-      });
-    }
+      })),
+    );
     return isExpired
       ? { soon: 0, expired: recipients.length }
       : { soon: recipients.length, expired: 0 };
