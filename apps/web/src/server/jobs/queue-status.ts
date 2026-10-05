@@ -9,6 +9,10 @@
 // Queue-Namen und Health-Fenster kommen aus derselben runtime-leichten Quelle
 // wie der Worker-Scheduler. Rein lesend (getJobCounts/getCompleted/getFailed)
 // — es werden KEINE Jobs eingereiht.
+//
+// P-17: Wartungsjobs mit Zeitbudget (audit-rotate, storage-orphan-cleanup)
+// melden im Job-Ergebnis `backlog`: was nach dem Lauf weiterhin fällig ist.
+// Der Wert des letzten erfolgreichen Laufs erscheint als Kennzahl „Rückstand".
 // =============================================================================
 
 import { QUEUE_HEALTH } from '@taxtronik/config/job-queues';
@@ -31,6 +35,19 @@ export interface QueueStatus {
   lastFailedReason: string | null;
   /** Overdue according to the shared schedule's health grace window. */
   stale: boolean;
+  /**
+   * P-17: Rückstand laut letztem erfolgreichen Lauf (audit-rotate: fällige,
+   * noch nicht archivierte Audit-Einträge; storage-orphan-cleanup: fällige,
+   * unaufgelöste Storage-Kandidaten). null = die Queue meldet keinen Rückstand.
+   */
+  backlog: number | null;
+}
+
+/** P-17: `backlog` aus dem Ergebnis eines Jobs, sofern es eine gültige Zahl ist. */
+export function readBacklog(returnvalue: unknown): number | null {
+  if (typeof returnvalue !== 'object' || returnvalue === null) return null;
+  const backlog = (returnvalue as { backlog?: unknown }).backlog;
+  return typeof backlog === 'number' && Number.isFinite(backlog) && backlog >= 0 ? backlog : null;
 }
 
 export async function getQueuesStatus(now: number = Date.now()): Promise<QueueStatus[]> {
@@ -63,6 +80,7 @@ export async function getQueuesStatus(now: number = Date.now()): Promise<QueueSt
           lastFailedAt: lastFailed?.finishedOn ?? null,
           lastFailedReason: lastFailed?.failedReason ?? null,
           stale,
+          backlog: readBacklog(lastCompleted?.returnvalue),
         };
       } catch (err) {
         log.warn(
@@ -82,6 +100,7 @@ export async function getQueuesStatus(now: number = Date.now()): Promise<QueueSt
           lastFailedAt: null,
           lastFailedReason: 'Status nicht lesbar',
           stale: true,
+          backlog: null,
         };
       }
     }),

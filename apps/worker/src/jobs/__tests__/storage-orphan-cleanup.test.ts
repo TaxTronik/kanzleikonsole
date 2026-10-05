@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   findMany: vi.fn(),
   updateMany: vi.fn(),
+  count: vi.fn(),
   documentVersionFindFirst: vi.fn(),
   deleteObjectVersion: vi.fn(),
   recoverPreparedBytesCommit: vi.fn(),
@@ -13,7 +14,7 @@ vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({
   prismaOwner: {
-    storageOrphan: { findMany: h.findMany, updateMany: h.updateMany },
+    storageOrphan: { findMany: h.findMany, updateMany: h.updateMany, count: h.count },
     documentVersion: { findFirst: h.documentVersionFindFirst },
   },
 }));
@@ -23,7 +24,9 @@ vi.mock('@taxtronik/storage', () => ({
   recoverPreparedBytesCommit: h.recoverPreparedBytesCommit,
 }));
 
-import { runStorageOrphanCleanup } from '../storage-orphan-cleanup';
+import { processors } from './mocks/bullmq';
+import { startRunBudget } from '../../run-budget';
+import { runStorageOrphanCleanup, storageOrphanCleanupWorker } from '../storage-orphan-cleanup';
 
 const NOW = new Date('2026-08-23T12:00:00.000Z');
 
@@ -32,12 +35,13 @@ describe('storage orphan cleanup', () => {
     vi.resetAllMocks();
     h.findMany.mockResolvedValue([]);
     h.updateMany.mockResolvedValue({ count: 1 });
+    h.count.mockResolvedValue(0);
     h.documentVersionFindFirst.mockResolvedValue(null);
     h.deleteObjectVersion.mockResolvedValue(undefined);
     h.recoverPreparedBytesCommit.mockResolvedValue(null);
   });
 
-  it('DOC-UPLOAD-JOURNAL-001 lets later recoverable objects progress past a full batch of permanent errors', async () => {
+  it('DOC-UPLOAD-JOURNAL-001/P-17 lets later recoverable objects progress past a full batch of permanent errors in the same run', async () => {
     const rows = Array.from({ length: 101 }, (_, i) => ({
       id: `orphan-${i}`,
       tenantId: 't-1',
@@ -55,14 +59,16 @@ describe('storage orphan cleanup', () => {
     }));
     h.findMany.mockImplementation(
       async ({
+        where,
         orderBy,
         take,
       }: {
+        where: { id?: { notIn: string[] } };
         orderBy: Record<string, 'asc' | 'desc'> | Array<Record<string, 'asc' | 'desc'>>;
         take: number;
       }) =>
         rows
-          .filter((r) => !r.cleanedAt)
+          .filter((r) => !r.cleanedAt && !where.id?.notIn.includes(r.id))
           .sort((a, b) => {
             for (const clause of Array.isArray(orderBy) ? orderBy : [orderBy]) {
               const [key, direction] = Object.entries(clause)[0]!;
@@ -85,15 +91,125 @@ describe('storage orphan cleanup', () => {
         return { count: 1 };
       },
     );
-    expect((await runStorageOrphanCleanup(NOW)).failed).toBe(100);
-    expect(h.deleteObjectVersion).not.toHaveBeenCalled();
-    expect((await runStorageOrphanCleanup(NOW)).deleted).toBe(1);
+    h.count.mockImplementation(async () => rows.filter((r) => !r.cleanedAt).length);
+
+    // Batch 1: 100 dauerhafte Fehler; Batch 2 ohne die in diesem Lauf
+    // gescheiterten Kandidaten: das wiederherstellbare Objekt.
+    await expect(runStorageOrphanCleanup(NOW)).resolves.toEqual({
+      claimed: 101,
+      deleted: 1,
+      referenced: 0,
+      incidents: 0,
+      failed: 100,
+      backlog: 100,
+      budgetExhausted: false,
+    });
+    expect(h.findMany).toHaveBeenCalledTimes(2);
+    expect(h.findMany.mock.calls[1]![0].where.id.notIn).toHaveLength(100);
     expect(h.deleteObjectVersion).toHaveBeenCalledWith(
       'general',
       'tenants/t-1/100',
       'healthy-version',
     );
     expect(rows[100]!.cleanedAt).not.toBeNull();
+
+    // Ein gescheiterter Kandidat bekommt höchstens einen Versuch je Lauf.
+    expect((await runStorageOrphanCleanup(NOW)).failed).toBe(100);
+    expect(rows.slice(0, 100).every((r) => r.cleanupAttempts === 2)).toBe(true);
+  });
+
+  describe('P-17: Nachlauf bis nichts mehr fällig ist oder das Zeitbudget endet', () => {
+    function healthyRows(length: number) {
+      return Array.from({ length }, (_, i) => ({
+        id: `orphan-${String(i).padStart(3, '0')}`,
+        tenantId: 't-1',
+        storageBucket: 'general',
+        storageKey: `tenants/t-1/${i}`,
+        storageVersionId: `version-${i}`,
+        cleanupAttempts: 0,
+        cleanedAt: null as Date | null,
+      }));
+    }
+
+    function serve(rows: ReturnType<typeof healthyRows>) {
+      h.findMany.mockImplementation(async ({ take }: { take: number }) =>
+        rows.filter((r) => !r.cleanedAt).slice(0, take),
+      );
+      h.updateMany.mockImplementation(
+        async ({ where, data }: { where: { id: string }; data: { cleanedAt?: Date } }) => {
+          if (data.cleanedAt) rows.find((r) => r.id === where.id)!.cleanedAt = data.cleanedAt;
+          return { count: 1 };
+        },
+      );
+      h.count.mockImplementation(async () => rows.filter((r) => !r.cleanedAt).length);
+    }
+
+    it('zieht Batch um Batch, bis kein fälliger Kandidat übrig ist', async () => {
+      const rows = healthyRows(250);
+      serve(rows);
+
+      await expect(runStorageOrphanCleanup(NOW)).resolves.toEqual({
+        claimed: 250,
+        deleted: 250,
+        referenced: 0,
+        incidents: 0,
+        failed: 0,
+        backlog: 0,
+        budgetExhausted: false,
+      });
+      // 100 + 100 + 50: der dritte, nicht volle Batch beendet den Lauf.
+      expect(h.findMany).toHaveBeenCalledTimes(3);
+      expect(h.deleteObjectVersion).toHaveBeenCalledTimes(250);
+    });
+
+    it('endet am Zeitbudget und meldet den Rückstand', async () => {
+      const rows = healthyRows(250);
+      serve(rows);
+      let now = 0;
+      h.deleteObjectVersion.mockImplementation(async () => {
+        now += 4_000; // 4 s je Objekt -> 150 Objekte in 10 Minuten
+      });
+
+      const result = await runStorageOrphanCleanup(
+        NOW,
+        startRunBudget({ budgetMs: 10 * 60_000, clock: () => now }),
+      );
+
+      expect(result).toEqual({
+        claimed: 150,
+        deleted: 150,
+        referenced: 0,
+        incidents: 0,
+        failed: 0,
+        backlog: 100,
+        budgetExhausted: true,
+      });
+      expect(h.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({ cleanedAt: null }),
+      });
+    });
+
+    it('Worker: liefert das Ergebnis als Job-Rückgabe und hört beim Herunterfahren auf', async () => {
+      serve(healthyRows(5));
+      const proc = processors.get('storage-orphan-cleanup')!;
+
+      await expect(proc({ data: {} })).resolves.toMatchObject({ deleted: 5, backlog: 0 });
+
+      h.findMany.mockClear();
+      const worker = storageOrphanCleanupWorker as unknown as { closing?: Promise<void> };
+      worker.closing = Promise.resolve();
+      try {
+        serve(healthyRows(5));
+        await expect(proc({ data: {} })).resolves.toMatchObject({
+          claimed: 0,
+          backlog: 5,
+          budgetExhausted: true,
+        });
+        expect(h.findMany).not.toHaveBeenCalled();
+      } finally {
+        delete worker.closing;
+      }
+    });
   });
 
   it('selektiert Object-Lock-Orphans erst nach Retention und löscht versionsgenau', async () => {
@@ -113,6 +229,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 0,
       failed: 0,
+      backlog: 0,
+      budgetExhausted: false,
     });
 
     expect(h.findMany).toHaveBeenCalledWith(
@@ -198,6 +316,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 0,
       failed: 1,
+      backlog: 0,
+      budgetExhausted: false,
     });
     expect(h.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -233,6 +353,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 0,
       failed: 0,
+      backlog: 0,
+      budgetExhausted: false,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenCalledOnce();
@@ -259,6 +381,8 @@ describe('storage orphan cleanup', () => {
       referenced: 1,
       incidents: 0,
       failed: 0,
+      backlog: 0,
+      budgetExhausted: false,
     });
 
     expect(h.documentVersionFindFirst).toHaveBeenCalledWith({
@@ -295,6 +419,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 0,
       failed: 1,
+      backlog: 0,
+      budgetExhausted: false,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(
@@ -328,6 +454,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 1,
       failed: 0,
+      backlog: 0,
+      budgetExhausted: false,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(
@@ -361,6 +489,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 1,
       failed: 0,
+      backlog: 0,
+      budgetExhausted: false,
     });
     expect(h.documentVersionFindFirst).not.toHaveBeenCalled();
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
@@ -406,6 +536,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 0,
       failed: 0,
+      backlog: 0,
+      budgetExhausted: false,
     });
 
     expect(h.updateMany).toHaveBeenCalledWith(
@@ -451,6 +583,8 @@ describe('storage orphan cleanup', () => {
       referenced: 0,
       incidents: 0,
       failed: 1,
+      backlog: 0,
+      budgetExhausted: false,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(

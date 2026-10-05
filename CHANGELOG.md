@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Audit-Archivierung und Bereinigung verwaister Speicherobjekte arbeiten je
+  Lauf bis zu etwa zehn Minuten weiter, bis nichts mehr fällig ist; bisher
+  fiel der Archivbestand Woche für Woche weiter zurück. Ein verbleibender
+  Rückstand erscheint unter System → Jobs (`AUDIT-ARCHIVE-001`,
+  `DOC-UPLOAD-JOURNAL-001`, `FK-EXC-20261005-021`).
 - Der EU-Sanktionsabgleich bereitet die Aliasliste einmal je Lauf vor statt
   für jedes Prüfsubjekt neu (rund 6.000 Listeneinträge, 500 Subjekte: 3,9 s
   statt 60 s). Mandantenhinweise gibt es nur noch bei Namenstreffern, sonst

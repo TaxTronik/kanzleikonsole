@@ -19,8 +19,15 @@
 // gesperrten Objekts geprüft hat. Die TSA wählt resolveTsa (tsa-port.ts), wie
 // für Tagessiegel und Rolling Anchors.
 //
+// P-17: Ein Lauf archiviert je Tenant Segment um Segment, bis nichts mehr
+// fällig ist oder das Zeitbudget (run-budget.ts, ~10 min) erreicht ist; das
+// Nachstempeln läuft ebenso seitenweise. Scheitert der Stempel, bleiben die
+// weiteren Segmente des Tenants in diesem Lauf ohne neuen TSA-Versuch PENDING.
+// Das Job-Ergebnis meldet den Rückstand (`backlog`: fällige, noch nicht
+// archivierte Einträge) und die noch ungestempelten Segmente (`pendingStamps`).
+//
 // Konfiguration:
-//   - AUDIT_ARCHIVE_BATCH (Default 5000): max. Einträge pro Run + Tenant
+//   - AUDIT_ARCHIVE_BATCH (Default 5000): max. Einträge pro Segment
 //   - AUDIT_ARCHIVE_MIN_AGE_DAYS (Default 90): nur Einträge älter als X Tage
 //   - AUDIT_ARCHIVE_MODE (SOFT|HARD, Default SOFT): bei HARD wird DB
 //     anschließend bereinigt
@@ -31,6 +38,7 @@
 import { createWorker } from '../worker-factory';
 import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
+import type { Worker } from 'bullmq';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
@@ -49,6 +57,7 @@ import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { prismaBytes } from '../pg-conn';
 import { resolveTsa } from '../tsa-port';
+import { isWorkerClosing, startRunBudget, type RunBudget } from '../run-budget';
 
 const BATCH = Number(process.env['AUDIT_ARCHIVE_BATCH'] ?? '5000');
 const MIN_AGE_DAYS = Number(process.env['AUDIT_ARCHIVE_MIN_AGE_DAYS'] ?? '90');
@@ -62,7 +71,7 @@ const MODE_RAW = (process.env['AUDIT_ARCHIVE_MODE'] ?? 'SOFT') as 'SOFT' | 'HARD
 // bis HARD tatsächlich existiert; der Warn-Hinweis kommt pro Lauf (unten).
 const MODE: 'SOFT' = MODE_RAW === 'HARD' ? 'SOFT' : MODE_RAW;
 const ARCHIVE_BUCKET = env.S3_BUCKET_GOBD;
-/** Nachstempel je Tenant und Lauf; ein TSA-Ausfall beendet den Nachstempel sofort. */
+/** Seitengröße beim Nachstempeln; ein TSA-Ausfall beendet den Nachstempel sofort. */
 const RESTAMP_BATCH = 100;
 // § 147 AO: 10 Jahre ab Schluss des Kalenderjahres — siehe gobdRetentionUntil
 // im @taxtronik/storage-Paket. Audit-Archive ist GoBD-pflichtig.
@@ -144,18 +153,13 @@ async function stampArchiveHash(tenantId: string, hash: Buffer): Promise<Archive
   }
 }
 
-/**
- * F-12: stempelt Segmente mit tsa_status = PENDING nach. Vor dem Stempel
- * werden Größe, SHA-256 und Kettenanker des gesperrten Objekts gegen die
- * Archivzeile geprüft, damit der Stempel nur das tatsächlich gespeicherte
- * Segment bezeugt. Weicht das Objekt ab, bleibt das Segment PENDING und der
- * Befund wird gemeldet; ein TSA-Fehler beendet den Nachstempel des Tenants.
- */
-async function restampPendingArchives(
-  tenantId: string,
-): Promise<{ restamped: number; rejected: number }> {
-  const pending = await prismaOwner.auditArchive.findMany({
-    where: { tenantId, tsaStatus: 'PENDING' },
+async function loadPendingSegments(tenantId: string, afterFromAuditId: bigint | null) {
+  return prismaOwner.auditArchive.findMany({
+    where: {
+      tenantId,
+      tsaStatus: 'PENDING',
+      ...(afterFromAuditId === null ? {} : { fromAuditId: { gt: afterFromAuditId } }),
+    },
     orderBy: { fromAuditId: 'asc' },
     take: RESTAMP_BATCH,
     select: {
@@ -169,69 +173,105 @@ async function restampPendingArchives(
       lastThisHash: true,
     },
   });
-  let restamped = 0;
-  let rejected = 0;
-  for (const segment of pending) {
-    const fileSha256 = Buffer.from(segment.fileSha256);
-    try {
-      const bytes = await readVerifiedArchive(
-        segment.storageKey,
-        { size: Number(segment.fileSizeBytes), sha256: fileSha256 },
-        true,
-      );
-      const check = verifyArchiveChain(parseArchive(bytes!), {
-        firstPrevHash: Buffer.from(segment.firstPrevHash),
-        lastThisHash: Buffer.from(segment.lastThisHash),
-      });
-      if (!check.ok) {
-        throw new Error(
-          `AUDIT_ARCHIVE_CHAIN_INVALID: ${check.reason ?? 'Segmentprüfung fehlgeschlagen'}`,
-        );
-      }
-    } catch (err) {
-      rejected += 1;
-      log.error(
-        {
-          tenantId,
-          archiveId: String(segment.id),
-          from: String(segment.fromAuditId),
-          to: String(segment.toAuditId),
-          storageKey: segment.storageKey,
-          err: (err as Error).message,
-        },
-        'audit-rotate: Archivsegment weicht vom Archiveintrag ab — kein Nachstempel',
-      );
-      continue;
-    }
+}
 
-    const stamp = await stampArchiveHash(tenantId, fileSha256);
-    if (!stamp) break;
-    // Der DB-Guard erlaubt genau diesen einmaligen Übergang PENDING -> STAMPED_LATE.
-    const updated = await prismaOwner.auditArchive.updateMany({
-      where: { id: segment.id, tenantId, tsaStatus: 'PENDING' },
-      data: {
-        tsaResponseBlob: prismaBytes(stamp.blob),
-        tsaSerial: stamp.serial,
-        tsaStatus: 'STAMPED_LATE',
-        tsaStampedAt: new Date(),
-      },
+type PendingSegment = Awaited<ReturnType<typeof loadPendingSegments>>[number];
+
+/**
+ * F-12: stempelt ein Segment mit tsa_status = PENDING nach. Vor dem Stempel
+ * werden Größe, SHA-256 und Kettenanker des gesperrten Objekts gegen die
+ * Archivzeile geprüft, damit der Stempel nur das tatsächlich gespeicherte
+ * Segment bezeugt. Weicht das Objekt ab, bleibt das Segment PENDING und der
+ * Befund wird gemeldet.
+ */
+async function restampSegment(
+  tenantId: string,
+  segment: PendingSegment,
+): Promise<'restamped' | 'rejected' | 'tsa-failed' | 'unchanged'> {
+  const fileSha256 = Buffer.from(segment.fileSha256);
+  try {
+    const bytes = await readVerifiedArchive(
+      segment.storageKey,
+      { size: Number(segment.fileSizeBytes), sha256: fileSha256 },
+      true,
+    );
+    const check = verifyArchiveChain(parseArchive(bytes!), {
+      firstPrevHash: Buffer.from(segment.firstPrevHash),
+      lastThisHash: Buffer.from(segment.lastThisHash),
     });
-    if (updated.count === 1) {
-      restamped += 1;
-      log.info(
-        { tenantId, archiveId: String(segment.id), storageKey: segment.storageKey },
-        'audit-rotate: Archivsegment nachträglich RFC-3161-gestempelt',
+    if (!check.ok) {
+      throw new Error(
+        `AUDIT_ARCHIVE_CHAIN_INVALID: ${check.reason ?? 'Segmentprüfung fehlgeschlagen'}`,
       );
     }
+  } catch (err) {
+    log.error(
+      {
+        tenantId,
+        archiveId: String(segment.id),
+        from: String(segment.fromAuditId),
+        to: String(segment.toAuditId),
+        storageKey: segment.storageKey,
+        err: (err as Error).message,
+      },
+      'audit-rotate: Archivsegment weicht vom Archiveintrag ab — kein Nachstempel',
+    );
+    return 'rejected';
   }
-  return { restamped, rejected };
+
+  const stamp = await stampArchiveHash(tenantId, fileSha256);
+  if (!stamp) return 'tsa-failed';
+  // Der DB-Guard erlaubt genau diesen einmaligen Übergang PENDING -> STAMPED_LATE.
+  const updated = await prismaOwner.auditArchive.updateMany({
+    where: { id: segment.id, tenantId, tsaStatus: 'PENDING' },
+    data: {
+      tsaResponseBlob: prismaBytes(stamp.blob),
+      tsaSerial: stamp.serial,
+      tsaStatus: 'STAMPED_LATE',
+      tsaStampedAt: new Date(),
+    },
+  });
+  if (updated.count !== 1) return 'unchanged';
+  log.info(
+    { tenantId, archiveId: String(segment.id), storageKey: segment.storageKey },
+    'audit-rotate: Archivsegment nachträglich RFC-3161-gestempelt',
+  );
+  return 'restamped';
 }
 
 /**
- * Archiviert für einen Tenant das nächste fällige Segment (höchstens BATCH
- * Einträge) und liefert die Anzahl archivierter Einträge; 0 = nichts fällig.
+ * Stempelt die PENDING-Segmente eines Tenants seitenweise nach (P-17: bis
+ * keines mehr offen ist oder das Budget endet). Abweichende Segmente bleiben
+ * PENDING und werden übersprungen; ein TSA-Fehler beendet den Nachstempel.
  */
-async function archiveNextSegment(tenantId: string, cutoff: Date): Promise<number> {
+async function restampPendingArchives(
+  tenantId: string,
+  budget: RunBudget,
+): Promise<{ restamped: number; rejected: number }> {
+  const counts = { restamped: 0, rejected: 0 };
+  let after: bigint | null = null;
+  for (;;) {
+    const pending = await loadPendingSegments(tenantId, after);
+    for (const segment of pending) {
+      if (budget.exhausted()) return counts;
+      after = segment.fromAuditId;
+      const outcome = await restampSegment(tenantId, segment);
+      if (outcome === 'tsa-failed') return counts;
+      if (outcome === 'restamped') counts.restamped += 1;
+      if (outcome === 'rejected') counts.rejected += 1;
+    }
+    if (pending.length < RESTAMP_BATCH) return counts;
+  }
+}
+
+/**
+ * Fälliger Bereich eines Tenants: nach dem zuletzt archivierten Eintrag bis
+ * zur größten id mit occurredAt <= cutoff; null = nichts fällig.
+ */
+async function dueRange(
+  tenantId: string,
+  cutoff: Date,
+): Promise<{ sinceId: bigint; maxId: bigint } | null> {
   // 1. Letzten archivierten Audit-ID finden
   const lastArchive = await prismaOwner.auditArchive.findFirst({
     where: { tenantId },
@@ -240,7 +280,7 @@ async function archiveNextSegment(tenantId: string, cutoff: Date): Promise<numbe
   });
   const sinceId = lastArchive?.toAuditId ?? BigInt(0);
 
-  // 2. Einträge laden (alt genug + nicht-archiviert). RF-11: erst die
+  // 2. Fällige Einträge (alt genug + nicht-archiviert). RF-11: erst die
   //    Obergrenze max(id) mit occurredAt <= cutoff bestimmen, dann eine
   //    REINE id-Range ziehen. Die alte Kombi-Selektion `id > sinceId AND
   //    occurredAt <= cutoff` konnte bei nicht-monotoner Uhr (NTP-Rücksprung:
@@ -253,21 +293,99 @@ async function archiveNextSegment(tenantId: string, cutoff: Date): Promise<numbe
     where: { tenantId, occurredAt: { lte: cutoff } },
   });
   const maxId = boundary._max.id;
-  if (maxId === null || maxId <= sinceId) {
-    log.debug({ tenantId }, 'audit-rotate: nichts zu archivieren');
-    return 0;
-  }
-  const rows = await prismaOwner.auditLog.findMany({
-    where: {
-      tenantId,
-      id: { gt: sinceId, lte: maxId },
-    },
-    orderBy: { id: 'asc' },
-    take: BATCH,
+  return maxId === null || maxId <= sinceId ? null : { sinceId, maxId };
+}
+
+/** P-17: Rückstand eines Tenants — fällige, noch nicht archivierte Einträge. */
+async function countDueEntries(tenantId: string, cutoff: Date): Promise<number> {
+  const range = await dueRange(tenantId, cutoff);
+  if (!range) return 0;
+  return prismaOwner.auditLog.count({
+    where: { tenantId, id: { gt: range.sinceId, lte: range.maxId } },
   });
+}
+
+type SerializedArchive = ReturnType<typeof serializeArchive>;
+
+/**
+ * Upload in den Object-Store mit Object-Lock COMPLIANCE.
+ *
+ * N-8: Idempotenz-Check. S3-PUT + DB-INSERT sind nicht atomar — ein
+ * Crash zwischen den Schritten würde eine 10 Jahre unlöschbare Geister-
+ * NDJSON im COMPLIANCE-Bucket lassen, und beim nächsten Run würde dieselbe
+ * Datei nochmal hochgeladen (sinceId blieb gleich, weil auditArchive.create
+ * nie lief). HeadObject + Skip macht die Sequenz forward-recovery-safe.
+ */
+async function uploadSegment(
+  tenantId: string,
+  storageKey: string,
+  ser: SerializedArchive,
+): Promise<void> {
+  try {
+    await s3.send(new HeadObjectCommand({ Bucket: ARCHIVE_BUCKET, Key: storageKey }));
+    await readVerifiedArchive(
+      storageKey,
+      { size: ser.ndjson.length, sha256: ser.fileSha256 },
+      false,
+    );
+    log.warn(
+      { tenantId, storageKey },
+      'audit-rotate: Object existiert bereits — DB-Eintrag wird nachgezogen (Forward-Recovery)',
+    );
+    return;
+  } catch (err) {
+    // NotFound ist erwartet — alles andere ist ein echter S3-Fehler und propagiert
+    const name = (err as Error & { name?: string; $metadata?: { httpStatusCode?: number } }).name;
+    const status = (err as Error & { $metadata?: { httpStatusCode?: number } }).$metadata
+      ?.httpStatusCode;
+    if (name !== 'NotFound' && status !== 404) throw err;
+  }
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: ARCHIVE_BUCKET,
+      Key: storageKey,
+      IfNoneMatch: '*',
+      Body: ser.ndjson,
+      ContentLength: ser.ndjson.length,
+      ContentType: 'application/x-ndjson',
+      ChecksumSHA256: ser.fileSha256.toString('base64'),
+      ObjectLockMode: 'COMPLIANCE' as const,
+      ObjectLockRetainUntilDate: gobdRetentionUntil(),
+    }),
+  );
+}
+
+interface ArchivedSegment {
+  /** Archivierte Einträge; 0 = nichts fällig. */
+  entries: number;
+  stamped: boolean;
+}
+
+/**
+ * Archiviert für einen Tenant das nächste fällige Segment (höchstens BATCH
+ * Einträge). Mit `tryStamp = false` entsteht das Segment ohne TSA-Versuch als
+ * PENDING (P-17: die TSA ist in diesem Lauf bereits gescheitert).
+ */
+async function archiveNextSegment(
+  tenantId: string,
+  cutoff: Date,
+  tryStamp: boolean,
+): Promise<ArchivedSegment> {
+  const range = await dueRange(tenantId, cutoff);
+  const rows = range
+    ? await prismaOwner.auditLog.findMany({
+        where: {
+          tenantId,
+          id: { gt: range.sinceId, lte: range.maxId },
+        },
+        orderBy: { id: 'asc' },
+        take: BATCH,
+      })
+    : [];
   if (rows.length === 0) {
     log.debug({ tenantId }, 'audit-rotate: nichts zu archivieren');
-    return 0;
+    return { entries: 0, stamped: false };
   }
 
   const archiveRows: ArchiveAuditRow[] = rows.map((r) => ({
@@ -298,58 +416,16 @@ async function archiveNextSegment(tenantId: string, cutoff: Date): Promise<numbe
     );
   }
 
-  // 3. Upload in Object-Store mit Object-Lock COMPLIANCE
+  // 3. Upload in Object-Store mit Object-Lock COMPLIANCE (inkl. N-8-Recovery)
   const yyyy = ser.fromOccurredAt.getUTCFullYear();
   const mm = String(ser.fromOccurredAt.getUTCMonth() + 1).padStart(2, '0');
   const storageKey = `tenants/${tenantId}/audit-archive/${yyyy}/${mm}/${ser.fromAuditId}-${ser.toAuditId}.ndjson`;
-  const retentionUntil = gobdRetentionUntil();
-
-  // N-8: Idempotenz-Check. S3-PUT + DB-INSERT sind nicht atomar — ein
-  // Crash zwischen den Schritten würde eine 10 Jahre unlöschbare Geister-
-  // NDJSON im COMPLIANCE-Bucket lassen, und beim nächsten Run würde dieselbe
-  // Datei nochmal hochgeladen (sinceId blieb gleich, weil auditArchive.create
-  // nie lief). HeadObject + Skip macht die Sequenz forward-recovery-safe.
-  let alreadyExists = false;
-  try {
-    await s3.send(new HeadObjectCommand({ Bucket: ARCHIVE_BUCKET, Key: storageKey }));
-    await readVerifiedArchive(
-      storageKey,
-      { size: ser.ndjson.length, sha256: ser.fileSha256 },
-      false,
-    );
-    alreadyExists = true;
-    log.warn(
-      { tenantId, storageKey },
-      'audit-rotate: Object existiert bereits — DB-Eintrag wird nachgezogen (Forward-Recovery)',
-    );
-  } catch (err) {
-    // NotFound ist erwartet — alles andere ist ein echter S3-Fehler und propagiert
-    const name = (err as Error & { name?: string; $metadata?: { httpStatusCode?: number } }).name;
-    const status = (err as Error & { $metadata?: { httpStatusCode?: number } }).$metadata
-      ?.httpStatusCode;
-    if (name !== 'NotFound' && status !== 404) throw err;
-  }
-
-  if (!alreadyExists) {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: ARCHIVE_BUCKET,
-        Key: storageKey,
-        IfNoneMatch: '*',
-        Body: ser.ndjson,
-        ContentLength: ser.ndjson.length,
-        ContentType: 'application/x-ndjson',
-        ChecksumSHA256: ser.fileSha256.toString('base64'),
-        ObjectLockMode: 'COMPLIANCE' as const,
-        ObjectLockRetainUntilDate: retentionUntil,
-      }),
-    );
-  }
+  await uploadSegment(tenantId, storageKey, ser);
 
   // 4. RFC-3161-Stempel (F3/F-12). Gleiche TSA-Auswahl wie Tagessiegel und
   // Rolling Anchors. Ohne Stempel: NULL + PENDING — ehrlich „noch nicht
   // extern gestempelt", ein späterer Lauf stempelt nach.
-  const stamp = await stampArchiveHash(tenantId, ser.fileSha256);
+  const stamp = tryStamp ? await stampArchiveHash(tenantId, ser.fileSha256) : null;
 
   // 5. Audit-Archive-Eintrag
   await prismaOwner.auditArchive.create({
@@ -388,41 +464,119 @@ async function archiveNextSegment(tenantId: string, cutoff: Date): Promise<numbe
     },
     'audit-rotate: Segment archiviert',
   );
-  return ser.entryCount;
+  return { entries: ser.entryCount, stamped: stamp !== null };
 }
 
-export const auditRotateWorker = createWorker<ChecksJob>(
+/**
+ * P-17: archiviert Segment um Segment, bis nichts mehr fällig ist oder das
+ * Budget endet. Ein Segment mit weniger als BATCH Einträgen hat den fälligen
+ * Bereich vollständig erfasst. Nach dem ersten gescheiterten Stempel entstehen
+ * die weiteren Segmente dieses Laufs ohne neuen TSA-Versuch als PENDING.
+ */
+async function archiveDueSegments(
+  tenantId: string,
+  cutoff: Date,
+  budget: RunBudget,
+): Promise<{ entries: number; segments: number; complete: boolean }> {
+  const result = { entries: 0, segments: 0, complete: false };
+  let tryStamp = true;
+  while (!budget.exhausted()) {
+    const segment = await archiveNextSegment(tenantId, cutoff, tryStamp);
+    if (segment.entries === 0) return { ...result, complete: true };
+    result.entries += segment.entries;
+    result.segments += 1;
+    if (segment.entries < BATCH) return { ...result, complete: true };
+    tryStamp = segment.stamped;
+  }
+  return result;
+}
+
+export interface AuditRotateResult {
+  totalArchived: number;
+  /** Bleibt 0, solange HARD nicht implementiert ist (RF-13). */
+  totalDeleted: number;
+  restamped: number;
+  restampRejected: number;
+  /** P-17: in diesem Lauf archivierte Segmente. */
+  segments: number;
+  /** P-17: fällige, noch nicht archivierte Audit-Einträge nach dem Lauf. */
+  backlog: number;
+  /** F-12/P-17: Segmente, die noch auf den RFC-3161-Stempel warten. */
+  pendingStamps: number;
+  /** P-17: der Lauf endete am Zeitbudget oder wegen Herunterfahrens. */
+  budgetExhausted: boolean;
+}
+
+export async function runAuditRotate(
+  data: ChecksJob,
+  budget: RunBudget = startRunBudget(),
+): Promise<AuditRotateResult> {
+  const tenantIds = data.tenantId
+    ? [data.tenantId]
+    : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
+
+  let totalArchived = 0;
+  let segments = 0;
+  let restamped = 0;
+  let restampRejected = 0;
+  // Bleibt 0, solange HARD nicht implementiert ist (RF-13) — Feld im
+  // Job-Result beibehalten, damit Monitoring/Tests stabil bleiben.
+  const totalDeleted = 0;
+  const cutoff = new Date(Date.now() - MIN_AGE_DAYS * 24 * 60 * 60 * 1000);
+  const unfinished: string[] = [];
+
+  if (MODE_RAW === 'HARD') {
+    log.warn(
+      'audit-rotate: AUDIT_ARCHIVE_MODE=HARD angefordert, aber DB-Cleanup ist im MVP nicht implementiert (Insert-Only-Trigger blockiert DELETE) — Archiv-Einträge werden ehrlich als SOFT persistiert.',
+    );
+  }
+
+  for (const tenantId of tenantIds) {
+    if (budget.exhausted()) {
+      unfinished.push(tenantId);
+      continue;
+    }
+    // Fehlende RFC-3161-Stempel früherer Segmente nachholen (F-12).
+    const restamp = await restampPendingArchives(tenantId, budget);
+    restamped += restamp.restamped;
+    restampRejected += restamp.rejected;
+    const archived = await archiveDueSegments(tenantId, cutoff, budget);
+    totalArchived += archived.entries;
+    segments += archived.segments;
+    if (!archived.complete) unfinished.push(tenantId);
+  }
+
+  // P-17: Rückstand nur für Tenants zählen, die der Lauf nicht abschließen konnte.
+  let backlog = 0;
+  for (const tenantId of unfinished) backlog += await countDueEntries(tenantId, cutoff);
+  const pendingStamps = await prismaOwner.auditArchive.count({
+    where: { tsaStatus: 'PENDING', ...(data.tenantId ? { tenantId: data.tenantId } : {}) },
+  });
+  const result: AuditRotateResult = {
+    totalArchived,
+    totalDeleted,
+    restamped,
+    restampRejected,
+    segments,
+    backlog,
+    pendingStamps,
+    budgetExhausted: unfinished.length > 0,
+  };
+  if (backlog > 0) {
+    log.warn(
+      { backlog, unfinishedTenants: unfinished.length },
+      'audit-rotate: Zeitbudget erreicht — Rückstand bleibt für den nächsten Lauf',
+    );
+  }
+  log.info(result, 'audit-rotate: done');
+  return result;
+}
+
+// Typ explizit: der Processor liest `closing` des eigenen Workers (P-17).
+export const auditRotateWorker: Worker<ChecksJob> = createWorker<ChecksJob>(
   JOB_QUEUES.auditRotate.name,
-  async (job) => {
-    const tenantIds = job.data.tenantId
-      ? [job.data.tenantId]
-      : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
-
-    let totalArchived = 0;
-    let restamped = 0;
-    let restampRejected = 0;
-    // Bleibt 0, solange HARD nicht implementiert ist (RF-13) — Feld im
-    // Job-Result beibehalten, damit Monitoring/Tests stabil bleiben.
-    const totalDeleted = 0;
-    const cutoff = new Date(Date.now() - MIN_AGE_DAYS * 24 * 60 * 60 * 1000);
-
-    if (MODE_RAW === 'HARD') {
-      log.warn(
-        'audit-rotate: AUDIT_ARCHIVE_MODE=HARD angefordert, aber DB-Cleanup ist im MVP nicht implementiert (Insert-Only-Trigger blockiert DELETE) — Archiv-Einträge werden ehrlich als SOFT persistiert.',
-      );
-    }
-
-    for (const tenantId of tenantIds) {
-      // Fehlende RFC-3161-Stempel früherer Segmente nachholen (F-12).
-      const restamp = await restampPendingArchives(tenantId);
-      restamped += restamp.restamped;
-      restampRejected += restamp.rejected;
-      totalArchived += await archiveNextSegment(tenantId, cutoff);
-    }
-
-    log.info({ totalArchived, totalDeleted, restamped, restampRejected }, 'audit-rotate: done');
-    return { totalArchived, totalDeleted, restamped, restampRejected };
-  },
+  async (job) =>
+    runAuditRotate(job.data, startRunBudget({ stop: () => isWorkerClosing(auditRotateWorker) })),
   { connection, concurrency: 1 },
 );
 

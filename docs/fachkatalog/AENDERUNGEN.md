@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-021
+    date: '2026-10-05'
+    paths:
+      - apps/worker/src/jobs/audit-rotate.ts
+      - apps/worker/src/jobs/storage-orphan-cleanup.ts
+    rule_ids:
+      - AUDIT-ARCHIVE-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - DSGVO-OPERATIONAL-RETENTION-001
+    reason: >-
+      audit-rotate archiviert je Lauf aufeinanderfolgende Segmente und
+      storage-orphan-cleanup arbeitet Stapel ab, bis nichts mehr fällig ist oder ein
+      Zeitbudget von etwa zehn Minuten erreicht ist (beim Herunterfahren des Workers
+      früher); bisher galten feste Mengen von 5.000 Einträgen pro Woche
+      beziehungsweise 400 Objekten pro Tag. Beide Jobs melden den verbleibenden
+      Rückstand, den die Jobübersicht anzeigt. Auswahl, Prüfungen vor Archivierung
+      und Löschung, Segmentinhalt und Aufbewahrungsregeln bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/audit-rotate.test.ts
+      - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
+      - apps/worker/src/__tests__/run-budget.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-020
     date: '2026-10-05'
     paths:
@@ -1909,6 +1933,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-021` dokumentiert Archivierung und
+  Orphan-Bereinigung mit Zeitbudget statt fester Mengen. Prüfungen und
+  Aufbewahrungsregeln bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-020` dokumentiert den vorbereiteten
   EU-Aliasabgleich und Hinweise nur bei Treffern beziehungsweise als

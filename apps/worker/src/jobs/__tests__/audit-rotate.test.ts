@@ -26,8 +26,14 @@ import { Readable } from 'node:stream';
 const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    auditArchive: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
-    auditLog: { aggregate: vi.fn(), findMany: vi.fn() },
+    auditArchive: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
+      count: vi.fn(),
+    },
+    auditLog: { aggregate: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     tenantSetting: { findUnique: vi.fn() },
   };
   const s3Send = vi.fn();
@@ -73,7 +79,7 @@ vi.mock('@taxtronik/evidence', () => ({
 
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { processors } from './mocks/bullmq';
-import '../audit-rotate';
+import { auditRotateWorker } from '../audit-rotate';
 
 const FIXED_NOW = new Date('2026-06-09T10:00:00.000Z');
 // MIN_AGE_DAYS = 90 → cutoff exakt 90 Tage vor FIXED_NOW
@@ -98,10 +104,23 @@ interface RotateResult {
   totalDeleted: number;
   restamped: number;
   restampRejected: number;
+  segments: number;
+  backlog: number;
+  pendingStamps: number;
+  budgetExhausted: boolean;
 }
 
-const ROTATED = { totalArchived: 2, totalDeleted: 0, restamped: 0, restampRejected: 0 };
-const NOTHING = { totalArchived: 0, totalDeleted: 0, restamped: 0, restampRejected: 0 };
+const NOTHING: RotateResult = {
+  totalArchived: 0,
+  totalDeleted: 0,
+  restamped: 0,
+  restampRejected: 0,
+  segments: 0,
+  backlog: 0,
+  pendingStamps: 0,
+  budgetExhausted: false,
+};
+const ROTATED: RotateResult = { ...NOTHING, totalArchived: 2, segments: 1 };
 
 function run(): Promise<RotateResult> {
   return processors.get('audit-rotate')!({ data: { tenantId: TENANT } }) as Promise<RotateResult>;
@@ -146,6 +165,8 @@ beforeEach(() => {
   h.prismaOwner.auditArchive.create.mockResolvedValue({});
   h.prismaOwner.auditArchive.findMany.mockResolvedValue([]);
   h.prismaOwner.auditArchive.updateMany.mockResolvedValue({ count: 1 });
+  h.prismaOwner.auditArchive.count.mockResolvedValue(0);
+  h.prismaOwner.auditLog.count.mockResolvedValue(0);
   h.prismaOwner.auditLog.aggregate.mockResolvedValue({ _max: { id: 7n } });
   h.prismaOwner.auditLog.findMany.mockResolvedValue([auditRow(6n), auditRow(7n)]);
   h.prismaOwner.tenantSetting.findUnique.mockResolvedValue(null);
@@ -510,6 +531,141 @@ describe('F3/F-12: RFC-3161-Stempel und Nachstempel', () => {
       expect(h.prismaOwner.auditArchive.updateMany).not.toHaveBeenCalled();
       expect(result).toEqual(ROTATED);
     });
+
+    it('P-17: stempelt seitenweise nach, bis kein PENDING-Segment mehr offen ist', async () => {
+      const page = Array.from({ length: 100 }, (_, i) => pendingSegment(BigInt(2 * i + 1)));
+      h.prismaOwner.auditArchive.findMany
+        .mockResolvedValueOnce(page)
+        .mockResolvedValueOnce([pendingSegment(201n)]);
+      serveStored();
+
+      const result = await run();
+
+      expect(h.prismaOwner.auditArchive.findMany).toHaveBeenCalledTimes(2);
+      expect(h.prismaOwner.auditArchive.findMany.mock.calls[1]![0].where).toEqual({
+        tenantId: TENANT,
+        tsaStatus: 'PENDING',
+        fromAuditId: { gt: 199n },
+      });
+      expect(result).toEqual({ ...ROTATED, restamped: 101 });
+    });
+  });
+});
+
+describe('P-17: Nachlauf bis nichts mehr fällig ist oder das Zeitbudget endet', () => {
+  /** Zustandsbehaftete Fakes: `total` fällige Einträge, Archiv wächst mit create(). */
+  function dueEntries(total: number, onSegment?: () => void) {
+    const archived: Array<{ fromAuditId: bigint; toAuditId: bigint; tsaStatus: string }> = [];
+    h.prismaOwner.auditArchive.findFirst.mockImplementation(async () =>
+      archived.length ? { toAuditId: archived[archived.length - 1]!.toAuditId } : null,
+    );
+    h.prismaOwner.auditLog.aggregate.mockResolvedValue({ _max: { id: BigInt(total) } });
+    h.prismaOwner.auditLog.findMany.mockImplementation(
+      async ({ where, take }: { where: { id: { gt: bigint; lte: bigint } }; take: number }) => {
+        const rows = [];
+        for (let id = where.id.gt + 1n; id <= where.id.lte && rows.length < take; id++) {
+          rows.push(auditRow(id));
+        }
+        return rows;
+      },
+    );
+    h.prismaOwner.auditLog.count.mockImplementation(
+      async ({ where }: { where: { id: { gt: bigint; lte: bigint } } }) =>
+        Number(where.id.lte - where.id.gt),
+    );
+    h.serializeArchive.mockImplementation((rows: Array<{ id: bigint }>) => {
+      const from = rows[0]!.id;
+      const to = rows[rows.length - 1]!.id;
+      const ndjson = Buffer.from(`${from}-${to}`);
+      return {
+        ...SER,
+        fromAuditId: from,
+        toAuditId: to,
+        entryCount: rows.length,
+        ndjson,
+        fileSha256: createHash('sha256').update(ndjson).digest(),
+      };
+    });
+    h.prismaOwner.auditArchive.create.mockImplementation(
+      async ({ data }: { data: { fromAuditId: bigint; toAuditId: bigint; tsaStatus: string } }) => {
+        archived.push(data);
+        onSegment?.();
+        return {};
+      },
+    );
+    h.prismaOwner.auditArchive.count.mockImplementation(
+      async () => archived.filter((segment) => segment.tsaStatus === 'PENDING').length,
+    );
+    return archived;
+  }
+
+  it('archiviert Segment um Segment, bis nichts mehr fällig ist', async () => {
+    const archived = dueEntries(12_000);
+
+    const result = await run();
+
+    expect(archived.map((segment) => [segment.fromAuditId, segment.toAuditId])).toEqual([
+      [1n, 5000n],
+      [5001n, 10000n],
+      [10001n, 12000n],
+    ]);
+    expect(result).toEqual({ ...NOTHING, totalArchived: 12_000, segments: 3 });
+    // Ein nicht volles Segment hat den fälligen Bereich vollständig erfasst.
+    expect(h.prismaOwner.auditLog.aggregate).toHaveBeenCalledTimes(3);
+    expect(h.prismaOwner.auditLog.count).not.toHaveBeenCalled();
+  });
+
+  it('endet am Zeitbudget (~10 min) und meldet den Rückstand', async () => {
+    // Jedes Segment „dauert" vier Minuten.
+    const archived = dueEntries(30_000, () => vi.setSystemTime(Date.now() + 4 * 60_000));
+
+    const result = await run();
+
+    expect(archived).toHaveLength(3);
+    expect(result).toEqual({
+      ...NOTHING,
+      totalArchived: 15_000,
+      segments: 3,
+      backlog: 15_000,
+      budgetExhausted: true,
+    });
+    expect(h.log.warn).toHaveBeenCalledWith(
+      { backlog: 15_000, unfinishedTenants: 1 },
+      expect.stringContaining('Zeitbudget erreicht'),
+    );
+  });
+
+  it('versucht nach gescheitertem Stempel im selben Lauf keinen weiteren und zählt PENDING', async () => {
+    const archived = dueEntries(7_000);
+    h.tsaTimestamp.mockRejectedValue(new Error('TSA timeout'));
+
+    const result = await run();
+
+    expect(h.tsaTimestamp).toHaveBeenCalledTimes(1);
+    expect(archived.map((segment) => segment.tsaStatus)).toEqual(['PENDING', 'PENDING']);
+    expect(h.prismaOwner.auditArchive.count).toHaveBeenCalledWith({
+      where: { tsaStatus: 'PENDING', tenantId: TENANT },
+    });
+    expect(result).toEqual({ ...NOTHING, totalArchived: 7_000, segments: 2, pendingStamps: 2 });
+  });
+
+  it('hört beim Herunterfahren des Workers vor dem nächsten Schritt auf', async () => {
+    const worker = auditRotateWorker as unknown as { closing?: Promise<void> };
+    worker.closing = Promise.resolve();
+    try {
+      h.prismaOwner.auditLog.count.mockResolvedValue(2);
+
+      const result = await run();
+
+      expect(h.s3Send).not.toHaveBeenCalled();
+      expect(h.prismaOwner.auditArchive.create).not.toHaveBeenCalled();
+      expect(h.prismaOwner.auditLog.count).toHaveBeenCalledWith({
+        where: { tenantId: TENANT, id: { gt: 5n, lte: 7n } },
+      });
+      expect(result).toEqual({ ...NOTHING, backlog: 2, budgetExhausted: true });
+    } finally {
+      delete worker.closing;
+    }
   });
 });
 

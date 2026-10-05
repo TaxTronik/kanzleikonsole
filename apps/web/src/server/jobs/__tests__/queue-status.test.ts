@@ -25,13 +25,17 @@ vi.mock('../bullmq', () => ({
           ? [{ finishedOn: state.now - 20_000 }]
           : name === 'tax-news-fetch'
             ? [{ finishedOn: state.now - 14 * 60 * 60 * 1_000 }]
-            : [],
+            : name === 'audit-rotate'
+              ? [{ finishedOn: state.now - 60_000, returnvalue: { backlog: 15_000 } }]
+              : name === 'storage-orphan-cleanup'
+                ? [{ finishedOn: state.now - 60_000, returnvalue: { backlog: 0 } }]
+                : [],
       ),
     getFailed: vi.fn().mockResolvedValue([]),
   }),
 }));
 
-import { getQueuesStatus } from '../queue-status';
+import { getQueuesStatus, readBacklog } from '../queue-status';
 
 describe('queue status schedule health', () => {
   it('uses shared cadence windows for frequent and daytime-only schedules', async () => {
@@ -52,4 +56,25 @@ describe('queue status schedule health', () => {
     // Event-driven queues never become stale merely because no job completed.
     expect(statuses.get('n8n-deliver')).toMatchObject({ staleAfterMs: null, stale: false });
   });
+
+  it('P-17: reads the backlog reported by the last completed maintenance run', async () => {
+    state.now = Date.UTC(2026, 9, 5, 12);
+
+    const statuses = new Map(
+      (await getQueuesStatus(state.now)).map((status) => [status.name, status]),
+    );
+
+    expect(statuses.get('audit-rotate')?.backlog).toBe(15_000);
+    expect(statuses.get('storage-orphan-cleanup')?.backlog).toBe(0);
+    // Queues without a backlog contract (or without a completed run) report none.
+    expect(statuses.get('audit-anchor')?.backlog).toBeNull();
+    expect(statuses.get('n8n-deliver')?.backlog).toBeNull();
+  });
+
+  it.each([undefined, null, 'x', {}, { backlog: '3' }, { backlog: -1 }, { backlog: Infinity }])(
+    'P-17: ignores a missing or invalid backlog (%o)',
+    (returnvalue) => {
+      expect(readBacklog(returnvalue)).toBeNull();
+    },
+  );
 });

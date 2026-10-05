@@ -1,6 +1,6 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 
-import { fmtDateTimeShort } from '@/lib/fmt';
+import { fmtDateTimeShort, fmtNumber } from '@/lib/fmt';
 import { getQueuesStatus } from '@/server/jobs/queue-status';
 
 // Nicht cachen: der Status soll bei jedem Aufruf frisch aus Redis kommen.
@@ -10,6 +10,8 @@ export default async function AdminJobsPage() {
 
   const queues = await getQueuesStatus();
   const problems = queues.filter((q) => q.stale || q.failed > 0);
+  // P-17: Wartungsjobs melden, was nach ihrem Zeitbudget noch fällig ist.
+  const withBacklog = queues.filter((q) => (q.backlog ?? 0) > 0);
 
   return (
     <div className="p-8">
@@ -19,7 +21,9 @@ export default async function AdminJobsPage() {
           Verarbeitungsstatus der Hintergrund-Jobs (BullMQ). „Veraltet" = der letzte erfolgreiche
           Lauf liegt außerhalb des zum tatsächlichen Zeitplan gehörenden Karenzfensters — ein
           Hinweis auf einen ausgefallenen periodischen Job. Fehlgeschlagene Jobs (`failed`) sollten
-          geprüft werden; die letzte Fehlermeldung steht rechts.
+          geprüft werden; die letzte Fehlermeldung steht rechts. „Rückstand" = was der letzte
+          erfolgreiche Lauf eines Wartungsjobs als weiterhin fällig gemeldet hat (audit-rotate:
+          Audit-Einträge, storage-orphan-cleanup: Storage-Kandidaten).
         </p>
       </div>
 
@@ -27,6 +31,14 @@ export default async function AdminJobsPage() {
         <div className="alert-warning mb-4 text-sm">
           <strong>{problems.length}</strong> Queue(s) mit veraltetem Lauf oder Fehlern — siehe rot
           markierte Zeilen.
+        </div>
+      )}
+
+      {withBacklog.length > 0 && (
+        <div className="alert-info mb-4 text-sm">
+          <strong>{withBacklog.length}</strong> Wartungsjob(s) mit Rückstand: der letzte Lauf hat
+          sein Zeitbudget ausgeschöpft oder Einträge nicht auflösen können. Der nächste Lauf
+          arbeitet weiter; wächst der Rückstand von Lauf zu Lauf, bitte die Worker-Logs prüfen.
         </div>
       )}
 
@@ -45,6 +57,7 @@ export default async function AdminJobsPage() {
                 <th className="th th-right">Wartend</th>
                 <th className="th th-right">Aktiv</th>
                 <th className="th th-right">Fehlgeschlagen</th>
+                <th className="th th-right">Rückstand</th>
                 <th className="th">Letzter Erfolg</th>
                 <th className="th">Letzter Fehler</th>
               </tr>
@@ -67,6 +80,11 @@ export default async function AdminJobsPage() {
                       className={`px-4 py-3 text-right tabular-nums ${q.failed > 0 ? 'text-red-700 font-medium' : 'text-muted'}`}
                     >
                       {q.failed}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right tabular-nums ${(q.backlog ?? 0) > 0 ? 'text-amber-700 font-medium' : 'text-muted'}`}
+                    >
+                      {fmtNumber(q.backlog)}
                     </td>
                     <td className="px-4 py-3 text-secondary">
                       {q.lastCompletedAt ? fmtDateTimeShort(new Date(q.lastCompletedAt)) : '—'}
