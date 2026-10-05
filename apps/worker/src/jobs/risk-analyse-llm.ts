@@ -9,13 +9,19 @@
 //
 // Eigenständig im Worker (kein @taxtronik/web-Import): Engine-Client kommt aus
 // dem Paket, persistiert wird über den Worker-Owner-Client + tenant-context.
+//
+// S-06: Der Job trägt nur { tenantId, analysisId, sourceHash }. Den Sachverhalt
+// liest der Worker unter dem Analyse-Lock aus der Datenbank und verarbeitet ihn
+// nur, solange dessen SHA-256 dem Auftrag entspricht. Jobs der Vorversion mit
+// vollem Text werden weiter angenommen (Hash aus dem Text), aber genauso gegen
+// den aktuellen DB-Stand geprüft.
 // =============================================================================
 
 import { UnrecoverableError } from 'bullmq';
 import { createWorker } from '../worker-factory';
-import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { JOB_QUEUES, type LegacyRiskAnalyseLlmJob } from '@taxtronik/config/job-queues';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
-import { lockRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
+import { lockRiskAnalysisTx, riskSourceHash } from '@taxtronik/db/risk-analysis';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type RiskAnalyseLlmJob } from '../queues';
 import { withWorkerTenantContext } from '../tenant-context';
@@ -63,24 +69,47 @@ async function ensureLlmReady(
 // Schreiben). Audit bleibt in TaxTronik — die Engine führt keins.
 const evidence = new EvidenceService(new LocalTimestampAdapter());
 
-export const riskAnalyseLlmWorker = createWorker<RiskAnalyseLlmJob, void, string>(
+type QueuedRiskAnalyseLlmJob = RiskAnalyseLlmJob | LegacyRiskAnalyseLlmJob;
+
+/** Hash, gegen den der aktuelle Sachverhalt geprüft wird; null = kein gültiger Auftrag. */
+function expectedSourceHash(data: QueuedRiskAnalyseLlmJob): string | null {
+  if ('sourceHash' in data && typeof data.sourceHash === 'string' && data.sourceHash) {
+    return data.sourceHash;
+  }
+  // In-flight job of the previous web version: its text only yields the hash.
+  if ('sourceText' in data && typeof data.sourceText === 'string') {
+    return riskSourceHash(data.sourceText);
+  }
+  return null;
+}
+
+export const riskAnalyseLlmWorker = createWorker<QueuedRiskAnalyseLlmJob, void, string>(
   JOB_QUEUES.riskAnalyseLlm.name,
   async (job) => {
-    const { tenantId, analysisId, sourceText, optionen } = job.data;
+    const { tenantId, analysisId } = job.data;
+    const sourceHash = expectedSourceHash(job.data);
+    if (!sourceHash) {
+      throw new UnrecoverableError('risk-analyse-llm: Auftrag ohne Sachverhalt-Hash — verworfen.');
+    }
+    // Only pre-S-06 jobs can carry engine options; current producers send none.
+    const optionen = 'optionen' in job.data ? job.data.optionen : undefined;
 
     if (!(await isWorkerTenantModuleEnabled(tenantId, 'risk'))) {
       log.info({ tenantId, analysisId }, 'risk-analyse-llm: Modul deaktiviert, skip');
       return;
     }
 
-    // A queued payload can outlive archive/anonymization. Do not send stale
-    // personal data to the engine, and recheck again after its external I/O.
-    const currentSourceIsWritable = () =>
+    // The job can outlive archive/anonymization or a changed text. Load the
+    // current facts under the analysis lock and only use them while their hash
+    // still matches the job; recheck again after the external I/O.
+    const loadWritableSource = () =>
       withWorkerTenantContext(tenantId, async (tx) => {
         const current = await lockRiskAnalysisTx(tx, tenantId, analysisId);
-        return current !== null && !current.archivedAt && current.sourceText === sourceText;
+        if (current === null || current.archivedAt) return null;
+        return riskSourceHash(current.sourceText) === sourceHash ? current.sourceText : null;
       });
-    if (!(await currentSourceIsWritable())) {
+    const sourceText = await loadWritableSource();
+    if (sourceText === null) {
       log.info({ analysisId, tenantId }, 'risk-analyse-llm: Stand nicht mehr bearbeitbar, skip');
       return;
     }
@@ -105,7 +134,7 @@ export const riskAnalyseLlmWorker = createWorker<RiskAnalyseLlmJob, void, string
 
     // Warmup can take ten minutes. Its initial check cannot authorize sending a
     // queued source that was archived/redacted while waiting for the model.
-    if (!(await currentSourceIsWritable())) {
+    if ((await loadWritableSource()) !== sourceText) {
       log.info({ analysisId, tenantId }, 'risk-analyse-llm: Stand während Warmlauf geändert, skip');
       return;
     }

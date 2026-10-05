@@ -1,3 +1,5 @@
+// Fachkatalog: RISK-AI-SUGGESTION-001, RISK-ARCHIVE-SNAPSHOT-001
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -29,8 +31,11 @@ vi.mock('@taxtronik/evidence', () => ({
   LocalTimestampAdapter: class {},
 }));
 
+import { UnrecoverableError } from 'bullmq';
 import { processors } from './mocks/bullmq';
 import '../risk-analyse-llm';
+
+const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -38,18 +43,15 @@ beforeEach(() => {
 });
 
 describe('RISK-ARCHIVE-SNAPSHOT-001 / RISK-AI-SUGGESTION-001 queued enrichment', () => {
-  const payload = {
-    tenantId: 'tenant',
-    analysisId: 'analysis',
-    sourceText: 'Text source',
-    optionen: {},
-  };
+  const storedText = 'Text source';
+  // S-06: the queued job carries no facts, only their hash.
+  const payload = { tenantId: 'tenant', analysisId: 'analysis', sourceHash: sha256(storedText) };
   const process = () => processors.get('risk-analyse-llm')!({ data: payload });
 
   function fixture() {
     const current = {
       id: 'analysis',
-      sourceText: payload.sourceText,
+      sourceText: storedText,
       archivedAt: null as Date | null,
     };
     const tx = {
@@ -119,23 +121,68 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 / RISK-AI-SUGGESTION-001 queued enrichment',
   );
 
   it('records successful enrichment only while its source is still writable', async () => {
-    const { tx } = fixture();
+    const { tx, client } = fixture();
     await process();
+    expect(client.analyse).toHaveBeenCalledWith({
+      text: storedText,
+      mitLLM: true,
+      optionen: undefined,
+    });
     expect(tx.riskAnalysis.update).toHaveBeenCalledOnce();
     expect(h.record).toHaveBeenCalledOnce();
     expect(tx.$queryRaw).toHaveBeenCalledTimes(6);
+  });
+
+  it('S-06 skips when the stored facts no longer match the queued hash', async () => {
+    const { current, tx, client } = fixture();
+    current.sourceText = 'Text source (geändert)';
+    await process();
+    expect(client.analyse).not.toHaveBeenCalled();
+    expect(tx.riskAnalysis.update).not.toHaveBeenCalled();
+  });
+
+  it('S-06 still processes an in-flight job of the previous version with full text', async () => {
+    const { tx, client } = fixture();
+    await processors.get('risk-analyse-llm')!({
+      data: {
+        tenantId: 'tenant',
+        analysisId: 'analysis',
+        sourceText: storedText,
+        optionen: { schwelle: 2 },
+      },
+    });
+    expect(client.analyse).toHaveBeenCalledWith({
+      text: storedText,
+      mitLLM: true,
+      optionen: { schwelle: 2 },
+    });
+    expect(tx.riskAnalysis.update).toHaveBeenCalledOnce();
+  });
+
+  it('S-06 lets a legacy job with outdated text skip like a changed source', async () => {
+    const { client } = fixture();
+    await processors.get('risk-analyse-llm')!({
+      data: { tenantId: 'tenant', analysisId: 'analysis', sourceText: 'älterer Stand' },
+    });
+    expect(client.analyse).not.toHaveBeenCalled();
+  });
+
+  it('S-06 fails a job without hash and text cleanly, without retry', async () => {
+    const { client } = fixture();
+    const failure = await processors.get('risk-analyse-llm')!({
+      data: { tenantId: 'tenant', analysisId: 'analysis' },
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(UnrecoverableError);
+    expect((failure as Error).message).toContain('ohne Sachverhalt-Hash');
+    expect(h.moduleEnabled).not.toHaveBeenCalled();
+    expect(client.analyse).not.toHaveBeenCalled();
   });
 });
 
 describe('risk-analyse-llm tenant module gate', () => {
   it('ruft bei deaktiviertem Risk weder Engine noch Datenbank auf', async () => {
     await processors.get('risk-analyse-llm')!({
-      data: {
-        tenantId: 'tenant-disabled',
-        analysisId: 'analysis-1',
-        sourceText: 'Sachverhalt',
-        optionen: {},
-      },
+      data: { tenantId: 'tenant-disabled', analysisId: 'analysis-1', sourceHash: sha256('x') },
     });
 
     expect(h.moduleEnabled).toHaveBeenCalledWith('tenant-disabled', 'risk');

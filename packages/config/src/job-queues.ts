@@ -373,13 +373,42 @@ export interface ReminderDoneNotifyJob {
   doneByName: string;
 }
 
+/**
+ * S-06: the job only references the analysis. The worker loads the facts from
+ * the database under the analysis lock and runs only if their SHA-256 (hex,
+ * UTF-8, as `riskSourceHash` in @taxtronik/db/risk-analysis) still equals
+ * `sourceHash`, so no client facts are kept in Redis (AOF on disk).
+ */
 export interface RiskAnalyseLlmJob {
   tenantId: string;
   analysisId: string;
-  /** The already analysed facts; the engine itself is stateless. */
+  sourceHash: string;
+}
+
+/**
+ * Payload of jobs enqueued before S-06 (full facts in Redis). The worker still
+ * accepts it for in-flight jobs; producers must not create it anymore.
+ */
+export interface LegacyRiskAnalyseLlmJob {
+  tenantId: string;
+  analysisId: string;
   sourceText: string;
   optionen?: Record<string, unknown>;
 }
+
+/**
+ * S-06: job options of the on-demand LLM enrichment. The UI reads success from
+ * `llmEnrichedAt`, so a completed job is only kept 24 h for diagnosis. A failed
+ * job is how the UI learns about a final failure (getRiskAnalyseJobState), so
+ * it stays 7 days — long enough to be seen after a weekend or a week off. The
+ * former count caps (100/200) still bound the queue. `age` is in seconds.
+ */
+export const RISK_ANALYSE_LLM_JOB_OPTIONS = {
+  attempts: 2,
+  backoff: { type: 'exponential', delay: 5 * SECOND },
+  removeOnComplete: { age: DAY / SECOND, count: 100 },
+  removeOnFail: { age: (7 * DAY) / SECOND, count: 200 },
+} as const;
 
 type EmptyJob = Record<string, never>;
 

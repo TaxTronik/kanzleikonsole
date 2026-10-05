@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-002
+    date: '2026-10-05'
+    paths:
+      - apps/worker/src/jobs/risk-analyse-llm.ts
+      - packages/db/src/risk-analysis.ts
+    rule_ids:
+      - RISK-AI-SUGGESTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+    reason: >-
+      Der Auftrag der KI-Subsumtion in Redis enthält nur noch Tenant, Analyse und
+      den Hash des Sachverhalts; der Worker lädt den Text unter der bestehenden
+      Analysesperre aus der Datenbank und arbeitet nur bei übereinstimmendem Hash.
+      Erledigte Aufträge werden nach 24 Stunden, fehlgeschlagene nach 7 Tagen
+      entfernt, Altaufträge beim Worker-Start bereinigt; Altaufträge mit Volltext
+      werden weiterhin verarbeitet. Die drei bestehenden Aktualitätsprüfungen,
+      Vorschlagslogik und Archivstand bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-001
     date: '2026-10-05'
     paths:
@@ -1443,6 +1463,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-002` dokumentiert, dass KI-Aufträge der
+  Subsumtion keinen Sachverhalt mehr in Redis tragen und befristet gespeichert
+  werden. Vorschlagslogik und Archivstand bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-001` dokumentiert die protokollierte
   Fehlerbehandlung in Worker, Web und Mailversand. Prüfregeln, Fristen und

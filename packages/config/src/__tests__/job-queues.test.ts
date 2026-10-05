@@ -5,6 +5,7 @@ import {
   JOB_QUEUE_KEYS,
   QUEUE_HEALTH,
   QUEUE_STATUS_HISTORY_RETENTION_SECONDS,
+  RISK_ANALYSE_LLM_JOB_OPTIONS,
   SCHEDULE_LOG_LABELS,
   scheduleLogLabel,
   type QueueJobDataByName,
@@ -56,8 +57,7 @@ describe('shared BullMQ metadata', () => {
     const riskJob = {
       tenantId: 'tenant-1',
       analysisId: 'analysis-1',
-      sourceText: 'Sachverhalt',
-      optionen: { mitLLM: true },
+      sourceHash: 'a'.repeat(64),
     } satisfies QueueJobDataByName[typeof JOB_QUEUES.riskAnalyseLlm.name];
     const reminderJob = {
       tenantId: 'tenant-1',
@@ -137,5 +137,20 @@ describe('shared BullMQ metadata', () => {
     expect(scheduleLogLabel('probe', schedule({ pattern: '5 */4 * * 1-5', tz: 'UTC' }))).toBe(
       'probe @ cron "5 */4 * * 1-5" UTC',
     );
+  });
+
+  it('S-06 keeps LLM jobs without facts and bounds their history by age and count', () => {
+    const riskJob: QueueJobDataByName[typeof JOB_QUEUES.riskAnalyseLlm.name] = {
+      tenantId: 'tenant-1',
+      analysisId: 'analysis-1',
+      sourceHash: 'b'.repeat(64),
+    };
+    expect(Object.keys(riskJob).sort()).toEqual(['analysisId', 'sourceHash', 'tenantId']);
+    expect(RISK_ANALYSE_LLM_JOB_OPTIONS).toEqual({
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: { age: 24 * 60 * 60, count: 100 },
+      removeOnFail: { age: 7 * 24 * 60 * 60, count: 200 },
+    });
   });
 });

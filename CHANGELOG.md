@@ -902,6 +902,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- KI-Aufträge der Subsumtion enthalten keinen Sachverhalt mehr, nur Analyse-ID
+  und Hash; der Worker liest den Text aus der Datenbank. Erledigte Aufträge
+  werden nach 24 Stunden, fehlgeschlagene nach 7 Tagen aus Redis entfernt;
+  bisher lagen die letzten 300 Aufträge unbefristet und unverschlüsselt auf
+  der Platte. Altaufträge werden beim Worker-Start bereinigt
+  (`RISK-AI-SUGGESTION-001`, `FK-EXC-20261005-002`).
 - Der Startdialog der Workflow-Vorlagen zeigt nur noch Mandanten, die der
   Mitarbeitende sehen darf; bisher listete er alle Mandanten der Kanzlei
   einschließlich vertraulicher (`ACCESS-CLIENT-MODE-001`).

@@ -17,6 +17,15 @@ export class RiskAnalysisChangedError extends Error {
   }
 }
 
+/**
+ * SHA-256 (hex) of the stored facts — the same value persistence writes as
+ * `textHash` at creation. S-06: LLM jobs carry only this hash; the worker
+ * compares it with the current facts instead of keeping them in Redis.
+ */
+export function riskSourceHash(sourceText: string): string {
+  return createHash('sha256').update(sourceText, 'utf8').digest('hex');
+}
+
 export async function lockRiskAnalysisTx(tx: TxClient, tenantId: string, analysisId: string) {
   // Canonical order: client -> analysis -> tenant audit lock. In particular,
   // retention holds client FOR UPDATE before redacting contacts (with audit)
