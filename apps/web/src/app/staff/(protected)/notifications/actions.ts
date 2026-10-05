@@ -24,16 +24,22 @@ export async function markNotificationReadByIdAction(input: { id: string }): Pro
   );
 }
 
-export async function markNotificationReadAction(formData: FormData): Promise<void> {
+export async function markNotificationReadAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // F6: UUID-Validation statt nur typeof — sonst werfen Prisma-Updates erst
   // zur Laufzeit mit "Invalid uuid".
   const parsed = parseFormData(IdSchema, formData);
-  if (!parsed.ok) return;
-  await markNotificationReadByIdAction(parsed.data);
+  if (!parsed.ok) return parsed;
+  return markNotificationReadByIdAction(parsed.data);
 }
 
-export async function markAllNotificationsReadAction(): Promise<void> {
-  await withStaff(
+export async function markAllNotificationsReadAction(
+  _prev: ActionResult | null,
+  _formData: FormData,
+): Promise<ActionResult> {
+  return withStaff(
     async (tx, { staffId }) => {
       await tx.notification.updateMany({
         where: { OR: [{ staffId }, { staffId: null }], readAt: null },

@@ -210,7 +210,7 @@ describe('contact identity changes revoke independent iCal capabilities', () => 
     const form = new FormData();
     form.set('contactId', CONTACT_ID);
     form.set('clientId', CLIENT_ID);
-    await deactivateContactAction(form);
+    expect(await deactivateContactAction(null, form)).toEqual({ ok: true });
     expect((await feed()).status).toBe(404);
 
     form.set('email', 'old@example.test');
@@ -224,6 +224,20 @@ describe('contact identity changes revoke independent iCal capabilities', () => 
     expect(
       (await feed(signIcalToken(CONTACT_ID, m.contacts.get(CONTACT_ID)!.icalTokenVersion))).status,
     ).toBe(200);
+  });
+
+  it('reports an unknown contact on deactivation instead of failing silently (F-01)', async () => {
+    const form = new FormData();
+    form.set('contactId', '9b1f6a2e-3c4d-4e5f-8a9b-0c1d2e3f4a5b');
+    form.set('clientId', CLIENT_ID);
+
+    expect(await deactivateContactAction(null, form)).toEqual({
+      ok: false,
+      error: 'Ansprechpartner nicht gefunden.',
+    });
+    expect(m.revokeAllSessions).not.toHaveBeenCalled();
+    expect(m.tx.clientContact.update).not.toHaveBeenCalled();
+    expect((await feed()).status).toBe(200);
   });
 
   it('retains the subscription for a cosmetic update with unchanged normalized email', async () => {

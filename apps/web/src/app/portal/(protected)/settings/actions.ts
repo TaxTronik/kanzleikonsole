@@ -2,14 +2,17 @@
 
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
-import { withPortalContext, ActionError } from '@/server/actions/portal-action';
+import { withPortalContext, ActionError, type ActionResult } from '@/server/actions/portal-action';
 import {
   countRevocableGranted,
   parseConsent,
   revokeVoluntaryConsent,
 } from '@/server/privacy/consent';
 
-export async function saveNotificationSettingAction(formData: FormData): Promise<void> {
+export async function saveNotificationSettingAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const enabled = formData.get('enabled') === 'on';
 
   const r = await withPortalContext(
@@ -40,18 +43,22 @@ export async function saveNotificationSettingAction(formData: FormData): Promise
   );
 
   // Befund 9: das ActionResult von withPortalContext wurde vorher weggeworfen.
-  // Der Call-Site ist ein plain <form action> ohne Result-Channel (Signatur
-  // bleibt deshalb Promise<void>) — Fehler mindestens strukturiert loggen.
+  // Review-Befund F-01: Das Formular zeigt den Fehler jetzt an; das
+  // strukturierte Log bleibt für den Betrieb.
   if (!r.ok) {
     log.warn(
       { component: 'portal-settings', err: r.error },
       'saveNotificationSettingAction fehlgeschlagen',
     );
   }
+  return r;
 }
 
 /** Art. 7 Abs. 3 DSGVO: vollständiger Widerruf im selben Self-Service-Kanal. */
-export async function revokeOwnConsentAction(): Promise<void> {
+export async function revokeOwnConsentAction(
+  _prev: ActionResult | null,
+  _formData: FormData,
+): Promise<ActionResult> {
   const r = await withPortalContext(
     async (tx, { tenantId, contactId, clientId }) => {
       const [contact, previous] = await Promise.all([
@@ -114,4 +121,5 @@ export async function revokeOwnConsentAction(): Promise<void> {
       'revokeOwnConsentAction fehlgeschlagen',
     );
   }
+  return r;
 }

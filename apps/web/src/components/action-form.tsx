@@ -52,6 +52,8 @@ type ActionFormProps = Omit<
   errorDisplay?: 'summary' | 'inline';
   /** Feldname → Element-ID, damit die Zusammenfassung auf die Felder verlinkt. */
   fieldIds?: Record<string, string>;
+  /** Clientseitige Vorprüfung; `false` bricht das Absenden ab (z. B. leerer Artikeltext). */
+  beforeSubmit?: (form: HTMLFormElement) => boolean;
 };
 
 // Nur clientseitig: wird vor dem Aufruf der Server-Action wieder entfernt.
@@ -106,6 +108,7 @@ export function ActionForm({
   children,
   errorDisplay = 'summary',
   fieldIds,
+  beforeSubmit,
   ...formProps
 }: ActionFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -135,6 +138,7 @@ export function ActionForm({
     event.preventDefault();
     // Doppelklick: die laufende Übermittlung abwarten statt sie zu wiederholen.
     if (inFlight.current) return;
+    if (beforeSubmit && !beforeSubmit(event.currentTarget)) return;
     inFlight.current = true;
     const submitter = (event.nativeEvent as SubmitEvent).submitter;
     const formData = formDataWithSubmitter(event.currentTarget, submitter);

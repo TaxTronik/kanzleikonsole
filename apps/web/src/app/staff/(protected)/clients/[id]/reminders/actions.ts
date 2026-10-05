@@ -22,6 +22,7 @@ import {
 } from '@/server/reminders/service';
 import { REMINDER_PRIORITIES } from '@/lib/reminder-priority';
 import { withStaffModule, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { log } from '@/server/logger';
 import {
   scheduleReminderDoneNotification,
   cancelReminderDoneNotification,
@@ -326,7 +327,7 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
     const eingeplant = await scheduleReminderDoneNotification(geplant);
     if (!eingeplant) {
       // Fail-safe: sofort zustellen statt die Rueckmeldung zu verlieren.
-      await withRemindersStaff(async (tx) => {
+      const sofort = await withRemindersStaff(async (tx) => {
         await lockReminderTx(tx, geplant.tenantId, geplant.reminderId);
         const reminder = await tx.clientReminder.findFirst({
           where: { id: geplant.reminderId, tenantId: geplant.tenantId },
@@ -353,6 +354,14 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
           resourceId: geplant.reminderId,
         });
       });
+      if (!sofort.ok) {
+        // Das Erledigen ist bereits gespeichert und bleibt gültig; verloren geht
+        // nur die Rückmeldung — sie darf nicht still verschwinden (Review-Befund F-01).
+        log.warn(
+          { component: 'reminders', reminderId: geplant.reminderId, error: sofort.error },
+          'Erledigt-Benachrichtigung konnte auch sofort nicht zugestellt werden',
+        );
+      }
     }
   }
   if (r.ok) {

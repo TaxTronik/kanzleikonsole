@@ -7,7 +7,12 @@ import { evidenceService } from '@/server/container';
 import { parseAddisonBwaCsv, parseAddisonBwaCompactCsv } from '@/server/bwa/addison-parser';
 import { parseDatevBwaXlsx } from '@/server/bwa/datev-parser';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard, ActionError, parseFormData } from '@/server/actions/staff-action';
+import {
+  staffActionGuard,
+  ActionError,
+  parseFormData,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 
 export interface ImportResult {
   ok: boolean;
@@ -258,31 +263,39 @@ const DeleteSchema = z.object({
   clientId: z.string().uuid(),
 });
 
-export async function deleteBwaPeriodAction(formData: FormData): Promise<void> {
+export async function deleteBwaPeriodAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ module: 'bwa' });
-  if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = parseFormData(DeleteSchema, formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
 
-  await withTenantContext(ctx, async (tx) => {
-    await assertClientAccessTx(tx, session, parsed.data.clientId);
-    const before = await tx.bwaPeriod.findFirst({
-      where: { id: parsed.data.periodId, clientId: parsed.data.clientId },
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, parsed.data.clientId);
+      const before = await tx.bwaPeriod.findFirst({
+        where: { id: parsed.data.periodId, clientId: parsed.data.clientId },
+      });
+      if (!before) throw new ActionError('BWA-Zeitraum nicht gefunden.');
+      await tx.bwaPeriod.delete({ where: { id: before.id } });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'bwa.delete',
+        resourceType: 'bwa_period',
+        resourceId: before.id,
+        before: { periodKey: before.periodKey, source: before.source },
+      });
     });
-    if (!before) return;
-    await tx.bwaPeriod.delete({ where: { id: before.id } });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'bwa.delete',
-      resourceType: 'bwa_period',
-      resourceId: before.id,
-      before: { periodKey: before.periodKey, source: before.source },
-    });
-  });
+  } catch (error) {
+    return toActionError(error);
+  }
 
   revalidatePath(`/staff/clients/${parsed.data.clientId}/bwa`);
+  return { ok: true };
 }

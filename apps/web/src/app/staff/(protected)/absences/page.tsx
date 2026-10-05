@@ -12,6 +12,7 @@ import {
   deleteAbsenceAction,
 } from './actions';
 import { loadAbsenceCoverage } from '@/server/absences/coverage';
+import { ActionForm } from '@/components/action-form';
 import { fmtDateShort } from '@/lib/fmt';
 
 const statusLabels: Record<string, string> = {
@@ -196,15 +197,15 @@ export default async function AbsencesPage() {
                     {v.reason && <p className="text-sm text-secondary mt-1">{v.reason}</p>}
                   </div>
                   <div className="flex gap-2">
-                    <form action={decideVacationAction}>
+                    <ActionForm action={decideVacationAction} errorDisplay="inline">
                       <input type="hidden" name="requestId" value={v.id} />
                       <input type="hidden" name="approve" value="1" />
                       <button type="submit" className="btn-primary text-xs py-1.5">
                         <Check className="h-3.5 w-3.5" />
                         Genehmigen
                       </button>
-                    </form>
-                    <form action={decideVacationAction}>
+                    </ActionForm>
+                    <ActionForm action={decideVacationAction} errorDisplay="inline">
                       <input type="hidden" name="requestId" value={v.id} />
                       <button
                         type="submit"
@@ -213,7 +214,7 @@ export default async function AbsencesPage() {
                         <X className="h-3.5 w-3.5" />
                         Ablehnen
                       </button>
-                    </form>
+                    </ActionForm>
                   </div>
                 </div>
               </li>
@@ -262,12 +263,12 @@ export default async function AbsencesPage() {
                   </p>
                 </div>
                 {v.status === 'PENDING' && (
-                  <form action={cancelVacationAction}>
+                  <ActionForm action={cancelVacationAction} errorDisplay="inline">
                     <input type="hidden" name="requestId" value={v.id} />
                     <button type="submit" className="btn-secondary text-xs py-1">
                       Zurückziehen
                     </button>
-                  </form>
+                  </ActionForm>
                 )}
               </li>
             ))}
@@ -296,19 +297,19 @@ export default async function AbsencesPage() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {!s.endDate && (
-                    <form action={endAbsenceAction}>
+                    <ActionForm action={endAbsenceAction} errorDisplay="inline">
                       <input type="hidden" name="id" value={s.id} />
                       <button type="submit" className="text-xs text-brand-700 hover:underline">
                         Beenden
                       </button>
-                    </form>
+                    </ActionForm>
                   )}
-                  <form action={deleteAbsenceAction}>
+                  <ActionForm action={deleteAbsenceAction} errorDisplay="inline">
                     <input type="hidden" name="id" value={s.id} />
                     <button type="submit" className="text-xs text-red-700 hover:underline">
                       Löschen
                     </button>
-                  </form>
+                  </ActionForm>
                 </div>
               </li>
             ))}

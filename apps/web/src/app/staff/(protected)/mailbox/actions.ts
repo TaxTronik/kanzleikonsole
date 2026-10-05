@@ -10,18 +10,29 @@ import { encryptSecret } from '@taxtronik/crypto';
 import { env } from '@taxtronik/config';
 import { microsoftClient, IMAP_SCOPES } from '@taxtronik/mail/imap';
 import { fetchObjectBytes, getBucketForTier } from '@taxtronik/storage';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
-import { assertClientAccessTx } from '@/server/auth/rbac';
+import {
+  staffActionGuard,
+  ActionError,
+  type ActionResult,
+  type StaffCtx,
+} from '@/server/actions/staff-action';
+import { validationFailure } from '@/server/actions/form-data';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { evidenceService } from '@/server/container';
 import { persistResumableDocumentUpload } from '@/server/documents/resumable-upload';
 import { carrierClassification } from '@/server/storage/document-type';
 import type { DocumentClassification } from '@prisma/client';
 
-export async function saveMailbox(form: FormData): Promise<void> {
+const INVALID_MAILBOX_ID: ActionResult = { ok: false, error: 'Ungültige Postfach-ID.' };
+
+export async function saveMailbox(
+  _prev: ActionResult | null,
+  form: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true, module: 'smartMailbox' });
-  if (!g.ok) throw new ActionError(g.error);
-  const input = z
+  if (!g.ok) return g;
+  const parsed = z
     .object({
       name: z.string().trim().min(1).max(100),
       provider: z.enum(['IMAP', 'MICROSOFT365']),
@@ -38,68 +49,101 @@ export async function saveMailbox(form: FormData): Promise<void> {
       entraTenantId: z.union([z.uuid(), z.literal('')]),
       entraClientId: z.union([z.uuid(), z.literal('')]),
     })
-    .parse(Object.fromEntries(form));
+    .safeParse(Object.fromEntries(form));
+  if (!parsed.success) return validationFailure(parsed.error.issues);
+  const input = parsed.data;
   if (input.provider === 'MICROSOFT365' && (!input.entraTenantId || !input.entraClientId))
-    throw new ActionError('Entra-Mandanten-ID und App-ID erforderlich.');
-  await withTenantContext(g.ctx, async (tx) => {
-    const item = await tx.inboundMailbox.create({
-      data: {
+    return { ok: false, error: 'Entra-Mandanten-ID und App-ID erforderlich.' };
+  try {
+    await withTenantContext(g.ctx, async (tx) => {
+      const item = await tx.inboundMailbox.create({
+        data: {
+          tenantId: g.tenantId,
+          name: input.name,
+          provider: input.provider,
+          host: input.provider === 'MICROSOFT365' ? 'outlook.office365.com' : input.host,
+          port: input.provider === 'MICROSOFT365' ? 993 : input.port,
+          username: input.username,
+          folder: input.folder,
+          secretEnc: encryptSecret(input.secret),
+          entraTenantId: input.entraTenantId || null,
+          entraClientId: input.entraClientId || null,
+          enabled: false,
+        },
+      });
+      await evidenceService.record(tx, {
         tenantId: g.tenantId,
-        name: input.name,
-        provider: input.provider,
-        host: input.provider === 'MICROSOFT365' ? 'outlook.office365.com' : input.host,
-        port: input.provider === 'MICROSOFT365' ? 993 : input.port,
-        username: input.username,
-        folder: input.folder,
-        secretEnc: encryptSecret(input.secret),
-        entraTenantId: input.entraTenantId || null,
-        entraClientId: input.entraClientId || null,
-        enabled: false,
-      },
+        actorType: 'STAFF',
+        actorId: g.staffId,
+        action: 'mailbox.created',
+        resourceType: 'inbound_mailbox',
+        resourceId: item.id,
+        after: { provider: input.provider, enabled: false },
+      });
     });
-    await evidenceService.record(tx, {
-      tenantId: g.tenantId,
-      actorType: 'STAFF',
-      actorId: g.staffId,
-      action: 'mailbox.created',
-      resourceType: 'inbound_mailbox',
-      resourceId: item.id,
-      after: { provider: input.provider, enabled: false },
-    });
-  });
+  } catch (error) {
+    return toActionError(error);
+  }
   revalidatePath('/staff/mailbox');
+  return { ok: true };
 }
-export async function setMailboxEnabled(form: FormData): Promise<void> {
+export async function setMailboxEnabled(
+  _prev: ActionResult | null,
+  form: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true, module: 'smartMailbox' });
-  if (!g.ok) throw new ActionError(g.error);
-  const id = z.uuid().parse(form.get('id'));
+  if (!g.ok) return g;
+  const parsedId = z.uuid().safeParse(form.get('id'));
+  if (!parsedId.success) return INVALID_MAILBOX_ID;
+  const id = parsedId.data;
   const enabled = form.get('enabled') === 'true';
-  await withTenantContext(g.ctx, async (tx) => {
-    const account = await tx.inboundMailbox.findFirst({ where: { id, tenantId: g.tenantId } });
-    if (!account) throw new ActionError('Postfach nicht gefunden.');
-    if (enabled && account.provider === 'MICROSOFT365' && !account.oauthCacheEnc)
-      throw new ActionError('Zuerst Microsoft-Verbindung herstellen.');
-    if (enabled && account.lastError?.startsWith('UIDVALIDITY_CHANGED'))
-      throw new ActionError(
-        'Ordnerkennung geändert. Bitte ein neues Postfachprofil für einen kontrollierten Neuabgleich anlegen. Vorhandene Nachweise bleiben erhalten.',
-      );
-    await tx.inboundMailbox.update({ where: { id }, data: { enabled } });
-    await evidenceService.record(tx, {
-      tenantId: g.tenantId,
-      actorType: 'STAFF',
-      actorId: g.staffId,
-      action: 'mailbox.' + (enabled ? 'resumed' : 'paused'),
-      resourceType: 'inbound_mailbox',
-      resourceId: id,
-      after: { enabled },
+  try {
+    await withTenantContext(g.ctx, async (tx) => {
+      const account = await tx.inboundMailbox.findFirst({ where: { id, tenantId: g.tenantId } });
+      if (!account) throw new ActionError('Postfach nicht gefunden.');
+      if (enabled && account.provider === 'MICROSOFT365' && !account.oauthCacheEnc)
+        throw new ActionError('Zuerst Microsoft-Verbindung herstellen.');
+      if (enabled && account.lastError?.startsWith('UIDVALIDITY_CHANGED'))
+        throw new ActionError(
+          'Ordnerkennung geändert. Bitte ein neues Postfachprofil für einen kontrollierten Neuabgleich anlegen. Vorhandene Nachweise bleiben erhalten.',
+        );
+      await tx.inboundMailbox.update({ where: { id }, data: { enabled } });
+      await evidenceService.record(tx, {
+        tenantId: g.tenantId,
+        actorType: 'STAFF',
+        actorId: g.staffId,
+        action: 'mailbox.' + (enabled ? 'resumed' : 'paused'),
+        resourceType: 'inbound_mailbox',
+        resourceId: id,
+        after: { enabled },
+      });
     });
-  });
+  } catch (error) {
+    return toActionError(error);
+  }
   revalidatePath('/staff/mailbox');
+  return { ok: true };
 }
-export async function connectMicrosoft(form: FormData): Promise<void> {
+export async function connectMicrosoft(
+  _prev: ActionResult | null,
+  form: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true, module: 'smartMailbox' });
-  if (!g.ok) throw new ActionError(g.error);
-  const id = z.uuid().parse(form.get('id'));
+  if (!g.ok) return g;
+  const parsedId = z.uuid().safeParse(form.get('id'));
+  if (!parsedId.success) return INVALID_MAILBOX_ID;
+  let url: string;
+  try {
+    url = await prepareMicrosoftConnect(g, parsedId.data);
+  } catch (error) {
+    return toActionError(error);
+  }
+  // Erfolg: Weiterleitung zur Microsoft-Anmeldung (außerhalb des try/catch).
+  redirect(url);
+}
+
+/** Setzt das Postfach zurück, legt den PKCE-Cookie an und liefert die Anmelde-URL. */
+async function prepareMicrosoftConnect(g: StaffCtx, id: string): Promise<string> {
   const account = await withTenantContext(g.ctx, (tx) =>
     tx.inboundMailbox.findFirst({ where: { id, tenantId: g.tenantId, provider: 'MICROSOFT365' } }),
   );
@@ -141,17 +185,35 @@ export async function connectMicrosoft(form: FormData): Promise<void> {
       maxAge: 300,
     },
   );
-  redirect(url);
+  return url;
 }
-export async function importAttachment(form: FormData): Promise<void> {
+export async function importAttachment(
+  _prev: ActionResult | null,
+  form: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({
     requirePermission: 'INBOUND_MAIL_MANAGE',
     module: 'smartMailbox',
   });
-  if (!g.ok) throw new ActionError(g.error);
-  const input = z
+  if (!g.ok) return g;
+  const parsed = z
     .object({ id: z.uuid(), clientId: z.uuid(), documentTypeId: z.uuid() })
-    .parse(Object.fromEntries(form));
+    .safeParse(Object.fromEntries(form));
+  if (!parsed.success) return validationFailure(parsed.error.issues);
+  try {
+    await archiveAttachment(g, parsed.data);
+  } catch (error) {
+    return toActionError(error);
+  }
+  revalidatePath('/staff/mailbox');
+  return { ok: true };
+}
+
+/** Übernimmt einen geprüften Anhang ins Mandantenarchiv; Fachfehler werfen ActionError. */
+async function archiveAttachment(
+  g: StaffCtx,
+  input: { id: string; clientId: string; documentTypeId: string },
+): Promise<void> {
   const prepared = await withTenantContext(g.ctx, async (tx) => {
     await assertClientAccessTx(tx, g.session, input.clientId);
     const client = await tx.client.findFirst({
@@ -303,5 +365,4 @@ export async function importAttachment(form: FormData): Promise<void> {
       });
     },
   });
-  revalidatePath('/staff/mailbox');
 }

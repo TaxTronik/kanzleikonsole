@@ -10,7 +10,11 @@ vi.mock('@/server/actions/staff-action', () => ({
   parseFormData: m.parseFormData,
 }));
 
-import { markNotificationReadByIdAction } from '../actions';
+import {
+  markAllNotificationsReadAction,
+  markNotificationReadAction,
+  markNotificationReadByIdAction,
+} from '../actions';
 
 const ID = 'bc2cc432-b881-4c0e-80c3-35a86d08f76d';
 
@@ -54,5 +58,35 @@ describe('markNotificationReadByIdAction', () => {
       error: 'Validierungsfehler.',
     });
     expect(m.withStaff).not.toHaveBeenCalled();
+  });
+});
+
+describe('Formular-Actions — Rückkanal (Review-Befund F-01)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const actual = await vi.importActual<typeof import('@/server/actions/form-data')>(
+      '@/server/actions/form-data',
+    );
+    m.parseFormData.mockImplementation(actual.parseFormData);
+  });
+
+  it('gibt eine ungültige ID an das Formular zurück, ohne die Datenbank zu berühren', async () => {
+    const formData = new FormData();
+    formData.set('id', 'keine-uuid');
+
+    await expect(markNotificationReadAction(null, formData)).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+    });
+    expect(m.withStaff).not.toHaveBeenCalled();
+  });
+
+  it('meldet eine abgelehnte Sitzung beim Alles-gelesen-Markieren', async () => {
+    m.withStaff.mockResolvedValue({ ok: false, error: 'Nicht angemeldet.' });
+
+    await expect(markAllNotificationsReadAction(null, new FormData())).resolves.toEqual({
+      ok: false,
+      error: 'Nicht angemeldet.',
+    });
   });
 });

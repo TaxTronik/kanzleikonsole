@@ -1,17 +1,37 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { getAuditRotateQueue } from '@/server/jobs/audit-rotate-queue';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { toActionError } from '@/server/auth/rbac';
 import { withTimeout } from '@/lib/with-timeout';
 
-export async function triggerAuditRotateAction(): Promise<void> {
+export async function triggerAuditRotateAction(
+  _previous: ActionResult | null,
+  _formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) throw new ActionError(g.error);
-  const { tenantId, staffId, ctx } = g;
+  if (!g.ok) return g;
+  try {
+    await triggerAuditRotate(g);
+  } catch (error) {
+    return toActionError(error);
+  }
+  revalidatePath('/staff/admin/archive');
+  return { ok: true };
+}
 
+async function triggerAuditRotate({
+  tenantId,
+  staffId,
+  ctx,
+}: {
+  tenantId: string;
+  staffId: string;
+  ctx: TenantContext;
+}): Promise<void> {
   // Defense in Depth (gleicht der Button-Deaktivierung auf der Seite): nur
   // anstoßen, wenn tatsächlich rotierbare Einträge existieren (≥ 90 Tage alt
   // und noch nicht archiviert). Sonst no-op-t der Worker, aber wir würden
@@ -33,10 +53,7 @@ export async function triggerAuditRotateAction(): Promise<void> {
     return !!entry;
   });
 
-  if (!rotatable) {
-    revalidatePath('/staff/admin/archive');
-    return;
-  }
+  if (!rotatable) return;
 
   // BullMQ-Job direkt einreihen — der Worker rotiert nur diesen Tenant.
   // Connection ist modulweiter Singleton (siehe audit-rotate-queue.ts), kein
@@ -56,6 +73,4 @@ export async function triggerAuditRotateAction(): Promise<void> {
       after: { triggeredManually: true },
     });
   });
-
-  revalidatePath('/staff/admin/archive');
 }

@@ -30,6 +30,7 @@ import { readResolvedConsentOptionsTx } from '@/server/privacy/consent-catalog';
 import { NoticeView } from '@/components/notice-view';
 import { ConsentEditor } from './consent-editor';
 import { revokeAllConsentAction } from './actions';
+import { ActionForm } from '@/components/action-form';
 
 function providerSnapshotLabel(provider: ConsentServiceProviderSnapshot | null): string | null {
   if (!provider) return null;
@@ -246,7 +247,10 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
 
       {/* Widerruf */}
       {current && revocableConsentCount > 0 && (
-        <form action={revokeAllConsentAction} className="card p-5 mt-6 border-l-4 border-l-red-400">
+        <ActionForm
+          action={revokeAllConsentAction}
+          className="card p-5 mt-6 border-l-4 border-l-red-400"
+        >
           <input type="hidden" name="clientId" value={clientId} />
           <h3 className="text-sm font-semibold text-red-800 dark:text-red-300 mb-1">
             Einwilligungen widerrufen
@@ -276,7 +280,7 @@ export default async function ClientPrivacyPage({ params }: { params: Promise<{ 
               Widerrufen
             </button>
           </div>
-        </form>
+        </ActionForm>
       )}
 
       {/* Historie */}

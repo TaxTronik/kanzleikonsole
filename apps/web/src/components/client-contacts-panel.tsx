@@ -3,6 +3,7 @@
 import { useActionState, useState, useRef, useTransition } from 'react';
 import { Mail, Phone, UserX, Pencil, Plus, X, CalendarOff } from 'lucide-react';
 import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
+import { ActionForm } from '@/components/action-form';
 import { ConfirmModal } from '@/components/ui/modal';
 import type { ActionResult } from '@/server/actions/types';
 import {
@@ -232,7 +233,7 @@ function ContactRow({
         >
           <CalendarOff className="h-4 w-4" />
         </button>
-        <form action={deactivateContactAction}>
+        <ActionForm action={deactivateContactAction} errorDisplay="inline">
           <input type="hidden" name="contactId" value={contact.id} />
           <input type="hidden" name="clientId" value={clientId} />
           <button
@@ -242,7 +243,7 @@ function ContactRow({
           >
             <UserX className="h-4 w-4" />
           </button>
-        </form>
+        </ActionForm>
       </div>
       {confirmRotate && (
         <ConfirmModal

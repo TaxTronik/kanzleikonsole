@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { computeBwaKpis } from '@/server/bwa/addison-parser';
 import { BwaImportForm } from './import-form';
 import { deleteBwaPeriodAction } from './actions';
+import { ActionForm } from '@/components/action-form';
 
 import { fmtDateShort, fmtEURRound } from '@/lib/fmt';
 export default async function ClientBwaPage({ params }: { params: Promise<{ id: string }> }) {
@@ -158,7 +159,7 @@ export default async function ClientBwaPage({ params }: { params: Promise<{ id: 
                         {p.sourceRef ? ` (${p.sourceRef})` : ''}
                       </span>
                     </Link>
-                    <form action={deleteBwaPeriodAction}>
+                    <ActionForm action={deleteBwaPeriodAction} errorDisplay="inline">
                       <input type="hidden" name="periodId" value={p.id} />
                       <input type="hidden" name="clientId" value={client.id} />
                       <button
@@ -168,7 +169,7 @@ export default async function ClientBwaPage({ params }: { params: Promise<{ id: 
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    </form>
+                    </ActionForm>
                   </li>
                 ))}
               </ul>

@@ -13,8 +13,10 @@ import {
   staffActionGuard,
   parseFormData,
   withStaff,
+  ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { validationFailure } from '@/server/actions/form-data';
 
 export type ActionResult = BaseActionResult;
 
@@ -138,7 +140,10 @@ const DecideSchema = z.object({
   note: z.string().max(1000).optional().or(z.literal('')),
 });
 
-export async function decideVacationAction(formData: FormData): Promise<void> {
+export async function decideVacationAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // iter87: Entscheiden braucht ABSENCE_DECIDE (ADMIN/PARTNER implizit —
   // entspricht dem bisherigen requireAdmin; zusätzlich delegierbar an
   // einzelne Mitarbeiter, z. B. Personalverantwortliche).
@@ -147,22 +152,28 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
     approve: formData.get('approve') ?? undefined,
     note: formData.get('note') ?? '',
   });
-  if (!parsed.success) return;
+  if (!parsed.success) return validationFailure(parsed.error.issues);
 
   const status = parsed.data.approve ? 'APPROVED' : 'REJECTED';
 
-  await withStaff(
+  return withStaff(
     async (tx, { tenantId, staffId }) => {
       const before = await tx.vacationRequest.findUnique({ where: { id: parsed.data.requestId } });
-      if (!before) return;
+      if (!before) throw new ActionError('Urlaubsantrag nicht gefunden.');
       // 4-Augen-Prinzip (N7): ein ADMIN/PARTNER darf seinen eigenen
       // Urlaubsantrag nicht selbst entscheiden — auch in kleinen Kanzleien
       // muss die Genehmigung von einer anderen Person kommen.
-      if (before.staffId === staffId) return;
+      if (before.staffId === staffId) {
+        throw new ActionError('Den eigenen Urlaubsantrag muss eine andere Person entscheiden.');
+      }
       // Eine Entscheidung ist genau einmal aus PENDING heraus zulässig. Die
       // separate Rücknahme-Action bleibt davon unberührt und darf einen Antrag
       // auch nach einer Genehmigung auf Wunsch des Mitarbeiters stornieren.
-      if (before.status !== 'PENDING') return;
+      // Dieselbe Entscheidung erneut (Doppelklick, veraltete Seite) bleibt ein No-op.
+      if (before.status === status) return;
+      if (before.status !== 'PENDING') {
+        throw new ActionError('Der Urlaubsantrag ist nicht mehr offen.');
+      }
       const decision = await tx.vacationRequest.updateMany({
         where: { id: parsed.data.requestId, status: 'PENDING' },
         data: {
@@ -204,13 +215,16 @@ export async function decideVacationAction(formData: FormData): Promise<void> {
   );
 }
 
-export async function cancelVacationAction(formData: FormData): Promise<void> {
+export async function cancelVacationAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // F6: UUID-Validation.
   const parsed = parseFormData(z.object({ requestId: z.string().uuid() }), formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
   const { requestId: id } = parsed.data;
 
-  await withStaff(
+  return withStaff(
     async (tx, { tenantId, staffId, session }) => {
       // N10: expliziter Tenant-Filter zusätzlich zur RLS — Defense in Depth.
       // Schützt auch dann, wenn RLS-Policy versehentlich gelockert wird, und
@@ -219,8 +233,10 @@ export async function cancelVacationAction(formData: FormData): Promise<void> {
       const before = await tx.vacationRequest.findFirst({
         where: { id, tenantId },
       });
-      if (!before) return;
-      if (before.staffId !== staffId && !isStaffAdmin(session)) return;
+      if (!before) throw new ActionError('Urlaubsantrag nicht gefunden.');
+      if (before.staffId !== staffId && !isStaffAdmin(session)) {
+        throw new ActionError('Nur eigene Urlaubsanträge oder als ADMIN/PARTNER zurückziehen.');
+      }
       if (before.status === 'CANCELLED') return;
       const cancelled = await tx.vacationRequest.updateMany({
         where: { id, status: before.status },
@@ -313,16 +329,21 @@ export async function reportAbsenceAction(
 // iter87-Nachzieher: eine offene Abwesenheit beenden (Enddatum = heute). Nur
 // die eigene Meldung; ohne das blieben offene Meldungen für immer im Kalender
 // (läuft bis „heute") und in der Vertretungssicht stehen.
-export async function endAbsenceAction(formData: FormData): Promise<void> {
+export async function endAbsenceAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
 
-  await withStaff(
+  return withStaff(
     async (tx, { tenantId, staffId }) => {
       const before = await tx.absence.findFirst({
         where: { id: parsed.data.id, tenantId, staffId },
       });
-      if (!before || before.endDate) return;
+      if (!before) throw new ActionError('Abwesenheitsmeldung nicht gefunden.');
+      // Bereits beendet: idempotent.
+      if (before.endDate) return;
       // Enddatum nie vor dem Beginn: bei einer zukunftsdatierten offenen Meldung,
       // die sofort beendet wird, würde „heute" < startDate ergeben (start > end →
       // der Eintrag verschwände aus dem Kalender). Auf mindestens den Starttag
@@ -349,16 +370,19 @@ export async function endAbsenceAction(formData: FormData): Promise<void> {
 }
 
 // Eine eigene Abwesenheitsmeldung löschen (Korrektur einer Fehleingabe).
-export async function deleteAbsenceAction(formData: FormData): Promise<void> {
+export async function deleteAbsenceAction(
+  _previous: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
 
-  await withStaff(
+  return withStaff(
     async (tx, { tenantId, staffId }) => {
       const before = await tx.absence.findFirst({
         where: { id: parsed.data.id, tenantId, staffId },
       });
-      if (!before) return;
+      if (!before) throw new ActionError('Abwesenheitsmeldung nicht gefunden.');
       await resolveNotificationsTx(tx, {
         tenantId,
         resources: [{ resourceType: 'absence', resourceId: parsed.data.id }],

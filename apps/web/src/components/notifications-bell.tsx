@@ -11,7 +11,6 @@ import {
   setNotificationSoundEnabled,
 } from '@/lib/notification-sound';
 import {
-  markNotificationReadAction,
   markNotificationReadByIdAction,
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
@@ -344,9 +343,9 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
 
   async function handleItemClick(n: NotificationItem) {
     if (!n.readAt) {
-      const fd = new FormData();
-      fd.append('id', n.id);
-      await markNotificationReadAction(fd);
+      // Lokal nur als gelesen führen, was der Server bestätigt hat (Review-Befund F-01).
+      const result = await markNotificationReadByIdAction({ id: n.id });
+      if (!result.ok) return;
       setItems((prev) =>
         prev
           ? prev.map((p) => (p.id === n.id ? { ...p, readAt: new Date().toISOString() } : p))
@@ -361,7 +360,8 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
   }
 
   async function handleMarkAllRead() {
-    await markAllNotificationsReadAction();
+    const result = await markAllNotificationsReadAction(null, new FormData());
+    if (!result.ok) return;
     setItems((prev) =>
       prev ? prev.map((p) => (p.readAt ? p : { ...p, readAt: new Date().toISOString() })) : prev,
     );

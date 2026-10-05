@@ -1,5 +1,67 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-015
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/admin/audit/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/audit-chain-status.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/contacts/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
+      - apps/web/src/app/staff/(protected)/mailbox/actions.ts
+      - apps/web/src/app/staff/(protected)/mailbox/page.tsx
+      - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/notifications/actions.ts
+      - apps/web/src/app/staff/(protected)/notifications/page.tsx
+      - apps/web/src/app/staff/(protected)/requests/[id]/page.tsx
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+    rule_ids:
+      - REQ-LIFECYCLE-001
+      - REQ-INTERNAL-COMMENT-001
+      - AUDIT-VERIFY-ALERT-001
+      - AUDIT-HASH-CHAIN-001
+      - DSGVO-CONSENT-SNAPSHOT-001
+      - GWG-ACTIVATION-GATE-001
+      - GWG-REPRESENTATIVE-AUTHORITY-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-RISK-REVIEW-001
+      - GWG-SCREENING-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-OCR-ASSIST-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - MAIL-INBOX-001
+      - REMINDER-TICKET-001
+      - KNOWLEDGE-CONTEXT-001
+      - INV-LIFECYCLE-FREEZE-001
+      - INV-VAT-TOTALS-001
+    reason: >-
+      Die übrigen Server-Actions ohne Rückkanal (Abwesenheiten, Audit und
+      Archiv, Einrichtung, BWA, Kontakte, GwG-Prüfung, Einwilligungswiderruf,
+      Anfragen, Wissen, Smart-Mailbox, Benachrichtigungen, Telefonnotizen,
+      Zeiterfassung) geben Fehler als ActionResult an das Formular zurück;
+      bisher verworfene Ergebnisse von withStaff und den Action-Guards werden
+      ausgewertet. Regeln, die bisher still ignoriert wurden (etwa das
+      Vier-Augen-Prinzip beim eigenen Urlaubsantrag), zeigen jetzt ihre
+      bestehende Meldung. Prüfregeln, Berechtigungen, Audit-Ereignisse und
+      Datenänderungen bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
+      - apps/web/src/__tests__/action-result-contract.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-014
     date: '2026-10-04'
     paths:
@@ -1219,6 +1281,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-015` dokumentiert die Rückgabe von Fehlern an
+  das Formular für die übrigen Server-Actions und die Auswertung bisher
+  verworfener Prüfergebnisse. Prüfregeln, Berechtigungen und Audit bleiben
+  unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-014` dokumentiert, dass die Kern-Formulare
   (Bescheide, Fristen, DSGVO, Mandantenanlage, Rechnungsstatus,

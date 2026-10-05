@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { closeRequestAction, reopenRequestAction } from '../../clients/[id]/requests/actions';
+import { ActionForm } from '@/components/action-form';
 import { StaffResponseForm } from './staff-response-form';
 import { InternalCommentForm } from './internal-comment-form';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
@@ -169,20 +170,20 @@ export default async function RequestDetailPage({
       )}
 
       {reqRow.status !== 'CLOSED' && reqRow.status !== 'CANCELLED' && (
-        <form action={closeRequestAction}>
+        <ActionForm action={closeRequestAction} errorDisplay="inline">
           <input type="hidden" name="requestId" value={reqRow.id} />
           <button type="submit" className="btn-secondary">
             Anforderung schließen
           </button>
-        </form>
+        </ActionForm>
       )}
       {(reqRow.status === 'CLOSED' || reqRow.status === 'RESPONDED') && (
-        <form action={reopenRequestAction}>
+        <ActionForm action={reopenRequestAction} errorDisplay="inline">
           <input type="hidden" name="requestId" value={reqRow.id} />
           <button type="submit" className="btn-secondary">
             Anforderung wieder öffnen
           </button>
-        </form>
+        </ActionForm>
       )}
     </div>
   );

@@ -5,8 +5,22 @@ import { staffActionGuard } from '@/server/actions/staff-action';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { accessibleClientsWhereFor, isStaffAdmin } from '@/server/auth/rbac';
 import { connectMicrosoft, importAttachment, saveMailbox, setMailboxEnabled } from './actions';
+import { ActionForm } from '@/components/action-form';
 import { suggestInboundClients } from '@/server/mailbox/suggestions';
 import { loadMailboxDocumentTypesTx } from '@/server/mailbox/document-types';
+
+// Zod-Feldname → Element-ID für die verlinkte Fehlerzusammenfassung.
+const MAILBOX_FIELD_IDS: Record<string, string> = {
+  name: 'mailbox-name',
+  provider: 'mailbox-provider',
+  host: 'mailbox-host',
+  port: 'mailbox-port',
+  username: 'mailbox-username',
+  folder: 'mailbox-folder',
+  secret: 'mailbox-secret',
+  entraTenantId: 'mailbox-entra-tenant',
+  entraClientId: 'mailbox-entra-app',
+};
 
 export default async function MailboxPage({
   searchParams,
@@ -128,20 +142,20 @@ export default async function MailboxPage({
               )}
               {isStaffAdmin(g.session) && (
                 <div className="flex flex-wrap gap-2">
-                  <form action={setMailboxEnabled}>
+                  <ActionForm action={setMailboxEnabled} errorDisplay="inline">
                     <input type="hidden" name="id" value={a.id} />
                     <input type="hidden" name="enabled" value={String(!a.enabled)} />
                     <button type="submit" className="btn-secondary">
                       {a.enabled ? 'Pausieren' : 'Abruf aktivieren'}
                     </button>
-                  </form>
+                  </ActionForm>
                   {a.provider === 'MICROSOFT365' && (
-                    <form action={connectMicrosoft}>
+                    <ActionForm action={connectMicrosoft} errorDisplay="inline">
                       <input type="hidden" name="id" value={a.id} />
                       <button type="submit" className="btn-secondary">
                         Microsoft neu verbinden
                       </button>
-                    </form>
+                    </ActionForm>
                   )}
                 </div>
               )}
@@ -229,54 +243,56 @@ export default async function MailboxPage({
                     )}
                   </div>
                   {a.status !== 'IMPORTED' && ['CLEAN', 'IMPORTING'].includes(a.status) && (
-                    <form
+                    <ActionForm
                       action={importAttachment}
-                      className="grid items-end gap-4 border-t border-default pt-4 md:grid-cols-2"
+                      className="space-y-4 border-t border-default pt-4"
                     >
-                      <input type="hidden" name="id" value={a.id} />
-                      <div>
-                        <label className="label" htmlFor={'mailbox-client-' + a.id}>
-                          Mandant
-                        </label>
-                        <select
-                          id={'mailbox-client-' + a.id}
-                          className="input"
-                          name="clientId"
-                          required
-                          defaultValue={a.clientId ?? ''}
-                        >
-                          <option value="">Auswählen</option>
-                          {data.clients.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
+                      <div className="grid items-end gap-4 md:grid-cols-2">
+                        <input type="hidden" name="id" value={a.id} />
+                        <div>
+                          <label className="label" htmlFor={'mailbox-client-' + a.id}>
+                            Mandant
+                          </label>
+                          <select
+                            id={'mailbox-client-' + a.id}
+                            className="input"
+                            name="clientId"
+                            required
+                            defaultValue={a.clientId ?? ''}
+                          >
+                            <option value="">Auswählen</option>
+                            {data.clients.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label" htmlFor={'mailbox-type-' + a.id}>
+                            Dokumenttyp
+                          </label>
+                          <select
+                            id={'mailbox-type-' + a.id}
+                            className="input"
+                            name="documentTypeId"
+                            required
+                          >
+                            <option value="">Auswählen</option>
+                            {data.types.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <button type="submit" className="btn-primary">
+                            Zuordnung bestätigen und ablegen
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <label className="label" htmlFor={'mailbox-type-' + a.id}>
-                          Dokumenttyp
-                        </label>
-                        <select
-                          id={'mailbox-type-' + a.id}
-                          className="input"
-                          name="documentTypeId"
-                          required
-                        >
-                          <option value="">Auswählen</option>
-                          {data.types.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="md:col-span-2">
-                        <button type="submit" className="btn-primary">
-                          Zuordnung bestätigen und ablegen
-                        </button>
-                      </div>
-                    </form>
+                    </ActionForm>
                   )}
                 </div>
               ))}
@@ -302,102 +318,104 @@ export default async function MailboxPage({
               pausiert; maximal 25 MB je Nachricht. Archive und verschlüsselte Dateien bleiben
               gesperrt.
             </p>
-            <form action={saveMailbox} className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="mailbox-name">
-                  Name
-                </label>
-                <input id="mailbox-name" className="input" name="name" required maxLength={100} />
+            <ActionForm action={saveMailbox} fieldIds={MAILBOX_FIELD_IDS} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor="mailbox-name">
+                    Name
+                  </label>
+                  <input id="mailbox-name" className="input" name="name" required maxLength={100} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="mailbox-provider">
+                    Typ
+                  </label>
+                  <select id="mailbox-provider" className="input" name="provider">
+                    <option value="IMAP">IMAP mit TLS</option>
+                    <option value="MICROSOFT365">Microsoft 365</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label" htmlFor="mailbox-host">
+                    Server
+                  </label>
+                  <input
+                    id="mailbox-host"
+                    className="input"
+                    name="host"
+                    required
+                    defaultValue="outlook.office365.com"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="mailbox-port">
+                    Port
+                  </label>
+                  <input
+                    id="mailbox-port"
+                    className="input"
+                    type="number"
+                    name="port"
+                    defaultValue={993}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="mailbox-username">
+                    Postfachadresse
+                  </label>
+                  <input
+                    id="mailbox-username"
+                    className="input"
+                    type="email"
+                    name="username"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="mailbox-folder">
+                    Ordner
+                  </label>
+                  <input
+                    id="mailbox-folder"
+                    className="input"
+                    name="folder"
+                    defaultValue="INBOX"
+                    required
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label" htmlFor="mailbox-secret">
+                    Passwort / Entra Client-Secret
+                  </label>
+                  <input
+                    id="mailbox-secret"
+                    className="input"
+                    type="password"
+                    name="secret"
+                    required
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="mailbox-entra-tenant">
+                    Entra Tenant-ID
+                  </label>
+                  <input id="mailbox-entra-tenant" className="input" name="entraTenantId" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="mailbox-entra-app">
+                    Entra App-ID
+                  </label>
+                  <input id="mailbox-entra-app" className="input" name="entraClientId" />
+                </div>
+                <div className="border-t border-default pt-4 md:col-span-2">
+                  <button type="submit" className="btn-primary">
+                    Pausiert anlegen
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="label" htmlFor="mailbox-provider">
-                  Typ
-                </label>
-                <select id="mailbox-provider" className="input" name="provider">
-                  <option value="IMAP">IMAP mit TLS</option>
-                  <option value="MICROSOFT365">Microsoft 365</option>
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="mailbox-host">
-                  Server
-                </label>
-                <input
-                  id="mailbox-host"
-                  className="input"
-                  name="host"
-                  required
-                  defaultValue="outlook.office365.com"
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="mailbox-port">
-                  Port
-                </label>
-                <input
-                  id="mailbox-port"
-                  className="input"
-                  type="number"
-                  name="port"
-                  defaultValue={993}
-                  required
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="mailbox-username">
-                  Postfachadresse
-                </label>
-                <input
-                  id="mailbox-username"
-                  className="input"
-                  type="email"
-                  name="username"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="mailbox-folder">
-                  Ordner
-                </label>
-                <input
-                  id="mailbox-folder"
-                  className="input"
-                  name="folder"
-                  defaultValue="INBOX"
-                  required
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="label" htmlFor="mailbox-secret">
-                  Passwort / Entra Client-Secret
-                </label>
-                <input
-                  id="mailbox-secret"
-                  className="input"
-                  type="password"
-                  name="secret"
-                  required
-                  autoComplete="new-password"
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="mailbox-entra-tenant">
-                  Entra Tenant-ID
-                </label>
-                <input id="mailbox-entra-tenant" className="input" name="entraTenantId" />
-              </div>
-              <div>
-                <label className="label" htmlFor="mailbox-entra-app">
-                  Entra App-ID
-                </label>
-                <input id="mailbox-entra-app" className="input" name="entraClientId" />
-              </div>
-              <div className="border-t border-default pt-4 md:col-span-2">
-                <button type="submit" className="btn-primary">
-                  Pausiert anlegen
-                </button>
-              </div>
-            </form>
+            </ActionForm>
           </div>
         </details>
       )}

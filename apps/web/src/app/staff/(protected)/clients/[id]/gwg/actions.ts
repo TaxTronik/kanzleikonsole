@@ -242,10 +242,12 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult & { che
 }
 
 /** Erstanlage aus dem leeren Zustand (bestehender Server-Form-Vertrag). */
-export async function openCheckAction(formData: FormData): Promise<void> {
-  const result = await startCheckCycle(formData);
-  if (!result.ok)
-    throw new ActionError(result.error ?? 'GwG-Prüfung konnte nicht gestartet werden.');
+export async function openCheckAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult & { checkId?: string }> {
+  // Review-Befund F-01: Ablehnungen (Gate, Zustand, Lock) als Ergebnis statt Wurf.
+  return startCheckCycle(formData);
 }
 
 /** Zustandsbehafteter UI-Pfad für Korrektur- und Wiederholungsprüfungen. */

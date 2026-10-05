@@ -2464,7 +2464,7 @@ describe('GwG-Lifecycle-Lock', () => {
     const tx = makeStartCycleTx(null);
     runWithStaffOn(tx);
 
-    await openCheckAction(formData());
+    await expect(openCheckAction(null, formData())).resolves.toMatchObject({ ok: true });
 
     // startCheckCycle und der Defense-in-Depth-Helper fordern denselben
     // transaktionsgebundenen Advisory-Lock an; die Tx-lokale Deduplizierung

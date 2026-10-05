@@ -44,6 +44,7 @@ import { BackupRunButton } from './backup-run-button';
 import { CountUp } from '@/components/count-up';
 import { fmtBytes, fmtDateTimeShort } from '@/lib/fmt';
 import { dismissSetupChecklistAction, restoreSetupChecklistAction } from './setup-actions';
+import { ActionForm } from '@/components/action-form';
 
 const APP_VERSION = process.env['APP_VERSION'] ?? 'dev';
 
@@ -612,11 +613,11 @@ function SetupChecklist({ setup }: { setup: SetupStatus }) {
           <span className="text-xs text-muted">
             {setup.doneCount} / {setup.totalCount} erledigt
           </span>
-          <form action={dismissSetupChecklistAction}>
+          <ActionForm action={dismissSetupChecklistAction} errorDisplay="inline">
             <button type="submit" className="text-xs text-muted hover:text-primary underline">
               Einführung überspringen
             </button>
-          </form>
+          </ActionForm>
         </div>
       </div>
       <div className="mb-3 h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -667,11 +668,11 @@ function QuickLinksHeader({ setup }: { setup: SetupStatus }) {
     <div className="flex items-center justify-between gap-3 mb-4">
       <h2 className="text-sm font-semibold text-primary">Quick-Links</h2>
       {setup.dismissed && !setup.allDone && (
-        <form action={restoreSetupChecklistAction}>
+        <ActionForm action={restoreSetupChecklistAction} errorDisplay="inline">
           <button type="submit" className="text-xs text-brand-700 hover:underline">
             Einführung wieder anzeigen
           </button>
-        </form>
+        </ActionForm>
       )}
     </div>
   );

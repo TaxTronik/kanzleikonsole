@@ -14,6 +14,7 @@ import {
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteArticleAction } from '../actions';
+import { ActionForm } from '@/components/action-form';
 import { renderMarkdown } from '@/lib/markdown';
 import { fmtDateShort } from '@/lib/fmt';
 
@@ -92,7 +93,7 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
             <Pencil className="h-3.5 w-3.5" />
             Bearbeiten
           </Link>
-          <form action={deleteArticleAction}>
+          <ActionForm action={deleteArticleAction} errorDisplay="inline">
             <input type="hidden" name="id" value={article.id} />
             <button
               type="submit"
@@ -101,7 +102,7 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
               <Trash2 className="h-3.5 w-3.5" />
               Löschen
             </button>
-          </form>
+          </ActionForm>
         </div>
       </div>
 

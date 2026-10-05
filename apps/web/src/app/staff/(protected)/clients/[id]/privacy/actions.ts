@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { validationFailure } from '@/server/actions/form-data';
 import {
   ConsentSelectionsSchema,
   countGranted,
@@ -135,9 +136,12 @@ const RevokeSchema = z.object({
   note: z.string().max(2000).optional().or(z.literal('')),
 });
 
-export async function revokeAllConsentAction(formData: FormData): Promise<void> {
+export async function revokeAllConsentAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) throw new Error(g.error);
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = RevokeSchema.safeParse({
@@ -145,46 +149,51 @@ export async function revokeAllConsentAction(formData: FormData): Promise<void> 
     signedByName: formData.get('signedByName'),
     note: formData.get('note') ?? '',
   });
-  if (!parsed.success) throw new Error('Validierungsfehler.');
+  if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
   const d = parsed.data;
 
-  await withTenantContext(ctx, async (tx) => {
-    await assertClientAccessTx(tx, session, d.clientId);
-    await assertClientInTenant(tx, d.clientId);
-    const previous = await tx.clientConsent.findFirst({
-      where: { clientId: d.clientId },
-      select: { consents: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!previous) return;
-    const previousConsent = parseConsent(previous.consents);
-    const revokedCount = countRevocableGranted(previousConsent);
-    if (revokedCount === 0) return;
-    const notice = await renderNoticeForTenantTx(tx, tenantId);
-    const row = await tx.clientConsent.create({
-      data: {
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      await assertClientAccessTx(tx, session, d.clientId);
+      await assertClientInTenant(tx, d.clientId);
+      const previous = await tx.clientConsent.findFirst({
+        where: { clientId: d.clientId },
+        select: { consents: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!previous) return;
+      const previousConsent = parseConsent(previous.consents);
+      const revokedCount = countRevocableGranted(previousConsent);
+      if (revokedCount === 0) return;
+      const notice = await renderNoticeForTenantTx(tx, tenantId);
+      const row = await tx.clientConsent.create({
+        data: {
+          tenantId,
+          clientId: d.clientId,
+          noticeVersion: notice.version,
+          noticeSnapshot: notice.body,
+          consents: revokeVoluntaryConsent(previousConsent) as object,
+          source: 'STAFF',
+          signedByName: d.signedByName.trim(),
+          isRevocation: true,
+          note: d.note && d.note !== '' ? d.note : 'Widerruf freiwilliger Einwilligungen',
+          createdBy: staffId,
+        },
+      });
+      await evidenceService.record(tx, {
         tenantId,
-        clientId: d.clientId,
-        noticeVersion: notice.version,
-        noticeSnapshot: notice.body,
-        consents: revokeVoluntaryConsent(previousConsent) as object,
-        source: 'STAFF',
-        signedByName: d.signedByName.trim(),
-        isRevocation: true,
-        note: d.note && d.note !== '' ? d.note : 'Widerruf freiwilliger Einwilligungen',
-        createdBy: staffId,
-      },
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'privacy.consent.revoke',
+        resourceType: 'client_consent',
+        resourceId: row.id,
+        after: { clientId: d.clientId, signedByName: d.signedByName.trim(), revokedCount },
+      });
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'privacy.consent.revoke',
-      resourceType: 'client_consent',
-      resourceId: row.id,
-      after: { clientId: d.clientId, signedByName: d.signedByName.trim(), revokedCount },
-    });
-  });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath(`/staff/clients/${d.clientId}/privacy`);
+  return { ok: true };
 }

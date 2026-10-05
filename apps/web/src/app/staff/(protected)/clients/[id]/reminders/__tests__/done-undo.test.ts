@@ -1,3 +1,5 @@
+// Fachkatalog: REMINDER-TICKET-001
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // =============================================================================
@@ -19,6 +21,7 @@ const m = vi.hoisted(() => {
     assertClientAccessTx: vi.fn(),
     filterStaffAccessClientTx: vi.fn(),
     isStaffAdmin: vi.fn().mockReturnValue(false),
+    logWarn: vi.fn(),
     ActionError,
   };
 });
@@ -44,6 +47,9 @@ vi.mock('@/server/db/assert-tenant', () => ({
   assertStaffInTenant: vi.fn(),
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/server/logger', () => ({
+  log: { warn: m.logWarn, info: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 
 import {
   markReminderDoneAction,
@@ -136,6 +142,28 @@ describe('markReminderDoneAction', () => {
     expect(m.notify).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ kind: 'CLIENT_REMINDER_DONE', staffId: DELEGIERT_VON }),
+    );
+  });
+
+  it('meldet ein Scheitern der Sofort-Benachrichtigung im Log, ohne das Erledigen zurückzunehmen', async () => {
+    stubWithStaff({
+      clientId: CLIENT,
+      subject: 'Test',
+      createdByStaff: DELEGIERT_VON,
+      doneAt: null,
+    });
+    const erledigt = m.withStaff.getMockImplementation()!;
+    m.withStaff
+      .mockImplementationOnce(erledigt)
+      .mockResolvedValueOnce({ ok: false, error: 'Datenbankfehler.' });
+    m.schedule.mockResolvedValue(false);
+
+    const result = await markReminderDoneAction({ id: REMINDER });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(m.logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ reminderId: REMINDER, error: 'Datenbankfehler.' }),
+      expect.any(String),
     );
   });
 

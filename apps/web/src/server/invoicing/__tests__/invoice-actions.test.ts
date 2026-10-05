@@ -1,3 +1,5 @@
+// Fachkatalog: INV-LIFECYCLE-FREEZE-001, INV-VAT-TOTALS-001
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({

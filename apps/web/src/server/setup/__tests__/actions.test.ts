@@ -11,6 +11,12 @@ vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: mocks.staffActionGuard }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
+vi.mock('@/server/auth/rbac', () => ({
+  toActionError: (error: unknown) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
+  }),
+}));
 
 import {
   dismissSetupChecklistAction,
@@ -45,7 +51,7 @@ describe('Setup-Einführung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await dismissSetupChecklistAction();
+    await expect(dismissSetupChecklistAction(null, new FormData())).resolves.toEqual({ ok: true });
 
     expect(mocks.staffActionGuard).toHaveBeenCalledWith({ requireAdmin: true });
     expect(tx.tenantSetting.upsert).toHaveBeenCalledWith(
@@ -75,7 +81,7 @@ describe('Setup-Einführung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await restoreSetupChecklistAction();
+    await expect(restoreSetupChecklistAction(null, new FormData())).resolves.toEqual({ ok: true });
 
     expect(tx.tenantSetting.deleteMany).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', key: SETUP_DISMISSED_SETTING_KEY },
@@ -88,7 +94,11 @@ describe('Setup-Einführung', () => {
 
   it('schreibt ohne Admin-Berechtigung nichts', async () => {
     mocks.staffActionGuard.mockResolvedValue({ ok: false, error: 'Keine Berechtigung.' });
-    await dismissSetupChecklistAction();
+    // Review-Befund F-01: die Ablehnung kommt beim Formular an, statt still zu verpuffen.
+    await expect(dismissSetupChecklistAction(null, new FormData())).resolves.toEqual({
+      ok: false,
+      error: 'Keine Berechtigung.',
+    });
     expect(mocks.withTenantContext).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });

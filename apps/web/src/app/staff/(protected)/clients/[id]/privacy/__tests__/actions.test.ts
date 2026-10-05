@@ -1,3 +1,5 @@
+// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyConsent } from '@/server/privacy/consent';
 
@@ -22,7 +24,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: mocks.staffActionGuard }));
-vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: mocks.assertClientAccessTx }));
+vi.mock('@/server/auth/rbac', () => ({
+  assertClientAccessTx: mocks.assertClientAccessTx,
+  toActionError: (error: unknown) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
+  }),
+}));
 vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: mocks.assertClientInTenant }));
 vi.mock('@/server/privacy/service', () => ({ renderNoticeForTenantTx: mocks.renderNotice }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
@@ -100,7 +108,7 @@ describe('revokeAllConsentAction', () => {
     const previousConsent = mixedConsent();
     mocks.consentFindFirst.mockResolvedValue({ consents: previousConsent });
 
-    await revokeAllConsentAction(formData());
+    await expect(revokeAllConsentAction(null, formData())).resolves.toEqual({ ok: true });
 
     expect(mocks.consentCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -122,9 +130,36 @@ describe('revokeAllConsentAction', () => {
     consent.optionSelections = [requiredSelection()];
     mocks.consentFindFirst.mockResolvedValue({ consents: consent });
 
-    await revokeAllConsentAction(formData());
+    await expect(revokeAllConsentAction(null, formData())).resolves.toEqual({ ok: true });
 
     expect(mocks.renderNotice).not.toHaveBeenCalled();
+    expect(mocks.consentCreate).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen fehlenden Namen mit Feldzuordnung und schreibt nichts (Review-Befund F-01)', async () => {
+    const data = formData();
+    data.set('signedByName', '');
+
+    await expect(revokeAllConsentAction(null, data)).resolves.toMatchObject({
+      ok: false,
+      error: 'Validierungsfehler.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { signedByName: [expect.any(String)] },
+    });
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+    expect(mocks.consentCreate).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen verweigerten Mandantenzugriff, statt zu werfen', async () => {
+    mocks.assertClientAccessTx.mockRejectedValueOnce(
+      new Error('Kein Zugriff auf diesen Mandanten.'),
+    );
+
+    await expect(revokeAllConsentAction(null, formData())).resolves.toEqual({
+      ok: false,
+      error: 'Kein Zugriff auf diesen Mandanten.',
+    });
     expect(mocks.consentCreate).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
   });

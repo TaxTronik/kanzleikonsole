@@ -2,6 +2,7 @@ import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import type { PersistedRecoveryCheckpoint, PersistedVerifyResult } from '@taxtronik/evidence';
 import { fmtDateTimeSeconds } from '@/lib/fmt';
 import { auditDisplayStatus } from '@/server/audit/status';
+import { ActionForm } from '@/components/action-form';
 import { createAuditRecoveryCheckpointAction, triggerAuditVerifyAction } from './actions';
 
 type ChainStatus = ReturnType<typeof auditDisplayStatus>;
@@ -48,11 +49,11 @@ export function AuditChainStatusCard({
             <p className="text-xs text-secondary mt-2">Recovery-Checkpoint angelegt.</p>
           )}
         </div>
-        <form action={triggerAuditVerifyAction}>
+        <ActionForm action={triggerAuditVerifyAction} errorDisplay="inline">
           <button type="submit" className="btn-secondary text-xs shrink-0">
             Jetzt prüfen
           </button>
-        </form>
+        </ActionForm>
       </div>
     </div>
   );
@@ -211,8 +212,9 @@ function BrokenChainResult({ verifyResult }: { verifyResult: PersistedVerifyResu
 
 function RecoveryCheckpointForm() {
   return (
-    <form
+    <ActionForm
       action={createAuditRecoveryCheckpointAction}
+      errorDisplay="inline"
       className="mt-3 rounded-md border border-red-300 bg-white/70 p-3 dark:border-red-800 dark:bg-red-950/60"
     >
       <p className="text-xs font-medium text-red-900 dark:text-red-100">Wiederaufnahme markieren</p>
@@ -231,6 +233,6 @@ function RecoveryCheckpointForm() {
           Recovery-Checkpoint anlegen
         </button>
       </div>
-    </form>
+    </ActionForm>
   );
 }

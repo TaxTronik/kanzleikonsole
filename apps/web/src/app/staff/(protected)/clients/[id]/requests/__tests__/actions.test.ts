@@ -227,7 +227,7 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await closeRequestAction(lifecycleData());
+    await expect(closeRequestAction(null, lifecycleData())).resolves.toEqual({ ok: true });
 
     expect(tx.request.updateMany).toHaveBeenCalledWith({
       where: { id: REQUEST_ID, status: 'OPEN' },
@@ -259,7 +259,7 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await closeRequestAction(lifecycleData());
+    await closeRequestAction(null, lifecycleData());
 
     expect(tx.request.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: REQUEST_ID, status: 'OPEN' } }),
@@ -284,7 +284,7 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
         async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
       );
 
-      await reopenRequestAction(lifecycleData());
+      await reopenRequestAction(null, lifecycleData());
 
       expect(tx.request.updateMany).toHaveBeenCalledWith({
         where: { id: REQUEST_ID, status },
@@ -315,7 +315,7 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await reopenRequestAction(lifecycleData());
+    await reopenRequestAction(null, lifecycleData());
 
     expect(tx.request.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: REQUEST_ID, status: 'RESPONDED' } }),
@@ -336,11 +336,52 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await reopenRequestAction(lifecycleData());
+    await reopenRequestAction(null, lifecycleData());
 
     expect(tx.request.findFirst).not.toHaveBeenCalled();
     expect(tx.request.updateMany).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('meldet eine unbekannte Anforderung, statt still zu verpuffen (Review-Befund F-01)', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue(null);
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await expect(closeRequestAction(null, lifecycleData())).resolves.toEqual({
+      ok: false,
+      error: 'Anforderung nicht gefunden.',
+    });
+    await expect(reopenRequestAction(null, lifecycleData())).resolves.toEqual({
+      ok: false,
+      error: 'Anforderung nicht gefunden.',
+    });
+    expect(tx.request.updateMany).not.toHaveBeenCalled();
+    expect(mocks.emitN8nEvent).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen verweigerten Mandantenzugriff beim Schließen ohne Statuswechsel', async () => {
+    const tx = makeTx();
+    tx.request.findUnique.mockResolvedValue({
+      id: REQUEST_ID,
+      clientId: CLIENT_ID,
+      status: 'OPEN',
+    });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+    mocks.assertClientAccessTx.mockRejectedValueOnce(
+      new Error('Kein Zugriff auf diesen Mandanten.'),
+    );
+
+    await expect(closeRequestAction(null, lifecycleData())).resolves.toEqual({
+      ok: false,
+      error: 'Kein Zugriff auf diesen Mandanten.',
+    });
+    expect(tx.request.updateMany).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it('lehnt das Wiederöffnen ab, wenn bereits eine aktive GwG-Folgeanforderung besteht', async () => {
@@ -356,7 +397,7 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await reopenRequestAction(lifecycleData());
+    await reopenRequestAction(null, lifecycleData());
 
     expect(tx.request.updateMany).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
@@ -380,7 +421,7 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
 
-    await reopenRequestAction(lifecycleData());
+    await reopenRequestAction(null, lifecycleData());
 
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith(`/staff/requests/${REQUEST_ID}?reopenConflict=1`);

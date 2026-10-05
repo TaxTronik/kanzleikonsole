@@ -36,7 +36,13 @@ vi.mock('@/server/actions/staff-action', () => ({
   }),
   ActionError: class extends Error {},
 }));
-vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: async () => undefined }));
+vi.mock('@/server/auth/rbac', () => ({
+  assertClientAccessTx: async () => undefined,
+  toActionError: (error: unknown) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
+  }),
+}));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.audit } }));
 vi.mock('@/server/documents/resumable-upload', () => ({
   persistResumableDocumentUpload: m.persist,
@@ -48,7 +54,11 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: vi.fn(), getBucketForTier: vi.fn() }));
-import { importAttachment } from '@/app/staff/(protected)/mailbox/actions';
+import {
+  importAttachment,
+  saveMailbox,
+  setMailboxEnabled,
+} from '@/app/staff/(protected)/mailbox/actions';
 const uuid = '11111111-1111-4111-8111-111111111111';
 let attachment: Attachment;
 let type: DocType;
@@ -64,6 +74,11 @@ function makeTx() {
         Object.assign(attachment, data);
         return { count: 1 };
       }),
+      update: vi.fn(async () => undefined),
+    },
+    inboundMailbox: {
+      create: vi.fn(async () => ({ id: uuid })),
+      findFirst: vi.fn(async () => null),
       update: vi.fn(async () => undefined),
     },
   };
@@ -105,7 +120,10 @@ describe('mail archive completion after object-store I/O', () => {
     m.finish.mockImplementationOnce(() => {
       m.enabled = false;
     });
-    await expect(importAttachment(form())).rejects.toThrow('Modul deaktiviert');
+    await expect(importAttachment(null, form())).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Modul deaktiviert'),
+    });
     expect(m.tx.inboundAttachment.update).not.toHaveBeenCalled();
     expect(m.audit).not.toHaveBeenCalled();
   });
@@ -113,11 +131,14 @@ describe('mail archive completion after object-store I/O', () => {
     m.finish.mockImplementationOnce(() => {
       m.tx.documentType.findFirst.mockResolvedValue(null);
     });
-    await expect(importAttachment(form())).rejects.toThrow('Dokumenttyp');
+    await expect(importAttachment(null, form())).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Dokumenttyp'),
+    });
     expect(m.tx.inboundAttachment.update).not.toHaveBeenCalled();
   });
   it('binds a single private archive without automatic portal sharing', async () => {
-    await importAttachment(form());
+    await expect(importAttachment(null, form())).resolves.toEqual({ ok: true });
     expect(m.persist.mock.calls[0]![0].documentData.sharedWithClientAt).toBeUndefined();
     expect(m.persist.mock.calls[0]![0].resumeWhere.sharedWithClientAt).toBeNull();
     expect(m.audit).toHaveBeenCalledWith(
@@ -132,7 +153,48 @@ describe('mail archive completion after object-store I/O', () => {
   });
   it('rejects personnel material through the general mailbox archive path', async () => {
     type.classificationKey = 'PERSONNEL';
-    await expect(importAttachment(form())).rejects.toThrow('Ablagetyp');
+    await expect(importAttachment(null, form())).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Ablagetyp'),
+    });
     expect(m.persist).not.toHaveBeenCalled();
+  });
+  it('meldet ungültige Zuordnungsdaten mit Feldzuordnung, ohne zu archivieren (F-01)', async () => {
+    const f = form();
+    f.set('documentTypeId', 'keine-uuid');
+
+    await expect(importAttachment(null, f)).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { documentTypeId: [expect.any(String)] },
+    });
+    expect(m.persist).not.toHaveBeenCalled();
+  });
+});
+describe('Postfach-Verwaltung — Rückkanal (Review-Befund F-01)', () => {
+  it('meldet unvollständige Postfachdaten mit Feldzuordnung, ohne etwas anzulegen', async () => {
+    const f = new FormData();
+    f.set('name', '');
+    f.set('provider', 'IMAP');
+
+    await expect(saveMailbox(null, f)).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { name: [expect.any(String)] },
+    });
+    expect(m.tx.inboundMailbox.create).not.toHaveBeenCalled();
+    expect(m.audit).not.toHaveBeenCalled();
+  });
+  it('meldet ein unbekanntes Postfach beim Aktivieren, statt in error.tsx zu enden', async () => {
+    const f = new FormData();
+    f.set('id', uuid);
+    f.set('enabled', 'true');
+
+    await expect(setMailboxEnabled(null, f)).resolves.toEqual({
+      ok: false,
+      error: 'Postfach nicht gefunden.',
+    });
+    expect(m.tx.inboundMailbox.update).not.toHaveBeenCalled();
+    expect(m.audit).not.toHaveBeenCalled();
   });
 });

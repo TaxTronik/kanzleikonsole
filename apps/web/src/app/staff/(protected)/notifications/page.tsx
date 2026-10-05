@@ -2,6 +2,7 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { markNotificationReadAction, markAllNotificationsReadAction } from './actions';
+import { ActionForm } from '@/components/action-form';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { NOTIFICATION_KIND_LABELS } from '@/lib/domain-labels';
 import { NotificationOpenLink } from '@/components/notification-open-link';
@@ -42,12 +43,16 @@ export default async function NotificationsPage() {
           </p>
         </div>
         {unreadCount > 0 && (
-          <form action={markAllNotificationsReadAction} className="max-w-full">
+          <ActionForm
+            action={markAllNotificationsReadAction}
+            errorDisplay="inline"
+            className="max-w-full"
+          >
             <button type="submit" className="btn-secondary max-w-full whitespace-normal text-left">
               <Check className="h-4 w-4 shrink-0" />
               Alle als gelesen markieren
             </button>
-          </form>
+          </ActionForm>
         )}
       </div>
 
@@ -95,7 +100,11 @@ export default async function NotificationsPage() {
                     </p>
                   </div>
                   {!n.readAt && (
-                    <form action={markNotificationReadAction} className="shrink-0">
+                    <ActionForm
+                      action={markNotificationReadAction}
+                      errorDisplay="inline"
+                      className="shrink-0"
+                    >
                       <input type="hidden" name="id" value={n.id} />
                       <button
                         type="submit"
@@ -104,7 +113,7 @@ export default async function NotificationsPage() {
                       >
                         <Check className="h-4 w-4" />
                       </button>
-                    </form>
+                    </ActionForm>
                   )}
                 </div>
               </li>

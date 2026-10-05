@@ -75,6 +75,7 @@ import { updateAppointmentAction } from '@/app/staff/(protected)/calendar/action
 import { updateHandoverStatusAction } from '@/app/staff/(protected)/clients/[id]/handovers/actions';
 import {
   forwardPhoneNoteAction,
+  markNoteReadAction,
   markPhoneNoteDoneAction,
   phoneNoteToReminderAction,
 } from '@/app/staff/(protected)/phone-notes/actions';
@@ -137,10 +138,74 @@ describe('fachliche Lifecycle-Guards', () => {
     formData.set('requestId', UUID);
     formData.set('approve', '1');
 
-    await decideVacationAction(formData);
+    // Dieselbe Entscheidung erneut bleibt ein No-op (Review-Befund F-01: Ergebnis statt void).
+    await expect(decideVacationAction(null, formData)).resolves.toEqual({ ok: true });
 
     expect(tx.vacationRequest.updateMany).not.toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('meldet eine abweichende Entscheidung über einen nicht mehr offenen Antrag', async () => {
+    const tx = {
+      vacationRequest: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: UUID,
+          tenantId: 'tenant-1',
+          staffId: OLD_STAFF,
+          status: 'APPROVED',
+        }),
+        updateMany: vi.fn(),
+      },
+    };
+    h.currentTx = tx;
+    const formData = new FormData();
+    formData.set('requestId', UUID);
+
+    await expect(decideVacationAction(null, formData)).resolves.toEqual({
+      ok: false,
+      error: 'Der Urlaubsantrag ist nicht mehr offen.',
+    });
+    expect(tx.vacationRequest.updateMany).not.toHaveBeenCalled();
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('meldet das 4-Augen-Prinzip, statt den eigenen Antrag still zu ignorieren', async () => {
+    const tx = {
+      vacationRequest: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: UUID,
+          tenantId: 'tenant-1',
+          staffId: 'staff-1',
+          status: 'PENDING',
+        }),
+        updateMany: vi.fn(),
+      },
+    };
+    h.currentTx = tx;
+    const formData = new FormData();
+    formData.set('requestId', UUID);
+    formData.set('approve', '1');
+
+    await expect(decideVacationAction(null, formData)).resolves.toEqual({
+      ok: false,
+      error: 'Den eigenen Urlaubsantrag muss eine andere Person entscheiden.',
+    });
+    expect(tx.vacationRequest.updateMany).not.toHaveBeenCalled();
+    expect(h.evidenceRecord).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('meldet eine ungültige Antrags-ID, ohne die Transaktion zu öffnen', async () => {
+    const formData = new FormData();
+    formData.set('requestId', 'keine-uuid');
+
+    await expect(decideVacationAction(null, formData)).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { requestId: [expect.any(String)] },
+    });
+    await expect(cancelVacationAction(null, formData)).resolves.toMatchObject({ ok: false });
+    expect(h.withStaff).not.toHaveBeenCalled();
   });
 
   it('erlaubt die ausdrückliche Rücknahme eines genehmigten Urlaubs', async () => {
@@ -159,7 +224,7 @@ describe('fachliche Lifecycle-Guards', () => {
     const formData = new FormData();
     formData.set('requestId', UUID);
 
-    await cancelVacationAction(formData);
+    await expect(cancelVacationAction(null, formData)).resolves.toEqual({ ok: true });
 
     expect(tx.vacationRequest.updateMany).toHaveBeenCalledWith({
       where: { id: UUID, status: 'APPROVED' },
@@ -206,6 +271,33 @@ describe('fachliche Lifecycle-Guards', () => {
     expect(result).toEqual({ ok: false, error: 'Kein Zugriff auf diesen Mandanten.' });
     expect(tx.phoneNote.update).not.toHaveBeenCalled();
     expect(h.resolveNotificationsTx).not.toHaveBeenCalled();
+  });
+
+  it('meldet eine fremde Telefonnotiz beim Lesen wie eine unbekannte, ohne etwas zu schreiben', async () => {
+    const tx = {
+      phoneNote: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ clientId: 'client-1' })
+          .mockResolvedValueOnce(null),
+        updateMany: vi.fn(),
+      },
+    };
+    h.currentTx = tx;
+    h.assertClientAccessTx.mockRejectedValue(
+      Object.assign(new Error('Kein Zugriff auf diesen Mandanten.'), { name: 'ForbiddenError' }),
+    );
+    const formData = new FormData();
+    formData.set('noteId', UUID);
+
+    const foreign = await markNoteReadAction(null, formData);
+    const unknown = await markNoteReadAction(null, formData);
+
+    expect(foreign).toEqual({ ok: false, error: 'Telefonnotiz nicht gefunden.' });
+    expect(unknown).toEqual(foreign);
+    expect(tx.phoneNote.updateMany).not.toHaveBeenCalled();
+    expect(h.resolveNotificationsTx).not.toHaveBeenCalled();
+    expect(h.revalidatePath).not.toHaveBeenCalled();
   });
 
   it('leitet eine mandantengebundene Telefonnotiz nur an zugriffsberechtigte Personen weiter', async () => {

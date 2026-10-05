@@ -31,13 +31,19 @@ beforeEach(() => {
 });
 
 function runWithTx(tx: unknown) {
-  m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) =>
-    fn(tx, {
-      tenantId: 'tenant-1',
-      staffId: 'staff-1',
-      session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
-    }),
-  );
+  // Wie withStaff: Fehler aus der Transaktion werden zum ActionResult.
+  m.withStaff.mockImplementation(async (fn: (txArg: unknown, ctx: unknown) => unknown) => {
+    try {
+      await fn(tx, {
+        tenantId: 'tenant-1',
+        staffId: 'staff-1',
+        session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
+      });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: (error as Error).message };
+    }
+  });
 }
 
 describe('Zeiterfassungs-Actions — RESTRICTED-Gate', () => {
@@ -59,7 +65,7 @@ describe('Zeiterfassungs-Actions — RESTRICTED-Gate', () => {
     };
     runWithTx(tx);
 
-    await stopTimerAction();
+    await expect(stopTimerAction(null, new FormData())).resolves.toEqual({ ok: true });
 
     expect(m.assertClientAccessTx).toHaveBeenCalledWith(tx, expect.any(Object), CLIENT_ID);
     expect(m.assertClientAccessTx.mock.invocationCallOrder[0]).toBeLessThan(
@@ -83,11 +89,39 @@ describe('Zeiterfassungs-Actions — RESTRICTED-Gate', () => {
     const form = new FormData();
     form.set('id', ENTRY_ID);
 
-    await deleteTimeEntryAction(form);
+    await expect(deleteTimeEntryAction(null, form)).resolves.toEqual({ ok: true });
 
     expect(m.assertClientAccessTx).toHaveBeenCalledWith(tx, expect.any(Object), CLIENT_ID);
     expect(m.assertClientAccessTx.mock.invocationCallOrder[0]).toBeLessThan(
       tx.timeEntry.delete.mock.invocationCallOrder[0]!,
     );
+  });
+});
+
+describe('Zeiterfassungs-Actions — Rückkanal (Review-Befund F-01)', () => {
+  it('meldet eine ungültige Eintrags-ID, ohne die Transaktion zu öffnen', async () => {
+    const form = new FormData();
+    form.set('id', 'kein-uuid');
+
+    const result = await deleteTimeEntryAction(null, form);
+
+    expect(result).toMatchObject({ ok: false, errorCode: 'VALIDATION_ERROR' });
+    expect(m.withStaff).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen unbekannten oder fremden Eintrag, statt still nichts zu löschen', async () => {
+    const tx = {
+      timeEntry: { findFirst: vi.fn().mockResolvedValue(null), delete: vi.fn() },
+    };
+    runWithTx(tx);
+    const form = new FormData();
+    form.set('id', ENTRY_ID);
+
+    await expect(deleteTimeEntryAction(null, form)).resolves.toEqual({
+      ok: false,
+      error: 'Zeiteintrag nicht gefunden.',
+    });
+    expect(tx.timeEntry.delete).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 });

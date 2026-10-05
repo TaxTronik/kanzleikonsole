@@ -217,6 +217,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Fehlende Berechtigung bei Mandantenanlage und Onboarding zeigt eine Meldung
+  im Formular statt zur Anmeldung umzuleiten; Validierungsfehler erscheinen im
+  Formular statt über `?error=` in der Adresszeile.
 - **[Scope]** Sammel-Downloads als ZIP erzeugen ein einziges Audit-Ereignis
   `document.download.bulk` mit allen gelieferten Dokument-IDs statt eines
   `document.download` je Dokument; die Hash-Kette der Kanzlei bleibt dadurch
@@ -455,6 +458,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Formulare der Kanzlei und des Mandantenportals melden Eingabe-,
+  Berechtigungs- und Fachfehler jetzt direkt im Formular; die Eingaben bleiben
+  erhalten. Bisher endeten etwa die Plausibilitätsprüfungen der
+  Bescheiderfassung, Fristen-Sammelaktionen, DSGVO-Anträge, Mandantenanlage,
+  Rechnungsstatus oder Smart-Mailbox in „Seite konnte nicht geladen werden“,
+  oder Fehler wurden still verworfen: Der Vollmachtswiderruf meldete Erfolg
+  auch bei Ablehnung, ein abgelehnter Einwilligungswiderruf im Portal blieb
+  ohne Hinweis, das Vier-Augen-Prinzip beim eigenen Urlaubsantrag griff ohne
+  Meldung. Ein Guardrail-Test verhindert künftig Server-Actions ohne
+  Rückmeldung und verworfene Prüfergebnisse; der Autorisierungs-Guardrail
+  prüft jetzt alle `'use server'`-Dateien (`FK-EXC-20261004-014`,
+  `FK-EXC-20261004-015`).
 - Die GwG-Schutzinvarianten, die beim Deploy und Kunden-Update über den Start
   schreibender Dienste entscheiden, liefen in CI nie gegen eine echte
   Datenbank; die Tests ersetzten `compose` durch eine Funktion, die immer

@@ -364,54 +364,63 @@ const CloseSchema = z.object({
   requestId: z.string().uuid(),
 });
 
-export async function closeRequestAction(formData: FormData): Promise<void> {
+export async function closeRequestAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) return; // void-Action: still abbrechen
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = parseFormData(CloseSchema, formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
   const { requestId } = parsed.data;
 
-  const closed = await withTenantContext(ctx, async (tx) => {
-    const before = await tx.request.findUnique({ where: { id: requestId } });
-    if (!before) return { closed: false, formSubmissionId: null as string | null };
-    await assertClientAccessTx(tx, session, before.clientId);
-    if (!['OPEN', 'IN_PROGRESS', 'RESPONDED'].includes(before.status)) {
-      return { closed: false, formSubmissionId: before.formSubmissionId };
-    }
-    const claimed = await tx.request.updateMany({
-      // Exakter Status-CAS statt nur "nicht terminal": gewinnt parallel z. B.
-      // OPEN -> RESPONDED, darf dieser Aufruf weder dessen neuen Zustand mit
-      // einem stale `before: OPEN` schließen noch ein falsches Audit schreiben.
-      where: { id: requestId, status: before.status },
-      data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
+  let closed: { closed: boolean; formSubmissionId: string | null };
+  try {
+    closed = await withTenantContext(ctx, async (tx) => {
+      const before = await tx.request.findUnique({ where: { id: requestId } });
+      if (!before) throw new ActionError('Anforderung nicht gefunden.');
+      await assertClientAccessTx(tx, session, before.clientId);
+      if (!['OPEN', 'IN_PROGRESS', 'RESPONDED'].includes(before.status)) {
+        return { closed: false, formSubmissionId: before.formSubmissionId };
+      }
+      const claimed = await tx.request.updateMany({
+        // Exakter Status-CAS statt nur "nicht terminal": gewinnt parallel z. B.
+        // OPEN -> RESPONDED, darf dieser Aufruf weder dessen neuen Zustand mit
+        // einem stale `before: OPEN` schließen noch ein falsches Audit schreiben.
+        where: { id: requestId, status: before.status },
+        data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
+      });
+      if (claimed.count !== 1) {
+        return { closed: false, formSubmissionId: before.formSubmissionId };
+      }
+      await resolveNotificationsTx(tx, {
+        tenantId,
+        resources: [{ resourceType: 'request', resourceId: requestId }],
+      });
+      await evidenceService.record(tx, {
+        tenantId,
+        actorType: 'STAFF',
+        actorId: staffId,
+        action: 'request.close',
+        resourceType: 'request',
+        resourceId: requestId,
+        before: { status: before.status },
+        after: { status: 'CLOSED' },
+      });
+      return { closed: true, formSubmissionId: before.formSubmissionId };
     });
-    if (claimed.count !== 1) {
-      return { closed: false, formSubmissionId: before.formSubmissionId };
-    }
-    await resolveNotificationsTx(tx, {
-      tenantId,
-      resources: [{ resourceType: 'request', resourceId: requestId }],
-    });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'request.close',
-      resourceType: 'request',
-      resourceId: requestId,
-      before: { status: before.status },
-      after: { status: 'CLOSED' },
-    });
-    return { closed: true, formSubmissionId: before.formSubmissionId };
-  });
+  } catch (error) {
+    return toActionError(error);
+  }
 
   if (closed.closed) await emitN8nEvent('request.closed', { tenantId, requestId }, { tenantId });
   revalidatePath(`/staff/requests/${requestId}`);
   revalidatePath('/staff/requests');
   revalidatePath('/portal/forms');
   if (closed.formSubmissionId) revalidatePath(`/portal/forms/${closed.formSubmissionId}`);
+  return { ok: true };
 }
 
 /**
@@ -420,13 +429,16 @@ export async function closeRequestAction(formData: FormData): Promise<void> {
  * Formular wird dadurch im Portal wieder bearbeitbar; bereits
  * SUBMITTED/REVIEWED bleibt es unverändert. CANCELLED bleibt terminal.
  */
-export async function reopenRequestAction(formData: FormData): Promise<void> {
+export async function reopenRequestAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) return;
+  if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
   const parsed = parseFormData(CloseSchema, formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
   const { requestId } = parsed.data;
 
   let result: { formSubmissionId: string | null; conflict: boolean };
@@ -442,7 +454,7 @@ export async function reopenRequestAction(formData: FormData): Promise<void> {
           linkedGwgIdDocumentId: true,
         },
       });
-      if (!before) return { formSubmissionId: null, conflict: false };
+      if (!before) throw new ActionError('Anforderung nicht gefunden.');
       await assertClientAccessTx(tx, session, before.clientId);
 
       if (before.status !== 'CLOSED' && before.status !== 'RESPONDED') {
@@ -488,22 +500,22 @@ export async function reopenRequestAction(formData: FormData): Promise<void> {
   } catch (error) {
     // Die partielle DB-Unique ist der Race-Backstop, falls zwischen Vorpruefung
     // und Statuswechsel parallel der Ablauf-Worker eine neue Anforderung anlegt.
+    // Der Konflikt bleibt beim etablierten Seitenhinweis (?reopenConflict=1).
     if (isActiveGwgRequestConflict(error)) {
-      redirect(`/staff/requests/${requestId}?reopenConflict=1`);
-      return;
+      return redirect(`/staff/requests/${requestId}?reopenConflict=1`);
     }
-    throw error;
+    return toActionError(error);
   }
 
   if (result.conflict) {
-    redirect(`/staff/requests/${requestId}?reopenConflict=1`);
-    return;
+    return redirect(`/staff/requests/${requestId}?reopenConflict=1`);
   }
 
   revalidatePath(`/staff/requests/${requestId}`);
   revalidatePath('/staff/requests');
   revalidatePath('/portal/forms');
   if (result.formSubmissionId) revalidatePath(`/portal/forms/${result.formSubmissionId}`);
+  return { ok: true };
 }
 
 const StaffResponseSchema = z.object({

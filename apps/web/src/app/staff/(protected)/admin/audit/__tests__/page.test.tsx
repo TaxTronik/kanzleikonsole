@@ -32,8 +32,9 @@ vi.mock('@/server/audit-access/token', () => ({
   AUDIT_TOKEN_TTL_DAYS: 7,
 }));
 vi.mock('../actions', () => ({
-  createAuditRecoveryCheckpointAction: '/test/recovery',
-  triggerAuditVerifyAction: '/test/verify',
+  // Formulare laufen über ActionForm (useActionState) und brauchen Funktionen.
+  createAuditRecoveryCheckpointAction: async () => ({ ok: true }),
+  triggerAuditVerifyAction: async () => ({ ok: true }),
 }));
 vi.mock('../audit-anchor-auto-refresh', () => ({ AuditAnchorAutoRefresh: () => null }));
 vi.mock('../audit-verify-auto-refresh', () => ({

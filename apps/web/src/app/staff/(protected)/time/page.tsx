@@ -3,6 +3,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { StartTimerForm } from './start-form';
 import { stopTimerAction, deleteTimeEntryAction } from './actions';
+import { ActionForm } from '@/components/action-form';
 import { fmtMinutes, fmtTimeShort } from '@/lib/fmt';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
 import { buildTimePageAccessFilters } from './access';
@@ -90,7 +91,7 @@ export default async function TimeTrackingPage() {
                           {fmtMinutes(minutes)}
                         </span>
                         {!isRunning && (
-                          <form action={deleteTimeEntryAction}>
+                          <ActionForm action={deleteTimeEntryAction} errorDisplay="inline">
                             <input type="hidden" name="id" value={e.id} />
                             <button
                               type="submit"
@@ -99,7 +100,7 @@ export default async function TimeTrackingPage() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
-                          </form>
+                          </ActionForm>
                         )}
                       </div>
                     </div>
@@ -116,12 +117,12 @@ export default async function TimeTrackingPage() {
               <h2 className="text-sm font-medium text-primary mb-3">Läuft gerade</h2>
               <p className="text-sm text-secondary mb-1">{running.description}</p>
               <p className="text-xs text-muted mb-4">seit {fmtTime(running.startedAt)}</p>
-              <form action={stopTimerAction}>
+              <ActionForm action={stopTimerAction} errorDisplay="inline">
                 <button type="submit" className="btn-primary w-full">
                   <Square className="h-3.5 w-3.5" />
                   Stoppen
                 </button>
-              </form>
+              </ActionForm>
             </>
           ) : (
             <>

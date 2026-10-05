@@ -1,3 +1,5 @@
+// Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyConsent } from '@/server/privacy/consent';
 
@@ -23,7 +25,7 @@ vi.mock('@/server/actions/portal-action', () => {
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/logger', () => ({ log: { warn: mocks.logWarn } }));
 
-import { revokeOwnConsentAction } from '../actions';
+import { revokeOwnConsentAction, saveNotificationSettingAction } from '../actions';
 
 const tx = {
   clientContact: { findFirst: mocks.contactFindFirst },
@@ -79,8 +81,13 @@ beforeEach(() => {
         context: { tenantId: string; contactId: string; clientId: string },
       ) => Promise<void>,
     ) => {
-      await callback(tx, { tenantId: TENANT_ID, contactId: CONTACT_ID, clientId: CLIENT_ID });
-      return { ok: true };
+      // Wie withPortalContext: Fachfehler werden zum ActionResult.
+      try {
+        await callback(tx, { tenantId: TENANT_ID, contactId: CONTACT_ID, clientId: CLIENT_ID });
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
     },
   );
   mocks.contactFindFirst.mockResolvedValue({ fullName: 'Erika Mustermann' });
@@ -97,7 +104,7 @@ describe('revokeOwnConsentAction', () => {
       signedByContact: CONTACT_ID,
     });
 
-    await revokeOwnConsentAction();
+    await expect(revokeOwnConsentAction(null, new FormData())).resolves.toEqual({ ok: true });
 
     expect(mocks.consentCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -124,9 +131,41 @@ describe('revokeOwnConsentAction', () => {
       signedByContact: CONTACT_ID,
     });
 
-    await revokeOwnConsentAction();
+    await expect(revokeOwnConsentAction(null, new FormData())).resolves.toEqual({ ok: true });
 
     expect(mocks.consentCreate).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('meldet einen fremden Einwilligungsstand an das Formular, ohne einen Widerruf anzulegen', async () => {
+    mocks.consentFindFirst.mockResolvedValue({
+      consents: mixedConsent(),
+      noticeVersion: 2,
+      noticeSnapshot: 'Gezeigter Datenschutzhinweis',
+      signedByContact: OPTIONAL_ID,
+    });
+
+    const result = await revokeOwnConsentAction(null, new FormData());
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining('nicht Ihrem Portal-Kontakt zugeordnet'),
+    });
+    expect(mocks.consentCreate).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('saveNotificationSettingAction', () => {
+  it('gibt eine abgelehnte Portal-Sitzung an das Formular zurück', async () => {
+    mocks.withPortalContext.mockResolvedValueOnce({ ok: false, error: 'Nicht angemeldet.' });
+    const formData = new FormData();
+    formData.set('enabled', 'on');
+
+    await expect(saveNotificationSettingAction(null, formData)).resolves.toEqual({
+      ok: false,
+      error: 'Nicht angemeldet.',
+    });
+    expect(mocks.logWarn).toHaveBeenCalled();
   });
 });

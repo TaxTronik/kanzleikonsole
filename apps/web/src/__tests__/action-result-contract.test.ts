@@ -105,90 +105,18 @@ const LEGACY_UNMAPPED_VALIDATION_ERRORS: Readonly<Record<string, number>> = {
  */
 const VOID_ACTION_ALLOWLIST: Readonly<Record<string, string>> = {
   'app/payroll/employee/actions.ts::leaveEmployeeAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
+    'Abmelden aus dem Lohn-Gastzugang: kein Fachfehler möglich, technische Fehler werden ' +
+    'geworfen statt verschluckt; das Ergebnis ist die neu gerenderte, abgemeldete Seite.',
   'app/portal/(auth)/login/actions.ts::confirmMagicLinkAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
+    'Jeder Ausgang ist ein Redirect: Erfolg zum Rücksprungziel, Fehler nach ' +
+    '/portal/login/verify?status=invalid|rate-limited, wo die Seite den Grund anzeigt.',
   'app/portal/(protected)/profile-actions.ts::switchPortalProfileAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/portal/(protected)/settings/actions.ts::revokeOwnConsentAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/portal/(protected)/settings/actions.ts::saveNotificationSettingAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/absences/actions.ts::cancelVacationAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/absences/actions.ts::decideVacationAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/absences/actions.ts::deleteAbsenceAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/absences/actions.ts::endAbsenceAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/admin/archive/actions.ts::triggerAuditRotateAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/admin/audit/actions.ts::createAuditRecoveryCheckpointAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/admin/audit/actions.ts::triggerAuditVerifyAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/admin/setup-actions.ts::dismissSetupChecklistAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/admin/setup-actions.ts::restoreSetupChecklistAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/clients/[id]/bwa/actions.ts::deleteBwaPeriodAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/clients/[id]/contacts/actions.ts::deactivateContactAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/clients/[id]/gwg/actions.ts::openCheckAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/clients/[id]/privacy/actions.ts::revokeAllConsentAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/clients/[id]/requests/actions.ts::closeRequestAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/clients/[id]/requests/actions.ts::reopenRequestAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/knowledge/actions.ts::createArticleAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/knowledge/actions.ts::deleteArticleAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/knowledge/actions.ts::updateArticleAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/mailbox/actions.ts::connectMicrosoft':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/mailbox/actions.ts::importAttachment':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/mailbox/actions.ts::saveMailbox':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/mailbox/actions.ts::setMailboxEnabled':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/notifications/actions.ts::markAllNotificationsReadAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/notifications/actions.ts::markNotificationReadAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/phone-notes/actions.ts::markNoteReadAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/time/actions.ts::deleteTimeEntryAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/time/actions.ts::stopTimerAction':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
+    'Navigationsaktion: jeder Ausgang ist ein Redirect (Ziel, Dashboard oder Login); ein ' +
+    'nicht auflösbares Zielprofil wird bewusst nicht offengelegt, geschrieben wird dann nichts.',
 };
 
 /** Bewusst verworfene Wrapper-Ergebnisse (`datei::Funktion::Wrapper`) mit Begründung. */
-const DISCARDED_WRAPPER_RESULT_ALLOWLIST: Readonly<Record<string, string>> = {
-  'app/staff/(protected)/absences/actions.ts::cancelVacationAction::withStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/absences/actions.ts::decideVacationAction::withStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/absences/actions.ts::deleteAbsenceAction::withStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/absences/actions.ts::endAbsenceAction::withStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/clients/[id]/reminders/actions.ts::markReminderDoneAction::withRemindersStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/notifications/actions.ts::markAllNotificationsReadAction::withStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/time/actions.ts::deleteTimeEntryAction::withTimeTrackingStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-  'app/staff/(protected)/time/actions.ts::stopTimerAction::withTimeTrackingStaff':
-    'Altbestand F-01: Rückkanal folgt im nächsten Commit (kein Kernablauf).',
-};
+const DISCARDED_WRAPPER_RESULT_ALLOWLIST: Readonly<Record<string, string>> = {};
 
 /** Wrapper, deren `{ ok: false }` ein Ergebnis ist und nicht geworfen wird. */
 const RESULT_WRAPPERS = new Set([

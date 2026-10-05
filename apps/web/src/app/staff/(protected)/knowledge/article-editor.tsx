@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import { FileText, ImagePlus, Paperclip } from 'lucide-react';
+import { ActionForm, type FormAction } from '@/components/action-form';
 import { RichMarkdownEditor, type RichMarkdownEditorHandle } from './rich-markdown-editor';
 
 interface KnowledgeAttachment {
@@ -11,7 +12,7 @@ interface KnowledgeAttachment {
 }
 
 interface Props {
-  action: (formData: FormData) => Promise<void>;
+  action: FormAction;
   categories: Array<{ id: string; name: string }>;
   draftToken: string;
   initial?: {
@@ -111,17 +112,17 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
     }
   }
 
-  function validateContent(event: FormEvent<HTMLFormElement>) {
+  function validateContent(): boolean {
     if (body.trim()) {
       setContentError(null);
-      return;
+      return true;
     }
-    event.preventDefault();
     setContentError('Bitte einen Artikelinhalt erfassen.');
+    return false;
   }
 
   return (
-    <form action={action} className="card overflow-hidden" onSubmit={validateContent}>
+    <ActionForm action={action} className="card overflow-hidden" beforeSubmit={validateContent}>
       {initial && <input type="hidden" name="id" value={initial.id} />}
       <input type="hidden" name="body" value={body} />
       <input type="hidden" name="attachmentDraftToken" value={draftToken} />
@@ -245,6 +246,6 @@ export function ArticleEditor({ action, categories, draftToken, initial }: Props
           {initial ? 'Artikel speichern' : 'Artikel anlegen'}
         </button>
       </div>
-    </form>
+    </ActionForm>
   );
 }

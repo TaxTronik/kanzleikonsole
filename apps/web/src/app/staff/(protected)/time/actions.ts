@@ -74,12 +74,16 @@ export async function startTimerAction(
   );
 }
 
-export async function stopTimerAction(): Promise<void> {
-  await withTimeTrackingStaff(
+export async function stopTimerAction(
+  _prev: ActionResult | null,
+  _formData: FormData,
+): Promise<ActionResult> {
+  return withTimeTrackingStaff(
     async (tx, { tenantId, staffId, session }) => {
       const running = await tx.timeEntry.findFirst({
         where: { staffId, endedAt: null },
       });
+      // Bereits gestoppt (z. B. in einem anderen Tab): Zielzustand erreicht.
       if (!running) return;
       if (running.clientId) await assertClientAccessTx(tx, session, running.clientId);
       const updated = await tx.timeEntry.update({
@@ -103,16 +107,19 @@ export async function stopTimerAction(): Promise<void> {
   );
 }
 
-export async function deleteTimeEntryAction(formData: FormData): Promise<void> {
+export async function deleteTimeEntryAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   // F6: UUID-Validation.
   const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
   const { id } = parsed.data;
 
-  await withTimeTrackingStaff(
+  return withTimeTrackingStaff(
     async (tx, { tenantId, staffId, session }) => {
       const before = await tx.timeEntry.findFirst({ where: { id, staffId } });
-      if (!before) return;
+      if (!before) throw new ActionError('Zeiteintrag nicht gefunden.');
       if (before.clientId) await assertClientAccessTx(tx, session, before.clientId);
       // iter85 (GoB, Befund 10): abgerechnete Stunden sind Abrechnungsgrundlage
       // einer Rechnung — Löschen würde den Beleg-Zusammenhang zerstören.

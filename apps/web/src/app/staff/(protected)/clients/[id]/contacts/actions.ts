@@ -253,9 +253,12 @@ export async function rotateIcalTokenAction(
   return { ok: true };
 }
 
-export async function deactivateContactAction(formData: FormData): Promise<void> {
+export async function deactivateContactAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard();
-  if (!g.ok) return; // void-Action: bei fehlender Auth still abbrechen (wie zuvor)
+  if (!g.ok) return g;
   const { ctx, session } = g;
 
   // S2: UUID-Validation für beide IDs.
@@ -263,31 +266,36 @@ export async function deactivateContactAction(formData: FormData): Promise<void>
     z.object({ contactId: z.string().uuid(), clientId: z.string().uuid() }),
     formData,
   );
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
   const { contactId, clientId } = parsed.data;
 
-  await withTenantContext(ctx, async (tx) => {
-    const contact = await tx.clientContact.findUnique({
-      where: { id: contactId },
-      select: { clientId: true },
+  try {
+    await withTenantContext(ctx, async (tx) => {
+      const contact = await tx.clientContact.findUnique({
+        where: { id: contactId },
+        select: { clientId: true },
+      });
+      if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
+      if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+      await assertClientAccessTx(tx, session, contact.clientId);
+      await revokeAllSessions('portal', contactId);
+      await tx.clientContact.update({
+        where: { id: contactId },
+        data: { active: false, icalTokenVersion: { increment: 1 } },
+      });
+      await evidenceService.record(tx, {
+        tenantId: g.tenantId,
+        actorType: 'STAFF',
+        actorId: g.staffId,
+        action: 'client_contact.deactivate',
+        resourceType: 'client_contact',
+        resourceId: contactId,
+      });
     });
-    if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
-    if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
-    await assertClientAccessTx(tx, session, contact.clientId);
-    await revokeAllSessions('portal', contactId);
-    await tx.clientContact.update({
-      where: { id: contactId },
-      data: { active: false, icalTokenVersion: { increment: 1 } },
-    });
-    await evidenceService.record(tx, {
-      tenantId: g.tenantId,
-      actorType: 'STAFF',
-      actorId: g.staffId,
-      action: 'client_contact.deactivate',
-      resourceType: 'client_contact',
-      resourceId: contactId,
-    });
-  });
+  } catch (e) {
+    return toActionError(e);
+  }
 
   revalidatePath(`/staff/clients/${clientId}`);
+  return { ok: true };
 }

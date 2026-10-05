@@ -13,6 +13,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { countGranted, countRevocableGranted, parseConsent } from '@/server/privacy/consent';
 import { revokeOwnConsentAction, saveNotificationSettingAction } from './actions';
 import { AccessibleDisplaySettings } from '@/components/accessible-display';
+import { ActionForm } from '@/components/action-form';
 
 export default async function PortalSettingsPage() {
   const session = await portalAuth();
@@ -64,7 +65,7 @@ export default async function PortalSettingsPage() {
           Wenn ausgeschaltet, erhalten Sie keine Mails mehr für neue Anforderungen, Erinnerungen
           oder Bescheid-Eingänge. Alle Inhalte bleiben weiterhin im Portal sichtbar.
         </p>
-        <form action={saveNotificationSettingAction}>
+        <ActionForm action={saveNotificationSettingAction} errorDisplay="inline">
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-3 text-sm">
               <input
@@ -79,7 +80,7 @@ export default async function PortalSettingsPage() {
               Speichern
             </button>
           </div>
-        </form>
+        </ActionForm>
       </div>
 
       <div className="card p-6 border-red-200">
@@ -93,14 +94,14 @@ export default async function PortalSettingsPage() {
           Mandatsbearbeitung auf anderen Rechtsgrundlagen bleibt unberührt.
         </p>
         {canSelfRevoke && (
-          <form action={revokeOwnConsentAction}>
+          <ActionForm action={revokeOwnConsentAction} errorDisplay="inline">
             <button
               type="submit"
               className="btn-secondary text-red-700 border-red-300 hover:bg-red-50"
             >
               Widerrufbare Auswahl zurückziehen
             </button>
-          </form>
+          </ActionForm>
         )}
         {revocableConsentCount > 0 && !canSelfRevoke && (
           <p className="text-xs text-amber-700">

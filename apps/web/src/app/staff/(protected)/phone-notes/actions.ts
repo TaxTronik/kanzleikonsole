@@ -163,22 +163,32 @@ export async function createPhoneNoteAction(
   return { ok: true };
 }
 
-export async function markNoteReadAction(formData: FormData): Promise<void> {
+const PHONE_NOTE_NOT_FOUND = 'Telefonnotiz nicht gefunden.';
+
+export async function markNoteReadAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
   const g = await staffActionGuard({ module: 'phoneNotes' });
-  if (!g.ok) return;
+  if (!g.ok) return g;
   // S2: UUID-Validation (symmetrisch zu markNotificationReadAction).
   const parsed = parseFormData(z.object({ noteId: z.string().uuid() }), formData);
-  if (!parsed.ok) return;
+  if (!parsed.ok) return parsed;
   try {
-    await markPhoneNoteRead(parsed.data.noteId, g.tenantId, g.staffId, g.session);
+    const found = await markPhoneNoteRead(parsed.data.noteId, g.tenantId, g.staffId, g.session);
+    if (!found) return { ok: false, error: PHONE_NOTE_NOT_FOUND };
   } catch (error) {
-    // Form-Actions ohne Rückgabekanal behandeln fremde/vertrauliche IDs wie
-    // nicht vorhandene IDs. Insbesondere darf dabei keine Notification
-    // aufgelöst und kein readAt gesetzt werden.
-    if ((error as Error)?.name === 'ForbiddenError') return;
-    throw error;
+    // Fremde/vertrauliche IDs werden wie nicht vorhandene IDs gemeldet, damit
+    // die Rückmeldung nichts über fremde Mandanten verrät (Review-Befund F-01).
+    // Insbesondere darf dabei keine Notification aufgelöst und kein readAt
+    // gesetzt werden: assertClientAccessTx wirft vor jedem Schreibzugriff.
+    if ((error as Error)?.name === 'ForbiddenError') {
+      return { ok: false, error: PHONE_NOTE_NOT_FOUND };
+    }
+    return toActionError(error);
   }
   revalidatePath('/staff/phone-notes');
+  return { ok: true };
 }
 
 export async function markPhoneNoteReadById(id: string): Promise<ActionResult> {
@@ -196,18 +206,19 @@ export async function markPhoneNoteReadById(id: string): Promise<ActionResult> {
 }
 
 // Interner Helfer (kein UI-Action): erhält bereits autorisierten Kontext.
+// Liefert `false`, wenn es die Notiz im Tenant nicht gibt.
 async function markPhoneNoteRead(
   id: string,
   tenantId: string,
   staffId: string,
   session: StaffSession,
-): Promise<void> {
-  await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
+): Promise<boolean> {
+  return withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
     const note = await tx.phoneNote.findUnique({
       where: { id },
       select: { clientId: true },
     });
-    if (!note) return;
+    if (!note) return false;
     if (note.clientId) await assertClientAccessTx(tx, session, note.clientId);
     await tx.phoneNote.updateMany({
       where: { id, readAt: null },
@@ -218,6 +229,7 @@ async function markPhoneNoteRead(
       resources: [{ resourceType: 'phone_note', resourceId: id }],
       staffIds: [staffId],
     });
+    return true;
   });
 }
 
