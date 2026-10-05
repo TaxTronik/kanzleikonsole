@@ -2,11 +2,49 @@
 // Next.js Konfiguration
 // =============================================================================
 
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// P-22/P-13: Begrenzte Worker-Threads laden diese Parser zur Laufzeit als echte
+// Node-Module (src/server/util/worker-parser.ts, WORKER_PARSER_PACKAGES). Kein
+// statischer Import zeigt sie dem Output-Tracing; Paket und Abhängigkeiten
+// gehören deshalb ausdrücklich ins Standalone-Paket. Die Hülle wird beim Build
+// aus den package.json-Dateien bestimmt; scripts/verify-standalone-trace.mjs
+// lädt die Parser anschließend im Standalone-Paket zur Probe.
+const WORKER_PARSER_PACKAGES = ['pdf-lib', 'unpdf', 'mammoth'];
+
+function findPackageDir(name, fromDir) {
+  for (let dir = fromDir; ; dir = path.dirname(dir)) {
+    const candidate = path.join(dir, 'node_modules', name);
+    if (existsSync(path.join(candidate, 'package.json'))) return candidate;
+    if (path.dirname(dir) === dir) return null;
+  }
+}
+
+function workerParserTraceIncludes() {
+  const packageDirs = new Set();
+  const pending = WORKER_PARSER_PACKAGES.map((name) => [name, __dirname]);
+  while (pending.length > 0) {
+    const [name, fromDir] = pending.pop();
+    const dir = findPackageDir(name, fromDir);
+    if (!dir || packageDirs.has(dir)) continue;
+    packageDirs.add(dir);
+    const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    for (const dependency of Object.keys({
+      ...manifest.dependencies,
+      ...manifest.optionalDependencies,
+    })) {
+      pending.push([dependency, dir]);
+    }
+  }
+  return [...packageDirs]
+    .sort()
+    .map((dir) => `${path.relative(__dirname, dir).split(path.sep).join('/')}/**/*`);
+}
 
 // Single Source of Truth: ENVs aus der Repo-Root-.env laden. Verhindert Drift
 // zwischen Workspace-.env-Dateien (Next.js würde sonst nur apps/web/.env
@@ -27,10 +65,13 @@ const nextConfig = {
 
   // pg_dump is an external operator binary (PATH/PG_DUMP_PATH), not an app
   // asset. Its deliberately configurable process path makes static tracing
-  // conservative. Limit that exception to the sole web route that launches
-  // pg_dump, and explicitly exclude source/config/backup data that the
-  // compiled route never reads at runtime. A post-build verifier guards this
-  // contract against future broadening.
+  // conservative. This route used to launch pg_dump; since P-22 it only
+  // enqueues the worker job backup-run. The exclusions stay as a leak guard:
+  // source/config/backup data must never be traced for it. A post-build
+  // verifier guards this contract against future broadening.
+  outputFileTracingIncludes: {
+    '/**': workerParserTraceIncludes(),
+  },
   outputFileTracingExcludes: {
     '/api/staff/admin/backups/run': [
       'src/**/*',
@@ -67,7 +108,10 @@ const nextConfig = {
   // node_modules — darf NICHT gebündelt werden, sonst fehlen die Fonts.
   // The bounded PDF preflight worker resolves pdf-lib as a real Node module.
   // A bundled-only copy cannot be loaded inside that isolated worker thread.
-  serverExternalPackages: ['pdfkit', 'pdf-lib'],
+  // P-22: dasselbe gilt für die Textextraktion (unpdf für PDF, mammoth für
+  // DOCX), die in einem begrenzten Worker-Thread läuft; P-13 zählt PDF-Seiten
+  // von Ausweisquellen ebenso mit pdf-lib. Tracing: WORKER_PARSER_PACKAGES oben.
+  serverExternalPackages: ['pdfkit', 'pdf-lib', 'unpdf', 'mammoth'],
 
   // Reaktivität strenger.
   reactStrictMode: true,

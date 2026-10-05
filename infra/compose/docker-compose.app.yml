@@ -164,8 +164,9 @@ services:
       # NEXTAUTH_URL bleibt dabei unverändert (zeigt auf die public Subdomain).
       - '${APP_BIND:-127.0.0.1}:${APP_BIND_PORT:-3000}:3000'
     volumes:
-      # Browser-triggered Backups: lokale Operator-Kopie im Repo-Root unter
-      # ./backups, im read-only Container als gezielt schreibbares Volume.
+      # Lokale Operator-Kopien im Repo-Root unter ./backups, im read-only
+      # Container als gezielt schreibbares Volume. Seit P-22 reiht der
+      # Browser-Button nur den Worker-Job backup-run ein (ohne lokale Kopie).
       - ${BACKUP_HOST_DIR:-../../backups}:/app/backups
       - ${TSA_TRUSTED_ROOTS_HOST_DIR:-./tsa-roots}:/etc/taxtronik/tsa-roots:ro
 

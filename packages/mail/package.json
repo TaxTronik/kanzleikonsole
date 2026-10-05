@@ -8,6 +8,7 @@
   "types": "./src/index.ts",
   "exports": {
     "./imap": "./src/imap.ts",
+    "./bounded-worker": "./src/bounded-worker.ts",
     ".": "./src/index.ts",
     "./markdown": "./src/markdown.ts",
     "./markdown-safety": "./src/markdown-safety.ts"

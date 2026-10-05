@@ -296,6 +296,10 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/app/api/n8n/overdue-requests/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/api/n8n/request-detail/[id]/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/api/portal/ical/[token]/route.ts <- @/server/db/prisma-owner',
+  // Browser-Backup-Trigger (P-22): Ein tenantgebundener Admin darf den globalen
+  // pg_dump-Job nur in einer nachweislichen Single-Tenant-Installation einreihen;
+  // dafür liest die Route alle Tenant-IDs (wie zuvor runner.ts), sonst nichts.
+  'apps/web/src/app/api/staff/admin/backups/run/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/audit-verify/[token]/page.tsx <- @/server/db/prisma-owner',
   'apps/web/src/app/gwg-onboarding/actions.ts <- @/server/gwg-onboarding/service',
   // Unauthentifizierte, token-basierte PoA-Signatur-Dokumentansicht (kein

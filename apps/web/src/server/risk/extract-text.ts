@@ -15,16 +15,90 @@
 //
 // Für bereits hochgeladene Mandanten-Dokumente liefert
 // `fetchObjectBytes(bucket, storageKey)` (@taxtronik/storage) die Bytes.
+//
+// P-22: PDF (unpdf/pdf.js) und DOCX (mammoth) bis 25 MiB werden nicht mehr im
+// Event-Loop des Webprozesses geparst, sondern in einem begrenzten Worker-Thread
+// (Frist, V8-Heap, RSS-Wächter; @taxtronik/mail/bounded-worker). Beide Parser
+// sind deshalb `serverExternalPackages` (next.config.mjs), damit der Thread sie
+// als echte Node-Module laden kann (Auflösung im Thread, siehe
+// util/worker-parser.ts). Nur die Rohausgabe kommt zurück; die Aufbereitung
+// (htmlToText, cleanup) bleibt hier.
 // =============================================================================
 
-import mammoth from 'mammoth';
-import { extractText as unpdfExtractText, getDocumentProxy } from 'unpdf';
+import { runBoundedWorker, type BoundedWorkerLimits } from '@taxtronik/mail/bounded-worker';
+import { log } from '@/server/logger';
+import { LOAD_PARSER_SOURCE, workerParserBases } from '@/server/util/worker-parser';
 
 export class UnsupportedDocumentTypeError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'UnsupportedDocumentTypeError';
   }
+}
+
+/** Datei ließ sich innerhalb der Grenzen nicht lesen (beschädigt, zu komplex, verschlüsselt). */
+export class TextExtractionFailedError extends UnsupportedDocumentTypeError {
+  constructor() {
+    super(
+      'Der Text konnte nicht ausgelesen werden (Datei beschädigt, verschlüsselt oder zu komplex).',
+    );
+    this.name = 'TextExtractionFailedError';
+  }
+}
+
+export const TEXT_EXTRACTION_LIMITS: BoundedWorkerLimits = {
+  timeoutMs: 30_000,
+  rssBudgetBytes: 512 * 1024 * 1024,
+  maxOldGenerationSizeMb: 256,
+  maxYoungGenerationSizeMb: 32,
+  stackSizeMb: 4,
+};
+
+// Festes Programm; die Dokument-Bytes sind ausschließlich Daten (workerData).
+// Der Parser wird außerhalb des try geladen: Fehlt er, endet der Thread mit
+// einem Fehler (reason 'error') statt mit einer scheinbar unlesbaren Datei.
+const EXTRACTION_WORKER = `
+const { parentPort, workerData } = require('node:worker_threads');
+${LOAD_PARSER_SOURCE}
+const parser = loadParser(workerData.kind === 'pdf' ? 'unpdf' : 'mammoth');
+(async () => {
+  try {
+    if (workerData.kind === 'pdf') {
+      const { extractText, getDocumentProxy } = parser;
+      const pdf = await getDocumentProxy(new Uint8Array(workerData.bytes));
+      const { text } = await extractText(pdf, { mergePages: true });
+      parentPort.postMessage({ ok: true, text: String(text) });
+    } else {
+      const mammoth = parser;
+      const { value } = await mammoth.convertToHtml(
+        { buffer: Buffer.from(workerData.bytes) },
+        { convertImage: mammoth.images.imgElement(() => Promise.resolve({ src: '' })) },
+      );
+      parentPort.postMessage({ ok: true, text: String(value) });
+    }
+  } catch {
+    parentPort.postMessage({ ok: false });
+  }
+})();
+`;
+
+async function extractInWorker(kind: 'pdf' | 'docx', bytes: Buffer): Promise<string> {
+  const result = await runBoundedWorker<{ ok: boolean; text?: string }>(
+    EXTRACTION_WORKER,
+    { kind, bytes, parserBases: workerParserBases() },
+    TEXT_EXTRACTION_LIMITS,
+  );
+  if (!result.ok && (result.reason === 'error' || result.reason === 'spawn')) {
+    // Kein Dokumentinhalt im Log: nur, dass Thread oder Parser nicht verfügbar war.
+    log.error(
+      { component: 'risk-extract-text', kind, reason: result.reason },
+      'Textextraktion: Worker-Thread ohne Ergebnis',
+    );
+  }
+  if (!result.ok || !result.value.ok || typeof result.value.text !== 'string') {
+    throw new TextExtractionFailedError();
+  }
+  return result.value.text;
 }
 
 const PDF_MIME = 'application/pdf';
@@ -103,20 +177,14 @@ export async function extractText(bytes: Buffer, mime: string): Promise<string> 
   const m = mime.split(';')[0]!.trim().toLowerCase();
 
   if (m === PDF_MIME) {
-    const pdf = await getDocumentProxy(new Uint8Array(bytes));
-    const { text } = await unpdfExtractText(pdf, { mergePages: true });
-    return cleanup(text);
+    return cleanup(await extractInWorker('pdf', bytes));
   }
 
   if (m === DOCX_MIME) {
     // convertToHtml statt extractRawText: behält Absätze/Listen/Tabellen und
     // macht Bilder sichtbar (Platzhalter). Bilder ohne base64 inlinen (src leer)
     // → htmlToText ersetzt sie durch [Grafik], kein MB-großer Data-URI im Text.
-    const { value } = await mammoth.convertToHtml(
-      { buffer: bytes },
-      { convertImage: mammoth.images.imgElement(() => Promise.resolve({ src: '' })) },
-    );
-    return cleanup(htmlToText(value));
+    return cleanup(htmlToText(await extractInWorker('docx', bytes)));
   }
 
   if (m === DOC_MIME) {

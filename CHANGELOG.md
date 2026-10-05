@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Der Sicherungs-Button der Admin-Übersicht reiht den Hintergrundjob
+  `backup-run` ein und zeigt dessen Fortschritt, statt `pg_dump`, Prüfsumme und
+  Upload im Web-Request auszuführen (bisher HTTP 504 nach dem Proxy-Timeout);
+  eine laufende Sicherung blockiert einen zweiten Start. PDF- und DOCX-Texte
+  der Subsumtionsakte werden in einem begrenzten Worker-Thread gelesen
+  (`MAIL-INBOX-001`, `RISK-AI-SUGGESTION-001`, `FK-EXC-20261005-029`).
 - Die Admin-Übersicht zeigt das gespeicherte Ergebnis des Update-Checks
   (Hintergrunddienst alle sechs Stunden) mit Prüfzeitpunkt und wartet nicht
   mehr bei jedem Aufruf auf den Update-Server; die Kacheln für löschreife

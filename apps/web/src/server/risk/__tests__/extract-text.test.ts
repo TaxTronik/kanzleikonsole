@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { extractText, cleanup, htmlToText, UnsupportedDocumentTypeError } from '../extract-text';
+import { Document, Packer, Paragraph } from 'docx';
+import {
+  extractText,
+  cleanup,
+  htmlToText,
+  TextExtractionFailedError,
+  UnsupportedDocumentTypeError,
+} from '../extract-text';
 
 /** Erzeugt ein minimales, echtes PDF — kein Fixture-Binary im Repo noetig. */
 async function makePdf(lines: string[]): Promise<Buffer> {
@@ -35,6 +42,30 @@ describe('extractText', () => {
     const out = await extractText(pdf, 'application/pdf');
     expect(out).toContain('Mandat Mueller GmbH');
     expect(out).toContain('Jahresabschluss 2025');
+  });
+
+  it('liest Text aus einer DOCX-Datei (P-22: im begrenzten Worker-Thread)', async () => {
+    const docx = await Packer.toBuffer(
+      new Document({
+        sections: [
+          { children: [new Paragraph('Sachverhalt Mueller'), new Paragraph('Zweite Zeile')] },
+        ],
+      }),
+    );
+    const out = await extractText(
+      docx,
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
+    expect(out).toContain('Sachverhalt Mueller');
+    expect(out).toContain('Zweite Zeile');
+  });
+
+  it('meldet beschädigte PDFs als nicht lesbar statt mit Parser-Details', async () => {
+    const error = await extractText(Buffer.from('%PDF-1.7 kaputt'), 'application/pdf').catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(TextExtractionFailedError);
+    expect(error).toBeInstanceOf(UnsupportedDocumentTypeError);
   });
 
   it('wirft UnsupportedDocumentTypeError bei Alt-.doc', async () => {

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, relative, resolve, sep } from 'node:path';
@@ -62,11 +63,50 @@ function regularFilesBelow(root) {
 const standaloneRoot = resolve(webRoot, '.next/standalone');
 const standaloneAppRoot = resolve(standaloneRoot, relative(repoRoot, webRoot));
 const standaloneRequire = createRequire(resolve(standaloneAppRoot, 'server.js'));
-// A successful build must not silently resolve the isolated PDF worker's parser
-// from the host checkout. It must remain available after deployment of standalone/.
-const pdfParserPath = standaloneRequire.resolve('pdf-lib');
-if (!isInside(realpathSync(pdfParserPath), realpathSync(standaloneRoot))) {
-  throw new Error('[standalone-trace] Der PDF-Worker-Parser fehlt im Standalone-Paket.');
+// A successful build must not silently resolve the isolated workers' parsers
+// from the host checkout. They must remain available after deployment of
+// standalone/ (pdf-lib: PDF preflight and identity page count, P-13;
+// unpdf/mammoth: text extraction, P-22). Traced via outputFileTracingIncludes.
+const workerParsers = ['pdf-lib', 'unpdf', 'mammoth'];
+for (const parser of workerParsers) {
+  const parserPath = standaloneRequire.resolve(parser);
+  if (!isInside(realpathSync(parserPath), realpathSync(standaloneRoot))) {
+    throw new Error(`[standalone-trace] Der Worker-Parser ${parser} fehlt im Standalone-Paket.`);
+  }
+}
+// Load them the way the worker threads do (createRequire from server.js,
+// src/server/util/worker-parser.ts) in a separate process without NODE_PATH:
+// every loaded module, including transitive dependencies, must come from
+// standalone/.
+const parserProbe = spawnSync(
+  process.execPath,
+  [
+    '-e',
+    `
+const { createRequire } = require('node:module');
+const { realpathSync } = require('node:fs');
+const { sep } = require('node:path');
+const [root, base, ...parsers] = process.argv.slice(1);
+const load = createRequire(base);
+for (const parser of parsers) load(parser);
+const outside = Object.keys(require.cache).filter(
+  (file) => !realpathSync(file).startsWith(realpathSync(root) + sep),
+);
+if (outside.length > 0) {
+  console.error(outside.join('\\n'));
+  process.exit(1);
+}
+`,
+    standaloneRoot,
+    resolve(standaloneAppRoot, 'server.js'),
+    ...workerParsers,
+  ],
+  { cwd: standaloneRoot, encoding: 'utf8', env: { ...process.env, NODE_PATH: '' } },
+);
+if (parserProbe.status !== 0) {
+  throw new Error(
+    `[standalone-trace] Worker-Parser im Standalone-Paket nicht vollständig ladbar:\n${parserProbe.stderr}`,
+  );
 }
 const forbiddenStandaloneFiles = [
   ...regularFilesBelow(resolve(standaloneRoot, 'backups')),

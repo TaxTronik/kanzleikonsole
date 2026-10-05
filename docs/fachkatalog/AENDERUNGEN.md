@@ -1,5 +1,35 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-029
+    date: '2026-10-05'
+    paths:
+      - apps/web/next.config.mjs
+      - apps/web/scripts/verify-standalone-trace.mjs
+      - apps/web/src/server/risk/__tests__/extract-text-limits.test.ts
+      - apps/web/src/server/risk/__tests__/extract-text.test.ts
+      - apps/web/src/server/risk/extract-text.ts
+      - packages/mail/src/attachments.ts
+    rule_ids:
+      - MAIL-INBOX-001
+      - RISK-AI-SUGGESTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+    reason: >-
+      Der PDF-Vorabcheck für Mail-Anhänge lagert seinen begrenzten Worker-Thread
+      unverändert nach @taxtronik/mail/bounded-worker aus; dieselbe Begrenzung
+      (30 s, 256 MB Heap, 512 MiB RSS) liest jetzt auch PDF- und DOCX-Texte für die
+      Subsumtionsakte außerhalb des Web-Event-Loops. Unlesbare Dateien enden mit
+      einer allgemeinen Meldung statt den Prozess zu blockieren. next.config.mjs
+      und der Standalone-Prüfer nehmen die Parser-Pakete samt Abhängigkeiten in
+      die Produktionsausgabe auf. Annahme- und Ablehnungsregeln für Anhänge,
+      extrahierter Text und Analyseablauf bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/web/src/server/risk/__tests__/extract-text-limits.test.ts
+      - apps/web/src/server/risk/__tests__/extract-text.test.ts
+      - apps/web/src/server/util/__tests__/worker-parser.test.ts
+      - packages/mail/src/__tests__/attachment-resource-limits.test.ts
+      - packages/mail/src/__tests__/attachments.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-028
     date: '2026-10-05'
     paths:
@@ -2137,6 +2167,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-029` dokumentiert die Textextraktion der
+  Subsumtionsakte im begrenzten Worker-Thread. Anhangsregeln und
+  Analyseablauf bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-028` dokumentiert den Update-Check als
   Hintergrundjob und die COUNT-Kacheln der Admin-Übersicht. Fristlogik und

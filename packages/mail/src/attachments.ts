@@ -1,7 +1,6 @@
 import { createRequire } from 'node:module';
-import { memoryUsage } from 'node:process';
-import { Worker } from 'node:worker_threads';
 import { detectMimeFromMagicBytes, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
+import { runBoundedWorker } from './bounded-worker';
 
 const require = createRequire(import.meta.url);
 const PDF_TIMEOUT_MS = 5000;
@@ -26,40 +25,18 @@ const { PDFDocument } = require(workerData.parserPath);
  * do not cover ArrayBuffers, so the parent also watches process RSS growth.
  * The RSS watchdog is conservative under concurrent work, not an OS hard limit. */
 async function boundedPdfPreflight(bytes: Buffer): Promise<boolean> {
-  const baselineRss = memoryUsage.rss();
-  let worker: Worker;
-  try {
-    worker = new Worker(PDF_PREFLIGHT_WORKER, {
-      eval: true,
-      workerData: { bytes, parserPath: require.resolve('pdf-lib') },
-      resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 },
-      stdout: true,
-      stderr: true,
-    });
-  } catch {
-    return false;
-  }
-  // PDF parser diagnostics may contain untrusted content; never forward them to logs.
-  worker.stdout?.resume();
-  worker.stderr?.resume();
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (valid: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(deadline);
-      clearInterval(memoryWatch);
-      void worker.terminate().catch(() => undefined);
-      resolve(valid);
-    };
-    const deadline = setTimeout(() => finish(false), PDF_TIMEOUT_MS);
-    const memoryWatch = setInterval(() => {
-      if (memoryUsage.rss() - baselineRss > PDF_RSS_BUDGET) finish(false);
-    }, 25);
-    worker.once('message', (result) => finish(result === true));
-    worker.once('error', () => finish(false));
-    worker.once('exit', () => finish(false));
-  });
+  const result = await runBoundedWorker<boolean>(
+    PDF_PREFLIGHT_WORKER,
+    { bytes, parserPath: require.resolve('pdf-lib') },
+    {
+      timeoutMs: PDF_TIMEOUT_MS,
+      rssBudgetBytes: PDF_RSS_BUDGET,
+      maxOldGenerationSizeMb: 64,
+      maxYoungGenerationSizeMb: 16,
+      stackSizeMb: 4,
+    },
+  );
+  return result.ok && result.value === true;
 }
 
 /** Conservative preflight: no archive extraction or unverified encrypted files. */

@@ -22,6 +22,11 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   bewusst keine lokale Kopie im read-only Worker-Container. PostgreSQL-ACLs
   und sicherheitsrelevante REVOKEs sind Teil des Dumps; nur Ownership wird für
   die portable Wiederherstellung ausgelassen.
+- **Admin-Button** (`/api/staff/admin/backups/run`): prüft Admin-Recht,
+  Single-Tenant-Installation und laufende Sicherungen, protokolliert
+  `backup.trigger` und reiht den Tagesjob `backup-run` ein (HTTP 202, feste
+  jobId). Die Admin-Übersicht fragt Job-Zustand und `BackupRecord` per GET ab;
+  kein `pg_dump` im Web-Request (P-22). Wie der Tagesjob ohne lokale Kopie.
 - **Kanzleidateien-Export** (`./taxtronik backup-files`): kopiert die
   SeaweedFS-Dokument-Buckets `gobd`, `gwg`, `general`, `staff-private` als
   lokale Byte-Kopie nach `backups/object-store/<timestamp>/`; allein keine
