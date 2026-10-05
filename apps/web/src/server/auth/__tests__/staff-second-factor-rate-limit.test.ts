@@ -1,6 +1,7 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001
-// Exercise the real password action, credentials provider, rate limiter and
-// lockout service. Only external persistence/crypto boundaries are replaced.
+// Exercise the real password action, credentials provider, rate limiter,
+// lockout service and one-time login ticket (R-04). Only external
+// persistence/crypto boundaries are replaced.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Authorize = (
@@ -24,6 +25,7 @@ const h = vi.hoisted(() => ({
   scard: vi.fn(),
   expire: vi.fn(),
   del: vi.fn(),
+  tickets: new Map<string, string>(),
 }));
 
 vi.mock('next/headers', () => ({ headers: async () => h.headers, cookies: vi.fn() }));
@@ -74,6 +76,15 @@ vi.mock('@/server/redis', () => ({
     scard: h.scard,
     expire: h.expire,
     del: h.del,
+    set: async (key: string, value: string) => {
+      h.tickets.set(key, value);
+      return 'OK';
+    },
+    getdel: async (key: string) => {
+      const value = h.tickets.get(key) ?? null;
+      h.tickets.delete(key);
+      return value;
+    },
   }),
 }));
 vi.mock('@/server/db/prisma-owner', () => ({
@@ -125,9 +136,14 @@ function request(ip = '203.0.113.1') {
   });
 }
 
-function login(code: string, ip = '203.0.113.1', password = 'password') {
+// R-04: Passwortschritt (checkPasswordAction) liefert das Einmal-Ticket, der
+// Credentials-Provider löst es mit dem Code ein.
+async function login(code: string, ip = '203.0.113.1', password = 'password') {
+  request(ip);
+  const step = await checkPasswordAction(account.email, password);
+  if (!step.ok || !step.loginTicket) return null;
   return h.config.providers[0]!.authorize(
-    { email: account.email, password, totpCode: code, tenantSlug: 'default' },
+    { loginTicket: step.loginTicket, totpCode: code },
     request(ip),
   );
 }
@@ -139,6 +155,7 @@ beforeEach(() => {
   account = initialAccount();
   counters.clear();
   distinctIps.clear();
+  h.tickets.clear();
   h.findFirst.mockImplementation(async () => structuredClone(account));
   h.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
     const { failedLoginCount, ...rest } = data;

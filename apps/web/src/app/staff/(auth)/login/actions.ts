@@ -16,12 +16,13 @@ import {
 } from '@/server/auth/totp';
 import { staffSignIn, DEV_SKIP_TOTP } from '@/server/auth/staff';
 import { resetFailedLogin } from '@/server/auth/lockout';
-import { recordFailedLoginAudited } from '@/server/auth/login-audit';
+import { passwordAuthenticationBlocked } from '@/server/auth/staff-password';
 import {
-  passwordAuthenticationBlocked,
-  passwordLoginAccount,
-  verifyStaffPassword,
-} from '@/server/auth/staff-password';
+  authenticateStaffPassword,
+  issueStaffLoginTicketFor,
+  redeemStaffLoginTicket,
+} from '@/server/auth/staff-login';
+import type { StaffLoginTicketPurpose } from '@/server/auth/staff-login-ticket';
 import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
@@ -29,7 +30,6 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import {
   checkIpOrGlobalLimit,
   checkRateLimit,
-  checkStaffPasswordAccountLimit,
   getClientIp,
   resetRateLimit,
   staffPasswordAccountRateLimitKey,
@@ -55,6 +55,8 @@ const TOTP_SETUP_TTL_MS = 60 * 60 * 1000;
 const TOTP_ENROLLMENT_LIMIT = { max: 5, windowSec: 300 } as const;
 const STAFF_PASSWORD_IP_LIMIT = { max: 10, windowSec: 600 } as const;
 const GENERIC_LOGIN_ERROR = 'Ungültige Anmeldedaten.';
+const LOGIN_UNAVAILABLE_ERROR = 'Anmeldung derzeit nicht möglich. Bitte später erneut versuchen.';
+const LOGIN_RESTART_ERROR = 'Die Anmeldung ist abgelaufen. Bitte erneut anmelden.';
 
 type PasswordBoundAccount = Pick<StaffUser, 'id' | 'tenantId' | 'passwordHash' | 'authRevision'> & {
   active: true;
@@ -67,33 +69,6 @@ function totpEnrollmentAccountRateLimitKey(staffUserId: string): string {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-/**
- * F-05: Fehlversuchszähler (Lockout) und Audit-Ereignis dürfen das generische
- * Login-Ergebnis nicht verändern. Scheitern sie, ist der Lockout-Schutz für
- * diesen Versuch aber geschwächt — das muss im Log stehen, statt verschluckt
- * zu werden.
- */
-async function recordFailedPasswordAttempt(
-  opts: Parameters<typeof recordFailedLoginAudited>[0],
-  action: 'checkPassword' | 'confirmTotpEnrollment',
-): Promise<void> {
-  try {
-    await recordFailedLoginAudited(opts);
-  } catch (err) {
-    log.error(
-      {
-        component: 'staff-login',
-        action,
-        tenantId: opts.tenantId,
-        staffId: opts.staffUserId,
-        reason: opts.reason,
-        err: errorMessage(err),
-      },
-      'staff-login: Fehlversuch weder gezählt noch auditiert (Lockout-Zähler)',
-    );
-  }
 }
 
 function generateBackupCode(): string {
@@ -124,6 +99,12 @@ export interface CheckPasswordResult {
   setupQrDataUrl?: string;
   /** DEV-ONLY: TOTP übersprungen → UI loggt direkt ein (siehe DEV_SKIP_TOTP). */
   devSkip?: boolean;
+  /**
+   * R-04: Einmal-Ticket für den zweiten Schritt (TOTP/Backup-Code, Erst-Setup
+   * oder DEV-Login). Fünf Minuten gültig, an Konto, authRevision und
+   * Passwort-Hash gebunden; der zweite Schritt prüft das Passwort nicht erneut.
+   */
+  loginTicket?: string;
   error?: string;
 }
 
@@ -147,62 +128,28 @@ export async function checkPasswordAction(
     };
   }
 
-  const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
-  const candidate = tenant
-    ? await prismaOwner.staffUser.findFirst({
-        where: { tenantId: tenant.id, email: email.toLowerCase() },
-      })
-    : null;
-
-  // S-09/M2: Anti-Enumeration. Unbekannte Kanzlei, unbekanntes, deaktiviertes,
-  // gesperrtes oder Hardware-only-Konto und falsches Passwort liefern dieselbe
-  // Meldung und kosten genau einen bcrypt-Vergleich (sonst gegen den
-  // Dummy-Hash). Kein Passwort-, TOTP-, Backup-Code- oder DEV-Bypass-Fallback
-  // für bewusst auf Hardware-only umgestellte Konten; die generische Meldung
-  // verhindert zugleich eine Enumeration des gewählten Anmeldemodus.
-  let staffUser = passwordLoginAccount(candidate);
-  if (staffUser) {
-    const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
-    if (!accountRl.ok) {
-      return { ok: false, error: GENERIC_LOGIN_ERROR };
-    }
-  }
-
-  const passwordOk = await verifyStaffPassword(password, staffUser);
-  if (!tenant || !staffUser) {
-    return { ok: false, error: GENERIC_LOGIN_ERROR };
-  }
-  if (!passwordOk) {
-    // Account-gebundener Lockout (S2 + L-4): Lockout greift erst bei N _distinkten_
-    // Quell-IPs in einem rollierenden Fenster. Single-IP-Spam fängt das IP-RL ab,
-    // ohne den Account zu sperren — kein Lockout-DoS via bekannte E-Mail. Ohne
-    // bekannte IP wird nur gezählt, nicht gesperrt (S-03).
-    // RF-12: zählt UND schreibt auth.login.failure(/.lockout) in die Audit-Chain.
-    await recordFailedPasswordAttempt(
-      {
-        tenantId: tenant.id,
-        staffUserId: staffUser.id,
-        email: staffUser.email,
-        ip,
-        reason: 'password',
-      },
-      'checkPassword',
-    );
+  // R-04/S-09: Konto-Lookup, Sperr-/Moduswahl, Kontolimit, genau ein
+  // bcrypt-Vergleich (auch für unbekannte oder unzulässige Konten) und
+  // Fehlversuchs-Audit stecken im Staff-Login-Service; nach außen sind alle
+  // Ablehnungen gleich.
+  const authenticated = await authenticateStaffPassword({ email, password, tenantSlug, ip });
+  if (!authenticated.ok) {
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
   // ACCESS-TENANT-RLS-001: bcrypt may overlap a reset, enrollment or mode
-  // change. Bind every setup read/write to the password and revision proved
-  // above; never adopt a newer authentication state for the old password.
+  // change. Bind every setup read/write and the login ticket to the password
+  // and revision proved above; never adopt a newer authentication state for
+  // the old password.
   const passwordBoundAccount: PasswordBoundAccount = {
-    id: staffUser.id,
-    tenantId: tenant.id,
-    passwordHash: staffUser.passwordHash,
-    authRevision: staffUser.authRevision,
+    id: authenticated.account.id,
+    tenantId: authenticated.tenantId,
+    passwordHash: authenticated.account.passwordHash,
+    authRevision: authenticated.account.authRevision,
     active: true,
     hardwareOnlyEnabledAt: null,
   };
-  staffUser = await prismaOwner.staffUser.findFirst({ where: passwordBoundAccount });
+  const staffUser = await prismaOwner.staffUser.findFirst({ where: passwordBoundAccount });
   if (!staffUser || passwordAuthenticationBlocked(staffUser)) {
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
@@ -213,17 +160,33 @@ export async function checkPasswordAction(
   await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
   fireAndForget('staff-login: resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
 
+  // R-04: Der zweite Schritt prüft das Passwort nicht erneut, sondern löst ein
+  // kurzlebiges Einmal-Ticket für genau diesen Kontostand ein.
   // DEV-ONLY: TOTP überspringen → UI loggt direkt ein (ohne Code/Setup).
   if (DEV_SKIP_TOTP) {
-    return { ok: true, devSkip: true };
+    return withLoginTicket('second-factor', passwordBoundAccount, { ok: true, devSkip: true });
   }
 
   // TOTP bereits eingerichtet?
   if (staffUser.totpEnrolledAt && staffUser.totpSecretEnc) {
-    return { ok: true, totpRequired: true };
+    return withLoginTicket('second-factor', passwordBoundAccount, {
+      ok: true,
+      totpRequired: true,
+    });
   }
 
-  return prepareTotpSetup(staffUser, passwordBoundAccount);
+  const setup = await prepareTotpSetup(staffUser, passwordBoundAccount);
+  return setup.ok ? withLoginTicket('totp-enrollment', passwordBoundAccount, setup) : setup;
+}
+
+async function withLoginTicket(
+  purpose: StaffLoginTicketPurpose,
+  passwordBoundAccount: PasswordBoundAccount,
+  result: CheckPasswordResult,
+): Promise<CheckPasswordResult> {
+  const loginTicket = await issueStaffLoginTicketFor(purpose, passwordBoundAccount);
+  // Ohne Ticket kein zweiter Schritt — und auch kein Setup-Secret ausgeben.
+  return loginTicket ? { ...result, loginTicket } : { ok: false, error: LOGIN_UNAVAILABLE_ERROR };
 }
 
 async function prepareTotpSetup(
@@ -330,61 +293,29 @@ export interface ConfirmEnrollmentResult {
    * provisionieren).
    */
   backupCodes?: string[];
+  /** R-04: neues Einmal-Ticket für den anschließenden TOTP-Login (neue Revision). */
+  loginTicket?: string;
 }
 
 export async function confirmTotpEnrollmentAction(
-  email: string,
-  password: string,
+  loginTicket: string,
   totpCode: string,
-  tenantSlug: string = 'default',
 ): Promise<ConfirmEnrollmentResult> {
-  // P0-3: Diese Action ist ein zweiter, öffentlich aufrufbarer bcrypt-Prüfpfad
-  // neben checkPasswordAction und MUSS dieselben Schranken tragen — sonst
-  // verteiltes Brute-Force / bcrypt-CPU-Erschöpfung über bekannte E-Mails.
+  // P0-3: öffentlich aufrufbar — das IP-/Sturm-Limit greift vor jedem Lookup.
   const ip = getClientIp(await headers());
   const enrollmentIpRl = await checkIpOrGlobalLimit('staff-totp-enroll', ip, TOTP_ENROLLMENT_LIMIT);
   if (!enrollmentIpRl.ok) {
     return { ok: false, error: 'Zu viele Bestätigungsversuche. Bitte kurz warten.' };
   }
-  const rl = await checkIpOrGlobalLimit('staff-pw', ip, STAFF_PASSWORD_IP_LIMIT);
-  if (!rl.ok) {
-    return {
-      ok: false,
-      error: `Zu viele Versuche. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
-    };
-  }
 
-  const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
-  const candidate = tenant
-    ? await prismaOwner.staffUser.findFirst({
-        where: { tenantId: tenant.id, email: email.toLowerCase() },
-      })
-    : null;
-  // S-09: Anti-Enumeration wie checkPasswordAction — einheitliche Meldung und
-  // genau ein bcrypt-Vergleich, auch für Kanzlei und Konto, die es nicht gibt.
-  const staffUser = passwordLoginAccount(candidate);
-  if (staffUser) {
-    const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
-    if (!accountRl.ok) return { ok: false, error: 'Ungültige Daten.' };
-  }
+  // R-04: kein zweiter Passwortvergleich. Das Einmal-Ticket aus dem
+  // Passwortschritt bindet Konto, Tenant, authRevision und Passwort-Hash eines
+  // weiterhin aktiven, ungesperrten Passwortkontos; es ist danach verbraucht.
+  const redeemed = await redeemStaffLoginTicket(loginTicket, 'totp-enrollment');
+  if (!redeemed) return { ok: false, error: LOGIN_RESTART_ERROR };
+  const { account: staffUser, tenantId } = redeemed;
 
-  const passwordOk = await verifyStaffPassword(password, staffUser);
-  if (!tenant || !staffUser) return { ok: false, error: 'Ungültige Daten.' };
-  if (!passwordOk) {
-    await recordFailedPasswordAttempt(
-      {
-        tenantId: tenant.id,
-        staffUserId: staffUser.id,
-        email: staffUser.email,
-        ip,
-        reason: 'password',
-      },
-      'confirmTotpEnrollment',
-    );
-    return { ok: false, error: 'Ungültige Daten.' };
-  }
-
-  // Erst nach korrektem Passwort accountgebunden zählen. Sonst könnte ein
+  // Erst nach eingelöstem Ticket accountgebunden zählen. Sonst könnte ein
   // Fremder allein mit einer bekannten E-Mail das offene Erst-Setup sperren.
   const enrollmentAccountKey = totpEnrollmentAccountRateLimitKey(staffUser.id);
   const enrollmentAccountRl = await checkRateLimit(enrollmentAccountKey, TOTP_ENROLLMENT_LIMIT);
@@ -406,12 +337,11 @@ export async function confirmTotpEnrollmentAction(
     return { ok: false, error: 'TOTP-Setup-Fenster abgelaufen.' };
   }
 
-  const authSecret = env.AUTH_SECRET;
-  const { decryptTotpSecret } = await import('@/server/auth/totp');
-  const rawSecret = decryptTotpSecret(staffUser.totpSecretEnc, tenant.id, authSecret);
+  const rawSecret = decryptTotpSecret(staffUser.totpSecretEnc, tenantId, env.AUTH_SECRET);
 
   if (!verifyTotpCode(totpCode, rawSecret)) {
-    return { ok: false, error: 'Ungültiger Bestätigungs-Code. Bitte erneut versuchen.' };
+    // Das Ticket ist verbraucht: neuer Versuch über die Passwortanmeldung.
+    return { ok: false, error: 'Ungültiger Bestätigungs-Code. Bitte erneut anmelden.' };
   }
 
   // Backup-Codes generieren (8 Codes à 10 Zeichen, ~50 Bit Entropie pro Code).
@@ -430,7 +360,7 @@ export async function confirmTotpEnrollmentAction(
     const claimed = await tx.staffUser.updateMany({
       where: {
         id: staffUser.id,
-        tenantId: tenant.id,
+        tenantId,
         passwordHash: staffUser.passwordHash,
         authRevision: staffUser.authRevision,
         active: true,
@@ -449,7 +379,7 @@ export async function confirmTotpEnrollmentAction(
     });
     if (claimed.count !== 1) return false;
     await evidenceService.record(tx, {
-      tenantId: tenant.id,
+      tenantId,
       actorType: 'STAFF',
       actorId: staffUser.id,
       action: 'auth.totp.enroll',
@@ -465,17 +395,26 @@ export async function confirmTotpEnrollmentAction(
 
   // Erst der vollständig erfolgreiche Einmal-Claim darf die Versuchszähler
   // leeren. Bei falschem TOTP bleiben alle Buckets erhalten. Die gemeinsame
-  // Sturm-Obergrenze ohne IP bleibt unberührt (S-03).
-  if (ip) await resetRateLimit(`staff-pw:${ip}`);
-  await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
+  // Sturm-Obergrenze ohne IP bleibt unberührt (S-03). Die Passwort-Buckets hat
+  // bereits der Passwortschritt geleert.
   if (ip) await resetRateLimit(`staff-totp-enroll:${ip}`);
   await resetRateLimit(enrollmentAccountKey);
   fireAndForget('staff-login: resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
 
+  // R-04: Das Enrollment hat die Revision erhöht und das Ticket verbraucht.
+  // Der anschließende TOTP-Login bekommt ein neues, an die neue Revision
+  // gebundenes Ticket; ohne Redis meldet sich der Nutzer danach neu an.
+  const nextTicket = await issueStaffLoginTicketFor('second-factor', {
+    id: staffUser.id,
+    tenantId,
+    passwordHash: staffUser.passwordHash,
+    authRevision: staffUser.authRevision + 1,
+  });
+
   // V-1: Rohe Codes EINMAL an den Client zurück. Vorher waren sie tot in der
   // DB — User wussten nichts davon, Phone-Verlust = dauerhaft ausgesperrt,
   // Admin musste neu provisionieren. Jetzt ist Recovery-Pfad funktional.
-  return { ok: true, backupCodes };
+  return { ok: true, backupCodes, ...(nextTicket ? { loginTicket: nextTicket } : {}) };
 }
 
 export interface LoginResult {
@@ -560,11 +499,11 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
   const returnTo = safeStaffReturnTo(formData.get('returnTo'));
 
   try {
+    // R-04: Schritt 2 sendet nur das Einmal-Ticket aus dem Passwortschritt
+    // und den Code — kein Passwort. Das Ticket ist danach verbraucht.
     await staffSignIn('credentials', {
-      email: formData.get('email') as string,
-      password: formData.get('password') as string,
-      totpCode: formData.get('totpCode') as string,
-      tenantSlug: (formData.get('tenantSlug') as string) || 'default',
+      loginTicket: String(formData.get('loginTicket') ?? ''),
+      totpCode: String(formData.get('totpCode') ?? ''),
       redirect: false,
     });
     if (!DEV_SKIP_TOTP && ip) {

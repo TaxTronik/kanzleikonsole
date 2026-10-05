@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-014
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/staff/(auth)/login/actions.ts
+      - apps/web/src/app/staff/(auth)/login/page.tsx
+      - apps/web/src/app/staff/(auth)/login/password/route.ts
+      - apps/web/src/server/auth/staff.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Die Mitarbeiteranmeldung prüft das Passwort nur noch einmal im neuen
+      Staff-Login-Service. Der zweite Schritt (TOTP, Recovery-Code,
+      TOTP-Ersteinrichtung) löst statt einer erneuten Passwortprüfung ein fünf
+      Minuten gültiges Einmal-Ticket ein, das an Zweck, Konto, Tenant,
+      Auth-Revision und Passwort-Hash gebunden ist und in Redis nur als Hash liegt;
+      ohne Redis schlägt die Anmeldung geschlossen fehl. Passwort-, TOTP-, Replay-
+      und Backup-Code-Prüfungen, Limits, Sperrlogik und Audit-Ereignisse bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/staff-login-ticket.test.ts
+      - apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-013
     date: '2026-10-05'
     paths:
@@ -1737,6 +1759,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-014` dokumentiert die einmalige Passwortprüfung
+  mit Einmal-Ticket für den zweiten Anmeldeschritt. Prüfungen, Limits und Audit
+  bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-013` dokumentiert einheitliche Antworten und
   genau einen Passwortvergleich je Anmeldeversuch. Limits und Sperrlogik

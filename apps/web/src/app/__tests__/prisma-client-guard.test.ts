@@ -289,7 +289,6 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/app/poa/sign/document/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/portal/(auth)/login/actions.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/staff/(auth)/login/actions.ts <- @/server/db/prisma-owner',
-  'apps/web/src/app/staff/(auth)/login/password/route.ts <- @/server/db/prisma-owner',
   // Staff-Seite: nur noch typeof-Bezug (Rueckgabetyp von sendForSignature) —
   // kein Laufzeit-Bypass, der Import bleibt aber ein Wert-Import fuers typeof.
   'apps/web/src/app/staff/(protected)/poa/actions.ts <- @/server/db/prisma-owner',
@@ -301,6 +300,10 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/server/auth/magic-link.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/portal.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/staff.ts <- @/server/db/prisma-owner',
+  // Staff-Login-Service (R-04): Passwortschritt und Ticket-Einlösung laufen vor
+  // jedem Session-/Tenant-Kontext. Lookups sind an Tenant-Slug + E-Mail bzw.
+  // an die im Einmal-Ticket gebundene staffId + tenantId gebunden.
+  'apps/web/src/server/auth/staff-login.ts <- @/server/db/prisma-owner',
   // Benutzerloser Hardware-Login hat vor der Assertion-Verifikation noch
   // keinen vertrauenswürdigen Tenant-Kontext. Der globale Credential-Lookup
   // wird anschließend kryptografisch, per userHandle und Konto-Tenant gebunden.

@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   authRevision: 0,
   mandateEndedAt: null as Date | null,
   checkPasswordAction: vi.fn(),
+  completeStaffLogin: vi.fn(),
 }));
 vi.mock('react', () => ({ cache: <T>(fn: T) => fn }));
 vi.mock('next/headers', () => ({
@@ -44,6 +45,12 @@ vi.mock('@taxtronik/config', () => ({
 vi.mock('../magic-link', () => ({ verifyMagicLink: vi.fn() }));
 vi.mock('@/app/staff/(auth)/login/actions', () => ({
   checkPasswordAction: h.checkPasswordAction,
+}));
+// R-04: Der Formularpfad löst das Ticket über den Staff-Login-Service ein; hier
+// zählt nur das daraus ausgestellte Cookie.
+vi.mock('../staff-login', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../staff-login')>()),
+  completeStaffLogin: h.completeStaffLogin,
 }));
 vi.mock('../totp', () => ({ decryptTotpSecret: vi.fn(), verifyTotpCode: vi.fn() }));
 vi.mock('../lockout', () => ({ resetFailedLogin: vi.fn() }));
@@ -127,7 +134,19 @@ beforeEach(() => {
   h.authRevision = 0;
   h.mandateEndedAt = null;
   h.cookie = '';
-  h.checkPasswordAction.mockResolvedValue({ ok: true, devSkip: true });
+  h.checkPasswordAction.mockResolvedValue({ ok: true, devSkip: true, loginTicket: 't'.repeat(43) });
+  h.completeStaffLogin.mockResolvedValue({
+    id: 'staff',
+    email: 'staff@example.test',
+    name: 'Fixture',
+    staffId: 'staff',
+    tenantId: 'tenant',
+    fullName: 'Fixture',
+    roles: ['EMPLOYEE'],
+    permissions: [],
+    authMethod: 'dev_skip_totp',
+    authRevision: 0,
+  });
 });
 afterEach(() => vi.useRealTimers());
 

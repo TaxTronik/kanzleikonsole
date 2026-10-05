@@ -1,11 +1,11 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001
 // S-09: Staff-Konten dürfen weder über die Meldung noch über die Antwortzeit
-// ermittelbar sein. Echte Passwort-Action, Credentials-Provider, Enrollment-
-// Action, Rate-Limiter und Lockout; ersetzt sind Persistenz, Redis und der
-// bcrypt-Vergleich (gezählt, mit dem übergebenen Hash).
+// ermittelbar sein. Echte Passwort-Action, lokaler Formularpfad, Rate-Limiter
+// und Lockout; ersetzt sind Persistenz, Redis und der bcrypt-Vergleich
+// (gezählt, mit dem übergebenen Hash). Seit R-04 prüfen nur noch diese beiden
+// Einstiege ein Passwort; Credentials-Provider und Enrollment lösen Tickets ein.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-type Authorize = (credentials: Record<string, string>, request: Request) => Promise<unknown>;
+import { NextRequest } from 'next/server';
 
 interface Account {
   id: string;
@@ -27,7 +27,6 @@ interface Account {
 }
 
 const h = vi.hoisted(() => ({
-  config: null as unknown as { providers: { authorize: Authorize }[] },
   account: null as unknown as Account,
   compare: vi.fn(),
   evidence: vi.fn(),
@@ -42,10 +41,7 @@ vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
 vi.mock('next-auth/providers/credentials', () => ({ default: (config: unknown) => config }));
 vi.mock('next-auth', () => ({
   AuthError: class AuthError extends Error {},
-  default: (config: typeof h.config) => {
-    h.config = config;
-    return { handlers: {}, signIn: vi.fn(), signOut: vi.fn() };
-  },
+  default: () => ({ handlers: {}, signIn: vi.fn(), signOut: vi.fn() }),
 }));
 vi.mock('bcryptjs', () => ({
   compare: h.compare,
@@ -121,7 +117,8 @@ vi.mock('@/server/db/prisma-owner', () => ({
   },
 }));
 
-import { checkPasswordAction, confirmTotpEnrollmentAction } from '@/app/staff/(auth)/login/actions';
+import { checkPasswordAction } from '@/app/staff/(auth)/login/actions';
+import { POST as passwordFormRoute } from '@/app/staff/(auth)/login/password/route';
 import { DUMMY_PASSWORD_HASH, STAFF_PASSWORD_HASH_COST } from '../staff-password';
 
 const NOW = new Date('2026-10-05T09:00:00Z');
@@ -199,22 +196,27 @@ const CASES: Record<string, Attempt> = {
 
 const ENTRY_POINTS = {
   checkPasswordAction: (a: Attempt) => checkPasswordAction(a.email, a.password, a.tenantSlug),
-  authorize: (a: Attempt) =>
-    h.config.providers[0]!.authorize(
-      { email: a.email, password: a.password, totpCode: '123456', tenantSlug: a.tenantSlug },
-      new Request('https://staff.example.test/api/auth/staff/callback/credentials', {
+  'POST /staff/login/password': async (a: Attempt) => {
+    const response = await passwordFormRoute(
+      new NextRequest('https://staff.example.test/staff/login/password', {
         method: 'POST',
-        headers: { 'x-forwarded-for': '203.0.113.9' },
+        body: new URLSearchParams({
+          email: a.email,
+          password: a.password,
+          tenantSlug: a.tenantSlug,
+        }),
       }),
-    ),
-  confirmTotpEnrollmentAction: (a: Attempt) =>
-    confirmTotpEnrollmentAction(a.email, a.password, '123456', a.tenantSlug),
+    );
+    return { status: response.status, location: response.headers.get('location') };
+  },
 };
 
 const EXPECTED_REJECTION = {
   checkPasswordAction: { ok: false, error: 'Ungültige Anmeldedaten.' },
-  authorize: null,
-  confirmTotpEnrollmentAction: { ok: false, error: 'Ungültige Daten.' },
+  'POST /staff/login/password': {
+    status: 303,
+    location: 'https://staff.example.test/staff/login?error=password-invalid',
+  },
 };
 
 beforeEach(() => {

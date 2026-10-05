@@ -98,22 +98,25 @@ nicht zurücksendet; Produktion benötigt HTTPS-Termination.
 
 ## Verifikation
 
-```bash
-# Staff-Login-Response inspizieren (Set-Cookie-Header)
-curl -i -X POST https://kanzlei.example.com/api/auth/staff/callback/credentials \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "email=admin@kanzlei.de&password=...&totpCode=..."
+Die Staff-Anmeldung hat zwei Schritte: Der Passwortschritt liefert ein fünf
+Minuten gültiges Einmal-Ticket, der Auth.js-Credentials-Callback
+(`/api/auth/staff/callback/credentials`) nimmt nur dieses Ticket und den
+TOTP-/Backup-Code entgegen, kein Passwort. Am einfachsten wird deshalb eine
+reguläre Browser-Anmeldung geprüft (DevTools → Netzwerk → Antwort des
+Login-Schritts):
 
+```text
 # Erwartet (ohne STAFF_COOKIE_DOMAIN; mit gesetzter Domain stattdessen __Secure-…):
 # Set-Cookie: __Host-taxtronik_staff_session=<compact-JWE>; Path=/; HttpOnly; Secure; SameSite=Lax
 ```
 
-Der Befehl prüft den Standardmodus. Der Hardware-only-Flow benötigt die
+Das prüft den Standardmodus. Der Hardware-only-Flow benötigt die
 WebAuthn-API eines Browsers, einen attestiert registrierten Schlüssel, eine
 nichtleere AAGUID-Allowlist und ein aktuell vertrauenswürdiges FIDO-MDS-
 Statement; nach erfolgreicher Assertion gelten dieselben Session-Cookie-Flags.
 Allowlist-/MDS-/Netzfehler lehnen die Assertion fail-closed ab. Ein
-Hardware-only-Konto muss den obigen Passwort/TOTP-Callback weiterhin ablehnen.
+Hardware-only-Konto muss schon den Passwortschritt (und damit jedes Ticket für
+den Passwort/TOTP-Callback) weiterhin ablehnen.
 
 In Browser-DevTools → Application → Cookies sollten **nur** die zwei
 Session-Cookies sichtbar sein, beide mit den oben dokumentierten Flags.

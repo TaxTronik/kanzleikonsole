@@ -2,53 +2,19 @@ import { cache } from 'react';
 import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
-import { compare } from 'bcryptjs';
 import { env } from '@taxtronik/config';
-import { decryptTotpSecret, verifyTotpCode } from './totp';
-import { resetFailedLogin } from './lockout';
-import { recordFailedLoginAudited, auditIp } from './login-audit';
 import { isTokenRevoked } from './revocation';
 import { getSessionIssuedAt } from './session-issued-at';
 import { staffSessionClaims, staffSessionFactory, type StaffSessionUser } from './staff-session';
-import { evidenceService } from '@/server/container';
-import { consumeTotpCode } from './totp-replay';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
-import {
-  getClientIp,
-  checkIpOrGlobalLimit,
-  checkStaffPasswordAccountLimit,
-  checkStaffSecondFactorAccountLimit,
-  resetRateLimit,
-  staffPasswordAccountRateLimitKey,
-  staffSecondFactorAccountRateLimitKey,
-} from '@/server/rate-limit';
+import { getClientIp, checkIpOrGlobalLimit, resetRateLimit } from '@/server/rate-limit';
 import { authenticateStaffHardwareCredential } from './webauthn';
 import { staffTokenMatchesCurrentAuthState, type StaffAuthMethod } from './staff-auth-state';
-import { passwordLoginAccount, verifyStaffPassword } from './staff-password';
+import { completeStaffLogin } from './staff-login';
 
-// DEV-/E2E-only: TOTP-Bypass fuer lokale Entwicklung und den lokalen CI-E2E-
-// Lauf. In echter Produktion bleibt der Bypass aus; der CI-Sonderfall braucht
-// zusaetzlich CI=true, E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION=true und einen
-// localhost-NEXTAUTH_URL.
-function isLocalhostAuthUrl(raw: string): boolean {
-  try {
-    const hostname = new URL(raw).hostname;
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-  } catch {
-    return false;
-  }
-}
-
-const ALLOW_CI_PRODUCTION_TOTP_SKIP =
-  env.NODE_ENV === 'production' &&
-  process.env['CI'] === 'true' &&
-  process.env['E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION'] === 'true' &&
-  isLocalhostAuthUrl(env.NEXTAUTH_URL);
-
-export const DEV_SKIP_TOTP =
-  process.env['DEV_SKIP_TOTP'] === 'true' &&
-  (env.NODE_ENV !== 'production' || ALLOW_CI_PRODUCTION_TOTP_SKIP);
+// DEV-/E2E-only: TOTP-Bypass, definiert im Staff-Login-Service (R-04).
+export { DEV_SKIP_TOTP } from './staff-login';
 
 // Narrower Session-Typ für das Staff-Surface — Felder, die staff-spezifisch
 // sind (staffId, roles), sind hier verpflichtend. Module-Augmentation für
@@ -188,12 +154,12 @@ async function hydrateStaffSessionFromToken(session: Session, token: unknown): P
   return session;
 }
 
-async function mayVerifySecondFactor(staffId: string, code: string): Promise<boolean> {
-  if (!code) return false;
-  // ACCESS-TENANT-RLS-001: Kenntnis des Passworts genügt nicht, um
-  // verteilte TOTP-/Backup-Code-Versuche zurückzusetzen. Dieser Bucket
-  // ist unabhängig vom Passwortvorschritt und allen IP-Buckets.
-  return (await checkStaffSecondFactorAccountLimit(staffId)).ok;
+function requestIp(request: Request | undefined): string | null {
+  try {
+    return request?.headers ? getClientIp(request.headers) : null;
+  } catch {
+    return null;
+  }
 }
 
 const staffConfig: NextAuthConfig = {
@@ -205,294 +171,20 @@ const staffConfig: NextAuthConfig = {
 
   providers: [
     Credentials({
+      // R-04: Schritt 2 der Passwort-/TOTP-Anmeldung. Das Passwort hat
+      // checkPasswordAction bereits genau einmal geprüft; hier wird nur das
+      // daraus ausgestellte Einmal-Ticket eingelöst (Staff-Login-Service).
       credentials: {
-        email: { label: 'E-Mail', type: 'email' },
-        password: { label: 'Passwort', type: 'password' },
+        loginTicket: { label: 'Anmeldeticket', type: 'text' },
         totpCode: { label: 'TOTP-Code', type: 'text' },
-        tenantSlug: { label: 'Kanzlei', type: 'text' },
       },
       async authorize(credentials, request) {
-        const email = credentials?.email as string | undefined;
-        const password = credentials?.password as string | undefined;
-        const totpCode = (credentials?.totpCode as string | undefined) ?? '';
-        const tenantSlug = (credentials?.tenantSlug as string | undefined) ?? 'default';
-
-        // L-4: IP für IP-basierten Distinct-Lockout extrahieren. Ohne
-        // vertrauenswürdige IP (oder ohne Request-Headers) bleibt es null:
-        // dann wird nur gezählt, nicht gesperrt (S-03, lockout.ts).
-        const ip = (() => {
-          try {
-            return request?.headers ? getClientIp(request.headers) : null;
-          } catch {
-            return null;
-          }
-        })();
-
-        if (!email || !password) return null;
-
-        // K1+N3: Pre-bcrypt-IP-Rate-Limit am NextAuth-callback. Per-IP eng,
-        // bei null-IP nur die großzügige Sturm-Obergrenze (S-03); pro Konto
-        // deckeln checkStaffPasswordAccountLimit und das Second-Factor-Limit.
-        // Hintergrund siehe docs/compliance/tenancy-model.md.
-        const rl = await checkIpOrGlobalLimit('staff-authorize', ip, { max: 10, windowSec: 600 });
-        if (!rl.ok) {
-          log.warn(
-            { ip, bucket: ip ? 'per-ip' : 'global' },
-            'staff-auth: authorize-rate-limit hit',
-          );
-          return null;
-        }
-
-        // Tenant und Mitarbeiter via Owner-Verbindung laden (kein RLS-Kontext nötig)
-        const tenant = await prismaOwner.tenant.findFirst({
-          where: { slug: tenantSlug },
+        const totpCode = credentials?.totpCode;
+        return completeStaffLogin({
+          loginTicket: credentials?.loginTicket,
+          totpCode: typeof totpCode === 'string' ? totpCode : '',
+          ip: requestIp(request),
         });
-        const candidate = tenant
-          ? await prismaOwner.staffUser.findFirst({
-              where: { tenantId: tenant.id, email },
-              include: { roles: true, permissions: true },
-            })
-          : null;
-
-        // Hardware-only ist eine serverseitige Kontoeigenschaft. Weder das
-        // Passwort noch DEV_SKIP_TOTP dürfen als versteckter Fallback dienen.
-        // S-09: Unzulässige oder unbekannte Konten kosten trotzdem genau einen
-        // bcrypt-Vergleich (Dummy-Hash), damit die Antwortzeit nichts verrät.
-        const staffUser = passwordLoginAccount(candidate);
-        if (staffUser) {
-          const accountRl = await checkStaffPasswordAccountLimit(staffUser.id);
-          if (!accountRl.ok) {
-            log.warn({ staffId: staffUser.id }, 'staff-auth: account password-rate-limit hit');
-            return null;
-          }
-        }
-
-        const passwordOk = await verifyStaffPassword(password, staffUser);
-        if (!tenant || !staffUser) return null;
-        if (!passwordOk) {
-          // Account-gebundener Lockout (S2): IP-RL allein hilft nicht gegen
-          // verteilte Brute-Force. Fehler werden geloggt, nicht geschluckt.
-          // RF-12: zählt UND schreibt auth.login.failure(/.lockout) in die Chain.
-          await recordFailedLoginAudited({
-            tenantId: tenant.id,
-            staffUserId: staffUser.id,
-            email: staffUser.email,
-            ip,
-            reason: 'password',
-          });
-          return null;
-        }
-
-        // DEV-ONLY: TOTP komplett überspringen (Login nur mit Passwort).
-        // Doppelt gegated über DEV_SKIP_TOTP — in Produktion nie aktiv.
-        if (DEV_SKIP_TOTP) {
-          log.warn(
-            { staffId: staffUser.id },
-            'staff-auth: DEV_SKIP_TOTP aktiv — TOTP übersprungen (NUR Dev!)',
-          );
-          if (ip) await resetRateLimit(`staff-authorize:${ip}`);
-          await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
-          await resetFailedLogin(prismaOwner, staffUser.id);
-          // RF-12: auch der Dev-Login landet in der Chain (method markiert ihn).
-          await prismaOwner.$transaction((tx) =>
-            evidenceService.record(tx, {
-              tenantId: tenant.id,
-              actorType: 'STAFF',
-              actorId: staffUser.id,
-              action: 'auth.login.success',
-              resourceType: 'staff_user',
-              resourceId: staffUser.id,
-              after: { email: staffUser.email, method: 'dev_skip_totp' },
-              ip: auditIp(ip),
-            }),
-          );
-          return {
-            id: staffUser.id,
-            email: staffUser.email,
-            name: staffUser.fullName,
-            staffId: staffUser.id,
-            tenantId: tenant.id,
-            fullName: staffUser.fullName,
-            roles: staffUser.roles.map((r) => r.role as string),
-            permissions: staffUser.permissions.map((p) => p.permission as string),
-            authMethod: 'dev_skip_totp' as const,
-            authRevision: staffUser.authRevision,
-          };
-        }
-
-        // TOTP ist Pflicht — ohne Enrollment kein Login
-        await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
-        if (!staffUser.totpSecretEnc || !staffUser.totpEnrolledAt) return null;
-
-        // TOTP-Code prüfen
-        if (!(await mayVerifySecondFactor(staffUser.id, totpCode))) return null;
-        const secret = decryptTotpSecret(staffUser.totpSecretEnc, tenant.id, env.AUTH_SECRET);
-        const totpValid = verifyTotpCode(totpCode, secret);
-
-        // V-1: Backup-Code-Recovery. Wenn TOTP nicht matched, prüfen wir gegen
-        // die hashedTotpBackupCodes (8 one-time-use codes aus dem Enrollment).
-        // bcrypt-compare ist teuer (12 rounds × 8 codes = ~1s im Worst Case),
-        // aber das ist der Recovery-Pfad — Latenz ist hier akzeptabel.
-        // totpBackupCodes ist im Schema Json? — wir holen die String-Liste raus.
-        const backupCodes: string[] = Array.isArray(staffUser.totpBackupCodes)
-          ? (staffUser.totpBackupCodes as unknown[]).filter(
-              (x): x is string => typeof x === 'string',
-            )
-          : [];
-        let usedBackupIndex = -1;
-        if (!totpValid && backupCodes.length > 0) {
-          for (let i = 0; i < backupCodes.length; i++) {
-            const hashed = backupCodes[i]!;
-            if (await compare(totpCode, hashed)) {
-              usedBackupIndex = i;
-              break;
-            }
-          }
-        }
-
-        if (!totpValid && usedBackupIndex < 0) {
-          await recordFailedLoginAudited({
-            tenantId: tenant.id,
-            staffUserId: staffUser.id,
-            email: staffUser.email,
-            ip,
-            reason: 'totp',
-          });
-          return null;
-        }
-
-        if (totpValid) {
-          // H5: Replay-Schutz. Auch wenn der Code mathematisch gültig ist, darf
-          // er pro (staffId, code) nur einmal akzeptiert werden. Fail-closed bei
-          // Redis-Ausfall (kein Redis → kein TOTP-Login).
-          const fresh = await consumeTotpCode(staffUser.id, totpCode);
-          if (fresh === null) {
-            log.warn(
-              { staffId: staffUser.id },
-              'staff-auth: TOTP-Replay-Store nicht erreichbar — Login abgewiesen',
-            );
-            return null;
-          }
-          if (!fresh) {
-            await recordFailedLoginAudited({
-              tenantId: tenant.id,
-              staffUserId: staffUser.id,
-              email: staffUser.email,
-              ip,
-              reason: 'totp_replay',
-            });
-            return null;
-          }
-        } else {
-          // V-1/W-3: Backup-Code one-time-use atomar konsumieren. Vorher:
-          //   filter() + fireAndForget()
-          // hatte zwei Probleme:
-          //  - fire-and-forget: schlägt das Update transient fehl, bleibt der
-          //    benutzte Code im Array und kann ein zweites Mal akzeptiert
-          //    werden — one-time-Garantie weg.
-          //  - Read-Modify-Write race: zwei parallele Logins mit Codes A und B
-          //    lesen denselben Initial-Array, schreiben jeweils ihren
-          //    gefilterten Array zurück — letzter Writer gewinnt, einer der
-          //    Codes „kommt zurück".
-          // Fix: SELECT FOR UPDATE + Re-Check innerhalb $transaction, dann
-          // UPDATE. await — keine Background-Promise.
-          const usedHash = backupCodes[usedBackupIndex]!;
-          const consumed = await prismaOwner.$transaction(async (tx) => {
-            const rows = await tx.$queryRaw<{ totp_backup_codes: unknown }[]>`
-              SELECT totp_backup_codes FROM staff_user
-              WHERE id = ${staffUser.id}::uuid
-              FOR UPDATE
-            `;
-            const current: string[] = Array.isArray(rows[0]?.totp_backup_codes)
-              ? (rows[0]!.totp_backup_codes as unknown[]).filter(
-                  (x): x is string => typeof x === 'string',
-                )
-              : [];
-            const idx = current.indexOf(usedHash);
-            if (idx < 0) {
-              // Anderer Login hat denselben Code zwischenzeitlich konsumiert.
-              return false;
-            }
-            const remaining = current.filter((_, i) => i !== idx);
-            await tx.staffUser.update({
-              where: { id: staffUser.id },
-              data: { totpBackupCodes: remaining },
-            });
-            // RF-12: One-Time-Verbrauch eines Backup-Codes ist sicherheits-
-            // relevant (umgeht TOTP) → in DERSELBEN Tx in die Audit-Chain.
-            await evidenceService.record(tx, {
-              tenantId: tenant.id,
-              actorType: 'STAFF',
-              actorId: staffUser.id,
-              action: 'auth.backup_code.consume',
-              resourceType: 'staff_user',
-              resourceId: staffUser.id,
-              after: { email: staffUser.email, remainingBackupCodes: remaining.length },
-              ip: auditIp(ip),
-            });
-            return remaining.length;
-          });
-          if (consumed === false) {
-            log.warn(
-              { staffId: staffUser.id },
-              'staff-auth: TOTP-Backup-Code Race verloren — Login abgewiesen',
-            );
-            await recordFailedLoginAudited({
-              tenantId: tenant.id,
-              staffUserId: staffUser.id,
-              email: staffUser.email,
-              ip,
-              reason: 'backup_code_race',
-            });
-            return null;
-          }
-          log.warn(
-            { staffId: staffUser.id, remainingBackupCodes: consumed },
-            'staff-auth: TOTP-Backup-Code verwendet (Recovery-Pfad)',
-          );
-        }
-
-        // Erfolg → Counter vollständig zurücksetzen, bevor der Login als
-        // erfolgreich zurückgegeben wird. Sonst kann ein noch laufender
-        // Fehlversuch-Write den erfolgreichen Reset zeitlich überholen.
-        // RF-12: der Login-Erfolg gehört in die Audit-Hash-Chain
-        // (auth.login.success) — in DERSELBEN Tx wie der lastLoginAt-Write
-        // (Record-Muster wie überall) und deshalb awaited statt fire-and-forget.
-        await resetFailedLogin(prismaOwner, staffUser.id);
-        // Die gemeinsame Sturm-Obergrenze ohne IP leert ein Login nicht (S-03).
-        if (ip) await resetRateLimit(`staff-authorize:${ip}`);
-        await prismaOwner.$transaction(async (tx) => {
-          await tx.staffUser.update({
-            where: { id: staffUser.id },
-            data: { lastLoginAt: new Date() },
-          });
-          await evidenceService.record(tx, {
-            tenantId: tenant.id,
-            actorType: 'STAFF',
-            actorId: staffUser.id,
-            action: 'auth.login.success',
-            resourceType: 'staff_user',
-            resourceId: staffUser.id,
-            after: { email: staffUser.email, method: totpValid ? 'totp' : 'backup_code' },
-            ip: auditIp(ip),
-          });
-        });
-        await resetRateLimit(staffSecondFactorAccountRateLimitKey(staffUser.id));
-
-        return {
-          id: staffUser.id,
-          email: staffUser.email,
-          name: staffUser.fullName,
-          staffId: staffUser.id,
-          tenantId: tenant.id,
-          fullName: staffUser.fullName,
-          roles: staffUser.roles.map((r) => r.role as string),
-          // iter87: Einzelrechte MÜSSEN auch im Produktions-Login ins Token,
-          // damit alte und neue JWT-Schemata sauber unterschieden werden.
-          permissions: staffUser.permissions.map((p) => p.permission as string),
-          authMethod: (totpValid ? 'totp' : 'backup_code') as StaffAuthMethod,
-          authRevision: staffUser.authRevision,
-        };
       },
     }),
     Credentials({
@@ -506,13 +198,7 @@ const staffConfig: NextAuthConfig = {
         const ceremonyId = credentials?.ceremonyId as string | undefined;
         const responseJson = credentials?.responseJson as string | undefined;
         if (!ceremonyId || !responseJson) return null;
-        const ip = (() => {
-          try {
-            return request?.headers ? getClientIp(request.headers) : null;
-          } catch {
-            return null;
-          }
-        })();
+        const ip = requestIp(request);
         // WebAuthn-Assertions sind nicht erratbar; das Limit schützt nur
         // Lookups. Ohne IP gilt allein die Sturm-Obergrenze (S-03) — ein
         // Bucket je Credential-ID ließe Fremde gezielt sperren.

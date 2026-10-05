@@ -34,6 +34,18 @@ bleibt erreichbar; „Mandant aufnehmen“ wird nur mit `CLIENT_CREATE` angebote
   Formatprüfung und mobile Tastatur unterstützen beide Wege. Die Prüfung und
   der Einmalverbrauch erfolgen unverändert auf dem Server
   (`ACCESS-TENANT-RLS-001`).
+- **Passwortschritt und Einmal-Ticket:** Die Passwortprüfung liegt allein im
+  Staff-Login-Service (`server/auth/staff-login.ts`). Unbekannte Kanzlei,
+  unbekannte, deaktivierte, gesperrte oder Hardware-only-Konten und falsche
+  Passwörter erhalten dieselbe Meldung und kosten genau einen bcrypt-Vergleich,
+  notfalls gegen einen festen Dummy-Hash gleicher Kosten (S-09). Nach dem
+  Passwortschritt stellt der Server ein fünf Minuten gültiges Einmal-Ticket
+  aus, gebunden an Konto, Tenant, Auth-Revision und Passwort-Hash; Redis
+  speichert nur dessen Hash. TOTP/Backup-Code, Erst-Enrollment und der lokale
+  DEV-Formularpfad lösen das Ticket atomar ein, statt das Passwort erneut zu
+  prüfen. Ein zweiter Einsatz, eine geänderte Revision, ein geändertes
+  Passwort oder Sperre/Deaktivierung/Hardware-only dazwischen führen zur
+  Neuanmeldung (R-04).
 - **TOTP-Erstsetup bei parallelen Änderungen:** Nach der Passwortprüfung wird
   der aktuelle Account an den geprüften Passwort-Hash und die ursprüngliche
   Auth-Revision gebunden. Ein neues Secret wird nur für ein weiterhin offenes

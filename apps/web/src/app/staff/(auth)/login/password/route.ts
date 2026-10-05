@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prismaOwner } from '@/server/db/prisma-owner';
+import { completeStaffLogin } from '@/server/auth/staff-login';
 import { staffSessionFactory, staffSessionToken } from '@/server/auth/staff-session';
 import { checkPasswordAction } from '../actions';
-import { evidenceService } from '@/server/container';
-import { auditIp } from '@/server/auth/login-audit';
 import { getClientIp } from '@/server/rate-limit';
 import { isRequestBodyTooLargeError, parseFormDataBounded } from '@/server/http/bounded-form-data';
 
@@ -38,29 +36,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const tenantSlug = String(formData.get('tenantSlug') ?? 'default');
   const returnTo = safeStaffReturnTo(new URL(req.url).searchParams.get('returnTo'));
 
+  // R-04: derselbe Staff-Login-Service wie die Oberfläche — Passwortschritt
+  // (genau ein bcrypt-Vergleich, Einmal-Ticket), danach dieselbe Einlösung wie
+  // der Auth.js-Credentials-Provider. Ohne DEV_SKIP_TOTP endet der Pfad nach
+  // dem Passwortschritt (TOTP braucht die Oberfläche).
   const passwordResult = await checkPasswordAction(email, password, tenantSlug);
   if (!passwordResult.ok) {
     return loginRedirect(req, 'password-invalid');
   }
 
-  if (!passwordResult.devSkip) {
+  if (!passwordResult.devSkip || !passwordResult.loginTicket) {
     return loginRedirect(req, 'totp-required');
-  }
-
-  const tenant = await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
-  const staffUser = tenant
-    ? await prismaOwner.staffUser.findFirst({
-        where: {
-          tenantId: tenant.id,
-          email: email.toLowerCase(),
-          active: true,
-          hardwareOnlyEnabledAt: null,
-        },
-        include: { roles: true, permissions: true },
-      })
-    : null;
-  if (!tenant || !staffUser) {
-    return loginRedirect(req, 'session-invalid');
   }
 
   const ip = (() => {
@@ -70,37 +56,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return null;
     }
   })();
-
-  await prismaOwner.$transaction((tx) =>
-    evidenceService.record(tx, {
-      tenantId: tenant.id,
-      actorType: 'STAFF',
-      actorId: staffUser.id,
-      action: 'auth.login.success',
-      resourceType: 'staff_user',
-      resourceId: staffUser.id,
-      after: { email: staffUser.email, method: 'dev_skip_totp' },
-      ip: auditIp(ip),
-    }),
-  );
+  const user = await completeStaffLogin({
+    loginTicket: passwordResult.loginTicket,
+    totpCode: '',
+    ip,
+  });
+  if (!user) {
+    return loginRedirect(req, 'session-invalid');
+  }
 
   // S-05: Cookie-Name, -Optionen, Codec und Claims aus der Staff-Session-
   // Fabrik — dieselbe Implementierung, mit der Auth.js die Session ausstellt.
   const response = NextResponse.redirect(new URL(returnTo, req.url), 303);
-  await staffSessionFactory.issue(
-    staffSessionToken({
-      id: staffUser.id,
-      email: staffUser.email,
-      name: staffUser.fullName,
-      staffId: staffUser.id,
-      tenantId: tenant.id,
-      fullName: staffUser.fullName,
-      roles: staffUser.roles.map((r) => r.role as string),
-      permissions: staffUser.permissions.map((p) => p.permission as string),
-      authMethod: 'dev_skip_totp',
-      authRevision: staffUser.authRevision,
-    }),
-    { request: req, response },
-  );
+  await staffSessionFactory.issue(staffSessionToken(user), { request: req, response });
   return response;
 }

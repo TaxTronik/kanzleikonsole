@@ -50,6 +50,9 @@ export default function StaffLoginPage() {
   const [step, setStep] = useState<Step>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // R-04: Einmal-Ticket aus dem Passwortschritt. Der zweite Schritt sendet nur
+  // Ticket und Code, nie das Passwort.
+  const [loginTicket, setLoginTicket] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [setupSecret, setSetupSecret] = useState('');
   const [setupQrDataUrl, setSetupQrDataUrl] = useState('');
@@ -127,6 +130,15 @@ export default function StaffLoginPage() {
     }
   }
 
+  // Das Ticket ist nach jedem Einlöseversuch verbraucht: ein fehlgeschlagener
+  // zweiter Schritt beginnt wieder mit der Passwortanmeldung (Eingaben bleiben).
+  function restartLogin(message: string) {
+    setLoginTicket('');
+    setTotpCode('');
+    setStep('password');
+    setError(message);
+  }
+
   function submitPasswordStep() {
     if (isPending) return;
     setError(null);
@@ -136,15 +148,14 @@ export default function StaffLoginPage() {
         setError(result.error ?? 'Fehler bei der Anmeldung.');
         return;
       }
+      setLoginTicket(result.loginTicket ?? '');
       // DEV-ONLY: TOTP übersprungen → direkt einloggen (ohne Code/Setup).
       if (result.devSkip) {
         const fd = new FormData();
-        fd.set('email', email);
-        fd.set('password', password);
-        fd.set('tenantSlug', tenantSlug);
+        fd.set('loginTicket', result.loginTicket ?? '');
         fd.set('returnTo', returnTo);
         const login = await loginAction(fd);
-        if (login.error) setError(login.error);
+        if (login.error) restartLogin(login.error);
         return;
       }
       if (result.totpRequired) {
@@ -166,20 +177,23 @@ export default function StaffLoginPage() {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await confirmTotpEnrollmentAction(email, password, totpCode, tenantSlug);
+      const result = await confirmTotpEnrollmentAction(loginTicket, totpCode);
       if (!result.ok) {
-        setError(result.error ?? 'Bestätigung fehlgeschlagen.');
+        restartLogin(result.error ?? 'Bestätigung fehlgeschlagen.');
         return;
       }
       setTotpCode('');
+      setLoginTicket(result.loginTicket ?? '');
       // V-1: Wenn der Server frische Backup-Codes mitschickt, zeigen wir sie
       // EINMAL als Recovery-Pflicht-Schritt. Erst nach Bestätigung („habe ich
       // notiert") geht es zum normalen TOTP-Login.
       if (result.backupCodes && result.backupCodes.length > 0) {
         setBackupCodes(result.backupCodes);
         setStep('backup-codes');
-      } else {
+      } else if (result.loginTicket) {
         setStep('totp');
+      } else {
+        restartLogin('TOTP ist eingerichtet. Bitte erneut anmelden.');
       }
     });
   }
@@ -320,15 +334,13 @@ export default function StaffLoginPage() {
               startTransition(async () => {
                 const result = await loginAction(fd);
                 if (result.error) {
-                  setError(result.error);
+                  restartLogin(result.error);
                 }
               });
             }}
             className="space-y-4"
           >
-            <input type="hidden" name="email" value={email} />
-            <input type="hidden" name="password" value={password} />
-            <input type="hidden" name="tenantSlug" value={tenantSlug} />
+            <input type="hidden" name="loginTicket" value={loginTicket} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <p className="text-sm text-secondary text-center mb-4">
               Gib den 6-stelligen Code aus deiner Authenticator-App oder einen 10-stelligen
@@ -360,6 +372,7 @@ export default function StaffLoginPage() {
             <button
               type="button"
               onClick={() => {
+                setLoginTicket('');
                 setStep('password');
                 setError(null);
               }}
@@ -489,7 +502,8 @@ export default function StaffLoginPage() {
                 // weiter klickt — sie sind dann nur noch in der Datei /
                 // beim User.
                 setBackupCodes([]);
-                setStep('totp');
+                if (loginTicket) setStep('totp');
+                else restartLogin('TOTP ist eingerichtet. Bitte erneut anmelden.');
               }}
               className="btn-primary w-full"
             >

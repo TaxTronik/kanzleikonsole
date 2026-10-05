@@ -51,7 +51,6 @@
   "apps/web/src/components/document-explorer/browser-view.tsx::Arrow function#1": 29,
   "apps/web/src/components/document-explorer/browser-view.tsx::Function 'BrowserView'#1": 39,
   "apps/web/src/components/document-explorer/embedded-view.tsx::Function 'EmbeddedView'#1": 29,
-  "apps/web/src/server/auth/staff.ts::Async method 'authorize'#1": 35,
   "apps/web/src/server/backup/restore.ts::Async function 'main'#1": 22,
   "apps/web/src/server/backup/restore.ts::Function 'parseRestoreArgs'#1": 23,
   "apps/web/src/server/documents/resumable-upload.ts::Async arrow function#1": 21,

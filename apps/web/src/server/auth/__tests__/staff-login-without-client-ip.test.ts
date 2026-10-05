@@ -3,8 +3,8 @@
 // Früher fielen alle Limits auf kleine globale Zähler und die Kontosperre auf
 // reines Zählen: fünf anonyme Fehlversuche sperrten jedes bekannte Konto 30 min,
 // 200 Anfragen je 10 min blockierten alle Logins. Echte Passwort-Action,
-// Credentials-Provider, Rate-Limiter und Lockout; nur Persistenz, Krypto-
-// Grenzen und Auth.js-Hülle sind ersetzt.
+// Credentials-Provider, Rate-Limiter, Lockout und Einmal-Ticket (R-04); nur
+// Persistenz, Krypto-Grenzen und Auth.js-Hülle sind ersetzt.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Authorize = (
@@ -36,6 +36,7 @@ const h = vi.hoisted(() => ({
   config: null as unknown as { providers: { authorize: Authorize }[] },
   accounts: new Map<string, Account>(),
   counters: new Map<string, { count: number; until: number }>(),
+  tickets: new Map<string, { value: string; until: number }>(),
   compare: vi.fn(),
   verifyTotp: vi.fn(),
   evidence: vi.fn(),
@@ -104,6 +105,15 @@ vi.mock('@/server/redis', () => ({
     scard: async () => 0,
     expire: async () => 1,
     del: h.del,
+    set: async (key: string, value: string, _ex: 'EX', ttl: number) => {
+      h.tickets.set(key, { value, until: Date.now() + ttl * 1000 });
+      return 'OK';
+    },
+    getdel: async (key: string) => {
+      const entry = h.tickets.get(key);
+      h.tickets.delete(key);
+      return entry && entry.until > Date.now() ? entry.value : null;
+    },
   }),
 }));
 
@@ -169,15 +179,22 @@ function target(): Account {
   return h.accounts.get(TARGET)!;
 }
 
-function login(email: string, password: string, totpCode = '123456') {
+function authorize(credentials: Record<string, string>) {
   return h.config.providers[0]!.authorize(
-    { email, password, totpCode, tenantSlug: 'default' },
+    credentials,
     new Request('https://staff.example.test/api/auth/staff/callback/credentials', {
       method: 'POST',
       // Ohne TRUST_PROXY_REQUIRED muss die App diesen Header ignorieren.
       headers: { 'x-forwarded-for': '198.51.100.23' },
     }),
   );
+}
+
+// R-04: Passwortschritt liefert das Einmal-Ticket, Schritt 2 löst es ein.
+async function login(email: string, password: string, totpCode = '123456') {
+  const step = await checkPasswordAction(email, password);
+  if (!step.ok || !step.loginTicket) return null;
+  return authorize({ loginTicket: step.loginTicket, totpCode });
 }
 
 function auditActions(): string[] {
@@ -189,6 +206,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   vi.clearAllMocks();
   h.counters.clear();
+  h.tickets.clear();
   h.accounts.clear();
   h.accounts.set(TARGET, account(TARGET, 'ziel@example.test'));
   h.accounts.set(COLLEAGUE, account(COLLEAGUE, 'kollegin@example.test'));
@@ -258,7 +276,8 @@ describe('S-03: Staff-Login ohne vertrauenswürdige Client-IP', () => {
   it('blockiert nach mehr als 200 fremden Anfragen nicht mehr alle Staff-Logins', async () => {
     for (let attempt = 0; attempt < 250; attempt++) {
       await checkPasswordAction(`unbekannt-${attempt}@example.test`, 'egal');
-      await login(`unbekannt-${attempt}@example.test`, 'egal');
+      // Fremde erreichen den Credentials-Callback auch ohne gültiges Ticket.
+      await authorize({ loginTicket: 'x'.repeat(43), totpCode: '000000' });
     }
     expect(h.counters.get('rl:staff-pw:global')?.count).toBe(250);
     expect(h.counters.get('rl:staff-authorize:global')?.count).toBe(250);

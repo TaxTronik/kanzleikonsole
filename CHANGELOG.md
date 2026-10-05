@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Die Mitarbeiteranmeldung prüft das Passwort nur noch einmal;
+  TOTP-/Recovery-Code und TOTP-Ersteinrichtung verwenden ein fünf Minuten
+  gültiges Einmal-Ticket statt einer zweiten bcrypt-Prüfung. Nach einem
+  falschen Code beginnt die Anmeldung wieder beim Passwortschritt
+  (`ACCESS-TENANT-RLS-001`, `FK-EXC-20261005-014`).
 - **[Scope]** GwG-Onboarding-Uploads werden der Einladung nur noch über den
   Fremdschlüssel am Dokument zugeordnet; die JSON-Liste der Einladung wird
   nicht mehr gelesen und bis zur Contract-Migration nur für Rollbacks

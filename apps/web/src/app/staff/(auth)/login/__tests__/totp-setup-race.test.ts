@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   onQr: () => {},
   generated: 0,
   audit: vi.fn(),
+  tickets: new Map<string, string>(),
 }));
 
 vi.mock('bcryptjs', () => ({
@@ -57,6 +58,20 @@ vi.mock('@/server/auth/webauthn', () => ({
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+// R-04: zustandsbehafteter Redis-Double für die Einmal-Tickets.
+vi.mock('@/server/redis', () => ({
+  getRedis: () => ({
+    set: async (key: string, value: string) => {
+      h.tickets.set(key, value);
+      return 'OK';
+    },
+    getdel: async (key: string) => {
+      const value = h.tickets.get(key) ?? null;
+      h.tickets.delete(key);
+      return value;
+    },
+  }),
 }));
 vi.mock('@/server/rate-limit', () => ({
   getClientIp: () => null,
@@ -118,11 +133,23 @@ vi.mock('@/server/db/prisma-owner', () => {
 });
 
 import { checkPasswordAction, confirmTotpEnrollmentAction } from '../actions';
+import { issueStaffLoginTicket } from '@/server/auth/staff-login-ticket';
 
 const NOW = new Date('2026-09-07T00:30:00Z');
 
+/** Ticket des Passwortschritts für den aktuellen Kontostand (R-04). */
+function enrollmentTicket() {
+  return issueStaffLoginTicket('totp-enrollment', {
+    id: h.state['id'] as string,
+    tenantId: h.state['tenantId'] as string,
+    authRevision: h.state['authRevision'] as number,
+    passwordHash: h.state['passwordHash'] as string,
+  });
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
+  h.tickets.clear();
   vi.setSystemTime(NOW);
   vi.clearAllMocks();
   h.generated = 0;
@@ -234,11 +261,7 @@ describe('public TOTP setup cannot overwrite a newer authentication state', () =
       h.state.passwordHash = 'new-hash';
       h.state.authRevision = 1;
     };
-    const result = await confirmTotpEnrollmentAction(
-      'staff@example.test',
-      'current-password',
-      '123456',
-    );
+    const result = await confirmTotpEnrollmentAction(await enrollmentTicket(), '123456');
     expect(result.ok).toBe(false);
     expect(result.backupCodes).toBeUndefined();
     expect(h.state.totpEnrolledAt).toBeNull();
@@ -256,11 +279,7 @@ describe('public TOTP setup cannot overwrite a newer authentication state', () =
         if (change === 'hardware-only') h.state.hardwareOnlyEnabledAt = NOW;
         if (change === 'lockout') h.state.lockedUntil = new Date(NOW.getTime() + 60_000);
       };
-      const result = await confirmTotpEnrollmentAction(
-        'staff@example.test',
-        'current-password',
-        '123456',
-      );
+      const result = await confirmTotpEnrollmentAction(await enrollmentTicket(), '123456');
       expect(result.ok).toBe(false);
       expect(result.backupCodes).toBeUndefined();
       expect(h.state.totpEnrolledAt).toBeNull();
@@ -275,20 +294,15 @@ describe('public TOTP setup cannot overwrite a newer authentication state', () =
     const repeated = await checkPasswordAction('staff@example.test', 'current-password');
     expect(repeated.setupSecret).toBe(first.setupSecret);
     expect(h.generated).toBe(1);
-    const confirmed = await confirmTotpEnrollmentAction(
-      'staff@example.test',
-      'current-password',
-      '123456',
-    );
+    const confirmed = await confirmTotpEnrollmentAction(first.loginTicket!, '123456');
     expect(confirmed.ok).toBe(true);
     expect(confirmed.backupCodes).toHaveLength(8);
     expect(h.state.authRevision).toBe(1);
-    const again = await confirmTotpEnrollmentAction(
-      'staff@example.test',
-      'current-password',
-      '123456',
-    );
+    // Das zweite Ticket gehört zur alten Revision; das erste ist verbraucht.
+    const again = await confirmTotpEnrollmentAction(repeated.loginTicket!, '123456');
     expect(again.ok).toBe(false);
+    const reused = await confirmTotpEnrollmentAction(first.loginTicket!, '123456');
+    expect(reused.ok).toBe(false);
     expect(h.audit).toHaveBeenCalledTimes(1);
   });
 });
