@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-027
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/year-end/actions.ts
+      - apps/web/src/app/staff/(protected)/year-end/page.tsx
+    rule_ids:
+      - YEAR-END-CAMPAIGN-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Die Jahreswechsel-Übersicht blättert Kampagnen (5 je Seite) und Einträge
+      (50 je Seite), ermittelt die Statusverteilung per groupBy und ersetzt
+      find()-Schleifen durch Maps; Einreichungen und Anforderungen werden nur für
+      angezeigte Einträge geladen. Der Rollout lädt Daten vorab und legt
+      Einreichungen, Anforderungen und Zuordnungen gesammelt per createMany an; die
+      Berechtigungsprüfung je Mandant und die Grenze von 200 Mandanten je Rollout
+      bleiben. Ein opt-in Datenbanktest läuft im DB-CI-Job. Kampagnenlogik und
+      Ergebnis je Mandant bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/workflows/__tests__/year-end-rollout.test.ts
+      - apps/web/src/server/workflows/__tests__/year-end-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-026
     date: '2026-10-05'
     paths:
@@ -2084,6 +2106,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-027` dokumentiert die seitenweise
+  Jahreswechsel-Übersicht und den gesammelten Rollout. Kampagnenlogik und
+  Rollout-Grenze bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-026` dokumentiert die mandantenbezogene
   Materialisierung beim Speichern eines Zeitplans. Fristberechnung und

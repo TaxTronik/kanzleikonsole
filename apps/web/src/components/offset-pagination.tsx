@@ -12,9 +12,18 @@ interface Props {
   page: number; // 1-basiert
   pageSize: number;
   totalCount: number;
+  /** Query-Parameter der Seitenzahl (Default `page`), z. B. für eine zweite Liste. */
+  pageParam?: string;
 }
 
-export function OffsetPagination({ basePath, baseQs, page, pageSize, totalCount }: Props) {
+export function OffsetPagination({
+  basePath,
+  baseQs,
+  page,
+  pageSize,
+  totalCount,
+  pageParam = 'page',
+}: Props) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safe = Math.min(Math.max(1, page), totalPages);
   const hasPrev = safe > 1;
@@ -22,8 +31,8 @@ export function OffsetPagination({ basePath, baseQs, page, pageSize, totalCount 
 
   function link(p: number): string {
     const qs = new URLSearchParams(baseQs);
-    if (p > 1) qs.set('page', String(p));
-    else qs.delete('page');
+    if (p > 1) qs.set(pageParam, String(p));
+    else qs.delete(pageParam);
     const q = qs.toString();
     return q ? `${basePath}?${q}` : basePath;
   }

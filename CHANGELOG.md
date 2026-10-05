@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die Jahreswechsel-Übersicht blättert Kampagnen und Einträge seitenweise und
+  zeigt die Statusverteilung je Kampagne, statt alle Kampagnen, Einträge und
+  Einreichungen zu laden und im Render quadratisch abzugleichen. Der Rollout
+  legt Einreichungen, Anforderungen und Zuordnungen gesammelt an (200
+  Mandanten lokal 0,2 bis 0,4 s statt 1,7 s) (`YEAR-END-CAMPAIGN-001`,
+  `FK-EXC-20261005-027`).
 - Das Speichern eines Steuertermin-Zeitplans legt nur noch die Termine dieses
   Mandanten an, statt alle Termine der Kanzlei in einer Web-Transaktion zu
   materialisieren; Vorwarnung und automatische Anforderung erstellt der sofort

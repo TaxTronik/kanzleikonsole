@@ -2,67 +2,67 @@ import Link from 'next/link';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { assertModuleEnabled } from '@/server/settings/modules';
-import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { ExpansionForm } from '@/components/expansion-form';
 import { ClientMultiPicker } from '@/components/ui/client-multi-picker';
+import { OffsetPagination } from '@/components/offset-pagination';
 import {
   createCampaignAction,
   rolloutCampaignAction,
   returnCampaignSubmissionAction,
 } from './actions';
 import { campaignSubmissionPhase, formAnswerProgress } from '@/server/workflows/dashboard-policy';
+import {
+  CAMPAIGNS_PER_PAGE,
+  ENTRIES_PER_PAGE,
+  loadYearEndOverviewTx,
+  type CampaignPhase,
+} from '@/server/workflows/year-end-overview';
+import { YEAR_END_ROLLOUT_MAX_CLIENTS } from '@/server/workflows/year-end-rollout';
 import { fmtDateShort } from '@/lib/fmt';
-export default async function YearEndPage() {
+
+const PHASE_LABELS: Record<CampaignPhase, string> = {
+  PENDING: 'Noch nicht begonnen',
+  IN_PROGRESS: 'In Bearbeitung',
+  RETURNED: 'Rückfrage – erneute Abgabe offen',
+  SUBMITTED: 'Eingereicht – Kanzleiprüfung offen',
+  REVIEWED: 'Kanzleiprüfung abgeschlossen',
+  CLOSED: 'Anforderung geschlossen',
+  CANCELLED: 'Anforderung abgebrochen',
+};
+
+function pageNumber(value: string | undefined): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+interface SearchParams {
+  page?: string;
+  campaign?: string;
+  entries?: string;
+}
+
+export default async function YearEndPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   await assertModuleEnabled(ctx, 'yearEndCampaigns');
   await assertModuleEnabled(ctx, 'forms');
-  const data = await withTenantContext(ctx, async (tx) => {
-    const campaigns = await tx.yearEndCampaign.findMany({ orderBy: { createdAt: 'desc' } });
-    // Sichtbarkeit wie bisher (zugänglich, freigegeben, nicht beendet), aber als
-    // Relationsfilter statt IN-Liste über den gesamten vorab geladenen Bestand;
-    // der Name kommt direkt mit (früher clients.find je Eintrag).
-    const entries = await tx.yearEndCampaignEntry.findMany({
-      where: {
-        client: {
-          AND: [
-            await accessibleClientsWhereFor(tx, session),
-            { allowActive: true, mandateEndedAt: null },
-          ],
-        },
-      },
-      include: { client: { select: { name: true } } },
-    });
-    const submissions = await tx.formSubmission.findMany({
-      where: { id: { in: entries.map((e) => e.submissionId) } },
-      select: {
-        id: true,
-        status: true,
-        submittedAt: true,
-        reviewedAt: true,
-        updatedAt: true,
-        schemaSnapshot: true,
-        answers: true,
-      },
-    });
-    const requests = await tx.request.findMany({
-      where: { id: { in: entries.map((e) => e.requestId) } },
-      select: { id: true, status: true },
-    });
-    const templates = await tx.formTemplate.findMany({
-      where: { active: true },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    return {
-      campaigns,
-      entries,
-      submissions: new Map(submissions.map((submission) => [submission.id, submission])),
-      templates,
-      requestStatus: new Map(requests.map((request) => [request.id, request.status])),
-    };
-  });
+  const sp = await searchParams;
+  // P-19: Kampagnen und Einträge seitenweise, Status per groupBy (Server-Modul).
+  const data = await withTenantContext(ctx, (tx) =>
+    loadYearEndOverviewTx(tx, session, {
+      page: pageNumber(sp.page),
+      campaignId: sp.campaign,
+      entryPage: pageNumber(sp.entries),
+    }),
+  );
+  const now = new Date();
+  const pageQs = new URLSearchParams();
+  if (data.page > 1) pageQs.set('page', String(data.page));
   return (
     <div className="p-8 max-w-6xl space-y-6">
       <h1 className="text-2xl font-bold">Jahreswechsel-Checklisten</h1>
@@ -105,38 +105,48 @@ export default async function YearEndPage() {
           </label>
         </ExpansionForm>
       </section>
-      {data.campaigns.map((c) => (
-        <section className="card p-5" key={c.id}>
-          <h2 className="text-lg font-semibold">
-            {c.name} {c.year}
-          </h2>
-          <p>Zieltermin: {fmtDateShort(c.dueAt)}</p>
-          <details className="my-3">
-            <summary>Empfängerauswahl prüfen und ausrollen</summary>
-            <ExpansionForm
-              action={rolloutCampaignAction}
-              label="Ausgewählten Mandanten im Portal bereitstellen"
-            >
-              <input type="hidden" name="campaignId" value={c.id} />
-              <p>
-                Bereits zugeordnete Mandanten werden übersprungen. Bei einem Fehler wird der gesamte
-                Lauf zurückgerollt.
-              </p>
-              <label className="label" htmlFor={`year-end-rollout-${c.id}`}>
-                Empfänger
-              </label>
-              <ClientMultiPicker
-                id={`year-end-rollout-${c.id}`}
-                name="clientId"
-                filters={['active', 'notEnded']}
-                max={200}
-              />
-            </ExpansionForm>
-          </details>
-          <ul className="divide-y">
-            {data.entries
-              .filter((e) => e.campaignId === c.id)
-              .map((e) => {
+      {data.campaigns.map((c) => {
+        const counts = data.phaseCounts.get(c.id)!;
+        const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+        const entryQs = new URLSearchParams(pageQs);
+        entryQs.set('campaign', c.id);
+        return (
+          <section className="card p-5" key={c.id}>
+            <h2 className="text-lg font-semibold">
+              {c.name} {c.year}
+            </h2>
+            <p>Zieltermin: {fmtDateShort(c.dueAt)}</p>
+            <p className="text-sm">
+              {total} zugängliche Mandanten
+              {(Object.keys(PHASE_LABELS) as CampaignPhase[])
+                .filter((phase) => counts[phase] > 0)
+                .map((phase) => ` · ${PHASE_LABELS[phase]}: ${counts[phase]}`)
+                .join('')}
+            </p>
+            <details className="my-3">
+              <summary>Empfängerauswahl prüfen und ausrollen</summary>
+              <ExpansionForm
+                action={rolloutCampaignAction}
+                label="Ausgewählten Mandanten im Portal bereitstellen"
+              >
+                <input type="hidden" name="campaignId" value={c.id} />
+                <p>
+                  Bereits zugeordnete Mandanten werden übersprungen. Bei einem Fehler wird der
+                  gesamte Lauf zurückgerollt.
+                </p>
+                <label className="label" htmlFor={`year-end-rollout-${c.id}`}>
+                  Empfänger
+                </label>
+                <ClientMultiPicker
+                  id={`year-end-rollout-${c.id}`}
+                  name="clientId"
+                  filters={['active', 'notEnded']}
+                  max={YEAR_END_ROLLOUT_MAX_CLIENTS}
+                />
+              </ExpansionForm>
+            </details>
+            <ul className="divide-y">
+              {(data.entriesByCampaign.get(c.id) ?? []).map((e) => {
                 const submission = data.submissions.get(e.submissionId);
                 if (!submission) return null;
                 const phase = campaignSubmissionPhase(
@@ -144,15 +154,7 @@ export default async function YearEndPage() {
                   data.requestStatus.get(e.requestId),
                 );
                 const progress = formAnswerProgress(submission.schemaSnapshot, submission.answers);
-                const label = {
-                  PENDING: 'Noch nicht begonnen',
-                  IN_PROGRESS: 'In Bearbeitung',
-                  RETURNED: 'Rückfrage – erneute Abgabe offen',
-                  SUBMITTED: 'Eingereicht – Kanzleiprüfung offen',
-                  REVIEWED: 'Kanzleiprüfung abgeschlossen',
-                  CLOSED: 'Anforderung geschlossen',
-                  CANCELLED: 'Anforderung abgebrochen',
-                }[phase];
+                const label = PHASE_LABELS[phase];
                 return (
                   <li key={e.id} className="py-3 space-y-2">
                     <div className="flex flex-wrap justify-between gap-3">
@@ -168,7 +170,7 @@ export default async function YearEndPage() {
                             ? 'text-emerald-700'
                             : phase === 'SUBMITTED'
                               ? 'text-blue-700'
-                              : c.dueAt < new Date()
+                              : c.dueAt < now
                                 ? 'text-red-700'
                                 : 'text-amber-700'
                         }
@@ -200,7 +202,7 @@ export default async function YearEndPage() {
                       </p>
                     )}
                     {!['REVIEWED', 'SUBMITTED', 'CLOSED', 'CANCELLED'].includes(phase) &&
-                      c.dueAt < new Date() && (
+                      c.dueAt < now && (
                         <p className="text-red-700 text-sm">Interner Zieltermin überschritten</p>
                       )}
                     {['SUBMITTED', 'REVIEWED'].includes(phase) && (
@@ -237,9 +239,29 @@ export default async function YearEndPage() {
                   </li>
                 );
               })}
-          </ul>
-        </section>
-      ))}
+            </ul>
+            {total > ENTRIES_PER_PAGE && (
+              <OffsetPagination
+                basePath="/staff/year-end"
+                baseQs={entryQs}
+                page={data.entryPages.get(c.id) ?? 1}
+                pageSize={ENTRIES_PER_PAGE}
+                totalCount={total}
+                pageParam="entries"
+              />
+            )}
+          </section>
+        );
+      })}
+      {data.campaignCount > CAMPAIGNS_PER_PAGE && (
+        <OffsetPagination
+          basePath="/staff/year-end"
+          baseQs={new URLSearchParams()}
+          page={data.page}
+          pageSize={CAMPAIGNS_PER_PAGE}
+          totalCount={data.campaignCount}
+        />
+      )}
     </div>
   );
 }

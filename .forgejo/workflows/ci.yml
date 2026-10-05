@@ -263,6 +263,15 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/client-access-filter-db.test.ts 2>&1 | tee testbericht-client-access-filter.log
 
+      # YEAR-END-CAMPAIGN-001: gesammelter Rollout und groupBy-Übersicht der
+      # Jahreswechsel-Kampagnen gegen Trigger und RLS (P-19).
+      - name: Year-end campaigns against the PostgreSQL app role
+        env:
+          YEAR_END_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/workflows/__tests__/year-end-db.test.ts 2>&1 | tee testbericht-year-end.log
+
       - name: Settings and audit atomicity against the PostgreSQL app role
         env:
           SETTINGS_ATOMICITY_DB_TEST: '1'
@@ -342,6 +351,7 @@ jobs:
             testbericht-reminder-services.log
             testbericht-invoice-selection.log
             testbericht-client-access-filter.log
+            testbericht-year-end.log
             testbericht-settings-atomicity.log
             testbericht-invoice-concurrency.log
             testbericht-evidence-db.log
