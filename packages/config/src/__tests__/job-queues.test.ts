@@ -116,6 +116,7 @@ describe('shared BullMQ metadata', () => {
       'backup-drill @ 05:00 UTC 1st of month',
       'health-alert @ every 5 min',
       'update-check @ every 6 h',
+      'fido-mds-refresh @ every 20 min',
       'n8n-outbox-reconcile @ every 5 min',
       'workflow-n8n-dispatch @ every 1 min',
       'workflow-feedback @ every 1 min',

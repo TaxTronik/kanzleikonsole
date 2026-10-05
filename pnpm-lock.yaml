@@ -500,9 +500,15 @@ importers:
       '@azure/msal-node':
         specifier: 5.6.0
         version: 5.6.0
+      '@peculiar/x509':
+        specifier: 1.14.3
+        version: 1.14.3
       '@prisma/client':
         specifier: ^7.9.1
         version: 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+      '@simplewebauthn/server':
+        specifier: 13.3.3
+        version: 13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)
       '@taxtronik/config':
         specifier: workspace:*
         version: file:packages/config

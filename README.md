@@ -119,10 +119,14 @@ Allowlist-Hash clusterweit. Bei jeder Policy- oder Allowlist-Änderung muss sie
 erhöht werden: Eine höhere Revision verdrängt alte Replicas, dieselbe Revision
 mit anderem Hash wird abgewiesen, und eine leere Allowlist mit höherer Revision
 deaktiviert Hardware-Zugänge global. Der Produktionsstart bindet diese Policy
-nur an die Datenbank und führt keinen MDS-Netzzugriff aus. Nach
-kryptografischer BLOB-Prüfung wird dessen signierte Seriennummer vor der
-lokalen Modellfilterung zentral übernommen; Hardware-Commits sind anschließend
-exakt an Serie, Policy-Revision und Hash gebunden (`MDS -> Staff`-Lockfolge).
+nur an die Datenbank und führt keinen MDS-Netzzugriff aus. Den signierten
+MDS-BLOB lädt und prüft der Worker-Job `fido-mds-refresh` alle 20 Minuten;
+Hardware-Anmeldungen lesen nur diesen gespeicherten Stand und sperren
+fail-closed, wenn er fehlt oder seit über einer Stunde nicht erfolgreich
+geprüft wurde. Nach kryptografischer BLOB-Prüfung wird dessen signierte
+Seriennummer vor der lokalen Modellfilterung zentral übernommen;
+Hardware-Commits sind anschließend exakt an Serie, Policy-Revision und Hash
+gebunden (`MDS -> Staff`-Lockfolge).
 
 Die ADMIN-Owner-CLI schreibt das Recovery-Passwort ausschließlich in eine mit
 `O_EXCL` und No-follow-Schutz neu angelegte Credential-Datei, nie ins Terminal

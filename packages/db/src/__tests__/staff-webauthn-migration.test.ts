@@ -67,6 +67,13 @@ const mdsPolicyBindingMigration = readFileSync(
   ),
   'utf8',
 );
+const mdsSnapshotMigration = readFileSync(
+  new URL(
+    '../../prisma/migrations/20261005120000_fido_mds_snapshot/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 const recoveryRoleFloorMigration = readFileSync(
   new URL(
     '../../prisma/migrations/20260903009000_staff_recovery_role_floor/migration.sql',
@@ -336,6 +343,33 @@ describe('Staff-WebAuthn-Datenbankvertrag', () => {
     expect(begin).toBeGreaterThanOrEqual(0);
     expect(begin).toBeLessThan(grant);
     expect(grant).toBeLessThan(commit);
+  });
+
+  it('P-23: legt den signaturgeprüften MDS-Snapshot im owner-only Anker ab', () => {
+    expect(mdsSnapshotMigration).toContain('-- Fachkatalog: ACCESS-TENANT-RLS-001');
+    expect(mdsSnapshotMigration).toContain('ALTER TABLE public."fido_mds_trust_state"');
+    expect(mdsSnapshotMigration).toContain('ADD COLUMN "snapshot_serial" BIGINT');
+    expect(mdsSnapshotMigration).toContain('ADD COLUMN "snapshot_sha256" VARCHAR(64)');
+    expect(mdsSnapshotMigration).toContain('ADD COLUMN "snapshot_entries" JSONB');
+    expect(mdsSnapshotMigration).toContain('"snapshot_serial" <= "blob_serial"');
+    expect(mdsSnapshotMigration).toContain('"snapshot_sha256" ~ \'^[0-9a-f]{64}$\'');
+    expect(mdsSnapshotMigration).toContain('jsonb_typeof("snapshot_entries") = \'array\'');
+    // Keine neue Tabelle und damit keine neue RLS-Ausnahme; keine Rechte für die App.
+    expect(mdsSnapshotMigration).not.toMatch(/CREATE TABLE|GRANT |tenant_id/);
+    expect(mdsSnapshotMigration).toContain(
+      'REVOKE ALL ON TABLE public."fido_mds_trust_state" FROM taxtronik_app',
+    );
+    const begin = mdsSnapshotMigration.indexOf('BEGIN;');
+    const commit = mdsSnapshotMigration.lastIndexOf('COMMIT;');
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(begin).toBeLessThan(mdsSnapshotMigration.indexOf('ALTER TABLE'));
+    expect(mdsSnapshotMigration.lastIndexOf('REVOKE ALL')).toBeLessThan(commit);
+    expect(schema).toMatch(/snapshotSerial\s+BigInt\?\s+@map\("snapshot_serial"\)/);
+    expect(schema).toMatch(
+      /snapshotSha256\s+String\?\s+@map\("snapshot_sha256"\) @db\.VarChar\(64\)/,
+    );
+    expect(schema).toMatch(/snapshotEntries\s+Json\?\s+@map\("snapshot_entries"\)/);
+    expect(rlsVerifier).not.toContain('fido_mds_snapshot');
   });
 
   it('verhindert einen Staff-seitigen Demotions-Bypass der Recovery-Hierarchie', () => {

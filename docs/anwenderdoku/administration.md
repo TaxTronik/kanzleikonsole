@@ -70,11 +70,13 @@ Tätigkeitsbereichen, Anmeldemodus/2FA-Status, letztem Login und Aktiv-Status.
   Allowlist-/MDS-Prüfung ebenfalls bestehen, wird in diesem Schritt aber nicht
   erneut kryptografisch präsentiert. Beide Schlüssel
   vor dem Opt-in einzeln testen, kennzeichnen und getrennt verwahren.
-- **Betrieb und Datenschutz:** Der App-Container benötigt HTTPS-Zugriff auf den
-  FIDO Metadata Service; Cache und Refresh laufen bedarfsgetrieben und nicht
-  als eigener periodischer Job. Beim Produktionsstart wird nur die Policy an
-  die Datenbank gebunden; der MDS-Netzzugriff beginnt erst mit einer
-  Hardware-Zeremonie. TaxTronik speichert AAGUID,
+- **Betrieb und Datenschutz:** Der Worker-Container benötigt HTTPS-Zugriff auf
+  den FIDO Metadata Service; der Hintergrund-Job `fido-mds-refresh` prüft und
+  speichert die FIDO-Metadaten alle 20 Minuten, Anmeldungen lesen nur diesen
+  gespeicherten Stand. Liegt die letzte erfolgreiche Prüfung länger als eine
+  Stunde zurück, ist die Hardware-Anmeldung bis zum nächsten erfolgreichen
+  Lauf gesperrt. Beim Produktionsstart wird nur die Policy an die Datenbank
+  gebunden. TaxTronik speichert AAGUID,
   Attestationsformat und Prüfzeitpunkt, nicht die rohe Zertifikatskette. Der
   externe Abruf erzeugt Server-Verbindungsdaten. Allowlist-Änderungen,
   Monitoring, Ausfall und Datenschutz sind vor dem Rollout nach dem

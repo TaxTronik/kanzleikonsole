@@ -1622,6 +1622,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `backup-run` (täglicher Postgres-Dump direkt nach S3),
   `backup-drill` (monatlicher Restore-Test mit Chain-Verifikation),
   `health-alert` (5-Minuten-Infrastruktur-Health mit Ops-Mail),
+  `fido-mds-refresh` (alle 20 Minuten signaturgeprüfter FIDO-MDS-Stand für
+  die Hardware-Anmeldung, nur bei aktivem Hardware-Zugang),
   `workflow-n8n-dispatch` (minütliche Wiederaufnahme dauerhaft vorgemerkter
   Workflow-Events) und `storage-orphan-cleanup` (sechsstündliche Bereinigung
   journalisierter Storage-Waisen nach der jeweiligen Retention).

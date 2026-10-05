@@ -122,16 +122,21 @@ bleibt erreichbar; „Mandant aufnehmen“ wird nur mit `CLIENT_CREATE` angebote
   per Assertion bestätigt; mindestens zwei aktive Credentials müssen jedoch
   die aktuelle Allowlist-/MDS-/Provenienzprüfung bestehen. Die getrennte
   Funktionsprüfung und Verwahrung beider Schlüssel bleibt organisatorisch.
-- **MDS-Betrieb und Datenschutz:** Der App-Container benötigt DNS, korrekte
+- **MDS-Betrieb und Datenschutz:** Den signierten MDS-BLOB lädt und prüft
+  ausschließlich der Worker-Job `fido-mds-refresh` (alle 20 Minuten, nur bei
+  aktivem Hardware-Zugang). Der Worker-Container benötigt dafür DNS, korrekte
   Systemzeit, eine gültige TLS-Vertrauenskette, HTTPS-Egress zum FIDO-MDS und
-  eng begrenzten HTTP(S)-Egress zu den CRL-Endpunkten der validierten
-  CA-Ketten. Beim Produktionsstart wird nur die lokale Policy-Revision samt
+  eng begrenzten HTTP(S)-Egress zu den CRL-Endpunkten der MDS-Kette; der
+  App-Container benötigt nur noch den CRL-Egress der Attestationsketten beim
+  Enrollment. Beim Produktionsstart wird nur die lokale Policy-Revision samt
   Hash gegen die Datenbank gebunden; dabei erfolgt kein MDS-/CRL-Netzzugriff.
-  MDS-Initialisierung und Refresh erfolgen erst bedarfsgetrieben, spätestens
-  nach einer Stunde beziehungsweise zum früheren `nextUpdate`. Der Snapshot
-  ist prozesslokal. Nach kryptografischer BLOB-Prüfung wird seine signierte
-  Seriennummer dagegen clusterweit monoton verankert, bevor die lokale
-  Allowlist-/Modellfilterung erfolgt. Auch ein gültiger neuer BLOB ohne lokal
+  Hardware-Zeremonien lesen nur den gespeicherten, signaturgeprüften Stand
+  (Snapshot-Spalten des owner-only Ankers `fido_mds_trust_state`) und
+  sperren fail-closed ohne Snapshot,
+  nach einer Stunde ohne erfolgreiche Prüfung oder zum `nextUpdate`. Die
+  Auswertung gegen die Allowlist ist prozesslokal. Nach kryptografischer
+  BLOB-Prüfung wird die signierte Seriennummer dagegen clusterweit monoton
+  verankert, bevor die lokale Allowlist-/Modellfilterung erfolgt. Auch ein gültiger neuer BLOB ohne lokal
   nutzbares Modell verdrängt damit alte Serien und sperrt den aktuellen
   Hardware-Vorgang fail-closed. Eine DB-Tabelle ohne App-Tabellenrechte hält
   Seriennummer, Policy-Revision und kanonischen Policy-Hash. Ein enger
@@ -287,6 +292,7 @@ Rollenmodell implizit.
 | TOTP-Setup und Reset-Rennen                       | login/actions.ts                           | `totp-setup-race.test.ts` + `totp-enrollment.test.ts`                                                             |
 | Passwort-/2FA-Kontowiederherstellung              | profile + admin/users actions              | `profile/__tests__/actions.test.ts` + `admin/users/__tests__/account-actions.test.ts`                             |
 | Physische WebAuthn-/MDS-Policy                    | auth/webauthn + DB-Policyanker + CRL-Patch | `webauthn.test.ts` + `simplewebauthn-crl-hardening.test.ts` + Config-/DB-/Supply-Chain-Tests                      |
+| MDS-Abruf und gespeicherter Stand (P-23)          | Worker-Job fido-mds-refresh + DB-Snapshot  | `fido-mds-verify.test.ts` + `fido-mds-refresh.test.ts` + `fido-mds-snapshot.test.ts`                              |
 | Hardware-Modus, Fallback und Recovery             | staff auth + profile/admin/Owner-CLI       | `staff-auth-state.test.ts` + `totp-enrollment.test.ts` + Profil-/Admin-Action-Tests + `admin-break-glass.test.ts` |
 | Credential-Tenantgrenze (`ACCESS-TENANT-RLS-001`) | WebAuthn-Migration + FORCE RLS             | `staff-webauthn-migration.test.ts` + `staff-webauthn-rls.test.ts`                                                 |
 | Audit-Kopplung (`AUDIT-HASH-CHAIN-001`)           | WebAuthn-/Modus-/Recovery-Actions          | `profile/__tests__/actions.test.ts` + `admin/users/__tests__/account-actions.test.ts`                             |

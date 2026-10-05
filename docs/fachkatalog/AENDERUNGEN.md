@@ -1,5 +1,35 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-033
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/instrumentation.ts
+      - apps/web/src/server/auth/webauthn.ts
+      - packages/db/prisma/migrations/20261005120000_fido_mds_snapshot/migration.sql
+      - packages/db/prisma/schema.prisma
+      - scripts/check-pnpm-supply-chain.sh
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+    reason: >-
+      Der signierte FIDO-Metadaten-BLOB wird nicht mehr im Request der
+      Hardware-Anmeldung geladen und geprüft, sondern vom Hintergrundjob
+      fido-mds-refresh alle 20 Minuten mit unveränderter Prüfung (Signer-Identität,
+      Signatur, Kette, CRLs, Seriennummer, nextUpdate). Der geprüfte Stand liegt in
+      neuen Snapshot-Spalten des bestehenden owner-only Ankers fido_mds_trust_state
+      (Migration 20261005120000); keine neue Tabelle, keine Rechte der App-Rolle,
+      keine neue RLS-Ausnahme. Die Web-App liest nur diesen Stand und sperrt
+      Hardware-Vorgänge fail-closed, wenn kein Snapshot zur verankerten Serie
+      existiert, die letzte Prüfung älter als eine Stunde ist oder nextUpdate
+      erreicht ist. webauthn.ts wird ohne Änderung der öffentlichen API und der
+      Audit-Ereignisse in Module aufgeteilt. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/webauthn.test.ts
+      - apps/worker/src/jobs/__tests__/fido-mds-refresh.test.ts
+      - apps/worker/src/jobs/__tests__/fido-mds-verify.test.ts
+      - packages/db/src/__tests__/fido-mds-snapshot.test.ts
+      - packages/db/src/__tests__/staff-webauthn-migration.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-032
     date: '2026-10-05'
     paths:
@@ -2275,6 +2305,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-033` dokumentiert die FIDO-Metadatenprüfung
+  als Hintergrundjob mit gespeichertem Snapshot. Prüfkette und fail-closed
+  Verhalten der Hardware-Anmeldung bleiben erhalten.
 
 - 2026-10-05: `FK-EXC-20261005-032` dokumentiert die Ablage der
   PDF-Schriften außerhalb des öffentlichen Verzeichnisses. Schriften und

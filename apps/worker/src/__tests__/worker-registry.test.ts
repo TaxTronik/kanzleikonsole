@@ -58,6 +58,8 @@ const LEGACY_CONCURRENCY: Record<string, number | undefined> = {
   'health-alert': 1,
   // P-21: new queue.
   'update-check': 1,
+  // P-23: new queue.
+  'fido-mds-refresh': 1,
   'n8n-deliver': 4,
   'n8n-outbox-reconcile': undefined,
   'workflow-n8n-dispatch': 1,

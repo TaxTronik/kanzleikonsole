@@ -246,19 +246,25 @@ Die Richtlinie schafft zugleich eine externe Verfügbarkeitsabhängigkeit: Eine
 leere Allowlist, MDS-/DNS-/TLS-/Egress-Ausfall, fehlende Metadaten oder ein
 abgewiesener Modellstatus blockieren Enrollment und jede Hardware-Assertion
 fail-closed. Der Produktionsstart bindet die konfigurierte Hardware-Policy nur
-an die Datenbank und führt dabei keinen MDS-Netzzugriff aus; die externe
-Abhängigkeit beginnt erst mit einer Hardware-Zeremonie. Das gilt auch bei
+an die Datenbank und führt dabei keinen MDS-Netzzugriff aus. Den MDS-BLOB lädt
+und prüft ausschließlich der Worker-Job `fido-mds-refresh` alle 20 Minuten;
+Hardware-Zeremonien lesen nur den gespeicherten, signaturgeprüften Stand. Die
+externe Abhängigkeit wirkt deshalb verzögert: Liegt die letzte erfolgreiche
+Prüfung länger als eine Stunde zurück (MDS-, Egress- oder Worker-Ausfall) oder
+ist das signierte `nextUpdate` erreicht, sperren Hardware-Vorgänge
+fail-closed; vor dem ersten erfolgreichen Lauf ebenso. Das gilt auch bei
 nicht erreichbaren CA-Sperrlisten: Sie werden
 erst nach einem vertrauenswürdigen Kettenaufbau geladen, müssen frisch und vom
 tatsächlichen Issuer signiert sein und folgen keiner Umleitung. Akzeptiert wird
 nur genau eine unpartitionierte Voll-CRL-URI; mehrere Distribution Points oder
 Namen, Reason-/Issuer-Scope, Zertifikat-seitige `freshestCRL`-Verweise sowie
 Delta-/`issuingDistributionPoint`-/`freshestCRL`-Extensions und unbekannte
-kritische Extensions in der CRL blockieren bewusst fail-closed. Der
-MDS-Snapshot ist prozesslokal und wird spätestens stündlich oder zum früheren
-`nextUpdate` bedarfsgetrieben aktualisiert. Seine signierte Seriennummer wird
-nach kryptografischer BLOB-Prüfung und noch vor der lokalen Allowlist-/
-Modellfilterung monoton übernommen. Ein gültiger neuer BLOB ohne lokal
+kritische Extensions in der CRL blockieren bewusst fail-closed. Der Worker
+speichert die geprüften Einträge der aktuellen Serie im owner-only Anker
+`fido_mds_trust_state`; jede App-Replica wertet sie erst beim Lesen gegen ihre
+Allowlist aus. Die signierte Seriennummer wird nach kryptografischer
+BLOB-Prüfung und damit noch vor der lokalen Allowlist-/Modellfilterung
+monoton übernommen. Ein gültiger neuer BLOB ohne lokal
 nutzbares Modell kann die zentrale Serie daher fortschreiben, während der
 Hardware-Vorgang fail-closed scheitert. Die Tabelle ohne App-Tabellenrechte
 bindet zusätzlich `WEBAUTHN_HARDWARE_POLICY_REVISION` und den kanonischen Hash
@@ -271,20 +277,24 @@ Replicas; dieselbe Revision mit anderem Hash oder eine niedrigere Revision
 wird abgewiesen. Auch die globale Deaktivierung über eine leere Allowlist
 erfordert daher eine höhere Revision. Eine fehlerhaft koordinierte Revision
 kann Hardware-Zugänge während eines Rolling Deployments bewusst fail-closed
-blockieren. Es gibt derzeit keinen eigenen periodischen Refresh-Job oder
-persistenten Offline-Cache. BLOB- und CRL-Abrufe hinterlassen bei den externen
-Diensten Server-Verbindungsdaten. Details zu Monitoring, Refresh,
+blockieren. Der gespeicherte Stand ist kein Offline-Cache: Er trägt höchstens
+eine Stunde ohne erneute erfolgreiche Prüfung. BLOB- und CRL-Abrufe
+hinterlassen bei den externen Diensten Server-Verbindungsdaten. Details zu
+Monitoring, Refresh,
 Allowlist-Änderungen und Datenschutz stehen im
 [FIDO-MDS-Runbook](../operations/fido-mds.md).
 
-Ein neuer MDS-Modellstatus wird ohne Push-Kanal daher spätestens nach einer
-Stunde übernommen; ein bereits authentisierter CRL-Cacheeintrag kann bis zum
+Ein neuer MDS-Modellstatus wird ohne Push-Kanal mit dem nächsten Lauf des
+Worker-Jobs übernommen, regulär binnen 20 Minuten; ein bereits
+authentisierter CRL-Cacheeintrag kann bis zum
 signierten `nextUpdate` der CA gelten. Die verpflichtende Zertifikat-AAGUID und
 die strikten CA-Constraints können ältere oder abweichend ausgestellte
 Schlüssel trotz grundsätzlich vorhandener FIDO2-Funktionalität ausschließen.
 Das ist vor Beschaffung und Freigabe mit der konkreten Modell-/Firmware-Serie
 zu testen. Das 30-Sekunden-Limit schützt die Verfügbarkeit, kann aber bei
-anhaltend langsamen MDS-/CRL-Verbindungen ebenfalls Enrollment verhindern.
+anhaltend langsamen CRL-Verbindungen Enrollment und bei langsamen
+MDS-/CRL-Verbindungen des Workers die Aktualisierung verhindern; nach einer
+Stunde ohne erfolgreiche Prüfung sperren dann auch Hardware-Assertions.
 
 Die bewusst nicht unterstützten partitionierten, indirekten und Delta-CRL-
 Formen können Schlüsselmodelle trotz grundsätzlich gültiger Attestation

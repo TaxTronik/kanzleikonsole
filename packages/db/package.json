@@ -20,7 +20,8 @@
     "./workflow-lifecycle": "./src/workflow-lifecycle.ts",
     "./workflow-feedback": "./src/workflow-feedback.ts",
     "./pg-tools": "./src/pg-tools.ts",
-    "./restore-security": "./src/restore-security.ts"
+    "./restore-security": "./src/restore-security.ts",
+    "./fido-mds-snapshot": "./src/fido-mds-snapshot.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

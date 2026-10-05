@@ -724,6 +724,11 @@ model FidoMdsTrustState {
   verifiedAt    DateTime @default(now()) @map("verified_at") @db.Timestamptz(3)
   policyRevision BigInt  @map("policy_revision")
   policyHash     String  @map("policy_hash") @db.VarChar(64)
+  /// P-23: signaturgeprüfter MDS-Stand, geschrieben nur vom Worker-Job
+  /// fido-mds-refresh; gültig nur bei snapshotSerial = blobSerial.
+  snapshotSerial  BigInt? @map("snapshot_serial")
+  snapshotSha256  String? @map("snapshot_sha256") @db.VarChar(64)
+  snapshotEntries Json?   @map("snapshot_entries")
 
   @@map("fido_mds_trust_state")
 }

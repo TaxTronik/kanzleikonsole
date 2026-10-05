@@ -104,13 +104,18 @@ Prüffehler blockieren die Assertion oder Aktivierung fail-closed.
 
 TaxTronik bezieht den signierten MDS-v3-Gesamt-BLOB per HTTPS von
 `https://mds.fidoalliance.org/`, begrenzt Größe und Abrufzeit und prüft
-Zertifikatskette sowie JWT-Signatur vor der Auswertung. Der App-Container
-benötigt dafür funktionierende DNS-Auflösung, TLS-Vertrauenskette, Systemzeit
-und ausgehenden TCP-Port 443. Zusätzlich müssen die in einer bereits
-vertrauenswürdig aufgebauten Zertifikatskette angegebenen CA-CRL-Endpunkte über
-HTTP oder HTTPS auf den Standardports 80 beziehungsweise 443 erreichbar sein;
-Redirects sowie URLs mit Zugangsdaten oder abweichenden Ports werden
-abgewiesen. Unterstützt wird bewusst nur genau ein unpartitionierter
+Zertifikatskette sowie JWT-Signatur vor der Auswertung. Abruf und Prüfung
+übernimmt ausschließlich der Worker-Job `fido-mds-refresh`; kein Anmelde-,
+Registrierungs- oder Moduswechsel-Request kontaktiert den Metadata Service.
+Der **Worker-Container** benötigt dafür funktionierende DNS-Auflösung,
+TLS-Vertrauenskette, Systemzeit, ausgehenden TCP-Port 443 und dieselbe
+`WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST` wie die App (bei leerer Liste ruft der Job
+nichts ab). Zusätzlich müssen die in einer bereits vertrauenswürdig
+aufgebauten Zertifikatskette angegebenen CA-CRL-Endpunkte über HTTP oder HTTPS
+auf den Standardports 80 beziehungsweise 443 erreichbar sein – für die
+MDS-Signaturkette vom Worker, für die Attestationsketten beim Enrollment
+(Abschnitt 2) weiterhin vom App-Container. Redirects sowie URLs mit
+Zugangsdaten oder abweichenden Ports werden abgewiesen. Unterstützt wird bewusst nur genau ein unpartitionierter
 Distribution Point mit genau einer vollständigen URI. Mehrere Points oder
 Namen, `reasons`, `cRLIssuer` und relative Namen werden vor dem Abruf
 fail-closed abgewiesen. Die Kanzlei muss MDS- und benötigte CA-Ziele in ihrer
@@ -162,19 +167,42 @@ Beim Produktionsstart bindet jede App-Replica ausschließlich Revision und Hash
 der lokalen Hardware-Policy an den zentralen Datenbankzustand. Dieser
 Startup-Schritt führt keinen MDS- oder CRL-Netzzugriff aus und macht den
 Passwort-/TOTP- sowie Portalbetrieb daher nicht von der MDS-Erreichbarkeit beim
-Start abhängig. Der MDS-Snapshot wird erst bei der ersten benötigten
-Hardware-Zeremonie geladen und liegt nur im App-Prozess. Er wird spätestens
-nach einer Stunde oder bereits zum früheren signierten `nextUpdate` vor dem
-nächsten Hardware-Vorgang verworfen und neu geladen.
+Start abhängig.
 
-Nach erfolgreicher kryptografischer Prüfung von Signatur, Zertifikatskette,
-CRLs, BLOB-Seriennummer und `nextUpdate` wird die signierte Seriennummer
-clusterweit monoton in der ausschließlich owner-seitig beschreibbaren Tabelle
-`fido_mds_trust_state` übernommen, **bevor** die Einträge gegen die lokale
-AAGUID-Allowlist und Modellpolicy gefiltert werden. Enthält ein gültiger neuer
-BLOB danach kein lokal nutzbares Modell, bleibt seine höhere Seriennummer
-zentral wirksam und der Hardware-Vorgang scheitert fail-closed; andere Replicas
-können nicht mit einem älteren Snapshot weiter committen.
+Der Worker-Job `fido-mds-refresh` läuft alle 20 Minuten (ein neu angelegter
+Zeitplan startet sofort). Nach erfolgreicher kryptografischer Prüfung von
+Signatur, Zertifikatskette, CRLs, BLOB-Seriennummer und `nextUpdate` übernimmt
+er die signierte Seriennummer clusterweit monoton in der ausschließlich
+owner-seitig beschreibbaren Tabelle `fido_mds_trust_state` und legt die
+geprüften FIDO2-Einträge samt SHA-256 des BLOBs im selben Datensatz ab
+(Spalten `snapshot_serial`, `snapshot_sha256`, `snapshot_entries`; nur die
+verankerte Serie, den BLOB selbst speichert er nicht). Ein Snapshot gilt nur,
+solange `snapshot_serial` der verankerten Serie entspricht: Rückt eine noch
+nicht aktualisierte App-Replica während eines Rolling Deployments die Serie
+selbst vor, sperren Hardware-Vorgänge bis zum nächsten Worker-Lauf. Ein unveränderter BLOB wird nicht neu geschrieben; nur
+der Prüfzeitpunkt `verified_at` rückt vor. Ein älterer BLOB als der Anker,
+etwa von einem veralteten CDN-Knoten, lässt den Lauf scheitern, ohne Anker
+oder Snapshot zu verändern. Der Worker schreibt nur Serie, `nextUpdate` und
+Prüfzeitpunkt; Policy-Revision und -Hash bindet weiterhin ausschließlich die
+App.
+
+Hardware-Zeremonien lesen nur diesen gespeicherten Stand: Jede App-Replica
+liest vor jedem Hardware-Vorgang den Anker, lädt aus dem Snapshot nur die
+Einträge ihrer Allowlist und wertet sie erst dann gegen Allowlist und
+Modellpolicy aus; das Ergebnis hält sie je Serie, BLOB-Prüfsumme und
+Policy-Hash im Prozess. Die Serienübernahme erfolgt damit weiterhin **vor**
+der lokalen Filterung. Enthält ein gültiger neuer BLOB kein lokal nutzbares
+Modell, bleibt seine höhere Seriennummer zentral wirksam und der
+Hardware-Vorgang scheitert fail-closed; andere Replicas können nicht mit einem
+älteren Snapshot weiter committen.
+
+Hardware-Enrollment, -Login und Moduswechsel sperren fail-closed, solange
+noch kein geprüfter Stand vorliegt (Serie 0 oder kein Snapshot zur verankerten
+Serie, etwa vor dem ersten Lauf nach dem Update auf diese Version), sobald die
+letzte erfolgreiche Prüfung länger als eine Stunde zurückliegt oder sobald das
+signierte `nextUpdate` erreicht ist. Der 20-Minuten-Takt verkraftet damit zwei
+ausgefallene Läufe. Passwort-/TOTP- und Portal-Anmeldungen sind davon nicht
+betroffen.
 
 Die App-Rolle besitzt keine Tabellenrechte; sie darf nur eine eng begrenzte
 SECURITY-DEFINER-Funktion aufrufen. Der Commit-Guard vergleicht exakt die für
@@ -187,22 +215,30 @@ committen dadurch nur gegen genau den MDS- und Policy-Stand ihrer
 Vertrauensprüfung. Ein anderer Prozess, Neustart oder Restore kann keinen BLOB
 mit kleinerer Seriennummer übernehmen, solange der DB-Anker selbst nicht auf
 einen älteren Recovery Point zurückgesetzt wurde. TaxTronik prüft den
-gecacheten, signierten Eintrag und den DB-Anker vor jeder Hardware-Assertion
-erneut. Es gibt weiterhin keinen separaten periodischen Refresh-Job, keine
-persistente Offline-Kopie des BLOBs und keine eigene MDS-Statusseite.
+gespeicherten, signaturgeprüften Eintrag und den DB-Anker vor jeder
+Hardware-Assertion erneut. Eine eigene MDS-Statusseite gibt es nicht; die
+Admin-Seite „Jobs“ markiert die Queue `fido-mds-refresh` als „veraltet“, wenn
+30 Minuten lang kein Lauf erfolgreich abgeschlossen wurde, und zählt
+fehlgeschlagene Läufe.
 
-Schlägt Download, Signatur-/Chain-/CRL-Prüfung oder Refresh des Gesamt-BLOBs
-fehl, wird die Readiness verworfen und ein späterer Versuch initialisiert
-erneut. Bis dahin bleiben Hardware-Enrollment und -Assertions gesperrt. Ein
+Schlägt Download oder Signatur-/Chain-/CRL-Prüfung des Gesamt-BLOBs fehl,
+scheitert der Job-Lauf (Worker-Log `worker: job failed`, Queue
+`fido-mds-refresh`) und der nächste Lauf versucht es erneut. Der zuletzt
+gespeicherte Stand bleibt bis eine Stunde nach seiner letzten erfolgreichen
+Prüfung nutzbar; danach bleiben Hardware-Enrollment und -Assertions bis zum
+nächsten erfolgreichen Lauf gesperrt. Ein
 fehlender, widerrufener oder anderweitig unzulässiger Eintrag schließt dagegen
 nur die betroffene Modellfamilie aus dem aktuellen Vertrauenssnapshot aus;
 mindestens ein freigegebenes und positiv geprüftes Modell muss übrig bleiben.
 So blockiert ein widerrufenes Modell nicht gleichzeitig die Anmeldung mit
 einem anderen weiterhin zulässigen Modell. Zu überwachen sind insbesondere
 Warnungen mit der Komponente `staff-webauthn` und den Meldungen
+„FIDO-Metadaten liegen noch nicht vor (Worker-Job fido-mds-refresh)“,
+„FIDO-Metadaten sind veraltet (Worker-Job fido-mds-refresh prüfen)“,
 „FIDO-Metadaten-Richtlinie ist nicht bereit“, „FIDO-Schlüsselmodell aus
 aktuellem Vertrauenssnapshot ausgeschlossen“ beziehungsweise
-„FIDO-Hardware-Attestation wurde abgewiesen“.
+„FIDO-Hardware-Attestation wurde abgewiesen“ sowie fehlgeschlagene Läufe der
+Queue `fido-mds-refresh` im Worker.
 
 Vor einem Hardware-only-Rollout und nach Netzwerk-, CA-, Proxy-, Image- oder
 Allowlist-Änderungen sind Enrollment und Assertion mit allen freigegebenen
@@ -257,10 +293,11 @@ bevor der Vorgang mit einem neuen Zielpfad wiederholt wird.
   Replicas; dieselbe Revision mit abweichendem Hash wird abgewiesen.
 - **MDS-Statusänderung:** `REVOKED`, `NOT_FIDO_CERTIFIED`, Self-Assertion,
   Kompromittierungs-, unbekannte oder fehlende Statusdaten blockieren die
-  nächste Assertion nach Übernahme des neuen Snapshots. Ohne separaten
-  Push-/Refresh-Job kann das bis zu einer Stunde dauern. Falls aktive Sessions
-  sofort beendet werden müssen, ist zusätzlich der dokumentierte
-  Session-Widerruf auszuführen.
+  nächste Assertion nach Übernahme des neuen Snapshots. Der Worker-Job
+  `fido-mds-refresh` übernimmt einen neu veröffentlichten BLOB beim nächsten
+  Lauf, also regulär binnen 20 Minuten; einen Push-Kanal gibt es nicht. Falls
+  aktive Sessions sofort beendet werden müssen, ist zusätzlich der
+  dokumentierte Session-Widerruf auszuführen.
 - **Signer-/Intermediate-Wechsel:** Die Zertifikate im geschützten `x5c`-Header
   regelmäßig beobachten. Kündigt FIDO einen Identitäts- oder
   Intermediate-Wechsel an, die neuen exakten Werte und die vollständige Kette
@@ -286,8 +323,14 @@ Authentikator nicht.
 Die AAGUID kann die verwendete Modellfamilie offenlegen. Der Abruf des
 vollständigen MDS-BLOBs übermittelt nach aktuellem Anwendungspfad keine Staff-
 ID, Credential-ID oder AAGUID als Anwendungsparameter an den MDS-Anbieter;
-dieser erhält jedoch die üblichen Verbindungsdaten des App-Servers wie
-IP-Adresse und Abrufzeitpunkt. Dasselbe gilt für benötigte CA-CRL-Endpunkte.
+dieser erhält jedoch die üblichen Verbindungsdaten des Worker-Servers wie
+IP-Adresse und Abrufzeitpunkt. Der Abruf erfolgt bei aktivem Hardware-Zugang
+alle 20 Minuten und unabhängig von Anmeldungen, sodass sich aus den
+Abrufzeitpunkten keine Anmeldezeitpunkte ableiten lassen. Dasselbe gilt für die
+CA-CRL-Endpunkte der MDS-Kette; die CRL-Endpunkte der Attestationsketten ruft
+beim Enrollment weiterhin der App-Server ab. Die gespeicherte Kopie im Anker
+`fido_mds_trust_state` enthält nur öffentliche FIDO-Metadaten, keine Mandanten-
+oder Personendaten.
 Verantwortliche müssen Datenminimierung,
 Informationspflichten, VVT/DSFA, Providerrolle, Vertragslage und möglichen
 Drittlandsbezug für ihr Deployment selbst bewerten.
@@ -297,9 +340,11 @@ Drittlandsbezug für ihr Deployment selbst bewerten.
 - [ ] `.env` samt beabsichtigter Allowlist und zugehöriger
       `WEBAUTHN_HARDWARE_POLICY_REVISION` wiederhergestellt; alle Replicas
       verwenden dieselbe Revision und denselben Hash
-- [ ] Systemzeit, DNS und TLS-Egress zu `mds.fidoalliance.org:443` funktionieren
-- [ ] Benötigte CA-CRL-Ziele sind ohne Redirect auf Port 80/443 erreichbar
+- [ ] Worker erhält dieselbe `WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST` wie die App
+- [ ] Systemzeit, DNS und TLS-Egress des Worker-Containers zu `mds.fidoalliance.org:443` funktionieren
+- [ ] Benötigte CA-CRL-Ziele sind ohne Redirect auf Port 80/443 erreichbar (MDS-Kette vom Worker, Attestationsketten von der App)
 - [ ] Migration und Owner-Zugriff auf `fido_mds_trust_state` funktionieren; die App-Rolle hat keine Tabellenrechte und nur EXECUTE auf den exakten Serien-/Policy-Lock-Guard
+- [ ] Mindestens ein Lauf von `fido-mds-refresh` war erfolgreich (Admin-Seite „Jobs“ ohne „veraltet“); `snapshot_serial` entspricht der `blob_serial` des Ankers
 - [ ] Geschützte MDS-`x5c`-Kette entspricht der im Release freigegebenen Signeridentität
 - [ ] Keine `staff-webauthn`-Readiness- oder Attestationswarnung im Testlauf
 - [ ] Enrollment mit gültigem Firmware-Nachweis eines freigegebenen Testmodells erfolgreich

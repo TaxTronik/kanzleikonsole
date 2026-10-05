@@ -280,6 +280,18 @@ export const JOB_QUEUES = {
       expectedMaxGapMs: 6 * HOUR,
     },
   },
+  fidoMdsRefresh: {
+    name: 'fido-mds-refresh',
+    schedule: {
+      // P-23: lädt und prüft den signierten FIDO-MDS-BLOB und speichert den
+      // Stand für die Hardware-Anmeldung. Die Web-App sperrt fail-closed, wenn
+      // die letzte erfolgreiche Prüfung älter als eine Stunde ist; der
+      // 20-Minuten-Takt verkraftet damit zwei ausgefallene Läufe.
+      schedulerId: 'fido-mds-refresh',
+      repeat: { every: 20 * MINUTE },
+      expectedMaxGapMs: 20 * MINUTE,
+    },
+  },
   n8nDeliver: { name: 'n8n-deliver', schedule: null },
   n8nOutboxReconcile: {
     name: 'n8n-outbox-reconcile',
@@ -480,6 +492,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.backupDrill.name]: ChecksJob;
   [JOB_QUEUES.healthAlert.name]: ChecksJob;
   [JOB_QUEUES.updateCheck.name]: EmptyJob;
+  [JOB_QUEUES.fidoMdsRefresh.name]: EmptyJob;
   [JOB_QUEUES.n8nDeliver.name]: N8nDeliverJob;
   [JOB_QUEUES.n8nOutboxReconcile.name]: EmptyJob;
   [JOB_QUEUES.workflowN8nDispatch.name]: EmptyJob;

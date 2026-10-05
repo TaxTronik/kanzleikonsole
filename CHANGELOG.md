@@ -220,6 +220,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Hardware-Anmeldung, -Registrierung und Modus-Bestätigungen laden die
+  FIDO-Metadaten nicht mehr im Request (bis 20 MiB, 30 s); der Hintergrundjob
+  `fido-mds-refresh` prüft sie alle 20 Minuten und speichert den geprüften
+  Stand. Ohne aktuellen Stand (älter als eine Stunde) bleiben
+  Hardware-Vorgänge gesperrt; Passwort-, TOTP- und Portal-Anmeldung sind nicht
+  betroffen (Migration `20261005120000`, `ACCESS-TENANT-RLS-001`,
+  `FK-EXC-20261005-033`).
 - Die Seitenzahl von PDF-Ausweisquellen wird beim Upload im begrenzten
   Worker-Thread gezählt und an der Dokumentversion gespeichert; die Prüfung
   der Ausweisausschnitte lädt und parst die Originaldatei (bis 25 MiB) nicht

@@ -30,6 +30,7 @@ import { backupDrillWorker } from './jobs/backup-drill';
 import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
 import { updateCheckWorker } from './jobs/update-check';
+import { fidoMdsRefreshWorker } from './jobs/fido-mds-refresh';
 import { workflowN8nDispatchWorker } from './jobs/workflow-n8n-dispatch';
 import { workflowFeedbackWorker } from './jobs/workflow-feedback';
 import { workflowAutoResumeWorker } from './jobs/workflow-auto-resume';
@@ -61,6 +62,7 @@ const WORKERS_BY_QUEUE = {
   backupDrill: backupDrillWorker,
   healthAlert: healthAlertWorker,
   updateCheck: updateCheckWorker,
+  fidoMdsRefresh: fidoMdsRefreshWorker,
   n8nDeliver: n8nDeliverWorker,
   n8nOutboxReconcile: n8nOutboxReconcileWorker,
   workflowN8nDispatch: workflowN8nDispatchWorker,

@@ -60,6 +60,10 @@ require_line pnpm-workspace.yaml "^savePrefix:[[:space:]]*''$" \
 WEBAUTHN_CRL_PATCH='patches/@simplewebauthn__server@13.3.3.patch'
 require_line apps/web/package.json '"@simplewebauthn/server"[[:space:]]*:[[:space:]]*"13\.3\.3"' \
   "SimpleWebAuthn Server muss fuer den geprueften CRL-Patch exakt auf 13.3.3 gepinnt bleiben."
+# P-23: Der Worker-Job fido-mds-refresh prueft den FIDO-MDS-BLOB mit derselben
+# gepatchten Version (fail-closed CRL-Pruefung).
+require_line apps/worker/package.json '"@simplewebauthn/server"[[:space:]]*:[[:space:]]*"13\.3\.3"' \
+  "SimpleWebAuthn Server muss auch im Worker exakt auf die gepatchte 13.3.3 gepinnt bleiben."
 require_line pnpm-workspace.yaml "^[[:space:]]*'@simplewebauthn/server@13\.3\.3':[[:space:]]*patches/@simplewebauthn__server@13\.3\.3\.patch$" \
   "Der versionsgebundene SimpleWebAuthn-CRL-Patch fehlt in pnpm-workspace.yaml."
 require_line pnpm-lock.yaml "^[[:space:]]*'@simplewebauthn/server@13\.3\.3':[[:space:]]*[0-9a-f]{64}$" \

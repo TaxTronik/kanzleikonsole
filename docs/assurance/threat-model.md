@@ -129,10 +129,14 @@ Benötigte CRLs werden erst nach einem vertrauenswürdigen Kettenaufbau geladen
 und kryptografisch an den Issuer gebunden. Mehrere oder gescopte Distribution
 Points sowie Delta-/indirekte CRLs werden nicht unvollständig ausgewertet,
 sondern blockieren fail-closed. Ihre Betreiber sehen dennoch die
-üblichen Verbindungsdaten des App-Servers; die Ziele einer bereits
-vertrauenswürdigen CA bleiben eine kontrolliert zuzulassende externe
-Egress-Fläche. DNS, TLS, Systemzeit, Egress und MDS-/CRL-Verfügbarkeit können
-Hardware-Assertions fail-closed blockieren. Die AAGUID identifiziert eine
+üblichen Verbindungsdaten des Worker- beziehungsweise (Attestations-CRLs beim
+Enrollment) App-Servers; die Ziele einer bereits vertrauenswürdigen CA bleiben
+eine kontrolliert zuzulassende externe Egress-Fläche. Den MDS-BLOB lädt und
+prüft ausschließlich der Worker-Job `fido-mds-refresh`; Hardware-Zeremonien
+lesen nur den gespeicherten Stand und kontaktieren den Metadata Service nicht.
+DNS, TLS, Systemzeit, Egress und MDS-/CRL-Verfügbarkeit des Workers können
+Hardware-Assertions fail-closed blockieren, sobald die letzte erfolgreiche
+Prüfung länger als eine Stunde zurückliegt. Die AAGUID identifiziert eine
 Modellfamilie, nicht eine individuelle Schlüsselinstanz; zwei Credentials sind
 kein kryptografischer Zwei-Geräte-Nachweis.
 
@@ -144,9 +148,11 @@ eine höhere Revision verdrängt alte Replicas, während dieselbe Revision mit
 abweichendem Hash oder eine niedrigere Revision fail-closed abgewiesen wird.
 
 Die signierte Seriennummer eines kryptografisch gültigen MDS-BLOBs wird vor
-dem lokalen Allowlist-/Modellfilter monoton übernommen. Deshalb verdrängt auch
+dem lokalen Allowlist-/Modellfilter monoton übernommen; ein älterer BLOB
+(Rollback über einen veralteten CDN-Knoten) wird vom Worker abgewiesen, ohne
+den gespeicherten Stand zu verändern. Deshalb verdrängt auch
 ein gültiger neuer BLOB ohne lokal nutzbare Modelle ältere Snapshots, bevor der
-aktuelle Hardware-Vorgang scheitert. Der prozesslokale Snapshot ist bei jeder
+aktuelle Hardware-Vorgang scheitert. Der prozesslokal ausgewertete Snapshot ist bei jeder
 erfolgreichen WebAuthn-Mutation über die exakte Bindung an BLOB-Serie,
 Policy-Revision und Policy-Hash sowie einen bis zum Datenbank-Commit gehaltenen
 Share-Lock abgesichert. Der MDS-Lock wird vor den Staff-Locks genommen. Ein

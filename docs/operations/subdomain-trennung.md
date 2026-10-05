@@ -96,7 +96,8 @@ Browser-/Schlüsselmatrix testen und den Verlustfall in der Recovery-Planung
 berücksichtigen. In Produktion ist HTTPS Pflicht.
 
 Der Hardware-Zugang setzt außerdem eine nichtleere Modell-AAGUID-Allowlist und
-HTTPS-Egress zum FIDO Metadata Service voraus. Enrollment fordert direkte
+HTTPS-Egress des Workers zum FIDO Metadata Service voraus (Job
+`fido-mds-refresh`). Enrollment fordert direkte
 vollständige `packed`-Attestation; jede Assertion prüft Allowlist und aktuelles
 MDS-Statement fail-closed. DNS-, TLS-, Zeit- oder MDS-Ausfälle blockieren den
 Hardware-Pfad ohne Passwort-/TOTP-Fallback. Details stehen im

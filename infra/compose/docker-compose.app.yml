@@ -286,6 +286,10 @@ services:
       DATABASE_APP_POOL_MAX: ${WORKER_DB_POOL_MAX:-5}
       DATABASE_OWNER_POOL_MAX: ${WORKER_DB_OWNER_POOL_MAX:-10}
       SECRET_BOX_KEYRING: ${SECRET_BOX_KEYRING:-}
+      # P-23: der fido-mds-refresh-Job lädt und prüft die FIDO-Metadaten für
+      # die Hardware-Anmeldung nur, wenn der Hardware-Zugang aktiv ist —
+      # dieselbe Allowlist wie im app-Service (leer = kein MDS-Abruf).
+      WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST: ${WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST:-}
       # Risk-Layer/LLM: der risk-analyse-llm-Job instanziiert den RiskLayerClient
       # im WORKER — ohne diese Werte wirft er RiskLayerNotConfiguredError und
       # llmEnrichedAt wird nie gesetzt (app hat sie, worker fehlte sie).

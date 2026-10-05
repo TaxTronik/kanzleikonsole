@@ -1339,6 +1339,18 @@ test_hardware_aaguid_allowlist_is_forwarded_to_app() {
   pass "Hardware AAGUID allowlist is forwarded to the production app container"
 }
 
+# Fachkatalog: ACCESS-TENANT-RLS-001
+# P-23: the fido-mds-refresh job fetches FIDO metadata only while the
+# hardware access is enabled, so the worker needs the same allowlist.
+test_hardware_aaguid_allowlist_is_forwarded_to_worker() {
+  local service="$TMP_DIR/worker-compose-service.yml"
+  sed -n '/^  worker:/,/^  migrate:/p' \
+    "$REPO_ROOT/infra/compose/docker-compose.app.yml" >"$service"
+  assert_contains "$service" \
+    'WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST: ${WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST:-}'
+  pass "Hardware AAGUID allowlist is forwarded to the production worker container"
+}
+
 test_trust_proxy_hops_is_forwarded_to_app() {
   local service="$TMP_DIR/app-compose-service-proxy-hops.yml"
   sed -n '/^  app:/,/^  worker:/p' \
@@ -3384,6 +3396,7 @@ test_managed_signal_source_update_skips_unchanged_image_unless_requested
 test_managed_signal_source_update_honors_interactive_rebuild_choice
 test_signal_embedding_compose_contract_is_self_contained_and_offline
 test_hardware_aaguid_allowlist_is_forwarded_to_app
+test_hardware_aaguid_allowlist_is_forwarded_to_worker
 test_trust_proxy_hops_is_forwarded_to_app
 test_windows_signal_dev_start_provisions_embedding_operator
 test_prune_build_cache_calls_docker_builder_prune

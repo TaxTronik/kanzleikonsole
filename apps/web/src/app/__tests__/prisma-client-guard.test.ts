@@ -161,6 +161,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-TENANT-RLS-001: isolierter Owner für Fixtures und separate App-
   // Verbindung zum Nachweis der WebAuthn-RLS- und Mindestschlüssel-Invarianten.
   'packages/db/src/__tests__/staff-webauthn-rls.test.ts',
+  // ACCESS-TENANT-RLS-001 (P-23): Owner prüft Ablage und Lesezugriff des globalen,
+  // owner-only FIDO-MDS-Snapshots; die App-Verbindung belegt fehlende Rechte.
+  'packages/db/src/__tests__/fido-mds-snapshot.test.ts',
   'packages/db/src/__tests__/tax-notice-evidence.test.ts',
   // TAX-MASTER-DATA-001: isolierte DB-Fixtures plus echte App-RLS-Grenzen.
   'packages/db/src/__tests__/tax-master-data.test.ts',
@@ -329,7 +332,12 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // Benutzerloser Hardware-Login hat vor der Assertion-Verifikation noch
   // keinen vertrauenswürdigen Tenant-Kontext. Der globale Credential-Lookup
   // wird anschließend kryptografisch, per userHandle und Konto-Tenant gebunden.
-  'apps/web/src/server/auth/webauthn.ts <- @/server/db/prisma-owner',
+  // (P-23: aus webauthn.ts in webauthn-login.ts verschoben.)
+  'apps/web/src/server/auth/webauthn-login.ts <- @/server/db/prisma-owner',
+  // Globaler, mandantenfreier FIDO-MDS-Vertrauensanker und Snapshot: beide
+  // Tabellen sind bewusst owner-only (die App-Rolle hat keine Tabellenrechte).
+  // Gelesen werden nur Serie, Policy-Bindung und öffentliche FIDO-Metadaten.
+  'apps/web/src/server/auth/webauthn-metadata.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/backup/restore.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/backup/runner.ts <- @/server/db/prisma-owner',
   // Dev-only Retention/Object-Lock-Fixtures; verweigert NODE_ENV=production.

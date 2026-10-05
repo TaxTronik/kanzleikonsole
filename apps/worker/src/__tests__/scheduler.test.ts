@@ -60,6 +60,8 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   healthAlert: ['health-alert', { every: 5 * MINUTE }, undefined],
   // P-21: new scheduler for the stored update check.
   updateCheck: ['update-check', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
+  // P-23: new scheduler, no retry (runs every 20 minutes; the app tolerates 1 h).
+  fidoMdsRefresh: ['fido-mds-refresh', { every: 20 * MINUTE }, undefined],
   n8nOutboxReconcile: ['n8n-outbox-reconcile', { every: 5 * MINUTE }, undefined],
   workflowN8nDispatch: ['workflow-n8n-dispatch-reconcile', { every: MINUTE }, undefined],
   workflowFeedback: ['workflow-feedback', { every: MINUTE }, undefined],

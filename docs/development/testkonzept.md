@@ -87,10 +87,20 @@ positiver Zertifizierungsstatus-Policy, `sunsetDate`, attestierter Firmware-
 Version und deren Metadata-Mindestwerten sowie Fail-close bei fehlenden,
 widerrufenen, veralteten oder nicht vertrauenswürdigen Metadaten. Der Test
 umfasst auch die verpflichtende Zertifikat-AAGUID, Registration-/x5c-/BLOB-
-Größenlimits, Abbruch der Registration-Verifikation, Modellisolation, den
-maximal einstündigen Snapshot, die zentrale Serienübernahme vor der lokalen
-Modellfilterung und die exakte Bindung an BLOB-Serie, Policy-Revision und
-Policy-Hash. Getestet werden außerdem DB-only-Startup ohne MDS-Abruf, globale
+Größenlimits, Abbruch der Registration-Verifikation, Modellisolation, die
+höchstens eine Stunde alte letzte MDS-Prüfung, das explizite Sperren ohne
+gespeicherten Snapshot, Hardware-Vorgänge ohne jeden MDS-Abruf, die zentrale
+Serienübernahme vor der lokalen Modellfilterung und die exakte Bindung an
+BLOB-Serie, Policy-Revision und Policy-Hash. Den Abruf und die Prüfung des
+signierten BLOBs (Streaming-Limit, Signer-/Intermediate-Bindung,
+Kettenlänge, 30-Sekunden-Abbruch bis in Signatur- und CRL-Prüfung, Serie,
+`nextUpdate`) belegen die Worker-Tests `fido-mds-verify.test.ts` und
+`fido-mds-refresh.test.ts`; `packages/db/src/__tests__/fido-mds-snapshot.test.ts`
+prüft gegen PostgreSQL die monotone Ablage im Anker, die unveränderte
+App-Policy, das Abweisen eines älteren BLOBs, die Snapshot-Constraints, die
+Allowlist-gefilterte Leseabfrage, das Verwerfen eines Snapshots nach einer
+Serienübernahme durch eine ältere App-Replica und die fehlenden Rechte der
+App-Rolle. Getestet werden außerdem DB-only-Startup ohne MDS-Abruf, globale
 Deaktivierung durch eine leere Allowlist sowie Rolling Deployments: höhere
 Revisionen verdrängen alte Replicas, gleiche Revisionen mit anderem Hash und
 niedrigere Revisionen werden abgewiesen. Der
@@ -106,8 +116,8 @@ Supply-Chain-Guard bindet dafür Paketversion, Patchdatei, die zentralen
 Semantikmarker in ESM/CommonJS und den Lockfile-Hash.
 `webauthn-browser-error.test.ts` belegt die Abbrucherkennung auch für den von
 SimpleWebAuthn umschlossenen Browserfehler; der Ops-Test prüft, dass die
-AAGUID-Allowlist im produktiven Compose-Stack an den App-Container
-weitergereicht wird.
+AAGUID-Allowlist im produktiven Compose-Stack an den App- und den
+Worker-Container weitergereicht wird.
 `packages/config/src/__tests__/env-webauthn.test.ts` belegt fehlende oder leere
 Allowlist als `[]`, UUID-Normalisierung, Deduplizierung, Parsergrenzen sowie die
 positive Ganzzahl-Policy für `WEBAUTHN_HARDWARE_POLICY_REVISION`.
