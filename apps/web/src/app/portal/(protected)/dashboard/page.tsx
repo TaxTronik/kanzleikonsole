@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import type { Prisma } from '@prisma/client';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,6 +19,11 @@ import { portalDashboardVisibility } from '@/server/dashboard/portal-visibility'
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { countPortalInboxNeedsClientTx } from '@/server/inbox/queries';
 
+// Startseite zeigt nur einen Ausschnitt; die vollständigen Listen liegen unter
+// /portal/requests, /portal/forms und /portal/invoices.
+const TODO_LIST_CAP = 10;
+const OPEN_INVOICES_CAP = 5;
+
 export default async function PortalDashboardPage() {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
@@ -29,19 +35,32 @@ export default async function PortalDashboardPage() {
     readPortalFeatures(ctx),
   ]);
 
+  // F-14: Badges zählen per count() mit exakt den Filtern der (gekappten) Listen.
+  const openRequestWhere: Prisma.RequestWhereInput = {
+    clientId,
+    status: { in: ['OPEN', 'IN_PROGRESS'] },
+  };
+  const openFormWhere: Prisma.FormSubmissionWhereInput = {
+    clientId,
+    status: { in: ['PENDING', 'DRAFT'] },
+  };
+  const openInvoiceWhere: Prisma.InvoiceWhereInput = {
+    clientId,
+    status: { in: ['SENT', 'OVERDUE'] },
+  };
   const [
     openRequestCount,
     documentCount,
     recentRequests,
     todoRequests,
     todoForms,
+    openFormCount,
     openInvoices,
+    openInvoiceCount,
     inboxNeedsClientCount,
   ] = await withTenantContext(ctx, async (tx) =>
     Promise.all([
-      tx.request.count({
-        where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
-      }),
+      tx.request.count({ where: openRequestWhere }),
       // Portal-Sicht: nur freigegebene & nicht soft-gelöschte Dokumente.
       tx.document.count({
         where: { clientId, deletedAt: null, sharedWithClientAt: { not: null } },
@@ -54,36 +73,39 @@ export default async function PortalDashboardPage() {
       }),
       // „Das brauchen wir von Ihnen": offene Anforderungen + offene Formulare.
       tx.request.findMany({
-        where: { clientId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        where: openRequestWhere,
         select: { id: true, title: true, dueAt: true },
         orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
-        take: 10,
+        take: TODO_LIST_CAP,
       }),
       visibility.forms
         ? tx.formSubmission.findMany({
-            where: { clientId, status: { in: ['PENDING', 'DRAFT'] } },
+            where: openFormWhere,
             select: { id: true, template: { select: { name: true } } },
             orderBy: { createdAt: 'desc' },
-            take: 10,
+            take: TODO_LIST_CAP,
           })
         : Promise.resolve([]),
+      visibility.forms ? tx.formSubmission.count({ where: openFormWhere }) : Promise.resolve(0),
       // Offene Rechnungen (versendet / überfällig) — Mandant sieht sie im
       // Portal; hier als Überblick auf der Startseite.
       visibility.invoices
         ? tx.invoice.findMany({
-            where: { clientId, status: { in: ['SENT', 'OVERDUE'] } },
+            where: openInvoiceWhere,
             select: { id: true, number: true, dueDate: true, totalAmount: true, status: true },
             orderBy: { dueDate: 'asc' },
-            take: 5,
+            take: OPEN_INVOICES_CAP,
           })
         : Promise.resolve([]),
+      visibility.invoices ? tx.invoice.count({ where: openInvoiceWhere }) : Promise.resolve(0),
       portalFeatures.clientInbox
         ? countPortalInboxNeedsClientTx(tx, { tenantId, clientId, contactId })
         : Promise.resolve(0),
     ]),
   );
 
-  const todoCount = todoRequests.length + todoForms.length;
+  const todoCount = openRequestCount + openFormCount;
+  const todoShown = todoRequests.length + todoForms.length;
 
   return (
     <div className="p-8">
@@ -148,6 +170,25 @@ export default async function PortalDashboardPage() {
               ))}
           </ul>
         )}
+        {todoCount > todoShown && (
+          <div className="card-footer">
+            <span>
+              {todoShown.toLocaleString('de-DE')} von {todoCount.toLocaleString('de-DE')} angezeigt
+            </span>
+            <span className="flex flex-wrap items-center gap-3">
+              {openRequestCount > todoRequests.length && (
+                <Link href="/portal/requests" className="text-brand-700 hover:underline">
+                  Alle Anforderungen
+                </Link>
+              )}
+              {openFormCount > todoForms.length && (
+                <Link href="/portal/forms" className="text-brand-700 hover:underline">
+                  Alle Formulare
+                </Link>
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -175,8 +216,12 @@ export default async function PortalDashboardPage() {
             <div className="flex items-center gap-2">
               <Receipt className="h-4 w-4 text-brand-600" />
               <h2 className="text-sm font-medium text-primary">Offene Rechnungen</h2>
-              {openInvoices.length > 0 && (
-                <span className="badge-yellow">{openInvoices.length}</span>
+              {openInvoiceCount > 0 && <span className="badge-yellow">{openInvoiceCount}</span>}
+              {openInvoiceCount > openInvoices.length && (
+                <span className="text-xs text-muted">
+                  {openInvoices.length.toLocaleString('de-DE')} von{' '}
+                  {openInvoiceCount.toLocaleString('de-DE')} angezeigt
+                </span>
               )}
             </div>
             <Link href="/portal/invoices" className="text-sm text-brand-700 hover:underline">

@@ -109,7 +109,8 @@ export default async function ClientsPage({
             createdAt: true,
             _count: {
               select: {
-                documents: true,
+                // Wie Cockpit und CSV-Export: Papierkorb (soft-gelöscht) zählt nicht mit.
+                documents: { where: { deletedAt: null } },
                 contacts: { where: { active: true } },
                 gwgChecks: true,
                 gwgInvites: true,

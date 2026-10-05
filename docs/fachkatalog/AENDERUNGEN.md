@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-035
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/page.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/list-data.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/_list-data.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+    reason: >-
+      Die Kacheln „Überfällig“ und „Anstehend“ der Steuertermine zählen per
+      count() mit exakt den Filtern der Listen einschließlich des
+      Sichtbarkeitsfilters, statt die Länge der auf 100 bzw. 200 Zeilen begrenzten
+      Listen anzuzeigen; beide Listen sind seitenweise blätterbar. Die
+      Mandantenliste zählt wie Mandantenseite und CSV-Export keine gelöschten
+      Dokumente mehr. Sichtbarkeitsregeln, Fristberechnung und automatische
+      Anforderungen bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/list-data.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/__tests__/list-document-count.test.tsx
+      - apps/web/src/app/portal/(protected)/dashboard/__tests__/page.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-034
     date: '2026-10-05'
     paths:
@@ -2324,6 +2349,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-035` dokumentiert gezählte Kennzahlen der
+  Steuertermine und der Mandantenliste. Sichtbarkeitsregeln und
+  Fristberechnung bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-034` dokumentiert bcryptjs als externes
   Serverpaket für den Passwort-Pool. Mail-Anhangsprüfung bleibt unverändert.

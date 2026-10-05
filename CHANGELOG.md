@@ -558,6 +558,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Steuertermine: Die Kacheln „Überfällig“ und „Anstehend“ zeigen die
+  tatsächliche Anzahl statt der Länge der auf 100 bzw. 200 Zeilen begrenzten
+  Listen; beide Listen sind blätterbar und zeigen „100 von 312 angezeigt“. Im
+  Mandantenportal zählen „offen“ und „Offene Rechnungen“ alle offenen
+  Einträge, gekappte Listen verweisen auf die vollständige Liste. Die
+  Mandantenliste zählt wie Mandantenseite und CSV-Export keine gelöschten
+  Dokumente mehr (`ACCESS-SEARCH-SCOPE-001`, `FK-EXC-20261005-035`).
 - Fehler beim Entfernen eingeplanter Aufträge werden protokolliert statt
   verschluckt; Job-Fehler erscheinen nicht mehr doppelt im Log
   (`FK-EXC-20261005-023`).

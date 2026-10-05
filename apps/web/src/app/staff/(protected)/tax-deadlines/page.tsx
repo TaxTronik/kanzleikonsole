@@ -9,11 +9,14 @@
 //   - ?scope=mine: nur Mandanten, denen ich als Bearbeiter zugeordnet bin
 //   - ?scope=all (Default): alle Mandanten
 //   - ?month=YYYY-MM: konkreter Monat (Default: aktueller)
+//   - ?overduePage=/?upcomingPage=: Seite der Listen in der Listenansicht
 // =============================================================================
 
+import type { ReactNode } from 'react';
 import { parseMonth, shortKind } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { SavedViews } from '@/components/saved-views';
+import { OffsetPagination } from '@/components/offset-pagination';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { StaffSession } from '@/server/auth/staff';
 import { requireStaffPage } from '@/server/auth/staff-page';
@@ -27,6 +30,13 @@ import { ActionForm } from '@/components/action-form';
 import { fmtDateShort, fmtMonthYear, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 import { TAX_DEADLINE_STATUS_LABELS } from '@/lib/domain-labels';
+import {
+  OVERDUE_PAGE_SIZE,
+  UPCOMING_PAGE_SIZE,
+  loadDeadlineListTx,
+  parseListPage,
+  type DeadlineListPages,
+} from './_list-data';
 
 interface Search {
   view?: 'month' | 'list';
@@ -34,6 +44,8 @@ interface Search {
   month?: string; // YYYY-MM
   q?: string; // Mandantenname / DATEV-Nr / Addison-Nr (Substring, case-insensitive)
   queued?: string; // '1' nach „Neu berechnen" — Materialisierung läuft im Hintergrund
+  overduePage?: string; // Listenansicht: Seite der überfälligen Termine
+  upcomingPage?: string; // Listenansicht: Seite der anstehenden Termine
 }
 
 export default async function TaxDeadlinesPage({
@@ -68,7 +80,10 @@ export default async function TaxDeadlinesPage({
   if (view === 'month') {
     return renderMonth(session, year, month0, scope, q, clientWhere, queued);
   }
-  return renderList(session, year, month0, scope, q, clientWhere, queued);
+  return renderList(session, year, month0, scope, q, clientWhere, queued, {
+    overdue: parseListPage(sp.overduePage),
+    upcoming: parseListPage(sp.upcomingPage),
+  });
 }
 
 async function renderMonth(
@@ -272,40 +287,28 @@ async function renderList(
   q: string,
   clientFilter: Prisma.ClientWhereInput,
   queued: boolean,
+  requestedPages: DeadlineListPages,
 ) {
   const { tenantId, staffId } = session.user;
   const currentMonthQs = `${year}-${String(month0 + 1).padStart(2, '0')}`;
-  const [overdue, upcoming, done] = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+  const { overdue, overdueCount, upcoming, upcomingCount, doneCount, pages } =
+    await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) =>
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
       // Mandanten ausblenden; Regel und Seitenfilter in EINEM `client`-Filter.
-      const visible = clientAccessFilter(
-        await accessibleClientsWhereFor(tx, session),
-        clientFilter,
-      );
-      return Promise.all([
-        tx.taxDeadline.findMany({
-          where: { ...visible, status: 'OVERDUE' },
-          orderBy: { dueDate: 'asc' },
-          include: { client: { select: { id: true, name: true } } },
-          take: 100,
-        }),
-        tx.taxDeadline.findMany({
-          where: {
-            ...visible,
-            status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'SUBMITTED'] },
-          },
-          orderBy: { dueDate: 'asc' },
-          include: { client: { select: { id: true, name: true } } },
-          take: 200,
-        }),
-        tx.taxDeadline.count({
-          where: { ...visible, status: 'DONE', completedAt: { not: null } },
-        }),
-      ]);
-    },
-  );
+      // Kennzahlen und Listen teilen sich genau diesen Filter (F-14).
+      loadDeadlineListTx(
+        tx,
+        clientAccessFilter(await accessibleClientsWhereFor(tx, session), clientFilter),
+        requestedPages,
+      ),
+    );
+  // Blättern in einer Liste behält die Seite der anderen Liste bei.
+  const pagerQs = (otherParam: 'overduePage' | 'upcomingPage', otherPage: number) => {
+    const params = new URLSearchParams({ view: 'list', scope });
+    if (q) params.set('q', q);
+    if (otherPage > 1) params.set(otherParam, String(otherPage));
+    return params;
+  };
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl">
@@ -319,32 +322,74 @@ async function renderList(
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Stat label="Überfällig" value={overdue.length} accent="red" />
-        <Stat label="Anstehend" value={upcoming.length} />
-        <Stat label="Erledigt (gesamt)" value={done} accent="emerald" />
+        <Stat label="Überfällig" value={overdueCount} accent="red" />
+        <Stat label="Anstehend" value={upcomingCount} />
+        <Stat label="Erledigt (gesamt)" value={doneCount} accent="emerald" />
       </div>
 
-      {overdue.length > 0 && (
+      {overdueCount > 0 && (
         <section className="mb-8">
           <h2 className="text-sm font-semibold text-red-700 mb-3 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
             Überfällig
+            <ShownHint shown={overdue.length} total={overdueCount} />
           </h2>
-          <DeadlineTable rows={overdue} />
+          <DeadlineTable
+            rows={overdue}
+            footer={
+              overdueCount > OVERDUE_PAGE_SIZE && (
+                <OffsetPagination
+                  basePath="/staff/tax-deadlines"
+                  baseQs={pagerQs('upcomingPage', pages.upcoming)}
+                  page={pages.overdue}
+                  pageSize={OVERDUE_PAGE_SIZE}
+                  totalCount={overdueCount}
+                  pageParam="overduePage"
+                />
+              )
+            }
+          />
         </section>
       )}
 
       <section>
-        <h2 className="text-sm font-semibold text-primary mb-3">Anstehend</h2>
-        {upcoming.length === 0 ? (
+        <h2 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
+          Anstehend
+          <ShownHint shown={upcoming.length} total={upcomingCount} />
+        </h2>
+        {upcomingCount === 0 ? (
           <div className="card p-10 text-center">
             <p className="text-sm text-disabled">Keine anstehenden Termine.</p>
           </div>
         ) : (
-          <DeadlineTable rows={upcoming} />
+          <DeadlineTable
+            rows={upcoming}
+            footer={
+              upcomingCount > UPCOMING_PAGE_SIZE && (
+                <OffsetPagination
+                  basePath="/staff/tax-deadlines"
+                  baseQs={pagerQs('overduePage', pages.overdue)}
+                  page={pages.upcoming}
+                  pageSize={UPCOMING_PAGE_SIZE}
+                  totalCount={upcomingCount}
+                  pageParam="upcomingPage"
+                />
+              )
+            }
+          />
         )}
       </section>
     </div>
+  );
+}
+
+/** F-14: Hinweis, sobald eine Liste nur einen Ausschnitt der Treffer zeigt. */
+function ShownHint({ shown, total }: { shown: number; total: number }) {
+  if (total <= shown) return null;
+  return (
+    <span className="text-xs font-normal text-muted">
+      {shown.toLocaleString('de-DE')} von {total.toLocaleString('de-DE')} angezeigt
+    </span>
   );
 }
 
@@ -526,102 +571,116 @@ function Stat({
   return (
     <div className="card p-4">
       <p className="text-xs text-muted uppercase tracking-wide">{label}</p>
-      <p className={`text-3xl font-bold mt-1 ${tone}`}>{value}</p>
+      <p className={`text-3xl font-bold mt-1 ${tone}`}>{value.toLocaleString('de-DE')}</p>
     </div>
   );
 }
 
+type DeadlineRow = {
+  id: string;
+  kind: string;
+  period: string;
+  dueDate: Date;
+  status: string;
+  requestId: string | null;
+  client: { id: string; name: string };
+};
+
 function DeadlineTable({
   rows,
+  footer,
 }: {
-  rows: Array<{
-    id: string;
-    kind: string;
-    period: string;
-    dueDate: Date;
-    status: string;
-    requestId: string | null;
-    client: { id: string; name: string };
-  }>;
+  rows: DeadlineRow[];
+  /** Seitennavigation unter der Tabelle, innerhalb der Karte (F-14). */
+  footer?: ReactNode;
 }) {
   return (
-    <div
-      className="card overflow-x-auto"
-      role="region"
-      aria-label="Steuertermine"
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Horizontale Tabellenspalten müssen per Tastatur erreichbar sein.
-      tabIndex={0}
-    >
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-gray-50 border-b border-default">
-            <th className="th">Mandant</th>
-            <th className="th">Art</th>
-            <th className="th">Periode</th>
-            <th className="th">Fällig</th>
-            <th className="th">Status</th>
-            <th className="text-right px-6 py-3"></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border-subtle">
-          {rows.map((d) => (
-            <tr key={d.id} className="hover:bg-gray-50">
-              <td className="px-6 py-3">
-                <Link
-                  href={`/staff/clients/${d.client.id}`}
-                  className="text-secondary hover:underline"
-                >
-                  {d.client.name}
-                </Link>
-              </td>
-              <td className="px-6 py-3 font-medium text-primary">
-                {SCHEDULE_LABELS[d.kind as keyof typeof SCHEDULE_LABELS] ?? d.kind}
-              </td>
-              <td className="px-6 py-3 text-secondary">{d.period}</td>
-              <td className="px-6 py-3 text-secondary">{fmtDateShort(d.dueDate)}</td>
-              <td className="px-6 py-3">
-                {d.status === 'OVERDUE' && (
-                  <span className="badge-red">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
-                )}
-                {d.status === 'REMINDED' && (
-                  <span className="badge-yellow">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
-                )}
-                {d.status === 'PLANNED' && (
-                  <span className="badge-gray">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
-                )}
-                {d.status === 'IN_PROGRESS' && (
-                  <span className="badge-yellow">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
-                )}
-                {d.status === 'SUBMITTED' && (
-                  <span className="badge-green">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
-                )}
-              </td>
-              <td className="px-6 py-3 text-right">
-                <div className="flex items-center justify-end gap-2">
-                  {d.requestId && (
-                    <Link
-                      href={`/staff/requests/${d.requestId}`}
-                      className="text-xs text-brand-700 hover:underline"
-                    >
-                      Anforderung
-                    </Link>
-                  )}
-                  <ActionForm
-                    action={markDeadlineDoneAction}
-                    errorDisplay="inline"
-                    className="inline"
-                  >
-                    <input type="hidden" name="id" value={d.id} />
-                    <button type="submit" className="text-xs text-muted hover:text-emerald-700">
-                      ✓ Erledigt
-                    </button>
-                  </ActionForm>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="card overflow-hidden">
+      <div
+        className="overflow-x-auto"
+        role="region"
+        aria-label="Steuertermine"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Horizontale Tabellenspalten müssen per Tastatur erreichbar sein.
+        tabIndex={0}
+      >
+        <DeadlineRows rows={rows} />
+      </div>
+      {footer}
     </div>
+  );
+}
+
+function DeadlineRows({ rows }: { rows: DeadlineRow[] }) {
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="bg-gray-50 border-b border-default">
+          <th className="th">Mandant</th>
+          <th className="th">Art</th>
+          <th className="th">Periode</th>
+          <th className="th">Fällig</th>
+          <th className="th">Status</th>
+          <th className="text-right px-6 py-3"></th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border-subtle">
+        {rows.map((d) => (
+          <tr key={d.id} className="hover:bg-gray-50">
+            <td className="px-6 py-3">
+              <Link
+                href={`/staff/clients/${d.client.id}`}
+                className="text-secondary hover:underline"
+              >
+                {d.client.name}
+              </Link>
+            </td>
+            <td className="px-6 py-3 font-medium text-primary">
+              {SCHEDULE_LABELS[d.kind as keyof typeof SCHEDULE_LABELS] ?? d.kind}
+            </td>
+            <td className="px-6 py-3 text-secondary">{d.period}</td>
+            <td className="px-6 py-3 text-secondary">{fmtDateShort(d.dueDate)}</td>
+            <td className="px-6 py-3">
+              {d.status === 'OVERDUE' && (
+                <span className="badge-red">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
+              )}
+              {d.status === 'REMINDED' && (
+                <span className="badge-yellow">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
+              )}
+              {d.status === 'PLANNED' && (
+                <span className="badge-gray">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
+              )}
+              {d.status === 'IN_PROGRESS' && (
+                <span className="badge-yellow">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
+              )}
+              {d.status === 'SUBMITTED' && (
+                <span className="badge-green">{TAX_DEADLINE_STATUS_LABELS[d.status]}</span>
+              )}
+            </td>
+            <td className="px-6 py-3 text-right">
+              <div className="flex items-center justify-end gap-2">
+                {d.requestId && (
+                  <Link
+                    href={`/staff/requests/${d.requestId}`}
+                    className="text-xs text-brand-700 hover:underline"
+                  >
+                    Anforderung
+                  </Link>
+                )}
+                <ActionForm
+                  action={markDeadlineDoneAction}
+                  errorDisplay="inline"
+                  className="inline"
+                >
+                  <input type="hidden" name="id" value={d.id} />
+                  <button type="submit" className="text-xs text-muted hover:text-emerald-700">
+                    ✓ Erledigt
+                  </button>
+                </ActionForm>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
