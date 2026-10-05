@@ -36,6 +36,14 @@ rm -rf node_modules && pnpm install
 Nur ein **sauberer** Install erstellt die injizierten Kopien aus dem aktuellen
 Quellstand neu. `pnpm install --force` allein genügt nicht.
 
+Zusätzlich synchronisiert pnpm die Kopien nach jedem `build`-Skript eines
+Pakets (`syncInjectedDepsAfterScripts` in `pnpm-workspace.yaml`), z. B. nach
+`pnpm --filter @taxtronik/config build`. `pnpm typecheck` und `pnpm test`
+hängen in Turbo nicht mehr von `^build` ab (die Paket-Builds sind reine
+`tsc --noEmit`-Läufe) und lösen diese Synchronisation deshalb nicht aus. Nach
+neu angelegten, gelöschten oder ersetzten Dateien in einem Workspace-Paket
+vorher dessen `build` oder den sauberen Install ausführen.
+
 ## Warum CI nicht betroffen ist
 
 CI läuft auf frischen Runnern immer mit sauberem `pnpm install --frozen-lockfile`

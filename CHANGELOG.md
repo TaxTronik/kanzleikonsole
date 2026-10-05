@@ -220,6 +220,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Build: `pnpm typecheck` und `pnpm test` prüfen die Pakettypen nicht mehr
+  doppelt (15 statt 27 Turbo-Aufgaben); die Root-`.env` invalidiert im
+  Turbo-Cache nur noch Web-Build und DB-Tests.
 - CI: Die Altbestandstests für GwG-Migration 034 und den Onboarding-Backfill
   041 laufen als SQL-Fixtures über `scripts/ci/migration-cutoff.sh` in jedem
   CI-Lauf statt nur nach einem Release-Tag und sind lokal ausführbar

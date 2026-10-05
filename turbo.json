@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [".env", ".env.local", "tsconfig.base.json"],
+  "globalDependencies": ["tsconfig.base.json"],
   "globalEnv": [
     "NODE_ENV",
     "DATABASE_URL",
@@ -64,11 +64,17 @@
       "cache": false,
       "persistent": true
     },
-    "typecheck": {
-      "dependsOn": ["^build"]
-    },
-    "test": {
+    "@taxtronik/web#build": {
       "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env"],
+      "outputs": []
+    },
+    "typecheck": {},
+    "test": {
+      "outputs": ["coverage/**"]
+    },
+    "@taxtronik/db#test": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env"],
       "outputs": ["coverage/**"]
     }
   }
