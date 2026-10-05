@@ -1,111 +1,93 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => {
-  const queue = () => ({ upsertJobScheduler: vi.fn().mockResolvedValue(undefined) });
-  return {
-    mailboxPollQueue: queue(),
-    sanctionsRefreshQueue: queue(),
-    auditAnchorQueue: queue(),
-    evidenceSealQueue: queue(),
-    auditVerifyQueue: queue(),
-    gwgExpiryQueue: queue(),
-    invoiceOverdueQueue: queue(),
-    taxDeadlineMaterializeQueue: queue(),
-    auditRotateQueue: queue(),
-    taxNewsFetchQueue: queue(),
-    remindersDailyQueue: queue(),
-    n8nOutboxReconcileQueue: queue(),
-    workflowN8nDispatchQueue: queue(),
-    workflowFeedbackQueue: queue(),
-    storageOrphanCleanupQueue: queue(),
-    portalInboxCleanupQueue: queue(),
-    n8nRetentionQueue: queue(),
-    magicLinkCleanupQueue: queue(),
-    dsgvoRetentionQueue: queue(),
-    poaExpiryQueue: queue(),
-    backupRunQueue: queue(),
-    backupDrillQueue: queue(),
-    healthAlertQueue: queue(),
-    logInfo: vi.fn(),
-  };
-});
-
-vi.mock('../queues', () => ({
-  mailboxPollQueue: mocks.mailboxPollQueue,
-  sanctionsRefreshQueue: mocks.sanctionsRefreshQueue,
-  auditAnchorQueue: mocks.auditAnchorQueue,
-  evidenceSealQueue: mocks.evidenceSealQueue,
-  auditVerifyQueue: mocks.auditVerifyQueue,
-  gwgExpiryQueue: mocks.gwgExpiryQueue,
-  invoiceOverdueQueue: mocks.invoiceOverdueQueue,
-  taxDeadlineMaterializeQueue: mocks.taxDeadlineMaterializeQueue,
-  auditRotateQueue: mocks.auditRotateQueue,
-  taxNewsFetchQueue: mocks.taxNewsFetchQueue,
-  remindersDailyQueue: mocks.remindersDailyQueue,
-  n8nOutboxReconcileQueue: mocks.n8nOutboxReconcileQueue,
-  workflowN8nDispatchQueue: mocks.workflowN8nDispatchQueue,
-  workflowFeedbackQueue: mocks.workflowFeedbackQueue,
-  storageOrphanCleanupQueue: mocks.storageOrphanCleanupQueue,
-  portalInboxCleanupQueue: mocks.portalInboxCleanupQueue,
-  n8nRetentionQueue: mocks.n8nRetentionQueue,
-  magicLinkCleanupQueue: mocks.magicLinkCleanupQueue,
-  dsgvoRetentionQueue: mocks.dsgvoRetentionQueue,
-  poaExpiryQueue: mocks.poaExpiryQueue,
-  backupRunQueue: mocks.backupRunQueue,
-  backupDrillQueue: mocks.backupDrillQueue,
-  healthAlertQueue: mocks.healthAlertQueue,
+const mocks = vi.hoisted(() => ({
+  upserts: new Map<string, ReturnType<typeof vi.fn>>(),
+  logInfo: vi.fn(),
 }));
+
+vi.mock('../queues', async () => {
+  const { JOB_QUEUE_KEYS } = await import('@taxtronik/config/job-queues');
+  const queues: Record<string, { upsertJobScheduler: ReturnType<typeof vi.fn> }> = {};
+  for (const key of JOB_QUEUE_KEYS) {
+    const upsertJobScheduler = vi.fn().mockResolvedValue(undefined);
+    mocks.upserts.set(key, upsertJobScheduler);
+    queues[key] = { upsertJobScheduler };
+  }
+  return { queues };
+});
 
 vi.mock('../logger', () => ({
   log: { info: mocks.logInfo },
 }));
 
-import { JOB_QUEUES, SCHEDULE_LOG_LABELS } from '@taxtronik/config/job-queues';
+import { JOB_QUEUES, JOB_QUEUE_KEYS, SCHEDULE_LOG_LABELS } from '@taxtronik/config/job-queues';
 import { setupSchedules } from '../scheduler';
 
-describe('worker schedule metadata', () => {
-  beforeEach(() => {
+const MINUTE = 60_000;
+const DAILY_RETRY = { attempts: 3, backoff: { type: 'exponential', delay: 5 * MINUTE } };
+const BACKUP_RETRY = { attempts: 2, backoff: { type: 'exponential', delay: 30 * MINUTE } };
+const BERLIN = 'Europe/Berlin';
+
+/**
+ * Frozen copy of the 23 hand-written upsertJobScheduler calls that existed before
+ * R-13 (scheduler ID, repeat options, retry options). The generated scheduler
+ * must register exactly these.
+ */
+const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
+  mailboxPoll: ['periodic-mailbox-poll', { every: 5 * MINUTE }, undefined],
+  sanctionsRefresh: ['daily-sanctions-refresh', { pattern: '15 5 * * *', tz: BERLIN }, DAILY_RETRY],
+  auditAnchor: ['rolling-audit-anchor', { every: 2_000 }, undefined],
+  evidenceSeal: ['daily-seal', { pattern: '30 2 * * *' }, DAILY_RETRY],
+  auditVerify: ['daily-audit-verify', { pattern: '45 2 * * *' }, DAILY_RETRY],
+  auditRotate: ['weekly-audit-rotate', { pattern: '0 3 * * 0' }, DAILY_RETRY],
+  gwgExpiry: ['daily-gwg-expiry', { pattern: '0 7 * * *', tz: BERLIN }, DAILY_RETRY],
+  invoiceOverdue: ['daily-invoice-overdue', { pattern: '15 7 * * *', tz: BERLIN }, DAILY_RETRY],
+  taxDeadlineMaterialize: [
+    'daily-tax-deadline-materialize',
+    { pattern: '30 7 * * *', tz: BERLIN },
+    DAILY_RETRY,
+  ],
+  taxNewsFetch: ['daily-tax-news-fetch', { pattern: '30 6-20/2 * * *', tz: BERLIN }, DAILY_RETRY],
+  remindersDaily: ['daily-reminders', { pattern: '45 7 * * *', tz: BERLIN }, DAILY_RETRY],
+  magicLinkCleanup: ['daily-magic-link-cleanup', { pattern: '30 3 * * *' }, DAILY_RETRY],
+  dsgvoRetention: ['daily-dsgvo-retention', { pattern: '0 4 * * *' }, DAILY_RETRY],
+  poaExpiry: ['daily-poa-expiry', { pattern: '20 7 * * *', tz: BERLIN }, DAILY_RETRY],
+  backupRun: ['daily-backup-run', { pattern: '0 1 * * *' }, BACKUP_RETRY],
+  backupDrill: ['monthly-backup-drill', { pattern: '0 5 1 * *' }, BACKUP_RETRY],
+  healthAlert: ['health-alert', { every: 5 * MINUTE }, undefined],
+  n8nOutboxReconcile: ['n8n-outbox-reconcile', { every: 5 * MINUTE }, undefined],
+  workflowN8nDispatch: ['workflow-n8n-dispatch-reconcile', { every: MINUTE }, undefined],
+  workflowFeedback: ['workflow-feedback', { every: MINUTE }, undefined],
+  storageOrphanCleanup: ['storage-orphan-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
+  portalInboxCleanup: ['portal-inbox-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
+  n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *' }, DAILY_RETRY],
+};
+
+describe('R-13 generated repeat schedulers', () => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    await setupSchedules();
   });
 
-  it('registers drift-prone schedules from the shared definitions', async () => {
-    await setupSchedules();
-    expect(mocks.mailboxPollQueue.upsertJobScheduler).toHaveBeenCalledWith(
-      JOB_QUEUES.mailboxPoll.schedule.schedulerId,
-      JOB_QUEUES.mailboxPoll.schedule.repeat,
-      expect.objectContaining({ name: JOB_QUEUES.mailboxPoll.name }),
-    );
-    expect(mocks.sanctionsRefreshQueue.upsertJobScheduler).toHaveBeenCalledWith(
-      JOB_QUEUES.sanctionsRefresh.schedule.schedulerId,
-      JOB_QUEUES.sanctionsRefresh.schedule.repeat,
-      expect.objectContaining({ name: JOB_QUEUES.sanctionsRefresh.name }),
-    );
+  it('registers one scheduler per scheduled JOB_QUEUES entry and none for event queues', () => {
+    const scheduled = JOB_QUEUE_KEYS.filter((key) => JOB_QUEUES[key].schedule != null);
+    expect(scheduled).toEqual(Object.keys(LEGACY_SCHEDULES));
+    for (const key of JOB_QUEUE_KEYS) {
+      expect(mocks.upserts.get(key)!).toHaveBeenCalledTimes(scheduled.includes(key) ? 1 : 0);
+    }
+  });
 
-    expect(mocks.auditAnchorQueue.upsertJobScheduler).toHaveBeenCalledWith(
-      JOB_QUEUES.auditAnchor.schedule.schedulerId,
-      JOB_QUEUES.auditAnchor.schedule.repeat,
-      { name: JOB_QUEUES.auditAnchor.name, data: {} },
-    );
-    expect(mocks.taxNewsFetchQueue.upsertJobScheduler).toHaveBeenCalledWith(
-      JOB_QUEUES.taxNewsFetch.schedule.schedulerId,
-      JOB_QUEUES.taxNewsFetch.schedule.repeat,
-      expect.objectContaining({ name: JOB_QUEUES.taxNewsFetch.name, data: {} }),
-    );
-    expect(mocks.n8nOutboxReconcileQueue.upsertJobScheduler).toHaveBeenCalledWith(
-      JOB_QUEUES.n8nOutboxReconcile.schedule.schedulerId,
-      JOB_QUEUES.n8nOutboxReconcile.schedule.repeat,
-      { name: JOB_QUEUES.n8nOutboxReconcile.name, data: {} },
-    );
-    expect(mocks.workflowFeedbackQueue.upsertJobScheduler).toHaveBeenCalledWith(
-      JOB_QUEUES.workflowFeedback.schedule.schedulerId,
-      JOB_QUEUES.workflowFeedback.schedule.repeat,
-      { name: JOB_QUEUES.workflowFeedback.name, data: {} },
-    );
-    expect(mocks.portalInboxCleanupQueue.upsertJobScheduler).toHaveBeenCalledWith(
-      JOB_QUEUES.portalInboxCleanup.schedule.schedulerId,
-      JOB_QUEUES.portalInboxCleanup.schedule.repeat,
-      expect.objectContaining({ name: JOB_QUEUES.portalInboxCleanup.name, data: {} }),
-    );
+  it('keeps scheduler IDs, repeat options, job names and retry options unchanged', () => {
+    for (const [key, [schedulerId, repeat, opts]] of Object.entries(LEGACY_SCHEDULES)) {
+      const name = JOB_QUEUES[key as keyof typeof JOB_QUEUES].name;
+      const [id, actualRepeat, template] = mocks.upserts.get(key)!.mock.calls[0]!;
+      expect(id).toBe(schedulerId);
+      expect(actualRepeat).toStrictEqual(repeat);
+      expect(template).toStrictEqual(opts ? { name, data: {}, opts } : { name, data: {} });
+    }
+  });
+
+  it('logs the shared schedule labels once all schedulers are registered', () => {
     expect(mocks.logInfo).toHaveBeenCalledWith(
       { schedules: SCHEDULE_LOG_LABELS },
       'scheduler: registered',

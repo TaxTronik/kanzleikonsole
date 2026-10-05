@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   JOB_QUEUES,
+  JOB_QUEUE_KEYS,
   QUEUE_HEALTH,
   QUEUE_STATUS_HISTORY_RETENTION_SECONDS,
   SCHEDULE_LOG_LABELS,
@@ -14,6 +15,11 @@ describe('shared BullMQ metadata', () => {
 
     expect(new Set(names).size).toBe(names.length);
     expect(QUEUE_HEALTH.map((queue) => queue.name)).toEqual(names);
+  });
+
+  it('lists the queue keys in declaration order for generated queues and schedulers', () => {
+    expect(JOB_QUEUE_KEYS).toEqual(Object.keys(JOB_QUEUES));
+    expect(Object.isFrozen(JOB_QUEUE_KEYS)).toBe(true);
   });
 
   it('models the real tax-news daytime cadence and overnight health gap', () => {

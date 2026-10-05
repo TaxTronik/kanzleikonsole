@@ -14,7 +14,7 @@ import {
   type N8nEnqueueResult,
 } from '@taxtronik/n8n-shared/outbox-enqueue';
 import { prismaOwner } from './prisma-owner';
-import { n8nDeliverQueue } from './queues';
+import { queues } from './queues';
 import { log } from './logger';
 
 export async function emitN8nEventFromWorker(
@@ -27,7 +27,7 @@ export async function emitN8nEventFromWorker(
       db: prismaOwner,
       log,
       enqueueDelivery: (deliveryId) =>
-        n8nDeliverQueue.add(
+        queues.n8nDeliver.add(
           'deliver',
           { deliveryId },
           { ...DELIVERY_JOB_OPTIONS, jobId: `delivery-${deliveryId}` },

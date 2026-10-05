@@ -8,67 +8,15 @@
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { evidenceSealWorker } from './jobs/evidence-seal';
-import { auditAnchorWorker } from './jobs/audit-anchor';
-import { gwgExpiryWorker } from './jobs/gwg-expiry-check';
-import { invoiceOverdueWorker } from './jobs/invoice-overdue-check';
-import { auditVerifyWorker } from './jobs/audit-verify-check';
-import { taxDeadlineMaterializeWorker } from './jobs/tax-deadline-materialize';
-import { auditRotateWorker } from './jobs/audit-rotate';
-import { taxNewsFetchWorker } from './jobs/tax-news-fetch';
-import { remindersDailyWorker } from './jobs/reminders-daily';
-import { n8nDeliverWorker, n8nOutboxReconcileWorker } from './jobs/n8n-deliver';
-import { n8nRetentionWorker } from './jobs/n8n-retention';
-import { magicLinkCleanupWorker } from './jobs/magic-link-cleanup';
-import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
-import { poaExpiryWorker } from './jobs/poa-expiry-check';
-import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
-import { reminderDoneNotifyWorker } from './jobs/reminder-done-notify';
-import { backupDrillWorker } from './jobs/backup-drill';
-import { backupRunWorker } from './jobs/backup-run';
-import { healthAlertWorker } from './jobs/health-alert';
-import { workflowN8nDispatchWorker } from './jobs/workflow-n8n-dispatch';
-import { workflowFeedbackWorker } from './jobs/workflow-feedback';
-import { storageOrphanCleanupWorker } from './jobs/storage-orphan-cleanup';
-import { portalInboxCleanupWorker } from './jobs/portal-inbox-cleanup';
-import { mailboxPollWorker, sanctionsRefreshWorker } from './jobs/expansion';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
 import { prismaOwner } from './prisma-owner';
 import { log } from './logger';
-
 // Eine Quelle für Ready-Log UND Shutdown: früher waren die Worker-Namen in
 // drei Listen dupliziert (Ready-Log, Shutdown, queue-status im Web) und driften
-// auseinander (backup-run fehlte zeitweise im Ready-Log). Ready-Log und
-// Shutdown leiten sich jetzt aus DIESEM Array ab; `.name` ist der Queue-Name.
-const ALL_WORKERS = [
-  mailboxPollWorker,
-  sanctionsRefreshWorker,
-  auditAnchorWorker,
-  evidenceSealWorker,
-  gwgExpiryWorker,
-  invoiceOverdueWorker,
-  auditVerifyWorker,
-  taxDeadlineMaterializeWorker,
-  auditRotateWorker,
-  taxNewsFetchWorker,
-  remindersDailyWorker,
-  n8nDeliverWorker,
-  n8nOutboxReconcileWorker,
-  n8nRetentionWorker,
-  magicLinkCleanupWorker,
-  dsgvoRetentionWorker,
-  poaExpiryWorker,
-  riskAnalyseLlmWorker,
-  reminderDoneNotifyWorker,
-  backupDrillWorker,
-  backupRunWorker,
-  healthAlertWorker,
-  workflowN8nDispatchWorker,
-  workflowFeedbackWorker,
-  storageOrphanCleanupWorker,
-  portalInboxCleanupWorker,
-] as const;
+// auseinander (backup-run fehlte zeitweise im Ready-Log). R-13: die Registry
+// leitet sich aus JOB_QUEUES ab; `.name` ist der Queue-Name.
+import { ALL_WORKERS } from './worker-registry';
 
 // Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s ins
 // plattformgerechte Temp-Verzeichnis; im Container bleibt das /tmp, lokal unter
