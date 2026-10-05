@@ -478,6 +478,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Sechs RLS-Policies lesen den Tenant-Kontext über
+  `app.current_tenant_id()`; ein fehlender oder geleerter Kontext liefert keine
+  Zeilen statt eines Fehlers 500. Die Kontextfunktionen sind `PARALLEL SAFE`
+  (`ACCESS-TENANT-RLS-001`, `FK-EXC-20261005-007`).
 - Das Dashboard-Widget „Wiedervorlagen“ blendet interne Wiedervorlagen ohne
   Mandant nicht mehr aus, sobald ein Mandant gesperrt ist
   (`REMINDER-TICKET-001`).

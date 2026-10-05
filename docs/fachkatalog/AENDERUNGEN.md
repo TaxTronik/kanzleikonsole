@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-007
+    date: '2026-10-05'
+    paths:
+      - packages/db/prisma/migrations/20261005100300_rls_policies_current_tenant_helper/migration.sql
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Sechs RLS-Policies lesen den Tenant-Kontext über app.current_tenant_id()
+      statt über current_setting(...)::uuid; Name, Befehl, Rollen und permissiver
+      Modus bleiben. Ein fehlender oder geleerter Kontext auf einer wiederverwendeten
+      Pool-Verbindung liefert damit keine Zeilen statt eines Cast-Fehlers. Die
+      Kontextfunktionen app.current_tenant_id, current_actor_id und
+      current_actor_type sind PARALLEL SAFE. Sichtbare Zeilen bei gesetztem Kontext
+      bleiben identisch. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/rls-current-tenant-helper.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-006
     date: '2026-10-05'
     paths:
@@ -1585,6 +1602,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-007` dokumentiert, dass alle RLS-Policies den
+  Tenant-Kontext über `app.current_tenant_id()` lesen. Sichtbare Zeilen
+  bleiben bei gesetztem Kontext identisch.
 
 - 2026-10-05: `FK-EXC-20261005-006` dokumentiert zwei Leseindizes auf
   `audit_log`. Hash-Kette, Inhalte und Leserechte bleiben unverändert.

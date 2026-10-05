@@ -185,6 +185,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // AUDIT-HASH-CHAIN-001: Owner liest nur Katalogdaten (pg_indexes, pg_proc) zu den
   // audit_log-Leserindizes (P-11); keine Fixtures, kein Request-Pfad.
   'packages/db/src/__tests__/audit-log-reader-indexes.test.ts',
+  // ACCESS-TENANT-RLS-001: Owner-Fixtures in einem frischen Tenant; die App-Rolle prüft
+  // die sechs Policies mit leerem/fehlendem Kontext und im parallelen Worker (D-04).
+  'packages/db/src/__tests__/rls-current-tenant-helper.test.ts',
   // Session-Limits: eigene Clients mit und ohne Grenzen beweisen, dass nur der
   // App-Client statement_timeout und idle_in_transaction_session_timeout setzt.
   'packages/db/src/__tests__/app-session-limits.test.ts',
