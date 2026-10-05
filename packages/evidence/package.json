@@ -15,7 +15,6 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
     "test": "vitest run",
     "verify": "tsx --env-file-if-exists=../../.env src/cli/verify.ts"
   },

@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-039
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - scripts/release/generate-update-key.mjs
+      - scripts/release/verify-release-version.mjs
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      ESLint läuft je Quality-Lauf nur noch einmal: React-Compiler-Regeln sind
+      Fehler, die bestehende Komplexitätsschuld steht je Datei in
+      eslint-suppressions.json und kann nur sinken. Der Quality-Job in ci.yml ruft
+      deshalb die beiden entfallenen Baseline-Skripte nicht mehr auf. Die
+      Release-Skripte generate-update-key.mjs und verify-release-version.mjs sind
+      nur neu formatiert (Prettier erfasst jetzt alle .mjs-Dateien). Release-Gates,
+      Testnachweise, RFC-3161-Anker und Prüfalarme bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - scripts/release/tests/check-release-gates.test.mjs
+      - scripts/release/tests/verify-release-version.test.mjs
+      - scripts/tests/check-paranoid-e2e.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-038
     date: '2026-10-05'
     paths:
@@ -2411,6 +2435,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-039` dokumentiert den zusammengelegten
+  ESLint-Lauf mit Bulk-Suppressions. Release-Gates und Testnachweise bleiben
+  unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-038` dokumentiert die CSS-Klasse der
   Portal-Kopfleiste. Zugriff und Tenant-Kontext bleiben unverändert.

@@ -5,8 +5,7 @@ import { join } from 'node:path';
 export const REPAIR_MIGRATION = '20260809000000_repair_known_legacy_migration_drift';
 export const FORWARD_REPAIR_MIGRATION = '20260809000100_reconcile_repair_migration_history';
 export const EOL_REPAIR_MIGRATION = '20260809000200_reconcile_windows_migration_line_endings';
-export const LATE_SECURITY_REPAIR_MIGRATION =
-  '20260827100000_reconcile_late_security_guards';
+export const LATE_SECURITY_REPAIR_MIGRATION = '20260827100000_reconcile_late_security_guards';
 export const CANONICAL_REPAIR_CHECKSUM =
   '028fdbe47d7fd9901bc3b042e3dce078ac2283247b48b742f35e89db8e559d74';
 

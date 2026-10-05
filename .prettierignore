@@ -10,6 +10,9 @@ dist/
 build/
 out/
 *.tsbuildinfo
+# Von ESLint (--suppress-rule/--prune-suppressions) geschrieben, ohne
+# abschließenden Zeilenumbruch; Prettier würde jede Neuerzeugung bemängeln.
+eslint-suppressions.json
 
 .VSCodeCounter/
 .codex-run/

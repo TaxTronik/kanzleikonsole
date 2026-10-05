@@ -1,0 +1,277 @@
+{
+  "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts": {
+    "complexity": {
+      "count": 2
+    }
+  },
+  "apps/web/src/app/api/staff/documents/commit/route.ts": {
+    "complexity": {
+      "count": 3
+    }
+  },
+  "apps/web/src/app/api/staff/documents/download/route.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/gwg-onboarding/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/audit/[id]/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/dsgvo/[id]/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts": {
+    "complexity": {
+      "count": 4
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/settings/smtp-form.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/admin/settings/tsa-form.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-id-doc-form.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-document-review.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/start-check-cycle-form.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/requests/new/form.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/marking-panel.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/norm-ref-editor.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-document.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/[id]/workflows/[instanceId]/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/onboarding/[id]/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/clients/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/documents/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/documents/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/poa/[id]/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/poa/actions.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/poa/sign-actions.ts": {
+    "complexity": {
+      "count": 2
+    }
+  },
+  "apps/web/src/app/staff/(protected)/reports/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/staff/(protected)/requests/page.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/bwa/bwa-dashboard.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/document-explorer/browser-view.tsx": {
+    "complexity": {
+      "count": 2
+    }
+  },
+  "apps/web/src/components/document-explorer/embedded-view.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/server/backup/restore.ts": {
+    "complexity": {
+      "count": 2
+    }
+  },
+  "apps/web/src/server/documents/resumable-upload.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/server/dsgvo/workflow.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/server/fristen/kontrollbuch.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/server/risk/research.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "packages/config/src/env.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "packages/config/src/update-manifest.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "packages/evidence/src/cli/verify.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "packages/evidence/src/ports/rfc3161-verify.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "packages/http-utils/src/index.ts": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "packages/risk-layer/src/mapping.ts": {
+    "complexity": {
+      "count": 1
+    }
+  }
+}

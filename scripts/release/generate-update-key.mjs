@@ -20,7 +20,10 @@ const { publicKey, privateKey } = generateKeyPairSync('ed25519');
 const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' });
 // SPKI-DER = 12 Byte fixer Ed25519-Header + 32 Byte raw key. Das raw-Format
 // ist kompakt für die .env; manifest.ts akzeptiert beides (PEM oder raw-32).
-const publicRawB64 = publicKey.export({ type: 'spki', format: 'der' }).subarray(12).toString('base64');
+const publicRawB64 = publicKey
+  .export({ type: 'spki', format: 'der' })
+  .subarray(12)
+  .toString('base64');
 
 process.stdout.write(
   [

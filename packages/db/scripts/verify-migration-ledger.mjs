@@ -3,18 +3,13 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import pg from 'pg';
-import {
-  analyzeMigrationLedger,
-  collectRepositoryMigrations,
-} from './migration-ledger.mjs';
+import { analyzeMigrationLedger, collectRepositoryMigrations } from './migration-ledger.mjs';
 
 const { Client } = pg;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDir, '..');
 const migrationsRoot = join(packageRoot, 'prisma', 'migrations');
-const phase = process.argv.includes('--before-deploy')
-  ? 'before-deploy'
-  : 'after-deploy';
+const phase = process.argv.includes('--before-deploy') ? 'before-deploy' : 'after-deploy';
 
 if (process.argv.includes('--before-deploy') && process.argv.includes('--after-deploy')) {
   console.error('[verify:migration-ledger] Nur eine Phase darf gesetzt sein.');
@@ -37,9 +32,7 @@ const client = new Client({ connectionString: databaseUrl });
 
 try {
   await client.connect();
-  const journal = await client.query(
-    "SELECT to_regclass('public._prisma_migrations') AS journal",
-  );
+  const journal = await client.query("SELECT to_regclass('public._prisma_migrations') AS journal");
   const hasJournal = journal.rows[0]?.journal !== null;
 
   if (!hasJournal) {

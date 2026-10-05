@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- CI/Qualität: ESLint läuft je Quality-Lauf einmal und mit Cache statt
+  dreimal. React-Compiler-Regeln sind Fehler; die bestehende
+  Komplexitätsschuld steht je Datei in `eslint-suppressions.json`, die Zähler
+  können nur sinken (`pnpm lint:prune-suppressions`). Prettier prüft alle
+  `.mjs`-Dateien (`FK-EXC-20261005-039`).
 - Der Dialog „Anforderung erstellen“ und die Terminanfrage im Portal laden
   Formular und Datumsauswahl erst beim Öffnen; der Start-JavaScript-Code sinkt
   dort von 142 auf 89 kB bzw. von 80 auf 32 kB (gzip).

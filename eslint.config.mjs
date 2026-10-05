@@ -41,9 +41,11 @@ export default [
           caughtErrorsIgnorePattern: '^_',
         },
       ],
-      // Bestehende komplexe Funktionen bleiben sichtbar; das separate
-      // Baseline-Gate verhindert jeden neuen Treffer und muss bei Abbau sinken.
-      complexity: ['warn', 20],
+      // Neue Treffer blockieren. Die bestehende Komplexitätsschuld steht je
+      // Datei als Zähler in eslint-suppressions.json (ESLint-Bulk-Suppressions):
+      // mehr Treffer als erfasst schlagen fehl, weniger verlangen
+      // `pnpm lint:prune-suppressions`. Die Zähler können so nur sinken.
+      complexity: ['error', 20],
       'no-restricted-syntax': [
         'error',
         {
@@ -91,14 +93,14 @@ export default [
       // eigenen Tastaturfokus, damit sie insbesondere in Safari scrollbar
       // bleiben. Nur das semantische Listenelement wird dafür freigegeben.
       'jsx-a11y/no-noninteractive-tabindex': ['error', { tags: ['ul'] }],
-      // React-Compiler-Regeln bleiben als Warnungen sichtbar. Das separate
-      // Baseline-Gate deckelt jeden Regeltyp und verhindert neue Treffer.
-      'react-hooks/purity': 'warn',
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/refs': 'warn',
-      'react-hooks/immutability': 'warn',
-      'react-hooks/preserve-manual-memoization': 'warn',
-      'react-hooks/static-components': 'warn',
+      // React-Compiler-Regeln blockieren direkt. Die frühere Warnungs-Baseline
+      // stand für jede Regel auf null; ein separates Gate ist nicht mehr nötig.
+      'react-hooks/purity': 'error',
+      'react-hooks/set-state-in-effect': 'error',
+      'react-hooks/refs': 'error',
+      'react-hooks/immutability': 'error',
+      'react-hooks/preserve-manual-memoization': 'error',
+      'react-hooks/static-components': 'error',
     },
   },
   {

@@ -14,10 +14,15 @@ export function verifyReleaseVersion({ tag, packageJson, changelog }) {
     throw new Error('package.json ist kein gültiges JSON', { cause: error });
   }
   if (manifest.version !== version) {
-    throw new Error(`Tag ${tag} stimmt nicht mit package.json (${manifest.version ?? 'fehlt'}) überein`);
+    throw new Error(
+      `Tag ${tag} stimmt nicht mit package.json (${manifest.version ?? 'fehlt'}) überein`,
+    );
   }
 
-  const heading = new RegExp(`^## \\[${version.replaceAll('.', '\\.')}\\] - \\d{4}-\\d{2}-\\d{2}$`, 'm');
+  const heading = new RegExp(
+    `^## \\[${version.replaceAll('.', '\\.')}\\] - \\d{4}-\\d{2}-\\d{2}$`,
+    'm',
+  );
   if (!heading.test(changelog)) {
     throw new Error(`CHANGELOG.md enthält keinen datierten Abschnitt für ${version}`);
   }
@@ -33,7 +38,9 @@ function main() {
       packageJson: readFileSync('package.json', 'utf8'),
       changelog: readFileSync('CHANGELOG.md', 'utf8'),
     });
-    process.stdout.write(`Release-Version ${version}: Tag, package.json und Changelog stimmen überein.\n`);
+    process.stdout.write(
+      `Release-Version ${version}: Tag, package.json und Changelog stimmen überein.\n`,
+    );
   } catch (error) {
     process.stderr.write(`RELEASE-VERSION FEHLER: ${error.message}\n`);
     process.exitCode = 1;

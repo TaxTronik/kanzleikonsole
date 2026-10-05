@@ -119,14 +119,10 @@ jobs:
           path: testbericht-ops.log
           if-no-files-found: ignore
 
+      # Ein ESLint-Lauf deckt Lint, React-Compiler-Regeln (error) und die
+      # Komplexitaetsschuld ab (complexity: error + eslint-suppressions.json).
       - name: Lint
         run: pnpm lint
-
-      - name: React compiler warning baseline
-        run: pnpm lint:react-compiler-baseline
-
-      - name: Complexity warning baseline
-        run: pnpm lint:complexity-baseline
 
       - name: Typecheck
         run: pnpm typecheck
