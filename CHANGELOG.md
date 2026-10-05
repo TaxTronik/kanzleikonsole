@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- CI: Die Altbestandstests für GwG-Migration 034 und den Onboarding-Backfill
+  041 laufen als SQL-Fixtures über `scripts/ci/migration-cutoff.sh` in jedem
+  CI-Lauf statt nur nach einem Release-Tag und sind lokal ausführbar
+  (`GWG-ACTIVATION-GATE-001`, `GWG-SELF-ONBOARDING-001`,
+  `FK-EXC-20261005-040`).
 - CI/Qualität: ESLint läuft je Quality-Lauf einmal und mit Cache statt
   dreimal. React-Compiler-Regeln sind Fehler; die bestehende
   Komplexitätsschuld steht je Datei in `eslint-suppressions.json`, die Zähler

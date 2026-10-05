@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-040
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - GWG-ACTIVATION-GATE-001
+      - GWG-SELF-ONBOARDING-001
+    reason: >-
+      Die Altbestandstests für die GwG-Migration 034 und den Onboarding-Backfill
+      041 stehen nicht mehr als Inline-Bash in ci.yml, sondern als SQL-Fixtures
+      und -Erwartungen unter scripts/ci/migration-cutoff, ausgeführt von
+      scripts/ci/migration-cutoff.sh. Sie laufen im upgrade-path-Job bei jedem
+      CI-Lauf statt nur nach einem v*-Tag und lokal. Das SQL der Fixtures und
+      Erwartungen ist gegenüber der bisherigen Fassung unverändert; ein Guard-Test
+      hält die Schritte unbedingt und die Cutoffs korrekt. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/db/src/__tests__/migration-cutoff-ci.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-039
     date: '2026-10-05'
     paths:
@@ -2435,6 +2455,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-040` dokumentiert die Altbestandstests
+  für Migration 034 und 041 als SQL-Dateien in jedem CI-Lauf. Geprüfte
+  Erwartungen bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-039` dokumentiert den zusammengelegten
   ESLint-Lauf mit Bulk-Suppressions. Release-Gates und Testnachweise bleiben
