@@ -37,7 +37,7 @@ vi.mock('../prisma-owner', () => ({ prismaOwner: {} }));
 import { JOB_QUEUES, JOB_QUEUE_KEYS } from '@taxtronik/config/job-queues';
 import { ALL_WORKERS, buildWorkerRegistry } from '../worker-registry';
 
-/** Worker concurrency before R-13 (undefined = BullMQ default of 1). */
+/** Worker concurrency before R-13 (undefined = BullMQ default of 1), plus later queues. */
 const LEGACY_CONCURRENCY: Record<string, number | undefined> = {
   'mailbox-poll': 1,
   'sanctions-refresh': 1,
@@ -60,6 +60,8 @@ const LEGACY_CONCURRENCY: Record<string, number | undefined> = {
   'n8n-outbox-reconcile': undefined,
   'workflow-n8n-dispatch': 1,
   'workflow-feedback': 1,
+  // F-13: new queue.
+  'workflow-auto-resume': 1,
   'storage-orphan-cleanup': 1,
   'portal-inbox-cleanup': 1,
   'n8n-retention': 1,

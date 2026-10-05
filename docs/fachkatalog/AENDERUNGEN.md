@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-003
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts
+      - apps/web/src/server/workflows/auto-resume.ts
+      - packages/db/src/workflow-lifecycle.ts
+    rule_ids:
+      - WORKFLOW-LIFECYCLE-001
+      - CLIENT-FEEDBACK-001
+    reason: >-
+      Pausierte Workflows mit erreichtem Pausentermin setzt ein Worker-Job alle
+      fünf Minuten fort, je Instanz in einer kurzen Tenant-Transaktion mit
+      demselben Compare-and-Set auf PAUSED und erreichten Termin und derselben
+      Evidence mit tatsächlichem Endstatus; bisher geschah das nur beim Rendern der
+      Workflow-Seite eines Mandanten. Die Seite schreibt nicht mehr und zeigt eine
+      abgelaufene Pause bis zum nächsten Lauf an. Statusregeln, Pausen- und
+      Abbruchschutz bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/workflow-auto-resume.test.ts
+      - apps/web/src/server/workflows/__tests__/auto-resume.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-002
     date: '2026-10-05'
     paths:
@@ -1463,6 +1484,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-003` dokumentiert, dass ein Worker-Job
+  pausierte Workflows mit erreichtem Termin fortsetzt statt das Rendern der
+  Workflow-Seite. Statusregeln und Pausenschutz bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-002` dokumentiert, dass KI-Aufträge der
   Subsumtion keinen Sachverhalt mehr in Redis tragen und befristet gespeichert

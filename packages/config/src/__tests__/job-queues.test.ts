@@ -120,6 +120,7 @@ describe('shared BullMQ metadata', () => {
       'n8n-outbox-reconcile @ every 5 min',
       'workflow-n8n-dispatch @ every 1 min',
       'workflow-feedback @ every 1 min',
+      'workflow-auto-resume @ every 5 min',
       'storage-orphan-cleanup @ every 6 h',
       'portal-inbox-cleanup @ every 6 h',
       'n8n-retention @ 03:45 UTC daily',

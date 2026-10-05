@@ -33,7 +33,8 @@ const UTC = 'UTC';
 /**
  * Frozen copy of the 23 hand-written upsertJobScheduler calls that existed before
  * R-13 (scheduler ID, repeat options, retry options). The generated scheduler
- * must register exactly these; the only change since is the explicit `tz` (F-17).
+ * must register exactly these; changes since: explicit `tz` (F-17) and the new
+ * workflow-auto-resume scheduler (F-13).
  */
 const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   mailboxPoll: ['periodic-mailbox-poll', { every: 5 * MINUTE }, undefined],
@@ -60,6 +61,8 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   n8nOutboxReconcile: ['n8n-outbox-reconcile', { every: 5 * MINUTE }, undefined],
   workflowN8nDispatch: ['workflow-n8n-dispatch-reconcile', { every: MINUTE }, undefined],
   workflowFeedback: ['workflow-feedback', { every: MINUTE }, undefined],
+  // F-13: new scheduler, no retry (runs every 5 minutes).
+  workflowAutoResume: ['workflow-auto-resume', { every: 5 * MINUTE }, undefined],
   storageOrphanCleanup: ['storage-orphan-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
   portalInboxCleanup: ['portal-inbox-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
   n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *', tz: UTC }, DAILY_RETRY],

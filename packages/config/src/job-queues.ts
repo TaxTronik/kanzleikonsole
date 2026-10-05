@@ -298,6 +298,17 @@ export const JOB_QUEUES = {
       expectedMaxGapMs: MINUTE,
     },
   },
+  workflowAutoResume: {
+    name: 'workflow-auto-resume',
+    schedule: {
+      // F-13: setzt pausierte Workflows mit erreichtem Pausentermin fort (vorher
+      // nur beim Öffnen der Workflow-Seite eines Mandanten). Kein Retry nötig —
+      // der nächste Lauf folgt nach 5 Minuten.
+      schedulerId: 'workflow-auto-resume',
+      repeat: { every: 5 * MINUTE },
+      expectedMaxGapMs: 5 * MINUTE,
+    },
+  },
   storageOrphanCleanup: {
     name: 'storage-orphan-cleanup',
     schedule: {
@@ -435,6 +446,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.n8nOutboxReconcile.name]: EmptyJob;
   [JOB_QUEUES.workflowN8nDispatch.name]: EmptyJob;
   [JOB_QUEUES.workflowFeedback.name]: EmptyJob;
+  [JOB_QUEUES.workflowAutoResume.name]: EmptyJob;
   [JOB_QUEUES.storageOrphanCleanup.name]: EmptyJob;
   [JOB_QUEUES.portalInboxCleanup.name]: EmptyJob;
   [JOB_QUEUES.n8nRetention.name]: EmptyJob;

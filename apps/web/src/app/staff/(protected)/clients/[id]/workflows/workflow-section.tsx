@@ -20,6 +20,7 @@ import {
 import { AddStepForm } from './add-step-form';
 import { TeamEditorButton } from './team-editor';
 import { fmtDateShort } from '@/lib/fmt';
+import { isPauseElapsed } from '@/server/workflows/auto-resume';
 import type { ClientWorkflowsData } from '@/server/workflows/queries';
 
 export function WorkflowSection({
@@ -42,6 +43,7 @@ export function WorkflowSection({
   // ACTIVE + PAUSED bilden den „laufenden" Block (oben). COMPLETED + CANCELLED gehen ins Archiv (unten).
   const active = instances.filter((i) => i.status === 'ACTIVE' || i.status === 'PAUSED');
   const done = instances.filter((i) => i.status === 'COMPLETED' || i.status === 'CANCELLED');
+  const now = new Date();
 
   return (
     <>
@@ -80,7 +82,9 @@ export function WorkflowSection({
                       </Link>
                       {inst.status === 'PAUSED' && (
                         <span className="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 rounded px-1.5 py-0.5">
-                          pausiert{inst.pausedUntil ? ` bis ${fmtDateShort(inst.pausedUntil)}` : ''}
+                          {isPauseElapsed(inst, now)
+                            ? 'Pause abgelaufen – wird automatisch fortgesetzt'
+                            : `pausiert${inst.pausedUntil ? ` bis ${fmtDateShort(inst.pausedUntil)}` : ''}`}
                         </span>
                       )}
                     </div>

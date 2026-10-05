@@ -465,8 +465,8 @@ export async function restoreInstanceAction(input: { instanceId: string }) {
 
 /**
  * Pausiert einen laufenden Workflow. Status → PAUSED. Optional bis zu einem
- * Datum — danach wird der Workflow beim nächsten Page-Load automatisch
- * wieder ACTIVE (Lazy-Resume in `autoResumePausedWorkflows`).
+ * Datum — danach setzt der Worker-Job workflow-auto-resume ihn spätestens fünf
+ * Minuten nach Erreichen des Termins fort (F-13).
  */
 export async function pauseInstanceAction(input: {
   instanceId: string;

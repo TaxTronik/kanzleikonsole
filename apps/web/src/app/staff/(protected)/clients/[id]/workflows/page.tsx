@@ -14,7 +14,6 @@ import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { StartWorkflowForm } from './start-form';
 import { WorkflowSection } from './workflow-section';
-import { autoResumePausedWorkflows } from '@/server/workflows/auto-resume';
 import { loadClientWorkflows } from '@/server/workflows/queries';
 
 export default async function ClientWorkflowsPage({
@@ -30,9 +29,9 @@ export default async function ClientWorkflowsPage({
   const sp = await searchParams;
   const filter = (sp.filter ?? 'all') as 'all' | 'mine';
 
-  // Lazy-Resume: pausierte Workflows, deren Timer abgelaufen ist, reaktivieren
-  await autoResumePausedWorkflows(tenantId, staffId);
-
+  // F-13: Fällige Pausen setzt der Worker-Job workflow-auto-resume fort (alle
+  // 5 min); das Rendern schreibt nicht. Bis dahin zeigt WorkflowSection eine
+  // abgelaufene Pause als solche an.
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const client = await withTenantContext(ctx, (tx) =>
     tx.client.findUnique({ where: { id: clientId }, select: { id: true, name: true } }),

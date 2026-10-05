@@ -5,7 +5,7 @@ import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
 import { createWorkflowFeedbackTx } from '../workflow-feedback';
-import { lockWorkflowInstanceTx } from '../workflow-lifecycle';
+import { lockWorkflowInstanceTx, resumeElapsedPausedWorkflowTx } from '../workflow-lifecycle';
 
 const run = process.env.DATABASE_URL && process.env.DATABASE_APP_URL ? describe : describe.skip;
 run('WORKFLOW-LIFECYCLE-001 / CLIENT-FEEDBACK-001 actual database transitions', () => {
@@ -340,6 +340,74 @@ run('WORKFLOW-LIFECYCLE-001 / CLIENT-FEEDBACK-001 actual database transitions', 
     expect(await owner.workflowInstance.findUnique({ where: { id: f.workflow.id } })).toMatchObject(
       { status: 'COMPLETED', feedbackPendingAt: expect.any(Date) },
     );
+  });
+  it('F-13 timed resume continues only elapsed pauses and reports the reconciled end state', async () => {
+    // Same session setup as the worker (owner client, tenant context, SYSTEM actor).
+    const asWorker = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) =>
+      owner.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT set_config('app.current_tenant_id',${tenantId},true),
+          set_config('app.current_actor_id','',true),
+          set_config('app.current_actor_type','SYSTEM',true)`;
+        return fn(tx);
+      });
+    const now = new Date();
+    const past = new Date(now.getTime() - 60_000);
+    const future = new Date(now.getTime() + 24 * 60 * 60_000);
+    const elapsed = await fixture(1);
+    const notYet = await fixture(1);
+    const cancelled = await fixture(1);
+    await owner.workflowInstance.update({
+      where: { id: elapsed.workflow.id },
+      data: { status: 'PAUSED', pausedUntil: past },
+    });
+    // A late answer finishes the only step while the workflow is paused.
+    await context((tx) =>
+      tx.workflowItem.update({ where: { id: elapsed.items[0]!.id }, data: { doneAt: past } }),
+    );
+    await owner.workflowInstance.update({
+      where: { id: notYet.workflow.id },
+      data: { status: 'PAUSED', pausedUntil: future },
+    });
+    await owner.workflowInstance.update({
+      where: { id: cancelled.workflow.id },
+      data: { status: 'CANCELLED', pausedUntil: past },
+    });
+
+    expect(
+      await asWorker((tx) =>
+        resumeElapsedPausedWorkflowTx(tx, {
+          tenantId: crypto.randomUUID(),
+          instanceId: elapsed.workflow.id,
+          now,
+        }),
+      ),
+    ).toBeNull();
+    const resumed = await asWorker((tx) =>
+      resumeElapsedPausedWorkflowTx(tx, { tenantId, instanceId: elapsed.workflow.id, now }),
+    );
+    expect(resumed).toEqual({ status: 'COMPLETED', completedAt: expect.any(Date) });
+    expect(
+      await owner.workflowInstance.findUnique({ where: { id: elapsed.workflow.id } }),
+    ).toMatchObject({ status: 'COMPLETED', pausedUntil: null });
+    expect(
+      await asWorker((tx) =>
+        resumeElapsedPausedWorkflowTx(tx, { tenantId, instanceId: elapsed.workflow.id, now }),
+      ),
+    ).toBeNull();
+
+    for (const untouched of [notYet, cancelled]) {
+      expect(
+        await asWorker((tx) =>
+          resumeElapsedPausedWorkflowTx(tx, { tenantId, instanceId: untouched.workflow.id, now }),
+        ),
+      ).toBeNull();
+    }
+    expect(
+      await owner.workflowInstance.findUnique({ where: { id: notYet.workflow.id } }),
+    ).toMatchObject({ status: 'PAUSED', pausedUntil: future });
+    expect(
+      await owner.workflowInstance.findUnique({ where: { id: cancelled.workflow.id } }),
+    ).toMatchObject({ status: 'CANCELLED' });
   });
   it('exactly one invitation survives parallel dispatch, retries and recompletion', async () => {
     const f = await fixture(1);

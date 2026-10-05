@@ -462,6 +462,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Pausierte Workflows mit erreichtem Wiederaufnahmedatum setzt der Worker alle
+  fünf Minuten fort; bisher geschah das erst, wenn jemand die Workflow-Seite
+  des Mandanten öffnete, und bis dahin blieben sie in Übersicht, Dashboard und
+  Arbeitskorb pausiert. Das Rendern der Seite schreibt nicht mehr
+  (`WORKFLOW-LIFECYCLE-001`, `FK-EXC-20261005-003`).
 - Cron-Zeitpläne nennen ihre Zeitzone. Die acht nächtlichen Wartungsjobs
   (u. a. Kettenprüfung, Audit-Rotation, DSGVO-Aufbewahrung, Backup und
   Restore-Drill) laufen wie dokumentiert in UTC; bisher liefen sie in den

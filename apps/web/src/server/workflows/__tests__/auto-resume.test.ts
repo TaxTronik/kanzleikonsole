@@ -1,54 +1,40 @@
 // Fachkatalog: WORKFLOW-LIFECYCLE-001.
-import { beforeEach, expect, it, vi } from 'vitest';
-const h = vi.hoisted(() => ({
-  findMany: vi.fn(),
-  updateMany: vi.fn(),
-  readAfter: vi.fn(),
-  record: vi.fn(),
-}));
-vi.mock('@taxtronik/db', () => ({
-  withTenantContext: async (_ctx: unknown, fn: (tx: unknown) => Promise<void>) =>
-    fn({
-      workflowInstance: {
-        findMany: h.findMany,
-        updateMany: h.updateMany,
-        findUniqueOrThrow: h.readAfter,
-      },
-    }),
-}));
-vi.mock('@/server/container', () => ({ evidenceService: { record: h.record } }));
-import { autoResumePausedWorkflows } from '../auto-resume';
-beforeEach(() => {
-  vi.clearAllMocks();
-  h.findMany.mockResolvedValue([{ id: 'changed' }, { id: 'ready' }]);
-  h.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
-  h.readAfter.mockResolvedValue({ status: 'ACTIVE', completedAt: null });
-});
-it('records the actual completion when late answers finished every paused step', async () => {
-  const completedAt = new Date('2026-09-06T12:00:00Z');
-  h.readAfter.mockResolvedValue({ status: 'COMPLETED', completedAt });
-  await autoResumePausedWorkflows('tenant', 'staff');
-  expect(h.record).toHaveBeenCalledWith(
-    expect.anything(),
-    expect.objectContaining({ resourceId: 'ready', after: { status: 'COMPLETED', completedAt } }),
-  );
-});
-it('does not overwrite or audit a concurrent cancellation or extended pause', async () => {
-  await autoResumePausedWorkflows('tenant', 'staff');
-  expect(h.updateMany).toHaveBeenCalledWith({
-    where: {
-      id: 'changed',
-      status: 'PAUSED',
-      pausedUntil: {
-        not: null,
-        lte: expect.any(Date),
-      },
-    },
-    data: { status: 'ACTIVE', pausedUntil: null },
+// F-13: the timed resume itself (CAS, end-state evidence) moved to the worker job
+// workflow-auto-resume and @taxtronik/db/workflow-lifecycle (tests there); the web
+// only classifies elapsed pauses for display and must not write on render.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { isPauseElapsed } from '../auto-resume';
+
+const NOW = new Date('2026-10-05T08:00:00.000Z');
+
+describe('F-13 elapsed pause display', () => {
+  it('marks a paused instance whose resume date has passed', () => {
+    expect(
+      isPauseElapsed({ status: 'PAUSED', pausedUntil: new Date('2026-10-05T00:00:00Z') }, NOW),
+    ).toBe(true);
+    expect(isPauseElapsed({ status: 'PAUSED', pausedUntil: NOW }, NOW)).toBe(true);
   });
-  expect(h.record).toHaveBeenCalledTimes(1);
-  expect(h.record).toHaveBeenCalledWith(
-    expect.anything(),
-    expect.objectContaining({ resourceId: 'ready' }),
-  );
+
+  it('keeps open-ended, future and non-paused instances as they are', () => {
+    expect(isPauseElapsed({ status: 'PAUSED', pausedUntil: null }, NOW)).toBe(false);
+    expect(
+      isPauseElapsed({ status: 'PAUSED', pausedUntil: new Date('2026-10-06T00:00:00Z') }, NOW),
+    ).toBe(false);
+    expect(
+      isPauseElapsed({ status: 'ACTIVE', pausedUntil: new Date('2026-10-01T00:00:00Z') }, NOW),
+    ).toBe(false);
+    expect(
+      isPauseElapsed({ status: 'CANCELLED', pausedUntil: new Date('2026-10-01T00:00:00Z') }, NOW),
+    ).toBe(false);
+  });
+
+  it('no longer resumes workflows while rendering the client workflow page', () => {
+    const page = readFileSync(
+      join(__dirname, '../../../app/staff/(protected)/clients/[id]/workflows/page.tsx'),
+      'utf8',
+    );
+    expect(page).not.toMatch(/autoResumePausedWorkflows|updateMany|evidenceService/);
+  });
 });

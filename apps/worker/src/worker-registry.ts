@@ -31,6 +31,7 @@ import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
 import { workflowN8nDispatchWorker } from './jobs/workflow-n8n-dispatch';
 import { workflowFeedbackWorker } from './jobs/workflow-feedback';
+import { workflowAutoResumeWorker } from './jobs/workflow-auto-resume';
 import { storageOrphanCleanupWorker } from './jobs/storage-orphan-cleanup';
 import { portalInboxCleanupWorker } from './jobs/portal-inbox-cleanup';
 import { mailboxPollWorker, sanctionsRefreshWorker } from './jobs/expansion';
@@ -62,6 +63,7 @@ const WORKERS_BY_QUEUE = {
   n8nOutboxReconcile: n8nOutboxReconcileWorker,
   workflowN8nDispatch: workflowN8nDispatchWorker,
   workflowFeedback: workflowFeedbackWorker,
+  workflowAutoResume: workflowAutoResumeWorker,
   storageOrphanCleanup: storageOrphanCleanupWorker,
   portalInboxCleanup: portalInboxCleanupWorker,
   n8nRetention: n8nRetentionWorker,

@@ -1,49 +1,26 @@
 // =============================================================================
-// Lazy-Resume pausierter Workflow-Instanzen.
+// Zeitgesteuertes Fortsetzen pausierter Workflow-Instanzen — Web-Seite.
 //
-// Bewusst KEIN 'use server': Diese Funktion nimmt tenantId/staffId als
-// Argumente und ist nur für den Aufruf aus bereits autorisierten
-// Server-Komponenten (Page-Load) gedacht. Läge sie in einer 'use server'-
-// Datei, wäre sie ein vom Client aufrufbarer POST-Endpunkt, der die
-// übergebene tenantId ungeprüft in den RLS-Kontext übernähme — ein
-// Cross-Tenant-Schreibprimitiv. Der Aufrufer (workflows/page.tsx) leitet
-// tenantId/staffId ausschließlich aus der geprüften Session ab.
+// F-13: Das Fortsetzen selbst schreibt nicht mehr das Rendern der Workflow-
+// Seite, sondern der Worker-Job workflow-auto-resume (alle 5 min, je Instanz
+// eine kurze Transaktion; CAS in @taxtronik/db/workflow-lifecycle). Vorher
+// blieben fällige Instanzen in Übersicht, Dashboard und Arbeitskorb pausiert,
+// bis jemand den Workflow-Tab eines Mandanten öffnete, und dieser Seitenaufruf
+// schrieb unter dem Audit-Lock des Tenants.
+//
+// Hier bleibt nur die lesende Einordnung für die Anzeige: Eine Instanz, deren
+// Pausentermin erreicht ist, wird bis zum nächsten Lauf als „Pause abgelaufen"
+// gezeigt statt mit einem vergangenen „pausiert bis".
 // =============================================================================
 
-import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
-
-/**
- * Setzt alle pausierten Instanzen, deren `pausedUntil ≤ now`, auf ACTIVE.
- * Wird beim Page-Load der Workflow-Sichten aufgerufen — kein Worker nötig.
- */
-export async function autoResumePausedWorkflows(tenantId: string, staffId: string): Promise<void> {
-  await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) => {
-    const now = new Date();
-    const ready = await tx.workflowInstance.findMany({
-      where: { status: 'PAUSED', pausedUntil: { not: null, lte: now } },
-      select: { id: true },
-    });
-    if (ready.length === 0) return;
-    for (const r of ready) {
-      const resumed = await tx.workflowInstance.updateMany({
-        where: { id: r.id, status: 'PAUSED', pausedUntil: { not: null, lte: now } },
-        data: { status: 'ACTIVE', pausedUntil: null },
-      });
-      if (resumed.count !== 1) continue;
-      const after = await tx.workflowInstance.findUniqueOrThrow({
-        where: { id: r.id },
-        select: { status: true, completedAt: true },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'SYSTEM',
-        actorId: null,
-        action: 'workflow.instance.auto_resume',
-        resourceType: 'workflow_instance',
-        resourceId: r.id,
-        after,
-      });
-    }
-  });
+/** True, wenn eine pausierte Instanz ihren Pausentermin bereits erreicht hat. */
+export function isPauseElapsed(
+  instance: { status: string; pausedUntil: Date | null },
+  now: Date = new Date(),
+): boolean {
+  return (
+    instance.status === 'PAUSED' &&
+    instance.pausedUntil !== null &&
+    instance.pausedUntil.getTime() <= now.getTime()
+  );
 }
