@@ -144,19 +144,25 @@ body:has(.react-grid-item.resizing) {
   }
 
   /*
-   * Brand-Farb-Variablen — Default = Tailwind blue-600-Skala.
-   * Werden vom Layout pro Tenant via inline-Style überschrieben (siehe
-   * server/settings/branding.ts und apps/web/src/lib/brand-palette.ts).
-   * Format: jeweils "R G B" als Whitespace-separierte Komponenten,
-   * damit Tailwind sie in `rgb(var(...) / <alpha-value>)` einfügen kann.
+   * Brand-Farb-Variablen — Default = Tailwind-v3-blue-Skala (blue-600 als
+   * Akzent). Werden vom Layout pro Tenant via inline-Style überschrieben
+   * (siehe server/settings/branding.ts und apps/web/src/lib/brand-palette.ts,
+   * dort dieselben elf Stufen). Format: jeweils "R G B" als Whitespace-
+   * separierte Komponenten, damit Tailwind sie in
+   * `rgb(var(...) / <alpha-value>)` einfügen kann.
    */
   :root {
     --brand-50: 239 246 255; /* #eff6ff */
     --brand-100: 219 234 254; /* #dbeafe */
+    --brand-200: 191 219 254; /* #bfdbfe */
+    --brand-300: 147 197 253; /* #93c5fd */
+    --brand-400: 96 165 250; /* #60a5fa */
     --brand-500: 59 130 246; /* #3b82f6 */
     --brand-600: 37 99 235; /* #2563eb */
     --brand-700: 29 78 216; /* #1d4ed8 */
+    --brand-800: 30 64 175; /* #1e40af */
     --brand-900: 30 58 138; /* #1e3a8a */
+    --brand-950: 23 37 84; /* #172554 */
     --brand-focus: 63 117 237; /* #3f75ed, >4.2:1 gegen Light und Dark */
     --brand-text-light: 29 78 216; /* sicherer Default auf surface-sunken */
     --brand-text-dark: 96 140 255; /* aufgehellt, 5.98:1 auf surface-page */
@@ -292,7 +298,7 @@ body:has(.react-grid-item.resizing) {
  *     `dark:bg-gray-800` etc. verwendet werden — sollen unverändert bleiben.
  *
  * Card-/Panel-Hintergründe sollen NICHT `bg-white` benutzen, sondern die
- * `.card`-Component-Klasse (oder direkt `bg-surface` über den utilities-Block
+ * `.card`-Component-Klasse (oder direkt die Token-Utility `bg-surface`, siehe
  * unten). bg-white bleibt für genuine white surfaces.
  */
 @theme {
@@ -311,65 +317,61 @@ body:has(.react-grid-item.resizing) {
 }
 
 /*
- * Semantische Utility-Klassen — alternativer Direkt-Zugriff für
- * Komponenten, die explizit token-aware geschrieben werden.
- * (Wird parallel zur @theme-Mappings oben gepflegt — `bg-surface-raised`
- * ist sprechender als `bg-gray-100`.)
+ * Semantische Token-Utilities — Direkt-Zugriff für Komponenten, die explizit
+ * token-aware geschrieben werden (`bg-surface-raised` ist sprechender als
+ * `bg-gray-100`).
+ *
+ * Als property-spezifische Theme-Variablen definiert, NICHT als Klassen in
+ * `@layer utilities`: Tailwind v4 erzeugt für solche Klassen nur genau dieses
+ * Stück CSS — `hover:text-secondary`, `dark:text-muted`, `[&_th]:border-default`
+ * oder `border-default/60` ergaben kein CSS, und `@apply text-muted` brach den
+ * Build. Über das Theme werden es echte Utilities mit allen Varianten,
+ * Opacity-Modifiern und `@apply`.
+ *
+ * - `--background-color-*` / `--border-color-*` / `--text-color-*` gelten nur
+ *   für `bg-*` / `border-*` (inkl. `divide-*`) / `text-*` — es entstehen keine
+ *   sinnfreien Klassen wie `bg-primary` oder `text-surface`.
+ * - `inline`: der Wert steht direkt in der Utility (`rgb(var(--…))`, wie
+ *   bisher) und wird pro Element aufgelöst. Light/Dark schaltet weiterhin
+ *   allein über die Variablen in :root bzw. .dark.
  */
-@layer utilities {
-  .bg-surface {
-    background-color: rgb(var(--surface-card));
-  }
-  .bg-surface-page {
-    background-color: rgb(var(--surface-page));
-  }
-  .bg-surface-raised {
-    background-color: rgb(var(--surface-raised));
-  }
-  .bg-surface-sunken {
-    background-color: rgb(var(--surface-sunken));
-  }
-  .bg-surface-topbar {
-    background-color: rgb(var(--surface-topbar));
-  }
+@theme inline {
+  --background-color-surface: rgb(var(--surface-card));
+  --background-color-surface-page: rgb(var(--surface-page));
+  --background-color-surface-raised: rgb(var(--surface-raised));
+  --background-color-surface-sunken: rgb(var(--surface-sunken));
+  --background-color-surface-topbar: rgb(var(--surface-topbar));
 
-  .border-default {
-    border-color: rgb(var(--border-default));
-  }
-  .border-strong {
-    border-color: rgb(var(--border-strong));
-  }
-  .border-subtle {
-    border-color: rgb(var(--border-subtle) / 0.25);
-  }
+  --border-color-default: rgb(var(--border-default));
+  --border-color-strong: rgb(var(--border-strong));
+  --border-color-subtle: rgb(var(--border-subtle) / 0.25);
 
-  .text-primary {
-    color: rgb(var(--text-primary));
-  }
-  .text-secondary {
-    color: rgb(var(--text-secondary));
-  }
-  .text-muted {
-    color: rgb(var(--text-muted));
-  }
-  .text-disabled {
-    color: rgb(var(--text-disabled));
-  }
-  .brand-wordmark {
-    color: rgb(var(--brand-text-light));
-  }
-  .dark .brand-wordmark {
+  --text-color-primary: rgb(var(--text-primary));
+  --text-color-secondary: rgb(var(--text-secondary));
+  --text-color-muted: rgb(var(--text-muted));
+  --text-color-disabled: rgb(var(--text-disabled));
+}
+
+@utility brand-wordmark {
+  color: rgb(var(--brand-text-light));
+
+  .dark & {
     color: rgb(var(--brand-text-dark));
   }
+}
 
-  /* divide-color für unsere custom border-tokens. Muss exakt Tailwind v4's
-   * `.divide-y > :not(:last-child)`-Selektor matchen, sonst greift border-color
-   * nicht und fällt auf currentColor zurück (im Dark = text-primary, fast
-   * weiß → "dicker heller Strich"-Bug). */
-  .divide-border-default > :not(:last-child) {
+/* divide-color für unsere Border-Tokens. Bewusst mit eigenem Selektor statt
+ * Tailwinds `:where(...)`-Variante: Die Trennlinie setzt sich wie bisher auch
+ * gegen Border-Farben der Kind-Elemente durch; ohne Farbe fiele sie auf
+ * currentColor zurück (im Dark = text-primary, fast weiß → "dicker heller
+ * Strich"-Bug). */
+@utility divide-border-default {
+  & > :not(:last-child) {
     border-color: rgb(var(--border-default));
   }
-  .divide-border-subtle > :not(:last-child) {
+}
+@utility divide-border-subtle {
+  & > :not(:last-child) {
     border-color: rgb(var(--border-subtle) / 0.25);
   }
 }
@@ -558,10 +560,9 @@ body:has(.react-grid-item.resizing) {
     box-shadow: inset 0 0 0 2px rgb(var(--text-on-brand) / 0.28);
   }
   /*
-   * .btn-secondary / .input / .label / .card: Token-Werte werden direkt als
-   * CSS-Properties gesetzt, nicht über @apply auf eigene Utility-Klassen.
-   * In Tailwind v4 erkennt @apply Custom-Klassen aus @layer utilities nicht
-   * zuverlässig (Cross-Layer-Auflösung). Direktes CSS umgeht das.
+   * .btn-secondary / .input / .label / .card: Token-Werte stehen direkt als
+   * CSS-Properties. Seit die Tokens echte Utilities sind (@theme inline oben),
+   * ginge auch `@apply text-secondary` — beides erzeugt dasselbe CSS.
    */
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 px-3.5 py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border;

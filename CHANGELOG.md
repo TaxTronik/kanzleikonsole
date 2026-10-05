@@ -573,6 +573,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Tailwind-Token-Klassen wie `text-secondary`, `bg-surface-raised` oder
+  `border-default` wirken jetzt auch mit Varianten (`hover:`, `dark:`,
+  `[&_th]:`) und Deckkraft-Modifiern; bisher erzeugten rund 150 solcher
+  Verwendungen kein CSS. Die Brand-Stufen 200, 300, 400, 800 und 950 sind für
+  Standard- und Kanzleifarben definiert. Ein Test meldet Klassen, die kein CSS
+  erzeugen.
 - Steuertermine: Die Kacheln „Überfällig“ und „Anstehend“ zeigen die
   tatsächliche Anzahl statt der Länge der auf 100 bzw. 200 Zeilen begrenzten
   Listen; beide Listen sind blätterbar und zeigen „100 von 312 angezeigt“. Im

@@ -1,8 +1,8 @@
 // =============================================================================
 // Brand-Palette-Generator
 //
-// Aus einem Hex-Akzentfarbcode wie "#2563eb" wird eine 6-stufige Skala
-// erzeugt (50/100/500/600/700/900) — analog Tailwind. Verwenden:
+// Aus einem Hex-Akzentfarbcode wie "#2563eb" wird eine 11-stufige Skala
+// erzeugt (50–950) — analog Tailwind. Verwenden:
 //
 //   <div style={brandPaletteStyle('#7c3aed')}>...
 //
@@ -219,13 +219,29 @@ export function brandContrastInfo(accentHex: string): BrandContrastInfo {
   };
 }
 
-const STEPS: Array<{ key: 50 | 100 | 500 | 600 | 700 | 900; lightness: number }> = [
+export type BrandStep = 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | 950;
+
+/**
+ * HSL-Helligkeit je Stufe (Farbton und Sättigung bleiben die des Akzents).
+ * 50/100/500/700/900 sind die ursprünglichen Stufen; 600 ist der Akzent
+ * selbst. Die Zwischenstufen sitzen an den relativen Positionen der
+ * Tailwind-blue-Skala zwischen ihren Nachbarn: 200/300/400 bei 17 %, 43 %
+ * und 76 % des Wegs von 100 (0,92) zu 500 (0,60), 800 bei 52 % des Wegs von
+ * 700 (0,40) zu 900 (0,22); 950 = 900 × 0,64 (Verhältnis blue-950 zu
+ * blue-900). Die Folge bleibt streng monoton fallend.
+ */
+export const BRAND_STEPS: ReadonlyArray<{ key: BrandStep; lightness: number }> = [
   { key: 50, lightness: 0.97 },
   { key: 100, lightness: 0.92 },
+  { key: 200, lightness: 0.87 },
+  { key: 300, lightness: 0.78 },
+  { key: 400, lightness: 0.68 },
   { key: 500, lightness: 0.6 },
   { key: 600, lightness: 0.5 },
   { key: 700, lightness: 0.4 },
+  { key: 800, lightness: 0.31 },
   { key: 900, lightness: 0.22 },
+  { key: 950, lightness: 0.14 },
 ];
 
 /**
@@ -239,7 +255,7 @@ export function brandPaletteStyle(accentHex: string): Record<string, string> {
   const baseRgb = hexToRgb(contrast.accentHex);
   const baseHsl = rgbToHsl(baseRgb);
   const out: Record<string, string> = {};
-  for (const step of STEPS) {
+  for (const step of BRAND_STEPS) {
     // Akzent (User-Wahl) selbst geht auf 600 — dort exakte Werte verwenden,
     // nicht Lightness-skaliert (sonst weicht es vom gewählten Farbton ab).
     const rgb = step.key === 600 ? baseRgb : withLightness(baseHsl, step.lightness);

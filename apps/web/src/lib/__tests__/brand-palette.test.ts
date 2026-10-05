@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as fc from 'fast-check';
-import { brandContrastInfo, brandPaletteStyle, contrastRatio } from '../brand-palette';
+import { BRAND_STEPS, brandContrastInfo, brandPaletteStyle, contrastRatio } from '../brand-palette';
 
 describe('barrierefreie Brand-Palette', () => {
   it.each(['#000000', '#ffffff', '#2563eb', '#facc15', '#22c55e', '#777777'])(
@@ -68,6 +68,31 @@ describe('barrierefreie Brand-Palette', () => {
     expect(contrastRatio(info.textOnLightHex, '#e9e7e2')).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(info.textOnLightHex, '#f0efec')).toBeGreaterThanOrEqual(4.5);
   });
+
+  it.each(['#2563eb', '#facc15', '#22c55e', '#a855f7', '#777777'])(
+    'liefert für %s alle elf Stufen mit streng fallender Helligkeit und dem Akzent auf 600',
+    (accent) => {
+      const style = brandPaletteStyle(accent);
+      const keys = BRAND_STEPS.map((step) => step.key);
+      expect(keys).toEqual([50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]);
+      const hex = accent
+        .slice(1)
+        .match(/../g)!
+        .map((channel) => parseInt(channel, 16));
+      expect(style['--brand-600']).toBe(hex.join(' '));
+      // 600 ist exakt der Akzent (kann heller als 500 sein); alle übrigen
+      // Stufen folgen der Helligkeitsleiter und werden streng dunkler.
+      const luminance = keys
+        .filter((key) => key !== 600)
+        .map((key) => {
+          const [r, g, b] = style[`--brand-${key}`]!.split(' ').map(Number);
+          return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+        });
+      for (let index = 1; index < luminance.length; index += 1) {
+        expect(luminance[index]).toBeLessThan(luminance[index - 1]!);
+      }
+    },
+  );
 
   it('fällt bei ungültigen Eingaben kontrolliert auf die Standardfarbe zurück', () => {
     const style = brandPaletteStyle('keine-farbe');
