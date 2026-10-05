@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die Monatsansicht der Steuertermine zählt die Termine je Tag in der
+  Datenbank (bei 15.000 Terminen im Monat 35 statt 15.000 Zeilen), statt alle
+  Termine des Monats zu laden; Monatsraster und Termin-Pillen sind mit dem
+  Kanzleikalender geteilt, die Pillen eines Tages erscheinen in fester
+  Reihenfolge (`ACCESS-SEARCH-SCOPE-001`, `FK-EXC-20261005-036`).
 - Hardware-Anmeldung, -Registrierung und Modus-Bestätigungen laden die
   FIDO-Metadaten nicht mehr im Request (bis 20 MiB, 30 s); der Hintergrundjob
   `fido-mds-refresh` prüft sie alle 20 Minuten und speichert den geprüften

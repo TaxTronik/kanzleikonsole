@@ -67,3 +67,94 @@ const SHORT_KIND_LABELS: Record<string, string> = {
 export function shortKind(k: TaxScheduleKind | string): string {
   return SHORT_KIND_LABELS[k] ?? k;
 }
+
+// --- Monatsraster (P-20) ------------------------------------------------------
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Eine Zelle des 6×7-Monatsrasters (Mo–So). `dayKey` ist der UTC-Kalendertag. */
+export interface MonthGridCell {
+  date: Date;
+  dayKey: string;
+  inMonth: boolean;
+  isToday: boolean;
+}
+
+/**
+ * 42 Zellen ab dem Montag der Woche, in der der Monatserste liegt. `todayKey`
+ * ist der Berlin-Kalendertag (`berlinYmd`), damit „heute" in derselben
+ * Zeitzone bestimmt wird wie die Zellen.
+ */
+export function buildMonthGridCells(
+  year: number,
+  month0: number,
+  todayKey: string,
+): MonthGridCell[] {
+  const firstDayWeekday = (new Date(Date.UTC(year, month0, 1)).getUTCDay() + 6) % 7; // 0=Mo
+  const gridStart = Date.UTC(year, month0, 1 - firstDayWeekday);
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart + index * DAY_MS);
+    const dayKey = date.toISOString().slice(0, 10);
+    return { date, dayKey, inMonth: date.getUTCMonth() === month0, isToday: dayKey === todayKey };
+  });
+}
+
+/** Zeile aus `taxDeadline.groupBy` über (Fälligkeit, Art, Periode, Status). */
+export interface TaxDeadlineStatusCount {
+  dueDate: Date;
+  kind: string;
+  period: string;
+  status: string;
+  _count: { _all: number };
+}
+
+/**
+ * Eine Pille im Monatsraster: alle Termine einer Art und Periode an einem Tag.
+ * Steuertermine sind für alle Mandanten gleich; die Pille zählt sie.
+ */
+export interface TaxDeadlineDayGroup {
+  kind: string;
+  period: string;
+  total: number;
+  /** PLANNED + REMINDED + IN_PROGRESS + OVERDUE + SUBMITTED */
+  open: number;
+  overdue: boolean;
+}
+
+/**
+ * Fasst die DB-Zähler pro Tag (UTC-Kalendertag des @db.Date-Felds) und dann
+ * pro Art + Periode zusammen. Die Reihenfolge der Pillen eines Tages folgt der
+ * Reihenfolge der Eingabezeilen.
+ */
+export function groupTaxDeadlinesByDay(
+  rows: Iterable<TaxDeadlineStatusCount>,
+): Map<string, TaxDeadlineDayGroup[]> {
+  const byDay = new Map<string, Map<string, TaxDeadlineDayGroup>>();
+  for (const row of rows) {
+    const dayKey = row.dueDate.toISOString().slice(0, 10);
+    let day = byDay.get(dayKey);
+    if (!day) {
+      day = new Map();
+      byDay.set(dayKey, day);
+    }
+    const groupKey = `${row.kind}::${row.period}`;
+    let group = day.get(groupKey);
+    if (!group) {
+      group = { kind: row.kind, period: row.period, total: 0, open: 0, overdue: false };
+      day.set(groupKey, group);
+    }
+    group.total += row._count._all;
+    if (row.status !== 'DONE' && row.status !== 'SKIPPED') group.open += row._count._all;
+    if (row.status === 'OVERDUE') group.overdue = true;
+  }
+  return new Map([...byDay].map(([dayKey, groups]) => [dayKey, [...groups.values()]]));
+}
+
+/** Link auf die Mandantenliste einer Termin-Gruppe (Art + Periode). */
+export function taxDeadlineGroupHref(
+  group: Pick<TaxDeadlineDayGroup, 'kind' | 'period'>,
+  scope: 'mine' | 'all',
+  q = '',
+): string {
+  return `/staff/tax-deadlines/group?kind=${group.kind}&period=${encodeURIComponent(group.period)}&scope=${scope}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+}

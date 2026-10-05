@@ -2,11 +2,16 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
-import { berlinMonthBoundsUtc } from '@/lib/tax-calendar';
+import { berlinMonthBoundsUtc, groupTaxDeadlinesByDay } from '@/lib/tax-calendar';
 
 const source = readFileSync(resolve(__dirname, '../page.tsx'), 'utf8');
+// P-20: Die Aggregation teilen sich Kanzleikalender und /staff/tax-deadlines.
+const loader = readFileSync(
+  resolve(__dirname, '../../../../../server/tax-deadlines/day-groups.ts'),
+  'utf8',
+);
 const deadlineQuery = source.slice(
-  source.indexOf('tx.taxDeadline.'),
+  source.indexOf('loadTaxDeadlineDayGroupsTx(tx'),
   source.indexOf('tx.appointment.findMany'),
 );
 const appointmentQuery = source.slice(
@@ -16,16 +21,30 @@ const appointmentQuery = source.slice(
 
 describe('Kalender-Steuertermine', () => {
   it('aggregiert die Monatsdaten in der Datenbank und lädt keine Client-Relation', () => {
-    expect(deadlineQuery).toContain('tx.taxDeadline.groupBy({');
-    expect(deadlineQuery).toContain("by: ['dueDate', 'kind', 'period', 'status']");
-    expect(deadlineQuery).toContain('_count: { _all: true }');
-    expect(deadlineQuery).not.toContain('findMany');
-    expect(deadlineQuery).not.toContain('include');
+    expect(deadlineQuery).toContain('loadTaxDeadlineDayGroupsTx(tx, {');
+    expect(source).not.toContain('tx.taxDeadline.');
+    expect(loader).toContain('tx.taxDeadline.groupBy({');
+    expect(loader).toContain("by: ['dueDate', 'kind', 'period', 'status']");
+    expect(loader).toContain('_count: { _all: true }');
+    expect(loader).not.toContain('findMany');
+    expect(loader).not.toContain('include');
   });
 
   it('übernimmt die DB-Zähler in Gesamt- und Offen-Anzahl', () => {
-    expect(source).toContain('g.total += d._count._all');
-    expect(source).toContain('if (isOpen) g.open += d._count._all');
+    const dueDate = new Date(Date.UTC(2026, 2, 10));
+    const groups = groupTaxDeadlinesByDay([
+      {
+        dueDate,
+        kind: 'USTA_MONATLICH',
+        period: '2026-02',
+        status: 'PLANNED',
+        _count: { _all: 7 },
+      },
+      { dueDate, kind: 'USTA_MONATLICH', period: '2026-02', status: 'DONE', _count: { _all: 5 } },
+    ]);
+    expect(groups.get('2026-03-10')).toEqual([
+      { kind: 'USTA_MONATLICH', period: '2026-02', total: 12, open: 7, overdue: false },
+    ]);
   });
 
   it('lässt @db.Date-Steuertermine auf separaten UTC-Kalendertag-Grenzen', () => {

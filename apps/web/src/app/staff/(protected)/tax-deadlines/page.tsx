@@ -13,21 +13,23 @@
 // =============================================================================
 
 import type { ReactNode } from 'react';
-import { parseMonth, shortKind } from '@/lib/tax-calendar';
+import { buildMonthGridCells, parseMonth } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { SavedViews } from '@/components/saved-views';
 import { OffsetPagination } from '@/components/offset-pagination';
+import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/calendar-month-grid';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { StaffSession } from '@/server/auth/staff';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
+import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
 import { withTenantContext } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { rematerializeAction, markDeadlineDoneAction } from './actions';
 import { ActionForm } from '@/components/action-form';
-import { fmtDateShort, fmtMonthYear, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
+import { fmtDateShort, fmtMonthYear, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 import { TAX_DEADLINE_STATUS_LABELS } from '@/lib/domain-labels';
 import {
@@ -86,6 +88,9 @@ export default async function TaxDeadlinesPage({
   });
 }
 
+/** Pillen je Tageszelle; der Rest erscheint als „+N weitere". */
+const MONTH_CELL_PILLS = 4;
+
 async function renderMonth(
   session: StaffSession,
   year: number,
@@ -100,59 +105,18 @@ async function renderMonth(
   const start = new Date(Date.UTC(year, month0, 1));
   const end = new Date(Date.UTC(year, month0 + 1, 0, 23, 59, 59, 999));
 
-  const deadlines = await withTenantContext(
+  // P-20: In der Datenbank pro Tag × Art × Periode × Status zählen (wie der
+  // Kanzleikalender) statt alle Termine des Monats samt Mandant zu laden.
+  const byDay = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
+    async (tx) =>
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter
       // Mandanten ausblenden.
-      return tx.taxDeadline.findMany({
-        where: {
-          ...clientAccessFilter(await accessibleClientsWhereFor(tx, session), clientFilter),
-          dueDate: { gte: start, lte: end },
-        },
-        orderBy: { dueDate: 'asc' },
-        include: { client: { select: { id: true, name: true } } },
-      });
-    },
+      loadTaxDeadlineDayGroupsTx(tx, {
+        ...clientAccessFilter(await accessibleClientsWhereFor(tx, session), clientFilter),
+        dueDate: { gte: start, lte: end },
+      }),
   );
-
-  // Gruppieren nach Tag → dann nach (kind+period) — Steuertermine sind für
-  // alle Mandanten gleich; eine Pille pro Termin-Gruppe mit Counter.
-  type Group = {
-    kind: string;
-    period: string;
-    total: number;
-    open: number; // PLANNED + REMINDED + IN_PROGRESS + OVERDUE + SUBMITTED
-    overdue: boolean;
-  };
-  const byDay = new Map<string, Map<string, Group>>();
-  for (const d of deadlines) {
-    const dayKey = d.dueDate.toISOString().slice(0, 10);
-    const groupKey = `${d.kind}::${d.period}`;
-    let dayMap = byDay.get(dayKey);
-    if (!dayMap) {
-      dayMap = new Map();
-      byDay.set(dayKey, dayMap);
-    }
-    let g = dayMap.get(groupKey);
-    if (!g) {
-      g = { kind: d.kind, period: d.period, total: 0, open: 0, overdue: false };
-      dayMap.set(groupKey, g);
-    }
-    g.total += 1;
-    const isOpen = d.status !== 'DONE' && d.status !== 'SKIPPED';
-    if (isOpen) g.open += 1;
-    if (d.status === 'OVERDUE') g.overdue = true;
-  }
-
-  // Kalender-Grid: Mo-So, beginnt mit dem Montag der Woche, in der der 1. liegt
-  const firstDayWeekday = (new Date(Date.UTC(year, month0, 1)).getUTCDay() + 6) % 7; // 0=Mo
-  const gridStart = new Date(Date.UTC(year, month0, 1 - firstDayWeekday));
-  const cells: Array<{ date: Date; inMonth: boolean }> = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(gridStart.getTime() + i * 24 * 60 * 60 * 1000);
-    cells.push({ date: d, inMonth: d.getUTCMonth() === month0 });
-  }
 
   const currentMonthQs = `${year}-${String(month0 + 1).padStart(2, '0')}`;
   const prevYear = month0 === 0 ? year - 1 : year;
@@ -163,7 +127,7 @@ async function renderMonth(
   const nextMonthQs = `${nextYear}-${String(nextM).padStart(2, '0')}`;
 
   // Berlin-Tag (nicht Server-Local): Grid-Zellen sind Kalendertage.
-  const todayKey = berlinYmd(new Date());
+  const cells = buildMonthGridCells(year, month0, berlinYmd(new Date()));
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl">
@@ -209,72 +173,29 @@ async function renderMonth(
         </Link>
       </div>
 
-      <div className="card p-2">
-        <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-muted uppercase tracking-wide pb-2 border-b border-default">
-          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="py-2">
-              {fmtWeekdayShort(new Date(Date.UTC(2026, 0, 5 + i)))}
-            </div>
-          ))}
-        </div>
-        <div
-          className="grid grid-cols-7 gap-px mt-px"
-          style={{ backgroundColor: 'rgb(var(--border-default))' }}
-        >
-          {cells.map((cell, i) => {
-            const k = cell.date.toISOString().slice(0, 10);
-            const groups = byDay.get(k);
-            const groupArr = groups ? Array.from(groups.values()) : [];
-            const cellKey = `${cell.date.getUTCFullYear()}-${String(cell.date.getUTCMonth() + 1).padStart(2, '0')}-${String(cell.date.getUTCDate()).padStart(2, '0')}`;
-            const isToday = cellKey === todayKey;
-            return (
-              <div
-                key={i}
-                className={
-                  cell.inMonth
-                    ? 'bg-surface min-h-[110px] p-1.5 flex flex-col gap-1 text-xs'
-                    : 'bg-surface-page min-h-[110px] p-1.5 flex flex-col gap-1 text-xs text-disabled'
-                }
-              >
-                <div
-                  className={
-                    isToday
-                      ? 'self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded'
-                      : 'self-start text-secondary'
-                  }
-                >
-                  {cell.date.getUTCDate()}
-                </div>
-                {groupArr.slice(0, 4).map((g) => {
-                  const allDone = g.open === 0;
-                  const cls = g.overdue
-                    ? 'cal-pill cal-pill-overdue'
-                    : allDone
-                      ? 'cal-pill cal-pill-appointment'
-                      : 'cal-pill cal-pill-pending';
-                  return (
-                    <Link
-                      key={`${g.kind}-${g.period}`}
-                      href={`/staff/tax-deadlines/group?kind=${g.kind}&period=${encodeURIComponent(g.period)}&scope=${scope}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
-                      className={cls}
-                      title={`${SCHEDULE_LABELS[g.kind as keyof typeof SCHEDULE_LABELS]} ${g.period} — ${g.open}/${g.total} offen`}
-                    >
-                      <span className="font-medium">{shortKind(g.kind)}</span>
-                      <span className="opacity-70">
-                        {' '}
-                        · {g.open}/{g.total}
-                      </span>
-                    </Link>
-                  );
-                })}
-                {groupArr.length > 4 && (
-                  <div className="text-[10px] text-muted">+{groupArr.length - 4} weitere</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <CalendarMonthGrid
+        cells={cells}
+        cellClassName={{
+          inMonth: 'bg-surface min-h-[110px] p-1.5 flex flex-col gap-1 text-xs',
+          outside: 'bg-surface-page min-h-[110px] p-1.5 flex flex-col gap-1 text-xs text-disabled',
+        }}
+        todayClassName="self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded"
+        renderDay={(cell) => {
+          const groups = byDay.get(cell.dayKey) ?? [];
+          return (
+            <>
+              <TaxDeadlinePills
+                groups={groups}
+                limit={MONTH_CELL_PILLS}
+                doneClassName="cal-pill cal-pill-appointment"
+                scope={scope}
+                q={q}
+              />
+              <MoreEntries count={groups.length - MONTH_CELL_PILLS} />
+            </>
+          );
+        }}
+      />
     </div>
   );
 }

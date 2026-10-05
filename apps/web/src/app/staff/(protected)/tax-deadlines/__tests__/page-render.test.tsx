@@ -37,15 +37,33 @@ function matches(row: Row, where: Where): boolean {
   return true;
 }
 
+// PostgreSQL sortiert Enums nach Deklarationsreihenfolge, nicht alphabetisch.
+const KIND_ORDER = [
+  'USTA_MONATLICH',
+  'USTA_QUARTAL',
+  'USTA_JAEHRLICH',
+  'LSTA_MONATLICH',
+  'LSTA_QUARTAL',
+  'LSTA_JAEHRLICH',
+  'EST_VZ',
+  'KST_VZ',
+  'GEWST_VZ',
+  'EST_ERKLAERUNG',
+  'KST_ERKLAERUNG',
+  'GEWST_ERKLAERUNG',
+];
+
 function sortBy<T extends Record<string, unknown>>(items: T[], orderBy: Order | undefined): T[] {
   const keys = orderBy ? (Array.isArray(orderBy) ? orderBy : [orderBy]) : [];
+  const rank = (key: string, value: unknown) =>
+    (key === 'kind' ? KIND_ORDER.indexOf(String(value)) : value) as string | number | Date;
   return items
     .map((item, index) => ({ item, index }))
     .sort((a, b) => {
       for (const order of keys) {
         const [key, dir] = Object.entries(order)[0]!;
-        const left = a.item[key] as string | Date;
-        const right = b.item[key] as string | Date;
+        const left = rank(key, a.item[key]);
+        const right = rank(key, b.item[key]);
         const cmp = left < right ? -1 : left > right ? 1 : 0;
         if (cmp !== 0) return dir === 'desc' ? -cmp : cmp;
       }
@@ -75,6 +93,20 @@ const tx = {
           }));
       },
     ),
+    groupBy: vi.fn(async (args: { by: Array<keyof Row>; where: Where; orderBy?: Order }) => {
+      h.calls.push({ op: 'groupBy', where: args.where });
+      const groups = new Map<string, Record<string, unknown> & { _count: { _all: number } }>();
+      for (const row of h.rows.filter((candidate) => matches(candidate, args.where))) {
+        const key = args.by.map((field) => String(row[field])).join('|');
+        const group = groups.get(key) ?? {
+          ...Object.fromEntries(args.by.map((field) => [field, row[field]])),
+          _count: { _all: 0 },
+        };
+        group._count._all += 1;
+        groups.set(key, group);
+      }
+      return sortBy([...groups.values()], args.orderBy);
+    }),
   },
 };
 
@@ -138,6 +170,7 @@ afterAll(() => {
   vi.useRealTimers();
 });
 beforeEach(() => {
+  vi.clearAllMocks();
   h.rows.length = 0;
   h.calls.length = 0;
 });
@@ -191,5 +224,79 @@ describe('Steuertermine — Listenansicht (F-14)', () => {
     expect(tile(html, 'Anstehend')).toBe('5');
     expect(html).not.toContain('angezeigt');
     expect(html).not.toContain('Seitennavigation');
+  });
+});
+
+describe('Steuertermine — Monatsansicht (P-20)', () => {
+  function addDay(dueDate: string, kind: string, period: string, statuses: string[]) {
+    for (const status of statuses) {
+      const n = h.rows.length + 1;
+      h.rows.push({
+        id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+        clientId: `client-${n}`,
+        kind,
+        period,
+        dueDate: day(dueDate),
+        status,
+        requestId: null,
+        completedAt: null,
+      });
+    }
+  }
+
+  it('zählt per groupBy mit Sichtbarkeits- und Seitenfilter statt Terminzeilen zu laden', async () => {
+    addDay('2026-03-10', 'USTA_MONATLICH', '2026-02', ['PLANNED', 'DONE']);
+    addDay('2026-04-10', 'USTA_MONATLICH', '2026-03', ['PLANNED']);
+
+    await render({ month: '2026-03', scope: 'mine', q: 'Müller' });
+
+    expect(tx.taxDeadline.findMany).not.toHaveBeenCalled();
+    expect(tx.taxDeadline.groupBy).toHaveBeenCalledTimes(1);
+    expect(tx.taxDeadline.groupBy.mock.calls[0]![0]).toEqual({
+      by: ['dueDate', 'kind', 'period', 'status'],
+      where: {
+        client: {
+          AND: [
+            { OR: [{ vertraulich: false }] },
+            {
+              responsibilities: { some: { staffId: 'staff-1' } },
+              OR: [
+                { name: { contains: 'Müller', mode: 'insensitive' } },
+                { datevNo: { contains: 'Müller', mode: 'insensitive' } },
+                { addisonNo: { contains: 'Müller', mode: 'insensitive' } },
+              ],
+            },
+          ],
+        },
+        dueDate: { gte: day('2026-03-01'), lte: new Date('2026-03-31T23:59:59.999Z') },
+      },
+      orderBy: [{ dueDate: 'asc' }, { kind: 'asc' }, { period: 'asc' }],
+      _count: { _all: true },
+    });
+  });
+
+  it('zeigt je Tag höchstens vier Pillen mit Zählern, Zustand und Gruppenlink', async () => {
+    addDay('2026-03-10', 'GEWST_VZ', '2026-Q1', ['REMINDED']);
+    addDay('2026-03-10', 'USTA_MONATLICH', '2026-02', ['PLANNED', 'DONE', 'OVERDUE']);
+    addDay('2026-03-10', 'LSTA_MONATLICH', '2026-02', ['DONE', 'SKIPPED']);
+    addDay('2026-03-10', 'EST_VZ', '2026-Q1', ['SUBMITTED', 'PLANNED']);
+    addDay('2026-03-10', 'KST_VZ', '2026-Q1', ['IN_PROGRESS']);
+
+    const html = await render({ month: '2026-03', scope: 'mine', q: 'Müller' });
+
+    const pills = [...html.matchAll(/<a class="(cal-pill[^"]*)" title="([^"]*)" href="([^"]*)"/g)];
+    expect(pills.map(([, cls, title]) => [cls, title])).toEqual([
+      ['cal-pill cal-pill-overdue', 'USt-Voranmeldung (monatlich) 2026-02 — 2/3 offen'],
+      ['cal-pill cal-pill-appointment', 'Lohnsteuer-Anmeldung (monatlich) 2026-02 — 0/2 offen'],
+      ['cal-pill cal-pill-pending', 'ESt-Vorauszahlung 2026-Q1 — 2/2 offen'],
+      ['cal-pill cal-pill-pending', 'KSt-Vorauszahlung 2026-Q1 — 1/1 offen'],
+    ]);
+    expect(pills[0]![3]).toBe(
+      '/staff/tax-deadlines/group?kind=USTA_MONATLICH&amp;period=2026-02&amp;scope=mine&amp;q=M%C3%BCller',
+    );
+    expect(html).toContain('<div class="text-[10px] text-muted">+1 weitere</div>');
+    expect(html).toContain(
+      '<div class="self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded">10</div>',
+    );
   });
 });

@@ -10,18 +10,19 @@
 // Ansichts-Schalter in beiden Kalendern direkt erreichbar.
 // =============================================================================
 
-import { berlinMonthBoundsUtc, parseMonth, shortKind } from '@/lib/tax-calendar';
+import { berlinMonthBoundsUtc, buildMonthGridCells, parseMonth } from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox, AlertTriangle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
+import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
 import { withTenantContext } from '@taxtronik/db';
-import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import { NewAppointmentDialog } from './new-appointment-dialog';
 import { RequestDecision, type RequestRow } from './request-decision';
-import { fmtMonthYear, fmtTimeShort, fmtWeekdayShort, berlinYmd } from '@/lib/fmt';
+import { fmtMonthYear, fmtTimeShort, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
+import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/calendar-month-grid';
 
 interface Search {
   month?: string;
@@ -59,11 +60,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         vacations,
         absences,
       ] = await Promise.all([
-        tx.taxDeadline.groupBy({
-          by: ['dueDate', 'kind', 'period', 'status'],
-          where: { dueDate: { gte: dateStart, lte: dateEnd }, ...viaVisibleClient },
-          orderBy: { dueDate: 'asc' },
-          _count: { _all: true },
+        // P-20: dieselbe DB-Aggregation wie /staff/tax-deadlines (Monatsansicht).
+        loadTaxDeadlineDayGroupsTx(tx, {
+          dueDate: { gte: dateStart, lte: dateEnd },
+          ...viaVisibleClient,
         }),
         tx.appointment.findMany({
           where: {
@@ -125,33 +125,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     },
   );
 
-  // Gruppieren der Steuertermine pro Tag (wie in der alten Page)
-  type DeadlineGroup = {
-    kind: string;
-    period: string;
-    total: number;
-    open: number;
-    overdue: boolean;
-  };
-  const deadlineByDay = new Map<string, Map<string, DeadlineGroup>>();
-  for (const d of data.deadlines) {
-    const dayKey = d.dueDate.toISOString().slice(0, 10);
-    const groupKey = `${d.kind}::${d.period}`;
-    let dayMap = deadlineByDay.get(dayKey);
-    if (!dayMap) {
-      dayMap = new Map();
-      deadlineByDay.set(dayKey, dayMap);
-    }
-    let g = dayMap.get(groupKey);
-    if (!g) {
-      g = { kind: d.kind, period: d.period, total: 0, open: 0, overdue: false };
-      dayMap.set(groupKey, g);
-    }
-    g.total += d._count._all;
-    const isOpen = d.status !== 'DONE' && d.status !== 'SKIPPED';
-    if (isOpen) g.open += d._count._all;
-    if (d.status === 'OVERDUE') g.overdue = true;
-  }
+  // Steuertermine pro Tag, bereits nach Art + Periode gruppiert (P-20).
+  const deadlineByDay = data.deadlines;
+  const anyOverdue = [...deadlineByDay.values()].some((groups) => groups.some((g) => g.overdue));
 
   // Termine pro Tag (am Start-Tag eingruppiert; mehrtägige zeigen wir am Anfangstag)
   const apptByDay = new Map<string, Array<(typeof data.appointments)[number]>>();
@@ -199,15 +175,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     addAbsenceRange(a.startDate, until, `${a.staff.fullName} abw.`);
   }
 
-  // Kalendergitter
-  const firstDayWeekday = (new Date(Date.UTC(year, month0, 1)).getUTCDay() + 6) % 7;
-  const gridStart = new Date(Date.UTC(year, month0, 1 - firstDayWeekday));
-  const cells: Array<{ date: Date; inMonth: boolean }> = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(gridStart.getTime() + i * 24 * 60 * 60 * 1000);
-    cells.push({ date: d, inMonth: d.getUTCMonth() === month0 });
-  }
-
   const prevYear = month0 === 0 ? year - 1 : year;
   const prevM = month0 === 0 ? 12 : month0;
   const prevMonthQs = `${prevYear}-${String(prevM).padStart(2, '0')}`;
@@ -218,7 +185,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   // Berlin-Tag (nicht Server-Local): der Grid-Schlüssel ist der Kalendertag,
   // und „heute" muss in derselben Zeitzone bestimmt werden wie die Zellen.
-  const todayKey = berlinYmd(new Date());
+  const cells = buildMonthGridCells(year, month0, berlinYmd(new Date()));
 
   const requestRows: RequestRow[] = data.pendingRequests.map((r) => ({
     id: r.id,
@@ -298,99 +265,55 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         </Link>
       </div>
 
-      <div className="card p-2">
-        <div className="grid grid-cols-7 gap-px text-center text-xs font-medium text-muted uppercase tracking-wide pb-2 border-b border-default">
-          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="py-2">
-              {fmtWeekdayShort(new Date(Date.UTC(2026, 0, 5 + i)))}
-            </div>
-          ))}
-        </div>
-        <div
-          className="grid grid-cols-7 gap-px mt-px"
-          style={{ backgroundColor: 'rgb(var(--border-default))' }}
-        >
-          {cells.map((cell, i) => {
-            const k = cell.date.toISOString().slice(0, 10);
-            const dlGroups = deadlineByDay.get(k);
-            const dlArr = dlGroups ? Array.from(dlGroups.values()) : [];
-            const appts = apptByDay.get(k) ?? [];
-            const absentToday = absenceByDay.get(k) ?? [];
-            const cellKey = `${cell.date.getUTCFullYear()}-${String(cell.date.getUTCMonth() + 1).padStart(2, '0')}-${String(cell.date.getUTCDate()).padStart(2, '0')}`;
-            const isToday = cellKey === todayKey;
-            return (
-              <div
-                key={i}
-                className={
-                  cell.inMonth
-                    ? 'bg-surface min-h-[120px] p-1.5 flex flex-col gap-1 text-xs'
-                    : 'bg-surface-page min-h-[120px] p-1.5 flex flex-col gap-1 text-xs text-disabled'
-                }
-              >
-                <div
-                  className={
-                    isToday
-                      ? 'self-start font-bold text-brand-700 bg-brand-50 dark:bg-brand-900/40 dark:text-brand-200 px-1.5 py-0.5 rounded'
-                      : 'self-start text-secondary'
-                  }
+      <CalendarMonthGrid
+        cells={cells}
+        cellClassName={{
+          inMonth: 'bg-surface min-h-[120px] p-1.5 flex flex-col gap-1 text-xs',
+          outside: 'bg-surface-page min-h-[120px] p-1.5 flex flex-col gap-1 text-xs text-disabled',
+        }}
+        todayClassName="self-start font-bold text-brand-700 bg-brand-50 dark:bg-brand-900/40 dark:text-brand-200 px-1.5 py-0.5 rounded"
+        renderDay={(cell) => {
+          const dlArr = deadlineByDay.get(cell.dayKey) ?? [];
+          const appts = apptByDay.get(cell.dayKey) ?? [];
+          const absentToday = absenceByDay.get(cell.dayKey) ?? [];
+          return (
+            <>
+              {absentToday.slice(0, 2).map((label, idx) => (
+                <span key={`abs-${idx}`} className="cal-pill cal-pill-absence" title={label}>
+                  {label}
+                </span>
+              ))}
+              {appts.slice(0, 3).map((a) => (
+                <Link
+                  key={a.id}
+                  href={a.client ? `/staff/clients/${a.client.id}` : '#'}
+                  className="cal-pill cal-pill-appointment"
+                  title={`${fmtTimeShort(a.startsAt)} – ${fmtTimeShort(a.endsAt)}: ${a.title}${a.client ? ' · ' + a.client.name : ''}`}
                 >
-                  {cell.date.getUTCDate()}
-                </div>
-                {absentToday.slice(0, 2).map((label, idx) => (
-                  <span key={`abs-${idx}`} className="cal-pill cal-pill-absence" title={label}>
-                    {label}
-                  </span>
-                ))}
-                {appts.slice(0, 3).map((a) => (
-                  <Link
-                    key={a.id}
-                    href={a.client ? `/staff/clients/${a.client.id}` : '#'}
-                    className="cal-pill cal-pill-appointment"
-                    title={`${fmtTimeShort(a.startsAt)} – ${fmtTimeShort(a.endsAt)}: ${a.title}${a.client ? ' · ' + a.client.name : ''}`}
-                  >
-                    <span className="font-medium">{fmtTimeShort(a.startsAt)}</span>
-                    {a.client && <span> · {a.client.name}</span>}
-                    <span className="opacity-70"> · {a.title}</span>
-                  </Link>
-                ))}
-                {dlArr.slice(0, 3).map((g) => {
-                  const allDone = g.open === 0;
-                  const cls = g.overdue
-                    ? 'cal-pill cal-pill-overdue'
-                    : allDone
-                      ? 'cal-pill cal-pill-done'
-                      : 'cal-pill cal-pill-pending';
-                  return (
-                    <Link
-                      key={`${g.kind}-${g.period}`}
-                      href={`/staff/tax-deadlines/group?kind=${g.kind}&period=${encodeURIComponent(g.period)}&scope=all`}
-                      className={cls}
-                      title={`${SCHEDULE_LABELS[g.kind as keyof typeof SCHEDULE_LABELS]} ${g.period} — ${g.open}/${g.total} offen`}
-                    >
-                      <span className="font-medium">{shortKind(g.kind)}</span>
-                      <span className="opacity-70">
-                        {' '}
-                        · {g.open}/{g.total}
-                      </span>
-                    </Link>
-                  );
-                })}
-                {(appts.length > 3 || dlArr.length > 3 || absentToday.length > 2) && (
-                  <div className="text-[10px] text-muted">
-                    +
-                    {Math.max(0, appts.length - 3) +
-                      Math.max(0, dlArr.length - 3) +
-                      Math.max(0, absentToday.length - 2)}{' '}
-                    weitere
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+                  <span className="font-medium">{fmtTimeShort(a.startsAt)}</span>
+                  {a.client && <span> · {a.client.name}</span>}
+                  <span className="opacity-70"> · {a.title}</span>
+                </Link>
+              ))}
+              <TaxDeadlinePills
+                groups={dlArr}
+                limit={3}
+                doneClassName="cal-pill cal-pill-done"
+                scope="all"
+              />
+              <MoreEntries
+                count={
+                  Math.max(0, appts.length - 3) +
+                  Math.max(0, dlArr.length - 3) +
+                  Math.max(0, absentToday.length - 2)
+                }
+              />
+            </>
+          );
+        }}
+      />
 
-      {data.deadlines.some((d) => d.status === 'OVERDUE') && (
+      {anyOverdue && (
         <p className="text-xs text-red-700 mt-3 inline-flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" />
           Überfällige Steuertermine — siehe „Nur Steuertermine".

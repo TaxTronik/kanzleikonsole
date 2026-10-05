@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-036
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Die Monatsansicht der Steuertermine zählt die Termine je Tag per groupBy
+      unter derselben Sichtbarkeitsregel, statt alle Termine des Monats samt
+      Mandant zu laden; Monatsraster und Tageszellen teilt sie mit dem
+      Kanzleikalender. Das gerenderte HTML ist für Monatsansicht, Ansicht mit
+      Filter und Suche sowie den Kanzleikalender byteidentisch, nur die Reihenfolge
+      der Termine eines Tages ist jetzt fest. Ein Datenbanktest unter der App-Rolle
+      mit RLS läuft im DB-CI-Job. Fristberechnung und automatische Anforderungen
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/tax-deadlines/__tests__/day-groups-db.test.ts
+      - apps/web/src/lib/__tests__/tax-calendar-month.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-035
     date: '2026-10-05'
     paths:
@@ -2349,6 +2373,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-036` dokumentiert die per groupBy gezählte
+  Monatsansicht der Steuertermine und ihren DB-Test im CI. Fristberechnung
+  und Sichtbarkeit bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-035` dokumentiert gezählte Kennzahlen der
   Steuertermine und der Mandantenliste. Sichtbarkeitsregeln und

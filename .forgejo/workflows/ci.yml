@@ -272,6 +272,15 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/workflows/__tests__/year-end-db.test.ts 2>&1 | tee testbericht-year-end.log
 
+      # ACCESS-CLIENT-MODE-001: Monatsraster der Steuertermine zählt per groupBy
+      # dieselben Pillen wie die frühere Zählung über alle Terminzeilen (P-20).
+      - name: Tax-deadline month counts against the PostgreSQL app role
+        env:
+          TAX_DEADLINE_DAY_GROUPS_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/tax-deadlines/__tests__/day-groups-db.test.ts 2>&1 | tee testbericht-tax-deadline-day-groups.log
+
       - name: Settings and audit atomicity against the PostgreSQL app role
         env:
           SETTINGS_ATOMICITY_DB_TEST: '1'
@@ -352,6 +361,7 @@ jobs:
             testbericht-invoice-selection.log
             testbericht-client-access-filter.log
             testbericht-year-end.log
+            testbericht-tax-deadline-day-groups.log
             testbericht-settings-atomicity.log
             testbericht-invoice-concurrency.log
             testbericht-evidence-db.log
