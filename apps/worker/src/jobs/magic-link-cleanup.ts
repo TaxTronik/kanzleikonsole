@@ -12,7 +12,7 @@
 // Idempotent: bei doppelter Ausführung pro Tag ist die zweite ein no-op.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
@@ -20,7 +20,7 @@ import { prismaOwner } from '../prisma-owner';
 
 const RETENTION_DAYS = 7;
 
-export const magicLinkCleanupWorker = new Worker<ChecksJob>(
+export const magicLinkCleanupWorker = createWorker<ChecksJob>(
   JOB_QUEUES.magicLinkCleanup.name,
   async () => {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);

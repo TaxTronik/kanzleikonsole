@@ -11,7 +11,8 @@
 // dem Paket, persistiert wird über den Worker-Owner-Client + tenant-context.
 // =============================================================================
 
-import { Worker, UnrecoverableError } from 'bullmq';
+import { UnrecoverableError } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { lockRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
@@ -62,7 +63,7 @@ async function ensureLlmReady(
 // Schreiben). Audit bleibt in TaxTronik — die Engine führt keins.
 const evidence = new EvidenceService(new LocalTimestampAdapter());
 
-export const riskAnalyseLlmWorker = new Worker<RiskAnalyseLlmJob, void, string>(
+export const riskAnalyseLlmWorker = createWorker<RiskAnalyseLlmJob, void, string>(
   JOB_QUEUES.riskAnalyseLlm.name,
   async (job) => {
     const { tenantId, analysisId, sourceText, optionen } = job.data;

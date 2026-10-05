@@ -5,6 +5,7 @@ import { PDFDocument } from 'pdf-lib';
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: mocks.fetch }));
 import {
+  IdentitySourceStorageError,
   loadIdentitySourceTx,
   readIdentitySourceBytes,
   validateIdentityViewportsTx,
@@ -153,5 +154,38 @@ describe('GWG-IDENTIFICATION-EVIDENCE-001 / GWG-SELF-ONBOARDING-001: source vers
     await expect(
       validateIdentityViewportsTx(transaction(doc).tx, { ...input, views: [view] }),
     ).rejects.toThrow('nur bei');
+  });
+});
+
+describe('F-05 GWG-IDENTIFICATION-EVIDENCE-001: storage failures are not evidence conflicts', () => {
+  it('wraps an object-store read failure as a storage error that keeps its cause', async () => {
+    const s3Error = Object.assign(new Error('ServiceUnavailable'), { name: 'ServiceUnavailable' });
+    mocks.fetch.mockRejectedValueOnce(s3Error);
+    const source = (await loadIdentitySourceTx(transaction().tx, input))!;
+
+    const error = await readIdentitySourceBytes(source).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(IdentitySourceStorageError);
+    expect((error as Error).cause).toBe(s3Error);
+  });
+
+  it('keeps a hash mismatch of readable bytes a source error, not a storage error', async () => {
+    mocks.fetch.mockResolvedValueOnce(Buffer.from('tampered'));
+    const source = (await loadIdentitySourceTx(transaction().tx, input))!;
+
+    const error = await readIdentitySourceBytes(source).catch((caught: unknown) => caught);
+    expect(error).not.toBeInstanceOf(IdentitySourceStorageError);
+    expect((error as Error).message).toContain('gebundenen Version');
+  });
+
+  it('propagates the storage error out of the viewport validation', async () => {
+    mocks.fetch.mockRejectedValueOnce(new Error('socket hang up'));
+    const doc = { ...documentFixture(), mimeType: 'application/pdf' };
+
+    await expect(
+      validateIdentityViewportsTx(transaction(doc).tx, {
+        ...input,
+        views: [{ ...view, width: 0.5 }],
+      }),
+    ).rejects.toBeInstanceOf(IdentitySourceStorageError);
   });
 });

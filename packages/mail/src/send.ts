@@ -4,6 +4,10 @@
 // Verwendet (falls vorhanden) die tenant-spezifische SMTP-Konfiguration aus
 // `tenant_setting.mail.smtp` (verschlüsseltes Passwort, in der UI gepflegt).
 // Andernfalls Fallback auf die ENV-Werte (SMTP_HOST/PORT/USER/PASSWORD/FROM).
+// F-05: Der Fallback gilt nur, wenn keine (vollständige) Tenant-Konfiguration
+// existiert. Ist sie wegen eines DB-Fehlers nicht lesbar, schlägt der Versand
+// fehl (SmtpConfigUnavailableError, wiederholbar) — sonst ginge die Mail still
+// über einen anderen Server und Absender als vom Mandanten konfiguriert.
 //
 // Im Dev: MailHog (siehe docker-compose) — UI auf http://localhost:8025
 //
@@ -16,6 +20,22 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import { createHash } from 'node:crypto';
 import { env } from '@taxtronik/config';
 import { readSmtpConfig, type SmtpConfig } from './smtp-settings';
+import { mailLog } from './logger';
+
+/**
+ * Die Tenant-SMTP-Konfiguration war nicht lesbar (DB-Fehler). Vor jedem
+ * SMTP-Kontakt geworfen: die Mail wurde nachweislich nicht versendet und kann
+ * erneut versucht werden.
+ */
+export class SmtpConfigUnavailableError extends Error {
+  readonly retryable = true;
+  readonly tenantId: string;
+  constructor(tenantId: string, cause: unknown) {
+    super('SMTP-Konfiguration des Mandanten nicht lesbar — Versand abgebrochen.', { cause });
+    this.name = 'SmtpConfigUnavailableError';
+    this.tenantId = tenantId;
+  }
+}
 
 let envTransporter: Transporter | null = null;
 
@@ -171,8 +191,17 @@ export async function sendMail(opts: MailOptions): Promise<void> {
         actorId: null,
         actorType: 'SYSTEM',
       });
-    } catch {
-      dbCfg = null;
+    } catch (err) {
+      mailLog().error(
+        {
+          component: 'mail',
+          tenantId: opts.tenantId,
+          errName: err instanceof Error ? err.name : typeof err,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'mail: Tenant-SMTP-Konfiguration nicht lesbar — kein Fallback auf ENV-SMTP',
+      );
+      throw new SmtpConfigUnavailableError(opts.tenantId, err);
     }
   }
   const useDb = Boolean(dbCfg && dbCfg.host && dbCfg.from);

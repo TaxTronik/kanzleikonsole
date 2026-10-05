@@ -18,7 +18,12 @@ import {
 } from '@/server/gwg/evidence-documents';
 import { gwgIdentityDocumentSetRevision } from '@/server/gwg/revisions';
 import { IdentitySourceViewsSchema, identityViewports } from '@/lib/gwg/identity-viewport';
-import { validateIdentityViewportsTx } from '@/server/gwg/identity-source';
+import {
+  IdentitySourceStorageError,
+  validateIdentityViewportsTx,
+} from '@/server/gwg/identity-source';
+import { log } from '@/server/logger';
+import { Prisma } from '@taxtronik/db/prisma-client';
 import {
   firstIdentityDateError,
   validateIdentityDates,
@@ -255,6 +260,55 @@ function newIdentityDocumentSharedData(
   };
 }
 
+/**
+ * F-05: Ein S3-Lesefehler beim Prüfen der Ausweisquelle ist vorübergehend. Er wird
+ * geloggt und als Speicherfehler gemeldet — nicht als „Nachweis neu erfassen" und
+ * nicht mit der rohen Storage-Meldung.
+ */
+function identityStorageActionError(
+  error: IdentitySourceStorageError,
+  context: { tenantId: string; clientId: string; documentId: string },
+): ActionError {
+  const cause = error.cause instanceof Error ? error.cause : null;
+  log.error(
+    {
+      component: 'gwg-identity',
+      ...context,
+      err: error.message,
+      causeName: cause?.name ?? null,
+      cause: cause?.message ?? null,
+    },
+    'gwg-identity: Ausweisdatei im Dokumentenspeicher nicht lesbar',
+  );
+  return new ActionError(
+    'Die Ausweisdatei konnte gerade nicht aus dem Dokumentenspeicher gelesen werden. Der Nachweis ist unverändert; bitte in einigen Minuten erneut versuchen.',
+  );
+}
+
+function isDatabaseError(error: unknown): error is Error {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError ||
+    error instanceof Prisma.PrismaClientInitializationError
+  );
+}
+
+/**
+ * Fehler aus validateIdentityViewportsTx: Speicherfehler → Speicher-Meldung (geloggt),
+ * Datenbankfehler → zentrales Fehler-Mapping, alles andere → fachliche Meldung.
+ */
+function identityValidationFailure(
+  error: unknown,
+  context: { tenantId: string; clientId: string; documentId: string },
+  sourceMessage: string,
+): Error {
+  if (error instanceof IdentitySourceStorageError) {
+    return identityStorageActionError(error, context);
+  }
+  if (isDatabaseError(error)) return error;
+  return new ActionError(sourceMessage);
+}
+
 async function validateNewIdentityViews(
   tx: Parameters<typeof validateIdentityViewportsTx>[0],
   tenantId: string,
@@ -279,7 +333,9 @@ async function validateNewIdentityViews(
       });
       viewsByDocument.set(documentId, views);
     } catch (error) {
-      throw new ActionError(
+      throw identityValidationFailure(
+        error,
+        { tenantId, clientId: data.clientId, documentId },
         error instanceof Error ? error.message : 'Ausweisausschnitt konnte nicht geprüft werden.',
       );
     }
@@ -1045,8 +1101,10 @@ export async function updateIdDocumentsAction(
             documentId: entry.document!.id,
             views: identityViewports(entry.viewports),
           });
-        } catch {
-          throw new ActionError(
+        } catch (error) {
+          throw identityValidationFailure(
+            error,
+            { tenantId, clientId: data.clientId, documentId: entry.document!.id },
             'Die gespeicherte Ausweisansicht passt nicht mehr zur Quelle. Bitte den Nachweis neu erfassen.',
           );
         }

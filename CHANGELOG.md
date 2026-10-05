@@ -462,6 +462,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Fehlgeschlagene Hintergrundjobs und Worker-Fehler werden für alle Worker
+  protokolliert; bisher hatten 11 von 26 Workern keinen Fehler-Handler. Fehler
+  beim Zählen fehlgeschlagener Staff-Anmeldungen werden geloggt statt
+  verworfen. Das Sammel-Schließen von Anfragen schließt die übrigen und nennt
+  nicht geschlossene mit Grund. Speicherfehler bei GwG-Ausweisen erscheinen
+  als vorübergehender Speicherfehler statt als „Nachweis neu erfassen“. Ist
+  die Kanzlei-SMTP-Konfiguration nicht lesbar, wird der Versand abgebrochen,
+  statt still über den SMTP-Server aus der `.env` zu senden
+  (`FK-EXC-20261005-001`).
 - Mandantenauswahlen (Termin, Wiedervorlage, Zeiterfassung, Telefonnotiz,
   Mandanten-Assistent, Vollmacht, Rechnung, Lohn, StBVV, Jahreswechsel,
   Workflows, GwG-Kontrollliste, Mandatsorganisation, Anfragen) suchen

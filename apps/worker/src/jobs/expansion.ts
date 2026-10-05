@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { withSystemContext } from '@taxtronik/db';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
@@ -7,7 +7,7 @@ import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { runSanctionsRefresh } from './sanctions-refresh';
 
-export const mailboxPollWorker = new Worker<ChecksJob>(
+export const mailboxPollWorker = createWorker<ChecksJob>(
   JOB_QUEUES.mailboxPoll.name,
   async (job) => {
     const tenants = job.data.tenantId
@@ -27,7 +27,7 @@ export const mailboxPollWorker = new Worker<ChecksJob>(
   },
   { connection, concurrency: 1 },
 );
-export const sanctionsRefreshWorker = new Worker<ChecksJob>(
+export const sanctionsRefreshWorker = createWorker<ChecksJob>(
   JOB_QUEUES.sanctionsRefresh.name,
   async (job) => {
     await runSanctionsRefresh(job.data.tenantId);

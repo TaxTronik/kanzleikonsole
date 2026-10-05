@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
   ensureGwgRootFolder: vi.fn(),
   ensureGwgPersonFolder: vi.fn(),
   lockEvidence: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
@@ -48,7 +49,7 @@ vi.mock('@/server/rate-limit', () => ({
   checkIpOrGlobalLimit: vi.fn(async () => ({ ok: true })),
   getClientIp: () => '192.0.2.1',
 }));
-vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
+vi.mock('@/server/logger', () => ({ log: { error: m.logError, warn: vi.fn() } }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: m.notifyMany }));
 vi.mock('@/server/privacy/consent-catalog', () => ({
   ConsentDisplayChangedError: class ConsentDisplayChangedError extends Error {},
@@ -78,6 +79,7 @@ vi.mock('@/server/gwg-onboarding/document-folders', () => ({
 }));
 
 import { submitOnboardingAction } from '../actions';
+import { IdentitySourceStorageError } from '@/server/gwg/identity-source';
 
 const CHECK_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const OWNER_ONE = '11111111-1111-4111-8111-111111111111';
@@ -407,4 +409,37 @@ describe('gebundener GwG-DRAFT Submit', () => {
       expect(m.notifyMany).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('F-05 storage errors during the bound submit', () => {
+  it('reports an unreadable ID source as a temporary storage problem, not as a changed draft', async () => {
+    vi.clearAllMocks();
+    m.inviteFindFirst.mockResolvedValue({
+      id: 'invite-1',
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      status: 'STARTED',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      gwgCheckId: CHECK_ID,
+      createdByStaff: 'staff-1',
+      uploadedDocumentIds: [],
+      gwgCheck: { idDocuments: DOCUMENT_IDS.map((documentId) => ({ documentId })) },
+      client: { id: 'client-1', kind: 'PERSGES', name: 'Muster GbR' },
+    });
+    m.withSystemContext.mockRejectedValue(
+      new IdentitySourceStorageError(new Error('connect ECONNREFUSED seaweedfs:8333')),
+    );
+
+    const result = await submitOnboardingAction(validSubmission());
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        'Die Ausweisdatei kann gerade nicht geladen werden. Bitte versuchen Sie es in einigen Minuten erneut.',
+    });
+    expect(m.logError).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'submit', cause: 'connect ECONNREFUSED seaweedfs:8333' }),
+      'gwg-onboarding: Ausweisdatei im Dokumentenspeicher nicht lesbar',
+    );
+  });
 });

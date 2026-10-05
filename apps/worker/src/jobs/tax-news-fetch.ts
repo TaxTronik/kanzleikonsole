@@ -8,7 +8,7 @@
 // Konsolidierung Round 12: Parser + Body-Cap aus @taxtronik/rss.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
@@ -36,7 +36,7 @@ function chunks<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-export const taxNewsFetchWorker = new Worker<ChecksJob>(
+export const taxNewsFetchWorker = createWorker<ChecksJob>(
   JOB_QUEUES.taxNewsFetch.name,
   async () => {
     // Distinct URLs aus aktiven Feeds — pro URL nur ein Fetch.

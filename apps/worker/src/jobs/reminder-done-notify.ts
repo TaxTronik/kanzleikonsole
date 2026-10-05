@@ -11,7 +11,7 @@
 // Datenbank ist die Wahrheit, nicht der Job.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { upsertNotificationTx } from '@taxtronik/db/notification';
 import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
@@ -20,7 +20,7 @@ import { withWorkerTenantContext } from '../tenant-context';
 import { log } from '../logger';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 
-export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
+export const reminderDoneNotifyWorker = createWorker<ReminderDoneNotifyJob>(
   JOB_QUEUES.reminderDoneNotify.name,
   async (job) => {
     const { tenantId, reminderId, staffId, doneByName } = job.data;
@@ -75,10 +75,3 @@ export const reminderDoneNotifyWorker = new Worker<ReminderDoneNotifyJob>(
   },
   { connection, concurrency: 4 },
 );
-
-reminderDoneNotifyWorker.on('failed', (job, err) => {
-  log.error(
-    { component: 'reminder-done-notify', jobId: job?.id, err: err.message },
-    'Erledigt-Benachrichtigung fehlgeschlagen',
-  );
-});

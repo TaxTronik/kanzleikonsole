@@ -13,7 +13,7 @@
 // Mandant muss freigeschaltet (allowActive) sein — sonst keine Termine.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/notification';
@@ -32,7 +32,7 @@ const HORIZON_DAYS = 90;
 // dem Schreiben) — Muster wie in risk-analyse-llm.ts.
 const evidence = new EvidenceService(new LocalTimestampAdapter());
 
-export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
+export const taxDeadlineMaterializeWorker = createWorker<ChecksJob>(
   JOB_QUEUES.taxDeadlineMaterialize.name,
   async (job) => {
     const tenantIds = job.data.tenantId
@@ -156,7 +156,3 @@ export const taxDeadlineMaterializeWorker = new Worker<ChecksJob>(
   },
   { connection, concurrency: 1 },
 );
-
-taxDeadlineMaterializeWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'tax-deadline-materialize: failed');
-});

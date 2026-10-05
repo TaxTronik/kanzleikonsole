@@ -22,7 +22,7 @@
 // Schedule: wöchentlich (siehe scheduler.ts).
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
@@ -120,7 +120,7 @@ async function timestampArchiveHash(tenantId: string, hash: Buffer): Promise<Buf
   }
 }
 
-export const auditRotateWorker = new Worker<ChecksJob>(
+export const auditRotateWorker = createWorker<ChecksJob>(
   JOB_QUEUES.auditRotate.name,
   async (job) => {
     const tenantIds = job.data.tenantId

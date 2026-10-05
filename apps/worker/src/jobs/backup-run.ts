@@ -21,7 +21,7 @@
 import { randomBytes } from 'node:crypto';
 import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { env } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter, createRfc3161Adapter } from '@taxtronik/evidence';
@@ -193,12 +193,8 @@ export async function runScheduledBackup(
   return { ok: true, key };
 }
 
-export const backupRunWorker = new Worker<ChecksJob>(
+export const backupRunWorker = createWorker<ChecksJob>(
   JOB_QUEUES.backupRun.name,
   async () => runScheduledBackup(),
   { connection, concurrency: 1 },
 );
-
-backupRunWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'backup-run: failed');
-});

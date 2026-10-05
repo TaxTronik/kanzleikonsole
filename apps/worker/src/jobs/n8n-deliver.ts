@@ -8,7 +8,8 @@
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';
-import { Queue, Worker } from 'bullmq';
+import { Queue } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import type { Prisma } from '@prisma/client';
 import { env, n8nDeliveryMode } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
@@ -590,7 +591,7 @@ function deliveryIdFrom(data: N8nDeliverJob): string | null {
   return 'deliveryId' in data && data.deliveryId ? data.deliveryId : null;
 }
 
-export const n8nDeliverWorker = new Worker<N8nDeliverJob>(
+export const n8nDeliverWorker = createWorker<N8nDeliverJob>(
   JOB_QUEUES.n8nDeliver.name,
   async (job) => {
     const deliveryId =
@@ -618,21 +619,9 @@ export const n8nDeliverWorker = new Worker<N8nDeliverJob>(
   { connection, concurrency: 4 },
 );
 
-n8nDeliverWorker.on('failed', (job, err) => {
-  if (!job) return;
-  if (job.attemptsMade < (job.opts?.attempts ?? 1)) {
-    log.warn({ attempt: job.attemptsMade, err: err.message }, 'n8n-deliver: retry pending');
-  } else {
-    log.error(
-      { deliveryId: deliveryIdFrom(job.data), attempts: job.attemptsMade, err: err.message },
-      'n8n-deliver: FAILED after all retries',
-    );
-  }
-});
-
 // Findet Deliveries, die zwischen DB-Commit und BullMQ-Add liegen geblieben
 // sind oder deren Worker nach dem DB-Claim abgestürzt ist.
-export const n8nOutboxReconcileWorker = new Worker(
+export const n8nOutboxReconcileWorker = createWorker(
   JOB_QUEUES.n8nOutboxReconcile.name,
   async () => {
     const cutoff = new Date(Date.now() - 5 * 60_000);

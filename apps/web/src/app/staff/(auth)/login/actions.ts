@@ -19,6 +19,8 @@ import { resetFailedLogin } from '@/server/auth/lockout';
 import { recordFailedLoginAudited } from '@/server/auth/login-audit';
 import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { log } from '@/server/logger';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import {
   checkIpOrGlobalLimit,
   checkRateLimit,
@@ -56,6 +58,37 @@ type PasswordBoundAccount = Pick<StaffUser, 'id' | 'tenantId' | 'passwordHash' |
 
 function totpEnrollmentAccountRateLimitKey(staffUserId: string): string {
   return `staff-totp-enroll-account:${staffUserId}`;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * F-05: Fehlversuchszähler (Lockout) und Audit-Ereignis dürfen das generische
+ * Login-Ergebnis nicht verändern. Scheitern sie, ist der Lockout-Schutz für
+ * diesen Versuch aber geschwächt — das muss im Log stehen, statt verschluckt
+ * zu werden.
+ */
+async function recordFailedPasswordAttempt(
+  opts: Parameters<typeof recordFailedLoginAudited>[0],
+  action: 'checkPassword' | 'confirmTotpEnrollment',
+): Promise<void> {
+  try {
+    await recordFailedLoginAudited(opts);
+  } catch (err) {
+    log.error(
+      {
+        component: 'staff-login',
+        action,
+        tenantId: opts.tenantId,
+        staffId: opts.staffUserId,
+        reason: opts.reason,
+        err: errorMessage(err),
+      },
+      'staff-login: Fehlversuch weder gezählt noch auditiert (Lockout-Zähler)',
+    );
+  }
 }
 
 function passwordAuthenticationBlocked(account: {
@@ -157,13 +190,16 @@ export async function checkPasswordAction(
     // ohne den Account zu sperren — kein Lockout-DoS via bekannte E-Mail. Ohne
     // bekannte IP wird nur gezählt, nicht gesperrt (S-03).
     // RF-12: zählt UND schreibt auth.login.failure(/.lockout) in die Audit-Chain.
-    await recordFailedLoginAudited({
-      tenantId: tenant.id,
-      staffUserId: staffUser.id,
-      email: staffUser.email,
-      ip,
-      reason: 'password',
-    }).catch(() => void 0);
+    await recordFailedPasswordAttempt(
+      {
+        tenantId: tenant.id,
+        staffUserId: staffUser.id,
+        email: staffUser.email,
+        ip,
+        reason: 'password',
+      },
+      'checkPassword',
+    );
     return { ok: false, error: GENERIC_LOGIN_ERROR };
   }
 
@@ -187,7 +223,7 @@ export async function checkPasswordAction(
   // Sturm-Obergrenze ohne IP leert ein einzelner Login nicht (S-03).
   if (ip) await resetRateLimit(`staff-pw:${ip}`);
   await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
-  resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
+  fireAndForget('staff-login: resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
 
   // DEV-ONLY: TOTP überspringen → UI loggt direkt ein (ohne Code/Setup).
   if (DEV_SKIP_TOTP) {
@@ -347,13 +383,16 @@ export async function confirmTotpEnrollmentAction(
 
   const passwordOk = await compare(password, staffUser.passwordHash);
   if (!passwordOk) {
-    await recordFailedLoginAudited({
-      tenantId: tenant.id,
-      staffUserId: staffUser.id,
-      email: staffUser.email,
-      ip,
-      reason: 'password',
-    }).catch(() => void 0);
+    await recordFailedPasswordAttempt(
+      {
+        tenantId: tenant.id,
+        staffUserId: staffUser.id,
+        email: staffUser.email,
+        ip,
+        reason: 'password',
+      },
+      'confirmTotpEnrollment',
+    );
     return { ok: false, error: 'Ungültige Daten.' };
   }
 
@@ -443,7 +482,7 @@ export async function confirmTotpEnrollmentAction(
   await resetRateLimit(staffPasswordAccountRateLimitKey(staffUser.id));
   if (ip) await resetRateLimit(`staff-totp-enroll:${ip}`);
   await resetRateLimit(enrollmentAccountKey);
-  resetFailedLogin(prismaOwner, staffUser.id).catch(() => void 0);
+  fireAndForget('staff-login: resetFailedLogin', resetFailedLogin(prismaOwner, staffUser.id));
 
   // V-1: Rohe Codes EINMAL an den Client zurück. Vorher waren sie tot in der
   // DB — User wussten nichts davon, Phone-Verlust = dauerhaft ausgesperrt,
@@ -477,7 +516,11 @@ export async function beginHardwareLoginAction(): Promise<BeginHardwareLoginResu
   if (!rate.ok) return { error: 'Zu viele Anmeldeversuche. Bitte kurz warten.' };
   try {
     return await beginHardwareLogin();
-  } catch {
+  } catch (err) {
+    log.error(
+      { component: 'staff-login', err: errorMessage(err) },
+      'staff-login: Sicherheitsschlüssel-Anmeldung konnte nicht gestartet werden',
+    );
     return { error: 'Sicherheitsschlüssel sind derzeit nicht verfügbar.' };
   }
 }

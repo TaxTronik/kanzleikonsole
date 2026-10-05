@@ -11,6 +11,7 @@ const m = vi.hoisted(() => ({
   loadSource: vi.fn(),
   readBytes: vi.fn(),
   audit: vi.fn(),
+  logError: vi.fn(),
 }));
 vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
 vi.mock('@taxtronik/storage', () => ({
@@ -42,15 +43,17 @@ vi.mock('@/server/rate-limit', () => ({
   checkIpOrGlobalLimit: m.ipLimit,
   getClientIp: vi.fn(() => '192.0.2.1'),
 }));
-vi.mock('@/server/gwg/identity-source', () => ({
+vi.mock('@/server/gwg/identity-source', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/gwg/identity-source')>()),
   loadIdentitySourceTx: m.loadSource,
   readIdentitySourceBytes: m.readBytes,
 }));
-vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
+vi.mock('@/server/logger', () => ({ log: { error: m.logError, warn: vi.fn() } }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: vi.fn() }));
 
 import { loadOnboardingIdentitySourceAction } from '../actions';
 import { GENERIC_TOKEN_ERROR, hashInviteToken } from '@/server/gwg-onboarding/service';
+import { IdentitySourceStorageError } from '@/server/gwg/identity-source';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const TOKEN = 'valid-secret-invitation-token';
@@ -213,8 +216,36 @@ describe('GWG-SELF-ONBOARDING-001 / GWG-IDENTIFICATION-EVIDENCE-001: token-bound
       else m.readBytes.mockRejectedValue(new Error('object hash mismatch / secret storage key'));
       expect(await loadOnboardingIdentitySourceAction(input)).toEqual(unavailable);
       expect(m.audit).not.toHaveBeenCalled();
+      // F-05: the raw cause stays in the server log only.
+      expect(m.logError).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'loadIdentitySource' }),
+        'gwg-onboarding: Ausweisquelle nicht geladen',
+      );
     },
   );
+  it('F-05 reports an unreadable object store as temporary, not as unavailable evidence', async () => {
+    m.readBytes.mockRejectedValue(
+      new IdentitySourceStorageError(new Error('connect ETIMEDOUT seaweedfs:8333')),
+    );
+    expect(await loadOnboardingIdentitySourceAction(input)).toEqual({
+      ok: false,
+      error:
+        'Die Ausweisdatei kann gerade nicht geladen werden. Bitte versuchen Sie es in einigen Minuten erneut.',
+    });
+    expect(m.audit).not.toHaveBeenCalled();
+    expect(m.logError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'loadIdentitySource',
+        cause: 'connect ETIMEDOUT seaweedfs:8333',
+      }),
+      'gwg-onboarding: Ausweisdatei im Dokumentenspeicher nicht lesbar',
+    );
+  });
+  it('does not log a closed invitation as an error', async () => {
+    m.findInvite.mockResolvedValue({ ...invite(), status: 'SUBMITTED' });
+    expect(await loadOnboardingIdentitySourceAction(input)).toEqual(unavailable);
+    expect(m.logError).not.toHaveBeenCalled();
+  });
   it.each(['ip', 'token'])(
     'rate-limits %s requests before token lookup and storage access',
     async (limiter) => {

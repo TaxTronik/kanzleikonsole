@@ -22,7 +22,7 @@
 
 import { Socket } from 'node:net';
 import { ListBucketsCommand, S3Client } from '@aws-sdk/client-s3';
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { env } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { connection, type ChecksJob } from '../queues';
@@ -346,12 +346,8 @@ export async function runHealthAlert(): Promise<{ skipped?: boolean; down: Servi
   return { down };
 }
 
-export const healthAlertWorker = new Worker<ChecksJob>(
+export const healthAlertWorker = createWorker<ChecksJob>(
   JOB_QUEUES.healthAlert.name,
   async () => runHealthAlert(),
   { connection, concurrency: 1 },
 );
-
-healthAlertWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'health-alert: failed');
-});

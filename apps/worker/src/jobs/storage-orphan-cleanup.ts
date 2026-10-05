@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { deleteObjectVersion, recoverPreparedBytesCommit } from '@taxtronik/storage';
 import { connection } from '../queues';
@@ -308,7 +308,7 @@ export async function runStorageOrphanCleanup(now = new Date()): Promise<{
   return { claimed, deleted, referenced, incidents, failed };
 }
 
-export const storageOrphanCleanupWorker = new Worker<Record<string, never>>(
+export const storageOrphanCleanupWorker = createWorker<Record<string, never>>(
   JOB_QUEUES.storageOrphanCleanup.name,
   async () => {
     await runStorageOrphanCleanup();

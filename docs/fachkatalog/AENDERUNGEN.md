@@ -1,5 +1,73 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-001
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts
+      - apps/web/src/app/gwg-onboarding/actions.ts
+      - apps/web/src/app/staff/(auth)/login/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
+      - apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts
+      - apps/web/src/server/gwg-onboarding/identity-persistence.ts
+      - apps/web/src/server/gwg/__tests__/identity-source.test.ts
+      - apps/web/src/server/gwg/identity-source.ts
+      - apps/worker/src/jobs/audit-anchor.ts
+      - apps/worker/src/jobs/audit-rotate.ts
+      - apps/worker/src/jobs/audit-verify-check.ts
+      - apps/worker/src/jobs/backup-drill.ts
+      - apps/worker/src/jobs/dsgvo-retention.ts
+      - apps/worker/src/jobs/evidence-seal.ts
+      - apps/worker/src/jobs/gwg-expiry-check.ts
+      - apps/worker/src/jobs/invoice-overdue-check.ts
+      - apps/worker/src/jobs/magic-link-cleanup.ts
+      - apps/worker/src/jobs/n8n-retention.ts
+      - apps/worker/src/jobs/poa-expiry-check.ts
+      - apps/worker/src/jobs/portal-inbox-cleanup.ts
+      - apps/worker/src/jobs/reminder-done-notify.ts
+      - apps/worker/src/jobs/reminders-daily.ts
+      - apps/worker/src/jobs/risk-analyse-llm.ts
+      - apps/worker/src/jobs/storage-orphan-cleanup.ts
+      - apps/worker/src/jobs/tax-deadline-materialize.ts
+      - apps/worker/src/jobs/workflow-feedback.ts
+      - packages/mail/src/index.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-SELF-ONBOARDING-001
+      - GWG-OCR-ASSIST-001
+      - DOC-UPLOAD-JOURNAL-001
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-ARCHIVE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - BACKUP-DRILL-INTEGRITY-001
+      - DSGVO-OPERATIONAL-RETENTION-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - INV-DUE-OVERDUE-001
+      - POA-LIFECYCLE-001
+      - REMINDER-TICKET-001
+      - RISK-AI-SUGGESTION-001
+      - WORKFLOW-LIFECYCLE-001
+      - CLIENT-FEEDBACK-001
+    reason: >-
+      Alle 26 Worker entstehen über eine Fabrik, die fehlgeschlagene Jobs und
+      Worker-Fehler protokolliert; die Job-Dateien ändern nur den Konstruktoraufruf
+      und entfernen doppelte failed-Handler. Im Web werden Fehler beim
+      Fehlversuchs-Audit geloggt statt verworfen, das Sammel-Schließen von
+      Anfragen schließt die übrigen und nennt nicht geschlossene mit Grund,
+      Speicherfehler bei GwG-Ausweisen erscheinen als Speicherfehler statt als
+      Aufforderung zur Neuerfassung, und Datenbankfehler gehen an die zentrale
+      Fehlerbehandlung. Ist die Kanzlei-SMTP-Konfiguration wegen eines
+      Datenbankfehlers nicht lesbar, bricht der Versand ab, statt still über den
+      ENV-Server zu senden; der dokumentierte Rückfall bei fehlender Konfiguration
+      bleibt. Prüfregeln, Fristen, Zustellklassifikation und Audit-Inhalte bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/__tests__/worker-factory.test.ts
+      - apps/worker/src/__tests__/worker-registry.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-018
     date: '2026-10-04'
     paths:
@@ -1375,6 +1443,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-001` dokumentiert die protokollierte
+  Fehlerbehandlung in Worker, Web und Mailversand. Prüfregeln, Fristen und
+  Zustellklassifikation bleiben unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-018` dokumentiert SQL-basierte
   Zuordnungsvorschläge und die Mandantensuche je Anhang im Posteingang.

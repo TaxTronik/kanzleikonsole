@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 // Real job modules are imported; only their runtime connections are replaced.
 const mocks = vi.hoisted(() => ({
-  workers: [] as Array<{ name: string; opts: { concurrency?: number } | undefined }>,
+  workers: [] as Array<{
+    name: string;
+    opts: { concurrency?: number } | undefined;
+    events: string[];
+  }>,
 }));
 
 vi.mock('bullmq', () => ({
@@ -12,9 +16,10 @@ vi.mock('bullmq', () => ({
       _processor: unknown,
       opts?: { concurrency?: number },
     ) {
-      mocks.workers.push({ name, opts });
+      mocks.workers.push({ name, opts, events: [] });
     }
-    on() {
+    on(event: string) {
+      mocks.workers.find((worker) => worker.name === this.name)!.events.push(event);
       return this;
     }
   },
@@ -80,6 +85,24 @@ describe('R-13 worker registry', () => {
         name,
         concurrency: LEGACY_CONCURRENCY[name],
       });
+    }
+  });
+
+  it('F-05: builds every worker through createWorker with failed and error logging', () => {
+    // These job modules belong to the job-logic work running in parallel and
+    // still register their own, now redundant, failed handler.
+    const ownFailedHandler = new Set([
+      'audit-rotate',
+      'gwg-expiry-check',
+      'poa-expiry-check',
+      'reminders-daily',
+      'tax-news-fetch',
+    ]);
+    for (const { name, events } of mocks.workers) {
+      const expected = ownFailedHandler.has(name)
+        ? ['error', 'failed', 'failed']
+        : ['error', 'failed'];
+      expect({ name, events: [...events].sort() }).toEqual({ name, events: expected });
     }
   });
 

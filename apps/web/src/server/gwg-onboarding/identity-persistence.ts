@@ -2,10 +2,23 @@ import { randomUUID } from 'node:crypto';
 import type { TxClient } from '@taxtronik/db';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
 import { distinctIdentityViews } from '@/lib/gwg/identity-viewport';
-import { validateIdentityViewportsTx } from '@/server/gwg/identity-source';
+import { Prisma } from '@taxtronik/db/prisma-client';
+import {
+  IdentitySourceStorageError,
+  validateIdentityViewportsTx,
+} from '@/server/gwg/identity-source';
 import { lockCleanGwgEvidenceDocumentsTx } from '@/server/gwg/evidence-documents';
 
 export class OnboardingIdentitySetConflictError extends Error {}
+
+function isInfrastructureError(error: unknown): boolean {
+  return (
+    error instanceof IdentitySourceStorageError ||
+    error instanceof Prisma.PrismaClientKnownRequestError ||
+    error instanceof Prisma.PrismaClientUnknownRequestError ||
+    error instanceof Prisma.PrismaClientInitializationError
+  );
+}
 
 export interface ExistingOnboardingDocument {
   id: string;
@@ -49,8 +62,14 @@ async function validateOnboardingDocumentViews(
   }
   try {
     await validateIdentityViewportsTx(tx, { ...input.sourceScope, documentId, views });
-  } catch {
-    throw new OnboardingIdentitySetConflictError();
+  } catch (error) {
+    // F-05: Speicher- und Datenbankfehler sind kein geänderter Datenstand; sie
+    // laufen unverändert zum Fehler-Mapping der Action (Log + eigene Meldung).
+    if (isInfrastructureError(error)) throw error;
+    throw new OnboardingIdentitySetConflictError(
+      'Die Ausweisansicht passt nicht zur gebundenen Quelle.',
+      { cause: error },
+    );
   }
   return views;
 }

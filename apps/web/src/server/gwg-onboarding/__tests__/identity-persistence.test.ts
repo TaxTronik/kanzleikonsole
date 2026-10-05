@@ -1,8 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
+import { Prisma } from '@taxtronik/db/prisma-client';
 import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
-vi.mock('@/server/gwg/identity-source', () => ({
-  validateIdentityViewportsTx: vi.fn().mockResolvedValue([]),
+const h = vi.hoisted(() => ({ validate: vi.fn() }));
+vi.mock('@/server/gwg/identity-source', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/gwg/identity-source')>()),
+  validateIdentityViewportsTx: h.validate,
 }));
 vi.mock('@/server/gwg/evidence-documents', () => ({
   lockCleanGwgEvidenceDocumentsTx: vi.fn().mockResolvedValue(true),
@@ -13,6 +16,12 @@ import {
   persistOnboardingIdentitySetTx,
   type ExistingOnboardingDocument,
 } from '../identity-persistence';
+import { IdentitySourceStorageError } from '@/server/gwg/identity-source';
+
+beforeEach(() => {
+  h.validate.mockReset();
+  h.validate.mockResolvedValue([]);
+});
 
 function txMock(updateCount = 1) {
   const tx = {
@@ -102,5 +111,42 @@ describe('persistOnboardingIdentitySetTx', () => {
     await expect(
       persistOnboardingIdentitySetTx(txMock(0), 'check', existing, identity),
     ).rejects.toBeInstanceOf(OnboardingIdentitySetConflictError);
+  });
+
+  it('F-05 surfaces an unreadable source as storage error instead of a data conflict', async () => {
+    const storage = new IdentitySourceStorageError(new Error('S3 503 SlowDown'));
+    h.validate.mockRejectedValueOnce(storage);
+    const tx = txMock();
+
+    await expect(persistOnboardingIdentitySetTx(tx, 'check', new Map(), identity)).rejects.toBe(
+      storage,
+    );
+    expect(tx.gwgIdDocument.createMany).not.toHaveBeenCalled();
+  });
+
+  it('F-05 passes database errors on instead of reporting a changed draft', async () => {
+    const database = new Prisma.PrismaClientKnownRequestError('connection lost', {
+      code: 'P1017',
+      clientVersion: 'test',
+    });
+    h.validate.mockRejectedValueOnce(database);
+
+    await expect(
+      persistOnboardingIdentitySetTx(txMock(), 'check', new Map(), identity),
+    ).rejects.toBe(database);
+  });
+
+  it('keeps reporting an invalid or replaced source view as a conflict, with its cause', async () => {
+    const invalid = new Error('Die gewählte PDF-Seite existiert nicht.');
+    h.validate.mockRejectedValueOnce(invalid);
+
+    const error = await persistOnboardingIdentitySetTx(
+      txMock(),
+      'check',
+      new Map(),
+      identity,
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(OnboardingIdentitySetConflictError);
+    expect((error as Error).cause).toBe(invalid);
   });
 });

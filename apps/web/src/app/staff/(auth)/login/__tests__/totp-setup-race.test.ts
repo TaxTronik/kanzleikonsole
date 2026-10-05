@@ -55,6 +55,9 @@ vi.mock('@/server/auth/webauthn', () => ({
   isHardwareAccessConfigured: vi.fn(),
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
+vi.mock('@/server/logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 vi.mock('@/server/rate-limit', () => ({
   getClientIp: () => null,
   checkIpOrGlobalLimit: async () => ({ ok: true }),

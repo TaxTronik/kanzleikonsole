@@ -13,7 +13,7 @@
 // Fachregeln: TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { NotificationKind } from '@prisma/client';
 import { Prisma } from '@taxtronik/db/prisma-client';
@@ -571,7 +571,7 @@ async function filterCurrentRecipientsTx(
   );
 }
 
-export const remindersDailyWorker = new Worker<ChecksJob>(
+export const remindersDailyWorker = createWorker<ChecksJob>(
   JOB_QUEUES.remindersDaily.name,
   async (job) => {
     const tenantIds = job.data.tenantId

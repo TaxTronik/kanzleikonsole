@@ -38,7 +38,7 @@
 // Läufe ohne Treffer schreiben kein Event (kein tägliches Chain-Rauschen).
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { Prisma } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
@@ -358,7 +358,7 @@ async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
   return total;
 }
 
-export const dsgvoRetentionWorker = new Worker<ChecksJob>(
+export const dsgvoRetentionWorker = createWorker<ChecksJob>(
   JOB_QUEUES.dsgvoRetention.name,
   async (job) => {
     const notifCutoff = yearsAgo(NOTIFICATION_RETENTION_YEARS);

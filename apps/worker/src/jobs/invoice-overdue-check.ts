@@ -5,7 +5,7 @@
 // status=OVERDUE und benachrichtigt den Ersteller (createdByStaff).
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
@@ -22,7 +22,7 @@ const evidence = new EvidenceService(new LocalTimestampAdapter());
 // ist rechtzeitig (§ 271, § 188 Abs. 1 BGB) — überfällig erst ab dem Folgetag,
 // also `dueDate < berlinTodayUtcMidnight()`. Helfer liegt geteilt in date-util.
 
-export const invoiceOverdueWorker = new Worker<ChecksJob>(
+export const invoiceOverdueWorker = createWorker<ChecksJob>(
   JOB_QUEUES.invoiceOverdue.name,
   async (job) => {
     const tenantIds = job.data.tenantId
@@ -126,7 +126,3 @@ export const invoiceOverdueWorker = new Worker<ChecksJob>(
   },
   { connection, concurrency: 1 },
 );
-
-invoiceOverdueWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'invoice-overdue: failed');
-});

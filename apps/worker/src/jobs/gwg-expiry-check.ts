@@ -21,7 +21,7 @@
 //     vorher rein passiv. Tages-Dedupe über resource_id = Tenant-ID.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { type NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
@@ -194,7 +194,7 @@ async function processExpiringIdDocuments(
   return { idDocReminders, idDocRequests };
 }
 
-export const gwgExpiryWorker = new Worker<ChecksJob>(
+export const gwgExpiryWorker = createWorker<ChecksJob>(
   JOB_QUEUES.gwgExpiry.name,
   async (job) => {
     const tenantIds = job.data.tenantId

@@ -12,7 +12,7 @@
 // is held during the HTTP request. Only TSA errors count for the backoff.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { env } from '@taxtronik/config';
 import { AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS, JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
@@ -229,7 +229,7 @@ async function processInChunks(tenantIds: string[]) {
   return results;
 }
 
-export const auditAnchorWorker = new Worker<AuditAnchorJob>(
+export const auditAnchorWorker = createWorker<AuditAnchorJob>(
   JOB_QUEUES.auditAnchor.name,
   async (job) => {
     // The per-tenant lease avoids duplicate TSA requests; the conditional DB
@@ -244,7 +244,3 @@ export const auditAnchorWorker = new Worker<AuditAnchorJob>(
   },
   { connection, concurrency: 4 },
 );
-
-auditAnchorWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'audit-anchor: failed');
-});

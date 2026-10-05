@@ -17,6 +17,8 @@ const m = vi.hoisted(() => ({
   staffFindFirst: vi.fn(),
   staffUpdateMany: vi.fn(),
   transaction: vi.fn(),
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  beginHardwareLogin: vi.fn(),
 }));
 
 vi.mock('bcryptjs', () => ({ default: { compare: m.compare, hash: m.hash } }));
@@ -39,6 +41,12 @@ vi.mock('@/server/auth/login-audit', () => ({
   recordFailedLoginAudited: m.recordFailedLoginAudited,
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
+vi.mock('@/server/logger', () => ({ log: m.log }));
+vi.mock('@/server/auth/webauthn', () => ({
+  beginHardwareLogin: m.beginHardwareLogin,
+  isAuthenticationResponse: vi.fn(),
+  isHardwareAccessConfigured: vi.fn(),
+}));
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: {
     tenant: { findFirst: m.tenantFindFirst },
@@ -55,7 +63,11 @@ vi.mock('@/server/rate-limit', () => ({
   staffPasswordAccountRateLimitKey: (id: string) => `staff-pw-account:${id}`,
 }));
 
-import { checkPasswordAction, confirmTotpEnrollmentAction } from '../actions';
+import {
+  beginHardwareLoginAction,
+  checkPasswordAction,
+  confirmTotpEnrollmentAction,
+} from '../actions';
 
 const NOW = new Date('2026-07-12T12:00:00.000Z');
 const STAFF_ID = '11111111-1111-4111-8111-111111111111';
@@ -230,5 +242,74 @@ describe('Hardware-only Passwort-Fallback', () => {
     expect(result).toEqual({ ok: false, error: 'Ungültige Anmeldedaten.' });
     expect(m.compare).not.toHaveBeenCalled();
     expect(m.resetFailedLogin).not.toHaveBeenCalled();
+  });
+});
+
+describe('F-05 failed-login bookkeeping errors', () => {
+  it('keeps the generic password result but logs a lost lockout count', async () => {
+    m.compare.mockResolvedValue(false);
+    m.recordFailedLoginAudited.mockRejectedValue(new Error('database unavailable'));
+
+    const result = await checkPasswordAction('admin@example.test', 'wrong-password');
+
+    expect(result).toEqual({ ok: false, error: 'Ungültige Anmeldedaten.' });
+    expect(m.log.error).toHaveBeenCalledWith(
+      {
+        component: 'staff-login',
+        action: 'checkPassword',
+        tenantId: 'tenant-1',
+        staffId: STAFF_ID,
+        reason: 'password',
+        err: 'database unavailable',
+      },
+      'staff-login: Fehlversuch weder gezählt noch auditiert (Lockout-Zähler)',
+    );
+  });
+
+  it('keeps the generic enrollment result but logs a lost lockout count', async () => {
+    m.compare.mockResolvedValue(false);
+    m.recordFailedLoginAudited.mockRejectedValue(new Error('audit chain locked'));
+
+    const result = await confirmTotpEnrollmentAction(
+      'admin@example.test',
+      'wrong-password',
+      '123456',
+    );
+
+    expect(result).toEqual({ ok: false, error: 'Ungültige Daten.' });
+    expect(m.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'confirmTotpEnrollment', err: 'audit chain locked' }),
+      'staff-login: Fehlversuch weder gezählt noch auditiert (Lockout-Zähler)',
+    );
+  });
+
+  it('logs a failed counter reset after a successful enrollment without failing it', async () => {
+    m.resetFailedLogin.mockRejectedValue(new Error('redis down'));
+
+    const result = await confirmTotpEnrollmentAction(
+      'admin@example.test',
+      'correct-password',
+      '123456',
+    );
+    await vi.waitFor(() =>
+      expect(m.log.warn).toHaveBeenCalledWith(
+        { label: 'staff-login: resetFailedLogin', err: 'redis down' },
+        'fire-and-forget failed',
+      ),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('logs why a security-key login could not be started', async () => {
+    m.beginHardwareLogin.mockRejectedValue(new Error('WebAuthn RP-ID fehlt'));
+
+    const result = await beginHardwareLoginAction();
+
+    expect(result).toEqual({ error: 'Sicherheitsschlüssel sind derzeit nicht verfügbar.' });
+    expect(m.log.error).toHaveBeenCalledWith(
+      { component: 'staff-login', err: 'WebAuthn RP-ID fehlt' },
+      'staff-login: Sicherheitsschlüssel-Anmeldung konnte nicht gestartet werden',
+    );
   });
 });

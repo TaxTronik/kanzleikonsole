@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { createWorkflowFeedbackTx } from '@taxtronik/db/workflow-feedback';
@@ -92,7 +92,7 @@ export async function runWorkflowFeedback(now = new Date()) {
   return { processed, invited, failed };
 }
 
-export const workflowFeedbackWorker = new Worker<Record<string, never>>(
+export const workflowFeedbackWorker = createWorker<Record<string, never>>(
   JOB_QUEUES.workflowFeedback.name,
   async () => {
     await runWorkflowFeedback();

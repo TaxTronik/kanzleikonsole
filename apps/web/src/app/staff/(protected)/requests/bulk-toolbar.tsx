@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckSquare, Square, X, Lock } from 'lucide-react';
-import { bulkCloseRequestsAction } from './bulk-actions';
+import { bulkCloseRequestsAction, type BulkFailure } from './bulk-actions';
 import { confirmDialog } from '@/components/ui/modal';
 
 interface Props {
@@ -22,6 +22,7 @@ export function BulkToolbar({ closableIds }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [failures, setFailures] = useState<BulkFailure[]>([]);
 
   useEffect(() => {
     function onChange(e: Event) {
@@ -55,6 +56,7 @@ export function BulkToolbar({ closableIds }: Props) {
 
   async function closeSelected() {
     setError(null);
+    setFailures([]);
     if (selected.size === 0) return;
     if (
       !(await confirmDialog(
@@ -67,6 +69,17 @@ export function BulkToolbar({ closableIds }: Props) {
       const r = await bulkCloseRequestsAction({ ids: Array.from(selected) });
       if (!r.ok) {
         setError(r.error ?? 'Fehler');
+        // F-05: Teilerfolg — geschlossene Anforderungen verschwinden aus der
+        // Liste, die nicht geschlossenen bleiben ausgewählt und werden benannt.
+        if (r.failed?.length) {
+          setFailures(r.failed);
+          const failedIds = new Set(r.failed.map((failure) => failure.id));
+          setSelected(new Set(failedIds));
+          document.querySelectorAll<HTMLInputElement>('[data-bulk-id]').forEach((el) => {
+            el.checked = failedIds.has(el.dataset['bulkId']!);
+          });
+        }
+        if (r.affected > 0) router.refresh();
         return;
       }
       clearSelection();
@@ -107,6 +120,20 @@ export function BulkToolbar({ closableIds }: Props) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {error && <span className="text-xs text-red-700">{error}</span>}
+        {failures.length > 0 && (
+          <details className="text-xs text-red-700">
+            <summary className="cursor-pointer">
+              {failures.length} nicht geschlossen — Details
+            </summary>
+            <ul className="mt-1 max-h-40 overflow-y-auto list-disc pl-4">
+              {failures.map((failure) => (
+                <li key={failure.id}>
+                  {failure.title ?? failure.id}: {failure.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         <button
           type="button"
           onClick={closeSelected}

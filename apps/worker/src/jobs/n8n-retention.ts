@@ -8,7 +8,7 @@
 // ein paralleler manueller Retry nicht zwischen SELECT und DELETE verloren geht.
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { N8nOutboxStatus } from '@prisma/client';
 import { connection } from '../queues';
@@ -102,7 +102,7 @@ export async function runN8nRetention(now = new Date()): Promise<{
   return { routineDeleted, exceptionDeleted, callbackReceiptsDeleted };
 }
 
-export const n8nRetentionWorker = new Worker<Record<string, never>>(
+export const n8nRetentionWorker = createWorker<Record<string, never>>(
   JOB_QUEUES.n8nRetention.name,
   async () => {
     await runN8nRetention();

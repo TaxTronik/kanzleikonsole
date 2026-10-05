@@ -1,7 +1,7 @@
 // Ablaufkontrolle signierter Vollmachten: Warnung bis 30 Tage vor dem inklusiven
 // Gültigkeitstag; EXPIRED erst am Folgetag. POA-LIFECYCLE-001.
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx, upsertNotificationTx } from '@taxtronik/db/notification';
@@ -117,7 +117,7 @@ async function processPoa(tenantId: string, poaId: string, todayMidnight: Date) 
   });
 }
 
-export const poaExpiryWorker = new Worker<ChecksJob>(
+export const poaExpiryWorker = createWorker<ChecksJob>(
   JOB_QUEUES.poaExpiry.name,
   async (job) => {
     const tenantIds = job.data.tenantId

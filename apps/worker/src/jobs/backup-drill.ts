@@ -28,7 +28,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
@@ -335,7 +335,7 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
   }
 }
 
-export const backupDrillWorker = new Worker<ChecksJob>(
+export const backupDrillWorker = createWorker<ChecksJob>(
   JOB_QUEUES.backupDrill.name,
   async () => {
     const r = await runDrill();
@@ -344,7 +344,3 @@ export const backupDrillWorker = new Worker<ChecksJob>(
   },
   { connection, concurrency: 1 },
 );
-
-backupDrillWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'backup-drill: failed');
-});

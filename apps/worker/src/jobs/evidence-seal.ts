@@ -5,7 +5,7 @@
 // Wird täglich vom Repeat-Scheduler getriggert (siehe scheduler.ts).
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { prismaOwner } from '../prisma-owner';
 import { EvidenceService } from '@taxtronik/evidence';
@@ -65,7 +65,7 @@ async function pendingSealDays(tenantId: string): Promise<Date[]> {
   return days;
 }
 
-export const evidenceSealWorker = new Worker<EvidenceSealJob>(
+export const evidenceSealWorker = createWorker<EvidenceSealJob>(
   JOB_QUEUES.evidenceSeal.name,
   async (job) => {
     let tenantIds: string[];
@@ -109,7 +109,3 @@ export const evidenceSealWorker = new Worker<EvidenceSealJob>(
   },
   { connection, concurrency: 1 },
 );
-
-evidenceSealWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'evidence-seal: failed');
-});

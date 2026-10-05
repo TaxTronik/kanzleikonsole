@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { recoverPreparedBytesCommit, type CommitDocumentResult } from '@taxtronik/storage';
@@ -300,7 +300,7 @@ export async function runPortalInboxCleanup(now = new Date()): Promise<{
   };
 }
 
-export const portalInboxCleanupWorker = new Worker<Record<string, never>>(
+export const portalInboxCleanupWorker = createWorker<Record<string, never>>(
   JOB_QUEUES.portalInboxCleanup.name,
   async () => {
     await runPortalInboxCleanup();

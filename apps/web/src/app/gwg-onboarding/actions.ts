@@ -24,7 +24,11 @@ import {
   prismaOwner,
 } from '@/server/gwg-onboarding/service';
 import { checkRateLimit, checkIpOrGlobalLimit, getClientIp } from '@/server/rate-limit';
-import { loadIdentitySourceTx, readIdentitySourceBytes } from '@/server/gwg/identity-source';
+import {
+  IdentitySourceStorageError,
+  loadIdentitySourceTx,
+  readIdentitySourceBytes,
+} from '@/server/gwg/identity-source';
 import { log } from '@/server/logger';
 import { PortalConsentSelectionsSchema } from '@/server/privacy/consent';
 import {
@@ -64,6 +68,24 @@ export interface ActionResult {
   error?: string;
   documentId?: string;
   versionId?: string;
+}
+
+// F-05: Ein S3-Lesefehler ist vorübergehend und kein geänderter Datenstand.
+const IDENTITY_SOURCE_STORAGE_ERROR =
+  'Die Ausweisdatei kann gerade nicht geladen werden. Bitte versuchen Sie es in einigen Minuten erneut.';
+
+function logIdentitySourceStorageError(error: IdentitySourceStorageError, action: string): void {
+  const cause = error.cause instanceof Error ? error.cause : null;
+  log.error(
+    {
+      component: 'gwg-onboarding',
+      action,
+      err: error.message,
+      causeName: cause?.name ?? null,
+      cause: cause?.message ?? (error.cause === undefined ? null : String(error.cause)),
+    },
+    'gwg-onboarding: Ausweisdatei im Dokumentenspeicher nicht lesbar',
+  );
 }
 
 class InviteUploadStateChangedError extends Error {}
@@ -136,6 +158,10 @@ function toAnonymousActionError(e: unknown): ActionResult {
       error:
         'Der GwG-Datenstand wurde zwischenzeitlich geändert. Bitte fordern Sie bei Ihrer Kanzlei eine neue Einladung an.',
     };
+  }
+  if (e instanceof IdentitySourceStorageError) {
+    logIdentitySourceStorageError(e, 'submit');
+    return { ok: false, error: IDENTITY_SOURCE_STORAGE_ERROR };
   }
   return toActionError(e);
 }
@@ -626,7 +652,23 @@ export async function loadOnboardingIdentitySourceAction(input: {
         versionId: source.version.id,
       };
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof IdentitySourceStorageError) {
+      logIdentitySourceStorageError(error, 'loadIdentitySource');
+      return { ok: false, error: IDENTITY_SOURCE_STORAGE_ERROR };
+    }
+    // Geschlossene/abgelaufene Einladungen sind erwartbar; alles andere loggen.
+    if (!(error instanceof Error && error.message === GENERIC_TOKEN_ERROR)) {
+      log.error(
+        {
+          component: 'gwg-onboarding',
+          action: 'loadIdentitySource',
+          errName: error instanceof Error ? error.name : typeof error,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'gwg-onboarding: Ausweisquelle nicht geladen',
+      );
+    }
     return {
       ok: false,
       error:

@@ -4,6 +4,18 @@ import type { TxClient } from '@taxtronik/db';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { IdentityViewportsSchema, type IdentityViewport } from '@/lib/gwg/identity-viewport';
 
+/**
+ * F-05: Die gebundene Ausweisdatei war im Objektspeicher nicht lesbar (S3-/Netzfehler).
+ * Das ist kein geänderter oder ungültiger Nachweis: Aufrufer dürfen ihn nicht als
+ * Konflikt („Nachweis neu erfassen") melden, sondern als vorübergehenden Speicherfehler.
+ */
+export class IdentitySourceStorageError extends Error {
+  constructor(cause: unknown) {
+    super('Die Ausweisdatei konnte nicht aus dem Dokumentenspeicher gelesen werden.', { cause });
+    this.name = 'IdentitySourceStorageError';
+  }
+}
+
 export async function loadIdentitySourceTx(
   tx: TxClient,
   input: {
@@ -57,11 +69,16 @@ export async function loadIdentitySourceTx(
 export type IdentitySource = NonNullable<Awaited<ReturnType<typeof loadIdentitySourceTx>>>;
 
 export async function readIdentitySourceBytes(source: IdentitySource): Promise<Buffer> {
-  const bytes = await fetchObjectBytes(
-    source.version.storageBucket,
-    source.version.storageKey,
-    source.version.storageVersionId,
-  );
+  let bytes: Buffer;
+  try {
+    bytes = await fetchObjectBytes(
+      source.version.storageBucket,
+      source.version.storageKey,
+      source.version.storageVersionId,
+    );
+  } catch (error) {
+    throw new IdentitySourceStorageError(error);
+  }
   const digest = createHash('sha256').update(bytes).digest();
   if (BigInt(bytes.length) !== source.version.sizeBytes || !digest.equals(source.version.sha256)) {
     throw new Error('Die Originaldatei stimmt nicht mit der gebundenen Version überein.');

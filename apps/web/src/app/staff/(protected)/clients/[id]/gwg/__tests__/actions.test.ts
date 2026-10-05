@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   findCleanGwgDocuments: vi.fn(),
   lockCleanGwgDocuments: vi.fn(),
   organizeGwgDocuments: vi.fn(),
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
@@ -38,6 +39,7 @@ vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
 vi.mock('@/server/mail/dispatch', () => ({ notifyClientContacts: m.notifyClientContacts }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: m.notifyMany }));
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: m.fireAndForget }));
+vi.mock('@/server/logger', () => ({ log: m.log }));
 vi.mock('@/server/gwg/evidence-documents', () => ({
   findCleanGwgEvidenceDocumentsTx: m.findCleanGwgDocuments,
   lockCleanGwgEvidenceDocumentsTx: m.lockCleanGwgDocuments,
@@ -88,6 +90,7 @@ import {
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
 import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
+import { fetchObjectBytes } from '@taxtronik/storage';
 
 const CHECK_ID = '11111111-1111-4111-8111-111111111111';
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -2159,6 +2162,121 @@ describe('atomare GwG-Bearbeitung', () => {
         verifiedAt: expect.any(Date),
       }),
     });
+  });
+  it('F-05 GWG-IDENTIFICATION-EVIDENCE-001: meldet einen S3-Lesefehler beim Bestätigen als Speicherfehler statt „Nachweis neu erfassen“', async () => {
+    const frontId = '77777777-7777-4777-8777-777777777771';
+    const backId = '88888888-8888-4888-8888-888888888881';
+    const documentSetId = '99999999-9999-4999-8999-999999999991';
+    const versionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
+    const savedDocument = (id: string, side: 'front' | 'back') => ({
+      id,
+      gwgCheckId: CHECK_ID,
+      documentSetId,
+      documentId: `document-${id}`,
+      type: 'PERSONALAUSWEIS',
+      ownerName: 'Rey Koxha',
+      number: 'NEU-123',
+      issuedBy: 'Stadt Berlin',
+      issueDate: new Date('2025-01-01'),
+      expiryDate: new Date('2035-01-01'),
+      verifiedAt: null,
+      naturalClientSubjectId: null,
+      beneficialOwnerSubjectId: null,
+      representativeSubjectId: '33333333-3333-4333-8333-333333333333',
+      identityAssignmentConfirmedAt: null,
+      identityAssignmentConfirmedBy: null,
+      // A real crop of the PDF original: validation has to read the stored bytes.
+      viewports: [
+        {
+          side,
+          versionId,
+          page: 1,
+          x: side === 'front' ? 0 : 0.5,
+          y: 0,
+          width: 0.5,
+          height: 1,
+          rotation: 0,
+        },
+      ],
+      document: {
+        id: `document-${id}`,
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        classification: 'GWG_EVIDENCE',
+        deletedAt: null,
+        gwgDestructionRequestedAt: null,
+        gwgDestroyedAt: null,
+      },
+    });
+    const savedDocuments = [savedDocument(frontId, 'front'), savedDocument(backId, 'back')];
+    const tx = {
+      gwgCheck: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          representativeNames: ['Rey Koxha'],
+          representatives: [
+            { id: '33333333-3333-4333-8333-333333333333', fullName: 'Rey Koxha', position: 0 },
+          ],
+          client: { id: CLIENT_ID, name: 'Muster GbR', kind: 'PERSGES' },
+          beneficialOwners: [],
+          idDocuments: savedDocuments,
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      gwgIdDocument: { updateMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      document: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: `document-${frontId}`,
+          title: 'Ausweis.pdf',
+          mimeType: 'application/pdf',
+          versions: [
+            {
+              id: versionId,
+              storageBucket: 'gwg',
+              storageKey: 'tenant-1/ausweis.pdf',
+              storageVersionId: 's3-version-1',
+              scanStatus: 'CLEAN',
+              scanCompletedAt: new Date('2026-07-01T00:00:00Z'),
+              sha256: Buffer.alloc(32),
+              sizeBytes: 42n,
+            },
+          ],
+        }),
+      },
+    };
+    runWithStaffOn(tx);
+    m.lockCleanGwgDocuments.mockResolvedValue(true);
+    vi.mocked(fetchObjectBytes).mockRejectedValueOnce(
+      Object.assign(new Error('503 SlowDown'), { name: 'SlowDown' }),
+    );
+    const data = formData();
+    data.set('documentSetId', documentSetId);
+    data.set('type', 'PERSONALAUSWEIS');
+    data.set('subjectKey', 'representative:33333333-3333-4333-8333-333333333333');
+    data.set('number', 'NEU-123');
+    data.set('issuedBy', 'Stadt Berlin');
+    data.set('issueDate', '2025-01-01');
+    data.set('expiryDate', '2035-01-01');
+    data.set('expectedRevision', gwgIdentityDocumentSetRevision(savedDocuments));
+    data.set('intent', 'confirm');
+
+    const result = await updateIdDocumentsAction(null, data);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error:
+        'Die Ausweisdatei konnte gerade nicht aus dem Dokumentenspeicher gelesen werden. Der Nachweis ist unverändert; bitte in einigen Minuten erneut versuchen.',
+    });
+    expect(tx.gwgIdDocument.updateMany).not.toHaveBeenCalled();
+    expect(m.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        component: 'gwg-identity',
+        documentId: `document-${frontId}`,
+        causeName: 'SlowDown',
+        cause: '503 SlowDown',
+      }),
+      'gwg-identity: Ausweisdatei im Dokumentenspeicher nicht lesbar',
+    );
   });
   it('speichert die Risikobewertung samt Review-Reset mit genau einem CAS-Update', async () => {
     const tx = {

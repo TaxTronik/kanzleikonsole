@@ -7,7 +7,7 @@
 // eine fortsetzbare Vollprüfung ab Genesis (packages/evidence/verify-checkpoint).
 // =============================================================================
 
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { env } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { deriveAuditCheckpointMacKey } from '@taxtronik/crypto';
@@ -612,7 +612,7 @@ async function tenantBatchesFor(tenantId: string | undefined): Promise<AsyncGene
   return loadTenantIdsChunked();
 }
 
-export const auditVerifyWorker = new Worker<ChecksJob>(
+export const auditVerifyWorker = createWorker<ChecksJob>(
   JOB_QUEUES.auditVerify.name,
   async (job) => {
     const results: AuditVerifyEntry[] = [];
@@ -634,7 +634,3 @@ export const auditVerifyWorker = new Worker<ChecksJob>(
   },
   { connection, concurrency: 1 },
 );
-
-auditVerifyWorker.on('failed', (job, err) => {
-  log.error({ jobId: job?.id, err: err.message }, 'audit-verify: failed');
-});

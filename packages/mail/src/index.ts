@@ -11,7 +11,13 @@
 // die Registrierung des n8n-Emitters umgehen (Mode BOTH bliebe ohne Event).
 // =============================================================================
 
-export { sendMail, sendTestMail, type MailAttachment, type MailOptions } from './send';
+export {
+  sendMail,
+  sendTestMail,
+  SmtpConfigUnavailableError,
+  type MailAttachment,
+  type MailOptions,
+} from './send';
 export {
   sendTemplateMail,
   notifyClientContacts,

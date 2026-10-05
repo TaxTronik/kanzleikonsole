@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { N8nEventName } from '@taxtronik/n8n-shared';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
@@ -140,7 +140,7 @@ export async function runWorkflowN8nDispatch(now = new Date()): Promise<{
   return { claimed, enqueued, failed };
 }
 
-export const workflowN8nDispatchWorker = new Worker<Record<string, never>>(
+export const workflowN8nDispatchWorker = createWorker<Record<string, never>>(
   JOB_QUEUES.workflowN8nDispatch.name,
   async () => {
     await runWorkflowN8nDispatch();
