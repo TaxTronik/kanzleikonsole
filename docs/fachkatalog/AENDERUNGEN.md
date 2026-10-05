@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-020
+    date: '2026-10-05'
+    paths:
+      - apps/worker/src/jobs/sanctions-refresh.ts
+      - packages/tax/src/screening/core.ts
+      - packages/tax/src/screening/persistence.ts
+      - packages/tax/src/screening/prepared.test.ts
+    rule_ids:
+      - GWG-SCREENING-001
+    reason: >-
+      Der EU-Sanktionsabgleich bereitet die Aliasliste einmal je Lauf vor
+      (normalisierte Namen und Bigramm-Mengen); ein Test belegt für 501 Einträge
+      und 302 Prüfsubjekte identische Treffer, Bewertungen und Kürzungen wie der
+      bisherige Algorithmus. Folgeläufe entstehen weiterhin idempotent je neuer
+      Quellversion, aber nur noch für Läufe ohne Folgelauf zur aktuellen Version.
+      Interne Hinweise gehen bei Namenstreffern wie bisher je Mandant an die Admins,
+      ohne Treffer höchstens als ein Sammelhinweis je Kanzlei und Lauf statt je
+      Mandant. Fehler beim Listenabruf werden protokolliert. Trefferlogik,
+      Schwellen, Freigabesperren und Audit bleiben unverändert. Keine fachliche
+      Freigabe; Wortlaut und Empfänger des Sammelhinweises sind fachlich zu
+      bestätigen.
+    tests:
+      - packages/tax/src/screening/prepared.test.ts
+      - apps/worker/src/jobs/__tests__/sanctions-refresh.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-019
     date: '2026-10-05'
     paths:
@@ -1884,6 +1909,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-020` dokumentiert den vorbereiteten
+  EU-Aliasabgleich und Hinweise nur bei Treffern beziehungsweise als
+  Sammelhinweis. Trefferlogik und Freigabesperren bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-019` dokumentiert die abschnittsweise tägliche
   Erinnerungsrunde mit gebündelter Zugriffsprüfung. Fälligkeiten, Empfänger

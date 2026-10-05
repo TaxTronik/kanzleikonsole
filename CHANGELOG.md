@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Der EU-Sanktionsabgleich bereitet die Aliasliste einmal je Lauf vor statt
+  für jedes Prüfsubjekt neu (rund 6.000 Listeneinträge, 500 Subjekte: 3,9 s
+  statt 60 s). Mandantenhinweise gibt es nur noch bei Namenstreffern, sonst
+  höchstens einen Sammelhinweis je Kanzlei und Lauf statt eines Hinweises je
+  Mandant an alle Admins. Fehler beim Listenabruf werden protokolliert statt
+  verschluckt (`GWG-SCREENING-001`, `FK-EXC-20261005-020`).
 - **[Scope]** Die Mitarbeiteranmeldung prüft das Passwort nur noch einmal;
   TOTP-/Recovery-Code und TOTP-Ersteinrichtung verwenden ein fünf Minuten
   gültiges Einmal-Ticket statt einer zweiten bcrypt-Prüfung. Nach einem

@@ -1,5 +1,12 @@
 import type { Prisma } from '@prisma/client';
-import { screenEu, type SanctionEntry, type ScreeningSubject } from './core';
+import {
+  isPreparedEuList,
+  prepareEuList,
+  screenEu,
+  type PreparedEuList,
+  type SanctionEntry,
+  type ScreeningSubject,
+} from './core';
 type Db = Pick<
   Prisma.TransactionClient,
   '$executeRaw' | 'sanctionsSnapshot' | 'sanctionsSourceState' | 'screeningRun'
@@ -56,12 +63,17 @@ export async function storeSanctionsSnapshot(
   return { snapshot, changed: previous?.snapshotId !== snapshot.id };
 }
 /** One immutable follow-up per original subject and source snapshot. Called
- * only in a SYSTEM transaction; STAFF client access remains in the web adapter. */
+ * only in a SYSTEM transaction; STAFF client access remains in the web adapter.
+ *
+ * P-16: Only original runs that still lack the follow-up for this snapshot are
+ * loaded, so an unchanged list costs one query per tenant and a retry finishes
+ * an interrupted batch. `entries` may be prepared once per run (prepareEuList)
+ * for all tenants; the match results are the same as with the raw list. */
 export async function followupSanctions(
   tx: Db,
   tenantId: string,
   snapshotId: string,
-  entries: SanctionEntry[],
+  entries: SanctionEntry[] | PreparedEuList,
   afterId?: string,
 ) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`eu-followups:${tenantId}`},0))`;
@@ -72,10 +84,14 @@ export async function followupSanctions(
       previousRunId: null,
       ...(afterId ? { id: { gt: afterId } } : {}),
       client: { mandateEndedAt: null, anonymizedAt: null },
+      OR: [{ snapshotId: null }, { snapshotId: { not: snapshotId } }],
+      followups: { none: { snapshotId } },
     },
     orderBy: { id: 'asc' },
     take: 10,
   });
+  if (roots.length === 0) return { created: [], nextCursor: null };
+  const list = isPreparedEuList(entries) ? entries : prepareEuList(entries);
   const created: Array<{ id: string; clientId: string; candidates: boolean }> = [];
   for (const original of roots) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`gwg-check-lifecycle:${tenantId}:${original.clientId}`},0))`;
@@ -84,7 +100,7 @@ export async function followupSanctions(
       where: { previousRunId_snapshotId: { previousRunId: original.id, snapshotId } },
     });
     if (existing) continue;
-    const result = screenEu(original.subject as unknown as ScreeningSubject, entries);
+    const result = screenEu(original.subject as unknown as ScreeningSubject, list);
     const run = await tx.screeningRun.create({
       data: {
         tenantId,

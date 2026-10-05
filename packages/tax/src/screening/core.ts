@@ -24,24 +24,124 @@ export function normalizeScreeningName(name: string): string {
     .trim()
     .replace(/\s+/g, ' ');
 }
-function dice(a: string, b: string): number {
-  if (a === b) return 1;
-  if (Math.min(a.length, b.length) < 6) return 0;
+/** Bigramm-Multimenge eines normalisierten Namens (UTF-16-Codeeinheiten wie zuvor). */
+function bigramCounts(value: string): Map<string, number> {
   const grams = new Map<string, number>();
-  for (let i = 0; i < a.length - 1; i++) {
-    const g = a.slice(i, i + 2);
+  for (let i = 0; i < value.length - 1; i++) {
+    const g = value.slice(i, i + 2);
     grams.set(g, (grams.get(g) ?? 0) + 1);
   }
+  return grams;
+}
+
+/**
+ * Vorbereiteter Name: normalisiert, mit sortierten Tokens und den Bigramm-
+ * Multimengen beider Fassungen. Für die EU-Aliasse einmal je Lauf berechnet
+ * (P-16); vorher entstanden Normalisierung und Bigramme je Prüfsubjekt und
+ * Vergleich neu. Beim Einzelabgleich mit roher Liste entstehen die Bigramme
+ * erst, wenn ein Alias die Längenschranke passiert.
+ */
+interface PreparedName {
+  normalized: string;
+  sorted: string;
+  grams?: Map<string, number>;
+  sortedGrams?: Map<string, number>;
+}
+
+function prepareName(name: string, withGrams: boolean): PreparedName {
+  const normalized = normalizeScreeningName(name);
+  const prepared: PreparedName = { normalized, sorted: normalized.split(' ').sort().join(' ') };
+  if (withGrams) {
+    gramsOf(prepared);
+    sortedGramsOf(prepared);
+  }
+  return prepared;
+}
+
+function gramsOf(name: PreparedName): Map<string, number> {
+  return (name.grams ??= bigramCounts(name.normalized));
+}
+
+function sortedGramsOf(name: PreparedName): Map<string, number> {
+  return (name.sortedGrams ??=
+    name.sorted === name.normalized ? gramsOf(name) : bigramCounts(name.sorted));
+}
+
+/**
+ * Sørensen-Dice über Bigramme. Die Schnittmenge der Multimengen ist dieselbe
+ * Zahl, die der frühere Verbrauchsalgorithmus (jedes Bigramm von b höchstens so
+ * oft wie in a) gezählt hat.
+ */
+function dice(a: string, aGrams: Map<string, number>, b: string, bGrams: Map<string, number>) {
+  if (a === b) return 1;
+  if (Math.min(a.length, b.length) < 6) return 0;
+  const [small, large] = aGrams.size <= bGrams.size ? [aGrams, bGrams] : [bGrams, aGrams];
   let same = 0;
-  for (let i = 0; i < b.length - 1; i++) {
-    const g = b.slice(i, i + 2),
-      n = grams.get(g) ?? 0;
-    if (n) {
-      same++;
-      grams.set(g, n - 1);
-    }
+  for (const [gram, count] of small) {
+    const other = large.get(gram);
+    if (other) same += Math.min(count, other);
   }
   return (2 * same) / (a.length + b.length - 2);
+}
+
+const CANDIDATE_THRESHOLD = 0.82;
+
+/**
+ * Obere Schranke des Dice-Werts allein aus den Längen (gleiche Länge der
+ * sortierten Fassung). Liegt sie unter der Kandidatenschwelle, kann der Alias
+ * weder Kandidat werden noch einen Kandidaten-Score bestimmen.
+ */
+function cannotReachThreshold(subjectLength: number, aliasLength: number): boolean {
+  if (subjectLength === aliasLength) return false;
+  const shorter = Math.min(subjectLength, aliasLength);
+  if (shorter < 6) return true;
+  return (2 * (shorter - 1)) / (subjectLength + aliasLength - 2) < CANDIDATE_THRESHOLD;
+}
+
+interface PreparedEntry {
+  entry: SanctionEntry;
+  aliases: Array<{ name: string; strong: boolean; prepared: PreparedName }>;
+}
+
+/** Einmal je Lauf vorbereitete EU-Liste für viele Prüfsubjekte (P-16). */
+export interface PreparedEuList {
+  readonly kind: 'prepared-eu-list';
+  readonly entries: readonly PreparedEntry[];
+}
+
+export function prepareEuList(entries: readonly SanctionEntry[]): PreparedEuList {
+  return {
+    kind: 'prepared-eu-list',
+    entries: entries.map((entry) => ({
+      entry,
+      aliases: entry.names.map((item) => ({
+        name: item.name,
+        strong: item.strong,
+        prepared: prepareName(item.name, true),
+      })),
+    })),
+  };
+}
+
+/** Einzelabgleich: nur normalisieren, Bigramme bei Bedarf (siehe gramsOf). */
+function prepareEuListLazily(entries: readonly SanctionEntry[]): PreparedEuList {
+  return {
+    kind: 'prepared-eu-list',
+    entries: entries.map((entry) => ({
+      entry,
+      aliases: entry.names.map((item) => ({
+        name: item.name,
+        strong: item.strong,
+        prepared: prepareName(item.name, false),
+      })),
+    })),
+  };
+}
+
+export function isPreparedEuList(
+  list: readonly SanctionEntry[] | PreparedEuList,
+): list is PreparedEuList {
+  return !Array.isArray(list) && (list as PreparedEuList).kind === 'prepared-eu-list';
 }
 export function validateScreeningSubject(subject: ScreeningSubject): ScreeningSubject {
   if (
@@ -66,25 +166,37 @@ export function validateScreeningSubject(subject: ScreeningSubject): ScreeningSu
     ...(subject.birthDate ? { birthDate: subject.birthDate } : {}),
   };
 }
-export function screenEu(subjectInput: ScreeningSubject, entries: SanctionEntry[]) {
+/**
+ * Kandidatensuche eines Prüfsubjekts gegen die EU-Liste. Akzeptiert die Liste
+ * roh (Einzelabgleich) oder einmal vorbereitet (prepareEuList, Folgeläufe);
+ * Ergebnis und Reihenfolge sind in beiden Fällen identisch.
+ */
+export function screenEu(
+  subjectInput: ScreeningSubject,
+  list: readonly SanctionEntry[] | PreparedEuList,
+) {
   const subject = validateScreeningSubject(subjectInput),
-    name = normalizeScreeningName(subject.name);
-  const sorted = name.split(' ').sort().join(' ');
-  const candidates = entries
-    .flatMap((entry) => {
+    probe = prepareName(subject.name, true);
+  const prepared = isPreparedEuList(list) ? list : prepareEuListLazily(list);
+  const candidates = prepared.entries
+    .flatMap(({ entry, aliases }) => {
       let score = 0,
         alias = '',
         strong = false;
-      for (const item of entry.names) {
-        const n = normalizeScreeningName(item.name),
-          s = Math.max(dice(name, n), dice(sorted, n.split(' ').sort().join(' ')));
+      for (const item of aliases) {
+        const n = item.prepared;
+        if (cannotReachThreshold(probe.normalized.length, n.normalized.length)) continue;
+        const s = Math.max(
+          dice(probe.normalized, gramsOf(probe), n.normalized, gramsOf(n)),
+          dice(probe.sorted, sortedGramsOf(probe), n.sorted, sortedGramsOf(n)),
+        );
         if (s > score) {
           score = s;
           alias = item.name;
           strong = item.strong;
         }
       }
-      if (score < 0.82) return [];
+      if (score < CANDIDATE_THRESHOLD) return [];
       const birthMatch =
         !subject.birthDate || !entry.birthDates.length
           ? 'UNKNOWN'
