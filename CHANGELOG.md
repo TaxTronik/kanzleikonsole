@@ -220,6 +220,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Dashboard: Die Widgets erscheinen direkt mit dem Seitenaufbau als
+  serverseitiges Raster und stehen auf Smartphones untereinander; der
+  Drag-&-Drop-Editor und sein CSS werden erst im Modus „Anpassen“ geladen.
 - Kanzleioberfläche und Portal zeigen Seitenrahmen und Ladeplatzhalter
   sofort; das Mandanten-Cockpit zeigt Kopf und Navigation zuerst und lädt die
   übrigen Karten nach, statt vor dem ersten Byte auf alle 13 Abfragen zu

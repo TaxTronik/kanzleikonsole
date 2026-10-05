@@ -1,0 +1,58 @@
+/*
+ * react-grid-layout für die Bearbeitungsmodi (Dashboard-Editor, Cockpit-Layout
+ * im ACP). Nur die Editor-Komponenten importieren diese Datei — andere Seiten
+ * laden weder das RGL-CSS noch diese Regeln (früher global in globals.css).
+ */
+@import 'react-grid-layout/css/styles.css';
+@import 'react-resizable/css/styles.css';
+
+/*
+ * Dashboard-Grid-Tuning: Resize-Handles sind per Default opacity 0 und
+ * erscheinen erst beim Hover des Grid-Items — im Edit-Mode wollen wir sie
+ * dauerhaft sichtbar haben und auffälliger (größer + Brand-Farbe).
+ */
+.dashboard-edit .react-grid-item > .react-resizable-handle {
+  opacity: 1;
+  width: 24px;
+  height: 24px;
+  z-index: 2;
+}
+.dashboard-edit .react-grid-item > .react-resizable-handle::after {
+  width: 8px;
+  height: 8px;
+  right: 4px;
+  bottom: 4px;
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+  border-color: rgb(var(--brand-600));
+}
+.dashboard-edit .react-grid-item:hover > .react-resizable-handle::after {
+  border-color: rgb(var(--brand-700));
+}
+.dashboard-edit .react-grid-item {
+  cursor: grab;
+}
+.dashboard-edit .react-grid-item.react-draggable-dragging {
+  cursor: grabbing;
+}
+
+/*
+ * Erster Paint des Editors: Grid-Item-Transition AUS, damit die Widgets sofort
+ * an ihren Positionen stehen statt von links „auszufahren" (RGL rendert zuerst
+ * mit angenommener Breite). Nach dem Mount entfernt der Editor die Klasse →
+ * Drag/Resize animieren wieder. Steht hinter dem RGL-CSS, daher ohne !important.
+ */
+.dashboard-grid-initial .react-grid-item {
+  transition: none;
+}
+
+/*
+ * Während Drag/Resize eines Widgets: Textauswahl auf der ganzen Seite sperren.
+ * RGL setzt user-select:none nur auf dem gezogenen Item selbst — der Mauszeiger
+ * bewegt sich beim Resizen aber über den restlichen Seiteninhalt und markiert
+ * dort Text. Solange ein Item den State trägt, ist die Seite unselektierbar.
+ */
+body:has(.react-grid-item.react-draggable-dragging),
+body:has(.react-grid-item.resizing) {
+  user-select: none;
+}

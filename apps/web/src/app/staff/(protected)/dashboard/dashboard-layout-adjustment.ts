@@ -1,5 +1,9 @@
 import { DEFAULT_SIZE, type LayoutWidget } from '@/server/dashboard/widgets';
-import { adjustGridItem, type GridGeometry } from '@/components/ui/grid-layout-geometry';
+import {
+  adjustGridItem,
+  compactGridItems,
+  type GridGeometry,
+} from '@/components/ui/grid-layout-geometry';
 
 export {
   GRID_COLUMNS as DASHBOARD_COLUMNS,
@@ -8,6 +12,11 @@ export {
   gridGeometryDescription as dashboardGeometryDescription,
 } from '@/components/ui/grid-layout-geometry';
 export type { GridGeometry as DashboardGeometry } from '@/components/ui/grid-layout-geometry';
+
+/** Anzeigepositionen wie im RGL-Editor (Grenzen korrigiert, vertikal kompaktiert). */
+export function compactDashboardWidgets(widgets: readonly LayoutWidget[]): LayoutWidget[] {
+  return compactGridItems(widgets);
+}
 
 export function adjustDashboardWidget(
   widgets: readonly LayoutWidget[],

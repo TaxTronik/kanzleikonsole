@@ -38,6 +38,7 @@ import {
   gridGeometryDescription,
   type GridGeometry,
 } from '@/components/ui/grid-layout-geometry';
+import '@/components/ui/grid-layout-edit.css';
 import { adjustClientLayoutItem } from './client-layout-adjustment';
 
 const ICONS: Record<ClientBlockKey, typeof CalendarDays> = {

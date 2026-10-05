@@ -162,11 +162,7 @@ describe('persönlicher Anzeigemodus: CSS-Vertrag, keine Konformitätsprüfung',
       expect(values.visibility).not.toBe('hidden');
       expect(values.opacity).not.toBe('0');
       if (values.transform === 'none') {
-        expect(
-          rule.selector.includes('.card:hover') ||
-            (rule.selector.includes(':not(.dashboard-edit)') &&
-              rule.selector.includes('.react-grid-item:has(> .widget-shell)')),
-        ).toBe(true);
+        expect(rule.selector).toContain('.card:hover');
       }
     }
   });
@@ -181,32 +177,27 @@ describe('persönlicher Anzeigemodus: CSS-Vertrag, keine Konformitätsprüfung',
     expect(css).not.toContain('overflow: hidden');
   });
 
-  it('stapelt das schmale Dashboard nur in der Leseansicht, ohne Edit- oder Fremdraster umzubauen', () => {
+  it('lässt Karten der schmalen Dashboard-Leseansicht mitwachsen, ohne Edit- oder Fremdraster umzubauen', () => {
     const mobile = root.nodes.find(
       (node) =>
         node.type === 'atrule' && node.name === 'media' && node.params === '(max-width: 640px)',
     );
     expect(mobile).toBeDefined();
-    const gridRules = rules().filter((rule) => rule.selector.includes('.react-grid-layout'));
+    // Die Leseansicht ist ein CSS-Grid (globals.css stapelt sie schon einspaltig);
+    // react-grid-layout gibt es nur im Bearbeitungsmodus und wird nicht angefasst.
+    const selectors = rules().flatMap((rule) => rule.selectors);
+    expect(selectors.filter((selector) => /react-grid|dashboard-edit/.test(selector))).toEqual([]);
+    const gridRules = rules().filter((rule) => rule.selector.includes('.dashboard-view'));
     expect(gridRules).toHaveLength(5);
+    for (const rule of gridRules) expect(rule.parent).toBe(mobile);
+    expect(declarations(gridRules[0]!)).toEqual({ 'grid-auto-rows': 'auto', gap: '1rem' });
+    expect(declarations(gridRules[1]!)).toEqual({ 'grid-row': 'auto' });
+    expect(declarations(gridRules[2]!)).toEqual({ height: 'auto' });
+    expect(declarations(gridRules[3]!)).toEqual({ 'min-height': '9rem' });
+    expect(declarations(gridRules[4]!)).toEqual({ 'max-height': '32rem' });
     for (const rule of gridRules) {
-      expect(rule.parent).toBe(mobile);
-      for (const selector of rule.selectors) {
-        expect(selector).toContain(':not(.dashboard-edit)');
-        expect(selector).toContain('.widget-shell');
-      }
+      rule.walkDecls((declaration) => expect(declaration.important).not.toBe(true));
     }
-    expect(declarations(gridRules[0]!)).toMatchObject({
-      display: 'grid',
-      'grid-template-columns': 'minmax(0, 1fr)',
-      height: 'auto',
-    });
-    expect(declarations(gridRules[1]!)).toMatchObject({
-      position: 'static',
-      transform: 'none',
-      width: '100%',
-      height: 'auto',
-    });
     expect(css).toContain('.app-shell > main > :where(.p-6, .p-8)');
     expect(css).toContain(':where(.card.p-6, .card.p-8, .card.p-12)');
     expect(css).toContain('padding: 1rem');

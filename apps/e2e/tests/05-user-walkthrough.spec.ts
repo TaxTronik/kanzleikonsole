@@ -37,7 +37,8 @@ test.describe.serial('Staff: Core-Flows', () => {
 
   test('Login & Dashboard mit Widgets', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible();
-    await expect(page.locator('.react-grid-layout')).toBeVisible();
+    // Leseansicht: serverseitiges CSS-Grid; react-grid-layout erst im Bearbeitungsmodus.
+    await expect(page.locator('.dashboard-view-grid')).toBeVisible();
   });
 
   test('Globale Suche findet Mandant', async ({ page }) => {

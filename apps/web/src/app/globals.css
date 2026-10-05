@@ -1,67 +1,47 @@
-﻿/* react-grid-layout — Drag/Resize-Visualisierung (muss vor @tailwind stehen) */
-@import 'react-grid-layout/css/styles.css';
-@import 'react-resizable/css/styles.css';
-
-@import 'tailwindcss';
+﻿@import 'tailwindcss';
 @config "../../tailwind.config.ts";
 
 /*
- * Dashboard-Grid-Tuning: Resize-Handles sind per Default opacity 0 und
- * erscheinen erst beim Hover des Grid-Items — im Edit-Mode wollen wir sie
- * dauerhaft sichtbar haben und auffälliger (größer + Brand-Farbe).
+ * Dashboard-Leseansicht: serverseitig gerendertes CSS-Grid mit denselben
+ * Maßen wie das Edit-Raster (12 Spalten, 30px-Zeilen, 16px Abstand). Position
+ * und Größe kommen als Variablen am Item (dashboard-view-grid.tsx), damit der
+ * schmale Container sie ohne !important überschreiben kann. Unter 640px
+ * Containerbreite (Smartphone, Tablet hochkant mit Sidebar) einspaltig in
+ * Lesereihenfolge; die gespeicherte Höhe bleibt. react-grid-layout und sein
+ * CSS laden erst im Bearbeitungsmodus (components/ui/grid-layout-edit.css).
  */
-.dashboard-edit .react-grid-item > .react-resizable-handle {
-  opacity: 1;
-  width: 24px;
-  height: 24px;
-  z-index: 2;
+.dashboard-view {
+  container-type: inline-size;
 }
-.dashboard-edit .react-grid-item > .react-resizable-handle::after {
-  width: 8px;
-  height: 8px;
-  right: 4px;
-  bottom: 4px;
-  border-right-width: 2px;
-  border-bottom-width: 2px;
-  border-color: rgb(var(--brand-600));
+.dashboard-view-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 30px;
+  gap: 16px;
 }
-.dashboard-edit .react-grid-item:hover > .react-resizable-handle::after {
-  border-color: rgb(var(--brand-700));
+.dashboard-view-item {
+  grid-column: var(--dg-col);
+  grid-row: var(--dg-row);
+  min-width: 0;
+  min-height: 0;
 }
-.dashboard-edit .react-grid-item {
-  cursor: grab;
-}
-.dashboard-edit .react-grid-item.react-draggable-dragging {
-  cursor: grabbing;
+@container (max-width: 639.98px) {
+  .dashboard-view-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-view-item {
+    grid-column: 1 / -1;
+    grid-row: auto / span var(--dg-h);
+  }
 }
 
 /*
- * Erster Paint: Grid-Item-Transition AUS, damit die Widgets sofort an ihren
- * gespeicherten Positionen stehen statt von links „auszufahren". Nach dem Mount
- * entfernt dashboard-grid.tsx die Klasse → Drag/Resize animieren wieder.
- */
-.dashboard-grid-initial .react-grid-item {
-  transition: none !important;
-}
-
-/*
- * Während Drag/Resize eines Widgets: Textauswahl auf der ganzen Seite sperren.
- * RGL setzt user-select:none nur auf dem gezogenen Item selbst — der Mauszeiger
- * bewegt sich beim Resizen aber über den restlichen Seiteninhalt und markiert
- * dort Text. Solange ein Item den State trägt, ist die Seite unselektierbar.
- */
-body:has(.react-grid-item.react-draggable-dragging),
-body:has(.react-grid-item.resizing) {
-  user-select: none;
-}
-
-/*
- * Im Dashboard-Grid: kein Hover-Translate auf Cards (würde durch
- * benachbarte Items clippen). Hover-Shadow + Border-Highlight bleiben.
+ * Kein Hover-Translate auf Cards im Dashboard (würde an Nachbar-Widgets
+ * stoßen). Hover-Shadow + Border-Highlight bleiben.
  *
- * `.widget-shell` ist der Wrapper-Div in dashboard-grid.tsx um jedes
- * Card. Wrapper bleibt overflow:visible damit der Card-Shadow nach außen
- * ragen kann, die Card selbst übernimmt das Content-Clipping.
+ * `.widget-shell` ist der Wrapper um jede Widget-Card (Lese- und Edit-Raster).
+ * Wrapper bleibt overflow:visible damit der Card-Shadow nach außen ragen
+ * kann, die Card selbst übernimmt das Content-Clipping.
  */
 .widget-shell {
   overflow: visible;
@@ -69,8 +49,8 @@ body:has(.react-grid-item.resizing) {
 .widget-shell > .card {
   overflow: hidden;
 }
-.ui-modern .react-grid-item .card:hover {
-  transform: none !important;
+.ui-modern .widget-shell > .card:hover {
+  transform: none;
 }
 
 /*
@@ -1965,37 +1945,38 @@ body:has(.react-grid-item.resizing) {
   }
 }
 
-/* Dashboard: Widgets fallen beim ersten Render gestaffelt herein. Die
- * Verzögerung hängt am .react-grid-item (jedes ist ein Grid-Kind); animiert
- * wird der innere .widget-shell, damit RGL-Transforms unberührt bleiben. */
-.ui-modern .widget-shell {
+/* Dashboard: Widgets der Leseansicht fallen beim ersten Paint gestaffelt
+ * herein (reines CSS, läuft schon vor der Hydration). Die Verzögerung hängt
+ * am Grid-Item; animiert wird der innere .widget-shell. Der Editor (RGL)
+ * animiert beim Umschalten bewusst nicht. */
+.ui-modern .dashboard-view-item > .widget-shell {
   animation: widget-in 0.45s cubic-bezier(0.21, 0.75, 0.3, 1) both;
 }
-.ui-modern .react-grid-item:nth-child(1) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(1) > .widget-shell {
   animation-delay: 0ms;
 }
-.ui-modern .react-grid-item:nth-child(2) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(2) > .widget-shell {
   animation-delay: 40ms;
 }
-.ui-modern .react-grid-item:nth-child(3) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(3) > .widget-shell {
   animation-delay: 80ms;
 }
-.ui-modern .react-grid-item:nth-child(4) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(4) > .widget-shell {
   animation-delay: 120ms;
 }
-.ui-modern .react-grid-item:nth-child(5) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(5) > .widget-shell {
   animation-delay: 160ms;
 }
-.ui-modern .react-grid-item:nth-child(6) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(6) > .widget-shell {
   animation-delay: 200ms;
 }
-.ui-modern .react-grid-item:nth-child(7) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(7) > .widget-shell {
   animation-delay: 240ms;
 }
-.ui-modern .react-grid-item:nth-child(8) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(8) > .widget-shell {
   animation-delay: 280ms;
 }
-.ui-modern .react-grid-item:nth-child(n + 9) .widget-shell {
+.ui-modern .dashboard-view-item:nth-child(n + 9) > .widget-shell {
   animation-delay: 320ms;
 }
 @keyframes widget-in {
@@ -2132,7 +2113,7 @@ body:has(.react-grid-item.resizing) {
   .ui-modern body {
     animation: none;
   }
-  .ui-modern .widget-shell,
+  .ui-modern .dashboard-view-item > .widget-shell,
   .ui-modern .modal-backdrop > [role='dialog'],
   .nav-item.active {
     animation: none;

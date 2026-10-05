@@ -377,7 +377,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
           await expectCenteredAvatar(page);
           if (name === 'dashboard') {
             const widgetWidths = await page
-              .locator('.react-grid-item:has(> .widget-shell)')
+              .locator('.dashboard-view-item:has(> .widget-shell)')
               .evaluateAll((widgets) =>
                 widgets.map((widget) => ({
                   width: widget.getBoundingClientRect().width,

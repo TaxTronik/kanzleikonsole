@@ -1,4 +1,9 @@
-import { moveElement, verticalCompactor, type LayoutItem } from 'react-grid-layout/core';
+import {
+  correctBounds,
+  moveElement,
+  verticalCompactor,
+  type LayoutItem,
+} from 'react-grid-layout/core';
 
 export const GRID_COLUMNS = 12;
 export const GRID_MAX_Y = 200;
@@ -74,6 +79,33 @@ export function adjustGridItem<T extends GridGeometry & { id: string }>(
     return { ...widget, x: position.x, y: position.y, w: position.w, h: position.h };
   });
   return { ok: true, items: adjusted, item: adjusted.find((widget) => widget.id === id)! };
+}
+
+/**
+ * Positionen, wie react-grid-layout sie beim Rendern zeigt: erst Grenzen
+ * korrigieren (x + w ≤ 12), dann vertikal kompaktieren. Für die Leseansicht
+ * ohne RGL. Liefert neue Objekte gleicher Form; das gespeicherte Layout
+ * selbst wird dadurch nicht verändert.
+ */
+export function compactGridItems<T extends GridGeometry & { id: string }>(
+  items: readonly T[],
+): T[] {
+  const layout: LayoutItem[] = items.map((item) => ({
+    i: item.id,
+    x: item.x,
+    y: item.y,
+    w: item.w,
+    h: item.h,
+  }));
+  const compacted = verticalCompactor.compact(
+    correctBounds(layout, { cols: GRID_COLUMNS }),
+    GRID_COLUMNS,
+  );
+  const byId = new Map(compacted.map((item) => [item.i, item]));
+  return items.map((item) => {
+    const position = byId.get(item.id)!;
+    return { ...item, x: position.x, y: position.y, w: position.w, h: position.h };
+  });
 }
 
 export function gridGeometryDescription(widget: GridGeometry): string {

@@ -385,59 +385,30 @@ html:has([data-accessible-display='true']) .widget-shell > a.card .truncate {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Dashboard-Lesemodus: zwölf RGL-Spalten sind bei 320px nicht lesbar.
-   * Nur die Anzeige wird gestapelt, nicht das gespeicherte Layout. Der
-   * dashboard-edit-Modus und der eigenständige ACP-Layout-Editor (ohne
-   * widget-shell) bleiben vollständig im ursprünglichen Drag-/Resize-Raster. */
-  html:has([data-accessible-display='true'])
-    :not(.dashboard-edit)
-    > .react-grid-layout:has(> .react-grid-item > .widget-shell) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
+  /* Dashboard-Leseansicht: das CSS-Raster ist hier bereits einspaltig
+   * (globals.css, .dashboard-view*). Mit größerer Schrift wachsen die Karten
+   * zusätzlich mit ihrem Inhalt statt in der festen Rasterhöhe. Nur die
+   * Anzeige ändert sich, nicht das gespeicherte Layout; Bearbeitungsmodus
+   * und ACP-Layout-Editor (react-grid-layout) bleiben unberührt. */
+  html:has([data-accessible-display='true']) .dashboard-view-grid {
+    grid-auto-rows: auto;
     gap: 1rem;
-    height: auto !important;
   }
 
-  html:has([data-accessible-display='true'])
-    :not(.dashboard-edit)
-    > .react-grid-layout
-    > .react-grid-item:has(> .widget-shell) {
-    position: static !important;
-    transform: none !important;
-    width: 100% !important;
-    height: auto !important;
-    min-width: 0;
+  html:has([data-accessible-display='true']) .dashboard-view-item {
+    grid-row: auto;
   }
 
-  html:has([data-accessible-display='true'])
-    :not(.dashboard-edit)
-    > .react-grid-layout
-    > .react-grid-item
-    > .widget-shell,
-  html:has([data-accessible-display='true'])
-    :not(.dashboard-edit)
-    > .react-grid-layout
-    > .react-grid-item
-    > .widget-shell
-    > .card {
+  html:has([data-accessible-display='true']) .dashboard-view-item > .widget-shell,
+  html:has([data-accessible-display='true']) .dashboard-view-item > .widget-shell > .card {
     height: auto;
   }
 
-  html:has([data-accessible-display='true'])
-    :not(.dashboard-edit)
-    > .react-grid-layout
-    > .react-grid-item
-    > .widget-shell
-    > a.card {
+  html:has([data-accessible-display='true']) .dashboard-view-item > .widget-shell > a.card {
     min-height: 9rem;
   }
 
-  html:has([data-accessible-display='true'])
-    :not(.dashboard-edit)
-    > .react-grid-layout
-    > .react-grid-item
-    > .widget-shell
-    > .card:not(a) {
+  html:has([data-accessible-display='true']) .dashboard-view-item > .widget-shell > .card:not(a) {
     max-height: 32rem;
   }
 }

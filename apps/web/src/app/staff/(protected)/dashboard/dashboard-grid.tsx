@@ -1,8 +1,9 @@
 ﻿'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { GridLayout, useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
-import { Plus, Settings2, RotateCcw, Check, X, Loader2 } from 'lucide-react';
+import { createContext, useContext, useState, useRef, useEffect, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
+import type { Layout } from 'react-grid-layout';
+import { Plus, Settings2, RotateCcw, Check } from 'lucide-react';
 import {
   WIDGETS,
   WIDGET_BY_TYPE,
@@ -22,11 +23,30 @@ import { confirmDialog } from '@/components/ui/modal';
 import { DashboardLayoutControls } from './dashboard-layout-controls';
 import {
   adjustDashboardWidget,
+  compactDashboardWidgets,
   dashboardGeometryDescription,
-  DASHBOARD_COLUMNS,
-  DASHBOARD_MAX_HEIGHT,
   type DashboardGeometry,
 } from './dashboard-layout-adjustment';
+import { DashboardViewGrid } from './dashboard-view-grid';
+
+// Bis der Editor-Chunk geladen ist, bleibt die Leseansicht stehen (statt eines
+// leeren Bereichs). next/dynamic rendert `loading` an derselben Stelle im Baum,
+// daher erreicht der Context es.
+const EditorFallback = createContext<ReactNode>(null);
+function EditorFallbackView() {
+  return useContext(EditorFallback);
+}
+
+// react-grid-layout samt CSS nur im Bearbeitungsmodus laden (P-24/P-25); die
+// Leseansicht ist ein serverseitig gerendertes CSS-Grid.
+const DashboardGridEditor = dynamic(
+  () => import('./dashboard-grid-editor').then((m) => m.DashboardGridEditor),
+  { ssr: false, loading: EditorFallbackView },
+);
+
+function preloadEditor() {
+  void import('./dashboard-grid-editor');
+}
 
 // IDs für neu hinzugefügte Widgets. Wird nur in Click-Handlern aufgerufen
 // (kein Render-Pfad → keine Hydration-Differenz möglich). crypto.randomUUID
@@ -82,7 +102,12 @@ export function DashboardGrid({
   enabledWidgetTypes: WidgetType[];
 }) {
   const [editMode, setEditMode] = useState(false);
-  const [widgets, setWidgets] = useState<LayoutWidget[]>(initialLayout.widgets);
+  // Kompaktiert wie im Editor: Wechselt man in den Bearbeitungsmodus, meldet
+  // RGL dieselben Positionen zurück und es entsteht kein Speichervorgang ohne
+  // Änderung. Das Datenformat bleibt dasselbe (nur x/y/w/h wie RGL sie zeigt).
+  const [widgets, setWidgets] = useState<LayoutWidget[]>(() =>
+    compactDashboardWidgets(initialLayout.widgets),
+  );
   // Server-Nodes bleiben direkte Props, damit router.refresh() die sichtbaren
   // Widget-Inhalte wirklich erneuert. Lokaler State ist nur fuer ein soeben
   // hinzugefuegtes, noch nicht im Server-Tree enthaltenes Widget noetig.
@@ -98,16 +123,6 @@ export function DashboardGrid({
   const layoutDescription = useRef('');
   const saveRevision = useRef(0);
   const editButtonRef = useRef<HTMLButtonElement>(null);
-  // settled=false beim ersten Paint → der Grid bleibt per Inline-Style
-  // `visibility:hidden` UNSICHTBAR (Layout-Dimensionen bleiben erhalten, die
-  // Breitenmessung stimmt also weiter) und die CSS-Klasse unterdrückt zusätzlich
-  // die Item-Transition. So „fahren" die Widgets nicht von links aus, sondern
-  // erscheinen nach zwei Frames (Position committet) sofort an ihrer Position.
-  // Der Inline-Style ist timing-unabhängig von der CSS-Injektion (in Turbopack-
-  // Dev wird CSS per JS injiziert → bei Hard-Reload kann RGLs eigenes
-  // `transition`-CSS sonst einen Frame vor der Suppression-Klasse ankommen).
-  // Danach auf true → Drag/Resize animieren wieder normal.
-  const [settled, setSettled] = useState(false);
   const [resetting, setResetting] = useState(false);
   const resettingRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,7 +131,6 @@ export function DashboardGrid({
   // parallelen Requests koennte sonst ein langsamer alter Snapshot einen
   // bereits gespeicherten neueren Stand wieder ueberschreiben.
   const [mutationQueue] = useState(createDashboardMutationQueue);
-  const { width, containerRef, mounted } = useContainerWidth();
 
   const renderById = dashboardRenderMap(renderedWidgets, optimisticRenderedWidgets);
 
@@ -125,12 +139,6 @@ export function DashboardGrid({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => setSettled(true)));
-    return () => cancelAnimationFrame(id);
-  }, [mounted]);
 
   function enqueueMutation(task: () => Promise<void>): Promise<void> {
     return mutationQueue.enqueue(task);
@@ -299,20 +307,7 @@ export function DashboardGrid({
   }
 
   const visible = widgets.filter((w) => renderById.has(w.id) || pendingWidgetIds.has(w.id));
-  const rglLayout: LayoutItem[] = visible.map((w) => {
-    const def = DEFAULT_SIZE[w.type];
-    return {
-      i: w.id,
-      x: w.x,
-      y: w.y,
-      w: w.w,
-      h: w.h,
-      minW: def?.minW ?? 2,
-      minH: def?.minH ?? 2,
-      maxW: DASHBOARD_COLUMNS,
-      maxH: DASHBOARD_MAX_HEIGHT,
-    };
-  });
+  const viewGrid = <DashboardViewGrid widgets={visible} renderById={renderById} />;
 
   return (
     <div className="min-w-0 space-y-3">
@@ -333,6 +328,8 @@ export function DashboardGrid({
           ref={editButtonRef}
           type="button"
           onClick={() => setEditMode((v) => !v)}
+          onPointerEnter={preloadEditor}
+          onFocus={preloadEditor}
           aria-expanded={editMode}
           disabled={resetting}
           className={editMode ? 'btn-primary text-xs' : 'btn-secondary text-xs'}
@@ -369,85 +366,18 @@ export function DashboardGrid({
         />
       )}
 
-      {editMode && width < 640 && (
-        <p className="text-sm text-secondary">
-          Bei wenig Platz wird die Vorschau untereinander angezeigt. Position und Größe lassen sich
-          oben ändern; das gespeicherte Raster wird durch diese Vorschau nicht verändert.
-        </p>
+      {editMode ? (
+        <EditorFallback value={viewGrid}>
+          <DashboardGridEditor
+            widgets={visible}
+            renderById={renderById}
+            onLayoutChange={onLayoutChange}
+            onRemove={remove}
+          />
+        </EditorFallback>
+      ) : (
+        viewGrid
       )}
-
-      <div
-        ref={containerRef}
-        className={
-          (editMode ? 'dashboard-edit relative' : 'relative') +
-          (settled ? '' : ' dashboard-grid-initial')
-        }
-        style={settled ? undefined : { visibility: 'hidden' }}
-      >
-        {mounted && editMode && width < 640 ? (
-          <div className="space-y-4">
-            {[...visible]
-              .sort((a, b) => a.y - b.y || a.x - b.x)
-              .map((widget) => (
-                <section
-                  key={widget.id}
-                  aria-label={WIDGET_BY_TYPE[widget.type].label}
-                  className="min-w-0"
-                >
-                  <p className="mb-2 text-sm text-secondary">
-                    {WIDGET_BY_TYPE[widget.type].label}: {dashboardGeometryDescription(widget)}
-                  </p>
-                  <div className="widget-shell min-w-0">
-                    {renderById.get(widget.id) ?? (
-                      <div className="card p-4 text-sm text-muted">Widget wird geladen …</div>
-                    )}
-                  </div>
-                </section>
-              ))}
-          </div>
-        ) : (
-          mounted && (
-            <GridLayout
-              width={width}
-              layout={rglLayout}
-              gridConfig={{ cols: 12, rowHeight: 30, margin: [16, 16], containerPadding: [0, 0] }}
-              dragConfig={{ enabled: editMode, cancel: '.widget-remove' }}
-              resizeConfig={{
-                enabled: editMode,
-                handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
-              }}
-              onLayoutChange={onLayoutChange}
-            >
-              {visible.map((w) => (
-                <div
-                  key={w.id}
-                  className={'relative ' + (editMode ? 'ring-2 ring-brand-300 rounded-xl' : '')}
-                >
-                  {editMode && (
-                    <button
-                      type="button"
-                      onClick={() => remove(w.id)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className="widget-remove absolute -top-2 -right-2 z-10 bg-surface border border-default rounded-full p-1 shadow-sm text-disabled hover:text-red-700"
-                      title="Widget entfernen"
-                      aria-label={`Widget entfernen: ${WIDGET_BY_TYPE[w.type].label}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                  <div className="h-full widget-shell">
-                    {renderById.get(w.id) ?? (
-                      <div className="card flex h-full items-center justify-center gap-2 text-sm text-muted">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Widget wird geladen …
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </GridLayout>
-          )
-        )}
-      </div>
 
       {visible.length === 0 && (
         <div className="card p-12 text-center text-sm text-muted">
