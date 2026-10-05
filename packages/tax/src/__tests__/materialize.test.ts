@@ -211,6 +211,72 @@ describe('Upsert — Termine aus aktiven Configs', () => {
   });
 });
 
+describe('P-14: mandantenbezogener Lauf (Speichern eines Zeitplans)', () => {
+  it('materialisiert nur die Configs dieses Mandanten und markiert nur dessen Termine', async () => {
+    const { db, tx, deps } = makeHarness({ configs: [ustaMonthlyConfig()], createdCount: 1 });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      clientId: 'client-1',
+      systemStaffId: STAFF,
+      horizonDays: 10,
+      now: NOW,
+    });
+
+    expect(tx.$executeRaw).toHaveBeenCalledBefore(db.taxScheduleConfig.findMany);
+    expect(db.taxScheduleConfig.findMany).toHaveBeenCalledWith({
+      where: { tenantId: TENANT, active: true, clientId: 'client-1' },
+      include: { client: { select: { id: true, allowActive: true } } },
+    });
+    expect(db.taxDeadline.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          tenantId: TENANT,
+          clientId: 'client-1',
+          configId: 'cfg-1',
+          kind: 'USTA_MONATLICH',
+          period: '2026-05',
+          dueDate: new Date(Date.UTC(2026, 5, 10)),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    expect(db.taxDeadline.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        clientId: 'client-1',
+        status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS'] },
+        dueDate: { lt: TODAY },
+      },
+      data: { status: 'OVERDUE' },
+    });
+    expect(stats).toMatchObject({ configsScanned: 1, deadlinesCreated: 1 });
+  });
+
+  it('legt weder Vorwarnung noch Anforderung an; das bleibt dem Worker-Lauf', async () => {
+    const { db, tx, deps, runAtomic, recordEvidence, upsertStaffNotification } = makeHarness({
+      // Ohne clientId würde dieser Termin sofort angefordert (sendFrom ≤ heute, lead 0).
+      configs: [ustaMonthlyConfig({ staffLeadDays: 0 })],
+      upcoming: [upcomingDeadline(14)],
+    });
+
+    const stats = await materializeTenantTaxDeadlines(deps, {
+      tenantId: TENANT,
+      clientId: 'client-1',
+      systemStaffId: STAFF,
+      now: NOW,
+    });
+
+    expect(runAtomic).toHaveBeenCalledTimes(1);
+    expect(db.taxDeadline.findMany).not.toHaveBeenCalled();
+    expect(tx.taxDeadline.updateMany).not.toHaveBeenCalled();
+    expect(tx.request.create).not.toHaveBeenCalled();
+    expect(recordEvidence).not.toHaveBeenCalled();
+    expect(upsertStaffNotification).not.toHaveBeenCalled();
+    expect(stats).toMatchObject({ requestsCreated: 0, staffWarned: 0 });
+  });
+});
+
 describe('Auto-Anforderung (3b) — Versand atomar', () => {
   it('erzeugt Request + REMINDED + Audit-Eintrag in EINER runAtomic-Transaktion', async () => {
     const { db, tx, deps, recordEvidence, runAtomic, resolveStaffNotifications } = makeHarness({

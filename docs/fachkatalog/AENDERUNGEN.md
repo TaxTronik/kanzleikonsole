@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-026
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts
+      - packages/tax/src/__tests__/materialize.test.ts
+      - packages/tax/src/materialize.ts
+    rule_ids:
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-DEADLINE-WORKDAY-001
+    reason: >-
+      Beim Speichern eines Steuertermin-Zeitplans materialisiert die
+      Web-Transaktion nur noch die Termine dieses Mandanten statt aller Termine der
+      Kanzlei unter einem kanzleiweiten Lock; MaterializeParams erhält dafür eine
+      optionale clientId. Vorwarnung und automatische Anforderung erstellt der
+      sofort angestoßene Hintergrundlauf, nicht mehr der Speichervorgang selbst.
+      Ein Datenbanktest belegt für den Mandanten dieselben Termine wie der
+      kanzleiweite Lauf und unveränderte andere Mandanten. Fristberechnung,
+      Werktagsregeln und Anforderungsentscheidungen bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - packages/tax/src/__tests__/materialize.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-025
     date: '2026-10-05'
     paths:
@@ -2060,6 +2084,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-026` dokumentiert die mandantenbezogene
+  Materialisierung beim Speichern eines Zeitplans. Fristberechnung und
+  Anforderungsentscheidungen bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-025` dokumentiert das Laden der
   Layout-Einstellungen in einer Transaktion und getrennt bemessene Pools.

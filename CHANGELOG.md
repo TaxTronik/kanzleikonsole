@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Das Speichern eines Steuertermin-Zeitplans legt nur noch die Termine dieses
+  Mandanten an, statt alle Termine der Kanzlei in einer Web-Transaktion zu
+  materialisieren; Vorwarnung und automatische Anforderung erstellt der sofort
+  angestoßene Hintergrundlauf (`TAX-DEADLINE-AUTOREQUEST-001`,
+  `FK-EXC-20261005-026`).
 - Staff- und Portal-Layout laden ihre Einstellungen samt Glocke
   beziehungsweise Mandantenprofil in einer Datenbanktransaktion statt in fünf
   bis sechs parallelen, der Setup-Status in einer statt sieben;

@@ -59,6 +59,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // TAX-DEADLINE-AUTOREQUEST-001: isolated owner fixtures plus competing app
   // transactions prove materialization/configuration ordering against PostgreSQL.
   'packages/db/src/__tests__/tax-deadline-materialize-consistency.test.ts',
+  // TAX-DEADLINE-AUTOREQUEST-001 (P-14): Owner-Fixtures in einem frischen Tenant; die
+  // App-Rolle führt den mandantenbezogenen Web-Lauf unter RLS aus und vergleicht ihn.
+  'packages/db/src/__tests__/tax-deadline-materialize-client-scope.test.ts',
   // ACCESS-CLIENT-MODE-001: Owner erzeugt isolierte Mandantenfixtures; die
   // separate App-Rolle prüft echte Seitenabfrage, OPEN/RESTRICTED und RLS.
   'apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx',

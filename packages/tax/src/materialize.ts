@@ -100,6 +100,14 @@ export interface MaterializeDeps {
 
 export interface MaterializeParams {
   tenantId: string;
+  /**
+   * P-14: Nur die Termine dieses Mandanten materialisieren (Speichern seines
+   * Zeitplans im Web). Der Lauf legt dann ausschließlich Termin-Kandidaten an
+   * und markiert abgelaufene Termine dieses Mandanten; interne Vorwarnung und
+   * Auto-Anforderung (Schritt 3) bleiben dem tenantweiten Worker-Lauf
+   * vorbehalten. Ohne clientId: kompletter Tenant-Lauf wie bisher.
+   */
+  clientId?: string;
   /** Staff-ID, die als createdBy für Auto-Anforderungen verwendet wird. */
   systemStaffId: string;
   /** Wie weit in die Zukunft Termine erzeugt werden sollen (Default 90 Tage). */
@@ -151,7 +159,7 @@ export async function materializeTenantTaxDeadlines(
   params: MaterializeParams,
 ): Promise<MaterializeStats> {
   const { db } = deps;
-  const { tenantId, systemStaffId } = params;
+  const { tenantId, clientId } = params;
   const now = params.now ?? new Date();
   const horizonDays = params.horizonDays ?? 90;
   const today = berlinCalendarDate(now);
@@ -170,11 +178,46 @@ export async function materializeTenantTaxDeadlines(
   // edit removed it; skipDuplicates would then retain that stale date forever.
   const { configs, createdCount } = await deps.runAtomic(async (tx) => {
     await lockTaxScheduleTx(tx, tenantId);
-    return createDeadlineCandidates(tx, tenantId, today, horizon);
+    return createDeadlineCandidates(tx, tenantId, today, horizon, clientId);
   });
   stats.configsScanned = configs.length;
   stats.deadlinesCreated = createdCount;
 
+  // P-14: Ein mandantenbezogener Lauf legt nur Kandidaten an. Vorwarnung und
+  // Anforderung entstehen im Worker (eigene, kurze Transaktionen je Termin).
+  if (clientId === undefined) {
+    await runAutoRequestPipeline(deps, params, configs, { now, today }, stats);
+  }
+
+  // 4. Abgelaufene Termine als OVERDUE markieren — erst wenn der
+  //    Fälligkeitstag KOMPLETT vorbei ist (§ 108 (1) AO: Frist läuft bis
+  //    Tagesende), also dueDate < UTC-Mitternacht des heutigen Berlin-
+  //    Kalendertags. Ein UTC-Vergleich gegen `now` wäre im Sommer zwischen
+  //    22:00 und 24:00 Uhr um einen Kalendertag zu spät.
+  const overdueResult = await db.taxDeadline.updateMany({
+    where: {
+      tenantId,
+      ...(clientId === undefined ? {} : { clientId }),
+      status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS'] },
+      dueDate: { lt: today },
+    },
+    data: { status: 'OVERDUE' },
+  });
+  stats.markedOverdue = overdueResult.count;
+
+  return stats;
+}
+
+async function runAutoRequestPipeline(
+  deps: MaterializeDeps,
+  params: MaterializeParams,
+  configs: Array<{ autoRequest: boolean; reminderDaysBefore: number; staffLeadDays: number }>,
+  clock: { now: Date; today: Date },
+  stats: MaterializeStats,
+): Promise<void> {
+  const { db } = deps;
+  const { tenantId, systemStaffId } = params;
+  const { now, today } = clock;
   // 3. Zweistufige Auto-Anforderung:
   //    (3a) Interne Vorwarnung an Zuständige, sobald heute ≥ Fälligkeit −
   //         (reminderDaysBefore + staffLeadDays). Opt-out-Modell: wer die
@@ -395,23 +438,6 @@ export async function materializeTenantTaxDeadlines(
       stats.requestsCreated += 1;
     });
   }
-
-  // 4. Abgelaufene Termine als OVERDUE markieren — erst wenn der
-  //    Fälligkeitstag KOMPLETT vorbei ist (§ 108 (1) AO: Frist läuft bis
-  //    Tagesende), also dueDate < UTC-Mitternacht des heutigen Berlin-
-  //    Kalendertags. Ein UTC-Vergleich gegen `now` wäre im Sommer zwischen
-  //    22:00 und 24:00 Uhr um einen Kalendertag zu spät.
-  const overdueResult = await db.taxDeadline.updateMany({
-    where: {
-      tenantId,
-      status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS'] },
-      dueDate: { lt: today },
-    },
-    data: { status: 'OVERDUE' },
-  });
-  stats.markedOverdue = overdueResult.count;
-
-  return stats;
 }
 
 async function createDeadlineCandidates(
@@ -419,12 +445,13 @@ async function createDeadlineCandidates(
   tenantId: string,
   today: Date,
   horizon: Date,
+  clientId?: string,
 ) {
   const { region, bavariaAssumption } = await readDeadlineCalendar(db, tenantId);
 
-  // 1. Aktive Configs laden
+  // 1. Aktive Configs laden (P-14: beim Speichern nur die des Mandanten)
   const configs = await db.taxScheduleConfig.findMany({
-    where: { tenantId, active: true },
+    where: { tenantId, active: true, ...(clientId === undefined ? {} : { clientId }) },
     include: { client: { select: { id: true, allowActive: true } } },
   });
 

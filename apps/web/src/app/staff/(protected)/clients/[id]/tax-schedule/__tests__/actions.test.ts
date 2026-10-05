@@ -7,7 +7,7 @@ const h = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   resolveNotificationsTx: vi.fn(),
   evidenceRecord: vi.fn(),
-  materializeTaxDeadlines: vi.fn(),
+  materializeClientTaxDeadlines: vi.fn(),
   enqueueTaxDeadlineMaterialize: vi.fn(),
   fireAndForget: vi.fn(),
   assertClientAccessTx: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock('@taxtronik/db/notification', () => ({
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/tax-deadlines/materialize', () => ({
-  materializeTaxDeadlines: h.materializeTaxDeadlines,
+  materializeClientTaxDeadlines: h.materializeClientTaxDeadlines,
 }));
 vi.mock('@/server/jobs/tax-deadline-materialize-queue', () => ({
   enqueueTaxDeadlineMaterialize: h.enqueueTaxDeadlineMaterialize,
@@ -46,7 +46,7 @@ describe('Steuertermin-Neuplanung', () => {
       session: {},
       ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
     });
-    h.materializeTaxDeadlines.mockResolvedValue({ requestsCreated: 0 });
+    h.materializeClientTaxDeadlines.mockResolvedValue({ requestsCreated: 0 });
     h.enqueueTaxDeadlineMaterialize.mockResolvedValue(undefined);
     h.resolveNotificationsTx.mockResolvedValue(2);
     h.evidenceRecord.mockResolvedValue(undefined);
@@ -145,28 +145,57 @@ describe('Steuertermin-Neuplanung', () => {
     );
   });
 
-  it('uebergibt neu angelegte QUEUED-Benachrichtigungen an den Worker', async () => {
-    const tx = {
+  // P-14: Speichern materialisiert nur diesen Mandanten; Vorwarnung und
+  // Anforderung übernimmt der Worker, dessen Lauf bei aktiver Automatik sofort
+  // angestoßen wird.
+  function emptyTx() {
+    return {
       $executeRaw: vi.fn().mockResolvedValue(1),
-      taxScheduleConfig: { findMany: vi.fn().mockResolvedValue([]) },
+      taxScheduleConfig: {
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue({ id: 'config-new' }),
+      },
       taxDeadline: { findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn() },
       request: { updateMany: vi.fn() },
     };
+  }
+
+  it('materialisiert nur den gespeicherten Mandanten und stößt bei Automatik den Worker an', async () => {
+    const tx = emptyTx();
     h.withTenantContext.mockImplementation(
       async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
     );
-    h.materializeTaxDeadlines.mockResolvedValue({
-      requestsCreated: 1,
-    });
     const formData = new FormData();
     formData.set('clientId', CLIENT_ID);
+    formData.set('active.EST_VZ', 'on');
+    formData.set('autoRequest.EST_VZ', 'on');
 
     await expect(saveScheduleConfigAction(null, formData)).resolves.toMatchObject({ ok: true });
 
+    expect(h.materializeClientTaxDeadlines).toHaveBeenCalledWith(
+      { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      { clientId: CLIENT_ID, systemStaffId: 'staff-1' },
+    );
     expect(h.enqueueTaxDeadlineMaterialize).toHaveBeenCalledWith('tenant-1');
     expect(h.fireAndForget).toHaveBeenCalledWith(
-      'tax-deadline notification worker (tax-schedule save)',
+      'tax-deadline materialize worker (tax-schedule save)',
       expect.any(Promise),
     );
+  });
+
+  it('stößt ohne aktive Automatik keinen Worker-Lauf an', async () => {
+    const tx = emptyTx();
+    h.withTenantContext.mockImplementation(
+      async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
+    );
+    const formData = new FormData();
+    formData.set('clientId', CLIENT_ID);
+    formData.set('active.EST_VZ', 'on');
+
+    await expect(saveScheduleConfigAction(null, formData)).resolves.toMatchObject({ ok: true });
+
+    expect(h.materializeClientTaxDeadlines).toHaveBeenCalledOnce();
+    expect(h.enqueueTaxDeadlineMaterialize).not.toHaveBeenCalled();
+    expect(h.fireAndForget).not.toHaveBeenCalled();
   });
 });

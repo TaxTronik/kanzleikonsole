@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
 import { evidenceService } from '@/server/container';
-import { materializeTaxDeadlines } from '@/server/tax-deadlines/materialize';
+import { materializeClientTaxDeadlines } from '@/server/tax-deadlines/materialize';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
@@ -224,16 +224,18 @@ export async function saveScheduleConfigAction(
     }
   });
 
-  // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind
-  const stats = await materializeTaxDeadlines(ctx, { systemStaffId: staffId });
+  // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind.
+  // P-14: nur DIESER Mandant; vorher lief hier der ganze Tenant (alle Configs,
+  // Vorwarnungen, Anforderungen, OVERDUE) in einer 15-s-Web-Transaktion.
+  await materializeClientTaxDeadlines(ctx, { clientId, systemStaffId: staffId });
 
-  // TAX-DEADLINE-AUTOREQUEST-001: Der Kern hat den Request samt QUEUED-
-  // Benachrichtigungszustand atomar gespeichert. Den Versand macht nur noch
-  // der Worker, damit Provider-Annahme, Retry und Eskalation persistiert und
-  // nicht durch einen parallelen Fire-and-forget-Pfad verdoppelt werden.
-  if (stats.requestsCreated > 0) {
+  // TAX-DEADLINE-AUTOREQUEST-001: Vorwarnung, atomare Request-Anlage samt
+  // QUEUED-Benachrichtigung und Versand macht ausschließlich der Worker. Bei
+  // aktiver Automatik wird sein Lauf sofort angestoßen (idempotent über die
+  // jobId), damit fällige Schritte nicht bis zum Tageslauf warten.
+  if (updates.some((u) => u.active && u.autoRequest)) {
     fireAndForget(
-      'tax-deadline notification worker (tax-schedule save)',
+      'tax-deadline materialize worker (tax-schedule save)',
       enqueueTaxDeadlineMaterialize(tenantId),
     );
   }
