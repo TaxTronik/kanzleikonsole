@@ -1,36 +1,29 @@
 'use client';
 
 // =============================================================================
-// AutoRefresh — leichtgewichtige "Live"-Aktualisierung für Server-Component-
-// Daten. Ruft periodisch router.refresh() auf, sobald der Tab sichtbar ist und
-// der Nutzer gerade NICHT in einem Eingabefeld tippt (Formulareingaben,
-// Server-Actions und Modale werden so nicht gestört).
+// AutoRefresh — "Live"-Aktualisierung für Server-Component-Daten.
 //
-// Kein WebSocket/SSE — bewusst ein einfacher Polling-Refresh, der status quo auf
-// allen Seiten frische Daten bringt, ohne die Eingabe zu unterbrechen.
+// Opt-in (Review-Befund P-08): Nur auf den Seiten aus LIVE_REFRESH_ROUTES
+// (lib/live-refresh-policy.ts, je Route begründet) ruft die Komponente alle
+// 120 s router.refresh() auf, solange der Tab sichtbar ist und niemand in ein
+// Eingabefeld tippt. Im Hintergrund pausiert der Takt; nach der Rückkehr lädt
+// sie nur dann sofort neu, wenn der Tab mindestens 60 s verborgen war. Alle
+// übrigen Seiten aktualisieren sich über Server-Actions, gezielte Refreshes der
+// Glocke bei neuen Benachrichtigungen oder blockweises Nachladen.
+//
+// Unabhängig davon erzwingt die Komponente auf JEDER Seite einen Reload, wenn
+// der Browser sie aus dem Back/Forward-Cache wiederherstellt (Auth-Prüfung).
 // =============================================================================
 
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-
-export const REFRESH_INTERVAL_MS = 120_000;
-
-const STAFF_CLIENT_DETAIL_PATH =
-  /^\/staff\/clients\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?:\/gwg)?\/?$/i;
-
-/**
- * Zentrale Route-Policy fuer automatische Voll-Refreshes. Teure Seiten koennen
- * hier gezielt pausiert werden, ohne das Polling in den Layouts zu duplizieren.
- */
-export function isAutomaticRefreshEnabled(pathname: string): boolean {
-  if (pathname.startsWith('/staff/admin/audit')) return false;
-  // Das Mandanten-Cockpit laedt viele unabhaengige Bloecke und bis zu 1.000
-  // Dokumente; die GwG-Pruefseite laedt den kompletten Pruefsnapshot und ist
-  // voller Formulare, die ihren Zustand per Action-Payload abgleichen. Dort
-  // bleiben manuelle Refreshes und Server-Action-Revalidierung verfuegbar,
-  // periodische/Bell-getriebene Voll-Refreshes sind aber pausiert.
-  return !STAFF_CLIENT_DETAIL_PATH.test(pathname);
-}
+import {
+  REFRESH_INTERVAL_MS,
+  RESUME_REFRESH_AFTER_HIDDEN_MS,
+  isAutomaticRefreshEnabled,
+} from '@/lib/live-refresh-policy';
+import { notificationCountPoller } from '@/lib/notification-count-poller';
+import { startVisibilityInterval, type VisibilitySource } from '@/lib/visibility-interval';
 
 /**
  * True, wenn der Nutzer gerade in einem Eingabefeld tippt — dann darf kein
@@ -53,6 +46,32 @@ export function shouldReloadRestoredPage(persisted: boolean): boolean {
   return persisted;
 }
 
+/**
+ * Startet den periodischen Refresh für `pathname` und liefert die Abmeldung.
+ * Für Routen ohne Live-Zustand passiert nichts. Ohne React testbar (Takt,
+ * Sichtbarkeit und Tippen werden injiziert).
+ */
+export function startAutoRefresh(input: {
+  pathname: string;
+  refresh: () => void;
+  isTyping?: () => boolean;
+  source?: VisibilitySource;
+  now?: () => number;
+}): () => void {
+  if (!isAutomaticRefreshEnabled(input.pathname)) return () => {};
+  const isTyping = input.isTyping ?? isUserTyping;
+  const schedule = startVisibilityInterval({
+    intervalMs: REFRESH_INTERVAL_MS,
+    resumeAfterHiddenMs: RESUME_REFRESH_AFTER_HIDDEN_MS,
+    source: input.source,
+    now: input.now,
+    onTick: () => {
+      if (!isTyping()) input.refresh();
+    },
+  });
+  return () => schedule.stop();
+}
+
 export function AutoRefresh() {
   const router = useRouter();
   const pathname = usePathname();
@@ -71,28 +90,18 @@ export function AutoRefresh() {
     return () => window.removeEventListener('pageshow', onPageShow);
   }, []);
 
-  useEffect(() => {
-    if (!isAutomaticRefreshEnabled(pathname)) return;
-
-    function tick(): void {
-      // Nur refreshen, wenn der Tab sichtbar ist und der Nutzer nicht gerade
-      // tippt — sonst gäbe es Störungen bei Formularen / offenen Modals.
-      if (!document.hidden && !isUserTyping()) {
-        router.refresh();
-      }
-    }
-
-    const timer = setInterval(tick, REFRESH_INTERVAL_MS);
-    // Beim Zurückkommen auf den Tab sofort einmal aktualisieren.
-    function onVisible() {
-      if (!document.hidden) tick();
-    }
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [pathname, router]);
+  useEffect(
+    () =>
+      startAutoRefresh({
+        pathname,
+        refresh: () => {
+          router.refresh();
+          // Das Staff-Layout liest beim Refresh den Glocken-Zähler mit; die
+          // Glocke muss ihn dann nicht zusätzlich abfragen.
+          notificationCountPoller.markFresh();
+        },
+      }),
+    [pathname, router],
+  );
   return null;
 }

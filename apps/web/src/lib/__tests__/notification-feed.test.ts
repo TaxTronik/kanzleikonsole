@@ -2,9 +2,31 @@ import { describe, expect, it } from 'vitest';
 
 import {
   hasNewUnreadNotification,
+  newUnreadNotifications,
   notificationTimestamp,
   shouldAcknowledgeCompletionOnCurrentPage,
 } from '../notification-feed';
+
+describe('newUnreadNotifications (P-08: Ziele eines Zuwachses)', () => {
+  const items = [
+    { id: 'neu', createdAt: '2026-08-19T10:10:00.000Z', readAt: null },
+    { id: 'alt-ungelesen', createdAt: '2026-08-19T09:00:00.000Z', readAt: null },
+    { id: 'gelesen', createdAt: '2026-08-19T10:20:00.000Z', readAt: '2026-08-19T10:21:00.000Z' },
+  ];
+
+  it('liefert nur ungelesene Einträge, die jünger als der bisherige Stand sind', () => {
+    const before = notificationTimestamp('2026-08-19T10:00:00.000Z');
+    expect(newUnreadNotifications(items, before).map((item) => item.id)).toEqual(['neu']);
+  });
+
+  it('fällt ohne jüngeren Eintrag auf alle ungelesenen zurück', () => {
+    const before = notificationTimestamp('2026-08-19T11:00:00.000Z');
+    expect(newUnreadNotifications(items, before).map((item) => item.id)).toEqual([
+      'neu',
+      'alt-ungelesen',
+    ]);
+  });
+});
 
 describe('Notification-Feed-Zuwachs', () => {
   it('erkennt einen neuen Eintrag trotz unverändertem Unread-Zähler', () => {

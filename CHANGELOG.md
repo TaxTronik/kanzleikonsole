@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Automatische Aktualisierung nur noch auf Seiten mit Live-Zustand
+  (Dashboard, Arbeitskorb, Job-Monitor, Portal-Startseite und -Nachrichten);
+  im Hintergrund pausiert sie, nach der Rückkehr lädt sie erst nach mindestens
+  60 s Abwesenheit sofort neu. Die Glocke fragt bei verborgenem Tab nicht mehr
+  ab, teilt sich eine Abfrage je Tab und lädt bei neuen Benachrichtigungen nur
+  die betroffene Seite neu.
 - Die Monatsansicht der Steuertermine zählt die Termine je Tag in der
   Datenbank (bei 15.000 Terminen im Monat 35 statt 15.000 Zeilen), statt alle
   Termine des Monats zu laden; Monatsraster und Termin-Pillen sind mit dem

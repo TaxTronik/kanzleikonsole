@@ -29,6 +29,22 @@ export function shouldAcknowledgeCompletionOnCurrentPage(input: {
 }
 
 /**
+ * Die seit dem letzten bekannten Stand neu eingetroffenen ungelesenen Einträge
+ * (jünger als `previousLatestUnreadAt`). Ist keiner jünger (Zuwachs nur über
+ * die Anzahl erkannt), gelten alle ungelesenen als neu.
+ */
+export function newUnreadNotifications<T extends { createdAt: string; readAt: string | null }>(
+  items: readonly T[],
+  previousLatestUnreadAt: number,
+): T[] {
+  const unread = items.filter((item) => item.readAt === null);
+  const newer = unread.filter(
+    (item) => notificationTimestamp(item.createdAt) > previousLatestUnreadAt,
+  );
+  return newer.length > 0 ? newer : unread;
+}
+
+/**
  * Erkennt neue Notifications auch dann, wenn im selben Commit eine alte
  * ungelesene Aufgabe erledigt wird und die Gesamtzahl deshalb gleich bleibt.
  */

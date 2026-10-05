@@ -14,7 +14,7 @@ import {
   markNotificationReadByIdAction,
   markAllNotificationsReadAction,
 } from '@/app/staff/(protected)/notifications/actions';
-import { isAutomaticRefreshEnabled, isUserTyping } from './auto-refresh';
+import { isUserTyping } from './auto-refresh';
 import {
   buildNotificationSignal,
   emitNotificationsGrew,
@@ -22,14 +22,15 @@ import {
 } from '@/lib/live-events';
 import {
   hasNewUnreadNotification,
+  newUnreadNotifications,
   notificationTimestamp,
   shouldAcknowledgeCompletionOnCurrentPage,
 } from '@/lib/notification-feed';
+import { shouldRefreshForNotifications } from '@/lib/live-refresh-policy';
+import { notificationCountPoller, type UnreadSummary } from '@/lib/notification-count-poller';
 import { useAccessibleDisplayEnabled } from './accessible-display';
 import { useAnchoredPanel } from './ui/use-anchored-panel';
 import { scheduleNotificationAlertDismiss } from './ui/notification-alert-timing';
-
-const POLL_INTERVAL_MS = 30_000;
 
 interface NotificationItem {
   id: string;
@@ -93,7 +94,6 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
   const panelId = useId();
   const accessibleDisplay = useAccessibleDisplayEnabled();
   const panelStyle = useAnchoredPanel(open, containerRef, 384, 'end');
-  const visibleRef = useRef(true);
   // Zuletzt bekannter unread-Stand (race-arm gegenüber parallelen Polls) — Quelle
   // der Wahrheit für die "es kam etwas Neues"-Erkennung (Ton + Live-Refresh).
   const lastUnreadRef = useRef(initialUnread);
@@ -136,85 +136,98 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
 
   // Bei echtem Zuwachs an ungelesenen Benachrichtigungen (serverseitig ist etwas
   // passiert, z. B. Chain-Verify-Ergebnis) die aktuelle Seite ereignisgetrieben
-  // aktualisieren — sonst blieben Server-Component-Inhalte bis zum nächsten
-  // manuellen Reload stehen. Guards wie AutoRefresh: nicht bei verstecktem Tab
-  // und nicht während der Nutzer tippt.
-  const onUnreadGrew = useCallback(() => {
-    // Zusaetzlich melden — auch auf Seiten ohne Voll-Refresh (Mandanten-Cockpit).
-    // Dafuer wird EINMAL die Kurzliste geladen, um zu erfahren, WEN der Zuwachs
-    // betrifft: nur die betroffenen Bloecke laden dann nach. Ohne diese Angabe
-    // wuerde jede Benachrichtigung jeden offenen Block anstossen, auch wenn sie
-    // einen ganz anderen Mandanten betrifft.
-    //
-    // Die Kurzliste landet gleich im Dropdown-Zustand — ein spaeteres Oeffnen
-    // zeigt sie ohne weiteren Roundtrip.
-    void (async () => {
-      try {
-        const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
-        if (!res.ok) throw new Error('NOTIFICATION_RECENT_FETCH_FAILED');
-        const data = (await res.json()) as RecentResponse;
-        setNow(Date.now());
-        const newestUnread = data.items.find((item) => item.readAt === null);
-        if (
-          newestUnread &&
-          !document.hidden &&
-          !isUserTyping() &&
-          shouldAcknowledgeCompletionOnCurrentPage({
-            kind: newestUnread.kind,
-            href: newestUnread.href,
-            pathname,
-          })
-        ) {
-          const acknowledged = await markNotificationReadByIdAction({ id: newestUnread.id });
-          if (acknowledged.ok) {
-            const readAt = new Date().toISOString();
-            const acknowledgedItems = data.items.map((item) =>
-              item.id === newestUnread.id ? { ...item, readAt } : item,
-            );
-            const nextUnread = Math.max(0, data.unread - 1);
-            lastUnreadRef.current = nextUnread;
-            setUnread(nextUnread);
-            setItems(acknowledgedItems);
-            emitNotificationsGrew(buildNotificationSignal(acknowledgedItems));
+  // aktualisieren — aber nur, wenn das Neue diese Seite betrifft oder sie eine
+  // Live-Seite ist (P-08, lib/live-refresh-policy.ts). Guards wie AutoRefresh:
+  // nicht bei verstecktem Tab und nicht während der Nutzer tippt.
+  // `previousLatestUnreadAt`: jüngster ungelesener Zeitpunkt VOR dem Zuwachs.
+  const onUnreadGrew = useCallback(
+    (previousLatestUnreadAt: number) => {
+      // Zusaetzlich melden — auch auf Seiten ohne Voll-Refresh (Mandanten-Cockpit).
+      // Dafuer wird EINMAL die Kurzliste geladen, um zu erfahren, WEN der Zuwachs
+      // betrifft: nur die betroffenen Bloecke laden dann nach. Ohne diese Angabe
+      // wuerde jede Benachrichtigung jeden offenen Block anstossen, auch wenn sie
+      // einen ganz anderen Mandanten betrifft.
+      //
+      // Die Kurzliste landet gleich im Dropdown-Zustand — ein spaeteres Oeffnen
+      // zeigt sie ohne weiteren Roundtrip.
+      void (async () => {
+        try {
+          const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
+          if (!res.ok) throw new Error('NOTIFICATION_RECENT_FETCH_FAILED');
+          const data = (await res.json()) as RecentResponse;
+          setNow(Date.now());
+          const newestUnread = data.items.find((item) => item.readAt === null);
+          if (
+            newestUnread &&
+            !document.hidden &&
+            !isUserTyping() &&
+            shouldAcknowledgeCompletionOnCurrentPage({
+              kind: newestUnread.kind,
+              href: newestUnread.href,
+              pathname,
+            })
+          ) {
+            const acknowledged = await markNotificationReadByIdAction({ id: newestUnread.id });
+            if (acknowledged.ok) {
+              const readAt = new Date().toISOString();
+              const acknowledgedItems = data.items.map((item) =>
+                item.id === newestUnread.id ? { ...item, readAt } : item,
+              );
+              const nextUnread = Math.max(0, data.unread - 1);
+              lastUnreadRef.current = nextUnread;
+              setUnread(nextUnread);
+              setItems(acknowledgedItems);
+              emitNotificationsGrew(buildNotificationSignal(acknowledgedItems));
+              router.refresh();
+              return;
+            }
+          }
+
+          setItems(data.items);
+          playNotificationSound();
+          const targets = newUnreadNotifications(data.items, previousLatestUnreadAt).map(
+            (item) => item.href,
+          );
+          if (
+            shouldRefreshForNotifications(pathname, targets) &&
+            !document.hidden &&
+            !isUserTyping()
+          ) {
             router.refresh();
-            return;
+          }
+          if (newestUnread) showNotificationAlert(newestUnread);
+          emitNotificationsGrew(buildNotificationSignal(data.items));
+        } catch {
+          // Der Detailabruf ist nur Zusatzkomfort. Ton + ggf. Refresh bleiben
+          // erhalten, damit die Notification nicht still verloren geht (Ziele
+          // unbekannt: Voll-Refresh nur auf Live-Seiten).
+          playNotificationSound();
+          if (shouldRefreshForNotifications(pathname, []) && !document.hidden && !isUserTyping()) {
+            router.refresh();
           }
         }
-
-        setItems(data.items);
-        playNotificationSound();
-        if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
-          router.refresh();
-        }
-        if (newestUnread) showNotificationAlert(newestUnread);
-        emitNotificationsGrew(buildNotificationSignal(data.items));
-      } catch {
-        // Der Detailabruf ist nur Zusatzkomfort. Ton + ggf. Refresh bleiben
-        // erhalten, damit die Notification nicht still verloren geht.
-        playNotificationSound();
-        if (isAutomaticRefreshEnabled(pathname) && !document.hidden && !isUserTyping()) {
-          router.refresh();
-        }
-      }
-    })();
-  }, [pathname, router, showNotificationAlert]);
+      })();
+    },
+    [pathname, router, showNotificationAlert],
+  );
 
   // Server-Refreshes (z. B. Formular auf /staff/notifications) liefern einen
   // neuen Initialwert. Auch dieser Pfad muss einen Alert auslösen können: Eine
   // eigene Server-Action refresht die Route oft schneller als der Poller.
   useEffect(() => {
+    const previousLatestUnreadAt = latestUnreadAtRef.current;
     const grew = hasNewUnreadNotification({
       previousUnread: lastUnreadRef.current,
-      previousLatestUnreadAt: latestUnreadAtRef.current,
+      previousLatestUnreadAt,
       nextUnread: initialUnread,
       nextLatestUnreadAt: initialLatestUnreadAt,
     });
     lastUnreadRef.current = initialUnread;
     latestUnreadAtRef.current = Math.max(
-      latestUnreadAtRef.current,
+      previousLatestUnreadAt,
       notificationTimestamp(initialLatestUnreadAt),
     );
-    if (grew) onUnreadGrew();
+    if (grew) onUnreadGrew(previousLatestUnreadAt);
   }, [initialUnread, initialLatestUnreadAt, onUnreadGrew]);
 
   function toggleSound() {
@@ -226,34 +239,29 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
     if (next) playNotificationSound();
   }
 
-  const refreshCount = useCallback(() => {
-    void (async () => {
-      try {
-        const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          unread: number;
-          latestUnreadAt: string | null;
-        };
-        setNow(Date.now());
-        const latestUnreadAt = notificationTimestamp(data.latestUnreadAt);
-        // Ein höherer Zeitstempel erkennt auch einen Austausch 1 offen → 1
-        // offen. Genau dieser Fall ging beim reinen Unread-Zähler verloren.
-        const grew = hasNewUnreadNotification({
-          previousUnread: lastUnreadRef.current,
-          previousLatestUnreadAt: latestUnreadAtRef.current,
-          nextUnread: data.unread,
-          nextLatestUnreadAt: data.latestUnreadAt,
-        });
-        lastUnreadRef.current = data.unread;
-        latestUnreadAtRef.current = Math.max(latestUnreadAtRef.current, latestUnreadAt);
-        setUnread(data.unread);
-        if (grew) onUnreadGrew();
-      } catch {
-        // silent
-      }
-    })();
-  }, [onUnreadGrew]);
+  // Neuer Zählerstand (Poller oder Kurzliste): Ein höherer Zeitstempel erkennt
+  // auch einen Austausch 1 offen → 1 offen. Genau dieser Fall ging beim reinen
+  // Unread-Zähler verloren.
+  const applyUnreadSummary = useCallback(
+    (data: UnreadSummary) => {
+      setNow(Date.now());
+      const previousLatestUnreadAt = latestUnreadAtRef.current;
+      const grew = hasNewUnreadNotification({
+        previousUnread: lastUnreadRef.current,
+        previousLatestUnreadAt,
+        nextUnread: data.unread,
+        nextLatestUnreadAt: data.latestUnreadAt,
+      });
+      lastUnreadRef.current = data.unread;
+      latestUnreadAtRef.current = Math.max(
+        previousLatestUnreadAt,
+        notificationTimestamp(data.latestUnreadAt),
+      );
+      setUnread(data.unread);
+      if (grew) onUnreadGrew(previousLatestUnreadAt);
+    },
+    [onUnreadGrew],
+  );
 
   const refreshRecent = useCallback(() => {
     void (async () => {
@@ -261,46 +269,29 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
         const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
         if (!res.ok) return;
         const data = (await res.json()) as RecentResponse;
-        setNow(Date.now());
         setItems(data.items);
-        const latestUnreadAt = notificationTimestamp(data.latestUnreadAt);
-        const grew = hasNewUnreadNotification({
-          previousUnread: lastUnreadRef.current,
-          previousLatestUnreadAt: latestUnreadAtRef.current,
-          nextUnread: data.unread,
-          nextLatestUnreadAt: data.latestUnreadAt,
-        });
-        lastUnreadRef.current = data.unread;
-        latestUnreadAtRef.current = Math.max(latestUnreadAtRef.current, latestUnreadAt);
-        setUnread(data.unread);
-        if (grew) onUnreadGrew();
+        applyUnreadSummary(data);
       } catch {
         // silent
       }
     })();
-  }, [onUnreadGrew]);
+  }, [applyUnreadSummary]);
 
   useEffect(() => onNotificationsChanged(refreshRecent), [refreshRecent]);
 
-  useEffect(() => {
-    function onVisibility() {
-      visibleRef.current = !document.hidden;
-      if (!document.hidden) refreshCount();
-    }
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [refreshCount]);
+  // P-08: Zählerabgleich über EINEN Poller pro Tab (lib/notification-count-
+  // poller.ts): alle 30 s bei sichtbarem Tab, im Hintergrund pausiert; weitere
+  // Abonnenten teilen sich jeden Abruf.
+  useEffect(() => notificationCountPoller.subscribe(applyUnreadSummary), [applyUnreadSummary]);
 
+  // Navigation rendert das Layout nicht neu: Zähler dann sofort abgleichen.
+  // Beim ersten Mount hat das Layout ihn gerade serverseitig mitgeliefert.
+  const countedPathnameRef = useRef(pathname);
   useEffect(() => {
-    const id = setInterval(() => {
-      if (visibleRef.current) refreshCount();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [refreshCount]);
-
-  useEffect(() => {
-    refreshCount();
-  }, [pathname, refreshCount]);
+    if (countedPathnameRef.current === pathname) return;
+    countedPathnameRef.current = pathname;
+    void notificationCountPoller.pollNow();
+  }, [pathname]);
 
   // Klick außerhalb schließt das Dropdown
   useEffect(() => {

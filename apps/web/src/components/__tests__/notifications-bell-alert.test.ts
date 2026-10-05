@@ -9,7 +9,23 @@ describe('NotificationsBell Alert', () => {
     expect(bell).toContain('role="status"');
     expect(bell).toContain('aria-live="polite"');
     expect(bell).toContain('Neue Benachrichtigung');
-    expect(bell).toContain('if (grew) onUnreadGrew();');
+    expect(bell).toContain('if (grew) onUnreadGrew(previousLatestUnreadAt);');
+  });
+
+  it('zählt über den geteilten Tab-Poller statt eigener Timer (P-08)', () => {
+    expect(bell).toContain('notificationCountPoller.subscribe(applyUnreadSummary)');
+    expect(bell).toContain('notificationCountPoller.pollNow()');
+    expect(bell).not.toContain('setInterval(');
+    expect(bell).not.toContain("addEventListener('visibilitychange'");
+    expect(bell).not.toContain("fetch('/api/staff/notifications/count'");
+  });
+
+  it('lädt die Seite nur, wenn das Neue sie betrifft oder sie live ist (P-08)', () => {
+    expect(bell).toContain('newUnreadNotifications(data.items, previousLatestUnreadAt)');
+    expect(bell).toContain('shouldRefreshForNotifications(pathname, targets)');
+    expect(bell).not.toContain('isAutomaticRefreshEnabled');
+    // Betroffene Blöcke laden weiterhin selbst nach (z. B. RemindersBlock).
+    expect(bell).toContain('emitNotificationsGrew(buildNotificationSignal(data.items))');
   });
 
   it('quittiert einen auf der sichtbaren Zielseite bereits dargestellten Abschluss', () => {

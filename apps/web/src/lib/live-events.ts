@@ -4,7 +4,7 @@
 // Die Notifications-Bell pollt ohnehin und weiss als Erste, dass serverseitig
 // etwas passiert ist. Bisher zog sie daraus nur einen `router.refresh()` — und
 // genau der ist auf dem Mandanten-Cockpit bewusst abgeschaltet (die Seite laedt
-// viele Bloecke und bis zu 1.000 Dokumente, siehe auto-refresh.tsx). Folge:
+// viele Bloecke, siehe lib/live-refresh-policy.ts). Folge:
 // eine frisch delegierte Wiedervorlage tauchte dort erst nach manuellem Reload
 // auf.
 //
