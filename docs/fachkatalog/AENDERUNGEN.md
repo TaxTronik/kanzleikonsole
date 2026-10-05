@@ -1,5 +1,56 @@
 ---
 exceptions:
+  - id: FK-EXC-20261004-017
+    date: '2026-10-04'
+    paths:
+      - apps/web/src/app/staff/(protected)/gwg/page.tsx
+      - apps/web/src/app/staff/(protected)/interactions/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/invoices/new/external-form.tsx
+      - apps/web/src/app/staff/(protected)/invoices/new/form.tsx
+      - apps/web/src/app/staff/(protected)/invoices/new/page.tsx
+      - apps/web/src/app/staff/(protected)/payroll/actions.ts
+      - apps/web/src/app/staff/(protected)/payroll/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-selection.test.ts
+      - apps/web/src/app/staff/(protected)/poa/actions.ts
+      - apps/web/src/app/staff/(protected)/poa/new/client-selection.ts
+      - apps/web/src/app/staff/(protected)/poa/new/form.tsx
+      - apps/web/src/app/staff/(protected)/poa/new/page.tsx
+      - apps/web/src/app/staff/(protected)/reminders/page.tsx
+      - apps/web/src/app/staff/(protected)/year-end/page.tsx
+      - apps/web/src/server/mandate-expansion/service.ts
+    rule_ids:
+      - ACCESS-CLIENT-MODE-001
+      - ACCESS-SEARCH-SCOPE-001
+      - CLIENT-FEEDBACK-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - GWG-CONTROL-EXPORT-001
+      - MANDATE-STRUCTURE-001
+      - WORKFLOW-DEPENDENCY-001
+      - PAYROLL-INTAKE-001
+      - POA-LIFECYCLE-001
+      - POA-SIGNING-CONFIRMATION-001
+      - POA-SIGNING-SNAPSHOT-001
+      - REMINDER-TICKET-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Mandantenauswahlen in Terminen, Wiedervorlagen, Zeiterfassung,
+      Mandanten-Assistent, Vollmacht, Rechnung, Lohn, StBVV, Jahreswechsel,
+      Workflows, GwG-Kontrollliste, Interaktionen und Mandatsorganisation laden
+      nicht mehr den ganzen Bestand oder die ersten 500 beziehungsweise 1.000
+      Mandanten, sondern suchen serverseitig mit derselben Sichtbarkeitsregel und
+      denselben Einschlussregeln (aktiv, nicht beendet, nicht anonymisiert) wie
+      bisher. Spätere Mandanten sind dadurch wieder auswählbar. Vollmacht-,
+      Rechnungs- und StBVV-Formulare wählen keinen Mandanten mehr still vor. Die
+      Aktionen, ihre Prüfungen und fachlichen Abläufe bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-selection.test.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.ts
+      - apps/web/src/server/clients/__tests__/picker.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261004-016
     date: '2026-10-04'
     paths:
@@ -1306,6 +1357,11 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-04: `FK-EXC-20261004-017` dokumentiert die serverseitige
+  Mandantensuche in allen Mandantenauswahlen statt gekappter oder
+  vollständiger Bestandslisten. Sichtbarkeits- und Einschlussregeln bleiben
+  unverändert.
 
 - 2026-10-04: `FK-EXC-20261004-016` dokumentiert die gemeinsame
   serverseitige Mandantensuche, die die eigene Such-Action der

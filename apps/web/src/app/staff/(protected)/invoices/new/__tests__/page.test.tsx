@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({
   session: {} as StaffSession,
-  clients: [] as Array<{ id: string; name: string }>,
+  firstClient: null as { id: string } | null,
   mode: 'IN_APP',
   accessMode: 'RESTRICTED',
-  findMany: vi.fn(),
+  findFirst: vi.fn(),
 }));
 vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: async () => fixture.session }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: vi.fn() }));
@@ -21,15 +21,20 @@ vi.mock('@/server/settings/modules', () => ({
 }));
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, run: (tx: unknown) => unknown) =>
-    run({ client: { findMany: fixture.findMany }, invoiceCategory: { findMany: async () => [] } }),
+    run({
+      client: { findFirst: fixture.findFirst },
+      invoiceCategory: { findMany: async () => [] },
+    }),
 }));
+// Die Formulare suchen Mandanten selbst serverseitig (ClientCombobox); die
+// Seite übergibt keinen Bestand mehr.
 vi.mock('../form', () => ({
-  NewInvoiceForm: ({ clients }: { clients: Array<{ name: string }> }) =>
-    'Rechnungsformular: ' + clients.map((c) => c.name).join(', '),
+  NewInvoiceForm: (props: Record<string, unknown>) =>
+    'Rechnungsformular' + (Object.keys(props).length ? ' mit Props' : ''),
 }));
 vi.mock('../external-form', () => ({
-  ExternalInvoiceForm: ({ clients }: { clients: Array<{ name: string }> }) =>
-    'Uploadformular: ' + clients.map((c) => c.name).join(', '),
+  ExternalInvoiceForm: (props: Record<string, unknown>) =>
+    'Uploadformular: ' + Object.keys(props).join(','),
 }));
 import NewInvoicePage from '../page';
 
@@ -45,9 +50,19 @@ beforeEach(() => {
       permissions: ['INVOICE_MANAGE', 'INVOICE_SEND'],
     },
   } as StaffSession;
-  fixture.clients = [];
-  fixture.findMany.mockImplementation(async () => fixture.clients);
+  fixture.firstClient = null;
+  fixture.findFirst.mockImplementation(async () => fixture.firstClient);
 });
+
+// Gleiche Zugriffsregel wie die Suche: Tenant + accessibleClientsWhereFor + allowActive.
+const where = (access: Record<string, unknown>) => ({
+  AND: [{ tenantId: 'tenant-test' }, access, { allowActive: true }],
+});
+const RESTRICTED_ACCESS = {
+  responsibilities: {
+    some: { staffId: 'staff-test', role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+  },
+};
 
 describe('Rechnungsanlage — ACCESS-CLIENT-MODE-001', () => {
   it.each(['IN_APP', 'EXTERNAL'])(
@@ -55,15 +70,9 @@ describe('Rechnungsanlage — ACCESS-CLIENT-MODE-001', () => {
     async (mode) => {
       fixture.mode = mode;
       const html = renderToStaticMarkup(await NewInvoicePage());
-      expect(fixture.findMany).toHaveBeenCalledExactlyOnceWith({
-        where: {
-          allowActive: true,
-          responsibilities: {
-            some: { staffId: 'staff-test', role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-          },
-        },
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true },
+      expect(fixture.findFirst).toHaveBeenCalledExactlyOnceWith({
+        where: where(RESTRICTED_ACCESS),
+        select: { id: true },
       });
       expect(html).toContain('Kein auswählbarer Mandant');
       expect(html).toContain('href="/staff/clients"');
@@ -76,17 +85,9 @@ describe('Rechnungsanlage — ACCESS-CLIENT-MODE-001', () => {
   it('behält in OPEN das Vertraulichkeitsventil bei', async () => {
     fixture.accessMode = 'OPEN';
     await NewInvoicePage();
-    expect(fixture.findMany.mock.calls[0]![0].where).toEqual({
-      allowActive: true,
-      OR: [
-        { vertraulich: false },
-        {
-          responsibilities: {
-            some: { staffId: 'staff-test', role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-          },
-        },
-      ],
-    });
+    expect(fixture.findFirst.mock.calls[0]![0].where).toEqual(
+      where({ OR: [{ vertraulich: false }, RESTRICTED_ACCESS] }),
+    );
   });
 
   it.each(['ADMIN', 'PARTNER'] as const)(
@@ -94,7 +95,7 @@ describe('Rechnungsanlage — ACCESS-CLIENT-MODE-001', () => {
     async (role) => {
       fixture.session.user.roles = [role];
       const html = renderToStaticMarkup(await NewInvoicePage());
-      expect(fixture.findMany.mock.calls[0]![0].where).toEqual({ allowActive: true });
+      expect(fixture.findFirst.mock.calls[0]![0].where).toEqual(where({}));
       expect(html).toContain('href="/staff/clients/onboarding/new"');
     },
   );
@@ -104,13 +105,17 @@ describe('Rechnungsanlage — ACCESS-CLIENT-MODE-001', () => {
     expect(renderToStaticMarkup(await NewInvoicePage())).toContain('/staff/clients/onboarding/new');
   });
 
-  it.each(['IN_APP', 'EXTERNAL'])(
-    'zeigt bei zugänglichen Mandanten weiterhin das %s-Formular',
-    async (mode) => {
+  it.each([
+    ['IN_APP', 'Rechnungsformular'],
+    ['EXTERNAL', 'Uploadformular: categories'],
+  ])(
+    'zeigt bei zugänglichen Mandanten weiterhin das %s-Formular ohne vorgeladenen Bestand',
+    async (mode, form) => {
       fixture.mode = mode;
-      fixture.clients = [{ id: 'visible', name: 'Sichtbarer Mandant' }];
+      fixture.firstClient = { id: 'visible' };
       const html = renderToStaticMarkup(await NewInvoicePage());
-      expect(html).toContain('formular: Sichtbarer Mandant');
+      expect(html).toContain(form);
+      expect(html).not.toContain('mit Props');
       expect(html).not.toContain('Kein auswählbarer Mandant');
     },
   );

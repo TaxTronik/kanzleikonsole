@@ -3,7 +3,10 @@ import { notFound, redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { portalActionGuard } from '@/server/actions/portal-action';
-import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
+import { hasStaffPermission } from '@/server/auth/rbac';
+import { hasClientPickerOptionTx } from '@/server/clients/picker';
+import { ClientCombobox } from '@/components/ui/client-combobox';
+import type { ClientPickerFilter } from '@/lib/client-picker';
 import { readModules } from '@/server/settings/modules';
 import { ClientAssistanceForm } from '@/components/client-assistance-form';
 import { ExpansionForm } from '@/components/expansion-form';
@@ -32,12 +35,16 @@ function selectedAssistanceCase<T extends { id: string }>(
   return requested ? items.find((item) => item.id === requested) : undefined;
 }
 
+// Dieselbe Mandatsschranke wie `assistanceAccess` (service.ts): nur aktive,
+// nicht beendete und nicht anonymisierte Mandate sind auswählbar.
+const ASSISTANCE_CLIENT_FILTERS: ClientPickerFilter[] = ['active', 'notEnded', 'notAnonymized'];
+
 function AssistanceClientSelection({
-  clients,
+  hasClients,
   canCreateClient,
   prefix,
 }: {
-  clients: Array<{ id: string; name: string }>;
+  hasClients: boolean;
   canCreateClient: boolean;
   prefix: string;
 }) {
@@ -47,21 +54,25 @@ function AssistanceClientSelection({
       <p className="text-sm text-muted">
         Mandant für Belegassistenten und Verfahrensdokumentation wählen.
       </p>
-      {clients.length === 0 ? (
-        <ClientPrerequisiteEmptyState canCreateClient={canCreateClient} />
+      {hasClients ? (
+        <form action={prefix} method="get" className="card flex flex-wrap items-end gap-3 p-5">
+          <div className="min-w-0 flex-1 sm:max-w-md">
+            <label className="label" htmlFor="assistance-client">
+              Mandant
+            </label>
+            <ClientCombobox
+              id="assistance-client"
+              name="clientId"
+              filters={ASSISTANCE_CLIENT_FILTERS}
+              required
+            />
+          </div>
+          <button type="submit" className="btn-primary">
+            Öffnen
+          </button>
+        </form>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {clients.map((c) => (
-            <li key={c.id}>
-              <Link
-                className="card block p-4 font-medium hover:bg-surface-raised"
-                href={prefix + '?clientId=' + c.id}
-              >
-                {c.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <ClientPrerequisiteEmptyState canCreateClient={canCreateClient} />
       )}
     </div>
   );
@@ -95,23 +106,14 @@ export async function AssistancePage({
   const prefix = '/' + surface + '/client-assistance';
   if (!clientId) {
     if (!('staffId' in guard)) notFound();
-    const clients = await withTenantContext(guard.ctx, async (tx) =>
-      tx.client.findMany({
-        where: {
-          ...(await accessibleClientsWhereFor(tx, guard.session)),
-          tenantId: guard.tenantId,
-          allowActive: true,
-          anonymizedAt: null,
-          mandateEndedAt: null,
-        },
-        select: { id: true, name: true },
-        orderBy: { name: 'asc' },
-        take: 500,
-      }),
+    // Nur die Existenz prüfen; die Auswahl sucht serverseitig (früher: die
+    // ersten 500 Mandanten, alle weiteren waren hier nicht erreichbar).
+    const hasClients = await withTenantContext(guard.ctx, (tx) =>
+      hasClientPickerOptionTx(tx, guard.session, ASSISTANCE_CLIENT_FILTERS),
     );
     return (
       <AssistanceClientSelection
-        clients={clients}
+        hasClients={hasClients}
         canCreateClient={hasStaffPermission(guard.session, 'CLIENT_CREATE')}
         prefix={prefix}
       />

@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { FileDown, Search } from 'lucide-react';
 import { withTenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { loadClientPickerOptionTx } from '@/server/clients/picker';
+import { ClientCombobox } from '@/components/ui/client-combobox';
 import {
   controlFilters,
   CONTROL_STATES,
@@ -27,17 +28,20 @@ export default async function GwgControlPage({
   const data = await withTenantContext(
     { tenantId: session.user.tenantId, actorId: session.user.staffId, actorType: 'STAFF' },
     async (tx) => {
-      const clients = await tx.client.findMany({
-        where: { AND: [await accessibleClientsWhereFor(tx, session), { anonymizedAt: null }] },
-        select: { id: true, name: true },
-        orderBy: { name: 'asc' },
-        take: 10_000,
-      });
+      // Filterauswahl per Serversuche (gleiche Sichtbarkeit, nicht anonymisiert);
+      // hier nur der Name des aktiven Filters statt bis zu 10.000 Optionen.
+      const filterClient = await loadClientPickerOptionTx(tx, session, filters.clientId, [
+        'notAnonymized',
+      ]);
       try {
-        return { clients, list: await loadGwgControlListTx(tx, session, filters), error: null };
+        return {
+          filterClient,
+          list: await loadGwgControlListTx(tx, session, filters),
+          error: null,
+        };
       } catch (error) {
         if (!(error instanceof GwgControlListTooLargeError)) throw error;
-        return { clients, list: null, error: error.message };
+        return { filterClient, list: null, error: error.message };
       }
     },
     { isolationLevel: 'RepeatableRead' },
@@ -107,14 +111,13 @@ export default async function GwgControlPage({
           <label className="label" htmlFor="gwg-client">
             Mandant
           </label>
-          <select id="gwg-client" className="input" name="clientId" defaultValue={filters.clientId}>
-            <option value="">Alle sichtbaren Mandanten</option>
-            {data.clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
+          <ClientCombobox
+            id="gwg-client"
+            name="clientId"
+            filters={['notAnonymized']}
+            defaultValue={data.filterClient}
+            placeholder="Alle sichtbaren Mandanten"
+          />
         </div>
         <div className="flex items-end">
           <button className="btn-primary">

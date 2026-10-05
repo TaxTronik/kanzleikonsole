@@ -1,24 +1,21 @@
 'use client';
 import { useState, useRef } from 'react';
 import type { StructureInput } from '@/server/mandate-expansion/model';
+import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
 import { ActionForm } from '../action-form';
 import { saveStructureAction } from '../actions';
-export default function StructureEditor({
-  initial,
-  clients,
-}: {
-  initial: StructureInput;
-  clients: Array<{ id: string; name: string }>;
-}) {
+export default function StructureEditor({ initial }: { initial: StructureInput }) {
   const [data, setData] = useState(initial);
-  const [linked, setLinked] = useState('');
+  // Serversuche (sichtbar, nicht anonymisiert) statt der ersten 1.000 Mandanten.
+  const [linked, setLinked] = useState<ClientComboboxValue | null>(null);
   const dragging = useRef<string | null>(null);
   const nodeChange = (key: string, patch: Partial<StructureInput['nodes'][number]>) =>
     setData((d) => ({ ...d, nodes: d.nodes.map((n) => (n.key === key ? { ...n, ...patch } : n)) }));
+  const linkedIds = data.nodes.flatMap((n) => (n.linkedClientId ? [n.linkedClientId] : []));
   const addNode = (kind: 'PERSON' | 'ORGANIZATION' | 'CLIENT') => {
-    const client = clients.find((c) => c.id === linked);
-    if (kind === 'CLIENT' && (!client || data.nodes.some((n) => n.linkedClientId === linked)))
-      return;
+    const client = linked;
+    if (kind === 'CLIENT' && (!client || linkedIds.includes(client.id))) return;
+    if (kind === 'CLIENT') setLinked(null);
     setData((d) => ({
       ...d,
       nodes: [
@@ -32,7 +29,7 @@ export default function StructureEditor({
               : kind === 'PERSON'
                 ? 'Neue Person'
                 : 'Neue Gesellschaft',
-          linkedClientId: kind === 'CLIENT' ? linked : null,
+          linkedClientId: kind === 'CLIENT' ? client!.id : null,
           x: 40 + (d.nodes.length % 4) * 220,
           y: 40 + (Math.floor(d.nodes.length / 4) % 5) * 100,
         },
@@ -152,21 +149,17 @@ export default function StructureEditor({
         >
           Externe Gesellschaft hinzufügen
         </button>
-        <select
-          aria-label="Bestehenden Mandanten verknüpfen"
-          className="input max-w-xs"
-          value={linked}
-          onChange={(e) => setLinked(e.target.value)}
-        >
-          <option value="">Bestehenden Mandanten wählen</option>
-          {clients
-            .filter((c) => !data.nodes.some((n) => n.linkedClientId === c.id))
-            .map((c) => (
-              <option value={c.id} key={c.id}>
-                {c.name}
-              </option>
-            ))}
-        </select>
+        <div className="w-full max-w-xs">
+          <ClientCombobox
+            aria-label="Bestehenden Mandanten verknüpfen"
+            filters={['notAnonymized']}
+            value={linked}
+            onChange={setLinked}
+            excludeIds={linkedIds}
+            placeholder="Bestehenden Mandanten suchen"
+            blockEnterSubmit
+          />
+        </div>
         <button
           type="button"
           className="btn-secondary"

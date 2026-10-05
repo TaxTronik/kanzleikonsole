@@ -12,6 +12,7 @@ import {
   type FeeCalculationInput,
 } from '@taxtronik/tax';
 import { saveStbvvQuoteAction, createStbvvDraftAction } from './actions';
+import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
 const field = 'input mt-1 block';
 const euro = (c: number) =>
   (c / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
@@ -25,16 +26,41 @@ const newLine = (): FeeLineInput => ({
   quantity: 1,
   justification: '',
 });
-export function FeeCalculatorForm({
-  clients,
-  canSave,
+function StbvvClientField({
+  fixedClient,
+  client,
+  onChange,
 }: {
-  clients: Array<{ id: string; name: string }>;
+  fixedClient?: { id: string; name: string };
+  client: ClientComboboxValue | null;
+  onChange: (client: ClientComboboxValue | null) => void;
+}) {
+  if (fixedClient) {
+    return <input id="stbvv-client" className="input" value={fixedClient.name} readOnly />;
+  }
+  return (
+    <ClientCombobox
+      id="stbvv-client"
+      filters={['notEnded', 'notAnonymized']}
+      value={client}
+      onChange={onChange}
+      placeholder="Mandat auswählen — Name, DATEV- oder Addison-Nr."
+    />
+  );
+}
+export function FeeCalculatorForm({
+  canSave,
+  fixedClient,
+}: {
   canSave: boolean;
+  /** Mandantenakte: fester Mandant statt Auswahl. */
+  fixedClient?: { id: string; name: string };
 }) {
   const [lines, setLines] = useState<FeeLineInput[]>([]);
   const [expenses, setExpenses] = useState<FeeExpenseInput[]>([]);
-  const [clientId, setClientId] = useState(clients[0]?.id ?? '');
+  // Serversuche statt vorgeladenem Bestand; keine stille Vorauswahl.
+  const [client, setClient] = useState<ClientComboboxValue | null>(fixedClient ?? null);
+  const clientId = client?.id ?? '';
   const [title, setTitle] = useState('Gebührenkalkulation');
   const [currentLawConfirmed, setLaw] = useState(false),
     [matterReviewConfirmed, setReview] = useState(false);
@@ -93,17 +119,12 @@ export function FeeCalculatorForm({
   return (
     <div className="space-y-5">
       <div className="card grid gap-4 p-5 md:grid-cols-2">
-        <label className="block text-sm font-medium text-secondary">
-          Mandat
-          <select className={field} value={clientId} onChange={(e) => setClientId(e.target.value)}>
-            <option value="">Mandat auswählen</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="block text-sm font-medium text-secondary">
+          <label htmlFor="stbvv-client">Mandat</label>
+          <div className="mt-1">
+            <StbvvClientField fixedClient={fixedClient} client={client} onChange={setClient} />
+          </div>
+        </div>
         <label className="block text-sm font-medium text-secondary">
           Bezeichnung
           <input

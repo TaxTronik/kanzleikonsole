@@ -1,7 +1,7 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { isUuid } from '@/lib/uuid';
-import { visibleMandatesTx } from '@/server/mandate-expansion/service';
+import { visibleMandateTx } from '@/server/mandate-expansion/service';
 import {
   offboardingSourceTx,
   sensitiveHandoverDocument,
@@ -24,8 +24,9 @@ export default async function OffboardingPage({
   const { session, ctx } = await expansionPage('mandateOffboarding', true);
   const sp = await searchParams;
   const clientId = isUuid(sp.clientId ?? '') ? sp.clientId! : '';
-  const clients = await withTenantContext(ctx, (tx) => visibleMandatesTx(tx, session));
-  const client = clients.find((c) => c.id === clientId);
+  const client = clientId
+    ? await withTenantContext(ctx, (tx) => visibleMandateTx(tx, session, clientId))
+    : null;
   const data = client
     ? await withTenantContext(ctx, async (tx) => ({
         source: await offboardingSourceTx(tx, session, clientId),
@@ -47,7 +48,7 @@ export default async function OffboardingPage({
         Portalzugriff; offene Fristen bleiben bestehen. Kein automatischer Versand, keine Löschung
         und keine allgemeine Löschfreigabe.
       </p>
-      <ClientSelect clients={clients} selected={clientId} />
+      <ClientSelect selected={client} />
       {data && (
         <>
           <section className="card p-5 space-y-3">

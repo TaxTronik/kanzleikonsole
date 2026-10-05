@@ -10,15 +10,12 @@ import {
   type FieldErrors,
 } from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
+import { ClientCombobox } from '@/components/ui/client-combobox';
 import { createAppointmentAction, type AppointmentActionResult } from './actions';
 
 interface StaffOption {
   id: string;
   fullName: string;
-}
-interface ClientOption {
-  id: string;
-  name: string;
 }
 
 function AppointmentFieldError({ name, fieldErrors }: { name: string; fieldErrors?: FieldErrors }) {
@@ -27,12 +24,10 @@ function AppointmentFieldError({ name, fieldErrors }: { name: string; fieldError
 
 export function NewAppointmentDialog({
   staffOptions,
-  clientOptions,
   currentStaffId,
   defaultStart,
 }: {
   staffOptions: StaffOption[];
-  clientOptions: ClientOption[];
   currentStaffId: string;
   defaultStart?: string;
 }) {
@@ -162,20 +157,14 @@ export function NewAppointmentDialog({
               <label className="label" htmlFor="new-appointment-client">
                 Mandant (optional)
               </label>
-              <select
+              {/* Serversuche statt der ersten 500 Mandanten; leer = ohne Mandantenbezug. */}
+              <ClientCombobox
                 id="new-appointment-client"
                 name="clientId"
-                defaultValue=""
-                className="input"
+                filters={['active']}
+                placeholder="Ohne Mandantenbezug — Name, DATEV- oder Addison-Nr. suchen"
                 {...fieldErrorProps('clientId', fieldErrors)}
-              >
-                <option value="">— ohne Mandantenbezug —</option>
-                {clientOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              />
               <AppointmentFieldError name="clientId" fieldErrors={fieldErrors} />
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

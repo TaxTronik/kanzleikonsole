@@ -11,6 +11,7 @@
 // =============================================================================
 import { test, expect, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { chooseClient } from './helpers/client-combobox';
 import {
   clearMailhogMessages,
   expectPortalDashboardReady,
@@ -1388,25 +1389,12 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
         .catch(() => false));
     if (isExternal) {
       invoiceModeUnderTest = 'EXTERNAL';
-      const clientSelect = page.locator('#clientId');
-      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({
+      const clientInput = page.locator('#clientId');
+      await expect(clientInput, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({
         timeout: 5000,
       });
-
-      const optionCount = await clientSelect.locator('option').count();
-      expect(
-        optionCount,
-        'EXTERNAL-Rechnungsupload braucht mindestens einen auswählbaren Mandanten',
-      ).toBeGreaterThan(1);
-      const mustermannOption = clientSelect
-        .locator('option')
-        .filter({ hasText: /Mustermann GmbH/i })
-        .first();
-      const selectedClient =
-        (await mustermannOption.getAttribute('value').catch(() => null)) ??
-        (await clientSelect.locator('option').nth(1).getAttribute('value'));
-      expect(selectedClient, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
-      await clientSelect.selectOption(selectedClient!);
+      // Serversuche (ClientCombobox) statt eines vorgeladenen <select>.
+      await chooseClient(page, clientInput, 'Mustermann GmbH');
 
       const externalNumber = `E2E-EXT-${Date.now()}`;
       await page.locator('#number').fill(externalNumber);
@@ -1450,14 +1438,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
       );
     }
 
-    await page
-      .locator('#clientId')
-      .selectOption({ label: 'Mustermann GmbH' })
-      .catch(async () => {
-        const firstValue = await page.locator('#clientId option').first().getAttribute('value');
-        expect(firstValue, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
-        await page.locator('#clientId').selectOption(firstValue!);
-      });
+    await chooseClient(page, page.locator('#clientId'), 'Mustermann GmbH');
     await subjectInput.fill('E2E Compliance Test Rechnung');
 
     const descInput = page.locator('[id^="pos-0-description"]');

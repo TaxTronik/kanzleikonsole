@@ -80,7 +80,9 @@ export default async function InteractionsPage() {
       : [];
     return { clients, contacts, notices, workflows, rows, trendRows };
   });
-  const clientName = (id: string) => data.clients.find((c) => c.id === id)?.name ?? 'Mandant';
+  // Map statt clients.find je Option/Zeile (vorher O(Zeilen × Mandanten)).
+  const clientNames = new Map(data.clients.map((c) => [c.id, c.name]));
+  const clientName = (id: string) => clientNames.get(id) ?? 'Mandant';
   const trend = feedbackMonthlyTrend(data.trendRows.slice(0, 5000), trendNow);
   const contactOptions = data.contacts.map((c) => (
     <option key={c.id} value={c.id}>

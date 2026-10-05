@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { CalendarClock, Search } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { isStaffAdmin, accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import {
   loadReminderOverview,
@@ -48,13 +48,7 @@ export default async function RemindersPage({
     page,
     pageSize: 25,
   });
-  const { clients, staffOptions, notifyMode } = await withTenantContext(ctx, async (tx) => ({
-    clients: await tx.client.findMany({
-      where: await accessibleClientsWhereFor(tx, session),
-      orderBy: { name: 'asc' },
-      take: 500,
-      select: { id: true, name: true },
-    }),
+  const { staffOptions, notifyMode } = await withTenantContext(ctx, async (tx) => ({
     staffOptions: await tx.staffUser.findMany({
       where: { active: true },
       orderBy: { fullName: 'asc' },
@@ -87,7 +81,7 @@ export default async function RemindersPage({
         </p>
       </div>
       <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
-        <NewReminderForm clients={clients} staffOptions={staffOptions} />
+        <NewReminderForm staffOptions={staffOptions} />
         <NotifyModeToggle initial={notifyMode} />
       </div>
       <nav aria-label="Ticketzuständigkeit" className="flex flex-wrap gap-2 mb-4">

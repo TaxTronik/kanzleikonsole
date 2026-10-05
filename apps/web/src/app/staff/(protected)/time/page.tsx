@@ -13,14 +13,14 @@ export default async function TimeTrackingPage() {
 
   const { tenantId, staffId } = session.user;
 
-  const [running, todayEntries, clients] = await withTenantContext(
+  const [running, todayEntries, clientNames] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
       const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
       const { timeEntryWhere, clientWhere } = buildTimePageAccessFilters(deniedClientIds);
-      return Promise.all([
+      const [runningEntry, entries] = await Promise.all([
         tx.timeEntry.findFirst({
           where: { staffId, endedAt: null, ...timeEntryWhere },
         }),
@@ -28,17 +28,19 @@ export default async function TimeTrackingPage() {
           where: { staffId, startedAt: { gte: startOfDay }, ...timeEntryWhere },
           orderBy: { startedAt: 'desc' },
         }),
-        tx.client.findMany({
-          where: clientWhere,
-          orderBy: { name: 'asc' },
-          take: 500,
-          select: { id: true, name: true },
-        }),
       ]);
+      // Namen nur für die heute gebuchten Mandanten — die Auswahl selbst sucht
+      // serverseitig (früher: erste 500 Mandanten, danach „Mandant").
+      const ids = [...new Set(entries.flatMap((e) => (e.clientId ? [e.clientId] : [])))];
+      const named = ids.length
+        ? await tx.client.findMany({
+            where: { AND: [{ id: { in: ids } }, clientWhere ?? {}] },
+            select: { id: true, name: true },
+          })
+        : [];
+      return [runningEntry, entries, new Map(named.map((c) => [c.id, c.name]))] as const;
     },
   );
-
-  const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
 
   const totalMinutesToday = todayEntries.reduce((sum, e) => {
     const end = e.endedAt ?? new Date();
@@ -83,7 +85,7 @@ export default async function TimeTrackingPage() {
                         <p className="text-xs text-muted">
                           {fmtTime(e.startedAt)}
                           {e.endedAt ? ` – ${fmtTime(e.endedAt)}` : ' – läuft'}
-                          {e.clientId ? ` · ${clientNameById.get(e.clientId) ?? 'Mandant'}` : ''}
+                          {e.clientId ? ` · ${clientNames.get(e.clientId) ?? 'Mandant'}` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -127,7 +129,7 @@ export default async function TimeTrackingPage() {
           ) : (
             <>
               <h2 className="text-sm font-medium text-primary mb-3">Neuer Timer</h2>
-              <StartTimerForm clients={clients} />
+              <StartTimerForm />
             </>
           )}
         </div>

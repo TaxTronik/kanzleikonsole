@@ -4,6 +4,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { assertModuleEnabled } from '@/server/settings/modules';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { ExpansionForm } from '@/components/expansion-form';
+import { ClientMultiPicker } from '@/components/ui/client-multi-picker';
 import {
   createCampaignAction,
   rolloutCampaignAction,
@@ -18,18 +19,20 @@ export default async function YearEndPage() {
   await assertModuleEnabled(ctx, 'yearEndCampaigns');
   await assertModuleEnabled(ctx, 'forms');
   const data = await withTenantContext(ctx, async (tx) => {
-    const clients = await tx.client.findMany({
-      where: {
-        allowActive: true,
-        mandateEndedAt: null,
-        ...(await accessibleClientsWhereFor(tx, session)),
-      },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
     const campaigns = await tx.yearEndCampaign.findMany({ orderBy: { createdAt: 'desc' } });
+    // Sichtbarkeit wie bisher (zugänglich, freigegeben, nicht beendet), aber als
+    // Relationsfilter statt IN-Liste über den gesamten vorab geladenen Bestand;
+    // der Name kommt direkt mit (früher clients.find je Eintrag).
     const entries = await tx.yearEndCampaignEntry.findMany({
-      where: { clientId: { in: clients.map((c) => c.id) } },
+      where: {
+        client: {
+          AND: [
+            await accessibleClientsWhereFor(tx, session),
+            { allowActive: true, mandateEndedAt: null },
+          ],
+        },
+      },
+      include: { client: { select: { name: true } } },
     });
     const submissions = await tx.formSubmission.findMany({
       where: { id: { in: entries.map((e) => e.submissionId) } },
@@ -52,7 +55,13 @@ export default async function YearEndPage() {
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
-    return { clients, campaigns, entries, submissions, templates, requests };
+    return {
+      campaigns,
+      entries,
+      submissions: new Map(submissions.map((submission) => [submission.id, submission])),
+      templates,
+      requestStatus: new Map(requests.map((request) => [request.id, request.status])),
+    };
   });
   return (
     <div className="p-8 max-w-6xl space-y-6">
@@ -113,25 +122,26 @@ export default async function YearEndPage() {
                 Bereits zugeordnete Mandanten werden übersprungen. Bei einem Fehler wird der gesamte
                 Lauf zurückgerollt.
               </p>
-              <div className="max-h-60 overflow-auto">
-                {data.clients.map((client) => (
-                  <label className="flex gap-2 py-1" key={client.id}>
-                    <input type="checkbox" name="clientId" value={client.id} />
-                    {client.name}
-                  </label>
-                ))}
-              </div>
+              <label className="label" htmlFor={`year-end-rollout-${c.id}`}>
+                Empfänger
+              </label>
+              <ClientMultiPicker
+                id={`year-end-rollout-${c.id}`}
+                name="clientId"
+                filters={['active', 'notEnded']}
+                max={200}
+              />
             </ExpansionForm>
           </details>
           <ul className="divide-y">
             {data.entries
               .filter((e) => e.campaignId === c.id)
               .map((e) => {
-                const submission = data.submissions.find((s) => s.id === e.submissionId);
+                const submission = data.submissions.get(e.submissionId);
                 if (!submission) return null;
                 const phase = campaignSubmissionPhase(
                   submission,
-                  data.requests.find((r) => r.id === e.requestId)?.status,
+                  data.requestStatus.get(e.requestId),
                 );
                 const progress = formAnswerProgress(submission.schemaSnapshot, submission.answers);
                 const label = {
@@ -150,7 +160,7 @@ export default async function YearEndPage() {
                         href={`/staff/forms/submissions/${e.submissionId}`}
                         className="underline"
                       >
-                        {data.clients.find((client) => client.id === e.clientId)?.name}
+                        {e.client.name}
                       </Link>
                       <span
                         className={

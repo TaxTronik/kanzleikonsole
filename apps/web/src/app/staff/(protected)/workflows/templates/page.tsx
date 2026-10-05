@@ -17,22 +17,18 @@ export default async function WorkflowsPage() {
   const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
 
-  const [templates, clients] = await withTenantContext(
+  // Die Mandantenauswahl im Startdialog sucht serverseitig (mit Zugriffsregel);
+  // früher wurde hier der gesamte Bestand ohne Sichtbarkeitsfilter geladen.
+  const templates = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) =>
-      Promise.all([
-        tx.workflowTemplate.findMany({
-          orderBy: [{ active: 'desc' }, { name: 'asc' }],
-          include: {
-            _count: { select: { steps: true, instances: true } },
-            defaultSkill: { select: { label: true } },
-          },
-        }),
-        tx.client.findMany({
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true },
-        }),
-      ]),
+    (tx) =>
+      tx.workflowTemplate.findMany({
+        orderBy: [{ active: 'desc' }, { name: 'asc' }],
+        include: {
+          _count: { select: { steps: true, instances: true } },
+          defaultSkill: { select: { label: true } },
+        },
+      }),
   );
 
   return (
@@ -125,11 +121,7 @@ export default async function WorkflowsPage() {
                   <td className="px-6 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       {t.active && t._count.steps > 0 && (
-                        <QuickStartButton
-                          templateId={t.id}
-                          templateName={t.name}
-                          clients={clients}
-                        />
+                        <QuickStartButton templateId={t.id} templateName={t.name} />
                       )}
                       <Link
                         href={`/staff/workflows/templates/${t.id}`}

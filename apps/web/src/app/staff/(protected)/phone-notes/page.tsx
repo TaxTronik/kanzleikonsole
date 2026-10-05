@@ -12,7 +12,7 @@ export default async function PhoneNotesPage() {
 
   const { tenantId, staffId } = session.user;
 
-  const [notes, clients, staff, callerHistory] = await withTenantContext(
+  const [notes, staff, callerHistory] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Telefonnotizen gesperrter/vertraulicher Mandanten in dieser globalen
@@ -40,11 +40,6 @@ export default async function PhoneNotesPage() {
           },
           take: 100,
         }),
-        tx.client.findMany({
-          where: denied.length ? { id: { notIn: denied } } : undefined,
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true },
-        }),
         tx.staffUser.findMany({
           where: { active: true },
           orderBy: { fullName: 'asc' },
@@ -53,7 +48,14 @@ export default async function PhoneNotesPage() {
         tx.phoneNote.findMany({
           where: clientScope,
           orderBy: { createdAt: 'desc' },
-          select: { callerName: true, callerPhone: true, clientId: true },
+          // Der Mandantenname kommt aus derselben zugriffsgefilterten Zeile —
+          // die Auswahl lädt den Bestand nicht mehr vollständig vor.
+          select: {
+            callerName: true,
+            callerPhone: true,
+            clientId: true,
+            client: { select: { name: true } },
+          },
           take: 500,
         }),
       ]);
@@ -62,13 +64,21 @@ export default async function PhoneNotesPage() {
 
   const callerMap = new Map<
     string,
-    { name: string; phone: string | null; clientId: string | null }
+    {
+      name: string;
+      phone: string | null;
+      client: { id: string; name: string } | null;
+    }
   >();
   for (const c of callerHistory) {
     const key = c.callerName.trim().toLowerCase();
     if (!key) continue;
     if (callerMap.has(key)) continue;
-    callerMap.set(key, { name: c.callerName.trim(), phone: c.callerPhone, clientId: c.clientId });
+    callerMap.set(key, {
+      name: c.callerName.trim(),
+      phone: c.callerPhone,
+      client: c.clientId && c.client ? { id: c.clientId, name: c.client.name } : null,
+    });
   }
   const callers = Array.from(callerMap.values()).slice(0, 100);
 
@@ -133,12 +143,7 @@ export default async function PhoneNotesPage() {
 
         <div className="card p-6 h-fit lg:sticky lg:top-6">
           <h2 className="text-sm font-medium text-primary mb-4">Neue Notiz</h2>
-          <NewPhoneNoteForm
-            clients={clients}
-            staff={staff}
-            currentStaffId={staffId}
-            callers={callers}
-          />
+          <NewPhoneNoteForm staff={staff} currentStaffId={staffId} callers={callers} />
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { isUuid } from '@/lib/uuid';
-import { loadStructureTx, visibleMandatesTx } from '@/server/mandate-expansion/service';
+import { loadStructureTx, visibleMandateTx } from '@/server/mandate-expansion/service';
 import { expansionPage, ExpansionNavigation, ClientSelect } from '../common';
 import { ActionForm } from '../action-form';
 import { archiveStructureAction } from '../actions';
@@ -17,8 +17,9 @@ export default async function StructurePage({
   const { session, ctx } = await expansionPage('mandateStructure');
   const sp = await searchParams;
   const clientId = isUuid(sp.clientId ?? '') ? sp.clientId! : '';
-  const clients = await withTenantContext(ctx, (tx) => visibleMandatesTx(tx, session));
-  const client = clients.find((c) => c.id === clientId);
+  const client = clientId
+    ? await withTenantContext(ctx, (tx) => visibleMandateTx(tx, session, clientId))
+    : null;
   let saved: Awaited<ReturnType<typeof loadStructureTx>> = null;
   let unavailable = false;
   if (client)
@@ -41,7 +42,7 @@ export default async function StructurePage({
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl space-y-6">
       <ExpansionNavigation />
       <h1 className="text-2xl font-semibold">Mandanten- und Beteiligungsstruktur</h1>
-      <ClientSelect clients={clients} selected={clientId} />
+      <ClientSelect selected={client} />
       {unavailable ? (
         <p>
           Die vollständige Struktur ist mit Ihren aktuellen Zugriffsrechten nicht verfügbar.
@@ -66,7 +67,6 @@ export default async function StructurePage({
             )}
             <StructureEditor
               key={`${clientId}:${saved?.revision ?? 0}`}
-              clients={clients}
               initial={
                 saved?.input ?? {
                   clientId,

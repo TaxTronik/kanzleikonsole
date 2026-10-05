@@ -3,6 +3,7 @@
 // =============================================================================
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { chooseClient } from './helpers/client-combobox';
 import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -304,24 +305,12 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
         .isVisible({ timeout: 2000 })
         .catch(() => false)
     ) {
-      const clientSelect = page.locator('#clientId');
-      await expect(clientSelect, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({
+      const clientInput = page.locator('#clientId');
+      await expect(clientInput, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({
         timeout: 5000,
       });
-      const optionCount = await clientSelect.locator('option').count();
-      expect(
-        optionCount,
-        'EXTERNAL-Rechnungsupload braucht mindestens einen Mandanten',
-      ).toBeGreaterThan(1);
-      const mustermannOption = clientSelect
-        .locator('option')
-        .filter({ hasText: /Mustermann GmbH/i })
-        .first();
-      const selectedClient =
-        (await mustermannOption.getAttribute('value').catch(() => null)) ??
-        (await clientSelect.locator('option').nth(1).getAttribute('value'));
-      expect(selectedClient, 'Mandanten-Select muss eine echte Option enthalten').toBeTruthy();
-      await clientSelect.selectOption(selectedClient!);
+      // Serversuche (ClientCombobox) statt eines vorgeladenen <select>.
+      await chooseClient(page, clientInput, 'Mustermann GmbH');
 
       const number = `E2E-ACT-${Date.now()}`;
       await page.locator('#number').fill(number);
@@ -357,7 +346,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     }
 
     const invoiceSubject = `E2E Test Rechnung ${randomUUID().slice(0, 8)}`;
-    await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' });
+    await chooseClient(page, page.locator('#clientId'), 'Mustermann GmbH');
     await page.locator('#subject').fill(invoiceSubject);
     await page.locator('[id^="pos-0-description"]').fill('Beratungsleistung');
     await page.locator('[id^="pos-0-unitPrice"]').fill('150.00');
@@ -396,7 +385,11 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const titleInput = appointmentDialog.locator('input[name="title"]');
     await expect(titleInput).toBeVisible({ timeout: 5000 });
     await titleInput.fill('E2E Test Termin');
-    await page.locator('select[name="clientId"]').selectOption({ label: 'Mustermann GmbH' });
+    await chooseClient(
+      appointmentDialog,
+      appointmentDialog.locator('#new-appointment-client'),
+      'Mustermann GmbH',
+    );
     const t = new Date(Date.now() + 86400000);
     t.setHours(9, 0, 0, 0);
     const s = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -457,9 +450,11 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const startSubmit = startDialog.getByRole('button', { name: 'Workflow starten', exact: true });
     await expect(startSubmit).toBeVisible({ timeout: 5000 });
     await expect(startSubmit).toBeDisabled();
-    await startDialog
-      .getByRole('listbox', { name: 'Mandant auswählen', exact: true })
-      .selectOption({ label: 'Mustermann GmbH' });
+    await chooseClient(
+      startDialog,
+      startDialog.getByRole('combobox', { name: 'Mandant auswählen', exact: true }),
+      'Mustermann GmbH',
+    );
     await expect(startSubmit).toBeEnabled();
     await startSubmit.click();
     await page.waitForURL(
@@ -646,13 +641,13 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       );
     }
 
-    const clientSelect = page.locator('#clientId');
-    const selectVisible = await clientSelect.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!selectVisible) {
+    const clientInput = page.locator('#clientId');
+    const inputVisible = await clientInput.isVisible({ timeout: 5000 }).catch(() => false);
+    if (!inputVisible) {
       await ctx.close();
       throw new Error('POA creation form not available (#clientId missing)');
     }
-    await clientSelect.selectOption({ label: 'Mustermann GmbH' });
+    await chooseClient(page, clientInput, 'Mustermann GmbH');
     await page.locator('#signerName').fill('E2E Test Unterzeichner');
     await page.locator('#signerEmail').fill('test@example.com');
     const poaSubject = `E2E Test Vollmacht ${randomUUID().slice(0, 8)}`;
@@ -720,7 +715,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const descInput = page.locator('#description');
     await expect(descInput).toBeVisible({ timeout: 5000 });
     await descInput.fill('E2E Test Zeiterfassung');
-    await page.locator('#clientId').selectOption({ label: 'Mustermann GmbH' });
+    await chooseClient(page, page.locator('#clientId'), 'Mustermann GmbH');
     const startBtn = page.getByRole('button', { name: /Timer starten/ });
     await expect(startBtn).toBeVisible({ timeout: 5000 });
     await startBtn.click();

@@ -180,6 +180,47 @@ function poaUploadErrorResult(error: unknown): ActionResult {
   }
 }
 
+export interface PoaSignerContactsResult {
+  ok: boolean;
+  error?: string;
+  contacts?: Array<{ id: string; fullName: string; email: string }>;
+}
+
+/**
+ * Aktive Kontakte des gewählten Mandanten für die Unterzeichner-Vorbelegung.
+ * Ersetzt das frühere Vorladen ALLER Mandanten samt aller Kontakte in die
+ * Anlageseite. Schranken wie Seite und Anlage: ADMIN/PARTNER, Vollmachtenmodul,
+ * Mandantenzugriff, kein beendetes oder anonymisiertes Mandat.
+ */
+export async function loadPoaSignerContactsAction(
+  clientId: string,
+): Promise<PoaSignerContactsResult> {
+  const parsedClientId = z.string().uuid().safeParse(clientId);
+  if (!parsedClientId.success) return { ok: false, error: 'Ungültiger Mandant.' };
+  const g = await staffActionGuard({ requireAdmin: true, modeModule: 'poa' });
+  if (!g.ok) return { ok: false, error: g.error };
+  try {
+    const contacts = await withTenantContext(g.ctx, async (tx) => {
+      await assertClientAccessTx(tx, g.session, parsedClientId.data);
+      const client = await tx.client.findFirst({
+        where: { id: parsedClientId.data, anonymizedAt: null, mandateEndedAt: null },
+        select: {
+          contacts: {
+            where: { active: true },
+            orderBy: { fullName: 'asc' },
+            select: { id: true, fullName: true, email: true },
+          },
+        },
+      });
+      if (!client) throw new ActionError('Mandant nicht verfügbar.');
+      return client.contacts;
+    });
+    return { ok: true, contacts };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
 export async function createPoaAction(
   _prev: ActionResult | null,
   formData: FormData,

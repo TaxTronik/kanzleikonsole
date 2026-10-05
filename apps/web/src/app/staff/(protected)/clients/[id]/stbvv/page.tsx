@@ -42,7 +42,7 @@ export default async function ClientStbvvPage({ params }: { params: Promise<{ id
       </p>
       <details className="card p-5 space-y-4">
         <summary className="cursor-pointer font-semibold">Neue Kalkulation erstellen</summary>
-        <FeeCalculatorForm clients={[data.client]} canSave={canSave} />
+        <FeeCalculatorForm fixedClient={data.client} canSave={canSave} />
       </details>
       {data.quotes.map((q) => {
         const r = q.result as unknown as FeeCalculation;

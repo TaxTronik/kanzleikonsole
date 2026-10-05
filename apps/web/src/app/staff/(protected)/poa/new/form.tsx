@@ -1,28 +1,104 @@
 ﻿'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import Link from 'next/link';
-import { createPoaAction, type ActionResult } from '../actions';
+import { createPoaAction, loadPoaSignerContactsAction, type ActionResult } from '../actions';
 import { FileButton } from '@/components/file-button';
+import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
 import { poaCreateResumeHref, type PoaCreateReturnContext } from './return-context';
+
+interface Contact {
+  id: string;
+  fullName: string;
+  email: string;
+}
 
 interface Client {
   id: string;
   name: string;
-  contacts: Array<{ id: string; fullName: string; email: string }>;
+  contacts: Contact[];
 }
 
+interface ContactsState {
+  contacts: Contact[];
+  loading: boolean;
+  error: string | null;
+}
+
+/**
+ * Mandant per Serversuche, Kontakte nur des gewählten Mandanten (früher: alle
+ * Mandanten samt aller Kontakte im Seiten-Payload). Ein fest übergebener
+ * Mandant (Onboarding/Upload) bleibt gesperrt; dann trägt ein eigenes
+ * verstecktes Feld die ID, weil gesperrte Felder nicht mitgesendet werden.
+ */
+function PoaClientFields({
+  client,
+  contacts,
+  contactId,
+  locked,
+  onClientChange,
+  onContactChange,
+}: {
+  client: ClientComboboxValue | null;
+  contacts: ContactsState;
+  contactId: string;
+  locked: boolean;
+  onClientChange: (client: ClientComboboxValue | null) => void;
+  onContactChange: (id: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="label" htmlFor="clientId">
+          Mandant
+        </label>
+        <ClientCombobox
+          id="clientId"
+          name="clientId"
+          filters={['active', 'notEnded', 'notAnonymized']}
+          value={client}
+          onChange={onClientChange}
+          required
+          disabled={locked}
+        />
+      </div>
+      <div>
+        <label className="label" htmlFor="signerContactId">
+          Bestehender Kontakt (optional)
+        </label>
+        <select
+          id="signerContactId"
+          name="signerContactId"
+          className="input"
+          value={contactId}
+          onChange={(e) => onContactChange(e.target.value)}
+          disabled={!client || contacts.loading}
+          aria-busy={contacts.loading}
+        >
+          <option value="">— manuell eingeben —</option>
+          {contacts.contacts.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.fullName} ({c.email})
+            </option>
+          ))}
+        </select>
+        {contacts.error && <p className="mt-1 text-xs text-red-700">{contacts.error}</p>}
+      </div>
+    </div>
+  );
+}
+
+const NO_CONTACTS: ContactsState = { contacts: [], loading: false, error: null };
+
 export function NewPoaForm({
-  clients,
   poaMode,
-  initialClientId,
+  initialClient,
   initialPendingDocumentId,
   uploadIntentId,
   returnContext,
 }: {
-  clients: Client[];
   poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
-  initialClientId?: string;
+  initialClient?: Client;
   initialPendingDocumentId?: string;
   uploadIntentId?: string;
   returnContext?: PoaCreateReturnContext;
@@ -32,22 +108,49 @@ export function NewPoaForm({
     createPoaAction,
     null,
   );
-  const [clientId, setClientId] = useState(
-    clients.some((client) => client.id === initialClientId)
-      ? (initialClientId ?? '')
-      : (clients[0]?.id ?? ''),
+  const [client, setClient] = useState<ClientComboboxValue | null>(
+    initialClient ? { id: initialClient.id, name: initialClient.name } : null,
   );
+  const [contacts, setContacts] = useState<ContactsState>(
+    initialClient ? { ...NO_CONTACTS, contacts: initialClient.contacts } : NO_CONTACTS,
+  );
+  const contactRequest = useRef(0);
   const [contactId, setContactId] = useState('');
   const [signerEmail, setSignerEmail] = useState('');
   const [signerName, setSignerName] = useState('');
 
-  const client = clients.find((c) => c.id === clientId);
+  const clientId = client?.id ?? '';
   const pendingDocumentId = state?.pendingDocumentId ?? initialPendingDocumentId;
+
+  async function onClientChange(next: ClientComboboxValue | null) {
+    setClient(next);
+    setContactId('');
+    setSignerEmail('');
+    setSignerName('');
+    const request = ++contactRequest.current;
+    if (!next) {
+      setContacts(NO_CONTACTS);
+      return;
+    }
+    setContacts({ ...NO_CONTACTS, loading: true });
+    const result = await loadPoaSignerContactsAction(next.id).catch(() => ({
+      ok: false as const,
+      error: 'Kontakte konnten nicht geladen werden.',
+      contacts: undefined,
+    }));
+    // Nur die Antwort zur zuletzt gewählten Auswahl übernehmen.
+    if (request !== contactRequest.current) return;
+    setContacts({
+      ...NO_CONTACTS,
+      contacts: result.contacts ?? [],
+      error: result.ok ? null : (result.error ?? 'Kontakte konnten nicht geladen werden.'),
+    });
+  }
 
   function onContactChange(id: string) {
     setContactId(id);
     if (id) {
-      const c = client?.contacts.find((x) => x.id === id);
+      const c = contacts.contacts.find((x) => x.id === id);
       if (c) {
         setSignerEmail(c.email);
         setSignerName(c.fullName);
@@ -68,52 +171,14 @@ export function NewPoaForm({
           <input type="hidden" name="clientId" value={clientId} />
         </>
       ) : null}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label" htmlFor="clientId">
-            Mandant
-          </label>
-          <select
-            id="clientId"
-            name="clientId"
-            className="input"
-            value={clientId}
-            onChange={(e) => {
-              setClientId(e.target.value);
-              setContactId('');
-              setSignerEmail('');
-              setSignerName('');
-            }}
-            required
-            disabled={Boolean(pendingDocumentId || returnContext)}
-          >
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="signerContactId">
-            Bestehender Kontakt (optional)
-          </label>
-          <select
-            id="signerContactId"
-            name="signerContactId"
-            className="input"
-            value={contactId}
-            onChange={(e) => onContactChange(e.target.value)}
-          >
-            <option value="">— manuell eingeben —</option>
-            {client?.contacts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.fullName} ({c.email})
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <PoaClientFields
+        client={client}
+        contacts={contacts}
+        contactId={contactId}
+        locked={Boolean(pendingDocumentId || returnContext)}
+        onClientChange={onClientChange}
+        onContactChange={onContactChange}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <div>

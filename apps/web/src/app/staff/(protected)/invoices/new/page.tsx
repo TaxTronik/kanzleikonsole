@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
+import { hasStaffPermission } from '@/server/auth/rbac';
+import { hasClientPickerOptionTx } from '@/server/clients/picker';
 import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
@@ -21,23 +22,20 @@ export default async function NewInvoicePage() {
   const needed = modules.invoiceMode === 'EXTERNAL' ? 'INVOICE_SEND' : 'INVOICE_MANAGE';
   if (!hasStaffPermission(session, needed)) redirect('/staff/invoices');
 
-  const [clients, categories] = await withTenantContext(
+  // ACCESS-CLIENT-MODE-001: Die Auswahl sucht serverseitig mit
+  // accessibleClientsWhereFor + allowActive (ClientCombobox, Filter `active`);
+  // die Seite prüft hier nur noch, ob überhaupt ein Mandant wählbar ist.
+  const [hasClients, categories] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const accessWhere = await accessibleClientsWhereFor(tx, session);
-      return Promise.all([
-        tx.client.findMany({
-          where: { ...accessWhere, allowActive: true },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true },
-        }),
+    async (tx) =>
+      Promise.all([
+        hasClientPickerOptionTx(tx, session, ['active']),
         tx.invoiceCategory.findMany({
           where: { active: true },
           orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
           select: { id: true, name: true },
         }),
-      ]);
-    },
+      ]),
   );
 
   // iter85 (GoB): In-App-Nummern vergibt der Nummernkreis automatisch und
@@ -67,14 +65,14 @@ export default async function NewInvoicePage() {
         </div>
       </div>
 
-      {clients.length === 0 ? (
+      {!hasClients ? (
         <ClientPrerequisiteEmptyState
           canCreateClient={hasStaffPermission(session, 'CLIENT_CREATE')}
         />
       ) : isExternal ? (
-        <ExternalInvoiceForm clients={clients} categories={categories} />
+        <ExternalInvoiceForm categories={categories} />
       ) : (
-        <NewInvoiceForm clients={clients} />
+        <NewInvoiceForm />
       )}
     </div>
   );

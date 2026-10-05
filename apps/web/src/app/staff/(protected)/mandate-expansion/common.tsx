@@ -4,6 +4,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { readModules, type BooleanModuleKey } from '@/server/settings/modules';
 import { resolveMandateExpansionItems } from '@/lib/navigation-registry';
+import { ClientCombobox } from '@/components/ui/client-combobox';
 export async function expansionPage(module: BooleanModuleKey, admin = false) {
   const session = await requireStaffPage({ admin });
   const ctx = {
@@ -36,26 +37,21 @@ export async function ExpansionNavigation() {
     </nav>
   );
 }
-export function ClientSelect({
-  clients,
-  selected,
-}: {
-  clients: Array<{ id: string; name: string }>;
-  selected: string;
-}) {
+export function ClientSelect({ selected }: { selected: { id: string; name: string } | null }) {
+  // Serversuche statt der alphabetisch ersten 1.000 Mandanten.
   return (
     <form method="get" className="card flex flex-wrap items-end gap-3 p-5">
-      <label className="block min-w-0 flex-1 sm:max-w-md">
-        <span className="label">Mandant</span>
-        <select className="input" name="clientId" defaultValue={selected}>
-          <option value="">Bitte wählen</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="block min-w-0 flex-1 sm:max-w-md">
+        <label className="label" htmlFor="mandate-expansion-client">
+          Mandant
+        </label>
+        <ClientCombobox
+          id="mandate-expansion-client"
+          name="clientId"
+          filters={['notAnonymized']}
+          defaultValue={selected}
+        />
+      </div>
       <button className="btn-secondary" type="submit">
         Öffnen
       </button>

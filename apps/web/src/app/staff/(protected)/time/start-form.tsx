@@ -2,13 +2,10 @@
 
 import { useActionState } from 'react';
 import { Play } from 'lucide-react';
+import { ClientCombobox } from '@/components/ui/client-combobox';
 import { startTimerAction, type ActionResult } from './actions';
 
-interface Props {
-  clients: Array<{ id: string; name: string }>;
-}
-
-export function StartTimerForm({ clients }: Props) {
+export function StartTimerForm() {
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     startTimerAction,
     null,
@@ -37,14 +34,8 @@ export function StartTimerForm({ clients }: Props) {
         <label className="label" htmlFor="clientId">
           Mandant (optional)
         </label>
-        <select id="clientId" name="clientId" className="input" defaultValue="">
-          <option value="">— intern —</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        {/* Leer = interne Zeit; Serversuche statt der ersten 500 Mandanten. */}
+        <ClientCombobox id="clientId" name="clientId" placeholder="Intern — Mandant suchen" />
       </div>
 
       <label className="flex items-center gap-2 text-sm text-secondary">

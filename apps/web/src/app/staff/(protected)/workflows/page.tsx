@@ -15,6 +15,8 @@ import { Workflow, Activity, User as UserIcon, AlertCircle, Plus } from 'lucide-
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { inaccessibleClientIdsFor } from '@/server/auth/rbac';
+import { hasClientPickerOptionTx, loadClientPickerOptionTx } from '@/server/clients/picker';
+import { ClientCombobox } from '@/components/ui/client-combobox';
 import { fmtDateShort } from '@/lib/fmt';
 
 interface SearchParams {
@@ -33,7 +35,7 @@ export default async function ActiveWorkflowsPage({
   const filter = (sp.filter ?? 'all') as 'all' | 'mine' | 'mineStart';
   const clientFilterId = sp.clientId ?? '';
 
-  const [instances, allClients, allStaff] = await withTenantContext(
+  const [instances, filterClients, filterClient, allStaff] = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Gesperrte/vertrauliche Mandanten aus dieser globalen Workflow-Liste
@@ -74,14 +76,10 @@ export default async function ActiveWorkflowsPage({
           },
           take: 200,
         }),
-        tx.client.findMany({
-          where: {
-            workflowInstances: { some: { status: 'ACTIVE' } },
-            ...(denied.length ? { id: { notIn: denied } } : {}),
-          },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true },
-        }),
+        // Filterauswahl per Serversuche: hier nur prüfen, ob es Mandanten mit
+        // laufenden Workflows gibt, und den Namen des aktiven Filters laden.
+        hasClientPickerOptionTx(tx, session, ['activeWorkflow']),
+        loadClientPickerOptionTx(tx, session, clientFilterId),
         tx.staffUser.findMany({
           where: { active: true },
           orderBy: { fullName: 'asc' },
@@ -155,25 +153,22 @@ export default async function ActiveWorkflowsPage({
           active={filter === 'mineStart'}
           label="Von mir gestartet"
         />
-        {allClients.length > 0 && (
+        {(filterClients || filterClient) && (
           <form action="/staff/workflows" method="get" className="ml-2 flex items-center gap-1">
             {filter !== 'all' && <input type="hidden" name="filter" value={filter} />}
             <label htmlFor="workflow-client-filter" className="sr-only">
               Nach Mandant filtern
             </label>
-            <select
-              id="workflow-client-filter"
-              name="clientId"
-              defaultValue={clientFilterId}
-              className="input text-xs py-1 min-w-[12rem]"
-            >
-              <option value="">— alle Mandanten —</option>
-              {allClients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <div className="min-w-[14rem]">
+              <ClientCombobox
+                id="workflow-client-filter"
+                name="clientId"
+                filters={['activeWorkflow']}
+                defaultValue={filterClient}
+                placeholder="Alle Mandanten"
+                inputClassName="input text-xs py-1 pr-8"
+              />
+            </div>
             <button type="submit" className="btn-secondary text-xs">
               Filtern
             </button>

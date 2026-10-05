@@ -7,18 +7,17 @@ import { REMINDER_PRIORITIES, PRIORITY_LABEL } from '@/lib/reminder-priority';
 import { createReminderAction } from '../clients/[id]/reminders/actions';
 import type { ActionResult } from '@/server/actions/staff-action';
 import { StaffPicker } from './staff-picker';
+import { ClientCombobox } from '@/components/ui/client-combobox';
 
 /**
  * Neue Wiedervorlage — mandantenbezogen ODER intern, mit mehreren Zuständigen.
  *
- * Der Mandant ist eine Auswahl über die zugänglichen Mandate (der Server prüft
- * sie erneut). „Intern" heisst: keine Mandantenakte, nur eine Kanzleiaufgabe.
+ * Der Mandant wird per Serversuche über die zugänglichen Mandate gewählt (der
+ * Server prüft ihn erneut). Ohne Auswahl ist es eine interne Kanzleiaufgabe.
  */
 export function NewReminderForm({
-  clients,
   staffOptions,
 }: {
-  clients: Array<{ id: string; name: string }>;
   staffOptions: Array<{ id: string; fullName: string }>;
 }) {
   const [open, setOpen] = useState(false);
@@ -66,17 +65,20 @@ export function NewReminderForm({
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <label className="text-xs">
-          <span className="text-muted">Mandant</span>
-          <select name="clientId" defaultValue="intern" className="input text-sm w-full mt-0.5">
-            <option value="intern">— intern (ohne Mandant) —</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="text-xs min-w-0">
+          <label className="text-muted" htmlFor="new-reminder-client">
+            Mandant
+          </label>
+          {/* Leer = interne Aufgabe; die Action wertet ein leeres Feld als „intern". */}
+          <div className="mt-0.5">
+            <ClientCombobox
+              id="new-reminder-client"
+              name="clientId"
+              placeholder="Intern (ohne Mandant) — suchen"
+              inputClassName="input text-sm w-full pr-9"
+            />
+          </div>
+        </div>
         <label className="text-xs">
           <span className="text-muted">Fällig</span>
           <input

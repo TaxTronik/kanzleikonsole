@@ -22,6 +22,48 @@ import { payrollAction } from '@/server/payroll/action-result';
 import { persistPayrollFile } from '@/server/payroll/storage';
 import { createPayrollExport } from '@/server/payroll/export';
 import { ActionError } from '@/server/actions/action-error';
+import { withTenantContext } from '@taxtronik/db';
+import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+export interface PayrollEmployerContactsResult {
+  ok: boolean;
+  error?: string;
+  contacts?: Array<{ id: string; fullName: string }>;
+}
+
+/**
+ * Aktive Kontakte des gewählten Mandats für die Arbeitgeberauswahl. Ersetzt
+ * das frühere Vorladen aller Mandate samt aller Kontakte (und die Namenssuche
+ * per clients.find je Kontakt). Gleicher Scope wie zuvor: PAYROLL_MANAGE,
+ * Modul, Mandantenzugriff, freigegebenes und nicht beendetes Mandat.
+ */
+export async function loadPayrollEmployerContactsAction(
+  clientId: string,
+): Promise<PayrollEmployerContactsResult> {
+  const parsedClientId = z.uuid().safeParse(clientId);
+  if (!parsedClientId.success) return { ok: false, error: 'Ungültiges Mandat.' };
+  const g = await staffActionGuard({
+    module: 'payrollIntake',
+    requirePermission: 'PAYROLL_MANAGE',
+  });
+  if (!g.ok) return { ok: false, error: g.error };
+  try {
+    const contacts = await withTenantContext(g.ctx, async (tx) => {
+      await assertClientAccessTx(tx, g.session, parsedClientId.data);
+      return tx.clientContact.findMany({
+        where: {
+          active: true,
+          clientId: parsedClientId.data,
+          client: { allowActive: true, mandateEndedAt: null },
+        },
+        select: { id: true, fullName: true },
+        orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+      });
+    });
+    return { ok: true, contacts };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
 export async function createPayrollAction(data: FormData) {
   return guardPayrollStaff(async () => ({
     link: '/staff/payroll?id=' + (await createPayroll(data)),

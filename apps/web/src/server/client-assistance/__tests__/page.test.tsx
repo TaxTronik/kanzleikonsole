@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({
   session: {} as StaffSession,
-  findMany: vi.fn(),
+  findFirst: vi.fn(),
   access: vi.fn(async () => ({ id: { in: ['visible'] } })),
 }));
 vi.mock('@/server/actions/staff-action', () => ({
@@ -29,7 +29,7 @@ vi.mock('@/server/settings/modules', () => ({
 }));
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, run: (tx: unknown) => unknown) =>
-    run({ client: { findMany: fixture.findMany } }),
+    run({ client: { findFirst: fixture.findFirst } }),
 }));
 vi.mock('../service', () => ({ withAssistance: vi.fn(), assistanceDocumentWhere: vi.fn() }));
 vi.mock('@/components/client-assistance-form', () => ({ ClientAssistanceForm: () => null }));
@@ -64,7 +64,7 @@ beforeEach(() => {
       permissions: [],
     },
   };
-  fixture.findMany.mockResolvedValue([]);
+  fixture.findFirst.mockResolvedValue(null);
 });
 
 describe('Assistenten ohne zugänglichen Mandanten', () => {
@@ -75,17 +75,20 @@ describe('Assistenten ohne zugänglichen Mandanten', () => {
     expect(html).not.toContain('/staff/clients/onboarding/new');
     expect(html).not.toContain('<ul');
     expect(html).not.toMatch(/keine Mandanten vorhanden|versteckt|vertraulich/i);
-    expect(fixture.findMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        where: {
-          id: { in: ['visible'] },
-          tenantId: 'tenant-test',
-          allowActive: true,
-          anonymizedAt: null,
-          mandateEndedAt: null,
-        },
-      }),
-    );
+    // Nur noch eine Existenzprüfung mit derselben Mandatsschranke statt der
+    // ersten 500 Mandanten; die Auswahl selbst sucht serverseitig.
+    expect(fixture.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: {
+        AND: [
+          { tenantId: 'tenant-test' },
+          { id: { in: ['visible'] } },
+          { allowActive: true },
+          { mandateEndedAt: null },
+          { anonymizedAt: null },
+        ],
+      },
+      select: { id: true },
+    });
   });
 
   it.each(['grant', 'admin'] as const)(
@@ -97,11 +100,15 @@ describe('Assistenten ohne zugänglichen Mandanten', () => {
     },
   );
 
-  it('behält die gefilterte Auswahl mit verfügbaren Mandanten bei', async () => {
-    fixture.findMany.mockResolvedValue([{ id: 'visible', name: 'Sichtbarer Mandant' }]);
+  it('bietet bei verfügbaren Mandanten die Serversuche als GET-Auswahl an', async () => {
+    fixture.findFirst.mockResolvedValue({ id: 'visible' });
     const html = await renderPage();
-    expect(html).toContain('href="/staff/client-assistance?clientId=visible"');
-    expect(html).toContain('Sichtbarer Mandant');
+    expect(html).toContain('action="/staff/client-assistance"');
+    expect(html).toContain('method="get"');
+    expect(html).toMatch(/<input[^>]*type="hidden"[^>]*name="clientId"[^>]*value=""/);
+    expect(html).toContain('role="combobox"');
+    // Kein vorgeladener Bestand mehr im Seiten-HTML.
+    expect(html).not.toContain('<ul');
     expect(html).not.toContain('Kein auswählbarer Mandant');
   });
 });

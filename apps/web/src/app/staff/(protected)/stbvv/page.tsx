@@ -1,6 +1,6 @@
-import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import type { TenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
+import { hasStaffPermission } from '@/server/auth/rbac';
 import { assertModuleEnabled } from '@/server/settings/modules';
 import { FeeCalculatorForm } from './calculator-form';
 export default async function StbvvPage() {
@@ -11,18 +11,6 @@ export default async function StbvvPage() {
     actorType: 'STAFF',
   };
   await assertModuleEnabled(ctx, 'feeCalculator');
-  const clients = await withTenantContext(ctx, async (tx) =>
-    tx.client.findMany({
-      where: {
-        tenantId: ctx.tenantId,
-        anonymizedAt: null,
-        mandateEndedAt: null,
-        ...(await accessibleClientsWhereFor(tx, session)),
-      },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    }),
-  );
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
       <h1 className="text-2xl font-bold">StBVV-Gebührenkalkulation</h1>
@@ -31,10 +19,7 @@ export default async function StbvvPage() {
         Tatbestand, Gegenstandswert und Rahmenwahl bleiben prüfpflichtig; externe RVG-Berechnungen
         werden ausdrücklich gekennzeichnet.
       </p>
-      <FeeCalculatorForm
-        clients={clients}
-        canSave={hasStaffPermission(session, 'INVOICE_MANAGE')}
-      />
+      <FeeCalculatorForm canSave={hasStaffPermission(session, 'INVOICE_MANAGE')} />
     </div>
   );
 }

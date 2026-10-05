@@ -54,7 +54,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         appointments,
         pendingRequests,
         staffList,
-        clientsList,
+        // Keine Mandantenliste mehr: der Termindialog sucht serverseitig.
         vacations,
         absences,
       ] = await Promise.all([
@@ -91,12 +91,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           orderBy: { fullName: 'asc' },
           select: { id: true, fullName: true },
         }),
-        tx.client.findMany({
-          where: { allowActive: true, ...(denied.length ? { id: { notIn: denied } } : {}) },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true },
-          take: 500,
-        }),
         // iter87: Abwesenheiten im Kanzleikalender — nur Name + „Urlaub"/„abw.",
         // ohne Art/Grund (vertraulich, siehe Absence-Modell).
         tx.vacationRequest.findMany({
@@ -124,7 +118,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         appointments,
         pendingRequests,
         staffList,
-        clientsList,
         vacations,
         absences,
       };
@@ -251,11 +244,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <CalendarModeSwitch active="calendar" month={currentMonthQs} />
-          <NewAppointmentDialog
-            staffOptions={data.staffList}
-            clientOptions={data.clientsList}
-            currentStaffId={staffId}
-          />
+          <NewAppointmentDialog staffOptions={data.staffList} currentStaffId={staffId} />
         </div>
       </div>
 

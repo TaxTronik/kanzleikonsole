@@ -6,11 +6,16 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { NewPoaForm } from './form';
-import { inaccessibleClientIdsFor, hasStaffPermission } from '@/server/auth/rbac';
+import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
+import { hasClientPickerOptionTx } from '@/server/clients/picker';
+import type { ClientPickerFilter } from '@/lib/client-picker';
 import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { isUuid } from '@/lib/uuid';
 import { resolveInitialPoaClientId } from './client-selection';
 import { parsePoaCreateReturnContext } from './return-context';
+
+// Auswählbar wie bisher: freigegeben, Mandat nicht beendet, nicht anonymisiert.
+const POA_CLIENT_FILTERS: ClientPickerFilter[] = ['active', 'notEnded', 'notAnonymized'];
 
 type SearchParams = {
   clientId?: string;
@@ -48,25 +53,37 @@ export default async function NewPoaPage({
     params.set('uploadIntentId', randomUUID());
     redirect(`/staff/poa/new?${params.toString()}`);
   }
-  const clients = await withTenantContext(ctx, async (tx) => {
-    const deniedClientIds = await inaccessibleClientIdsFor(tx, session);
-    return tx.client.findMany({
-      where: {
-        anonymizedAt: null,
-        mandateEndedAt: null,
-        OR: [{ allowActive: true }, ...(requestedClientId ? [{ id: requestedClientId }] : [])],
-        ...(deniedClientIds.length > 0 ? { id: { notIn: deniedClientIds } } : {}),
-      },
-      orderBy: { name: 'asc' },
-      include: { contacts: { where: { active: true }, orderBy: { fullName: 'asc' } } },
-    });
+  // Statt des gesamten Bestands samt aller Kontakte lädt die Seite nur den
+  // ausdrücklich angeforderten Mandanten; die übrige Auswahl sucht serverseitig.
+  const { requestedClient, hasClients } = await withTenantContext(ctx, async (tx) => {
+    const requested =
+      requestedClientId && (await canAccessClientTx(tx, session, requestedClientId))
+        ? await tx.client.findFirst({
+            // Der angeforderte Mandant bleibt auch vor der finalen Aktivierung
+            // (allowActive) auswählbar, beendete/anonymisierte Mandate nicht.
+            where: { id: requestedClientId, anonymizedAt: null, mandateEndedAt: null },
+            select: {
+              id: true,
+              name: true,
+              contacts: {
+                where: { active: true },
+                orderBy: { fullName: 'asc' },
+                select: { id: true, fullName: true, email: true },
+              },
+            },
+          })
+        : null;
+    return {
+      requestedClient: requested,
+      hasClients:
+        requested !== null || (await hasClientPickerOptionTx(tx, session, POA_CLIENT_FILTERS)),
+    };
   });
-  // Ein expliziter Onboarding-Kontext darf niemals still auf den alphabetisch
-  // ersten anderen Mandanten zurueckfallen. Der angeforderte Mandant bleibt
-  // auch vor der finalen Aktivierung auswaehlbar; unzugaengliche/falsche IDs
-  // enden dagegen mit einer klaren Meldung.
-  const { initialClientId, requestedClientAvailable } = resolveInitialPoaClientId(
-    clients,
+  // Ein expliziter Onboarding-Kontext darf niemals still auf einen anderen
+  // Mandanten zurueckfallen; unzugaengliche/falsche IDs enden mit einer
+  // klaren Meldung.
+  const { initialClientId, initialClient, requestedClientAvailable } = resolveInitialPoaClientId(
+    requestedClient,
     requestedClientId,
   );
   const onboardingClientId =
@@ -100,26 +117,17 @@ export default async function NewPoaPage({
           Der aus dem Onboarding übergebene Mandant ist nicht mehr vorhanden oder für Sie nicht
           zugaenglich. Es wurde kein anderer Mandant vorausgewaehlt.
         </div>
-      ) : clients.length === 0 ? (
+      ) : !hasClients ? (
         <ClientPrerequisiteEmptyState
           canCreateClient={hasStaffPermission(session, 'CLIENT_CREATE')}
         />
       ) : (
         <NewPoaForm
           poaMode={modules.poaMode}
-          initialClientId={initialClientId}
+          initialClient={initialClient}
           initialPendingDocumentId={pendingDocumentId}
           uploadIntentId={uploadIntentId}
           returnContext={onboardingClientId ? returnContext : undefined}
-          clients={clients.map((c) => ({
-            id: c.id,
-            name: c.name,
-            contacts: c.contacts.map((ct) => ({
-              id: ct.id,
-              fullName: ct.fullName,
-              email: ct.email,
-            })),
-          }))}
         />
       )}
     </div>

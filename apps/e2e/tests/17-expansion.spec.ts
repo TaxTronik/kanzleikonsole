@@ -3,6 +3,7 @@
 // WORKFLOW-DEPENDENCY-001.
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { chooseClient } from './helpers/client-combobox';
 
 test.describe('isolated opt-in expansion browser integration', () => {
   test.setTimeout(180_000);
@@ -58,12 +59,11 @@ test.describe('isolated opt-in expansion browser integration', () => {
     await loginAsAdmin(page);
     await page.goto('/staff/payroll');
     await page.getByText('Neuen Personalvorgang vorbereiten', { exact: true }).click();
-    await page
-      .getByRole('combobox', { name: /^Mandat/ })
-      .selectOption({ label: 'Mustermann GmbH' });
+    await chooseClient(page, page.getByRole('combobox', { name: /^Mandat/ }), 'Mustermann GmbH');
+    // Nach der Mandatswahl lädt die Seite nur dessen aktive Kontakte nach.
     await page
       .getByLabel('Ausdrücklich berechtigter Arbeitgeberkontakt')
-      .selectOption({ label: 'Mustermann GmbH: Max Mustermann' });
+      .selectOption({ label: 'Max Mustermann' });
     const label = 'Browsertest Personal ' + Date.now();
     await page.getByLabel('Bezeichnung der Person').fill(label);
     await page

@@ -259,7 +259,6 @@ test.describe('REMINDER-TICKET-001 – Ticketbedienung im tatsächlichen Rendere
 
   test('verlangt beim neuen Ticket weiterhin Titel und Fälligkeit', async ({ page }) => {
     await mountReminderTickets(page, 'new', {
-      clients: [],
       staffOptions: ticketProps.staffOptions,
     });
     await page.getByRole('button', { name: 'Neues Ticket', exact: true }).click();

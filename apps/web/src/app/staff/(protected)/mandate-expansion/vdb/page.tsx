@@ -1,7 +1,7 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { isUuid } from '@/lib/uuid';
-import { visibleMandatesTx } from '@/server/mandate-expansion/service';
+import { visibleMandateTx } from '@/server/mandate-expansion/service';
 import { VDB_STATES, VDB_LABELS, vdbTransitionAllowed } from '@/server/mandate-expansion/model';
 import { expansionPage, ExpansionNavigation, ClientSelect } from '../common';
 import { ActionForm } from '../action-form';
@@ -15,8 +15,10 @@ export default async function VdbPage({
   const { session, ctx } = await expansionPage('vdbPreparation');
   const sp = await searchParams;
   const clientId = isUuid(sp.clientId ?? '') ? sp.clientId! : '';
-  const clients = await withTenantContext(ctx, (tx) => visibleMandatesTx(tx, session));
-  const data = clients.some((c) => c.id === clientId)
+  const client = clientId
+    ? await withTenantContext(ctx, (tx) => visibleMandateTx(tx, session, clientId))
+    : null;
+  const data = client
     ? await withTenantContext(ctx, async (tx) => ({
         poas: await tx.powerOfAttorney.findMany({
           where: { tenantId: session.user.tenantId, clientId },
@@ -59,7 +61,7 @@ export default async function VdbPage({
           VDB-Importexport nicht verfügbar
         </button>
       </aside>
-      <ClientSelect clients={clients} selected={clientId} />
+      <ClientSelect selected={client} />
       {data?.poas.length === 0 && <p>Für diesen Mandanten sind noch keine Vollmachten erfasst.</p>}
       {data?.poas.map((p) => {
         const latest = p.vdbRecords[0];

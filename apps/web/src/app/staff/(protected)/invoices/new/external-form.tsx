@@ -4,23 +4,14 @@ import { useRef, useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, FileText, Send } from 'lucide-react';
 import { uploadExternalInvoiceAction } from '../actions';
+import { ClientCombobox } from '@/components/ui/client-combobox';
 
-interface ClientOption {
-  id: string;
-  name: string;
-}
 interface CategoryOption {
   id: string;
   name: string;
 }
 
-export function ExternalInvoiceForm({
-  clients,
-  categories,
-}: {
-  clients: ClientOption[];
-  categories: CategoryOption[];
-}) {
+export function ExternalInvoiceForm({ categories }: { categories: CategoryOption[] }) {
   const router = useRouter();
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -84,14 +75,7 @@ export function ExternalInvoiceForm({
           <label className="label" htmlFor="clientId">
             Mandant <span className="text-red-600">*</span>
           </label>
-          <select id="clientId" name="clientId" required className="input">
-            <option value="">— wählen —</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <ClientCombobox id="clientId" name="clientId" filters={['active']} required />
         </div>
         <div>
           <label className="label" htmlFor="categoryId">

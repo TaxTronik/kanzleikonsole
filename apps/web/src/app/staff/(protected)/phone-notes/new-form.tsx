@@ -1,27 +1,28 @@
 ﻿'use client';
 
 import { useActionState, useRef, useState, useId } from 'react';
+import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
 import { createPhoneNoteAction, type ActionResult } from './actions';
 
 interface Caller {
   name: string;
   phone: string | null;
-  clientId: string | null;
+  /** Zuletzt zugeordneter, für den Nutzer sichtbarer Mandant. */
+  client: { id: string; name: string } | null;
 }
 
 interface Props {
-  clients: Array<{ id: string; name: string }>;
   staff: Array<{ id: string; fullName: string }>;
   currentStaffId: string;
   callers: Caller[];
 }
 
-export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Props) {
+export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const datalistId = useId();
   const [callerName, setCallerName] = useState('');
   const [callerPhone, setCallerPhone] = useState('');
-  const [clientId, setClientId] = useState('');
+  const [client, setClient] = useState<ClientComboboxValue | null>(null);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     async (previous, data) => {
       const result = await createPhoneNoteAction(previous, data);
@@ -29,7 +30,7 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
         formRef.current?.reset();
         setCallerName('');
         setCallerPhone('');
-        setClientId('');
+        setClient(null);
       }
       return result;
     },
@@ -41,7 +42,7 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
     const match = callers.find((c) => c.name.toLowerCase() === value.trim().toLowerCase());
     if (match) {
       if (match.phone && !callerPhone) setCallerPhone(match.phone);
-      if (match.clientId && !clientId) setClientId(match.clientId);
+      if (match.client && !client) setClient(match.client);
     }
   }
 
@@ -111,20 +112,13 @@ export function NewPhoneNoteForm({ clients, staff, currentStaffId, callers }: Pr
         <label className="label" htmlFor="clientId">
           Mandant (optional)
         </label>
-        <select
+        <ClientCombobox
           id="clientId"
           name="clientId"
-          className="input"
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-        >
-          <option value="">— kein Mandant —</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+          value={client}
+          onChange={setClient}
+          placeholder="Kein Mandant — Name, DATEV- oder Addison-Nr."
+        />
       </div>
 
       <div>

@@ -15,13 +15,20 @@ describe('Vollmachten im Mandantenkontext', () => {
     const form = readPoa('new/form.tsx');
 
     expect(onboarding).toContain('/staff/poa/new?clientId=${clientId}&from=onboarding');
-    expect(page).toContain('...(requestedClientId ? [{ id: requestedClientId }] : [])');
+    // Nur der angeforderte Mandant wird geladen — auch vor der Aktivierung,
+    // aber nie beendet/anonymisiert und nur mit Mandantenzugriff.
+    expect(page).toContain('canAccessClientTx(tx, session, requestedClientId)');
+    expect(page).toContain(
+      'where: { id: requestedClientId, anonymizedAt: null, mandateEndedAt: null }',
+    );
     expect(page).toContain('resolveInitialPoaClientId(');
-    expect(page).toContain('initialClientId={initialClientId}');
+    expect(page).toContain('initialClient={initialClient}');
     expect(page).toContain('returnContext={onboardingClientId ? returnContext : undefined}');
-    expect(form).toContain('clients.some((client) => client.id === initialClientId)');
+    expect(page).not.toContain('tx.client.findMany(');
+    expect(form).toContain('<ClientCombobox');
+    expect(form).toContain('loadPoaSignerContactsAction(next.id)');
     expect(form).toContain('name="returnContext"');
-    expect(form).toContain('disabled={Boolean(pendingDocumentId || returnContext)}');
+    expect(form).toContain('locked={Boolean(pendingDocumentId || returnContext)}');
     expect(form).toContain('poaCreateResumeHref({');
   });
 

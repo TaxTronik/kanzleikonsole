@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { withTenantContext } from '@taxtronik/db';
 import { payrollGuard, payrollTx } from '@/server/payroll/service';
-import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { PayrollActionForm } from '@/components/payroll-action-form';
 import { PayrollFields } from '@/components/payroll-fields';
 import { PayrollUploadResume } from '@/components/payroll-upload-resume';
+import { PayrollEmployerFields } from './employer-fields';
 import { PAYROLL_SCHEMA, DATEV_GATE_MESSAGE } from '@/server/payroll/definition';
 import { isUuid } from '@/lib/uuid';
 import { requireStaffPage } from '@/server/auth/staff-page';
@@ -55,23 +55,9 @@ export default async function PayrollPage({
   await requireStaffPage();
   const g = await payrollGuard('staff');
   if (!('staffId' in g)) return null;
-  const data = await withTenantContext(g.ctx, async (tx) => {
-    const clients = await tx.client.findMany({
-      where: {
-        allowActive: true,
-        mandateEndedAt: null,
-        ...(await accessibleClientsWhereFor(tx, g.session)),
-      },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    const contacts = await tx.clientContact.findMany({
-      where: { active: true, clientId: { in: clients.map((c) => c.id) } },
-      select: { id: true, clientId: true, fullName: true },
-    });
-    const rows = await tx.payrollIntake.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
-    return { clients, contacts, rows };
-  });
+  const data = await withTenantContext(g.ctx, async (tx) => ({
+    rows: await tx.payrollIntake.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
+  }));
   const { id } = await searchParams;
   const selected = id && isUuid(id) ? id : data.rows[0]?.id;
   const detail = selected ? await loadPayrollDetail(selected) : null;
@@ -89,28 +75,7 @@ export default async function PayrollPage({
           Neuen Personalvorgang vorbereiten
         </summary>
         <PayrollActionForm action={createPayrollAction} label="Einzelvorgang anlegen">
-          <label className="block">
-            Mandat
-            <select className="input" name="clientId" required>
-              <option value="">Bitte wählen</option>
-              {data.clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            Ausdrücklich berechtigter Arbeitgeberkontakt
-            <select className="input" name="contactId" required>
-              <option value="">Bitte wählen</option>
-              {data.contacts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {data.clients.find((x) => x.id === c.clientId)?.name}: {c.fullName}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PayrollEmployerFields />
           <label className="block">
             Bezeichnung der Person
             <input className="input" name="label" maxLength={150} required />

@@ -4,25 +4,19 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Play, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
+import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
 import { quickStartWorkflowAction } from './actions';
-
-interface ClientOption {
-  id: string;
-  name: string;
-}
 
 export function QuickStartButton({
   templateId,
   templateName,
-  clients,
 }: {
   templateId: string;
   templateName: string;
-  clients: ClientOption[];
 }) {
   const [open, setOpen] = useState(false);
-  const [clientId, setClientId] = useState('');
-  const [search, setSearch] = useState('');
+  const [client, setClient] = useState<ClientComboboxValue | null>(null);
+  const clientId = client?.id ?? '';
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
   const router = useRouter();
@@ -39,10 +33,6 @@ export function QuickStartButton({
       router.push(r.redirectTo ?? `/staff/clients/${clientId}/workflows`);
     });
   }
-
-  const filtered = search
-    ? clients.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
-    : clients;
 
   const modal = open ? (
     <Modal
@@ -64,43 +54,15 @@ export function QuickStartButton({
         </button>
       </div>
       <div>
-        <label className="label" htmlFor={`quick-start-${templateId}-search`}>
-          Mandant suchen
-        </label>
-        <input
-          id={`quick-start-${templateId}-search`}
-          type="text"
-          placeholder="Filter — z. B. Name oder DATEV-Nr."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input text-sm mb-2"
-        />
-        <label className="sr-only" htmlFor={`quick-start-${templateId}-client`}>
+        <label className="label" htmlFor={`quick-start-${templateId}-client`}>
           Mandant auswählen
         </label>
-        <select
+        {/* Serversuche mit Zugriffsregel statt des ungefilterten Gesamtbestands. */}
+        <ClientCombobox
           id={`quick-start-${templateId}-client`}
-          size={Math.min(8, Math.max(3, filtered.length))}
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-          className="input text-sm w-full"
-          aria-describedby={`quick-start-${templateId}-results`}
-        >
-          {filtered.length === 0 && <option disabled>— keine Treffer —</option>}
-          {filtered.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <p
-          id={`quick-start-${templateId}-results`}
-          className="sr-only"
-          role="status"
-          aria-live="polite"
-        >
-          {filtered.length === 1 ? '1 Mandant gefunden.' : `${filtered.length} Mandanten gefunden.`}
-        </p>
+          value={client}
+          onChange={setClient}
+        />
       </div>
       {error && (
         <div className="alert-error-sm text-xs p-2" role="alert">

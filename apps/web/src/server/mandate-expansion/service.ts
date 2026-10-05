@@ -1,6 +1,7 @@
 import type { TxClient } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 import { ActionError, assertClientAccessTx, accessibleClientsWhereFor } from '@/server/auth/rbac';
+import { loadClientPickerOptionTx } from '@/server/clients/picker';
 import { evidenceService } from '@/server/container';
 import {
   StructureSchema,
@@ -9,6 +10,19 @@ import {
   wouldCreateDependencyCycle,
 } from './model';
 
+/**
+ * Ein sichtbarer, nicht anonymisierter Mandant (gleiche Regel wie
+ * `visibleMandatesTx`, aber ohne Bestandsdeckel). Die Auswahlseiten laden nur
+ * noch den gewählten Mandanten; früher war ab Mandant 1.001 keiner erreichbar.
+ */
+export async function visibleMandateTx(
+  tx: TxClient,
+  session: StaffSession,
+  clientId: string,
+): Promise<{ id: string; name: string } | null> {
+  const option = await loadClientPickerOptionTx(tx, session, clientId, ['notAnonymized']);
+  return option ? { id: option.id, name: option.name } : null;
+}
 export async function visibleMandatesTx(tx: TxClient, session: StaffSession) {
   return tx.client.findMany({
     where: { AND: [await accessibleClientsWhereFor(tx, session), { anonymizedAt: null }] },

@@ -4,6 +4,7 @@ import { useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { createInvoiceAction } from '../actions';
+import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
 import { computeVatTotals } from '@/server/invoicing/vat';
 
 import { fmtEUR } from '@/lib/fmt';
@@ -27,15 +28,13 @@ const newPosition = (id: string): PositionRow => ({
   vatRate: 19,
 });
 
-interface Props {
-  clients: Array<{ id: string; name: string }>;
-}
-
-export function NewInvoiceForm({ clients }: Props) {
+export function NewInvoiceForm() {
   const router = useRouter();
   const [initialDate] = useState(() => new Date());
 
-  const [clientId, setClientId] = useState(clients[0]?.id ?? '');
+  // Keine stille Vorauswahl des alphabetisch ersten Mandanten mehr.
+  const [client, setClient] = useState<ClientComboboxValue | null>(null);
+  const clientId = client?.id ?? '';
   const [subject, setSubject] = useState('');
   const [issueDate, setIssueDate] = useState(() => initialDate.toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(() =>
@@ -126,19 +125,13 @@ export function NewInvoiceForm({ clients }: Props) {
             <label className="label" htmlFor="clientId">
               Mandant
             </label>
-            <select
+            <ClientCombobox
               id="clientId"
-              className="input"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              filters={['active']}
+              value={client}
+              onChange={setClient}
               required
-            >
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div>
             <p className="label">Rechnungsnummer</p>
