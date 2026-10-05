@@ -365,7 +365,9 @@ S-05: Je Oberfläche gibt es genau eine Session-Fabrik
 Logout und Layout lesen, schreiben und löschen Session-Cookies nur darüber; in
 Production gilt ausschließlich der konfigurierte `__Host-`/`__Secure-`-Name.
 Das Portal besitzt keinen Auth.js-Provider mehr, der öffentliche
-Credentials-Callback stellt dort keine Session aus.
+Credentials-Callback stellt dort keine Session aus. Sessions enden absolut
+24 h nach der ursprünglichen Anmeldung; weder die Auth.js-Erneuerung über
+`/api/auth/<surface>/session` noch ein Portal-Profilwechsel verlängern sie.
 
 ACCESS-TENANT-RLS-001: JWT-Erneuerung, Session-Callback und direkte Server-Auth
 verwenden dieselbe laufende Konto-/Mandatsprüfung. Ein widerrufenes Token wird

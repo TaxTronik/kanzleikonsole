@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-015
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/server/auth/portal.ts
+      - apps/web/src/server/auth/staff.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+    reason: >-
+      Sitzungen im Kanzlei- und Mandantenportal enden spätestens 24 Stunden nach
+      der ursprünglichen, signierten Anmeldezeit. Die Session-Fabrik begrenzt jede
+      Erneuerung, Profilwechsel und direkte Ausstellung auf diese Grenze und weist
+      ältere Tokens ab; Cookies ohne Anmeldezeit werden nie verlängert. Bisher
+      verlängerte jeder Aufruf des Auth.js-Session-Endpunkts eine Sitzung um volle
+      24 Stunden. Widerrufs-, Revisions- und Mandatsprüfungen bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/session-renewal.test.ts
+      - apps/web/src/server/auth/__tests__/session-factory.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-014
     date: '2026-10-05'
     paths:
@@ -1759,6 +1779,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-015` dokumentiert die absolute Obergrenze von
+  24 Stunden ab Anmeldung für alle Sitzungserneuerungen. Widerrufs- und
+  Mandatsprüfungen bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-014` dokumentiert die einmalige Passwortprüfung
   mit Einmal-Ticket für den zweiten Anmeldeschritt. Prüfungen, Limits und Audit

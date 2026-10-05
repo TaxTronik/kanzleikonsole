@@ -75,8 +75,7 @@ function isStaffTokenPayload(t: unknown): t is StaffTokenPayload {
 }
 
 function sessionExpires(token: JWT): string {
-  const exp = typeof token.exp === 'number' ? token.exp : Math.floor(Date.now() / 1000);
-  return new Date(exp * 1000).toISOString();
+  return staffSessionFactory.expiresAt(token);
 }
 
 function hasStaffSessionFields(session: Session | null): session is StaffSession {
@@ -222,12 +221,13 @@ const staffConfig: NextAuthConfig = {
     }),
   ],
 
-  // W-1: explizite Session-TTL von 24 h (Auth.js-Default wären 30 Tage) —
-  // Laufzeit, JWT-Codec und Cookie (__Host-/__Secure-Name, Optionen passend
-  // zur Präfix-Wahl) kommen aus der Staff-Session-Fabrik, die auch staffAuth(),
-  // Logout und den lokalen Formularpfad bedient. Ein `updateAge` gibt es nicht:
-  // Auth.js wertet es für JWT-Sessions nicht aus; die tatsächliche (fehlende)
-  // Erneuerung beschreibt session-factory.ts.
+  // W-1: Session-Laufzeit absolut 24 h ab Anmeldung (Auth.js-Default wären
+  // 30 Tage) — Laufzeit, JWT-Codec (begrenzt jede Erneuerung auf Anmeldung +
+  // 24 h) und Cookie (__Host-/__Secure-Name, Optionen passend zur Präfix-Wahl)
+  // kommen aus der Staff-Session-Fabrik, die auch staffAuth(), Logout und den
+  // lokalen Formularpfad bedient. Ein `updateAge` gibt es nicht: Auth.js wertet
+  // es für JWT-Sessions nicht aus; Laufzeit und Erneuerung beschreibt
+  // session-factory.ts.
   session: staffSessionFactory.authJs.session,
   jwt: staffSessionFactory.authJs.jwt,
   cookies: staffSessionFactory.authJs.cookies,
@@ -248,7 +248,10 @@ const staffConfig: NextAuthConfig = {
       return { ...token, sessionIssuedAt: issuedAt };
     },
     async session({ session, token }) {
-      return hydrateStaffSessionFromToken(session, token);
+      const hydrated = await hydrateStaffSessionFromToken(session, token);
+      // Auth.js meldet sonst „jetzt + 24 h“; maßgeblich ist Anmeldung + 24 h.
+      hydrated.expires = sessionExpires(token);
+      return hydrated;
     },
   },
 

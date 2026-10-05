@@ -67,8 +67,7 @@ function unique(values: string[]): string[] {
 }
 
 function sessionExpires(token: JWT): string {
-  const exp = typeof token.exp === 'number' ? token.exp : Math.floor(Date.now() / 1000);
-  return new Date(exp * 1000).toISOString();
+  return portalSessionFactory.expiresAt(token);
 }
 
 function hasPortalSessionFields(session: Session | null): session is PortalSession {
@@ -174,8 +173,9 @@ const portalConfig: NextAuthConfig = {
   // writePortalSession nach bestätigtem Magic-Link aus (portal-session.ts).
   providers: [],
 
-  // Laufzeit, Codec und Cookie aus der Portal-Session-Fabrik; zur (fehlenden)
-  // gleitenden Erneuerung siehe session-factory.ts.
+  // Laufzeit (absolut 24 h ab Anmeldung, auch über Profilwechsel und
+  // Erneuerung), Codec und Cookie aus der Portal-Session-Fabrik; siehe
+  // session-factory.ts.
   session: portalSessionFactory.authJs.session,
   jwt: portalSessionFactory.authJs.jwt,
   cookies: portalSessionFactory.authJs.cookies,
@@ -201,7 +201,10 @@ const portalConfig: NextAuthConfig = {
       };
     },
     async session({ session, token }) {
-      return hydratePortalSessionFromToken(session, token);
+      const hydrated = await hydratePortalSessionFromToken(session, token);
+      // Auth.js meldet sonst „jetzt + 24 h“; maßgeblich ist Anmeldung + 24 h.
+      hydrated.expires = sessionExpires(token);
+      return hydrated;
     },
   },
 

@@ -11,16 +11,18 @@
 // Staff-Layout verwenden ausschließlich ihre Methoden. proxy.ts bleibt
 // dependency-frei und nutzt dieselbe Namensregel aus session-cookie.ts.
 //
-// Laufzeit und Erneuerung: Ein Session-JWT gilt 24 h ab seiner Ausstellung.
-// Seitenaufrufe erneuern nichts — staffAuth()/portalAuth() und der Proxy lesen
-// das Cookie nur. Ein neues JWT mit wieder vollen 24 h entsteht ausschließlich
-//  - bei der Anmeldung (Staff über Auth.js, Portal über writePortalSession),
-//  - beim Portal-Profilwechsel (sessionIssuedAt bleibt der ursprüngliche
-//    Anmeldezeitpunkt, die 24 h zählen ab dem Wechsel) und
-//  - bei jedem Aufruf des Auth.js-Endpunkts /api/auth/<surface>/session:
-//    nach denselben Widerrufs- und Kontoprüfungen stellt Auth.js das Cookie
-//    dort gleitend und ohne Obergrenze neu aus. Die Oberfläche ruft den
-//    Endpunkt nicht auf.
+// Laufzeit: absolut 24 h ab der ursprünglichen Anmeldung (`sessionIssuedAt`,
+// der signierte Anmeldeanker, den auch der Widerruf nutzt). Seitenaufrufe
+// erneuern nichts — staffAuth()/portalAuth() und der Proxy lesen das Cookie
+// nur. Neu ausgestellt wird ein JWT bei der Anmeldung, beim Portal-
+// Profilwechsel (übernimmt den Anker) und bei jedem Aufruf des Auth.js-
+// Endpunkts /api/auth/<surface>/session (Oberfläche ruft ihn nicht auf). Keine
+// dieser Ausstellungen reicht über Anmeldung + 24 h hinaus: der Codec setzt
+// `exp` höchstens auf diese Grenze, isLive() lehnt danach jedes Cookie ab,
+// auch eines, dessen `exp` eine frühere gleitende Erneuerung verlängert hat.
+// Tokens ohne gültigen Anker (Altbestand) werden nie verlängert, sondern
+// enden spätestens zu ihrem bisherigen `exp`; die Server-Gates lehnen sie
+// ohnehin ab (ACCESS-TENANT-RLS-001).
 // Auth.js wertet `session.updateAge` nur für Datenbank-Sessions aus; die
 // frühere Angabe „4 h“ war für diese JWT-Sessions wirkungslos und entfällt.
 // =============================================================================
@@ -34,9 +36,42 @@ import {
   sessionCookieNameVariants,
 } from './session-cookie';
 import { createStableSessionJwtOptions } from './session-jwt';
+import { getSessionIssuedAt } from './session-issued-at';
 
-/** W-1: explizite Session-Laufzeit beider Oberflächen (Auth.js-Default wären 30 Tage). */
+/**
+ * W-1: Session-Laufzeit beider Oberflächen (Auth.js-Default wären 30 Tage),
+ * absolut gezählt ab der ursprünglichen Anmeldung.
+ */
 export const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
+
+export class SessionLifetimeExceededError extends Error {
+  constructor() {
+    super('Die Session hat ihre absolute Laufzeit erreicht oder keinen Anmeldezeitpunkt.');
+    this.name = 'SessionLifetimeExceededError';
+  }
+}
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+/**
+ * Spätester Ablauf eines Tokens: Anmeldung + 24 h. Ohne gültigen Anker gilt
+ * nur der bisherige `exp` (nie verlängern); ohne beides gibt es keinen.
+ */
+function sessionLifetimeEnd(token: JWT): number | null {
+  const loginAt = getSessionIssuedAt(token);
+  if (loginAt !== undefined) return loginAt + SESSION_MAX_AGE_SECONDS;
+  return typeof token.exp === 'number' ? token.exp : null;
+}
+
+/** Restlaufzeit für ein neu ausgestelltes JWT; wirft, wenn keine bleibt. */
+function remainingLifetimeSeconds(token: JWT | undefined): number {
+  const end = token ? sessionLifetimeEnd(token) : null;
+  const remaining = end === null ? 0 : Math.min(SESSION_MAX_AGE_SECONDS, end - nowSeconds());
+  if (remaining <= 0) throw new SessionLifetimeExceededError();
+  return remaining;
+}
 
 // Wie Auth.js (SessionStore): 4096 Byte je Cookie abzüglich der Attribute.
 // Größere JWTs werden als `<name>.0`, `<name>.1`, ... geschrieben.
@@ -92,11 +127,13 @@ export interface SessionFactory {
       sessionToken: { name: string; options: SessionCookieOptions };
     };
   };
-  /** Hat das JWT seine Laufzeit noch nicht überschritten? */
+  /** Läuft das JWT noch — eigener `exp` und Anmeldung + 24 h? */
   isLive(token: JWT): boolean;
+  /** Tatsächliches Ende der Session als ISO-Zeitpunkt (für Session.expires). */
+  expiresAt(token: JWT): string;
   /** Entschlüsseltes, noch laufendes JWT aus dem Request-Cookie oder null. */
   read(jar?: SessionCookieReader): Promise<JWT | null>;
-  /** Stellt ein neues JWT (24 h) aus und schreibt es als Session-Cookie. */
+  /** Stellt ein JWT bis höchstens Anmeldung + 24 h aus und setzt das Cookie. */
   issue(token: JWT, target?: SessionIssueTarget): Promise<void>;
   /** Löscht alle Namensvarianten samt Chunks (Logout, Selbstheilung). */
   expire(
@@ -128,7 +165,14 @@ function sessionCookieChunks(name: string, value: string): Array<{ name: string;
 
 export function createSessionFactory(spec: SessionFactorySpec): SessionFactory {
   const acceptedNames = acceptedSessionCookieNames(spec.cookieName, spec.cookieBase, spec.secure);
-  const codec = createStableSessionJwtOptions(spec.jwtSalt, [...spec.jwtDecodeSalts]);
+  const stableCodec = createStableSessionJwtOptions(spec.jwtSalt, [...spec.jwtDecodeSalts]);
+  // Jede Ausstellung — Auth.js-Login, Auth.js-Erneuerung, direkte Ausstellung —
+  // endet spätestens bei Anmeldung + 24 h, unabhängig vom übergebenen maxAge.
+  const codec: ReturnType<typeof createStableSessionJwtOptions> = {
+    encode: (params) =>
+      stableCodec.encode({ ...params, maxAge: remainingLifetimeSeconds(params.token) }),
+    decode: (params) => stableCodec.decode(params),
+  };
 
   function cookieOptions(name: string): SessionCookieOptions {
     return {
@@ -142,7 +186,15 @@ export function createSessionFactory(spec: SessionFactorySpec): SessionFactory {
   }
 
   function isLive(token: JWT): boolean {
-    return typeof token.exp === 'number' && token.exp > Math.floor(Date.now() / 1000);
+    const now = nowSeconds();
+    const end = sessionLifetimeEnd(token);
+    return typeof token.exp === 'number' && token.exp > now && end !== null && end > now;
+  }
+
+  function expiresAt(token: JWT): string {
+    const end = sessionLifetimeEnd(token);
+    const exp = typeof token.exp === 'number' ? token.exp : nowSeconds();
+    return new Date(Math.min(exp, end ?? exp) * 1000).toISOString();
   }
 
   return {
@@ -154,6 +206,7 @@ export function createSessionFactory(spec: SessionFactorySpec): SessionFactory {
     },
 
     isLive,
+    expiresAt,
 
     async read(jar) {
       const raw = readSessionCookieValue(jar ?? (await cookies()), acceptedNames);
@@ -164,12 +217,8 @@ export function createSessionFactory(spec: SessionFactorySpec): SessionFactory {
     },
 
     async issue(token, target) {
-      const value = await codec.encode({
-        token,
-        secret: spec.secret,
-        salt: spec.jwtSalt,
-        maxAge: SESSION_MAX_AGE_SECONDS,
-      });
+      const maxAge = remainingLifetimeSeconds(token);
+      const value = await codec.encode({ token, secret: spec.secret, salt: spec.jwtSalt, maxAge });
       const jar = target ? null : await cookies();
       const writer: SessionCookieWriter = target?.response.cookies ?? jar!;
       const existing = (target?.request.cookies ?? jar!).getAll().map((cookie) => cookie.name);
@@ -177,7 +226,7 @@ export function createSessionFactory(spec: SessionFactorySpec): SessionFactory {
       const written = new Set(chunks.map((chunk) => chunk.name));
       const options = cookieOptions(spec.cookieName);
       for (const chunk of chunks) {
-        writer.set(chunk.name, chunk.value, { ...options, maxAge: SESSION_MAX_AGE_SECONDS });
+        writer.set(chunk.name, chunk.value, { ...options, maxAge });
       }
       // Wechsel zwischen ungeteiltem und geteiltem Cookie: Reste entfernen, sonst
       // läse readSessionCookieValue weiter das alte direkte Cookie.

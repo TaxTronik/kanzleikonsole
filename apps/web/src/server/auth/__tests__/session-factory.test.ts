@@ -52,7 +52,11 @@ vi.mock('@/server/db/prisma-owner', () => ({ prismaOwner: {} }));
 vi.mock('@/server/redis', () => ({ getRedis: () => null }));
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 
-import { createSessionFactory, type SessionFactorySpec } from '../session-factory';
+import {
+  createSessionFactory,
+  SessionLifetimeExceededError,
+  type SessionFactorySpec,
+} from '../session-factory';
 
 const SECRET = 'session-factory-fixture-secret-with-32-chars';
 const NOW = new Date('2026-10-05T10:00:00Z');
@@ -130,6 +134,61 @@ describe('S-05: Session-Fabrik', () => {
     await expect(
       strict.read(cookieJar({ '__Host-fixture_session': value })),
     ).resolves.toMatchObject({ sub: 'staff-1' });
+  });
+
+  it('begrenzt jede Ausstellung auf Anmeldung + 24 h', async () => {
+    const sessions = factory();
+    const loginAt = nowSec() - 23 * 3_600;
+    await sessions.issue({ sub: 'staff-1', sessionIssuedAt: loginAt });
+    expect(h.jar.writes[0]!.options['maxAge']).toBe(3_600);
+    await expect(sessions.read()).resolves.toMatchObject({ exp: loginAt + 86_400 });
+
+    // Auch der Auth.js-Codec (Erneuerung über /session) verlängert nicht.
+    const renewed = await sessions.authJs.jwt.encode({
+      token: { sub: 'staff-1', sessionIssuedAt: loginAt, exp: nowSec() + 60 },
+      secret: SECRET,
+      salt: '__Host-fixture_session',
+      maxAge: 86_400,
+    });
+    await expect(
+      sessions.authJs.jwt.decode({
+        token: renewed,
+        secret: SECRET,
+        salt: '__Host-fixture_session',
+      }),
+    ).resolves.toMatchObject({ exp: loginAt + 86_400 });
+  });
+
+  it('verlängert Altbestand ohne Anmeldeanker nie über seinen bisherigen Ablauf', async () => {
+    const sessions = factory();
+    const exp = nowSec() + 600;
+    const value = await sessions.authJs.jwt.encode({
+      token: { sub: 'legacy', exp },
+      secret: SECRET,
+      salt: '__Host-fixture_session',
+      maxAge: 86_400,
+    });
+    await expect(
+      sessions.authJs.jwt.decode({ token: value, secret: SECRET, salt: '__Host-fixture_session' }),
+    ).resolves.toMatchObject({ sub: 'legacy', exp });
+    expect(sessions.isLive({ sub: 'legacy', exp })).toBe(true);
+  });
+
+  it('stellt ohne Anmeldeanker oder nach 24 h nichts mehr aus', async () => {
+    const sessions = factory();
+    await expect(sessions.issue({ sub: 'staff-1' })).rejects.toThrow(SessionLifetimeExceededError);
+    await expect(
+      sessions.issue({ sub: 'staff-1', sessionIssuedAt: nowSec() - 86_400 }),
+    ).rejects.toThrow(SessionLifetimeExceededError);
+    expect(h.jar.writes).toEqual([]);
+  });
+
+  it('lehnt ein früher gleitend verlängertes Token 24 h nach der Anmeldung ab', () => {
+    const sessions = factory();
+    const loginAt = nowSec() - 86_400 - 1;
+    const extended = { sub: 'staff-1', sessionIssuedAt: loginAt, exp: nowSec() + 3_600 };
+    expect(sessions.isLive(extended)).toBe(false);
+    expect(sessions.expiresAt(extended)).toBe(new Date((loginAt + 86_400) * 1000).toISOString());
   });
 
   it('verwirft Tokens nach Ablauf ihrer 24 h', async () => {

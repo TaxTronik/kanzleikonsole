@@ -46,13 +46,15 @@ Schlüsselableitung (`alg=dir`) und `enc=A256CBC-HS512`; Schlüsselwurzel ist
 [auth-secret-rotation.md](./auth-secret-rotation.md)). Die Anwendung delegiert
 Encode/Decode unverändert an Auth.js und ergänzt nur die Session-Claims.
 
-**Laufzeit und Erneuerung**: Ein Session-JWT gilt 24 h ab Ausstellung.
-Seitenaufrufe verlängern es nicht. Neu ausgestellt wird es nur bei der
-Anmeldung, beim Portal-Profilwechsel (der ursprüngliche Anmeldezeitpunkt für
-den Widerruf bleibt erhalten) und bei einem Aufruf des Auth.js-Endpunkts
-`/api/auth/<surface>/session`, den die Oberfläche nicht verwendet. Ein
-`updateAge` ist nicht konfiguriert, weil Auth.js es für JWT-Sessions nicht
-auswertet.
+**Laufzeit und Erneuerung**: Eine Session endet spätestens 24 h nach der
+ursprünglichen Anmeldung (signierter Anmeldezeitpunkt `sessionIssuedAt`).
+Seitenaufrufe verlängern sie nicht. Neu ausgestellt wird das JWT nur bei der
+Anmeldung, beim Portal-Profilwechsel (übernimmt den Anmeldezeitpunkt) und bei
+einem Aufruf des Auth.js-Endpunkts `/api/auth/<surface>/session`, den die
+Oberfläche nicht verwendet; keine dieser Ausstellungen reicht über Anmeldung +
+24 h hinaus, danach lehnen Server und Auth.js das Cookie ab. Ältere Cookies ohne
+Anmeldezeitpunkt werden nie verlängert. Ein `updateAge` ist nicht konfiguriert,
+weil Auth.js es für JWT-Sessions nicht auswertet.
 
 **Session-Revocation**: Server-side via Redis-Key
 `revoke:{surface}:{userId}` mit Timestamp. Wegen der Sekundengenauigkeit des

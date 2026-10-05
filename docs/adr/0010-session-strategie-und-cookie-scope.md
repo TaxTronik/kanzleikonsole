@@ -52,7 +52,9 @@ abgelehnt werden.
 
 Mitigations und Grenzen:
 
-- TTL des JWT: in beiden Auth-Konfigurationen 24 Stunden
+- TTL des JWT: in beiden Auth-Konfigurationen 24 Stunden, absolut ab der
+  ursprünglichen Anmeldung (keine Verlängerung durch Erneuerung oder
+  Portal-Profilwechsel)
 - `AUTH_SECRET` rotieren entwertet alle Tokens sofort (kickt alle aus, aber
   funktioniert als Emergency-Reset).
 - TOTP beziehungsweise die WebAuthn-Assertion schützt die Neuanmeldung, nicht

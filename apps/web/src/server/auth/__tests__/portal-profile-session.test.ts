@@ -88,7 +88,7 @@ vi.mock('@taxtronik/db', () => ({
 }));
 
 import { portalAuth, portalSessionSubject } from '../portal';
-import { writePortalSession } from '../portal-session';
+import { portalSessionFactory, writePortalSession } from '../portal-session';
 import { switchPortalProfileAction } from '@/app/portal/(protected)/profile-actions';
 
 const NOW = new Date('2026-09-06T12:00:00Z');
@@ -173,6 +173,24 @@ describe('Portal profile switch retains its authenticated identity', () => {
   it('invalidates derived sessions when the original login contact is deactivated', async () => {
     await switchTo(B);
     h.contacts[0]!.active = false;
+    expect(await portalAuth()).toBeNull();
+  });
+
+  // S-05 (a): Ein Profilwechsel übernimmt den Anmeldeanker und damit dessen
+  // absolute 24-h-Grenze; er verlängert die Session nicht.
+  it('keeps the original login anchor and 24 h limit across a profile switch at 23 h', async () => {
+    const loginAt = Math.floor(NOW.getTime() / 1000) - 60;
+    vi.setSystemTime(new Date((loginAt + 23 * 3_600) * 1000));
+    await switchTo(B);
+    expect((await portalAuth())?.user.contactId).toBe(B);
+    await expect(portalSessionFactory.read()).resolves.toMatchObject({
+      contactId: B,
+      sessionIssuedAt: loginAt,
+      sessionOriginContactId: A,
+      exp: loginAt + 86_400,
+    });
+
+    vi.setSystemTime(new Date((loginAt + 86_400 + 1) * 1000));
     expect(await portalAuth()).toBeNull();
   });
 });

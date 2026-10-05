@@ -954,6 +954,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Sitzungen im Kanzlei- und Mandantenportal enden spätestens
+  24 Stunden nach der ursprünglichen Anmeldung. Bisher verlängerte jeder
+  Aufruf des Auth.js-Session-Endpunkts eine Sitzung ohne Obergrenze um volle
+  24 Stunden, sodass ein entwendetes Cookie unbegrenzt gültig bleiben konnte;
+  auch ein Portal-Profilwechsel verlängert nicht mehr
+  (`ACCESS-TENANT-RLS-001`, `FK-EXC-20261005-015`).
 - **[Scope]** Die Mitarbeiteranmeldung verrät weder über die Meldung noch über
   die Antwortzeit, ob eine Kanzlei oder ein Konto existiert, deaktiviert,
   gesperrt oder auf Hardware-Schlüssel umgestellt ist; bisher kehrten diese

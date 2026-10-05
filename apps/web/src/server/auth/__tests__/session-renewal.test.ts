@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Auth } from '@auth/core';
 import type { NextAuthConfig } from 'next-auth';
-import type { JWT } from 'next-auth/jwt';
+import { encode as legacyEncode, type JWT } from 'next-auth/jwt';
 import { NextRequest } from 'next/server';
 
 const h = vi.hoisted(() => ({
@@ -150,10 +150,21 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-async function issueCookie(surface: Surface, extra: JWT = {}, ageMs = 60_000) {
+/**
+ * Cookie wie von der Session-Fabrik ausgestellt (`current`) oder wie von
+ * früheren Versionen (`legacy`: Auth.js-encode ohne Laufzeitgrenze, etwa ohne
+ * Anmeldeanker oder nach einer früheren gleitenden Erneuerung).
+ */
+async function issueCookie(
+  surface: Surface,
+  extra: JWT = {},
+  ageMs = 60_000,
+  issuer: 'current' | 'legacy' = 'current',
+) {
   const config = h.configs[surface];
   vi.setSystemTime(new Date(NOW.getTime() - ageMs));
-  h.cookie = await config.jwt!.encode!({
+  const encode = issuer === 'legacy' ? legacyEncode : config.jwt!.encode!;
+  h.cookie = await encode({
     secret: config.secret!,
     salt: config.cookies!.sessionToken!.name!,
     maxAge: 86_400,
@@ -180,6 +191,15 @@ async function issueCookie(surface: Surface, extra: JWT = {}, ageMs = 60_000) {
     },
   });
   vi.setSystemTime(NOW);
+}
+
+async function decodeCookie(surface: Surface) {
+  const config = h.configs[surface];
+  return config.jwt!.decode!({
+    token: h.cookie,
+    secret: config.secret!,
+    salt: config.cookies!.sessionToken!.name!,
+  });
 }
 
 async function renew(surface: Surface) {
@@ -262,7 +282,7 @@ describe.each<Surface>(['portal', 'staff'])('%s session renewal', (surface) => {
   it.each([null, String(NOW.getTime() - 120_000)])(
     'requires a new login for legacy cookies even when iat follows the cutoff %s',
     async (cutoff) => {
-      await issueCookie(surface, { sessionIssuedAt: undefined });
+      await issueCookie(surface, { sessionIssuedAt: undefined }, 60_000, 'legacy');
       h.cutoff = cutoff;
       expect(await readSession[surface]()).toBeNull();
       expect(await renew(surface)).toBeNull();
@@ -289,12 +309,39 @@ describe.each<Surface>(['portal', 'staff'])('%s session renewal', (surface) => {
   );
 
   it('rejects malformed original issue times without falling back to a newer iat', async () => {
-    await issueCookie(surface, { sessionIssuedAt: 'invalid' });
+    await issueCookie(surface, { sessionIssuedAt: 'invalid' }, 60_000, 'legacy');
     expect(await renew(surface)).toBeNull();
   });
 
   it('clears expired cookies', async () => {
     await issueCookie(surface, {}, 2 * 86_400_000);
+    expect(await renew(surface)).toBeNull();
+    expect(h.cookie).toBe('');
+  });
+
+  // S-05 (a): absolute Laufzeit von 24 h ab der ursprünglichen Anmeldung.
+  it('does not extend a renewal at 23 h beyond the original login + 24 h', async () => {
+    await issueCookie(surface, {}, 23 * 3_600_000);
+    const loginAt = Math.floor(NOW.getTime() / 1000) - 23 * 3_600;
+
+    const session = await renew(surface);
+    expect(session).not.toBeNull();
+    expect(session.expires).toBe(new Date((loginAt + 86_400) * 1000).toISOString());
+    await expect(decodeCookie(surface)).resolves.toMatchObject({
+      sessionIssuedAt: loginAt,
+      exp: loginAt + 86_400,
+    });
+
+    vi.setSystemTime(new Date((loginAt + 86_400 + 1) * 1000));
+    expect(await readSession[surface]()).toBeNull();
+    expect(await renew(surface)).toBeNull();
+    expect(h.cookie).toBe('');
+  });
+
+  it('rejects a cookie 24 h after login even if a former renewal extended its exp', async () => {
+    const loginAt = Math.floor(NOW.getTime() / 1000) - 86_400 - 60;
+    await issueCookie(surface, { sessionIssuedAt: loginAt }, 60_000, 'legacy');
+    expect(await readSession[surface]()).toBeNull();
     expect(await renew(surface)).toBeNull();
     expect(h.cookie).toBe('');
   });
