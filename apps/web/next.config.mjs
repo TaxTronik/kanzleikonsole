@@ -121,7 +121,9 @@ const nextConfig = {
   // P-22: dasselbe gilt für die Textextraktion (unpdf für PDF, mammoth für
   // DOCX), die in einem begrenzten Worker-Thread läuft; P-13 zählt PDF-Seiten
   // von Ausweisquellen ebenso mit pdf-lib. Tracing: WORKER_PARSER_PACKAGES oben.
-  serverExternalPackages: ['pdfkit', 'pdf-lib', 'unpdf', 'mammoth'],
+  // Same for bcryptjs: staff password comparisons run in a worker-thread pool
+  // (server/auth/password-hash-pool.ts) that requires the real module.
+  serverExternalPackages: ['pdfkit', 'pdf-lib', 'unpdf', 'mammoth', 'bcryptjs'],
 
   // Reaktivität strenger.
   reactStrictMode: true,

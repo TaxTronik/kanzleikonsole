@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -108,6 +108,22 @@ if (parserProbe.status !== 0) {
   throw new Error(
     `[standalone-trace] Worker-Parser im Standalone-Paket nicht vollständig ladbar:\n${parserProbe.stderr}`,
   );
+}
+// Ebenso lädt der Worker-Thread-Pool der Staff-Passwortprüfung bcryptjs als
+// echtes Node-Modul (server/auth/password-hash-pool.ts): per ESM-Import relativ
+// zum Arbeitsverzeichnis des Standalone-Servers. Genau diese Auflösung prüfen.
+const bcryptUrl = execFileSync(
+  process.execPath,
+  ['--input-type=module', '-e', "process.stdout.write(import.meta.resolve('bcryptjs'))"],
+  { cwd: standaloneAppRoot, encoding: 'utf8' },
+);
+const bcryptPath = fileURLToPath(bcryptUrl);
+const bcryptModule = await import(bcryptUrl);
+if (
+  !isInside(realpathSync(bcryptPath), realpathSync(standaloneRoot)) ||
+  typeof (bcryptModule.default ?? bcryptModule).compareSync !== 'function'
+) {
+  throw new Error('[standalone-trace] bcryptjs fehlt im Standalone-Paket (Passwort-Pool).');
 }
 const forbiddenStandaloneFiles = [
   ...regularFilesBelow(resolve(standaloneRoot, 'backups')),

@@ -26,6 +26,15 @@ vi.mock('bcryptjs', () => ({
     },
   },
 }));
+// Der Passwortvergleich läuft im Worker-Thread-Pool; hier wie zuvor gegen die
+// bcryptjs-Attrappe dieses Tests (gezählt), die Fehlerklassen bleiben echt.
+vi.mock('@/server/auth/password-hash-pool', async (importOriginal) => {
+  const bcrypt = (await import('bcryptjs')).default;
+  return {
+    ...(await importOriginal<typeof import('@/server/auth/password-hash-pool')>()),
+    comparePasswordHash: (password: string, hash: string) => bcrypt.compare(password, hash),
+  };
+});
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }));
 vi.mock('qrcode', () => ({

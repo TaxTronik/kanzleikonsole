@@ -38,7 +38,15 @@ bleibt erreichbar; „Mandant aufnehmen“ wird nur mit `CLIENT_CREATE` angebote
   Staff-Login-Service (`server/auth/staff-login.ts`). Unbekannte Kanzlei,
   unbekannte, deaktivierte, gesperrte oder Hardware-only-Konten und falsche
   Passwörter erhalten dieselbe Meldung und kosten genau einen bcrypt-Vergleich,
-  notfalls gegen einen festen Dummy-Hash gleicher Kosten (S-09). Nach dem
+  notfalls gegen einen festen Dummy-Hash gleicher Kosten (S-09). Der Vergleich
+  läuft nicht im Haupt-Thread, sondern in einem begrenzten worker_threads-Pool
+  (`server/auth/password-hash-pool.ts`, 2–4 Threads je nach
+  `os.availableParallelism()`, höchstens 32 wartende Vergleiche). Ist die
+  Warteschlange voll oder der Pool gestört, wird der Versuch sofort mit
+  derselben Meldung abgewiesen, ohne Vergleich und ohne gezählten Fehlversuch;
+  eine gedrosselte Warnung meldet die Sättigung. Unter Sättigung hängt die
+  Antwortzeit von der Last und nicht vom Konto ab, der Timing-Seitenkanal ist
+  dann gegenstandslos. Nach dem
   Passwortschritt stellt der Server ein fünf Minuten gültiges Einmal-Ticket
   aus, gebunden an Konto, Tenant, Auth-Revision und Passwort-Hash; Redis
   speichert nur dessen Hash. TOTP/Backup-Code, Erst-Enrollment und der lokale

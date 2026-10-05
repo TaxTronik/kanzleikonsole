@@ -42,6 +42,15 @@ vi.mock('bcryptjs', () => ({
   compare: h.compare,
   default: { compare: h.compare, hash: vi.fn() },
 }));
+// Der Passwortvergleich läuft im Worker-Thread-Pool; hier wie zuvor gegen die
+// bcryptjs-Attrappe dieses Tests (gezählt), die Fehlerklassen bleiben echt.
+vi.mock('../password-hash-pool', async (importOriginal) => {
+  const bcrypt = (await import('bcryptjs')).default;
+  return {
+    ...(await importOriginal<typeof import('../password-hash-pool')>()),
+    comparePasswordHash: (password: string, hash: string) => bcrypt.compare(password, hash),
+  };
+});
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn() } }));
 vi.mock('@taxtronik/config', () => ({
   env: {

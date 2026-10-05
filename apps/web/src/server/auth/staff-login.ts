@@ -35,6 +35,10 @@ import type { StaffAuthMethod } from './staff-auth-state';
 import type { StaffSessionUser } from './staff-session';
 import { passwordLoginAccount, verifyStaffPassword } from './staff-password';
 import {
+  PasswordHashPoolSaturatedError,
+  PasswordHashPoolUnavailableError,
+} from './password-hash-pool';
+import {
   consumeStaffLoginTicket,
   issueStaffLoginTicket,
   staffLoginTicketMatches,
@@ -108,7 +112,21 @@ export async function authenticateStaffPassword(input: {
     }
   }
 
-  const passwordOk = await verifyStaffPassword(input.password, account);
+  let passwordOk: boolean;
+  try {
+    passwordOk = await verifyStaffPassword(input.password, account);
+  } catch (error) {
+    // Pool ausgelastet oder gestört: dieselbe generische Ablehnung für jedes
+    // Konto, aber kein Fehlversuch (das Passwort wurde nicht geprüft). Unter
+    // Sättigung trägt die Antwortzeit keine Kontoinformation mehr.
+    if (
+      error instanceof PasswordHashPoolSaturatedError ||
+      error instanceof PasswordHashPoolUnavailableError
+    ) {
+      return { ok: false };
+    }
+    throw error;
+  }
   if (!tenant || !account) return { ok: false };
   if (!passwordOk) {
     // Account-gebundener Lockout (S2 + L-4): erst bei N distinkten Quell-IPs;

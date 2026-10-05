@@ -11,9 +11,12 @@
 // Bewusst unverändert (S-03): Ist das Passwortkontingent eines existierenden
 // Kontos erschöpft, wird ohne Hashvergleich abgewiesen (kein Passworttest und
 // keine bcrypt-Last über das Kontingent hinaus).
+//
+// Der Vergleich läuft nicht im Haupt-Thread, sondern im begrenzten
+// Worker-Thread-Pool (password-hash-pool.ts); Hashformat und Kosten bleiben.
 // =============================================================================
 
-import bcrypt from 'bcryptjs';
+import { comparePasswordHash } from './password-hash-pool';
 
 /** Kosten aller Staff-Passwort-Hashes (Anlage, Änderung, Reset, Seeds). */
 export const STAFF_PASSWORD_HASH_COST = 12;
@@ -52,12 +55,14 @@ export function passwordLoginAccount<T extends PasswordLoginState>(account: T | 
 /**
  * Genau ein bcrypt-Vergleich: gegen den Hash des zulässigen Kontos oder, ohne
  * ein solches, gegen DUMMY_PASSWORD_HASH. true nur für ein zulässiges Konto
- * mit passendem Passwort.
+ * mit passendem Passwort. Ist der Pool ausgelastet oder gestört, wirft er
+ * PasswordHashPoolSaturatedError bzw. PasswordHashPoolUnavailableError, ohne
+ * verglichen zu haben.
  */
 export async function verifyStaffPassword(
   password: string,
   account: { passwordHash: string } | null,
 ): Promise<boolean> {
-  const matches = await bcrypt.compare(password, account?.passwordHash ?? DUMMY_PASSWORD_HASH);
+  const matches = await comparePasswordHash(password, account?.passwordHash ?? DUMMY_PASSWORD_HASH);
   return account !== null && matches;
 }

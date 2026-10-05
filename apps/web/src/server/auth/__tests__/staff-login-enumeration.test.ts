@@ -47,6 +47,15 @@ vi.mock('bcryptjs', () => ({
   compare: h.compare,
   default: { compare: h.compare, hash: vi.fn() },
 }));
+// Der Passwortvergleich läuft im Worker-Thread-Pool; hier wie zuvor gegen die
+// bcryptjs-Attrappe dieses Tests (gezählt), die Fehlerklassen bleiben echt.
+vi.mock('../password-hash-pool', async (importOriginal) => {
+  const bcrypt = (await import('bcryptjs')).default;
+  return {
+    ...(await importOriginal<typeof import('../password-hash-pool')>()),
+    comparePasswordHash: (password: string, hash: string) => bcrypt.compare(password, hash),
+  };
+});
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn() } }));
 vi.mock('@taxtronik/config', () => ({
   env: {
@@ -120,6 +129,10 @@ vi.mock('@/server/db/prisma-owner', () => ({
 import { checkPasswordAction } from '@/app/staff/(auth)/login/actions';
 import { POST as passwordFormRoute } from '@/app/staff/(auth)/login/password/route';
 import { DUMMY_PASSWORD_HASH, STAFF_PASSWORD_HASH_COST } from '../staff-password';
+import {
+  PasswordHashPoolSaturatedError,
+  PasswordHashPoolUnavailableError,
+} from '../password-hash-pool';
 
 const NOW = new Date('2026-10-05T09:00:00Z');
 const ACCOUNT_HASH = 'hash:richtiges-passwort';
@@ -266,6 +279,28 @@ describe('S-09: Staff-Konten sind weder über Meldung noch Antwortzeit ermittelb
       expect(h.compare).toHaveBeenCalledTimes(Object.keys(CASES).length);
     });
   });
+
+  it.each([
+    ['ausgelastet', () => new PasswordHashPoolSaturatedError()],
+    ['gestört', () => new PasswordHashPoolUnavailableError()],
+  ])(
+    'Passwortprüfung %s: dieselbe Ablehnung für jedes Konto, kein gezählter Fehlversuch',
+    async (_case, error) => {
+      const failedBefore = CASES['falsches Passwort']!.account.failedLoginCount;
+      for (const entry of Object.keys(ENTRY_POINTS) as Array<keyof typeof ENTRY_POINTS>) {
+        for (const attempt of Object.values(CASES)) {
+          h.account = attempt.account;
+          h.counters.clear();
+          h.compare.mockRejectedValueOnce(error());
+          await expect(ENTRY_POINTS[entry](attempt)).resolves.toEqual(EXPECTED_REJECTION[entry]);
+        }
+      }
+      // Ungeprüfte Versuche zählen weder für den Lockout noch ins Audit.
+      expect(h.evidence).not.toHaveBeenCalled();
+      expect(CASES['falsches Passwort']!.account.failedLoginCount).toBe(failedBefore);
+      expect(h.compare).toHaveBeenCalledTimes(2 * Object.keys(CASES).length);
+    },
+  );
 
   it('protokolliert Fehlversuche weiterhin nur für das existierende zulässige Konto', async () => {
     for (const attempt of Object.values(CASES)) {

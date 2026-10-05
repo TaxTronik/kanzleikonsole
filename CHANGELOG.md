@@ -1035,6 +1035,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Die Staff-Passwortprüfung (bcrypt, Kostenfaktor 12) läuft in einem
+  begrenzten Worker-Thread-Pool statt im Haupt-Thread des Web-Prozesses; viele
+  gleichzeitige Anmeldeversuche blockieren damit nicht mehr alle anderen
+  Anfragen. Bei voller Warteschlange endet ein Versuch sofort mit der üblichen
+  allgemeinen Meldung, ohne Fehlversuch zu zählen (`FK-EXC-20261005-034`).
 - Die für die PDF-Erzeugung eingebetteten Noto-Schriften (18 MB) liegen nicht
   mehr im öffentlichen Verzeichnis der Web-App; `/fonts/noto/*` war bisher ohne
   Sitzung abrufbar. Prüfskript und Web-Image sichern Ablage und Prüfsummen im

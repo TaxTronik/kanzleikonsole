@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-034
+    date: '2026-10-05'
+    paths:
+      - apps/web/next.config.mjs
+      - apps/web/scripts/verify-standalone-trace.mjs
+    rule_ids:
+      - MAIL-INBOX-001
+    reason: >-
+      next.config.mjs führt bcryptjs zusätzlich als externes Serverpaket, weil die
+      Staff-Passwortprüfung jetzt in einem begrenzten Worker-Thread-Pool läuft und
+      das echte Modul lädt; das Standalone-Prüfskript sichert, dass das
+      Produktionspaket bcryptjs auflöst. Die Einträge für den PDF-Vorabcheck der
+      Mail-Anhänge (pdf-lib) und die übrigen Worker-Parser bleiben unverändert.
+      Hash-Format, Kostenfaktor und Ergebnis der Passwortprüfung bleiben gleich.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/password-hash-pool.test.ts
+      - apps/web/src/server/auth/__tests__/staff-login-enumeration.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-033
     date: '2026-10-05'
     paths:
@@ -2305,6 +2324,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-034` dokumentiert bcryptjs als externes
+  Serverpaket für den Passwort-Pool. Mail-Anhangsprüfung bleibt unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-033` dokumentiert die FIDO-Metadatenprüfung
   als Hintergrundjob mit gespeichertem Snapshot. Prüfkette und fail-closed
