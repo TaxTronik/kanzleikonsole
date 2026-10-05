@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-005
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/api/staff/search/route.ts
+      - packages/db/prisma/migrations/20261005100100_staff_search_trigram_candidates/migration.sql
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-CLIENT-MODE-001
+    reason: >-
+      Die globale Kanzleisuche ermittelt je Kategorie zuerst Kandidaten-IDs über
+      die Trigramm-Indizes mit der SECURITY-DEFINER-Funktion
+      app.staff_search_candidates, deren Tenant ausschließlich aus
+      app.current_tenant_id() stammt, und lädt danach nur diese IDs unter RLS mit
+      den unveränderten Zugriffsfiltern und demselben Suchfilter. Was die zweite
+      Stufe nicht sieht, erscheint nicht. Bekannte Grenze: Die erste Stufe prüft nur
+      den Tenant; sehr breite Suchbegriffe können bei stark eingeschränkter
+      Sichtbarkeit weniger Treffer liefern, weil höchstens fünf Kandidatenblöcke
+      geladen werden. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/staff-search-candidates.test.ts
+      - apps/web/src/server/search/__tests__/staff-candidates.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-004
     date: '2026-10-05'
     paths:
@@ -1541,6 +1564,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-005` dokumentiert die zweistufige globale Suche
+  über Trigramm-Kandidaten und anschließendes Laden unter RLS. Sichtbarkeit
+  und Zugriffsfilter bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-004` dokumentiert die Mandantensichtbarkeit als
   Relationsfilter statt NOT-IN-Listen. Sichtbare Zeilen und

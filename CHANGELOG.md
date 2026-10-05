@@ -217,6 +217,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Die globale Kanzleisuche ermittelt Kandidaten über die
+  Trigramm-Indizes und lädt nur diese unter Row-Level-Security mit den
+  bisherigen Zugriffsfiltern nach. Bisher konnte PostgreSQL die Indizes unter
+  RLS nicht nutzen; bei 200.000 Dokumenten sinkt die Antwortzeit von rund 2 s
+  auf wenige Millisekunden (`ACCESS-SEARCH-SCOPE-001`, `FK-EXC-20261005-005`).
 - **[Scope]** Die Mandantensichtbarkeit (vertraulich, RESTRICTED-Modus) wird in
   Listen, Kalender, Dashboard, Arbeitskorb, Fristenkontrollbuch, Exporten,
   ZIP-Download und globaler Suche als Relationsfilter geprüft statt über

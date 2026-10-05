@@ -179,6 +179,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // RLS-Ressourcensuche per UUID: Owner legt Fixtures an und liest die
   // aktuellen Funktionsdefinitionen; die App-Rolle prüft die Treffer.
   'packages/db/src/__tests__/rls-resource-uuid-lookup.test.ts',
+  // ACCESS-SEARCH-SCOPE-001 / ACCESS-TENANT-RLS-001: Owner-Fixtures in zwei frischen
+  // Tenants; die App-Rolle prüft Tenantgrenze und Indexnutzung der Kandidatensuche (P-10).
+  'packages/db/src/__tests__/staff-search-candidates.test.ts',
   // Session-Limits: eigene Clients mit und ohne Grenzen beweisen, dass nur der
   // App-Client statement_timeout und idle_in_transaction_session_timeout setzt.
   'packages/db/src/__tests__/app-session-limits.test.ts',

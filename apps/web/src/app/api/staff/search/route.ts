@@ -4,6 +4,9 @@
 // Globale Suche über Mandanten, Anforderungen, Dokumente, KB-Artikel und
 // Rechnungsnummern. Liefert max. 5 Treffer pro Kategorie. Substring-Suche
 // (ILIKE) — KB nutzt zusätzlich Postgres-FTS für präzisere Treffer.
+// Mandanten, Anforderungen, Dokumente und Rechnungen suchen zweistufig über
+// app.staff_search_candidates (Trigram-Indizes) und laden dann unter RLS
+// (server/search/staff-candidates.ts).
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -12,12 +15,16 @@ import { staffAuth } from '@/server/auth/staff';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { checkStaffSearchLimit } from '@/server/rate-limit';
+import { visibleSearchHitsTx } from '@/server/search/staff-candidates';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 
 const QuerySchema = z.object({
   q: z.string().min(1).max(200),
 });
+
+/** Treffer je Kategorie. */
+const SEARCH_LIMIT = 5;
 
 export interface SearchResult {
   type: 'client' | 'request' | 'document' | 'kb_article' | 'invoice';
@@ -61,75 +68,92 @@ export async function GET(req: NextRequest) {
     const clientAccess = await accessibleClientsWhereFor(tx, session);
     const viaVisibleClient = clientAccessFilter(clientAccess);
 
+    // Zweistufig (P-10): Unter RLS darf PostgreSQL ILIKE nicht als
+    // Indexbedingung nutzen (nicht LEAKPROOF) und läse jede Tenant-Zeile samt
+    // Policy-Funktionen. Kandidaten-IDs kommen über die Trigram-Indizes
+    // (app.staff_search_candidates); geladen wird nur unter RLS mit Zugriffs-
+    // und demselben Suchfilter (server/search/staff-candidates.ts).
     const [clients, requests, documents, invoices, kbArticles] = await Promise.all([
-      tx.client.findMany({
-        where: {
-          // AND statt Spread: die Regel kann selbst ein OR enthalten.
-          AND: [
-            clientAccess,
-            {
-              OR: [
-                { name: { contains: likeTerm, mode: 'insensitive' } },
-                { datevNo: { contains: likeTerm, mode: 'insensitive' } },
-                { addisonNo: { contains: likeTerm, mode: 'insensitive' } },
-                { vatId: { contains: likeTerm, mode: 'insensitive' } },
-              ],
-            },
-          ],
-        },
-        select: { id: true, name: true, datevNo: true, addisonNo: true },
-        take: 5,
-        orderBy: { name: 'asc' },
-      }),
-      tx.request.findMany({
-        where: {
-          ...viaVisibleClient,
-          OR: [
-            { title: { contains: likeTerm, mode: 'insensitive' } },
-            { description: { contains: likeTerm, mode: 'insensitive' } },
-          ],
-        },
-        select: { id: true, title: true, status: true, client: { select: { name: true } } },
-        take: 5,
-        orderBy: { createdAt: 'desc' },
-      }),
-      tx.document.findMany({
-        where: {
-          title: { contains: likeTerm, mode: 'insensitive' },
-          deletedAt: null,
-          // clientId = null (Kanzlei-Dokumente) bleibt sichtbar.
-          ...optionalClientAccessFilter(clientAccess),
-        },
-        select: {
-          id: true,
-          title: true,
-          classification: true,
-          client: { select: { name: true } },
-        },
-        take: 5,
-        orderBy: { createdAt: 'desc' },
-      }),
+      visibleSearchHitsTx(tx, 'client', q, SEARCH_LIMIT, (ids, take) =>
+        tx.client.findMany({
+          where: {
+            id: { in: ids },
+            // AND statt Spread: die Regel kann selbst ein OR enthalten.
+            AND: [
+              clientAccess,
+              {
+                OR: [
+                  { name: { contains: likeTerm, mode: 'insensitive' } },
+                  { datevNo: { contains: likeTerm, mode: 'insensitive' } },
+                  { addisonNo: { contains: likeTerm, mode: 'insensitive' } },
+                  { vatId: { contains: likeTerm, mode: 'insensitive' } },
+                ],
+              },
+            ],
+          },
+          select: { id: true, name: true, datevNo: true, addisonNo: true },
+          take,
+          orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        }),
+      ),
+      visibleSearchHitsTx(tx, 'request', q, SEARCH_LIMIT, (ids, take) =>
+        tx.request.findMany({
+          where: {
+            id: { in: ids },
+            ...viaVisibleClient,
+            OR: [
+              { title: { contains: likeTerm, mode: 'insensitive' } },
+              { description: { contains: likeTerm, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true, title: true, status: true, client: { select: { name: true } } },
+          take,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+      ),
+      visibleSearchHitsTx(tx, 'document', q, SEARCH_LIMIT, (ids, take) =>
+        tx.document.findMany({
+          where: {
+            id: { in: ids },
+            title: { contains: likeTerm, mode: 'insensitive' },
+            deletedAt: null,
+            // clientId = null (Kanzlei-Dokumente) bleibt sichtbar.
+            ...optionalClientAccessFilter(clientAccess),
+          },
+          select: {
+            id: true,
+            title: true,
+            classification: true,
+            client: { select: { name: true } },
+          },
+          take,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+      ),
       // Das API ist selbst eine Datenoberflaeche und darf ein im Layout
       // deaktiviertes Rechnungsmodul nicht durch Nummer/Betreff leaken.
       modules.invoiceMode !== 'OFF'
-        ? tx.invoice.findMany({
-            where: {
-              ...viaVisibleClient,
-              OR: [
-                { number: { contains: likeTerm, mode: 'insensitive' } },
-                { subject: { contains: likeTerm, mode: 'insensitive' } },
-              ],
-            },
-            select: {
-              id: true,
-              number: true,
-              subject: true,
-              status: true,
-              client: { select: { name: true } },
-            },
-            take: 5,
-            orderBy: { issueDate: 'desc' },
-          })
+        ? visibleSearchHitsTx(tx, 'invoice', q, SEARCH_LIMIT, (ids, take) =>
+            tx.invoice.findMany({
+              where: {
+                id: { in: ids },
+                ...viaVisibleClient,
+                OR: [
+                  { number: { contains: likeTerm, mode: 'insensitive' } },
+                  { subject: { contains: likeTerm, mode: 'insensitive' } },
+                ],
+              },
+              select: {
+                id: true,
+                number: true,
+                subject: true,
+                status: true,
+                client: { select: { name: true } },
+              },
+              take,
+              orderBy: [{ issueDate: 'desc' }, { id: 'desc' }],
+            }),
+          )
         : Promise.resolve([]),
       // KB via FTS
       modules.knowledge
