@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-006
+    date: '2026-10-05'
+    paths:
+      - packages/db/prisma/migrations/20261005100200_audit_log_action_actor_indexes/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - AUDIT-HASH-CHAIN-001
+      - DSGVO-CONTACT-EXPORT-001
+      - RISK-CATALOG-FOUR-EYES-001
+      - TCMS-SAMPLE-PROOF-001
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Zwei neue Indizes auf audit_log, (tenant_id, action, id) und (tenant_id,
+      actor_id, actor_type), beschleunigen Los-Liste, Vier-Augen-Prüfung des
+      Risikokatalogs, Kategoriefilter der Audit-Seite und DSGVO-Kontaktauskunft.
+      Die Reihenfolge der Akteur-Spalten folgt den unter RLS als Indexbedingung
+      zulässigen LEAKPROOF-Operatoren. Hash-Kette, Inhalte und Leserechte von
+      audit_log bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/audit-log-reader-indexes.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-005
     date: '2026-10-05'
     paths:
@@ -1564,6 +1585,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-006` dokumentiert zwei Leseindizes auf
+  `audit_log`. Hash-Kette, Inhalte und Leserechte bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-005` dokumentiert die zweistufige globale Suche
   über Trigramm-Kandidaten und anschließendes Laden unter RLS. Sichtbarkeit

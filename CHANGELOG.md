@@ -217,6 +217,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Neue Indizes auf `audit_log` nach Aktion und Akteur beschleunigen
+  Los-Liste, Vier-Augen-Prüfung des Risikokatalogs, Kategoriefilter der
+  Audit-Seite und DSGVO-Kontaktauskunft; bei 3 Mio. Einträgen von bis zu
+  0,7 s auf unter 2 ms. Der Indexaufbau dauert bei der Migration rund 15 s je
+  3 Mio. Zeilen (`AUDIT-HASH-CHAIN-001`, `FK-EXC-20261005-006`).
 - **[Scope]** Die globale Kanzleisuche ermittelt Kandidaten über die
   Trigramm-Indizes und lädt nur diese unter Row-Level-Security mit den
   bisherigen Zugriffsfiltern nach. Bisher konnte PostgreSQL die Indizes unter
