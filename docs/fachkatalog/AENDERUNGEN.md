@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-041
+    date: '2026-10-05'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - .forgejo/workflows/release.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Alle Workflows (ci.yml, release.yml u. a.) beziehen die Node-Version aus
+      .nvmrc (24.19.0, identisch mit der gepinnten Host-Laufzeit), statt je Schritt
+      node-version 24 zu setzen; CI-Jobs installieren ohne --ignore-scripts mit
+      genau den in allowBuilds freigegebenen Install-Skripten statt
+      handgepflegter pnpm-rebuild-Listen. Web- und Worker-Image teilen eine
+      digest-gepinnte Basis. Release-Gates, Signatur- und Manifestprüfung,
+      Testnachweise, RFC-3161-Anker und Prüfalarme bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - scripts/tests/check-docker-bases-pinned.test.mjs
+      - scripts/release/tests/check-release-gates.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-040
     date: '2026-10-05'
     paths:
@@ -2455,6 +2477,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-041` dokumentiert Node aus `.nvmrc` und
+  Installationen mit geprüften Install-Skripten in allen Workflows.
+  Release-Gates und Nachweise bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-040` dokumentiert die Altbestandstests
   für Migration 034 und 041 als SQL-Dateien in jedem CI-Lauf. Geprüfte

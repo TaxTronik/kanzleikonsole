@@ -35,14 +35,14 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Guard pnpm supply-chain policy
         run: sh scripts/check-pnpm-supply-chain.sh
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile
 
       - name: Audit production dependencies
         run: |

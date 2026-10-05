@@ -687,11 +687,17 @@ test_interrupted_one_click_deploy_still_rejects_foreign_containers() {
 }
 
 test_one_click_runtime_install_contract_is_pinned_and_official() {
-  local source="$REPO_ROOT/scripts/ops-lib.sh"
+  local source="$REPO_ROOT/scripts/ops-lib.sh" package_manager
   [[ "$HOST_NODE_VERSION" =~ ^24\.[0-9]+\.[0-9]+$ ]] || test_fail "managed Node version is not pinned to Node 24"
+  # CI (node-version-file) und Host-Setup muessen dieselbe exakte Node-Version nutzen.
+  [[ "$HOST_NODE_VERSION" == "$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")" ]] || \
+    test_fail "managed Node version drifted from .nvmrc"
   [[ "$HOST_NODE_LINUX_X64_SHA256" =~ ^[0-9a-f]{64}$ ]] || test_fail "Node x64 SHA-256 is not pinned"
   [[ "$HOST_NODE_LINUX_ARM64_SHA256" =~ ^[0-9a-f]{64}$ ]] || test_fail "Node arm64 SHA-256 is not pinned"
-  [[ "$HOST_PNPM_VERSION" == "12.4.1" ]] || test_fail "pnpm host version drifted from packageManager"
+  package_manager="$(sed -n 's/^[[:space:]]*"packageManager":[[:space:]]*"pnpm@\([^"]*\)".*/\1/p' \
+    "$REPO_ROOT/package.json" | tr -d '\r')"
+  [[ -n "$package_manager" && "$HOST_PNPM_VERSION" == "$package_manager" ]] || \
+    test_fail "pnpm host version drifted from packageManager"
   assert_contains "$source" 'https://download.docker.com/linux/${os_id}/gpg'
   assert_contains "$source" 'https://nodejs.org/download/release/v${HOST_NODE_VERSION}/node-v${HOST_NODE_VERSION}-linux-${platform}.tar.xz'
   assert_not_contains "$source" 'curl | sh'

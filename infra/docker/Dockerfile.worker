@@ -9,10 +9,18 @@
 # erzeugt Symlinks auf quell-lose Pakete; siehe Dockerfile.web).
 # =============================================================================
 
-FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS builder
+# Gemeinsame, digest-gepinnte Basis fuer Builder und Runtime von Web UND
+# Worker; der Wert muss in Dockerfile.web identisch sein (Guard:
+# scripts/check-docker-bases-pinned.mjs). Alpine 3.23, weil
+# postgresql18-client erst ab 3.23 in main liegt.
+ARG NODE_BASE_IMAGE=node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436
+
+FROM ${NODE_BASE_IMAGE} AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@12.4.1 --activate && pnpm --version
+# pnpm-Version ausschliesslich aus packageManager in package.json (Corepack).
+COPY package.json ./
+RUN corepack enable && corepack install && pnpm --version
 
 # Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
 COPY . .
@@ -20,15 +28,13 @@ COPY . .
 # Runtime-COPYs muessen fuer `node` lesbar, aber nie gruppen-/welt-schreibbar sein.
 RUN chmod -R u=rwX,go=rX /repo
 
-# Gepruefte postinstall-Hooks holt rebuild nach; der frische CI-Install prueft
-# zusaetzlich neue Hooks ohne allowBuilds-Entscheidung. `--filter @taxtronik/db`,
+# Install mit Hooks: nur die in allowBuilds freigegebenen Install-Skripte
+# laufen, strictDepBuilds bricht bei ungeprueften Hooks ab (wie Quality-Job und
+# Host-Setup, siehe Dockerfile.web). `--filter @taxtronik/db`,
 # damit dessen devDep prisma (+ transitiv dotenv)
 # für den Migrate-Service (prisma.config.ts) von packages/db auflösbar ist.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts --filter @taxtronik/worker... --filter @taxtronik/db
-
-RUN pnpm rebuild -r --filter @taxtronik/worker... \
-      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
+    pnpm install --frozen-lockfile --filter @taxtronik/worker... --filter @taxtronik/db
 
 # Prisma direkt aufrufen — siehe Dockerfile.web. cd packages/db: @prisma/client
 # (Generate-Ziel) + prisma/config (für prisma.config.ts) dort auflösbar.
@@ -43,10 +49,11 @@ RUN cd packages/db && \
 # P-10: Kein corepack/pnpm in der Runtime-Stage. Reduziert Image-Größe und
 # verkleinert den Angriffsvektor. tsx wird zur Laufzeit per find lokalisiert
 # (pnpm-Store-Layout legt es nicht unter node_modules/.bin/ ab).
-# Runner explizit auf Alpine 3.23 gepinnt: postgresql18-client liegt erst ab
-# 3.23 in main (v3.22 hat nur 17) — ein floatendes node:24-alpine könnte je
-# nach Upstream-Stand ohne pg18 dastehen und der apk add unten bräche.
-FROM node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436 AS runner
+# Runner explizit auf Alpine 3.23 gepinnt (NODE_BASE_IMAGE oben):
+# postgresql18-client liegt erst ab 3.23 in main (v3.22 hat nur 17) — ein
+# floatendes node:24-alpine könnte je nach Upstream-Stand ohne pg18 dastehen
+# und der apk add unten bräche.
+FROM ${NODE_BASE_IMAGE} AS runner
 # Versions-Metadaten — siehe Dockerfile.web (Release-Workflow setzt Tag + Commit).
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown

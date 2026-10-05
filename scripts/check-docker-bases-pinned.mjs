@@ -19,14 +19,93 @@ export const REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS = [
 ];
 export const REQUIRED_COMPOSE_SECRETS = ['AUTH_SECRET', 'N8N_ENCRYPTION_KEY'];
 
+// Globale ARGs vor dem ersten FROM duerfen das Basisimage tragen
+// (`ARG NODE_BASE_IMAGE=...` + `FROM ${NODE_BASE_IMAGE}`). Der Default muss
+// dann selbst digest-gepinnt sein; Stage-lokale ARGs gelten in FROM nicht.
+export function globalArgDefaults(source) {
+  const defaults = new Map();
+  for (const raw of source.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^FROM\s+/i.test(line)) break;
+    const match = /^ARG\s+([A-Za-z_][A-Za-z0-9_]*)(?:=(\S+))?\s*$/i.exec(line);
+    if (match) defaults.set(match[1], match[2] ?? '');
+  }
+  return defaults;
+}
+
+function resolveFromLine(line, args) {
+  return line.replace(
+    /^(FROM\s+(?:--platform=\S+\s+)?)(?:\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*))(?=\s|$)/i,
+    (whole, prefix, braced, bare) => {
+      const value = args.get(braced ?? bare);
+      return value ? `${prefix}${value}` : whole;
+    },
+  );
+}
+
 export function unpinnedFromLines(source, fileName = '<Dockerfile>') {
+  const args = globalArgDefaults(source);
   return source
     .split(/\r?\n/)
     .map((line, index) => ({ line: line.trim(), number: index + 1 }))
     .filter(({ line }) => /^FROM\s+/i.test(line))
     .filter(({ line }) => !/^FROM\s+scratch(?:\s|$)/i.test(line))
-    .filter(({ line }) => !DIGEST.test(line))
-    .map(({ line, number }) => `${fileName}:${number}: ${line}`);
+    .map((entry) => ({ ...entry, resolved: resolveFromLine(entry.line, args) }))
+    .filter(({ resolved }) => !DIGEST.test(resolved))
+    .map(
+      ({ line, number, resolved }) =>
+        `${fileName}:${number}: ${line}${resolved === line ? '' : ` (= ${resolved})`}`,
+    );
+}
+
+// R-09: Web und Worker bauen Builder und Runtime auf exakt derselben Basis.
+// Ein gemeinsamer ARG verhindert, dass die Digests wieder zufaellig
+// auseinanderlaufen.
+export const SHARED_BASE_ARG = 'NODE_BASE_IMAGE';
+
+export function checkSharedNodeBase(files) {
+  const bases = files.map(({ name, source }) => {
+    const base = globalArgDefaults(source).get(SHARED_BASE_ARG);
+    if (!base || !DIGEST.test(base)) {
+      throw new Error(
+        `${name}: ARG ${SHARED_BASE_ARG}=<image>@sha256:<digest> fehlt vor dem ersten FROM.`,
+      );
+    }
+    for (const stage of ['builder', 'runner']) {
+      const pattern = new RegExp(
+        `^FROM\\s+\\$\\{${SHARED_BASE_ARG}\\}\\s+AS\\s+${stage}\\s*$`,
+        'im',
+      );
+      if (!pattern.test(source)) {
+        throw new Error(
+          `${name}: Stage ${stage} muss FROM \${${SHARED_BASE_ARG}} AS ${stage} sein.`,
+        );
+      }
+    }
+    return { name, base };
+  });
+  if (new Set(bases.map(({ base }) => base)).size !== 1) {
+    throw new Error(
+      `Web und Worker muessen dieselbe Basis verwenden:\n${bases
+        .map(({ name, base }) => `${name}: ${base}`)
+        .join('\n')}`,
+    );
+  }
+  return true;
+}
+
+// Der Pin gilt nur, solange kein Build-Aufruf den ARG per --build-arg oder
+// build-args ersetzt.
+export function checkSharedBaseNotOverridden(sources) {
+  const offenders = sources
+    .filter(({ source }) => source.includes(SHARED_BASE_ARG))
+    .map(({ name }) => name);
+  if (offenders.length > 0) {
+    throw new Error(
+      `${SHARED_BASE_ARG} darf beim Build nicht ueberschrieben werden: ${offenders.join(', ')}`,
+    );
+  }
+  return true;
 }
 
 export function checkDockerfiles(files) {
@@ -159,6 +238,17 @@ function main() {
       source: readFileSync(`${directory}/${name}`, 'utf8'),
     }));
     checkDockerfiles(files);
+    checkSharedNodeBase(files.filter(({ name }) => /\/Dockerfile\.(?:web|worker)$/.test(name)));
+    checkSharedBaseNotOverridden(
+      [
+        ...readdirSync('.forgejo/workflows').map((name) => `.forgejo/workflows/${name}`),
+        ...readdirSync('infra/compose').map((name) => `infra/compose/${name}`),
+        ...readdirSync('scripts/release').map((name) => `scripts/release/${name}`),
+        'scripts/ops-lib.sh',
+      ]
+        .filter((name) => /\.(?:ya?ml|sh)$/.test(name))
+        .map((name) => ({ name, source: readFileSync(name, 'utf8') })),
+    );
     for (const file of files) {
       checkRuntimePackageManagersRemoved(file.source, file.name);
       checkBuilderSourcePermissions(file.source, file.name);
@@ -167,7 +257,7 @@ function main() {
     checkDockerignore(readFileSync('.dockerignore', 'utf8'));
     checkRequiredComposeSecrets(readFileSync('infra/compose/docker-compose.app.yml', 'utf8'));
     process.stdout.write(
-      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases, normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
+      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases (Web und Worker gemeinsam ueber ${SHARED_BASE_ARG}), normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
     );
   } catch (error) {
     process.stderr.write(`FEHLER: ${error.message}\n`);

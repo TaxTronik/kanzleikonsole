@@ -5,6 +5,8 @@ import {
   checkDockerignore,
   checkRequiredComposeSecrets,
   checkRuntimePackageManagersRemoved,
+  checkSharedBaseNotOverridden,
+  checkSharedNodeBase,
   checkWebRuntimeDockerfile,
   REQUIRED_COMPOSE_SECRETS,
   REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS,
@@ -29,6 +31,69 @@ assert.throws(
 assert.throws(
   () => checkDockerfiles([{ name: 'Dockerfile', source: 'FROM ${BASE_IMAGE}' }]),
   /FROM \$\{BASE_IMAGE\}/,
+);
+// Globaler ARG mit gepinntem Default traegt die Basis; ungepinnter Default oder
+// ein erst nach dem ersten FROM deklarierter ARG zaehlen als ungepinnt.
+const sharedBase = `node:24-alpine3.23@sha256:${digest}`;
+const sharedDockerfile = [
+  `ARG NODE_BASE_IMAGE=${sharedBase}`,
+  'FROM ${NODE_BASE_IMAGE} AS builder',
+  'FROM ${NODE_BASE_IMAGE} AS runner',
+].join('\n');
+assert.equal(checkDockerfiles([{ name: 'Dockerfile', source: sharedDockerfile }]), true);
+assert.deepEqual(
+  unpinnedFromLines('ARG NODE_BASE_IMAGE=node:24-alpine\nFROM $NODE_BASE_IMAGE AS b', 'D'),
+  ['D:2: FROM $NODE_BASE_IMAGE AS b (= FROM node:24-alpine AS b)'],
+);
+assert.throws(
+  () =>
+    checkDockerfiles([
+      {
+        name: 'Dockerfile',
+        source: `FROM scratch AS seed\nARG NODE_BASE_IMAGE=${sharedBase}\nFROM \${NODE_BASE_IMAGE}`,
+      },
+    ]),
+  /Dockerfile:3: FROM \$\{NODE_BASE_IMAGE\}/,
+);
+assert.equal(
+  checkSharedNodeBase([
+    { name: 'Dockerfile.web', source: sharedDockerfile },
+    { name: 'Dockerfile.worker', source: sharedDockerfile },
+  ]),
+  true,
+);
+assert.throws(
+  () =>
+    checkSharedNodeBase([
+      { name: 'Dockerfile.web', source: sharedDockerfile },
+      { name: 'Dockerfile.worker', source: sharedDockerfile.replace(digest, 'b'.repeat(64)) },
+    ]),
+  /dieselbe Basis/,
+);
+assert.throws(
+  () =>
+    checkSharedNodeBase([
+      {
+        name: 'Dockerfile.worker',
+        source: sharedDockerfile.replace(
+          'FROM ${NODE_BASE_IMAGE} AS runner',
+          `FROM ${sharedBase} AS runner`,
+        ),
+      },
+    ]),
+  /Stage runner muss FROM \$\{NODE_BASE_IMAGE\} AS runner sein/,
+);
+assert.throws(
+  () => checkSharedNodeBase([{ name: 'Dockerfile.web', source: 'FROM node:24 AS builder' }]),
+  /ARG NODE_BASE_IMAGE=/,
+);
+assert.equal(checkSharedBaseNotOverridden([{ name: 'ci.yml', source: 'build-args: |' }]), true);
+assert.throws(
+  () =>
+    checkSharedBaseNotOverridden([
+      { name: 'release.yml', source: 'build-args: |\n  NODE_BASE_IMAGE=node:24' },
+    ]),
+  /release\.yml/,
 );
 assert.equal(checkDockerignore(REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS.join('\n')), true);
 assert.throws(
@@ -133,4 +198,4 @@ assert.throws(
   /N8N_WEBHOOK_BASE_URL.*default-leeren/,
 );
 
-process.stdout.write('19 Docker base/context/runtime/compose tests passed.\n');
+process.stdout.write('28 Docker base/context/runtime/compose tests passed.\n');

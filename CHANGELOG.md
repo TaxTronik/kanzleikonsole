@@ -1091,6 +1091,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- CI/Container: exakte Node-Version 24.19.0 in `.nvmrc` für alle Workflows;
+  Web- und Worker-Image auf derselben digest-gepinnten Basis
+  (`NODE_BASE_IMAGE`, Alpine 3.23), pnpm aus `packageManager`. CI und Images
+  installieren mit den in `allowBuilds` geprüften Install-Skripten statt
+  `--ignore-scripts` plus handgepflegter Rebuild-Listen, denen
+  `msgpackr-extract` fehlte (`FK-EXC-20261005-041`).
 - Die Staff-Passwortprüfung (bcrypt, Kostenfaktor 12) läuft in einem
   begrenzten Worker-Thread-Pool statt im Haupt-Thread des Web-Prozesses; viele
   gleichzeitige Anmeldeversuche blockieren damit nicht mehr alle anderen

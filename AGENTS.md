@@ -47,8 +47,10 @@ Auswirkung benötigen keinen neuen Katalogeintrag.
    Scheitert der Nachweis an externen Diensten, die konkrete Ursache und die
    noch offene CI-Prüfung ausdrücklich nennen; keinen erfolgreichen Build
    behaupten.
-4. pnpm-Versionspins in `package.json`, beiden Dockerfiles, dem Host-Setup in
-   `scripts/ops-lib.sh` sowie zugehörigen Guards und Tests synchron halten.
+4. Den pnpm-Versionspin in `packageManager` (`package.json`; beide Dockerfiles
+   beziehen ihn per Corepack), dem Host-Setup in `scripts/ops-lib.sh` sowie
+   zugehörigen Guards und Tests synchron halten; ebenso die Node-Version in
+   `.nvmrc` und `HOST_NODE_VERSION`.
    `pnpm guard:supply-chain`, `pnpm test:ops`, `pnpm fachkatalog:check` und
    `pnpm fachkatalog:diff` ausführen.
 

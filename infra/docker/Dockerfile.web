@@ -13,12 +13,19 @@
 # pnpm-workspace.yaml liefert nodeLinker=hoisted + shamefullyHoist=true.
 # =============================================================================
 
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
+# Gemeinsame, digest-gepinnte Basis fuer Builder und Runtime von Web UND
+# Worker; der Wert muss in Dockerfile.worker identisch sein (Guard:
+# scripts/check-docker-bases-pinned.mjs). Alpine 3.23, weil
+# postgresql18-client erst ab 3.23 in main liegt.
+ARG NODE_BASE_IMAGE=node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436
+
+FROM ${NODE_BASE_IMAGE} AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
-# Dieselbe pnpm-Version wie Host-Setup und package.json; --version laedt
-# bereits hier die native pnpm-12-Binary ueber den Corepack-Einstiegspunkt.
-RUN corepack enable && corepack prepare pnpm@12.4.1 --activate && pnpm --version
+# pnpm-Version ausschliesslich aus packageManager in package.json (Corepack);
+# --version laedt bereits hier die pnpm-Binary in diesen Layer.
+COPY package.json ./
+RUN corepack enable && corepack install && pnpm --version
 
 # Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim Modul-Load,
 # wenn ENV-Vars fehlen — Next evaluiert Server-Components bei der Page-Data-
@@ -43,17 +50,15 @@ COPY . .
 # in den spaeteren non-root-Runner tragen.
 RUN chmod -R u=rwX,go=rX /repo
 
-# Die benoetigten, per allowBuilds geprueften postinstall-Hooks werden gezielt
-# im rebuild ausgefuehrt. Ein frischer CI-Install ohne --ignore-scripts prueft
-# zusaetzlich auf neue Hooks ohne Entscheidung. --filter @taxtronik/db,
+# Install mit Hooks: pnpm fuehrt genau die in allowBuilds (pnpm-workspace.yaml)
+# freigegebenen Install-Skripte aus und bricht wegen strictDepBuilds bei jedem
+# ungeprueften Hook ab - derselbe Installationsfall wie im Quality-Job und beim
+# Host-Setup, ohne zweite, handgepflegte rebuild-Liste. --filter @taxtronik/db,
 # damit dessen devDep prisma (+ transitiv dotenv)
 # für prisma generate/migrate von packages/db auflösbar ist.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts \
+    pnpm install --frozen-lockfile \
       --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db
-
-RUN pnpm rebuild -r --filter @taxtronik/web... --filter @taxtronik/web \
-      @prisma/client @prisma/engines esbuild prisma sharp unrs-resolver
 
 # Prisma direkt aus dem gefilterten Build-Workspace aufrufen.
 # cd packages/db: @prisma/client (Generate-Ziel) + prisma/config (für die
@@ -82,7 +87,7 @@ RUN --mount=type=cache,target=/repo/apps/web/.next/cache \
     node "$NEXT" build
 
 # ----- Runtime ---------------------------------------------------------------
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runner
+FROM ${NODE_BASE_IMAGE} AS runner
 # Versions-Metadaten: setzt der Release-Workflow (release.yml) aus Tag + Commit,
 # lokale Builds lassen die Defaults stehen. Landen als ENV im Container —
 # Admin-Seite und /api/health/detail zeigen sie an; Compose darf APP_VERSION
