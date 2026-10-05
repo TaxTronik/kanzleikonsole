@@ -1,13 +1,15 @@
 # AUTH_SECRET-Rotation und bekannte Schlüssel-Abhängigkeiten
 
-Stand: 2026-09-03
+Stand: 2026-10-05
 
 `AUTH_SECRET` ist die Schlüsselwurzel für Sessions und TOTP. Frische
 Installationen erzeugen zusätzlich einen unabhängigen `SECRET_BOX_KEY` für
 gespeicherte Tenant-/Integrations-Secrets. Bestehende Installationen ohne
 `SECRET_BOX_KEY` nutzen aus Kompatibilitätsgründen weiterhin `AUTH_SECRET` als
-Fallback. Diese Datei dokumentiert die Rotation, solange kein dediziertes
-Re-Wrap-Tooling existiert.
+Fallback. Diese Datei dokumentiert die Rotation. Für die Secret-Box gibt es ein
+Re-Wrap-Kommando (`pnpm secret-box:rewrap`, siehe
+[`../operations/secret-rotation.md`](../operations/secret-rotation.md#secret-box-schlüssel));
+für TOTP-Secrets weiterhin nicht.
 
 ---
 
@@ -16,11 +18,12 @@ Re-Wrap-Tooling existiert.
 Die Pfade nutzen getrennte Ableitungen. Mit provisioniertem `SECRET_BOX_KEY`
 kompromittiert ein Leak von `AUTH_SECRET` die Secret-box-Werte nicht mehr.
 
-| Konsument                                            | Derivation                                                                                    | Was wird geschützt                                                              |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Auth.js JWE-Verschlüsselung                          | Auth.js-interne HKDF-Ableitung; kompaktes JWE mit `alg=dir`, `enc=A256CBC-HS512`              | Vertraulichkeit und Integrität der Session-Claims (24 h TTL)                    |
-| `@taxtronik/crypto` v2 secret-box (M-1)              | `hkdfSync('sha256', SECRET_BOX_KEY ?? AUTH_SECRET, salt, info='taxtronik-secret-box-v2', 32)` | `tenant_setting.value`-Felder (SMTP-Passwörter, n8n-HMAC-Secrets, n8n-API-Keys) |
-| TOTP-Encryption (`apps/web/src/server/auth/totp.ts`) | `hkdfSync('sha256', AUTH_SECRET, salt=tenantId, info='taxtronik-totp-key', 32)`               | `staff_user.totp_secret_enc`                                                    |
+| Konsument                                            | Derivation                                                                                                                                                                         | Was wird geschützt                                                                                                                  |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Auth.js JWE-Verschlüsselung                          | Auth.js-interne HKDF-Ableitung; kompaktes JWE mit `alg=dir`, `enc=A256CBC-HS512`                                                                                                   | Vertraulichkeit und Integrität der Session-Claims (24 h TTL)                                                                        |
+| `@taxtronik/crypto` v3 secret-box (S-08)             | `hkdfSync('sha256', <erster SECRET_BOX_KEYRING-Eintrag, sonst SECRET_BOX_KEY ?? AUTH_SECRET>, salt-v3, info='taxtronik-secret-box-v3', 32)`; AAD `<tenantId>\|<Ablageort>\|<Feld>` | Ablageorte aus `packages/crypto/src/secret-slots.ts` (SMTP-Passwörter, n8n-Secrets und -API-Keys, IBM-Token, Postfach-Zugangsdaten) |
+| `@taxtronik/crypto` v2 secret-box (M-1), nur lesend  | `hkdfSync('sha256', SECRET_BOX_KEY ?? AUTH_SECRET, salt, info='taxtronik-secret-box-v2', 32)`                                                                                      | Bestandswerte bis zum Re-Wrap                                                                                                       |
+| TOTP-Encryption (`apps/web/src/server/auth/totp.ts`) | `hkdfSync('sha256', AUTH_SECRET, salt=tenantId, info='taxtronik-totp-key', 32)`                                                                                                    | `staff_user.totp_secret_enc`                                                                                                        |
 
 WebAuthn-Credential-IDs, öffentliche Schlüssel, Signaturzähler und Metadaten in
 `staff_webauthn_credential` werden nicht aus `AUTH_SECRET` abgeleitet. Der
@@ -37,7 +40,8 @@ registrierte Sicherheitsschlüssel.
    `revokeAllSessions` ist allein keine Eindämmung; wirksam wird erst die
    Rotation von `AUTH_SECRET`.
 2. **Secret-Box-Decryption (nur Legacy-Fallback)**: Ohne separaten
-   `SECRET_BOX_KEY` sind alle in `tenant_setting` verschlüsselten Werte lesbar.
+   `SECRET_BOX_KEY` und ohne `SECRET_BOX_KEYRING` sind alle mit der Secret-Box
+   verschlüsselten Werte lesbar.
 3. **TOTP-Decryption**: Alle `totp_secret_enc` lesbar → Angreifer kennt
    die TOTP-Seeds und kann gültige Codes generieren. Backup-Codes-Hashes
    sind bcrypt-gehasht — nicht decrypt-bar, aber pro Code in vertretbarer
@@ -66,23 +70,29 @@ grep '^AUTH_SECRET=' .env > /secure-backup/auth-secret-pre-rotation.txt
 openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
 ```
 
-### Schritt 2 — Legacy-Fallback ist ohne Rewrap-Tool ein Blocker
+### Schritt 2 — Secret-Box-Werte von AUTH_SECRET lösen
 
-Ist `SECRET_BOX_KEY` bereits gesetzt, entfällt dieser Schritt bei einer reinen
-`AUTH_SECRET`-Rotation. Andernfalls ist die Rotation mit dem heutigen Tooling
-nicht sicher ausführbar. Ein Offline-Migrationswerkzeug müsste:
+Ist `SECRET_BOX_KEY` bereits gesetzt und meldet
+`pnpm secret-box:rewrap --dry-run` keine `v1`-Werte mehr (diese leiten sich
+immer aus `AUTH_SECRET` ab), entfällt dieser Schritt bei einer reinen
+`AUTH_SECRET`-Rotation. Andernfalls vor dem Wechsel:
 
-1. Mit altem `AUTH_SECRET` alle `tenant_setting.value`-Felder dechiffrieren.
-2. Mit einem neu generierten `SECRET_BOX_KEY` neu verschlüsseln.
-3. alle Chiffretexte atomisch ersetzen und erst danach den Dienst auf die neue
-   Schlüsselkombination umschalten.
+1. Einen neuen Datenschlüssel als ersten Eintrag von `SECRET_BOX_KEYRING`
+   ausrollen (Runbook, Abschnitt „Rotation der Datenschlüssel ohne
+   Ausfallzeit“).
+2. `pnpm secret-box:rewrap` ausführen, bis `--dry-run` je Ablageort
+   „aktuell“ = „gesamt“ meldet. Alle Werte sind dann `v3` mit dem neuen
+   Datenschlüssel und hängen nicht mehr an `AUTH_SECRET`.
 
 Bloßes Neuspeichern der Felder in der Admin-UI **vor** dem Schlüsselwechsel ist
-kein Rewrap: Die Anwendung verschlüsselt dabei erneut mit dem alten
-`AUTH_SECRET`. Bis das Offline-Rewrap-Tool existiert, dürfen
-`AUTH_SECRET`-Rotation und erstmaliges Setzen von `SECRET_BOX_KEY` bei einer
-solchen Legacy-Installation nicht durchgeführt werden, sofern die gespeicherten
-Secrets erhalten bleiben müssen.
+kein Rewrap, wenn kein Schlüsselbund konfiguriert ist: Die Anwendung
+verschlüsselt dann erneut mit der Wurzel `AUTH_SECRET`. Ohne `SECRET_BOX_KEY`
+bleibt `AUTH_SECRET` außerdem Wurzel der Prüfsumme der Audit-Prüf-Checkpoints;
+eine `AUTH_SECRET`-Rotation macht diese Checkpoints einmalig ungültig
+(AUDIT-VERIFY-ALERT-001). Nach einem versehentlich ohne Re-Wrap durchgeführten
+Wechsel bleiben `v1`/`v2`-Werte lesbar, wenn der alte Wert vorübergehend als
+weiterer Eintrag in `SECRET_BOX_KEYRING` steht; anschließend Re-Wrap ausführen
+und den Eintrag entfernen.
 
 ### Schritt 3 — TOTP-Secrets rewrappen oder zurücksetzen
 
@@ -145,9 +155,10 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml \
 
 ## Bekannte Limitierungen / Roadmap
 
-- **Kein Rotations-Skript**: Schritt 2 ist heute ein Blocker. Roadmap:
-  ein `pnpm rotate:auth-secret <old> <new>`-Skript im `packages/db`-
-  Workspace, das die secret-box-Migration atomisch macht.
+- **Secret-Box-Re-Wrap vorhanden**: `pnpm secret-box:rewrap` (Workspace
+  `packages/db`) stellt alle Secret-Box-Werte idempotent und wiederaufnehmbar
+  auf den aktiven Schlüssel um. Ein Skript für die Rotation von `AUTH_SECRET`
+  selbst gibt es nicht.
 - **Kein TOTP-Batch-Rewrap**: Die kryptografischen Primitiven existieren, aber
   transaktionales Batch-, Prüf- und Rollback-Tooling fehlt. Einzelnes
   Force-Re-Enroll über Rollen-Hierarchie beziehungsweise ADMIN-Recovery-CLI ist

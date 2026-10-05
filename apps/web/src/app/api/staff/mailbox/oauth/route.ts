@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { timingSafeEqual } from 'node:crypto';
 import { withTenantContext } from '@taxtronik/db';
-import { decryptSecret } from '@taxtronik/crypto';
+import { decryptSecret, mailboxOauthStateContext } from '@taxtronik/crypto';
 import { env } from '@taxtronik/config';
 import { microsoftClient, IMAP_SCOPES } from '@taxtronik/mail/imap';
 import { staffActionGuard } from '@/server/actions/staff-action';
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         verifier: z.string().min(43),
         expires: z.number(),
       })
-      .parse(JSON.parse(decryptSecret(raw)));
+      .parse(JSON.parse(decryptSecret(raw, mailboxOauthStateContext(g.tenantId, g.staffId))));
     const state = req.nextUrl.searchParams.get('state') ?? '';
     const a = Buffer.from(state);
     const b = Buffer.from(saved.state);

@@ -7,7 +7,7 @@ import { PrismaClient } from '@taxtronik/db/prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '@taxtronik/db/prisma-adapter';
 import type { TenantContext, TxClient } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter, type AuditEventInput } from '@taxtronik/evidence';
-import { decryptSecret, encryptSecret } from '@taxtronik/crypto';
+import { decryptSecret, encryptSecret, SECRET_SLOTS, secretSlotContext } from '@taxtronik/crypto';
 import type { StaffSession } from '@/server/auth/staff';
 
 const fixture = vi.hoisted(() => ({
@@ -356,8 +356,11 @@ if (enabled) {
         });
         if (event === 'smtp.update') {
           const encrypted = (stored!.value as { passwordEncrypted: string }).passwordEncrypted;
-          expect(encrypted).toMatch(/^v2:/);
-          expect(decryptSecret(encrypted)).toBe(smtp.password);
+          // S-08: v3 mit Key-ID, gebunden an Tenant, Setting und Feld.
+          expect(encrypted).toMatch(/^v3:[0-9a-f]{16}:/);
+          const context = secretSlotContext(SECRET_SLOTS.smtpPassword, { tenantId });
+          expect(decryptSecret(encrypted, context)).toBe(smtp.password);
+          expect(() => decryptSecret(encrypted, { ...context, tenantId: randomUUID() })).toThrow();
           expect(audit.after).toMatchObject({ password: '***' });
           expect(JSON.stringify(audit.after)).not.toContain(smtp.password);
           expect(JSON.stringify(stored!.value)).not.toContain(smtp.password);
@@ -383,7 +386,10 @@ if (enabled) {
       const value = {
         ...smtp,
         password: undefined,
-        passwordEncrypted: encryptSecret('existing-secret'),
+        passwordEncrypted: encryptSecret(
+          'existing-secret',
+          secretSlotContext(SECRET_SLOTS.smtpPassword, { tenantId }),
+        ),
       };
       await owner.tenantSetting.upsert({
         where: { tenantId_key: { tenantId, key: 'mail.smtp' } },
@@ -449,8 +455,13 @@ if (enabled) {
             expect(stored?.value).toMatchObject({ suffix: '1234' });
             expect(stored?.updatedBy).toBe(staffId);
             const encrypted = (stored!.value as { tokenEncrypted: string }).tokenEncrypted;
-            expect(encrypted).toMatch(/^v2:/);
-            expect(decryptSecret(encrypted)).toBe(token);
+            expect(encrypted).toMatch(/^v3:[0-9a-f]{16}:/);
+            expect(
+              decryptSecret(
+                encrypted,
+                secretSlotContext(SECRET_SLOTS.quantenlosIbmToken, { tenantId }),
+              ),
+            ).toBe(token);
             expect(JSON.stringify(stored!.value)).not.toContain(token);
           } else expect(stored).toBeNull();
           const audit = await owner.auditLog.findFirstOrThrow({

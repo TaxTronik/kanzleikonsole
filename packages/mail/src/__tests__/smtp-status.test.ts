@@ -15,7 +15,8 @@ vi.mock('@taxtronik/db', () => ({
     fn: (tx: { tenantSetting: { findUnique: typeof mocks.findUnique } }) => unknown,
   ) => fn({ tenantSetting: { findUnique: mocks.findUnique } }),
 }));
-vi.mock('@taxtronik/crypto', () => ({
+vi.mock('@taxtronik/crypto', async () => ({
+  ...(await import('@taxtronik/crypto/secret-slots')),
   encryptSecret: vi.fn(),
   readEncryptedSetting: vi.fn(),
 }));

@@ -13,7 +13,13 @@ import { createWorker } from '../worker-factory';
 import type { Prisma } from '@prisma/client';
 import { env, n8nDeliveryMode } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
-import { decryptSecret, looksEncrypted } from '@taxtronik/crypto';
+import {
+  decryptSecret,
+  looksEncrypted,
+  SECRET_SLOTS,
+  secretSlotContext,
+  type SecretContext,
+} from '@taxtronik/crypto';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { safeFetch, SsrfGuardError } from '@taxtronik/http-utils';
 import { isAllowedN8nEvent, signOutboundN8n } from '@taxtronik/n8n-shared';
@@ -69,11 +75,11 @@ interface LegacyStored {
   hmacSecret?: string;
 }
 
-function decryptIfUsable(value: string | null | undefined): string {
+function decryptIfUsable(value: string | null | undefined, context: SecretContext): string {
   if (!value) return '';
   if (!looksEncrypted(value)) return '';
   try {
-    return decryptSecret(value);
+    return decryptSecret(value, context);
   } catch {
     return '';
   }
@@ -108,9 +114,12 @@ async function resolveSigningState(tenantId: string | null): Promise<SigningStat
     : null;
   // Normalisierte Connection = alleinige Secret-/URL-Quelle. Legacy und ENV
   // gelten nur für Tenants, die noch gar keine Connection-Reihe besitzen.
-  if (connectionRow) {
+  if (connectionRow && tenantId) {
     return {
-      secret: decryptIfUsable(connectionRow.signingSecretEncrypted),
+      secret: decryptIfUsable(
+        connectionRow.signingSecretEncrypted,
+        secretSlotContext(SECRET_SLOTS.n8nSigningSecret, { tenantId }),
+      ),
       connectionId: connectionRow.id,
       routingMode: connectionRow.routingMode,
       disabled: !connectionRow.enabled || connectionRow.routingMode === 'DISABLED',
@@ -120,7 +129,15 @@ async function resolveSigningState(tenantId: string | null): Promise<SigningStat
   const stored = await readLegacyStored(tenantId);
   return {
     secret:
-      decryptIfUsable(stored?.hmacEncrypted) || stored?.hmacSecret || env.N8N_HMAC_SECRET || '',
+      (tenantId
+        ? decryptIfUsable(
+            stored?.hmacEncrypted,
+            secretSlotContext(SECRET_SLOTS.legacyN8nHmacSecret, { tenantId }),
+          )
+        : '') ||
+      stored?.hmacSecret ||
+      env.N8N_HMAC_SECRET ||
+      '',
     connectionId: null,
     routingMode: null,
     disabled: false,

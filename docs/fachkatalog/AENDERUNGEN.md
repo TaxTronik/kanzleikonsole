@@ -1,5 +1,36 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-031
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/api/staff/mailbox/oauth/route.ts
+      - apps/web/src/app/staff/(protected)/mailbox/actions.ts
+      - apps/web/src/server/settings/quantenlos.ts
+      - packages/mail/src/imap.ts
+      - packages/mail/src/smtp-settings.ts
+    rule_ids:
+      - MAIL-INBOX-001
+      - AUDIT-HASH-CHAIN-001
+    reason: >-
+      Neue Secret-Box-Werte (SMTP-Passwort, Quantenlos-Token, n8n-Schlüssel,
+      Postfach-Secret und Token-Cache, OAuth-State) werden als v3 mit Schlüssel-ID
+      geschrieben und per AAD an Kanzlei, Ablageort und Feld gebunden; ein in der
+      Datenbank kopierter Wert lässt sich nicht mehr entschlüsseln. Der optionale
+      Schlüsselbund SECRET_BOX_KEYRING erlaubt eine Rotation ohne Ausfall; v1/v2
+      bleiben lesbar. Der MAC-Schlüssel der Audit-Checkpoints leitet sich weiter
+      allein aus SECRET_BOX_KEY bzw. AUTH_SECRET ab, bestehende Checkpoints bleiben
+      gültig. Das Kommando secret-box:rewrap verschlüsselt Bestandswerte ohne
+      Klartextänderung neu. Postfachabruf, SMTP-Versand und Audit-Kette bleiben
+      fachlich unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/crypto/src/__tests__/secret-box.test.ts
+      - packages/crypto/src/__tests__/secret-slots.test.ts
+      - packages/crypto/src/__tests__/audit-checkpoint-key.test.ts
+      - packages/db/src/__tests__/secret-box-rewrap.test.ts
+      - packages/mail/src/__tests__/imap.test.ts
+      - packages/mail/src/__tests__/microsoft-cache.test.ts
+      - apps/web/src/server/mailbox/__tests__/import.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-030
     date: '2026-10-05'
     paths:
@@ -2215,6 +2246,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-031` dokumentiert die kontextgebundene
+  Secret-Box (v3) mit Schlüsselbund und Re-Wrap. Postfachabruf, Versand und
+  Audit-Kette bleiben fachlich unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-030` dokumentiert die beim Upload gezählte
   Seitenzahl von PDF-Ausweisquellen. Annahme- und Ablehnungsentscheidungen

@@ -29,6 +29,26 @@ const RedisUrl = z
 
 const Secret32 = z.string().min(32, 'Secret muss mindestens 32 Zeichen lang sein');
 
+// S-08: Datenschlüssel der Secret-Box, kommagetrennt. Der erste Eintrag
+// verschlüsselt neue Werte, alle Einträge (und SECRET_BOX_KEY bzw.
+// AUTH_SECRET als Wurzel) entschlüsseln. Leer oder nicht gesetzt = kein
+// Schlüsselbund, die Wurzel verschlüsselt (bisheriges Verhalten).
+const SecretBoxKeyring = z.preprocess(
+  (value) => {
+    if (value === undefined || value === '') return [];
+    if (typeof value !== 'string') return value;
+    return value.split(',').map((entry) => entry.trim());
+  },
+  z
+    .array(
+      z.string().min(32, 'Jeder SECRET_BOX_KEYRING-Eintrag muss mindestens 32 Zeichen lang sein'),
+    )
+    .max(8, 'SECRET_BOX_KEYRING darf höchstens 8 Schlüssel enthalten')
+    .refine((values) => new Set(values).size === values.length, {
+      message: 'SECRET_BOX_KEYRING enthält einen Schlüssel mehrfach',
+    }),
+);
+
 const HardwareAaguidAllowlist = z.preprocess(
   (value) => {
     if (value === undefined || value === '') return [];
@@ -63,14 +83,15 @@ const envSchema = z.object({
   AUTH_SECRET: Secret32,
   // Optionales, dediziertes Schlüssel-Material für die Secret-Box
   // (@taxtronik/crypto). Wenn gesetzt, wird dieser Wert (statt AUTH_SECRET) als
-  // HKDF-IKM für die v2-Key-Ableitung genutzt. Zweck: AUTH_SECRET kann rotiert
-  // werden (Auth.js-JWT-Signing), ohne dass gespeicherte Secrets
-  // undechiffrierbar werden — der Box-Key bleibt stabil. Ist der Wert NICHT
-  // gesetzt, bleibt das bisherige Verhalten exakt erhalten (Fallback auf
-  // AUTH_SECRET), sodass Bestands-Blobs weiter entschlüsselt werden.
-  // Hinweis: Eine echte Box-Key-Rotation erfordert weiterhin einen Re-Wrap der
-  // Bestands-Secrets (kein Key-Ring im Drahtformat).
+  // Wurzel-IKM genutzt: für die v2-Ableitung, für den v3-Schlüssel ohne
+  // Schlüsselbund und für die Prüfsumme der Audit-Prüf-Checkpoints. Zweck:
+  // AUTH_SECRET kann rotiert werden (Auth.js-JWT-Signing), ohne dass
+  // gespeicherte Secrets undechiffrierbar werden. Ist der Wert NICHT gesetzt,
+  // bleibt das bisherige Verhalten exakt erhalten (Fallback auf AUTH_SECRET).
+  // Datenschlüssel werden über SECRET_BOX_KEYRING rotiert (S-08), nicht durch
+  // Ändern dieses Werts.
   SECRET_BOX_KEY: z.preprocess((v) => (v === '' ? undefined : v), Secret32.optional()),
+  SECRET_BOX_KEYRING: SecretBoxKeyring,
   NEXTAUTH_URL: z.string().url(),
   // Explizit freigegebene FIDO-MDS-Modellkennungen für den Hardware-only-
   // Modus. Die globale Config darf leer bleiben, damit Installationen ohne

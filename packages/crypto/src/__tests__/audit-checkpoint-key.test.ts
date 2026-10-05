@@ -9,13 +9,17 @@ const { TEST_SECRET } = vi.hoisted(() => ({
 }));
 
 vi.mock('@taxtronik/config', () => ({
-  env: { AUTH_SECRET: TEST_SECRET, SECRET_BOX_KEY: undefined },
+  env: { AUTH_SECRET: TEST_SECRET, SECRET_BOX_KEY: undefined, SECRET_BOX_KEYRING: [] },
 }));
 
 import { deriveAuditCheckpointMacKey } from '../index';
 import { env } from '@taxtronik/config';
 
-type MockEnv = { AUTH_SECRET: string; SECRET_BOX_KEY: string | undefined };
+type MockEnv = {
+  AUTH_SECRET: string;
+  SECRET_BOX_KEY: string | undefined;
+  SECRET_BOX_KEYRING: string[];
+};
 const SALT = Buffer.from('taxtronik-secret-box-v2-salt', 'utf8');
 
 function expected(ikm: string, info: string): Buffer {
@@ -25,6 +29,7 @@ function expected(ikm: string, info: string): Buffer {
 afterEach(() => {
   (env as MockEnv).AUTH_SECRET = TEST_SECRET;
   (env as MockEnv).SECRET_BOX_KEY = undefined;
+  (env as MockEnv).SECRET_BOX_KEYRING = [];
 });
 
 describe('deriveAuditCheckpointMacKey', () => {
@@ -51,5 +56,17 @@ describe('deriveAuditCheckpointMacKey', () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it('S-08: bleibt bei einer Rotation der Datenschlüssel über SECRET_BOX_KEYRING stabil', () => {
+    (env as MockEnv).SECRET_BOX_KEY = 'dedicated-secret-box-key-with-32-chars!!';
+    const before = deriveAuditCheckpointMacKey();
+    (env as MockEnv).SECRET_BOX_KEYRING = ['rotated-data-key-one-with-more-than-32-chars'];
+    expect(deriveAuditCheckpointMacKey().equals(before)).toBe(true);
+    (env as MockEnv).SECRET_BOX_KEYRING = [
+      'rotated-data-key-two-with-more-than-32-chars',
+      'rotated-data-key-one-with-more-than-32-chars',
+    ];
+    expect(deriveAuditCheckpointMacKey().equals(before)).toBe(true);
   });
 });

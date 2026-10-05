@@ -22,7 +22,12 @@ import {
   type TenantSettingReader,
 } from '@taxtronik/db/tenant-settings';
 import { env } from '@taxtronik/config';
-import { encryptSecret, readEncryptedSetting } from '@taxtronik/crypto';
+import {
+  encryptSecret,
+  readEncryptedSetting,
+  SECRET_SLOTS,
+  secretSlotContext,
+} from '@taxtronik/crypto';
 import { mailLog } from './logger';
 
 const KEY = 'mail.smtp';
@@ -58,6 +63,11 @@ interface SmtpStored {
   replyTo: string;
 }
 
+/** S-08: Das Passwort ist per AAD an Tenant, Setting und Feld gebunden. */
+function passwordContext(tenantId: string) {
+  return secretSlotContext(SECRET_SLOTS.smtpPassword, { tenantId });
+}
+
 export interface SmtpStatus {
   configured: boolean; // host + from gesetzt
   fromDb: boolean; // Quelle ist tenant_setting (sonst ENV-Fallback)
@@ -74,6 +84,7 @@ export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | n
       stored.passwordEncrypted,
       stored.password,
       'smtp.password',
+      passwordContext(ctx.tenantId),
       (field, err) =>
         mailLog().warn(
           { component: 'secret-box', field, err: err.message },
@@ -107,7 +118,9 @@ export async function writeSmtpConfigTx(
     port: cfg.port,
     secure: cfg.secure,
     user: cfg.user.trim(),
-    passwordEncrypted: cfg.password ? encryptSecret(cfg.password) : '',
+    passwordEncrypted: cfg.password
+      ? encryptSecret(cfg.password, passwordContext(ctx.tenantId))
+      : '',
     from: cfg.from.trim(),
     replyTo: cfg.replyTo.trim(),
   };

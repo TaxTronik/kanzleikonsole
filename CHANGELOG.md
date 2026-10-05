@@ -1028,6 +1028,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Gespeicherte Geheimnisse (SMTP-Passwort, Quantenlos-Token, n8n-Schlüssel,
+  Postfach-Zugangsdaten, OAuth-State) sind per AAD an Kanzlei, Ablageort und
+  Feld gebunden und tragen eine Schlüssel-ID (Format v3); ein in der Datenbank
+  kopierter Wert lässt sich nicht mehr entschlüsseln. `SECRET_BOX_KEYRING`
+  ermöglicht eine Schlüsselrotation ohne Ausfall, `pnpm secret-box:rewrap`
+  verschlüsselt Bestandswerte neu (`MAIL-INBOX-001`, `AUDIT-HASH-CHAIN-001`,
+  `FK-EXC-20261005-031`).
 - Der verzögerte Auftrag „Wiedervorlage erledigt“ legt in der Warteschlange
   nur noch Kennungen statt Betreff und Namen ab; erledigte und fehlgeschlagene
   Aufträge werden nach 24 Stunden beziehungsweise 7 Tagen entfernt

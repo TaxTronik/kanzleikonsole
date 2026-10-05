@@ -2,11 +2,16 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
-import { encryptSecret } from '@taxtronik/crypto';
+import {
+  encryptSecret,
+  mailboxOauthStateContext,
+  SECRET_SLOTS,
+  secretSlotContext,
+} from '@taxtronik/crypto';
 import { env } from '@taxtronik/config';
 import { microsoftClient, IMAP_SCOPES } from '@taxtronik/mail/imap';
 import { fetchObjectBytes, getBucketForTier } from '@taxtronik/storage';
@@ -54,10 +59,14 @@ export async function saveMailbox(
   const input = parsed.data;
   if (input.provider === 'MICROSOFT365' && (!input.entraTenantId || !input.entraClientId))
     return { ok: false, error: 'Entra-Mandanten-ID und App-ID erforderlich.' };
+  // S-08: Die Zeilen-ID gehört zum AAD-Kontext des Zugangs; sie wird daher vor
+  // dem Verschlüsseln festgelegt statt per Datenbank-Default vergeben.
+  const mailboxId = randomUUID();
   try {
     await withTenantContext(g.ctx, async (tx) => {
       const item = await tx.inboundMailbox.create({
         data: {
+          id: mailboxId,
           tenantId: g.tenantId,
           name: input.name,
           provider: input.provider,
@@ -65,7 +74,13 @@ export async function saveMailbox(
           port: input.provider === 'MICROSOFT365' ? 993 : input.port,
           username: input.username,
           folder: input.folder,
-          secretEnc: encryptSecret(input.secret),
+          secretEnc: encryptSecret(
+            input.secret,
+            secretSlotContext(SECRET_SLOTS.mailboxSecret, {
+              tenantId: g.tenantId,
+              rowId: mailboxId,
+            }),
+          ),
           entraTenantId: input.entraTenantId || null,
           entraClientId: input.entraClientId || null,
           enabled: false,
@@ -176,6 +191,7 @@ async function prepareMicrosoftConnect(g: StaffCtx, id: string): Promise<string>
         verifier,
         expires: Date.now() + 300000,
       }),
+      mailboxOauthStateContext(g.tenantId, g.staffId),
     ),
     {
       httpOnly: true,

@@ -66,7 +66,9 @@ vi.mock('@taxtronik/n8n-shared', () => ({
   isAllowedN8nEvent: h.isAllowedN8nEvent,
   signOutboundN8n: h.signOutboundN8n,
 }));
-vi.mock('@taxtronik/crypto', () => ({
+vi.mock('@taxtronik/crypto', async (importOriginal) => ({
+  // Echte Ablageort-Kontexte (S-08), Ver-/Entschlüsselung gemockt.
+  ...(await importOriginal<typeof import('@taxtronik/crypto')>()),
   decryptSecret: h.decryptSecret,
   looksEncrypted: h.looksEncrypted,
 }));
@@ -231,6 +233,12 @@ describe('n8n delivery worker', () => {
       init.body,
       'connection-secret',
     );
+    // S-08: Das Signatur-Secret wird nur im Kontext seines Tenants entschlüsselt.
+    expect(h.decryptSecret).toHaveBeenCalledWith('enc:v2:connection-secret', {
+      tenantId: 'tenant-1',
+      scope: 'n8n_connection',
+      field: 'signing_secret_encrypted',
+    });
     expect(h.responseCancel).toHaveBeenCalledTimes(1);
     expect(h.tx.n8nDelivery.updateMany).toHaveBeenCalledWith({
       where: { id: 'delivery-1', status: 'PROCESSING', leaseToken: LEASE_TOKEN },

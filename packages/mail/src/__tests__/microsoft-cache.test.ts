@@ -6,11 +6,14 @@ const m = vi.hoisted(() => ({
   after: null as null | ((event: CacheEvent) => Promise<void>),
   system: vi.fn(),
   update: vi.fn(),
+  encrypt: vi.fn((value: string) => 'encrypted:' + value),
+  decrypt: vi.fn((value: string) => value),
 }));
 vi.mock('@taxtronik/db', () => ({ withSystemContext: m.system }));
-vi.mock('@taxtronik/crypto', () => ({
-  encryptSecret: (value: string) => 'encrypted:' + value,
-  decryptSecret: (value: string) => value,
+vi.mock('@taxtronik/crypto', async () => ({
+  ...(await import('@taxtronik/crypto/secret-slots')),
+  encryptSecret: m.encrypt,
+  decryptSecret: m.decrypt,
 }));
 vi.mock('@taxtronik/storage', () => ({
   scanBytes: vi.fn(),
@@ -48,6 +51,17 @@ describe('Microsoft callback cache writer and worker refresh separation', () => 
       m.after!({ cacheHasChanged: true, tokenCache: { serialize: () => 'token-cache' } }),
     ).rejects.toThrow('authorization changed');
     expect(writer).toHaveBeenCalledExactlyOnceWith('encrypted:token-cache');
+    // S-08: Token-Cache und Client-Secret sind an Tenant, Postfachzeile und Spalte gebunden.
+    expect(m.encrypt).toHaveBeenCalledWith('token-cache', {
+      tenantId: 'tenant',
+      scope: 'inbound_mailbox/mailbox',
+      field: 'oauth_cache_enc',
+    });
+    expect(m.decrypt).toHaveBeenCalledWith('client-secret', {
+      tenantId: 'tenant',
+      scope: 'inbound_mailbox/mailbox',
+      field: 'secret_enc',
+    });
     expect(m.system).not.toHaveBeenCalled();
     expect(m.update).not.toHaveBeenCalled();
   });

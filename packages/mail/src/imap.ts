@@ -4,7 +4,7 @@ import { simpleParser, type Attachment, type ParsedMail } from 'mailparser';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { withSystemContext } from '@taxtronik/db';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
-import { encryptSecret, decryptSecret } from '@taxtronik/crypto';
+import { encryptSecret, decryptSecret, SECRET_SLOTS, secretSlotContext } from '@taxtronik/crypto';
 import { scanBytes, putObjectBytes, getBucketForTier, MAX_UPLOAD_BYTES } from '@taxtronik/storage';
 import { classifyInboundAttachment } from './attachments';
 export { classifyInboundAttachment } from './attachments';
@@ -16,6 +16,14 @@ export const IMAP_SCOPES = [
   'openid',
   'profile',
 ];
+/** S-08: secrets are bound to tenant, mailbox row and column (AAD). */
+function mailboxContext(
+  account: Pick<InboundMailbox, 'id' | 'tenantId'>,
+  slot: typeof SECRET_SLOTS.mailboxSecret | typeof SECRET_SLOTS.mailboxOauthCache,
+) {
+  return secretSlotContext(slot, { tenantId: account.tenantId, rowId: account.id });
+}
+
 /** OAuth callbacks supply a staff-bound writer; background refreshes retain system persistence. */
 export function microsoftClient(
   account: InboundMailbox,
@@ -27,7 +35,10 @@ export function microsoftClient(
     auth: {
       clientId: account.entraClientId,
       authority: 'https://login.microsoftonline.com/' + account.entraTenantId,
-      clientSecret: decryptSecret(account.secretEnc),
+      clientSecret: decryptSecret(
+        account.secretEnc,
+        mailboxContext(account, SECRET_SLOTS.mailboxSecret),
+      ),
     },
     cache: {
       cachePlugin: {
@@ -39,11 +50,19 @@ export function microsoftClient(
             }),
           );
           if (current?.oauthCacheEnc)
-            context.tokenCache.deserialize(decryptSecret(current.oauthCacheEnc));
+            context.tokenCache.deserialize(
+              decryptSecret(
+                current.oauthCacheEnc,
+                mailboxContext(account, SECRET_SLOTS.mailboxOauthCache),
+              ),
+            );
         },
         afterCacheAccess: async (context) => {
           if (context.cacheHasChanged) {
-            const encrypted = encryptSecret(context.tokenCache.serialize());
+            const encrypted = encryptSecret(
+              context.tokenCache.serialize(),
+              mailboxContext(account, SECRET_SLOTS.mailboxOauthCache),
+            );
             if (persistEncryptedCache) await persistEncryptedCache(encrypted);
             else
               await withSystemContext(account.tenantId, (tx) =>
@@ -69,7 +88,10 @@ export async function connectMailbox(account: InboundMailbox): Promise<ImapFlow>
     auth = { user: account.username, accessToken: token.accessToken };
   } else {
     if (!account.secretEnc) throw new Error('IMAP-Zugangsdaten fehlen.');
-    auth = { user: account.username, pass: decryptSecret(account.secretEnc) };
+    auth = {
+      user: account.username,
+      pass: decryptSecret(account.secretEnc, mailboxContext(account, SECRET_SLOTS.mailboxSecret)),
+    };
   }
   const connection = new ImapFlow({
     host: account.provider === 'MICROSOFT365' ? 'outlook.office365.com' : account.host,

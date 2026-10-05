@@ -22,9 +22,20 @@ import {
   readTenantSettingValue,
   writeTenantSettingValue,
 } from '@taxtronik/db/tenant-settings';
-import { decryptSecret, encryptSecret, looksEncrypted } from '@/server/crypto/secret-box';
+import {
+  decryptSecret,
+  encryptSecret,
+  looksEncrypted,
+  SECRET_SLOTS,
+  secretSlotContext,
+} from '@/server/crypto/secret-box';
 
 const KEY = 'quantenlos.ibm';
+
+/** S-08: Der Token ist per AAD an Tenant, Setting und Feld gebunden. */
+function tokenContext(tenantId: string) {
+  return secretSlotContext(SECRET_SLOTS.quantenlosIbmToken, { tenantId });
+}
 
 /** Persistenz-Form: Token verschlüsselt, Suffix als maskierter UI-Hinweis. */
 interface QuantenlosIbmStored {
@@ -47,7 +58,7 @@ export async function readIbmToken(ctx: TenantContext): Promise<string | null> {
   const stored = value as Partial<QuantenlosIbmStored>;
   if (!stored.tokenEncrypted || !looksEncrypted(stored.tokenEncrypted)) return null;
   try {
-    const token = decryptSecret(stored.tokenEncrypted);
+    const token = decryptSecret(stored.tokenEncrypted, tokenContext(ctx.tenantId));
     return token || null;
   } catch {
     return null;
@@ -67,7 +78,7 @@ export async function writeIbmTokenTx(
   const trimmed = token.trim();
   if (!trimmed) throw new Error('Leerer Token — zum Entfernen `deleteIbmToken` verwenden.');
   const stored: QuantenlosIbmStored = {
-    tokenEncrypted: encryptSecret(trimmed),
+    tokenEncrypted: encryptSecret(trimmed, tokenContext(ctx.tenantId)),
     suffix: trimmed.slice(-4),
     gesetztAm: new Date().toISOString(),
   };

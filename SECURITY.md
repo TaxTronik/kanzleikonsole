@@ -60,7 +60,9 @@ TaxTronik setzt zwingend voraus:
 - `AUTH_SECRET`: mindestens 32 Zeichen, zufällig generiert (siehe `./taxtronik bootstrap` bzw. `scripts/setup.sh`)
 - `SECRET_BOX_KEY`: eigener, mindestens 32 Zeichen langer Schlüssel für
   gespeicherte Integrations-Secrets; bei Neuinstallationen automatisch erzeugt
-  und getrennt vom `AUTH_SECRET` zu sichern
+  und getrennt vom `AUTH_SECRET` zu sichern. Datenschlüssel werden über den
+  optionalen Schlüsselbund `SECRET_BOX_KEYRING` und `pnpm secret-box:rewrap`
+  rotiert (`docs/operations/secret-rotation.md`)
 - `DATABASE_APP_URL`: separater, RLS-beschränkter DB-Nutzer — in Produktion **Pflicht**
 - `N8N_HMAC_SECRET`: mindestens 32 Zeichen
 - TLS via Reverse Proxy vor der App (Ports nur an localhost)

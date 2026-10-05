@@ -11,7 +11,12 @@ import { env } from '@taxtronik/config';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { deleteTenantSettingValue, readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import type { Prisma } from '@prisma/client';
-import { encryptSecret, readEncryptedSetting } from '@/server/crypto/secret-box';
+import {
+  encryptSecret,
+  readEncryptedSetting,
+  SECRET_SLOTS,
+  secretSlotContext,
+} from '@/server/crypto/secret-box';
 
 const LEGACY_KEY = 'integrations.n8n';
 
@@ -89,6 +94,14 @@ interface LegacyN8nStored {
   apiKey?: string;
 }
 
+/** S-08: Eine Verbindung je Tenant — Tenant und Spalte bilden den AAD-Kontext. */
+function connectionSecretContext(
+  tenantId: string,
+  slot: typeof SECRET_SLOTS.n8nApiKey | typeof SECRET_SLOTS.n8nSigningSecret,
+) {
+  return secretSlotContext(slot, { tenantId });
+}
+
 export interface N8nStatus {
   webhookConfigured: boolean;
   apiConfigured: boolean;
@@ -97,10 +110,24 @@ export interface N8nStatus {
   fromDb: boolean;
 }
 
-function fromLegacy(value: LegacyN8nStored, source: 'LEGACY_SETTING' | 'ENV'): N8nConfig {
+function fromLegacy(
+  tenantId: string,
+  value: LegacyN8nStored,
+  source: 'LEGACY_SETTING' | 'ENV',
+): N8nConfig {
   const webhookBaseUrl = value.webhookBaseUrl?.trim() ?? '';
-  const hmacSecret = readEncryptedSetting(value.hmacEncrypted, value.hmacSecret, 'n8n.hmacSecret');
-  const apiKey = readEncryptedSetting(value.apiKeyEncrypted, value.apiKey, 'n8n.apiKey');
+  const hmacSecret = readEncryptedSetting(
+    value.hmacEncrypted,
+    value.hmacSecret,
+    'n8n.hmacSecret',
+    secretSlotContext(SECRET_SLOTS.legacyN8nHmacSecret, { tenantId }),
+  );
+  const apiKey = readEncryptedSetting(
+    value.apiKeyEncrypted,
+    value.apiKey,
+    'n8n.apiKey',
+    secretSlotContext(SECRET_SLOTS.legacyN8nApiKey, { tenantId }),
+  );
   const configured = Boolean(webhookBaseUrl && hmacSecret);
   return {
     ...DEFAULT_N8N_CONFIG,
@@ -135,9 +162,15 @@ export async function readN8nConfig(ctx: TenantContext): Promise<N8nConfig | nul
           connection.signingSecretEncrypted,
           undefined,
           'n8n.signingSecret',
+          connectionSecretContext(ctx.tenantId, SECRET_SLOTS.n8nSigningSecret),
         ),
         apiBaseUrl: connection.apiBaseUrl ?? '',
-        apiKey: readEncryptedSetting(connection.apiKeyEncrypted, undefined, 'n8n.apiKey'),
+        apiKey: readEncryptedSetting(
+          connection.apiKeyEncrypted,
+          undefined,
+          'n8n.apiKey',
+          connectionSecretContext(ctx.tenantId, SECRET_SLOTS.n8nApiKey),
+        ),
         callbackKeyId: connection.callbackKeyId,
         callbackConfigured: Boolean(connection.callbackTokenHash),
         callbackScopes: connection.callbackScopes,
@@ -149,7 +182,9 @@ export async function readN8nConfig(ctx: TenantContext): Promise<N8nConfig | nul
     }
 
     const value = await readTenantSettingValue(tx, ctx.tenantId, LEGACY_KEY);
-    return value === undefined ? null : fromLegacy(value as LegacyN8nStored, 'LEGACY_SETTING');
+    return value === undefined
+      ? null
+      : fromLegacy(ctx.tenantId, value as LegacyN8nStored, 'LEGACY_SETTING');
   });
 }
 
@@ -163,6 +198,15 @@ export async function writeN8nConfigTx(
   ctx: TenantContext,
   cfg: N8nConfig,
 ): Promise<string> {
+  const apiKeyEncrypted = cfg.apiKey
+    ? encryptSecret(cfg.apiKey, connectionSecretContext(ctx.tenantId, SECRET_SLOTS.n8nApiKey))
+    : null;
+  const signingSecretEncrypted = cfg.hmacSecret
+    ? encryptSecret(
+        cfg.hmacSecret,
+        connectionSecretContext(ctx.tenantId, SECRET_SLOTS.n8nSigningSecret),
+      )
+    : null;
   const connection = await tx.n8nConnection.upsert({
     where: { tenantId: ctx.tenantId },
     create: {
@@ -175,8 +219,8 @@ export async function writeN8nConfigTx(
       callbackBaseUrl: cfg.callbackBaseUrl.trim().replace(/\/$/, '') || null,
       webhookBaseUrl: cfg.webhookBaseUrl.trim() || null,
       apiBaseUrl: cfg.apiBaseUrl.trim() || null,
-      apiKeyEncrypted: cfg.apiKey ? encryptSecret(cfg.apiKey) : null,
-      signingSecretEncrypted: cfg.hmacSecret ? encryptSecret(cfg.hmacSecret) : null,
+      apiKeyEncrypted,
+      signingSecretEncrypted,
     },
     update: {
       name: cfg.name.trim() || 'TaxTronik n8n',
@@ -187,8 +231,8 @@ export async function writeN8nConfigTx(
       callbackBaseUrl: cfg.callbackBaseUrl.trim().replace(/\/$/, '') || null,
       webhookBaseUrl: cfg.webhookBaseUrl.trim() || null,
       apiBaseUrl: cfg.apiBaseUrl.trim() || null,
-      apiKeyEncrypted: cfg.apiKey ? encryptSecret(cfg.apiKey) : null,
-      signingSecretEncrypted: cfg.hmacSecret ? encryptSecret(cfg.hmacSecret) : null,
+      apiKeyEncrypted,
+      signingSecretEncrypted,
     },
     select: { id: true },
   });
@@ -214,6 +258,7 @@ export async function resolveN8nConfig(ctx: TenantContext): Promise<N8nConfig> {
   const db = await readN8nConfig(ctx);
   if (db) return db;
   return fromLegacy(
+    ctx.tenantId,
     {
       webhookBaseUrl: env.N8N_WEBHOOK_BASE_URL ?? '',
       hmacSecret: env.N8N_HMAC_SECRET ?? '',

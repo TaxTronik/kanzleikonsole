@@ -34,6 +34,7 @@
     "verify:rls": "pnpm --filter @taxtronik/db verify:rls",
     "verify:fk-indexes": "pnpm --filter @taxtronik/db verify:fk-indexes",
     "verify:deploy-readiness": "pnpm --filter @taxtronik/storage verify:deploy",
+    "secret-box:rewrap": "pnpm --filter @taxtronik/db secret-box:rewrap",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" \"scripts/fachkatalog/**/*.mjs\" \"scripts/tests/fachkatalog.test.mjs\" \"scripts/check-doc-links.mjs\" \"scripts/tests/check-doc-links.test.mjs\" \"scripts/check-paranoid-e2e.mjs\" \"scripts/paranoid-e2e-reporter.mjs\" \"scripts/tests/check-paranoid-e2e.test.mjs\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\" \"scripts/fachkatalog/**/*.mjs\" \"scripts/tests/fachkatalog.test.mjs\" \"scripts/check-doc-links.mjs\" \"scripts/tests/check-doc-links.test.mjs\" \"scripts/check-paranoid-e2e.mjs\" \"scripts/paranoid-e2e-reporter.mjs\" \"scripts/tests/check-paranoid-e2e.test.mjs\"",
     "docs:test": "node --test scripts/tests/check-doc-links.test.mjs",

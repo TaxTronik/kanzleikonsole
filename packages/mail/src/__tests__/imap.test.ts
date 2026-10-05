@@ -22,7 +22,8 @@ vi.mock('@taxtronik/db', () => ({
 vi.mock('@taxtronik/db/tenant-modules', () => ({
   readBooleanTenantModules: async () => ({ smartMailbox: m.enabled }),
 }));
-vi.mock('@taxtronik/crypto', () => ({
+vi.mock('@taxtronik/crypto', async () => ({
+  ...(await import('@taxtronik/crypto/secret-slots')),
   encryptSecret: (x: string) => x,
   decryptSecret: (x: string) => x,
 }));

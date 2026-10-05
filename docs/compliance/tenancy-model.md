@@ -87,7 +87,8 @@ Vorher gab es zwei parallele Kopien von SSRF-Guard, safeFetch und Crypto
 in Web + Worker. Konsolidiert (Round 12):
 
 - `@taxtronik/http-utils` — assertPublicHost, safeFetch (von H1/N1/N6)
-- `@taxtronik/crypto` — secret-box v1/v2 (M-1)
+- `@taxtronik/crypto` — secret-box v3 mit Schlüsselbund und Kontextbindung
+  (S-08; v1/v2 nur lesend, M-1)
 - `@taxtronik/db` — prismaOwner-Singleton + tenant-context (T-1)
 
 Der RSS-Fetcher ist inzwischen ebenfalls in `@taxtronik/rss` konsolidiert.

@@ -48,7 +48,10 @@ vi.mock('@/server/documents/resumable-upload', () => ({
   persistResumableDocumentUpload: m.persist,
 }));
 vi.mock('@taxtronik/mail/imap', () => ({ microsoftClient: vi.fn(), IMAP_SCOPES: [] }));
-vi.mock('@taxtronik/crypto', () => ({ encryptSecret: vi.fn() }));
+vi.mock('@taxtronik/crypto', async () => ({
+  ...(await import('@taxtronik/crypto/secret-slots')),
+  encryptSecret: vi.fn(),
+}));
 vi.mock('@taxtronik/config', () => ({ env: {} }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));

@@ -29,7 +29,7 @@ regexTarget = "line"
 regexes = [
   # Leere Secret-Platzhalter im ENV-Template. Die Pfad-Allowlist wurde bewusst
   # entfernt, damit ein versehentlich eingetragener echter Wert erkannt wird.
-  '''^(AUTH_SECRET|SECRET_BOX_KEY|POSTGRES_PASSWORD|TAXTRONIK_APP_PASSWORD|S3_SECRET_KEY|N8N_HMAC_SECRET|N8N_ENCRYPTION_KEY|N8N_DB_PASSWORD)=$''',
+  '''^(AUTH_SECRET|SECRET_BOX_KEY|SECRET_BOX_KEYRING|POSTGRES_PASSWORD|TAXTRONIK_APP_PASSWORD|S3_SECRET_KEY|N8N_HMAC_SECRET|N8N_ENCRYPTION_KEY|N8N_DB_PASSWORD)=$''',
   # S3-Client-Konstruktor: Variablen-Reference, kein hartkodiertes Secret.
   '''secretAccessKey:\s*env\.S3_SECRET_KEY''',
   # Synthetische Fixture-Werte aus scripts/tests/ops-lib.test.sh. Diese Werte

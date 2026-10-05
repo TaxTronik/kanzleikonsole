@@ -26,7 +26,8 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
 | Secret                                                    | Zweck                             | Rotation                       | Auswirkung                             |
 | --------------------------------------------------------- | --------------------------------- | ------------------------------ | -------------------------------------- |
 | `AUTH_SECRET`                                             | Session-Signing, TOTP-Encryption  | nur nach Auth-Runbook          | Sessions ungültig, TOTP betroffen      |
-| `SECRET_BOX_KEY`                                          | Tenant-/Integrations-Secrets      | nur mit Re-Wrap                | gespeicherte Secrets sonst unlesbar    |
+| `SECRET_BOX_KEY`                                          | Wurzel der Secret-Box             | nur bei Kompromittierung       | Checkpoints einmalig ungültig          |
+| `SECRET_BOX_KEYRING`                                      | Tenant-/Integrations-Secrets      | ohne Ausfallzeit mit Re-Wrap   | gespeicherte Secrets sonst unlesbar    |
 | `POSTGRES_PASSWORD`                                       | DB-Owner/Migrationen              | Wartungsfenster                | App-Owner-Tools, Migrationen           |
 | `TAXTRONIK_APP_PASSWORD`                                  | App-DB-Rolle mit RLS              | Wartungsfenster                | App/Worker DB-Zugriff                  |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY`                         | SeaweedFS S3                      | Wartungsfenster                | Uploads, Backups, Restore              |
@@ -281,6 +282,99 @@ Drill.
 3. `./taxtronik deploy`.
 4. Subsumtions-Analyse mit Testfall ausführen.
 
+## Secret-Box-Schlüssel
+
+Die Secret-Box (`@taxtronik/crypto`) verschlüsselt SMTP-Passwörter, n8n-API-Keys
+und -Signatur-Secrets, den IBM-Quantum-Token sowie Zugangsdaten und Token-Cache
+der Smart Mailbox. Die vollständige Liste der Ablageorte steht in
+`packages/crypto/src/secret-slots.ts`.
+
+Neue Werte werden im Format `v3:<key-id>:<iv>:<tag>:<ct>` gespeichert. Die
+Key-ID benennt den verwendeten Schlüssel, ohne etwas über ihn zu verraten. Jeder
+Wert ist per gebundenen Zusatzdaten (AAD) an Tenant, Ablageort und Feld
+gebunden (`<tenantId>|tenant_setting/mail.smtp|passwordEncrypted`,
+`<tenantId>|inbound_mailbox/<id>|secret_enc` usw.): In der Datenbank in einen
+anderen Tenant, eine andere Zeile, ein anderes Setting oder Feld kopiert, ist
+er nicht mehr entschlüsselbar. Ältere `v1`-/`v2`-Werte bleiben lesbar.
+
+| Variable             | Rolle                                                                                                                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_BOX_KEY`     | Wurzel; ohne Wert `AUTH_SECRET` (Altinstallation). Leitet `v2`-Werte und die Prüfsumme der Audit-Prüf-Checkpoints ab. Entschlüsselt immer mit. Nicht routinemäßig rotieren.                               |
+| `SECRET_BOX_KEYRING` | Optionaler Schlüsselbund, kommagetrennt, je mindestens 32 Zeichen, höchstens acht Einträge. Der **erste** Eintrag verschlüsselt neue Werte, alle Einträge entschlüsseln. Leer = die Wurzel verschlüsselt. |
+
+App und Worker müssen jederzeit denselben Schlüsselbund kennen.
+
+### Prüfsumme der Audit-Prüf-Checkpoints
+
+Der HMAC-Schlüssel der Prüf-Checkpoints (`deriveAuditCheckpointMacKey`,
+AUDIT-VERIFY-ALERT-001) wird ausschließlich aus der Wurzel abgeleitet. Eine
+Rotation über `SECRET_BOX_KEYRING` ändert ihn nicht; bestehende Checkpoints
+bleiben gültig. Nur ein Wechsel der Wurzel (`SECRET_BOX_KEY`, ohne diesen
+`AUTH_SECRET`) macht die Checkpoints einmalig ungültig: Der nächste Prüflauf
+meldet sie als nicht authentisch und prüft ab Genesis. Deshalb Datenschlüssel
+immer über den Schlüsselbund rotieren und die Wurzel nur bei Verdacht auf
+Kompromittierung wechseln; diesen einmaligen Befund im Betreiberprotokoll
+vorab vermerken.
+
+### Rotation der Datenschlüssel ohne Ausfallzeit
+
+1. Full-Backup nach Standardablauf erstellen und verifizieren.
+2. Neuen Schlüssel erzeugen (`openssl rand -base64 32 | tr '+/' '-_' | tr -d '='`).
+3. Neuen Schlüssel **verteilen**: an das Ende von `SECRET_BOX_KEYRING` anhängen
+   und `./taxtronik deploy` ausführen. Der bisher aktive Schlüssel bleibt erster
+   Eintrag; war der Schlüsselbund leer, ist das der Wert von `SECRET_BOX_KEY`
+   (Altinstallation: `AUTH_SECRET`), z. B.
+   `SECRET_BOX_KEYRING=<bisher aktiver Schlüssel>,<neuer Schlüssel>`. Ab jetzt
+   kann jeder Prozess Werte des neuen Schlüssels lesen. Bei nur einem App- und
+   einem Worker-Container, die gemeinsam neu starten, kann dieser Schritt
+   entfallen.
+4. Neuen Schlüssel **aktivieren**: an die erste Stelle setzen
+   (`SECRET_BOX_KEYRING=<neuer Schlüssel>,<alte Einträge>`) und erneut
+   `./taxtronik deploy`. Neue Werte werden jetzt mit ihm geschrieben.
+5. Bestand umstellen, mit derselben `.env` wie App und Worker:
+
+   ```bash
+   pnpm secret-box:rewrap --dry-run   # prüft und zählt, schreibt nichts
+   pnpm secret-box:rewrap             # stellt um
+   pnpm secret-box:rewrap --dry-run   # Erwartung: „aktuell“ = „gesamt“ je Ablageort
+   ```
+
+   Das Kommando entschlüsselt jeden gespeicherten Wert und schreibt ihn mit
+   unverändertem Klartext als `v3` mit dem aktiven Schlüssel zurück. Es ist
+   idempotent und wiederaufnehmbar: Jeder Wert wird einzeln per
+   Compare-and-set geschrieben; nach einem Abbruch einfach erneut ausführen.
+   Ein zwischenzeitlich in der Anwendung neu gespeicherter Wert wird nie
+   überschrieben. Änderungszeitpunkt und -autor der Datensätze bleiben
+   unverändert; es entstehen keine Audit-Ereignisse, deshalb die Ausgabe ins
+   Betreiberprotokoll übernehmen. Exit-Code `0` = vollständig, `1` = nicht
+   entschlüsselbare Werte (Ablageort, Tenant und Zeile stehen in der Ausgabe,
+   der Wert bleibt unverändert), `2` = parallel geänderte Werte (erneut
+   ausführen). Voraussetzung auf dem Host sind die Host-Tool-Abhängigkeiten,
+   wie sie `./taxtronik reset-admin-password` installiert, und die
+   Owner-Verbindung `DATABASE_URL` aus `.env`.
+
+6. Alte Einträge aus `SECRET_BOX_KEYRING` entfernen und `./taxtronik deploy`.
+   Die Wurzel bleibt implizit Teil des Schlüsselbunds.
+7. SMTP-Testmail, n8n-`taxtronik.ping`, IBM-Status und einen Postfachabruf
+   prüfen; `./taxtronik doctor`.
+
+Den alten Schlüssel offline verwahren, solange Backups mit damit
+verschlüsselten Werten aufbewahrt werden. Kurzlebige Werte (OAuth-State-Cookie
+der Postfachanbindung, fünf Minuten) brauchen keinen Re-Wrap.
+
+### Wechsel der Wurzel
+
+Nur bei Verdacht auf Kompromittierung von `SECRET_BOX_KEY` oder beim
+erstmaligen Setzen in einer Altinstallation:
+
+1. Datenschlüssel wie oben rotieren, bis `pnpm secret-box:rewrap --dry-run`
+   je Ablageort „aktuell“ = „gesamt“ meldet. Danach hängt kein gespeicherter
+   Wert mehr an der Wurzel (insbesondere keine `v1`-/`v2`-Werte mehr).
+2. `SECRET_BOX_KEY` auf den neuen Wert setzen und `./taxtronik deploy`.
+3. Der nächste Audit-Prüflauf meldet die Prüf-Checkpoints einmalig als nicht
+   authentisch und prüft ab Genesis (AUDIT-VERIFY-ALERT-001). Den Befund mit
+   Verweis auf die Rotation im Betreiberprotokoll schließen.
+
 ## AUTH_SECRET
 
 `AUTH_SECRET` ist kein normales Rotationsthema. Es schützt Sessions und
@@ -290,11 +384,12 @@ TOTP-Seeds. Secret-box-Werte nutzen bei Neuinstallationen den getrennten
 [`../compliance/auth-secret-rotation.md`](../compliance/auth-secret-rotation.md)
 und verlangt ein eigenes Wartungsfenster.
 
-`SECRET_BOX_KEY` nie durch bloßes Ändern der `.env` rotieren. Alle damit
-verschlüsselten Werte müssen in einem Wartungsfenster mit dem alten Schlüssel
-entschlüsselt und atomisch mit dem neuen rewrapped werden. Fehlt der Wert in
-einer bestehenden Installation, gilt das erstmalige Setzen ebenfalls als
-Rotation vom Legacy-Fallback (`AUTH_SECRET`) auf den neuen Schlüssel.
+`SECRET_BOX_KEY` nie durch bloßes Ändern der `.env` rotieren: Werte, die noch
+an der alten Wurzel hängen, wären danach unlesbar. Datenschlüssel werden über
+`SECRET_BOX_KEYRING` und `pnpm secret-box:rewrap` rotiert (Abschnitt
+[Secret-Box-Schlüssel](#secret-box-schlüssel)). Fehlt der Wert in einer
+bestehenden Installation, gilt das erstmalige Setzen als Wechsel der Wurzel vom
+Legacy-Fallback (`AUTH_SECRET`) auf den neuen Schlüssel.
 
 ## Rollback
 

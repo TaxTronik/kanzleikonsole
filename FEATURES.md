@@ -1646,7 +1646,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Uploads
 - Eigenständige Packages: `@taxtronik/db`, `@taxtronik/config`,
   `@taxtronik/evidence`, `@taxtronik/storage`, `@taxtronik/tax`,
-  `@taxtronik/crypto` (AES-256-GCM Secret-Box mit HKDF-domain-getrenntem Key),
+  `@taxtronik/crypto` (AES-256-GCM Secret-Box mit HKDF-domain-getrenntem Key,
+  Schlüsselbund mit Key-ID und an Tenant/Ablageort/Feld gebundenen Werten),
   `@taxtronik/http-utils` (SSRF-Guard + DNS-pinning-safeFetch via undici),
   `@taxtronik/rss` (Parser + Streaming-Body-Cap),
   `@taxtronik/n8n-shared` (driftfreier Eventkatalog/Whitelist +
