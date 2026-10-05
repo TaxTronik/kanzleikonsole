@@ -147,11 +147,15 @@ describe('persönlicher Anzeigemodus: CSS-Vertrag, keine Konformitätsprüfung',
     expect(css).toContain('transition-duration: 0.01ms !important');
     expect(css).toContain('backdrop-filter: none !important');
     expect(css).toContain('background-color: rgb(var(--surface-card)) !important');
-    expect(css).toContain('background-color: rgb(var(--surface-topbar)) !important');
     // :root erhöht die Spezifität über die Glas-Overrides von .ui-modern.dark.
     expect(css).toContain(`${modeSelector}:root .card`);
     expect(css).toContain(`${modeSelector}:root aside.app-sidebar`);
-    expect(css).toContain(`${modeSelector}:root main .sticky`);
+    // Die Topbar-Glasregel kommt ohne !important aus; hier genügt die Spezifität.
+    const topbar = rules().find((rule) =>
+      rule.selectors.includes(`${modeSelector}:root .app-topbar`),
+    );
+    expect(declarations(topbar!)).toEqual({ 'background-color': 'rgb(var(--surface-topbar))' });
+    expect(css).not.toContain('main .sticky');
     for (const rule of rules()) {
       const values = declarations(rule);
       expect(values.display).not.toBe('none');

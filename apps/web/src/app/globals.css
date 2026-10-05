@@ -352,12 +352,9 @@ body:has(.react-grid-item.resizing) {
   --text-color-disabled: rgb(var(--text-disabled));
 }
 
+/* Wortmarke: dieselbe geprüfte Markentextfarbe wie text-brand-* (Status-Tokens unten). */
 @utility brand-wordmark {
-  color: rgb(var(--brand-text-light));
-
-  .dark & {
-    color: rgb(var(--brand-text-dark));
-  }
+  color: var(--dark-text-brand, rgb(var(--brand-text-light)));
 }
 
 /* divide-color für unsere Border-Tokens. Bewusst mit eigenem Selektor statt
@@ -1687,7 +1684,13 @@ body:has(.react-grid-item.resizing) {
     @apply block px-1.5 py-0.5 rounded text-xs truncate transition-colors;
   }
   .cal-pill-pending {
-    @apply bg-brand-100 text-brand-900 hover:bg-brand-50 dark:bg-brand-700 dark:text-brand-50 dark:hover:bg-brand-600;
+    @apply hover:bg-brand-50 dark:bg-brand-700 dark:text-brand-50 dark:hover:bg-brand-600;
+    /* Feste Pillenfarben statt `bg-brand-100 text-brand-900`: Die Utilities
+       sind Status-Tokens (Modern-Tönung, AA-korrigierter Markentext); die
+       Pille bleibt wie bisher solides brand-100 mit dem dunkleren brand-900.
+       Im Dark gelten die dark:-Werte oben. */
+    background-color: rgb(var(--brand-100));
+    color: rgb(var(--brand-900));
   }
   .cal-pill-overdue {
     @apply bg-red-100 text-red-900 hover:bg-red-50 dark:bg-red-700 dark:text-red-50 dark:hover:bg-red-600;
@@ -1710,172 +1713,188 @@ body:has(.react-grid-item.resizing) {
 }
 
 /*
- * Brand- und Status-Farben im Darkmode: diese Sets sind im Light absichtlich
- * sehr hell (-50/-100-Stufen) und müssen für den Dark-Mode auf "tinted dark"
- * umgemappt werden. Im Gegensatz zu den Gray-Werten lassen sie sich nicht
- * sinnvoll als Token darstellen, weil sie semantisch (Status, Brand) belegt
- * sind — bewusst hier hartkodiert.
+ * Status-Farbtokens — der EINE Dark-Mode-Mechanismus für Paletten-Stufen
+ * (wie Gray-Skala und Surface-Tokens oben: Theme-Variablen, die über .dark
+ * umschalten).
+ *
+ * Diese Stufen dienen im Light als sehr helle Statusflächen (bg-*-50/100/200,
+ * border-*-200) bzw. als dunkle Statustexte (text-*-600…900); im Dark
+ * brauchen sie eine getönte Fläche bzw. helle Schrift. Früher erledigten das
+ * ungeschichtete `.dark .bg-amber-50 { … }`-Regeln (Brand-Text sogar mit
+ * !important). Sie überstimmten jede explizite `dark:`-Klasse in den
+ * Utilities, egal was am Element stand.
+ *
+ * Jetzt liefert das Theme den Wert, property-spezifisch: `--text-color-red-700`
+ * gilt nur für `text-red-700` (auch hover:, group-hover: usw.), `bg-red-700`
+ * (Danger-Button) bleibt die feste Palettenfarbe. Light = Tailwind-Palette
+ * (Fallback im var()), Dark = der `--dark-*`-Wert aus dem .dark-Block unten.
+ * Explizite `dark:`-Klassen gewinnen regulär, weil Tailwind Varianten hinter
+ * die Basis-Utility sortiert.
+ *
+ * Neue Statusfarbe im Dark? Hier eintragen, keine `.dark .x`-Regel; reine
+ * Einzelfälle bekommen eine `dark:`-Klasse am Element.
  */
-.dark .bg-brand-50 {
-  background-color: rgb(var(--brand-900) / 0.18);
-}
-.dark .bg-brand-100 {
-  background-color: rgb(var(--brand-700) / 0.3);
+@theme inline {
+  --background-color-red-50: var(--dark-bg-red-50, var(--color-red-50));
+  --background-color-red-100: var(--dark-bg-red-100, var(--color-red-100));
+  --background-color-red-200: var(--dark-bg-red-200, var(--color-red-200));
+  --background-color-amber-50: var(--dark-bg-amber-50, var(--color-amber-50));
+  --background-color-yellow-50: var(--dark-bg-yellow-50, var(--color-yellow-50));
+  --background-color-yellow-100: var(--dark-bg-yellow-100, var(--color-yellow-100));
+  --background-color-emerald-50: var(--dark-bg-emerald-50, var(--color-emerald-50));
+  --background-color-emerald-100: var(--dark-bg-emerald-100, var(--color-emerald-100));
+  --background-color-blue-50: var(--dark-bg-blue-50, var(--color-blue-50));
+  --background-color-purple-50: var(--dark-bg-purple-50, var(--color-purple-50));
+  --background-color-brand-50: var(--dark-bg-brand-50, rgb(var(--brand-50)));
+  --background-color-brand-100: var(
+    --dark-bg-brand-100,
+    var(--modern-bg-brand-100, rgb(var(--brand-100)))
+  );
+
+  --border-color-amber-200: var(--dark-border-amber-200, var(--color-amber-200));
+  --border-color-yellow-200: var(--dark-border-yellow-200, var(--color-yellow-200));
+
+  --text-color-red-700: var(--dark-text-red-700, var(--color-red-700));
+  --text-color-red-800: var(--dark-text-red-800, var(--color-red-800));
+  --text-color-red-900: var(--dark-text-red-900, var(--color-red-900));
+  --text-color-amber-600: var(--dark-text-amber-600, var(--color-amber-600));
+  --text-color-amber-700: var(--dark-text-amber-700, var(--color-amber-700));
+  --text-color-amber-800: var(--dark-text-amber-800, var(--color-amber-800));
+  --text-color-amber-900: var(--dark-text-amber-900, var(--color-amber-900));
+  --text-color-yellow-700: var(--dark-text-yellow-700, var(--color-yellow-700));
+  --text-color-yellow-800: var(--dark-text-yellow-800, var(--color-yellow-800));
+  --text-color-emerald-700: var(--dark-text-emerald-700, var(--color-emerald-700));
+  --text-color-emerald-800: var(--dark-text-emerald-800, var(--color-emerald-800));
+  --text-color-emerald-900: var(--dark-text-emerald-900, var(--color-emerald-900));
+  --text-color-blue-600: var(--dark-text-blue-600, var(--color-blue-600));
+  --text-color-blue-700: var(--dark-text-blue-700, var(--color-blue-700));
+  --text-color-purple-700: var(--dark-text-purple-700, var(--color-purple-700));
+
+  /* Markenfarbe als Vordergrund: tenantabhängig auf AA-Kontrast korrigiert
+   * (brand-palette.ts). Alle dunklen Stufen ab 500 und `text-brand-accessible`
+   * zeigen deshalb dieselbe geprüfte Textfarbe; helle Stufen (50–400) bleiben
+   * roh, sie stehen als Schrift auf Brand-Flächen oder in `dark:`-Klassen. */
+  --text-color-brand-500: var(--dark-text-brand, rgb(var(--brand-text-light)));
+  --text-color-brand-600: var(--dark-text-brand, rgb(var(--brand-text-light)));
+  --text-color-brand-700: var(--dark-text-brand, rgb(var(--brand-text-light)));
+  --text-color-brand-800: var(--dark-text-brand, rgb(var(--brand-text-light)));
+  --text-color-brand-900: var(--dark-text-brand, rgb(var(--brand-text-light)));
+  --text-color-brand-950: var(--dark-text-brand, rgb(var(--brand-text-light)));
+  --text-color-brand-accessible: var(--dark-text-brand, rgb(var(--brand-text-light)));
 }
 
-/* Markenfarbe als Vordergrund: tenantabhängig auf AA-Kontrast korrigiert. */
-.text-brand-500,
-.text-brand-600,
-.text-brand-700,
-.text-brand-900,
-.text-brand-accessible {
-  color: rgb(var(--brand-text-light)) !important;
-}
-.dark .text-brand-500,
-.dark .text-brand-600,
-.dark .text-brand-700,
-.dark .text-brand-900,
-.dark .text-brand-accessible {
-  color: rgb(var(--brand-text-dark)) !important;
+@layer base {
+  .dark {
+    --dark-bg-red-50: rgb(127 29 29 / 0.3);
+    --dark-bg-red-100: rgb(127 29 29 / 0.4);
+    --dark-bg-red-200: rgb(127 29 29 / 0.55);
+    --dark-bg-amber-50: rgb(120 53 15 / 0.3);
+    --dark-bg-yellow-50: rgb(120 53 15 / 0.3);
+    --dark-bg-yellow-100: rgb(120 53 15 / 0.4);
+    --dark-bg-emerald-50: rgb(6 78 59 / 0.3);
+    --dark-bg-emerald-100: rgb(6 78 59 / 0.4);
+    --dark-bg-blue-50: rgb(30 58 138 / 0.3);
+    --dark-bg-purple-50: rgb(76 29 149 / 0.3);
+
+    --dark-border-amber-200: rgb(120 53 15 / 0.5);
+    --dark-border-yellow-200: rgb(120 53 15 / 0.5);
+
+    --dark-text-red-700: rgb(252 165 165);
+    --dark-text-red-800: rgb(254 202 202);
+    --dark-text-red-900: rgb(254 226 226);
+    --dark-text-amber-600: rgb(251 191 36);
+    --dark-text-amber-700: rgb(252 211 77);
+    --dark-text-amber-800: rgb(253 224 71);
+    --dark-text-amber-900: rgb(254 240 138);
+    --dark-text-yellow-700: rgb(252 211 77);
+    --dark-text-yellow-800: rgb(253 224 71);
+    --dark-text-emerald-700: rgb(110 231 183);
+    --dark-text-emerald-800: rgb(134 239 172);
+    --dark-text-emerald-900: rgb(167 243 208);
+    --dark-text-blue-600: rgb(147 197 253);
+    --dark-text-blue-700: rgb(191 219 254);
+    --dark-text-purple-700: rgb(216 180 254);
+  }
+
+  /* Brand-abhängige Dark-Werte auch an .app-shell auflösen: dort setzt das
+   * Layout die Tenant-Palette als Inline-Style. Nur an .dark (= <html>)
+   * deklariert, sähen sie ausschließlich die Default-Palette aus :root. */
+  .dark,
+  .dark .app-shell {
+    --dark-bg-brand-50: rgb(var(--brand-900) / 0.18);
+    --dark-bg-brand-100: rgb(var(--brand-700) / 0.3);
+    --dark-text-brand: rgb(var(--brand-text-dark));
+  }
+
+  /* UI-Mode "modern": Brand-100-Tönung dezenter, sonst zu kontrastreich. Als
+   * Token statt `.ui-modern .bg-brand-100`-Regel, die im Modern-Dark die helle
+   * Fläche erzwang und jede dark:-Klasse überstimmte. */
+  .ui-modern,
+  .ui-modern .app-shell {
+    --modern-bg-brand-100: rgb(var(--brand-100) / 0.85);
+  }
 }
 
-/* Badges im Dark: translucent Tints mit heller Schrift + Border. */
-.dark .badge-green {
-  background-color: rgb(16 185 129 / 0.13);
-  color: #6ee7b7;
-  border-color: rgb(16 185 129 / 0.28);
-}
-.dark .badge-yellow {
-  background-color: rgb(245 158 11 / 0.13);
-  color: #fcd34d;
-  border-color: rgb(245 158 11 / 0.28);
-}
-.dark .badge-red {
-  background-color: rgb(239 68 68 / 0.13);
-  color: #fca5a5;
-  border-color: rgb(239 68 68 / 0.3);
-}
-.dark .badge-brand {
-  background-color: rgb(var(--brand-500) / 0.15);
-  color: rgb(var(--brand-100));
-  border-color: rgb(var(--brand-500) / 0.3);
-}
-.dark .badge-purple {
-  background-color: rgb(139 92 246 / 0.15);
-  color: #c4b5fd;
-  border-color: rgb(139 92 246 / 0.3);
-}
-.dark .badge-gray {
-  background-color: rgb(var(--surface-raised));
-  color: rgb(var(--text-secondary));
-  border-color: rgb(var(--border-default));
-}
+/* Dark-Varianten der Badge-/Alert-Komponenten — in @layer components wie die
+ * Light-Regeln (früher ungeschichtet), damit Utilities am Element in beiden
+ * Modi gleich gewinnen. */
+@layer components {
+  /* Badges im Dark: translucent Tints mit heller Schrift + Border. */
+  .dark .badge-green {
+    background-color: rgb(16 185 129 / 0.13);
+    color: #6ee7b7;
+    border-color: rgb(16 185 129 / 0.28);
+  }
+  .dark .badge-yellow {
+    background-color: rgb(245 158 11 / 0.13);
+    color: #fcd34d;
+    border-color: rgb(245 158 11 / 0.28);
+  }
+  .dark .badge-red {
+    background-color: rgb(239 68 68 / 0.13);
+    color: #fca5a5;
+    border-color: rgb(239 68 68 / 0.3);
+  }
+  .dark .badge-brand {
+    background-color: rgb(var(--brand-500) / 0.15);
+    color: rgb(var(--brand-100));
+    border-color: rgb(var(--brand-500) / 0.3);
+  }
+  .dark .badge-purple {
+    background-color: rgb(139 92 246 / 0.15);
+    color: #c4b5fd;
+    border-color: rgb(139 92 246 / 0.3);
+  }
+  .dark .badge-gray {
+    background-color: rgb(var(--surface-raised));
+    color: rgb(var(--text-secondary));
+    border-color: rgb(var(--border-default));
+  }
 
-/* Alerts im Dark: translucent Tints mit heller Schrift + Border. */
-.dark .alert-info,
-.dark .alert-info-sm {
-  background-color: rgb(var(--brand-500) / 0.12);
-  border-color: rgb(var(--brand-500) / 0.3);
-  color: rgb(var(--brand-100));
-}
-.dark .alert-error,
-.dark .alert-error-sm {
-  background-color: rgb(239 68 68 / 0.11);
-  border-color: rgb(239 68 68 / 0.32);
-  color: #fca5a5;
-}
-.dark .alert-warning {
-  background-color: rgb(245 158 11 / 0.11);
-  border-color: rgb(245 158 11 / 0.3);
-  color: #fcd34d;
-}
-.dark .alert-success,
-.dark .alert-success-sm {
-  background-color: rgb(16 185 129 / 0.11);
-  border-color: rgb(16 185 129 / 0.3);
-  color: #6ee7b7;
-}
-
-.dark .bg-yellow-50 {
-  background-color: rgb(120 53 15 / 0.3);
-}
-.dark .bg-yellow-100 {
-  background-color: rgb(120 53 15 / 0.4);
-}
-.dark .text-yellow-700 {
-  color: rgb(252 211 77);
-}
-.dark .text-yellow-800 {
-  color: rgb(253 224 71);
-}
-.dark .bg-emerald-50 {
-  background-color: rgb(6 78 59 / 0.3);
-}
-.dark .bg-emerald-100 {
-  background-color: rgb(6 78 59 / 0.4);
-}
-.dark .text-emerald-700 {
-  color: rgb(110 231 183);
-}
-.dark .text-emerald-800 {
-  color: rgb(134 239 172);
-}
-.dark .text-emerald-900 {
-  color: rgb(167 243 208);
-}
-.dark .bg-red-50 {
-  background-color: rgb(127 29 29 / 0.3);
-}
-.dark .bg-red-100 {
-  background-color: rgb(127 29 29 / 0.4);
-}
-.dark .bg-red-200 {
-  background-color: rgb(127 29 29 / 0.55);
-}
-.dark .text-red-700 {
-  color: rgb(252 165 165);
-}
-.dark .text-red-800 {
-  color: rgb(254 202 202);
-}
-.dark .text-red-900 {
-  color: rgb(254 226 226);
-}
-.dark .bg-amber-50 {
-  background-color: rgb(120 53 15 / 0.3);
-}
-.dark .text-amber-700 {
-  color: rgb(252 211 77);
-}
-.dark .text-amber-800 {
-  color: rgb(253 224 71);
-}
-.dark .text-amber-900 {
-  color: rgb(254 240 138);
-}
-.dark .text-amber-600 {
-  color: rgb(251 191 36);
-}
-.dark .bg-blue-50 {
-  background-color: rgb(30 58 138 / 0.3);
-}
-.dark .text-blue-600 {
-  color: rgb(147 197 253);
-}
-.dark .text-blue-700 {
-  color: rgb(191 219 254);
-}
-.dark .bg-purple-50 {
-  background-color: rgb(76 29 149 / 0.3);
-}
-.dark .text-purple-700 {
-  color: rgb(216 180 254);
-}
-.dark .border-yellow-200 {
-  border-color: rgb(120 53 15 / 0.5);
-}
-.dark .border-amber-200 {
-  border-color: rgb(120 53 15 / 0.5);
+  /* Alerts im Dark: translucent Tints mit heller Schrift + Border. */
+  .dark .alert-info,
+  .dark .alert-info-sm {
+    background-color: rgb(var(--brand-500) / 0.12);
+    border-color: rgb(var(--brand-500) / 0.3);
+    color: rgb(var(--brand-100));
+  }
+  .dark .alert-error,
+  .dark .alert-error-sm {
+    background-color: rgb(239 68 68 / 0.11);
+    border-color: rgb(239 68 68 / 0.32);
+    color: #fca5a5;
+  }
+  .dark .alert-warning {
+    background-color: rgb(245 158 11 / 0.11);
+    border-color: rgb(245 158 11 / 0.3);
+    color: #fcd34d;
+  }
+  .dark .alert-success,
+  .dark .alert-success-sm {
+    background-color: rgb(16 185 129 / 0.11);
+    border-color: rgb(16 185 129 / 0.3);
+    color: #6ee7b7;
+  }
 }
 
 /* =============================================================================
@@ -2070,14 +2089,17 @@ body:has(.react-grid-item.resizing) {
   background-color: rgb(var(--surface-page) / 0.55) !important;
 }
 
-/* Topbar: ebenfalls als Glas — gilt für staff- und portal-Layout (sticky top-0) */
-.ui-modern main .sticky {
+/* Topbar: ebenfalls als Glas — nur die Kopfleiste von Staff- und Portal-Layout
+ * (`.app-topbar`). Früher traf `main .sticky` auch sticky Tabellenzellen,
+ * Tabellenköpfe und Aktionsleisten und machte sie halbtransparent. Kein
+ * !important nötig: ungeschichtet schlägt die Regel `bg-surface-topbar`. */
+.ui-modern .app-topbar {
   backdrop-filter: blur(12px) saturate(150%);
   -webkit-backdrop-filter: blur(12px) saturate(150%);
-  background-color: rgb(var(--surface-topbar) / 0.75) !important;
+  background-color: rgb(var(--surface-topbar) / 0.75);
 }
-.ui-modern.dark main .sticky {
-  background-color: rgb(var(--surface-topbar) / 0.7) !important;
+.ui-modern.dark .app-topbar {
+  background-color: rgb(var(--surface-topbar) / 0.7);
 }
 
 /* Inputs: weicher Focus-Ring */
@@ -2096,11 +2118,6 @@ body:has(.react-grid-item.resizing) {
 .ui-modern .btn-primary,
 .ui-modern .btn-secondary {
   border-radius: var(--m-radius-btn);
-}
-
-/* Brand-100 Tönung in Modern dezenter rückwärts — sonst zu kontrastreich */
-.ui-modern .bg-brand-100 {
-  background-color: rgb(var(--brand-100) / 0.85);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2147,16 +2164,20 @@ body:has(.react-grid-item.resizing) {
   /* ui-modern-Glas auf Mobile opak schalten: backdrop-filter wird auf
      transformierten fixed-Elementen von vielen Mobile-Browsern nicht
      angewendet — die 55–65%-Deckkraft bleibt dann OHNE Blur übrig und das
-     Menüband wirkt transparent/unlesbar über dem Seiteninhalt. */
-  .ui-modern aside.app-sidebar {
+     Menüband wirkt transparent/unlesbar über dem Seiteninhalt. Die
+     .dark-Selektoren sind nötig, weil die Dark-Regeln oben spezifischer sind
+     (sonst blieb es im Dark bei 55 % bzw. 70 % ohne Blur). */
+  .ui-modern aside.app-sidebar,
+  .ui-modern.dark aside.app-sidebar {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background-color: rgb(var(--surface-page) / 0.98) !important;
   }
-  .ui-modern main .sticky {
+  .ui-modern .app-topbar,
+  .ui-modern.dark .app-topbar {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background-color: rgb(var(--surface-topbar) / 0.98) !important;
+    background-color: rgb(var(--surface-topbar) / 0.98);
   }
 
   @media (prefers-reduced-motion: reduce) {

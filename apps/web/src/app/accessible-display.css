@@ -231,8 +231,9 @@ html:has([data-accessible-display='true'])
 }
 
 /* Glasflächen werden opak. :root hebt die Spezifität auch über die bestehenden
- * !important-Regeln von .ui-modern.dark. Status-, Warn- und Erfolgsfarben sowie
- * die Abdunklung hinter Dialogen werden nicht pauschal ersetzt. */
+ * !important-Regeln von .ui-modern.dark (Karten, Sidebar). Status-, Warn- und
+ * Erfolgsfarben sowie die Abdunklung hinter Dialogen werden nicht pauschal
+ * ersetzt. */
 html:has([data-accessible-display='true']):root .app-shell,
 html:has([data-accessible-display='true']):root aside.app-sidebar {
   background-color: rgb(var(--surface-page)) !important;
@@ -243,9 +244,11 @@ html:has([data-accessible-display='true']):root .sticky-save {
   background-color: rgb(var(--surface-card)) !important;
 }
 
-html:has([data-accessible-display='true']):root main .sticky,
+/* Topbar und Decision-Bar: ohne !important, die Glas-Regeln für .app-topbar
+ * kommen ohne aus und haben eine geringere Spezifität. */
+html:has([data-accessible-display='true']):root .app-topbar,
 html:has([data-accessible-display='true']):root .decision-bar {
-  background-color: rgb(var(--surface-topbar)) !important;
+  background-color: rgb(var(--surface-topbar));
 }
 
 html:has([data-accessible-display='true']) .settings-pill {
@@ -260,7 +263,7 @@ html:has([data-accessible-display='true'])
   :where(
     .card,
     .app-sidebar,
-    .sticky,
+    .app-topbar,
     .sticky-save,
     .decision-bar,
     .settings-pill,
@@ -302,7 +305,7 @@ html:has([data-accessible-display='true']) .app-sidebar > div {
   flex-shrink: 0;
 }
 
-html:has([data-accessible-display='true']) .app-shell > main > .sticky:first-child {
+html:has([data-accessible-display='true']) .app-topbar {
   height: auto;
   min-height: 3.5rem;
   flex-wrap: wrap;
@@ -370,19 +373,11 @@ html:has([data-accessible-display='true']) .widget-shell > a.card .truncate {
     padding-inline: 1rem;
   }
 
-  html:has([data-accessible-display='true'])
-    .app-shell
-    > main
-    > .sticky:first-child
-    > div:first-child {
+  html:has([data-accessible-display='true']) .app-topbar > div:first-child {
     flex-basis: 100%;
   }
 
-  html:has([data-accessible-display='true'])
-    .app-shell
-    > main
-    > .sticky:first-child
-    > div:last-child {
+  html:has([data-accessible-display='true']) .app-topbar > div:last-child {
     margin-inline-start: auto;
   }
 

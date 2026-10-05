@@ -133,7 +133,7 @@ export default async function StaffLayout({ children }: { children: ReactNode })
           sichtbar als endloser leerer Scroll-Bereich unter dem Layout. */}
         <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-auto">
           {/* Header mit Hamburger (mobile) + globaler Suche + Notifications + Theme */}
-          <div className="h-14 bg-surface-topbar border-b border-default px-4 md:px-6 flex items-center gap-3 justify-between sticky top-0 z-20">
+          <div className="app-topbar h-14 bg-surface-topbar border-b border-default px-4 md:px-6 flex items-center gap-3 justify-between sticky top-0 z-20">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <MobileSidebarToggle />
               <GlobalSearch

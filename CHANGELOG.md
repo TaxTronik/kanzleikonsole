@@ -573,6 +573,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Dark Mode: Explizite `dark:`-Angaben werden nicht mehr von globalen
+  Overrides überstimmt; Status- und Markenfarben schalten über Theme-Tokens
+  um. Der Glaseffekt des modernen Modus liegt nur noch auf der Kopfleiste statt
+  auf sticky Tabellenzellen und Aktionsleisten; auf Smartphones bleiben
+  Kopfleiste und Menü im modernen Dark Mode deckend (`FK-EXC-20261005-038`).
 - Tailwind-Token-Klassen wie `text-secondary`, `bg-surface-raised` oder
   `border-default` wirken jetzt auch mit Varianten (`hover:`, `dark:`,
   `[&_th]:`) und Deckkraft-Modifiern; bisher erzeugten rund 150 solcher

@@ -114,7 +114,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
           Scroll-Container und strecken die Seite um die Content-Höhe —
           sichtbar als endloser leerer Scroll-Bereich unter dem Layout. */}
         <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-auto">
-          <div className="h-14 bg-surface-topbar border-b border-default px-4 flex items-center justify-between sticky top-0 z-20">
+          <div className="app-topbar h-14 bg-surface-topbar border-b border-default px-4 flex items-center justify-between sticky top-0 z-20">
             <div className="flex items-center gap-3 md:invisible">
               <MobileSidebarToggle />
               <span className="text-sm font-medium text-secondary">{branding.displayName}</span>

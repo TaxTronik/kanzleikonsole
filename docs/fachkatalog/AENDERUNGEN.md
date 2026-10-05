@@ -1,5 +1,21 @@
 ---
 exceptions:
+  - id: FK-EXC-20261005-038
+    date: '2026-10-05'
+    paths:
+      - apps/web/src/app/portal/(protected)/layout.tsx
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Die Kopfleiste des Mandantenportals erhält nur die CSS-Klasse app-topbar,
+      damit der Glaseffekt des modernen Modus ausschließlich die Kopfleiste trifft
+      statt sticky Tabellenzellen und Aktionsleisten. Sitzungsprüfung,
+      Tenant-Kontext und Zugriffsentscheidungen des Layouts bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/__tests__/dark-mode-tokens.test.ts
+      - apps/web/src/components/__tests__/accessible-display-css.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-037
     date: '2026-10-05'
     paths:
@@ -2395,6 +2411,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-05: `FK-EXC-20261005-038` dokumentiert die CSS-Klasse der
+  Portal-Kopfleiste. Zugriff und Tenant-Kontext bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-037` dokumentiert das gestreamte
   Mandanten-Cockpit in drei Transaktionen. Zugriffsprüfung und
