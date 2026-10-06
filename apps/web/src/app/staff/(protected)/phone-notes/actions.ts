@@ -191,20 +191,6 @@ export async function markNoteReadAction(
   return { ok: true };
 }
 
-export async function markPhoneNoteReadById(id: string): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'phoneNotes' });
-  if (!g.ok) return g;
-  if (typeof id !== 'string' || id.length === 0) return { ok: false, error: 'Ungültige ID.' };
-  try {
-    await markPhoneNoteRead(id, g.tenantId, g.staffId, g.session);
-  } catch (error) {
-    return toActionError(error);
-  }
-  revalidatePath('/staff/phone-notes');
-  revalidatePath('/staff/dashboard');
-  return { ok: true };
-}
-
 // Interner Helfer (kein UI-Action): erhält bereits autorisierten Kontext.
 // Liefert `false`, wenn es die Notiz im Tenant nicht gibt.
 async function markPhoneNoteRead(

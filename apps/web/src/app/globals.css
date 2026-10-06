@@ -728,13 +728,6 @@
   }
 
   /*
-   * Modal-Overlay — z-[100], voll abdeckend, klick-außen-schließt.
-   */
-  .modal-overlay {
-    @apply fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4;
-  }
-
-  /*
    * Card-Sub-Header / -Footer — Inhalts-Header/-Footer innerhalb einer Card.
    * Höhe und Padding ggf. mit utility-override anpassen.
    */
@@ -1348,74 +1341,6 @@
     margin-top: 1px;
   }
 
-  /* Code-Box — Read-only technischer Wert (URL, Key-ID, Hash). */
-  .code-box {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 100%;
-    border: 1px solid rgb(var(--border-default));
-    border-radius: 8px;
-    background-color: rgb(var(--surface-sunken));
-    padding: 5px 9px;
-    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-    font-size: 12px;
-    color: rgb(var(--text-secondary));
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Event-Chip — kompaktes Mono-Label für Event-Namen. */
-  .event-chip {
-    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-    font-size: 11px;
-    font-weight: 600;
-    border-radius: 6px;
-    padding: 2px 7px;
-    background-color: rgb(var(--surface-sunken));
-    color: rgb(var(--text-secondary));
-    border: 1px solid rgb(var(--border-default));
-    white-space: nowrap;
-  }
-
-  /* File-Chip — gewählte Datei/Seite mit Entfernen-X. */
-  .file-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 1px solid rgb(var(--border-default));
-    border-radius: 999px;
-    background-color: rgb(var(--surface-raised));
-    padding: 3px 10px;
-    font-size: 12px;
-    font-weight: 500;
-    color: rgb(var(--text-secondary));
-  }
-  .file-chip .x {
-    color: rgb(var(--text-disabled));
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .file-chip .x:hover {
-    color: rgb(var(--text-primary));
-  }
-
-  /* Dashed-Add — gestrichelte „Hinzufügen"-Fläche in Karten. */
-  .dashed-add {
-    border: 1.5px dashed rgb(var(--border-strong));
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-
-  /* Sub-Box — abgesetzte Gruppe innerhalb einer Karte. */
-  .sub-box {
-    border: 1px solid rgb(var(--border-default));
-    border-radius: 10px;
-    background-color: rgb(var(--surface-raised));
-    padding: 12px 14px;
-  }
-
   /* Details-Box — <details>/<summary> als aufklappbare Karte. */
   .details-box {
     border: 1px solid rgb(var(--border-default));
@@ -1435,12 +1360,10 @@
   .details-box > summary::-webkit-details-marker {
     display: none;
   }
-  .details-box > summary .ic,
   .details-box > summary > svg:first-child {
     transition: transform 0.15s ease;
     color: rgb(var(--text-muted));
   }
-  .details-box[open] > summary .ic,
   .details-box[open] > summary > svg:first-child {
     transform: rotate(90deg);
   }
@@ -1448,64 +1371,11 @@
     padding: 0 14px 12px;
   }
 
-  /* Form-Grid — 2-spaltiges Formularraster. */
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px 16px;
-  }
-  @media (max-width: 767px) {
-    .form-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-  .form-grid .span2 {
-    grid-column: span 2;
-  }
-  @media (max-width: 767px) {
-    .form-grid .span2 {
-      grid-column: span 1;
-    }
-  }
-
   /* Hint — kleine Erläuterung unter Feldern. */
   .hint {
     font-size: 11.5px;
     color: rgb(var(--text-muted));
     margin-top: 3px;
-  }
-
-  /* Sticky-Save — Speicherleiste am Fuß eines Editors. */
-  .sticky-save {
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-    margin: 12px -18px -16px;
-    padding: 10px 18px;
-    background-color: rgb(var(--surface-card) / 0.95);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border-top: 1px solid rgb(var(--border-default));
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-  }
-
-  /* Decision-Bar — finale Aktionsleiste am Seitenende (sticky). */
-  .decision-bar {
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-    margin: 14px -32px -48px;
-    padding: 12px 32px;
-    background-color: rgb(var(--surface-topbar) / 0.92);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-top: 1px solid rgb(var(--border-default));
-    display: flex;
-    align-items: center;
-    gap: 14px;
   }
 
   /* Danger-Zone — klar separierter destructiver Bereich. */

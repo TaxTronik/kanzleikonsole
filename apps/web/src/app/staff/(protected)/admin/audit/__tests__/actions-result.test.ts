@@ -1,6 +1,6 @@
 // Fachkatalog: AUDIT-VERIFY-ALERT-001
 //
-// Review-Befund F-01: Audit-Prüfung, Recovery-Checkpoint und Rotation melden
+// Review-Befund F-01: Audit-Prüfung und Recovery-Checkpoint melden
 // Ablehnungen als `{ ok: false, error }`, statt in error.tsx zu werfen.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,7 +12,6 @@ const h = vi.hoisted(() => ({
   writeTenantSettingValue: vi.fn(),
   evidenceRecord: vi.fn(),
   enqueueAuditVerify: vi.fn(),
-  rotateQueueAdd: vi.fn(),
   redirect: vi.fn((url: string) => {
     throw new Error(`NEXT_REDIRECT:${url}`);
   }),
@@ -33,9 +32,6 @@ vi.mock('@taxtronik/evidence', () => ({
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/jobs/audit-verify-queue', () => ({ enqueueAuditVerify: h.enqueueAuditVerify }));
-vi.mock('@/server/jobs/audit-rotate-queue', () => ({
-  getAuditRotateQueue: () => ({ add: h.rotateQueueAdd }),
-}));
 vi.mock('@/server/auth/rbac', async () => {
   const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
     '@/server/actions/action-error',
@@ -55,7 +51,6 @@ vi.mock('@/server/actions/staff-action', async () => {
 });
 
 import { createAuditRecoveryCheckpointAction, triggerAuditVerifyAction } from '../actions';
-import { triggerAuditRotateAction } from '../../archive/actions';
 
 describe('Audit-Actions — Rückkanal statt Wurf', () => {
   beforeEach(() => {
@@ -72,7 +67,6 @@ describe('Audit-Actions — Rückkanal statt Wurf', () => {
   it.each([
     ['triggerAuditVerifyAction', triggerAuditVerifyAction],
     ['createAuditRecoveryCheckpointAction', createAuditRecoveryCheckpointAction],
-    ['triggerAuditRotateAction', triggerAuditRotateAction],
   ] as const)('%s gibt die Ablehnung des Admin-Gates zurück', async (_name, action) => {
     h.staffActionGuard.mockResolvedValue({ ok: false, error: 'Nur ADMIN/PARTNER.' });
 
@@ -106,19 +100,5 @@ describe('Audit-Actions — Rückkanal statt Wurf', () => {
     });
     expect(h.evidenceRecord).not.toHaveBeenCalled();
     expect(h.redirect).not.toHaveBeenCalled();
-  });
-
-  it('bestätigt eine Rotation ohne rotierbare Einträge ohne Job und Audit', async () => {
-    h.withTenantContext.mockImplementation(async (_ctx, fn: (tx: unknown) => unknown) =>
-      fn({
-        auditArchive: { findFirst: vi.fn().mockResolvedValue(null) },
-        auditLog: { findFirst: vi.fn().mockResolvedValue(null) },
-      }),
-    );
-
-    await expect(triggerAuditRotateAction(null, new FormData())).resolves.toEqual({ ok: true });
-    expect(h.rotateQueueAdd).not.toHaveBeenCalled();
-    expect(h.evidenceRecord).not.toHaveBeenCalled();
-    expect(h.revalidatePath).toHaveBeenCalledWith('/staff/admin/archive');
   });
 });

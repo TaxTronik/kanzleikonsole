@@ -1,5 +1,34 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-008
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/_action-helpers.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+    rule_ids:
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-ACTIVATION-GATE-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - REMINDER-TICKET-001
+    reason: >-
+      Ungenutzte Server-Actions ohne Aufrufer außerhalb von Tests entfallen:
+      deleteReminderAction (Alias von archiveReminderAction), openCheckAction
+      (Alias von startNewCheckCycleAction), markPhoneNoteReadById, der manuelle
+      Audit-Rotations-Trigger sowie die nie eingebundene Altfassung zum Anlegen
+      wirtschaftlich Berechtigter (add-owner-form.tsx, addBeneficialOwnerAction);
+      deren Tests laufen jetzt gegen addGwgPersonAction, den produktiven Pfad.
+      Der Fachkatalog-Verweis auf add-owner-form.tsx ist entfernt; die Regel nennt
+      bereits new-gwg-person-form.tsx. Erreichbare Abläufe, Prüfungen und
+      Audit-Ereignisse bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-007
     date: '2026-10-06'
     paths:
@@ -2818,6 +2847,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-008` dokumentiert entfernte ungenutzte
+  Server-Actions und Komponenten. Erreichbare Abläufe und Audit-Ereignisse
+  bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-007` dokumentiert die E2E-Suite gegen den
   Standalone-Produktionsserver ohne Testwiederholungen. Umfang und Nachweis

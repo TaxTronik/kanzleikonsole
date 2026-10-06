@@ -64,7 +64,6 @@ vi.mock('@/server/actions/staff-action', async () => {
 });
 
 import {
-  addBeneficialOwnerAction,
   addBeneficialOwnerRoleAction,
   addGwgPersonAction,
   removeBeneficialOwnerAction,
@@ -80,7 +79,6 @@ import {
   updateIdDocumentsAction,
 } from '../id-document-actions';
 import {
-  openCheckAction,
   saveLegalEntityDetailsAction,
   saveRiskAnswersAction,
   rejectCheckAction,
@@ -428,17 +426,20 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(tx.gwgCheck.update).not.toHaveBeenCalled();
   });
 
+  // Fachkatalog: GWG-BENEFICIAL-OWNERS-001
   it('verlangt beim manuellen Erfassen eine ausdrückliche PEP-Angabe', async () => {
     const data = formData();
     data.set('fullName', 'Erika Muster');
+    data.set('isBeneficialOwner', 'on');
     data.set('birthDate', '1980-01-02');
     data.set('birthPlace', 'Berlin');
     data.set('residence', 'Musterstraße 1, 10115 Berlin');
     data.set('nationality', 'deutsch');
 
-    const result = await addBeneficialOwnerAction(null, data);
+    const result = await addGwgPersonAction(null, data);
 
-    expect(result).toEqual({ ok: false, error: 'Validierungsfehler.' });
+    expect(result).toMatchObject({ ok: false, errorCode: 'VALIDATION_ERROR' });
+    expect(Object.keys(result.fieldErrors ?? {})).toEqual(['isPep']);
     expect(m.withStaff).not.toHaveBeenCalled();
   });
 
@@ -462,39 +463,47 @@ describe('atomare GwG-Bearbeitung', () => {
   it('blockiert ein zukünftiges Geburtsdatum bereits vor dem Datenbankzugriff', async () => {
     const data = formData();
     data.set('fullName', 'Erika Muster');
+    data.set('isBeneficialOwner', 'on');
     data.set('birthDate', '9999-01-01');
     data.set('birthPlace', 'Berlin');
     data.set('residence', 'Musterstraße 1, 10115 Berlin');
     data.set('nationality', 'deutsch');
     data.set('isPep', 'false');
 
-    expect(await addBeneficialOwnerAction(null, data)).toEqual({
-      ok: false,
-      error: 'Validierungsfehler.',
-    });
+    const result = await addGwgPersonAction(null, data);
+
+    expect(result).toMatchObject({ ok: false, errorCode: 'VALIDATION_ERROR' });
+    expect(Object.keys(result.fieldErrors ?? {})).toEqual(['birthDate']);
     expect(m.withStaff).not.toHaveBeenCalled();
   });
 
+  // Fachkatalog: GWG-BENEFICIAL-OWNERS-001
   it('übernimmt den ausdrücklich gewählten PEP-Status beim manuellen Erfassen', async () => {
     const tx = {
       gwgCheck: {
-        findFirst: vi.fn().mockResolvedValue({ status: 'DRAFT' }),
+        findFirst: vi.fn().mockResolvedValue({
+          status: 'DRAFT',
+          client: { kind: 'JURPERS' },
+          representatives: [],
+        }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       gwgBeneficialOwner: {
         create: vi.fn().mockResolvedValue({ id: '33333333-3333-4333-8333-333333333333' }),
       },
+      gwgRepresentative: { create: vi.fn() },
     };
     runWithStaffOn(tx);
     const data = formData();
     data.set('fullName', 'Erika Muster');
+    data.set('isBeneficialOwner', 'on');
     data.set('birthDate', '1980-01-02');
     data.set('birthPlace', 'Berlin');
     data.set('residence', 'Musterstraße 1, 10115 Berlin');
     data.set('nationality', 'deutsch');
     data.set('isPep', 'true');
 
-    const result = await addBeneficialOwnerAction(null, data);
+    const result = await addGwgPersonAction(null, data);
 
     expect(result).toEqual({ ok: true });
     expect(tx.gwgBeneficialOwner.create).toHaveBeenCalledWith({
@@ -508,7 +517,9 @@ describe('atomare GwG-Bearbeitung', () => {
         ownershipPct: null,
         isPep: true,
       },
+      select: { id: true },
     });
+    expect(tx.gwgRepresentative.create).not.toHaveBeenCalled();
   });
 
   // Fachkatalog: GWG-BENEFICIAL-OWNERS-001, GWG-REPRESENTATIVE-AUTHORITY-001
@@ -2787,7 +2798,7 @@ describe('GwG-Lifecycle-Lock', () => {
     const tx = makeStartCycleTx(null);
     runWithStaffOn(tx);
 
-    await expect(openCheckAction(null, formData())).resolves.toMatchObject({ ok: true });
+    await expect(startNewCheckCycleAction(null, formData())).resolves.toMatchObject({ ok: true });
 
     // startCheckCycle und der Defense-in-Depth-Helper fordern denselben
     // transaktionsgebundenen Advisory-Lock an; die Tx-lokale Deduplizierung

@@ -57,7 +57,6 @@ import {
   setReminderPriorityAction,
   archiveReminderAction,
   restoreReminderAction,
-  deleteReminderAction,
   addReminderNoteAction,
   setReminderAssigneesAction,
   submitResearchResultAction,
@@ -271,7 +270,7 @@ describe('setReminderPriorityAction', () => {
 });
 
 describe('REMINDER-TICKET-001 / TAX-CONTROL-STATUS-001 — Archiv statt Löschung', () => {
-  it.each([archiveReminderAction, restoreReminderAction, deleteReminderAction])(
+  it.each([archiveReminderAction, restoreReminderAction])(
     'weist ungültige Ticketkennungen mit Feldzuordnung vor dem Zugriff zurück',
     async (action) => {
       const result = await action({ id: 'invalid' });
@@ -317,7 +316,7 @@ describe('REMINDER-TICKET-001 / TAX-CONTROL-STATUS-001 — Archiv statt Löschun
     expect(tx.clientReminder.update).not.toHaveBeenCalled();
   });
 
-  it('Legacy-delete archiviert; Restore behält den ursprünglichen Abschluss', async () => {
+  it('Archiv und Restore behalten den ursprünglichen Abschluss', async () => {
     const reminder = completed();
     const tx = stubWithStaff(reminder);
     tx.clientReminder.update.mockImplementation(async ({ data }) => {
@@ -325,7 +324,7 @@ describe('REMINDER-TICKET-001 / TAX-CONTROL-STATUS-001 — Archiv statt Löschun
       return reminder;
     });
     const doneAt = reminder.doneAt;
-    await deleteReminderAction({ id: REMINDER });
+    await archiveReminderAction({ id: REMINDER });
     expect(reminder.archivedAt).toBeInstanceOf(Date);
     expect(tx.clientReminder.update).toHaveBeenLastCalledWith(
       expect.objectContaining({ data: { archivedAt: expect.any(Date), archivedByStaff: ICH } }),

@@ -29,7 +29,6 @@ vi.mock('next/navigation', () => ({
   },
 }));
 vi.mock('../actions', () => ({
-  openCheckAction: vi.fn(),
   startNewCheckCycleAction: vi.fn(),
   saveRiskAnswersAction: vi.fn(),
   saveLegalEntityDetailsAction: vi.fn(),
@@ -41,7 +40,6 @@ vi.mock('../owner-actions', () => ({
   addGwgPersonAction: vi.fn(),
   updateGwgPersonGeneralAction: vi.fn(),
   addBeneficialOwnerRoleAction: vi.fn(),
-  addBeneficialOwnerAction: vi.fn(),
   updateBeneficialOwnerAction: vi.fn(),
   removeBeneficialOwnerAction: vi.fn(),
 }));

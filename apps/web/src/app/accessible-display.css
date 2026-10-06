@@ -97,9 +97,6 @@ html:has([data-accessible-display='true'])
     .stage-title,
     .stage-sub,
     .mini-kpi .l,
-    .code-box,
-    .event-chip,
-    .file-chip,
     .details-box > summary,
     .danger-zone .t,
     .danger-zone .s,
@@ -239,15 +236,13 @@ html:has([data-accessible-display='true']):root aside.app-sidebar {
   background-color: rgb(var(--surface-page)) !important;
 }
 
-html:has([data-accessible-display='true']):root .card,
-html:has([data-accessible-display='true']):root .sticky-save {
+html:has([data-accessible-display='true']):root .card {
   background-color: rgb(var(--surface-card)) !important;
 }
 
-/* Topbar und Decision-Bar: ohne !important, die Glas-Regeln für .app-topbar
- * kommen ohne aus und haben eine geringere Spezifität. */
-html:has([data-accessible-display='true']):root .app-topbar,
-html:has([data-accessible-display='true']):root .decision-bar {
+/* Topbar: ohne !important, die Glas-Regeln für .app-topbar kommen ohne aus
+ * und haben eine geringere Spezifität. */
+html:has([data-accessible-display='true']):root .app-topbar {
   background-color: rgb(var(--surface-topbar));
 }
 
@@ -260,15 +255,7 @@ html.dark:has([data-accessible-display='true']) .settings-pill {
 }
 
 html:has([data-accessible-display='true'])
-  :where(
-    .card,
-    .app-sidebar,
-    .app-topbar,
-    .sticky-save,
-    .decision-bar,
-    .settings-pill,
-    .modal-backdrop
-  ) {
+  :where(.card, .app-sidebar, .app-topbar, .settings-pill, .modal-backdrop) {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -284,8 +271,7 @@ html:has([data-accessible-display='true']) .divide-border-subtle > :not(:last-ch
 
 /* Mehr Platz darf nicht zu abgeschnittenen Aktionsleisten führen. Tabellen
  * behalten ihre bestehenden lokalen Scrollcontainer und Spaltenstruktur. */
-html:has([data-accessible-display='true'])
-  :where(.form-actions, .card-footer, .sticky-save, .decision-bar, [role='toolbar']) {
+html:has([data-accessible-display='true']) :where(.form-actions, .card-footer, [role='toolbar']) {
   flex-wrap: wrap;
 }
 
@@ -314,7 +300,7 @@ html:has([data-accessible-display='true']) .app-topbar {
 }
 
 html:has([data-accessible-display='true'])
-  :where(.hint, .ud-head .uname, .ud-head .umail, .step-title, .step-sub, .event-chip) {
+  :where(.hint, .ud-head .uname, .ud-head .umail, .step-title, .step-sub) {
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -379,10 +365,6 @@ html:has([data-accessible-display='true']) .widget-shell > a.card .truncate {
 
   html:has([data-accessible-display='true']) .app-topbar > div:last-child {
     margin-inline-start: auto;
-  }
-
-  html:has([data-accessible-display='true']) .form-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   /* Dashboard-Leseansicht: das CSS-Raster ist hier bereits einspaltig

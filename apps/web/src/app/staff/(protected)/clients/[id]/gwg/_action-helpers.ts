@@ -19,7 +19,7 @@ export type ActionResult = BaseActionResult;
 // (Risikoantworten, wirtschaftlich Berechtigte, Ausweisdokumente) unveränderlich
 // — § 8 GwG verlangt die unveränderte Aufbewahrung der Aufzeichnungen. Nur
 // DRAFT/IN_REVIEW sind editierbar; eine Aktualisierung erfolgt über eine neue
-// Prüfung (openCheckAction) bzw. den durch eine GwG-relevante Stammdaten-
+// Prüfung (startNewCheckCycleAction) bzw. den durch eine GwG-relevante Stammdaten-
 // änderung ausgelösten Reset auf IN_REVIEW (clients/[id]/edit/actions.ts).
 const EDITABLE_GWG_STATUSES: readonly string[] = ['DRAFT', 'IN_REVIEW'];
 type EditableGwgStatus = 'DRAFT' | 'IN_REVIEW';

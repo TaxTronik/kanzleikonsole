@@ -59,7 +59,6 @@ code_refs:
   - apps/web/src/server/gwg-onboarding/owner-submission.ts
   - apps/web/src/server/gwg-onboarding/submission-validation.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts
-  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-owner-form.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/beneficial-owner-form.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-beneficial-owner-role-form.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/new-gwg-person-form.tsx

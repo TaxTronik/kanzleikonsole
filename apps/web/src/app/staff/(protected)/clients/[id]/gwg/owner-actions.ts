@@ -63,6 +63,12 @@ const AddGwgPersonSchema = z
  * Erfasst eine relevante natürliche Person zuerst als eigenes UI-Element und
  * ordnet ihr anschließend die ausgewählten Rollen zu. Eine Vertreterrolle
  * wird nie mehr über die Rechtsträgermaske als freie Namenszeile angelegt.
+ *
+ * Kein revalidate der aktuellen Route: das erzwang einen kompletten
+ * RSC-Re-Render der GwG-Seite IN der Action-Antwort und ließ die
+ * Form-Transition bis zur nächsten Interaktion hängen (UI "switcht" erst nach
+ * erneutem Klick). Der Client ruft stattdessen nach dem Erfolg
+ * router.refresh() außerhalb der Transition auf.
  */
 export async function addGwgPersonAction(
   _prev: ActionResult | null,
@@ -414,24 +420,6 @@ export async function updateGwgPersonGeneralAction(
   return result;
 }
 
-const AddOwnerSchema = z
-  .object({
-    checkId: z.string().uuid(),
-    clientId: z.string().uuid(),
-    fullName: z.string().trim().min(1).max(200),
-    birthDate: z.string().date(),
-    birthPlace: z.string().trim().min(1).max(200),
-    residence: z.string().trim().min(1).max(500),
-    nationality: z.string().trim().min(1).max(100),
-    ownershipPct: z.coerce.number().min(0).max(100).optional(),
-    isPep: z.enum(['true', 'false']).transform((value) => value === 'true'),
-  })
-  .superRefine((owner, ctx) => {
-    for (const issue of validateIdentityDates({ birthDate: owner.birthDate })) {
-      ctx.addIssue({ code: 'custom', path: ['birthDate'], message: issue.message });
-    }
-  });
-
 const AddBeneficialOwnerRoleSchema = z.object({
   representativeId: z.string().uuid(),
   checkId: z.string().uuid(),
@@ -554,76 +542,6 @@ export async function addBeneficialOwnerRoleAction(
       reviewReset: check.status === 'IN_REVIEW',
     };
   });
-}
-
-export async function addBeneficialOwnerAction(
-  _prev: { ok: boolean; error?: string } | null,
-  formData: FormData,
-) {
-  const parsed = AddOwnerSchema.safeParse({
-    checkId: formData.get('checkId'),
-    clientId: formData.get('clientId'),
-    fullName: formData.get('fullName'),
-    birthDate: formData.get('birthDate') ?? '',
-    birthPlace: formData.get('birthPlace') ?? '',
-    residence: formData.get('residence') ?? '',
-    nationality: formData.get('nationality') ?? '',
-    ownershipPct: formData.get('ownershipPct') || undefined,
-    isPep: formData.get('isPep'),
-  });
-  if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
-  const data = parsed.data;
-
-  return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
-      await assertClientAccessTx(tx, session, data.clientId);
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
-      // Check laden + Status prüfen. Das Scope {id, clientId} bindet die checkId
-      // an den autorisierten Mandanten (kein Cross-Check-Write über fremde ID).
-      const check = await tx.gwgCheck.findFirst({
-        where: { id: data.checkId, clientId: data.clientId },
-        select: { status: true },
-      });
-      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
-      assertGwgEditable(check.status);
-      await claimCheckMutation(tx, {
-        checkId: data.checkId,
-        clientId: data.clientId,
-        expectedStatus: check.status,
-        invalidateRisk: true,
-      });
-      const owner = await tx.gwgBeneficialOwner.create({
-        data: {
-          gwgCheckId: data.checkId,
-          fullName: data.fullName,
-          birthDate: data.birthDate ? new Date(data.birthDate) : null,
-          birthPlace: data.birthPlace || null,
-          residence: data.residence || null,
-          nationality: data.nationality || null,
-          ownershipPct: data.ownershipPct ?? null,
-          isPep: data.isPep,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.owner.add',
-        resourceType: 'gwg_beneficial_owner',
-        resourceId: owner.id,
-        after: {
-          fullName: data.fullName,
-          ownershipPct: data.ownershipPct ?? null,
-          isPep: data.isPep,
-        },
-      });
-    },
-    // Kein revalidate der aktuellen Route: das erzwang einen kompletten
-    // RSC-Re-Render der GwG-Seite IN der Action-Antwort und ließ die
-    // Form-Transition bis zur nächsten Interaktion hängen (UI "switcht"
-    // erst nach erneutem Klick). Der Client ruft stattdessen nach dem
-    // Erfolg router.refresh() außerhalb der Transition auf.
-  );
 }
 
 const UpdateOwnerSchema = z

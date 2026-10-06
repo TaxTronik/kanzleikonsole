@@ -667,7 +667,7 @@ export async function addIdDocumentAction(
         ? { reviewReset: check.status === 'IN_REVIEW' }
         : undefined;
     },
-    // Kein revalidate der aktuellen Route (siehe addBeneficialOwnerAction) —
+    // Kein revalidate der aktuellen Route (siehe addGwgPersonAction) —
     // der Client refresht nach dem Erfolg außerhalb der Form-Transition.
   );
 }
@@ -939,7 +939,7 @@ export async function extendIdentityDocumentSetAction(
       return { reviewReset: check.status === 'IN_REVIEW' };
     },
     {
-      // Kein revalidate der aktuellen Route (siehe addBeneficialOwnerAction).
+      // Kein revalidate der aktuellen Route (siehe addGwgPersonAction).
       uniqueError:
         'Mindestens eine Datei wurde zwischenzeitlich bereits zugeordnet. Bitte Seite neu laden.',
     },

@@ -654,11 +654,6 @@ export async function archiveReminderAction(input: { id: string }): Promise<Acti
   return r;
 }
 
-/** Existing clients keep their action name; normal ticket history is never deleted. */
-export async function deleteReminderAction(input: { id: string }): Promise<ActionResult> {
-  return archiveReminderAction(input);
-}
-
 export async function restoreReminderAction(input: { id: string }): Promise<ActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) {

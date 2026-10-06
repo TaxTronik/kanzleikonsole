@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Ungenutzte Server-Actions (u. a. Alias-Actions für das Archivieren von
+  Wiedervorlagen und den GwG-Prüfstart, manueller Audit-Rotations-Trigger),
+  Komponenten und zehn CSS-Komponentenklassen entfernt. `autoprefixer` ist
+  aus der PostCSS-Kette entfernt; Tailwind v4 erzeugt die Präfixe für die
+  unterstützten Browser, `-webkit-backdrop-filter` bleibt für ältere
+  Safari-Versionen erhalten (`FK-EXC-20261006-008`).
 - Die E2E-Suite prüft den Produktions-Build über den ausgelieferten
   Standalone-Server mit `NODE_ENV=production` und den Produktions-Images von
   PostgreSQL und Redis; fehlgeschlagene Tests werden nicht mehr wiederholt
