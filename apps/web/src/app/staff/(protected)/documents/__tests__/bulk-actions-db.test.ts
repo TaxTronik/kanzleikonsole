@@ -306,15 +306,21 @@ if (enabled) {
     await expectIntactChainTail();
   });
 
-  /** Wartet, bis eine Verbindung dieser Datenbank auf eine Sperre wartet. */
+  /**
+   * Wartet, bis eine Verbindung dieser Datenbank auf eine Sperre wartet.
+   * S-01: Die Owner-Rolle ist kein Superuser und sieht in pg_stat_activity den
+   * Wartezustand fremder Rollen (hier taxtronik_app) nicht; pg_locks und die
+   * pid-/datname-Spalten bleiben für jede Rolle sichtbar.
+   */
   async function waitForLockWait(timeoutMs = 5000) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       const [row] = await owner.$queryRaw<Array<{ waiting: number }>>`
         SELECT count(*)::int AS waiting
-          FROM pg_stat_activity
-         WHERE datname = current_database()
-           AND wait_event_type = 'Lock'
+          FROM pg_locks AS waiting_lock
+          JOIN pg_stat_activity AS activity ON activity.pid = waiting_lock.pid
+         WHERE NOT waiting_lock.granted
+           AND activity.datname = current_database()
       `;
       if (row && row.waiting > 0) return;
       await new Promise((resolve) => setTimeout(resolve, 20));

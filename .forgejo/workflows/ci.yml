@@ -232,9 +232,15 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/db test 2>&1 | tee testbericht-db.log
 
+      # S-01: Web-, Worker- und Evidence-Suiten verbinden ihren Owner-Client
+      # (DATABASE_URL) wie die Container als taxtronik_owner: BYPASSRLS ohne
+      # Superuser, Rolle aus 01_bootstrap.sql, Grants aus der Migration
+      # 20261006160000. Migrationen, Ledger-/Drift-/RLS-Gates und die
+      # packages/db-Suite (Fixtures mit SET ROLE/DDL) behalten den Superuser.
       - name: Ticket services against the PostgreSQL app role
         env:
           REMINDER_TICKETS_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/reminders/__tests__/tickets-db.test.ts 2>&1 | tee testbericht-reminder-services.log
@@ -242,6 +248,7 @@ jobs:
       - name: Invoice selection against the PostgreSQL app role
         env:
           INVOICE_SELECTION_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/invoice-selection-db.test.tsx 2>&1 | tee testbericht-invoice-selection.log
@@ -251,6 +258,7 @@ jobs:
       - name: Client access relation filters against the PostgreSQL app role
         env:
           CLIENT_ACCESS_FILTER_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/client-access-filter-db.test.ts 2>&1 | tee testbericht-client-access-filter.log
@@ -260,6 +268,7 @@ jobs:
       - name: Year-end campaigns against the PostgreSQL app role
         env:
           YEAR_END_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/workflows/__tests__/year-end-db.test.ts 2>&1 | tee testbericht-year-end.log
@@ -269,6 +278,7 @@ jobs:
       - name: Tax-deadline month counts against the PostgreSQL app role
         env:
           TAX_DEADLINE_DAY_GROUPS_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/tax-deadlines/__tests__/day-groups-db.test.ts 2>&1 | tee testbericht-tax-deadline-day-groups.log
@@ -276,6 +286,7 @@ jobs:
       - name: Settings and audit atomicity against the PostgreSQL app role
         env:
           SETTINGS_ATOMICITY_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/settings/__tests__/settings-atomicity-db.test.ts 2>&1 | tee testbericht-settings-atomicity.log
@@ -283,6 +294,7 @@ jobs:
       - name: Invoice payment and correction concurrency against PostgreSQL
         env:
           INVOICE_CONCURRENCY_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/invoicing/__tests__/invoice-concurrency-db.test.ts 2>&1 | tee testbericht-invoice-concurrency.log
@@ -293,6 +305,7 @@ jobs:
       - name: Document bulk actions against the PostgreSQL app role
         env:
           DOCUMENT_BULK_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run "src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts" 2>&1 | tee testbericht-document-bulk.log
@@ -304,6 +317,7 @@ jobs:
       - name: Document retag service against the PostgreSQL app role
         env:
           DOCUMENT_RETAG_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/documents/__tests__/retag-db.test.ts 2>&1 | tee testbericht-document-retag.log
@@ -314,6 +328,7 @@ jobs:
       - name: Fristenkontrollbuch pre-queries against the PostgreSQL app role
         env:
           FRISTEN_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/fristen/__tests__/bescheid-vorab-db.test.ts 2>&1 | tee testbericht-fristen-vorab.log
@@ -324,6 +339,7 @@ jobs:
       - name: Power of attorney services against the PostgreSQL app role
         env:
           POA_SERVICE_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/poa/__tests__/poa-services-db.test.ts 2>&1 | tee testbericht-poa-services.log
@@ -334,6 +350,7 @@ jobs:
       - name: n8n settings services against the PostgreSQL app role
         env:
           N8N_SETTINGS_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/n8n-settings/__tests__/n8n-settings-db.test.ts 2>&1 | tee testbericht-n8n-settings.log
@@ -344,6 +361,7 @@ jobs:
       - name: GwG services against the PostgreSQL app role
         env:
           GWG_SERVICES_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/gwg/__tests__/services-db.test.ts 2>&1 | tee testbericht-gwg-services.log
@@ -354,6 +372,9 @@ jobs:
       - name: Audit evidence services against PostgreSQL
         env:
           EVIDENCE_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
+          # Manipulations-Fixtures schalten Schutz-Trigger ab (Tabellen-Owner).
+          EVIDENCE_DB_ADMIN_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/evidence exec vitest run src/__tests__/verify-checkpoint-db.test.ts src/__tests__/anchor-schedule-db.test.ts 2>&1 | tee testbericht-evidence-db.log
@@ -368,6 +389,7 @@ jobs:
       - name: Worker jobs against PostgreSQL
         env:
           WORKER_DB_TEST: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
           pnpm --filter @taxtronik/worker exec vitest run src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts src/jobs/__tests__/reminders-daily-db.test.ts src/jobs/__tests__/mail-outbox-db.test.ts src/jobs/__tests__/storage-orphan-cleanup-db.test.ts 2>&1 | tee testbericht-worker-db.log
@@ -382,6 +404,7 @@ jobs:
           MANDATE_SERVICE_DB_TEST: '1'
           EXPANSION_DATABASE_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik_expansion_ci?schema=public
           EXPANSION_DATABASE_APP_URL: postgresql://taxtronik_app:taxtronik_app@localhost:15433/taxtronik_expansion_ci?schema=public
+          EXPANSION_DATABASE_OWNER_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik_expansion_ci?schema=public
         run: |
           set -euo pipefail
 
@@ -403,6 +426,8 @@ jobs:
           export DATABASE_URL="$EXPANSION_DATABASE_URL"
           export DATABASE_APP_URL="$EXPANSION_DATABASE_APP_URL"
           pnpm --filter @taxtronik/db exec prisma migrate deploy
+          # S-01: die Suite selbst verbindet wie die Container als taxtronik_owner.
+          export DATABASE_URL="$EXPANSION_DATABASE_OWNER_URL"
           pnpm --filter @taxtronik/web exec vitest run src/server/mandate-expansion/__tests__/service-db.test.ts 2>&1 | tee testbericht-mandate-services.log
 
       - name: Testnachweis hochladen
@@ -556,13 +581,53 @@ jobs:
           set -o pipefail
           bash scripts/restore-selftest.sh 2>&1 | tee testbericht-restore.log
 
+      # S-01: Worker-Backup und Restore-Drill ohne Superuser auf PostgreSQL 18:
+      # pg_dump als taxtronik_owner (BYPASSRLS + SELECT), Wegwerf-DB und
+      # pg_restore als taxtronik_drill (CREATEDB + BYPASSRLS) mit den Flags des
+      # Produktiv-Restores; nur die DEFAULT-ACL-Einträge der Migrationsrolle
+      # entfallen (wie apps/worker/src/jobs/backup-drill.ts).
+      - name: Worker backup and restore drill without superuser
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          drill_db=taxtronik_drill_ci
+          cleanup() {
+            PGPASSWORD=taxtronik_drill psql -h localhost -p 15434 -U taxtronik_drill -d postgres \
+              -c "DROP DATABASE IF EXISTS $drill_db WITH (FORCE)" >/dev/null 2>&1 || true
+            rm -rf "$work"
+          }
+          trap cleanup EXIT
+          {
+            PGPASSWORD=taxtronik_owner pg_dump --format=custom --no-owner --compress=6 \
+              -h localhost -p 15434 -U taxtronik_owner -d taxtronik -f "$work/owner.dump"
+            PGPASSWORD=taxtronik_drill psql -h localhost -p 15434 -U taxtronik_drill -d postgres \
+              -v ON_ERROR_STOP=1 -c "CREATE DATABASE $drill_db"
+            pg_restore --list "$work/owner.dump" > "$work/full.list"
+            grep -Ev '^[0-9]+; [0-9]+ [0-9]+ DEFAULT ACL ' "$work/full.list" > "$work/drill.list"
+            echo "TOC: $(grep -c '^[0-9]' "$work/full.list") Einträge, Drill: $(grep -c '^[0-9]' "$work/drill.list")"
+            PGPASSWORD=taxtronik_drill pg_restore --use-list="$work/drill.list" \
+              --clean --if-exists --no-owner --single-transaction --exit-on-error \
+              -h localhost -p 15434 -U taxtronik_drill -d "$drill_db" "$work/owner.dump"
+            for table in tenant audit_log client; do
+              source_rows="$(psql -tA -c "SELECT count(*) FROM $table")"
+              drill_rows="$(PGPASSWORD=taxtronik_drill psql -tA -h localhost -p 15434 \
+                -U taxtronik_drill -d "$drill_db" -c "SELECT count(*) FROM $table")"
+              test "$source_rows" = "$drill_rows"
+              echo "$table: $source_rows Zeilen (Quelle = Drill)"
+            done
+            PGPASSWORD=taxtronik_drill psql -h localhost -p 15434 -U taxtronik_drill -d postgres \
+              -v ON_ERROR_STOP=1 -c "DROP DATABASE $drill_db WITH (FORCE)"
+          } 2>&1 | tee testbericht-restore-drill.log
+
       - name: Testnachweis hochladen
         if: always()
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
         with:
           name: testbericht-restore
           retention-days: 90
-          path: testbericht-restore.log
+          path: |
+            testbericht-restore.log
+            testbericht-restore-drill.log
           if-no-files-found: ignore
 
   # ===========================================================================
@@ -973,6 +1038,9 @@ jobs:
       - name: Start web app (Standalone-Server, NODE_ENV=production)
         env:
           NODE_ENV: production
+          # S-01: Owner-Client wie im Web-Container als taxtronik_owner (kein
+          # Superuser); Seeds und psql-Fixtures nutzen weiter das Job-env.
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15436/taxtronik?schema=public
           CI: 'true'
           NEXTAUTH_URL: https://localhost:3000
           TRUST_PROXY_REQUIRED: 'true'

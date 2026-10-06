@@ -433,6 +433,10 @@ Code-Pfad — kein Parallel-Reimplementat:
    Grants/REVOKEs auf Audit-Tabellen und GwG-SECURITY-DEFINER-Funktionen.
 5. **Assertion C (compliance-kritisch):** `verify:chain` auf der
    wiederhergestellten DB — die Audit-Hash-Chain MUSS intakt sein.
+6. **Assertion D (S-01):** Worker-Backup und Restore-Drill ohne Superuser —
+   `pg_dump` als `taxtronik_owner`, Wegwerf-DB und `pg_restore` als
+   `taxtronik_drill` ohne die `DEFAULT ACL`-Einträge, Zeilenzahl-Vergleich für
+   `tenant`, `audit_log` und `client` (Artefakt `testbericht-restore-drill.log`).
 
 > Hinweis: `pg_restore --clean --if-exists` in eine frische DB erzeugt
 > harmlose Notices (`DROP … IF EXISTS` auf noch nicht existente Objekte). Das

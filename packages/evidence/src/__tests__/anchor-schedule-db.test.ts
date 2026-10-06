@@ -29,20 +29,26 @@ import { ANCHOR_LEASE_EXPIRED_REASON, EvidenceService } from '../service';
 import type { TimestampPort, TimestampResult } from '../ports/timestamp';
 
 // Wie verify-checkpoint-db.test.ts: nur mit ausdrücklichem Opt-in im db-Job.
+// S-01: DATABASE_URL ist dort die Owner-Rolle der Container; nur das Abräumen
+// committeter Audit-/Anker-Zeilen braucht den Tabellen-Owner
+// (EVIDENCE_DB_ADMIN_URL, sonst DATABASE_URL).
 const enabled = process.env['EVIDENCE_DB_TEST'] === '1';
 if (enabled) {
-  let url: URL;
-  try {
-    url = new URL(process.env['DATABASE_URL'] ?? '');
-  } catch {
-    throw new Error('EVIDENCE_DB_TEST requires a valid DATABASE_URL.');
-  }
-  if (
-    !['postgres:', 'postgresql:'].includes(url.protocol) ||
-    url.pathname.length < 2 ||
-    !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-  ) {
-    throw new Error('EVIDENCE_DB_TEST requires a loopback PostgreSQL DATABASE_URL.');
+  for (const name of ['DATABASE_URL', 'EVIDENCE_DB_ADMIN_URL']) {
+    if (name === 'EVIDENCE_DB_ADMIN_URL' && !process.env[name]) continue;
+    let url: URL;
+    try {
+      url = new URL(process.env[name] ?? '');
+    } catch {
+      throw new Error(`EVIDENCE_DB_TEST requires a valid ${name}.`);
+    }
+    if (
+      !['postgres:', 'postgresql:'].includes(url.protocol) ||
+      url.pathname.length < 2 ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+    ) {
+      throw new Error(`EVIDENCE_DB_TEST requires a loopback PostgreSQL ${name}.`);
+    }
   }
 }
 
@@ -95,6 +101,12 @@ const MIN_INTERVAL_MS = 60_000;
   const owner = new PrismaClient({
     adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_URL'])),
   });
+  // Nur zum Abräumen committeter Audit-/Anker-Zeilen (Schutz-Trigger aus).
+  const admin = process.env['EVIDENCE_DB_ADMIN_URL']
+    ? new PrismaClient({
+        adapter: createPostgresAdapter(process.env['EVIDENCE_DB_ADMIN_URL']),
+      })
+    : owner;
   let lockTenant: string;
 
   beforeAll(async () => {
@@ -109,6 +121,7 @@ const MIN_INTERVAL_MS = 60_000;
     // Alle Audit-/Anker-Zeilen wurden zurückgerollt; der Tenant ist leer.
     await owner.tenant.delete({ where: { id: lockTenant } });
     await owner.$disconnect();
+    if (admin !== owner) await admin.$disconnect();
   });
 
   /** Führt eine Owner-Transaktion aus und rollt sie zurück; liefert das Zwischenergebnis. */
@@ -305,7 +318,7 @@ const MIN_INTERVAL_MS = 60_000;
     } finally {
       tsa.open();
       await single.$disconnect();
-      await owner.$transaction(async (tx) => {
+      await admin.$transaction(async (tx) => {
         for (const [table, trigger] of [
           ['audit_anchor', 'audit_anchor_no_modify'],
           ['audit_log', 'audit_log_no_modify'],
@@ -350,7 +363,7 @@ const MIN_INTERVAL_MS = 60_000;
       expect(anchors).toEqual([{ n: 1 }]);
     } finally {
       slow.open();
-      await owner.$transaction(async (tx) => {
+      await admin.$transaction(async (tx) => {
         for (const [table, trigger] of [
           ['audit_anchor', 'audit_anchor_no_modify'],
           ['audit_log', 'audit_log_no_modify'],

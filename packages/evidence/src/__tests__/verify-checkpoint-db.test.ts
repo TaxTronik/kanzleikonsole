@@ -37,21 +37,40 @@ import {
 
 // Der Quality-Job hat Platzhalter-URLs, aber keine Datenbank. Der db-Job
 // schaltet die Suite ausdrücklich ein; ungültige Ziele scheitern dann sofort.
+// S-01: Dort ist DATABASE_URL die Owner-Rolle der Container (taxtronik_owner),
+// der keine Tabelle gehört. Die Manipulations-Fixtures schalten Schutz-Trigger
+// ab und laufen deshalb über EVIDENCE_DB_ADMIN_URL (Tabellen-Owner).
 const enabled = process.env['EVIDENCE_DB_TEST'] === '1';
 if (enabled) {
-  let url: URL;
-  try {
-    url = new URL(process.env['DATABASE_URL'] ?? '');
-  } catch {
-    throw new Error('EVIDENCE_DB_TEST requires a valid DATABASE_URL.');
+  for (const name of ['DATABASE_URL', 'EVIDENCE_DB_ADMIN_URL']) {
+    if (name === 'EVIDENCE_DB_ADMIN_URL' && !process.env[name]) continue;
+    let url: URL;
+    try {
+      url = new URL(process.env[name] ?? '');
+    } catch {
+      throw new Error(`EVIDENCE_DB_TEST requires a valid ${name}.`);
+    }
+    if (
+      !['postgres:', 'postgresql:'].includes(url.protocol) ||
+      url.pathname.length < 2 ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+    ) {
+      throw new Error(`EVIDENCE_DB_TEST requires a loopback PostgreSQL ${name}.`);
+    }
   }
-  if (
-    !['postgres:', 'postgresql:'].includes(url.protocol) ||
-    url.pathname.length < 2 ||
-    !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-  ) {
-    throw new Error('EVIDENCE_DB_TEST requires a loopback PostgreSQL DATABASE_URL.');
-  }
+}
+
+/** Rolle aus DATABASE_URL, wenn die Fixture-Sitzung eine andere Rolle ist. */
+function serviceRoleBehindAdmin(): string | null {
+  const admin = process.env['EVIDENCE_DB_ADMIN_URL'];
+  const service = process.env['DATABASE_URL'];
+  if (!admin || !service) return null;
+  const serviceUser = decodeURIComponent(new URL(service).username);
+  return serviceUser !== decodeURIComponent(new URL(admin).username) ? serviceUser : null;
+}
+
+function quoteIdent(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
 }
 
 function sha256(b: Uint8Array | string): Buffer {
@@ -91,6 +110,15 @@ const DAY = 24 * 60 * 60 * 1000;
   const owner = new PrismaClient({
     adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_URL'])),
   });
+  // Szenarien laufen in einer Sitzung, die Schutz-Trigger abschalten darf.
+  // Ist das eine andere Rolle als DATABASE_URL, gilt für alles außer tamper()
+  // per SET LOCAL ROLE die Owner-Rolle der Container.
+  const serviceRole = serviceRoleBehindAdmin();
+  const admin = serviceRole
+    ? new PrismaClient({
+        adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['EVIDENCE_DB_ADMIN_URL'])),
+      })
+    : owner;
   const service = new EvidenceService(new StubTsa());
   let tenantId: string;
 
@@ -106,13 +134,15 @@ const DAY = 24 * 60 * 60 * 1000;
     // Alle Audit-/Checkpoint-Zeilen wurden zurückgerollt; der Tenant ist leer.
     await owner.tenant.delete({ where: { id: tenantId } });
     await owner.$disconnect();
+    if (admin !== owner) await admin.$disconnect();
   });
 
   /** Führt das Szenario in einer Owner-Transaktion aus und rollt sie zurück. */
   async function inRollback(scenario: (tx: EvidenceTx) => Promise<void>): Promise<void> {
     await expect(
-      owner.$transaction(
+      admin.$transaction(
         async (tx) => {
+          if (serviceRole) await tx.$executeRawUnsafe(`SET LOCAL ROLE ${quoteIdent(serviceRole)}`);
           await scenario(tx);
           throw ROLLBACK;
         },
@@ -194,9 +224,11 @@ const DAY = 24 * 60 * 60 * 1000;
   }
 
   async function tamper(tx: EvidenceTx, table: string, trigger: string, sql: string) {
+    if (serviceRole) await tx.$executeRawUnsafe('SET LOCAL ROLE NONE');
     await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER ${trigger}`);
     await tx.$executeRawUnsafe(sql);
     await tx.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER ${trigger}`);
+    if (serviceRole) await tx.$executeRawUnsafe(`SET LOCAL ROLE ${quoteIdent(serviceRole)}`);
   }
 
   async function lastAuditId(tx: EvidenceTx): Promise<bigint> {

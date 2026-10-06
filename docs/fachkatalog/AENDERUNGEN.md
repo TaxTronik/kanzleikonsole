@@ -1,5 +1,33 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-038
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts
+      - packages/evidence/src/__tests__/anchor-schedule-db.test.ts
+      - packages/evidence/src/__tests__/verify-checkpoint-db.test.ts
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-VERIFY-ALERT-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - DOC-PORTAL-SHARING-001
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Die Web-, Worker- und Evidence-DB-Suiten der CI (einschließlich Mandats-Suite
+      und E2E-Webserver) verbinden ihren Owner-Client wie die Container als
+      taxtronik_owner; Migrationen, Ledger-, Drift- und RLS-Gates und die
+      packages/db-Suite behalten den Superuser. Der Restore-Job prüft zusätzlich auf
+      PostgreSQL 18 den Drill-Pfad (Dump als Owner, Restore als Drill-Rolle,
+      gleiche Zeilenzahlen). Zwei Test-Hilfen, die Superuser-Details nutzten
+      (Lock-Warten über pg_stat_activity, Manipulations-Fixtures der
+      Evidence-Tests), arbeiten jetzt ohne diese. Geprüftes Verhalten, Audit-Kette,
+      Anker und Release-Nachweise bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/evidence/src/__tests__/verify-checkpoint-db.test.ts
+      - packages/evidence/src/__tests__/anchor-schedule-db.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-037
     date: '2026-10-06'
     paths:
@@ -3977,6 +4005,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-038` dokumentiert die CI-DB-Suiten unter der
+  Owner-Rolle und den Drill-Pfad auf PostgreSQL 18.
 
 - 2026-10-06: `FK-EXC-20261006-037` dokumentiert die Owner-Rolle ohne
   Superuser-Rechte für App und Worker und die eigene Drill-Rolle.
