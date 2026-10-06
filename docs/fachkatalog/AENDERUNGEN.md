@@ -1,5 +1,39 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-013
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/portal/(protected)/requests/[id]/page.tsx
+      - apps/web/src/app/portal/(protected)/requests/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-labels.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/documents/[id]/__tests__/tier-badge.test.tsx
+      - apps/web/src/app/staff/(protected)/documents/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/requests/[id]/page.tsx
+      - apps/web/src/server/documents/managed-docs.ts
+      - packages/storage/src/__tests__/tiers.test.ts
+      - packages/storage/src/client.ts
+      - packages/storage/src/index.ts
+      - packages/storage/src/tiers.ts
+    rule_ids:
+      - GWG-RETENTION-DESTRUCTION-001
+      - DOC-RETENTION-CLASS-001
+      - REQ-LIFECYCLE-001
+      - ACCESS-SEARCH-SCOPE-001
+    reason: >-
+      Bezeichnungen für Anforderungsstatus, Priorität und Mandantentyp kommen
+      zentral aus lib/domain-labels.ts statt aus Kopien je Seite; die
+      Schutzstufe eines Dokuments bestimmt eine einzige umgebungsfreie Regel in
+      @taxtronik/storage (tiers.ts), die managed-docs wiederverwendet. Portal und
+      Kanzlei teilen eine AuthShell. Die Dokument-Detailseite kennzeichnet
+      GwG-Nachweise nicht mehr fälschlich als „GoBD-immutable“ mit
+      COMPLIANCE-Hinweis. Angezeigte Texte, Aufbewahrungsklassen, Object-Lock-
+      Regeln und Zugriffsprüfungen bleiben sonst unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/storage/src/__tests__/tiers.test.ts
+      - apps/web/src/app/staff/(protected)/documents/[id]/__tests__/tier-badge.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-012
     date: '2026-10-06'
     paths:
@@ -3050,6 +3084,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-013` dokumentiert zentrale Bezeichnungen, eine
+  gemeinsame Schutzstufen-Regel und die korrigierte GwG-Kennzeichnung der
+  Dokument-Detailseite.
 
 - 2026-10-06: `FK-EXC-20261006-012` dokumentiert die zentrale Einordnung von
   Action-Fehlern. Prüfungen, Berechtigungen und Audit-Ereignisse bleiben

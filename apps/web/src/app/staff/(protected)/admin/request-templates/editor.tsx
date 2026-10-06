@@ -4,15 +4,9 @@ import { useState, useTransition } from 'react';
 import { Plus, Trash2, Save, X, FileText, Pencil } from 'lucide-react';
 import { saveRequestTemplateAction, deleteRequestTemplateAction } from './actions';
 import { confirmDialog } from '@/components/ui/modal';
+import { PRIORITY_LABELS } from '@/lib/domain-labels';
 
 type Priority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
-
-const PRIORITY_LABELS: Record<Priority, string> = {
-  LOW: 'Niedrig',
-  NORMAL: 'Normal',
-  HIGH: 'Hoch',
-  URGENT: 'Dringend',
-};
 
 interface Template {
   id: string;

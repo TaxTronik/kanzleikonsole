@@ -14,7 +14,7 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 
 import { fmtEURRound } from '@/lib/fmt';
-import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
+import { INVOICE_STATUS_LABELS, REQUEST_STATUS_LABELS } from '@/lib/domain-labels';
 import { loadReports } from './data';
 
 export default async function ReportsPage() {
@@ -112,17 +112,10 @@ export default async function ReportsPage() {
             {(['OPEN', 'IN_PROGRESS', 'RESPONDED', 'CLOSED', 'CANCELLED'] as const).map((s) => {
               const count = requestStatusMap.get(s) ?? 0;
               const pct = totalRequests > 0 ? (count / totalRequests) * 100 : 0;
-              const labels: Record<string, string> = {
-                OPEN: 'Offen',
-                IN_PROGRESS: 'In Bearbeitung',
-                RESPONDED: 'Beantwortet',
-                CLOSED: 'Geschlossen',
-                CANCELLED: 'Abgebrochen',
-              };
               return (
                 <div key={s}>
                   <div className="flex justify-between text-xs text-secondary mb-1">
-                    <span>{labels[s]}</span>
+                    <span>{REQUEST_STATUS_LABELS[s]}</span>
                     <span className="font-mono">{count}</span>
                   </div>
                   <div className="h-2 rounded-full bg-gray-100 overflow-hidden">

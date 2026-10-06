@@ -22,6 +22,7 @@ import { HandoversBlock } from './handovers/handovers-block';
 import { PhoneNotesList } from './phone-notes-list';
 import { QuickPhoneNote } from './quick-phone-note';
 import { CLIENT_REQUESTS_CAP, type ClientCockpitBlocks } from './_data';
+import { REQUEST_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/domain-labels';
 
 type BlocksData = Promise<ClientCockpitBlocks | null>;
 
@@ -433,21 +434,6 @@ export async function PhoneNotesCockpitBlock({
   );
 }
 
-const requestStatusLabels: Record<string, string> = {
-  OPEN: 'Offen',
-  IN_PROGRESS: 'In Bearbeitung',
-  RESPONDED: 'Beantwortet',
-  CLOSED: 'Geschlossen',
-  CANCELLED: 'Abgebrochen',
-};
-
-const requestPriorityLabels: Record<string, string> = {
-  LOW: 'Niedrig',
-  NORMAL: 'Normal',
-  HIGH: 'Hoch',
-  URGENT: 'Dringend',
-};
-
 export async function RequestsCockpitBlock({
   blocks,
   client,
@@ -516,31 +502,31 @@ function RequestRowItem({ request: req }: { request: ClientCockpitBlocks['reques
       </td>
       <td className="px-6 py-4">
         {req.status === 'OPEN' && (
-          <span className="badge-yellow">{requestStatusLabels[req.status]}</span>
+          <span className="badge-yellow">{REQUEST_STATUS_LABELS[req.status]}</span>
         )}
         {req.status === 'IN_PROGRESS' && (
-          <span className="badge-yellow">{requestStatusLabels[req.status]}</span>
+          <span className="badge-yellow">{REQUEST_STATUS_LABELS[req.status]}</span>
         )}
         {req.status === 'RESPONDED' && (
-          <span className="badge-green">{requestStatusLabels[req.status]}</span>
+          <span className="badge-green">{REQUEST_STATUS_LABELS[req.status]}</span>
         )}
         {req.status === 'CLOSED' && (
-          <span className="badge-gray">{requestStatusLabels[req.status]}</span>
+          <span className="badge-gray">{REQUEST_STATUS_LABELS[req.status]}</span>
         )}
         {req.status === 'CANCELLED' && (
-          <span className="badge-gray">{requestStatusLabels[req.status]}</span>
+          <span className="badge-gray">{REQUEST_STATUS_LABELS[req.status]}</span>
         )}
       </td>
       <td className="px-6 py-4 text-secondary">
         {req.priority === 'URGENT' && (
-          <span className="badge-red">{requestPriorityLabels[req.priority]}</span>
+          <span className="badge-red">{PRIORITY_LABELS[req.priority]}</span>
         )}
         {req.priority === 'HIGH' && (
-          <span className="badge-yellow">{requestPriorityLabels[req.priority]}</span>
+          <span className="badge-yellow">{PRIORITY_LABELS[req.priority]}</span>
         )}
-        {req.priority === 'NORMAL' && requestPriorityLabels[req.priority]}
+        {req.priority === 'NORMAL' && PRIORITY_LABELS[req.priority]}
         {req.priority === 'LOW' && (
-          <span className="text-disabled">{requestPriorityLabels[req.priority]}</span>
+          <span className="text-disabled">{PRIORITY_LABELS[req.priority]}</span>
         )}
       </td>
       <td className="px-6 py-4 text-secondary">{req.dueAt ? fmtDateShort(req.dueAt) : '—'}</td>

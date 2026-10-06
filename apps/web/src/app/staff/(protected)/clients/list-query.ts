@@ -1,16 +1,14 @@
 import type { ClientKind, Prisma } from '@prisma/client';
+import { CLIENT_KIND_LABELS } from '@/lib/domain-labels';
 
 export const CLIENT_KIND_OPTIONS = [
-  { value: 'NATPERS', label: 'Natürliche Person' },
-  { value: 'JURPERS', label: 'Juristische Person' },
-  { value: 'PERSGES', label: 'Personengesellschaft' },
+  { value: 'NATPERS', label: CLIENT_KIND_LABELS.NATPERS },
+  { value: 'JURPERS', label: CLIENT_KIND_LABELS.JURPERS },
+  { value: 'PERSGES', label: CLIENT_KIND_LABELS.PERSGES },
 ] as const satisfies ReadonlyArray<{ value: ClientKind; label: string }>;
 
-export const CLIENT_KIND_LABELS: Readonly<Record<ClientKind, string>> = {
-  NATPERS: 'Natürliche Person',
-  JURPERS: 'Juristische Person',
-  PERSGES: 'Personengesellschaft',
-};
+// R-14: Labels zentral in lib/domain-labels; hier für bestehende Importe re-exportiert.
+export { CLIENT_KIND_LABELS };
 
 export type ClientSortKey = 'name' | 'kind' | 'datev' | 'addison' | 'created';
 export type ClientSortDir = 'asc' | 'desc';

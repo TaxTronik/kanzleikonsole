@@ -5,6 +5,7 @@ import { slugify as slugifyLib } from '@/lib/slugify';
 import { Plus, Trash2, Save, X } from 'lucide-react';
 import { saveFieldDefAction, deleteFieldDefAction } from './actions';
 import { confirmDialog } from '@/components/ui/modal';
+import { CLIENT_KIND_LABELS } from '@/lib/domain-labels';
 
 type FieldType = 'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL';
 type Kind = 'NATPERS' | 'JURPERS' | 'PERSGES';
@@ -18,12 +19,6 @@ const TYPE_LABELS: Record<FieldType, string> = {
   SELECT: 'Auswahl',
   CHECKBOX: 'Häkchen',
   URL: 'Link / URL',
-};
-
-const KIND_LABELS: Record<Kind, string> = {
-  NATPERS: 'Natürliche Person',
-  JURPERS: 'Juristische Person',
-  PERSGES: 'Personengesellschaft',
 };
 
 interface FieldDef {
@@ -143,7 +138,7 @@ export function CustomFieldsEditor({ initial }: { initial: FieldDef[] }) {
                     Gilt für:{' '}
                     {f.appliesTo.length === 0
                       ? 'alle Mandantentypen'
-                      : f.appliesTo.map((k) => KIND_LABELS[k]).join(', ')}
+                      : f.appliesTo.map((k) => CLIENT_KIND_LABELS[k]).join(', ')}
                   </p>
                   {f.helpText && <p className="text-xs text-disabled mt-1 italic">{f.helpText}</p>}
                 </div>
@@ -327,7 +322,7 @@ function FieldForm({
                   }}
                   className="rounded border-strong text-brand-600"
                 />
-                <span>{KIND_LABELS[k]}</span>
+                <span>{CLIENT_KIND_LABELS[k]}</span>
               </label>
             );
           })}

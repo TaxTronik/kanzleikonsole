@@ -1,5 +1,5 @@
 import { fmtEUR } from '@/lib/fmt';
-import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
+import { DOCUMENT_CLASSIFICATION_LABELS, PRIORITY_LABELS, domainLabel } from '@/lib/domain-labels';
 import type { TimelineEvent } from './types';
 import type { TimelineRecords } from './records';
 
@@ -338,13 +338,7 @@ function classificationLabel(c: string): string {
 }
 
 function priorityLabel(p: string): string {
-  const m: Record<string, string> = {
-    LOW: 'Niedrig',
-    NORMAL: 'Normal',
-    HIGH: 'Hoch',
-    URGENT: 'Dringend',
-  };
-  return m[p] ?? p;
+  return domainLabel(PRIORITY_LABELS, p);
 }
 
 function truncate(s: string, n: number): string {

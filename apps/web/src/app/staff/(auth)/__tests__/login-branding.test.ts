@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const layoutSource = readFileSync(new URL('../layout.tsx', import.meta.url), 'utf8');
+// R-14: das Staff-Auth-Layout rendert den gemeinsamen AuthShell.
+const layoutSource = readFileSync(
+  new URL('../../../../components/auth-shell.tsx', import.meta.url),
+  'utf8',
+);
 const loginSource = readFileSync(new URL('../login/page.tsx', import.meta.url), 'utf8');
 
 describe('Whitelabel-Staff-Login', () => {

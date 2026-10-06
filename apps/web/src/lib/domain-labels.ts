@@ -5,6 +5,35 @@
  * per Spread überschrieben. Dadurch bleibt die Abweichung sichtbar, während
  * neue Enum-Werte nur an einer Stelle ergänzt werden müssen.
  */
+import type { ClientKind, RequestPriority, RequestStatus } from '@prisma/client';
+
+// R-14: vorher je Seite kopiert (Status 6×, Priorität 5×, Mandantentyp 5×).
+export const REQUEST_STATUS_LABELS: Readonly<Record<RequestStatus, string>> = {
+  OPEN: 'Offen',
+  IN_PROGRESS: 'In Bearbeitung',
+  RESPONDED: 'Beantwortet',
+  CLOSED: 'Geschlossen',
+  CANCELLED: 'Abgebrochen',
+};
+
+/** Prioritätsskala von Anforderungen — Wiedervorlagen nutzen dieselbe Skala. */
+export const PRIORITY_LABELS: Readonly<Record<RequestPriority, string>> = {
+  LOW: 'Niedrig',
+  NORMAL: 'Normal',
+  HIGH: 'Hoch',
+  URGENT: 'Dringend',
+};
+
+export const CLIENT_KIND_LABELS: Readonly<Record<ClientKind, string>> = {
+  NATPERS: 'Natürliche Person',
+  JURPERS: 'Juristische Person',
+  PERSGES: 'Personengesellschaft',
+};
+
+/** Label zu einem rohen Enum-Wert (z. B. aus Query-Strings), sonst der Wert selbst. */
+export function domainLabel(labels: Readonly<Record<string, string>>, value: string): string {
+  return labels[value] ?? value;
+}
 export const DOCUMENT_CLASSIFICATION_LABELS: Readonly<Record<string, string>> = {
   GOBD_INVOICE: 'GoBD Rechnung',
   GOBD_CONTRACT: 'GoBD Vertrag',

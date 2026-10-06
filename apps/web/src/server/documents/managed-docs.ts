@@ -6,8 +6,11 @@
 // =============================================================================
 
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { documentTier, type ProtectionTier } from '@taxtronik/storage/tiers';
 
-export type DocumentTier = 'NONE' | 'GWG' | 'GOBD';
+export type DocumentTier = ProtectionTier;
+// R-14: eine Tier-Regel für Explorer, Detailseite und Storage (ENV-frei).
+export { documentTier };
 
 /** Dokument-Zeile des DocumentExplorer (beide Varianten). */
 export interface ManagedDoc {
@@ -52,22 +55,6 @@ export interface ManagedDocRow {
   deletedAt: Date | null;
   sharedWithClientAt: Date | null;
   versions: { sizeBytes: bigint }[];
-}
-
-const GOBD_CLASSIFICATIONS: readonly string[] = ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'];
-
-/**
- * Schutzstufe: aus dem Dokumenttyp, für Altbestände ohne Typ aus der Klassifikation
- * (dieselbe Regel wie classificationToTier in @taxtronik/storage; hier ohne Import,
- * weil das Paket beim Laden die Umgebungskonfiguration parst).
- */
-export function documentTier(
-  classification: string,
-  typeTier: DocumentTier | null | undefined,
-): DocumentTier {
-  if (typeTier) return typeTier;
-  if (GOBD_CLASSIFICATIONS.includes(classification)) return 'GOBD';
-  return classification === 'GWG_EVIDENCE' ? 'GWG' : 'NONE';
 }
 
 export function toManagedDoc(d: ManagedDocRow): ManagedDoc {

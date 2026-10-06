@@ -5,16 +5,14 @@
 // Anforderungen, damit Übersicht und Mandantenseite gleich aussehen.
 // =============================================================================
 
+import { PRIORITY_LABELS } from '@/lib/domain-labels';
+
 export const REMINDER_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
 
 export type ReminderPriority = (typeof REMINDER_PRIORITIES)[number];
 
-export const PRIORITY_LABEL: Record<ReminderPriority, string> = {
-  LOW: 'Niedrig',
-  NORMAL: 'Normal',
-  HIGH: 'Hoch',
-  URGENT: 'Dringend',
-};
+/** Dieselbe Skala wie Anforderungen (R-14: eine Label-Quelle). */
+export const PRIORITY_LABEL: Readonly<Record<ReminderPriority, string>> = PRIORITY_LABELS;
 
 /** Badge-Klasse; NORMAL bleibt bewusst unmarkiert (sonst rauscht die Liste). */
 export const PRIORITY_BADGE: Record<ReminderPriority, string | null> = {

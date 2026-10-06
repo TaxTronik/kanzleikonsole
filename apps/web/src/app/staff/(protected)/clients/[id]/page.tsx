@@ -42,12 +42,7 @@ import {
   UpcomingCockpitBlock,
   WorkflowsCockpitBlock,
 } from './cockpit-blocks';
-
-const kindLabels: Record<string, string> = {
-  NATPERS: 'Natürliche Person',
-  JURPERS: 'Juristische Person',
-  PERSGES: 'Personengesellschaft',
-};
+import { CLIENT_KIND_LABELS, domainLabel } from '@/lib/domain-labels';
 
 function formatCustomValue(type: string, value: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
@@ -396,7 +391,7 @@ export default async function ClientDetailPage({
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <dt className="text-muted">Typ</dt>
-                  <dd className="text-primary font-medium">{kindLabels[client.kind]}</dd>
+                  <dd className="text-primary font-medium">{CLIENT_KIND_LABELS[client.kind]}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted">DATEV-Nr.</dt>
@@ -541,7 +536,7 @@ function ClientAccountingLabels({
 }) {
   return (
     <p className="text-muted text-sm">
-      {kindLabels[kind] ?? kind}
+      {domainLabel(CLIENT_KIND_LABELS, kind)}
       {datevNo ? ` · DATEV ${datevNo}` : ''}
       {addisonNo ? ` · Addison ${addisonNo}` : ''}
     </p>

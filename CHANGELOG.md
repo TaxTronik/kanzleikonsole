@@ -654,6 +654,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die Dokument-Detailseite kennzeichnet GwG-Nachweise nicht mehr als
+  „GoBD-immutable“ mit COMPLIANCE-Hinweis; Schutzstufe, Status- und
+  Typbezeichnungen kommen aus einer gemeinsamen Quelle
+  (`GWG-RETENTION-DESTRUCTION-001`, `FK-EXC-20261006-013`).
 - Mandanten-Links in Mails des Workers (z. B. automatische Anforderungen aus
   Steuerterminen) zeigen bei getrennten Subdomains auf `PORTAL_PUBLIC_URL`
   statt auf die Staff-Domain; Compose reicht `PORTAL_PUBLIC_URL` jetzt an den

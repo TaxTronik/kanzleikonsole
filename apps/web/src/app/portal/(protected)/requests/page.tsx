@@ -14,24 +14,10 @@ import {
   normalizePortalListQuery,
   parsePortalListPage,
 } from '@/server/portal/list-query';
+import { REQUEST_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/domain-labels';
 
-const statusLabels: Readonly<Record<RequestStatus, string>> = {
-  OPEN: 'Offen',
-  IN_PROGRESS: 'In Bearbeitung',
-  RESPONDED: 'Beantwortet',
-  CLOSED: 'Geschlossen',
-  CANCELLED: 'Abgebrochen',
-};
-
-const priorityLabels: Readonly<Record<RequestPriority, string>> = {
-  LOW: 'Niedrig',
-  NORMAL: 'Normal',
-  HIGH: 'Hoch',
-  URGENT: 'Dringend',
-};
-
-const requestStatuses = Object.keys(statusLabels) as RequestStatus[];
-const requestPriorities = Object.keys(priorityLabels) as RequestPriority[];
+const requestStatuses = Object.keys(REQUEST_STATUS_LABELS) as RequestStatus[];
+const requestPriorities = Object.keys(PRIORITY_LABELS) as RequestPriority[];
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -162,7 +148,7 @@ export default async function PortalRequestsPage({
               <option value="">Alle Status</option>
               {requestStatuses.map((value) => (
                 <option key={value} value={value}>
-                  {statusLabels[value]}
+                  {REQUEST_STATUS_LABELS[value]}
                 </option>
               ))}
             </select>
@@ -180,7 +166,7 @@ export default async function PortalRequestsPage({
               <option value="">Alle Prioritäten</option>
               {requestPriorities.map((value) => (
                 <option key={value} value={value}>
-                  {priorityLabels[value]}
+                  {PRIORITY_LABELS[value]}
                 </option>
               ))}
             </select>
@@ -221,10 +207,10 @@ export default async function PortalRequestsPage({
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
                         <span className={statusBadge(request.status)}>
-                          {statusLabels[request.status]}
+                          {REQUEST_STATUS_LABELS[request.status]}
                         </span>
                         <span className="text-xs text-muted">
-                          {priorityLabels[request.priority]}
+                          {PRIORITY_LABELS[request.priority]}
                         </span>
                       </div>
                     </div>

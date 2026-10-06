@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./service": "./src/service.ts",
     "./errors": "./src/errors.ts",
+    "./tiers": "./src/tiers.ts",
     "./client": "./src/client.ts"
   },
   "scripts": {

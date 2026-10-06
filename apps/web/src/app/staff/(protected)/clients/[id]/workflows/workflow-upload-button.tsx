@@ -5,6 +5,7 @@ import { Upload, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useDocumentCommit } from '@/components/use-document-commit';
 import { Modal } from '@/components/ui/modal';
 import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
+import { isGobdClassification } from '@taxtronik/storage/tiers';
 
 interface Props {
   itemId: string;
@@ -132,7 +133,7 @@ export function WorkflowUploadButton({
       <p className="text-xs text-muted mb-4">
         Workflow-Schritt „{itemTitle}" · Klasse{' '}
         <span className="font-medium text-secondary">{classLabel}</span>
-        {expectedClassification.startsWith('GOBD_') && (
+        {isGobdClassification(expectedClassification) && (
           <span className="block text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
             Object-Lock COMPLIANCE — {gobdRetentionYears} Jahre unveränderbar
           </span>

@@ -27,12 +27,7 @@ import {
   GwgFieldsForm,
   MandateForm,
 } from './stammdaten-forms';
-
-const KIND_LABELS: Record<string, string> = {
-  NATPERS: 'Natürliche Person',
-  JURPERS: 'Juristische Person',
-  PERSGES: 'Personengesellschaft',
-};
+import { CLIENT_KIND_LABELS } from '@/lib/domain-labels';
 
 export default async function ClientEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -292,7 +287,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
               className="input w-full"
               required
             >
-              {Object.entries(KIND_LABELS).map(([k, l]) => (
+              {Object.entries(CLIENT_KIND_LABELS).map(([k, l]) => (
                 <option key={k} value={k}>
                   {l}
                 </option>

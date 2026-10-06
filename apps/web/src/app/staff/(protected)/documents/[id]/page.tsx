@@ -9,6 +9,8 @@ import { AcknowledgeButton } from '../acknowledge-button';
 import { NewVersionForm } from './new-version-form';
 import { fmtBytes, fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
+import { TIER_BADGE } from '@/components/document-browser-utils';
+import { documentTier } from '@/server/documents/managed-docs';
 
 export default async function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireStaffPage();
@@ -22,6 +24,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
       include: {
         versions: { orderBy: { versionNo: 'desc' } },
         client: { select: { id: true, name: true } },
+        documentType: { select: { tier: true } },
       },
     }),
   );
@@ -52,7 +55,9 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     acknowledgedByName = ack?.fullName ?? null;
   }
 
-  const isGobd = doc.classification.startsWith('GOBD_') || doc.classification === 'GWG_EVIDENCE';
+  // R-14: dieselbe Schutzstufen-Regel wie Explorer und Storage. GwG-Nachweise
+  // sind keine GoBD-Belege (eigene Frist, kontrollierte Vernichtung).
+  const tier = documentTier(doc.classification, doc.documentType?.tier);
 
   return (
     <div className="p-8 max-w-4xl">
@@ -67,10 +72,16 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
             <h1 className="text-2xl font-bold text-primary truncate">{doc.title}</h1>
-            {isGobd && (
+            {tier === 'GOBD' && (
               <span className="badge-yellow flex items-center gap-1">
                 <Lock className="h-3 w-3" />
                 GoBD-immutable
+              </span>
+            )}
+            {tier === 'GWG' && (
+              <span className="badge-yellow flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                {TIER_BADGE.GWG}
               </span>
             )}
             <AcknowledgeButton
@@ -157,7 +168,8 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
       <div className="card p-6">
         <h2 className="text-sm font-medium text-primary mb-3">Neue Version hochladen</h2>
         <p className="text-xs text-muted mb-4">
-          {isGobd ? (
+          {/* COMPLIANCE-Lock gilt nur für GoBD; GwG-Objekte liegen unter GOVERNANCE. */}
+          {tier === 'GOBD' ? (
             <>
               <Shield className="h-3 w-3 inline mr-1" />
               Bestehende Versionen bleiben unverändert (Object-Lock COMPLIANCE). Die neue Version

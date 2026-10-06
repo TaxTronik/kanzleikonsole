@@ -56,10 +56,8 @@ describe('globale Accessibility-Grundlagen', () => {
   });
 
   it('nutzt auch auf den Login-Seiten ein Main-Landmark', () => {
-    for (const path of [
-      resolve(appDir, 'staff', '(auth)', 'layout.tsx'),
-      resolve(appDir, 'portal', '(auth)', 'layout.tsx'),
-    ]) {
+    // R-14: beide Auth-Layouts rendern den gemeinsamen AuthShell.
+    for (const path of [resolve(componentsDir, 'auth-shell.tsx')]) {
       const layout = source(path);
       expect(layout).toContain('<main');
       expect(layout).toContain('id="main-content"');

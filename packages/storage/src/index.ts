@@ -4,6 +4,7 @@ export {
   isGobdClassification,
   isGwgClassification,
   classificationToTier,
+  documentTier,
   getBucketForTier,
   type ProtectionTier,
 } from './client';

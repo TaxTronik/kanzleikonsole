@@ -11,14 +11,7 @@ import { InternalCommentForm } from './internal-comment-form';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { KnowledgeContext } from '@/components/knowledge-context';
 import { loadKnowledgeContextAction } from '../../knowledge/context/actions';
-
-const statusLabels: Record<string, string> = {
-  OPEN: 'Offen',
-  IN_PROGRESS: 'In Bearbeitung',
-  RESPONDED: 'Beantwortet',
-  CLOSED: 'Geschlossen',
-  CANCELLED: 'Abgebrochen',
-};
+import { REQUEST_STATUS_LABELS } from '@/lib/domain-labels';
 
 export default async function RequestDetailPage({
   params,
@@ -88,7 +81,7 @@ export default async function RequestDetailPage({
                     : 'badge-yellow'
               }
             >
-              {statusLabels[reqRow.status]}
+              {REQUEST_STATUS_LABELS[reqRow.status]}
             </span>
           </div>
           <p className="text-muted text-sm">

@@ -1,6 +1,16 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { env } from '@taxtronik/config';
+import type { ProtectionTier } from './tiers';
+
+// Reine Schutzstufen-Regeln liegen ENV-frei in ./tiers (auch für Client-Bundles).
+export {
+  classificationToTier,
+  documentTier,
+  isGobdClassification,
+  isGwgClassification,
+  type ProtectionTier,
+} from './tiers';
 
 // Singleton S3-Client (forcePathStyle = true, weil On-Prem-Engine wie
 // SeaweedFS pfadbasierte Bucket-URLs erwartet — AWS SDK würde sonst
@@ -55,35 +65,6 @@ export function getBucketForClassification(classification: string): string {
     default:
       return env.S3_BUCKET_GENERAL;
   }
-}
-
-export function isGobdClassification(classification: string): boolean {
-  // B-1: GWG_EVIDENCE BEWUSST NICHT mehr GoBD-pflichtig markiert. Vorher
-  // landete GWG_EVIDENCE im gobd-Bucket mit 10-Jahre-COMPLIANCE-Lock, was
-  // eine fachliche Vernichtung nach § 8 Abs. 4 GwG verhindern konnte.
-  return ['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'].includes(classification);
-}
-
-/**
- * B-1: GwG-Klassifikation mit fünfjähriger technischer Grundbarriere. Das
- * tatsächliche Ende wird fachlich geprüft (längere Gesetze; spätestens 10 J.).
- */
-export function isGwgClassification(classification: string): boolean {
-  return classification === 'GWG_EVIDENCE';
-}
-
-// ---------------------------------------------------------------------------
-// Schutzstufen (iter55). Die Stufe — nicht mehr die rohe Klassifikation —
-// treibt Bucket + Object-Lock + Aufbewahrung. Genau drei, fix.
-// ---------------------------------------------------------------------------
-export type ProtectionTier = 'NONE' | 'GWG' | 'GOBD';
-
-/** Gesetzlich fixes Mapping der 7 Kern-Typen → Schutzstufe (Back-Compat /
- *  Altbestand ohne documentType). */
-export function classificationToTier(classification: string): ProtectionTier {
-  if (isGobdClassification(classification)) return 'GOBD';
-  if (isGwgClassification(classification)) return 'GWG';
-  return 'NONE';
 }
 
 export function getBucketForTier(tier: ProtectionTier): string {

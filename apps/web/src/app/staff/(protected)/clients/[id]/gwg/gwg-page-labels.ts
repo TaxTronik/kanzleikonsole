@@ -1,4 +1,4 @@
-import { GWG_CHECK_STATUS_LABELS } from '@/lib/domain-labels';
+import { CLIENT_KIND_LABELS, GWG_CHECK_STATUS_LABELS } from '@/lib/domain-labels';
 export const idTypeLabels: Record<string, string> = {
   PERSONALAUSWEIS: 'Personalausweis',
   REISEPASS: 'Reisepass',
@@ -24,11 +24,7 @@ export const checkStatusLabels: Readonly<Record<string, string>> = {
   EXPIRED: 'Abgelaufen/ersetzt',
 };
 
-export const clientKindLabels: Readonly<Record<string, string>> = {
-  NATPERS: 'Natürliche Person',
-  JURPERS: 'Juristische Person',
-  PERSGES: 'Personengesellschaft',
-};
+export const clientKindLabels: Readonly<Record<string, string>> = CLIENT_KIND_LABELS;
 
 /** Registernachweis-Typen — immer alle als Unterblock (Checklisten-Charakter),
  *  je mit eigener Upload-Fläche (Typ via defaultType voreingestellt). */

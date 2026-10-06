@@ -12,23 +12,9 @@ import type { Prisma, RequestStatus } from '@prisma/client';
 import { fmtDateShort } from '@/lib/fmt';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
+import { REQUEST_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/domain-labels';
 
 const PAGE_SIZE = 50;
-const statusLabels: Record<string, string> = {
-  OPEN: 'Offen',
-  IN_PROGRESS: 'In Bearbeitung',
-  RESPONDED: 'Beantwortet',
-  CLOSED: 'Geschlossen',
-  CANCELLED: 'Abgebrochen',
-};
-
-const priorityLabels: Record<string, string> = {
-  LOW: 'Niedrig',
-  NORMAL: 'Normal',
-  HIGH: 'Hoch',
-  URGENT: 'Dringend',
-};
-
 type SortKey = 'created' | 'due' | 'client' | 'datev' | 'addison';
 type SortDir = 'asc' | 'desc';
 
@@ -75,8 +61,8 @@ export default async function RequestsOverviewPage({
 
   const sp = await searchParams;
   const filterStatus =
-    sp.status && Object.keys(statusLabels).includes(sp.status)
-      ? (sp.status as keyof typeof statusLabels)
+    sp.status && Object.keys(REQUEST_STATUS_LABELS).includes(sp.status)
+      ? (sp.status as keyof typeof REQUEST_STATUS_LABELS)
       : null;
   const { sort, dir } = parseSort(sp);
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
@@ -323,33 +309,33 @@ export default async function RequestsOverviewPage({
                         </td>
                         <td className="px-6 py-3">
                           {r.status === 'OPEN' && (
-                            <span className="badge-yellow">{statusLabels[r.status]}</span>
+                            <span className="badge-yellow">{REQUEST_STATUS_LABELS[r.status]}</span>
                           )}
                           {r.status === 'IN_PROGRESS' && (
-                            <span className="badge-yellow">{statusLabels[r.status]}</span>
+                            <span className="badge-yellow">{REQUEST_STATUS_LABELS[r.status]}</span>
                           )}
                           {r.status === 'RESPONDED' && (
-                            <span className="badge-green">{statusLabels[r.status]}</span>
+                            <span className="badge-green">{REQUEST_STATUS_LABELS[r.status]}</span>
                           )}
                           {r.status === 'CLOSED' && (
-                            <span className="badge-gray">{statusLabels[r.status]}</span>
+                            <span className="badge-gray">{REQUEST_STATUS_LABELS[r.status]}</span>
                           )}
                           {r.status === 'CANCELLED' && (
-                            <span className="badge-gray">{statusLabels[r.status]}</span>
+                            <span className="badge-gray">{REQUEST_STATUS_LABELS[r.status]}</span>
                           )}
                         </td>
                         <td className="px-6 py-3">
                           {r.priority === 'URGENT' && (
-                            <span className="badge-red">{priorityLabels[r.priority]}</span>
+                            <span className="badge-red">{PRIORITY_LABELS[r.priority]}</span>
                           )}
                           {r.priority === 'HIGH' && (
-                            <span className="badge-yellow">{priorityLabels[r.priority]}</span>
+                            <span className="badge-yellow">{PRIORITY_LABELS[r.priority]}</span>
                           )}
                           {r.priority === 'NORMAL' && (
-                            <span className="text-secondary">{priorityLabels[r.priority]}</span>
+                            <span className="text-secondary">{PRIORITY_LABELS[r.priority]}</span>
                           )}
                           {r.priority === 'LOW' && (
-                            <span className="text-disabled">{priorityLabels[r.priority]}</span>
+                            <span className="text-disabled">{PRIORITY_LABELS[r.priority]}</span>
                           )}
                         </td>
                         <td className="px-6 py-3 text-secondary">{r._count.responses}</td>
