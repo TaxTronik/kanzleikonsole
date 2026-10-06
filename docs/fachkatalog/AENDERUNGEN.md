@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-005
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-transition.ts
+    rule_ids:
+      - TAX-CONTROL-STATUS-001
+      - TAX-NOTICE-APPEAL-001
+    reason: >-
+      Die Statusprüfung für die Bestandskraft zählt die Begründung wie die
+      Datenbankfunktion app.legal_final_reason_sufficient in Zeichen (Codepoints)
+      nach Entfernen des Leerraums am Rand, statt in UTF-16-Einheiten. Eine
+      Begründung aus fünf Emoji erhält damit die reguläre Formularmeldung statt
+      eines Datenbankfehlers. Mindestlänge, Meldung und Statuslogik bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-004
     date: '2026-10-07'
     paths:
@@ -4171,6 +4189,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-005` dokumentiert die zeichengenaue Prüfung
+  der Bestandskraft-Begründung im Bescheid-Statuswechsel.
 
 - 2026-10-07: `FK-EXC-20261007-004` dokumentiert die vollständige Revision
   entwerteter Ausweissätze nach Personenänderungen.

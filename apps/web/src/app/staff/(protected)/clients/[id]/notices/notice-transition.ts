@@ -1,5 +1,6 @@
 import type { Prisma, TaxNoticeStatus } from '@prisma/client';
 import { assessAppealDeadline, startOfUtcDay, type HolidayLocationContext } from '@taxtronik/tax';
+import { begruendungTragfaehig } from '@/server/fristen/eintrag';
 import { NOTICE_STATUS_TRANSITIONS } from './transitions';
 
 export interface LegacyNoticeEvidenceInput {
@@ -405,7 +406,9 @@ function validateLegalFinalOrder(
       'Der Eintritt der Bestandskraft darf nicht vor einem dokumentierten Verfahrensereignis liegen.',
     );
   }
-  if (!request.legalFinalReason || request.legalFinalReason.trim().length < 10) {
+  // Wie app.legal_final_reason_sufficient: zehn Zeichen (Codepoints) nach dem
+  // Entfernen des Leerraums am Rand, sonst lehnt erst die Datenbank ab.
+  if (!begruendungTragfaehig(request.legalFinalReason)) {
     return invalid(
       'Die fachliche Abschlussentscheidung zur Bestandskraft muss nachvollziehbar begründet werden.',
     );

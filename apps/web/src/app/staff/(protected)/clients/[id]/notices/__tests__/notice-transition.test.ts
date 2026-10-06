@@ -159,6 +159,16 @@ describe('Bescheid-Statusautomat', () => {
         'Die fachliche Abschlussentscheidung zur Bestandskraft muss nachvollziehbar begründet werden.',
     });
 
+    // Wie die Datenbank (app.legal_final_reason_sufficient) zählt die Prüfung
+    // Codepoints: fünf Emoji sind zehn UTF-16-Einheiten, aber nur fünf Zeichen.
+    const emojiReason = request('BESTANDSKRAEFTIG', '2026-02-11');
+    emojiReason.legalFinalReason = '\u{1F4DD}'.repeat(5);
+    expect(plan(before, emojiReason)).toMatchObject({
+      ok: false,
+      error:
+        'Die fachliche Abschlussentscheidung zur Bestandskraft muss nachvollziehbar begründet werden.',
+    });
+
     const withReason = request('BESTANDSKRAEFTIG', '2026-02-11');
     const successful = plan(before, withReason);
     expect(successful.ok).toBe(true);

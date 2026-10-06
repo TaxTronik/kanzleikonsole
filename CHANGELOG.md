@@ -768,6 +768,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Bescheide: Eine zu kurze Bestandskraft-Begründung aus Sonderzeichen wie Emoji
+  erhält die reguläre Meldung statt eines Datenbankfehlers; Formular und
+  Datenbank zählen einheitlich Zeichen (`TAX-CONTROL-STATUS-001`,
+  `FK-EXC-20261007-005`).
 - GwG-Identifizierung: Nach dem Ändern einer Person, eines wirtschaftlich
   Berechtigten oder der Angaben zum Rechtsträger lässt sich ein betroffener
   Ausweissatz wieder ohne Neuladen speichern; bisher scheiterte das Speichern
