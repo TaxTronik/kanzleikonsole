@@ -1,4 +1,8 @@
 'use client';
+// Formular der Mandatserweiterung: aktualisiert die Seite nach Erfolg und zeigt
+// den Status unter dem Formular. Gemeinsam genutzt von den Seiten unter
+// /staff/mandate-expansion und dem GwG-Strukturpanel (server/mandate-expansion).
+// Für allgemeine Formulare gilt @/components/action-form.
 import { useActionState, useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ActionResult } from '@/server/actions/types';

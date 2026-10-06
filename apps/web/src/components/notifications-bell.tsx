@@ -13,7 +13,7 @@ import {
 import {
   markNotificationReadByIdAction,
   markAllNotificationsReadAction,
-} from '@/app/staff/(protected)/notifications/actions';
+} from '@/server/notifications/actions';
 import { isUserTyping } from './auto-refresh';
 import {
   buildNotificationSignal,

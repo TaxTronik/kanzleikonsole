@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { fmtDateTimeShort, fmtEURRound } from '@/lib/fmt';
+import { ActorBadge } from '@/components/bwa/actor-badge';
+import type { ProjectionSnapshot } from '@/components/bwa/projection-snapshot';
 
 type Axis =
   | 'REVENUE'
@@ -59,22 +61,6 @@ function totals(plan: PlanForCompare) {
   const resultBeforeTax = revenue - costs;
   const resultAfterTax = resultBeforeTax - taxes;
   return { revenue, costs, resultBeforeTax, taxes, resultAfterTax };
-}
-
-export interface ProjectionSnapshot {
-  year: number;
-  revenue: number | null;
-  otherIncome: number | null;
-  personnelCost: number | null;
-  material: number | null;
-  depreciation: number | null;
-  otherCosts: number | null;
-  costs: number | null;
-  resultBeforeTax: number | null;
-  resultAfterTax: number | null;
-  taxes: number | null;
-  // Optional: Basis-Beschreibung („YTD 2026-Q2", „Trend aus 4 Jahren")
-  basis: string;
 }
 
 export function PlanListWithCompare({
@@ -379,46 +365,5 @@ function ComparisonTable({
         </table>
       </div>
     </div>
-  );
-}
-
-/**
- * Klein-Badge zeigt Herkunft eines Plans:
- *   - „Mandant" wenn vom Mandant erstellt (oder zuletzt bearbeitet)
- *   - „Kanzlei" wenn vom Staff erstellt/bearbeitet
- *   - „Mandant → Kanzlei" wenn Übergang erkennbar
- */
-export function ActorBadge({
-  createdByType,
-  updatedByType,
-}: {
-  createdByType?: 'STAFF' | 'CLIENT_CONTACT';
-  updatedByType?: 'STAFF' | 'CLIENT_CONTACT' | null;
-}) {
-  if (!createdByType) return null;
-  const created = createdByType === 'STAFF' ? 'Kanzlei' : 'Mandant';
-  const updated =
-    updatedByType && updatedByType !== createdByType
-      ? updatedByType === 'STAFF'
-        ? 'Kanzlei'
-        : 'Mandant'
-      : null;
-  const cls =
-    createdByType === 'STAFF'
-      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
-      : 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300';
-  return (
-    <span
-      className={'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ' + cls}
-      title={`Erstellt von ${created}${updated ? `, zuletzt von ${updated}` : ''}`}
-    >
-      {created}
-      {updated && (
-        <>
-          <span className="mx-1 opacity-60">→</span>
-          {updated}
-        </>
-      )}
-    </span>
   );
 }

@@ -11,9 +11,18 @@ import { readModules } from '@/server/settings/modules';
 import { ClientAssistanceForm } from '@/components/client-assistance-form';
 import { ExpansionForm } from '@/components/expansion-form';
 import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
-import { CASE_DEFINITIONS, CASE_KINDS, caseModule, type CaseKind } from './definitions';
-import { withAssistance, assistanceDocumentWhere, type Surface } from './service';
-import { checkedAssistanceSnapshot, DOCX_MIME } from './snapshot';
+import {
+  CASE_DEFINITIONS,
+  CASE_KINDS,
+  caseModule,
+  type CaseKind,
+} from '@/server/client-assistance/definitions';
+import {
+  withAssistance,
+  assistanceDocumentWhere,
+  type Surface,
+} from '@/server/client-assistance/service';
+import { checkedAssistanceSnapshot, DOCX_MIME } from '@/server/client-assistance/snapshot';
 
 type FormAction = (data: FormData) => Promise<{ ok: boolean; error?: string }>;
 

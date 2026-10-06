@@ -4,7 +4,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { useRef, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { markNotificationReadByIdAction } from '@/app/staff/(protected)/notifications/actions';
+import { markNotificationReadByIdAction } from '@/server/notifications/actions';
 import { emitNotificationsChanged } from '@/lib/live-events';
 
 export function NotificationOpenLink({

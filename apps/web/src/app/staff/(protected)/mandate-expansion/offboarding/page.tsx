@@ -8,7 +8,7 @@ import {
 } from '@/server/mandate-expansion/offboarding';
 import { handoverPreparationHash } from '@/server/mandate-expansion/artifacts';
 import { expansionPage, ExpansionNavigation, ClientSelect } from '../common';
-import { ActionForm } from '../action-form';
+import { ActionForm } from '@/components/mandate-expansion/action-form';
 import {
   prepareOffboardingAction,
   finishOffboardingAction,

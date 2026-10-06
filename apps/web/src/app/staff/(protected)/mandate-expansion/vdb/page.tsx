@@ -4,7 +4,7 @@ import { isUuid } from '@/lib/uuid';
 import { visibleMandateTx } from '@/server/mandate-expansion/service';
 import { VDB_STATES, VDB_LABELS, vdbTransitionAllowed } from '@/server/mandate-expansion/model';
 import { expansionPage, ExpansionNavigation, ClientSelect } from '../common';
-import { ActionForm } from '../action-form';
+import { ActionForm } from '@/components/mandate-expansion/action-form';
 import { recordVdbStateAction } from '../actions';
 export default async function VdbPage({
   searchParams,

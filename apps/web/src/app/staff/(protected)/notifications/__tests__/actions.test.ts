@@ -14,7 +14,7 @@ import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
   markNotificationReadByIdAction,
-} from '../actions';
+} from '@/server/notifications/actions';
 
 const ID = 'bc2cc432-b881-4c0e-80c3-35a86d08f76d';
 

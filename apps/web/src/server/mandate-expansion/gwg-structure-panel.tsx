@@ -4,15 +4,18 @@ import type { StaffSession } from '@/server/auth/staff';
 import { readModules } from '@/server/settings/modules';
 import { loadStructureTx } from './service';
 import { loadGwgStructureHistoryTx } from './gwg-structure';
-import { ActionForm } from '@/app/staff/(protected)/mandate-expansion/action-form';
-import { bindGwgStructureAction } from '@/app/staff/(protected)/mandate-expansion/structure/gwg-actions';
+import type { FormAction } from '@/components/action-form';
+import { ActionForm } from '@/components/mandate-expansion/action-form';
 
 export async function GwgStructurePanel({
   session,
   clientId,
+  bindAction,
 }: {
   session: StaffSession;
   clientId: string;
+  /** Server-Action `bindGwgStructureAction` der Mandatserweiterungsroute. */
+  bindAction: FormAction;
 }) {
   const ctx = {
     tenantId: session.user.tenantId,
@@ -52,7 +55,7 @@ export async function GwgStructurePanel({
       {open && data.current ? (
         <ActionForm
           key={`${data.check!.id}:${latest?.binding.revision ?? 0}:${data.current.id}`}
-          action={bindGwgStructureAction}
+          action={bindAction}
           className="border rounded p-4 space-y-3"
         >
           <input type="hidden" name="clientId" value={clientId} />

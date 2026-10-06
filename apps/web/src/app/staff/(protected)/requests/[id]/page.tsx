@@ -10,6 +10,7 @@ import { StaffResponseForm } from './staff-response-form';
 import { InternalCommentForm } from './internal-comment-form';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { KnowledgeContext } from '@/components/knowledge-context';
+import { loadKnowledgeContextAction } from '../../knowledge/context/actions';
 
 const statusLabels: Record<string, string> = {
   OPEN: 'Offen',
@@ -58,7 +59,9 @@ export default async function RequestDetailPage({
 
   return (
     <div className="p-8 max-w-3xl">
-      {reqRow.wikiArticleIds.length > 0 && <KnowledgeContext type="REQUEST" id={reqRow.id} />}
+      {reqRow.wikiArticleIds.length > 0 && (
+        <KnowledgeContext type="REQUEST" id={reqRow.id} load={loadKnowledgeContextAction} />
+      )}
       {reopenConflict === '1' && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Diese Anforderung kann nicht wieder geöffnet werden, weil für dasselbe GwG-Ausweisdokument

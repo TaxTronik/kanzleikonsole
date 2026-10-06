@@ -4,10 +4,11 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { isUuid } from '@/lib/uuid';
 import { loadStructureTx, visibleMandateTx } from '@/server/mandate-expansion/service';
 import { expansionPage, ExpansionNavigation, ClientSelect } from '../common';
-import { ActionForm } from '../action-form';
+import { ActionForm } from '@/components/mandate-expansion/action-form';
 import { archiveStructureAction } from '../actions';
 import StructureEditor from './editor';
 import { GwgStructurePanel } from '@/server/mandate-expansion/gwg-structure-panel';
+import { bindGwgStructureAction } from './gwg-actions';
 export default async function StructurePage({
   searchParams,
 }: {
@@ -115,7 +116,13 @@ export default async function StructurePage({
           ))}
         </section>
       )}
-      {client && !unavailable && <GwgStructurePanel session={session} clientId={clientId} />}
+      {client && !unavailable && (
+        <GwgStructurePanel
+          session={session}
+          clientId={clientId}
+          bindAction={bindGwgStructureAction}
+        />
+      )}
     </div>
   );
 }

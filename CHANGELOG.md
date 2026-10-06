@@ -220,6 +220,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Interne Schichtgrenzen der Web-App sind per ESLint abgesichert:
+  Komponenten und Server-Module importieren nicht mehr aus Routenordnern,
+  Staff-Seiten nicht aus dem Portal; geteilte Oberflächenteile liegen unter
+  `components/` (`FK-EXC-20261006-011`).
 - Fristen-Kontrollbuch: Die Fristenseite lädt offene Einträge seitenweise
   (200 je Seite, dringendste zuerst); Zähler und Tagesabschluss-Vorschau
   kommen ohne zweiten Volllauf aus. CSV-Export und Tagesabschluss-Protokoll

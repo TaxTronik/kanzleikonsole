@@ -4,8 +4,8 @@ import { ArrowLeft } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
-import { PlanEditor } from '@/app/portal/(protected)/bwa/plan/[id]/editor';
-import { ActorBadge } from '@/app/portal/(protected)/bwa/plan/plan-comparison';
+import { PlanEditor } from '@/components/bwa/plan-editor';
+import { ActorBadge } from '@/components/bwa/actor-badge';
 import { updateStaffPlanAction, deleteStaffPlanAction } from '../actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 

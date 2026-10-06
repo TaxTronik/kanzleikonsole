@@ -18,6 +18,9 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.context }));
 vi.mock('@/server/gwg/evidence-documents', () => ({
   findCleanGwgEvidenceDocumentsTx: mocks.documents,
 }));
+vi.mock('@/app/staff/(protected)/mandate-expansion/structure/gwg-actions', () => ({
+  bindGwgStructureAction: vi.fn(),
+}));
 // Separate async RSC; its own authorisation and mandate queries are outside this page test.
 vi.mock('@/server/mandate-expansion/gwg-structure-panel', () => ({
   GwgStructurePanel: () => null,

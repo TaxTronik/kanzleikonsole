@@ -3,7 +3,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { loadDependenciesTx } from '@/server/mandate-expansion/service';
 import { dependencyReady } from '@/server/mandate-expansion/model';
 import { expansionPage, ExpansionNavigation } from '../common';
-import { ActionForm } from '../action-form';
+import { ActionForm } from '@/components/mandate-expansion/action-form';
 import { assignWorkflowYearAction, changeDependencyAction } from '../actions';
 
 export default async function DependenciesPage() {

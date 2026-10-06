@@ -1,15 +1,30 @@
 'use client';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { loadKnowledgeContextAction } from '@/app/staff/(protected)/knowledge/context/actions';
 
-export function KnowledgeContext({ type, id }: { type: 'ITEM' | 'REQUEST'; id: string }) {
-  const [articles, setArticles] = useState<Array<{
-    id: string;
-    title: string;
-    html: string;
-    updatedAt: string;
-  }> | null>(null);
+interface KnowledgeContextArticle {
+  id: string;
+  title: string;
+  html: string;
+  updatedAt: string;
+}
+
+/** Server-Action der Route (`loadKnowledgeContextAction`), als Prop übergeben. */
+export type LoadKnowledgeContext = (input: {
+  type: 'ITEM' | 'REQUEST';
+  id: string;
+}) => Promise<{ ok: boolean; error?: string; articles?: KnowledgeContextArticle[] }>;
+
+export function KnowledgeContext({
+  type,
+  id,
+  load,
+}: {
+  type: 'ITEM' | 'REQUEST';
+  id: string;
+  load: LoadKnowledgeContext;
+}) {
+  const [articles, setArticles] = useState<KnowledgeContextArticle[] | null>(null);
   const [error, setError] = useState('');
   const [pending, start] = useTransition();
   return (
@@ -24,7 +39,7 @@ export function KnowledgeContext({ type, id }: { type: 'ITEM' | 'REQUEST'; id: s
             return;
           }
           start(async () => {
-            const r = await loadKnowledgeContextAction({ type, id });
+            const r = await load({ type, id });
             if (!r.ok) setError(r.error ?? 'Aktion fehlgeschlagen.');
             else {
               setError('');

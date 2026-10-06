@@ -31,10 +31,13 @@ vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, run: (tx: unknown) => unknown) =>
     run({ client: { findFirst: fixture.findFirst } }),
 }));
-vi.mock('../service', () => ({ withAssistance: vi.fn(), assistanceDocumentWhere: vi.fn() }));
+vi.mock('@/server/client-assistance/service', () => ({
+  withAssistance: vi.fn(),
+  assistanceDocumentWhere: vi.fn(),
+}));
 vi.mock('@/components/client-assistance-form', () => ({ ClientAssistanceForm: () => null }));
 vi.mock('@/components/expansion-form', () => ({ ExpansionForm: () => null }));
-import { AssistancePage } from '../page';
+import { AssistancePage } from '../assistance-page';
 
 async function renderPage() {
   const action = async () => ({ ok: true });

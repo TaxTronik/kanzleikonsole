@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
 import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
-import { PlanEditor } from './editor';
+import { PlanEditor } from '@/components/bwa/plan-editor';
 import { updatePlanAction, deletePlanAction } from '../actions';
 
 export default async function PortalPlanDetailPage({

@@ -1,4 +1,5 @@
-type CompletionAction = (input: {
+/** Server-Action `toggleItemDoneAction` der Workflow-Route, als Prop durchgereicht. */
+export type CompletionAction = (input: {
   id: string;
   done: boolean;
 }) => Promise<{ ok: boolean; error?: string }>;

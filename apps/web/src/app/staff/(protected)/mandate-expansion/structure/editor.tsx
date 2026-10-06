@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react';
 import type { StructureInput } from '@/server/mandate-expansion/model';
 import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
-import { ActionForm } from '../action-form';
+import { ActionForm } from '@/components/mandate-expansion/action-form';
 import { saveStructureAction } from '../actions';
 export default function StructureEditor({ initial }: { initial: StructureInput }) {
   const [data, setData] = useState(initial);

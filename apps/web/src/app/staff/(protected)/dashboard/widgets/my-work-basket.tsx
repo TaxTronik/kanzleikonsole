@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Inbox } from 'lucide-react';
 import { WorkBasketItemRow } from '@/components/work-basket-item';
+import { toggleItemDoneAction } from '../../clients/[id]/workflows/actions';
 import { portalInboxWorkExtension } from '@/server/inbox/work-extension';
 import { loadWorkBasket } from '@/server/work/basket';
 import { ListShell, type RenderCtx } from './_shared';
@@ -47,7 +48,12 @@ export async function MyWorkBasket({
       }
     >
       {items.slice(0, PREVIEW_LIMIT).map((item) => (
-        <WorkBasketItemRow key={item.key} item={item} displayBucket />
+        <WorkBasketItemRow
+          key={item.key}
+          item={item}
+          completeWorkflowItem={toggleItemDoneAction}
+          displayBucket
+        />
       ))}
     </ListShell>
   );

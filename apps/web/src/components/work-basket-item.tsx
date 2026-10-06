@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { CalendarClock, CalendarDays, Inbox, Phone } from 'lucide-react';
 import { fmtDateShort, fmtDateTimeShort, fmtTimeShort } from '@/lib/fmt';
 import type { WorkBasketItem, WorkBasketKind } from '@/server/work/basket';
-import { MyDayToggle } from '@/app/staff/(protected)/dashboard/my-day-toggle';
+import { MyDayToggle } from '@/components/work/my-day-toggle';
+import type { CompletionAction } from '@/components/work/my-day-completion';
 
 export const WORK_KIND_LABELS: Record<WorkBasketKind, string> = {
   workflow: 'Workflows',
@@ -33,9 +34,12 @@ function timing(item: WorkBasketItem): string | null {
 /** Gemeinsame Zeile für Arbeitskorb und Dashboard, mit eigenständiger Erledigen-Aktion. */
 export function WorkBasketItemRow({
   item,
+  completeWorkflowItem,
   displayBucket = false,
 }: {
   item: WorkBasketItem;
+  /** Server-Action zum Erledigen einer Workflow-Aufgabe (`toggleItemDoneAction`). */
+  completeWorkflowItem: CompletionAction;
   displayBucket?: boolean;
 }) {
   const time = timing(item);
@@ -53,7 +57,7 @@ export function WorkBasketItemRow({
     <li className="work-basket-row flex items-start transition-colors">
       {isWorkflow && (
         <div className="shrink-0 py-3 pl-5">
-          <MyDayToggle id={item.sourceId} />
+          <MyDayToggle id={item.sourceId} complete={completeWorkflowItem} />
         </div>
       )}
       <Link

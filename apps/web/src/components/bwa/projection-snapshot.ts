@@ -1,6 +1,22 @@
-import type { ProjectionSnapshot } from '@/app/portal/(protected)/bwa/plan/plan-comparison';
 import { computeBwaPlanBasis } from '@/server/bwa/plan-basis';
 import type { PeriodInput, ProjectionRange, YearProjection } from '@/server/bwa/projection';
+
+/** Hochrechnung in Planachsen, Vergleichsbasis für Planungsliste und Plan↔Hochrechnung. */
+export interface ProjectionSnapshot {
+  year: number;
+  revenue: number | null;
+  otherIncome: number | null;
+  personnelCost: number | null;
+  material: number | null;
+  depreciation: number | null;
+  otherCosts: number | null;
+  costs: number | null;
+  resultBeforeTax: number | null;
+  resultAfterTax: number | null;
+  taxes: number | null;
+  // Optional: Basis-Beschreibung („YTD 2026-Q2", „Trend aus 4 Jahren")
+  basis: string;
+}
 
 type SourcePeriod = PeriodInput & { source: 'DATEV' | 'ADDISON' | 'MANUAL' };
 

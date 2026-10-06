@@ -1,5 +1,48 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-011
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/portal/(protected)/bwa/plan/plan-comparison.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/_action-helpers.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/dashboard/widgets/my-work-basket.tsx
+      - apps/web/src/app/staff/(protected)/mandate-expansion/dependencies/page.tsx
+      - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/notifications/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/notifications/page.tsx
+      - apps/web/src/app/staff/(protected)/requests/[id]/page.tsx
+      - apps/web/src/components/bwa/projection-snapshot.ts
+      - apps/web/src/components/knowledge-context.tsx
+      - apps/web/src/server/gwg/check-mutation.ts
+      - apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx
+      - apps/web/src/server/mandate-expansion/gwg-structure.ts
+      - apps/web/src/app/staff/(protected)/notifications/actions.ts
+    rule_ids:
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - MANDATE-STRUCTURE-001
+      - BWA-PROJECTION-001
+      - KNOWLEDGE-CONTEXT-001
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - ACCESS-SEARCH-SCOPE-001
+    reason: >-
+      Geteilte Oberflächenteile liegen nicht mehr unter src/server bzw. werden
+      nicht mehr aus Routenordnern importiert: die Mandantenassistenz-Seite, der
+      Mein-Tag-Schalter, das ActionForm der Mandatserweiterung und die
+      BWA-Planbausteine liegen unter components/, die Benachrichtigungs-Actions
+      unter server/notifications, die GwG-Prüfhilfen unter
+      server/gwg/check-mutation.ts (von _action-helpers.ts re-exportiert);
+      Wissenskontext, Kontaktpanel und GwG-Strukturpanel erhalten ihre Actions als
+      Props. Eine ESLint-Regel sichert die Schichtgrenzen mit begründeter
+      Allowlist. Nur Modulorte, Props und Importe ändern sich; Prüfungen,
+      Zugriffsregeln, GwG-, BWA- und Benachrichtigungslogik bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/app-layer-imports.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-010
     date: '2026-10-06'
     paths:
@@ -2914,6 +2957,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-011` dokumentiert verschobene UI-Module und
+  die abgesicherten Schichtgrenzen der Web-App. Fachlogik bleibt
+  unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-010` dokumentiert das in Quell-Adapter zerlegte
   Kontrollbuch mit seitenweiser Fristenseite. Fristberechnung und

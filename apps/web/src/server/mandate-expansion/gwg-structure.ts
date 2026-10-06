@@ -3,10 +3,7 @@ import type { TxClient } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 import { ActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
-import {
-  assertGwgEditable,
-  claimCheckMutation,
-} from '@/app/staff/(protected)/clients/[id]/gwg/_action-helpers';
+import { assertGwgEditable, claimCheckMutation } from '@/server/gwg/check-mutation';
 import { evidenceService } from '@/server/container';
 import { loadStructureTx } from './service';
 

@@ -19,7 +19,7 @@ const fixture = vi.hoisted(() => ({
 
 vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: fixture.requireStaffPage }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: fixture.withTenantContext }));
-vi.mock('../actions', () => ({
+vi.mock('@/server/notifications/actions', () => ({
   markNotificationReadAction: vi.fn(),
   markAllNotificationsReadAction: vi.fn(),
   markNotificationReadByIdAction: vi.fn(),

@@ -1,5 +1,6 @@
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { GwgStructurePanel } from '@/server/mandate-expansion/gwg-structure-panel';
+import { bindGwgStructureAction } from '../../../mandate-expansion/structure/gwg-actions';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
@@ -65,7 +66,11 @@ export default async function GwgPage({
 
           {checkHistory.length > 0 && <GwgCheckHistory checkHistory={checkHistory} />}
           {isLegalEntity && !destroyed && <GwgMasterData client={client} check={check} />}
-          <GwgStructurePanel session={session} clientId={clientId} />
+          <GwgStructurePanel
+            session={session}
+            clientId={clientId}
+            bindAction={bindGwgStructureAction}
+          />
           {!destroyed && (
             <>
               {check && (

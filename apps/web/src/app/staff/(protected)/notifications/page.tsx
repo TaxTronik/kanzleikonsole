@@ -1,7 +1,10 @@
 ﻿import { Bell, Check } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { markNotificationReadAction, markAllNotificationsReadAction } from './actions';
+import {
+  markNotificationReadAction,
+  markAllNotificationsReadAction,
+} from '@/server/notifications/actions';
 import { ActionForm } from '@/components/action-form';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { NOTIFICATION_KIND_LABELS } from '@/lib/domain-labels';

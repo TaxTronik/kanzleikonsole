@@ -2,10 +2,10 @@
 
 import { useId, useState, useTransition } from 'react';
 import { Check } from 'lucide-react';
-import { toggleItemDoneAction } from '@/app/staff/(protected)/clients/[id]/workflows/actions';
-import { myDayCompletionError } from './my-day-completion';
+import { type CompletionAction, myDayCompletionError } from './my-day-completion';
 
-export function MyDayToggle({ id }: { id: string }) {
+/** Erledigen-Haken für Workflow-Aufgaben in „Mein Tag“ und im Arbeitskorb. */
+export function MyDayToggle({ id, complete }: { id: string; complete: CompletionAction }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
@@ -15,7 +15,7 @@ export function MyDayToggle({ id }: { id: string }) {
     setDone(true);
     setError(null);
     start(async () => {
-      const nextError = await myDayCompletionError(id, toggleItemDoneAction);
+      const nextError = await myDayCompletionError(id, complete);
       if (nextError) {
         // Optimistische Darstellung bei Server-/Berechtigungsfehlern
         // zurueckrollen; sonst behauptet der Arbeitskorb eine Erledigung, die

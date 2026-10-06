@@ -13,6 +13,12 @@ import { readClientLayout, type ClientBlockKey } from '@/server/settings/client-
 import { CockpitGrid } from './cockpit-grid';
 import { isElsterConfigured } from '@taxtronik/elster';
 import { ClientContactsPanel } from '@/components/client-contacts-panel';
+import {
+  deactivateContactAction,
+  inviteContactAction,
+  rotateIcalTokenAction,
+  updateContactAction,
+} from './contacts/actions';
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { RecordClientVisit } from '@/components/recent-clients';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
@@ -366,6 +372,12 @@ export default async function ClientDetailPage({
             <ClientContactsPanel
               key="contacts"
               clientId={client.id}
+              actions={{
+                invite: inviteContactAction,
+                deactivate: deactivateContactAction,
+                update: updateContactAction,
+                rotateIcalToken: rotateIcalTokenAction,
+              }}
               contacts={client.contacts.map((c) => ({
                 id: c.id,
                 email: c.email,

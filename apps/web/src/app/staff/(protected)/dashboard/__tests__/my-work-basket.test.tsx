@@ -13,7 +13,10 @@ import { MyWorkBasket } from '../widgets/my-work-basket';
 import { renderWidget } from '../widgets';
 import type { RenderCtx } from '../widgets/_shared';
 
-vi.mock('../my-day-toggle', () => ({
+vi.mock('@/app/staff/(protected)/clients/[id]/workflows/actions', () => ({
+  toggleItemDoneAction: vi.fn(),
+}));
+vi.mock('@/components/work/my-day-toggle', () => ({
   MyDayToggle: ({ id }: { id: string }) => <button data-workflow-id={id}>Erledigen</button>,
 }));
 vi.mock('../widgets/list-widgets', () => ({

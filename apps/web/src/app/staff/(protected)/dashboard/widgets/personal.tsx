@@ -24,7 +24,8 @@ import { resourceLabel } from '@/server/audit/labels';
 import { loadMyDayEntries, type MyDayEntry } from '@/server/dashboard/my-day';
 import { NotificationOpenLink } from '@/components/notification-open-link';
 import { BookmarkRemoveButton } from '../bookmark-remove-button';
-import { MyDayToggle } from '../my-day-toggle';
+import { MyDayToggle } from '@/components/work/my-day-toggle';
+import { toggleItemDoneAction } from '../../clients/[id]/workflows/actions';
 import { NotesEditor } from '../notes-editor';
 import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { ListShell, type RenderCtx } from './_shared';
@@ -201,7 +202,9 @@ export async function MyDay({ tx, staffId, clientAccess, modules }: RenderCtx): 
   const today = berlinTodayUtcMidnight();
 
   function leading(entry: MyDayEntry): ReactNode {
-    if (entry.kind === 'workflow') return <MyDayToggle id={entry.id} />;
+    if (entry.kind === 'workflow') {
+      return <MyDayToggle id={entry.id} complete={toggleItemDoneAction} />;
+    }
     const Icon =
       entry.kind === 'reminder'
         ? CalendarClock

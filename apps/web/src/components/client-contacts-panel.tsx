@@ -3,15 +3,24 @@
 import { useActionState, useState, useRef, useTransition } from 'react';
 import { Mail, Phone, UserX, Pencil, Plus, X, CalendarOff } from 'lucide-react';
 import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
-import { ActionForm } from '@/components/action-form';
+import { ActionForm, type FormAction } from '@/components/action-form';
 import { ConfirmModal } from '@/components/ui/modal';
 import type { ActionResult } from '@/server/actions/types';
-import {
-  inviteContactAction,
-  deactivateContactAction,
-  updateContactAction,
-  rotateIcalTokenAction,
-} from '@/app/staff/(protected)/clients/[id]/contacts/actions';
+
+/** Server-Actions der Mandantenroute (clients/[id]/contacts/actions.ts), als Prop übergeben. */
+export interface ContactActions {
+  invite: FormAction;
+  deactivate: FormAction;
+  update: (input: {
+    contactId: string;
+    clientId: string;
+    fullName: string;
+    email: string;
+    phone: string | null;
+    role: string | null;
+  }) => Promise<ActionResult>;
+  rotateIcalToken: (input: { contactId: string; clientId: string }) => Promise<ActionResult>;
+}
 
 interface Contact {
   id: string;
@@ -25,15 +34,16 @@ interface Contact {
 interface Props {
   clientId: string;
   contacts: Contact[];
+  actions: ContactActions;
 }
 
-export function ClientContactsPanel({ clientId, contacts }: Props) {
+export function ClientContactsPanel({ clientId, contacts, actions }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     async (previous, data) => {
-      const result = await inviteContactAction(previous, data);
+      const result = await actions.invite(previous, data);
       if (result.ok) {
         formRef.current?.reset();
         setShowForm(false);
@@ -163,6 +173,7 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
                 key={c.id}
                 contact={c}
                 clientId={clientId}
+                update={actions.update}
                 onDone={() => setEditingId(null)}
               />
             ) : (
@@ -170,6 +181,7 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
                 key={c.id}
                 contact={c}
                 clientId={clientId}
+                actions={actions}
                 onEdit={() => setEditingId(c.id)}
               />
             ),
@@ -183,10 +195,12 @@ export function ClientContactsPanel({ clientId, contacts }: Props) {
 function ContactRow({
   contact,
   clientId,
+  actions,
   onEdit,
 }: {
   contact: Contact;
   clientId: string;
+  actions: Pick<ContactActions, 'deactivate' | 'rotateIcalToken'>;
   onEdit: () => void;
 }) {
   const [confirmRotate, setConfirmRotate] = useState(false);
@@ -233,7 +247,7 @@ function ContactRow({
         >
           <CalendarOff className="h-4 w-4" />
         </button>
-        <ActionForm action={deactivateContactAction} errorDisplay="inline">
+        <ActionForm action={actions.deactivate} errorDisplay="inline">
           <input type="hidden" name="contactId" value={contact.id} />
           <input type="hidden" name="clientId" value={clientId} />
           <button
@@ -252,7 +266,7 @@ function ContactRow({
           confirmLabel="Widerrufen"
           busyLabel="Widerruft…"
           danger
-          onConfirm={() => rotateIcalTokenAction({ contactId: contact.id, clientId })}
+          onConfirm={() => actions.rotateIcalToken({ contactId: contact.id, clientId })}
           onClose={() => setConfirmRotate(false)}
         />
       )}
@@ -263,10 +277,12 @@ function ContactRow({
 function EditRow({
   contact,
   clientId,
+  update,
   onDone,
 }: {
   contact: Contact;
   clientId: string;
+  update: ContactActions['update'];
   onDone: () => void;
 }) {
   const [fullName, setFullName] = useState(contact.fullName);
@@ -279,7 +295,7 @@ function EditRow({
   function save() {
     setResult(null);
     start(async () => {
-      const r = await updateContactAction({
+      const r = await update({
         contactId: contact.id,
         clientId,
         fullName: fullName.trim(),

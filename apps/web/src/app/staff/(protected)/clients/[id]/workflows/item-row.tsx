@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { SkillBadge } from '@/components/skill-badge';
 import { KnowledgeContext } from '@/components/knowledge-context';
+import { loadKnowledgeContextAction } from '../../../knowledge/context/actions';
 import {
   toggleItemDoneAction,
   setItemAssigneeAction,
@@ -84,7 +85,7 @@ interface Props {
 
 function ItemKnowledgeContext({ visible, id }: { visible: boolean; id: string }) {
   if (!visible) return null;
-  return <KnowledgeContext type="ITEM" id={id} />;
+  return <KnowledgeContext type="ITEM" id={id} load={loadKnowledgeContextAction} />;
 }
 
 function ItemCompletionButton({

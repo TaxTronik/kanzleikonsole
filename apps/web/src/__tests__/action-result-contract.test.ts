@@ -91,12 +91,12 @@ const LEGACY_UNMAPPED_VALIDATION_ERRORS: Readonly<Record<string, number>> = {
   'app/staff/(protected)/documents/folder-actions.ts': 5,
   'app/staff/(protected)/forms/actions.ts': 4,
   'app/staff/(protected)/invoices/actions.ts': 1,
-  'app/staff/(protected)/notifications/actions.ts': 1,
   'app/staff/(protected)/phone-notes/actions.ts': 5,
   'app/staff/(protected)/requests/bulk-actions.ts': 1,
   'app/staff/(protected)/service-providers/actions.ts': 1,
   'app/staff/(protected)/time/actions.ts': 1,
   'app/staff/(protected)/workflows/actions.ts': 3,
+  'server/notifications/actions.ts': 1,
 };
 
 /**

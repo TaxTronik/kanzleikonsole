@@ -6,6 +6,7 @@ import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { WorkBasketItemRow, WORK_KIND_LABELS } from '@/components/work-basket-item';
+import { toggleItemDoneAction } from '../clients/[id]/workflows/actions';
 import {
   loadWorkBasket,
   type WorkBasketBucket,
@@ -95,7 +96,11 @@ function WorkBucketSection({
       </div>
       <ul className="divide-y divide-border-subtle">
         {items.map((item) => (
-          <WorkBasketItemRow key={item.key} item={item} />
+          <WorkBasketItemRow
+            key={item.key}
+            item={item}
+            completeWorkflowItem={toggleItemDoneAction}
+          />
         ))}
       </ul>
     </section>
