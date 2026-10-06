@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-027
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx
+    rule_ids:
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      Das Quantenlos-Panel hält seinen Formularzustand (Ziehung, IBM-Token,
+      Recovery) in typisierten, unit-getesteten Reducern mit Bereichs-Hooks
+      (quantenlos-state.ts, quantenlos-hooks.ts, quantenlos-recovery.tsx,
+      quantenlos-ziehungen.tsx). Ziehungssperre, Recovery- und Freigabe-Gates (Job
+      oder Nachweis exklusiv; Freigabe nur mit bestätigter Nichtausführung und
+      Begründung ab 30 Zeichen), Aktionsdaten, Meldungen und Bestätigungen bleiben
+      unverändert (byte-identischer Vergleich von DOM, Aktionsargumenten und
+      Bestätigungen in 8 Szenarien). Die serverseitige Prüfung der Stichprobe ist
+      nicht betroffen. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-state.test.ts
+      - apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-hooks.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-026
     date: '2026-10-06'
     paths:
@@ -3536,6 +3556,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-027` dokumentiert die Reducer des
+  Quantenlos-Panels. Gates und Aktionsdaten bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-026` dokumentiert das View-Model der
   Bescheidliste. Fristen- und Statuslogik bleiben unverändert.

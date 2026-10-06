@@ -34,3 +34,18 @@ export interface SetupStep {
   label: string;
   done: boolean;
 }
+
+/** Formularmodell des Routen-Editors (Speichern über saveN8nEndpointAction). */
+export interface RouteDraft {
+  id: string;
+  name: string;
+  productionUrl: string;
+  testUrl: string;
+  workflowId: string;
+  workflowName: string;
+  workflowNodeId: string;
+  source: 'MANAGED' | 'DISCOVERED' | 'CUSTOM';
+  enabled: boolean;
+  testMode: boolean;
+  events: string[];
+}

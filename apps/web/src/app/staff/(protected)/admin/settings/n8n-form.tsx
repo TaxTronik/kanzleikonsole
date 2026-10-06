@@ -1,51 +1,35 @@
 'use client';
 
 import { ExternalLink, Trash2 } from 'lucide-react';
-import {
-  useActionState,
-  useEffect,
-  useReducer,
-  useState,
-  useTransition,
-  type Dispatch,
-} from 'react';
+import { useActionState, useEffect, useReducer, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { N8nEventCatalogEntry } from '@taxtronik/n8n-shared';
-import type { N8nEndpointView, N8nSetupStatus } from '@/server/n8n/status';
-import { fmtDateTimeShort } from '@/lib/fmt';
+import type { N8nSetupStatus } from '@/server/n8n/status';
 import {
-  acknowledgeN8nDeliveryAction,
-  deleteN8nEndpointAction,
-  discoverN8nWebhooksAction,
   generateSigningSecretAction,
-  importWorkflowsAction,
-  listFailedN8nDeliveriesAction,
-  listWorkflowsAction,
-  replayUnroutedN8nEventAction,
   resetN8nAction,
-  retryN8nDeliveryAction,
-  rotateN8nCallbackCredentialAction,
   saveN8nAction,
-  saveN8nEndpointAction,
-  skipUnroutedN8nEventAction,
   testN8nApiAction,
-  testN8nEndpointAction,
   type ActionResult,
-  type CallbackCredentialResult,
-  type N8nDiscoveredWebhookView,
-  type N8nWorkflowRow,
 } from './n8n-actions';
-import {
-  createN8nConnectionState,
-  n8nConnectionReducer,
-  type N8nConnectionAction,
-  type N8nConnectionState,
-} from './n8n-connection-state';
+import { createN8nConnectionState, n8nConnectionReducer } from './n8n-connection-state';
 import { Stage } from '@/components/stage';
 import { withActiveStep } from '@/components/stepper';
 import { DeliveryOperationsSection } from './delivery-operations-section';
-import { EMPTY_ROUTE, RouteEditorSection, type RouteDraft } from './route-editor-section';
+import { RouteEditorSection } from './route-editor-section';
 import { useConfirmedAction } from './use-confirmed-action';
+import {
+  discoveredRouteCanBeSaved,
+  isExplicitConnectionActive,
+  selectedDiscoveredRouteKey,
+} from './n8n-form-state';
+import {
+  useCopyFeedback,
+  useN8nCallbackCredentials,
+  useN8nDeliveryOperations,
+  useN8nRoutes,
+  useN8nWorkflowSetup,
+} from './n8n-form-hooks';
 import { N8nSetupOverview } from './n8n-setup-overview';
 import { N8nConnectionSection } from './n8n-connection-section';
 import { N8nCallbackCredentialsSection } from './n8n-callback-credentials-section';
@@ -53,6 +37,7 @@ import { N8nWorkflowsSection } from './n8n-workflows-section';
 import type { BundledWorkflowSummary, N8nBrowserConfig } from './n8n-form-types';
 
 export type { N8nBrowserConfig } from './n8n-form-types';
+export { discoveredRouteDraft } from './n8n-form-state';
 
 interface Props {
   initial: N8nBrowserConfig;
@@ -69,60 +54,7 @@ function urlOrigin(value: string): string {
   }
 }
 
-function syncConnectionActivation(
-  dispatch: Dispatch<N8nConnectionAction>,
-  result: ActionResult,
-): void {
-  if (!result.connectionActivated) return;
-  dispatch({
-    type: 'patch',
-    value: { enabled: true, routingMode: 'EXPLICIT' },
-  });
-}
-
-function isExplicitConnectionActive(
-  connection: Pick<N8nConnectionState, 'enabled' | 'routingMode'>,
-): boolean {
-  return connection.enabled && connection.routingMode === 'EXPLICIT';
-}
-
-/** Routenentwurf aus einem erkannten Webhook; Events nur aus dem bekannten Katalog. */
-export function discoveredRouteDraft(
-  item: N8nDiscoveredWebhookView,
-  bundledWorkflows: BundledWorkflowSummary[],
-  events: readonly N8nEventCatalogEntry[],
-): RouteDraft {
-  const managedWorkflow = bundledWorkflows.find((workflow) => workflow.name === item.workflowName);
-  const allowedEvents = new Set<string>(events.map((event) => event.name));
-  const inferredEvents = [...new Set([...(managedWorkflow?.events ?? []), item.path])].filter(
-    (eventName) => allowedEvents.has(eventName),
-  );
-  return {
-    id: '',
-    name: `${item.workflowName} — ${item.nodeName}`.slice(0, 120),
-    productionUrl: item.productionUrl,
-    testUrl: item.testUrl,
-    workflowId: item.workflowId,
-    workflowName: item.workflowName,
-    workflowNodeId: item.nodeId,
-    source: managedWorkflow ? 'MANAGED' : 'DISCOVERED',
-    enabled: item.workflowActive,
-    testMode: false,
-    events: inferredEvents,
-  };
-}
-
-function selectedDiscoveredRouteKey(draft: RouteDraft): string | null {
-  return !draft.id && draft.workflowId && draft.workflowNodeId
-    ? `${draft.workflowId}:${draft.workflowNodeId}`
-    : null;
-}
-
-function discoveredRouteCanBeSaved(draft: RouteDraft): boolean {
-  return Boolean(draft.name && draft.productionUrl && draft.events.length > 0);
-}
-
-/** Derive only the five visible setup stages; action payloads remain in N8nForm. */
+/** Derive only the five visible setup stages; action payloads live in N8nForm and n8n-form-state.ts. */
 function n8nSetupProgress(
   initial: N8nBrowserConfig,
   status: N8nSetupStatus,
@@ -182,45 +114,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     hmacSecret,
     keepHmac,
   } = connection;
-  const [callbackScopes, setCallbackScopes] = useState<string[]>(
-    initial.callbackScopes.length
-      ? initial.callbackScopes
-      : [...new Set(bundledWorkflows.flatMap((workflow) => workflow.callbackScopes))],
-  );
-  const [callbackConfigured, setCallbackConfigured] = useState(initial.callbackConfigured);
-
   const [saveState, saveAction, saving] = useActionState<ActionResult | null, FormData>(
     saveN8nAction,
     null,
   );
   const [busy, startTransition] = useTransition();
   const [apiResult, setApiResult] = useState<ActionResult | null>(null);
-  const [callbackResult, setCallbackResult] = useState<CallbackCredentialResult | null>(null);
-  const [importResult, setImportResult] = useState<ActionResult | null>(null);
-  const [selectedTemplates, setSelectedTemplates] = useState<string[]>(
-    bundledWorkflows.map((workflow) => workflow.templateId),
-  );
-  const [n8nMailFrom, setN8nMailFrom] = useState('');
-  const [gwgOfficerEmail, setGwgOfficerEmail] = useState('');
-  const [workflows, setWorkflows] = useState<N8nWorkflowRow[] | null>(null);
-  const [workflowError, setWorkflowError] = useState<string | null>(null);
-  const [discovered, setDiscovered] = useState<N8nDiscoveredWebhookView[] | null>(null);
-  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-  const [routeDraft, setRouteDraft] = useState<RouteDraft>(EMPTY_ROUTE);
-  const [customEvent, setCustomEvent] = useState('');
-  const [routeResult, setRouteResult] = useState<ActionResult | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, ActionResult>>({});
-  const [retryResult, setRetryResult] = useState<Record<string, ActionResult>>({});
-  const [deliveryOperationResult, setDeliveryOperationResult] = useState<ActionResult | null>(null);
-  const [failedDeliveries, setFailedDeliveries] = useState(status.failedDeliveries);
-  const [failedCursor, setFailedCursor] = useState<string | null>(
-    status.failedDeliveries.at(-1)?.id ?? null,
-  );
-  const [hasMoreFailedDeliveries, setHasMoreFailedDeliveries] = useState(
-    status.hasMoreFailedDeliveries,
-  );
-  const [replayResult, setReplayResult] = useState<Record<string, ActionResult>>({});
-  const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
     if (saveState?.ok) {
@@ -229,22 +128,13 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     }
   }, [router, saveState]);
 
-  useEffect(() => {
-    if (!callbackResult?.credential) return;
-    const timeout = window.setTimeout(() => setCallbackResult(null), 5 * 60_000);
-    return () => window.clearTimeout(timeout);
-  }, [callbackResult]);
-
-  const [previousDeliveryStatus, setPreviousDeliveryStatus] = useState(status);
-  if (
-    previousDeliveryStatus.failedDeliveries !== status.failedDeliveries ||
-    previousDeliveryStatus.hasMoreFailedDeliveries !== status.hasMoreFailedDeliveries
-  ) {
-    setPreviousDeliveryStatus(status);
-    setFailedDeliveries(status.failedDeliveries);
-    setFailedCursor(status.failedDeliveries.at(-1)?.id ?? null);
-    setHasMoreFailedDeliveries(status.hasMoreFailedDeliveries);
-  }
+  // Ein Hook je Stufe; alle teilen die eine Transition (globale Busy-Semantik).
+  const runtime = { startTransition, router };
+  const { copied, copy } = useCopyFeedback();
+  const callback = useN8nCallbackCredentials(initial, bundledWorkflows, runtime);
+  const workflowSetup = useN8nWorkflowSetup(bundledWorkflows, runtime, callback.recordImport);
+  const routes = useN8nRoutes({ bundledWorkflows, events, dispatchConnection }, runtime);
+  const deliveries = useN8nDeliveryOperations(status, runtime);
 
   // Instanzwechsel nur, wenn tatsächlich eine API-URL gespeichert ist: mit
   // leerer gespeicherter URL (urlOrigin('') === '') zählte früher JEDE Eingabe
@@ -256,7 +146,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   const { setupSteps, workflowsReady, verifiedActiveRoutes } = n8nSetupProgress(
     initial,
     status,
-    callbackConfigured,
+    callback.callbackConfigured,
   );
   const stageStates = withActiveStep(setupSteps);
 
@@ -289,248 +179,6 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         dispatchConnection({ type: 'generated-signing-secret', secret: result.secret });
       }
     });
-  }
-
-  const rotateCallback = useConfirmedAction({
-    startTransition,
-    confirmation: callbackConfigured
-      ? 'Das bisherige Callback-Token wird sofort ungültig. Wirklich rotieren?'
-      : null,
-    action: () => rotateN8nCallbackCredentialAction(callbackScopes),
-    onPending: () => setCallbackResult(null),
-    onResult: (result) => {
-      setCallbackResult(result);
-      if (result.ok) {
-        setCallbackConfigured(true);
-        router.refresh();
-      }
-    },
-  });
-
-  function loadWorkflows() {
-    setWorkflowError(null);
-    startTransition(async () => {
-      const result = await listWorkflowsAction();
-      if (result.ok) setWorkflows(result.workflows ?? []);
-      else setWorkflowError(result.error ?? 'Workflow-Liste konnte nicht geladen werden.');
-    });
-  }
-
-  function importWorkflows() {
-    setImportResult(null);
-    startTransition(async () => {
-      const result = await importWorkflowsAction({
-        templateIds: selectedTemplates,
-        smtpFrom: n8nMailFrom,
-        gwgOfficerEmail,
-      });
-      setImportResult(result);
-      if (result.callbackConfigured) setCallbackConfigured(true);
-      if (result.credential) setCallbackResult(result);
-      const list = await listWorkflowsAction();
-      if (list.ok) setWorkflows(list.workflows ?? []);
-      router.refresh();
-    });
-  }
-
-  function discoverWebhooks() {
-    setDiscoveryError(null);
-    startTransition(async () => {
-      const result = await discoverN8nWebhooksAction();
-      if (result.ok) setDiscovered(result.webhooks ?? []);
-      else setDiscoveryError(result.error ?? 'Webhook-Erkennung fehlgeschlagen.');
-    });
-  }
-
-  function editRoute(endpoint: N8nEndpointView) {
-    setRouteDraft({
-      id: endpoint.id,
-      name: endpoint.name,
-      productionUrl: endpoint.productionUrl,
-      testUrl: endpoint.testUrl,
-      workflowId: endpoint.workflowId,
-      workflowName: endpoint.workflowName,
-      workflowNodeId: endpoint.workflowNodeId,
-      source: endpoint.source === 'LEGACY' ? 'CUSTOM' : endpoint.source,
-      enabled: endpoint.enabled,
-      testMode: endpoint.testMode,
-      events: endpoint.events,
-    });
-    setCustomEvent('');
-    setRouteResult(null);
-    // Editor ist ein Modal — öffnet automatisch über draftPrefilled.
-  }
-
-  function selectDiscovered(item: N8nDiscoveredWebhookView) {
-    const draft = discoveredRouteDraft(item, bundledWorkflows, events);
-    setRouteDraft(draft);
-    setCustomEvent('');
-    setRouteResult(null);
-    // Editor-Modal öffnet automatisch über draftPrefilled (bekannte Events
-    // vorausgewählt; unbekannte wählt man dort manuell nach).
-  }
-
-  function persistRouteDraft() {
-    setRouteResult(null);
-    startTransition(async () => {
-      const data = new FormData();
-      for (const [key, value] of Object.entries(routeDraft)) {
-        if (key === 'events' || key === 'enabled' || key === 'testMode') continue;
-        data.set(key, String(value));
-      }
-      if (routeDraft.enabled) data.set('enabled', 'on');
-      if (routeDraft.testMode) data.set('testMode', 'on');
-      for (const eventName of routeDraft.events) data.append('events', eventName);
-      if (customEvent.trim()) data.append('events', customEvent.trim());
-      const result = await saveN8nEndpointAction(null, data);
-      setRouteResult(result);
-      if (result.ok) {
-        syncConnectionActivation(dispatchConnection, result);
-        setRouteDraft(EMPTY_ROUTE);
-        setCustomEvent('');
-        router.refresh();
-      }
-    });
-  }
-
-  function saveRoute(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    persistRouteDraft();
-  }
-
-  // Ein-Klick-Aktivierung/Deaktivierung direkt an der Routen-Karte. Dieselbe
-  // Änderung ist auch über Bearbeiten → Route aktiv → Speichern möglich.
-  function toggleRoute(
-    endpoint: N8nEndpointView,
-    patch: { enabled?: boolean; testMode?: boolean },
-  ) {
-    setRouteResult(null);
-    startTransition(async () => {
-      const data = new FormData();
-      data.set('id', endpoint.id);
-      data.set('name', endpoint.name);
-      data.set('productionUrl', endpoint.productionUrl);
-      data.set('testUrl', endpoint.testUrl);
-      data.set('workflowId', endpoint.workflowId);
-      data.set('workflowName', endpoint.workflowName);
-      data.set('workflowNodeId', endpoint.workflowNodeId);
-      data.set('source', endpoint.source === 'LEGACY' ? 'CUSTOM' : endpoint.source);
-      if (patch.enabled ?? endpoint.enabled) data.set('enabled', 'on');
-      if (patch.testMode ?? endpoint.testMode) data.set('testMode', 'on');
-      for (const eventName of endpoint.events) data.append('events', eventName);
-      const result = await saveN8nEndpointAction(null, data);
-      setTestResult((current) => ({ ...current, [`${endpoint.id}:toggle`]: result }));
-      if (result.ok) {
-        syncConnectionActivation(dispatchConnection, result);
-        router.refresh();
-      }
-    });
-  }
-
-  const deleteRoute = useConfirmedAction({
-    startTransition,
-    confirmation: 'Diese Route und ihre Event-Abonnements entfernen?',
-    action: (endpointId: string) => deleteN8nEndpointAction(endpointId),
-    onResult: (result) => {
-      if (!result.ok) setRouteResult(result);
-      router.refresh();
-    },
-  });
-
-  function testRoute(endpointId: string, useTestUrl: boolean, eventName: string) {
-    const key = `${endpointId}:${useTestUrl ? 'test' : 'prod'}:${eventName}`;
-    setTestResult((current) => ({ ...current, [key]: { ok: true, message: 'Prüfung läuft…' } }));
-    startTransition(async () => {
-      const result = await testN8nEndpointAction(endpointId, useTestUrl, eventName);
-      setTestResult((current) => ({ ...current, [key]: result }));
-      router.refresh();
-    });
-  }
-
-  const retryDelivery = useConfirmedAction({
-    startTransition,
-    confirmation: (_deliveryId: string, targetUrl: string) =>
-      `Zustellung erneut an dieses unveränderte Ziel senden?\n\n${targetUrl}`,
-    action: (deliveryId: string, _targetUrl: string) => retryN8nDeliveryAction(deliveryId),
-    onPending: (deliveryId) =>
-      setRetryResult((current) => ({
-        ...current,
-        [deliveryId]: { ok: true, message: 'Wird eingeplant…' },
-      })),
-    onResult: (result, deliveryId) => {
-      setRetryResult((current) => ({ ...current, [deliveryId]: result }));
-      router.refresh();
-    },
-  });
-
-  const acknowledgeDelivery = useConfirmedAction({
-    startTransition,
-    confirmation:
-      'Diesen Fehler ohne erneuten Versand administrativ abschließen? Die Zustellung wird als übersprungen markiert und die Entscheidung revisionsprotokolliert.',
-    action: (deliveryId: string) => acknowledgeN8nDeliveryAction(deliveryId),
-    onPending: () => setDeliveryOperationResult({ ok: true, message: 'Fehler wird quittiert…' }),
-    onResult: (result) => {
-      setDeliveryOperationResult(result);
-      router.refresh();
-    },
-  });
-
-  function loadMoreFailedDeliveries() {
-    if (!failedCursor) return;
-    setDeliveryOperationResult(null);
-    startTransition(async () => {
-      const result = await listFailedN8nDeliveriesAction(failedCursor);
-      if (!result.ok) {
-        setDeliveryOperationResult(result);
-        return;
-      }
-      const next = result.deliveries ?? [];
-      setFailedDeliveries((current) => {
-        const known = new Set(current.map((delivery) => delivery.id));
-        return [...current, ...next.filter((delivery) => !known.has(delivery.id))];
-      });
-      setFailedCursor(result.nextCursor ?? null);
-      setHasMoreFailedDeliveries(Boolean(result.nextCursor));
-    });
-  }
-
-  const replayUnroutedEvent = useConfirmedAction({
-    startTransition,
-    confirmation: (_eventId: string, eventName: string, occurredAt: string) =>
-      `Das gespeicherte Event „${eventName}“ vom ${fmtDateTimeShort(new Date(occurredAt))} enthält möglicherweise vertrauliche Daten. Jetzt an die aktuell konfigurierten Ziele senden?`,
-    action: (eventId: string, _eventName: string, _occurredAt: string) =>
-      replayUnroutedN8nEventAction(eventId),
-    onPending: (eventId) =>
-      setReplayResult((current) => ({
-        ...current,
-        [eventId]: { ok: true, message: 'Wird den aktuellen Routen zugeordnet…' },
-      })),
-    onResult: (result, eventId) => {
-      setReplayResult((current) => ({ ...current, [eventId]: result }));
-      router.refresh();
-    },
-  });
-
-  const skipUnroutedEvent = useConfirmedAction({
-    startTransition,
-    confirmation: (_eventId: string, eventName: string) =>
-      `Event „${eventName}“ dauerhaft ohne n8n-Versand abschließen? Diese Entscheidung wird protokolliert.`,
-    action: (eventId: string, _eventName: string) => skipUnroutedN8nEventAction(eventId),
-    onPending: (eventId) =>
-      setReplayResult((current) => ({
-        ...current,
-        [eventId]: { ok: true, message: 'Wird abgeschlossen…' },
-      })),
-    onResult: (result, eventId) => {
-      setReplayResult((current) => ({ ...current, [eventId]: result }));
-      router.refresh();
-    },
-  });
-
-  async function copy(label: string, value: string) {
-    await navigator.clipboard.writeText(value);
-    setCopied(label);
-    window.setTimeout(() => setCopied(null), 1_500);
   }
 
   const resetConnection = useConfirmedAction({
@@ -592,7 +240,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         title="Rückkanal n8n → TaxTronik"
         sub="Separates, tenantgebundenes Bearer-Credential mit minimalen Berechtigungen — nicht das Outbound-HMAC-Secret."
         badge={
-          callbackConfigured ? (
+          callback.callbackConfigured ? (
             <span className="badge badge-green">Konfiguriert</span>
           ) : (
             <span className="badge badge-gray">Offen</span>
@@ -602,12 +250,12 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         <N8nCallbackCredentialsSection
           initial={initial}
           callbackBaseUrl={callbackBaseUrl}
-          callbackScopes={callbackScopes}
-          setCallbackScopes={setCallbackScopes}
-          callbackConfigured={callbackConfigured}
-          callbackResult={callbackResult}
-          setCallbackResult={setCallbackResult}
-          rotateCallback={rotateCallback}
+          callbackScopes={callback.callbackScopes}
+          setCallbackScopes={callback.setCallbackScopes}
+          callbackConfigured={callback.callbackConfigured}
+          callbackResult={callback.callbackResult}
+          setCallbackResult={callback.setCallbackResult}
+          rotateCallback={callback.rotateCallback}
           busy={busy}
           saving={saving}
           copied={copied}
@@ -631,25 +279,25 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
         <N8nWorkflowsSection
           initial={initial}
           bundledWorkflows={bundledWorkflows}
-          selectedTemplates={selectedTemplates}
-          setSelectedTemplates={setSelectedTemplates}
-          n8nMailFrom={n8nMailFrom}
-          setN8nMailFrom={setN8nMailFrom}
-          gwgOfficerEmail={gwgOfficerEmail}
-          setGwgOfficerEmail={setGwgOfficerEmail}
-          workflows={workflows}
-          workflowError={workflowError}
-          discovered={discovered}
-          discoveryError={discoveryError}
-          importResult={importResult}
-          importWorkflows={importWorkflows}
-          loadWorkflows={loadWorkflows}
-          discoverWebhooks={discoverWebhooks}
-          selectDiscovered={selectDiscovered}
-          selectedDiscoveredKey={selectedDiscoveredRouteKey(routeDraft)}
-          selectedDiscoveredCanSave={discoveredRouteCanBeSaved(routeDraft)}
-          saveSelectedDiscovered={persistRouteDraft}
-          routeResult={routeResult}
+          selectedTemplates={workflowSetup.selectedTemplates}
+          setSelectedTemplates={workflowSetup.setSelectedTemplates}
+          n8nMailFrom={workflowSetup.n8nMailFrom}
+          setN8nMailFrom={workflowSetup.setN8nMailFrom}
+          gwgOfficerEmail={workflowSetup.gwgOfficerEmail}
+          setGwgOfficerEmail={workflowSetup.setGwgOfficerEmail}
+          workflows={workflowSetup.workflows}
+          workflowError={workflowSetup.workflowError}
+          discovered={workflowSetup.discovered}
+          discoveryError={workflowSetup.discoveryError}
+          importResult={workflowSetup.importResult}
+          importWorkflows={workflowSetup.importWorkflows}
+          loadWorkflows={workflowSetup.loadWorkflows}
+          discoverWebhooks={workflowSetup.discoverWebhooks}
+          selectDiscovered={routes.selectDiscovered}
+          selectedDiscoveredKey={selectedDiscoveredRouteKey(routes.routeDraft)}
+          selectedDiscoveredCanSave={discoveredRouteCanBeSaved(routes.routeDraft)}
+          saveSelectedDiscovered={routes.persistRouteDraft}
+          routeResult={routes.routeResult}
           busy={busy}
           saving={saving}
         />
@@ -672,19 +320,19 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
           endpoints={status.endpoints}
           connectionActive={isExplicitConnectionActive(connection)}
           events={events}
-          routeDraft={routeDraft}
-          setRouteDraft={setRouteDraft}
-          customEvent={customEvent}
-          setCustomEvent={setCustomEvent}
-          routeResult={routeResult}
-          testResult={testResult}
+          routeDraft={routes.routeDraft}
+          setRouteDraft={routes.setRouteDraft}
+          customEvent={routes.customEvent}
+          setCustomEvent={routes.setCustomEvent}
+          routeResult={routes.routeResult}
+          testResult={routes.testResult}
           busy={busy}
           saving={saving}
-          onSaveRoute={saveRoute}
-          onEditRoute={editRoute}
-          onDeleteRoute={deleteRoute}
-          onTestRoute={testRoute}
-          onToggleRoute={toggleRoute}
+          onSaveRoute={routes.saveRoute}
+          onEditRoute={routes.editRoute}
+          onDeleteRoute={routes.deleteRoute}
+          onTestRoute={routes.testRoute}
+          onToggleRoute={routes.toggleRoute}
         />
       </Stage>
 
@@ -703,19 +351,19 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
       >
         <DeliveryOperationsSection
           status={status}
-          failedDeliveries={failedDeliveries}
-          failedCursor={failedCursor}
-          hasMoreFailedDeliveries={hasMoreFailedDeliveries}
-          deliveryOperationResult={deliveryOperationResult}
-          retryResult={retryResult}
-          replayResult={replayResult}
+          failedDeliveries={deliveries.failedDeliveries}
+          failedCursor={deliveries.failedCursor}
+          hasMoreFailedDeliveries={deliveries.hasMoreFailedDeliveries}
+          deliveryOperationResult={deliveries.deliveryOperationResult}
+          retryResult={deliveries.retryResult}
+          replayResult={deliveries.replayResult}
           busy={busy}
           saving={saving}
-          onReplayUnroutedEvent={replayUnroutedEvent}
-          onSkipUnroutedEvent={skipUnroutedEvent}
-          onRetryDelivery={retryDelivery}
-          onAcknowledgeDelivery={acknowledgeDelivery}
-          onLoadMoreFailedDeliveries={loadMoreFailedDeliveries}
+          onReplayUnroutedEvent={deliveries.replayUnroutedEvent}
+          onSkipUnroutedEvent={deliveries.skipUnroutedEvent}
+          onRetryDelivery={deliveries.retryDelivery}
+          onAcknowledgeDelivery={deliveries.acknowledgeDelivery}
+          onLoadMoreFailedDeliveries={deliveries.loadMoreFailedDeliveries}
         />
       </Stage>
       <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">

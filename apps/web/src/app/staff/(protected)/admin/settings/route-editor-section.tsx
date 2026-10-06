@@ -18,34 +18,11 @@ import { requiresSeparateTestWebhook, type N8nEventCatalogEntry } from '@taxtron
 import type { N8nEndpointView } from '@/server/n8n/status';
 import type { ActionResult } from './n8n-actions';
 import { N8nActionResult } from './n8n-form-result';
+import { EMPTY_ROUTE } from './n8n-form-state';
+import type { RouteDraft } from './n8n-form-types';
 
-export interface RouteDraft {
-  id: string;
-  name: string;
-  productionUrl: string;
-  testUrl: string;
-  workflowId: string;
-  workflowName: string;
-  workflowNodeId: string;
-  source: 'MANAGED' | 'DISCOVERED' | 'CUSTOM';
-  enabled: boolean;
-  testMode: boolean;
-  events: string[];
-}
-
-export const EMPTY_ROUTE: RouteDraft = {
-  id: '',
-  name: '',
-  productionUrl: '',
-  testUrl: '',
-  workflowId: '',
-  workflowName: '',
-  workflowNodeId: '',
-  source: 'CUSTOM',
-  enabled: false,
-  testMode: false,
-  events: [],
-};
+export { EMPTY_ROUTE };
+export type { RouteDraft };
 
 interface RouteEditorSectionProps {
   endpoints: N8nEndpointView[];

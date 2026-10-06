@@ -227,6 +227,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- n8n-Einstellungen und Quantenlos-Panel halten ihren Formularzustand in
+  typisierten, unit-getesteten Reducern mit Bereichs-Hooks; Aktionsdaten,
+  Meldungen und Bestätigungen bleiben unverändert (`TCMS-SAMPLE-PROOF-001`,
+  `FK-EXC-20261006-027`).
 - Dokumenten-Explorer und Benachrichtigungsglocke sind nach Aufgaben
   aufgeteilt (Auswahl, Dateioperationen, Navigation, Dialoge, Werkzeugleiste,
   Liste und Kontextmenü bzw. Abfrage, Ton, Hinweis, Dropdown und Quittierung);

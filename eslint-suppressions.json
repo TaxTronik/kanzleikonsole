@@ -39,11 +39,6 @@
       "count": 1
     }
   },
-  "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts": {
     "complexity": {
       "count": 1

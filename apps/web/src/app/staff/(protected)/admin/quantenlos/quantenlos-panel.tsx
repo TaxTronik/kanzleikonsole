@@ -4,48 +4,24 @@
 // Quantenlos-Panel — Rahmen-Vorschau, Ziehen, Abholen (QPU-Queue), Historie
 // mit „Nachweis prüfen" + zentrale IBM-Zugangs-Karte. Reine Anzeige-/
 // Interaktionsschicht; alles Fachliche läuft über die Server-Actions.
+// Zustand: quantenlos-state.ts (reine Reducer), Verdrahtung mit den Actions:
+// quantenlos-hooks.ts, Historie/wartender Job: quantenlos-ziehungen.tsx,
+// Klärung offener Starts: quantenlos-recovery.tsx.
 // =============================================================================
 
-import { useState, useTransition } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import {
-  Dices,
-  ShieldCheck,
-  ShieldAlert,
-  RefreshCw,
-  Hourglass,
-  KeyRound,
-  Trash2,
-  Copy,
-  Check,
-} from 'lucide-react';
+import { Dices, KeyRound, Trash2 } from 'lucide-react';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { ThemeSync } from '@/components/theme-sync';
-import type {
-  LosZiehung,
-  PendingLos,
-  LosPruefErgebnis,
-  LosRahmenTyp,
-  LosStart,
-} from '@/server/risk';
+import type { LosZiehung, PendingLos, LosRahmenTyp, LosStart } from '@/server/risk';
 import type { IbmTokenStatus } from '@/server/settings/quantenlos';
-import {
-  rahmenVorschauAction,
-  losZiehenAction,
-  losAbholenAction,
-  losStartWiederaufnehmenAction,
-  losStartFreigebenAction,
-  losPruefenAction,
-  ibmTokenSpeichernAction,
-  ibmTokenEntfernenAction,
-} from './actions';
-
-type Backend = 'qpu' | 'simulator' | 'csprng';
+import { useIbmToken, useLosZiehung } from './quantenlos-hooks';
+import { LosRecoveryPanel } from './quantenlos-recovery';
+import { tokenSpeicherbar, ziehungGesperrt, type LosBackend } from './quantenlos-state';
+import { LosZiehungenListe, PendingLosCard } from './quantenlos-ziehungen';
 
 // Ehrliche Beschriftung: nur die QPU ist attestierbar; Simulator/CSPRNG sind
 // Test/Fallback und werden im Ergebnis deutlich markiert.
-const BACKENDS: { value: Backend; label: string; hinweis: string }[] = [
+const BACKENDS: { value: LosBackend; label: string; hinweis: string }[] = [
   {
     value: 'qpu',
     label: 'QPU — IBM-Quantenprozessor',
@@ -87,219 +63,6 @@ const RAHMEN_TYPEN: {
   },
 ];
 
-function QuelleBadge({ quelleKlasse }: { quelleKlasse: string }) {
-  if (quelleKlasse === 'qpu') return <span className="badge badge-purple">QPU (attestierbar)</span>;
-  if (quelleKlasse === 'simulator')
-    return <span className="badge badge-yellow">Simulator — Test</span>;
-  return <span className="badge badge-gray">CSPRNG — Fallback</span>;
-}
-
-function RahmenTypBadge({ typ }: { typ: LosRahmenTyp }) {
-  return typ === 'audit' ? (
-    <span className="badge badge-green">Betriebs-Nachschau</span>
-  ) : (
-    <span className="badge badge-gray">Risk-Review</span>
-  );
-}
-
-// Langer kryptografischer Wert (Commitment/Hash/Job-ID) — VOLLSTÄNDIG und
-// kopierbar statt auf 24 Zeichen abgeschnitten. Bisher war der volle Wert nur
-// per Title-Tooltip erreichbar (auf Touch-Geräten gar nicht), was forensische
-// Vergleiche zweier Commitments praktisch unmöglich machte.
-function HashWert({ label, value }: { label: string; value: string }) {
-  const [kopiert, setKopiert] = useState(false);
-  return (
-    <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-wide text-secondary mb-1">{label}</div>
-      <div className="flex items-start gap-1.5">
-        <code className="rounded-md border border-default bg-surface-sunken px-2 py-1 font-mono text-sm leading-relaxed text-primary break-all">
-          {value}
-        </code>
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(value);
-              setKopiert(true);
-              setTimeout(() => setKopiert(false), 1200);
-            } catch {
-              /* Clipboard nicht verfügbar (z. B. unsichere Herkunft) */
-            }
-          }}
-          className="text-disabled hover:text-brand-700 shrink-0 mt-1 dark:hover:text-brand-300"
-          title="Wert kopieren"
-        >
-          {kopiert ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function hasOpenLos(pending: PendingLos | null, reservation: LosStart | null): boolean {
-  return Boolean(pending || reservation);
-}
-
-function LosRecoveryPanel({
-  openStart,
-  onResolved,
-}: {
-  openStart: LosStart | null;
-  onResolved: (result?: import('@/server/risk').LosZiehungErgebnis) => void;
-}) {
-  const router = useRouter();
-  const [busy, start] = useTransition();
-  const [fehler, setFehler] = useState<string | null>(null);
-  const savedJobId =
-    typeof openStart?.engineResponse?.job_id === 'string' ? openStart.engineResponse.job_id : '';
-  const savedProof = openStart?.engineResponse?.nachweis
-    ? JSON.stringify(openStart.engineResponse.nachweis, null, 2)
-    : '';
-  const [recoveryJobId, setRecoveryJobId] = useState('');
-  const [recoveryProof, setRecoveryProof] = useState('');
-  const [releaseReason, setReleaseReason] = useState('');
-  const [confirmedNotExecuted, setConfirmedNotExecuted] = useState(false);
-
-  function recoverStart(release: boolean) {
-    if (!openStart) return;
-    setFehler(null);
-    start(async () => {
-      if (release) {
-        const r = await losStartFreigebenAction({
-          attemptId: openStart.attemptId,
-          reason: releaseReason,
-          confirmedNotExecuted,
-        });
-        if (!r.ok) {
-          setFehler(r.error ?? 'Freigabe fehlgeschlagen.');
-          return;
-        }
-        onResolved();
-      } else {
-        const r = await losStartWiederaufnehmenAction({
-          attemptId: openStart.attemptId,
-          jobId: recoveryJobId,
-          proofJson: recoveryProof,
-        });
-        if (!r.ok || !r.ergebnis) {
-          setFehler(
-            !r.ok
-              ? (r.error ?? 'Wiederaufnahme fehlgeschlagen.')
-              : 'Wiederaufnahme fehlgeschlagen.',
-          );
-          return;
-        }
-        onResolved(r.ergebnis);
-      }
-      router.refresh();
-    });
-  }
-
-  if (!openStart) return null;
-  return (
-    <>
-      <div className="alert-warning space-y-3">
-        <p className="font-medium">
-          Eine Ziehung wird bearbeitet oder ihr Ausgang ist noch ungeklärt.
-        </p>
-        <p className="text-sm">
-          Bitte zuerst den laufenden Aufruf abwarten. Nach einem Abbruch mit dem Betreiber anhand
-          von Zeitpunkt, Rahmen und Versuch prüfen, ob die Engine eine Ziehung angenommen hat. Eine
-          neue Ziehung bleibt bis zur Klärung gesperrt.
-        </p>
-        <details className="text-xs">
-          <summary>Gespeicherter Auftrag für die Betreiberklärung</summary>
-          <pre className="whitespace-pre-wrap break-all">{JSON.stringify(openStart, null, 2)}</pre>
-        </details>
-        {(savedJobId || savedProof) && (
-          <button
-            className="btn-secondary"
-            disabled={busy}
-            onClick={() => {
-              setRecoveryJobId(savedJobId);
-              setRecoveryProof(savedProof);
-            }}
-          >
-            Bereits gespeicherte Engine-Antwort zur Prüfung laden
-          </button>
-        )}
-        <div className="flex flex-wrap gap-2 items-end">
-          <label className="text-sm">
-            Ermittelte Remote-Job-ID
-            <input
-              className="input"
-              value={recoveryJobId}
-              onChange={(e) => setRecoveryJobId(e.target.value)}
-            />
-          </label>
-          <button
-            className="btn-secondary"
-            disabled={busy || !recoveryJobId.trim() || !!recoveryProof.trim()}
-            onClick={() => recoverStart(false)}
-          >
-            Bestehenden Job abholen
-          </button>
-        </div>
-        <details className="text-sm space-y-2">
-          <summary>Bereits fertigen Engine-Nachweis wiederherstellen</summary>
-          <p>
-            Wenn die ursprüngliche Engine-Antwort beim Betreiber vorliegt, deren Objekt „nachweis“
-            einfügen. Der Risk-Layer prüft es gegen den gespeicherten Rahmen; es erfolgt keine neue
-            Ziehung. Eine positive Prüfung belegt allein nicht die Herkunft der Entropie.
-          </p>
-          <label className="block">
-            Gesicherter Nachweis als JSON
-            <textarea
-              className="input"
-              value={recoveryProof}
-              onChange={(e) => setRecoveryProof(e.target.value)}
-            />
-          </label>
-          <button
-            className="btn-secondary"
-            disabled={busy || !recoveryProof.trim() || !!recoveryJobId.trim()}
-            onClick={() => recoverStart(false)}
-          >
-            Nachweis prüfen und übernehmen
-          </button>
-        </details>
-        <details className="text-sm space-y-2">
-          <summary>Bestätigte Nichtausführung dokumentieren</summary>
-          <p>
-            Nur wenn der Betreiber die Nichtausführung bestätigt hat. Ein unbekanntes oder bereits
-            abgeschlossenes Ergebnis rechtfertigt keine neue Ziehung.
-          </p>
-          <label className="block">
-            Nachweis und Begründung
-            <textarea
-              className="input"
-              maxLength={2000}
-              value={releaseReason}
-              onChange={(e) => setReleaseReason(e.target.value)}
-            />
-          </label>
-          <label className="flex gap-2">
-            <input
-              type="checkbox"
-              checked={confirmedNotExecuted}
-              onChange={(e) => setConfirmedNotExecuted(e.target.checked)}
-            />
-            Ich habe geprüft, dass keine Ziehung ausgeführt wurde.
-          </label>
-          <button
-            className="btn-secondary"
-            disabled={busy || !confirmedNotExecuted || releaseReason.trim().length < 30}
-            onClick={() => recoverStart(true)}
-          >
-            Nichtausführung protokollieren und freigeben
-          </button>
-        </details>
-      </div>
-      {fehler && <p className="text-red-600 text-sm">{fehler}</p>}
-    </>
-  );
-}
-
 interface Props {
   initialZeitraum: { von: string; bis: string };
   initialN: number;
@@ -309,534 +72,282 @@ interface Props {
   initialIbmToken: IbmTokenStatus;
 }
 
-export function QuantenlosPanel({
-  initialZeitraum,
-  initialN,
-  initialPending,
-  initialStart,
-  initialZiehungen,
-  initialIbmToken,
-}: Props) {
-  const router = useRouter();
-  const [openStart, setOpenStart] = useState(initialStart);
-  const [von, setVon] = useState(initialZeitraum.von);
-  const [bis, setBis] = useState(initialZeitraum.bis);
-  const [rahmenTyp, setRahmenTyp] = useState<LosRahmenTyp>('subsumtion');
-  const [n, setN] = useState<number | null>(initialN);
-  const [k, setK] = useState(Math.min(3, Math.max(1, initialN)));
-  const [backend, setBackend] = useState<Backend>('qpu');
-  const [pending, setPending] = useState<PendingLos | null>(initialPending);
-  const [ziehungen, setZiehungen] = useState<LosZiehung[]>(initialZiehungen);
-  const [neueste, setNeueste] = useState<string | null>(null);
-  const [fehler, setFehler] = useState<string | null>(null);
-  const [queueHinweis, setQueueHinweis] = useState<string | null>(null);
-  const [pruefErgebnisse, setPruefErgebnisse] = useState<Record<string, LosPruefErgebnis>>({});
-  const [busy, start] = useTransition();
-  const [pruefBusy, setPruefBusy] = useState<string | null>(null);
-
-  // IBM-Zugang (zentrale Config) — der Token selbst bleibt im Eingabefeld,
-  // zurück kommt nur der maskierte Status.
-  const [ibmToken, setIbmToken] = useState<IbmTokenStatus>(initialIbmToken);
-  const [tokenEingabe, setTokenEingabe] = useState('');
-  const [tokenFehler, setTokenFehler] = useState<string | null>(null);
-  const [tokenBusy, startToken] = useTransition();
-
-  const backendInfo = BACKENDS.find((b) => b.value === backend)!;
-  const typInfo = RAHMEN_TYPEN.find((t) => t.value === rahmenTyp)!;
-
-  function aktualisiereVorschau(nextVon: string, nextBis: string, nextTyp: LosRahmenTyp) {
-    setN(null);
-    start(async () => {
-      const r = await rahmenVorschauAction({ von: nextVon, bis: nextBis, rahmenTyp: nextTyp });
-      if (r.ok && r.n !== undefined) setN(r.n);
-      else setFehler(r.ok ? null : (r.error ?? 'Rahmen-Vorschau fehlgeschlagen.'));
-    });
-  }
-
-  function ziehen() {
-    setFehler(null);
-    setQueueHinweis(null);
-    start(async () => {
-      const r = await losZiehenAction({ von, bis, k, backend, rahmenTyp });
-      if (!r.ok || !r.ergebnis) {
-        setFehler(!r.ok ? (r.error ?? 'Ziehung fehlgeschlagen.') : 'Ziehung fehlgeschlagen.');
-        router.refresh();
-        return;
-      }
-      const erg = r.ergebnis;
-      if (erg.status === 'wartet') {
-        setPending(erg.pending);
-        setQueueHinweis('Der QPU-Job ist eingereiht — Ergebnis später über „Abholen" holen.');
-      } else {
-        setZiehungen((z) => [erg.ziehung, ...z]);
-        setNeueste(erg.ziehung.auditId);
-        setPending(null);
-      }
-    });
-  }
-
-  function abholen() {
-    setFehler(null);
-    setQueueHinweis(null);
-    start(async () => {
-      const r = await losAbholenAction();
-      if (!r.ok || !r.ergebnis) {
-        setFehler(!r.ok ? (r.error ?? 'Abholen fehlgeschlagen.') : 'Abholen fehlgeschlagen.');
-        return;
-      }
-      const erg = r.ergebnis;
-      if (erg.status === 'wartet') {
-        setQueueHinweis('Der Job liegt noch in der IBM-Queue — bitte später erneut abholen.');
-      } else {
-        setZiehungen((z) => [erg.ziehung, ...z]);
-        setNeueste(erg.ziehung.auditId);
-        setPending(null);
-      }
-    });
-  }
-
-  function pruefen(ziehung: LosZiehung) {
-    setPruefBusy(ziehung.auditId);
-    start(async () => {
-      // Online-Attestierung nur sinnvoll, wenn ein IBM-Job existiert (QPU).
-      const r = await losPruefenAction({ auditId: ziehung.auditId, online: !!ziehung.jobId });
-      if (r.ok && r.ergebnis) {
-        setPruefErgebnisse((p) => ({ ...p, [ziehung.auditId]: r.ergebnis! }));
-      } else if (!r.ok) {
-        setFehler(r.error ?? 'Prüfung fehlgeschlagen.');
-      }
-      setPruefBusy(null);
-    });
-  }
-
-  function tokenSpeichern() {
-    setTokenFehler(null);
-    startToken(async () => {
-      const r = await ibmTokenSpeichernAction({ token: tokenEingabe });
-      if (r.ok && r.status) {
-        setIbmToken(r.status);
-        setTokenEingabe('');
-      } else if (!r.ok) {
-        setTokenFehler(r.error ?? 'Speichern fehlgeschlagen.');
-      }
-    });
-  }
-
-  function tokenEntfernen() {
-    setTokenFehler(null);
-    startToken(async () => {
-      const r = await ibmTokenEntfernenAction();
-      if (r.ok && r.status) setIbmToken(r.status);
-      else if (!r.ok) setTokenFehler(r.error ?? 'Entfernen fehlgeschlagen.');
-    });
-  }
+export function QuantenlosPanel({ initialIbmToken, ...initial }: Props) {
+  const los = useLosZiehung(initial);
+  const token = useIbmToken(initialIbmToken);
 
   return (
     <div className="space-y-6">
       <ThemeSync />
 
       {/* IBM-Quantum-Zugang — zentrale Config statt Credentials auf der Engine-Maschine */}
-      <div className="card p-5">
-        <h2 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-brand-700" />
-          IBM-Quantum-Zugang
-        </h2>
-        <p className="text-xs text-muted mb-3">
-          Der API-Token (quantum.ibm.com) wird hier AES-256-GCM-verschlüsselt gespeichert und der
-          Engine nur pro Ziehung mitgereicht — sie persistiert und loggt ihn nie. Ohne Token nutzt
-          die Engine ihren Maschinen-Zugang, falls auf dem Engine-Host hinterlegt.
-        </p>
-        <div className="flex items-center gap-3 flex-wrap">
-          {ibmToken.hinterlegt ? (
-            <>
-              <span className="badge badge-green">Token hinterlegt</span>
-              <code className="font-mono text-xs text-secondary">***{ibmToken.suffix ?? ''}</code>
-              {ibmToken.gesetztAm && (
-                <span className="text-xs text-muted">
-                  gesetzt {fmtDateTimeShort(new Date(ibmToken.gesetztAm))}
-                </span>
-              )}
-              <button
-                onClick={tokenEntfernen}
-                disabled={tokenBusy}
-                className="btn-secondary text-xs"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Entfernen
-              </button>
-            </>
-          ) : (
-            <span className="badge badge-gray">Kein Token hinterlegt</span>
-          )}
-        </div>
-        <form
-          autoComplete="off"
-          className="flex items-end gap-2 mt-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            tokenSpeichern();
-          }}
-        >
-          <div className="flex-1 max-w-md">
-            <label className="label" htmlFor="ibm-token">
-              {ibmToken.hinterlegt ? 'Token ersetzen' : 'Token hinterlegen'}
-            </label>
-            <input
-              id="ibm-token"
-              name="ibm-quantum-api-token"
-              type="password"
-              autoComplete="new-password"
-              autoCapitalize="none"
-              spellCheck={false}
-              data-1p-ignore
-              data-lpignore="true"
-              className="input text-xs font-mono"
-              placeholder="IBM-Quantum-API-Token"
-              value={tokenEingabe}
-              onChange={(e) => setTokenEingabe(e.target.value)}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={tokenBusy || tokenEingabe.trim().length < 8}
-            className="btn-primary text-xs"
-          >
-            {tokenBusy ? 'Speichert …' : 'Speichern'}
-          </button>
-        </form>
-        {tokenFehler && (
-          <p className="text-xs text-red-600 dark:text-red-300 mt-2">{tokenFehler}</p>
-        )}
-      </div>
+      <IbmTokenCard {...token} />
 
       {/* Ziehungs-Formular */}
-      <div className="card p-5">
-        <h2 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
-          <Dices className="h-4 w-4 text-brand-700" />
-          Neue Stichprobe ziehen
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div>
-            <label className="label" htmlFor="rahmenTyp">
-              Prüfrahmen
-            </label>
-            <select
-              id="rahmenTyp"
-              className="input text-xs"
-              value={rahmenTyp}
-              onChange={(e) => {
-                const typ = e.target.value as LosRahmenTyp;
-                setRahmenTyp(typ);
-                aktualisiereVorschau(von, bis, typ);
-              }}
-            >
-              {RAHMEN_TYPEN.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="von">
-              Zeitraum von
-            </label>
-            <input
-              id="von"
-              type="date"
-              className="input text-xs"
-              value={von}
-              onChange={(e) => {
-                setVon(e.target.value);
-                aktualisiereVorschau(e.target.value, bis, rahmenTyp);
-              }}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="bis">
-              Zeitraum bis
-            </label>
-            <input
-              id="bis"
-              type="date"
-              className="input text-xs"
-              value={bis}
-              onChange={(e) => {
-                setBis(e.target.value);
-                aktualisiereVorschau(von, e.target.value, rahmenTyp);
-              }}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="k">
-              Stichprobe (k)
-            </label>
-            <input
-              id="k"
-              type="number"
-              min={1}
-              max={n ?? 500}
-              className="input text-xs"
-              value={k}
-              onChange={(e) => setK(Math.max(1, Number(e.target.value) || 1))}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="backend">
-              Zufallsquelle
-            </label>
-            <select
-              id="backend"
-              className="input text-xs"
-              value={backend}
-              onChange={(e) => setBackend(e.target.value as Backend)}
-            >
-              {BACKENDS.map((b) => (
-                <option key={b.value} value={b.value}>
-                  {b.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <p className="text-xs text-muted mt-2">{typInfo.hinweis}</p>
-        <p className="text-xs text-muted mt-1">
-          {backendInfo.hinweis}
-          {backend === 'qpu' && !ibmToken.hinterlegt && (
-            <span className="text-yellow-700 dark:text-yellow-300">
-              {' '}
-              Kein Token hinterlegt — die Ziehung gelingt nur, wenn der Engine-Host eigene
-              IBM-Credentials hat (sonst klare Ablehnung, keine stille Degradation).
-            </span>
-          )}
-        </p>
-
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-xs text-secondary">
-            Rahmen:{' '}
-            {n === null ? (
-              <span className="text-disabled">wird ermittelt …</span>
-            ) : (
-              <>
-                <span className="font-semibold">{n}</span>{' '}
-                {n === 1 ? typInfo.einheit[0] : typInfo.einheit[1]} im Zeitraum — es werden
-                ausschließlich IDs an die Engine übertragen.
-              </>
-            )}
-          </p>
-          <button
-            onClick={ziehen}
-            disabled={
-              busy || hasOpenLos(pending, openStart) || n === null || n === 0 || k > (n ?? 0)
-            }
-            className="btn-primary text-xs"
-            title={pending ? 'Es wartet noch ein QPU-Job — bitte zuerst abholen.' : undefined}
-          >
-            <Dices className="h-4 w-4" />
-            {busy ? 'Zieht …' : 'Stichprobe ziehen'}
-          </button>
-        </div>
-        {fehler && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{fehler}</p>}
-      </div>
+      <LosZiehungForm {...los} ibmTokenHinterlegt={token.ibmToken.hinterlegt} />
 
       {/* Wartender QPU-Job */}
-      <LosRecoveryPanel
-        openStart={openStart}
-        onResolved={(result) => {
-          setOpenStart(null);
-          if (result?.status === 'wartet') setPending(result.pending);
-          else if (result?.status === 'fertig') setZiehungen((z) => [result.ziehung, ...z]);
-        }}
-      />
-      {pending && (
-        <div className="alert-warning">
-          <div className="flex items-start gap-3">
-            <Hourglass className="h-5 w-5 mt-0.5" />
-            <div>
-              <p className="font-medium">QPU-Job wartet in der IBM-Queue</p>
-              <p className="text-xs mt-1">
-                k={pending.k} aus n={pending.rahmen.length} · beantragt{' '}
-                {fmtDateTimeShort(new Date(pending.beantragtAm))}
-              </p>
-              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5">
-                <HashWert label="IBM-Job-ID" value={pending.jobId} />
-                <HashWert label="Commitment" value={pending.commitment} />
-              </div>
-              {queueHinweis && <p className="text-xs mt-1">{queueHinweis}</p>}
-            </div>
-            <button onClick={abholen} disabled={busy} className="btn-secondary text-xs">
-              <RefreshCw className="h-3.5 w-3.5" />
-              {busy ? 'Holt ab …' : 'Abholen'}
-            </button>
-          </div>
-        </div>
+      <LosRecoveryPanel openStart={los.openStart} onResolved={los.startGeklaert} />
+      {los.pending && (
+        <PendingLosCard
+          pending={los.pending}
+          queueHinweis={los.queueHinweis}
+          busy={los.busy}
+          onAbholen={los.abholen}
+        />
       )}
 
       {/* Historie inkl. frischem Ergebnis */}
-      <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-default">
-          <h2 className="text-sm font-semibold text-primary">Ziehungen</h2>
-          <p className="text-xs text-secondary">
-            Jede Ziehung ist als Audit-Event in der Hash-Chain verankert (Aktion{' '}
-            <code className="rounded bg-surface-raised px-1 py-0.5 font-mono text-primary">
-              risk.los.gezogen
-            </code>
-            ).
-          </p>
-        </div>
-        {ziehungen.length === 0 ? (
-          <p className="px-5 py-12 text-sm text-disabled text-center">Noch keine Ziehungen.</p>
+      <LosZiehungenListe
+        ziehungen={los.ziehungen}
+        neueste={los.neueste}
+        pruefErgebnisse={los.pruefErgebnisse}
+        pruefBusy={los.pruefBusy}
+        onPruefen={los.pruefen}
+      />
+    </div>
+  );
+}
+
+// IBM-Zugang (zentrale Config) — der Token selbst bleibt im Eingabefeld,
+// zurück kommt nur der maskierte Status.
+function IbmTokenCard({
+  ibmToken,
+  tokenEingabe,
+  setTokenEingabe,
+  tokenFehler,
+  tokenBusy,
+  tokenSpeichern,
+  tokenEntfernen,
+}: ReturnType<typeof useIbmToken>) {
+  return (
+    <div className="card p-5">
+      <h2 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
+        <KeyRound className="h-4 w-4 text-brand-700" />
+        IBM-Quantum-Zugang
+      </h2>
+      <p className="text-xs text-muted mb-3">
+        Der API-Token (quantum.ibm.com) wird hier AES-256-GCM-verschlüsselt gespeichert und der
+        Engine nur pro Ziehung mitgereicht — sie persistiert und loggt ihn nie. Ohne Token nutzt die
+        Engine ihren Maschinen-Zugang, falls auf dem Engine-Host hinterlegt.
+      </p>
+      <div className="flex items-center gap-3 flex-wrap">
+        {ibmToken.hinterlegt ? (
+          <>
+            <span className="badge badge-green">Token hinterlegt</span>
+            <code className="font-mono text-xs text-secondary">***{ibmToken.suffix ?? ''}</code>
+            {ibmToken.gesetztAm && (
+              <span className="text-xs text-muted">
+                gesetzt {fmtDateTimeShort(new Date(ibmToken.gesetztAm))}
+              </span>
+            )}
+            <button onClick={tokenEntfernen} disabled={tokenBusy} className="btn-secondary text-xs">
+              <Trash2 className="h-3.5 w-3.5" />
+              Entfernen
+            </button>
+          </>
         ) : (
-          <ul className="divide-y divide-border-subtle bg-surface">
-            {ziehungen.map((z) => {
-              const pruef = pruefErgebnisse[z.auditId];
-              return (
-                <li
-                  key={z.auditId}
-                  className={`p-5 bg-surface ${
-                    z.auditId === neueste
-                      ? 'border-l-2 border-brand-600 bg-brand-50/60 dark:border-brand-400 dark:bg-brand-900/35'
-                      : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <QuelleBadge quelleKlasse={z.quelleKlasse} />
-                        <RahmenTypBadge typ={z.rahmenTyp} />
-                        <span className="text-sm font-medium text-primary">
-                          k={z.k} aus n={z.n}
-                        </span>
-                        <span className="text-xs text-secondary">
-                          {fmtDateTimeShort(new Date(z.gezogenAm))}
-                          {z.zeitraum ? ` · Zeitraum ${z.zeitraum.von} – ${z.zeitraum.bis}` : ''}
-                        </span>
-                      </div>
-                      <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 mt-1">
-                        <HashWert label="Commitment" value={z.commitment} />
-                        {z.jobId && <HashWert label="IBM-Job-ID" value={z.jobId} />}
-                        {z.rohCountsSha256 && (
-                          <HashWert label="Roh-Counts (SHA-256)" value={z.rohCountsSha256} />
-                        )}
-                        <div className="min-w-0">
-                          <div className="text-[11px] uppercase tracking-wide text-secondary mb-1">
-                            Extraktor / DRBG
-                          </div>
-                          <div className="inline-flex rounded-md border border-default bg-surface-sunken px-2 py-1 text-sm text-primary">
-                            {z.extraktor} &rarr; {z.drbg}
-                          </div>
-                        </div>
-                      </dl>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <button
-                        onClick={() => pruefen(z)}
-                        disabled={pruefBusy === z.auditId}
-                        className="btn-secondary text-xs"
-                      >
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        {pruefBusy === z.auditId ? 'Prüft …' : 'Nachweis prüfen'}
-                      </button>
-                      {pruef && (
-                        <span
-                          className={`flex items-center gap-1 text-xs ${pruef.gueltig ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}
-                        >
-                          {pruef.gueltig ? (
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                          ) : (
-                            <ShieldAlert className="h-3.5 w-3.5" />
-                          )}
-                          {pruef.gueltig ? 'gültig' : 'UNGÜLTIG'}
-                          {pruef.geprueft.length > 0 && (
-                            <span className="text-secondary">({pruef.geprueft.join(', ')})</span>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Treffer: Subsumtionen (Risk-Review) bzw. Chain-Ereignisse (Nachschau) */}
-                  {z.rahmenTyp === 'audit' ? (
-                    <ul className="mt-3 space-y-1.5">
-                      {z.nachschau.map((e) => (
-                        <li
-                          key={e.auditId}
-                          className="flex items-center gap-2 flex-wrap rounded-md border border-default bg-surface-sunken px-2.5 py-1.5 text-sm"
-                        >
-                          <span className="font-mono text-muted">#{e.auditId}</span>
-                          {e.fehlt ? (
-                            <span
-                              className="badge badge-red"
-                              title="Chain-Einträge sind unlöschbar — ein fehlender Eintrag ist ein Befund."
-                            >
-                              Eintrag fehlt!
-                            </span>
-                          ) : (
-                            <>
-                              <span className="font-medium text-primary">{e.label}</span>
-                              {e.occurredAt && (
-                                <span className="text-secondary">
-                                  {fmtDateTimeShort(new Date(e.occurredAt))}
-                                </span>
-                              )}
-                              {e.resourceType && (
-                                <span className="badge badge-gray">{e.resourceType}</span>
-                              )}
-                              <span className="text-secondary">
-                                {e.actorType === 'STAFF'
-                                  ? 'Staff'
-                                  : e.actorType === 'CLIENT'
-                                    ? 'Mandant'
-                                    : 'System'}
-                              </span>
-                            </>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <ul className="mt-3 space-y-1.5">
-                      {z.stichprobe.map((s) => (
-                        <li
-                          key={s.analysisId}
-                          className="flex items-center gap-2 rounded-md border border-default bg-surface-sunken px-2.5 py-1.5 text-sm"
-                        >
-                          <span className="font-mono text-muted">{s.analysisId.slice(0, 8)}…</span>
-                          {s.clientId && !s.geloescht ? (
-                            <Link
-                              href={`/staff/clients/${s.clientId}/subsumtion/${s.analysisId}`}
-                              className="text-brand-700 hover:underline dark:text-brand-300"
-                            >
-                              {s.titel ?? 'Subsumtion öffnen'}
-                            </Link>
-                          ) : (
-                            <span className="text-primary">{s.titel ?? 'Subsumtion'}</span>
-                          )}
-                          {s.geloescht && <span className="badge badge-red">gelöscht</span>}
-                          {!s.clientId && !s.geloescht && (
-                            <span className="badge badge-gray">ohne Mandantenbezug</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {(z.hinweise.length > 0 || (pruef && pruef.hinweise.length > 0)) && (
-                    <ul className="mt-2 space-y-0.5">
-                      {[...z.hinweise, ...(pruef?.hinweise ?? [])].map((hint, i) => (
-                        <li key={i} className="text-xs text-secondary">
-                          · {hint}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <span className="badge badge-gray">Kein Token hinterlegt</span>
         )}
       </div>
+      <form
+        autoComplete="off"
+        className="flex items-end gap-2 mt-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          tokenSpeichern();
+        }}
+      >
+        <div className="flex-1 max-w-md">
+          <label className="label" htmlFor="ibm-token">
+            {ibmToken.hinterlegt ? 'Token ersetzen' : 'Token hinterlegen'}
+          </label>
+          <input
+            id="ibm-token"
+            name="ibm-quantum-api-token"
+            type="password"
+            autoComplete="new-password"
+            autoCapitalize="none"
+            spellCheck={false}
+            data-1p-ignore
+            data-lpignore="true"
+            className="input text-xs font-mono"
+            placeholder="IBM-Quantum-API-Token"
+            value={tokenEingabe}
+            onChange={(e) => setTokenEingabe(e.target.value)}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={tokenBusy || !tokenSpeicherbar(tokenEingabe)}
+          className="btn-primary text-xs"
+        >
+          {tokenBusy ? 'Speichert …' : 'Speichern'}
+        </button>
+      </form>
+      {tokenFehler && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{tokenFehler}</p>}
+    </div>
+  );
+}
+
+type LosZiehungFormProps = Pick<
+  ReturnType<typeof useLosZiehung>,
+  | 'von'
+  | 'bis'
+  | 'rahmenTyp'
+  | 'n'
+  | 'k'
+  | 'backend'
+  | 'pending'
+  | 'openStart'
+  | 'fehler'
+  | 'busy'
+  | 'setzeRahmenTyp'
+  | 'setzeVon'
+  | 'setzeBis'
+  | 'setzeK'
+  | 'setzeBackend'
+  | 'ziehen'
+> & { ibmTokenHinterlegt: boolean };
+
+function LosZiehungForm({
+  von,
+  bis,
+  rahmenTyp,
+  n,
+  k,
+  backend,
+  pending,
+  openStart,
+  fehler,
+  busy,
+  setzeRahmenTyp,
+  setzeVon,
+  setzeBis,
+  setzeK,
+  setzeBackend,
+  ziehen,
+  ibmTokenHinterlegt,
+}: LosZiehungFormProps) {
+  const backendInfo = BACKENDS.find((b) => b.value === backend)!;
+  const typInfo = RAHMEN_TYPEN.find((t) => t.value === rahmenTyp)!;
+  return (
+    <div className="card p-5">
+      <h2 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
+        <Dices className="h-4 w-4 text-brand-700" />
+        Neue Stichprobe ziehen
+      </h2>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div>
+          <label className="label" htmlFor="rahmenTyp">
+            Prüfrahmen
+          </label>
+          <select
+            id="rahmenTyp"
+            className="input text-xs"
+            value={rahmenTyp}
+            onChange={(e) => setzeRahmenTyp(e.target.value as LosRahmenTyp)}
+          >
+            {RAHMEN_TYPEN.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="von">
+            Zeitraum von
+          </label>
+          <input
+            id="von"
+            type="date"
+            className="input text-xs"
+            value={von}
+            onChange={(e) => setzeVon(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="bis">
+            Zeitraum bis
+          </label>
+          <input
+            id="bis"
+            type="date"
+            className="input text-xs"
+            value={bis}
+            onChange={(e) => setzeBis(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="k">
+            Stichprobe (k)
+          </label>
+          <input
+            id="k"
+            type="number"
+            min={1}
+            max={n ?? 500}
+            className="input text-xs"
+            value={k}
+            onChange={(e) => setzeK(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="backend">
+            Zufallsquelle
+          </label>
+          <select
+            id="backend"
+            className="input text-xs"
+            value={backend}
+            onChange={(e) => setzeBackend(e.target.value as LosBackend)}
+          >
+            {BACKENDS.map((b) => (
+              <option key={b.value} value={b.value}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted mt-2">{typInfo.hinweis}</p>
+      <p className="text-xs text-muted mt-1">
+        {backendInfo.hinweis}
+        {backend === 'qpu' && !ibmTokenHinterlegt && (
+          <span className="text-yellow-700 dark:text-yellow-300">
+            {' '}
+            Kein Token hinterlegt — die Ziehung gelingt nur, wenn der Engine-Host eigene
+            IBM-Credentials hat (sonst klare Ablehnung, keine stille Degradation).
+          </span>
+        )}
+      </p>
+
+      <div className="flex items-center justify-between mt-4">
+        <p className="text-xs text-secondary">
+          Rahmen:{' '}
+          {n === null ? (
+            <span className="text-disabled">wird ermittelt …</span>
+          ) : (
+            <>
+              <span className="font-semibold">{n}</span>{' '}
+              {n === 1 ? typInfo.einheit[0] : typInfo.einheit[1]} im Zeitraum — es werden
+              ausschließlich IDs an die Engine übertragen.
+            </>
+          )}
+        </p>
+        <button
+          onClick={ziehen}
+          disabled={busy || ziehungGesperrt({ pending, openStart, n, k })}
+          className="btn-primary text-xs"
+          title={pending ? 'Es wartet noch ein QPU-Job — bitte zuerst abholen.' : undefined}
+        >
+          <Dices className="h-4 w-4" />
+          {busy ? 'Zieht …' : 'Stichprobe ziehen'}
+        </button>
+      </div>
+      {fehler && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{fehler}</p>}
     </div>
   );
 }
