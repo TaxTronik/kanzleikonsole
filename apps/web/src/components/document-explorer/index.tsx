@@ -5,10 +5,11 @@
 //
 // Aufgeteilt aus einer 1547-Zeilen-Datei — rein mechanisch:
 //   index.tsx         Weiche browser/embedded + öffentliche Typen
-//   types.ts          ManagedDoc, BrowserProps, EmbeddedProps
+//   types.ts          BrowserProps, EmbeddedProps (DTO ManagedDoc: server/documents)
 //   ops.tsx           useDocumentOps + geteilte Dialoge/Badges beider Varianten
 //   browser-view.tsx  /staff/documents (URL-getrieben, Explorer-Stil)
-//   embedded-view.tsx Mandanten-Tab + Aktenregal (lokal gefiltert, Tabelle)
+//   embedded-view.tsx Mandanten-Tab (serverseitig gefiltert) + Aktenregal
+//   delete-dialog.tsx Gemeinsamer Lösch-Dialog (mit Grund) beider Varianten
 // =============================================================================
 
 import { useDocumentOps, SharedDialogs } from './ops';

@@ -1,4 +1,5 @@
 import { fmtDateMedium } from '@/lib/fmt';
+import type { ManagedDoc } from '@/server/documents/managed-docs';
 export { fmtBytes } from '@/lib/fmt';
 import {
   Building2,
@@ -16,22 +17,16 @@ export interface Crumb {
   href: string;
 }
 
+/** Datei-Einträge tragen das gemeinsame Dokument-DTO (server/documents/managed-docs). */
 export type Entry =
   | { kind: 'nav'; id: string; name: string; href: string; icon: 'kind' | 'internal' | 'client' }
   | { kind: 'folder'; id: string; name: string; href: string; icon: 'folder' }
-  | {
-      kind: 'file';
-      id: string;
-      name: string;
-      mimeType: string;
-      typeName: string;
-      typeId: string | null;
-      tier: 'NONE' | 'GWG' | 'GOBD';
-      sizeBytes: number;
-      createdAt: string;
-      deletedAt: string | null;
-      shared: boolean;
-    };
+  | ({ kind: 'file' } & ManagedDoc);
+
+/** Anzeigename eines Eintrags (Dateien: Dokumenttitel). */
+export function entryLabel(entry: Entry): string {
+  return entry.kind === 'file' ? entry.title : entry.name;
+}
 
 export interface FolderNode {
   id: string;

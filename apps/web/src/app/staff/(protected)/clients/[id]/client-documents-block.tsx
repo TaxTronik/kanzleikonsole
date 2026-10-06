@@ -3,35 +3,54 @@ import { Archive } from 'lucide-react';
 import type { TenantContext } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 import { DocumentExplorer } from '@/components/document-explorer';
-import { loadClientDocumentsPage } from './_data';
+import { loadClientDocumentsPage, type ClientDocumentsQuery } from './_data';
 
 interface ClientDocumentsBlockProps {
   ctx: TenantContext;
   session: StaffSession;
   client: { id: string; name: string; allowActive: boolean };
-  page: number;
-  deleted: boolean;
+  query: ClientDocumentsQuery;
 }
 
-export function clientDocumentsPageHref(clientId: string, page: number, deleted: boolean): string {
+/** Suchbegriff der Dokumentliste in der URL (siehe parseClientDocumentsSearch). */
+export const CLIENT_DOCUMENTS_SEARCH_PARAM = 'docsQ';
+
+export function clientDocumentsPageHref(clientId: string, query: ClientDocumentsQuery): string {
   const params = new URLSearchParams();
-  if (deleted) params.set('docsDeleted', '1');
-  if (page > 1) params.set('docsPage', String(page));
-  const query = params.toString();
-  return `/staff/clients/${clientId}${query ? `?${query}` : ''}#documents`;
+  if (query.deleted) params.set('docsDeleted', '1');
+  if (query.folder !== 'all') params.set('docsFolder', query.folder);
+  if (query.q) params.set(CLIENT_DOCUMENTS_SEARCH_PARAM, query.q);
+  if (query.page > 1) params.set('docsPage', String(query.page));
+  const search = params.toString();
+  return `/staff/clients/${clientId}${search ? `?${search}` : ''}#documents`;
 }
 
 export async function ClientDocumentsBlock({
   ctx,
   session,
   client,
-  page: requestedPage,
-  deleted,
+  query,
 }: ClientDocumentsBlockProps) {
-  const data = await loadClientDocumentsPage(ctx, session, client.id, requestedPage, deleted);
+  const data = await loadClientDocumentsPage(ctx, session, client.id, query);
   if (!data) return null;
   const hasPrevious = data.page > 1;
   const hasNext = data.page < data.totalPages;
+  // Effektiver Zustand (unbekannte Ordner fallen auf „Alle“ zurück).
+  const current: ClientDocumentsQuery = {
+    page: data.page,
+    deleted: data.deleted,
+    folder: data.folder,
+    q: data.q,
+  };
+  const hrefFor = (change: Partial<ClientDocumentsQuery>) =>
+    clientDocumentsPageHref(client.id, { ...current, page: 1, ...change });
+  const folderHrefs: Record<string, string> = {
+    all: hrefFor({ folder: 'all' }),
+    none: hrefFor({ folder: 'none' }),
+    ...Object.fromEntries(
+      data.folders.map((folder) => [folder.id, hrefFor({ folder: folder.id })]),
+    ),
+  };
 
   return (
     <section id="documents" aria-labelledby="client-documents-heading">
@@ -62,8 +81,8 @@ export async function ClientDocumentsBlock({
           {data.totalCount === 0
             ? 'Keine Dokumente vorhanden.'
             : `${data.from.toLocaleString('de-DE')}–${data.to.toLocaleString('de-DE')} von ${data.totalCount.toLocaleString('de-DE')} ${data.deleted ? 'gelöschten' : 'aktiven'} Dokumenten`}
+          {(data.folder !== 'all' || data.q) && ' in der aktuellen Auswahl'}
         </span>
-        {data.totalPages > 1 && <span>Ordner und Suche filtern die aktuell angezeigte Seite.</span>}
       </div>
 
       <DocumentExplorer
@@ -75,8 +94,16 @@ export async function ClientDocumentsBlock({
         documents={data.documents}
         serverDeleted={{
           showDeleted: data.deleted,
-          activeHref: clientDocumentsPageHref(client.id, 1, false),
-          deletedHref: clientDocumentsPageHref(client.id, 1, true),
+          activeHref: hrefFor({ deleted: false }),
+          deletedHref: hrefFor({ deleted: true }),
+        }}
+        serverFilter={{
+          folder: data.folder,
+          q: data.q,
+          counts: data.folderCounts,
+          folderHrefs,
+          searchHref: hrefFor({ q: '' }),
+          searchParam: CLIENT_DOCUMENTS_SEARCH_PARAM,
         }}
       />
 
@@ -84,7 +111,7 @@ export async function ClientDocumentsBlock({
         <nav className="mt-3 flex items-center justify-between gap-3" aria-label="Dokumentseiten">
           {hasPrevious ? (
             <Link
-              href={clientDocumentsPageHref(client.id, data.page - 1, data.deleted)}
+              href={clientDocumentsPageHref(client.id, { ...current, page: data.page - 1 })}
               scroll={false}
               className="btn-secondary text-xs"
             >
@@ -100,7 +127,7 @@ export async function ClientDocumentsBlock({
           </span>
           {hasNext ? (
             <Link
-              href={clientDocumentsPageHref(client.id, data.page + 1, data.deleted)}
+              href={clientDocumentsPageHref(client.id, { ...current, page: data.page + 1 })}
               scroll={false}
               className="btn-secondary text-xs"
             >

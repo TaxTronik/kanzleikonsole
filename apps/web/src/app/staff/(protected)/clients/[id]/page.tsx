@@ -20,7 +20,10 @@ import {
   loadClientCockpitBlocks,
   loadClientCockpitHeader,
   parseClientDocumentsDeleted,
+  parseClientDocumentsFolder,
   parseClientDocumentsPage,
+  parseClientDocumentsSearch,
+  type ClientDocumentsQuery,
 } from './_data';
 import { ClientDocumentsBlock, ClientDocumentsSkeleton } from './client-documents-block';
 import {
@@ -69,6 +72,8 @@ function formatCustomValue(type: string, value: unknown): ReactNode {
 interface ClientDetailSearchParams {
   docsPage?: string | string[];
   docsDeleted?: string | string[];
+  docsFolder?: string | string[];
+  docsQ?: string | string[];
 }
 
 export default async function ClientDetailPage({
@@ -82,8 +87,14 @@ export default async function ClientDetailPage({
   const session = await requireClientPageAccess(id);
   const now = new Date();
 
-  const documentsPage = parseClientDocumentsPage(search.docsPage);
-  const documentsDeleted = parseClientDocumentsDeleted(search.docsDeleted);
+  // Dokumentliste: Seite, Gelöscht-Ansicht, Ordner und Suche aus der URL —
+  // gefiltert wird serverseitig über alle Dokumente des Mandanten.
+  const documentsQuery: ClientDocumentsQuery = {
+    page: parseClientDocumentsPage(search.docsPage),
+    deleted: parseClientDocumentsDeleted(search.docsDeleted),
+    folder: parseClientDocumentsFolder(search.docsFolder),
+    q: parseClientDocumentsSearch(search.docsQ),
+  };
   const { tenantId, staffId } = session.user;
   const settingsCtx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
 
@@ -475,15 +486,14 @@ export default async function ClientDetailPage({
           ),
           documents: (
             <Suspense
-              key={`client-documents-${documentsPage}-${documentsDeleted ? 'deleted' : 'active'}`}
+              key={`client-documents-${JSON.stringify(documentsQuery)}`}
               fallback={<ClientDocumentsSkeleton />}
             >
               <ClientDocumentsBlock
                 ctx={settingsCtx}
                 session={session}
                 client={{ id: client.id, name: client.name, allowActive: client.allowActive }}
-                page={documentsPage}
-                deleted={documentsDeleted}
+                query={documentsQuery}
               />
             </Suspense>
           ),

@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { setDocumentFolderAction } from '@/app/staff/(protected)/documents/folder-actions';
-import {
-  retagDocumentAction,
-  softDeleteDocumentAction,
-} from '@/app/staff/(protected)/documents/actions';
+import { retagDocumentAction } from '@/app/staff/(protected)/documents/actions';
 import { Modal } from '@/components/ui/modal';
 import { FolderTreePicker } from '@/components/folder-tree-picker';
 import { descendants, runChunked, type FolderNode } from '@/components/document-browser-utils';
@@ -278,73 +275,6 @@ export function MoveTargetDialog({
         </button>
         <button type="button" onClick={() => onPick(target)} className="btn-primary flex-1">
           Hierher verschieben
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-// ===========================================================================
-// DeleteDocModal — Soft-Delete MIT optionalem Grund + GoBD/GwG-Aufklärung
-// (Einsatz im Embedded-Modus des DocumentExplorer).
-// ===========================================================================
-export function DeleteDocModal({
-  doc,
-  onClose,
-  onDone,
-}: {
-  doc: { id: string; title: string; classification: string };
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [reason, setReason] = useState('');
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, start] = useTransition();
-  const gobd = doc.classification.startsWith('GOBD_');
-  const gwg = doc.classification === 'GWG_EVIDENCE';
-  return (
-    <Modal title="Dokument löschen" onClose={onClose}>
-      <h2 className="text-lg font-semibold text-primary mb-2">Dokument löschen</h2>
-      <p className="text-sm text-secondary mb-3">„{doc.title}" wird aus den Listen ausgeblendet.</p>
-      <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 mb-4">
-        Die Datei wird hier nur aus den Listen ausgeblendet.
-        {gobd
-          ? ' Der COMPLIANCE-Lock bewahrt sie bis zum hinterlegten Fristende auf.'
-          : gwg
-            ? ' Die endgültige GwG-Vernichtung erfolgt ausschließlich über die Fristenprüfung.'
-            : ' Dieser Vorgang entfernt die gespeicherten Bytes nicht.'}{' '}
-        Protokolliert im Audit-Log, wiederherstellbar.
-      </div>
-      <textarea
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        rows={2}
-        maxLength={500}
-        className="input mb-3"
-        placeholder="Grund (optional)"
-      />
-      {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mb-3">{err}</div>}
-      <div className="flex gap-2">
-        <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
-          Abbrechen
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            start(async () => {
-              setErr(null);
-              const r = await softDeleteDocumentAction({
-                documentId: doc.id,
-                reason: reason.trim() || undefined,
-              });
-              if (r.ok) onDone();
-              else setErr(r.error ?? 'Fehler.');
-            })
-          }
-          className="btn-primary flex-1 !bg-red-600 hover:!bg-red-700"
-        >
-          {busy ? 'Löscht…' : 'Löschen'}
         </button>
       </div>
     </Modal>

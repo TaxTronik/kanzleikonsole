@@ -26,10 +26,16 @@ describe('Mandanten-Cockpit Datenaufteilung', () => {
     expect(data).toContain('export const CLIENT_DOCUMENTS_PAGE_SIZE = 50');
     expect(data).toContain('totalCount');
     expect(data).toContain('take: CLIENT_DOCUMENTS_PAGE_SIZE');
-    expect(data).toContain('deletedAt: deleted ? { not: null } : null');
+    expect(data).toContain('deletedAt: query.deleted ? { not: null } : null');
     expect(block).toContain('von ${data.totalCount.toLocaleString');
-    expect(block).toContain('clientDocumentsPageHref(client.id, data.page + 1, data.deleted)');
-    expect(block).toContain('deletedHref: clientDocumentsPageHref(client.id, 1, true)');
+    expect(block).toContain(
+      'clientDocumentsPageHref(client.id, { ...current, page: data.page + 1 })',
+    );
+    expect(block).toContain('deletedHref: hrefFor({ deleted: true })');
+    // Ordner und Suche filtern serverseitig über alle Dokumente (URL-Parameter).
+    expect(block).toContain('loadClientDocumentsPage(ctx, session, client.id, query)');
+    expect(block).toContain('serverFilter={{');
+    expect(block).not.toContain('filtern die aktuell angezeigte Seite');
     expect(block).toContain('← Zurück');
     expect(block).toContain('Weiter →');
   });

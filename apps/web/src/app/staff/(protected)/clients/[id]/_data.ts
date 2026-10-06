@@ -2,11 +2,15 @@ import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik
 import type { StaffSession } from '@/server/auth/staff';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { MANAGED_DOC_SELECT, toManagedDoc } from '@/server/documents/managed-docs';
+import { descendants } from '@/components/document-browser-utils';
+import { buildFolderDocumentCounts } from '@/components/document-explorer-performance';
+import { isUuid } from '@/lib/uuid';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 import type { ModuleConfig } from '@/server/settings/modules';
 
 export const CLIENT_REQUESTS_CAP = 50;
 export const CLIENT_DOCUMENTS_PAGE_SIZE = 50;
+export const CLIENT_DOCUMENTS_SEARCH_MAX = 200;
 
 // =============================================================================
 // Mandanten-Cockpit in drei Transaktionen (Review-Befund P-07):
@@ -282,12 +286,38 @@ export function parseClientDocumentsDeleted(value: string | string[] | undefined
   return raw === '1';
 }
 
+/** URL-Zustand der Dokumentliste im Mandanten-Tab. */
+export interface ClientDocumentsQuery {
+  page: number;
+  deleted: boolean;
+  /** 'all' | 'none' (ohne Ordner) | Ordner-ID (inkl. Unterordner) */
+  folder: string;
+  /** Titelsuche (Teilstring, ohne Groß-/Kleinschreibung) */
+  q: string;
+}
+
+export function parseClientDocumentsFolder(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === 'none') return 'none';
+  return raw && isUuid(raw) ? raw : 'all';
+}
+
+export function parseClientDocumentsSearch(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return (raw ?? '').trim().slice(0, CLIENT_DOCUMENTS_SEARCH_MAX);
+}
+
+/**
+ * Eine Seite der Mandanten-Dokumente. Ordner und Suche filtern serverseitig
+ * über ALLE Dokumente des Mandanten (nicht nur die geladene Seite); Zählung und
+ * Blättern laufen über die gefilterte Menge. Die Ordnerzähler gelten für alle
+ * Dokumente des Aktiv-/Gelöscht-Zustands.
+ */
 export async function loadClientDocumentsPage(
   ctx: TenantContext,
   session: StaffSession,
   clientId: string,
-  requestedPage: number,
-  deleted: boolean,
+  query: ClientDocumentsQuery,
 ) {
   return withTenantContext(ctx, async (tx) => {
     const accessWhere = await accessibleClientsWhereFor(tx, session);
@@ -298,17 +328,21 @@ export async function loadClientDocumentsPage(
     if (!accessibleClient) return null;
 
     const baseWhere = { tenantId: ctx.tenantId, clientId };
-    const documentWhere = {
+    const stateWhere = {
       ...baseWhere,
-      deletedAt: deleted ? { not: null } : null,
+      deletedAt: query.deleted ? { not: null } : null,
     };
-    const [folders, totalCount, datevDocument] = await Promise.all([
+    const [folders, perFolder, datevDocument] = await Promise.all([
       tx.documentFolder.findMany({
         where: baseWhere,
         select: { id: true, name: true, parentId: true },
         orderBy: { name: 'asc' },
       }),
-      tx.document.count({ where: documentWhere }),
+      tx.document.groupBy({
+        by: ['folderId'],
+        where: stateWhere,
+        _count: { _all: true },
+      }),
       tx.document.findFirst({
         where: {
           ...baseWhere,
@@ -319,9 +353,26 @@ export async function loadClientDocumentsPage(
       }),
     ]);
 
+    // Unbekannte oder fremde Ordner-IDs fallen auf „Alle“ zurück.
+    const folder =
+      query.folder === 'none' || folders.some((candidate) => candidate.id === query.folder)
+        ? query.folder
+        : 'all';
+    const q = query.q.trim().slice(0, CLIENT_DOCUMENTS_SEARCH_MAX);
+    const documentWhere = {
+      ...stateWhere,
+      ...(folder === 'none'
+        ? { folderId: null }
+        : folder !== 'all'
+          ? { folderId: { in: [...descendants(folders, folder)] } }
+          : {}),
+      ...(q ? { title: { contains: q, mode: 'insensitive' as const } } : {}),
+    };
+    const totalCount = await tx.document.count({ where: documentWhere });
+
     const totalPages = Math.max(1, Math.ceil(totalCount / CLIENT_DOCUMENTS_PAGE_SIZE));
     const normalizedRequestedPage =
-      Number.isSafeInteger(requestedPage) && requestedPage >= 1 ? requestedPage : 1;
+      Number.isSafeInteger(query.page) && query.page >= 1 ? query.page : 1;
     const page = Math.min(normalizedRequestedPage, totalPages);
     const skip = (page - 1) * CLIENT_DOCUMENTS_PAGE_SIZE;
     const rows = await tx.document.findMany({
@@ -332,6 +383,10 @@ export async function loadClientDocumentsPage(
       select: MANAGED_DOC_SELECT,
     });
 
+    const counts = buildFolderDocumentCounts(
+      folders,
+      perFolder.map((row) => ({ folderId: row.folderId, count: row._count._all })),
+    );
     return {
       folders,
       documents: rows.map(toManagedDoc),
@@ -341,7 +396,14 @@ export async function loadClientDocumentsPage(
       from: totalCount === 0 ? 0 : skip + 1,
       to: skip + rows.length,
       hasDatevDocuments: datevDocument !== null,
-      deleted,
+      deleted: query.deleted,
+      folder,
+      q,
+      folderCounts: {
+        all: perFolder.reduce((sum, row) => sum + row._count._all, 0),
+        none: counts.withoutFolder,
+        byId: Object.fromEntries(counts.byId),
+      },
     };
   });
 }

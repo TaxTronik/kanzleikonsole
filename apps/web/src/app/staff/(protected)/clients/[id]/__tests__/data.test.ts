@@ -18,7 +18,7 @@ const h = vi.hoisted(() => {
     clientHandover: { findMany: vi.fn() },
     request: { findMany: vi.fn() },
     documentFolder: { findMany: vi.fn() },
-    document: { count: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
+    document: { count: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() },
   };
   const readRequestCreationOptionsTx = vi.fn();
   const accessibleClientsWhereFor = vi.fn();
@@ -46,7 +46,10 @@ import {
   loadClientCockpitHeader,
   loadClientDocumentsPage,
   parseClientDocumentsDeleted,
+  parseClientDocumentsFolder,
   parseClientDocumentsPage,
+  parseClientDocumentsSearch,
+  type ClientDocumentsQuery,
   type CockpitModules,
 } from '../_data';
 
@@ -61,6 +64,7 @@ function managedDocumentRow(id: string) {
   return {
     id,
     title: `Dokument ${id}`,
+    mimeType: 'application/pdf',
     classification: 'GENERAL',
     documentTypeId: null,
     documentType: null,
@@ -252,19 +256,24 @@ describe('loadClientCockpitBlocks', () => {
   });
 });
 
+function query(overrides: Partial<ClientDocumentsQuery> = {}): ClientDocumentsQuery {
+  return { page: 1, deleted: false, folder: 'all', q: '', ...overrides };
+}
+
 describe('loadClientDocumentsPage', () => {
   it('begrenzt den Payload auf 50 und liefert Count sowie Seitennavigation', async () => {
     h.tx.client.findFirst.mockResolvedValue({ id: 'client-1' });
     h.tx.documentFolder.findMany.mockResolvedValue([
       { id: 'folder-1', name: 'Belege', parentId: null },
     ]);
+    h.tx.document.groupBy.mockResolvedValue([{ folderId: null, _count: { _all: 123 } }]);
     h.tx.document.count.mockResolvedValue(123);
     h.tx.document.findFirst.mockResolvedValue({ id: 'datev-1' });
     h.tx.document.findMany.mockResolvedValue(
       Array.from({ length: 23 }, (_, index) => managedDocumentRow(`doc-${index + 101}`)),
     );
 
-    const result = await loadClientDocumentsPage(ctx, session, 'client-1', 3, false);
+    const result = await loadClientDocumentsPage(ctx, session, 'client-1', query({ page: 3 }));
 
     expect(h.tx.document.findMany).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', clientId: 'client-1', deletedAt: null },
@@ -288,11 +297,17 @@ describe('loadClientDocumentsPage', () => {
   it('klemmt manipulierte Seitenwerte an die letzte vorhandene Seite', async () => {
     h.tx.client.findFirst.mockResolvedValue({ id: 'client-1' });
     h.tx.documentFolder.findMany.mockResolvedValue([]);
+    h.tx.document.groupBy.mockResolvedValue([{ folderId: null, _count: { _all: 51 } }]);
     h.tx.document.count.mockResolvedValue(51);
     h.tx.document.findFirst.mockResolvedValue(null);
     h.tx.document.findMany.mockResolvedValue([managedDocumentRow('doc-51')]);
 
-    const result = await loadClientDocumentsPage(ctx, session, 'client-1', 999, true);
+    const result = await loadClientDocumentsPage(
+      ctx,
+      session,
+      'client-1',
+      query({ page: 999, deleted: true }),
+    );
 
     expect(result?.page).toBe(2);
     expect(h.tx.document.findMany).toHaveBeenCalledWith(
@@ -311,12 +326,140 @@ describe('loadClientDocumentsPage', () => {
   it('führt bei verweigertem Zugriff keine Dokumentabfragen aus', async () => {
     h.tx.client.findFirst.mockResolvedValue(null);
 
-    const result = await loadClientDocumentsPage(ctx, session, 'client-restricted', 1, false);
+    const result = await loadClientDocumentsPage(ctx, session, 'client-restricted', query());
 
     expect(result).toBeNull();
     expect(h.tx.document.count).not.toHaveBeenCalled();
     expect(h.tx.document.findMany).not.toHaveBeenCalled();
+    expect(h.tx.document.groupBy).not.toHaveBeenCalled();
     expect(h.tx.documentFolder.findMany).not.toHaveBeenCalled();
+  });
+
+  describe('Ordner und Suche filtern serverseitig über alle Dokumente', () => {
+    const FOLDERS = [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'Belege', parentId: null },
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        name: '2026',
+        parentId: '11111111-1111-4111-8111-111111111111',
+      },
+      { id: '33333333-3333-4333-8333-333333333333', name: 'Verträge', parentId: null },
+    ];
+    const [BELEGE, BELEGE_2026, VERTRAEGE] = FOLDERS.map((folder) => folder.id) as [
+      string,
+      string,
+      string,
+    ];
+
+    function prepare(total: number) {
+      h.tx.client.findFirst.mockResolvedValue({ id: 'client-1' });
+      h.tx.documentFolder.findMany.mockResolvedValue(FOLDERS);
+      h.tx.document.groupBy.mockResolvedValue([
+        { folderId: null, _count: { _all: 40 } },
+        { folderId: BELEGE, _count: { _all: 30 } },
+        { folderId: BELEGE_2026, _count: { _all: 70 } },
+        { folderId: VERTRAEGE, _count: { _all: 5 } },
+      ]);
+      h.tx.document.count.mockResolvedValue(total);
+      h.tx.document.findFirst.mockResolvedValue(null);
+      h.tx.document.findMany.mockResolvedValue([managedDocumentRow('doc-1')]);
+    }
+
+    it('schränkt Count und Seite auf den Ordner samt Unterordnern ein', async () => {
+      prepare(100);
+
+      const result = await loadClientDocumentsPage(
+        ctx,
+        session,
+        'client-1',
+        query({ folder: BELEGE, page: 2 }),
+      );
+
+      const where = {
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        deletedAt: null,
+        folderId: { in: [BELEGE, BELEGE_2026] },
+      };
+      expect(h.tx.document.count).toHaveBeenCalledWith({ where });
+      expect(h.tx.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where, skip: 50, take: CLIENT_DOCUMENTS_PAGE_SIZE }),
+      );
+      expect(result).toMatchObject({ folder: BELEGE, totalCount: 100, totalPages: 2, page: 2 });
+    });
+
+    it('filtert „ohne Ordner“ und die Titelsuche über den ganzen Bestand', async () => {
+      prepare(3);
+
+      const result = await loadClientDocumentsPage(
+        ctx,
+        session,
+        'client-1',
+        query({ folder: 'none', q: '  Rechnung  ', deleted: true }),
+      );
+
+      const where = {
+        tenantId: 'tenant-1',
+        clientId: 'client-1',
+        deletedAt: { not: null },
+        folderId: null,
+        title: { contains: 'Rechnung', mode: 'insensitive' },
+      };
+      expect(h.tx.document.count).toHaveBeenCalledWith({ where });
+      expect(h.tx.document.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+      expect(result).toMatchObject({ folder: 'none', q: 'Rechnung', deleted: true });
+    });
+
+    it('behandelt fremde Ordner-IDs wie „Alle“', async () => {
+      prepare(145);
+
+      const result = await loadClientDocumentsPage(
+        ctx,
+        session,
+        'client-1',
+        query({ folder: '44444444-4444-4444-8444-444444444444' }),
+      );
+
+      expect(h.tx.document.count).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', clientId: 'client-1', deletedAt: null },
+      });
+      expect(result?.folder).toBe('all');
+    });
+
+    it('zählt Ordner über alle Dokumente des Zustands (inkl. Unterordner), nicht über die Seite', async () => {
+      prepare(145);
+
+      const result = await loadClientDocumentsPage(ctx, session, 'client-1', query({ q: 'x' }));
+
+      expect(h.tx.document.groupBy).toHaveBeenCalledWith({
+        by: ['folderId'],
+        where: { tenantId: 'tenant-1', clientId: 'client-1', deletedAt: null },
+        _count: { _all: true },
+      });
+      expect(result?.folderCounts).toEqual({
+        all: 145,
+        none: 40,
+        byId: { [BELEGE]: 100, [BELEGE_2026]: 70, [VERTRAEGE]: 5 },
+      });
+      expect(result?.documents[0]).toMatchObject({ id: 'doc-1', mimeType: 'application/pdf' });
+    });
+  });
+});
+
+describe('parseClientDocumentsFolder / parseClientDocumentsSearch', () => {
+  it('akzeptiert nur „none“ oder eine UUID als Ordner', () => {
+    expect(parseClientDocumentsFolder(undefined)).toBe('all');
+    expect(parseClientDocumentsFolder('none')).toBe('none');
+    expect(parseClientDocumentsFolder('../etc')).toBe('all');
+    expect(parseClientDocumentsFolder(['11111111-1111-4111-8111-111111111111', 'x'])).toBe(
+      '11111111-1111-4111-8111-111111111111',
+    );
+  });
+
+  it('kürzt und begrenzt den Suchbegriff', () => {
+    expect(parseClientDocumentsSearch(undefined)).toBe('');
+    expect(parseClientDocumentsSearch('  Beleg  ')).toBe('Beleg');
+    expect(parseClientDocumentsSearch('x'.repeat(500))).toHaveLength(200);
   });
 });
 

@@ -5,13 +5,14 @@
 //
 // Aufgeteilt aus einer 1547-Zeilen-Datei — rein mechanisch:
 //   index.tsx         Weiche browser/embedded + öffentliche Typen
-//   types.ts          ManagedDoc, BrowserProps, EmbeddedProps
+//   types.ts          BrowserProps, EmbeddedProps (DTO ManagedDoc: server/documents)
 //   ops.tsx           useDocumentOps + geteilte Dialoge/Badges beider Varianten
 //   browser-view.tsx  /staff/documents (URL-getrieben, Explorer-Stil)
-//   embedded-view.tsx Mandanten-Tab + Aktenregal (lokal gefiltert, Tabelle)
+//   embedded-view.tsx Mandanten-Tab (serverseitig gefiltert) + Aktenregal
+//   delete-dialog.tsx Gemeinsamer Lösch-Dialog (mit Grund) beider Varianten
 // =============================================================================
 
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState, type SubmitEvent } from 'react';
 import Link from 'next/link';
 import {
   Folder,
@@ -28,7 +29,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { DocumentUploadButton } from '@/components/document-upload-button';
-import { DeleteDocModal, MoveDialog } from '@/components/document-dialogs';
+import { MoveDialog } from '@/components/document-dialogs';
 import { FolderTreePicker } from '@/components/folder-tree-picker';
 import { deleteFolderAction } from '@/app/staff/(protected)/documents/folder-actions';
 import {
@@ -40,12 +41,43 @@ import {
 import { buildFolderDocumentCounts } from '@/components/document-explorer-performance';
 import { DOCUMENT_CLASSIFICATION_LABELS } from '@/lib/domain-labels';
 
+import { DeleteDocumentsDialog } from './delete-dialog';
 import { OpErrorBanner, ShareBadge, TruncationHint, type DocumentOps } from './ops';
-import type { EmbeddedProps, ManagedDoc } from './types';
+import type { EmbeddedProps, EmbeddedServerFilter, ManagedDoc } from './types';
 
 // ---------------------------------------------------------------------------
-// Variante „embedded" — Mandanten-Tab + Aktenregal (lokal gefiltert, Tabelle)
+// Variante „embedded" — Mandanten-Tab (Ordner/Suche serverseitig über alle
+// Dokumente, URL-getrieben) + Aktenregal (vollständige Liste, lokal gefiltert)
 // ---------------------------------------------------------------------------
+
+type FolderSelection = string | 'all' | 'none';
+
+/** Ordner-/Suchfilter der lokal vollständig geladenen Liste (Aktenregal). */
+function filterLocally(
+  base: ManagedDoc[],
+  folders: FolderNode[],
+  sel: FolderSelection,
+  query: string,
+): ManagedDoc[] {
+  let list =
+    sel === 'all'
+      ? base
+      : sel === 'none'
+        ? base.filter((d) => !d.folderId)
+        : (() => {
+            const ids = descendants(folders, sel);
+            return base.filter((d) => d.folderId && ids.has(d.folderId));
+          })();
+  const needle = query.trim().toLowerCase();
+  if (needle) list = list.filter((d) => d.title.toLowerCase().includes(needle));
+  return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function searchTarget(filter: EmbeddedServerFilter, query: string): string {
+  const url = new URL(filter.searchHref, window.location.origin);
+  if (query.trim()) url.searchParams.set(filter.searchParam, query.trim());
+  return url.pathname + url.search + url.hash;
+}
 
 export function EmbeddedView({
   clientId,
@@ -57,14 +89,31 @@ export function EmbeddedView({
   truncated,
   totalCount,
   serverDeleted,
+  serverFilter,
   ops,
 }: Omit<EmbeddedProps, 'variant'> & { ops: DocumentOps }) {
   const { router, busy } = ops;
-  const [sel, setSel] = useState<string | 'all' | 'none'>('all');
-  const [q, setQ] = useState('');
+  const [localSel, setLocalSel] = useState<FolderSelection>('all');
+  const sel: FolderSelection = serverFilter?.folder ?? localSel;
+  const [q, setQ] = useState(serverFilter?.q ?? '');
   const deferredQ = useDeferredValue(q);
   const [moveDoc, setMoveDoc] = useState<ManagedDoc | null>(null);
   const [confirmDelDoc, setConfirmDelDoc] = useState<ManagedDoc | null>(null);
+
+  // Mandanten-Tab: Auswahl und Suche laufen über die URL; der Server filtert
+  // über ALLE Dokumente und blättert danach. Aktenregal: lokale Auswahl.
+  function setSel(next: FolderSelection) {
+    if (!serverFilter) {
+      setLocalSel(next);
+      return;
+    }
+    const href = serverFilter.folderHrefs[next];
+    if (href) router.push(href, { scroll: false });
+  }
+  function submitSearch(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (serverFilter) router.push(searchTarget(serverFilter, q), { scroll: false });
+  }
 
   const { active, deleted } = useMemo(() => {
     const nextActive: ManagedDoc[] = [];
@@ -79,33 +128,32 @@ export function EmbeddedView({
   const countDocuments = showDeleted ? deleted : active;
 
   // Ein Durchlauf statt eines Full-Scans je Ordnerzeile. Dokumente eines
-  // Unterordners zaehlen dabei wie bisher auch fuer alle Vorfahren.
+  // Unterordners zaehlen dabei wie bisher auch fuer alle Vorfahren. Im
+  // Mandanten-Tab liefert der Server die Zahlen über den gesamten Bereich.
   const folderCounts = useMemo(
     () => buildFolderDocumentCounts(folders, countDocuments),
     [countDocuments, folders],
   );
 
-  const countIn = (fid: string | 'all' | 'none'): number => {
+  const countIn = (fid: FolderSelection): number => {
+    if (serverFilter) {
+      if (fid === 'all') return serverFilter.counts.all;
+      if (fid === 'none') return serverFilter.counts.none;
+      return serverFilter.counts.byId[fid] ?? 0;
+    }
     if (fid === 'all') return countDocuments.length;
     if (fid === 'none') return folderCounts.withoutFolder;
     return folderCounts.byId.get(fid) ?? 0;
   };
 
-  const shown = useMemo(() => {
-    const base = showDeleted ? deleted : active;
-    let list =
-      sel === 'all'
-        ? base
-        : sel === 'none'
-          ? base.filter((d) => !d.folderId)
-          : (() => {
-              const ids = descendants(folders, sel);
-              return base.filter((d) => d.folderId && ids.has(d.folderId));
-            })();
-    const needle = deferredQ.trim().toLowerCase();
-    if (needle) list = list.filter((d) => d.title.toLowerCase().includes(needle));
-    return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [showDeleted, deleted, active, sel, folders, deferredQ]);
+  const shown = useMemo(
+    () =>
+      // Serverseitig gefiltert, sortiert und geblättert: unverändert anzeigen.
+      serverFilter
+        ? countDocuments
+        : filterLocally(showDeleted ? deleted : active, folders, sel, deferredQ),
+    [serverFilter, countDocuments, showDeleted, deleted, active, folders, sel, deferredQ],
+  );
 
   function deleteFolder(f: FolderNode) {
     ops.setConfirmState({
@@ -203,7 +251,7 @@ export function EmbeddedView({
         >
           <FileText className="h-4 w-4" />
           <span className="flex-1 text-left">Alle</span>
-          <span className="text-xs text-disabled">{countDocuments.length || ''}</span>
+          <span className="text-xs text-disabled">{countIn('all') || ''}</span>
         </button>
         <button
           type="button"
@@ -238,15 +286,17 @@ export function EmbeddedView({
       {/* ---- Dokumentenliste ---- */}
       <div>
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <div className="relative flex-1 min-w-[200px]">
+          <form role="search" onSubmit={submitSearch} className="relative flex-1 min-w-[200px]">
             <Search className="h-4 w-4 text-disabled absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="In Auswahl suchen…"
+              aria-label="Dokumente in der Auswahl suchen"
+              maxLength={200}
               className="input pl-9"
             />
-          </div>
+          </form>
           {serverDeleted ? (
             <Link
               href={showDeleted ? serverDeleted.activeHref : serverDeleted.deletedHref}
@@ -428,8 +478,8 @@ export function EmbeddedView({
       </div>
 
       {confirmDelDoc && (
-        <DeleteDocModal
-          doc={confirmDelDoc}
+        <DeleteDocumentsDialog
+          docs={[confirmDelDoc]}
           onClose={() => setConfirmDelDoc(null)}
           onDone={() => {
             setConfirmDelDoc(null);

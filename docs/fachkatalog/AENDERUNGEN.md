@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-006
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/_data.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/documents/page.tsx
+      - apps/web/src/server/documents/__tests__/managed-docs.test.ts
+      - apps/web/src/server/documents/managed-docs.ts
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - REMINDER-TICKET-001
+    reason: >-
+      Dokumentenverwaltung, Mandanten-Tab und Subsumtionsablage nutzen ein
+      gemeinsames DTO und eine gemeinsame Stufenzuordnung aus
+      server/documents/managed-docs.ts. loadClientDocumentsPage filtert Ordner
+      (mit Unterordnern) und Titelsuche serverseitig über alle Dokumente des
+      zugriffsgeprüften Mandanten statt nur über die geladene Seite; Zähler und
+      Blättern folgen der Auswahl. Ein gemeinsamer Löschdialog fragt in beiden
+      Ansichten nach einem optionalen Grund und zeigt die GoBD-/GwG-Hinweise.
+      Zugriffsprüfungen, das Audit-Ereignis document.delete und die
+      Wiedervorlagen-Abfrage bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/documents/__tests__/managed-docs.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-005
     date: '2026-10-06'
     paths:
@@ -2773,6 +2797,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-006` dokumentiert das gemeinsame Dokument-DTO,
+  serverseitige Ordner- und Suchfilter und den gemeinsamen Löschdialog.
+  Zugriffsprüfung und Audit bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-005` dokumentiert die gemeinsame
   Modul-Registry und die Modulprüfung je Seite. Fachabläufe und

@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Dokumente im Mandanten-Tab: Ordnerauswahl und Suche filtern serverseitig
+  über alle Dokumente des Mandanten statt nur über die angezeigte Seite;
+  Zähler und Blättern beziehen sich auf die Auswahl, die Suche startet mit
+  Enter. Löschen in der Dokumentenverwaltung fragt wie im Mandanten-Tab nach
+  einem optionalen Grund und zeigt die GoBD-/GwG-Aufbewahrungshinweise, auch
+  bei Mehrfachauswahl (`ACCESS-SEARCH-SCOPE-001`, `FK-EXC-20261006-006`).
 - Die Dokumentvorschau erkennt den Dateityp über die ersten 1 KB
   (Range-Request), statt die ganze Datei zu laden; Downloads werden ohne
   zusätzliche Pufferkopie ausgeliefert.

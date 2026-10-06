@@ -5,6 +5,8 @@ interface FolderRef {
 
 interface DocumentFolderRef {
   folderId: string | null;
+  /** Anzahl Dokumente dieser Zeile (z. B. aus groupBy); Standard 1. */
+  count?: number;
 }
 
 export interface FolderDocumentCounts {
@@ -22,15 +24,16 @@ export function buildFolderDocumentCounts(
   let withoutFolder = 0;
 
   for (const document of documents) {
+    const count = document.count ?? 1;
     if (!document.folderId) {
-      withoutFolder += 1;
+      withoutFolder += count;
       continue;
     }
     let folderId: string | null = document.folderId;
     const visited = new Set<string>();
     while (folderId && !visited.has(folderId)) {
       visited.add(folderId);
-      byId.set(folderId, (byId.get(folderId) ?? 0) + 1);
+      byId.set(folderId, (byId.get(folderId) ?? 0) + count);
       folderId = parentById.get(folderId) ?? null;
     }
   }

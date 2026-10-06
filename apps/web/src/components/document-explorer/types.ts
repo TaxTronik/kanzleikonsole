@@ -4,30 +4,17 @@
 //
 // Aufgeteilt aus einer 1547-Zeilen-Datei — rein mechanisch:
 //   index.tsx         Weiche browser/embedded + öffentliche Typen
-//   types.ts          ManagedDoc, BrowserProps, EmbeddedProps
+//   types.ts          BrowserProps, EmbeddedProps (DTO ManagedDoc: server/documents)
 //   ops.tsx           useDocumentOps + geteilte Dialoge/Badges beider Varianten
 //   browser-view.tsx  /staff/documents (URL-getrieben, Explorer-Stil)
-//   embedded-view.tsx Mandanten-Tab + Aktenregal (lokal gefiltert, Tabelle)
+//   embedded-view.tsx Mandanten-Tab (serverseitig gefiltert) + Aktenregal
+//   delete-dialog.tsx Gemeinsamer Lösch-Dialog (mit Grund) beider Varianten
 // =============================================================================
 
 import type { Crumb, Entry, FolderNode } from '@/components/document-browser-utils';
+import type { ManagedDoc } from '@/server/documents/managed-docs';
 
-export type { Crumb, Entry, FolderNode };
-
-/** Dokument-Zeile für den Embedded-Modus (siehe toManagedDoc in managed-docs). */
-export interface ManagedDoc {
-  id: string;
-  title: string;
-  classification: string;
-  typeName: string;
-  typeId: string | null;
-  tier: 'NONE' | 'GWG' | 'GOBD';
-  sizeBytes: number;
-  createdAt: string;
-  folderId: string | null;
-  deletedAt: string | null;
-  shared: boolean;
-}
+export type { Crumb, Entry, FolderNode, ManagedDoc };
 
 export interface BrowserProps {
   variant: 'browser';
@@ -61,4 +48,23 @@ export interface EmbeddedProps {
     activeHref: string;
     deletedHref: string;
   };
+  /**
+   * Serverseitige Ordner-/Suchfilterung über ALLE Dokumente des Bereichs (statt
+   * nur über die geladene Seite). Ohne diesen Block filtert die Ansicht lokal
+   * (Aktenregal: vollständige, ungeblätterte Liste).
+   */
+  serverFilter?: EmbeddedServerFilter;
+}
+
+export interface EmbeddedServerFilter {
+  /** 'all' | 'none' | Ordner-ID */
+  folder: string;
+  q: string;
+  /** Dokumente je Ordner inkl. Unterordnern über den gesamten Bereich. */
+  counts: { all: number; none: number; byId: Record<string, number> };
+  /** Ziel je Ordnerauswahl ('all' | 'none' | Ordner-ID), jeweils Seite 1. */
+  folderHrefs: Record<string, string>;
+  /** Ziel der Suche ohne Suchbegriff; `searchParam` trägt den Begriff. */
+  searchHref: string;
+  searchParam: string;
 }

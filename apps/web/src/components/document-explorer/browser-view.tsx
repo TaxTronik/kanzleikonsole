@@ -5,10 +5,11 @@
 //
 // Aufgeteilt aus einer 1547-Zeilen-Datei — rein mechanisch:
 //   index.tsx         Weiche browser/embedded + öffentliche Typen
-//   types.ts          ManagedDoc, BrowserProps, EmbeddedProps
+//   types.ts          BrowserProps, EmbeddedProps (DTO ManagedDoc: server/documents)
 //   ops.tsx           useDocumentOps + geteilte Dialoge/Badges beider Varianten
 //   browser-view.tsx  /staff/documents (URL-getrieben, Explorer-Stil)
-//   embedded-view.tsx Mandanten-Tab + Aktenregal (lokal gefiltert, Tabelle)
+//   embedded-view.tsx Mandanten-Tab (serverseitig gefiltert) + Aktenregal
+//   delete-dialog.tsx Gemeinsamer Lösch-Dialog (mit Grund) beider Varianten
 // =============================================================================
 
 import { useMemo, useState, useEffect, type SubmitEvent } from 'react';
@@ -31,10 +32,7 @@ import {
 } from 'lucide-react';
 import { DocumentUploadButton } from '@/components/document-upload-button';
 import { MoveTargetDialog } from '@/components/document-dialogs';
-import {
-  softDeleteDocumentAction,
-  setDocumentShareAction,
-} from '@/app/staff/(protected)/documents/actions';
+import { setDocumentShareAction } from '@/app/staff/(protected)/documents/actions';
 import {
   deleteFolderAction,
   moveFolderAction,
@@ -43,6 +41,7 @@ import {
 import {
   TIER_BADGE,
   descendants,
+  entryLabel,
   fileIcon,
   fmtBytes,
   fmtDate,
@@ -51,6 +50,7 @@ import {
   type Entry,
 } from '@/components/document-browser-utils';
 
+import { DeleteDocumentsDialog, type DeletableDocument } from './delete-dialog';
 import { OpErrorBanner, ShareBadge, TruncationHint, type DocumentOps } from './ops';
 import type { BrowserProps } from './types';
 
@@ -59,6 +59,7 @@ import type { BrowserProps } from './types';
 // ---------------------------------------------------------------------------
 
 type Sel = { kind: 'file' | 'folder'; id: string };
+type FileEntry = Extract<Entry, { kind: 'file' }>;
 
 export function BrowserView({
   crumbs,
@@ -80,6 +81,7 @@ export function BrowserView({
   const [ctx, setCtx] = useState<{ x: number; y: number; e: Entry } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | 'root' | null>(null);
   const [osDrag, setOsDrag] = useState(false);
+  const [deleteDocs, setDeleteDocs] = useState<DeletableDocument[] | null>(null);
 
   useEffect(() => {
     const close = () => setCtx(null);
@@ -164,20 +166,12 @@ export function BrowserView({
     }
   }
 
-  function softDelete(id: string, name: string) {
-    ops.setConfirmState({
-      title: 'Dokument löschen',
-      message: `„${name}" löschen?\nDie Datei bleibt revisionssicher aufbewahrt (Object-Lock), wird nur ausgeblendet.`,
-      confirmLabel: 'Löschen',
-      busyLabel: 'Löscht…',
-      danger: true,
-      action: async () => {
-        const r = await softDeleteDocumentAction({ documentId: id });
-        if (r.ok) router.refresh();
-        return r;
-      },
-    });
+  // Gemeinsamer Lösch-Dialog (mit Grund) — einzeln wie für die Auswahl.
+  function softDelete(files: FileEntry[]) {
+    if (files.length > 0) setDeleteDocs(files);
   }
+  const selectedFiles = (): FileEntry[] =>
+    entries.filter((e): e is FileEntry => e.kind === 'file' && isSel('file', e.id));
   // Bulk-Freigabe/-Entzug: begrenzt parallel, Fehler gesammelt anzeigen.
   function bulkShare(share: boolean) {
     const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
@@ -383,27 +377,7 @@ export function BrowserView({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => {
-                  const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
-                  ops.setConfirmState({
-                    title: 'Dokumente löschen',
-                    message: `${ids.length} Dokument(e) löschen? Bleiben revisionssicher aufbewahrt, nur ausgeblendet.`,
-                    confirmLabel: 'Löschen',
-                    busyLabel: 'Löscht…',
-                    danger: true,
-                    action: async () => {
-                      const errs = await runChunked(ids, async (id) => {
-                        const r = await softDeleteDocumentAction({ documentId: id });
-                        return r.ok ? null : (r.error ?? 'Fehler');
-                      });
-                      clearSel();
-                      router.refresh();
-                      return errs.length
-                        ? { ok: false, error: [...new Set(errs)].join('\n') }
-                        : { ok: true };
-                    },
-                  });
-                }}
+                onClick={() => softDelete(selectedFiles())}
                 className="btn-secondary text-xs py-1.5 !text-red-600"
               >
                 <Trash2 className="h-4 w-4" /> Löschen
@@ -572,7 +546,7 @@ export function BrowserView({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => ops.setPreviewDoc({ id: e.id, name: e.name })}
+                    onClick={() => ops.setPreviewDoc({ id: e.id, name: e.title })}
                     className="flex items-center gap-3 flex-1 min-w-0 text-left"
                     title="Vorschau öffnen"
                   >
@@ -580,7 +554,7 @@ export function BrowserView({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-primary truncate hover:underline">
-                          {e.name}
+                          {e.title}
                         </span>
                         {e.tier !== 'NONE' && (
                           <span
@@ -648,7 +622,7 @@ export function BrowserView({
                           onClick={() =>
                             ops.setRetag({
                               ids: [e.id],
-                              title: e.name,
+                              title: e.title,
                               tier: e.tier,
                               typeId: e.typeId,
                             })
@@ -672,7 +646,7 @@ export function BrowserView({
                           type="button"
                           title="Löschen"
                           disabled={busy}
-                          onClick={() => softDelete(e.id, e.name)}
+                          onClick={() => softDelete([e])}
                           className="text-disabled hover:text-red-600 p-1.5"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -702,7 +676,7 @@ export function BrowserView({
       {ctx && (
         <div
           role="group"
-          aria-label={`Aktionen für ${ctx.e.name}`}
+          aria-label={`Aktionen für ${entryLabel(ctx.e)}`}
           className="fixed z-[120] w-48 card py-1 text-sm shadow-lg"
           style={{ top: ctx.y, left: ctx.x }}
         >
@@ -725,7 +699,7 @@ export function BrowserView({
                 icon={Pencil}
                 label="Umbenennen"
                 onClick={() => {
-                  ops.setRenameTarget({ id: ctx.e.id, name: ctx.e.name });
+                  ops.setRenameTarget({ id: ctx.e.id, name: entryLabel(ctx.e) });
                   setCtx(null);
                 }}
               />
@@ -742,7 +716,7 @@ export function BrowserView({
                 label="Löschen"
                 danger
                 onClick={() => {
-                  deleteFolder(ctx.e.id, ctx.e.name);
+                  deleteFolder(ctx.e.id, entryLabel(ctx.e));
                   setCtx(null);
                 }}
               />
@@ -777,8 +751,8 @@ export function BrowserView({
                     icon={Tag}
                     label="Typ ändern"
                     onClick={() => {
-                      const f = ctx.e as Extract<Entry, { kind: 'file' }>;
-                      ops.setRetag({ ids: [f.id], title: f.name, tier: f.tier, typeId: f.typeId });
+                      const f = ctx.e as FileEntry;
+                      ops.setRetag({ ids: [f.id], title: f.title, tier: f.tier, typeId: f.typeId });
                       setCtx(null);
                     }}
                   />
@@ -787,7 +761,7 @@ export function BrowserView({
                     label="Löschen"
                     danger
                     onClick={() => {
-                      softDelete(ctx.e.id, ctx.e.name);
+                      softDelete([ctx.e as FileEntry]);
                       setCtx(null);
                     }}
                   />
@@ -808,6 +782,18 @@ export function BrowserView({
         </div>
       )}
 
+      {deleteDocs && (
+        <DeleteDocumentsDialog
+          docs={deleteDocs}
+          onClose={() => setDeleteDocs(null)}
+          onDone={() => {
+            setDeleteDocs(null);
+            clearSel();
+            router.refresh();
+          }}
+          onChanged={() => router.refresh()}
+        />
+      )}
       {moveOpen && (
         <MoveTargetDialog
           folders={folders}

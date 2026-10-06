@@ -18,6 +18,24 @@ describe('DocumentExplorer-Ordnerzaehler', () => {
     expect(counts.withoutFolder).toBe(1);
   });
 
+  it('nimmt serverseitig gruppierte Zaehlungen (groupBy) als Gewicht', () => {
+    const counts = buildFolderDocumentCounts(
+      [
+        { id: 'root', parentId: null },
+        { id: 'child', parentId: 'root' },
+      ],
+      [
+        { folderId: 'root', count: 3 },
+        { folderId: 'child', count: 70 },
+        { folderId: null, count: 40 },
+      ],
+    );
+
+    expect(counts.byId.get('root')).toBe(73);
+    expect(counts.byId.get('child')).toBe(70);
+    expect(counts.withoutFolder).toBe(40);
+  });
+
   it('bricht bei einer beschaedigten zyklischen Ordnerstruktur sicher ab', () => {
     const counts = buildFolderDocumentCounts(
       [

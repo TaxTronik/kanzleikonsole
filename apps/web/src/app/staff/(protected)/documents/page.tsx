@@ -1,8 +1,9 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
-import type { ClientKind, DocumentProtectionTier } from '@prisma/client';
+import type { ClientKind } from '@prisma/client';
 import { accessibleClientsWhereFor, canAccessClientTx } from '@/server/auth/rbac';
+import { MANAGED_DOC_SELECT, toManagedDoc } from '@/server/documents/managed-docs';
 import { DocumentExplorer, type Entry, type Crumb } from '@/components/document-explorer';
 
 const KIND_LABEL: Record<string, string> = {
@@ -152,22 +153,8 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
           where: docWhere,
           orderBy: { createdAt: 'desc' },
           take: DOCS_CAP,
-          select: {
-            id: true,
-            title: true,
-            mimeType: true,
-            classification: true,
-            documentTypeId: true,
-            documentType: { select: { name: true, tier: true } },
-            createdAt: true,
-            deletedAt: true,
-            sharedWithClientAt: true,
-            versions: {
-              orderBy: { versionNo: 'desc' },
-              take: 1,
-              select: { sizeBytes: true },
-            },
-          },
+          // Dasselbe DTO wie Mandanten-Tab und Aktenregal (server/documents).
+          select: MANAGED_DOC_SELECT,
         }),
       ]);
       // Nur wenn der Cap erreicht wurde: Gesamtzahl für den Truncation-Hinweis.
@@ -181,14 +168,6 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const { clientRow, folders, docs, docsTotal } = data;
   const childFolders = folders.filter((f) => (f.parentId ?? null) === (folderId ?? null));
 
-  const tierOf = (cls: string, t: DocumentProtectionTier | undefined): 'NONE' | 'GWG' | 'GOBD' =>
-    t ??
-    (['GOBD_INVOICE', 'GOBD_CONTRACT', 'GOBD_TAX'].includes(cls)
-      ? 'GOBD'
-      : cls === 'GWG_EVIDENCE'
-        ? 'GWG'
-        : 'NONE');
-
   const entries: Entry[] = [
     ...childFolders.map<Entry>((f) => ({
       kind: 'folder',
@@ -201,19 +180,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
       }),
       icon: 'folder',
     })),
-    ...docs.map<Entry>((d) => ({
-      kind: 'file',
-      id: d.id,
-      name: d.title,
-      mimeType: d.mimeType,
-      typeName: d.documentType?.name ?? '',
-      typeId: d.documentTypeId,
-      tier: tierOf(d.classification, d.documentType?.tier),
-      sizeBytes: d.versions[0] ? Number(d.versions[0].sizeBytes) : 0,
-      createdAt: d.createdAt.toISOString(),
-      deletedAt: d.deletedAt ? d.deletedAt.toISOString() : null,
-      shared: d.sharedWithClientAt != null,
-    })),
+    ...docs.map<Entry>((d) => ({ kind: 'file', ...toManagedDoc(d) })),
   ];
 
   // Breadcrumb inkl. Ordner-Vorfahren
