@@ -4,6 +4,7 @@
 import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
+import { begruendungTragfaehig } from '../eintrag';
 
 const KONTROLLBUCH_NOTICE_KIND_LABELS: Readonly<Record<string, string>> = {
   ...NOTICE_KIND_LABELS,
@@ -23,23 +24,45 @@ export function bescheidTitel(kind: string, period: string): string {
   return `${KONTROLLBUCH_NOTICE_KIND_LABELS[kind] ?? kind} ${period}`;
 }
 
-/** Bestandskraft-Disposition fehlt: Status oder einer der drei Nachweise fehlt. */
-export const DISPOSITION_FEHLT: Prisma.TaxNoticeWhereInput = {
-  OR: [
-    { status: { not: 'BESTANDSKRAEFTIG' } },
-    { legalFinalAt: null },
-    { legalFinalBy: null },
-    { legalFinalReason: null },
-  ],
-};
+/**
+ * Ergebnis der Vorabfrage einer Bescheidquelle: Zeilen, die ein Prisma-Filter
+ * nicht einordnen kann. `verspaetet`: Einlegung nach dem Fristende (entscheidet
+ * `toEintrag`). `ohneBegruendung`: Bestandskraft mit einer Begründung ohne zehn
+ * sichtbare Zeichen (Altbestand vor der DB-Prüfung); die Disposition fehlt.
+ */
+export interface BescheidVorab {
+  verspaetet: string[];
+  ohneBegruendung: string[];
+}
+
+/**
+ * Bestandskraft-Disposition fehlt: Status oder einer der drei Nachweise fehlt,
+ * oder die Begründung ist nicht tragfähig (siehe `begruendungTragfaehig`).
+ */
+export function dispositionFehlt(ohneBegruendung: readonly string[]): Prisma.TaxNoticeWhereInput {
+  return {
+    OR: [
+      { status: { not: 'BESTANDSKRAEFTIG' } },
+      { legalFinalAt: null },
+      { legalFinalBy: null },
+      { legalFinalReason: null },
+      ...(ohneBegruendung.length ? [{ id: { in: [...ohneBegruendung] } }] : []),
+    ],
+  };
+}
 
 /** Vollständig dokumentierte Bestandskraft-Disposition (Rückschau-Zweig). */
-export const DISPOSITION_DOKUMENTIERT: Prisma.TaxNoticeWhereInput = {
-  status: 'BESTANDSKRAEFTIG',
-  legalFinalAt: { not: null },
-  legalFinalBy: { not: null },
-  legalFinalReason: { not: null },
-};
+export function dispositionVorhanden(
+  ohneBegruendung: readonly string[],
+): Prisma.TaxNoticeWhereInput {
+  return {
+    status: 'BESTANDSKRAEFTIG',
+    legalFinalAt: { not: null },
+    legalFinalBy: { not: null },
+    legalFinalReason: { not: null },
+    ...(ohneBegruendung.length ? { id: { notIn: [...ohneBegruendung] } } : {}),
+  };
+}
 
 /** Ergebnis der Einlegungs-/Dispositionsprüfung einer Einspruchs- oder Klagefrist. */
 export interface Einlegungsergebnis {
@@ -61,7 +84,8 @@ export function dispositionDokumentiert(
   return (
     !filingTimely &&
     n.status === 'BESTANDSKRAEFTIG' &&
-    Boolean(n.legalFinalAt && n.legalFinalBy && n.legalFinalReason?.trim())
+    Boolean(n.legalFinalAt && n.legalFinalBy) &&
+    begruendungTragfaehig(n.legalFinalReason)
   );
 }
 
@@ -85,31 +109,67 @@ export function abschluss(
   return { erledigtAm: null, erledigtVon: null };
 }
 
-/**
- * IDs der nach Fristende dokumentierten Einlegungen. Prisma kann zwei Spalten in
- * einem normalen Where-Objekt nicht portabel vergleichen; die tenant-/RLS-
- * gebundene Vorabfrage liefert deshalb nur diese IDs. Die Vorgänge bleiben im
- * Kontrollbuch offen, bis eine Wiedereinsetzungs-/Dispositionsentscheidung
- * dokumentiert ist.
- */
-export function verspaeteteEinspruchsIds(tx: TxClient, horizont: Date): Promise<string[]> {
-  return tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id"
-          FROM public."tax_notice"
-         WHERE "appeal_deadline" IS NOT NULL
-           AND "appeal_deadline" <= ${horizont}
-           AND "appeal_filed_at" IS NOT NULL
-           AND ("appeal_filed_at" AT TIME ZONE 'UTC')::date > "appeal_deadline"
-      `.then((rows) => rows.map((row) => row.id));
+interface VorabZeile {
+  id: string;
+  verspaetet: boolean;
+  ohneBegruendung: boolean;
 }
 
-export function verspaeteteKlageIds(tx: TxClient, horizont: Date): Promise<string[]> {
-  return tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id"
-          FROM public."tax_notice"
-         WHERE "klage_deadline" IS NOT NULL
-           AND "klage_deadline" <= ${horizont}
-           AND "klage_filed_at" IS NOT NULL
-           AND ("klage_filed_at" AT TIME ZONE 'UTC')::date > "klage_deadline"
-      `.then((rows) => rows.map((row) => row.id));
+function vorabListen(rows: VorabZeile[]): BescheidVorab {
+  return {
+    verspaetet: rows.filter((row) => row.verspaetet).map((row) => row.id),
+    ohneBegruendung: rows.filter((row) => row.ohneBegruendung).map((row) => row.id),
+  };
+}
+
+/**
+ * Vorabfrage der Einspruchsfristen. Prisma kann zwei Spalten in einem normalen
+ * Where-Objekt nicht portabel vergleichen und keine Begründung auf sichtbare
+ * Zeichen prüfen; die tenant-/RLS-gebundene Abfrage liefert deshalb nur IDs.
+ * Verspätet eingelegte Vorgänge bleiben offen, bis eine Wiedereinsetzungs- oder
+ * Dispositionsentscheidung dokumentiert ist.
+ *
+ * Einlegungstag ist `appeal_filed_at::date`: der als UTC gespeicherte Zeitpunkt
+ * als UTC-Kalendertag, unabhängig von der Zeitzone der DB-Sitzung und damit wie
+ * `filingWithinDeadline`. (`AT TIME ZONE 'UTC'` machte daraus einen Zeitpunkt, den
+ * `::date` in der Sitzungszeitzone schnitt.) Die Begründung prüft dieselbe
+ * Funktion wie die Datenbank-Constraint.
+ */
+export function einspruchVorab(tx: TxClient, horizont: Date): Promise<BescheidVorab> {
+  return tx.$queryRaw<VorabZeile[]>`
+        SELECT "id", "verspaetet", "ohneBegruendung"
+          FROM (
+            SELECT "id",
+                   COALESCE("appeal_filed_at"::date > "appeal_deadline", false) AS "verspaetet",
+                   ("status" = 'BESTANDSKRAEFTIG'
+                     AND "legal_final_reason" IS NOT NULL
+                     AND NOT app.legal_final_reason_sufficient("legal_final_reason"))
+                     AS "ohneBegruendung"
+              FROM public."tax_notice"
+             WHERE "appeal_deadline" IS NOT NULL
+               AND "appeal_deadline" <= ${horizont}
+          ) AS "vorab"
+         WHERE "verspaetet" OR "ohneBegruendung"
+         ORDER BY "id"
+      `.then(vorabListen);
+}
+
+/** Vorabfrage der Klagefristen; Einlegungstag wie bei `einspruchVorab`. */
+export function klageVorab(tx: TxClient, horizont: Date): Promise<BescheidVorab> {
+  return tx.$queryRaw<VorabZeile[]>`
+        SELECT "id", "verspaetet", "ohneBegruendung"
+          FROM (
+            SELECT "id",
+                   COALESCE("klage_filed_at"::date > "klage_deadline", false) AS "verspaetet",
+                   ("status" = 'BESTANDSKRAEFTIG'
+                     AND "legal_final_reason" IS NOT NULL
+                     AND NOT app.legal_final_reason_sufficient("legal_final_reason"))
+                     AS "ohneBegruendung"
+              FROM public."tax_notice"
+             WHERE "klage_deadline" IS NOT NULL
+               AND "klage_deadline" <= ${horizont}
+          ) AS "vorab"
+         WHERE "verspaetet" OR "ohneBegruendung"
+         ORDER BY "id"
+      `.then(vorabListen);
 }

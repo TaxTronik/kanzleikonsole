@@ -8,6 +8,8 @@ import {
   requestErledigt,
   bucketFor,
   sortEintraege,
+  begruendungTragfaehig,
+  RAND_LEERRAUM_CODEPOINTS,
   type FristEintrag,
 } from '../eintrag';
 
@@ -111,6 +113,56 @@ describe('Erledigt-Wahrheitstabellen', () => {
     expect(requestErledigt('CANCELLED')).toBe(false);
     for (const offen of ['OPEN', 'IN_PROGRESS', 'RESPONDED']) {
       expect(requestErledigt(offen), offen).toBe(false);
+    }
+  });
+});
+
+// Review-Finding K-05 (Folgepunkt): Die Bestandskraft-Begründung zählt wie die
+// Datenbank (app.legal_final_reason_sufficient). Dieselben Fälle prüft
+// packages/db/src/__tests__/tax-notice-evidence.test.ts gegen Funktion und
+// Constraint; bescheid-vorab-db.test.ts vergleicht beide Seiten direkt.
+describe('Bestandskraft-Begründung (TAX-CONTROL-STATUS-001)', () => {
+  const zeichen = (...codepoints: number[]) => String.fromCodePoint(...codepoints);
+
+  it('entfernt am Rand genau die Zeichen, die String.prototype.trim() entfernt', () => {
+    const trimmt: number[] = [];
+    for (let cp = 0; cp <= 0xffff; cp++) {
+      if (String.fromCharCode(cp).trim() === '') trimmt.push(cp);
+    }
+    expect(trimmt).toEqual([...RAND_LEERRAUM_CODEPOINTS]);
+  });
+
+  it('verlangt zehn Zeichen ohne Leerraum am Rand, gezählt in Codepunkten', () => {
+    const faelle: Array<[string | null | undefined, boolean]> = [
+      [null, false],
+      [undefined, false],
+      ['', false],
+      ['\t\t\t\t\t\n\n\n\n\n', false],
+      [zeichen(0xa0, 0xa0, 0xa0, 0x1680, 0x2007, 0x2028, 0x202f, 0x3000, 0x3000, 0xfeff), false],
+      [' 123456789 ', false],
+      ['\n\t  Akte geprüft \t\n', true],
+      // Innerer Leerraum zählt wie bisher mit (trim().length in Formular und Action).
+      ['a b c d e f', true],
+      [zeichen(0x1f600).repeat(5), false],
+      [zeichen(0x1f600).repeat(10), true],
+      // NEL entfernt trim() nicht; er zählt also als Zeichen.
+      [zeichen(0x85).repeat(10), true],
+    ];
+    for (const [reason, erwartet] of faelle) {
+      expect(begruendungTragfaehig(reason), JSON.stringify(reason)).toBe(erwartet);
+    }
+  });
+
+  it('schließt Einspruchs- und Klagefrist nur mit tragfähiger Begründung', () => {
+    const bestandskraft = (legalFinalReason: string) => ({
+      legalFinalAt: new Date('2026-06-01'),
+      legalFinalBy: 'staff-1',
+      legalFinalReason,
+    });
+    for (const erledigt of [taxNoticeFristErledigt, taxNoticeKlageFristErledigt]) {
+      expect(erledigt('BESTANDSKRAEFTIG', bestandskraft('\t\t\t\t\t\n\n\n\n\n'))).toBe(false);
+      expect(erledigt('BESTANDSKRAEFTIG', bestandskraft('  erledigt  '))).toBe(false);
+      expect(erledigt('BESTANDSKRAEFTIG', bestandskraft('\n Fristablauf geprüft \n'))).toBe(true);
     }
   });
 });

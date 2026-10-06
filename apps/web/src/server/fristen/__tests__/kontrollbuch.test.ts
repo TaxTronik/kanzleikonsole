@@ -483,7 +483,9 @@ describe('loadKontrollbuch query bounds', () => {
 
   it('hält eine verspätete Einspruchseinlegung als Wiedereinsetzungs-Prüffall offen', async () => {
     const tx = createTx();
-    tx.$queryRaw.mockResolvedValueOnce([{ id: 'notice-late' }]).mockResolvedValueOnce([]);
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ id: 'notice-late', verspaetet: true, ohneBegruendung: false }])
+      .mockResolvedValueOnce([]);
     tx.taxNotice.findMany
       .mockResolvedValueOnce([
         {
@@ -561,7 +563,9 @@ describe('loadKontrollbuchSeite Abfragen', () => {
 
   it('zählt und blättert den sicher offenen Zweig, verspätete Einlegungen vollständig', async () => {
     const tx = createTx();
-    tx.$queryRaw.mockResolvedValueOnce([{ id: 'notice-late' }]).mockResolvedValueOnce([]);
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ id: 'notice-late', verspaetet: true, ohneBegruendung: false }])
+      .mockResolvedValueOnce([]);
     tx.taxNotice.count.mockResolvedValue(12);
     tx.taxDeadline.count.mockResolvedValue(12);
 
@@ -644,5 +648,118 @@ describe('loadKontrollbuchSeite Abfragen', () => {
     expect(tx.clientReminder.findMany).toHaveBeenCalledTimes(1);
     // Ohne Anforderung keine Abschluss-Zählung.
     expect(tx.taxDeadline.count).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Bescheid-Vorabfragen (Review-Finding K-05, Folgepunkte)', () => {
+  // Fachkatalog: TAX-CONTROL-STATUS-001
+  const horizont = new Date('2026-08-15T00:00:00.000Z');
+  const dispositionOffen = (ids: string[]) => ({
+    OR: [
+      { status: { not: 'BESTANDSKRAEFTIG' } },
+      { legalFinalAt: null },
+      { legalFinalBy: null },
+      { legalFinalReason: null },
+      { id: { in: ids } },
+    ],
+  });
+  const bestandskraftOhneBegruendung = {
+    id: 'notice-blank',
+    clientId: 'client-1',
+    kind: 'EST',
+    period: '2025',
+    appealDeadline: new Date('2026-07-10T00:00:00.000Z'),
+    manualReviewRequired: false,
+    status: 'BESTANDSKRAEFTIG',
+    reviewedAt: new Date('2026-06-02T00:00:00.000Z'),
+    reviewedBy: 'staff-1',
+    appealFiledAt: null,
+    appealFiledBy: null,
+    legalFinalAt: new Date('2026-07-11T08:00:00.000Z'),
+    legalFinalBy: 'staff-1',
+    // Altbestand vor der DB-Prüfung: nur Tabs und Zeilenumbrüche.
+    legalFinalReason: '\t\t\t\t\t\n\n\n\n\n',
+    client: { name: 'Muster GmbH' },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.accessibleClientsWhereFor.mockResolvedValue(clientAccess);
+  });
+
+  it('nutzt den UTC-Kalendertag der Einlegung und die Begründungsprüfung der Datenbank', async () => {
+    const tx = createTx();
+
+    await loadKontrollbuch(tx as never, {} as never, { tage: 30, nurOffene: true });
+
+    const sql = tx.$queryRaw.mock.calls.map(([strings]) => (strings as string[]).join('?'));
+    expect(sql).toHaveLength(2);
+    expect(sql[0]).toContain('COALESCE("appeal_filed_at"::date > "appeal_deadline", false)');
+    expect(sql[1]).toContain('COALESCE("klage_filed_at"::date > "klage_deadline", false)');
+    for (const text of sql) {
+      // Kein Schnitt in der Zeitzone der DB-Sitzung (früher AT TIME ZONE 'UTC' + ::date).
+      expect(text).not.toMatch(/AT TIME ZONE/i);
+      expect(text).toContain('NOT app.legal_final_reason_sufficient("legal_final_reason")');
+    }
+  });
+
+  it('führt Bestandskraft ohne tragfähige Begründung im offenen Zweig und zählt sie', async () => {
+    const tx = createTx();
+    tx.$queryRaw.mockResolvedValueOnce([
+      { id: 'notice-blank', verspaetet: false, ohneBegruendung: true },
+    ]);
+    tx.taxNotice.findMany.mockResolvedValueOnce([bestandskraftOhneBegruendung]);
+
+    const entries = await loadKontrollbuch(tx as never, {} as never, {
+      tage: 30,
+      nurOffene: true,
+    });
+
+    expect(entries).toEqual([
+      expect.objectContaining({ id: 'notice-blank', erledigt: false, kontrollzustand: 'OPEN' }),
+    ]);
+    expect(tx.taxNotice.findMany.mock.calls[0]![0].where).toEqual({
+      appealDeadline: { lte: horizont },
+      AND: [
+        { OR: [{ appealFiledAt: null }, { appealFiledBy: null }] },
+        dispositionOffen(['notice-blank']),
+      ],
+      client: clientAccess,
+    });
+
+    const zaehlung = createTx();
+    zaehlung.$queryRaw.mockResolvedValueOnce([
+      { id: 'notice-blank', verspaetet: false, ohneBegruendung: true },
+    ]);
+    await loadKontrollbuchSeite(zaehlung as never, {} as never, {
+      tage: 30,
+      nurOffene: true,
+      seite: 1,
+      seitenGroesse: 0,
+      tagesabschluss: true,
+    });
+    // Seite, Überfällig-Zähler und Tagesabschluss zählen denselben offenen Zweig.
+    for (const [args] of zaehlung.taxNotice.count.mock.calls.slice(0, 3)) {
+      expect(JSON.stringify(args)).toContain('"in":["notice-blank"]');
+    }
+  });
+
+  it('schließt sie im Rückschau-Zweig nicht als dokumentierte Disposition', async () => {
+    const tx = createTx();
+    tx.$queryRaw.mockResolvedValueOnce([
+      { id: 'notice-blank', verspaetet: false, ohneBegruendung: true },
+    ]);
+
+    await loadKontrollbuch(tx as never, {} as never, { tage: 30 });
+
+    const fenster = tx.taxNotice.findMany.mock.calls[0]![0].where;
+    const [, erledigt] = fenster.OR;
+    expect(erledigt.OR[1]).toEqual({
+      status: 'BESTANDSKRAEFTIG',
+      legalFinalAt: { not: null },
+      legalFinalBy: { not: null },
+      legalFinalReason: { not: null },
+      id: { notIn: ['notice-blank'] },
+    });
   });
 });

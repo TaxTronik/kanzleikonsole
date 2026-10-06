@@ -5,12 +5,13 @@ import { filingWithinDeadline, taxNoticeKlageFristErledigt } from '../eintrag';
 import {
   abschluss,
   bescheidTitel,
-  DISPOSITION_DOKUMENTIERT,
-  DISPOSITION_FEHLT,
+  type BescheidVorab,
   dispositionDokumentiert,
+  dispositionFehlt,
+  dispositionVorhanden,
   type Einlegungsergebnis,
+  klageVorab,
   kontrollzustand,
-  verspaeteteKlageIds,
 } from './bescheid';
 import { type KontrollbuchQuelle, seitenAbfrage, verantwortung } from './typen';
 
@@ -58,11 +59,12 @@ function kontrollhinweis(k: Row, erledigt: boolean, ergebnis: Einlegungsergebnis
 // TAX-CONTROL-STATUS-001: Klagefristen sind erst nach einer Einspruchs- oder
 // Teil-Einspruchsentscheidung offen, nicht bereits bei TEILABHILFE. Im
 // Rückschau-Fenster auch nachgewiesene Abschlüsse.
-export const klagefristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, string[]> = {
+export const klagefristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, BescheidVorab> = {
   rang: 3,
   aktiv: (quellen) => quellen.taxNotices,
-  vorab: (tx, k) => verspaeteteKlageIds(tx, k.horizont),
-  where(k, lateIds) {
+  vorab: (tx, k) => klageVorab(tx, k.horizont),
+  where(k, vorab) {
+    const lateIds = vorab.verspaetet;
     const filingMissing: Prisma.TaxNoticeWhereInput = {
       OR: [{ klageFiledAt: null }, { klageFiledBy: null }],
     };
@@ -83,7 +85,7 @@ export const klagefristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, s
       klageDeadline: { lte: k.horizont },
       AND: [
         lateIds.length ? { OR: [filingMissing, { id: { in: lateIds } }] } : filingMissing,
-        DISPOSITION_FEHLT,
+        dispositionFehlt(vorab.ohneBegruendung),
       ],
     };
     const erledigt: Prisma.TaxNoticeWhereInput = {
@@ -94,7 +96,7 @@ export const klagefristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, s
           klageFiledBy: { not: null },
           ...(lateIds.length ? { id: { notIn: lateIds } } : {}),
         },
-        DISPOSITION_DOKUMENTIERT,
+        dispositionVorhanden(vorab.ohneBegruendung),
       ],
     };
     const basis: Prisma.TaxNoticeWhereInput = { klageDeadline: { not: null } };

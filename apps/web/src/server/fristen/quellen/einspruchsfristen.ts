@@ -6,12 +6,13 @@ import { filingWithinDeadline, taxNoticeFristErledigt } from '../eintrag';
 import {
   abschluss,
   bescheidTitel,
-  DISPOSITION_DOKUMENTIERT,
-  DISPOSITION_FEHLT,
+  type BescheidVorab,
   dispositionDokumentiert,
+  dispositionFehlt,
+  dispositionVorhanden,
   type Einlegungsergebnis,
+  einspruchVorab,
   kontrollzustand,
-  verspaeteteEinspruchsIds,
 } from './bescheid';
 import { type KontrollbuchQuelle, seitenAbfrage, verantwortung } from './typen';
 
@@ -57,11 +58,14 @@ function kontrollhinweis(n: Row, erledigt: boolean, ergebnis: Einlegungsergebnis
   return null;
 }
 
-export const einspruchsfristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, string[]> = {
+type Quelle = KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, BescheidVorab>;
+
+export const einspruchsfristen: Quelle = {
   rang: 1,
   aktiv: (quellen) => quellen.taxNotices,
-  vorab: (tx, k) => verspaeteteEinspruchsIds(tx, k.horizont),
-  where(k, lateIds) {
+  vorab: (tx, k) => einspruchVorab(tx, k.horizont),
+  where(k, vorab) {
+    const lateIds = vorab.verspaetet;
     const filingMissing: Prisma.TaxNoticeWhereInput = {
       OR: [{ appealFiledAt: null }, { appealFiledBy: null }],
     };
@@ -69,7 +73,7 @@ export const einspruchsfristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInp
       appealDeadline: { lte: k.horizont },
       AND: [
         lateIds.length ? { OR: [filingMissing, { id: { in: lateIds } }] } : filingMissing,
-        DISPOSITION_FEHLT,
+        dispositionFehlt(vorab.ohneBegruendung),
       ],
     };
     const erledigt: Prisma.TaxNoticeWhereInput = {
@@ -80,7 +84,7 @@ export const einspruchsfristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInp
           appealFiledBy: { not: null },
           ...(lateIds.length ? { id: { notIn: lateIds } } : {}),
         },
-        DISPOSITION_DOKUMENTIERT,
+        dispositionVorhanden(vorab.ohneBegruendung),
       ],
     };
     const basis: Prisma.TaxNoticeWhereInput = { appealDeadline: { not: null } };

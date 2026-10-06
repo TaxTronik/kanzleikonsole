@@ -85,6 +85,36 @@ export function taxDeadlineErledigt(
 }
 
 /**
+ * Zeichen, die String.prototype.trim() entfernt (ECMAScript WhiteSpace und
+ * LineTerminator). Dieselbe Liste nutzt app.legal_final_reason_sufficient in der
+ * Datenbank (Migration 20261006170000_tax_notice_legal_final_reason_whitespace).
+ */
+export const RAND_LEERRAUM_CODEPOINTS: readonly number[] = [
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005,
+  0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff,
+];
+const RAND_LEERRAUM = new Set(RAND_LEERRAUM_CODEPOINTS);
+
+/** Mindestlänge der Bestandskraft-Begründung (TAX-CONTROL-STATUS-001). */
+export const BEGRUENDUNG_MIN_ZEICHEN = 10;
+
+/**
+ * Bestandskraft-Begründung „von mindestens zehn Zeichen“: ohne Leerraum am Rand,
+ * gezählt in Zeichen (Codepunkten) wie `length()` in PostgreSQL. Dieselbe Regel
+ * prüft die Datenbank; ein Text nur aus Tabs oder Zeilenumbrüchen ist keine
+ * Begründung, und die Frist bleibt offen.
+ */
+export function begruendungTragfaehig(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  const zeichen = Array.from(reason, (c) => c.codePointAt(0)!);
+  let start = 0;
+  let ende = zeichen.length;
+  while (start < ende && RAND_LEERRAUM.has(zeichen[start]!)) start++;
+  while (ende > start && RAND_LEERRAUM.has(zeichen[ende - 1]!)) ende--;
+  return ende - start >= BEGRUENDUNG_MIN_ZEICHEN;
+}
+
+/**
  * Einspruchsfrist: Ein späterer Verfahrensstatus genügt nicht. Die konkrete
  * Frist ist erst durch dokumentierte Einlegung (Zeit und handelnde Person)
  * erfüllt oder durch eine dokumentierte Bestandskraft-Entscheidung disponiert.
@@ -107,7 +137,8 @@ export function taxNoticeFristErledigt(
   );
   const dispositionRecorded =
     status === 'BESTANDSKRAEFTIG' &&
-    Boolean(evidence.legalFinalAt && evidence.legalFinalBy && evidence.legalFinalReason?.trim());
+    Boolean(evidence.legalFinalAt && evidence.legalFinalBy) &&
+    begruendungTragfaehig(evidence.legalFinalReason);
   return filingRecorded || dispositionRecorded;
 }
 
@@ -135,7 +166,8 @@ export function taxNoticeKlageFristErledigt(
   );
   const dispositionRecorded =
     status === 'BESTANDSKRAEFTIG' &&
-    Boolean(evidence.legalFinalAt && evidence.legalFinalBy && evidence.legalFinalReason?.trim());
+    Boolean(evidence.legalFinalAt && evidence.legalFinalBy) &&
+    begruendungTragfaehig(evidence.legalFinalReason);
   return filingRecorded || dispositionRecorded;
 }
 

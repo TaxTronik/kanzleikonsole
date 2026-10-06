@@ -990,6 +990,90 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
     ).resolves.toMatchObject({ status: 'BESTANDSKRAEFTIG' });
   });
 
+  // Fachkatalog: TAX-CONTROL-STATUS-001 — Review-Finding K-05 (Folgepunkt): Die
+  // Begründung zählt wie in der App ohne Leerraum am Rand (String.prototype.trim()).
+  // Dieselben Fälle prüft apps/web/src/server/fristen/__tests__/eintrag.test.ts.
+  it('verlangt für Bestandskraft zehn Zeichen ohne Leerraum am Rand', async () => {
+    const notice = await owner.taxNotice.create({
+      data: {
+        ...baseNotice(),
+        status: 'ZURUECKGEWIESEN',
+        appealFiledAt: new Date('2026-06-05T08:00:00.000Z'),
+        appealFiledBy: staffId,
+        appealResolvedAt: new Date('2026-06-10T08:00:00.000Z'),
+        appealDecisionReceivedAt: new Date('2026-06-10T00:00:00.000Z'),
+        appealDecisionLegalRemedyInstructionValid: true,
+        klageDeadline: new Date('2026-07-10T00:00:00.000Z'),
+      },
+    });
+    const finalize = (legalFinalReason: string) =>
+      owner.taxNotice.update({
+        where: { id: notice.id },
+        data: {
+          status: 'BESTANDSKRAEFTIG',
+          legalFinalAt: new Date('2026-07-11T08:00:00.000Z'),
+          legalFinalBy: staffId,
+          legalFinalReason,
+        },
+      });
+
+    for (const reason of [
+      '\t\t\t\t\t\n\n\n\n\n',
+      String.fromCodePoint(
+        0xa0,
+        0xa0,
+        0x1680,
+        0x2007,
+        0x2028,
+        0x2029,
+        0x202f,
+        0x3000,
+        0x3000,
+        0xfeff,
+      ),
+      ' 123456789 ',
+      String.fromCodePoint(0x1f600).repeat(5),
+    ]) {
+      await expect(finalize(reason), JSON.stringify(reason)).rejects.toThrow();
+    }
+    await expect(finalize('\n\t  Akte geprüft \t\n')).resolves.toMatchObject({
+      status: 'BESTANDSKRAEFTIG',
+    });
+  });
+
+  it('entfernt in app.legal_final_reason_sufficient genau den Rand-Leerraum von trim()', async () => {
+    // Zehnmal dasselbe Zeichen ist nur dann keine Begründung, wenn die Funktion das
+    // Zeichen am Rand entfernt. Ergebnis über die ganze BMP ohne Surrogate.
+    const rows = await owner.$queryRaw<Array<{ cp: number }>>`
+      SELECT cp FROM generate_series(1, 65535) AS cp
+       WHERE cp NOT BETWEEN 55296 AND 57343
+         AND NOT app.legal_final_reason_sufficient(repeat(chr(cp), 10))
+       ORDER BY cp
+    `;
+    expect(rows.map((row) => Number(row.cp))).toEqual([
+      0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004,
+      0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+      0xfeff,
+    ]);
+
+    const cases: Array<[string | null, boolean]> = [
+      [null, false],
+      ['', false],
+      [' 123456789 ', false],
+      ['\n\t  Akte geprüft \t\n', true],
+      ['a b c d e f', true],
+      [String.fromCodePoint(0x1f600).repeat(5), false],
+      [String.fromCodePoint(0x1f600).repeat(10), true],
+      [String.fromCodePoint(0x85).repeat(10), true],
+    ];
+    for (const [reason, expected] of cases) {
+      const [row] = await owner.$queryRaw<Array<{ ok: boolean }>>`
+        SELECT app.legal_final_reason_sufficient(${reason}::text) AS ok
+      `;
+      expect(row?.ok, JSON.stringify(reason)).toBe(expected);
+    }
+  });
+
   it('bewahrt bei frühem Zugang die Fiktionsfrist und blockiert widersprüchliche Einordnung', async () => {
     const earlierAccess = {
       ...baseNotice(),

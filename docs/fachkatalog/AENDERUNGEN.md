@@ -1,5 +1,40 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-036
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts
+      - apps/web/src/server/fristen/__tests__/eintrag.test.ts
+      - apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts
+      - apps/web/src/server/fristen/eintrag.ts
+      - apps/web/src/server/fristen/quellen/bescheid.ts
+      - apps/web/src/server/fristen/quellen/einspruchsfristen.ts
+      - apps/web/src/server/fristen/quellen/klagefristen.ts
+      - packages/db/prisma/migrations/20261006170000_tax_notice_legal_final_reason_whitespace/migration.sql
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - TAX-CONTROL-STATUS-001
+      - TAX-NOTICE-APPEAL-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Fristenkontrollbuch (Folgefunde aus K-05): Datenbank und Anwendung verlangen
+      für die Bestandskraft-Begründung einheitlich mindestens zehn Zeichen nach
+      Entfernen des Leerraums am Rand (dieselben Zeichen wie String.prototype.trim,
+      neue Funktion app.legal_final_reason_sufficient, CHECK
+      tax_notice_legal_final_evidence_check neu gesetzt, weiter NOT VALID; bisher
+      trimmte die Datenbank nur Leerzeichen). Altbestände mit einer nur aus Tabs
+      oder Zeilenumbrüchen bestehenden Begründung bleiben gespeichert, erscheinen
+      aber als offen in „Offen“ und im Tagesabschluss. Die Erkennung verspäteter
+      Einspruchs- und Klageeinlegungen nutzt in SQL und Anwendung denselben
+      UTC-Kalendertag, unabhängig von der Zeitzone der Datenbanksitzung (keine
+      Änderung in UTC-Sitzungen). Die Rechtsfrage, ob der Berliner Kalendertag
+      maßgeblich ist, bleibt dem Regelverantwortlichen vorbehalten. Neuer CI-Schritt
+      für die Vorab-Abfragen. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/fristen/__tests__/eintrag.test.ts
+      - apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts
+      - apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-035
     date: '2026-10-06'
     paths:
@@ -3909,6 +3944,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-036` dokumentiert die einheitliche Prüfung der
+  Bestandskraft-Begründung und die sitzungsunabhängige Erkennung verspäteter
+  Einlegungen im Fristenkontrollbuch.
 
 - 2026-10-06: `FK-EXC-20261006-035` dokumentiert den CI-Schritt für die
   kanonischen SQL-Quellen. Migrationen und Nachweise bleiben unverändert.

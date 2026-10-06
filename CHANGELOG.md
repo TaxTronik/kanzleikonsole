@@ -753,6 +753,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Fristenkontrollbuch: Datenbank und Anwendung verlangen für die
+  Bestandskraft-Begründung einheitlich mindestens zehn Zeichen ohne Leerraum am
+  Rand; eine nur aus Tabs oder Zeilenumbrüchen bestehende Begründung wird
+  abgewiesen, solche Altbestände bleiben in „Offen“ und im Tagesabschluss
+  sichtbar. Verspätete Einspruchs- und Klageeinlegungen werden unabhängig von
+  der Zeitzone der Datenbanksitzung erkannt (Migration `20261006170000`,
+  `TAX-CONTROL-STATUS-001`, `FK-EXC-20261006-036`).
 - **[Scope]** Das Einzelrecht `CLIENT_CREATE` wirkt: Mitarbeitende mit diesem
   Recht legen Mandanten per Schnellanlage und Onboarding an, wie
   Benutzerverwaltung, Mandantenliste und Formulare es anbieten; bisher lehnte
