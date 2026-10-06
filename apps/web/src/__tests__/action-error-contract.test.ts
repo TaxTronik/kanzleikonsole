@@ -90,19 +90,19 @@ const PARSE_ALLOWLIST: Readonly<Record<string, Allowance>> = {
   },
   'app/portal/(protected)/payroll/actions.ts::z.uuid()': {
     n: 1,
-    why: 'guardPayrollEmployer → payrollAction ordnet ZodError fachlich ein.',
+    why: 'payrollEmployerAction → portalAction mit payrollActionError ordnet ZodError fachlich ein.',
   },
   "app/portal/(protected)/payroll/actions.ts::z.union([z.uuid(), z.literal('')])": {
     n: 1,
-    why: 'guardPayrollEmployer → payrollAction ordnet ZodError fachlich ein.',
+    why: 'payrollEmployerAction → portalAction mit payrollActionError ordnet ZodError fachlich ein.',
   },
   'app/staff/(protected)/payroll/actions.ts::z.uuid()': {
     n: 1,
-    why: 'guardPayrollStaff → payrollAction ordnet ZodError fachlich ein.',
+    why: 'payrollStaffAction → staffAction mit payrollActionError ordnet ZodError fachlich ein.',
   },
   "app/staff/(protected)/payroll/actions.ts::z.union([z.uuid(), z.literal('')])": {
     n: 1,
-    why: 'guardPayrollStaff → payrollAction ordnet ZodError fachlich ein.',
+    why: 'payrollStaffAction → staffAction mit payrollActionError ordnet ZodError fachlich ein.',
   },
   'app/portal/(protected)/interactions/actions.ts::noticeDecisionSnapshot': {
     n: 1,

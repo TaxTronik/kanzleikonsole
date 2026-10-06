@@ -11,7 +11,7 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { checkRateLimit, checkPortalWriteLimit } from '@/server/rate-limit';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { toActionError } from '@/server/auth/rbac';
-import { portalActionGuard, ActionError, type ActionResult } from '@/server/actions/portal-action';
+import { portalAction, ActionError, type ActionResult } from '@/server/actions/portal-action';
 import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journaled-upload';
 import { readUploadFile } from '@/server/documents/upload-file';
 import { validateFormAnswers } from '@/server/forms/validate-answers';
@@ -153,151 +153,146 @@ async function validateAnswersTx(
 export async function saveSubmissionDraftAction(
   input: z.infer<typeof Schema>,
 ): Promise<ActionResult> {
-  const g = await portalActionGuard({ module: 'forms' });
-  if (!g.ok) return g;
-  const { contactId, clientId, ctx } = g;
+  return portalAction({
+    guard: { module: 'forms' },
+    run: async (g) => {
+      const { contactId, clientId, ctx } = g;
 
-  // S4: globaler Portal-Schreib-Backstop. Drafts können jede Sekunde aktualisiert
-  // werden — Spam-Schutz gegen exzessive Schreiblast.
-  const rl = await checkPortalWriteLimit(contactId);
-  if (!rl.ok) {
-    return {
-      ok: false,
-      error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
-    };
-  }
-  const parsed = Schema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const sub = await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
-      await validateAnswersTx(tx, sub, parsed.data.answers, clientId, false);
-      const saved = await tx.formSubmission.updateMany({
-        where: {
-          id: parsed.data.submissionId,
-          clientId,
-          status: { in: ['PENDING', 'DRAFT'] },
-        },
-        data: {
-          answers: parsed.data.answers as Prisma.InputJsonValue,
-          status: 'DRAFT',
-        },
-      });
-      if (saved.count === 0) {
-        throw new ActionError('Formular wurde bereits übermittelt.');
+      // S4: globaler Portal-Schreib-Backstop. Drafts können jede Sekunde aktualisiert
+      // werden — Spam-Schutz gegen exzessive Schreiblast.
+      const rl = await checkPortalWriteLimit(contactId);
+      if (!rl.ok) {
+        return {
+          ok: false,
+          error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+        };
       }
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-  revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
-  return { ok: true };
+      const parsed = Schema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+
+      await withTenantContext(ctx, async (tx) => {
+        const sub = await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
+        await validateAnswersTx(tx, sub, parsed.data.answers, clientId, false);
+        const saved = await tx.formSubmission.updateMany({
+          where: {
+            id: parsed.data.submissionId,
+            clientId,
+            status: { in: ['PENDING', 'DRAFT'] },
+          },
+          data: {
+            answers: parsed.data.answers as Prisma.InputJsonValue,
+            status: 'DRAFT',
+          },
+        });
+        if (saved.count === 0) {
+          throw new ActionError('Formular wurde bereits übermittelt.');
+        }
+      });
+      revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
+    },
+  });
 }
 
 export async function submitSubmissionAction(input: z.infer<typeof Schema>): Promise<ActionResult> {
-  const g = await portalActionGuard({ module: 'forms' });
-  if (!g.ok) return g;
-  const { tenantId, contactId, clientId, ctx } = g;
+  return portalAction({
+    guard: { module: 'forms' },
+    run: async (g) => {
+      const { tenantId, contactId, clientId, ctx } = g;
 
-  const parsed = Schema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const parsed = Schema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  let linkedRequestIds: string[];
-  try {
-    linkedRequestIds = await withTenantContext(ctx, async (tx) => {
-      const sub = await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
-      // Typen, Optionen, Grenzen und Pflichtfelder werden innerhalb derselben
-      // Transaktion wie der atomare Statuswechsel geprüft.
-      await validateAnswersTx(tx, sub, parsed.data.answers, clientId, true);
+      const linkedRequestIds = await withTenantContext(ctx, async (tx) => {
+        const sub = await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
+        // Typen, Optionen, Grenzen und Pflichtfelder werden innerhalb derselben
+        // Transaktion wie der atomare Statuswechsel geprüft.
+        await validateAnswersTx(tx, sub, parsed.data.answers, clientId, true);
 
-      const submitted = await tx.formSubmission.updateMany({
-        where: {
-          id: parsed.data.submissionId,
-          clientId,
-          status: { in: ['PENDING', 'DRAFT'] },
-        },
-        data: {
-          answers: parsed.data.answers as Prisma.InputJsonValue,
-          status: 'SUBMITTED',
-          submittedAt: new Date(),
-          submittedByContact: contactId,
-        },
-      });
-      if (submitted.count === 0) {
-        throw new ActionError('Formular wurde bereits übermittelt.');
-      }
-
-      // Die Formularabgabe erfüllt den mandantenseitigen offenen Vorgang.
-      // RESPONDED (statt CLOSED) hält die fachliche Nachbearbeitung und
-      // Kanzlei-Zusammenarbeit offen, entfernt die Anforderung aber aus den
-      // offenen Mandanten-/Reminder-Flows. Fallback über formSubmissionId
-      // deckt ältere Workflow-Submissions ohne requestId-Rücklink ab.
-      const linkedRequests = sub.linkedRequests;
-      if (linkedRequests.length > 0) {
-        const responded = await tx.request.updateMany({
+        const submitted = await tx.formSubmission.updateMany({
           where: {
-            id: { in: linkedRequests.map((request) => request.id) },
-            tenantId,
+            id: parsed.data.submissionId,
             clientId,
-            status: { in: ['OPEN', 'IN_PROGRESS'] },
+            status: { in: ['PENDING', 'DRAFT'] },
           },
-          data: { status: 'RESPONDED' },
+          data: {
+            answers: parsed.data.answers as Prisma.InputJsonValue,
+            status: 'SUBMITTED',
+            submittedAt: new Date(),
+            submittedByContact: contactId,
+          },
         });
-        if (responded.count !== linkedRequests.length) {
-          throw new ActionError('Eine verknüpfte Anforderung wurde zwischenzeitlich geändert.');
+        if (submitted.count === 0) {
+          throw new ActionError('Formular wurde bereits übermittelt.');
         }
-        for (const linkedRequest of linkedRequests) {
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'CLIENT_CONTACT',
-            actorId: contactId,
-            action: 'request.responded',
-            resourceType: 'request',
-            resourceId: linkedRequest.id,
-            before: { status: linkedRequest.status },
-            after: {
-              status: 'RESPONDED',
-              source: 'FORM_SUBMISSION',
-              formSubmissionId: sub.id,
+
+        // Die Formularabgabe erfüllt den mandantenseitigen offenen Vorgang.
+        // RESPONDED (statt CLOSED) hält die fachliche Nachbearbeitung und
+        // Kanzlei-Zusammenarbeit offen, entfernt die Anforderung aber aus den
+        // offenen Mandanten-/Reminder-Flows. Fallback über formSubmissionId
+        // deckt ältere Workflow-Submissions ohne requestId-Rücklink ab.
+        const linkedRequests = sub.linkedRequests;
+        if (linkedRequests.length > 0) {
+          const responded = await tx.request.updateMany({
+            where: {
+              id: { in: linkedRequests.map((request) => request.id) },
+              tenantId,
+              clientId,
+              status: { in: ['OPEN', 'IN_PROGRESS'] },
             },
+            data: { status: 'RESPONDED' },
           });
+          if (responded.count !== linkedRequests.length) {
+            throw new ActionError('Eine verknüpfte Anforderung wurde zwischenzeitlich geändert.');
+          }
+          for (const linkedRequest of linkedRequests) {
+            await evidenceService.record(tx, {
+              tenantId,
+              actorType: 'CLIENT_CONTACT',
+              actorId: contactId,
+              action: 'request.responded',
+              resourceType: 'request',
+              resourceId: linkedRequest.id,
+              before: { status: linkedRequest.status },
+              after: {
+                status: 'RESPONDED',
+                source: 'FORM_SUBMISSION',
+                formSubmissionId: sub.id,
+              },
+            });
+          }
         }
-      }
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
-        action: 'form.submission.submit',
-        resourceType: 'form_submission',
-        resourceId: parsed.data.submissionId,
-        after: { fieldCount: sub.template.fields.length },
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'CLIENT_CONTACT',
+          actorId: contactId,
+          action: 'form.submission.submit',
+          resourceType: 'form_submission',
+          resourceId: parsed.data.submissionId,
+          after: { fieldCount: sub.template.fields.length },
+        });
+        return linkedRequests.map((request) => request.id);
       });
-      return linkedRequests.map((request) => request.id);
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  const eventRequestIds: Array<string | null> =
-    linkedRequestIds.length > 0 ? linkedRequestIds : [null];
-  for (const requestId of eventRequestIds) {
-    await emitN8nEvent(
-      'request.responded',
-      {
-        tenantId,
-        formSubmissionId: parsed.data.submissionId,
-        clientId,
-        requestId,
-      },
-      { tenantId },
-    );
-  }
+      const eventRequestIds: Array<string | null> =
+        linkedRequestIds.length > 0 ? linkedRequestIds : [null];
+      for (const requestId of eventRequestIds) {
+        await emitN8nEvent(
+          'request.responded',
+          {
+            tenantId,
+            formSubmissionId: parsed.data.submissionId,
+            clientId,
+            requestId,
+          },
+          { tenantId },
+        );
+      }
 
-  revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
-  revalidatePath('/portal/forms');
-  for (const requestId of linkedRequestIds) revalidatePath(`/portal/requests/${requestId}`);
-  return { ok: true };
+      revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
+      revalidatePath('/portal/forms');
+      for (const requestId of linkedRequestIds) revalidatePath(`/portal/requests/${requestId}`);
+    },
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -365,177 +360,171 @@ export async function uploadFormFileAction(
   input: { submissionId: string; fieldKey: string },
   upload: FormData,
 ): Promise<ActionResult & { documentId?: string }> {
-  const g = await portalActionGuard({ module: 'forms' });
-  if (!g.ok) return g;
-  const { tenantId, contactId, clientId, ctx } = g;
+  return portalAction({
+    guard: { module: 'forms' },
+    run: async (g) => {
+      const { tenantId, contactId, clientId, ctx } = g;
 
-  const entry = upload?.get('file');
-  const parsed = UploadSchema.safeParse({
-    submissionId: input?.submissionId,
-    fieldKey: input?.fieldKey,
-    fileName: entry instanceof File ? entry.name : undefined,
-    mimeType: entry instanceof File ? entry.type || 'application/octet-stream' : undefined,
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const entry = upload?.get('file');
+      const parsed = UploadSchema.safeParse({
+        submissionId: input?.submissionId,
+        fieldKey: input?.fieldKey,
+        fileName: entry instanceof File ? entry.name : undefined,
+        mimeType: entry instanceof File ? entry.type || 'application/octet-stream' : undefined,
+      });
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  // F2: Feature-Flag-Guard — Form-Datei-Uploads erzeugen Document-Reihen wie
-  // der Portal-Upload-Pfad. Gleicher documentUpload-Flag.
-  try {
-    await assertPortalFeature(ctx, 'documentUpload');
-  } catch (e) {
-    return toActionError(e);
-  }
+      // F2: Feature-Flag-Guard — Form-Datei-Uploads erzeugen Document-Reihen wie
+      // der Portal-Upload-Pfad. Gleicher documentUpload-Flag.
+      await assertPortalFeature(ctx, 'documentUpload');
 
-  // NEW2: Rate-Limit pro Contact + pro Submission. Schließt Storage-/ClamAV-
-  // Sättigung durch authentifizierte Portal-User analog zur GwG-Onboarding-
-  // Lücke (H2).
-  const contactRl = await checkRateLimit(`forms-upload-contact:${contactId}`, {
-    max: 20,
-    windowSec: 600,
-  });
-  if (!contactRl.ok) {
-    return {
-      ok: false,
-      error: `Zu viele Uploads. Bitte ${Math.ceil(contactRl.retryAfter / 60)} Min. warten.`,
-    };
-  }
-  const subRl = await checkRateLimit(`forms-upload-sub:${parsed.data.submissionId}`, {
-    max: 30,
-    windowSec: 600,
-  });
-  if (!subRl.ok) {
-    return { ok: false, error: 'Zu viele Uploads für dieses Formular.' };
-  }
+      // NEW2: Rate-Limit pro Contact + pro Submission. Schließt Storage-/ClamAV-
+      // Sättigung durch authentifizierte Portal-User analog zur GwG-Onboarding-
+      // Lücke (H2).
+      const contactRl = await checkRateLimit(`forms-upload-contact:${contactId}`, {
+        max: 20,
+        windowSec: 600,
+      });
+      if (!contactRl.ok) {
+        return {
+          ok: false,
+          error: `Zu viele Uploads. Bitte ${Math.ceil(contactRl.retryAfter / 60)} Min. warten.`,
+        };
+      }
+      const subRl = await checkRateLimit(`forms-upload-sub:${parsed.data.submissionId}`, {
+        max: 30,
+        windowSec: 600,
+      });
+      if (!subRl.ok) {
+        return { ok: false, error: 'Zu viele Uploads für dieses Formular.' };
+      }
 
-  const file = await readUploadFile(upload, 'file', 'portalFormFile');
-  if (!file.ok) return { ok: false, error: file.error };
-  const fileData = file.bytes;
+      const file = await readUploadFile(upload, 'file', 'portalFormFile');
+      if (!file.ok) return { ok: false, error: file.error };
+      const fileData = file.bytes;
 
-  let documentId: string;
-  try {
-    const { result } = await runJournaledUpload({
-      context: ctx,
-      source: 'portal.form.file',
-      // Storage liegt bewusst außerhalb der DB-Transaktion. Deshalb Status und
-      // Feld nach dem Upload noch einmal prüfen; bei zwischenzeitigem Close
-      // bleibt die Speicherabsicht für den Cleanup-Worker offen.
-      check: (tx) =>
-        checkFormFileTx(tx, {
-          tenantId,
-          clientId,
-          submissionId: parsed.data.submissionId,
-          fieldKey: parsed.data.fieldKey,
-        }),
-      readBytes: async () => fileData,
-      storage: () => ({ tier: 'NONE', classification: 'GENERAL' }),
-      commitTx: async (tx, { commit: committed, checked }) => {
-        const { sub: currentSub, field: currentField } = checked;
-        let nextVersionNo = 1;
-        let doc: { id: string };
-        if (checked.existingDocumentId) {
-          // The unique field binding remains. Replacement after an explicit
-          // detach appends bytes; every earlier captured version stays intact.
-          await tx.$queryRaw`SELECT id FROM document WHERE id=${checked.existingDocumentId}::uuid FOR UPDATE`;
-          const existing = await tx.document.findUnique({
-            where: { id: checked.existingDocumentId },
-            include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
-          });
-          if (
-            !existing ||
-            existing.deletedAt ||
-            existing.classification !== 'GENERAL' ||
-            existing.tenantId !== tenantId ||
-            existing.clientId !== clientId ||
-            existing.formSubmissionId !== currentSub.id ||
-            existing.formFieldKey !== currentField.key ||
-            !existing.sharedWithClientAt ||
-            !existing.versions[0]
-          )
-            throw new ActionError('Dateistand wurde geändert. Bitte neu laden.');
-          nextVersionNo = existing.versions[0].versionNo + 1;
-          doc = await tx.document.update({
-            where: { id: existing.id },
-            data: {
-              title: parsed.data.fileName,
-              mimeType: committed.detectedMime ?? parsed.data.mimeType,
-            },
-            select: { id: true },
-          });
-        } else
-          doc = await tx.document.create({
-            data: {
-              tenantId,
-              clientId,
-              title: parsed.data.fileName,
-              classification: 'GENERAL',
-              // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-              mimeType: committed.detectedMime ?? parsed.data.mimeType,
-              // Mandant-originierter Formular-Upload: wie beim allgemeinen
-              // Portal-Upload automatisch für denselben Mandanten freigeben,
-              // damit der unmittelbar gerenderte Download-Link nicht 404 liefert.
-              // sharedByStaff bleibt bewusst null.
-              sharedWithClientAt: new Date(),
-              formSubmissionId: currentSub.id,
-              formFieldKey: currentField.key,
-            },
-          });
-        await tx.documentVersion.create({
-          data: {
-            documentId: doc.id,
-            versionNo: nextVersionNo,
-            storageBucket: committed.targetBucket,
-            storageKey: committed.targetKey,
-            storageVersionId: committed.storageVersionId,
-            sha256: prismaBytes(committed.sha256),
-            sizeBytes: committed.sizeBytes,
-            immutable: committed.immutable,
-            scanStatus: 'CLEAN',
-            scanCompletedAt: new Date(),
-            createdById: contactId,
-          },
-        });
-        // Die Referenz gehört bereits mit dem erfolgreichen Upload zum Draft.
-        // Ohne dieses atomare Mitspeichern wäre die Datei nach einem Reload zwar
-        // als Document vorhanden, im Formular aber nicht mehr sichtbar und damit
-        // für den Mandanten auch nicht mehr verwerfbar.
-        const currentAnswers = answerRecord(currentSub.answers);
-        const attached = await tx.formSubmission.updateMany({
-          where: {
-            id: currentSub.id,
+      const { result: documentId } = await runJournaledUpload({
+        context: ctx,
+        source: 'portal.form.file',
+        // Storage liegt bewusst außerhalb der DB-Transaktion. Deshalb Status und
+        // Feld nach dem Upload noch einmal prüfen; bei zwischenzeitigem Close
+        // bleibt die Speicherabsicht für den Cleanup-Worker offen.
+        check: (tx) =>
+          checkFormFileTx(tx, {
+            tenantId,
             clientId,
-            status: { in: ['PENDING', 'DRAFT'] },
-          },
-          data: {
-            status: 'DRAFT',
-            answers: {
-              ...currentAnswers,
-              [currentField.key]: { documentId: doc.id, fileName: parsed.data.fileName },
-            } as Prisma.InputJsonValue,
-          },
-        });
-        if (attached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
-          action: 'form.submission.upload',
-          resourceType: 'document',
-          resourceId: doc.id,
-          after: {
             submissionId: parsed.data.submissionId,
             fieldKey: parsed.data.fieldKey,
-            fileName: parsed.data.fileName,
-          },
-        });
-        return doc.id;
-      },
-    });
-    documentId = result;
-  } catch (e) {
-    return toActionError(uploadFailureCause(e));
-  }
-
-  return { ok: true, documentId };
+          }),
+        readBytes: async () => fileData,
+        storage: () => ({ tier: 'NONE', classification: 'GENERAL' }),
+        commitTx: async (tx, { commit: committed, checked }) => {
+          const { sub: currentSub, field: currentField } = checked;
+          let nextVersionNo = 1;
+          let doc: { id: string };
+          if (checked.existingDocumentId) {
+            // The unique field binding remains. Replacement after an explicit
+            // detach appends bytes; every earlier captured version stays intact.
+            await tx.$queryRaw`SELECT id FROM document WHERE id=${checked.existingDocumentId}::uuid FOR UPDATE`;
+            const existing = await tx.document.findUnique({
+              where: { id: checked.existingDocumentId },
+              include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+            });
+            if (
+              !existing ||
+              existing.deletedAt ||
+              existing.classification !== 'GENERAL' ||
+              existing.tenantId !== tenantId ||
+              existing.clientId !== clientId ||
+              existing.formSubmissionId !== currentSub.id ||
+              existing.formFieldKey !== currentField.key ||
+              !existing.sharedWithClientAt ||
+              !existing.versions[0]
+            )
+              throw new ActionError('Dateistand wurde geändert. Bitte neu laden.');
+            nextVersionNo = existing.versions[0].versionNo + 1;
+            doc = await tx.document.update({
+              where: { id: existing.id },
+              data: {
+                title: parsed.data.fileName,
+                mimeType: committed.detectedMime ?? parsed.data.mimeType,
+              },
+              select: { id: true },
+            });
+          } else
+            doc = await tx.document.create({
+              data: {
+                tenantId,
+                clientId,
+                title: parsed.data.fileName,
+                classification: 'GENERAL',
+                // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+                mimeType: committed.detectedMime ?? parsed.data.mimeType,
+                // Mandant-originierter Formular-Upload: wie beim allgemeinen
+                // Portal-Upload automatisch für denselben Mandanten freigeben,
+                // damit der unmittelbar gerenderte Download-Link nicht 404 liefert.
+                // sharedByStaff bleibt bewusst null.
+                sharedWithClientAt: new Date(),
+                formSubmissionId: currentSub.id,
+                formFieldKey: currentField.key,
+              },
+            });
+          await tx.documentVersion.create({
+            data: {
+              documentId: doc.id,
+              versionNo: nextVersionNo,
+              storageBucket: committed.targetBucket,
+              storageKey: committed.targetKey,
+              storageVersionId: committed.storageVersionId,
+              sha256: prismaBytes(committed.sha256),
+              sizeBytes: committed.sizeBytes,
+              immutable: committed.immutable,
+              scanStatus: 'CLEAN',
+              scanCompletedAt: new Date(),
+              createdById: contactId,
+            },
+          });
+          // Die Referenz gehört bereits mit dem erfolgreichen Upload zum Draft.
+          // Ohne dieses atomare Mitspeichern wäre die Datei nach einem Reload zwar
+          // als Document vorhanden, im Formular aber nicht mehr sichtbar und damit
+          // für den Mandanten auch nicht mehr verwerfbar.
+          const currentAnswers = answerRecord(currentSub.answers);
+          const attached = await tx.formSubmission.updateMany({
+            where: {
+              id: currentSub.id,
+              clientId,
+              status: { in: ['PENDING', 'DRAFT'] },
+            },
+            data: {
+              status: 'DRAFT',
+              answers: {
+                ...currentAnswers,
+                [currentField.key]: { documentId: doc.id, fileName: parsed.data.fileName },
+              } as Prisma.InputJsonValue,
+            },
+          });
+          if (attached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'CLIENT_CONTACT',
+            actorId: contactId,
+            action: 'form.submission.upload',
+            resourceType: 'document',
+            resourceId: doc.id,
+            after: {
+              submissionId: parsed.data.submissionId,
+              fieldKey: parsed.data.fieldKey,
+              fileName: parsed.data.fileName,
+            },
+          });
+          return doc.id;
+        },
+      });
+      return { documentId };
+    },
+    // Fehler des Journal-Uploads tragen ihre Ursache (Prüfung, Storage, Commit).
+    onError: (e) => toActionError(uploadFailureCause(e)),
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -721,70 +710,72 @@ export async function discardFormFileAction(input: {
   fieldKey: string;
   documentId: string;
 }): Promise<ActionResult> {
-  const g = await portalActionGuard({ module: 'forms' });
-  if (!g.ok) return g;
-  const { tenantId, contactId, clientId, ctx } = g;
-  const parsed = DiscardUploadSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  return portalAction({
+    guard: { module: 'forms' },
+    run: async (g) => {
+      const { tenantId, contactId, clientId, ctx } = g;
+      const parsed = DiscardUploadSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const rl = await checkPortalWriteLimit(contactId);
-  if (!rl.ok) {
-    return {
-      ok: false,
-      error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
-    };
-  }
-
-  const discard = () =>
-    withTenantContext(ctx, (tx) =>
-      discardOpenFormUploadTx(tx, {
-        tenantId,
-        contactId,
-        clientId,
-        ...parsed.data,
-      }),
-    );
-
-  let discarded: DiscardUploadResult;
-  try {
-    discarded = await discard();
-  } catch (error) {
-    // Ein verlorenes COMMIT-ACK ist mehrdeutig. Der idempotente zweite Lauf
-    // erkennt entweder den bereits committeden Delete oder führt ihn aus;
-    // Storage wurde zu diesem Zeitpunkt noch nicht angefasst.
-    try {
-      discarded = await discard();
-    } catch (recoveryError) {
-      return toActionError(recoveryError ?? error);
-    }
-  }
-
-  if (discarded.storage) {
-    const storageVersionId = discarded.storage.versionId?.trim() ?? '';
-    try {
-      if (storageVersionId) {
-        await deleteObjectVersion(
-          discarded.storage.bucket,
-          discarded.storage.key,
-          storageVersionId,
-        );
-      } else {
-        await deleteObject(discarded.storage.bucket, discarded.storage.key);
+      const rl = await checkPortalWriteLimit(contactId);
+      if (!rl.ok) {
+        return {
+          ok: false,
+          error: `Zu viele Aktionen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+        };
       }
-    } catch {
-      // Absichtlich Erfolg: Der sichtbare/DB-seitige Delete ist committed und
-      // das durable Journal lässt den Worker die Storage-Bereinigung erneut
-      // versuchen. Ein technischer Fehler darf den Nutzer nicht zum Upload
-      // einer bereits gelöschten Datei zurücknavigieren lassen.
-    }
-    // Auch bei sofort erfolgreichem Delete bleibt der Journal-Eintrag offen.
-    // Der SYSTEM-Worker bestaetigt nach seiner Sicherheitsfrist den fehlenden
-    // DB-Verweis und markiert den Eintrag nach einem idempotenten Delete als
-    // DELETED. So wird die STAFF/SYSTEM-RLS des Journals nicht fuer das Portal
-    // aufgeweicht.
-  }
 
-  revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
-  revalidatePath('/portal/documents');
-  return { ok: true };
+      const discard = () =>
+        withTenantContext(ctx, (tx) =>
+          discardOpenFormUploadTx(tx, {
+            tenantId,
+            contactId,
+            clientId,
+            ...parsed.data,
+          }),
+        );
+
+      let discarded: DiscardUploadResult;
+      try {
+        discarded = await discard();
+      } catch (error) {
+        // Ein verlorenes COMMIT-ACK ist mehrdeutig. Der idempotente zweite Lauf
+        // erkennt entweder den bereits committeden Delete oder führt ihn aus;
+        // Storage wurde zu diesem Zeitpunkt noch nicht angefasst.
+        try {
+          discarded = await discard();
+        } catch (recoveryError) {
+          throw recoveryError ?? error;
+        }
+      }
+
+      if (discarded.storage) {
+        const storageVersionId = discarded.storage.versionId?.trim() ?? '';
+        try {
+          if (storageVersionId) {
+            await deleteObjectVersion(
+              discarded.storage.bucket,
+              discarded.storage.key,
+              storageVersionId,
+            );
+          } else {
+            await deleteObject(discarded.storage.bucket, discarded.storage.key);
+          }
+        } catch {
+          // Absichtlich Erfolg: Der sichtbare/DB-seitige Delete ist committed und
+          // das durable Journal lässt den Worker die Storage-Bereinigung erneut
+          // versuchen. Ein technischer Fehler darf den Nutzer nicht zum Upload
+          // einer bereits gelöschten Datei zurücknavigieren lassen.
+        }
+        // Auch bei sofort erfolgreichem Delete bleibt der Journal-Eintrag offen.
+        // Der SYSTEM-Worker bestaetigt nach seiner Sicherheitsfrist den fehlenden
+        // DB-Verweis und markiert den Eintrag nach einem idempotenten Delete als
+        // DELETED. So wird die STAFF/SYSTEM-RLS des Journals nicht fuer das Portal
+        // aufgeweicht.
+      }
+
+      revalidatePath(`/portal/forms/${parsed.data.submissionId}`);
+      revalidatePath('/portal/documents');
+    },
+  });
 }

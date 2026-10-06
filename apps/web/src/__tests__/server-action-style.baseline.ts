@@ -29,31 +29,28 @@ export const PUBLIC_ACTION_ENTRY_POINTS: Readonly<Record<string, string>> = {
 const EXCLUDED =
   'Ausgeschlossen aus K-02 (wird parallel umgebaut): Stand bei Einführung des Guards eingefroren, ' +
   'Re-Baseline nach der Integration.';
-const PAYROLL =
-  'Lohn-Familie: payrollAction kapselt Fehler-Mapping (ZodError → „Eingaben und Pflichtfelder ' +
-  'prüfen.“, sonst Lohn-eigene Meldung) und Revalidate; die Services prüfen das Gate erneut ' +
-  '(payrollGuard bzw. Capability-Session des Gastzugangs).';
 const SUBSUMTION =
   'Subsumtion: eigene Guard-Familie (requireStaffSession + Ressourcen-Guards in _guards.ts mit ' +
-  'Modulmeldung als ForbiddenError; Zugriff und Rechtestufe in EINER Transaktion).';
-const OPEN =
-  'Altbestand: staffActionGuard/portalActionGuard mit handgeschriebener Transaktion, try/catch ' +
-  'und toActionError (Migration in K-02 offen).';
+  'Modulmeldung als ForbiddenError; Zugriff und Rechtestufe in EINER Transaktion). Fehler ' +
+  'laufen bereits vollständig über toActionError; kein staffActionGuard-Altbestand.';
 
 export const HANDWRITTEN_ACTION_BASELINE: Readonly<
   Record<string, { actions: number; reason: string }>
 > = {
-  'app/payroll/employee/actions.ts': { actions: 4, reason: PAYROLL },
-  'app/portal/(protected)/appointments/actions.ts': { actions: 1, reason: OPEN },
-  'app/portal/(protected)/bwa/plan/actions.ts': { actions: 2, reason: OPEN },
-  'app/portal/(protected)/client-assistance/actions.ts': { actions: 3, reason: OPEN },
-  'app/portal/(protected)/forms/[id]/actions.ts': { actions: 4, reason: OPEN },
-  'app/portal/(protected)/inbox/actions.ts': { actions: 5, reason: OPEN },
-  'app/portal/(protected)/payroll/actions.ts': { actions: 3, reason: PAYROLL },
-  'app/portal/(protected)/profile-actions.ts': { actions: 1, reason: OPEN },
-  'app/portal/(protected)/requests/[id]/actions.ts': { actions: 1, reason: OPEN },
-  'app/portal/(protected)/stammdaten/actions.ts': { actions: 1, reason: OPEN },
-  'app/portal/(protected)/stammdaten/tax-actions.ts': { actions: 1, reason: OPEN },
+  'app/payroll/employee/actions.ts': {
+    actions: 4,
+    reason:
+      'Gastzugang des Arbeitnehmers: keine Staff-/Portal-Sitzung, autorisiert über die ' +
+      'Capability-Session (guardPayrollEmployee*, withPayrollCapability); payrollAction nutzt ' +
+      'dasselbe Lohn-Fehler-Mapping (payrollActionError) und Revalidate wie die Bausteine.',
+  },
+  'app/portal/(protected)/profile-actions.ts': {
+    actions: 1,
+    reason:
+      'switchPortalProfileAction: Navigations-Action ohne Ergebnis-Kanal (form action) — jeder ' +
+      'Ausgang ist eine Weiterleitung (Login, Dashboard, Rücksprung); der Wechsel schreibt das ' +
+      'Session-Cookie. Kein ActionResult-Vertrag.',
+  },
   'app/staff/(protected)/admin/settings/branding-actions.ts': { actions: 4, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/infra-actions.ts': { actions: 3, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/integrations/signal-embedding-actions.ts': {
@@ -89,6 +86,5 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
       'Trefferliste (Ablehnung = leere Liste, technische Fehler erreichen die Fehlerseite), ' +
       'kein ActionResult-Vertrag.',
   },
-  'app/staff/(protected)/payroll/actions.ts': { actions: 9, reason: PAYROLL },
   'app/staff/(protected)/poa/actions.ts': { actions: 3, reason: EXCLUDED },
 };

@@ -30,6 +30,12 @@ vi.mock('@/server/auth/rbac', async () => ({
 vi.mock('@/server/actions/portal-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
   portalActionGuard: h.portalActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  portalAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(h.portalActionGuard),
   withPortalModule: () => vi.fn(),
 }));
 

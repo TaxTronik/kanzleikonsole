@@ -1,5 +1,36 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-032
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
+      - apps/web/src/app/portal/(protected)/inbox/actions.ts
+      - apps/web/src/app/portal/(protected)/payroll/actions.ts
+      - apps/web/src/app/portal/(protected)/requests/[id]/actions.ts
+      - apps/web/src/app/portal/(protected)/stammdaten/tax-actions.ts
+      - apps/web/src/app/staff/(protected)/payroll/actions.ts
+    rule_ids:
+      - FORM-PRESUBMIT-UPLOAD-001
+      - FORM-SCHEMA-SNAPSHOT-001
+      - PAYROLL-INTAKE-001
+      - PORTAL-INBOX-SUBMISSION-001
+      - REQ-LIFECYCLE-001
+      - TAX-MASTER-DATA-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Die bisher handgeschriebenen Portal- und Lohn-Actions (Formulare,
+      Posteingang, Lohn, Anforderungen, Steuer-Stammdaten) laufen über den
+      gemeinsamen Action-Baustein (portalAction bzw. payrollEmployerAction).
+      Portal-Gate, Feature-Gates, Transaktionskörper (tokenidentisch je Datei
+      geprüft), Formular-Snapshot und Vorab-Upload, Audit-Ereignisse,
+      revalidierte Pfade und Meldungen bleiben unverändert; technische Fehler
+      außerhalb der bisherigen try-Blöcke erscheinen als Fehlermeldung statt als
+      Fehlerseite. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+      - apps/web/src/server/payroll/__tests__/action-surfaces.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-031
     date: '2026-10-06'
     paths:
@@ -3711,6 +3742,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-032` dokumentiert die Portal- und
+  Lohn-Actions auf dem gemeinsamen Action-Baustein.
 
 - 2026-10-06: `FK-EXC-20261006-031` dokumentiert die übrigen Staff-Actions
   auf dem gemeinsamen Action-Baustein. Rechnungs- und Lohnlogik bleiben

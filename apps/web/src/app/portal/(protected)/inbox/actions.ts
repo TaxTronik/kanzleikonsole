@@ -1,14 +1,13 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { withTenantContext } from '@taxtronik/db';
 import {
-  portalActionGuard,
+  portalAction,
   parseFormData,
+  type ActionFailure,
   type ActionResult,
 } from '@/server/actions/portal-action';
-import { toActionError } from '@/server/auth/rbac';
 import { checkPortalInboxThreadLimit, checkPortalWriteLimit } from '@/server/rate-limit';
 import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 import {
@@ -94,18 +93,15 @@ const ReadSchema = IdSchema.extend({
   lastMessageAt: z.iso.datetime({ offset: true }).transform((value) => new Date(value)),
 });
 
-async function portalGuardWithRateLimit() {
-  const guard = await portalActionGuard();
-  if (!guard.ok) return guard;
-  const limit = await checkPortalWriteLimit(guard.contactId);
-  if (!limit.ok) {
-    return {
-      ok: false as const,
-      error: 'Zu viele Aktionen. Bitte versuchen Sie es später erneut.',
-      errorCode: 'RATE_LIMITED' as const,
-    };
-  }
-  return guard;
+/** Schreib-Backstop des Portals: erster Schritt jeder Posteingangs-Mutation nach dem Gate. */
+async function writeLimitFailure(contactId: string): Promise<ActionFailure | null> {
+  const limit = await checkPortalWriteLimit(contactId);
+  if (limit.ok) return null;
+  return {
+    ok: false,
+    error: 'Zu viele Aktionen. Bitte versuchen Sie es später erneut.',
+    errorCode: 'RATE_LIMITED',
+  };
 }
 
 function actorOf(guard: { tenantId: string; clientId: string; contactId: string }) {
@@ -119,114 +115,102 @@ function actorOf(guard: { tenantId: string; clientId: string; contactId: string 
 export async function createInboxUploadBatchAction(formData: FormData): Promise<BatchActionResult> {
   const parsed = parseFormData(BatchSchema, formData);
   if (!parsed.ok) return parsed;
-  const guard = await portalGuardWithRateLimit();
-  if (!guard.ok) return guard;
-
-  try {
-    const batch = await withTenantContext(guard.ctx, (tx) =>
-      createPortalInboxUploadBatchTx(tx, actorOf(guard), parsed.data),
-    );
-    revalidatePath('/portal/inbox');
-    return { ok: true, batchId: batch.id, expiresAt: batch.expiresAt.toISOString() };
-  } catch (error) {
-    return toActionError(error);
-  }
+  return portalAction({
+    run: async (guard) => {
+      const limited = await writeLimitFailure(guard.contactId);
+      if (limited) return limited;
+      const batch = await withTenantContext(guard.ctx, (tx) =>
+        createPortalInboxUploadBatchTx(tx, actorOf(guard), parsed.data),
+      );
+      return { batchId: batch.id, expiresAt: batch.expiresAt.toISOString() };
+    },
+    revalidate: '/portal/inbox',
+  });
 }
 
 export async function discardInboxUploadBatchAction(formData: FormData): Promise<ActionResult> {
   const parsed = parseFormData(IdSchema, formData);
   if (!parsed.ok) return parsed;
-  const guard = await portalGuardWithRateLimit();
-  if (!guard.ok) return guard;
-
-  try {
-    const discarded = await withTenantContext(guard.ctx, (tx) =>
-      discardPortalInboxUploadBatchTx(tx, actorOf(guard), parsed.data.id),
-    );
-    if (discarded.discarded) {
-      for (const attachment of discarded.attachments) {
-        await compensateStorageCommit({
-          tenantId: guard.tenantId,
-          source: 'portal-inbox-draft-discarded',
-          commit: {
-            targetBucket: attachment.storageBucket,
-            targetKey: attachment.storageKey,
-            storageVersionId: attachment.storageVersionId,
-            sha256: Buffer.from(attachment.sha256),
-            sizeBytes: attachment.sizeBytes,
-            immutable: false,
-            retentionUntil: null,
-            detectedMime: attachment.mimeType,
-          },
-          cause: new Error('PORTAL_INBOX_DRAFT_DISCARDED'),
-        });
+  return portalAction({
+    run: async (guard) => {
+      const limited = await writeLimitFailure(guard.contactId);
+      if (limited) return limited;
+      const discarded = await withTenantContext(guard.ctx, (tx) =>
+        discardPortalInboxUploadBatchTx(tx, actorOf(guard), parsed.data.id),
+      );
+      if (discarded.discarded) {
+        for (const attachment of discarded.attachments) {
+          await compensateStorageCommit({
+            tenantId: guard.tenantId,
+            source: 'portal-inbox-draft-discarded',
+            commit: {
+              targetBucket: attachment.storageBucket,
+              targetKey: attachment.storageKey,
+              storageVersionId: attachment.storageVersionId,
+              sha256: Buffer.from(attachment.sha256),
+              sizeBytes: attachment.sizeBytes,
+              immutable: false,
+              retentionUntil: null,
+              detectedMime: attachment.mimeType,
+            },
+            cause: new Error('PORTAL_INBOX_DRAFT_DISCARDED'),
+          });
+        }
       }
-    }
-    revalidatePath('/portal/inbox');
-    return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+    },
+    revalidate: '/portal/inbox',
+  });
 }
 
 export async function createInboxThreadAction(formData: FormData): Promise<MessageActionResult> {
   const parsed = parseFormData(ThreadSchema, formData);
   if (!parsed.ok) return parsed;
-  const guard = await portalGuardWithRateLimit();
-  if (!guard.ok) return guard;
-  const threadLimit = await checkPortalInboxThreadLimit(guard.contactId);
-  if (!threadLimit.ok) {
-    return {
-      ok: false,
-      error: 'Zu viele neue Anliegen. Bitte versuchen Sie es später erneut.',
-      errorCode: 'RATE_LIMITED',
-    };
-  }
-
-  try {
-    const result = await withTenantContext(guard.ctx, (tx) =>
-      createPortalInboxThreadTx(tx, actorOf(guard), parsed.data),
-    );
-    revalidatePath('/portal');
-    revalidatePath('/portal/inbox');
-    return { ok: true, ...result };
-  } catch (error) {
-    return toActionError(error);
-  }
+  return portalAction({
+    run: async (guard) => {
+      const limited = await writeLimitFailure(guard.contactId);
+      if (limited) return limited;
+      const threadLimit = await checkPortalInboxThreadLimit(guard.contactId);
+      if (!threadLimit.ok) {
+        return {
+          ok: false,
+          error: 'Zu viele neue Anliegen. Bitte versuchen Sie es später erneut.',
+          errorCode: 'RATE_LIMITED',
+        };
+      }
+      return withTenantContext(guard.ctx, (tx) =>
+        createPortalInboxThreadTx(tx, actorOf(guard), parsed.data),
+      );
+    },
+    revalidate: ['/portal', '/portal/inbox'],
+  });
 }
 
 export async function addInboxMessageAction(formData: FormData): Promise<MessageActionResult> {
   const parsed = parseFormData(MessageSchema, formData);
   if (!parsed.ok) return parsed;
-  const guard = await portalGuardWithRateLimit();
-  if (!guard.ok) return guard;
-
-  try {
-    const result = await withTenantContext(guard.ctx, (tx) =>
-      addPortalInboxMessageTx(tx, actorOf(guard), parsed.data),
-    );
-    revalidatePath('/portal');
-    revalidatePath('/portal/inbox');
-    revalidatePath(`/portal/inbox/${parsed.data.threadId}`);
-    return { ok: true, ...result };
-  } catch (error) {
-    return toActionError(error);
-  }
+  return portalAction({
+    run: async (guard) => {
+      const limited = await writeLimitFailure(guard.contactId);
+      if (limited) return limited;
+      return withTenantContext(guard.ctx, (tx) =>
+        addPortalInboxMessageTx(tx, actorOf(guard), parsed.data),
+      );
+    },
+    revalidate: ['/portal', '/portal/inbox', `/portal/inbox/${parsed.data.threadId}`],
+  });
 }
 
 export async function markInboxThreadReadAction(formData: FormData): Promise<ActionResult> {
   const parsed = parseFormData(ReadSchema, formData);
   if (!parsed.ok) return parsed;
-  const guard = await portalGuardWithRateLimit();
-  if (!guard.ok) return guard;
-  try {
-    await withTenantContext(guard.ctx, (tx) =>
-      markPortalInboxThreadReadTx(tx, actorOf(guard), parsed.data.id, parsed.data.lastMessageAt),
-    );
-    revalidatePath('/portal');
-    revalidatePath('/portal/inbox');
-    return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  return portalAction({
+    run: async (guard) => {
+      const limited = await writeLimitFailure(guard.contactId);
+      if (limited) return limited;
+      await withTenantContext(guard.ctx, (tx) =>
+        markPortalInboxThreadReadTx(tx, actorOf(guard), parsed.data.id, parsed.data.lastMessageAt),
+      );
+    },
+    revalidate: ['/portal', '/portal/inbox'],
+  });
 }

@@ -14,6 +14,12 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: m.context }));
 vi.mock('@/server/actions/portal-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
   portalActionGuard: m.guard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  portalAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(m.guard),
 }));
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).

@@ -227,6 +227,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Server-Actions: Ein gemeinsamer Baustein (`staffAction`/`portalAction`)
+  führt mehrphasige Actions einheitlich durch Gate, Eingabeprüfung, Arbeit,
+  zentrales Fehler-Mapping und Revalidierung. 142 bisher handgeschriebene
+  Staff-, Portal- und Lohn-Actions laufen darüber; Berechtigungen,
+  Transaktionen, Audit-Ereignisse, revalidierte Pfade und Meldungen bleiben
+  unverändert. Technische Fehler außerhalb der bisherigen try-Blöcke (z. B.
+  beim Rechnungsversand, bei Folgeaufrufen nach dem Speichern oder bei
+  Rate-Limit-Abfragen) erscheinen jetzt als Fehlermeldung im Formular statt
+  als Fehlerseite. Ein Architekturtest hält den verbleibenden handgeschriebenen
+  Stil je Datei mit Begründung fest (`FK-EXC-20261006-028` bis
+  `FK-EXC-20261006-032`).
 - n8n-Einstellungen und Quantenlos-Panel halten ihren Formularzustand in
   typisierten, unit-getesteten Reducern mit Bereichs-Hooks; Aktionsdaten,
   Meldungen und Bestätigungen bleiben unverändert (`TCMS-SAMPLE-PROOF-001`,

@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db';
 import { resolveClientContactNotificationsTx } from '@taxtronik/db/notification';
@@ -9,9 +8,8 @@ import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
-import { toActionError } from '@/server/auth/rbac';
 import {
-  portalActionGuard,
+  portalAction,
   withPortalModule,
   ActionError,
   type ActionResult,
@@ -102,110 +100,87 @@ export async function createAppointmentRequestAction(
   _prev: AppointmentRequestActionResult | null,
   formData: FormData,
 ): Promise<AppointmentRequestActionResult> {
-  const g = await portalActionGuard({ module: 'appointments' });
-  if (!g.ok) return g;
-  const { tenantId, contactId, clientId, ctx } = g;
+  return portalAction({
+    guard: { module: 'appointments' },
+    run: async (g) => {
+      const { tenantId, contactId, clientId, ctx } = g;
 
-  try {
-    await assertPortalFeature(ctx, 'appointmentRequests');
-  } catch (e) {
-    return toActionError(e);
-  }
+      await assertPortalFeature(ctx, 'appointmentRequests');
 
-  // NEW4: Rate-Limit gegen Notification-Spam. resourceId pro Anfrage neu —
-  // Idempotenz-Filter im Notification-Service greift nicht. Hier deshalb
-  // pro contactId begrenzen (5 Anfragen/h).
-  const rl = await checkRateLimit(`portal-appt:${contactId}`, {
-    max: 5,
-    windowSec: 60 * 60,
-  });
-  if (!rl.ok) {
-    return {
-      ok: false,
-      error: `Zu viele Termin-Anfragen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
-      errorCode: 'RATE_LIMITED',
-    };
-  }
-
-  // 1–3 Slot-Paare aus den nummerierten Form-Feldern einsammeln
-  const slots: Array<{ startsAt: string; endsAt: string }> = [];
-  for (let i = 0; i < 3; i++) {
-    const s = formData.get(`slot${i}_starts`);
-    const e = formData.get(`slot${i}_ends`);
-    if (typeof s === 'string' && typeof e === 'string' && s && e) {
-      slots.push({ startsAt: s, endsAt: e });
-    }
-  }
-
-  const parsed = CreateSchema.safeParse({
-    subject: formData.get('subject'),
-    notes: formData.get('notes') ?? '',
-    preferredStaffId: formData.get('preferredStaffId') || null,
-    slots,
-  });
-  if (!parsed.success) return portalAppointmentValidationError(parsed.error);
-  const slotError = portalAppointmentSlotError(parsed.data.slots);
-  if (slotError) return slotError;
-
-  let createdId = '';
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      // preferredStaffId ist Portal-User-kontrolliert. Der zentrale Helper
-      // prüft Tenant, Aktivstatus und OPEN-/RESTRICTED-/Vertraulichkeits-Policy.
-      await assertAppointmentStaffOptionTx(tx, tenantId, clientId, parsed.data.preferredStaffId);
-      const req = await tx.appointmentRequest.create({
-        data: {
-          tenantId,
-          clientId,
-          createdByContact: contactId,
-          preferredStaffId: parsed.data.preferredStaffId ?? null,
-          subject: parsed.data.subject.trim(),
-          notes: parsed.data.notes?.trim() || null,
-          proposedSlots: parsed.data.slots as unknown as Prisma.InputJsonValue,
-        },
+      // NEW4: Rate-Limit gegen Notification-Spam. resourceId pro Anfrage neu —
+      // Idempotenz-Filter im Notification-Service greift nicht. Hier deshalb
+      // pro contactId begrenzen (5 Anfragen/h).
+      const rl = await checkRateLimit(`portal-appt:${contactId}`, {
+        max: 5,
+        windowSec: 60 * 60,
       });
-      createdId = req.id;
+      if (!rl.ok) {
+        return {
+          ok: false,
+          error: `Zu viele Termin-Anfragen. Bitte ${Math.ceil(rl.retryAfter / 60)} Min. warten.`,
+          errorCode: 'RATE_LIMITED',
+        };
+      }
 
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
-        action: 'appointment_request.create',
-        resourceType: 'appointment_request',
-        resourceId: req.id,
-        after: {
-          clientId,
-          subject: parsed.data.subject,
-          slots: parsed.data.slots.length,
-          preferredStaffId: parsed.data.preferredStaffId ?? null,
-        },
+      // 1–3 Slot-Paare aus den nummerierten Form-Feldern einsammeln
+      const slots: Array<{ startsAt: string; endsAt: string }> = [];
+      for (let i = 0; i < 3; i++) {
+        const s = formData.get(`slot${i}_starts`);
+        const e = formData.get(`slot${i}_ends`);
+        if (typeof s === 'string' && typeof e === 'string' && s && e) {
+          slots.push({ startsAt: s, endsAt: e });
+        }
+      }
+
+      const parsed = CreateSchema.safeParse({
+        subject: formData.get('subject'),
+        notes: formData.get('notes') ?? '',
+        preferredStaffId: formData.get('preferredStaffId') || null,
+        slots,
       });
+      if (!parsed.success) return portalAppointmentValidationError(parsed.error);
+      const slotError = portalAppointmentSlotError(parsed.data.slots);
+      if (slotError) return slotError;
 
-      // Notification an präferierten Mitarbeiter — oder, wenn keiner gewählt,
-      // an alle Bearbeiter mit Verantwortung für diesen Mandanten.
-      if (parsed.data.preferredStaffId) {
-        await notify(tx, {
+      let createdId = '';
+      await withTenantContext(ctx, async (tx) => {
+        // preferredStaffId ist Portal-User-kontrolliert. Der zentrale Helper
+        // prüft Tenant, Aktivstatus und OPEN-/RESTRICTED-/Vertraulichkeits-Policy.
+        await assertAppointmentStaffOptionTx(tx, tenantId, clientId, parsed.data.preferredStaffId);
+        const req = await tx.appointmentRequest.create({
+          data: {
+            tenantId,
+            clientId,
+            createdByContact: contactId,
+            preferredStaffId: parsed.data.preferredStaffId ?? null,
+            subject: parsed.data.subject.trim(),
+            notes: parsed.data.notes?.trim() || null,
+            proposedSlots: parsed.data.slots as unknown as Prisma.InputJsonValue,
+          },
+        });
+        createdId = req.id;
+
+        await evidenceService.record(tx, {
           tenantId,
-          staffId: parsed.data.preferredStaffId,
-          kind: 'APPOINTMENT_REQUESTED',
-          title: `Terminanfrage: ${parsed.data.subject}`,
-          body: `${parsed.data.slots.length} Wunschtermin(e)`,
-          href: '/staff/calendar',
+          actorType: 'CLIENT_CONTACT',
+          actorId: contactId,
+          action: 'appointment_request.create',
           resourceType: 'appointment_request',
           resourceId: req.id,
+          after: {
+            clientId,
+            subject: parsed.data.subject,
+            slots: parsed.data.slots.length,
+            preferredStaffId: parsed.data.preferredStaffId ?? null,
+          },
         });
-      } else {
-        const responsibles = await tx.clientResponsibility.findMany({
-          where: { clientId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-          select: { staffId: true },
-        });
-        const seen = new Set<string>();
-        for (const r of responsibles) {
-          if (seen.has(r.staffId)) continue;
-          seen.add(r.staffId);
+
+        // Notification an präferierten Mitarbeiter — oder, wenn keiner gewählt,
+        // an alle Bearbeiter mit Verantwortung für diesen Mandanten.
+        if (parsed.data.preferredStaffId) {
           await notify(tx, {
             tenantId,
-            staffId: r.staffId,
+            staffId: parsed.data.preferredStaffId,
             kind: 'APPOINTMENT_REQUESTED',
             title: `Terminanfrage: ${parsed.data.subject}`,
             body: `${parsed.data.slots.length} Wunschtermin(e)`,
@@ -213,15 +188,32 @@ export async function createAppointmentRequestAction(
             resourceType: 'appointment_request',
             resourceId: req.id,
           });
+        } else {
+          const responsibles = await tx.clientResponsibility.findMany({
+            where: { clientId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+            select: { staffId: true },
+          });
+          const seen = new Set<string>();
+          for (const r of responsibles) {
+            if (seen.has(r.staffId)) continue;
+            seen.add(r.staffId);
+            await notify(tx, {
+              tenantId,
+              staffId: r.staffId,
+              kind: 'APPOINTMENT_REQUESTED',
+              title: `Terminanfrage: ${parsed.data.subject}`,
+              body: `${parsed.data.slots.length} Wunschtermin(e)`,
+              href: '/staff/calendar',
+              resourceType: 'appointment_request',
+              resourceId: req.id,
+            });
+          }
         }
-      }
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-  revalidatePath('/portal/appointments');
-  revalidatePath('/staff/calendar');
-  return { ok: true, id: createdId };
+      });
+      return { id: createdId };
+    },
+    revalidate: ['/portal/appointments', '/staff/calendar'],
+  });
 }
 
 export async function cancelAppointmentRequestAction(input: {

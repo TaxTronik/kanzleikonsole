@@ -15,7 +15,16 @@ vi.mock('next/cache', () => ({ revalidatePath: h.revalidate }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.withTenant }));
 vi.mock('@/server/actions/portal-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
-  return { parseFormData, portalActionGuard: h.guard };
+  return {
+    parseFormData,
+    portalActionGuard: h.guard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    portalAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(h.guard),
+  };
 });
 vi.mock('@/server/rate-limit', () => ({
   checkPortalWriteLimit: h.writeLimit,
@@ -131,4 +140,81 @@ describe('PORTAL-INBOX-SUBMISSION-001 Action-Vertrag ohne Anlagen', () => {
       expect(h.markRead).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('Posteingang über portalAction (K-02): Gate, Schreib-Backstop, Revalidate', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    h.guard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      contactId: 'contact-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'contact-1', actorType: 'CLIENT_CONTACT' },
+    });
+    h.writeLimit.mockResolvedValue({ ok: true });
+    h.threadLimit.mockResolvedValue({ ok: true });
+    h.withTenant.mockImplementation(async (_ctx, callback) => callback({}));
+  });
+
+  function messageForm(): FormData {
+    const form = baseForm();
+    form.set('threadId', '00000000-0000-4000-8000-000000000002');
+    return form;
+  }
+
+  it('gibt die Gate-Ablehnung unverändert zurück, ohne den Backstop zu prüfen', async () => {
+    h.guard.mockResolvedValue({ ok: false, error: 'Nicht eingeloggt.' });
+
+    await expect(addInboxMessageAction(messageForm())).resolves.toEqual({
+      ok: false,
+      error: 'Nicht eingeloggt.',
+    });
+    expect(h.writeLimit).not.toHaveBeenCalled();
+    expect(h.withTenant).not.toHaveBeenCalled();
+  });
+
+  it('meldet den Schreib-Backstop als RATE_LIMITED vor jeder Transaktion', async () => {
+    h.writeLimit.mockResolvedValue({ ok: false, retryAfter: 60 });
+
+    await expect(addInboxMessageAction(messageForm())).resolves.toEqual({
+      ok: false,
+      error: 'Zu viele Aktionen. Bitte versuchen Sie es später erneut.',
+      errorCode: 'RATE_LIMITED',
+    });
+    expect(h.writeLimit).toHaveBeenCalledWith('contact-1');
+    expect(h.withTenant).not.toHaveBeenCalled();
+    expect(h.revalidate).not.toHaveBeenCalled();
+  });
+
+  it('prüft das Anliegen-Limit erst nach dem Schreib-Backstop', async () => {
+    h.threadLimit.mockResolvedValue({ ok: false, retryAfter: 60 });
+    const form = baseForm();
+    form.set('subject', 'Eine Frage');
+    form.set('topic', 'GENERAL');
+
+    await expect(createInboxThreadAction(form)).resolves.toEqual({
+      ok: false,
+      error: 'Zu viele neue Anliegen. Bitte versuchen Sie es später erneut.',
+      errorCode: 'RATE_LIMITED',
+    });
+    expect(h.writeLimit).toHaveBeenCalledWith('contact-1');
+    expect(h.createThread).not.toHaveBeenCalled();
+  });
+
+  it('revalidiert nach einer Antwort Übersicht, Posteingang und Verlauf', async () => {
+    h.addMessage.mockResolvedValue({ threadId: 'thread-1', messageId: 'm-1', idempotent: true });
+
+    await expect(addInboxMessageAction(messageForm())).resolves.toEqual({
+      ok: true,
+      threadId: 'thread-1',
+      messageId: 'm-1',
+      idempotent: true,
+    });
+    expect(h.revalidate.mock.calls.map(([path]) => path)).toEqual([
+      '/portal',
+      '/portal/inbox',
+      '/portal/inbox/00000000-0000-4000-8000-000000000002',
+    ]);
+  });
 });
