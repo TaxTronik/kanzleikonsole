@@ -100,14 +100,11 @@ describe('parseFormData-Migrationsrest', () => {
 
     expect(exact).toEqual(
       [
-        // Die vier *-actions.ts-Eintraege sind KEINE neuen Faelle: sie lagen
-        // schon immer so vor, fielen aber aus dem frueheren Exakt-Match
-        // ('actions.ts') der Inventur. Mit dem Suffix-Match sind sie jetzt
-        // sichtbar und hier bewusst klassifiziert.
+        // Kein neuer Fall: lag schon immer so vor, fiel aber aus dem früheren
+        // Exakt-Match ('actions.ts') der Inventur. Die übrigen drei
+        // *-actions.ts-Einträge (Briefkopf, Mail-Dispatch, Zugriffsmodell)
+        // lesen seit R-12 über parseFormData.
         'portal/(protected)/profile-actions.ts::SwitchProfileSchema',
-        'staff/(protected)/admin/settings/branding-actions.ts::LetterheadSchema',
-        'staff/(protected)/admin/settings/mail-actions.ts::MailDispatchSchema',
-        'staff/(protected)/admin/settings/modules-actions.ts::AccessPolicySchema',
       ].sort(),
     );
   });
@@ -118,18 +115,15 @@ describe('parseFormData-Migrationsrest', () => {
     // Die 0.3.0-Formularmigration hat vier weitere transformierte Direkt-Parses
     // durch den gemeinsamen, strikt schema-basierten parseFormData-Helfer
     // ersetzt. Neue Inbox- und Expansion-Actions nutzen denselben Vertrag von
-    // Beginn an. Die Direkt-Restbaseline wird deshalb ausschließlich abgesenkt;
-    // die sechs bewusst klassifizierten exakten Sonderfälle bleiben unverändert.
+    // Beginn an. Die Direkt-Restbaseline wird deshalb ausschließlich abgesenkt.
     // T-03 hat die tote addBeneficialOwner-Action (AddOwnerSchema) entfernt.
-    // R-12 hat die übrigen Direkt-Parses der nicht ausgeschlossenen Dateien auf
-    // parseFormData umgestellt (absentAsNull + Feldschemas aus form-data.ts);
-    // der Rest liegt in den ausgeschlossenen Dateien und den Portal-Terminen
+    // R-12 hat die Direkt-Parses auf parseFormData umgestellt (absentAsNull +
+    // Feldschemas aus form-data.ts), zuletzt auch in den zunächst
+    // ausgeschlossenen Dateien (GwG, Vollmachten, Admin-Einstellungen). Es
+    // bleiben der Profilwechsel (exakter Sonderfall) und die Portal-Termine
     // (Slot-Paare mit eigener Feldfehler-Zuordnung, siehe FORM_DATA_READ_BASELINE).
-    // R-12 (GwG, Vollmachten): Prüfzyklus, Rechtsträger, Ausweissätze,
-    // wirtschaftlich Berechtigte und die Vollmachtsanlage lesen über
-    // parseFormData (sieben Direkt-Parses weniger).
-    expect(direct).toHaveLength(17);
-    expect(direct.filter((call) => !call.exact)).toHaveLength(13);
-    expect(shared).toBe(107);
+    expect(direct).toHaveLength(2);
+    expect(direct.filter((call) => !call.exact)).toHaveLength(1);
+    expect(shared).toBe(123);
   });
 });

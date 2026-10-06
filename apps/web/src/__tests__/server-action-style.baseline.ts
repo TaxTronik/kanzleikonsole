@@ -26,10 +26,6 @@ export const PUBLIC_ACTION_ENTRY_POINTS: Readonly<Record<string, string>> = {
     'Öffentlicher Vollmacht-Signaturflow: autorisiert über rawToken und OTP, ohne Session.',
 };
 
-const EXCLUDED =
-  'Nicht in K-02 umgestellt (bei Einführung parallel durch K-03/K-04 umgebaut; GwG-, Vollmachts-, ' +
-  'Retag- und n8n-Logik liegt seitdem in Services unter server/): Stand nach der Integration ' +
-  'eingefroren, Umstellung der dünnen Actions auf staffAction steht aus.';
 const SUBSUMTION =
   'Subsumtion: eigene Guard-Familie (requireStaffSession + Ressourcen-Guards in _guards.ts mit ' +
   'Modulmeldung als ForbiddenError; Zugriff und Rechtestufe in EINER Transaktion). Fehler ' +
@@ -52,15 +48,6 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
       'Ausgang ist eine Weiterleitung (Login, Dashboard, Rücksprung); der Wechsel schreibt das ' +
       'Session-Cookie. Kein ActionResult-Vertrag.',
   },
-  'app/staff/(protected)/admin/settings/branding-actions.ts': { actions: 4, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/infra-actions.ts': { actions: 3, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/integrations/signal-embedding-actions.ts': {
-    actions: 3,
-    reason: EXCLUDED,
-  },
-  'app/staff/(protected)/admin/settings/mail-actions.ts': { actions: 4, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/modules-actions.ts': { actions: 5, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/n8n-actions.ts': { actions: 14, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/subsumtion/actions.ts': { actions: 14, reason: SUBSUMTION },
   'app/staff/(protected)/clients/[id]/subsumtion/norm-actions.ts': {
     actions: 10,
@@ -120,20 +107,17 @@ export const HAND_FILLED_AUDIT_BASELINE: Readonly<
     calls: 1,
     reason: 'Login: die Identität entsteht erst (staffUser.id); es gibt keinen Gate-Kontext.',
   },
-  'app/staff/(protected)/admin/settings/branding-actions.ts': { calls: 4, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/infra-actions.ts': { calls: 2, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/integrations/signal-embedding-actions.ts': {
-    calls: 3,
-    reason: EXCLUDED,
-  },
-  'app/staff/(protected)/admin/settings/mail-actions.ts': { calls: 3, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/modules-actions.ts': { calls: 5, reason: EXCLUDED },
   'app/staff/(protected)/invoices/actions.ts': {
     calls: 2,
     reason:
       'finalizeInvoiceSendTx/cancelOriginalAfterDeliveredStornoTx: Helfer erhalten Mandant und Mitarbeiter als Parameter.',
   },
-  'app/staff/(protected)/poa/sign-actions.ts': { calls: 1, reason: EXCLUDED },
+  'app/staff/(protected)/poa/sign-actions.ts': {
+    calls: 1,
+    reason:
+      'signPoaAction: öffentlicher Signaturflow ohne Sitzung — Akteur ist der Unterzeichner-Kontakt ' +
+      '(CLIENT_CONTACT, ohne Kontakt SYSTEM), Mandant aus dem Token-Lookup; kein Gate-Kontext.',
+  },
   'server/actions/accessible-display.ts': {
     calls: 1,
     reason:
@@ -202,11 +186,6 @@ export const FORM_DATA_READ_BASELINE: Readonly<Record<string, { reads: number; r
         'Optionaler Freitext (getrimmt, auf 500 Zeichen gekürzt, leer → null) ohne Prüfung, die ' +
         'fehlschlagen kann.',
     },
-    'app/staff/(protected)/admin/settings/branding-actions.ts': { reads: 23, reason: EXCLUDED },
-    'app/staff/(protected)/admin/settings/infra-actions.ts': { reads: 6, reason: EXCLUDED },
-    'app/staff/(protected)/admin/settings/mail-actions.ts': { reads: 18, reason: EXCLUDED },
-    'app/staff/(protected)/admin/settings/modules-actions.ts': { reads: 47, reason: EXCLUDED },
-    'app/staff/(protected)/admin/settings/n8n-actions.ts': { reads: 23, reason: EXCLUDED },
     'app/staff/(protected)/client-assistance/actions.ts': { reads: 19, reason: SERVICE_INPUT },
     'app/staff/(protected)/clients/[id]/bwa/actions.ts': { reads: 1, reason: UPLOAD_FILE },
     'app/staff/(protected)/clients/[id]/notices/filings/actions.ts': {

@@ -323,7 +323,9 @@ if (enabled) {
       async ({ key, invoke }) => {
         const original = await seed(key);
         fixture.failAudit = true;
-        await expect(invoke()).rejects.toThrow(/division by zero/);
+        // K-02: Der Datenbankfehler kommt wie bei allen Action-Bausteinen über
+        // das zentrale Fehler-Mapping als Ergebnis zurück (vorher geworfen).
+        expect(await invoke()).toEqual({ ok: false, error: 'Datenbankfehler.' });
         expect(await read(key)).toEqual(original);
         expect(await owner.auditLog.count({ where: { tenantId } })).toBe(auditCount);
         expect(fixture.transactions).toBe(1);

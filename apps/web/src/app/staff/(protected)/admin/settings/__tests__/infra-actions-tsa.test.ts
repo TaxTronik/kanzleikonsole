@@ -16,8 +16,14 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/http/ssrf-guard', () => ({ assertPublicUrl: mocks.assertPublicUrl }));
 vi.mock('@/server/settings/tax-region', () => ({ writeTaxRegionTx: vi.fn() }));
 vi.mock('@/server/settings/tsa', () => ({ writeTsaConfigTx: vi.fn() }));
-vi.mock('@/server/actions/staff-action', () => ({
+vi.mock('@/server/actions/staff-action', async () => ({
   staffActionGuard: mocks.staffActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(mocks.staffActionGuard),
 }));
 vi.mock('@taxtronik/evidence', () => ({
   createRfc3161Adapter: mocks.createRfc3161Adapter,

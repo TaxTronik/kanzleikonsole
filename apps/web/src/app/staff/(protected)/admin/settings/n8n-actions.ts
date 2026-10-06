@@ -12,7 +12,8 @@
 
 import { z } from 'zod';
 import { isAllowedN8nEvent } from '@taxtronik/n8n-shared';
-import { staffActionGuard } from '@/server/actions/staff-action';
+import { staffAction } from '@/server/actions/staff-action';
+import { formDefault, formFlag, parseFormData } from '@/server/actions/form-data';
 import { BUNDLED_N8N_WORKFLOWS } from '@/server/n8n/bundled-workflows';
 import type { N8nRecentDeliveryView } from '@/server/n8n/status';
 import { N8N_CALLBACK_SCOPES } from '@/server/settings/n8n';
@@ -58,82 +59,94 @@ export interface N8nFailedDeliveryPageResult extends ActionResult {
   nextCursor?: string | null;
 }
 
-function parseConnectionForm(formData: FormData) {
-  return ConnectionSchema.safeParse({
-    name: formData.get('name') ?? 'TaxTronik n8n',
-    kind: formData.get('kind') ?? 'SELF_HOSTED',
-    routingMode: formData.get('routingMode') ?? 'EXPLICIT',
-    enabled: formData.get('enabled') === 'on',
-    uiBaseUrl: formData.get('uiBaseUrl') ?? '',
-    callbackBaseUrl: formData.get('callbackBaseUrl') ?? '',
-    webhookBaseUrl: formData.get('webhookBaseUrl') ?? '',
-    hmacSecret: formData.get('hmacSecret') ?? '',
-    apiBaseUrl: formData.get('apiBaseUrl') ?? '',
-    apiKey: formData.get('apiKey') ?? '',
-    keepHmac: formData.get('keepHmac') === 'on',
-    keepApiKey: formData.get('keepApiKey') === 'on',
-  });
-}
+/** n8n-Administration nur für ADMIN/PARTNER. */
+const N8N_ADMIN = { requireAdmin: true } as const;
 
-function parseEndpointForm(formData: FormData) {
-  return EndpointSchema.safeParse({
-    id: formData.get('id') ?? '',
-    name: formData.get('name') ?? '',
-    productionUrl: formData.get('productionUrl') ?? '',
-    testUrl: formData.get('testUrl') ?? '',
-    workflowId: formData.get('workflowId') ?? '',
-    workflowName: formData.get('workflowName') ?? '',
-    workflowNodeId: formData.get('workflowNodeId') ?? '',
-    source: formData.get('source') ?? 'CUSTOM',
-    enabled: formData.get('enabled') === 'on',
-    testMode: formData.get('testMode') === 'on',
-    events: formData.getAll('events'),
-  });
-}
-
-async function requireAdmin() {
-  const guard = await staffActionGuard({ requireAdmin: true });
-  if (!guard.ok) return { ok: false as const, error: guard.error };
-  return { ok: true as const, tenantId: guard.tenantId, staffId: guard.staffId };
-}
-
+/** Akteur der n8n-Services (immer ein Mitarbeiter) aus dem Gate-Kontext. */
 function context(auth: { tenantId: string; staffId: string }) {
   return { tenantId: auth.tenantId, actorId: auth.staffId, actorType: 'STAFF' as const };
 }
+
+/**
+ * Verbindungsformular → ConnectionSchema (R-12): fehlende Felder wie bisher
+ * mit Vorgabe (Name, Art, Routing) bzw. '', Schalter nur bei „on“. Die
+ * Prüfung selbst bleibt beim Schema des Services.
+ */
+const ConnectionForm = z
+  .object({
+    name: formDefault('TaxTronik n8n', z.unknown()),
+    kind: formDefault('SELF_HOSTED', z.unknown()),
+    routingMode: formDefault('EXPLICIT', z.unknown()),
+    enabled: formFlag(),
+    uiBaseUrl: formDefault('', z.unknown()),
+    callbackBaseUrl: formDefault('', z.unknown()),
+    webhookBaseUrl: formDefault('', z.unknown()),
+    hmacSecret: formDefault('', z.unknown()),
+    apiBaseUrl: formDefault('', z.unknown()),
+    apiKey: formDefault('', z.unknown()),
+    keepHmac: formFlag(),
+    keepApiKey: formFlag(),
+  })
+  .pipe(ConnectionSchema);
+
+/** Routenformular → EndpointSchema (R-12): wie bisher '' bzw. CUSTOM, Events als Liste. */
+const EndpointForm = z
+  .object({
+    id: formDefault('', z.unknown()),
+    name: formDefault('', z.unknown()),
+    productionUrl: formDefault('', z.unknown()),
+    testUrl: formDefault('', z.unknown()),
+    workflowId: formDefault('', z.unknown()),
+    workflowName: formDefault('', z.unknown()),
+    workflowNodeId: formDefault('', z.unknown()),
+    source: formDefault('CUSTOM', z.unknown()),
+    enabled: formFlag(),
+    testMode: formFlag(),
+    events: z.unknown(),
+  })
+  // Rohwerte wie aus formData.get/getAll — erst EndpointSchema prüft sie.
+  .transform((fields) => fields as z.input<typeof EndpointSchema>)
+  .pipe(EndpointSchema);
 
 export async function saveN8nAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = parseConnectionForm(formData);
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.' };
-  return saveN8nConnection(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    parse: () =>
+      parseFormData(ConnectionForm, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues[0]?.message ?? 'Ungültige Eingabe.',
+      }),
+    run: (g, data) => saveN8nConnection(context(g), data),
+  });
 }
 
 export async function resetN8nAction(): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  return resetN8nConnection(context(auth));
+  return staffAction({ guard: N8N_ADMIN, run: (g) => resetN8nConnection(context(g)) });
 }
 
 export async function generateSigningSecretAction(): Promise<ActionResult & { secret?: string }> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  return { ok: true, secret: generateN8nSigningSecret() };
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async () => ({ secret: generateN8nSigningSecret() }),
+  });
 }
 
 export async function testN8nApiAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = parseConnectionForm(formData);
-  if (!parsed.success) return { ok: false, error: 'Ungültige Eingabe.' };
-  return testN8nApi(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    parse: () =>
+      parseFormData(ConnectionForm, formData, {
+        absentAsNull: true,
+        errorMessage: 'Ungültige Eingabe.',
+      }),
+    run: (g, data) => testN8nApi(context(g), data),
+  });
 }
 
 export interface CallbackCredentialResult extends ActionResult {
@@ -149,47 +162,60 @@ export interface CallbackCredentialResult extends ActionResult {
 export async function rotateN8nCallbackCredentialAction(
   requestedScopes: string[],
 ): Promise<CallbackCredentialResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const scopesResult = z
-    .array(z.enum(N8N_CALLBACK_SCOPES))
-    .max(N8N_CALLBACK_SCOPES.length)
-    .safeParse([...new Set(requestedScopes)]);
-  if (!scopesResult.success) return { ok: false, error: 'Ungültige Callback-Berechtigungen.' };
-  return rotateN8nCallbackAccess(context(auth), scopesResult.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      const scopesResult = z
+        .array(z.enum(N8N_CALLBACK_SCOPES))
+        .max(N8N_CALLBACK_SCOPES.length)
+        .safeParse([...new Set(requestedScopes)]);
+      if (!scopesResult.success) return { ok: false, error: 'Ungültige Callback-Berechtigungen.' };
+      return rotateN8nCallbackAccess(context(g), scopesResult.data);
+    },
+  });
 }
 
 export async function saveN8nEndpointAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = parseEndpointForm(formData);
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Ungültige Route.' };
-  return saveN8nEndpoint(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    parse: () =>
+      parseFormData(EndpointForm, formData, {
+        repeatable: ['events'],
+        absentAsNull: true,
+        errorMessage: (issues) => issues[0]?.message ?? 'Ungültige Route.',
+      }),
+    run: (g, data) => saveN8nEndpoint(context(g), data),
+  });
 }
 
 export async function deleteN8nEndpointAction(endpointId: string): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = z.string().uuid().safeParse(endpointId);
-  if (!parsed.success) return { ok: false, error: 'Ungültige Route.' };
-  return deleteN8nEndpoint(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      const parsed = z.string().uuid().safeParse(endpointId);
+      if (!parsed.success) return { ok: false, error: 'Ungültige Route.' };
+      return deleteN8nEndpoint(context(g), parsed.data);
+    },
+  });
 }
 
 /** Lädt offene Fehler unabhängig von neueren erfolgreichen Zustellungen seitenweise nach. */
 export async function listFailedN8nDeliveriesAction(
   cursor?: string,
 ): Promise<N8nFailedDeliveryPageResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsedCursor = cursor ? z.string().uuid().safeParse(cursor) : null;
-  if (parsedCursor && !parsedCursor.success) {
-    return { ok: false, error: 'Ungültiger Seitenzeiger.' };
-  }
-  return listFailedN8nDeliveries(context(auth), parsedCursor?.success ? parsedCursor.data : null);
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      const parsedCursor = cursor ? z.string().uuid().safeParse(cursor) : null;
+      if (parsedCursor && !parsedCursor.success) {
+        return { ok: false, error: 'Ungültiger Seitenzeiger.' };
+      }
+      return listFailedN8nDeliveries(context(g), parsedCursor?.success ? parsedCursor.data : null);
+    },
+  });
 }
 
 /**
@@ -198,45 +224,55 @@ export async function listFailedN8nDeliveriesAction(
  * Fehlerstatus wechselt revisionsprotokolliert zu SKIPPED.
  */
 export async function acknowledgeN8nDeliveryAction(deliveryId: string): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = z.string().uuid().safeParse(deliveryId);
-  if (!parsed.success) return { ok: false, error: 'Ungültige Zustellung.' };
-  return acknowledgeN8nDelivery(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      const parsed = z.string().uuid().safeParse(deliveryId);
+      if (!parsed.success) return { ok: false, error: 'Ungültige Zustellung.' };
+      return acknowledgeN8nDelivery(context(g), parsed.data);
+    },
+  });
 }
 
 export async function retryN8nDeliveryAction(deliveryId: string): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = z.string().uuid().safeParse(deliveryId);
-  if (!parsed.success) return { ok: false, error: 'Ungültige Zustellung.' };
-  return retryN8nDelivery(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      const parsed = z.string().uuid().safeParse(deliveryId);
+      if (!parsed.success) return { ok: false, error: 'Ungültige Zustellung.' };
+      return retryN8nDelivery(context(g), parsed.data);
+    },
+  });
 }
 
 /** Ordnet ein historisches UNROUTED-Event bewusst den jetzt aktiven Routen zu. */
 export async function replayUnroutedN8nEventAction(outboxId: string): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = z.string().uuid().safeParse(outboxId);
-  if (!parsed.success) return { ok: false, error: 'Ungültiges Event.' };
-  return replayUnroutedN8nEvent(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      const parsed = z.string().uuid().safeParse(outboxId);
+      if (!parsed.success) return { ok: false, error: 'Ungültiges Event.' };
+      return replayUnroutedN8nEvent(context(g), parsed.data);
+    },
+  });
 }
 
 /** Schließt ein UNROUTED-Event nach bewusster Admin-Entscheidung ohne Versand ab. */
 export async function skipUnroutedN8nEventAction(outboxId: string): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  const parsed = z.string().uuid().safeParse(outboxId);
-  if (!parsed.success) return { ok: false, error: 'Ungültiges Event.' };
-  return skipUnroutedN8nEvent(context(auth), parsed.data);
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      const parsed = z.string().uuid().safeParse(outboxId);
+      if (!parsed.success) return { ok: false, error: 'Ungültiges Event.' };
+      return skipUnroutedN8nEvent(context(g), parsed.data);
+    },
+  });
 }
 
 export async function discoverN8nWebhooksAction(): Promise<
   ActionResult & { webhooks?: N8nDiscoveredWebhookView[] }
 > {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  return discoverN8nWebhooks(context(auth));
+  return staffAction({ guard: N8N_ADMIN, run: (g) => discoverN8nWebhooks(context(g)) });
 }
 
 export async function testN8nEndpointAction(
@@ -244,26 +280,29 @@ export async function testN8nEndpointAction(
   useTestUrl = false,
   requestedEvent = 'taxtronik.ping',
 ): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  if (!z.string().uuid().safeParse(endpointId).success)
-    return { ok: false, error: 'Ungültige Route.' };
-  if (!isAllowedN8nEvent(requestedEvent)) return { ok: false, error: 'Unbekanntes Test-Event.' };
-  if (!useTestUrl && requestedEvent !== 'taxtronik.ping') {
-    return {
-      ok: false,
-      error: 'Synthetische Fach-Events dürfen nur an die separate n8n-Test-URL gesendet werden.',
-    };
-  }
-  return testN8nEndpoint(context(auth), { endpointId, useTestUrl, event: requestedEvent });
+  return staffAction({
+    guard: N8N_ADMIN,
+    run: async (g) => {
+      if (!z.string().uuid().safeParse(endpointId).success)
+        return { ok: false, error: 'Ungültige Route.' };
+      if (!isAllowedN8nEvent(requestedEvent))
+        return { ok: false, error: 'Unbekanntes Test-Event.' };
+      if (!useTestUrl && requestedEvent !== 'taxtronik.ping') {
+        return {
+          ok: false,
+          error:
+            'Synthetische Fach-Events dürfen nur an die separate n8n-Test-URL gesendet werden.',
+        };
+      }
+      return testN8nEndpoint(context(g), { endpointId, useTestUrl, event: requestedEvent });
+    },
+  });
 }
 
 export async function listWorkflowsAction(): Promise<
   ActionResult & { workflows?: N8nWorkflowRow[] }
 > {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  return listN8nWorkflows(context(auth));
+  return staffAction({ guard: N8N_ADMIN, run: (g) => listN8nWorkflows(context(g)) });
 }
 
 export interface WorkflowImportActionResult extends CallbackCredentialResult {
@@ -278,7 +317,5 @@ export async function importWorkflowsAction(
     gwgOfficerEmail?: string;
   } = { templateIds: BUNDLED_N8N_WORKFLOWS.map((template) => template.templateId) },
 ): Promise<WorkflowImportActionResult> {
-  const auth = await requireAdmin();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  return importN8nWorkflows(context(auth), input);
+  return staffAction({ guard: N8N_ADMIN, run: (g) => importN8nWorkflows(context(g), input) });
 }

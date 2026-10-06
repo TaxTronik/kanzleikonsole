@@ -235,6 +235,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Server-Actions: Auch die GwG-Prüfung (Einreichen, Freigeben, Zurückweisen,
+  Einladung), die Umklassifizierung einzelner Dokumente, die Vollmachten und
+  alle Einstellungsseiten (Branding, Infrastruktur, E-Mail, Module, n8n,
+  Signal) laufen über `staffAction`, `audit(tx, g, …)` und `parseFormData`.
+  Formulare ordnen Eingabefehler zusätzlich den Feldern zu (Meldungstexte
+  unverändert); technische Fehler und Datenbankfehler beim Speichern
+  erscheinen als Meldung statt als Fehlerseite (`FK-EXC-20261007-001` bis
+  `FK-EXC-20261007-003`).
 - Operator-CLI: `scripts/ops-lib.sh` setzt nur noch Shell-Optionen, Pfade und
   Pins und lädt 15 Domänendateien unter `scripts/ops/`; alle Funktionen sind
   unverändert verschoben (byte-identisch per `declare -f` geprüft).

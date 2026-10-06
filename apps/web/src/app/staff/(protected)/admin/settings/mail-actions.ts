@@ -4,9 +4,7 @@
 // (App / App+n8n). Aus der früheren settings/actions.ts-God-Datei herausgelöst.
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import {
   readSmtpConfig,
   writeSmtpConfigTx,
@@ -15,7 +13,9 @@ import {
 } from '@/server/settings/smtp';
 import { sendTestMail } from '@/server/mail/send';
 import { writeMailDispatchTx, type MailDispatchConfig } from '@/server/settings/mail-dispatch';
-import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { staffAction, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
+import { formDefault, formFlag, parseFormData } from '@/server/actions/form-data';
 import { log } from '@/server/logger';
 
 /** Bekannte Nodemailer-Fehlercodes des SMTP-Tests. */
@@ -54,13 +54,13 @@ function smtpTestErrorMessage(error: unknown): string {
 const SmtpSchema = z.object({
   host: z.string().min(1).max(255),
   port: z.coerce.number().int().min(1).max(65535),
-  secure: z.boolean(),
-  user: z.string().max(255).optional().or(z.literal('')),
-  password: z.string().max(500).optional().or(z.literal('')),
+  secure: formFlag(),
+  user: formDefault('', z.string().max(255).optional().or(z.literal(''))),
+  password: formDefault('', z.string().max(500).optional().or(z.literal(''))),
   from: z.string().min(1).max(255),
-  replyTo: z.string().max(255).optional().or(z.literal('')),
+  replyTo: formDefault('', z.string().max(255).optional().or(z.literal(''))),
   /** Wenn `true`: bestehendes Passwort aus DB beibehalten (Form schickt leer). */
-  keepPassword: z.boolean().default(false),
+  keepPassword: formFlag('on', z.boolean().default(false)),
 });
 
 const TestMailSchema = SmtpSchema.extend({
@@ -71,132 +71,108 @@ export async function saveSmtpAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-  const parsed = SmtpSchema.safeParse({
-    host: formData.get('host'),
-    port: formData.get('port'),
-    secure: formData.get('secure') === 'on',
-    user: formData.get('user') ?? '',
-    password: formData.get('password') ?? '',
-    from: formData.get('from'),
-    replyTo: formData.get('replyTo') ?? '',
-    keepPassword: formData.get('keepPassword') === 'on',
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async (g) => {
+      const { ctx } = g;
+      const parsed = parseFormData(SmtpSchema, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+      });
+      if (!parsed.ok) return parsed;
+
+      let password = parsed.data.password ?? '';
+      if (parsed.data.keepPassword) {
+        const existing = await readSmtpConfig(ctx);
+        password = existing?.password ?? '';
+      }
+
+      const cfg: SmtpConfig = {
+        host: parsed.data.host.trim(),
+        port: parsed.data.port,
+        secure: parsed.data.secure,
+        user: (parsed.data.user ?? '').trim(),
+        password,
+        from: parsed.data.from.trim(),
+        replyTo: (parsed.data.replyTo ?? '').trim(),
+      };
+      await withTenantContext(ctx, async (tx) => {
+        await writeSmtpConfigTx(tx, ctx, cfg);
+        await audit(tx, g, {
+          action: 'tenant.settings.smtp.update',
+          resourceType: 'tenant_setting',
+          resourceId: 'mail.smtp',
+          after: {
+            host: cfg.host,
+            port: cfg.port,
+            secure: cfg.secure,
+            user: cfg.user || null,
+            from: cfg.from,
+            replyTo: cfg.replyTo || null,
+            password: cfg.password ? '***' : null,
+          },
+        });
+      });
+    },
+    revalidate: ['/staff/admin/settings/mail', '/staff/admin'],
   });
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
-    };
-  }
-
-  let password = parsed.data.password ?? '';
-  if (parsed.data.keepPassword) {
-    const existing = await readSmtpConfig(ctx);
-    password = existing?.password ?? '';
-  }
-
-  const cfg: SmtpConfig = {
-    host: parsed.data.host.trim(),
-    port: parsed.data.port,
-    secure: parsed.data.secure,
-    user: (parsed.data.user ?? '').trim(),
-    password,
-    from: parsed.data.from.trim(),
-    replyTo: (parsed.data.replyTo ?? '').trim(),
-  };
-  await withTenantContext(ctx, async (tx) => {
-    await writeSmtpConfigTx(tx, ctx, cfg);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tenant.settings.smtp.update',
-      resourceType: 'tenant_setting',
-      resourceId: 'mail.smtp',
-      after: {
-        host: cfg.host,
-        port: cfg.port,
-        secure: cfg.secure,
-        user: cfg.user || null,
-        from: cfg.from,
-        replyTo: cfg.replyTo || null,
-        password: cfg.password ? '***' : null,
-      },
-    });
-  });
-
-  revalidatePath('/staff/admin/settings/mail');
-  revalidatePath('/staff/admin');
-  return { ok: true };
 }
 
 export async function resetSmtpAction(): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-  await withTenantContext(ctx, async (tx) => {
-    await deleteSmtpConfigTx(tx, ctx);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tenant.settings.smtp.reset',
-      resourceType: 'tenant_setting',
-      resourceId: 'mail.smtp',
-      after: null,
-    });
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async (g) => {
+      const { ctx } = g;
+      await withTenantContext(ctx, async (tx) => {
+        await deleteSmtpConfigTx(tx, ctx);
+        await audit(tx, g, {
+          action: 'tenant.settings.smtp.reset',
+          resourceType: 'tenant_setting',
+          resourceId: 'mail.smtp',
+          after: null,
+        });
+      });
+    },
+    revalidate: ['/staff/admin/settings/mail', '/staff/admin'],
   });
-  revalidatePath('/staff/admin/settings/mail');
-  revalidatePath('/staff/admin');
-  return { ok: true };
 }
 
 export async function sendTestMailAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { ctx } = g;
-  const parsed = TestMailSchema.safeParse({
-    host: formData.get('host'),
-    port: formData.get('port'),
-    secure: formData.get('secure') === 'on',
-    user: formData.get('user') ?? '',
-    password: formData.get('password') ?? '',
-    from: formData.get('from'),
-    replyTo: formData.get('replyTo') ?? '',
-    keepPassword: formData.get('keepPassword') === 'on',
-    testTo: formData.get('testTo'),
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async ({ ctx }) => {
+      const parsed = parseFormData(TestMailSchema, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues.map((i) => i.message).join('; '),
+      });
+      if (!parsed.ok) return parsed;
+
+      let password = parsed.data.password ?? '';
+      if (parsed.data.keepPassword) {
+        const existing = await readSmtpConfig(ctx);
+        password = existing?.password ?? '';
+      }
+
+      const cfg: SmtpConfig = {
+        host: parsed.data.host.trim(),
+        port: parsed.data.port,
+        secure: parsed.data.secure,
+        user: (parsed.data.user ?? '').trim(),
+        password,
+        from: parsed.data.from.trim(),
+        replyTo: (parsed.data.replyTo ?? '').trim(),
+      };
+
+      try {
+        await sendTestMail(cfg, parsed.data.testTo);
+      } catch (e) {
+        return { ok: false, error: `Versand fehlgeschlagen: ${smtpTestErrorMessage(e)}` };
+      }
+    },
   });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
-  }
-
-  let password = parsed.data.password ?? '';
-  if (parsed.data.keepPassword) {
-    const existing = await readSmtpConfig(ctx);
-    password = existing?.password ?? '';
-  }
-
-  const cfg: SmtpConfig = {
-    host: parsed.data.host.trim(),
-    port: parsed.data.port,
-    secure: parsed.data.secure,
-    user: (parsed.data.user ?? '').trim(),
-    password,
-    from: parsed.data.from.trim(),
-    replyTo: (parsed.data.replyTo ?? '').trim(),
-  };
-
-  try {
-    await sendTestMail(cfg, parsed.data.testTo);
-  } catch (e) {
-    return { ok: false, error: `Versand fehlgeschlagen: ${smtpTestErrorMessage(e)}` };
-  }
-  return { ok: true };
 }
 
 // ----------------------------------------------------------------------------
@@ -211,27 +187,27 @@ export async function saveMailDispatchAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-  const parsed = MailDispatchSchema.safeParse({
-    mode: formData.get('mode'),
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async (g) => {
+      const { ctx } = g;
+      const parsed = parseFormData(MailDispatchSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
+      });
+      if (!parsed.ok) return parsed;
 
-  const cfg: MailDispatchConfig = parsed.data;
-  await withTenantContext(ctx, async (tx) => {
-    await writeMailDispatchTx(tx, ctx, cfg);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tenant.settings.mail_dispatch.update',
-      resourceType: 'tenant_setting',
-      resourceId: 'mail.dispatch',
-      after: cfg,
-    });
+      const cfg: MailDispatchConfig = parsed.data;
+      await withTenantContext(ctx, async (tx) => {
+        await writeMailDispatchTx(tx, ctx, cfg);
+        await audit(tx, g, {
+          action: 'tenant.settings.mail_dispatch.update',
+          resourceType: 'tenant_setting',
+          resourceId: 'mail.dispatch',
+          after: cfg,
+        });
+      });
+    },
+    revalidate: '/staff/admin/settings/n8n',
   });
-  revalidatePath('/staff/admin/settings/n8n');
-  return { ok: true };
 }

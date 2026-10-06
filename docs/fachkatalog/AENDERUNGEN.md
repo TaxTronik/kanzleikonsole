@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-003
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts
+      - apps/web/src/app/staff/(protected)/admin/settings/infra-actions.ts
+      - apps/web/src/app/staff/(protected)/admin/settings/mail-actions.ts
+      - apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts
+    rule_ids:
+      - ACCESS-CLIENT-MODE-001
+      - AUDIT-HASH-CHAIN-001
+    reason: >-
+      Alle Einstellungs-Actions (Branding, Infrastruktur, E-Mail-Versand, Module,
+      n8n, Signal-Einbettung) laufen über den gemeinsamen Action-Baustein mit
+      requireAdmin; 17 Audit-Ereignisse über audit(tx, g, …) mit unverändertem
+      Inhalt; die Formulare lesen über parseFormData (Meldungstexte unverändert,
+      zusätzlich fieldErrors). Zugriffsmodus-Einstellung, Transaktionen,
+      Audit-Kette und revalidierte Pfade bleiben unverändert; ein Datenbankfehler
+      beim Speichern erscheint als Meldung „Datenbankfehler.“ statt als
+      Fehlerseite, Einstellung und Protokolleintrag werden weiterhin vollständig
+      zurückgerollt. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/admin/settings/__tests__/settings-form-parsing.test.ts
+      - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-002
     date: '2026-10-07'
     paths:
@@ -4125,6 +4149,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-003` dokumentiert die Einstellungs-Actions
+  auf dem gemeinsamen Action-Baustein. Audit-Kette und Rollback bleiben
+  unverändert.
 
 - 2026-10-07: `FK-EXC-20261007-002` dokumentiert Dokument- und
   Vollmachts-Actions auf dem gemeinsamen Action-Baustein.

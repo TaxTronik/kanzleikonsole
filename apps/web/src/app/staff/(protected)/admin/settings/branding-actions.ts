@@ -6,7 +6,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { writeSellerInfoTx, type SellerInfo } from '@/server/settings/tenant-settings';
 import {
   invalidateBrandingCache,
@@ -15,77 +14,72 @@ import {
 } from '@/server/settings/branding';
 import { writeLetterheadTx, type LetterheadConfig } from '@/server/settings/letterhead';
 import { writeLegalTx, type LegalLinks } from '@/server/settings/legal';
-import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { staffAction, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
+
+/** Ländercode wie bisher in Großbuchstaben, fehlend → 'DE'. */
+const CountryIsoField = z.preprocess(
+  (value) => (typeof value === 'string' ? value.toUpperCase() : (value ?? 'DE')),
+  z.string().length(2).default('DE'),
+);
 
 const SellerSchema = z.object({
   name: z.string().min(1).max(200),
-  street: z.string().max(200).optional().or(z.literal('')),
-  postalCode: z.string().max(20).optional().or(z.literal('')),
-  city: z.string().max(100).optional().or(z.literal('')),
-  countryIso: z.string().length(2).default('DE'),
-  vatId: z.string().max(50).optional().or(z.literal('')),
-  taxNumber: z.string().max(50).optional().or(z.literal('')),
-  email: z.string().email().max(255).optional().or(z.literal('')),
-  phone: z.string().max(50).optional().or(z.literal('')),
-  iban: z.string().max(50).optional().or(z.literal('')),
-  bic: z.string().max(20).optional().or(z.literal('')),
-  bankName: z.string().max(200).optional().or(z.literal('')),
+  street: formDefault('', z.string().max(200).optional().or(z.literal(''))),
+  postalCode: formDefault('', z.string().max(20).optional().or(z.literal(''))),
+  city: formDefault('', z.string().max(100).optional().or(z.literal(''))),
+  countryIso: CountryIsoField,
+  vatId: formDefault('', z.string().max(50).optional().or(z.literal(''))),
+  taxNumber: formDefault('', z.string().max(50).optional().or(z.literal(''))),
+  email: formDefault('', z.string().email().max(255).optional().or(z.literal(''))),
+  phone: formDefault('', z.string().max(50).optional().or(z.literal(''))),
+  iban: formDefault('', z.string().max(50).optional().or(z.literal(''))),
+  bic: formDefault('', z.string().max(20).optional().or(z.literal(''))),
+  bankName: formDefault('', z.string().max(200).optional().or(z.literal(''))),
 });
 
 export async function saveSellerInfoAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async (g) => {
+      const parsed = parseFormData(SellerSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
+      });
+      if (!parsed.ok) return parsed;
 
-  const parsed = SellerSchema.safeParse({
-    name: formData.get('name'),
-    street: formData.get('street') ?? '',
-    postalCode: formData.get('postalCode') ?? '',
-    city: formData.get('city') ?? '',
-    countryIso: (formData.get('countryIso') as string)?.toUpperCase() ?? 'DE',
-    vatId: formData.get('vatId') ?? '',
-    taxNumber: formData.get('taxNumber') ?? '',
-    email: formData.get('email') ?? '',
-    phone: formData.get('phone') ?? '',
-    iban: formData.get('iban') ?? '',
-    bic: formData.get('bic') ?? '',
-    bankName: formData.get('bankName') ?? '',
+      const { ctx } = g;
+      const info: SellerInfo = {
+        name: parsed.data.name,
+        street: parsed.data.street || null,
+        postalCode: parsed.data.postalCode || null,
+        city: parsed.data.city || null,
+        countryIso: parsed.data.countryIso,
+        vatId: parsed.data.vatId || null,
+        taxNumber: parsed.data.taxNumber || null,
+        email: parsed.data.email || null,
+        phone: parsed.data.phone || null,
+        iban: parsed.data.iban || null,
+        bic: parsed.data.bic || null,
+        bankName: parsed.data.bankName || null,
+      };
+
+      await withTenantContext(ctx, async (tx) => {
+        await writeSellerInfoTx(tx, ctx, info);
+        await audit(tx, g, {
+          action: 'tenant.settings.seller.update',
+          resourceType: 'tenant_setting',
+          resourceId: 'invoicing.seller',
+          after: { name: info.name, vatId: info.vatId, iban: info.iban ? '***' : null },
+        });
+      });
+    },
+    revalidate: '/staff/admin/settings',
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
-  const { tenantId, staffId, ctx } = g;
-  const info: SellerInfo = {
-    name: parsed.data.name,
-    street: parsed.data.street || null,
-    postalCode: parsed.data.postalCode || null,
-    city: parsed.data.city || null,
-    countryIso: parsed.data.countryIso,
-    vatId: parsed.data.vatId || null,
-    taxNumber: parsed.data.taxNumber || null,
-    email: parsed.data.email || null,
-    phone: parsed.data.phone || null,
-    iban: parsed.data.iban || null,
-    bic: parsed.data.bic || null,
-    bankName: parsed.data.bankName || null,
-  };
-
-  await withTenantContext(ctx, async (tx) => {
-    await writeSellerInfoTx(tx, ctx, info);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tenant.settings.seller.update',
-      resourceType: 'tenant_setting',
-      resourceId: 'invoicing.seller',
-      after: { name: info.name, vatId: info.vatId, iban: info.iban ? '***' : null },
-    });
-  });
-
-  revalidatePath('/staff/admin/settings');
-  return { ok: true };
 }
 
 const MAX_LOGO_DATAURL_LEN = 320 * 1024; // ~240 KB binary nach base64
@@ -102,72 +96,68 @@ const BrandingSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Hex-Farbe wie #2563eb')
     .transform((s) => s.toLowerCase()),
-  subtitle: z.string().max(100).optional().or(z.literal('')),
-  logoDataUrl: z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal('')),
-  logoDataUrlDark: z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal('')),
+  subtitle: formDefault('', z.string().max(100).optional().or(z.literal(''))),
+  logoDataUrl: formDefault('', z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal(''))),
+  logoDataUrlDark: formDefault(
+    '',
+    z.string().max(MAX_LOGO_DATAURL_LEN).optional().or(z.literal('')),
+  ),
 });
 
 export async function saveBrandingAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async (g) => {
+      const parsed = parseFormData(BrandingSchema, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues.map((i) => i.message).join('; '),
+      });
+      if (!parsed.ok) return parsed;
 
-  const parsed = BrandingSchema.safeParse({
-    displayName: formData.get('displayName'),
-    accentColor: formData.get('accentColor'),
-    subtitle: formData.get('subtitle') ?? '',
-    logoDataUrl: formData.get('logoDataUrl') ?? '',
-    logoDataUrlDark: formData.get('logoDataUrlDark') ?? '',
+      const logoStr = parsed.data.logoDataUrl ?? '';
+      if (logoStr && !LOGO_DATAURL_RE.test(logoStr)) {
+        return { ok: false, error: 'Ungültiges Logo-Format.' };
+      }
+      const logoDarkStr = parsed.data.logoDataUrlDark ?? '';
+      if (logoDarkStr && !LOGO_DATAURL_RE.test(logoDarkStr)) {
+        return { ok: false, error: 'Ungültiges Dark-Logo-Format.' };
+      }
+
+      const { tenantId, ctx } = g;
+      const info: BrandingInfo = {
+        displayName: parsed.data.displayName,
+        accentColor: parsed.data.accentColor,
+        subtitle: parsed.data.subtitle || null,
+        logoDataUrl: logoStr || null,
+        logoDataUrlDark: logoDarkStr || null,
+      };
+
+      await withTenantContext(ctx, async (tx) => {
+        await writeBrandingTx(tx, ctx, info);
+        await audit(tx, g, {
+          action: 'tenant.settings.branding.update',
+          resourceType: 'tenant_setting',
+          resourceId: 'branding',
+          // logoDataUrl(+-Dark) absichtlich weglassen — würde audit_log mit base64
+          // fluten.
+          after: {
+            ...info,
+            logoDataUrl: info.logoDataUrl ? '<data-url>' : null,
+            logoDataUrlDark: info.logoDataUrlDark ? '<data-url>' : null,
+          },
+        });
+      });
+      // Prozessweiten Branding-Cache nach dem Commit verwerfen (layout-settings.ts).
+      invalidateBrandingCache(tenantId);
+
+      revalidatePath('/staff/admin/settings');
+      // Layout cachen: Branding wirkt erst auf der nächsten Anfrage
+      revalidatePath('/staff', 'layout');
+    },
   });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
-  }
-
-  const logoStr = parsed.data.logoDataUrl ?? '';
-  if (logoStr && !LOGO_DATAURL_RE.test(logoStr)) {
-    return { ok: false, error: 'Ungültiges Logo-Format.' };
-  }
-  const logoDarkStr = parsed.data.logoDataUrlDark ?? '';
-  if (logoDarkStr && !LOGO_DATAURL_RE.test(logoDarkStr)) {
-    return { ok: false, error: 'Ungültiges Dark-Logo-Format.' };
-  }
-
-  const { tenantId, staffId, ctx } = g;
-  const info: BrandingInfo = {
-    displayName: parsed.data.displayName,
-    accentColor: parsed.data.accentColor,
-    subtitle: parsed.data.subtitle || null,
-    logoDataUrl: logoStr || null,
-    logoDataUrlDark: logoDarkStr || null,
-  };
-
-  await withTenantContext(ctx, async (tx) => {
-    await writeBrandingTx(tx, ctx, info);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tenant.settings.branding.update',
-      resourceType: 'tenant_setting',
-      resourceId: 'branding',
-      // logoDataUrl(+-Dark) absichtlich weglassen — würde audit_log mit base64
-      // fluten.
-      after: {
-        ...info,
-        logoDataUrl: info.logoDataUrl ? '<data-url>' : null,
-        logoDataUrlDark: info.logoDataUrlDark ? '<data-url>' : null,
-      },
-    });
-  });
-  // Prozessweiten Branding-Cache nach dem Commit verwerfen (layout-settings.ts).
-  invalidateBrandingCache(tenantId);
-
-  revalidatePath('/staff/admin/settings');
-  // Layout cachen: Branding wirkt erst auf der nächsten Anfrage
-  revalidatePath('/staff', 'layout');
-  return { ok: true };
 }
 
 // ----------------------------------------------------------------------------
@@ -185,32 +175,29 @@ export async function saveLetterheadAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const parsed = LetterheadSchema.safeParse({
-    organisationName: formData.get('organisationName'),
-    addressLines: formData.get('addressLines'),
-    contactLine: formData.get('contactLine'),
-    footnote: formData.get('footnote'),
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async (g) => {
+      const parsed = parseFormData(LetterheadSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
+      });
+      if (!parsed.ok) return parsed;
 
-  const { tenantId, staffId, ctx } = g;
-  const cfg: LetterheadConfig = parsed.data;
-  await withTenantContext(ctx, async (tx) => {
-    await writeLetterheadTx(tx, ctx, cfg);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tenant.settings.letterhead.update',
-      resourceType: 'tenant_setting',
-      resourceId: 'branding.letterhead',
-      after: cfg,
-    });
+      const { ctx } = g;
+      const cfg: LetterheadConfig = parsed.data;
+      await withTenantContext(ctx, async (tx) => {
+        await writeLetterheadTx(tx, ctx, cfg);
+        await audit(tx, g, {
+          action: 'tenant.settings.letterhead.update',
+          resourceType: 'tenant_setting',
+          resourceId: 'branding.letterhead',
+          after: cfg,
+        });
+      });
+    },
+    revalidate: '/staff/admin/settings/branding',
   });
-  revalidatePath('/staff/admin/settings/branding');
-  return { ok: true };
 }
 
 // ----------------------------------------------------------------------------
@@ -219,39 +206,35 @@ export async function saveLetterheadAction(
 // ----------------------------------------------------------------------------
 
 const LegalSchema = z.object({
-  impressumUrl: z.string().url().max(500).or(z.literal('')),
-  privacyUrl: z.string().url().max(500).or(z.literal('')),
+  impressumUrl: formDefault('', z.string().url().max(500).or(z.literal(''))),
+  privacyUrl: formDefault('', z.string().url().max(500).or(z.literal(''))),
 });
 
 export async function saveLegalAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const parsed = LegalSchema.safeParse({
-    impressumUrl: formData.get('impressumUrl') ?? '',
-    privacyUrl: formData.get('privacyUrl') ?? '',
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-  }
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async (g) => {
+      const parsed = parseFormData(LegalSchema, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues[0]?.message ?? 'Validierungsfehler.',
+      });
+      if (!parsed.ok) return parsed;
 
-  const { tenantId, staffId, ctx } = g;
-  const cfg: LegalLinks = parsed.data;
-  await withTenantContext(ctx, async (tx) => {
-    await writeLegalTx(tx, ctx, cfg);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tenant.settings.legal.update',
-      resourceType: 'tenant_setting',
-      resourceId: 'legal',
-      after: cfg,
-    });
+      const { ctx } = g;
+      const cfg: LegalLinks = parsed.data;
+      await withTenantContext(ctx, async (tx) => {
+        await writeLegalTx(tx, ctx, cfg);
+        await audit(tx, g, {
+          action: 'tenant.settings.legal.update',
+          resourceType: 'tenant_setting',
+          resourceId: 'legal',
+          after: cfg,
+        });
+      });
+    },
+    revalidate: ['/staff/admin/settings/branding', '/staff/admin/privacy'],
   });
-  revalidatePath('/staff/admin/settings/branding');
-  revalidatePath('/staff/admin/privacy');
-  return { ok: true };
 }

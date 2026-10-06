@@ -32,7 +32,15 @@ vi.mock('@taxtronik/db', () => ({
   withTenantContext: (_ctx: unknown, fn: (tx: typeof h.tx) => unknown) => fn(h.tx),
 }));
 vi.mock('@taxtronik/db/tenant-settings', () => ({ deleteTenantSettingValue: vi.fn() }));
-vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: h.staffActionGuard }));
+vi.mock('@/server/actions/staff-action', async () => ({
+  staffActionGuard: h.staffActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(h.staffActionGuard),
+}));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/http/ssrf-guard', () => ({ assertN8nUrl: vi.fn(), safeFetchN8n: vi.fn() }));
 vi.mock('@/server/n8n/bundled-workflows', () => ({
