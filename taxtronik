@@ -5,7 +5,8 @@
 #   ./taxtronik deploy               Hauptweg: konfigurieren + bauen/pullen + starten
 #   ./taxtronik config               Initialkonfiguration getrennt vorbereiten
 #   ./taxtronik bootstrap            veralteter Alias fuer deploy
-#   ./taxtronik update               Backup + git pull + bauen/pullen + migrieren + starten
+#   ./taxtronik update               Backup + signierten Stand holen (ff-only) + bauen/pullen
+#                                    + migrieren + starten
 #   ./taxtronik backup               Postgres -> lokale Kopie + S3-Backup-Bucket
 #   ./taxtronik backup-files         Kanzleidateien aus SeaweedFS -> backups/object-store
 #   ./taxtronik backup-full          Versiegeltes Full-Backup inkl. Cold-Volumes
@@ -37,7 +38,8 @@ Nutze:
                                     Fragt bei Bedarf Standard/1-Klick und Git/Release ab
   ./taxtronik config                Initialkonfiguration vorbereiten, noch nichts starten
   ./taxtronik bootstrap             Kompatibilitaetsalias fuer deploy (veraltet)
-  ./taxtronik update                Backup + git pull + bauen/pullen + migrieren + starten
+  ./taxtronik update                Backup + signierten Stand holen (ff-only) + bauen/pullen
+                                    + migrieren + starten
   ./taxtronik backup                Postgres-Backup nach backups/ + S3-Backup-Bucket
   ./taxtronik backup-files          Kanzleidateien aus SeaweedFS nach backups/object-store
   ./taxtronik backup-full           DB + n8n + Cold-Volumes + age-Recovery versiegeln

@@ -19,6 +19,7 @@ node_host() {
 }
 
 TESTS_RUN=0
+TESTS_SKIPPED=0
 
 test_fail() {
   printf 'not ok: %s\n' "$*" >&2
@@ -93,6 +94,13 @@ file_mode() {
 pass() {
   TESTS_RUN=$((TESTS_RUN + 1))
   printf 'ok %s - %s\n' "$TESTS_RUN" "$1"
+}
+
+# Nur fuer Tests, deren Werkzeug lokal fehlen darf; in CI erzwingt der Aufrufer
+# das Werkzeug (siehe s04_signature_tools_available).
+skip_test() {
+  TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+  printf 'skip - %s (%s)\n' "$1" "$2"
 }
 
 # ---------------------------------------------------------------------------
@@ -204,6 +212,9 @@ run_doctor_with_env() {
     unset SMTP_FROM PORTAL_PUBLIC_URL STAFF_COOKIE_DOMAIN PORTAL_COOKIE_DOMAIN
     unset POSTGRES_MAX_CONNECTIONS APP_DB_POOL_MAX APP_DB_OWNER_POOL_MAX WORKER_DB_POOL_MAX
     unset WORKER_DB_OWNER_POOL_MAX DATABASE_CONNECTION_LIMIT
+    unset TAXTRONIK_SOURCE_ALLOWED_SIGNERS TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE
+    # Hermetisch: ein auf dem Testrechner vorhandenes /etc/taxtronik zaehlt nicht.
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="${OPS_SIGNERS_DEFAULT:-$TMP_DIR/absent-default-allowed-signers}"
     ENVFILE="$env_file"
     # Unit-Test darf nicht vom zufällig vorhandenen lokalen Docker-Volume
     # beziehungsweise dessen echtem n8n-Key abhängen.
@@ -2108,13 +2119,21 @@ test_run_backup_respects_explicit_staging_path() {
   pass "full backup can override the host backup target with its staging directory"
 }
 
-run_mock_update() (
+MOCK_SOURCE_COMMIT=cccccccccccccccccccccccccccccccccccccccc
+MOCK_TARGET_COMMIT=dddddddddddddddddddddddddddddddddddddddd
+
+# Gemeinsame Stubs fuer Update-Ablauftests: alles ausser Git, Remote-Auswahl und
+# der S-04-Signaturentscheidung. Pfade und der Signer-Default zeigen in den
+# Test-Root, damit kein Host-/etc/taxtronik das Ergebnis beeinflusst.
+stub_update_runtime() {
   ROOT="${OPS_MOCK_ROOT:-$TMP_DIR/mock-update-root}"
   ENVFILE="$ROOT/.env"
   STATE="$ROOT/.state"
   MIGRATION_PENDING="$ROOT/.migration-pending"
   DB_RESTORE_AUTHORIZATION="$ROOT/.database-restored"
   UPDATE_HANDOFF="$ROOT/.update-handoff"
+  SOURCE_UPDATE_AUDIT_LOG="$ROOT/.taxtronik.source-update-audit.log"
+  TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="${OPS_SIGNERS_DEFAULT:-$TMP_DIR/absent-default-allowed-signers}"
   mkdir -p "$ROOT"
 
   record_step() { printf '%s\n' "$*" >>"$OPS_SEQUENCE"; }
@@ -2126,25 +2145,20 @@ run_mock_update() (
   assert_production_env() { record_step assert-production; }
   require_release_version() { record_step require-version; }
   assert_no_database_restore_pending() { :; }
-  images_from_registry() { return 1; }
+  if [[ "${OPS_RELEASE_CHANNEL:-0}" == "1" ]]; then
+    images_from_registry() { return 0; }
+    resolve_release_contract() {
+      record_step resolve-release-contract
+      UPDATE_COMMIT_SHA="$MOCK_TARGET_COMMIT"
+    }
+    fetch_verified_release_tag() { record_step "fetch-verified-release-tag $*"; }
+  else
+    images_from_registry() { return 1; }
+  fi
   start_infra() { record_step start-infra; }
   wait_postgres_healthy() { record_step wait-postgres; }
   sync_postgres_roles_from_env() { record_step sync-roles; }
   run_backup() { record_step backup-old-checkout; return "${OPS_BACKUP_STATUS:-0}"; }
-  git() {
-    record_step "git $*"
-    record_step "git-umask $(umask) $*"
-    if [[ "$*" == "-C $ROOT rev-parse HEAD" ]]; then
-      if [[ -f "$ROOT/.mock-checkout-advanced" ]]; then printf 'dddddddddddddddddddddddddddddddddddddddd\n'
-      else printf 'cccccccccccccccccccccccccccccccccccccccc\n'; fi
-      return 0
-    fi
-    if [[ "$*" == "merge --ff-only "* && "${OPS_CHECKOUT_CHANGES:-0}" == "1" ]]; then
-      : >"$ROOT/.mock-checkout-advanced"
-    fi
-    if [[ "$*" == "-C $ROOT merge-base --is-ancestor "* ]]; then return 0; fi
-  }
-  deployment_git_remote() { printf 'origin'; }
   ensure_host_tool_deps() { record_step ensure-host-deps; }
   prepare_release_contract() { record_step prepare-release-contract; }
   provide_images() { record_step provide-images; }
@@ -2159,7 +2173,42 @@ run_mock_update() (
   finalize_release_contract() { record_step finalize-release-contract; }
   reexec_updated_operator() { record_step reexec-updated-operator; }
   image_tag() { printf 'test-version'; }
+}
 
+# Ablauf mit Git-Attrappe: OPS_CHECKOUT_CHANGES=1 liefert einen neuen
+# Ziel-Commit, sonst steht origin/main auf dem installierten Commit. Die
+# S-04-Entscheidung wird nur protokolliert; echte Signaturen pruefen die
+# run_real_git_update-Tests.
+run_mock_update() (
+  stub_update_runtime
+  git() {
+    record_step "git $*"
+    record_step "git-umask $(umask) $*"
+    if [[ "$*" == "-C $ROOT rev-parse HEAD" ]]; then
+      if [[ -f "$ROOT/.mock-checkout-advanced" ]]; then printf '%s\n' "$MOCK_TARGET_COMMIT"
+      else printf '%s\n' "$MOCK_SOURCE_COMMIT"; fi
+      return 0
+    fi
+    if [[ "$*" == "-C $ROOT rev-parse --verify --quiet origin/main^{commit}" ]]; then
+      if [[ "${OPS_CHECKOUT_CHANGES:-0}" == "1" ]]; then printf '%s\n' "$MOCK_TARGET_COMMIT"
+      else printf '%s\n' "$MOCK_SOURCE_COMMIT"; fi
+      return 0
+    fi
+    if [[ "$*" == "merge --ff-only "* && "${OPS_CHECKOUT_CHANGES:-0}" == "1" ]]; then
+      : >"$ROOT/.mock-checkout-advanced"
+    fi
+    if [[ "$*" == "-C $ROOT merge-base --is-ancestor "* ]]; then return 0; fi
+  }
+  deployment_git_remote() { printf 'origin'; }
+  assert_source_update_trust_ready() { record_step source-trust-ready; }
+  authorize_source_update_target() { record_step "authorize-source-update $*"; }
+  cmd_update
+)
+
+# Ablauf mit echtem Git und echter S-04-Pruefung gegen einen geklonten Checkout
+# (OPS_MOCK_ROOT); nur Docker/DB/Build sind ersetzt.
+run_real_git_update() (
+  stub_update_runtime
   cmd_update
 )
 
@@ -2168,12 +2217,16 @@ test_update_backs_up_old_checkout_before_fetch() {
   local root="$TMP_DIR/mock-update-order-root"
   : >"$sequence"
   OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" run_mock_update >"$out" 2>&1 || test_fail "mock update failed"
+  assert_before "$sequence" "source-trust-ready" "backup-old-checkout"
   assert_before "$sequence" "backup-old-checkout" "git fetch origin"
-  assert_before "$sequence" "backup-old-checkout" "git merge --ff-only origin/main"
-  assert_before "$sequence" "git merge --ff-only origin/main" "ensure-host-deps"
+  assert_before "$sequence" "git fetch origin" "authorize-source-update $MOCK_SOURCE_COMMIT $MOCK_SOURCE_COMMIT"
+  assert_before "$sequence" "authorize-source-update" "git merge --ff-only $MOCK_SOURCE_COMMIT"
+  assert_before "$sequence" "backup-old-checkout" "git merge --ff-only $MOCK_SOURCE_COMMIT"
+  assert_before "$sequence" "git merge --ff-only $MOCK_SOURCE_COMMIT" "ensure-host-deps"
   assert_before "$sequence" "ensure-host-deps" "provide-images"
-  assert_contains "$sequence" "git-umask 0022 merge --ff-only origin/main"
+  assert_contains "$sequence" "git-umask 0022 merge --ff-only $MOCK_SOURCE_COMMIT"
   assert_contains "$sequence" "git-umask 0077 fetch origin"
+  assert_not_contains "$sequence" "merge --ff-only origin/main"
   pass "update completes mandatory old-checkout backup before fetch and merge"
 }
 
@@ -2206,6 +2259,11 @@ test_changed_update_reloads_operator_and_resumes_same_run() {
   assert_key_equals "$marker" checkout_target_commit dddddddddddddddddddddddddddddddddddddddd
   assert_contains "$sequence" "reexec-updated-operator"
   assert_not_contains "$sequence" "ensure-host-deps"
+  # S-04: Der exakte Ziel-Commit wird vor dem Merge und damit vor dem Start
+  # des neuen Operators autorisiert und genau dieser Commit gemergt.
+  assert_before "$sequence" "authorize-source-update $MOCK_SOURCE_COMMIT $MOCK_TARGET_COMMIT" \
+    "git merge --ff-only $MOCK_TARGET_COMMIT"
+  assert_before "$sequence" "git merge --ff-only $MOCK_TARGET_COMMIT" "reexec-updated-operator"
 
   OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" OPS_CHECKOUT_CHANGES=1 \
     run_mock_update >"$second_out" 2>&1 || test_fail "new operator did not resume the handed-off update"
@@ -2238,6 +2296,455 @@ test_invalid_update_handoff_restarts_with_backup() {
     test_fail "invalid handoff skipped the new mandatory backup"
   assert_contains "$second_out" "ungueltigen Update-Handoff verworfen"
   pass "invalid update handoff is discarded and can never skip a fresh backup"
+}
+
+# ---------------------------------------------------------------------------
+# S-04: Signaturbindung des Source-Kanals. Wegwerf-SSH-Schluessel und
+# Repositories entstehen ausschliesslich im TMP_DIR. GIT_CONFIG_GLOBAL zeigt
+# auf eine Testdatei und GIT_CONFIG_NOSYSTEM blendet die Systemkonfiguration
+# aus, damit weder Signierprogramm noch Signer des Testrechners mitwirken.
+# Ohne ssh-keygen (openssh-client) werden die Signaturtests lokal sichtbar
+# uebersprungen; in CI (CI gesetzt) ist das ein Fehler.
+# ---------------------------------------------------------------------------
+S04_DIR="$TMP_DIR/s04"
+S04_KEYS_READY=0
+
+s04_signature_tools_available() {
+  command -v ssh-keygen >/dev/null 2>&1 && return 0
+  [[ -z "${CI:-}" ]] || test_fail "ssh-keygen (openssh-client) fehlt; S-04-Signaturtests sind in CI Pflicht"
+  return 1
+}
+
+s04_git() { GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1 git "$@"; }
+
+s04_git_fixtures() {
+  [[ -f "$S04_DIR/gitconfig" ]] && return 0
+  mkdir -p "$S04_DIR"
+  printf '[user]\n\tname = TaxTronik-Test\n\temail = test@taxtronik.invalid\n[commit]\n\tgpgsign = false\n[tag]\n\tgpgsign = false\n' \
+    >"$S04_DIR/gitconfig"
+}
+
+s04_allowed_signers() {
+  local key="$1" out="$2"
+  printf '%s@taxtronik.invalid namespaces="git" %s\n' "$key" "$(cut -d' ' -f1,2 "$S04_DIR/$key.pub")" >"$out"
+}
+
+s04_key_fixtures() {
+  s04_git_fixtures
+  (( S04_KEYS_READY == 0 )) || return 0
+  ssh-keygen -q -t ed25519 -N '' -C trusted@taxtronik.invalid -f "$S04_DIR/trusted"
+  ssh-keygen -q -t ed25519 -N '' -C rogue@taxtronik.invalid -f "$S04_DIR/rogue"
+  s04_allowed_signers trusted "$S04_DIR/allowed_signers"
+  s04_allowed_signers rogue "$S04_DIR/rogue_signers"
+  S04_KEYS_READY=1
+}
+
+# Commit im Upstream, wahlweise mit einem Wegwerf-Schluessel SSH-signiert.
+# Ausgabe: Commit-SHA. Bereits gestagte Dateien werden mit uebernommen.
+s04_commit() {
+  local repo="$1" signer="$2" message="$3"
+  printf '%s\n' "$message" >"$repo/CHANGE.txt"
+  s04_git -C "$repo" add CHANGE.txt
+  if [[ -n "$signer" ]]; then
+    s04_git -C "$repo" -c gpg.format=ssh -c gpg.ssh.program="$(command -v ssh-keygen)" \
+      -c user.signingkey="$S04_DIR/$signer" commit -q -S -m "$message"
+  else
+    s04_git -C "$repo" commit -q -m "$message"
+  fi
+  s04_git -C "$repo" rev-parse HEAD
+}
+
+s04_signed_tag() {
+  local repo="$1" signer="$2" name="$3" target="$4"
+  s04_git -C "$repo" -c gpg.format=ssh -c gpg.ssh.program="$(command -v ssh-keygen)" \
+    -c user.signingkey="$S04_DIR/$signer" tag -s -m "Freigabe $name" "$name" "$target"
+}
+
+# Upstream mit installiertem Basis-Commit und ein Operator-Checkout davon.
+s04_repos() {
+  local name="$1"
+  s04_git_fixtures
+  S04_UPSTREAM="$S04_DIR/$name-upstream"
+  S04_CHECKOUT="$S04_DIR/$name-checkout"
+  mkdir -p "$S04_UPSTREAM"
+  s04_git -C "$S04_UPSTREAM" init -q -b main
+  S04_BASE="$(s04_commit "$S04_UPSTREAM" "" "installierter Stand")"
+  s04_git clone -q "$S04_UPSTREAM" "$S04_CHECKOUT"
+}
+
+s04_head() { s04_git -C "$S04_CHECKOUT" rev-parse HEAD; }
+
+# Echtes `cmd_update` (Git + S-04) gegen S04_CHECKOUT, standardmaessig in
+# Produktion. Signer/Opt-out kommen ausschliesslich aus OPS_SIGNERS/OPS_OPT_OUT.
+s04_run_update() {
+  local sequence="$1" out="$2"
+  : >"$sequence"
+  GIT_CONFIG_GLOBAL="${OPS_GITCONFIG:-$S04_DIR/gitconfig}" GIT_CONFIG_NOSYSTEM=1 \
+    NODE_ENV="${OPS_NODE_ENV:-production}" TAXTRONIK_GIT_REMOTE="" TAXTRONIK_UPDATE_REF="" \
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS="${OPS_SIGNERS:-}" \
+    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE="${OPS_OPT_OUT:-}" \
+    OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$S04_CHECKOUT" run_real_git_update >"$out" 2>&1
+}
+
+test_source_update_accepts_signed_commit_and_signed_tag() {
+  local desc="source update merges and reloads only after a pinned signer verified the exact commit or its annotated tag"
+  s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
+  s04_key_fixtures
+  local sequence="$TMP_DIR/s04-signed.seq" out="$TMP_DIR/s04-signed.out" signed tagged
+  s04_repos signed
+  signed="$(s04_commit "$S04_UPSTREAM" trusted "signierter Stand")"
+
+  OPS_SIGNERS="$S04_DIR/allowed_signers" s04_run_update "$sequence" "$out" || {
+    cat "$out" >&2
+    test_fail "update rejected a commit signed by a pinned signer"
+  }
+  [[ "$(s04_head)" == "$signed" ]] || test_fail "verified signed commit was not merged"
+  assert_contains "$out" "Source-Update ist an SSH-Signaturen gebunden"
+  assert_contains "$out" "Signierter Source-Stand bestaetigt: Commit ${signed:0:12}"
+  assert_contains "$out" 'Good "git" signature for trusted@taxtronik.invalid'
+  assert_before "$sequence" "backup-old-checkout" "reexec-updated-operator"
+  assert_key_equals "$S04_CHECKOUT/.update-handoff" checkout_target_commit "$signed"
+  [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
+    test_fail "verified update was recorded as unsigned"
+
+  # Unsignierter Commit, freigegeben durch einen signierten annotierten Tag mit
+  # genau diesem Commit als Ziel.
+  rm -f -- "$S04_CHECKOUT/.update-handoff"
+  tagged="$(s04_commit "$S04_UPSTREAM" "" "per Tag freigegebener Stand")"
+  s04_signed_tag "$S04_UPSTREAM" trusted v9.9.9 "$tagged"
+  OPS_SIGNERS="$S04_DIR/allowed_signers" s04_run_update "$sequence" "$out" || {
+    cat "$out" >&2
+    test_fail "update rejected a commit released by a signed annotated tag"
+  }
+  [[ "$(s04_head)" == "$tagged" ]] || test_fail "tag-verified commit was not merged"
+  assert_contains "$out" "Signierter Source-Stand bestaetigt: Tag v9.9.9 -> ${tagged:0:12}"
+  assert_contains "$sequence" "reexec-updated-operator"
+  pass "$desc"
+}
+
+test_source_update_rejects_unsigned_commit_before_merge() {
+  local desc="unsigned source target is rejected before merge and operator reload, also outside production"
+  s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
+  s04_key_fixtures
+  local sequence="$TMP_DIR/s04-unsigned.seq" out="$TMP_DIR/s04-unsigned.out" parent unsigned
+  s04_repos unsigned
+  # Ein signierter Tag auf dem Vorgaenger sowie leichte/unsignierte Tags auf dem
+  # Ziel duerfen das Ziel nicht freigeben.
+  parent="$(s04_commit "$S04_UPSTREAM" "" "Vorgaenger")"
+  s04_signed_tag "$S04_UPSTREAM" trusted v1.0.0 "$parent"
+  unsigned="$(s04_commit "$S04_UPSTREAM" "" "unsignierter Stand")"
+  s04_git -C "$S04_UPSTREAM" tag lightweight-on-target "$unsigned"
+  s04_git -C "$S04_UPSTREAM" tag -a -m "ohne Signatur" v1.0.1 "$unsigned"
+
+  if OPS_SIGNERS="$S04_DIR/allowed_signers" s04_run_update "$sequence" "$out"; then
+    test_fail "update accepted an unsigned source target"
+  fi
+  [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "rejected source target changed the checkout"
+  assert_contains "$out" "Source-Update verweigert: Ziel-Commit $unsigned"
+  assert_contains "$out" "Arbeitsbaum und Operator bleiben unveraendert"
+  assert_not_contains "$sequence" "reexec-updated-operator"
+  assert_not_contains "$sequence" "ensure-host-deps"
+  [[ ! -e "$S04_CHECKOUT/.update-handoff" ]] || test_fail "rejected update wrote an operator handoff"
+
+  # Das Opt-out kann konfigurierte Signer nicht aushebeln.
+  if OPS_SIGNERS="$S04_DIR/allowed_signers" OPS_OPT_OUT=1 s04_run_update "$sequence" "$out"; then
+    test_fail "opt-out overrode configured signers"
+  fi
+  [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "opt-out with configured signers changed the checkout"
+  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1 ist wirkungslos"
+  assert_contains "$out" "Source-Update verweigert: Ziel-Commit $unsigned"
+  [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
+    test_fail "opt-out with configured signers wrote an unsigned-update record"
+
+  # Konfigurierte Signer gelten auch ausserhalb der Produktion.
+  if (
+    ROOT="$S04_CHECKOUT"
+    SOURCE_UPDATE_AUDIT_LOG="$S04_CHECKOUT/.audit"
+    ENVFILE="$TMP_DIR/s04-no-such.env"
+    export GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1
+    NODE_ENV=development
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$S04_DIR/allowed_signers"
+    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=""
+    authorize_source_update_target "$S04_BASE" "$unsigned"
+  ) >"$out" 2>&1; then
+    test_fail "configured signers were not enforced outside production"
+  fi
+  assert_contains "$out" "Source-Update verweigert"
+  pass "$desc"
+}
+
+test_source_update_rejects_unknown_signer_despite_ambient_git_config() {
+  local desc="unknown SSH keys and forged OpenPGP signatures are rejected even if ambient git config would accept them"
+  s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
+  s04_key_fixtures
+  local sequence="$TMP_DIR/s04-rogue.seq" out="$TMP_DIR/s04-rogue.out" rogue hostile="$S04_DIR/hostile-gitconfig"
+  local forged tree
+  s04_repos rogue
+  rogue="$(s04_commit "$S04_UPSTREAM" rogue "Stand mit fremdem Schluessel")"
+
+  # Eine feindliche globale Git-Konfiguration bestaetigt jede SSH-/OpenPGP-
+  # Signatur und vertraut dem Angreifer-Schluessel. Die Pruefung muss alles
+  # davon ueberstimmen.
+  printf '#!/bin/sh\necho '\''Good "git" signature for trusted@taxtronik.invalid with ED25519 key SHA256:forged'\''\nexit 0\n' \
+    >"$S04_DIR/always-good-ssh"
+  printf '#!/bin/sh\ncat >/dev/null\nprintf '\''[GNUPG:] NEWSIG\\n[GNUPG:] GOODSIG 0123456789ABCDEF Release <trusted@taxtronik.invalid>\\n[GNUPG:] VALIDSIG 0123456789ABCDEF0123456789ABCDEF01234567 2026-01-01 0 4 0 22 8 00 0123456789ABCDEF0123456789ABCDEF01234567\\n[GNUPG:] TRUST_ULTIMATE 0 pgp\\n'\''\nexit 0\n' \
+    >"$S04_DIR/always-good-gpg"
+  chmod 0700 "$S04_DIR/always-good-ssh" "$S04_DIR/always-good-gpg"
+  {
+    cat "$S04_DIR/gitconfig"
+    printf '[gpg]\n\tprogram = %s\n\tminTrustLevel = undefined\n' "$S04_DIR/always-good-gpg"
+    printf '[gpg "ssh"]\n\tprogram = %s\n\tallowedSignersFile = %s\n' "$S04_DIR/always-good-ssh" "$S04_DIR/rogue_signers"
+  } >"$hostile"
+
+  if OPS_GITCONFIG="$hostile" OPS_SIGNERS="$S04_DIR/allowed_signers" s04_run_update "$sequence" "$out"; then
+    test_fail "update accepted a commit signed by an unknown key"
+  fi
+  [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "unknown-key target changed the checkout"
+  assert_contains "$out" "No principal matched"
+  assert_contains "$out" "Source-Update verweigert: Ziel-Commit $rogue"
+  assert_not_contains "$sequence" "reexec-updated-operator"
+
+  # Gefaelschter OpenPGP-Commit direkt auf dem installierten Stand.
+  tree="$(s04_git -C "$S04_CHECKOUT" rev-parse "HEAD^{tree}")"
+  forged="$(printf 'tree %s\nparent %s\nauthor A <a@taxtronik.invalid> 1700000000 +0000\ncommitter A <a@taxtronik.invalid> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n iHUEABYKAB0WIQQAAAAAAAAAAAAAAAAAAAAAAAAAAAUCZQAAAAAACgkQAAAAAAAA\n -----END PGP SIGNATURE-----\n\nforged\n' \
+    "$tree" "$S04_BASE" | s04_git -C "$S04_CHECKOUT" hash-object -t commit -w --stdin)"
+  if (
+    ROOT="$S04_CHECKOUT"
+    SOURCE_UPDATE_AUDIT_LOG="$S04_CHECKOUT/.audit"
+    ENVFILE="$TMP_DIR/s04-no-such.env"
+    export GIT_CONFIG_GLOBAL="$hostile" GIT_CONFIG_NOSYSTEM=1
+    NODE_ENV=production
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$S04_DIR/allowed_signers"
+    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=""
+    git -C "$ROOT" verify-commit "$forged" >/dev/null 2>&1 || \
+      test_fail "test precondition: ambient gpg should accept the forged commit"
+    authorize_source_update_target "$S04_BASE" "$forged"
+  ) >"$out" 2>&1; then
+    test_fail "forged OpenPGP signature was accepted"
+  fi
+  assert_contains "$out" "Source-Update verweigert: Ziel-Commit $forged"
+  pass "$desc"
+}
+
+test_source_update_ignores_signer_files_inside_checkout() {
+  local desc="signer files inside the checkout or its repository config never authorize a source update"
+  s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
+  s04_key_fixtures
+  local sequence="$TMP_DIR/s04-inside.seq" out="$TMP_DIR/s04-inside.out" rogue path
+  s04_repos inside
+  # Der Angreifer liefert seine Signer-Datei im Baum mit und signiert damit.
+  cp "$S04_DIR/rogue_signers" "$S04_UPSTREAM/allowed_signers"
+  s04_git -C "$S04_UPSTREAM" add allowed_signers
+  rogue="$(s04_commit "$S04_UPSTREAM" rogue "liefert eigene Signer mit")"
+  # Repo-lokale Git-Konfiguration zeigt auf eine Signer-Datei im Checkout.
+  cp "$S04_DIR/rogue_signers" "$S04_CHECKOUT/.git/allowed_signers"
+  s04_git -C "$S04_CHECKOUT" config gpg.ssh.allowedSignersFile "$S04_CHECKOUT/.git/allowed_signers"
+  ln -s "$S04_CHECKOUT/.git/allowed_signers" "$S04_DIR/signers-link-into-checkout"
+
+  if OPS_SIGNERS="$S04_DIR/allowed_signers" s04_run_update "$sequence" "$out"; then
+    test_fail "repository-local signer configuration authorized an update"
+  fi
+  [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "checkout signer config changed the checkout"
+  assert_contains "$out" "No principal matched"
+
+  for path in "$S04_CHECKOUT/.git/allowed_signers" "$S04_DIR/signers-link-into-checkout"; do
+    if OPS_SIGNERS="$path" OPS_OPT_OUT=1 s04_run_update "$sequence" "$out"; then
+      test_fail "signer file inside the checkout was trusted: $path"
+    fi
+    [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "in-checkout signer file changed the checkout"
+    assert_contains "$out" "liegt im TaxTronik-Checkout und wird ignoriert"
+    assert_not_contains "$sequence" "backup-old-checkout"
+  done
+  [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
+    test_fail "opt-out bypassed a configured but untrusted signer file"
+  pass "$desc"
+}
+
+test_source_signer_file_must_be_operator_controlled() {
+  local dir out rc
+  dir="$(readlink -f "$TMP_DIR")/s04-signer-perms"
+  mkdir -p "$dir/safe" "$dir/open"
+  printf 'ops@taxtronik.invalid namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n' >"$dir/safe/allowed_signers"
+  cp "$dir/safe/allowed_signers" "$dir/open/allowed_signers"
+  printf '# nur Kommentar\n\n' >"$dir/safe/empty_signers"
+  chmod 0777 "$dir/open"
+
+  out="$(ROOT="$TMP_DIR/s04-other-root" TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$dir/safe/allowed_signers" \
+    source_allowed_signers_file)" || test_fail "safe operator-owned signer file was rejected"
+  [[ "$out" == "$dir/safe/allowed_signers" ]] || test_fail "signer file was not canonicalized: $out"
+
+  chmod 0666 "$dir/safe/allowed_signers"
+  rc=0; out="$(TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$dir/safe/allowed_signers" source_allowed_signers_file)" || rc=$?
+  [[ "$rc" == "2" && "$out" == *"fuer Gruppe oder Andere beschreibbar"* ]] || \
+    test_fail "world-writable signer file was accepted ($rc: $out)"
+  chmod 0600 "$dir/safe/allowed_signers"
+
+  rc=0; out="$(TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$dir/open/allowed_signers" source_allowed_signers_file)" || rc=$?
+  [[ "$rc" == "2" && "$out" == *"$dir/open ist fuer Gruppe oder Andere beschreibbar"* ]] || \
+    test_fail "signer file in a world-writable directory was accepted ($rc: $out)"
+
+  rc=0; out="$(TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$dir/safe/empty_signers" source_allowed_signers_file)" || rc=$?
+  [[ "$rc" == "2" && "$out" == *"enthaelt keinen Signer"* ]] || test_fail "empty signer file was accepted ($rc: $out)"
+
+  rc=0; out="$(TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$dir/missing" source_allowed_signers_file)" || rc=$?
+  [[ "$rc" == "2" && "$out" == *"fehlt"* ]] || test_fail "explicitly configured missing signer file counted as unconfigured"
+
+  rc=0
+  TAXTRONIK_SOURCE_ALLOWED_SIGNERS="" TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="$dir/absent-default" \
+    ENVFILE="$dir/no.env" source_allowed_signers_file >/dev/null || rc=$?
+  [[ "$rc" == "1" ]] || test_fail "absent default signer file was not reported as unconfigured ($rc)"
+  pass "pinned signer file must be operator-controlled, non-empty and explicitly present"
+}
+
+test_source_update_opt_out_is_explicit_and_logged() {
+  local desc="production refuses unsigned source updates before backup unless the logged opt-out is set"
+  local sequence="$TMP_DIR/s04-optout.seq" out="$TMP_DIR/s04-optout.out" unsigned audit mode
+  s04_repos optout
+  unsigned="$(s04_commit "$S04_UPSTREAM" "" "unsignierter Stand")"
+  audit="$S04_CHECKOUT/.taxtronik.source-update-audit.log"
+
+  if s04_run_update "$sequence" "$out"; then
+    test_fail "production accepted an unsigned source update without signers or opt-out"
+  fi
+  assert_contains "$out" "Source-Update in Produktion verweigert: keine gepinnten Signer"
+  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1"
+  assert_not_contains "$sequence" "backup-old-checkout"
+  [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "refused unsigned update changed the checkout"
+
+  if OPS_OPT_OUT=yes s04_run_update "$sequence" "$out"; then
+    test_fail "ambiguous opt-out value was accepted"
+  fi
+  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE darf nur leer, 0 oder 1 sein"
+  [[ ! -e "$audit" ]] || test_fail "refused update wrote an audit record"
+
+  OPS_OPT_OUT=1 s04_run_update "$sequence" "$out" || {
+    cat "$out" >&2
+    test_fail "explicit opt-out did not allow the unsigned source update"
+  }
+  [[ "$(s04_head)" == "$unsigned" ]] || test_fail "opt-out update did not merge the target"
+  assert_contains "$out" "SICHERHEITS-OPT-OUT: ungeprueften Source-Stand $unsigned uebernehmen"
+  assert_before "$sequence" "backup-old-checkout" "reexec-updated-operator"
+  [[ -f "$audit" ]] || test_fail "opt-out was not recorded"
+  mode="$(file_mode "$audit")"
+  [[ "$mode" == "600" ]] || test_fail "audit record mode is $mode, not 600"
+  assert_contains "$audit" "event=unsigned-source-update reason=opt-out from=$S04_BASE to=$unsigned uid=$(id -u)"
+  pass "$desc"
+}
+
+test_source_update_outside_production_only_warns() {
+  local out="$TMP_DIR/s04-nonprod.out" unsigned
+  s04_repos nonprod
+  unsigned="$(s04_commit "$S04_UPSTREAM" "" "unsignierter Stand")"
+  s04_git -C "$S04_CHECKOUT" fetch -q origin
+  (
+    ROOT="$S04_CHECKOUT"
+    SOURCE_UPDATE_AUDIT_LOG="$S04_CHECKOUT/.audit"
+    ENVFILE="$TMP_DIR/s04-no-such.env"
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="$TMP_DIR/absent-default-allowed-signers"
+    export GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1
+    NODE_ENV=development
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS=""
+    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=""
+    authorize_source_update_target "$S04_BASE" "$unsigned"
+  ) >"$out" 2>&1 || {
+    cat "$out" >&2
+    test_fail "non-production source update without signers was refused"
+  }
+  assert_contains "$out" "NODE_ENV=development: Source-Stand $unsigned wird ohne Signaturpruefung uebernommen"
+  [[ ! -e "$S04_CHECKOUT/.audit" ]] || test_fail "non-production warning wrote an opt-out audit record"
+
+  if (
+    ROOT="$S04_CHECKOUT"
+    ENVFILE="$TMP_DIR/s04-no-such.env"
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="$TMP_DIR/absent-default-allowed-signers"
+    NODE_ENV=production
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS=""
+    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=""
+    resolve_source_update_trust
+  ) >"$out" 2>&1; then
+    test_fail "the same configuration was accepted in production"
+  fi
+  assert_contains "$out" "Source-Update in Produktion verweigert"
+  pass "outside production a missing signer configuration only warns"
+}
+
+test_source_update_target_ref_is_validated() {
+  local commit
+  s04_repos refcheck
+  for ref in "--upload-pack=evil" "main@{1}" "../main" ""; do
+    if ROOT="$S04_CHECKOUT" source_update_target_commit "$ref" >/dev/null 2>&1; then
+      test_fail "unsafe update ref was accepted: '$ref'"
+    fi
+  done
+  commit="$(ROOT="$S04_CHECKOUT" GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1 \
+    source_update_target_commit origin/main)" || test_fail "valid update ref was rejected"
+  [[ "$commit" == "$S04_BASE" ]] || test_fail "update ref resolved to $commit instead of $S04_BASE"
+  pass "TAXTRONIK_UPDATE_REF is validated and resolved to one exact commit"
+}
+
+test_release_channel_update_ignores_source_signature_gate() {
+  local sequence="$TMP_DIR/s04-release.seq" out="$TMP_DIR/s04-release.out"
+  : >"$sequence"
+  NODE_ENV=production TAXTRONIK_VERSION=2.0.0 TAXTRONIK_SOURCE_ALLOWED_SIGNERS="" \
+    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE="" OPS_RELEASE_CHANNEL=1 OPS_CHECKOUT_CHANGES=1 \
+    OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$TMP_DIR/s04-release-root" run_mock_update >"$out" 2>&1 || {
+    cat "$out" >&2
+    test_fail "release update without source signers failed"
+  }
+  assert_before "$sequence" "resolve-release-contract" "backup-old-checkout"
+  assert_before "$sequence" "backup-old-checkout" "fetch-verified-release-tag 2.0.0 $MOCK_TARGET_COMMIT"
+  assert_before "$sequence" "fetch-verified-release-tag" "git merge --ff-only $MOCK_TARGET_COMMIT"
+  assert_contains "$sequence" "reexec-updated-operator"
+  assert_not_contains "$sequence" "source-trust-ready"
+  assert_not_contains "$sequence" "authorize-source-update"
+  assert_not_contains "$sequence" "git fetch origin"
+  pass "release channel keeps its signed-manifest path and never consults source signers"
+}
+
+test_doctor_reports_source_update_signature_state() {
+  local env_file="$TMP_DIR/s04-doctor.env" out="$TMP_DIR/s04-doctor.out" signers_dir
+  signers_dir="$(readlink -f "$TMP_DIR")/s04-doctor-signers"
+  mkdir -p "$signers_dir"
+  printf 'ops@taxtronik.invalid namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n' >"$signers_dir/allowed_signers"
+
+  write_prod_env "$env_file"
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "missing signers blocked doctor"; }
+  assert_contains "$out" "WARN     SOURCE_UPDATE_SIGNERS  fehlen ($TMP_DIR/absent-default-allowed-signers): ./taxtronik update wird verweigert"
+
+  printf 'TAXTRONIK_SOURCE_ALLOWED_SIGNERS=%s\n' "$signers_dir/allowed_signers" >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "configured signers blocked doctor"; }
+  if command -v ssh-keygen >/dev/null 2>&1; then
+    assert_contains "$out" "OK       SOURCE_UPDATE_SIGNERS  $signers_dir/allowed_signers (SSH-Signatur vor jedem Update Pflicht)"
+  else
+    assert_contains "$out" "WARN     SOURCE_UPDATE_SIGNERS  $signers_dir/allowed_signers, aber ssh-keygen fehlt"
+  fi
+  printf 'TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1\n' >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || test_fail "ineffective opt-out blocked doctor"
+  assert_contains "$out" "WARN     TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE wirkungslos"
+
+  set_env_file_value "$env_file" TAXTRONIK_SOURCE_ALLOWED_SIGNERS "$REPO_ROOT/README.md"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted a signer file inside the checkout"
+  fi
+  assert_contains "$out" "FEHLT    SOURCE_UPDATE_SIGNERS  $REPO_ROOT/README.md liegt im TaxTronik-Checkout und wird ignoriert"
+
+  set_env_file_value "$env_file" TAXTRONIK_SOURCE_ALLOWED_SIGNERS ""
+  run_doctor_with_env "$env_file" "$out" || test_fail "active opt-out blocked doctor"
+  assert_contains "$out" "WARN     SOURCE_UPDATE_SIGNERS  Opt-out aktiv"
+
+  set_env_file_value "$env_file" TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE yes
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted an ambiguous opt-out value"
+  fi
+  assert_contains "$out" "FEHLT    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE nur leer, 0 oder 1 erlaubt"
+
+  set_env_file_value "$env_file" TAXTRONIK_DEPLOY_CHANNEL release
+  set_env_file_value "$env_file" TAXTRONIK_IMAGE_PREFIX registry.example/taxtronik
+  set_env_file_value "$env_file" TAXTRONIK_VERSION 1.2.3
+  set_env_file_value "$env_file" TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE ""
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "release doctor failed"; }
+  assert_not_contains "$out" "SOURCE_UPDATE_SIGNERS"
+  pass "doctor shows the source-update signature state only for the source channel"
 }
 
 write_release_env() {
@@ -3638,6 +4145,16 @@ test_update_backs_up_old_checkout_before_fetch
 test_update_backup_failure_leaves_checkout_untouched
 test_changed_update_reloads_operator_and_resumes_same_run
 test_invalid_update_handoff_restarts_with_backup
+test_source_update_accepts_signed_commit_and_signed_tag
+test_source_update_rejects_unsigned_commit_before_merge
+test_source_update_rejects_unknown_signer_despite_ambient_git_config
+test_source_update_ignores_signer_files_inside_checkout
+test_source_signer_file_must_be_operator_controlled
+test_source_update_opt_out_is_explicit_and_logged
+test_source_update_outside_production_only_warns
+test_source_update_target_ref_is_validated
+test_release_channel_update_ignores_source_signature_gate
+test_doctor_reports_source_update_signature_state
 test_release_contract_is_not_persisted_before_health
 test_failed_update_recovers_state_current
 test_normal_rollback_uses_state_previous
@@ -3672,4 +4189,9 @@ test_min_previous_without_state_fails_for_existing_installation
 test_secret_files_are_mode_0600
 test_ensure_secret_reports_known_dev_defaults
 
-printf '\n%s ops-lib tests passed.\n' "$TESTS_RUN"
+if (( TESTS_SKIPPED > 0 )); then
+  printf '\n%s ops-lib tests passed, %s skipped (ssh-keygen/openssh-client fehlt; in CI Pflicht).\n' \
+    "$TESTS_RUN" "$TESTS_SKIPPED"
+else
+  printf '\n%s ops-lib tests passed.\n' "$TESTS_RUN"
+fi

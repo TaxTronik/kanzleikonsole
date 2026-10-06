@@ -99,7 +99,10 @@ Wenn ein Vor-Release-Stand vorhanden ist:
 
 1. Alten Stand deployen.
 2. Testdaten anlegen.
-3. Kandidat per `./taxtronik update` einspielen.
+3. Kandidat per `./taxtronik update` einspielen. Im Lokalbuild-(Source-)Modus
+   muss der Kandidat dafür SSH-signiert sein und der Rehearsal-Server die
+   gepinnte `allowed_signers`-Datei besitzen
+   ([release.md, Abschnitt 2.2](release.md#22-source-kanal-signierte-updates)).
 4. Smoke durchführen.
 5. `./taxtronik rollback <alte-version>` prüfen, sofern keine neue Migration
    den DB-Stand inkompatibel macht.

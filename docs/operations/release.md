@@ -110,7 +110,9 @@ Im expliziten Source-Kanal (`TAXTRONIK_DEPLOY_CHANNEL=source`) baut
 `./taxtronik deploy`/`update` lokal aus dem Checkout und setzt
 `TAXTRONIK_VERSION=source-<Git-Commit>` automatisch — dann braucht
 der Server weiterhin die Build-Toolchain, und es läuft nicht das in CI
-getestete Artefakt. Nach erfolgreichen lokalen Builds löscht die Operator-CLI
+getestete Artefakt. `./taxtronik update` übernimmt dort nur einen
+SSH-signierten Ziel-Commit (siehe [2.2](#22-source-kanal-signierte-updates)).
+Nach erfolgreichen lokalen Builds löscht die Operator-CLI
 ungenutzten Docker-BuildKit-Cache älter als 7 Tage (`until=168h`), damit der
 Server nicht langsam volläuft. Steuerung: `TAXTRONIK_BUILD_CACHE_PRUNE=off`
 oder `TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL=336h`.
@@ -132,6 +134,98 @@ Optional: `TENANT_SLUG` (Login-Feld „Kanzlei", Default `default`) und
 `.admin-credentials.txt` abgelegt — nach Erstlogin + TOTP-Setup löschen).
 Das Skript ist gegen Doppelausführung geschützt: Hat der Tenant bereits
 Mitarbeiter, bricht es ab und verändert nichts.
+
+### 2.2 Source-Kanal: signierte Updates
+
+Im Source-Kanal holt `./taxtronik update` das Ziel (`<remote>/main` oder
+`TAXTRONIK_UPDATE_REF`) und prüft es **vor** dem `git merge --ff-only` und damit
+vor dem Neustart des aktualisierten Operators: Der exakte Ziel-Commit oder ein
+annotierter Tag, dessen direktes Ziel genau dieser Commit ist, muss mit einem
+SSH-Schlüssel aus einer gepinnten `allowed_signers`-Datei signiert sein.
+Gemergt wird anschließend genau der geprüfte Commit, nicht erneut der
+bewegliche Ref. Bringt das Ziel keinen neuen Commit, entfällt die Prüfung. Der
+Release-Kanal bleibt unverändert an das signierte Manifest gebunden.
+
+Vertrauensanker ist ausschließlich die Datei aus
+`TAXTRONIK_SOURCE_ALLOWED_SIGNERS` (leer: `/etc/taxtronik/allowed_signers`).
+Sie muss außerhalb des TaxTronik-Checkouts liegen, root oder dem
+Operator-Benutzer gehören und darf, ebenso wie ihr Verzeichnis, nicht für
+Gruppe oder andere beschreibbar sein. Signer-Dateien im geholten Baum sowie
+`gpg.*`-Einstellungen aus Repository-, globaler oder System-Git-Konfiguration
+werden nie verwendet; OpenPGP- und X.509-Signaturen werden nicht akzeptiert.
+Voraussetzungen auf dem Server: Git ab 2.34 und `ssh-keygen` (Paket
+`openssh-client`).
+
+**Signierschlüssel anlegen** (bei der freigebenden Person, nicht auf dem
+Server; je Person ein eigener Schlüssel, möglichst mit Passphrase oder als
+Hardware-Schlüssel `-t ed25519-sk`):
+
+```bash
+ssh-keygen -t ed25519 -C "freigabe@kanzlei.example" -f ~/.ssh/taxtronik-freigabe
+```
+
+**Git zum Signieren einrichten:**
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/taxtronik-freigabe.pub
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+```
+
+Freigegeben wird entweder der Ziel-Commit selbst (bei `main` der jeweilige
+Spitzen-Commit, z. B. der Merge-Commit) oder ein bestehender Commit per
+signiertem, annotiertem Tag:
+
+```bash
+git commit -S -m "…"
+git tag -s freigabe-2026-10-06 -m "Source-Freigabe" <commit>
+git push forgejo main freigabe-2026-10-06
+```
+
+Tags auf geholte Commits überträgt `git fetch` automatisch. Lokal prüfen:
+`git -c gpg.ssh.allowedSignersFile=<datei> verify-commit <commit>` bzw.
+`verify-tag <tag>`.
+
+**allowed_signers auf dem Server einrichten** (als root; den öffentlichen
+Schlüssel auf einem getrennten, vertrauenswürdigen Weg übernehmen, nicht aus
+dem Repository):
+
+```bash
+install -d -m 0755 /etc/taxtronik
+printf '%s namespaces="git" %s\n' freigabe@kanzlei.example \
+  "$(cut -d' ' -f1,2 taxtronik-freigabe.pub)" >/etc/taxtronik/allowed_signers
+chmod 0644 /etc/taxtronik/allowed_signers
+```
+
+Eine Zeile je Schlüssel; ein Schlüssel wird durch Löschen seiner Zeile
+entzogen. `valid-after="YYYYMMDD"`/`valid-before="YYYYMMDD"` sind möglich,
+werden aber gegen den vom Signierenden gesetzten Commit- bzw. Tag-Zeitstempel
+geprüft und ersetzen das Entfernen eines kompromittierten Schlüssels nicht.
+
+**Verhalten:**
+
+- `./taxtronik doctor` zeigt im Source-Kanal `SOURCE_UPDATE_SIGNERS`: OK mit
+  Dateipfad; WARN bei fehlender Datei, aktivem Opt-out oder fehlendem
+  `ssh-keygen`; FEHLT bei unbrauchbarer Datei oder ungültigem Opt-out-Wert.
+- In Produktion ohne Signer-Datei bricht `update` vor Pflichtbackup und Fetch
+  ab. Ist eine Datei konfiguriert (Variable gesetzt oder Default vorhanden),
+  wird immer geprüft; eine fehlende, leere, unsichere oder im Checkout liegende
+  Datei bricht ebenfalls vor jeder Änderung ab.
+- Eine fehlende oder ungültige Signatur bricht nach dem Fetch, aber vor dem
+  Merge ab. Arbeitsbaum und laufender Operator bleiben unverändert.
+- Außerhalb von `NODE_ENV=production` erzeugt eine fehlende Signer-Datei nur
+  eine Warnung; konfigurierte Signer gelten auch dort.
+
+**Übergangs-Opt-out:** `TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1` in der `.env`
+erlaubt Source-Updates ohne Signaturprüfung, solange **keine** Signer-Datei
+konfiguriert ist. Jeder so übernommene Stand wird als Warnung ausgegeben und
+mit Zeitstempel, Quell- und Ziel-Commit sowie Benutzer-ID in
+`.taxtronik.source-update-audit.log` (0600) protokolliert; ohne diesen Eintrag
+wird nichts übernommen. Andere Werte als leer, `0` oder `1` werden abgelehnt.
+Sobald Signer konfiguriert sind, ist das Opt-out wirkungslos und `doctor`
+empfiehlt, es zu entfernen. Es ist nur für die Umstellung bestehender
+Installationen gedacht.
 
 ## 3. Rollback
 

@@ -55,6 +55,8 @@ infra/compose/.volumes/
 /.taxtronik.install-pending
 # Kurzlebiger, an Checkout und Recovery-State gebundener Update-Prozess-Handoff.
 /.taxtronik.update-handoff
+# Protokoll ungeprüft übernommener Source-Updates (Opt-out, siehe release.md 2.2).
+/.taxtronik.source-update-audit.log
 # Regenerierbare, sehr große lokale Signal-LLM-Artefakte (GGUF + llama.cpp).
 /.taxtronik/signal-llm/
 

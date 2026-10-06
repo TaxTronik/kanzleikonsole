@@ -45,6 +45,11 @@ ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.24@sha256:294b683cb724975bec92580e1e685676
 SIGNAL_MANAGED_IMAGE_DEFAULT="git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0"
 SIGNAL_GIT_URL_DEFAULT="https://git.hirschmann-koxha.de/TaxTronik/signal.git"
 SIGNAL_GIT_REF_DEFAULT="main"
+# Vertrauensanker fuer Source-Kanal-Updates (S-04). Liegt ausserhalb jedes
+# Checkouts; Signer-Konfiguration aus dem geholten Baum oder der Repo-Config
+# wird nie verwendet. TAXTRONIK_SOURCE_ALLOWED_SIGNERS ueberschreibt den Pfad.
+TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="/etc/taxtronik/allowed_signers"
+SOURCE_UPDATE_AUDIT_LOG="$ROOT/.taxtronik.source-update-audit.log"
 SIGNAL_MANAGED_LLM_MODEL="granite-4.1-8b"
 SIGNAL_MANAGED_LLM_FILE="granite-4.1-8b-Q5_K_M.gguf"
 SIGNAL_MANAGED_LLM_SIZE_BYTES=6253884064
@@ -492,12 +497,16 @@ valid_signal_git_url() {
   fi
 }
 
-valid_signal_git_ref() {
+# Branch, Tag oder Commit ohne Optionen-, Revisions- oder Shell-Syntax. Gilt fuer
+# SIGNAL_GIT_REF und TAXTRONIK_UPDATE_REF.
+valid_git_ref() {
   local value="${1:-}"
   [[ "$value" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ && \
      "$value" != *..* && "$value" != *//* && "$value" != *@\{* && \
      "$value" != */ && "$value" != *\.lock ]]
 }
+
+valid_signal_git_ref() { valid_git_ref "$@"; }
 
 signal_source_dir() {
   local configured="${SIGNAL_GIT_DIR:-$(get_env SIGNAL_GIT_DIR)}"
@@ -955,6 +964,259 @@ fetch_verified_release_tag() {
 require_clean_release_checkout() {
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || \
     die "Release-Checkout enthaelt getrackte lokale Aenderungen; sicherer Checkout-Wechsel verweigert."
+}
+
+# ---------------------------------------------------------------------------
+# Source-Kanal: Signaturbindung fuer ./taxtronik update (S-04)
+#
+# Der Release-Kanal bindet Updates an das Ed25519-signierte Manifest. Der
+# Source-Kanal bindet sie an SSH-Signaturen: Vor dem Fast-forward und damit vor
+# dem ersten Start des aktualisierten Operators muss der exakte Ziel-Commit
+# oder ein annotierter Tag mit genau diesem Commit als Ziel von einem Signer
+# aus einer gepinnten allowed_signers-Datei ausserhalb des Checkouts signiert
+# sein. Konfigurierte Signer werden immer erzwungen; das Opt-out wirkt nur,
+# solange gar keine Signer konfiguriert sind.
+# ---------------------------------------------------------------------------
+operator_is_production() { [[ "${NODE_ENV:-production}" == "production" ]]; }
+
+# rc 0: Datei nutzbar, Ausgabe = kanonischer Pfad. rc 1: nicht konfiguriert
+# (Variable leer und Default-Datei fehlt). rc 2: konfiguriert, aber
+# unbrauchbar, Ausgabe = Grund. Eine vorhandene Datei gilt immer als
+# konfiguriert, auch wenn sie leer oder unsicher ist.
+source_allowed_signers_file() {
+  local configured path canonical root_canonical candidate mode owner
+  configured="${TAXTRONIK_SOURCE_ALLOWED_SIGNERS:-$(get_env TAXTRONIK_SOURCE_ALLOWED_SIGNERS)}"
+  path="${configured:-$TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT}"
+  if [[ ! -e "$path" && ! -L "$path" ]]; then
+    [[ -n "$configured" ]] || return 1
+    printf '%s fehlt' "$path"
+    return 2
+  fi
+  [[ "$path" == /* ]] || { printf '%s ist kein absoluter Pfad' "$path"; return 2; }
+  canonical="$(readlink -f -- "$path" 2>/dev/null || true)"
+  root_canonical="$(readlink -f -- "$ROOT" 2>/dev/null || true)"
+  [[ -n "$canonical" && -n "$root_canonical" ]] || { printf '%s ist nicht aufloesbar' "$path"; return 2; }
+  # Nichts aus dem zu aktualisierenden Baum darf festlegen, wem er vertraut.
+  if [[ "$canonical" == "$root_canonical" || "$canonical" == "$root_canonical/"* ]]; then
+    printf '%s liegt im TaxTronik-Checkout und wird ignoriert' "$path"
+    return 2
+  fi
+  [[ -f "$canonical" ]] || { printf '%s ist keine regulaere Datei' "$path"; return 2; }
+  for candidate in "$canonical" "$(dirname -- "$canonical")"; do
+    mode="$(stat -c '%a' -- "$candidate" 2>/dev/null || true)"
+    owner="$(stat -c '%u' -- "$candidate" 2>/dev/null || true)"
+    if [[ ! "$mode" =~ ^[0-7]{3,4}$ ]] || (( (8#$mode & 8#022) != 0 )); then
+      printf '%s ist fuer Gruppe oder Andere beschreibbar' "$candidate"
+      return 2
+    fi
+    [[ "$owner" == "0" || "$owner" == "$(id -u)" ]] || {
+      printf '%s gehoert weder root noch dem Operator-Benutzer' "$candidate"
+      return 2
+    }
+  done
+  grep -Eq '^[[:space:]]*[^#[:space:]]' -- "$canonical" 2>/dev/null || {
+    printf '%s enthaelt keinen Signer' "$path"
+    return 2
+  }
+  printf '%s' "$canonical"
+}
+
+# rc 0 = Opt-out aktiv (exakt 1), rc 1 = inaktiv (leer oder 0), rc 2 = ungueltig.
+source_unsigned_update_opt_out() {
+  local value="${TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE:-$(get_env TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE)}"
+  case "$value" in
+    1) return 0 ;;
+    ""|0) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+# Setzt _SOURCE_UPDATE_TRUST (signed | unsigned-opt-out | unsigned-nonproduction)
+# und _SOURCE_UPDATE_SIGNERS. Bricht ab, wenn in diesem Zustand kein
+# Source-Update zulaessig ist.
+resolve_source_update_trust() {
+  local signers="" signers_rc=0 opt_out_rc=0
+  _SOURCE_UPDATE_TRUST=""
+  _SOURCE_UPDATE_SIGNERS=""
+  source_unsigned_update_opt_out || opt_out_rc=$?
+  (( opt_out_rc != 2 )) || die "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE darf nur leer, 0 oder 1 sein."
+  signers="$(source_allowed_signers_file)" || signers_rc=$?
+  case "$signers_rc" in
+    0)
+      command -v ssh-keygen >/dev/null 2>&1 || \
+        die "Source-Update verweigert: ssh-keygen (Paket openssh-client) fehlt; SSH-Signaturen koennen nicht geprueft werden."
+      _SOURCE_UPDATE_TRUST="signed"
+      _SOURCE_UPDATE_SIGNERS="$signers"
+      ;;
+    2)
+      die "Source-Update verweigert: Signer-Datei unbrauchbar ($signers). TAXTRONIK_SOURCE_ALLOWED_SIGNERS muss auf eine root-/operator-eigene, nicht fremd beschreibbare Datei ausserhalb des Checkouts zeigen (docs/operations/release.md, Abschnitt 2.2)."
+      ;;
+    *)
+      if ! operator_is_production; then
+        _SOURCE_UPDATE_TRUST="unsigned-nonproduction"
+      elif (( opt_out_rc == 0 )); then
+        _SOURCE_UPDATE_TRUST="unsigned-opt-out"
+      else
+        die "Source-Update in Produktion verweigert: keine gepinnten Signer ($TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT fehlt, TAXTRONIK_SOURCE_ALLOWED_SIGNERS ist leer). allowed_signers einrichten (docs/operations/release.md, Abschnitt 2.2), auf den Release-Kanal wechseln oder uebergangsweise bewusst TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1 setzen (wird protokolliert)."
+      fi
+      ;;
+  esac
+}
+
+# Vorabpruefung vor Pflichtbackup und Fetch: Ein Update, das spaeter ohnehin
+# verweigert wuerde, veraendert keinen Betriebszustand.
+assert_source_update_trust_ready() {
+  resolve_source_update_trust
+  case "$_SOURCE_UPDATE_TRUST" in
+    signed)
+      info "Source-Update ist an SSH-Signaturen gebunden (Signer: $_SOURCE_UPDATE_SIGNERS)."
+      if source_unsigned_update_opt_out; then
+        warn "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1 ist wirkungslos, weil Signer konfiguriert sind; die Signaturpruefung bleibt Pflicht."
+      fi
+      ;;
+    unsigned-opt-out)
+      warn "Source-Update OHNE Signaturpruefung (TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1); jeder neue Stand wird in $SOURCE_UPDATE_AUDIT_LOG protokolliert." ;;
+    unsigned-nonproduction)
+      warn "NODE_ENV=${NODE_ENV:-}: keine Signer konfiguriert; Source-Update ausserhalb Produktion nur mit Warnung." ;;
+  esac
+}
+
+# Alle signaturrelevanten Git-Einstellungen werden pro Aufruf fest vorgegeben:
+# Globale, System- und Repo-Konfiguration koennen weder Signer noch
+# Pruefprogramm noch Mindestvertrauen aendern. OpenPGP/X.509 sind gesperrt,
+# damit kein Schluesselbund des Operators eine Signatur bestaetigen kann.
+source_signature_git() {
+  local signers="$1" ssh_keygen="$2"
+  shift 2
+  git -C "$ROOT" \
+    -c gpg.format=ssh \
+    -c gpg.ssh.program="$ssh_keygen" \
+    -c gpg.ssh.allowedSignersFile="$signers" \
+    -c gpg.program=false \
+    -c gpg.openpgp.program=false \
+    -c gpg.x509.program=false \
+    -c gpg.minTrustLevel=fully \
+    "$@"
+}
+
+# rc 0, wenn der Commit selbst oder ein annotierter Tag, dessen direktes Ziel
+# genau dieser Commit ist, gueltig signiert ist. Ausgabe = Pruefergebnis.
+verify_source_commit_signature() {
+  local target="$1" signers="$2" ssh_keygen commit_output="" output="" tag header
+  ssh_keygen="$(command -v ssh-keygen 2>/dev/null || true)"
+  [[ -n "$ssh_keygen" ]] || { printf 'ssh-keygen fehlt'; return 1; }
+  if commit_output="$(source_signature_git "$signers" "$ssh_keygen" verify-commit "$target" 2>&1)"; then
+    printf 'Commit %s: %s' "${target:0:12}" "$commit_output"
+    return 0
+  fi
+  while IFS= read -r tag; do
+    [[ -n "$tag" ]] || continue
+    header="$(git -C "$ROOT" cat-file tag "refs/tags/$tag" 2>/dev/null | head -n 2 || true)"
+    [[ "$header" == "object $target"$'\n'"type commit" ]] || continue
+    if output="$(source_signature_git "$signers" "$ssh_keygen" verify-tag "refs/tags/$tag" 2>&1)"; then
+      printf 'Tag %s -> %s: %s' "$tag" "${target:0:12}" "$output"
+      return 0
+    fi
+  done < <(git -C "$ROOT" tag --points-at "$target" 2>/dev/null || true)
+  printf 'Commit %s: %s' "${target:0:12}" "${commit_output:-keine SSH-Signatur}"
+  return 1
+}
+
+record_unsigned_source_update() {
+  local current="$1" target="$2" reason="$3"
+  [[ ! -L "$SOURCE_UPDATE_AUDIT_LOG" ]] || \
+    die "Source-Update-Protokoll darf kein Symlink sein: $SOURCE_UPDATE_AUDIT_LOG"
+  printf '%s event=unsigned-source-update reason=%s from=%s to=%s uid=%s\n' \
+    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$reason" "$current" "$target" "$(id -u)" \
+    >>"$SOURCE_UPDATE_AUDIT_LOG" || \
+    die "Opt-out kann nicht protokolliert werden ($SOURCE_UPDATE_AUDIT_LOG); ungepruefter Source-Stand wird nicht uebernommen."
+  chmod 0600 "$SOURCE_UPDATE_AUDIT_LOG" || \
+    die "Source-Update-Protokoll konnte nicht auf 0600 gehaertet werden."
+}
+
+# Gibt den Commit eines Update-Ziels aus (rc 1 bei ungueltigem oder nicht
+# aufloesbarem Ref). TAXTRONIK_UPDATE_REF darf keine Optionen-Syntax tragen.
+source_update_target_commit() {
+  local ref="$1" commit
+  valid_git_ref "$ref" || return 1
+  commit="$(git -C "$ROOT" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null || true)"
+  [[ "$commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || return 1
+  printf '%s' "$commit"
+}
+
+# Entscheidet vor dem Fast-forward, ob der geholte Ziel-Commit uebernommen und
+# damit spaeter als Operator ausgefuehrt werden darf. Ein Ziel, das den Checkout
+# nicht veraendert (identisch oder Vorfahr von HEAD), bringt keinen neuen Code.
+authorize_source_update_target() {
+  local current="$1" target="$2" result=""
+  [[ "$current" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ && "$target" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
+    die "Source-Update-Pruefung braucht zwei gueltige Commits."
+  if git -C "$ROOT" merge-base --is-ancestor "$target" "$current" >/dev/null 2>&1; then
+    info "Kein neuer Source-Stand (${target:0:12} ist bereits enthalten); keine Signaturpruefung noetig."
+    return 0
+  fi
+  resolve_source_update_trust
+  case "$_SOURCE_UPDATE_TRUST" in
+    signed)
+      if result="$(verify_source_commit_signature "$target" "$_SOURCE_UPDATE_SIGNERS")"; then
+        info "Signierter Source-Stand bestaetigt: $result"
+        return 0
+      fi
+      printf '%s\n' "$result" >&2
+      die "Source-Update verweigert: Ziel-Commit $target ist weder selbst noch ueber einen annotierten Tag auf genau diesen Commit von einem Signer aus $_SOURCE_UPDATE_SIGNERS SSH-signiert. Arbeitsbaum und Operator bleiben unveraendert."
+      ;;
+    unsigned-opt-out)
+      record_unsigned_source_update "$current" "$target" opt-out
+      warn "SICHERHEITS-OPT-OUT: ungeprueften Source-Stand $target uebernehmen (TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1, protokolliert in $SOURCE_UPDATE_AUDIT_LOG)."
+      ;;
+    unsigned-nonproduction)
+      warn "NODE_ENV=${NODE_ENV:-}: Source-Stand $target wird ohne Signaturpruefung uebernommen (ausserhalb Produktion nur Warnung)."
+      ;;
+    *)
+      die "Unbekannter Vertrauenszustand fuer Source-Updates: ${_SOURCE_UPDATE_TRUST:-leer}"
+      ;;
+  esac
+}
+
+# doctor-Zeilen zum S-04-Zustand. Fehlende Signer sind WARN statt FEHLT: deploy
+# holt keinen fremden Code, und doctor ist ein hartes Gate in deploy/update,
+# auch in dem Update, das diese Pruefung erst ausliefert. Die fail-closed
+# Entscheidung trifft cmd_update vor Pflichtbackup und Fetch. FEHLT gilt nur
+# fuer ausdruecklich falsch gesetzte Werte.
+_doctor_source_update_trust() {
+  local signers="" signers_rc=0 opt_out_rc=0
+  source_unsigned_update_opt_out || opt_out_rc=$?
+  signers="$(source_allowed_signers_file)" || signers_rc=$?
+  if (( opt_out_rc == 2 )); then
+    _dr_row "FEHLT" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE" "nur leer, 0 oder 1 erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  fi
+  case "$signers_rc" in
+    0)
+      if command -v ssh-keygen >/dev/null 2>&1; then
+        _dr_row "OK" "SOURCE_UPDATE_SIGNERS" "$signers (SSH-Signatur vor jedem Update Pflicht)"
+      else
+        _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "$signers, aber ssh-keygen fehlt (openssh-client): Update wird verweigert"
+        _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+      fi
+      if (( opt_out_rc == 0 )); then
+        _dr_row "WARN" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE" "wirkungslos, weil Signer konfiguriert sind; entfernen"
+        _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+      fi
+      ;;
+    2)
+      _dr_row "FEHLT" "SOURCE_UPDATE_SIGNERS" "$signers"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+      ;;
+    *)
+      if (( opt_out_rc == 0 )); then
+        _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "Opt-out aktiv: update uebernimmt ungeprueften Code (protokolliert)"
+      elif operator_is_production; then
+        _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "fehlen ($TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT): ./taxtronik update wird verweigert"
+      else
+        _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "fehlen; ausserhalb Produktion nur Warnung"
+      fi
+      _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+      ;;
+  esac
 }
 
 pull_release_images_direct() {
@@ -1421,6 +1683,7 @@ doctor() {
       _dr_row "FEHLT" "TAXTRONIK_VERSION" "Source-Kennung fehlt; ./taxtronik deploy setzt sie automatisch"
       _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     fi
+    _doctor_source_update_trust
   elif [[ "$deploy_channel" == "release" ]]; then
     _dr_row "OK" "TAXTRONIK_DEPLOY_CHANNEL" "release (signierte Registry-Artefakte)"
     if [[ "${TAXTRONIK_IMAGE_PREFIX:-}" != */* ]]; then
@@ -4448,6 +4711,9 @@ continue_update_after_checkout() {
   info "Update fertig. Version: $(image_tag)"
 }
 
+# Wird erst nach dem Fast-forward erreicht, also nur fuer einen signiert
+# verifizierten Stand (Release-Manifest bzw. S-04-Signaturpruefung) oder einen
+# ausdruecklich per Opt-out protokollierten Source-Stand.
 reexec_updated_operator() {
   info "Aktualisierten Operator laden und Update automatisch fortsetzen"
   exec "$ROOT/taxtronik" update
@@ -4499,7 +4765,9 @@ cmd_update() {
   prepare_source_version_for_checkout
   preflight_common; assert_production_env; require_release_version
   assert_no_database_restore_pending
-  if images_from_registry; then resolve_release_contract; fi
+  # Beide Kanaele klaeren ihren Vertrauensanker vor dem Pflichtbackup: Release
+  # das signierte Manifest, Source die gepinnten SSH-Signer (S-04).
+  if images_from_registry; then resolve_release_contract; else assert_source_update_trust_ready; fi
   start_infra
   wait_postgres_healthy
   sync_postgres_roles_from_env
@@ -4507,7 +4775,7 @@ cmd_update() {
 
   info "Code auf den freigegebenen Stand aktualisieren (git ff-only)"
   cd "$ROOT"
-  local remote target_ref
+  local remote target_ref target_commit=""
   remote="$(deployment_git_remote)"
   if images_from_registry; then
     fetch_verified_release_tag "$TAXTRONIK_VERSION" "$UPDATE_COMMIT_SHA"
@@ -4516,13 +4784,24 @@ cmd_update() {
     # wuerde diese Modi sonst in die non-root-Runtime-Images uebernehmen.
     (umask 022; git merge --ff-only "$UPDATE_COMMIT_SHA")
   else
-    git fetch "$remote"
+    git fetch "$remote" || die "Git-Fetch von $remote fehlgeschlagen; Arbeitsbaum bleibt unveraendert."
     target_ref="${TAXTRONIK_UPDATE_REF:-$remote/main}"
-    (umask 022; git merge --ff-only "$target_ref")
+    target_commit="$(source_update_target_commit "$target_ref")" || \
+      die "Update-Ziel '$target_ref' ist ungueltig oder nach dem Fetch kein eindeutiger Commit."
+    # S-04: Die Signaturentscheidung faellt fuer den exakten Ziel-Commit vor dem
+    # Fast-forward und damit vor jeder Ausfuehrung des neuen Operator-Codes.
+    # Gemergt wird genau der gepruefte Commit, nicht erneut der bewegliche Ref.
+    authorize_source_update_target "$checkout_source_commit" "$target_commit"
+    (umask 022; git merge --ff-only "$target_commit") || \
+      die "Fast-forward auf ${target_commit} fehlgeschlagen (lokale Aenderungen oder kein Nachfolger); Operator bleibt unveraendert."
   fi
   checkout_target_commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
   [[ "$checkout_target_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || \
     die "Aktualisierter Checkout-Commit kann nicht bestimmt werden."
+  if [[ -n "$target_commit" && "$checkout_target_commit" != "$checkout_source_commit" && \
+        "$checkout_target_commit" != "$target_commit" ]]; then
+    die "Checkout $checkout_target_commit ist nicht der gepruefte Ziel-Commit $target_commit; aktualisierter Operator wird nicht gestartet."
+  fi
   if [[ "$checkout_target_commit" != "$checkout_source_commit" ]]; then
     write_update_handoff "$checkout_source_commit" "$checkout_target_commit" \
       "$_TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT"

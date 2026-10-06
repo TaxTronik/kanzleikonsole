@@ -182,6 +182,15 @@ strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
 Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
 aufgelöst werden.
 
+Im Source-Modus übernimmt das Update nur einen Ziel-Commit, der selbst oder
+über einen annotierten Tag auf genau diesen Commit mit einem Schlüssel aus der
+gepinnten `allowed_signers`-Datei SSH-signiert ist. Die Prüfung läuft nach dem
+Fetch und vor dem Fast-forward; gemergt wird genau der geprüfte Commit. Ohne
+Signer-Datei verweigert Produktion das Update vor dem Pflichtbackup, außer das
+protokollierte Übergangs-Opt-out `TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1` ist
+gesetzt. `./taxtronik doctor` zeigt den Zustand als `SOURCE_UPDATE_SIGNERS`.
+Einrichtung und Opt-out: [release.md, Abschnitt 2.2](release.md#22-source-kanal-signierte-updates).
+
 **Lokalbuild-Modus — wenn das Update beim Docker-Build zu „hängen“ scheint:**
 Der längste Schritt ist `next build` inkl. TypeScript im `builder`-Stage
 (mehrere Minuten ohne warmen Layer-Cache; die Ausgabe steht dabei still).
@@ -312,7 +321,10 @@ Die Operator-CLI lädt ihre Funktionen beim Prozessstart. Sobald ein Update den
 Checkout per Fast-forward verändert hat, schreibt sie deshalb nach dem
 erfolgreichen Pflichtbackup einen atomaren, auf Checkout, Installations-State
 und Migrationsmarker gebundenen Handoff und startet sich einmal aus dem neuen
-Checkout neu. Der neue Prozess setzt denselben `./taxtronik update`-Lauf ohne
+Checkout neu. Der Fast-forward und damit der Neustart erfolgen nur für einen
+zuvor verifizierten Stand (Release: signiertes Manifest; Source: SSH-Signatur
+oder ausdrücklich protokolliertes Opt-out).
+Der neue Prozess setzt denselben `./taxtronik update`-Lauf ohne
 zweiten Operator-Aufruf fort und kann dadurch auch gerade erst ausgelieferte
 Marker-/DB-Recovery automatisch anwenden. Nur ein höchstens 15 Minuten alter,
 vom selben Betriebssystembenutzer gehaltener `0600`-Handoff ist gültig.

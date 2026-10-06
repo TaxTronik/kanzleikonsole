@@ -293,8 +293,12 @@ akzeptiert. Details und Rollback-Pfad:
 [docs/operations/release.md](docs/operations/release.md)
 
 Im Source-Kanal (`TAXTRONIK_DEPLOY_CHANNEL=source`) wird die Version automatisch
-als `source-<Git-Commit>` geführt; eine SemVer-Eingabe gibt es dort nicht. Nach
-erfolgreichen lokalen Builds räumt die Operator-CLI ungenutzten Docker-BuildKit-Cache auf
+als `source-<Git-Commit>` geführt; eine SemVer-Eingabe gibt es dort nicht.
+`./taxtronik update` übernimmt dort nur Ziel-Commits, die selbst oder über einen
+annotierten Tag mit einem Schlüssel aus einer gepinnten `allowed_signers`-Datei
+SSH-signiert sind; ohne Signer-Datei verweigert Produktion das Update
+([Einrichtung und Übergangs-Opt-out](docs/operations/release.md#22-source-kanal-signierte-updates)).
+Nach erfolgreichen lokalen Builds räumt die Operator-CLI ungenutzten Docker-BuildKit-Cache auf
 (`until=168h`). Das lässt sich mit `TAXTRONIK_BUILD_CACHE_PRUNE=off` abschalten
 oder per `TAXTRONIK_BUILD_CACHE_PRUNE_UNTIL=336h` anpassen. Registry-Deploys
 pullen fertige Images und führen keinen Build-Cache-Prune aus.
