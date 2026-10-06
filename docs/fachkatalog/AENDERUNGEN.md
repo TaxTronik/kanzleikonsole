@@ -1,5 +1,32 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-028
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts
+      - apps/web/src/server/actions/staff-action.ts
+    rule_ids:
+      - ACCESS-STAFF-PERMISSION-001
+      - DSGVO-CONTACT-EXPORT-001
+      - DSGVO-REQUEST-DEADLINE-001
+      - DSGVO-REQUEST-EVIDENCE-001
+    reason: >-
+      Ein gemeinsamer Baustein für mehrphasige Server Actions
+      (server/actions/action-runner.ts mit staffAction/portalAction) führt Gate,
+      Eingabeprüfung mit Feldfehlern, Arbeit, zentrales Fehler-Mapping und
+      Revalidierung einheitlich; withStaff und withPortalContext nutzen dasselbe
+      Fehler-Mapping. Die Gate-Entscheidung (Session, Admin-Stufe, Einzelrecht,
+      Module) bleibt in staffActionGuard unverändert; neue Option deniedMessage
+      ersetzt Rollenprüfungen, die nur einen genaueren Ablehnungstext lieferten.
+      Pilot: DSGVO-Anfragen; Berechtigungen, Transaktionen, Audit-Ereignisse und
+      Meldungen bleiben gleich. Ein Architekturtest friert den handgeschriebenen
+      Stil je Datei ein. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/__tests__/actions.test.ts
+      - apps/web/src/server/actions/__tests__/action-runner.test.ts
+      - apps/web/src/server/actions/__tests__/staff-action.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-027
     date: '2026-10-06'
     paths:
@@ -3556,6 +3583,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-028` dokumentiert den gemeinsamen
+  Action-Baustein mit unveränderter Gate-Entscheidung (Pilot DSGVO-Anfragen).
 
 - 2026-10-06: `FK-EXC-20261006-027` dokumentiert die Reducer des
   Quantenlos-Panels. Gates und Aktionsdaten bleiben unverändert.

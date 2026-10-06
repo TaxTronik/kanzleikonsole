@@ -45,8 +45,9 @@ const ALLOWLIST_FNS = new Set([
 
 // Bekannte Autorisierungs-Primitive (Session/Tenant/Ownership) inkl. der
 // zentralen Staff- UND Portal-Helfer (kapseln staffAuth/portalAuth + Kontext).
+// staffAction/portalAction (K-02) laufen immer zuerst durch dasselbe Gate.
 const PRIMITIVE =
-  /\b(staffAuth|portalAuth|requireStaffSession|requireStaffAdmin|requireClientAccess|requireSubsumtionAccess|canAccessClient|staffActionGuard|staffModuleActionGuard|withStaff|portalActionGuard|portalModuleActionGuard|withPortalContext)\b/;
+  /\b(staffAuth|portalAuth|requireStaffSession|requireStaffAdmin|requireClientAccess|requireSubsumtionAccess|canAccessClient|staffActionGuard|staffModuleActionGuard|withStaff|staffAction|portalActionGuard|portalModuleActionGuard|withPortalContext|portalAction)\b/;
 
 // Diese beiden Fabriken liefern gebundene Wrapper, die bei JEDEM Aufruf erst
 // Session, Tenant-Kontext und Modulstatus pruefen. Nur Importe aus den beiden
@@ -294,6 +295,14 @@ describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
   });
   it('findet die Server-Action-Fläche', () => {
     expect(files.length).toBeGreaterThan(40);
+  });
+
+  it('erkennt die mehrphasigen Bausteine staffAction/portalAction als Autorisierung', () => {
+    expect(PRIMITIVE.test('return staffAction({ parse, run });')).toBe(true);
+    expect(PRIMITIVE.test('return portalAction({ run });')).toBe(true);
+    // Wortgrenzen: ein ähnlich benannter Bezeichner ist kein Freipass.
+    expect(PRIMITIVE.test('return staffActionResult({ ok: true });')).toBe(false);
+    expect(PRIMITIVE.test('return myPortalActionHelper();')).toBe(false);
   });
 
   it('erkennt Server-Action-Module an der Direktive, nicht am Dateinamen', () => {

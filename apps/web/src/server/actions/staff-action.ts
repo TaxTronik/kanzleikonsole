@@ -7,11 +7,16 @@
 // Authz-Struktur-Guardrail (server-action-authz.test.ts) erkennt diese Helfer
 // als gültige Autorisierung.
 //
-// Zwei Stufen:
-//   • staffActionGuard(opts) — nur das Auth-Gate (+ optional Admin) + Kontext.
-//     Universell: passt zu Actions, die danach eigene Services/Tx aufrufen.
+// Drei Stufen:
 //   • withStaff(fn, opts)    — Voll-Wrapper: Gate + Tenant-Tx + Fehler-Mapping
-//     (toActionError) + optional Revalidate. Für inline-Tx-Actions (CRUD).
+//     (toActionError) + optional Revalidate. Für Actions mit genau einer
+//     Transaktion (CRUD).
+//   • staffAction(spec)      — mehrphasige Actions (K-02): Gate → Eingabeprüfung
+//     mit Feldfehlern → Arbeit (mehrere Tx, Services, Storage) → zentrales
+//     Fehler-Mapping → Revalidate. Vertrag der Fehlerkanäle: action-runner.ts.
+//   • staffActionGuard(opts) — nur das Gate + Kontext. Für Bausteine und
+//     Sonderfälle; neue Actions nehmen withStaff oder staffAction
+//     (server-action-style.test.ts friert den handgeschriebenen Rest ein).
 // =============================================================================
 
 import { revalidatePath } from 'next/cache';
@@ -23,13 +28,12 @@ import { staffAuth, type StaffSession } from '@/server/auth/staff';
 import {
   isStaffAdmin,
   hasStaffPermission,
-  toActionError,
   ActionError,
   type ActionErrorResult,
   type StaffPermissionName,
 } from '@/server/auth/rbac';
 import { decideStaffGuard } from './staff-action-policy';
-import { isUniqueViolation } from './database-error';
+import { createActionRunner, mapActionError } from './action-runner';
 import type { ActionResult } from './types';
 import {
   assertModuleEnabled,
@@ -45,6 +49,7 @@ import {
 export { ActionError };
 export { decideStaffGuard };
 export { parseActionInput, parseFormData, requireUuidParam } from './form-data';
+export type { ActionFailure, ActionParseResult } from './action-runner';
 
 // Einheitliches Action-Ergebnis liegt neutral in ./types — hier re-exportiert,
 // damit der bestehende Import-Pfad '@/server/actions/staff-action' stabil bleibt.
@@ -61,6 +66,12 @@ export type StaffGuardResult = ({ ok: true } & StaffCtx) | ActionErrorResult;
 export type StaffGuardOptions = {
   requireAdmin?: boolean;
   requirePermission?: StaffPermissionName;
+  /**
+   * Präzisere Meldung, wenn Rolle (`requireAdmin`) oder Einzelrecht
+   * (`requirePermission`) fehlen — statt „Nur ADMIN/PARTNER." bzw.
+   * „Keine Berechtigung (…).". „Nicht eingeloggt." und Modulmeldungen bleiben.
+   */
+  deniedMessage?: string;
   module?: BooleanModuleKey;
   /** Module mit Betriebsmodus (OFF = vollständig deaktiviert). */
   modeModule?: ModeModuleKey;
@@ -87,7 +98,8 @@ export async function staffActionGuard(opts: StaffGuardOptions = {}): Promise<St
       ? hasStaffPermission(session, opts.requirePermission)
       : true,
   });
-  if (denied || !session?.user) return { ok: false, error: denied ?? 'Nicht eingeloggt.' };
+  if (!session?.user) return { ok: false, error: denied ?? 'Nicht eingeloggt.' };
+  if (denied) return { ok: false, error: opts.deniedMessage ?? denied };
   const { tenantId, staffId } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
   if (opts.module) {
@@ -141,12 +153,19 @@ export async function withStaff<T extends Record<string, unknown> = Record<strin
       for (const p of ([] as string[]).concat(opts.revalidate)) revalidatePath(p);
     return { ok: true, ...(data ?? {}) } as R;
   } catch (e) {
-    if (opts.uniqueError && isUniqueViolation(e)) {
-      return { ok: false, error: opts.uniqueError } as R;
-    }
-    return toActionError(e) as R;
+    return mapActionError(e, opts) as R;
   }
 }
+
+/**
+ * Mehrphasige Staff-Action (K-02): Gate (`guard`, wie staffActionGuard) →
+ * `parse` (Feldfehler gehen unverändert zurück) → `run(g, data)` → zentrales
+ * Fehler-Mapping (`onError`, `uniqueError`, toActionError) → `revalidate`.
+ * `run` öffnet Transaktionen selbst (`withTenantContext(g.ctx, …)`), darf
+ * mehrere davon und Arbeit außerhalb einer Transaktion enthalten. Navigation
+ * nach Erfolg: `const r = await staffAction(…); if (!r.ok) return r; redirect(…)`.
+ */
+export const staffAction = createActionRunner<StaffCtx, StaffGuardOptions>(staffActionGuard);
 
 /**
  * Bindet einen Action-Baustein einmalig an ein tenantweites Modul. Dadurch

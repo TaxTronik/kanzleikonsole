@@ -34,18 +34,19 @@ vi.mock('@/server/privacy/notice', () => ({
   renderPrivacyNotice: vi.fn(),
 }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: vi.fn() }));
-vi.mock('@/server/auth/rbac', async () => {
-  return {
-    isStaffAdmin: h.isStaffAdmin,
-    // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
-    ...(await import('@/server/actions/to-action-error')),
-  };
-});
 vi.mock('@/server/actions/staff-action', async () => {
   const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
     '@/server/actions/action-error',
   );
-  return { ActionError, staffActionGuard: h.staffActionGuard };
+  // K-02: der echte mehrphasige Ablauf (inkl. toActionError) über dem Gate-Mock.
+  const { createActionRunner } = await vi.importActual<
+    typeof import('@/server/actions/action-runner')
+  >('@/server/actions/action-runner');
+  return {
+    ActionError,
+    staffActionGuard: h.staffActionGuard,
+    staffAction: createActionRunner(h.staffActionGuard),
+  };
 });
 
 import { anonymizeContactAction, createDsgvoRequestAction, updateStatusAction } from '../actions';
@@ -75,13 +76,20 @@ function requestForm(overrides: Record<string, string> = {}): FormData {
 describe('DSGVO-Actions — Rückkanal statt Wurf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    h.staffActionGuard.mockResolvedValue({
-      ok: true,
-      tenantId: 'tenant-1',
-      staffId: 'staff-1',
-      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
-      session: { user: { id: 'staff-1' } },
-    });
+    // Gate-Mock mit der Rollenentscheidung des echten staffActionGuard
+    // (requireAdmin + deniedMessage; Wahrheitstabelle: staff-action.test.ts).
+    h.staffActionGuard.mockImplementation(
+      async (opts: { requireAdmin?: boolean; deniedMessage?: string } = {}) =>
+        opts.requireAdmin && !h.isStaffAdmin()
+          ? { ok: false, error: opts.deniedMessage ?? 'Nur ADMIN/PARTNER.' }
+          : {
+              ok: true,
+              tenantId: 'tenant-1',
+              staffId: 'staff-1',
+              ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+              session: { user: { id: 'staff-1' } },
+            },
+    );
     h.isStaffAdmin.mockReturnValue(true);
   });
 
@@ -111,6 +119,10 @@ describe('DSGVO-Actions — Rückkanal statt Wurf', () => {
     await expect(createDsgvoRequestAction(null, requestForm())).resolves.toEqual({
       ok: false,
       error: 'Nur ADMIN/PARTNER darf DSGVO-Anträge bearbeiten.',
+    });
+    expect(h.staffActionGuard).toHaveBeenCalledWith({
+      requireAdmin: true,
+      deniedMessage: 'Nur ADMIN/PARTNER darf DSGVO-Anträge bearbeiten.',
     });
     expect(h.withTenantContext).not.toHaveBeenCalled();
   });

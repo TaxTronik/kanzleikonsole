@@ -6,17 +6,23 @@
 // Der Authz-Struktur-Guardrail (server-action-authz.test.ts) erkennt
 // portalActionGuard/withPortalContext als gültige Autorisierung.
 //
-//   • portalActionGuard() — nur das Auth-Gate + Kontext (Portal hat keine
-//     Admin-Stufe; Feature-Gating bleibt action-spezifisch).
 //   • withPortalContext(fn, opts) — Voll-Wrapper: Gate + Tenant-Tx +
 //     Fehler-Mapping (toActionError) + optional Revalidate.
+//   • portalAction(spec) — mehrphasige Actions (K-02): Gate → Eingabeprüfung
+//     mit Feldfehlern → Arbeit (Rate-Limit, mehrere Tx, Storage) → zentrales
+//     Fehler-Mapping → Revalidate. Vertrag der Fehlerkanäle: action-runner.ts.
+//   • portalActionGuard() — nur das Auth-Gate + Kontext (Portal hat keine
+//     Admin-Stufe; Feature-Gating bleibt action-spezifisch). Für Bausteine und
+//     Sonderfälle; server-action-style.test.ts friert den handgeschriebenen
+//     Rest ein.
 // =============================================================================
 
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 import type { TenantContext, TxClient } from '@taxtronik/db';
 import { portalAuth, type PortalSession } from '@/server/auth/portal';
-import { toActionError, ActionError } from '@/server/auth/rbac';
+import { ActionError } from '@/server/auth/rbac';
+import { createActionRunner, mapActionError } from './action-runner';
 import type { ActionResult } from './types';
 import {
   assertModuleEnabled,
@@ -27,6 +33,7 @@ import {
 // Domänen-Fehler mit UI-tauglicher Message — im withPortalContext-Callback werfen.
 export { ActionError };
 export { parseActionInput, parseFormData, requireUuidParam } from './form-data';
+export type { ActionFailure, ActionParseResult } from './action-runner';
 // Einheitliches Ergebnis (eine Import-Quelle für Portal-Actions).
 export type { ActionResult } from './types';
 
@@ -92,9 +99,17 @@ export async function withPortalContext<T extends Record<string, unknown> = Reco
       for (const p of ([] as string[]).concat(opts.revalidate)) revalidatePath(p);
     return { ok: true, ...(data ?? {}) } as R;
   } catch (e) {
-    return toActionError(e) as R;
+    return mapActionError(e) as R;
   }
 }
+
+/**
+ * Mehrphasige Portal-Action (K-02): Gate (`guard`, wie portalActionGuard) →
+ * `parse` (Feldfehler gehen unverändert zurück) → `run(g, data)` → zentrales
+ * Fehler-Mapping (`onError`, `uniqueError`, toActionError) → `revalidate`.
+ * `run` öffnet Transaktionen selbst (`withTenantContext(g.ctx, …)`).
+ */
+export const portalAction = createActionRunner<PortalCtx, PortalGuardOptions>(portalActionGuard);
 
 export function withPortalModule(module: BooleanModuleKey) {
   return function withBoundPortal<T extends Record<string, unknown> = Record<string, never>>(

@@ -13,9 +13,10 @@
 // Deshalb gilt zusätzlich:
 //   • keine exportierte Funktion eines 'use server'-Moduls mit deklariertem
 //     oder inferiertem Rückgabetyp Promise<void> — Ausnahmen nur mit Begründung;
-//   • kein Aufruf von withStaff/withPortalContext/…ActionGuard (inkl. per
-//     withStaffModule/withPortalModule gebundener Wrapper), dessen Ergebnis als
-//     Ausdrucksanweisung oder per `void` verworfen wird.
+//   • kein Aufruf von withStaff/withPortalContext/staffAction/portalAction/
+//     …ActionGuard (inkl. per withStaffModule/withPortalModule gebundener
+//     Wrapper), dessen Ergebnis als Ausdrucksanweisung oder per `void`
+//     verworfen wird.
 // =============================================================================
 
 import { dirname, join, relative, sep } from 'node:path';
@@ -121,6 +122,8 @@ const DISCARDED_WRAPPER_RESULT_ALLOWLIST: Readonly<Record<string, string>> = {};
 const RESULT_WRAPPERS = new Set([
   'withStaff',
   'withPortalContext',
+  'staffAction',
+  'portalAction',
   'staffActionGuard',
   'staffModuleActionGuard',
   'portalActionGuard',
@@ -565,10 +568,14 @@ describe('ActionResult- und Formularfehler-Guardrail', () => {
           await runStaff(async () => {});
           void staffActionGuard();
           await (withModuleStaff(async () => {}));
+          await staffAction({ run: async () => {} });
+          void portalAction({ run: async () => {} });
         }
         export async function evaluated() {
           const result = await runStaff(async () => {});
           if (!(await staffActionGuard()).ok) return result;
+          const built = await staffAction({ run: async () => {} });
+          if (!built.ok) return built;
           return withModuleStaff(async () => {});
         }
       `,
@@ -580,6 +587,8 @@ describe('ActionResult- und Formularfehler-Guardrail', () => {
       'discarded::runStaff',
       'discarded::staffActionGuard',
       'discarded::withModuleStaff',
+      'discarded::staffAction',
+      'discarded::portalAction',
     ]);
   });
 
@@ -597,7 +606,7 @@ describe('ActionResult- und Formularfehler-Guardrail', () => {
     for (const reason of Object.values(VOID_ACTION_ALLOWLIST)) expect(reason.trim()).not.toBe('');
   });
 
-  it('verwirft kein Ergebnis von withStaff/withPortalContext/…ActionGuard', () => {
+  it('verwirft kein Ergebnis von withStaff/withPortalContext/staffAction/…ActionGuard', () => {
     const actual = productFiles
       .flatMap((file) =>
         discardedWrapperResults(parseSource(file)).map((call) => `${repoRelative(file)}::${call}`),
