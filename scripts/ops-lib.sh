@@ -1362,7 +1362,7 @@ doctor() {
     _dr_row "WARN" "TRUST_PROXY_REQUIRED" "false: Login-Limits nur pro Konto/E-Mail; Proxy setzt X-Forwarded-For? Dann true"
     _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else _dr_row "OK" "TRUST_PROXY_REQUIRED" "$TRUST_PROXY_REQUIRED"; fi
-  # Die App lehnt andere Werte beim Start ab (packages/config/src/env.ts).
+  # Die App lehnt andere Werte beim Start ab (packages/config/src/env-schema.ts).
   if [[ -n "${TRUST_PROXY_HOPS:-}" && ! "${TRUST_PROXY_HOPS}" =~ ^[1-9]$ ]]; then
     _dr_row "FEHLT" "TRUST_PROXY_HOPS" "ganze Zahl 1-9 (anhaengende Proxy-Hops vor der App)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   elif [[ "${TRUST_PROXY_REQUIRED:-}" == "true" ]]; then

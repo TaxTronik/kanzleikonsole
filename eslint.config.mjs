@@ -66,6 +66,16 @@ export const APP_LAYER_ALLOWLIST = [
   },
 ];
 
+// ENV-Profile (Review-Befund K-09): Worker und CLI-Skripte wählen ihr Profil
+// (packages/config/src/env-schema.ts) mit dem ERSTEN Import ihres Einstiegs-
+// moduls. Nur dann steht die Wahl vor jeder Auswertung von @taxtronik/config;
+// sonst validiert der Prozess das Web-Profil (und die Wahl scheitert beim Start).
+export const ENV_PROFILE_ENTRIES = [
+  { file: 'apps/worker/src/index.ts', profile: 'worker' },
+  { file: 'packages/db/scripts/rewrap-secret-box.ts', profile: 'cli-secret-box' },
+  { file: 'packages/storage/scripts/deploy-readiness.ts', profile: 'cli-storage' },
+];
+
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Regelkonfiguration der Schichtgrenze, ohne die erlaubten Module (`@/app/<modul>`). */
@@ -206,6 +216,19 @@ export default [
   ...APP_LAYER_ALLOWLIST.map(({ files, modules }) => ({
     files: files.map(literalGlob),
     rules: appLayerRules(modules),
+  })),
+  ...ENV_PROFILE_ENTRIES.map(({ file, profile }) => ({
+    files: [file],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...ROLE_CHECK_SELECTORS,
+        {
+          selector: `Program > :first-child:not(ImportDeclaration[source.value='@taxtronik/config/profiles/${profile}'])`,
+          message: `Erster Import muss '@taxtronik/config/profiles/${profile}' sein: das ENV-Profil wirkt nur vor jeder Auswertung von @taxtronik/config (K-09).`,
+        },
+      ],
+    },
   })),
   {
     files: ['apps/web/src/app/staff/**/*.{ts,tsx}'],

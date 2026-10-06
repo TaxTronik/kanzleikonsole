@@ -9,6 +9,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./env": "./src/env.ts",
+    "./env-schema": "./src/env-schema.ts",
+    "./profiles/worker": "./src/profiles/worker.ts",
+    "./profiles/cli-secret-box": "./src/profiles/cli-secret-box.ts",
+    "./profiles/cli-storage": "./src/profiles/cli-storage.ts",
     "./job-queues": "./src/job-queues.ts",
     "./logger": "./src/logger.ts",
     "./update-manifest": "./src/update-manifest.ts"

@@ -421,6 +421,11 @@ if (enabled) {
         { operation: 'reset', invoke: () => ibmTokenEntfernenAction() },
       ] as const;
       beforeEach(async () => {
+        // Quantenlos verlangt eine konfigurierte Risk-Engine. @taxtronik/risk-layer
+        // liest RISK_LAYER_* beim Aufruf aus der Prozess-ENV (K-09), nicht aus
+        // dem Mock von @taxtronik/config.
+        vi.stubEnv('RISK_LAYER_URL', 'https://engine.example.test');
+        vi.stubEnv('RISK_LAYER_TOKEN', 'synthetic-engine-token-for-settings-tests');
         await owner.tenantSetting.upsert({
           where: { tenantId_key: { tenantId, key: 'modules' } },
           create: { tenantId, key: 'modules', value: { risk: true } },
@@ -428,6 +433,9 @@ if (enabled) {
         });
         await writeIbmToken(ctx, originalToken);
         fixture.transactions = 0;
+      });
+      afterAll(() => {
+        vi.unstubAllEnvs();
       });
       it.each(tokenCases)(
         'rolls back IBM token $operation with its inserted audit',

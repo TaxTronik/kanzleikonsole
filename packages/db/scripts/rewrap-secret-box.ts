@@ -19,6 +19,9 @@
 // geänderte Werte (erneut ausführen).
 // =============================================================================
 
+// K-09: validiert nur die Secret-Box-Schlüssel (ENV-Profil „cli-secret-box“),
+// nicht die Werte von App und Worker. Muss der erste Import bleiben.
+import '@taxtronik/config/profiles/cli-secret-box';
 import pg from 'pg';
 import {
   activeSecretBoxKeyId,

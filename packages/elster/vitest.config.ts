@@ -3,9 +3,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     // Reine Unit-Tests (Client mit injiziertem fetch) — keine DB, kein
-    // Netzwerk, keine Bridge. setup-env.ts stellt die von @taxtronik/config
-    // beim Import verlangte Minimal-ENV bereit.
+    // Netzwerk, keine Bridge und keine ENV: die Bridge-Konfiguration wird erst
+    // beim Aufruf gelesen (getElsterConfig), nicht beim Import.
     pool: 'forks',
-    setupFiles: ['./src/__tests__/setup-env.ts'],
   },
 });

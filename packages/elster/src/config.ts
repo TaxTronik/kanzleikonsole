@@ -1,8 +1,9 @@
 // =============================================================================
 // ELSTER-Bridge-Konfiguration — URL + Bearer-Token der eric-bridge.
 //
-// Single Source: `elsterConfig` aus @taxtronik/config (null, wenn die Bridge
-// nicht deployt ist — sie ist opt-in). Gleiches Muster wie der Risk-Layer:
+// Single Source: der ELSTER-Teil des ENV-Schemas (@taxtronik/config/env-schema;
+// null, wenn die Bridge nicht deployt ist — sie ist opt-in). Gelesen wird erst
+// beim Aufruf, nicht beim Import (K-09). Gleiches Muster wie der Risk-Layer:
 // wer den Client baut, muss die fehlende Konfiguration bewusst behandeln
 // (try/catch oder vorher `isElsterConfigured` — UI blendet das Modul aus).
 //
@@ -10,7 +11,7 @@
 // ausschließlich Konfiguration der Bridge selbst (eric-integration.md, Regel 4).
 // =============================================================================
 
-import { elsterConfig } from '@taxtronik/config';
+import { getElsterConfig } from '@taxtronik/config/env-schema';
 
 export interface ElsterConfig {
   /** Basis-URL der Bridge, ohne Trailing-Slash (z. B. `http://eric-bridge:8085`). */
@@ -36,11 +37,12 @@ export class ElsterNotConfiguredError extends Error {
 
 /** True, wenn die Bridge konfiguriert ist (für UI-/Feature-Gating). */
 export function isElsterConfigured(): boolean {
-  return elsterConfig !== null;
+  return getElsterConfig() !== null;
 }
 
 /** Liefert die Config oder wirft `ElsterNotConfiguredError`. */
 export function requireElsterConfig(): ElsterConfig {
-  if (!elsterConfig) throw new ElsterNotConfiguredError();
-  return elsterConfig;
+  const config = getElsterConfig();
+  if (!config) throw new ElsterNotConfiguredError();
+  return config;
 }

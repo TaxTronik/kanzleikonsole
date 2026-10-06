@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- ENV-Prüfung je Prozess: Der Worker verlangt keine Web-Werte mehr
+  (`NEXTAUTH_URL` nur als Rückfall für `PORTAL_PUBLIC_URL`; `NEXTAUTH_TRUST_HOST`,
+  `TRUST_PROXY_*`, Cookie-Domains, ELSTER und Lizenz entfallen),
+  `pnpm secret-box:rewrap` und `pnpm verify:deploy-readiness` prüfen nur ihre
+  eigenen Werte. Produktionsprüfungen und Meldungen bleiben unverändert.
 - Interne Schichtgrenzen der Web-App sind per ESLint abgesichert:
   Komponenten und Server-Module importieren nicht mehr aus Routenordnern,
   Staff-Seiten nicht aus dem Portal; geteilte Oberflächenteile liegen unter
@@ -649,6 +654,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Mandanten-Links in Mails des Workers (z. B. automatische Anforderungen aus
+  Steuerterminen) zeigen bei getrennten Subdomains auf `PORTAL_PUBLIC_URL`
+  statt auf die Staff-Domain; Compose reicht `PORTAL_PUBLIC_URL` jetzt an den
+  Worker durch.
 - `scripts/dev-magic-link.ts` funktioniert wieder mit Prisma 7. `pnpm typecheck`
   prüft zusätzlich `packages/db/scripts` und die TypeScript-Skripte unter
   `scripts/`; das seit dem Wegfall von `rawResult` nicht mehr lauffähige

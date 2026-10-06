@@ -9,7 +9,7 @@ export default defineConfig({
     // Funktionen brauchen wir keinerlei echte Infra, müssen die Validierung aber
     // mit einem minimalen, gültigen DEVELOPMENT-Set befriedigen, damit der Import
     // durchläuft. NODE_ENV=development überspringt die strengen Cross-Field-
-    // Production-Checks (siehe packages/config/src/env.ts).
+    // Production-Checks (siehe packages/config/src/env-schema.ts).
     env: {
       NODE_ENV: 'development',
       DATABASE_URL: 'postgres://owner:pw@localhost:5432/taxtronik',

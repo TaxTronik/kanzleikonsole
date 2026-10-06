@@ -12,6 +12,9 @@
 // (Job `deploy-readiness`) und fängt so Prod-Konfig-Regressionen VOR dem Kunden.
 // =============================================================================
 
+// K-09: validiert nur Object-Store und Virenscanner (ENV-Profil „cli-storage“),
+// nicht die Werte von App und Worker. Muss der erste Import bleiben.
+import '@taxtronik/config/profiles/cli-storage';
 import { checkDeployReadiness } from '../src/deploy-readiness';
 
 const ICON: Record<string, string> = { ok: '✅', warn: '⚠️ ', fail: '❌' };

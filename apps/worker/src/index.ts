@@ -5,6 +5,9 @@
 // Sauberes SIGTERM-Handling für Graceful Shutdown.
 // =============================================================================
 
+// K-09: ENV-Profil „worker“ wählen, bevor ein Modul @taxtronik/config
+// auswertet. Muss der erste Import bleiben (Regel in eslint.config.mjs).
+import '@taxtronik/config/profiles/worker';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

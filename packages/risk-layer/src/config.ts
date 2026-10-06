@@ -1,15 +1,17 @@
 // =============================================================================
 // Risk-Layer-Konfiguration — URL, Bearer- und Operator-Token der §4-Engine.
 //
-// Single Source: `riskLayerConfig` aus @taxtronik/config (null, wenn die Engine
-// nicht deployt ist — sie ist opt-in). Dieser Helper macht das `null` zu einem
-// expliziten, typsicheren Vertrag: wer den Client baut, muss die fehlende
-// Konfiguration bewusst behandeln (try/catch oder vorher `isRiskLayerConfigured`).
+// Single Source: der Risk-Layer-Teil des ENV-Schemas (@taxtronik/config/env-schema;
+// null, wenn die Engine nicht deployt ist — sie ist opt-in). Gelesen wird erst
+// beim Aufruf, nicht beim Import: das Paket lässt sich ohne Prozess-ENV laden
+// und testen (K-09). Dieser Helper macht das `null` zu einem expliziten,
+// typsicheren Vertrag: wer den Client baut, muss die fehlende Konfiguration
+// bewusst behandeln (try/catch oder vorher `isRiskLayerConfigured`).
 // =============================================================================
 
-import { riskLayerConfig, type RiskLayerConfig } from '@taxtronik/config';
+import { getRiskLayerConfig, type RiskLayerConfig } from '@taxtronik/config/env-schema';
 
-export type { RiskLayerConfig } from '@taxtronik/config';
+export type { RiskLayerConfig } from '@taxtronik/config/env-schema';
 
 /**
  * Wird geworfen, wenn ein Engine-Call versucht wird, obwohl RISK_LAYER_URL /
@@ -43,11 +45,12 @@ export class RiskLayerOperatorNotConfiguredError extends Error {
 
 /** True, wenn die Engine konfiguriert ist (für UI-/Feature-Gating). */
 export function isRiskLayerConfigured(): boolean {
-  return riskLayerConfig !== null;
+  return getRiskLayerConfig() !== null;
 }
 
 /** Liefert die Config oder wirft `RiskLayerNotConfiguredError`. */
 export function requireRiskLayerConfig(): RiskLayerConfig {
-  if (!riskLayerConfig) throw new RiskLayerNotConfiguredError();
-  return riskLayerConfig;
+  const config = getRiskLayerConfig();
+  if (!config) throw new RiskLayerNotConfiguredError();
+  return config;
 }

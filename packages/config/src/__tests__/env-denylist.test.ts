@@ -215,7 +215,7 @@ describe('ENV — Dev-Default-Denylist (Audit Round 14, Finding 7)', () => {
   });
 
   it('production mit invalid DATABASE_URL-Scheme → throw (Zod-Refinement)', () => {
-    // Zod-Issues werden in env.ts auf der Konsole geloggt und der Throw selbst
+    // Zod-Issues werden in env-schema.ts auf der Konsole geloggt und der Throw selbst
     // ist eine generische Sammelmeldung — wir prüfen also nur, dass es
     // überhaupt schmeißt. Field-Detail siehe console.error.
     expect(() =>

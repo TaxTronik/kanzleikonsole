@@ -239,11 +239,6 @@
       "count": 1
     }
   },
-  "packages/config/src/env.ts": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "packages/config/src/update-manifest.ts": {
     "complexity": {
       "count": 1

@@ -233,8 +233,12 @@ services:
       # Production-Pflicht laut @taxtronik/config (RLS-Backstop): der Worker
       # nutzt ebenfalls die eingeschränkte App-Rolle, nicht den DB-Owner.
       DATABASE_APP_URL: postgresql://taxtronik_app:${TAXTRONIK_APP_PASSWORD}@postgres:5432/taxtronik?schema=public
-      # Auth.js-Pflicht: true; der Reverse-Proxy muss Host-Header kanonisch pinnen.
-      NEXTAUTH_TRUST_HOST: ${NEXTAUTH_TRUST_HOST:?NEXTAUTH_TRUST_HOST muss explizit true sein}
+      # Mandanten-Links in Worker-Mails (z. B. Anforderungen aus Steuerfristen)
+      # zeigen wie im app-Service auf PORTAL_PUBLIC_URL; leer → Fallback auf
+      # NEXTAUTH_URL (Single-Host-Deploy). Web-Auth-Werte (NEXTAUTH_TRUST_HOST,
+      # TRUST_PROXY_*, Cookie-Domains) prüft der Worker nicht (ENV-Profil
+      # „worker“, packages/config/src/env-schema.ts).
+      PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:-}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET nicht gesetzt}
       # Nur Legacy-Fallback: normalisierte Connections besitzen ihr eigenes,
@@ -244,7 +248,6 @@ services:
       N8N_WEBHOOK_BASE_URL: ${N8N_WEBHOOK_BASE_URL:-}
       # SSRF-Guard-Allowlist (Worker stellt n8n-Outbox zu → safeFetch zu n8n).
       INTERNAL_FETCH_HOSTS: ${INTERNAL_FETCH_HOSTS:-n8n,seaweedfs,clamav,postgres,redis}
-      TRUST_PROXY_REQUIRED: ${TRUST_PROXY_REQUIRED:?TRUST_PROXY_REQUIRED muss explizit true oder false sein}
       REDIS_URL: redis://redis:6379
       # Object-Store nur intern erreichbar — App streamt Up-/Downloads selbst.
       S3_ENDPOINT: http://seaweedfs:8333
