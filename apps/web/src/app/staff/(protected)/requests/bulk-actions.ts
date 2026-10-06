@@ -5,10 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { staffAction } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const BulkSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(200),
@@ -132,10 +132,7 @@ export async function bulkCloseRequestsAction(input: { ids: string[] }): Promise
 
           // Pro Eintrag ein Audit-Log
           for (const b of before) {
-            await evidenceService.record(tx, {
-              tenantId,
-              actorType: 'STAFF',
-              actorId: staffId,
+            await audit(tx, ctx, {
               action: 'request.close',
               resourceType: 'request',
               resourceId: b.id,

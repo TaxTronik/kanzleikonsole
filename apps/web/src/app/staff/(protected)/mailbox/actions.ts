@@ -24,10 +24,10 @@ import {
 import { validationFailure } from '@/server/actions/form-data';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
-import { evidenceService } from '@/server/container';
 import { persistResumableDocumentUpload } from '@/server/documents/resumable-upload';
 import { carrierClassification } from '@/server/storage/document-type';
 import type { DocumentClassification } from '@prisma/client';
+import { audit } from '@/server/actions/audit';
 
 const INVALID_MAILBOX_ID: ActionFailure = { ok: false, error: 'Ungültige Postfach-ID.' };
 
@@ -89,10 +89,7 @@ export async function saveMailbox(
             enabled: false,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId: g.tenantId,
-          actorType: 'STAFF',
-          actorId: g.staffId,
+        await audit(tx, g, {
           action: 'mailbox.created',
           resourceType: 'inbound_mailbox',
           resourceId: item.id,
@@ -125,10 +122,7 @@ export async function setMailboxEnabled(
             'Ordnerkennung geändert. Bitte ein neues Postfachprofil für einen kontrollierten Neuabgleich anlegen. Vorhandene Nachweise bleiben erhalten.',
           );
         await tx.inboundMailbox.update({ where: { id }, data: { enabled } });
-        await evidenceService.record(tx, {
-          tenantId: g.tenantId,
-          actorType: 'STAFF',
-          actorId: g.staffId,
+        await audit(tx, g, {
           action: 'mailbox.' + (enabled ? 'resumed' : 'paused'),
           resourceType: 'inbound_mailbox',
           resourceId: id,
@@ -359,10 +353,7 @@ async function archiveAttachment(
         where: { id: attachment.id },
         data: { status: 'IMPORTED' },
       });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
+      await audit(tx, g, {
         action: 'mailbox.attachment_archived',
         resourceType: 'document',
         resourceId: upload.documentId,

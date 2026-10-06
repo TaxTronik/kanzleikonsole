@@ -5,7 +5,6 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import type { TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify, notifyMany } from '@/server/notifications/service';
 import {
@@ -16,6 +15,7 @@ import {
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { validationFailure } from '@/server/actions/form-data';
+import { audit } from '@/server/actions/audit';
 
 export type ActionResult = BaseActionResult;
 
@@ -89,10 +89,7 @@ export async function createVacationRequestAction(
             reason: parsed.data.reason || null,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'vacation.request',
           resourceType: 'vacation_request',
           resourceId: req.id,
@@ -152,7 +149,7 @@ export async function decideVacationAction(
   const status = parsed.data.approve ? 'APPROVED' : 'REJECTED';
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       const before = await tx.vacationRequest.findUnique({ where: { id: parsed.data.requestId } });
       if (!before) throw new ActionError('Urlaubsantrag nicht gefunden.');
       // 4-Augen-Prinzip (N7): ein ADMIN/PARTNER darf seinen eigenen
@@ -179,10 +176,7 @@ export async function decideVacationAction(
         },
       });
       if (decision.count === 0) return;
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: status === 'APPROVED' ? 'vacation.approve' : 'vacation.reject',
         resourceType: 'vacation_request',
         resourceId: before.id,
@@ -220,7 +214,7 @@ export async function cancelVacationAction(
   const { requestId: id } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       // N10: expliziter Tenant-Filter zusätzlich zur RLS — Defense in Depth.
       // Schützt auch dann, wenn RLS-Policy versehentlich gelockert wird, und
       // verhindert dass ein Bug im Tenant-Kontext fremde Mandanten-Daten
@@ -238,10 +232,7 @@ export async function cancelVacationAction(
         data: { status: 'CANCELLED' },
       });
       if (cancelled.count === 0) return;
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'vacation.cancel',
         resourceType: 'vacation_request',
         resourceId: before.id,
@@ -280,7 +271,7 @@ export async function reportAbsenceAction(
   }
 
   return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       const absence = await tx.absence.create({
         data: {
           tenantId,
@@ -291,10 +282,7 @@ export async function reportAbsenceAction(
           notes: parsed.data.notes || null,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'absence.report',
         resourceType: 'absence',
         resourceId: absence.id,
@@ -332,7 +320,7 @@ export async function endAbsenceAction(
   if (!parsed.ok) return parsed;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       const before = await tx.absence.findFirst({
         where: { id: parsed.data.id, tenantId, staffId },
       });
@@ -350,10 +338,7 @@ export async function endAbsenceAction(
         tenantId,
         resources: [{ resourceType: 'absence', resourceId: parsed.data.id }],
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'absence.end',
         resourceType: 'absence',
         resourceId: parsed.data.id,
@@ -373,7 +358,7 @@ export async function deleteAbsenceAction(
   if (!parsed.ok) return parsed;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       const before = await tx.absence.findFirst({
         where: { id: parsed.data.id, tenantId, staffId },
       });
@@ -383,10 +368,7 @@ export async function deleteAbsenceAction(
         resources: [{ resourceType: 'absence', resourceId: parsed.data.id }],
       });
       await tx.absence.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'absence.delete',
         resourceType: 'absence',
         resourceId: parsed.data.id,

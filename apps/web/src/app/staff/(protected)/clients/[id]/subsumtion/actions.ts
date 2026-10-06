@@ -13,7 +13,6 @@ import { parseActionInput } from '@/server/actions/form-data';
 import { withTenantContext } from '@taxtronik/db';
 import { lockRiskAnalysisTx, requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { fetchObjectBytes } from '@taxtronik/storage';
-import { evidenceService } from '@/server/container';
 import { readUploadFile } from '@/server/documents/upload-file';
 import { getClientIp } from '@/server/rate-limit';
 import {
@@ -44,6 +43,7 @@ import {
   type OkActionResult,
   guardAnalysisVertraulich,
 } from './_guards';
+import { audit } from '@/server/actions/audit';
 // Aufgeteilt aus actions.ts (1272 Zeilen) — Guards in ./_guards.ts.
 
 const AnalyzeSchema = z.object({
@@ -181,7 +181,7 @@ export async function setAnalysisVertraulichAction(input: {
   vertraulich: boolean;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, staffId, clientId } = await guardAnalysisVertraulich(input.analysisId);
+    const { ctx, clientId } = await guardAnalysisVertraulich(input.analysisId);
 
     await withTenantContext(ctx, async (tx) => {
       const current = await lockRiskAnalysisTx(tx, ctx.tenantId, input.analysisId);
@@ -191,10 +191,7 @@ export async function setAnalysisVertraulichAction(input: {
           where: { id: input.analysisId },
           data: { vertraulich: input.vertraulich },
         });
-        await evidenceService.record(tx, {
-          tenantId: ctx.tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: input.vertraulich
             ? 'subsumtion.vertraulich.gesetzt'
             : 'subsumtion.vertraulich.aufgehoben',
@@ -512,7 +509,7 @@ export async function importClientDocAction(
     const checked = parseActionInput(ImportDocSchema, input);
     if (!checked.ok) return checked;
     const parsed = checked.data;
-    const { ctx, staffId } = await guardWrite(parsed.clientId);
+    const { ctx } = await guardWrite(parsed.clientId);
     const h = await headers();
     const ip = getClientIp(h);
     const userAgent = h.get('user-agent');
@@ -530,10 +527,7 @@ export async function importClientDocAction(
       });
       const v = d?.versions[0];
       if (!d || !v) return null;
-      await evidenceService.record(tx, {
-        tenantId: ctx.tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'document.text_extract',
         resourceType: 'document',
         resourceId: d.id,

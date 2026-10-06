@@ -7,9 +7,9 @@ import { portalAction, ActionError, type ActionResult } from '@/server/actions/p
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { TaxMasterDataSchema } from '@/server/tax-master-data/schema';
 import { loadTaxMasterDataTx } from '@/server/tax-master-data/service';
-import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import type { TaxMasterSaveInput } from '@/components/tax-master-data-form';
+import { audit } from '@/server/actions/audit';
 
 export async function submitTaxChangeAction(input: TaxMasterSaveInput): Promise<ActionResult> {
   return portalAction({
@@ -59,10 +59,7 @@ export async function submitTaxChangeAction(input: TaxMasterSaveInput): Promise<
             status: 'PENDING',
           },
         });
-        await evidenceService.record(tx, {
-          tenantId: g.tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: g.contactId,
+        await audit(tx, g, {
           action: 'client_master_change.submit',
           resourceType: 'client_master_change_request',
           resourceId: request.id,

@@ -5,9 +5,9 @@ import { assertClientAccessTx } from '@/server/auth/rbac';
 import { bindScreeningSubjectTx } from '@/server/screening/gwg-gate';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { createEuRun } from '@/server/screening/service';
-import { evidenceService } from '@/server/container';
 import { screeningJson } from '@taxtronik/tax/screening/persistence';
 import { validateScreeningSubject } from '@taxtronik/tax';
+import { audit } from '@/server/actions/audit';
 const subjectSchema = z.object({
   name: z.string().trim().min(2).max(250),
   role: z.string().trim().min(1).max(160),
@@ -106,10 +106,7 @@ export async function recordPepResearchAction(
           createdBy: g.staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
+      await audit(tx, g, {
         action: 'screening.pep.document',
         resourceType: 'screening_run',
         resourceId: run.id,
@@ -156,10 +153,7 @@ export async function reviewScreeningAction(clientId: string, runId: string, raw
           createdBy: g.staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
+      await audit(tx, g, {
         action: 'screening.review.append',
         resourceType: 'screening_run',
         resourceId: runId,

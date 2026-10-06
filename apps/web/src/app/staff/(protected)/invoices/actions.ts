@@ -44,6 +44,7 @@ import {
   type StaffCtx,
 } from '@/server/actions/staff-action';
 import type { TenantContext } from '@taxtronik/db';
+import { audit } from '@/server/actions/audit';
 
 export type ActionResult = BaseActionResult;
 
@@ -539,7 +540,7 @@ export async function markPaidAction(
   // Ablehnung (z. B. unzulässiger Statuswechsel bei veralteter Seite) geht als
   // Ergebnis an die UI — der Dialog zeigt den Grund statt eines No-ops.
   return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, session, ctx }) => {
       // iter85: Precondition (UI verbirgt den Button, die Action prüft selbst;
       // der DB-Trigger ist der Backstop).
       const current = await tx.invoice.findUnique({
@@ -561,10 +562,7 @@ export async function markPaidAction(
         tenantId,
         resources: [{ resourceType: 'invoice', resourceId: parsed.data.invoiceId }],
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'invoice.paid',
         resourceType: 'invoice',
         resourceId: updated.id,
@@ -627,10 +625,7 @@ async function cancelInvoice(
         // zum Retention-Ende erhalten. EXTERNAL/PDF wird hier nie verändert.
         const discarded = await discardNeverSentDraftArchiveTx(tx, current, staffId);
         if (discarded) {
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'invoice.archive.discard_draft',
             resourceType: 'invoice',
             resourceId: invoiceId,
@@ -700,10 +695,7 @@ async function cancelInvoice(
         },
       });
       stornoId = storno.id;
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'invoice.storno.create',
         resourceType: 'invoice',
         resourceId: storno.id,
@@ -994,10 +986,7 @@ export async function uploadExternalInvoiceAction(
             },
           });
 
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, g, {
             action: 'invoice.upload',
             resourceType: 'invoice',
             resourceId: inv.id,

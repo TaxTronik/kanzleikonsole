@@ -37,6 +37,12 @@ const context = {
   tenantId: '33333333-3333-4333-8333-333333333333',
   contactId: '44444444-4444-4444-8444-444444444444',
   clientId: CLIENT_ID,
+  // Gate-Kontext wie portalActionGuard: Akteur der Transaktion und des Audits.
+  ctx: {
+    tenantId: '33333333-3333-4333-8333-333333333333',
+    actorId: '44444444-4444-4444-8444-444444444444',
+    actorType: 'CLIENT_CONTACT' as const,
+  },
 };
 
 type Status = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED';

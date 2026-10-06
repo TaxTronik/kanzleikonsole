@@ -16,6 +16,7 @@ import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journ
 import { readUploadFile } from '@/server/documents/upload-file';
 import { validateFormAnswers } from '@/server/forms/validate-answers';
 import { readFormSchema } from '@/server/forms/schema-snapshot';
+import { audit } from '@/server/actions/audit';
 
 const Schema = z.object({
   submissionId: z.string().uuid(),
@@ -245,10 +246,7 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
             throw new ActionError('Eine verknüpfte Anforderung wurde zwischenzeitlich geändert.');
           }
           for (const linkedRequest of linkedRequests) {
-            await evidenceService.record(tx, {
-              tenantId,
-              actorType: 'CLIENT_CONTACT',
-              actorId: contactId,
+            await audit(tx, g, {
               action: 'request.responded',
               resourceType: 'request',
               resourceId: linkedRequest.id,
@@ -261,10 +259,7 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
             });
           }
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
+        await audit(tx, g, {
           action: 'form.submission.submit',
           resourceType: 'form_submission',
           resourceId: parsed.data.submissionId,
@@ -504,10 +499,7 @@ export async function uploadFormFileAction(
             },
           });
           if (attached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'CLIENT_CONTACT',
-            actorId: contactId,
+          await audit(tx, g, {
             action: 'form.submission.upload',
             resourceType: 'document',
             resourceId: doc.id,

@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { lockClientRiskAnalysesTx } from '@taxtronik/db/risk-analysis';
 import { Prisma } from '@taxtronik/db/prisma-client';
-import { evidenceService } from '@/server/container';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { isClientAnonymizationDue } from '@/server/dsgvo/client-retention';
 import { anonymizeContactInTx, isAnonymizedContactEmail } from '@/server/dsgvo/anonymize-contact';
@@ -19,6 +18,7 @@ import {
   staffAction,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 export type ActionResult = BaseActionResult;
 
@@ -187,10 +187,7 @@ export async function confirmClientAnonymizationAction(input: {
 
         // 7. Anonymisierung auditieren (audit_log ist insert-only → der Nachweis
         //    bleibt dauerhaft; bewusst nur Zähler, keine Personendaten im Event).
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client.anonymize',
           resourceType: 'client',
           resourceId: clientId,
@@ -231,7 +228,7 @@ export async function confirmPoaSignerAnonymizationAction(input: {
 }): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx }) => {
+    run: async ({ tenantId, ctx }) => {
       const parsed = z.object({ clientId: z.string().uuid() }).safeParse(input);
       if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
       const { clientId } = parsed.data;
@@ -287,10 +284,7 @@ export async function confirmPoaSignerAnonymizationAction(input: {
           );
         }
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'poa.signer.anonymize',
           resourceType: 'client',
           resourceId: clientId,

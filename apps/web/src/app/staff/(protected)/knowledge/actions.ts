@@ -7,7 +7,6 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import {
   staffAction,
   staffActionGuard,
@@ -16,6 +15,7 @@ import {
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withKnowledgeStaff = withStaffModule('knowledge');
 
@@ -41,7 +41,7 @@ export async function createCategoryAction(
   // Kategorien sind Wissensstruktur — Pflege via ADMIN/PARTNER, Artikel können
   // alle Mitarbeiter schreiben.
   return withKnowledgeStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       // Q-4: parentId muss zum Tenant gehören. RLS filtert Lesepfade, aber
       // der FK akzeptiert jede UUID, die im DB-Cluster existiert — sonst kann
       // ein UI-Bug (oder ein direkter API-Call mit fremder parentId) eine
@@ -62,10 +62,7 @@ export async function createCategoryAction(
           parentId: parsed.data.parentId || null,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'kb.category.create',
         resourceType: 'kb_category',
         resourceId: cat.id,
@@ -170,10 +167,7 @@ export async function createArticleAction(
                 );
               }
             }
-            await evidenceService.record(tx, {
-              tenantId,
-              actorType: 'STAFF',
-              actorId: staffId,
+            await audit(tx, ctx, {
               action: 'kb.article.create',
               resourceType: 'kb_article',
               resourceId: article.id,
@@ -262,10 +256,7 @@ export async function updateArticleAction(
             published: !!data.published,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'kb.article.update',
           resourceType: 'kb_article',
           resourceId: updated.id,
@@ -294,15 +285,12 @@ export async function deleteArticleAction(
     guard: { requireAdmin: true, module: 'knowledge' },
     // S2: UUID-Validation.
     parse: () => parseFormData(z.object({ id: z.string().uuid() }), formData),
-    run: async ({ tenantId, staffId, ctx }, { id }) => {
+    run: async ({ ctx }, { id }) => {
       await withTenantContext(ctx, async (tx) => {
         const before = await tx.kbArticle.findUnique({ where: { id } });
         if (!before) throw new ActionError('Artikel nicht gefunden.');
         await tx.kbArticle.delete({ where: { id } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'kb.article.delete',
           resourceType: 'kb_article',
           resourceId: id,

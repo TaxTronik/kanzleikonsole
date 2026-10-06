@@ -71,6 +71,7 @@ vi.mock('@/server/actions/staff-action', async () => {
           run(tx, {
             tenantId: h.tenantId,
             staffId: h.staffId,
+            ctx: h.context,
             session: {},
           }),
         );

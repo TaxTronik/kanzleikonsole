@@ -1,6 +1,4 @@
 'use server';
-
-import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
 import { withPortalContext, ActionError, type ActionResult } from '@/server/actions/portal-action';
 import {
@@ -8,6 +6,7 @@ import {
   parseConsent,
   revokeVoluntaryConsent,
 } from '@/server/privacy/consent';
+import { audit } from '@/server/actions/audit';
 
 export async function saveNotificationSettingAction(
   _prev: ActionResult | null,
@@ -16,7 +15,7 @@ export async function saveNotificationSettingAction(
   const enabled = formData.get('enabled') === 'on';
 
   const r = await withPortalContext(
-    async (tx, { tenantId, contactId }) => {
+    async (tx, { contactId, ctx }) => {
       const before = await tx.clientContact.findUnique({
         where: { id: contactId },
         select: { notificationsEnabled: true },
@@ -28,10 +27,7 @@ export async function saveNotificationSettingAction(
         where: { id: contactId },
         data: { notificationsEnabled: enabled },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
+      await audit(tx, ctx, {
         action: 'portal.notifications.toggle',
         resourceType: 'client_contact',
         resourceId: contactId,
@@ -60,7 +56,7 @@ export async function revokeOwnConsentAction(
   _formData: FormData,
 ): Promise<ActionResult> {
   const r = await withPortalContext(
-    async (tx, { tenantId, contactId, clientId }) => {
+    async (tx, { tenantId, contactId, clientId, ctx }) => {
       const [contact, previous] = await Promise.all([
         tx.clientContact.findFirst({
           where: { id: contactId, clientId },
@@ -98,10 +94,7 @@ export async function revokeOwnConsentAction(
           note: 'Widerruf freiwilliger Einwilligungen im Mandantenportal',
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
+      await audit(tx, ctx, {
         action: 'privacy.consent.revoke',
         resourceType: 'client_consent',
         resourceId: row.id,

@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { withPortalContext, ActionError } from '@/server/actions/portal-action';
 import { assertModuleEnabledTx } from '@/server/settings/modules';
 import { noticeDecisionSnapshot, validInteractionResponse } from '@/server/workflows/interactions';
-import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { checkPortalWriteLimit } from '@/server/rate-limit';
 import { createHash } from 'node:crypto';
 import type { ClientInteraction } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import type { PortalCtx } from '@/server/actions/portal-action';
+import { audit } from '@/server/actions/audit';
 
 async function assertNoticeInteractionCurrentTx(
   tx: TxClient,
@@ -121,10 +121,7 @@ export async function respondInteractionAction(data: FormData) {
         data: { status: 'RESPONDED' },
       });
       await notifyInteractionResponseTx(tx, g, row, parsed.data.response);
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: g.contactId,
+      await audit(tx, g, {
         action: 'interaction.responded',
         resourceType: 'client_interaction',
         resourceId: row.id,

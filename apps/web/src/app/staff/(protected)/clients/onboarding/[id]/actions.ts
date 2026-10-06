@@ -5,7 +5,6 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { portalBaseUrl } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { emitN8nEvent } from '@/server/n8n/emit';
@@ -18,6 +17,7 @@ import { staffAction, ActionError, type ActionResult } from '@/server/actions/st
 import { parseFormData, validationFailure } from '@/server/actions/form-data';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
 import { startManualGwgCaptureTx } from '@/server/gwg-onboarding/manual-capture';
+import { audit } from '@/server/actions/audit';
 
 export interface WizardResult {
   ok: boolean;
@@ -47,7 +47,7 @@ export async function onboardingAddContactAction(
 ): Promise<ActionResult> {
   const outcome = await staffAction({
     run: async (g) => {
-      const { tenantId, staffId, ctx } = g;
+      const { tenantId, ctx } = g;
 
       const parsed = ContactSchema.safeParse({
         clientId: formData.get('clientId'),
@@ -89,10 +89,7 @@ export async function onboardingAddContactAction(
               ...(!existing.active ? { icalTokenVersion: { increment: 1 } } : {}),
             },
           });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, g, {
             action: 'client_contact.update',
             resourceType: 'client_contact',
             resourceId: existing.id,
@@ -111,10 +108,7 @@ export async function onboardingAddContactAction(
             role: parsed.data.role?.trim() || null,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'client_contact.create',
           resourceType: 'client_contact',
           resourceId: c.id,
@@ -210,10 +204,7 @@ export async function onboardingSendGwgAction(
             boundClientRevision: binding.boundClientRevision,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'gwg.onboarding.invite',
           resourceType: 'gwg_onboarding_invite',
           resourceId: inv.id,
@@ -338,7 +329,7 @@ export async function onboardingCompleteAction(
 ): Promise<ActionResult> {
   const outcome = await staffAction({
     run: async (g) => {
-      const { tenantId, staffId, ctx } = g;
+      const { staffId, ctx } = g;
       const clientId = formData.get('clientId');
       if (typeof clientId !== 'string' || !/^[a-f0-9-]{36}$/.test(clientId)) {
         return { ok: false, error: 'Ungültige Parameter.' };
@@ -400,10 +391,7 @@ export async function onboardingCompleteAction(
             'Der Mandantenstatus hat sich parallel geändert. Bitte Onboarding neu laden.',
           );
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'client.onboarding.complete',
           resourceType: 'client',
           resourceId: clientId,

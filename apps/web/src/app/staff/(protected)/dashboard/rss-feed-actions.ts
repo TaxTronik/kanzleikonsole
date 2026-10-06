@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
 import { assertPublicUrl, urlTargetErrorMessage } from '@/server/http/ssrf-guard';
 import {
@@ -12,6 +11,7 @@ import {
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withRssReaderStaff = withStaffModule('rssReader');
 
@@ -93,10 +93,7 @@ export async function addRssFeedAction(
             active: false,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'rss_feed.add',
           resourceType: 'rss_feed',
           resourceId: f.id,
@@ -120,16 +117,13 @@ export async function toggleRssFeedAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withRssReaderStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       await tx.rssFeed.update({
         // ACCESS-TENANT-RLS-001: Tenant-RLS allein schützt keine fremden Abos.
         where: { id: parsed.data.id, tenantId, staffId },
         data: { active: parsed.data.active },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: parsed.data.active ? 'rss_feed.enable' : 'rss_feed.disable',
         resourceType: 'rss_feed',
         resourceId: parsed.data.id,
@@ -144,17 +138,14 @@ export async function deleteRssFeedAction(input: { id: string }): Promise<Action
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withRssReaderStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       const f = await tx.rssFeed.findFirst({
         where: { id: parsed.data.id, tenantId, staffId },
         select: { name: true, url: true },
       });
       if (!f) throw new ActionError('Feed nicht gefunden.');
       await tx.rssFeed.delete({ where: { id: parsed.data.id, tenantId, staffId } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'rss_feed.delete',
         resourceType: 'rss_feed',
         resourceId: parsed.data.id,
@@ -167,12 +158,9 @@ export async function deleteRssFeedAction(input: { id: string }): Promise<Action
 
 export async function resetRssFeedDefaultsAction(): Promise<ActionResult> {
   return withRssReaderStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       await seedDefaultRssFeeds(tx, tenantId, staffId);
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'rss_feed.reset_defaults',
         resourceType: 'staff_user',
         resourceId: staffId,

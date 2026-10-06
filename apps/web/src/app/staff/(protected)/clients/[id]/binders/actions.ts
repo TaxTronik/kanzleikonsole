@@ -4,10 +4,10 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaffModule, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withBindersStaff = withStaffModule('binders');
 
@@ -38,7 +38,7 @@ export async function createBinderAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   return withBindersStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Q-5: clientId Tenant-Sanity
       await assertClientInTenant(tx, parsed.data.clientId);
@@ -54,10 +54,7 @@ export async function createBinderAction(
           createdByStaff: staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'pending_binder.create',
         resourceType: 'pending_binder',
         resourceId: b.id,
@@ -75,7 +72,7 @@ export async function updateBinderStatusAction(input: {
   const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withBindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withBindersStaff(async (tx, { tenantId, session, ctx }) => {
     const before = await tx.pendingBinder.findUnique({
       where: { id: parsed.data.id },
       select: { status: true, clientId: true },
@@ -96,10 +93,7 @@ export async function updateBinderStatusAction(input: {
         resources: [{ resourceType: 'pending_binder', resourceId: parsed.data.id }],
       });
     }
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'pending_binder.status_change',
       resourceType: 'pending_binder',
       resourceId: parsed.data.id,
@@ -116,7 +110,7 @@ export async function deleteBinderAction(input: { id: string }): Promise<ActionR
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withBindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withBindersStaff(async (tx, { tenantId, session, ctx }) => {
     const b = await tx.pendingBinder.findUnique({
       where: { id: parsed.data.id },
       select: { label: true, clientId: true },
@@ -128,10 +122,7 @@ export async function deleteBinderAction(input: { id: string }): Promise<ActionR
       resources: [{ resourceType: 'pending_binder', resourceId: parsed.data.id }],
     });
     await tx.pendingBinder.delete({ where: { id: parsed.data.id } });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'pending_binder.delete',
       resourceType: 'pending_binder',
       resourceId: parsed.data.id,

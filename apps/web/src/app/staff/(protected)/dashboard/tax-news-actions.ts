@@ -1,12 +1,12 @@
 'use server';
 
 import { z } from 'zod';
-import { evidenceService } from '@/server/container';
 import {
   staffAction,
   withStaffModule,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withRssReaderStaff = withStaffModule('rssReader');
 
@@ -19,15 +19,12 @@ export async function toggleTaxNewsNotifyAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withRssReaderStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { staffId, ctx }) => {
       await tx.staffUser.update({
         where: { id: staffId },
         data: { taxNewsNotify: parsed.data.enabled },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: parsed.data.enabled ? 'staff.tax_news.opt_in' : 'staff.tax_news.opt_out',
         resourceType: 'staff_user',
         resourceId: staffId,

@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
@@ -12,6 +11,7 @@ import {
   ActionError,
   type ActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withTaxNoticesStaff = withStaffModule('taxNotices');
 const BLOCKING_AUTO_REQUEST_STATUSES = ['OPEN', 'IN_PROGRESS'] as const;
@@ -47,7 +47,7 @@ export async function markDeadlineDoneAction(
   const id = parsedId.data;
 
   return withTaxNoticesStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       const before = await tx.taxDeadline.findUnique({
         where: { id },
         select: { status: true, clientId: true, request: { select: { status: true } } },
@@ -77,10 +77,7 @@ export async function markDeadlineDoneAction(
         tenantId,
         resources: [{ resourceType: 'tax_deadline', resourceId: id }],
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'tax_deadline.complete',
         resourceType: 'tax_deadline',
         resourceId: id,
@@ -102,7 +99,7 @@ export async function markDeadlinesDoneAction(
   if (ids.length === 0) return NO_SELECTION;
 
   return withTaxNoticesStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       // Nur offene Termine schließen — bereits erledigte/übersprungene nicht
       // anfassen (kein doppelter Audit-Eintrag, idempotent bei Mehrfachklick).
       const toClose = await tx.taxDeadline.findMany({
@@ -147,10 +144,7 @@ export async function markDeadlinesDoneAction(
         })),
       });
       for (const t of claimed) {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'tax_deadline.complete',
           resourceType: 'tax_deadline',
           resourceId: t.id,
@@ -170,7 +164,7 @@ export async function markDeadlinesDoneAction(
 async function suppressDeadlines(ids: string[]): Promise<ActionResult> {
   if (ids.length === 0) return NO_SELECTION;
   return withTaxNoticesStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       const toSuppress = await tx.taxDeadline.findMany({
         where: {
           id: { in: ids },
@@ -212,10 +206,7 @@ async function suppressDeadlines(ids: string[]): Promise<ActionResult> {
         })),
       });
       for (const t of claimed) {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'tax_deadline.request_suppressed',
           resourceType: 'tax_deadline',
           resourceId: t.id,
@@ -253,7 +244,7 @@ export async function unsuppressAutoRequestAction(
   if (!parsedId.success) return INVALID_ID;
   const id = parsedId.data;
   return withTaxNoticesStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { session, ctx }) => {
       const before = await tx.taxDeadline.findUnique({
         where: { id },
         select: {
@@ -279,10 +270,7 @@ export async function unsuppressAutoRequestAction(
         data: { autoRequestSuppressedAt: null, autoRequestSuppressedByStaff: null },
       });
       if (changed.count !== 1) return;
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'tax_deadline.request_unsuppressed',
         resourceType: 'tax_deadline',
         resourceId: id,

@@ -45,7 +45,11 @@ vi.mock('@/server/actions/staff-action', async () => ({
               findUniqueOrThrow: h.parentAfter,
             },
           },
-          { staffId: 'staff', session: { user: {} } },
+          {
+            staffId: 'staff',
+            ctx: { tenantId: 'tenant', actorId: 'staff', actorType: 'STAFF' },
+            session: { user: {} },
+          },
         )),
       };
     } catch (error) {

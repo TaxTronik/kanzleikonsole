@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { staffAction, type ActionResult } from '@/server/actions/staff-action';
-import { evidenceService } from '@/server/container';
 import { SETUP_DISMISSED_SETTING_KEY } from '@/server/setup/constants';
+import { audit } from '@/server/actions/audit';
 
 async function revalidateSetupViews(): Promise<void> {
   revalidatePath('/staff/dashboard');
@@ -27,10 +27,7 @@ export async function dismissSetupChecklistAction(
           value: { dismissed: true, dismissedAt: dismissedAt.toISOString() },
           updatedBy: guard.staffId,
         });
-        await evidenceService.record(tx, {
-          tenantId: guard.tenantId,
-          actorType: 'STAFF',
-          actorId: guard.staffId,
+        await audit(tx, guard, {
           action: 'tenant.setup.dismiss',
           resourceType: 'tenant_setting',
           resourceId: SETUP_DISMISSED_SETTING_KEY,
@@ -51,10 +48,7 @@ export async function restoreSetupChecklistAction(
     run: async (guard) => {
       await withTenantContext(guard.ctx, async (tx) => {
         await deleteTenantSettingValue(tx, guard.tenantId, SETUP_DISMISSED_SETTING_KEY);
-        await evidenceService.record(tx, {
-          tenantId: guard.tenantId,
-          actorType: 'STAFF',
-          actorId: guard.staffId,
+        await audit(tx, guard, {
           action: 'tenant.setup.restore',
           resourceType: 'tenant_setting',
           resourceId: SETUP_DISMISSED_SETTING_KEY,

@@ -6,7 +6,6 @@ import { Prisma } from '@taxtronik/db/prisma-client';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteObjectVersion } from '@taxtronik/storage';
-import { evidenceService } from '@/server/container';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { gwgDocumentEffectiveStart, isGwgDeletionDue } from '@/server/gwg/retention';
 import {
@@ -14,6 +13,7 @@ import {
   staffAction,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 export type ActionResult = BaseActionResult;
 
@@ -127,10 +127,7 @@ export async function confirmGwgDeletionAction(input: {
             },
           });
           if (requested.count === 1) {
-            await evidenceService.record(tx, {
-              tenantId,
-              actorType: 'STAFF',
-              actorId: staffId,
+            await audit(tx, ctx, {
               action: 'gwg.evidence.destroy.request',
               resourceType: 'document',
               resourceId: documentId,
@@ -264,10 +261,7 @@ export async function confirmGwgDeletionAction(input: {
           if (!destroyed?.gwgDestroyedAt) {
             throw new Error('GwG-Vernichtungsfunktion hat keinen Abschlussvermerk gesetzt.');
           }
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'gwg.evidence.destroy',
             resourceType: 'document',
             resourceId: documentId,
@@ -315,7 +309,7 @@ export async function confirmGwgCheckDeletionAction(input: {
 }): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx }) => {
+    run: async ({ tenantId, ctx }) => {
       const parsed = z.object({ checkId: z.string().uuid() }).safeParse(input);
       if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
       const { checkId } = parsed.data;
@@ -368,10 +362,7 @@ export async function confirmGwgCheckDeletionAction(input: {
           resources: [{ resourceType: 'gwg_check', resourceId: checkId }],
         });
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'gwg.check.destroy',
           resourceType: 'gwg_check',
           resourceId: checkId,

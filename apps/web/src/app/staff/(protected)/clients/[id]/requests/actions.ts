@@ -6,7 +6,6 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { requestOpenedMail } from '@/server/mail/dispatch';
 import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
@@ -21,6 +20,7 @@ import {
   parseFormData,
   type ActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const CreateSchema = z.object({
   requestId: z.string().uuid(),
@@ -242,10 +242,7 @@ async function createRequestCore(formData: FormData): Promise<RequestActionResul
           });
         }
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'request.create',
           resourceType: 'request',
           resourceId: req.id,
@@ -329,10 +326,7 @@ export async function closeRequestAction(
           tenantId,
           resources: [{ resourceType: 'request', resourceId: requestId }],
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'request.close',
           resourceType: 'request',
           resourceId: requestId,
@@ -363,7 +357,7 @@ export async function reopenRequestAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const outcome = await staffAction({
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ ctx, session }) => {
       const parsed = parseFormData(CloseSchema, formData);
       if (!parsed.ok) return parsed;
       const { requestId } = parsed.data;
@@ -412,10 +406,7 @@ export async function reopenRequestAction(
           if (reopened.count !== 1) {
             return { formSubmissionId: before.formSubmissionId, conflict: false };
           }
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'request.reopen',
             resourceType: 'request',
             resourceId: requestId,
@@ -518,10 +509,7 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
           tenantId,
           resources: [{ resourceType: 'request', resourceId: requestId }],
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'request.response',
           resourceType: 'request_response',
           resourceId: resp.id,
@@ -580,10 +568,7 @@ export async function addRequestInternalCommentAction(formData: FormData): Promi
             body,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'request.internal_comment.create',
           resourceType: 'request_internal_comment',
           resourceId: comment.id,

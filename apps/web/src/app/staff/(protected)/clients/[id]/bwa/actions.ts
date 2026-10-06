@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { parseAddisonBwaCsv, parseAddisonBwaCompactCsv } from '@/server/bwa/addison-parser';
 import { parseDatevBwaXlsx } from '@/server/bwa/datev-parser';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
@@ -15,6 +14,7 @@ import {
   parseFormData,
   type ActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 export interface ImportResult {
   ok: boolean;
@@ -123,10 +123,7 @@ export async function importAddisonCsvAction(input: {
               },
             },
           });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'bwa.import',
             resourceType: 'bwa_period',
             resourceId: bp.id,
@@ -240,10 +237,7 @@ export async function importDatevXlsxAction(
               },
             },
           });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'bwa.import',
             resourceType: 'bwa_period',
             resourceId: bp.id,
@@ -276,7 +270,7 @@ export async function deleteBwaPeriodAction(
 ): Promise<ActionResult> {
   return staffAction({
     guard: { module: 'bwa' },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ ctx, session }) => {
       const parsed = parseFormData(DeleteSchema, formData);
       if (!parsed.ok) return parsed;
 
@@ -287,10 +281,7 @@ export async function deleteBwaPeriodAction(
         });
         if (!before) throw new ActionError('BWA-Zeitraum nicht gefunden.');
         await tx.bwaPeriod.delete({ where: { id: before.id } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'bwa.delete',
           resourceType: 'bwa_period',
           resourceId: before.id,

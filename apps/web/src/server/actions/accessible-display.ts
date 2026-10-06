@@ -12,6 +12,7 @@ import {
   parseDisplayOptionsPatch,
   type DisplayOptionsPatch,
 } from '@/lib/accessible-display-options';
+import { audit } from '@/server/actions/audit';
 
 type AccessibleDisplayResult = { ok: true } | { ok: false; error: string };
 
@@ -109,7 +110,7 @@ export async function saveStaffAccessibleDisplayAction(
 ): Promise<AccessibleDisplayResult> {
   if (typeof enabled !== 'boolean') return { ok: false, error: 'Ungültige Anzeigeeinstellung.' };
 
-  const result = await withStaff(async (tx, { tenantId, staffId }) => {
+  const result = await withStaff(async (tx, { tenantId, staffId, ctx }) => {
     // A stale tab may still display a previous login/profile. This key is only
     // a comparison guard; every database identifier comes from the session.
     if (expectedProfileKey !== `staff:${tenantId}:${staffId}`) {
@@ -132,10 +133,7 @@ export async function saveStaffAccessibleDisplayAction(
     if (updated.count !== 1) {
       throw new ActionError('Benutzerkonto nicht gefunden oder deaktiviert.');
     }
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'staff.accessible_display.change',
       resourceType: 'staff_user',
       resourceId: staffId,
@@ -160,7 +158,7 @@ export async function savePortalAccessibleDisplayAction(
 ): Promise<AccessibleDisplayResult> {
   if (typeof enabled !== 'boolean') return { ok: false, error: 'Ungültige Anzeigeeinstellung.' };
 
-  const result = await withPortalContext(async (tx, { tenantId, contactId, clientId }) => {
+  const result = await withPortalContext(async (tx, { tenantId, contactId, clientId, ctx }) => {
     // Profile switching in another tab changes the shared session cookie, not
     // the already rendered form. Never apply that old form to the new profile.
     if (expectedProfileKey !== `portal:${tenantId}:${contactId}`) {
@@ -183,10 +181,7 @@ export async function savePortalAccessibleDisplayAction(
     if (updated.count !== 1) {
       throw new ActionError('Kontaktprofil nicht gefunden oder deaktiviert.');
     }
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'CLIENT_CONTACT',
-      actorId: contactId,
+    await audit(tx, ctx, {
       action: 'portal.accessible_display.change',
       resourceType: 'client_contact',
       resourceId: contactId,

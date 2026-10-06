@@ -1,9 +1,9 @@
 'use server';
 
 import { z } from 'zod';
-import { evidenceService } from '@/server/container';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const REVALIDATE = '/staff/admin/skills';
 const SLUG_RE = /^[A-Z0-9_]+$/;
@@ -41,7 +41,7 @@ export async function createSkillAction(
       : null;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       const dup = await tx.staffSkill.findFirst({ where: { slug: parsed.data.slug } });
       if (dup) throw new ActionError('Kürzel bereits vergeben.');
       const created = await tx.staffSkill.create({
@@ -53,10 +53,7 @@ export async function createSkillAction(
           isSystem: false,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'staff_skill.create',
         resourceType: 'staff_skill',
         resourceId: created.id,
@@ -82,7 +79,7 @@ export async function updateSkillAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const before = await tx.staffSkill.findUnique({
         where: { id: parsed.data.id },
         select: { label: true, color: true },
@@ -92,10 +89,7 @@ export async function updateSkillAction(input: {
         where: { id: parsed.data.id },
         data: { label: parsed.data.label, color: parsed.data.color },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'staff_skill.update',
         resourceType: 'staff_skill',
         resourceId: parsed.data.id,
@@ -112,15 +106,12 @@ export async function deleteSkillAction(input: { id: string }): Promise<ActionRe
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const skill = await tx.staffSkill.findUnique({ where: { id: parsed.data.id } });
       if (!skill) throw new ActionError('Skill nicht gefunden.');
       if (skill.isSystem) throw new ActionError('System-Bereiche können nicht gelöscht werden.');
       await tx.staffSkill.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'staff_skill.delete',
         resourceType: 'staff_skill',
         resourceId: parsed.data.id,
@@ -145,7 +136,7 @@ export async function setStaffSkillsAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId: actorId }) => {
+    async (tx, { ctx }) => {
       // S-6: staffId + jede skillId müssen im aktuellen Tenant existieren. RLS
       // schützt Reads, FK prüft nur Cluster-weite Existenz — ohne diese Checks
       // könnte ein UI-Bug oder direkter Action-Call eine fremde staffId/skillId
@@ -175,10 +166,7 @@ export async function setStaffSkillsAction(input: {
         });
       }
       if (toAdd.length > 0 || toRemove.length > 0) {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId,
+        await audit(tx, ctx, {
           action: 'staff.skills.update',
           resourceType: 'staff_user',
           resourceId: parsed.data.staffId,

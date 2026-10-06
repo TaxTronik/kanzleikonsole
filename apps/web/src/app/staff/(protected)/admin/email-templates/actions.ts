@@ -1,8 +1,8 @@
 'use server';
 
 import { z } from 'zod';
-import { evidenceService } from '@/server/container';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const REVALIDATE = '/staff/admin/email-templates';
 
@@ -24,7 +24,7 @@ export async function saveEmailTemplateAction(
   const data = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       if (data.id) {
         const before = await tx.emailTemplate.findUnique({ where: { id: data.id } });
         if (!before) throw new ActionError('Vorlage nicht gefunden.');
@@ -38,10 +38,7 @@ export async function saveEmailTemplateAction(
             active: data.active,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'email_template.update',
           resourceType: 'email_template',
           resourceId: data.id,
@@ -68,10 +65,7 @@ export async function saveEmailTemplateAction(
             createdByStaff: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'email_template.create',
           resourceType: 'email_template',
           resourceId: created.id,
@@ -88,15 +82,12 @@ export async function deleteEmailTemplateAction(input: { id: string }): Promise<
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const t = await tx.emailTemplate.findUnique({ where: { id: parsed.data.id } });
       if (!t) throw new ActionError('Vorlage nicht gefunden.');
       if (t.slug) throw new ActionError('System-Vorlagen können nicht gelöscht werden.');
       await tx.emailTemplate.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'email_template.delete',
         resourceType: 'email_template',
         resourceId: parsed.data.id,

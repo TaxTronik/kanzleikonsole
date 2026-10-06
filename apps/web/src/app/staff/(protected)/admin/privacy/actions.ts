@@ -2,7 +2,6 @@
 
 import { z } from 'zod';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import {
   ActionError,
   parseFormData,
@@ -20,6 +19,7 @@ import {
   CONSENT_OPTIONS_SETTING_KEY,
 } from '@/server/privacy/consent-catalog';
 import { lockConsentCatalogTx } from '@/server/privacy/catalog-lock';
+import { audit } from '@/server/actions/audit';
 
 const Schema = z.object({
   responsibleBody: z.string().max(2000).default(''),
@@ -57,10 +57,7 @@ export async function savePrivacyConfigAction(
       await withTenantContext(ctx, async (tx) => {
         await lockConsentCatalogTx(tx, tenantId);
         await writePrivacyConfigTx(tx, tenantId, staffId, cfg);
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'privacy.config.update',
           resourceType: 'tenant_setting',
           after: {
@@ -189,10 +186,7 @@ export async function saveConsentOptionsAction(
             throw error;
           }
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'privacy.consent_options.update',
           resourceType: 'tenant_setting',
           resourceId: CONSENT_OPTIONS_SETTING_KEY,

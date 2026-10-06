@@ -4,8 +4,8 @@ import { z } from 'zod';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertModuleEnabledTx } from '@/server/settings/modules';
-import { evidenceService } from '@/server/container';
 import { renderMarkdown } from '@/lib/markdown';
+import { audit } from '@/server/actions/audit';
 
 const targetSchema = z.object({
   type: z.enum(['STEP', 'TEMPLATE', 'ITEM', 'REQUEST']),
@@ -40,10 +40,7 @@ export async function saveKnowledgeContextAction(input: {
           where: { id: parsed.data.id },
           data: { wikiArticleIds: articleIds },
         });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorId: g.staffId,
-        actorType: 'STAFF',
+      await audit(tx, g, {
         action: 'knowledge.context.updated',
         resourceType: parsed.data.type === 'STEP' ? 'workflow_step' : 'request_template',
         resourceId: parsed.data.id,

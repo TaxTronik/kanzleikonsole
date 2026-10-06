@@ -2,9 +2,9 @@
 
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
-import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const REVALIDATE = '/staff/admin/custom-fields';
 
@@ -45,7 +45,7 @@ export async function saveFieldDefAction(input: z.infer<typeof SaveSchema>): Pro
   }
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       if (data.id) {
         // UPDATE — Typ bleibt fest, key auch (vermeidet Daten-Drift)
         const before = await tx.clientCustomFieldDef.findUnique({
@@ -72,10 +72,7 @@ export async function saveFieldDefAction(input: z.infer<typeof SaveSchema>): Pro
             active: data.active,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client_custom_field.update',
           resourceType: 'client_custom_field_def',
           resourceId: data.id,
@@ -110,10 +107,7 @@ export async function saveFieldDefAction(input: z.infer<typeof SaveSchema>): Pro
             position: (last?.position ?? 0) + 10,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client_custom_field.create',
           resourceType: 'client_custom_field_def',
           resourceId: created.id,
@@ -136,14 +130,11 @@ export async function deleteFieldDefAction(input: { id: string }): Promise<Actio
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const def = await tx.clientCustomFieldDef.findUnique({ where: { id: parsed.data.id } });
       if (!def) throw new ActionError('Feld nicht gefunden.');
       await tx.clientCustomFieldDef.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'client_custom_field.delete',
         resourceType: 'client_custom_field_def',
         resourceId: parsed.data.id,
@@ -171,7 +162,7 @@ export async function saveCustomFieldValuesAction(
   const { clientId, values } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       // Vertraulich-/RESTRICTED-Ventil: die Werte hängen am Mandanten-Detail,
       // die Action ist aber ohne Layout-Guard direkt aufrufbar.
       await assertClientAccessTx(tx, session, clientId);
@@ -219,10 +210,7 @@ export async function saveCustomFieldValuesAction(
         auditAfter[def.key] = normalized;
       }
 
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'client_custom_field.values.update',
         resourceType: 'client',
         resourceId: clientId,

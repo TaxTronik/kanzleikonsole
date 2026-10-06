@@ -5,9 +5,9 @@ import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-re
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { staffAction, ActionError, type ActionResult } from '@/server/actions/staff-action';
 import { validationFailure } from '@/server/actions/form-data';
+import { audit } from '@/server/actions/audit';
 
 const Schema = z.object({
   name: z.string().min(1, 'Name ist Pflichtfeld').max(200),
@@ -32,7 +32,7 @@ export async function createOnboardingClientAction(
   // allowActive=false.
   const result = await staffAction({
     guard: { requirePermission: 'CLIENT_CREATE' },
-    run: async ({ tenantId, staffId, ctx }) => {
+    run: async ({ tenantId, ctx }) => {
       const parsed = Schema.safeParse({
         name: formData.get('name'),
         kind: formData.get('kind'),
@@ -103,10 +103,7 @@ export async function createOnboardingClientAction(
           });
         }
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client.created',
           resourceType: 'client',
           resourceId: client.id,

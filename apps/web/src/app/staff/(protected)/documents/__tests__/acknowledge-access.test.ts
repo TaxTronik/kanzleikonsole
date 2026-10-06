@@ -45,6 +45,7 @@ describe('Empfangsbestätigung — RESTRICTED-Gate', () => {
       await fn(tx, {
         tenantId: 'tenant-1',
         staffId: 'staff-1',
+        ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
         session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
       });
       return { ok: true };
@@ -79,6 +80,7 @@ describe('Empfangsbestätigung — RESTRICTED-Gate', () => {
         await fn(tx, {
           tenantId: 'tenant-1',
           staffId: 'staff-1',
+          ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
           session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
         });
         return { ok: true };

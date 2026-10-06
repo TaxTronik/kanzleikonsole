@@ -16,8 +16,8 @@ import {
   ActionError,
   type ActionResult,
 } from '@/server/actions/staff-action';
-import { evidenceService } from '@/server/container';
 import { enqueueAuditVerify } from '@/server/jobs/audit-verify-queue';
+import { audit } from '@/server/actions/audit';
 
 /**
  * Die grüne Audit-Karte ist selbst die Bestätigung des manuellen Tests. Ist
@@ -60,10 +60,7 @@ export async function triggerAuditVerifyAction(
       // Manueller Trigger gehört in die Chain (analog audit.rotate.trigger) —
       // WER die Verifikation angestoßen hat, ist Teil der Rechenschaft.
       await withTenantContext(ctx, async (tx) => {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'audit.verify.trigger',
           resourceType: 'audit_log',
           after: { triggeredManually: true },
@@ -112,10 +109,7 @@ export async function createAuditRecoveryCheckpointAction(
           );
         }
 
-        const ev = await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        const ev = await audit(tx, ctx, {
           action: 'audit.recovery.checkpoint',
           resourceType: 'audit_log',
           resourceId: verifyResult.firstBreak?.auditId ?? 'recovery',

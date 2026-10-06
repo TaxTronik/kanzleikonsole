@@ -10,7 +10,6 @@ import type {
 import { env } from '@taxtronik/config';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { Prisma, withTenantContext, type TenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
 import { STAFF_PERMISSION_VALUES } from '@/lib/staff-permissions';
 import { validateStaffPasswordPair } from '@/lib/staff-password-policy';
@@ -37,6 +36,7 @@ import {
   lockMatchingHardwareMetadataSerial,
   verifyHardwareAssertion,
 } from '@/server/auth/webauthn';
+import { audit } from '@/server/actions/audit';
 
 const LIST = '/staff/admin/users';
 const ROLE_VALUES = ['EMPLOYEE', 'PARTNER', 'ADMIN'] as const;
@@ -119,7 +119,7 @@ export async function createUserAction(
   // Gate ZUERST — vor dem teuren bcrypt-Hash (kein unautorisiertes Hashing).
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ tenantId, ctx, session }) => {
       const parsed = CreateSchema.safeParse({
         fullName: formData.get('fullName'),
         email: formData.get('email'),
@@ -164,10 +164,7 @@ export async function createUserAction(
           },
         });
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'staff.create',
           resourceType: 'staff_user',
           resourceId: created.id,
@@ -199,7 +196,7 @@ export async function setProfessionalProfileAction(input: {
 }): Promise<ActionResult & { assignmentGaps?: Array<{ id: string; name: string }> }> {
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ tenantId, ctx, session }) => {
       const parsed = z
         .object({
           userId: z.string().uuid(),
@@ -251,10 +248,7 @@ export async function setProfessionalProfileAction(input: {
           before.datevAdvisorNumber !== after.datevAdvisorNumber ||
           before.professionalQualificationSource !== 'manual';
         if (changed)
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'staff.professional_profile.update',
             resourceType: 'staff_user',
             resourceId: parsed.data.userId,
@@ -304,7 +298,7 @@ export async function resetPasswordAction(input: {
   // Gate vor bcrypt: nicht autorisierte Requests dürfen keine teure Arbeit auslösen.
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ staffId, ctx, session }) => {
       const actorAuthRevision = session.user.authRevision ?? 0;
 
       const parsed = z
@@ -383,10 +377,7 @@ export async function resetPasswordAction(input: {
         if (updated.count !== 1) {
           throw new ActionError('Kontorollen wurden parallel geändert; Reset abgebrochen.');
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'staff.password.reset',
           resourceType: 'staff_user',
           resourceId: parsed.data.userId,
@@ -401,7 +392,7 @@ export async function resetPasswordAction(input: {
 export async function resetTotpAction(input: { userId: string }): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ staffId, ctx, session }) => {
       const actorAuthRevision = session.user.authRevision ?? 0;
 
       const parsed = z.object({ userId: z.string().uuid() }).safeParse(input);
@@ -470,10 +461,7 @@ export async function resetTotpAction(input: { userId: string }): Promise<Action
         if (updated.count !== 1) {
           throw new ActionError('Kontorollen wurden parallel geändert; Reset abgebrochen.');
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'staff.totp.reset',
           resourceType: 'staff_user',
           resourceId: parsed.data.userId,
@@ -821,10 +809,7 @@ async function commitHardwareAccessRecovery(input: {
         'Kontozustand oder Rollen wurden parallel geändert; Recovery abgebrochen.',
       );
     }
-    await evidenceService.record(tx, {
-      tenantId: input.tenantId,
-      actorType: 'STAFF',
-      actorId: input.staffId,
+    await audit(tx, input.ctx, {
       action: 'staff.hardware_access.reset',
       resourceType: 'staff_user',
       resourceId: input.targetUserId,
@@ -1000,7 +985,7 @@ export async function setActiveAction(input: {
 }): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ staffId, ctx, session }) => {
       const parsed = z.object({ userId: z.string().uuid(), active: z.boolean() }).safeParse(input);
       if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
       if (parsed.data.userId === staffId) {
@@ -1031,10 +1016,7 @@ export async function setActiveAction(input: {
             throw new ActionError('Kontorollen wurden parallel geändert; Änderung abgebrochen.');
           }
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: parsed.data.active ? 'staff.activate' : 'staff.deactivate',
           resourceType: 'staff_user',
           resourceId: parsed.data.userId,
@@ -1057,7 +1039,7 @@ export async function setRolesAction(input: {
 }): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ staffId, ctx, session }) => {
       const parsed = z
         .object({
           userId: z.string().uuid(),
@@ -1115,10 +1097,7 @@ export async function setRolesAction(input: {
           await tx.staffRole.create({ data: { staffUserId: parsed.data.userId, role: r } });
         }
         if (toAdd.length > 0 || toRemove.length > 0) {
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'staff.roles.update',
             resourceType: 'staff_user',
             resourceId: parsed.data.userId,
@@ -1142,7 +1121,7 @@ export async function setPermissionsAction(input: {
 }): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true },
-    run: async ({ tenantId, staffId, ctx }) => {
+    run: async ({ staffId, ctx }) => {
       const parsed = z
         .object({
           userId: z.string().uuid(),
@@ -1194,10 +1173,7 @@ export async function setPermissionsAction(input: {
           });
         }
         if (toAdd.length > 0 || toRemove.length > 0) {
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'staff.permissions.update',
             resourceType: 'staff_user',
             resourceId: parsed.data.userId,

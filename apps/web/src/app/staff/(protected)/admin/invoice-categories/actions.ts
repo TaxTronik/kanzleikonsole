@@ -2,8 +2,8 @@
 
 import { z } from 'zod';
 import { slugify as slugifyLib } from '@/lib/slugify';
-import { evidenceService } from '@/server/container';
 import { withStaff, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 function slugify(s: string): string {
   return slugifyLib(s, { separator: '-', maxLength: 60 });
@@ -32,7 +32,7 @@ export async function saveInvoiceCategoryAction(
   if (!slug) return { ok: false, error: 'Slug konnte nicht erzeugt werden.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       if (parsed.data.id) {
         await tx.invoiceCategory.update({
           where: { id: parsed.data.id },
@@ -43,10 +43,7 @@ export async function saveInvoiceCategoryAction(
             active: parsed.data.active,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'invoice_category.update',
           resourceType: 'invoice_category',
           resourceId: parsed.data.id,
@@ -67,10 +64,7 @@ export async function saveInvoiceCategoryAction(
             sortOrder: (last?.sortOrder ?? 0) + 10,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'invoice_category.create',
           resourceType: 'invoice_category',
           resourceId: created.id,
@@ -92,13 +86,10 @@ export async function deleteInvoiceCategoryAction(input: { id: string }): Promis
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const c = await tx.invoiceCategory.findUnique({ where: { id: parsed.data.id } });
       await tx.invoiceCategory.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'invoice_category.delete',
         resourceType: 'invoice_category',
         resourceId: parsed.data.id,

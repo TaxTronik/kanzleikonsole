@@ -68,6 +68,7 @@ describe('Steuertermin-Actions — atomare Lifecycle-Claims', () => {
           const data = await fn(h.currentTx, {
             tenantId: 'tenant-1',
             staffId: 'staff-1',
+            ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
             session: {},
           });
           return { ok: true, ...(data ?? {}) };
@@ -293,7 +294,12 @@ describe('Steuertermin-Actions — Rückkanal (Review-Befund F-01)', () => {
         try {
           await fn(
             { taxDeadline: { findUnique: vi.fn().mockResolvedValue(null), updateMany: vi.fn() } },
-            { tenantId: 'tenant-1', staffId: 'staff-1', session: {} },
+            {
+              tenantId: 'tenant-1',
+              staffId: 'staff-1',
+              ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+              session: {},
+            },
           );
           return { ok: true };
         } catch (error) {

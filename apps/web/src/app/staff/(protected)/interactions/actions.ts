@@ -4,13 +4,13 @@ import { lockWorkflowInstanceTx } from '@taxtronik/db/workflow-lifecycle';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertModuleEnabledTx } from '@/server/settings/modules';
-import { evidenceService } from '@/server/container';
 import {
   createFeedbackInvitationTx,
   noticeDecisionSnapshot,
 } from '@/server/workflows/interactions';
 import { berlinWallClockToUtc } from '@/lib/fmt';
 import { validWorkflowCalendarDate } from '@/server/workflows/interaction-policy';
+import { audit } from '@/server/actions/audit';
 
 type NoticeDeadlineState = {
   status: string;
@@ -142,10 +142,7 @@ export async function inviteNoticeDecisionAction(data: FormData) {
           createdByStaff: g.staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorId: g.staffId,
-        actorType: 'STAFF',
+      await audit(tx, g, {
         action: 'notice.decision.invited',
         resourceType: 'client_interaction',
         resourceId: invitation.id,
@@ -189,10 +186,7 @@ export async function configureFeedbackAction(data: FormData) {
           data: { feedbackContactId: contact.id },
         });
       else throw new ActionError('Abgebrochene Workflows können kein Feedback auslösen.');
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorId: g.staffId,
-        actorType: 'STAFF',
+      await audit(tx, g, {
         action: 'feedback.configured',
         resourceType: 'workflow_instance',
         resourceId: workflow.id,
@@ -231,10 +225,7 @@ export async function reviewInteractionAction(data: FormData) {
         where: { id: row.requestId },
         data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: g.staffId },
       });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
+      await audit(tx, g, {
         action: revoke ? 'interaction.revoked' : 'interaction.reviewed',
         resourceType: 'client_interaction',
         resourceId: row.id,

@@ -2,13 +2,13 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { evidenceService } from '@/server/container';
 import {
   withStaff,
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
+import { audit } from '@/server/actions/audit';
 
 export type ActionResult = BaseActionResult;
 
@@ -28,7 +28,7 @@ export async function acknowledgeDocumentAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withStaff(async (tx, { staffId, session, ctx }) => {
     const doc = await tx.document.findUnique({
       where: { id: parsed.data.documentId },
       select: { id: true, title: true, clientId: true },
@@ -42,10 +42,7 @@ export async function acknowledgeDocumentAction(input: {
         ? { acknowledgedAt: new Date(), acknowledgedByStaff: staffId }
         : { acknowledgedAt: null, acknowledgedByStaff: null },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: parsed.data.acknowledged ? 'document.acknowledge' : 'document.unacknowledge',
       resourceType: 'document',
       resourceId: doc.id,

@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
-import { evidenceService } from '@/server/container';
 import { materializeClientTaxDeadlines } from '@/server/tax-deadlines/materialize';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { fireAndForget } from '@/server/util/fire-and-forget';
@@ -13,6 +12,7 @@ import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffAction } from '@/server/actions/staff-action';
 import { berlinTodayUtcMidnight, lockTaxScheduleTx } from '@taxtronik/tax';
+import { audit } from '@/server/actions/audit';
 
 const ALL_KINDS: TaxScheduleKind[] = [
   'USTA_MONATLICH',
@@ -105,10 +105,7 @@ export async function saveScheduleConfigAction(
                 where: { id: old.id },
                 data: { active: false },
               });
-              await evidenceService.record(tx, {
-                tenantId,
-                actorType: 'STAFF',
-                actorId: staffId,
+              await audit(tx, ctx, {
                 action: 'tax_schedule.deactivate',
                 resourceType: 'tax_schedule_config',
                 resourceId: old.id,
@@ -166,10 +163,7 @@ export async function saveScheduleConfigAction(
               },
             });
             if (datesChanged || pipelineChanged) {
-              await evidenceService.record(tx, {
-                tenantId,
-                actorType: 'STAFF',
-                actorId: staffId,
+              await audit(tx, ctx, {
                 action: 'tax_schedule.update',
                 resourceType: 'tax_schedule_config',
                 resourceId: old.id,
@@ -205,10 +199,7 @@ export async function saveScheduleConfigAction(
                 createdByStaff: staffId,
               },
             });
-            await evidenceService.record(tx, {
-              tenantId,
-              actorType: 'STAFF',
-              actorId: staffId,
+            await audit(tx, ctx, {
               action: 'tax_schedule.create',
               resourceType: 'tax_schedule_config',
               resourceId: created.id,

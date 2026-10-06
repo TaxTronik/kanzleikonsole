@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import { evidenceService } from '@/server/container';
 import {
   ActionError,
   parseFormData,
@@ -10,6 +9,7 @@ import {
 } from '@/server/actions/staff-action';
 import { readConsentOptionsCatalogTx } from '@/server/privacy/consent-catalog';
 import { lockConsentCatalogTx } from '@/server/privacy/catalog-lock';
+import { audit } from '@/server/actions/audit';
 
 export type ActionResult = BaseActionResult;
 
@@ -41,7 +41,7 @@ export async function createServiceProviderAction(
 
   // Dienstleister-Verzeichnis ist DSGVO/AVV-Compliance — nur ADMIN/PARTNER.
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       await lockConsentCatalogTx(tx, tenantId);
       const provider = await tx.serviceProvider.create({
         data: {
@@ -55,10 +55,7 @@ export async function createServiceProviderAction(
           notes: data.notes || null,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'service_provider.create',
         resourceType: 'service_provider',
         resourceId: provider.id,
@@ -80,7 +77,7 @@ export async function deleteServiceProviderAction(
 
   // Löschen ist ebenfalls DSGVO/AVV-relevant → nur ADMIN/PARTNER.
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       await lockConsentCatalogTx(tx, tenantId);
       const before = await tx.serviceProvider.findUnique({ where: { id } });
       if (!before) return;
@@ -104,10 +101,7 @@ export async function deleteServiceProviderAction(
         );
       }
       await tx.serviceProvider.delete({ where: { id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'service_provider.delete',
         resourceType: 'service_provider',
         resourceId: id,

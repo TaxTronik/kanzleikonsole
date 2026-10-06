@@ -3,10 +3,10 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { portalAction, ActionError, type ActionResult } from '@/server/actions/portal-action';
+import { audit } from '@/server/actions/audit';
 
 const FieldsSchema = z
   .object({
@@ -67,10 +67,7 @@ export async function submitMasterChangeAction(
           },
         });
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
+        await audit(tx, g, {
           action: 'client_master_change.submit',
           resourceType: 'client_master_change_request',
           resourceId: req.id,

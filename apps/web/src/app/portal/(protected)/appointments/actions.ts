@@ -4,7 +4,6 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { withTenantContext } from '@taxtronik/db';
 import { resolveClientContactNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { checkRateLimit } from '@/server/rate-limit';
@@ -18,6 +17,7 @@ import { assertAppointmentStaffOptionTx } from './staff-options';
 
 const withAppointmentsPortal = withPortalModule('appointments');
 import { berlinWallClockToUtc } from '@/lib/fmt';
+import { audit } from '@/server/actions/audit';
 
 export type AppointmentRequestActionResult = ActionResult & {
   id?: string;
@@ -160,10 +160,7 @@ export async function createAppointmentRequestAction(
         });
         createdId = req.id;
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
+        await audit(tx, g, {
           action: 'appointment_request.create',
           resourceType: 'appointment_request',
           resourceId: req.id,
@@ -228,7 +225,7 @@ export async function cancelAppointmentRequestAction(input: {
     };
 
   return withAppointmentsPortal(
-    async (tx, { tenantId, contactId, clientId }) => {
+    async (tx, { tenantId, clientId, ctx }) => {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.id },
         select: { clientId: true, status: true },
@@ -249,10 +246,7 @@ export async function cancelAppointmentRequestAction(input: {
         resourceType: 'appointment_request',
         resourceId: parsed.data.id,
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
+      await audit(tx, ctx, {
         action: 'appointment_request.cancel',
         resourceType: 'appointment_request',
         resourceId: parsed.data.id,

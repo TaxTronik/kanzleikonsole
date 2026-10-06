@@ -25,6 +25,13 @@
 // withStaff/withPortalContext oder staffAction/portalAction), und ebenso, wenn
 // eine Datei besser geworden ist — dann wird die Baseline abgesenkt, statt den
 // frei gewordenen Platz später wiederzuverwenden.
+//
+// Review-Befund R-12 (gleiche Sperrklinke, eigene Baselines):
+//   • Audit-Akteur von Hand: evidenceService.record mit tenantId/actorType/
+//     actorId im Ereignis. Neue Audits laufen über audit(tx, g, event)
+//     (server/actions/audit.ts), das das Tripel aus dem Gate-Kontext nimmt.
+//   • FormData Feld für Feld: formData.get/getAll auf einem FormData-Parameter.
+//     Neue Form-Actions lesen über parseFormData(schema, formData) (Feldfehler).
 // =============================================================================
 
 import { dirname, join, relative, sep } from 'node:path';
@@ -34,6 +41,8 @@ import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { parseSource, serverActionSourceFiles } from './use-server-sources';
 import {
+  FORM_DATA_READ_BASELINE,
+  HAND_FILLED_AUDIT_BASELINE,
   HANDWRITTEN_ACTION_BASELINE,
   PUBLIC_ACTION_ENTRY_POINTS,
 } from './server-action-style.baseline';
@@ -332,6 +341,81 @@ function handwrittenPerFile(): Record<string, number> {
   );
 }
 
+/**
+ * R-12: evidenceService.record-Aufrufe, deren Ereignis den Akteur von Hand
+ * trägt (tenantId/actorType/actorId) oder kein Objektliteral ist.
+ */
+export function handFilledAuditCalls(source: ts.SourceFile): number {
+  let count = 0;
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === 'record' &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === 'evidenceService'
+    ) {
+      const event = node.arguments[1];
+      const actorFields = new Set(['tenantId', 'actorType', 'actorId']);
+      if (
+        !event ||
+        !ts.isObjectLiteralExpression(event) ||
+        event.properties.some(
+          (property) =>
+            !property.name ||
+            (ts.isIdentifier(property.name) && actorFields.has(property.name.text)),
+        )
+      ) {
+        count++;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return count;
+}
+
+/** R-12: formData.get/getAll auf einem als FormData deklarierten Parameter. */
+export function formDataReads(source: ts.SourceFile): number {
+  const formDataParams = new Set<string>();
+  const collect = (node: ts.Node): void => {
+    if (
+      ts.isParameter(node) &&
+      ts.isIdentifier(node.name) &&
+      node.type &&
+      /\bFormData\b/.test(node.type.getText(source))
+    ) {
+      formDataParams.add(node.name.text);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(source);
+  let count = 0;
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      (node.expression.name.text === 'get' || node.expression.name.text === 'getAll') &&
+      ts.isIdentifier(node.expression.expression) &&
+      formDataParams.has(node.expression.expression.text)
+    ) {
+      count++;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return count;
+}
+
+function countPerFile(counter: (source: ts.SourceFile) => number): Record<string, number> {
+  return Object.fromEntries(
+    actionFiles
+      .map((file) => [srcRelative(file), counter(parsed.get(file)!)] as const)
+      .filter(([, count]) => count > 0)
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
 const parseFixture = (text: string, fileName = 'fixture.ts') =>
   ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true);
 
@@ -465,5 +549,61 @@ describe('Server-Action-Stil (K-02)', () => {
       return !styles || (fn !== undefined && styles.get(fn) !== 'public');
     });
     expect(stale).toEqual([]);
+  });
+});
+
+describe('Action-Boilerplate (R-12)', () => {
+  it('erkennt handgefüllte Audit-Akteure und FormData-Feldzugriffe', () => {
+    const source = parseFixture(`
+      'use server';
+      export async function a(formData: FormData, other: Map<string, string>) {
+        await evidenceService.record(tx, { tenantId, actorType: 'STAFF', actorId: staffId, action: 'x', resourceType: 'y' });
+        await evidenceService.record(tx, event);
+        await audit(tx, g, { action: 'x', resourceType: 'y' });
+        const name = formData.get('name');
+        const ids = formData.getAll('ids');
+        return other.get('name');
+      }
+      export async function b(data: FormData | null) {
+        return data?.get('x');
+      }
+    `);
+    expect(handFilledAuditCalls(source)).toBe(2);
+    expect(formDataReads(source)).toBe(3);
+  });
+
+  it('friert handgefüllte Audit-Akteure pro Datei ein (neu → audit(tx, g, event))', () => {
+    const baseline = Object.fromEntries(
+      Object.entries(HAND_FILLED_AUDIT_BASELINE).map(([file, entry]) => [file, entry.calls]),
+    );
+    const current = countPerFile(handFilledAuditCalls);
+    expect(
+      current,
+      'Audit-Akteur von Hand: audit(tx, g, event) aus @/server/actions/audit verwenden. Bei ' +
+        'Reduktion die Baseline in server-action-style.baseline.ts absenken.\nAktueller Stand:\n' +
+        JSON.stringify(current, null, 2),
+    ).toEqual(baseline);
+  });
+
+  it('friert FormData-Feldzugriffe pro Datei ein (neu → parseFormData)', () => {
+    const baseline = Object.fromEntries(
+      Object.entries(FORM_DATA_READ_BASELINE).map(([file, entry]) => [file, entry.reads]),
+    );
+    const current = countPerFile(formDataReads);
+    expect(
+      current,
+      'FormData Feld für Feld: parseFormData(schema, formData) verwenden. Bei Reduktion die ' +
+        'Baseline in server-action-style.baseline.ts absenken.\nAktueller Stand:\n' +
+        JSON.stringify(current, null, 2),
+    ).toEqual(baseline);
+  });
+
+  it('begründet jeden Eintrag der R-12-Baselines', () => {
+    for (const entry of [
+      ...Object.values(HAND_FILLED_AUDIT_BASELINE),
+      ...Object.values(FORM_DATA_READ_BASELINE),
+    ]) {
+      expect(entry.reason.trim().length).toBeGreaterThan(20);
+    }
   });
 });

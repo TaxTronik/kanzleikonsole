@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { lockWorkflowItemTx } from '@taxtronik/db/workflow-lifecycle';
-import { evidenceService } from '@/server/container';
 import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/execute-step';
 import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
@@ -15,6 +14,7 @@ import {
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withWorkflowsStaff = withStaffModule('workflows');
 
@@ -69,7 +69,7 @@ export async function startInstanceAction(input: {
   }
 
   return withWorkflowsStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Tenant-Sanity: clientId + (optional) analysisId müssen zu diesem Tenant
       // gehören. FK/RLS sind der Backstop; hier ein klarer Fehler statt FK-Bruch.
@@ -145,10 +145,7 @@ export async function startInstanceAction(input: {
         skipDuplicates: true,
       });
 
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'workflow.instance.start',
         resourceType: 'workflow_instance',
         resourceId: inst.id,
@@ -185,7 +182,7 @@ export async function setWorkflowMembersAction(input: { instanceId: string; memb
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
       include: { members: { select: { staffId: true } } },
@@ -226,10 +223,7 @@ export async function setWorkflowMembersAction(input: { instanceId: string; memb
       });
     }
     if (toAdd.length > 0 || toRemove.length > 0) {
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'workflow.instance.members_update',
         resourceType: 'workflow_instance',
         resourceId: parsed.data.instanceId,
@@ -367,7 +361,7 @@ export async function cancelInstanceAction(input: { instanceId: string; reason: 
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { staffId, session, ctx }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
     });
@@ -392,10 +386,7 @@ export async function cancelInstanceAction(input: { instanceId: string; reason: 
     if (claim.count === 0)
       throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
 
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.instance.cancel',
       resourceType: 'workflow_instance',
       resourceId: inst.id,
@@ -419,7 +410,7 @@ export async function restoreInstanceAction(input: { instanceId: string }) {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { session, ctx }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
@@ -444,10 +435,7 @@ export async function restoreInstanceAction(input: { instanceId: string }) {
       where: { id: inst.id },
       select: { status: true, completedAt: true },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.instance.restore',
       resourceType: 'workflow_instance',
       resourceId: inst.id,
@@ -485,7 +473,7 @@ export async function pauseInstanceAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { session, ctx }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
@@ -508,10 +496,7 @@ export async function pauseInstanceAction(input: {
     });
     if (claim.count === 0)
       throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.instance.pause',
       resourceType: 'workflow_instance',
       resourceId: inst.id,
@@ -533,7 +518,7 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { session, ctx }) => {
     const inst = await tx.workflowInstance.findUnique({ where: { id: parsed.data.instanceId } });
     if (!inst) throw new ActionError('Workflow nicht gefunden.');
     await assertClientAccessTx(tx, session, inst.clientId);
@@ -553,10 +538,7 @@ export async function resumeInstanceAction(input: { instanceId: string }) {
       where: { id: inst.id },
       select: { status: true, completedAt: true },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.instance.resume',
       resourceType: 'workflow_instance',
       resourceId: inst.id,
@@ -624,7 +606,7 @@ export async function addItemToInstanceAction(input: {
   const configResult = parseStepConfig(kind, parsed.data.config);
   if (!configResult.ok) return { ok: false as const, error: `Kind ${kind}: ${configResult.error}` };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
       include: { items: { orderBy: { position: 'desc' }, take: 1, select: { position: true } } },
@@ -653,10 +635,7 @@ export async function addItemToInstanceAction(input: {
         n8nEvent: parsed.data.n8nEvent?.trim() || null,
       },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.item.add',
       resourceType: 'workflow_item',
       resourceId: item.id,
@@ -687,7 +666,7 @@ export async function handoverItemAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const myName = session.user.name ?? 'Ich';
     const item = await tx.workflowItem.findUnique({
       where: { id: parsed.data.itemId },
@@ -726,10 +705,7 @@ export async function handoverItemAction(input: {
           : `📋 Übergabe an ${toUser.fullName}`,
       },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.item.handover',
       resourceType: 'workflow_item',
       resourceId: item.id,
@@ -754,7 +730,7 @@ export async function addItemCommentAction(input: { itemId: string; body: string
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { staffId, session, ctx }) => {
     const authorName = session.user.name ?? 'Mitarbeiter';
     const item = await tx.workflowItem.findUnique({
       where: { id: parsed.data.itemId },
@@ -777,10 +753,7 @@ export async function addItemCommentAction(input: { itemId: string; body: string
     // damit Mandantengeheimnisse aus Kommentartexten nicht ins Audit-Log
     // bleeden (Audit-Pflicht ist „wer wann was dokumentiert hat", nicht
     // „was genau geschrieben wurde").
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.item.comment',
       resourceType: 'workflow_item',
       resourceId: parsed.data.itemId,
@@ -808,7 +781,7 @@ export async function deleteCancelledInstanceAction(input: { instanceId: string 
   const parsed = z.object({ instanceId: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
 
-  const r = await withWorkflowsStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withWorkflowsStaff(async (tx, { session, ctx }) => {
     const inst = await tx.workflowInstance.findUnique({
       where: { id: parsed.data.instanceId },
     });
@@ -827,10 +800,7 @@ export async function deleteCancelledInstanceAction(input: { instanceId: string 
       throw new ActionError('Workflow-Status hat sich geändert — bitte Seite neu laden.');
     }
 
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'workflow.instance.delete',
       resourceType: 'workflow_instance',
       resourceId: inst.id,

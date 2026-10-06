@@ -1,8 +1,8 @@
 'use server';
 
 import { z } from 'zod';
-import { evidenceService } from '@/server/container';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const REVALIDATE = '/staff/admin/request-templates';
 
@@ -27,7 +27,7 @@ export async function saveRequestTemplateAction(
   const data = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       if (data.id) {
         const before = await tx.requestTemplate.findUnique({ where: { id: data.id } });
         if (!before) throw new ActionError('Vorlage nicht gefunden.');
@@ -44,10 +44,7 @@ export async function saveRequestTemplateAction(
             active: data.active,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'request_template.update',
           resourceType: 'request_template',
           resourceId: data.id,
@@ -76,10 +73,7 @@ export async function saveRequestTemplateAction(
             createdByStaff: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'request_template.create',
           resourceType: 'request_template',
           resourceId: created.id,
@@ -96,14 +90,11 @@ export async function deleteRequestTemplateAction(input: { id: string }): Promis
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const t = await tx.requestTemplate.findUnique({ where: { id: parsed.data.id } });
       if (!t) throw new ActionError('Vorlage nicht gefunden.');
       await tx.requestTemplate.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'request_template.delete',
         resourceType: 'request_template',
         resourceId: parsed.data.id,

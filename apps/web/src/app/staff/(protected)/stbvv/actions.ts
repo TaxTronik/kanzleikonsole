@@ -4,7 +4,7 @@ import { withStaff, ActionError, requireUuidParam } from '@/server/actions/staff
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { readModulesTx } from '@/server/settings/modules';
 import { createFeeInvoice, validateFeeCalculation, feeJson } from '@/server/stbvv/service';
-import { evidenceService } from '@/server/container';
+import { audit } from '@/server/actions/audit';
 export async function saveStbvvQuoteAction(clientId: string, title: string, raw: unknown) {
   return withStaff(
     async (tx, g) => {
@@ -32,10 +32,7 @@ export async function saveStbvvQuoteAction(clientId: string, title: string, raw:
           createdBy: g.staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorId: g.staffId,
-        actorType: 'STAFF',
+      await audit(tx, g, {
         action: 'stbvv.quote.create',
         resourceType: 'stbvv_quote',
         resourceId: quote.id,

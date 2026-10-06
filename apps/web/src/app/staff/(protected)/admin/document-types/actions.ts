@@ -1,8 +1,8 @@
 'use server';
 
 import { z } from 'zod';
-import { evidenceService } from '@/server/container';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const REVALIDATE = '/staff/admin/document-types';
 const NAME_TAKEN = 'Ein Typ mit diesem Namen existiert bereits.';
@@ -43,7 +43,7 @@ export async function createDocumentTypeAction(
   const name = parsed.data.name.trim();
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       const last = await tx.documentType.findFirst({
         orderBy: { sortOrder: 'desc' },
         select: { sortOrder: true },
@@ -65,10 +65,7 @@ export async function createDocumentTypeAction(
           createdByStaff: staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'document_type.create',
         resourceType: 'document_type',
         resourceId: created.id,
@@ -106,7 +103,7 @@ export async function updateDocumentTypeAction(
   const name = parsed.data.name.trim();
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       const t = await tx.documentType.findFirst({
         where: { id: parsed.data.id, tenantId },
         select: { builtin: true, name: true, active: true },
@@ -117,10 +114,7 @@ export async function updateDocumentTypeAction(
         where: { id: parsed.data.id },
         data: { name, active: parsed.data.active },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'document_type.update',
         resourceType: 'document_type',
         resourceId: parsed.data.id,
@@ -141,7 +135,7 @@ export async function deleteDocumentTypeAction(input: { id: string }): Promise<A
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       const t = await tx.documentType.findFirst({
         where: { id: parsed.data.id, tenantId },
         select: { builtin: true, name: true },
@@ -157,10 +151,7 @@ export async function deleteDocumentTypeAction(input: { id: string }): Promise<A
         );
       }
       await tx.documentType.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'document_type.delete',
         resourceType: 'document_type',
         resourceId: parsed.data.id,

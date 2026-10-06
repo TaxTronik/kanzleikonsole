@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { assertClientAccessTx } from '@/server/auth/rbac';
@@ -14,6 +13,7 @@ import {
   parseFormData,
   type ActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const InviteSchema = z.object({
   clientId: z.string().uuid(),
@@ -31,7 +31,7 @@ export async function inviteContactAction(
   // staffAction: Magic-Link-Versand ist ein Post-Commit-Side-Effect
   // (braucht tenantId + die im Tx ermittelte E-Mail).
   return staffAction({
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ tenantId, ctx, session }) => {
       const parsed = parseFormData(InviteSchema, formData);
       if (!parsed.ok) return parsed;
 
@@ -58,10 +58,7 @@ export async function inviteContactAction(
               ...(!existing.active ? { icalTokenVersion: { increment: 1 } } : {}),
             },
           });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'client_contact.update',
             resourceType: 'client_contact',
             resourceId: existing.id,
@@ -79,10 +76,7 @@ export async function inviteContactAction(
             role: roleClean,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client_contact.create',
           resourceType: 'client_contact',
           resourceId: contact.id,
@@ -134,7 +128,7 @@ export async function updateContactAction(
   const role = parsed.data.role?.trim() || null;
 
   const result = await withStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, session, ctx }) => {
       const before = await tx.clientContact.findUnique({
         where: { id: contactId },
         select: { fullName: true, email: true, phone: true, role: true, clientId: true },
@@ -172,10 +166,7 @@ export async function updateContactAction(
           ...(emailChanged ? { lastLoginAt: null, icalTokenVersion: { increment: 1 } } : {}),
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'client_contact.update',
         resourceType: 'client_contact',
         resourceId: contactId,
@@ -227,10 +218,7 @@ export async function rotateIcalTokenAction(
           data: { icalTokenVersion: { increment: 1 } },
           select: { icalTokenVersion: true },
         });
-        await evidenceService.record(tx, {
-          tenantId: g.tenantId,
-          actorType: 'STAFF',
-          actorId: g.staffId,
+        await audit(tx, g, {
           action: 'client_contact.ical_rotate',
           resourceType: 'client_contact',
           resourceId: contactId,
@@ -272,10 +260,7 @@ export async function deactivateContactAction(
           where: { id: contactId },
           data: { active: false, icalTokenVersion: { increment: 1 } },
         });
-        await evidenceService.record(tx, {
-          tenantId: g.tenantId,
-          actorType: 'STAFF',
-          actorId: g.staffId,
+        await audit(tx, g, {
           action: 'client_contact.deactivate',
           resourceType: 'client_contact',
           resourceId: contactId,

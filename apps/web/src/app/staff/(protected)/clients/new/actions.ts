@@ -4,10 +4,10 @@ import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-re
 
 import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { z } from 'zod';
 import { staffAction, ActionError, type ActionResult } from '@/server/actions/staff-action';
 import { validationFailure } from '@/server/actions/form-data';
+import { audit } from '@/server/actions/audit';
 
 const createClientSchema = z
   .object({
@@ -47,7 +47,7 @@ export async function createClientAction(
   // allowActive=false; die GwG-Schranke bleibt also geschlossen.
   const result = await staffAction({
     guard: { requirePermission: 'CLIENT_CREATE' },
-    run: async ({ tenantId, staffId, ctx }) => {
+    run: async ({ tenantId, ctx }) => {
       const confirmDuplicate = formData.get('confirmDuplicate') === '1';
       const parsed = createClientSchema.safeParse({
         name: formData.get('name'),
@@ -158,10 +158,7 @@ export async function createClientAction(
           });
         }
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client.created',
           resourceType: 'client',
           resourceId: client.id,

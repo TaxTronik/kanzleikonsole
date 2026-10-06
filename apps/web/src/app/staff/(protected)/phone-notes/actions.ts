@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
 import {
@@ -24,6 +23,7 @@ import {
 } from '@/server/actions/staff-action';
 import { fmtDateShort } from '@/lib/fmt';
 import { createReminderTx } from '@/server/reminders/service';
+import { audit } from '@/server/actions/audit';
 
 const withPhoneNotesStaff = withStaffModule('phoneNotes');
 
@@ -119,10 +119,7 @@ export async function createPhoneNoteAction(
             takenByStaff: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'phone_note.create',
           resourceType: 'phone_note',
           resourceId: note.id,
@@ -231,7 +228,7 @@ export async function markPhoneNoteDoneAction(input: { id: string }): Promise<Ac
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: { clientId: true },
@@ -246,10 +243,7 @@ export async function markPhoneNoteDoneAction(input: { id: string }): Promise<Ac
       tenantId,
       resources: [{ resourceType: 'phone_note', resourceId: parsed.data.id }],
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'phone_note.done',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
@@ -268,7 +262,7 @@ export async function undoPhoneNoteDoneAction(input: { id: string }): Promise<Ac
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withPhoneNotesStaff(async (tx, { session, ctx }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: { clientId: true },
@@ -279,10 +273,7 @@ export async function undoPhoneNoteDoneAction(input: { id: string }): Promise<Ac
       where: { id: parsed.data.id },
       data: { doneAt: null, doneByStaff: null },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'phone_note.undone',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
@@ -308,7 +299,7 @@ export async function forwardPhoneNoteAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: {
@@ -350,10 +341,7 @@ export async function forwardPhoneNoteAction(input: {
       tenantId,
       resources: [{ resourceType: 'phone_note', resourceId: parsed.data.id }],
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'phone_note.forward',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
@@ -399,7 +387,7 @@ export async function phoneNoteToReminderAction(input: {
   const remindersGate = await staffActionGuard({ module: 'reminders' });
   if (!remindersGate.ok) return remindersGate;
 
-  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withPhoneNotesStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const note = await tx.phoneNote.findUnique({
       where: { id: parsed.data.id },
       select: {
@@ -440,19 +428,13 @@ export async function phoneNoteToReminderAction(input: {
       session,
     );
 
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'phone_note.to_reminder',
       resourceType: 'phone_note',
       resourceId: parsed.data.id,
       after: { reminderId: reminder.id, dueDate: parsed.data.dueDate },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_reminder.create',
       resourceType: 'client_reminder',
       resourceId: reminder.id,

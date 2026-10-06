@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import type { FormFieldType, Prisma } from '@prisma/client';
-import { evidenceService } from '@/server/container';
 import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { portalBaseUrl } from '@taxtronik/config';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
@@ -16,6 +15,7 @@ import {
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withFormsStaff = withStaffModule('forms');
 
@@ -58,7 +58,7 @@ export async function createFormTemplateAction(
   // (Mandanten-Uploads) und werden in Workflow-Steps referenziert. Symmetrisch
   // zu Workflow-Templates (F4): ADMIN/PARTNER-only.
   return withFormsStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       // S7: expliziter tenantId-Filter (Defense in Depth + lesbarere Intent).
       const dup = await tx.formTemplate.findFirst({ where: { tenantId, name: parsed.data.name } });
       if (dup) throw new ActionError('Vorlage mit diesem Namen existiert bereits.');
@@ -70,10 +70,7 @@ export async function createFormTemplateAction(
           createdByStaff: staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'form.template.create',
         resourceType: 'form_template',
         resourceId: t.id,
@@ -108,7 +105,7 @@ export async function deleteFormTemplateAction(input: { id: string }): Promise<A
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withFormsStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const t = await tx.formTemplate.findUnique({
         where: { id: parsed.data.id },
         include: { _count: { select: { submissions: true } } },
@@ -120,10 +117,7 @@ export async function deleteFormTemplateAction(input: { id: string }): Promise<A
         );
       }
       await tx.formTemplate.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'form.template.delete',
         resourceType: 'form_template',
         resourceId: parsed.data.id,
@@ -172,7 +166,7 @@ export async function saveFormTemplateAction(
   }
 
   return withFormsStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       await tx.formTemplate.update({
         where: { id: parsed.data.templateId },
         data: {
@@ -199,10 +193,7 @@ export async function saveFormTemplateAction(
           },
         });
       }
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'form.template.update',
         resourceType: 'form_template',
         resourceId: parsed.data.templateId,
@@ -253,10 +244,7 @@ export async function createSubmissionAction(
             createdByStaff: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'form.submission.create',
           resourceType: 'form_submission',
           resourceId: sub.id,

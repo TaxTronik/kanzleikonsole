@@ -10,7 +10,6 @@ import type {
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
-import { evidenceService } from '@/server/container';
 import { checkRateLimit } from '@/server/rate-limit';
 import {
   staffAction,
@@ -36,6 +35,7 @@ import {
   verifyHardwareAssertion,
   verifyHardwareRegistration,
 } from '@/server/auth/webauthn';
+import { audit } from '@/server/actions/audit';
 
 const PASSWORD_CHANGE_LIMIT = { max: 5, windowSec: 15 * 60 };
 const HARDWARE_SETUP_LIMIT = { max: 10, windowSec: 15 * 60 };
@@ -196,10 +196,7 @@ export async function changeOwnPasswordAction(
             'Das Passwort wurde zwischenzeitlich geändert. Bitte melden Sie sich erneut an.',
           );
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'staff.password.change',
           resourceType: 'staff_user',
           resourceId: staffId,
@@ -350,10 +347,7 @@ export async function finishHardwareKeyRegistrationAction(input: {
             label: label.data,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'staff.security_key.register',
           resourceType: 'staff_webauthn_credential',
           resourceId: created.id,
@@ -404,10 +398,7 @@ export async function removeHardwareKeyAction(input: {
         if (revoked.count !== 1) {
           throw new ActionError('Der Sicherheitsschlüssel wurde parallel geändert.');
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'staff.security_key.remove',
           resourceType: 'staff_webauthn_credential',
           resourceId: key.id,
@@ -639,10 +630,7 @@ export async function finishHardwareModeChangeAction(input: {
         if (changed.count !== 1) {
           throw new ActionError('Der Anmeldemodus wurde parallel geändert.');
         }
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: parsed.data.enable ? 'staff.hardware_only.enable' : 'staff.hardware_only.disable',
           resourceType: 'staff_user',
           resourceId: staffId,

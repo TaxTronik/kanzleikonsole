@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import {
@@ -15,6 +14,7 @@ import {
 } from '@/server/actions/staff-action';
 import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journaled-upload';
 import { readUploadFile } from '@/server/documents/upload-file';
+import { audit } from '@/server/actions/audit';
 
 const withTaxNoticesStaff = withStaffModule('taxNotices');
 
@@ -156,10 +156,7 @@ export async function saveTaxFilingAction(
             where: { id: data.filingId },
             data: { ...baseData, ...(documentId ? { documentId } : {}) },
           });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
+          await audit(tx, ctx, {
             action: 'tax_filing.update',
             resourceType: 'tax_filing',
             resourceId: data.filingId,
@@ -193,10 +190,7 @@ export async function saveTaxFilingAction(
             createdByStaff: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'tax_filing.create',
           resourceType: 'tax_filing',
           resourceId: created.id,
@@ -274,7 +268,7 @@ export async function shareTaxFilingAction(
   const { filingId, clientId, share } = parsed.data;
 
   return withTaxNoticesStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { staffId, session, ctx }) => {
       const filing = await tx.taxFiling.findUnique({ where: { id: filingId } });
       if (!filing) throw new ActionError('Erklärung nicht gefunden.');
       if (filing.clientId !== clientId) throw new ActionError('Mandant stimmt nicht.');
@@ -287,10 +281,7 @@ export async function shareTaxFilingAction(
           : { sharedWithClient: false },
       });
 
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: share ? 'tax_filing.share' : 'tax_filing.unshare',
         resourceType: 'tax_filing',
         resourceId: filingId,
@@ -311,15 +302,12 @@ export async function deleteTaxFilingAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withTaxNoticesStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { session, ctx }) => {
       const filing = await tx.taxFiling.findUnique({ where: { id: parsed.data.filingId } });
       if (!filing) throw new ActionError('Erklärung nicht gefunden.');
       await assertClientAccessTx(tx, session, filing.clientId);
       await tx.taxFiling.delete({ where: { id: parsed.data.filingId } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'tax_filing.delete',
         resourceType: 'tax_filing',
         resourceId: parsed.data.filingId,

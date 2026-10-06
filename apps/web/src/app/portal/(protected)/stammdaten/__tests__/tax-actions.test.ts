@@ -64,7 +64,7 @@ beforeEach(() => {
     clientId,
     tenantId: 'tenant',
     contactId: 'contact',
-    ctx: {},
+    ctx: { tenantId: 'tenant', actorId: 'contact', actorType: 'CLIENT_CONTACT' },
   });
   m.feature.mockResolvedValue(undefined);
   m.load.mockResolvedValue({

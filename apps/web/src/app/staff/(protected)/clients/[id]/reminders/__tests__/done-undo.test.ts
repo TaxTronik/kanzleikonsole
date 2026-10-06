@@ -89,6 +89,7 @@ function stubWithStaff(reminder: Record<string, unknown> | null) {
     const data = await fn(tx, {
       tenantId: 'tenant',
       staffId: ICH,
+      ctx: { tenantId: 'tenant', actorId: ICH, actorType: 'STAFF' },
       session: { user: { staffId: ICH } },
     });
     return { ok: true, ...(data ?? {}) };

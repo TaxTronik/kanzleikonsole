@@ -43,7 +43,16 @@ async function runWrappedAction(
   ctx: typeof STAFF_CONTEXT | typeof PORTAL_CONTEXT,
 ) {
   try {
-    await fn(tx, ctx);
+    // Wie die Gates: der Tenant-Kontext (Akteur von Transaktion und Audit)
+    // stammt aus derselben Sitzung wie tenantId/staffId bzw. contactId.
+    const gate = {
+      ...ctx,
+      ctx:
+        'staffId' in ctx
+          ? { tenantId: ctx.tenantId, actorId: ctx.staffId, actorType: 'STAFF' }
+          : { tenantId: ctx.tenantId, actorId: ctx.contactId, actorType: 'CLIENT_CONTACT' },
+    };
+    await fn(tx, gate);
     return { ok: true };
   } catch (error) {
     return {

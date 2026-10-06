@@ -6,9 +6,9 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { isStaffAdmin, assertClientAccessTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { staffAction, ActionError } from '@/server/actions/staff-action';
 import { lockGwgCheckLifecycleTx, requireGwgReverificationTx } from '@/server/gwg/reverification';
+import { audit } from '@/server/actions/audit';
 
 export interface ActionResult {
   ok: boolean;
@@ -42,7 +42,7 @@ export async function saveAdminFieldsAction(
   formData: FormData,
 ): Promise<ActionResult> {
   return staffAction({
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ ctx, session }) => {
       const parsed = AdminSchema.safeParse({
         clientId: formData.get('clientId'),
         datevNo: formData.get('datevNo'),
@@ -86,10 +86,7 @@ export async function saveAdminFieldsAction(
         };
 
         await tx.client.update({ where: { id: clientId }, data: after });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client.update.administrative',
           resourceType: 'client',
           resourceId: clientId,
@@ -131,7 +128,7 @@ export async function saveGwgFieldsAction(
   formData: FormData,
 ): Promise<ActionResult> {
   return staffAction({
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ tenantId, ctx, session }) => {
       const parsed = GwgSchema.safeParse({
         clientId: formData.get('clientId'),
         name: formData.get('name'),
@@ -189,10 +186,7 @@ export async function saveGwgFieldsAction(
           gwgInvalidatedIdentityDocuments = reset.invalidatedIdentityDocuments;
         }
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client.update.gwg_relevant',
           resourceType: 'client',
           resourceId: clientId,
@@ -236,7 +230,7 @@ export async function setResponsibilitiesAction(
       requireAdmin: true,
       deniedMessage: 'Nur ADMIN/PARTNER darf Bearbeiter-Zuordnungen ändern.',
     },
-    run: async ({ tenantId, staffId: actorId, ctx, session }) => {
+    run: async ({ tenantId, ctx, session }) => {
       const berufstraegerIds = formData.getAll('berufstraegerIds').map((v) => String(v));
       const hauptIds = formData.getAll('hauptbearbeiterIds').map((v) => String(v));
       const parsed = RespSchema.safeParse({
@@ -326,10 +320,7 @@ export async function setResponsibilitiesAction(
           toAdd.length > 0 ||
           toRemove.length > 0;
         if (changed) {
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId,
+          await audit(tx, ctx, {
             action: 'client.responsibilities.update',
             resourceType: 'client',
             resourceId: clientId,
@@ -362,7 +353,7 @@ export async function setMandateEndAction(
 ): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true, deniedMessage: 'Nur ADMIN/PARTNER darf das Mandatsende setzen.' },
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    run: async ({ ctx, session }) => {
       const parsed = MandateEndSchema.safeParse({
         clientId: formData.get('clientId'),
         ended: formData.get('ended') === 'on' || formData.get('ended') === '1',
@@ -382,10 +373,7 @@ export async function setMandateEndAction(
         // Ende hängen), wenn erneut „beendet" geklickt wird.
         const next = ended ? (before.mandateEndedAt ?? new Date()) : null;
         await tx.client.update({ where: { id: clientId }, data: { mandateEndedAt: next } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: ended ? 'client.mandate.end' : 'client.mandate.reopen',
           resourceType: 'client',
           resourceId: clientId,

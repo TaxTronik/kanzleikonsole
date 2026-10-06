@@ -76,6 +76,7 @@ beforeEach(() => {
         const data = await fn(m.tx, {
           tenantId: 'tenant-1',
           staffId: 'staff-1',
+          ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
           session: {},
         });
         return { ok: true, ...(data ?? {}) };

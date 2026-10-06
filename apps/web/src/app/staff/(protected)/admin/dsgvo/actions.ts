@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { anonymizeContactInTx } from '@/server/dsgvo/anonymize-contact';
 import { dsgvoResponseDeadline } from '@/server/dsgvo/deadline';
@@ -20,6 +19,7 @@ import {
   type StaffGuardOptions,
 } from '@/server/actions/staff-action';
 import { validationFailure } from '@/server/actions/form-data';
+import { audit } from '@/server/actions/audit';
 
 // DSGVO-Anträge sind eine Compliance-Hoheit (Art. 12 ff.) — durchweg
 // ADMIN/PARTNER. Eigene, präzisere Meldung als das Standard-Gate.
@@ -125,10 +125,7 @@ export async function createDsgvoRequestAction(
             createdByStaff: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'dsgvo.request.create',
           resourceType: 'dsgvo_request',
           resourceId: req.id,
@@ -265,10 +262,7 @@ export async function updateStatusAction(
               data.status === 'COMPLETED' || data.status === 'REJECTED' ? staffId : null,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: `dsgvo.request.${data.status.toLowerCase()}`,
           resourceType: 'dsgvo_request',
           resourceId: updated.id,
@@ -629,10 +623,7 @@ export async function exportContactDataAction(
             status: request.status === 'RECEIVED' ? 'IN_PROGRESS' : request.status,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'dsgvo.export.contact',
           resourceType: 'dsgvo_request',
           resourceId: request.id,

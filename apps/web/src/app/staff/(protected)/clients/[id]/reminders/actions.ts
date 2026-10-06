@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
@@ -27,6 +26,7 @@ import {
   scheduleReminderDoneNotification,
   cancelReminderDoneNotification,
 } from '@/server/jobs/reminder-done-queue';
+import { audit } from '@/server/actions/audit';
 
 const withRemindersStaff = withStaffModule('reminders');
 
@@ -62,7 +62,7 @@ export async function createReminderAction(
 
   const clientId = parsed.data.clientId;
   return withRemindersStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       // Mit Mandant: die Mandanten-Policy entscheidet. Ohne Mandant ist es eine
       // interne Aufgabe — die darf jede:r fuer sich und Kolleg:innen anlegen.
       if (clientId) {
@@ -85,10 +85,7 @@ export async function createReminderAction(
         },
         session,
       );
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'client_reminder.create',
         resourceType: 'client_reminder',
         resourceId: r.id,
@@ -139,7 +136,7 @@ export async function cloneReminderAction(input: {
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const quelle = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
       select: REMINDER_ACCESS_SELECT,
@@ -163,10 +160,7 @@ export async function cloneReminderAction(input: {
       },
       session,
     );
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: parsed.data.alsNachfrage ? 'client_reminder.followup' : 'client_reminder.clone',
       resourceType: 'client_reminder',
       resourceId: neu.id,
@@ -232,7 +226,7 @@ export async function setReminderAssigneesAction(input: {
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
@@ -251,10 +245,7 @@ export async function setReminderAssigneesAction(input: {
       staffIds: parsed.data.staffIds,
       von: staffId,
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_reminder.assignees',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
@@ -274,7 +265,7 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
@@ -293,10 +284,7 @@ export async function markReminderDoneAction(input: { id: string }): Promise<Act
       resources: [{ resourceType: 'client_reminder', resourceId: parsed.data.id }],
       hrefs: [`/staff/reminders/${parsed.data.id}`],
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_reminder.done',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
@@ -387,7 +375,7 @@ export async function reopenReminderAction(input: { id: string }): Promise<Actio
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, session, ctx }) => {
     await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
@@ -407,10 +395,7 @@ export async function reopenReminderAction(input: { id: string }): Promise<Actio
       hrefs: [`/staff/reminders/${parsed.data.id}`],
       kinds: ['CLIENT_REMINDER_DONE'],
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_reminder.reopen',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
@@ -448,7 +433,7 @@ export async function setReminderPriorityAction(input: {
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, session, ctx }) => {
     await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
@@ -465,10 +450,7 @@ export async function setReminderPriorityAction(input: {
       where: { id: parsed.data.id, tenantId },
       data: { priority: parsed.data.priority },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_reminder.priority',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
@@ -503,7 +485,7 @@ export async function submitResearchResultAction(input: {
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
-  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     await assertClientAccessTx(tx, session, parsed.data.clientId);
     await assertClientInTenant(tx, parsed.data.clientId);
     await lockReminderTx(tx, tenantId, parsed.data.reminderId);
@@ -556,10 +538,7 @@ export async function submitResearchResultAction(input: {
       staffIds: [staffId],
     });
 
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'risk.research.submitted',
       resourceType: 'risk_research_result',
       resourceId: result.id,
@@ -608,7 +587,7 @@ export async function archiveReminderAction(input: { id: string }): Promise<Acti
     };
   }
 
-  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withRemindersStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     await lockReminderTx(tx, tenantId, parsed.data.id);
     const rem = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
@@ -633,10 +612,7 @@ export async function archiveReminderAction(input: { id: string }): Promise<Acti
       where: { id: parsed.data.id, tenantId },
       data: { archivedAt, archivedByStaff: staffId },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_reminder.archive',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
@@ -664,7 +640,7 @@ export async function restoreReminderAction(input: { id: string }): Promise<Acti
       fieldErrors: z.flattenError(parsed.error).fieldErrors,
     };
   }
-  const result = await withRemindersStaff(async (tx, { tenantId, staffId, session }) => {
+  const result = await withRemindersStaff(async (tx, { tenantId, session, ctx }) => {
     await lockReminderTx(tx, tenantId, parsed.data.id);
     const reminder = await tx.clientReminder.findUnique({
       where: { id: parsed.data.id, tenantId },
@@ -680,10 +656,7 @@ export async function restoreReminderAction(input: { id: string }): Promise<Acti
       where: { id: parsed.data.id, tenantId },
       data: { archivedAt: null, archivedByStaff: null },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_reminder.restore',
       resourceType: 'client_reminder',
       resourceId: parsed.data.id,
@@ -713,15 +686,12 @@ export async function setReminderNotifyModeAction(input: {
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withRemindersStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { staffId, ctx }) => {
       await tx.staffUser.update({
         where: { id: staffId },
         data: { reminderNotifyMode: parsed.data.mode },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'staff.reminder_notify_mode',
         resourceType: 'staff_user',
         resourceId: staffId,

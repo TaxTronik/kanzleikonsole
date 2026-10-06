@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { ActionError, staffAction, type ActionResult } from '@/server/actions/staff-action';
@@ -20,6 +19,7 @@ import {
 import { resolveConsentSelectionsTx } from '@/server/privacy/consent-catalog';
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { isPrivacyConfigComplete, readPrivacyConfigTx } from '@/server/privacy/notice';
+import { audit } from '@/server/actions/audit';
 
 const SaveSchema = z.object({
   clientId: z.string().uuid(),
@@ -108,10 +108,7 @@ export async function saveConsentAction(
             createdBy: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: isRevocation ? 'privacy.consent.revoke' : 'privacy.consent.grant',
           resourceType: 'client_consent',
           resourceId: row.id,
@@ -178,10 +175,7 @@ export async function revokeAllConsentAction(
             createdBy: staffId,
           },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'privacy.consent.revoke',
           resourceType: 'client_consent',
           resourceId: row.id,

@@ -41,7 +41,6 @@ import {
   getIbmTokenStatus,
   type IbmTokenStatus,
 } from '@/server/settings/quantenlos';
-import { evidenceService } from '@/server/container';
 import {
   buildLosRahmen,
   zieheLosStichprobe,
@@ -53,6 +52,7 @@ import {
   type LosZiehungErgebnis,
   type LosPruefErgebnis,
 } from '@/server/risk';
+import { audit } from '@/server/actions/audit';
 
 const PFAD = '/staff/admin/quantenlos';
 
@@ -331,10 +331,7 @@ export async function ibmTokenSpeichernAction(
       await assertLosVerfuegbar(g.ctx);
       await withTenantContext(g.ctx, async (tx) => {
         await writeIbmTokenTx(tx, g.ctx, parsed.token);
-        await evidenceService.record(tx, {
-          tenantId: g.ctx.tenantId,
-          actorType: g.ctx.actorType,
-          actorId: g.ctx.actorId,
+        await audit(tx, g, {
           action: 'tenant.settings.quantenlos_ibm.update',
           resourceType: 'tenant_setting',
           resourceId: 'quantenlos.ibm',
@@ -357,10 +354,7 @@ export async function ibmTokenEntfernenAction(): Promise<
       await assertLosVerfuegbar(g.ctx);
       await withTenantContext(g.ctx, async (tx) => {
         await deleteIbmTokenTx(tx, g.ctx);
-        await evidenceService.record(tx, {
-          tenantId: g.ctx.tenantId,
-          actorType: g.ctx.actorType,
-          actorId: g.ctx.actorId,
+        await audit(tx, g, {
           action: 'tenant.settings.quantenlos_ibm.reset',
           resourceType: 'tenant_setting',
           resourceId: 'quantenlos.ibm',

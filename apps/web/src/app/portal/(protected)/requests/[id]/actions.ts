@@ -3,11 +3,11 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
 import { checkPortalWriteLimit } from '@/server/rate-limit';
 import { portalAction, ActionError, type ActionResult } from '@/server/actions/portal-action';
+import { audit } from '@/server/actions/audit';
 
 const ResponseSchema = z.object({
   requestId: z.string().uuid(),
@@ -101,10 +101,7 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
           resourceId: requestId,
         });
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'CLIENT_CONTACT',
-          actorId: contactId,
+        await audit(tx, g, {
           action: 'request.response',
           resourceType: 'request_response',
           resourceId: resp.id,

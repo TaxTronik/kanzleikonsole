@@ -61,7 +61,12 @@ vi.mock('@/server/actions/staff-action', async () => {
     ).createActionRunner(staffActionGuard),
     withStaff: async (fn: (tx: unknown, ctx: unknown) => Promise<void>) => {
       try {
-        await fn(m.tx, { tenantId, staffId: 'staff', session: {} });
+        await fn(m.tx, {
+          tenantId,
+          staffId: 'staff',
+          ctx: { tenantId, actorId: 'staff', actorType: 'STAFF' },
+          session: {},
+        });
         return { ok: true };
       } catch (e) {
         return { ok: false, error: (e as Error).message };
@@ -85,7 +90,13 @@ import { log } from '@/server/logger';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  m.guard.mockResolvedValue({ ok: true, tenantId, staffId: 'staff', ctx: {}, session: {} });
+  m.guard.mockResolvedValue({
+    ok: true,
+    tenantId,
+    staffId: 'staff',
+    ctx: { tenantId, actorId: 'staff', actorType: 'STAFF' },
+    session: {},
+  });
   m.modules.mockResolvedValue({ invoiceMode: 'IN_APP' });
   m.context.mockImplementation(async (_ctx, fn) => fn(m.tx));
   m.tx.invoice.create.mockResolvedValue({ id: invoiceId });

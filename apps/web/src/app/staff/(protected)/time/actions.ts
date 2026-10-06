@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
@@ -10,6 +9,7 @@ import {
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withTimeTrackingStaff = withStaffModule('timeTracking');
 
@@ -33,7 +33,7 @@ export async function startTimerAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withTimeTrackingStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       // R-2: clientId Tenant-Sanity + Vertraulich-/RESTRICTED-Ventil, falls gesetzt
       if (parsed.data.clientId) {
         await assertClientInTenant(tx, parsed.data.clientId);
@@ -60,10 +60,7 @@ export async function startTimerAction(
           billable: !!parsed.data.billable,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'time_entry.start',
         resourceType: 'time_entry',
         resourceId: entry.id,
@@ -79,7 +76,7 @@ export async function stopTimerAction(
   _formData: FormData,
 ): Promise<ActionResult> {
   return withTimeTrackingStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { staffId, session, ctx }) => {
       const running = await tx.timeEntry.findFirst({
         where: { staffId, endedAt: null },
       });
@@ -90,10 +87,7 @@ export async function stopTimerAction(
         where: { id: running.id },
         data: { endedAt: new Date() },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'time_entry.stop',
         resourceType: 'time_entry',
         resourceId: updated.id,
@@ -117,7 +111,7 @@ export async function deleteTimeEntryAction(
   const { id } = parsed.data;
 
   return withTimeTrackingStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { staffId, session, ctx }) => {
       const before = await tx.timeEntry.findFirst({ where: { id, staffId } });
       if (!before) throw new ActionError('Zeiteintrag nicht gefunden.');
       if (before.clientId) await assertClientAccessTx(tx, session, before.clientId);
@@ -129,10 +123,7 @@ export async function deleteTimeEntryAction(
         );
       }
       await tx.timeEntry.delete({ where: { id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'time_entry.delete',
         resourceType: 'time_entry',
         resourceId: id,

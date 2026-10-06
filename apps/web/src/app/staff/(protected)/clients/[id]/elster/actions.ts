@@ -24,10 +24,10 @@ import {
   type KontoabfrageTeil,
   type Uebertragung,
 } from '@taxtronik/elster';
-import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { checkRateLimit } from '@/server/rate-limit';
 import { staffAction, type ActionResult } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const STEUERARTEN = ['ESt', 'KSt', 'USt', 'LSt', 'GewSt', 'ZaSt', 'KapESt'] as const;
 
@@ -221,10 +221,7 @@ export async function kontoabfrageAction(
         });
         // Evidence: NUR Metadaten — keine PIN, kein Ergebnis-Volltext (Steuerdaten
         // liegen in der RLS-geschützten Historie, nicht im Audit-Log).
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'elster.kontoabfrage',
           resourceType: 'elster_kontoabfrage',
           resourceId: row.id,

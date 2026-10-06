@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import {
   staffAction,
@@ -25,6 +24,7 @@ import {
   type AssertClientAccess,
   type DocumentBulkResult,
 } from '@/server/documents/document-bulk';
+import { audit } from '@/server/actions/audit';
 
 export interface FolderActionResult {
   ok: boolean;
@@ -82,10 +82,7 @@ export async function createFolderAction(
         const folder = await tx.documentFolder.create({
           data: { tenantId, clientId, parentId, name, createdByStaff: staffId },
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'document_folder.create',
           resourceType: 'document_folder',
           resourceId: folder.id,
@@ -114,7 +111,7 @@ export async function renameFolderAction(
       if (!parsed.success) {
         return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
       }
-      const { tenantId, staffId, ctx } = g;
+      const { tenantId, ctx } = g;
       const { folderId } = parsed.data;
       const name = parsed.data.name.trim();
 
@@ -126,10 +123,7 @@ export async function renameFolderAction(
         if (!f) throw new ActionError('Ordner nicht gefunden.');
         if (f.clientId) await assertClientAccessTx(tx, g.session, f.clientId);
         await tx.documentFolder.update({ where: { id: folderId }, data: { name } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'document_folder.rename',
           resourceType: 'document_folder',
           resourceId: folderId,
@@ -157,7 +151,7 @@ export async function deleteFolderAction(
     run: async (g) => {
       const parsed = DeleteSchema.safeParse(input);
       if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-      const { tenantId, staffId, ctx } = g;
+      const { tenantId, ctx } = g;
       const { folderId } = parsed.data;
 
       const clientId = await withTenantContext(ctx, async (tx) => {
@@ -177,10 +171,7 @@ export async function deleteFolderAction(
           data: { parentId: f.parentId },
         });
         await tx.documentFolder.delete({ where: { id: folderId } });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, g, {
           action: 'document_folder.delete',
           resourceType: 'document_folder',
           resourceId: folderId,
@@ -203,12 +194,12 @@ const MoveSchema = z.object({
   newParentId: z.string().uuid().nullable(),
 });
 
-type StaffActor = Pick<StaffCtx, 'tenantId' | 'staffId'>;
+type StaffActor = Pick<StaffCtx, 'tenantId' | 'ctx'>;
 
 /** Ordner in der laufenden Transaktion reparentieren (Einzel- und Bulk-Action). */
 async function moveFolderTx(
   tx: TxClient,
-  { tenantId, staffId }: StaffActor,
+  { tenantId, ctx }: StaffActor,
   assertAccess: AssertClientAccess,
   folderId: string,
   newParentId: string | null,
@@ -250,10 +241,7 @@ async function moveFolderTx(
     where: { id: folderId },
     data: { parentId: newParentId },
   });
-  await evidenceService.record(tx, {
-    tenantId,
-    actorType: 'STAFF',
-    actorId: staffId,
+  await audit(tx, ctx, {
     action: 'document_folder.move',
     resourceType: 'document_folder',
     resourceId: folderId,
@@ -295,7 +283,7 @@ const SetDocSchema = z.object({
 /** Dokument in der laufenden Transaktion einem Ordner zuordnen (Einzel- und Bulk-Action). */
 async function setDocumentFolderTx(
   tx: TxClient,
-  { tenantId, staffId }: StaffActor,
+  { tenantId, ctx }: StaffActor,
   assertAccess: AssertClientAccess,
   documentId: string,
   folderId: string | null,
@@ -322,10 +310,7 @@ async function setDocumentFolderTx(
     where: { id: documentId },
     data: { folderId },
   });
-  await evidenceService.record(tx, {
-    tenantId,
-    actorType: 'STAFF',
-    actorId: staffId,
+  await audit(tx, ctx, {
     action: 'document.move_folder',
     resourceType: 'document',
     resourceId: documentId,

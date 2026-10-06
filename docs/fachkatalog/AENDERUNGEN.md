@@ -1,5 +1,96 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-033
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
+      - apps/web/src/app/portal/(protected)/interactions/actions.ts
+      - apps/web/src/app/portal/(protected)/requests/[id]/actions.ts
+      - apps/web/src/app/portal/(protected)/stammdaten/tax-actions.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/users/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/change-requests/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/contacts/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/screening/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/acknowledge-access.test.ts
+      - apps/web/src/app/staff/(protected)/documents/acknowledge-actions.ts
+      - apps/web/src/app/staff/(protected)/documents/folder-actions.ts
+      - apps/web/src/app/staff/(protected)/interactions/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/app/staff/(protected)/knowledge/context/actions.ts
+      - apps/web/src/app/staff/(protected)/mailbox/actions.ts
+      - apps/web/src/app/staff/(protected)/profile/actions.ts
+      - apps/web/src/app/staff/(protected)/stbvv/actions.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts
+      - apps/web/src/app/staff/(protected)/year-end/actions.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+    rule_ids:
+      - AUDIT-HASH-CHAIN-001
+      - ACCESS-STAFF-PERMISSION-001
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-VERIFY-ALERT-001
+      - CLIENT-FEEDBACK-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - DSGVO-CONSENT-SNAPSHOT-001
+      - DSGVO-CONTACT-EXPORT-001
+      - DSGVO-MANDATE-ANONYMIZATION-001
+      - DSGVO-REQUEST-DEADLINE-001
+      - DSGVO-REQUEST-EVIDENCE-001
+      - FORM-PRESUBMIT-UPLOAD-001
+      - FORM-SCHEMA-SNAPSHOT-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-SCREENING-001
+      - INV-LIFECYCLE-FREEZE-001
+      - INV-STORNO-REFERENCE-001
+      - INV-VAT-TOTALS-001
+      - KNOWLEDGE-CONTEXT-001
+      - MAIL-INBOX-001
+      - POA-SIGNER-RETENTION-001
+      - REMINDER-TICKET-001
+      - REQ-INTERNAL-COMMENT-001
+      - REQ-LIFECYCLE-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - STBVV-CALCULATION-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-MASTER-DATA-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - TAX-NOTICE-DECISION-001
+      - TCMS-SAMPLE-PROOF-001
+      - WORKFLOW-LIFECYCLE-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Audit-Einträge der Server Actions übernehmen Mandant und Akteur (tenantId,
+      actorType, actorId) aus dem Gate-Kontext über den Helfer audit(tx, g, …)
+      (server/actions/audit.ts) statt sie an 193 Stellen von Hand zu setzen; der
+      Kontext hat Vorrang vor dem Ereignis. Inhalt und Form der Audit-Ereignisse
+      und damit die Hash-Kette bleiben gleich (Test vergleicht Ereignis und
+      Kettenhash mit dem handgefüllten Aufruf). Ein Architekturtest verhindert neue
+      handgefüllte Akteure. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/actions/__tests__/audit.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-032
     date: '2026-10-06'
     paths:
@@ -3742,6 +3833,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-033` dokumentiert den Audit-Helfer, der
+  Mandant und Akteur aus dem Gate-Kontext übernimmt. Ereignisse und
+  Hash-Kette bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-032` dokumentiert die Portal- und
   Lohn-Actions auf dem gemeinsamen Action-Baustein.

@@ -3,12 +3,12 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
 import { lockGwgCheckLifecycleTx, requireGwgReverificationTx } from '@/server/gwg/reverification';
 import { TaxChangeRequestSchema } from '@/server/tax-master-data/schema';
 import { saveTaxMasterDataTx } from '@/server/tax-master-data/service';
+import { audit } from '@/server/actions/audit';
 
 const InputSchema = z.object({
   requestId: z.string().uuid(),
@@ -38,7 +38,7 @@ export async function decideChangeRequestAction(
   const { requestId, clientId, approve, decisionNote } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       const req = await tx.clientMasterChangeRequest.findUnique({ where: { id: requestId } });
       if (!req) throw new ActionError('Anfrage nicht gefunden.');
       if (req.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
@@ -76,10 +76,7 @@ export async function decideChangeRequestAction(
           expectedRevision: taxRequest.data.expectedRevision,
           draft: taxRequest.data.draft,
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client_master_change.approve',
           resourceType: 'client_master_change_request',
           resourceId: requestId,
@@ -133,10 +130,7 @@ export async function decideChangeRequestAction(
           gwgInvalidatedIdentityDocuments = reset.invalidatedIdentityDocuments;
         }
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client_master_change.approve',
           resourceType: 'client_master_change_request',
           resourceId: requestId,
@@ -149,10 +143,7 @@ export async function decideChangeRequestAction(
           },
         });
       } else {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'client_master_change.reject',
           resourceType: 'client_master_change_request',
           resourceId: requestId,

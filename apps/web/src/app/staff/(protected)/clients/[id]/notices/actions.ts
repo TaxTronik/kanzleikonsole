@@ -6,7 +6,6 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { berlinCalendarDate } from '@taxtronik/tax';
-import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, isStaffAdmin } from '@/server/auth/rbac';
 import { ActionError, staffAction, type ActionResult } from '@/server/actions/staff-action';
@@ -27,6 +26,7 @@ import {
   taxNoticeStatusAfterAudit,
   taxNoticeStatusBeforeAudit,
 } from './notice-audit';
+import { audit } from '@/server/actions/audit';
 
 const YMD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const YmdSchema = z
@@ -714,10 +714,7 @@ async function createNoticeTx(
         createdByStaff: staffId,
       },
     });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'tax_notice.create',
       resourceType: 'tax_notice',
       resourceId: created.id,
@@ -946,10 +943,7 @@ export async function updateNoticeStatusAction(input: {
           tenantId,
           resources: [{ resourceType: 'tax_notice', resourceId: noticeId }],
         });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
+        await audit(tx, ctx, {
           action: 'tax_notice.status',
           resourceType: 'tax_notice',
           resourceId: noticeId,

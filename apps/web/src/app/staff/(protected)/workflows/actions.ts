@@ -2,7 +2,6 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { evidenceService } from '@/server/container';
 import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
 import { startInstanceAction } from '../clients/[id]/workflows/actions';
 import { assertModuleEnabledTx } from '@/server/settings/modules';
@@ -12,6 +11,7 @@ import {
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withWorkflowsStaff = withStaffModule('workflows');
 
@@ -35,7 +35,7 @@ export async function createTemplateAction(
   // CLIENT_EMAIL/REQUEST/FORM-Steps). Konsistent zu email-templates,
   // request-templates etc. — ADMIN/PARTNER-only.
   return withWorkflowsStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, staffId, ctx }) => {
       // S7: expliziter tenantId-Filter zusätzlich zur RLS — Defense in Depth
       // und liest sich klarer als „RLS macht den Rest".
       const dup = await tx.workflowTemplate.findFirst({
@@ -50,10 +50,7 @@ export async function createTemplateAction(
           createdByStaff: staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'workflow.template.create',
         resourceType: 'workflow_template',
         resourceId: t.id,
@@ -88,7 +85,7 @@ export async function deleteTemplateAction(input: { id: string }): Promise<Actio
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   return withWorkflowsStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { ctx }) => {
       const tpl = await tx.workflowTemplate.findUnique({
         where: { id: parsed.data.id },
         include: { _count: { select: { instances: true } } },
@@ -101,10 +98,7 @@ export async function deleteTemplateAction(input: { id: string }): Promise<Actio
       }
       // Schritte werden via onDelete: Cascade mitgelöscht.
       await tx.workflowTemplate.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'workflow.template.delete',
         resourceType: 'workflow_template',
         resourceId: parsed.data.id,
@@ -155,7 +149,7 @@ export async function saveTemplateAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   const r = await withWorkflowsStaff(
-    async (tx, { tenantId, staffId }) => {
+    async (tx, { tenantId, ctx }) => {
       if (parsed.data.steps.some((s) => (s.wikiArticleIds?.length ?? 0) > 0)) {
         await assertModuleEnabledTx(tx, tenantId, 'knowledgeContext');
         await assertModuleEnabledTx(tx, tenantId, 'knowledge');
@@ -191,10 +185,7 @@ export async function saveTemplateAction(
           },
         });
       }
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'workflow.template.update',
         resourceType: 'workflow_template',
         resourceId: parsed.data.templateId,

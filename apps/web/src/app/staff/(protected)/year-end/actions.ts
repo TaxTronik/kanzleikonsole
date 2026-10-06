@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertModuleEnabledTx } from '@/server/settings/modules';
 import { freezeFormSchema } from '@/server/forms/schema-snapshot';
-import { evidenceService } from '@/server/container';
 import { berlinWallClockToUtc } from '@/lib/fmt';
 import { validWorkflowCalendarDate } from '@/server/workflows/interaction-policy';
 import { returnCampaignSubmissionTx } from '@/server/workflows/year-end-return';
@@ -11,6 +10,7 @@ import {
   rolloutCampaignTx,
   YEAR_END_ROLLOUT_MAX_CLIENTS,
 } from '@/server/workflows/year-end-rollout';
+import { audit } from '@/server/actions/audit';
 
 export async function returnCampaignSubmissionAction(data: FormData) {
   const parsed = z
@@ -65,10 +65,7 @@ export async function createCampaignAction(data: FormData) {
           createdByStaff: g.staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
+      await audit(tx, g, {
         action: 'year_end.campaign.created',
         resourceType: 'year_end_campaign',
         resourceId: campaign.id,
@@ -101,10 +98,7 @@ export async function rolloutCampaignAction(data: FormData) {
       await tx.$queryRaw`SELECT id FROM year_end_campaign WHERE id=${campaign.id}::uuid FOR UPDATE`;
       // P-19: vorab laden und gesammelt anlegen statt sechs Statements je Mandant.
       const created = await rolloutCampaignTx(tx, g, campaign, parsed.data.clientIds);
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
+      await audit(tx, g, {
         action: 'year_end.campaign.rolled_out',
         resourceType: 'year_end_campaign',
         resourceId: campaign.id,

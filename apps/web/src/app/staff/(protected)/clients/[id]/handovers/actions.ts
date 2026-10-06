@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
@@ -14,6 +13,7 @@ import {
   ActionError,
   type ActionResult,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 const withHandoversStaff = withStaffModule('handovers');
 
@@ -38,7 +38,7 @@ export async function createHandoverAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
 
   return withHandoversStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       await assertClientAccessTx(tx, session, parsed.data.clientId);
       // Q-5: clientId Tenant-Sanity
       await assertClientInTenant(tx, parsed.data.clientId);
@@ -51,10 +51,7 @@ export async function createHandoverAction(
           createdByStaff: staffId,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'client_handover.create',
         resourceType: 'client_handover',
         resourceId: h.id,
@@ -194,10 +191,7 @@ export async function updateHandoverStatusAction(input: {
                 ? 'client_handover.picked_up'
                 : 'client_handover.status_change';
 
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: g.staffId,
+        await audit(tx, g, {
           action: auditAction,
           resourceType: 'client_handover',
           resourceId: parsed.data.id,
@@ -225,7 +219,7 @@ export async function deleteHandoverAction(input: { id: string }): Promise<Actio
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withHandoversStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withHandoversStaff(async (tx, { session, ctx }) => {
     const h = await tx.clientHandover.findUnique({
       where: { id: parsed.data.id },
       select: { label: true, clientId: true },
@@ -233,10 +227,7 @@ export async function deleteHandoverAction(input: { id: string }): Promise<Actio
     if (!h) throw new ActionError('Anlieferung nicht gefunden.');
     await assertClientAccessTx(tx, session, h.clientId);
     await tx.clientHandover.delete({ where: { id: parsed.data.id } });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'client_handover.delete',
       resourceType: 'client_handover',
       resourceId: parsed.data.id,

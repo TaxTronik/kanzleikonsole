@@ -78,12 +78,22 @@ beforeEach(() => {
     async (
       callback: (
         transaction: typeof tx,
-        context: { tenantId: string; contactId: string; clientId: string },
+        context: {
+          tenantId: string;
+          contactId: string;
+          clientId: string;
+          ctx: { tenantId: string; actorId: string; actorType: 'CLIENT_CONTACT' };
+        },
       ) => Promise<void>,
     ) => {
       // Wie withPortalContext: Fachfehler werden zum ActionResult.
       try {
-        await callback(tx, { tenantId: TENANT_ID, contactId: CONTACT_ID, clientId: CLIENT_ID });
+        await callback(tx, {
+          tenantId: TENANT_ID,
+          contactId: CONTACT_ID,
+          clientId: CLIENT_ID,
+          ctx: { tenantId: TENANT_ID, actorId: CONTACT_ID, actorType: 'CLIENT_CONTACT' },
+        });
         return { ok: true };
       } catch (error) {
         return { ok: false, error: (error as Error).message };

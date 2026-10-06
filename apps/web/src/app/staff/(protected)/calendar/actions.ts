@@ -4,7 +4,6 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import {
   enqueueDirectMailTx,
@@ -24,6 +23,7 @@ import {
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { fmtDateTimeShort, fmtDateTimeMedium, berlinWallClockToUtc } from '@/lib/fmt';
+import { audit } from '@/server/actions/audit';
 
 const withAppointmentsStaff = withStaffModule('appointments');
 
@@ -84,7 +84,7 @@ export async function createAppointmentAction(
   }
 
   return withAppointmentsStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       // P-7: Sanity-Check innerhalb des Tenants. RLS schützt cross-tenant,
       // aber FK greift nur auf Existenz im DB-Cluster — sonst kann ein
       // UI-Fehler einen ownerStaffId/clientId aus einem anderen Datenkontext
@@ -129,10 +129,7 @@ export async function createAppointmentAction(
           endsAt,
         },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'appointment.create',
         resourceType: 'appointment',
         resourceId: appt.id,
@@ -192,7 +189,7 @@ export async function updateAppointmentAction(
   }
 
   return withAppointmentsStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
         select: {
@@ -267,10 +264,7 @@ export async function updateAppointmentAction(
           });
         }
       }
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'appointment.update',
         resourceType: 'appointment',
         resourceId: parsed.data.id,
@@ -303,7 +297,7 @@ export async function deleteAppointmentAction(input: {
     return { ok: false, error: 'Ungültige Termin-ID.', errorCode: 'VALIDATION_ERROR' };
 
   return withAppointmentsStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, session, ctx }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
         select: { title: true, clientId: true },
@@ -314,10 +308,7 @@ export async function deleteAppointmentAction(input: {
         resources: [{ resourceType: 'appointment', resourceId: parsed.data.id }],
       });
       await tx.appointment.delete({ where: { id: parsed.data.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'appointment.delete',
         resourceType: 'appointment',
         resourceId: parsed.data.id,
@@ -392,7 +383,7 @@ export async function acceptAppointmentRequestAction(input: {
   let mailQueued = false;
 
   const r = await withAppointmentsStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       // P-7 (Befund 5): ownerStaffId Tenant-Sanity — FK prüft nur Existenz.
       await assertStaffInTenant(tx, parsed.data.ownerStaffId);
       const req = await tx.appointmentRequest.findUnique({
@@ -473,19 +464,13 @@ export async function acceptAppointmentRequestAction(input: {
         data: { acceptedAppointmentId: appt.id },
       });
 
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'appointment_request.accept',
         resourceType: 'appointment_request',
         resourceId: req.id,
         after: { appointmentId: appt.id, slotIndex: parsed.data.slotIndex },
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'appointment.create',
         resourceType: 'appointment',
         resourceId: appt.id,
@@ -566,7 +551,7 @@ export async function rejectAppointmentRequestAction(input: {
   let mailQueued = false;
 
   const r = await withAppointmentsStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, staffId, session, ctx }) => {
       const req = await tx.appointmentRequest.findUnique({
         where: { id: parsed.data.requestId },
         select: {
@@ -598,10 +583,7 @@ export async function rejectAppointmentRequestAction(input: {
         tenantId,
         resources: [{ resourceType: 'appointment_request', resourceId: req.id }],
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'appointment_request.reject',
         resourceType: 'appointment_request',
         resourceId: req.id,
