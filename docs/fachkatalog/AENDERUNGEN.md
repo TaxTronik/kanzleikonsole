@@ -1,5 +1,19 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-039
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Der Qualitäts-Job der CI installiert vor den Operator-CLI-Tests bei Bedarf
+      openssh-client, weil die Signaturtests des Source-Updates (S-04) ssh-keygen
+      brauchen und in CI Pflicht sind. Release-, Audit- und Anker-Nachweise bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - scripts/tests/fachkatalog.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-038
     date: '2026-10-06'
     paths:
@@ -4005,6 +4019,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-039` dokumentiert die Installation von
+  ssh-keygen vor den Operator-CLI-Tests.
 
 - 2026-10-06: `FK-EXC-20261006-038` dokumentiert die CI-DB-Suiten unter der
   Owner-Rolle und den Drill-Pfad auf PostgreSQL 18.
