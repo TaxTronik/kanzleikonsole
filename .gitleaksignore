@@ -1,6 +1,17 @@
-# Ausschließlich historische, synthetische CI-Fixtures aus dem Release-Commit.
-# Die Fingerprints sind absichtlich commit-, pfad-, regel- und zeilengenau;
-# neue oder geänderte Treffer bleiben dadurch weiterhin sichtbar.
+# Ausschließlich historische False-Positives. Die Fingerprints sind absichtlich
+# commit-, pfad-, regel- und zeilengenau; neue oder geänderte Treffer bleiben
+# dadurch weiterhin sichtbar.
+#
+# Synthetische CI-Fixtures aus dem Release-Commit.
 de230584b271805f370e5363a1fdd26ca84195e3:scripts/tests/gitleaks-config.test.sh:generic-api-key:22
 de230584b271805f370e5363a1fdd26ca84195e3:scripts/tests/gitleaks-config.test.sh:generic-api-key:32
 de230584b271805f370e5363a1fdd26ca84195e3:scripts/release/smoke-release-images.sh:generic-api-key:76
+#
+# Variablenreferenz auf `opts.n8nDedupeKey` im Mail-Versand (kein Wert).
+15ab9dcae3bf824be4ca57807597a4557e281a22:packages/mail/src/dispatch.ts:generic-api-key:168
+#
+# Synthetischer HMAC-Testwert `global-env-secret-with-at-least-32-chars` der
+# n8n-Secret-Vorrang-Tests (ENV-Fallback); in keiner Umgebung verwendet.
+e4500bd575f5285b0535ef1cd80b4823f699fd1b:apps/web/src/server/settings/__tests__/n8n-secret-precedence.test.ts:generic-api-key:46
+e4500bd575f5285b0535ef1cd80b4823f699fd1b:apps/web/src/server/settings/__tests__/n8n-secret-precedence.test.ts:generic-api-key:151
+e4500bd575f5285b0535ef1cd80b4823f699fd1b:packages/n8n-shared/src/__tests__/routing.test.ts:generic-api-key:115

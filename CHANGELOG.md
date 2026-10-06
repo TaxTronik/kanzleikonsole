@@ -768,6 +768,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Secret Scan auf `main` schlug wegen vier historischer gitleaks-False-Positives
+  fehl (Variablenreferenz auf `opts.n8nDedupeKey` im Mail-Versand und der
+  synthetische HMAC-Testwert der n8n-Secret-Vorrang-Tests). Die Treffer stehen
+  commit-, pfad-, regel- und zeilengenau in `.gitleaksignore`; neue oder
+  geänderte Treffer bleiben sichtbar.
 - Image-Builds für Web und Worker brachen ab, weil beide Dockerfiles noch den
   seit dem Wegfall des SimpleWebAuthn-Patches (T-02) nicht mehr vorhandenen
   Ordner `patches/` kopierten. Die Zeilen und der Pfadfilter in
